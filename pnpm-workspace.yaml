@@ -1,0 +1,20 @@
+packages:
+  - apps/*
+  - domain/*
+
+catalog:
+  '@types/node': ^24
+  eslint-plugin-expo: ^1.0.0
+  typescript: ^5
+  vite: npm:@voidzero-dev/vite-plus-core@latest
+  vite-plus: latest
+  vitest: npm:@voidzero-dev/vite-plus-test@latest
+
+catalogMode: prefer
+peerDependencyRules:
+  allowAny:
+    - vite
+    - vitest
+  allowedVersions:
+    vite: '*'
+    vitest: '*'

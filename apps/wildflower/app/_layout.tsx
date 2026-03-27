@@ -1,0 +1,33 @@
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native'
+import { Stack } from 'expo-router'
+import { StatusBar } from 'expo-status-bar'
+import 'react-native-reanimated'
+
+import { JSX } from 'react'
+import AppLivestoreProvider from '@/components/app-livestore-provider'
+import { useColorScheme } from '@/hooks/use-color-scheme'
+
+// oxlint-disable-next-line react/only-export-components
+export const unstable_settings = {
+  anchor: '(tabs)',
+}
+
+export default function RootLayout(): JSX.Element {
+  const colorScheme = useColorScheme()
+
+  return (
+    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <AppLivestoreProvider>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+          <Stack.Screen
+            name="add-source-modal"
+            options={{ presentation: 'modal', title: 'Add Source' }}
+          />
+        </Stack>
+      </AppLivestoreProvider>
+      <StatusBar style="auto" />
+    </ThemeProvider>
+  )
+}

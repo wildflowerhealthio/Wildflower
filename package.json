@@ -1,0 +1,35 @@
+{
+  "name": "wildflower-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "domain/*",
+      "packages/*",
+      "tools/*"
+    ],
+    "catalog": {
+      "@types/node": "^24",
+      "eslint-plugin-expo": "^1.0.0",
+      "typescript": "^5",
+      "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+      "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vp run website#dev",
+    "prepare": "vp config",
+    "ready": "vp fmt && vp lint && vp run test -r && vp run build -r"
+  },
+  "devDependencies": {
+    "eslint-plugin-expo": "^1.0.0",
+    "vite-plus": "^0.1.14"
+  },
+  "overrides": {},
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@10.33.0"
+}
