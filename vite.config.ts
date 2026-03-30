@@ -4,6 +4,15 @@ export default defineConfig({
   staged: {
     '*': 'vp check --fix',
   },
+  test: {
+    exclude: ['**/node_modules/**', '**/dist/**', '**/*.interface.test.{ts,tsx}'],
+    setupFiles: ['./domain/fhir-r4-livestore/vitest.setupSchemaEqual.ts'],
+    server: {
+      deps: {
+        inline: ['@effect/vitest', '@fast-check/vitest', '@testing-library/react'],
+      },
+    },
+  },
   fmt: {
     trailingComma: 'es5',
     tabWidth: 2,

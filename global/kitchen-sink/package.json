@@ -1,5 +1,5 @@
 {
-  "name": "fhir-r4-livestore",
+  "name": "kitchen-sink",
   "version": "0.0.0",
   "description": "A starter for creating a TypeScript package.",
   "homepage": "https://github.com/author/library#readme",
@@ -18,9 +18,8 @@
   "type": "module",
   "exports": {
     ".": "./dist/index.mjs",
-    "./data-types": "./dist/data-types/index.mjs",
-    "./queries": "./dist/queries/index.mjs",
-    "./schema": "./dist/schema/index.mjs",
+    "./schema": "./dist/schema.mjs",
+    "./types": "./dist/types.mjs",
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -34,26 +33,14 @@
     "test": "vp test"
   },
   "dependencies": {
-    "kitchen-sink": "workspace:*"
+    "effect": "catalog:"
   },
   "devDependencies": {
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
-    "@types/fhir": "catalog:",
     "@types/node": "^25.5.0",
-    "@typescript/native-preview": "7.0.0-dev.20260316.1",
+    "@typescript/native-preview": "7.0.0-dev.20260328.1",
     "bumpp": "^11.0.1",
-    "effect": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "ontology": "workspace:*",
-    "typescript": "^5.9.3",
-    "vite-plus": "^0.1.11"
-  },
-  "peerDependencies": {
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
-    "effect": "catalog:",
-    "ontology": "workspace:*"
+    "typescript": "^6.0.2",
+    "vite-plus": "catalog:"
   }
 }

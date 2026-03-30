@@ -8,9 +8,14 @@ export default defineConfig({
     exports: true,
     entry: {
       index: 'src/index.ts',
-      'data-types/index': 'src/data-types/index.ts',
-      'schema/index': 'src/schema/index.ts',
-      'queries/index': 'src/queries/index.ts',
+      errors: 'src/errors/index.ts',
     },
   },
+  lint: {
+    options: {
+      typeAware: true,
+      typeCheck: true,
+    },
+  },
+  fmt: {},
 })
