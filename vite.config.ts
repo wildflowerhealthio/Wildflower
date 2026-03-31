@@ -68,6 +68,7 @@ export default defineConfig({
 
       // Configured rules
       'no-shadow': ['error', { allow: ['fc'] }],
+      'import/max-dependencies': ['warn', { max: 15 }],
       '@typescript-eslint/no-empty-object-type': ['error', { allowInterfaces: 'always' }],
       'no-unused-vars': [
         'error',
@@ -108,7 +109,6 @@ export default defineConfig({
       'react/no-array-index-key': 'warn',
       'no-await-in-loop': 'warn',
       'no-deprecated': 'warn',
-      'import/max-dependencies': 'warn',
       'no-warning-comments': 'warn',
       'switch-exhaustiveness-check': 'warn',
       'no-void': ['error', { allowAsStatement: true }],

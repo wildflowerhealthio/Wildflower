@@ -7,7 +7,7 @@ import { Colors } from '../constants/theme'
 import { useColorScheme } from './use-color-scheme'
 
 export function useThemeColor(
-  props: { light?: string; dark?: string },
+  props: { light?: string; dark?: string; unspecified?: string },
   // oxlint-disable-next-line typescript/no-duplicate-type-constituents
   colorName: keyof typeof Colors.light & keyof typeof Colors.dark
 ): string {

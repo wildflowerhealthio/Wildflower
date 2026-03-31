@@ -25,7 +25,7 @@ export interface ExtensionEncoded {
 }
 
 const extensionFields = {
-  id: Schema.optional(extensionIdSchema),
+  id: Schema.UndefinedOr(extensionIdSchema).pipe(Schema.optionalWith({ default: () => undefined })),
   resourceType: Schema.Literal(ExtensionKey).pipe(
     Schema.optionalWith({
       default: (): ExtensionKey => ExtensionKey,

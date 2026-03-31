@@ -9,7 +9,7 @@ const quantityArb = Arbitrary.make(SimpleQuantity)
 
 describe('SimpleQuantity model', () => {
   it('should have a FHIR R4 compatible type', () => {
-    expectTypeOf<DeepReadonly<fhir4.Quantity>>().toExtend<SimpleQuantity>()
+    expectTypeOf<SimpleQuantity>().toExtend<DeepReadonly<fhir4.Quantity>>()
   })
 
   test('property: encode-decode cycle', () => {

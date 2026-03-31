@@ -12,15 +12,21 @@ const fields = {
    * The individual responsible for making the annotation.
    * This is a choice element in FHIR (author[x]) - only one of authorString or authorReference should be present.
    */
-  authorString: Schema.optional(Schema.String),
+  authorString: Schema.UndefinedOr(Schema.String).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
   /**
    * The individual responsible for making the annotation.
    */
-  authorReference: Schema.optional(Schema.suspend(() => Reference)),
+  authorReference: Schema.UndefinedOr(Schema.suspend(() => Reference)).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
   /**
    * Indicates when this particular annotation was made.
    */
-  time: Schema.optional(Schema.DateTimeUtc),
+  time: Schema.UndefinedOr(Schema.DateTimeUtc).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
   /**
    * The text of the annotation in markdown format.
    */

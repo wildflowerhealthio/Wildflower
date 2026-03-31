@@ -23,7 +23,7 @@ const fields = {
   /**
    * Very often the text is the same as a displayName of one of the codings.
    */
-  text: Schema.optional(Schema.String),
+  text: Schema.UndefinedOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
   // _text?: Element | undefined;
 } as const
 

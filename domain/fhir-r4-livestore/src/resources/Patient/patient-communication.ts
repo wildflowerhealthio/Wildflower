@@ -5,7 +5,9 @@ import type { BackboneElementEncoded } from '../../data-types/index.ts'
 
 const fields = {
   language: Schema.suspend(() => CodeableConcept),
-  preferred: Schema.optional(Schema.Boolean),
+  preferred: Schema.UndefinedOr(Schema.Boolean).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
 } as const satisfies Schema.Struct.Fields
 
 /** Encoded (wire-format) shape of a {@link PatientCommunication}. */

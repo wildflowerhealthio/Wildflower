@@ -139,7 +139,7 @@ type DatatypeName = keyof typeof baseDatatypes
  * // Produces: { _tag: 'Quantity', Quantity: ... } | { _tag: 'string', string: ... } | ...
  *
  * // Use as a field on a resource:
- * const fields = { value: Schema.optional(ValueChoice) }
+ * const fields = { value: Schema.UndefinedOr(ValueChoice) }
  * ```
  *
  * @param datatypeNames - Array of data type names to include in the choice

@@ -1,0 +1,62 @@
+import { StyleSheet } from 'react-native'
+
+import { useLocalSearchParams } from 'expo-router'
+import ParallaxScrollView from '@/components/parallax-scroll-view'
+import { ThemedText } from '@/components/themed-text'
+import { ThemedView } from '@/components/themed-view'
+import { Fonts } from '@/constants/theme'
+
+import React from 'react'
+
+import { DateTime } from 'effect'
+import { binaryById$ } from 'fhir-r4-livestore/queries'
+import { Binary } from 'fhir-r4-livestore/resources'
+import { useAppStore } from '../../../livestore/store'
+
+export default function TabTwoScreen(): React.JSX.Element {
+  const local = useLocalSearchParams<{ id: string }>()
+
+  const store = useAppStore()
+  const binary = store.useQuery(binaryById$(Binary.IdSchema.make(local.id)))
+  const dateText = binary?.meta?.lastUpdated
+    ? DateTime.formatLocal(binary.meta?.lastUpdated)
+    : undefined
+  return (
+    <ParallaxScrollView
+      headerBackgroundColor={{ light: '#D0D0D0', unspecified: '#D0D0D0', dark: '#353636' }}
+    >
+      <ThemedView style={styles.titleContainer}>
+        <ThemedText
+          type="title"
+          style={{
+            fontFamily: Fonts.rounded,
+          }}
+        >
+          {binary.meta?.source || 'Binary Record'}
+        </ThemedText>
+        <ThemedText
+          type="subtitle"
+          style={{
+            fontFamily: Fonts.rounded,
+          }}
+        >
+          {dateText}
+        </ThemedText>
+      </ThemedView>
+      <ThemedText type="default">{binary?.data}</ThemedText>
+    </ParallaxScrollView>
+  )
+}
+
+const styles = StyleSheet.create({
+  headerImage: {
+    color: '#808080',
+    bottom: -90,
+    left: -35,
+    position: 'absolute',
+  },
+  titleContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+})

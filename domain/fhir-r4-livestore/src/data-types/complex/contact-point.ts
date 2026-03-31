@@ -9,7 +9,7 @@ const fields = {
    * Telecommunications form for contact point - what communications system is required to make use of the contact.
    * phone | fax | email | pager | url | sms | other
    */
-  system: Schema.optional(
+  system: Schema.UndefinedOr(
     Schema.Union(
       Schema.Literal('phone'),
       Schema.Literal('fax'),
@@ -19,16 +19,16 @@ const fields = {
       Schema.Literal('sms'),
       Schema.Literal('other')
     )
-  ),
+  ).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * The actual contact point details, in a form that is meaningful to the designated communication system (i.e. phone number or email address).
    */
-  value: Schema.optional(Schema.String),
+  value: Schema.UndefinedOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * Identifies the purpose for the contact point.
    * home | work | temp | old | mobile - purpose of this contact point
    */
-  use: Schema.optional(
+  use: Schema.UndefinedOr(
     Schema.Union(
       Schema.Literal('home'),
       Schema.Literal('work'),
@@ -36,15 +36,17 @@ const fields = {
       Schema.Literal('old'),
       Schema.Literal('mobile')
     )
-  ),
+  ).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * Specifies a preferred order in which to use a set of contacts. ContactPoints with lower rank values are more preferred than those with higher rank values.
    */
-  rank: Schema.optional(Schema.Int),
+  rank: Schema.UndefinedOr(Schema.Int).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * Time period when the contact point was/is in use.
    */
-  period: Schema.optional(Schema.suspend(() => Period)),
+  period: Schema.UndefinedOr(Schema.suspend(() => Period)).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
 } as const
 
 /** Encoded (wire-format) shape of a {@link ContactPoint}. */

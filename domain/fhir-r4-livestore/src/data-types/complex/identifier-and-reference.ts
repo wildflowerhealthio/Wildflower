@@ -27,17 +27,21 @@ const referenceFields = {
   /**
    * This is generally not the same as the Resource.text of the referenced resource.  The purpose is to identify what's being referenced, not to fully describe it.
    */
-  display: Schema.optional(Schema.String),
+  display: Schema.UndefinedOr(Schema.String).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
   // _display?: Element | undefined;
   /**
    * Using absolute URLs provides a stable scalable approach suitable for a cloud/web context, while using relative/logical references provides a flexible approach suitable for use when trading across closed eco-system boundaries.   Absolute URLs do not need to point to a FHIR RESTful server, though this is the preferred approach. If the URL conforms to the structure "/[type]/[id]" then it should be assumed that the reference is to a FHIR RESTful server.
    */
-  reference: Schema.optional(Schema.String),
+  reference: Schema.UndefinedOr(Schema.String).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
   // _reference?: Element | undefined;
   /**
    * This element is used to indicate the type of  the target of the reference. This may be used which ever of the other elements are populated (or not). In some cases, the type of the target may be determined by inspection of the reference (e.g. a RESTful URL) or by resolving the target of the reference; if both the type and a reference is provided, the reference SHALL resolve to a resource of the same type as that specified.
    */
-  type: Schema.optional(Schema.String),
+  type: Schema.UndefinedOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
   // _type?: Element | undefined;
 } as const satisfies Schema.Struct.Fields
 
@@ -74,9 +78,9 @@ class Reference extends ReferenceElement.extend<Reference>(ReferenceKey)({
    * Note: Schema.suspend is used here to break the circular dependency between
    * Reference and Identifier at runtime.
    */
-  identifier: Schema.optional(
+  identifier: Schema.UndefinedOr(
     Schema.suspend((): Schema.Schema<Identifier, IdentifierEncoded> => Identifier)
-  ),
+  ).pipe(Schema.optionalWith({ default: () => undefined })),
 }) {
   static readonly ResourceType = ReferenceElement.ResourceType
   static readonly IdSchema = ReferenceElement.IdSchema
@@ -135,29 +139,31 @@ const identifierFields = {
   /**
    * Time period during which identifier is/was valid for use.
    */
-  period: Schema.optional(Schema.suspend(() => Period)), //Period | undefined;
+  period: Schema.UndefinedOr(Schema.suspend(() => Period)).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ), //Period | undefined;
   /**
    * Identifier.system is always case sensitive.
    */
-  system: Schema.optional(Schema.String),
+  system: Schema.UndefinedOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
   // _system?: Element | undefined;
   /**
    * This element deals only with general categories of identifiers.  It SHOULD not be used for codes that correspond 1..1 with the Identifier.system. Some identifiers may fall into multiple categories due to common usage.   Where the system is known, a type is unnecessary because the type is always part of the system definition. However systems often need to handle identifiers where the system is not known. There is not a 1:1 relationship between type and system, since many different systems have the same type.
    */
-  type: Schema.optional(
+  type: Schema.UndefinedOr(
     Schema.suspend(
       (): Schema.Schema<typeof CodeableConcept.Type, CodeableConceptEncoded> => CodeableConcept
     )
-  ),
+  ).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * Applications can assume that an identifier is permanent unless it explicitly says that it is temporary.
    */
-  use: Schema.optional(IdentifierUse),
+  use: Schema.UndefinedOr(IdentifierUse).pipe(Schema.optionalWith({ default: () => undefined })),
   //_use?: Element | undefined;
   /**
    * If the value is a full URI, then the system SHALL be urn:ietf:rfc:3986.  The value's primary purpose is computational mapping.  As a result, it may be normalized for comparison purposes (e.g. removing non-significant whitespace, dashes, etc.)  A value formatted for human display can be conveyed using the [Rendered Value extension](extension-rendered-value.html). Identifier.value is to be treated as case sensitive unless knowledge of the Identifier.system allows the processer to be confident that non-case-sensitive processing is safe.
    */
-  value: Schema.optional(Schema.String),
+  value: Schema.UndefinedOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
   // _value?: Element | undefined;
 } as const satisfies Schema.Struct.Fields
 
@@ -189,9 +195,9 @@ class Identifier extends IdentifierElement.extend<Identifier>(IdentifierKey)({
    * Note: Schema.suspend is used here to break the circular dependency between
    * Identifier and Reference at runtime.
    */
-  assigner: Schema.optional(
+  assigner: Schema.UndefinedOr(
     Schema.suspend((): Schema.Schema<Reference, ReferenceEncoded> => Reference)
-  ),
+  ).pipe(Schema.optionalWith({ default: () => undefined })),
 }) {
   static readonly ResourceType = IdentifierElement.ResourceType
   static readonly IdSchema = IdentifierElement.IdSchema

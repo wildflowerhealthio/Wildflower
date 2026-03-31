@@ -18,8 +18,10 @@ const MAPPING = {
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
-  'rectangle.stack.fill.badge.plus': 'domain-add',
-  'plus.square.fill.on.square.fill': 'domain',
+  // Accounts
+  'person.crop.circle.fill': 'account-circle',
+  // Records
+  'folder.fill': 'folder',
 } as const
 
 /**

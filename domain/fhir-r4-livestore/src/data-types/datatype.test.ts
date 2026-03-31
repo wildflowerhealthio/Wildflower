@@ -89,10 +89,12 @@ describe('DatatypeChoice', () => {
     })
   })
 
-  describe('as Schema.optional field', () => {
+  describe('as Schema.UndefinedOr field', () => {
     const ResourceSchema = Schema.Struct({
       name: Schema.String,
-      value: Schema.optional(ValueChoice),
+      value: Schema.UndefinedOr(ValueChoice).pipe(
+        Schema.optionalWith({ default: () => undefined })
+      ),
     })
     const decodeResource = Schema.decodeSync(ResourceSchema)
 

@@ -15,21 +15,31 @@ import {
 } from '../../data-types/index.ts'
 
 const fields = {
-  address: Schema.optional(Schema.suspend(() => Address)),
-  gender: Schema.optional(AdministrativeGender),
-  name: Schema.optional(Schema.suspend(() => HumanName)),
-  organization: Schema.optional(Schema.suspend(() => Reference)),
-  period: Schema.optional(Schema.suspend(() => Period)),
-  relationship: Schema.optional(
+  address: Schema.UndefinedOr(Schema.suspend(() => Address)).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
+  gender: Schema.UndefinedOr(AdministrativeGender).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
+  name: Schema.UndefinedOr(Schema.suspend(() => HumanName)).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
+  organization: Schema.UndefinedOr(Schema.suspend(() => Reference)).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
+  period: Schema.UndefinedOr(Schema.suspend(() => Period)).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
+  relationship: Schema.UndefinedOr(
     Schema.Array(Schema.suspend(() => CodeableConcept)).pipe(
       AnnotateArrayWithArbitrary({ maxLength: 2 })
     )
-  ),
-  telecom: Schema.optional(
+  ).pipe(Schema.optionalWith({ default: () => undefined })),
+  telecom: Schema.UndefinedOr(
     Schema.Array(Schema.suspend(() => ContactPoint)).pipe(
       AnnotateArrayWithArbitrary({ maxLength: 2 })
     )
-  ),
+  ).pipe(Schema.optionalWith({ default: () => undefined })),
 } as const satisfies Schema.Struct.Fields
 
 /** Encoded (wire-format) shape of a {@link PatientContact}. */

@@ -11,12 +11,16 @@ const fields = {
    * The start of the period. The boundary is inclusive.
    * If the low element is missing, the meaning is that the low boundary is not known.
    */
-  start: Schema.optional(Schema.DateTimeUtc),
+  start: Schema.UndefinedOr(Schema.DateTimeUtc).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
   /**
    * The end of the period. If the end of the period is missing, it means no end was known or planned at the time the instance was created. The start may be in the past, and the end date in the future, which means that period is expected/planned to end at that time.
    * The high value includes any matching date/time. i.e. 2012-02-03T10:00:00 is in a period that has an end value of 2012-02-03.
    */
-  end: Schema.optional(Schema.DateTimeUtc),
+  end: Schema.UndefinedOr(Schema.DateTimeUtc).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
 } as const satisfies Schema.Struct.Fields
 
 const PeriodElement = Element(ResourceType)

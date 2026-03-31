@@ -7,17 +7,21 @@ const ResourceType = 'Meta' as const
 type ResourceType = typeof ResourceType
 
 const fields = {
-  versionId: Schema.optional(Schema.String),
-  lastUpdated: Schema.optional(Schema.DateTimeUtc),
-  source: Schema.optional(Schema.String),
+  versionId: Schema.UndefinedOr(Schema.String).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
+  lastUpdated: Schema.UndefinedOr(Schema.DateTimeUtc).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
+  source: Schema.UndefinedOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
   // oxfmt-ignore
   // profile: canonical(StructureDefinition),
-  security: Schema.optional(
+  security: Schema.UndefinedOr(
     Schema.Array(Schema.suspend((): Schema.Schema<Coding, CodingEncoded> => Coding))
-  ),
-  tag: Schema.optional(
+  ).pipe(Schema.optionalWith({ default: () => undefined })),
+  tag: Schema.UndefinedOr(
     Schema.Array(Schema.suspend((): Schema.Schema<Coding, CodingEncoded> => Coding))
-  ),
+  ).pipe(Schema.optionalWith({ default: () => undefined })),
 } as const satisfies Schema.Struct.Fields
 
 /** Encoded (wire-format) shape of a {@link Meta}. */

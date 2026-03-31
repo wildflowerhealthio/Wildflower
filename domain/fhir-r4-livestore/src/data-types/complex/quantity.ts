@@ -9,33 +9,33 @@ const fields = {
   /**
    * The implicit precision in the value should always be honored. Monetary values have their own rules for handling precision (refer to standard accounting text books).
    */
-  value: Schema.optional(Schema.Finite),
+  value: Schema.UndefinedOr(Schema.Finite).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * A human-readable form of the unit.
    */
-  unit: Schema.optional(Schema.String),
+  unit: Schema.UndefinedOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * The identification of the system that provides the coded form of the unit.
    * The preferred system is UCUM, but SNOMED CT can also be used (for customary units) or ISO 4217 for currency.
    * The context of use may additionally require a code from a particular system.
    */
-  system: Schema.optional(Schema.String),
+  system: Schema.UndefinedOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * A computer processable form of the unit in some unit representation system.
    */
-  code: Schema.optional(Code),
+  code: Schema.UndefinedOr(Code).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * How the value should be understood and represented - whether the actual value is greater or less than
    * the stated value due to measurement issues; e.g. if the comparator is "\<", then the real value is \< stated value.
    */
-  comparator: Schema.optional(
+  comparator: Schema.UndefinedOr(
     Schema.Union(
       Schema.Literal('<'),
       Schema.Literal('<='),
       Schema.Literal('>='),
       Schema.Literal('>')
     )
-  ),
+  ).pipe(Schema.optionalWith({ default: () => undefined })),
 } as const satisfies Schema.Struct.Fields
 
 const QuantityElement = Element('Quantity')

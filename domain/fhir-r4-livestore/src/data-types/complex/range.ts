@@ -10,11 +10,11 @@ const fields = {
   /**
    * The low limit. The boundary is inclusive.
    */
-  low: Schema.optional(Quantity),
+  low: Schema.UndefinedOr(Quantity).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * The high limit. The boundary is inclusive.
    */
-  high: Schema.optional(Quantity),
+  high: Schema.UndefinedOr(Quantity).pipe(Schema.optionalWith({ default: () => undefined })),
 } as const satisfies Schema.Struct.Fields
 
 const RangeElement = Element(ResourceType)

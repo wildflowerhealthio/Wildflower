@@ -12,8 +12,8 @@ export default function TabLayout(): JSX.Element {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
+        tabBarActiveTintColor: Colors[colorScheme].tint,
+        headerShown: true,
         tabBarButton: HapticTab,
       }}
     >
@@ -25,11 +25,18 @@ export default function TabLayout(): JSX.Element {
         }}
       />
       <Tabs.Screen
-        name="sources"
+        name="records"
         options={{
-          title: 'Sources',
+          title: 'Records',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="folder.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="accounts"
+        options={{
+          title: 'Accounts',
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="plus.square.fill.on.square.fill" color={color} />
+            <IconSymbol size={28} name="person.crop.circle.fill" color={color} />
           ),
         }}
       />

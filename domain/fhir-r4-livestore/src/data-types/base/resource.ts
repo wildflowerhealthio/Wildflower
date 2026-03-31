@@ -52,23 +52,26 @@ const resourceFields = {
   /**
    * Metadata about the resource
    */
-  meta: Schema.optional(Meta),
+  meta: Schema.UndefinedOr(Meta).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * A set of rules under which this content was created
    */
-  implicitRules: Schema.optional(Schema.URL),
+  implicitRules: Schema.UndefinedOr(Schema.URL).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
   /**
    * Language of the resource content
    */
-  language: Schema.optional(Code),
+  language: Schema.UndefinedOr(Code).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * Text summary of the resource, for human interpretation
    */
-  text: Schema.optional(Narrative),
+  text: Schema.UndefinedOr(Narrative).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * Contained, inline Resources
    */
-  // TODO: type contained resources when needed — Schema.Any passes anything through unvalidated
+  // Eventually, type the contained resources
+  // Schema.Any passes anything through unvalidated
   contained: Schema.Array(PermissivePassthrough).pipe(
     AnnotateArrayWithArbitrary({ maxLength: 0 }),
     Schema.optionalWith({

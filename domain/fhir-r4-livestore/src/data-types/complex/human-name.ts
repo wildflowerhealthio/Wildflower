@@ -9,7 +9,7 @@ const fields = {
    * Identifies the purpose for this name.
    * usual | official | temp | nickname | anonymous | old | maiden
    */
-  use: Schema.optional(
+  use: Schema.UndefinedOr(
     Schema.Union(
       Schema.Literal('usual'),
       Schema.Literal('official'),
@@ -19,31 +19,39 @@ const fields = {
       Schema.Literal('old'),
       Schema.Literal('maiden')
     )
-  ),
+  ).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * Specifies the entire name as it should be displayed e.g. on an application UI. This may be provided instead of or as well as the specific parts.
    */
-  text: Schema.optional(Schema.String),
+  text: Schema.UndefinedOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * The part of a name that links to the genealogy. In some cultures (e.g. Eritrea) the family name of a son is the first name of his father.
    */
-  family: Schema.optional(Schema.String),
+  family: Schema.UndefinedOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * Given name.
    */
-  given: Schema.optional(Schema.Array(Schema.String)),
+  given: Schema.UndefinedOr(Schema.Array(Schema.String)).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
   /**
    * Part of the name that is acquired as a title due to academic, legal, employment or nobility status, etc. and that appears at the start of the name.
    */
-  prefix: Schema.optional(Schema.Array(Schema.String)),
+  prefix: Schema.UndefinedOr(Schema.Array(Schema.String)).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
   /**
    * Part of the name that is acquired as a title due to academic, legal, employment or nobility status, etc. and that appears at the end of the name.
    */
-  suffix: Schema.optional(Schema.Array(Schema.String)),
+  suffix: Schema.UndefinedOr(Schema.Array(Schema.String)).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
   /**
    * Indicates the period of time when this name was valid for the named person.
    */
-  period: Schema.optional(Schema.suspend(() => Period)),
+  period: Schema.UndefinedOr(Schema.suspend(() => Period)).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
 } as const
 
 /** Encoded (wire-format) shape of a {@link HumanName}. */

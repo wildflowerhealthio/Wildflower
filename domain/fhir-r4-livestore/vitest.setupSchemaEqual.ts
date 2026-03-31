@@ -1,3 +1,5 @@
+// oxlint-disable import/max-dependencies
+// This file ties together all the schemas in a single way, the imports are reasonable
 import { Schema } from 'effect'
 import { expect } from 'vite-plus/test'
 
@@ -24,6 +26,7 @@ import { Narrative } from './src/data-types/special-purpose/narrative.ts'
 // import { Location } from './src/resources/Location/location.ts'
 // import { Media } from './src/resources/Media/media.ts'
 // import { Observation } from './src/resources/Observation/observation.ts'
+import { Binary } from './src/resources/Binary/binary.ts'
 import { Patient } from './src/resources/Patient/patient.ts'
 // import { Practitioner } from './src/resources/Practitioner/practitioner.ts'
 // import { Questionnaire } from './src/resources/Questionnaire/questionnaire.ts'
@@ -42,6 +45,7 @@ if (!globalThis.setupInitialized) {
     // Location,
     // Media,
     // Observation,
+    Binary,
     Patient,
     // Practitioner,
     // Questionnaire,

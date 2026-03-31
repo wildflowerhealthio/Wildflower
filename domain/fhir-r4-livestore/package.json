@@ -20,6 +20,7 @@
     ".": "./dist/index.mjs",
     "./data-types": "./dist/data-types/index.mjs",
     "./queries": "./dist/queries/index.mjs",
+    "./resources": "./dist/resources/index.mjs",
     "./schema": "./dist/schema/index.mjs",
     "./package.json": "./package.json"
   },
