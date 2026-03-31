@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router'
-import React, { JSX } from 'react'
+import React, { type JSX } from 'react'
 
 import { HapticTab } from '@/components/haptic-tab'
 import { IconSymbol } from '@/components/ui/icon-symbol'

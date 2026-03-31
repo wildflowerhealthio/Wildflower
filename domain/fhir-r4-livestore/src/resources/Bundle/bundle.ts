@@ -14,18 +14,16 @@ const BundleType = Schema.Enums({
   'transaction-response': 'transaction-response',
 } as const)
 
+// oxlint-disable @typescript-eslint/no-explicit-any
 interface BundleEntry<BundleContentType> extends BackboneElement<'BundleEntry'> {
   fullUrl?: URL
-  // oxlint-disable-next-line @typescript-eslint/no-explicit-any
   link?: any[]
-  // oxlint-disable-next-line @typescript-eslint/no-explicit-any
   request?: any
   resource?: BundleContentType
-  // oxlint-disable-next-line @typescript-eslint/no-explicit-any
   response?: any
-  // oxlint-disable-next-line @typescript-eslint/no-explicit-any
   search?: any
 }
+// oxlint-enable @typescript-eslint/no-explicit-any
 
 /**
  * Decoded shape of a FHIR R4 Bundle — a container for a collection of resources.
@@ -79,7 +77,6 @@ export const Bundle = {
    */
   // oxlint-disable-next-line typescript-eslint/explicit-function-return-type -- return type depends on generic schema parameter
   Schema: <BundleContentType, BundleContentEncoded>(
-    // oxlint-disable-line typescript-eslint/explicit-function-return-type
     contentTypeSchema: Schema.Schema<BundleContentType, BundleContentEncoded>
   ) =>
     Schema.Struct({

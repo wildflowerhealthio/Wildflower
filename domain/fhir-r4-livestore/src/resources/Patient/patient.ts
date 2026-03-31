@@ -94,14 +94,14 @@ const fields = {
 const PatientResource = Resource(DomainType)
 
 /** Encoded (wire-format) shape of a {@link Patient}. */
-export interface PatientEncoded
+interface PatientEncoded
   extends Schema.Struct.Encoded<typeof fields>, ResourceEncoded<DomainType> {}
 
 /**
  * Demographics and other administrative information about an individual or animal
  * receiving care or other health-related services.
  */
-export class Patient extends PatientResource.extend<Patient>(DomainType)(fields) {
+class Patient extends PatientResource.extend<Patient>(DomainType)(fields) {
   static readonly ResourceType = PatientResource.ResourceType
   static readonly IdSchema = PatientResource.IdSchema
   /** No search parameters configured for this resource. */
@@ -115,4 +115,9 @@ export class Patient extends PatientResource.extend<Patient>(DomainType)(fields)
   }
 }
 
-class PatientWithId extends Patient.extend<PatientWithId>('PatientWithId')({ id: Schema.String }) {}
+class PatientWithId extends Patient.extend<PatientWithId>('PatientWithId')({
+  id: Schema.String,
+}) {}
+
+export type { PatientEncoded }
+export { Patient, PatientWithId }

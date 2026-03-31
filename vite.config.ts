@@ -54,9 +54,9 @@ export default defineConfig({
     options: {
       typeAware: true,
       typeCheck: true,
+      reportUnusedDisableDirectives: 'error',
     },
     rules: {
-      reportUnusedDisableDirectives: 'error',
       // Explicitly disabled rules
       'import/no-unassigned-import': 'off',
       'import/no-named-export': 'off',
@@ -97,6 +97,11 @@ export default defineConfig({
       ],
 
       // Extra rules
+      '@typescript-eslint/no-unsafe-type-assertion': 'error',
+      '@typescript-eslint/consistent-type-imports': 'error',
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-unsafe-assignment': 'error',
+      '@typescript-eslint/explicit-function-return-type': 'error',
       'unicorn/no-array-callback-reference': 'error',
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
@@ -117,7 +122,6 @@ export default defineConfig({
       'react/jsx-curly-brace-presence': ['error', { propElementValues: 'always' }],
       'react/jsx-filename-extension': ['error', { extensions: ['.jsx', '.tsx'] }],
       'no-console': 'warn',
-      '@typescript-eslint/explicit-function-return-type': 'error',
       'no-ternary': 'warn',
     },
     overrides: [
@@ -129,17 +133,6 @@ export default defineConfig({
           'prefer-const': 'error',
           'prefer-rest-params': 'error',
           'prefer-spread': 'error',
-        },
-      },
-      {
-        files: ['**/*.test.ts', '**/*.test.tsx', '**/test/**'],
-        rules: {
-          '@typescript-eslint/no-unsafe-type-assertion': 'off',
-          '@typescript-eslint/consistent-type-imports': 'off',
-          '@typescript-eslint/no-explicit-any': 'off',
-          '@typescript-eslint/explicit-function-return-type': 'off',
-          'no-shadow': 'off',
-          'no-void': 'off',
         },
       },
       {

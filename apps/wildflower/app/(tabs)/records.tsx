@@ -1,4 +1,4 @@
-import { Href } from 'expo-router'
+import { type Href } from 'expo-router'
 import React from 'react'
 
 import ItemList from '@/components/ui/item-list'

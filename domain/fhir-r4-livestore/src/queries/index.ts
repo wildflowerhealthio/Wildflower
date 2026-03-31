@@ -2,7 +2,7 @@ import { queryDb, type LiveQueryDef } from '@livestore/livestore'
 
 import { tables } from '../schema/index.ts'
 
-import { Binary, Patient } from '../resources/index.ts'
+import type { Binary, Patient } from '../resources/index.ts'
 
 const accounts$ = queryDb(tables.accounts, { label: 'accounts' })
 

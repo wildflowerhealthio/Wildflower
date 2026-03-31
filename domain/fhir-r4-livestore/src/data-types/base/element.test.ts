@@ -2,8 +2,7 @@ import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, expectTypeOf, test } from 'vite-plus/test'
 
-import { Extension } from '../special-purpose/extension.ts'
-import type { ExtensionEncoded } from '../special-purpose/extension.ts'
+import type { Extension, ExtensionEncoded } from '../special-purpose/extension.ts'
 import { Element } from './element.ts'
 
 // ---------------------------------------------------------------------------

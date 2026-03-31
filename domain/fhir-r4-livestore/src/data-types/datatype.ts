@@ -151,6 +151,7 @@ function DatatypeChoice<
   // oxlint-disable-next-line typescript/no-explicit-any
   const Overrides extends readonly Datatype<DatatypeNames[number], any, any>[] = [],
 >(datatypeNames: DatatypeNames, overrideFields?: Overrides) {
+  // oxlint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const variants: {
     [K in keyof DatatypeNames]: DatatypeNames[K] extends DatatypeName
       ? Schema.TaggedStruct<

@@ -24,7 +24,7 @@ const tables = {
   }),
   binaries: State.SQLite.table({
     name: 'binaries',
-    schema: Binary,
+    schema: Binary.WithId,
     indexes: [
       {
         name: 'binaries_id_idx',
@@ -35,7 +35,7 @@ const tables = {
   }),
   patients: State.SQLite.table({
     name: 'patients',
-    schema: Patient,
+    schema: Patient.WithId,
     indexes: [
       {
         name: 'patients_id_idx',
@@ -51,8 +51,9 @@ const events = {
   patientReceived: Events.synced({
     name: 'v1.PatientReceived',
     schema: Schema.Struct({
-      patient: Patient,
+      patient: Patient.WithId,
       source: Schema.String,
+      binaryId: Binary.IdSchema,
       mimeType: Code,
       addedAt: Schema.DateTimeUtc,
       sourceData: Schema.String,
@@ -70,10 +71,11 @@ const events = {
 
 // Materializers are used to map events to state (https://docs.livestore.dev/reference/state/materializers)
 const materializers = State.SQLite.materializers(events, {
-  'v1.PatientReceived': ({ patient, source, mimeType, addedAt, sourceData }) => {
+  'v1.PatientReceived': ({ binaryId, patient, source, mimeType, addedAt, sourceData }) => {
     return [
       tables.binaries
         .insert({
+          id: binaryId,
           resourceType: 'Binary',
           meta: {
             source,
@@ -85,7 +87,6 @@ const materializers = State.SQLite.materializers(events, {
           contentType: mimeType,
           data: sourceData,
           text: undefined,
-          id: undefined,
           implicitRules: undefined,
           language: undefined,
           extension: [],

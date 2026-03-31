@@ -278,10 +278,11 @@ describe('DatatypeChoice.match', () => {
 
   test('throws when no handler and no default', () => {
     // Simulate a tag not covered at runtime (e.g. data from a newer server)
-    const fabricated = {
+    // oxlint-disable-next-line @typescript-eslint/no-explicit-any
+    const fabricated: any = {
       _tag: 'decimal',
       decimal: 1.5,
-    } as unknown as typeof ValueChoice.Type
+    }
     expect(() =>
       DatatypeChoice.match(fabricated, {
         boolean: (b) => `${b}`,

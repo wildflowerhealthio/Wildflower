@@ -11,7 +11,7 @@
  *   applied recursively.
  */
 type Primitive = string | number | boolean | symbol | bigint | null | undefined
-// oxlint-disable-next-line @typescript-eslint/no-unsafe-function-type
+
 type BuiltIn = Date | RegExp | Map<unknown, unknown> | Set<unknown> | Function
 
 export type DeepReadonly<T> = T extends Primitive | BuiltIn

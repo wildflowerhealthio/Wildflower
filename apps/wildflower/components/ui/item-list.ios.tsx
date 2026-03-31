@@ -1,8 +1,8 @@
 import { fillMaxWidth } from '@expo/ui/jetpack-compose/modifiers'
 import { Host, List, Label, Section, VStack, Text, Button } from '@expo/ui/swift-ui'
 import { environment, buttonStyle, listStyle, tag } from '@expo/ui/swift-ui/modifiers'
-import { Link, Href } from 'expo-router'
-import { JSX, useState } from 'react'
+import { Link, type Href } from 'expo-router'
+import { type JSX, useState } from 'react'
 
 export default function ItemList({
   title,

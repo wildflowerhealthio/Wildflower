@@ -18,14 +18,12 @@ type DatatypeValueFor<Tag extends DatatypeName> = {
   "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Extension"
 }
 */
-// oxlint-disable-next-line @typescript-eslint/no-unused-vars
 const StructureDefinitionKind = Schema.Enums({
   'complex-type': 'complex-type',
   logical: 'logical',
   'primitive-type': 'primitive-type',
   resource: 'resource',
 })
-// oxlint-disable-next-line @typescript-eslint/no-unused-vars
 const StructureDefinitionType = Schema.Enums({ Extension: 'Extension' })
 
 /**

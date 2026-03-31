@@ -1,12 +1,12 @@
 import React from 'react'
 
 import { DateTime } from 'effect'
-import { Href } from 'expo-router'
+import { type Href } from 'expo-router'
 import { binaries$ } from 'fhir-r4-livestore/queries'
 import ItemList from '@/components/ui/item-list'
 import { useAppStore } from '../../livestore/store'
 
-export default function TabTwoScreen(): React.JSX.Element {
+export default function BinaryList(): React.JSX.Element {
   const store = useAppStore()
   const binaries = store.useQuery(binaries$)
 
@@ -15,7 +15,7 @@ export default function TabTwoScreen(): React.JSX.Element {
       title="Binaries"
       onDelete={() => {}}
       items={binaries.map((binary) => ({
-        id: binary.id!,
+        id: binary.id,
         title: binary.meta?.source || 'Binary Record',
         destination: `/records/binaries/${binary.id}` satisfies Href,
         subtitle: binary.meta?.lastUpdated

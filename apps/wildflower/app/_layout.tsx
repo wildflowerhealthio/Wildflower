@@ -3,7 +3,7 @@ import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import 'react-native-reanimated'
 
-import { JSX } from 'react'
+import { type JSX } from 'react'
 import AppLivestoreProvider from '@/components/app-livestore-provider'
 import { useColorScheme } from '@/hooks/use-color-scheme'
 

@@ -12,7 +12,7 @@ import { patientById$ } from 'fhir-r4-livestore/queries'
 import { Patient } from 'fhir-r4-livestore/resources'
 import { useAppStore } from '../../../livestore/store'
 
-export default function TabTwoScreen(): React.JSX.Element {
+export default function PatientDetail(): React.JSX.Element {
   const local = useLocalSearchParams<{ id: string }>()
 
   const store = useAppStore()

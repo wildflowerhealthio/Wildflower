@@ -13,7 +13,7 @@ import { binaryById$ } from 'fhir-r4-livestore/queries'
 import { Binary } from 'fhir-r4-livestore/resources'
 import { useAppStore } from '../../../livestore/store'
 
-export default function TabTwoScreen(): React.JSX.Element {
+export default function BinaryDetail(): React.JSX.Element {
   const local = useLocalSearchParams<{ id: string }>()
 
   const store = useAppStore()
@@ -21,6 +21,20 @@ export default function TabTwoScreen(): React.JSX.Element {
   const dateText = binary?.meta?.lastUpdated
     ? DateTime.formatLocal(binary.meta?.lastUpdated)
     : undefined
+
+  if (!binary) {
+    return (
+      <ThemedText
+        type="title"
+        style={{
+          fontFamily: Fonts.rounded,
+        }}
+      >
+        Not Found
+      </ThemedText>
+    )
+  }
+
   return (
     <ParallaxScrollView
       headerBackgroundColor={{ light: '#D0D0D0', unspecified: '#D0D0D0', dark: '#353636' }}

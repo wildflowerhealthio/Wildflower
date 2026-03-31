@@ -1,7 +1,7 @@
 import { Host, Text, ListItem, LazyColumn } from '@expo/ui/jetpack-compose'
 import { clickable, fillMaxWidth, paddingAll } from '@expo/ui/jetpack-compose/modifiers'
-import { Href, useRouter } from 'expo-router'
-import { JSX } from 'react'
+import { type Href, useRouter } from 'expo-router'
+import { type JSX } from 'react'
 
 export default function ItemList({
   title,

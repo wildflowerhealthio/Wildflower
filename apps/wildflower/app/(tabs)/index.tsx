@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native'
 
-import { JSX } from 'react'
+import { type JSX } from 'react'
 import ParallaxScrollView from '../../components/parallax-scroll-view'
 import { ThemedText } from '../../components/themed-text'
 import { ThemedView } from '../../components/themed-view'

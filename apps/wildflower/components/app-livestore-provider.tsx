@@ -1,6 +1,6 @@
 import { StoreRegistry } from '@livestore/livestore'
 import { StoreRegistryProvider } from '@livestore/react'
-import React, { JSX, Suspense, useState } from 'react'
+import React, { type JSX, Suspense, useState } from 'react'
 import { Text } from 'react-native'
 
 // oxlint-disable-next-line typescript/no-empty-object-type

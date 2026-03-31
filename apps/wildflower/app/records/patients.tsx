@@ -1,4 +1,4 @@
-import { Href } from 'expo-router'
+import { type Href } from 'expo-router'
 
 import React from 'react'
 
@@ -16,7 +16,7 @@ export default function PatientsList(): React.JSX.Element {
       title="Patient Records"
       onDelete={() => {}}
       items={patients.map((patient) => ({
-        id: patient.id!,
+        id: patient.id,
         title: patient.meta?.source || 'Patient Record',
         destination: `/records/patients/${patient.id}` satisfies Href,
         subtitle: patient.meta?.lastUpdated

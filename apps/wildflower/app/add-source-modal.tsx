@@ -1,11 +1,11 @@
-import { Schema } from '@livestore/livestore'
+import { nanoid, Schema } from '@livestore/livestore'
 import { Array, DateTime, Either } from 'effect'
 import { Link } from 'expo-router'
 import { Code } from 'fhir-r4-livestore/data-types'
-import { Patient, Bundle } from 'fhir-r4-livestore/resources'
+import { Patient, Bundle, Binary } from 'fhir-r4-livestore/resources'
 import { events } from 'fhir-r4-livestore/schema'
 
-import React, { JSX } from 'react'
+import React, { type JSX } from 'react'
 import { StyleSheet } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { useAppStore } from '@/livestore/store'
@@ -36,6 +36,7 @@ export default function AddSourceModalScreen(): JSX.Element {
               events.patientReceived({
                 patient: bundle.entry[0].resource,
                 source: event.url,
+                binaryId: Binary.IdSchema.make(nanoid()),
                 mimeType: Code.make(event.mimeType),
                 addedAt: DateTime.unsafeNow(),
                 sourceData: JSON.stringify(event.body, null, 2),

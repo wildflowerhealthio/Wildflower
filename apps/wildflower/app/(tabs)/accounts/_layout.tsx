@@ -1,4 +1,4 @@
-import { Href, useRouter } from 'expo-router'
+import { type Href, useRouter } from 'expo-router'
 import { ThemedButton } from '@/components/themed-button'
 
 import { nanoid } from '@livestore/livestore'
@@ -10,7 +10,7 @@ import { events } from 'fhir-r4-livestore/schema'
 import ItemList from '@/components/ui/item-list'
 import { useAppStore } from '../../../livestore/store'
 
-export default function TabTwoScreen(): React.JSX.Element {
+export default function AccountList(): React.JSX.Element {
   const router = useRouter()
 
   const store = useAppStore()

@@ -45,4 +45,10 @@ export class Binary extends BinaryResource.extend<Binary>(DomainType)(fields) {
   /** No search parameters configured for this resource. */
   static readonly SearchSchema = {}
   readonly cloneWith = makeCloneWith(Binary, this)
+
+  static get WithId(): typeof BinaryWithId {
+    return BinaryWithId
+  }
 }
+
+class BinaryWithId extends Binary.extend<BinaryWithId>('BinaryWithId')({ id: Schema.String }) {}
