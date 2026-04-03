@@ -1,16 +1,12 @@
 {
   "name": "fhir-r4-livestore",
   "version": "0.0.0",
-  "description": "A starter for creating a TypeScript package.",
-  "homepage": "https://github.com/author/library#readme",
-  "bugs": {
-    "url": "https://github.com/author/library/issues"
-  },
+  "description": "FHIR R4 data types, schemas, queries, and resources backed by LiveStore.",
   "license": "MIT",
-  "author": "Author Name <author.name@mail.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/author/library.git"
+    "url": "git+https://github.com/Assessment-is/wildlflower.git",
+    "directory": "domain/fhir-r4-livestore"
   },
   "files": [
     "dist"

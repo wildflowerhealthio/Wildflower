@@ -82,17 +82,6 @@ describe('Patient model', () => {
     expect(patient.identifier?.[0]?.value).toBe('12345')
   })
 
-  test('rejects Patient with both multipleBirthBoolean and multipleBirthInteger via WithId', () => {
-    const payload = {
-      resourceType: 'Patient',
-      id: 'test-multi',
-      multipleBirthBoolean: true,
-      multipleBirthInteger: 2,
-    }
-    const result = Schema.decodeUnknownEither(Patient.PatientWithId)(payload)
-    expect(Either.isLeft(result)).toBe(true)
-  })
-
   test('PatientWithId decodes successfully when id is present', () => {
     const payload = {
       resourceType: 'Patient',

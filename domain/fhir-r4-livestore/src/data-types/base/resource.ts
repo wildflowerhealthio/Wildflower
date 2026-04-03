@@ -1,12 +1,7 @@
 import { Schema, pipe } from 'effect'
 import type { Arbitrary, Brand, FastCheck } from 'effect'
 
-import { AnnotateArrayWithArbitrary, PermissivePassthrough } from 'kitchen-sink/schema'
-
 import { Code } from '../complex/code.ts'
-import { Extension } from '../special-purpose/extension.ts'
-import type { ExtensionEncoded } from '../special-purpose/extension.ts'
-import { Narrative } from '../special-purpose/narrative.ts'
 import { Meta } from './meta.ts'
 
 // ---------------------------------------------------------------------------
@@ -14,8 +9,9 @@ import { Meta } from './meta.ts'
 // ---------------------------------------------------------------------------
 
 /**
- * Decoded shape of a FHIR DomainResource — the base type for all clinical
- * resources. Includes meta, text, contained resources, and extensions.
+ * Decoded shape of a FHIR Resource — the base type for all resources.
+ * Includes only the four fields defined on FHIR R4 Resource:
+ * `id`, `meta`, `implicitRules`, `language`.
  *
  * @typeParam TResourceType - The literal domain type string (e.g. `'Patient'`)
  */
@@ -25,10 +21,6 @@ interface Resource<TResourceType extends string> {
   readonly meta?: typeof Meta.Type
   readonly implicitRules?: URL
   readonly language?: typeof Code.Type
-  readonly text?: typeof Narrative.Type
-  readonly contained: ReadonlyArray<unknown>
-  readonly extension: ReadonlyArray<Extension>
-  readonly modifierExtension: ReadonlyArray<Extension>
 }
 
 /** Encoded (wire-format) shape of a Resource. */
@@ -38,10 +30,6 @@ interface ResourceEncoded<TResourceType extends string> {
   readonly meta?: typeof Meta.Encoded | undefined
   readonly implicitRules?: string | undefined
   readonly language?: typeof Code.Encoded | undefined
-  readonly text?: typeof Narrative.Encoded | undefined
-  readonly contained?: readonly unknown[] | undefined
-  readonly extension?: readonly ExtensionEncoded[] | undefined
-  readonly modifierExtension?: readonly ExtensionEncoded[] | undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -63,47 +51,6 @@ const resourceFields = {
    * Language of the resource content
    */
   language: Schema.UndefinedOr(Code).pipe(Schema.optionalWith({ default: () => undefined })),
-  /**
-   * Text summary of the resource, for human interpretation
-   */
-  text: Schema.UndefinedOr(Narrative).pipe(Schema.optionalWith({ default: () => undefined })),
-  /**
-   * Contained, inline Resources
-   */
-  // Eventually, type the contained resources
-  // Schema.Any passes anything through unvalidated
-  contained: Schema.Array(PermissivePassthrough).pipe(
-    AnnotateArrayWithArbitrary({ maxLength: 0 }),
-    Schema.optionalWith({
-      default: (): readonly unknown[] => [],
-    })
-  ),
-  /**
-   * Additional content defined by implementations
-   */
-  extension: pipe(
-    Schema.Array(Extension),
-    Schema.annotations({
-      arbitrary: (): Arbitrary.LazyArbitrary<readonly Extension[]> => (fc: typeof FastCheck) =>
-        fc.constant([]),
-    }),
-    Schema.optionalWith({
-      default: (): readonly Extension[] => [],
-    })
-  ),
-  /**
-   * Extensions that cannot be ignored
-   */
-  modifierExtension: pipe(
-    Schema.Array(Schema.suspend((): Schema.Schema<Extension, ExtensionEncoded> => Extension)),
-    Schema.annotations({
-      arbitrary: (): Arbitrary.LazyArbitrary<readonly Extension[]> => (fc: typeof FastCheck) =>
-        fc.constant([]),
-    }),
-    Schema.optionalWith({
-      default: (): readonly Extension[] => [],
-    })
-  ),
 } as const satisfies Schema.Struct.Fields
 
 type ResourceFields<TResourceType extends string> = typeof resourceFields & {
@@ -133,11 +80,15 @@ type ResourceClass<Self, TResourceType extends string> = {
 /**
  * Factory that returns a Resource mixin class for a given domain type.
  *
- * The returned class includes all FHIR Resource fields: `meta`,
- * `text`, `contained`, `extension`, `modifierExtension`, plus `resourceType`
- * (a defaulted literal) and an optional branded `url`.
+ * The returned class includes the FHIR R4 Resource fields: `meta`,
+ * `implicitRules`, `language`, plus `resourceType` (a defaulted literal)
+ * and an optional branded `id`.
  *
- * @typeParam TResourceType - The literal domain type string (e.g. `'Patient'`)
+ * For resources that extend DomainResource (most clinical resources), use
+ * the {@link DomainResource} factory instead, which adds `text`, `contained`,
+ * `extension`, and `modifierExtension`.
+ *
+ * @typeParam TResourceType - The literal domain type string (e.g. `'Binary'`)
  * @param resourceType - The domain type string literal
  * @returns A Schema.Class mixin to compose via `.extend`
  */
@@ -171,4 +122,4 @@ const Resource = <TResourceType extends string>(resourceType: TResourceType) => 
   >
 }
 
-export { Resource, type ResourceEncoded }
+export { Resource, type ResourceEncoded, type ResourceFields }

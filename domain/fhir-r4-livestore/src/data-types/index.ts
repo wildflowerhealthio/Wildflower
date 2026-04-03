@@ -9,5 +9,4 @@
 export * from './base/index.ts'
 export * from './complex/index.ts'
 export * from './special-purpose/index.ts'
-export * from './functions.ts'
 export * from './datatype.ts'

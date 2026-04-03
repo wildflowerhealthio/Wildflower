@@ -14,11 +14,11 @@ import {
   Identifier,
   Reference,
   HumanName,
-  Resource,
+  DomainResource,
   Address,
   Attachment,
 } from '../../data-types/index.ts'
-import type { ResourceEncoded } from '../../data-types/index.ts'
+import type { DomainResourceEncoded } from '../../data-types/index.ts'
 import { PatientCommunication } from './patient-communication.ts'
 import { PatientContact } from './patient-contact.ts'
 import { PatientLink } from './patient-link.ts'
@@ -91,11 +91,11 @@ const fields = {
   ).pipe(Schema.optionalWith({ default: () => undefined })),
 } as const satisfies Schema.Struct.Fields
 
-const PatientResource = Resource(DomainType)
+const PatientResource = DomainResource(DomainType)
 
 /** Encoded (wire-format) shape of a {@link Patient}. */
 interface PatientEncoded
-  extends Schema.Struct.Encoded<typeof fields>, ResourceEncoded<DomainType> {}
+  extends Schema.Struct.Encoded<typeof fields>, DomainResourceEncoded<DomainType> {}
 
 /**
  * Demographics and other administrative information about an individual or animal

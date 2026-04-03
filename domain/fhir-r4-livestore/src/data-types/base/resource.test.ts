@@ -2,7 +2,6 @@ import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, expectTypeOf, test } from 'vite-plus/test'
 
-import type { Extension } from '../special-purpose/extension.ts'
 import { Resource } from './resource.ts'
 import type { ResourceEncoded } from './resource.ts'
 
@@ -23,23 +22,20 @@ describe('Resource', () => {
       expectTypeOf<ResourceEncoded<'TestResource'>>().toExtend<typeof TestResource.Encoded>()
     })
 
-    test('Type has all Resource fields', () => {
+    test('Type does not have DomainResource fields', () => {
       type T = (typeof TestResource)['Type']
-      expectTypeOf<T['extension']>().toExtend<readonly Extension[]>()
-      expectTypeOf<T['modifierExtension']>().toExtend<readonly Extension[]>()
-      expectTypeOf<T['contained']>().toExtend<readonly unknown[]>()
+      expectTypeOf<T>().not.toHaveProperty('text')
+      expectTypeOf<T>().not.toHaveProperty('contained')
+      expectTypeOf<T>().not.toHaveProperty('extension')
+      expectTypeOf<T>().not.toHaveProperty('modifierExtension')
     })
   })
 
   test('decodes minimal input — defaults apply', () => {
     const decoded = Schema.decodeSync(TestResource)({})
     expect(decoded.resourceType).toBe('TestResource')
-    expect(decoded.extension).toEqual([])
-    expect(decoded.modifierExtension).toEqual([])
-    expect(decoded.contained).toEqual([])
     expect(decoded.id).toBeUndefined()
     expect(decoded.meta).toBeUndefined()
-    expect(decoded.text).toBeUndefined()
     expect(decoded.language).toBeUndefined()
     expect(decoded.implicitRules).toBeUndefined()
   })
