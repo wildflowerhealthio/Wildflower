@@ -9,8 +9,8 @@ import { Fonts } from '@/constants/theme'
 import React from 'react'
 
 import { DateTime } from 'effect'
-import { binaryById$ } from 'fhir-r4-livestore/queries'
 import { Binary } from 'fhir-r4-livestore/resources'
+import { binaryById$ } from '@/livestore/queries'
 import { useAppStore } from '../../../livestore/store'
 
 export default function BinaryDetail(): React.JSX.Element {

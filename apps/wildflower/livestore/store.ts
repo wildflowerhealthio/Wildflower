@@ -4,7 +4,7 @@ import { makePersistedAdapter } from '@livestore/adapter-expo'
 import { type ReactApi, useStore } from '@livestore/react'
 
 import { type Store } from '@livestore/livestore'
-import { SyncPayload, schema } from 'fhir-r4-livestore/schema'
+import { SyncPayload, schema } from './schema'
 
 const adapter = makePersistedAdapter({
   // sync: { backend: syncUrl ? makeWsSync({ url: syncUrl }) : undefined },

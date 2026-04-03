@@ -2,8 +2,9 @@ import React from 'react'
 
 import { DateTime } from 'effect'
 import { type Href } from 'expo-router'
-import { binaries$ } from 'fhir-r4-livestore/queries'
 import ItemList from '@/components/ui/item-list'
+import { binaries$ } from '@/livestore/queries'
+import { events } from '@/livestore/schema'
 import { useAppStore } from '../../livestore/store'
 
 export default function BinaryList(): React.JSX.Element {
@@ -13,7 +14,9 @@ export default function BinaryList(): React.JSX.Element {
   return (
     <ItemList
       title="Binaries"
-      onDelete={() => {}}
+      onDelete={(indices) => {
+        store.commit(...indices.map((i) => events.binaryDeleted({ id: binaries[i].id })))
+      }}
       items={binaries.map((binary) => ({
         id: binary.id,
         title: binary.meta?.source || 'Binary Record',

@@ -8,8 +8,8 @@ import { Fonts } from '@/constants/theme'
 
 import React from 'react'
 
-import { patientById$ } from 'fhir-r4-livestore/queries'
 import { Patient } from 'fhir-r4-livestore/resources'
+import { patientById$ } from '@/livestore/queries'
 import { useAppStore } from '../../../livestore/store'
 
 export default function PatientDetail(): React.JSX.Element {

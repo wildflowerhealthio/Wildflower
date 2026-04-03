@@ -3,8 +3,9 @@ import { type Href } from 'expo-router'
 import React from 'react'
 
 import { DateTime } from 'effect'
-import { patients$ } from 'fhir-r4-livestore/queries'
 import ItemList from '@/components/ui/item-list'
+import { patients$ } from '@/livestore/queries'
+import { events } from '@/livestore/schema'
 import { useAppStore } from '../../livestore/store'
 
 export default function PatientsList(): React.JSX.Element {
@@ -14,7 +15,9 @@ export default function PatientsList(): React.JSX.Element {
   return (
     <ItemList
       title="Patient Records"
-      onDelete={() => {}}
+      onDelete={(indices) => {
+        store.commit(...indices.map((i) => events.patientDeleted({ id: patients[i].id })))
+      }}
       items={patients.map((patient) => ({
         id: patient.id,
         title: patient.meta?.source || 'Patient Record',

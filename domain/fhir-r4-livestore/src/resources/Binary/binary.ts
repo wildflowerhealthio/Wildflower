@@ -1,6 +1,6 @@
 import { ParseResult, Schema } from 'effect'
 
-import { makeCloneWith } from 'kitchen-sink/schema'
+import { makeCloneWith, makeOnlyFields } from 'kitchen-sink/schema'
 
 import { Code, Reference, Resource } from '../../data-types/index.ts'
 import type { ResourceEncoded } from '../../data-types/index.ts'
@@ -45,6 +45,7 @@ export class Binary extends BinaryResource.extend<Binary>(DomainType)(fields) {
   /** No search parameters configured for this resource. */
   static readonly SearchSchema = {}
   readonly cloneWith = makeCloneWith(Binary, this)
+  readonly onlyFields = makeOnlyFields(Binary, this)
 
   static get WithId(): typeof BinaryWithId {
     return BinaryWithId
@@ -67,4 +68,5 @@ class BinaryWithId extends Binary.transformOrFail<BinaryWithId>('BinaryWithId')(
 ) {
   declare readonly id: Schema.Schema.Type<typeof BinaryResource.IdSchema>
   override readonly cloneWith = makeCloneWith(BinaryWithId, this)
+  override readonly onlyFields = makeOnlyFields(BinaryWithId, this)
 }

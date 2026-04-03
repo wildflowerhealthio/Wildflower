@@ -1,19 +1,19 @@
-import { queryDb, type LiveQueryDef } from '@livestore/livestore'
+import { queryDb } from '@livestore/livestore'
 
 import { tables } from '../schema/index.ts'
 
 import type { Binary, Patient } from '../resources/index.ts'
 
-const accounts$ = queryDb(tables.accounts, { label: 'accounts' })
-
 const patients$ = queryDb(tables.patients, { label: 'patients' })
 
-const patientById$ = (id: typeof Patient.IdSchema.Type): LiveQueryDef<Patient> =>
-  queryDb(tables.patients.where({ id }), { label: 'patientsById' })
+/* oxlint-disable typescript-eslint/explicit-function-return-type */
+const patientById$ = (id: typeof Patient.IdSchema.Type) =>
+  queryDb(tables.patients.where({ id }), { map: (rows) => rows[0], label: 'patientsById' })
 
 const binaries$ = queryDb(tables.binaries, { label: 'binaries' })
 
-const binaryById$ = (id: typeof Binary.IdSchema.Type): LiveQueryDef<Binary> =>
-  queryDb(tables.binaries.where({ id }), { label: 'binaryById' })
+const binaryById$ = (id: typeof Binary.IdSchema.Type) =>
+  queryDb(tables.binaries.where({ id }), { map: (rows) => rows[0], label: 'binaryById' })
+/* oxlint-enable typescript-eslint/explicit-function-return-type */
 
-export { accounts$, patients$, patientById$, binaries$, binaryById$ }
+export { patients$, patientById$, binaries$, binaryById$ }

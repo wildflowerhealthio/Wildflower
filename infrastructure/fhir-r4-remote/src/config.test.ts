@@ -16,7 +16,7 @@ describe('InstanceConfig', () => {
         fc.string({ minLength: 1 }),
         fc.string({ minLength: 1 }),
         (rootUrl, patientId) => {
-          const config = { rootUrl, patientId }
+          const config = { _tag: 'fhir-r4', rootUrl, patientId } as const
           const encoded = Schema.encodeSync(InstanceConfig)(config)
           const decoded = Schema.decodeSync(InstanceConfig)(encoded)
           expect(decoded).toEqual(config)
@@ -26,12 +26,15 @@ describe('InstanceConfig', () => {
   })
 
   it('should reject missing rootUrl', () => {
-    const result = Schema.decodeUnknownEither(InstanceConfig)({ patientId: '123' })
+    const result = Schema.decodeUnknownEither(InstanceConfig)({ _tag: 'fhir-r4', patientId: '123' })
     expect(Either.isLeft(result)).toBe(true)
   })
 
   it('should reject missing patientId', () => {
-    const result = Schema.decodeUnknownEither(InstanceConfig)({ rootUrl: 'https://example.com' })
+    const result = Schema.decodeUnknownEither(InstanceConfig)({
+      _tag: 'fhir-r4',
+      rootUrl: 'https://example.com',
+    })
     expect(Either.isLeft(result)).toBe(true)
   })
 })

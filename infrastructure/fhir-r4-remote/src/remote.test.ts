@@ -20,7 +20,7 @@ describe('FhirR4Remote', () => {
     it('should embed the patient URL in the HTML source', () => {
       fc.assert(
         fc.property(fc.webUrl(), fc.string({ minLength: 1 }), (rootUrl, patientId) => {
-          const remote = new FhirR4Remote({ rootUrl, patientId }, () => {})
+          const remote = new FhirR4Remote({ _tag: 'fhir-r4', rootUrl, patientId }, () => {})
           const source = remote.firstPage
 
           if ('html' in source) {

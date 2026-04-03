@@ -1,27 +1,12 @@
 import { Events, makeSchema, Schema, State } from '@livestore/livestore'
-import { Code } from '../data-types/index.ts'
+// Required for declaration emit — tsgo cannot name these types without an explicit import
+import type { RefineSchemaId, TypeId } from 'effect/Schema'
+export type { RefineSchemaId, TypeId }
 import { Binary } from '../resources/Binary/binary.ts'
 import { Patient } from '../resources/Patient/patient.ts'
 
-class Account extends Schema.Class<Account>('account')({
-  id: Schema.String,
-  name: Schema.String,
-  addedAt: Schema.DateTimeUtc,
-}) {}
-
 // You can model your state as SQLite tables (https://docs.livestore.dev/reference/state/sqlite-schema)
 const tables = {
-  accounts: State.SQLite.table({
-    name: 'accounts',
-    schema: Account,
-    indexes: [
-      {
-        name: 'accounts_id_idx',
-        columns: ['id'],
-        isUnique: true,
-      },
-    ],
-  }),
   binaries: State.SQLite.table({
     name: 'binaries',
     schema: Binary.WithId,
@@ -51,12 +36,12 @@ const events = {
   binaryReceived: Events.synced({
     name: 'v1.BinaryReceived',
     schema: Schema.Struct({
-      id: Binary.IdSchema,
-      contentType: Code,
-      data: Schema.String,
-      source: Schema.String,
-      addedAt: Schema.DateTimeUtc,
+      binary: Binary.WithId,
     }),
+  }),
+  binaryDeleted: Events.synced({
+    name: 'v1.BinaryDeleted',
+    schema: Schema.Struct({ id: Binary.IdSchema }),
   }),
   patientReceived: Events.synced({
     name: 'v1.PatientReceived',
@@ -64,46 +49,29 @@ const events = {
       patient: Patient.WithId,
     }),
   }),
-  accountAdded: Events.synced({
-    name: 'v1.AccountAdded',
-    schema: Schema.Struct({
-      id: Schema.String,
-      name: Schema.String,
-      addedAt: Schema.DateTimeUtc,
-    }),
+  patientDeleted: Events.synced({
+    name: 'v1.PatientDeleted',
+    schema: Schema.Struct({ id: Patient.IdSchema }),
   }),
 }
 
+// Materializer definitions — exported so consuming apps can reuse them
+/* oxlint-disable typescript-eslint/explicit-function-return-type */
+const materializerDefs = {
+  'v1.BinaryReceived': ({ binary }: { readonly binary: typeof Binary.WithId.Type }) =>
+    tables.binaries.insert(binary.onlyFields()).onConflict('id', 'replace'),
+  'v1.BinaryDeleted': ({ id }: { readonly id: typeof Binary.IdSchema.Type }) =>
+    tables.binaries.delete().where({ id }),
+  'v1.PatientReceived': ({ patient }: { readonly patient: typeof Patient.WithId.Type }) => [
+    tables.patients.insert(patient.onlyFields()).onConflict('id', 'replace'),
+  ],
+  'v1.PatientDeleted': ({ id }: { readonly id: typeof Patient.IdSchema.Type }) =>
+    tables.patients.delete().where({ id }),
+}
+/* oxlint-enable typescript-eslint/explicit-function-return-type */
+
 // Materializers are used to map events to state (https://docs.livestore.dev/reference/state/materializers)
-const materializers = State.SQLite.materializers(events, {
-  'v1.BinaryReceived': ({ id, contentType, data, source, addedAt }) =>
-    tables.binaries
-      .insert({
-        id,
-        resourceType: 'Binary',
-        meta: {
-          source,
-          lastUpdated: addedAt,
-          versionId: undefined,
-          security: undefined,
-          tag: [],
-        },
-        contentType,
-        data,
-        text: undefined,
-        implicitRules: undefined,
-        language: undefined,
-        extension: [],
-        contained: [],
-        modifierExtension: [],
-        securityContext: undefined,
-      })
-      .onConflict('id', 'replace'),
-  'v1.PatientReceived': ({ patient }) => {
-    return [tables.patients.insert(patient.onlyFields()).onConflict('id', 'replace')]
-  },
-  'v1.AccountAdded': ({ id, name, addedAt }) => tables.accounts.insert({ id, name, addedAt }),
-})
+const materializers = State.SQLite.materializers(events, materializerDefs)
 
 const state = State.SQLite.makeState({ tables, materializers })
 
@@ -111,4 +79,4 @@ const schema = makeSchema({ events, state })
 
 const SyncPayload = Schema.Struct({ authToken: Schema.String })
 
-export { schema, events, tables, SyncPayload }
+export { schema, events, tables, materializerDefs, SyncPayload }
