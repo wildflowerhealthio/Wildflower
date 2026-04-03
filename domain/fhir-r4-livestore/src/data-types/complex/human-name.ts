@@ -1,5 +1,7 @@
 import { ParseResult, Schema } from 'effect'
 
+import { Element } from '../base/element.ts'
+import type { ElementEncoded } from '../base/element.ts'
 import { Period } from './period.ts'
 
 const ResourceType = 'HumanName'
@@ -70,12 +72,16 @@ const fields = {
   ),
 } as const
 
+const HumanNameElement = Element(ResourceType)
+
 /** Encoded (wire-format) shape of a {@link HumanName}. */
-export interface HumanNameEncoded extends Schema.Struct.Encoded<typeof fields> {}
+export interface HumanNameEncoded
+  extends Schema.Struct.Encoded<typeof fields>, ElementEncoded<typeof ResourceType> {}
 
 /**
  * A human's name with the ability to identify parts and usage.
  */
-export class HumanName extends Schema.Class<HumanName>(ResourceType)(fields) {
-  static readonly ResourceType = ResourceType
+export class HumanName extends HumanNameElement.extend<HumanName>(ResourceType)(fields) {
+  static readonly ResourceType = HumanNameElement.ResourceType
+  static readonly IdSchema = HumanNameElement.IdSchema
 }

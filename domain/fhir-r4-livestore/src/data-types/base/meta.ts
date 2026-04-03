@@ -14,8 +14,6 @@ const fields = {
     Schema.optionalWith({ default: () => undefined })
   ),
   source: Schema.UndefinedOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
-  // oxfmt-ignore
-  // profile: canonical(StructureDefinition),
   security: Schema.UndefinedOr(
     Schema.Array(Schema.suspend((): Schema.Schema<Coding, CodingEncoded> => Coding))
   ).pipe(Schema.optionalWith({ default: () => undefined })),

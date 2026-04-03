@@ -119,12 +119,12 @@ class PatientWithId extends Patient.transformOrFail<PatientWithId>('PatientWithI
   {},
   {
     decode(input) {
-      if (input.id !== undefined) {
-        return ParseResult.succeed(input)
+      if (input.id === undefined) {
+        return ParseResult.fail(
+          new ParseResult.Type(Patient.IdSchema.ast, input.id, 'PatientWithId requires an id')
+        )
       }
-      return ParseResult.fail(
-        new ParseResult.Type(Patient.IdSchema.ast, input.id, 'PatientWithId requires an id')
-      )
+      return ParseResult.succeed(input)
     },
     encode: ParseResult.succeed,
   }

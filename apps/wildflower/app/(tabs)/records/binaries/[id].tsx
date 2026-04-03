@@ -8,15 +8,32 @@ import { Fonts } from '@/constants/theme'
 
 import React from 'react'
 
-import { Patient } from 'fhir-r4-livestore/resources'
-import { patientById$ } from '@/livestore/queries'
-import { useAppStore } from '../../../livestore/store'
+import { DateTime } from 'effect'
+import { Binary } from 'fhir-r4-livestore/resources'
+import { binaryById$ } from '@/livestore/queries'
+import { useAppStore } from '@/livestore/store'
 
-export default function PatientDetail(): React.JSX.Element {
+export default function BinaryDetail(): React.JSX.Element {
   const local = useLocalSearchParams<{ id: string }>()
 
   const store = useAppStore()
-  const patient = store.useQuery(patientById$(Patient.IdSchema.make(local.id)))
+  const binary = store.useQuery(binaryById$(Binary.IdSchema.make(local.id)))
+  const dateText = binary?.meta?.lastUpdated
+    ? DateTime.formatLocal(binary.meta?.lastUpdated)
+    : undefined
+
+  if (!binary) {
+    return (
+      <ThemedText
+        type="title"
+        style={{
+          fontFamily: Fonts.rounded,
+        }}
+      >
+        Not Found
+      </ThemedText>
+    )
+  }
 
   return (
     <ParallaxScrollView
@@ -29,21 +46,23 @@ export default function PatientDetail(): React.JSX.Element {
             fontFamily: Fonts.rounded,
           }}
         >
-          {patient?.name?.[0]?.text}
+          {binary.meta?.source || 'Binary Record'}
+        </ThemedText>
+        <ThemedText
+          type="subtitle"
+          style={{
+            fontFamily: Fonts.rounded,
+          }}
+        >
+          {dateText}
         </ThemedText>
       </ThemedView>
-      <ThemedText type="default">{JSON.stringify(patient, null, 2)}</ThemedText>
+      <ThemedText type="default">{binary?.data}</ThemedText>
     </ParallaxScrollView>
   )
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
-  },
   titleContainer: {
     flexDirection: 'row',
     gap: 8,

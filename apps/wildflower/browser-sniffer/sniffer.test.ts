@@ -2,20 +2,15 @@
  * @jest-environment ./browser-sniffer/jest-environment-web.cjs
  */
 // oxlint-disable @typescript-eslint/no-unsafe-type-assertion
-// oxlint-disable @typescript-eslint/no-unsafe-assignment
+// oxlint-disable @typescript-eslint/require-array-sort-compare
+// ox lint-disable @typescript-eslint/no-unsafe-assignment
 // oxlint-disable @typescript-eslint/explicit-function-return-type
 import { it, fc } from '@fast-check/jest'
 import { Schema } from 'effect'
 
 import { AnyMessage } from './messages'
 
-// oxlint-disable @typescript-eslint/no-require-imports -- jest runs in CJS; avoids needing @types/node in Expo's tsconfig
-const path = require('path')
-const fs = require('fs')
-// oxlint-enable @typescript-eslint/no-require-imports
-
-declare const __dirname: string
-const snifferCode: string = fs.readFileSync(path.join(__dirname, 'sniffer.js'), 'utf-8')
+import snifferCode from './sniffer-text'
 
 declare global {
   interface Window {
@@ -117,6 +112,30 @@ describe('fetch shim', () => {
     expect(starts).toHaveLength(1)
     expect(starts[0].status).toBe(201)
     expect(starts[0].statusText).toBe('Created')
+  })
+
+  it('should capture response headers in ResponseStart', async () => {
+    // Arrange
+    window.fetch = jest.fn().mockResolvedValue(
+      new Response('ok', {
+        status: 200,
+        headers: { 'content-type': 'application/json', 'x-custom': 'test-value' },
+      })
+    )
+    injectSniffer()
+
+    // Act
+    const res = await window.fetch('https://test.example/headers')
+    await res.text()
+
+    // Assert
+    const starts = withTag(getMessages(), 'ResponseStart')
+    expect(starts).toHaveLength(1)
+    expect(starts[0].headers).toBeDefined()
+    const headers = starts[0].headers as Record<string, string>
+    expect(headers['content-type']).toBe('application/json')
+    expect(headers['x-custom']).toBe('test-value')
+    validateMessages(getMessages())
   })
 
   it('should handle bodyless responses with immediate ResponseFinished', async () => {
@@ -292,6 +311,58 @@ describe('fetch shim', () => {
       validateMessages(getMs())
     }
   )
+
+  it('should correctly correlate concurrent fetch requests with distinct IDs', async () => {
+    // Arrange
+    let resolveA!: (v: Response) => void
+    let resolveB!: (v: Response) => void
+    const promiseA = new Promise<Response>((r) => {
+      resolveA = r
+    })
+    const promiseB = new Promise<Response>((r) => {
+      resolveB = r
+    })
+
+    let callCount = 0
+    window.fetch = jest.fn().mockImplementation(() => {
+      callCount++
+      if (callCount === 1) return promiseA
+      return promiseB
+    })
+    injectSniffer()
+
+    // Act — start two concurrent fetches
+    const fetchA = window.fetch('https://test.example/a')
+    const fetchB = window.fetch('https://test.example/b')
+
+    // Resolve in reverse order
+    resolveB(new Response('body-b', { status: 200 }))
+    resolveA(new Response('body-a', { status: 200 }))
+
+    const resA = await fetchA
+    const resB = await fetchB
+    await resA.text()
+    await resB.text()
+
+    // Assert — each request should have a distinct ID
+    const starts = withTag(getMessages(), 'ResponseStart')
+    expect(starts).toHaveLength(2)
+    const idA = starts.find((s) => s.url === 'https://test.example/a')!.id as string
+    const idB = starts.find((s) => s.url === 'https://test.example/b')!.id as string
+    expect(idA).not.toBe(idB)
+
+    // Each Finished message should match its Start ID
+    const finishes = withTag(getMessages(), 'ResponseFinished')
+    expect(finishes).toHaveLength(2)
+    expect(finishes.map((f) => f.id).toSorted()).toEqual([idA, idB].toSorted())
+
+    // Data messages should be tagged to the correct request
+    const dataMessages = withTag(getMessages(), 'ResponseData')
+    for (const d of dataMessages) {
+      expect([idA, idB]).toContain(d.id)
+    }
+    validateMessages(getMessages())
+  })
 })
 
 describe('XHR shim', () => {

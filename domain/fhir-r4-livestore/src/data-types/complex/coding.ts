@@ -57,5 +57,6 @@ export class Coding extends CodingElement.extend<Coding>(ResourceType)(fields) {
   static Datatype = Datatype('Coding', Coding)
 
   static makeLiteral = <C extends ConstructorParameters<typeof Coding>[0]>(params: C): Coding & C =>
-    Coding.makeLiteral<C>(params)
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    Coding.make(params) as Coding & C
 }

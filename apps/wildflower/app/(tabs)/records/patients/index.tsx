@@ -6,7 +6,7 @@ import { DateTime } from 'effect'
 import ItemList from '@/components/ui/item-list'
 import { patients$ } from '@/livestore/queries'
 import { events } from '@/livestore/schema'
-import { useAppStore } from '../../livestore/store'
+import { useAppStore } from '@/livestore/store'
 
 export default function PatientsList(): React.JSX.Element {
   const store = useAppStore()

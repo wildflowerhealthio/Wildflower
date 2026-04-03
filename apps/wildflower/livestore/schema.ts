@@ -51,7 +51,6 @@ const events = {
       id: RemoteIdSchema,
       name: Schema.String,
       config: Schema.Union(InstanceConfig),
-      addedAt: Schema.DateTimeUtc,
     }),
   }),
   remoteDeleted: Events.synced({

@@ -1,17 +1,14 @@
 import { StyleSheet } from 'react-native'
 
 import { type JSX } from 'react'
-import ParallaxScrollView from '../../components/parallax-scroll-view'
-import { ThemedText } from '../../components/themed-text'
-import { ThemedView } from '../../components/themed-view'
+import ParallaxScrollView from '@/components/parallax-scroll-view'
+import { ThemedText } from '@/components/themed-text'
+import { ThemedView } from '@/components/themed-view'
 
 export default function HomeScreen(): JSX.Element {
   return (
     <ParallaxScrollView
       headerBackgroundColor={{ light: '#A1CEDC', unspecified: '#A1CEDC', dark: '#1D3D47' }}
-      // headerImage={
-      //   <Image source={require('../../assets/partial-react-logo.png')} style={styles.reactLogo} />
-      // }
     >
       <ThemedView style={styles.titleContainer}>
         <ThemedText type="title">Welcome!</ThemedText>

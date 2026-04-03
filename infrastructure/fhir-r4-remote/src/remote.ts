@@ -17,6 +17,13 @@ class FhirR4Remote extends Remote.Remote<AnyResource> {
   ) {
     super(handleEntityReceived)
     const patientUrl = `${config.rootUrl}/Patient/${config.patientId}?_format=json`
+    const safePatientUrl = patientUrl
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#x27;')
+    const jsPatientUrl = JSON.stringify(patientUrl)
     this.firstPage = {
       html: `
       <!DOCTYPE html>
@@ -26,17 +33,17 @@ class FhirR4Remote extends Remote.Remote<AnyResource> {
             <title>FHIR Resource Loader</title>
           </head>
           <body>
-            <h1>Patient data from ${patientUrl}</h1>
+            <h1>Patient data from ${safePatientUrl}</h1>
             <h2 id="h2">Loading...</h2>
             <script>setTimeout(() => {
               document.getElementById('h2').innerText = "Fetching";
-              fetch('${patientUrl}')
+              fetch(${jsPatientUrl})
                 .then(res => res.text())
                 .then(text => {
                   document.getElementById('h2').innerText = text;
                 })
                 .catch(err => {
-                  document.getElementById('h2')[0].innerText = String(err);
+                  document.getElementById('h2').innerText = String(err);
                 });
             }, 500);</script>
           </body>

@@ -45,7 +45,7 @@ describe('Reference model', () => {
       expect(Exit.isFailure(result)).toBe(true)
     })
 
-    test('fails with ExternalAssertionError when reference is undefined', () => {
+    test('fails with ExternalAssertionError when reference is absent but type is present', () => {
       const ref = new Reference({
         type: 'TestResource',
       })

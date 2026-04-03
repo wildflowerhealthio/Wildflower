@@ -1,5 +1,7 @@
 import { Schema } from 'effect'
 
+import { Element } from '../base/element.ts'
+import type { ElementEncoded } from '../base/element.ts'
 import { Period } from './period.ts'
 
 const ResourceType = 'ContactPoint'
@@ -49,12 +51,16 @@ const fields = {
   ),
 } as const
 
+const ContactPointElement = Element(ResourceType)
+
 /** Encoded (wire-format) shape of a {@link ContactPoint}. */
-export interface ContactPointEncoded extends Schema.Struct.Encoded<typeof fields> {}
+export interface ContactPointEncoded
+  extends Schema.Struct.Encoded<typeof fields>, ElementEncoded<typeof ResourceType> {}
 
 /**
  * Details for all kinds of technology mediated contact points for a person or organization, including telephone, email, etc.
  */
-export class ContactPoint extends Schema.Class<ContactPoint>(ResourceType)(fields) {
-  static readonly ResourceType = ResourceType
+export class ContactPoint extends ContactPointElement.extend<ContactPoint>(ResourceType)(fields) {
+  static readonly ResourceType = ContactPointElement.ResourceType
+  static readonly IdSchema = ContactPointElement.IdSchema
 }

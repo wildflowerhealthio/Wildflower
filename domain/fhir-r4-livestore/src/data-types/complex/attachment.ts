@@ -20,13 +20,8 @@ const fields = {
    * The actual data of the attachment - a sequence of bytes, base64 encoded.
    */
   data: Schema.UndefinedOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
-  /** A location where the data can be accessed.
-   *
-   * @remarks Renamed from FHIR R4's `url` to avoid collision with the
-   * branded persistence URL on Element. */
-  dataUrl: Schema.UndefinedOr(Schema.String).pipe(
-    Schema.optionalWith({ default: () => undefined })
-  ),
+  /** A location where the data can be accessed. */
+  url: Schema.UndefinedOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * The number of bytes of data that make up this attachment (before base64 encoding, if that is done).
    */

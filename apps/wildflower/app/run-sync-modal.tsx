@@ -8,12 +8,12 @@ import { type LiveStoreEvent, nanoid } from '@livestore/livestore'
 import { DateTime, Either, Match, Schema } from 'effect'
 import { Code, Meta } from 'fhir-r4-livestore/data-types'
 import { Binary, Patient } from 'fhir-r4-livestore/resources'
+import { ThemedText } from '@/components/themed-text'
+import { ThemedView } from '@/components/themed-view'
 import { useIntegrationRunner } from '@/hooks/use-integration-runner'
 import { remoteById$ } from '@/livestore/queries'
 import { events, RemoteIdSchema, type schema } from '@/livestore/schema'
 import { useAppStore } from '@/livestore/store'
-import { ThemedText } from '../components/themed-text'
-import { ThemedView } from '../components/themed-view'
 
 export default function RunSyncModalScreen(): JSX.Element {
   const { accountId } = useLocalSearchParams<{ accountId: string }>()

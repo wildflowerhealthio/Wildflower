@@ -20,6 +20,8 @@
     "source=node_modules,target=${containerWorkspaceFolder}/node_modules,type=volume"
   ],
   "forwardPorts": [5173],
-  "runArgs": ["--env-file", ".devcontainer/devcontainer.env"],
+  "containerEnv": {
+    "GH_TOKEN": "${localEnv:GH_TOKEN}"
+  },
   "postCreateCommand": "bash -i .devcontainer/postCreateCommand.sh"
 }

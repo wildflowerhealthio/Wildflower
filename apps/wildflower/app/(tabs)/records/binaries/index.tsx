@@ -5,7 +5,7 @@ import { type Href } from 'expo-router'
 import ItemList from '@/components/ui/item-list'
 import { binaries$ } from '@/livestore/queries'
 import { events } from '@/livestore/schema'
-import { useAppStore } from '../../livestore/store'
+import { useAppStore } from '@/livestore/store'
 
 export default function BinaryList(): React.JSX.Element {
   const store = useAppStore()

@@ -1,5 +1,7 @@
 import { Schema } from 'effect'
 
+import { Element } from '../base/element.ts'
+import type { ElementEncoded } from '../base/element.ts'
 import { Period } from './period.ts'
 
 const ResourceType = 'Address'
@@ -69,13 +71,17 @@ const fields = {
   ),
 } as const
 
+const AddressElement = Element(ResourceType)
+
 /** Encoded (wire-format) shape of an {@link Address}. */
-export interface AddressEncoded extends Schema.Struct.Encoded<typeof fields> {}
+export interface AddressEncoded
+  extends Schema.Struct.Encoded<typeof fields>, ElementEncoded<typeof ResourceType> {}
 
 /**
  * An address expressed using postal conventions
  * (as opposed to GPS or other location definition formats).
  */
-export class Address extends Schema.Class<Address>(ResourceType)(fields) {
-  static readonly ResourceType = ResourceType
+export class Address extends AddressElement.extend<Address>(ResourceType)(fields) {
+  static readonly ResourceType = AddressElement.ResourceType
+  static readonly IdSchema = AddressElement.IdSchema
 }

@@ -39,7 +39,9 @@ function useIntegrationRunner({
         }),
         Match.tag('ResponseStart', (event) => {
           if (!remote.shouldKeepResponse(event)) {
-            webRef.current?.injectJavaScript(`window.cancelSnifferRequest("${event.id}")`)
+            webRef.current?.injectJavaScript(
+              `window.cancelSnifferRequest(${JSON.stringify(event.id)})`
+            )
           }
         }),
         Match.tag('ResponseData', (event) => {

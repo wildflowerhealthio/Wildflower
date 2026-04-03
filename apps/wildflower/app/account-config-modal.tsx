@@ -5,13 +5,13 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 
 import { nanoid } from '@livestore/livestore'
 import { DateTime } from 'effect'
+import { ThemedButton } from '@/components/themed-button'
+import { ThemedText } from '@/components/themed-text'
+import { ThemedView } from '@/components/themed-view'
 import { useThemeColor } from '@/hooks/use-theme-color'
-import { remoteById$ } from '@/livestore/queries'
+import { remotes$ } from '@/livestore/queries'
 import { events, RemoteIdSchema } from '@/livestore/schema'
 import { useAppStore } from '@/livestore/store'
-import { ThemedButton } from '../components/themed-button'
-import { ThemedText } from '../components/themed-text'
-import { ThemedView } from '../components/themed-view'
 
 function camelToTitle(key: string): string {
   return key
@@ -32,9 +32,8 @@ export default function AccountConfigModalScreen(): JSX.Element {
   const textColor = useThemeColor({}, 'text')
   const iconColor = useThemeColor({}, 'icon')
 
-  const existing = accountId
-    ? store.useQuery(remoteById$(RemoteIdSchema.make(accountId)))
-    : undefined
+  const allRemotes = store.useQuery(remotes$)
+  const existing = accountId ? allRemotes.find((r) => r.id === accountId) : undefined
 
   const [name, setName] = useState(existing?.name ?? '')
   const _tag = 'fhir-r4' as const
@@ -60,7 +59,6 @@ export default function AccountConfigModalScreen(): JSX.Element {
             rootUrl,
             patientId,
           },
-          addedAt: existing.addedAt,
         })
       )
     } else {

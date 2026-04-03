@@ -29,11 +29,7 @@
         "backgroundColor": "#fdf4e3"
       },
       "package": "dev.wildflower.wildflower",
-      "permissions": [
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.INTERNET"
-      ]
+      "permissions": ["android.permission.INTERNET"]
     },
     "web": {
       "favicon": "./assets/favicon.png",

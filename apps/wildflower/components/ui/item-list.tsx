@@ -9,8 +9,8 @@ export default function ItemList({
   items,
 }: {
   title: string
-  items: { id: string; title: string; subtitle?: string; destination: Href }[]
   onDelete?: (indices: number[]) => void
+  items: { id: string; title: string; subtitle?: string; destination: Href }[]
 }): JSX.Element {
   const iconColor = useThemeColor({}, 'icon')
   const tintColor = useThemeColor({}, 'tint')
