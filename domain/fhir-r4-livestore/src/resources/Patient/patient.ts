@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { ParseResult, Schema } from 'effect'
 
 import {
   AnnotateArrayWithArbitrary,
@@ -115,9 +115,24 @@ class Patient extends PatientResource.extend<Patient>(DomainType)(fields) {
   }
 }
 
-class PatientWithId extends Patient.extend<PatientWithId>('PatientWithId')({
-  id: Schema.String,
-}) {}
+class PatientWithId extends Patient.transformOrFail<PatientWithId>('PatientWithId')(
+  {},
+  {
+    decode(input) {
+      if (input.id !== undefined) {
+        return ParseResult.succeed(input)
+      }
+      return ParseResult.fail(
+        new ParseResult.Type(Patient.IdSchema.ast, input.id, 'PatientWithId requires an id')
+      )
+    },
+    encode: ParseResult.succeed,
+  }
+) {
+  declare readonly id: Schema.Schema.Type<typeof PatientResource.IdSchema>
+  override readonly cloneWith = makeCloneWith(PatientWithId, this)
+  override readonly onlyFields = makeOnlyFields(PatientWithId, this)
+}
 
 export type { PatientEncoded }
 export { Patient, PatientWithId }

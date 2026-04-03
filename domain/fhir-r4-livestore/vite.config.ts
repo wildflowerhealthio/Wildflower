@@ -1,3 +1,5 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite-plus'
 
 export default defineConfig({
@@ -13,5 +15,10 @@ export default defineConfig({
       'resources/index': 'src/resources/index.ts',
       'schema/index': 'src/schema/index.ts',
     },
+  },
+  test: {
+    setupFiles: [
+      path.join(path.dirname(fileURLToPath(import.meta.url)), '/vitest.setupSchemaEqual.ts'),
+    ],
   },
 })

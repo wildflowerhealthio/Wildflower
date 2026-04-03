@@ -1,3 +1,5 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite-plus'
 
 export default defineConfig({
@@ -5,13 +7,24 @@ export default defineConfig({
     '*': 'vp check --fix',
   },
   test: {
-    exclude: ['**/node_modules/**', '**/dist/**', '**/*.interface.test.{ts,tsx}'],
-    setupFiles: ['./domain/fhir-r4-livestore/vitest.setupSchemaEqual.ts'],
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/*.interface.test.{ts,tsx}',
+      // This is a react native app and the tests are run in jest
+      './apps/wildflower/**',
+    ],
     server: {
       deps: {
         inline: ['@effect/vitest', '@fast-check/vitest', '@testing-library/react'],
       },
     },
+    setupFiles: [
+      path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        './domain/fhir-r4-livestore/vitest.setupSchemaEqual.ts'
+      ),
+    ],
   },
   fmt: {
     trailingComma: 'es5',
@@ -145,6 +158,7 @@ export default defineConfig({
         files: ['apps/wildflower/**'],
         rules: {
           'no-console': 'off',
+          'eslint-plugin-unicorn/require-post-message-target-origin': 'off',
         },
       },
       {

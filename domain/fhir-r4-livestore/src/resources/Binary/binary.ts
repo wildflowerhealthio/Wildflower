@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { ParseResult, Schema } from 'effect'
 
 import { makeCloneWith } from 'kitchen-sink/schema'
 
@@ -51,4 +51,20 @@ export class Binary extends BinaryResource.extend<Binary>(DomainType)(fields) {
   }
 }
 
-class BinaryWithId extends Binary.extend<BinaryWithId>('BinaryWithId')({ id: Schema.String }) {}
+class BinaryWithId extends Binary.transformOrFail<BinaryWithId>('BinaryWithId')(
+  {},
+  {
+    decode(input) {
+      if (input.id !== undefined) {
+        return ParseResult.succeed(input)
+      }
+      return ParseResult.fail(
+        new ParseResult.Type(Binary.IdSchema.ast, input.id, 'BinaryWithId requires an id')
+      )
+    },
+    encode: ParseResult.succeed,
+  }
+) {
+  declare readonly id: Schema.Schema.Type<typeof BinaryResource.IdSchema>
+  override readonly cloneWith = makeCloneWith(BinaryWithId, this)
+}

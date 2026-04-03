@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { ParseResult, Schema } from 'effect'
 
 import { Period } from './period.ts'
 
@@ -27,7 +27,23 @@ const fields = {
   /**
    * The part of a name that links to the genealogy. In some cultures (e.g. Eritrea) the family name of a son is the first name of his father.
    */
-  family: Schema.UndefinedOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
+  family: Schema.Union(
+    Schema.UndefinedOr(Schema.String),
+    Schema.transformOrFail(Schema.Array(Schema.String), Schema.UndefinedOr(Schema.String), {
+      strict: true,
+      decode: (arr, _options, ast) => {
+        if (arr.length === 0) return ParseResult.succeed(undefined)
+        if (arr.length === 1) return ParseResult.succeed(arr[0])
+        return ParseResult.fail(
+          new ParseResult.Type(ast, arr, `Expected at most one family name, got ${arr.length}`)
+        )
+      },
+      encode: (str) => {
+        if (str === undefined) return ParseResult.succeed([])
+        return ParseResult.succeed([str])
+      },
+    })
+  ).pipe(Schema.optionalWith({ default: () => undefined })),
   /**
    * Given name.
    */

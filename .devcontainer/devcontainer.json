@@ -15,7 +15,10 @@
     "ghcr.io/anthropics/devcontainer-features/claude-code:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  "mounts": ["source=claude-config,target=/node/.claude,type=volume"],
+  "mounts": [
+    "source=claude-config,target=/node/.claude,type=volume",
+    "source=node_modules,target=${containerWorkspaceFolder}/node_modules,type=volume"
+  ],
   "forwardPorts": [5173],
   "runArgs": ["--env-file", ".devcontainer/devcontainer.env"],
   "postCreateCommand": "bash -i .devcontainer/postCreateCommand.sh"
