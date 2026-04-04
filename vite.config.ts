@@ -1,8 +1,30 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite-plus'
 
 export default defineConfig({
   staged: {
     '*': 'vp check --fix',
+  },
+  test: {
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/*.interface.test.{ts,tsx}',
+      // This is a react native app and the tests are run in jest
+      './apps/wildflower/**',
+    ],
+    server: {
+      deps: {
+        inline: ['@effect/vitest', '@fast-check/vitest', '@testing-library/react'],
+      },
+    },
+    setupFiles: [
+      path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        './domain/fhir-r4-livestore/vitest.setupSchemaEqual.ts'
+      ),
+    ],
   },
   fmt: {
     trailingComma: 'es5',
@@ -45,9 +67,9 @@ export default defineConfig({
     options: {
       typeAware: true,
       typeCheck: true,
+      reportUnusedDisableDirectives: 'error',
     },
     rules: {
-      reportUnusedDisableDirectives: 'error',
       // Explicitly disabled rules
       'import/no-unassigned-import': 'off',
       'import/no-named-export': 'off',
@@ -59,6 +81,7 @@ export default defineConfig({
 
       // Configured rules
       'no-shadow': ['error', { allow: ['fc'] }],
+      'import/max-dependencies': ['warn', { max: 15 }],
       '@typescript-eslint/no-empty-object-type': ['error', { allowInterfaces: 'always' }],
       'no-unused-vars': [
         'error',
@@ -87,6 +110,11 @@ export default defineConfig({
       ],
 
       // Extra rules
+      '@typescript-eslint/no-unsafe-type-assertion': 'error',
+      '@typescript-eslint/consistent-type-imports': 'error',
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-unsafe-assignment': 'error',
+      '@typescript-eslint/explicit-function-return-type': ['error', { allowIIFEs: true }],
       'unicorn/no-array-callback-reference': 'error',
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
@@ -99,7 +127,6 @@ export default defineConfig({
       'react/no-array-index-key': 'warn',
       'no-await-in-loop': 'warn',
       'no-deprecated': 'warn',
-      'import/max-dependencies': 'warn',
       'no-warning-comments': 'warn',
       'switch-exhaustiveness-check': 'warn',
       'no-void': ['error', { allowAsStatement: true }],
@@ -108,7 +135,6 @@ export default defineConfig({
       'react/jsx-curly-brace-presence': ['error', { propElementValues: 'always' }],
       'react/jsx-filename-extension': ['error', { extensions: ['.jsx', '.tsx'] }],
       'no-console': 'warn',
-      '@typescript-eslint/explicit-function-return-type': 'error',
       'no-ternary': 'warn',
     },
     overrides: [
@@ -123,17 +149,6 @@ export default defineConfig({
         },
       },
       {
-        files: ['**/*.test.ts', '**/*.test.tsx', '**/test/**'],
-        rules: {
-          '@typescript-eslint/no-unsafe-type-assertion': 'off',
-          '@typescript-eslint/consistent-type-imports': 'off',
-          '@typescript-eslint/no-explicit-any': 'off',
-          '@typescript-eslint/explicit-function-return-type': 'off',
-          'no-shadow': 'off',
-          'no-void': 'off',
-        },
-      },
-      {
         files: ['**/*.tsx'],
         rules: {
           'no-ternary': 'off',
@@ -143,6 +158,7 @@ export default defineConfig({
         files: ['apps/wildflower/**'],
         rules: {
           'no-console': 'off',
+          'eslint-plugin-unicorn/require-post-message-target-origin': 'off',
         },
       },
       {

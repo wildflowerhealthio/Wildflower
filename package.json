@@ -6,6 +6,7 @@
     "packages": [
       "apps/*",
       "domain/*",
+      "global/*",
       "packages/*",
       "tools/*"
     ],

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr:*)",
+      "Bash(npm list:*)",
+      "Bash(vp pack:*)",
+      "Bash(vp check:*)",
+      "Bash(vp fmt:*)",
+      "Bash(find :*)",
+      "Bash(grep :*)",
+      "Bash(grep -n :*)",
+      "Bash(ls :*)",
+      "Bash(ls -la :*)",
+      "Bash(find /workspaces/wildflower/node_modules/.pnpm/@livestore+livestore@0.4.0-dev.22_*/node_modules/@livestore/livestore -name \"*.ts\" -path \"*state*\")"
+    ]
+  }
+}

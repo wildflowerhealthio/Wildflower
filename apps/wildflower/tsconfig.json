@@ -6,6 +6,7 @@
     "esModuleInterop": true,
     "jsx": "react-native",
     "lib": ["DOM", "ESNext"],
+    "types": ["jest"],
     "moduleResolution": "Bundler",
     "module": "ES2020",
     "noEmit": true,

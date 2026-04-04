@@ -3,7 +3,6 @@
     "name": "Wildflower",
     "slug": "wildflower",
     "version": "1.0.0",
-    "newArchEnabled": true,
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "wildflower",
@@ -19,14 +18,18 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "dev.wildflower.wildflower"
+      "bundleIdentifier": "dev.wildflower.wildflower",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#fdf4e3"
       },
-      "package": "dev.wildflower.wildflower"
+      "package": "dev.wildflower.wildflower",
+      "permissions": ["android.permission.INTERNET"]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -50,6 +53,7 @@
       "expo-web-browser",
       "expo-font"
     ],
-    "owner": "ruthmarks"
+
+    "owner": "wildflower-health-informatics"
   }
 }

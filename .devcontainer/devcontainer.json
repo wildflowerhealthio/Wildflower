@@ -1,0 +1,27 @@
+{
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:24-bookworm",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Anthropic.claude-code",
+        "streetsidesoftware.code-spell-checker",
+        "oxc.oxc-vscode",
+        "vitest.explorer",
+        "YoavBls.pretty-ts-errors"
+      ]
+    }
+  },
+  "features": {
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "mounts": [
+    "source=claude-config,target=/node/.claude,type=volume",
+    "source=node_modules,target=${containerWorkspaceFolder}/node_modules,type=volume"
+  ],
+  "forwardPorts": [5173],
+  "containerEnv": {
+    "GH_TOKEN": "${localEnv:GH_TOKEN}"
+  },
+  "postCreateCommand": "bash -i .devcontainer/postCreateCommand.sh"
+}

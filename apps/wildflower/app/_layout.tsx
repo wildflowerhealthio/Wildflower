@@ -3,7 +3,7 @@ import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import 'react-native-reanimated'
 
-import { JSX } from 'react'
+import { type JSX } from 'react'
 import AppLivestoreProvider from '@/components/app-livestore-provider'
 import { useColorScheme } from '@/hooks/use-color-scheme'
 
@@ -22,8 +22,12 @@ export default function RootLayout(): JSX.Element {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
           <Stack.Screen
-            name="add-source-modal"
-            options={{ presentation: 'modal', title: 'Add Source' }}
+            name="run-sync-modal"
+            options={{ presentation: 'modal', title: 'Run Sync' }}
+          />
+          <Stack.Screen
+            name="account-config-modal"
+            options={{ presentation: 'modal', title: 'Account Config' }}
           />
         </Stack>
       </AppLivestoreProvider>

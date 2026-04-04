@@ -1,16 +1,12 @@
 {
   "name": "fhir-r4-livestore",
   "version": "0.0.0",
-  "description": "A starter for creating a TypeScript package.",
-  "homepage": "https://github.com/author/library#readme",
-  "bugs": {
-    "url": "https://github.com/author/library/issues"
-  },
+  "description": "FHIR R4 data types, schemas, queries, and resources backed by LiveStore.",
   "license": "MIT",
-  "author": "Author Name <author.name@mail.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/author/library.git"
+    "url": "git+https://github.com/Assessment-is/wildlflower.git",
+    "directory": "domain/fhir-r4-livestore"
   },
   "files": [
     "dist"
@@ -18,7 +14,9 @@
   "type": "module",
   "exports": {
     ".": "./dist/index.mjs",
+    "./data-types": "./dist/data-types/index.mjs",
     "./queries": "./dist/queries/index.mjs",
+    "./resources": "./dist/resources/index.mjs",
     "./schema": "./dist/schema/index.mjs",
     "./package.json": "./package.json"
   },
@@ -32,20 +30,27 @@
     "prepublishOnly": "vp run build",
     "test": "vp test"
   },
-  "dependencies": {},
+  "dependencies": {
+    "kitchen-sink": "workspace:*"
+  },
   "devDependencies": {
-    "@livestore/livestore": "0.4.0-dev.22",
-    "@livestore/peer-deps": "0.4.0-dev.22",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "@types/fhir": "catalog:",
     "@types/node": "^25.5.0",
     "@typescript/native-preview": "7.0.0-dev.20260316.1",
     "bumpp": "^11.0.1",
-    "effect": "3.19.12",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "ontology": "workspace:*",
     "typescript": "^5.9.3",
     "vite-plus": "^0.1.11"
   },
   "peerDependencies": {
-    "@livestore/livestore": "0.4.0-dev.22",
-    "@livestore/peer-deps": "0.4.0-dev.22",
-    "effect": "3.19.12"
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "effect": "catalog:",
+    "ontology": "workspace:*"
   }
 }

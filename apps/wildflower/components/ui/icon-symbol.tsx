@@ -1,9 +1,9 @@
 // Fallback for using MaterialIcons on Android and web.
 
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
-import { SymbolWeight } from 'expo-symbols'
-import { JSX } from 'react'
-import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native'
+import type { SymbolWeight } from 'expo-symbols'
+import { type JSX } from 'react'
+import type { OpaqueColorValue, StyleProp, TextStyle } from 'react-native'
 
 type IconSymbolName = keyof typeof MAPPING
 
@@ -12,14 +12,15 @@ type IconSymbolName = keyof typeof MAPPING
  * - see Material Icons in the [Icons Directory](https://icons.expo.fyi).
  * - see SF Symbols in the [SF Symbols](https://developer.apple.com/sf-symbols/) app.
  */
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion
 const MAPPING = {
   'house.fill': 'home',
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
-  'rectangle.stack.fill.badge.plus': 'domain-add',
-  'plus.square.fill.on.square.fill': 'domain',
+  // Accounts
+  'person.crop.circle.fill': 'account-circle',
+  // Records
+  'folder.fill': 'folder',
 } as const
 
 /**

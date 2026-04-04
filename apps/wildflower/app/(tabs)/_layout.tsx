@@ -1,38 +1,21 @@
-import { Tabs } from 'expo-router'
-import React, { JSX } from 'react'
-
-import { HapticTab } from '@/components/haptic-tab'
-import { IconSymbol } from '@/components/ui/icon-symbol'
-import { Colors } from '@/constants/theme'
-import { useColorScheme } from '@/hooks/use-color-scheme'
+import { NativeTabs } from 'expo-router/unstable-native-tabs'
+import React, { type JSX } from 'react'
 
 export default function TabLayout(): JSX.Element {
-  const colorScheme = useColorScheme()
-
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="sources"
-        options={{
-          title: 'Sources',
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="plus.square.fill.on.square.fill" color={color} />
-          ),
-        }}
-      />
-    </Tabs>
+    <NativeTabs>
+      <NativeTabs.Trigger name="index">
+        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="house.fill" md="home" />
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="records">
+        <NativeTabs.Trigger.Label>Records</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="folder.fill" md="folder" />
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="accounts">
+        <NativeTabs.Trigger.Label>Accounts</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="person.crop.circle.fill" md="account_circle" />
+      </NativeTabs.Trigger>
+    </NativeTabs>
   )
 }
