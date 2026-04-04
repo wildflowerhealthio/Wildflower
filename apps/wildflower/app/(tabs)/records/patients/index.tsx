@@ -1,4 +1,4 @@
-import { type Href } from 'expo-router'
+import { type Href, useRouter } from 'expo-router'
 
 import React from 'react'
 
@@ -9,14 +9,24 @@ import { events } from '@/livestore/schema'
 import { useAppStore } from '@/livestore/store'
 
 export default function PatientsList(): React.JSX.Element {
+  const router = useRouter()
   const store = useAppStore()
   const patients = store.useQuery(patients$)
 
   return (
     <ItemList
       title="Patient Records"
-      onDelete={(indices) => {
-        store.commit(...indices.map((i) => events.patientDeleted({ id: patients[i].id })))
+      actions={[
+        { key: 'open', label: 'Open', systemImage: 'eye' },
+        { key: 'delete', label: 'Delete', role: 'destructive', systemImage: 'trash' },
+      ]}
+      onAction={(actionKey, item) => {
+        if (actionKey === 'open') {
+          router.push(`/records/patients/${item.id}` satisfies Href)
+        } else if (actionKey === 'delete') {
+          const patient = patients.find((p) => p.id === item.id)
+          if (patient) store.commit(events.patientDeleted({ id: patient.id }))
+        }
       }}
       items={patients.map((patient) => ({
         id: patient.id,

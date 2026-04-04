@@ -2,40 +2,53 @@ import { Link, type Href } from 'expo-router'
 import { type JSX } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
+import ContextMenuWrapper, { type ContextMenuAction } from '@/components/ui/context-menu'
 import { useThemeColor } from '@/hooks/use-theme-color'
+
+type ItemListItem = { id: string; title: string; subtitle?: string; destination: Href }
 
 export default function ItemList({
   title,
   items,
+  actions,
+  onAction,
 }: {
   title: string
-  onDelete?: (indices: number[]) => void
-  items: { id: string; title: string; subtitle?: string; destination: Href }[]
+  items: ItemListItem[]
+  actions?: ContextMenuAction[]
+  onAction?: (actionKey: string, item: ItemListItem) => void
 }): JSX.Element {
   const iconColor = useThemeColor({}, 'icon')
   const tintColor = useThemeColor({}, 'tint')
+  const resolvedActions = actions ?? []
 
   return (
     <View style={styles.container}>
       <Text style={[styles.sectionTitle, { color: iconColor }]}>{title}</Text>
       {items.map((item, index) => (
-        <Link href={item.destination} key={item.id} asChild>
-          <Pressable
-            style={({ pressed }) => [
-              styles.row,
-              index < items.length - 1 && styles.rowBorder,
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <View style={styles.rowContent}>
-              <Text style={[styles.rowTitle, { color: tintColor }]}>{item.title}</Text>
-              {item.subtitle ? (
-                <Text style={[styles.rowSubtitle, { color: iconColor }]}>{item.subtitle}</Text>
-              ) : null}
-            </View>
-            <Text style={[styles.chevron, { color: iconColor }]}>›</Text>
-          </Pressable>
-        </Link>
+        <ContextMenuWrapper
+          key={item.id}
+          actions={resolvedActions}
+          onAction={(actionKey) => onAction?.(actionKey, item)}
+        >
+          <Link href={item.destination} asChild>
+            <Pressable
+              style={({ pressed }) => [
+                styles.row,
+                index < items.length - 1 && styles.rowBorder,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <View style={styles.rowContent}>
+                <Text style={[styles.rowTitle, { color: tintColor }]}>{item.title}</Text>
+                {item.subtitle ? (
+                  <Text style={[styles.rowSubtitle, { color: iconColor }]}>{item.subtitle}</Text>
+                ) : null}
+              </View>
+              <Text style={[styles.chevron, { color: iconColor }]}>›</Text>
+            </Pressable>
+          </Link>
+        </ContextMenuWrapper>
       ))}
     </View>
   )

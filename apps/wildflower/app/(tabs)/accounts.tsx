@@ -4,8 +4,10 @@ import { ThemedButton } from '@/components/themed-button'
 import React from 'react'
 
 import { DateTime } from 'effect'
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
+import { type Href } from 'expo-router'
+import { Alert, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import ItemList from '@/components/ui/item-list'
 import { useThemeColor } from '@/hooks/use-theme-color'
 import { remotes$ } from '@/livestore/queries'
 import { events, RemoteIdSchema } from '@/livestore/schema'
@@ -16,7 +18,6 @@ export default function AccountList(): React.JSX.Element {
   const store = useAppStore()
   const remotes = store.useQuery(remotes$)
   const iconColor = useThemeColor({}, 'icon')
-  const tintColor = useThemeColor({}, 'tint')
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
@@ -25,76 +26,46 @@ export default function AccountList(): React.JSX.Element {
           No accounts configured. Add one to get started.
         </Text>
       ) : (
-        <>
-          <Text style={[styles.sectionTitle, { color: iconColor }]}>Accounts</Text>
-          <FlatList
-            style={{ flex: 1 }}
-            data={remotes}
-            renderItem={({ item: remote, index }) => (
-              <View
-                key={remote.id}
-                style={[styles.row, index < remotes.length - 1 && styles.rowBorder]}
-              >
-                <View style={styles.rowContent}>
-                  <Text style={[styles.rowTitle, { color: tintColor }]}>{remote.name}</Text>
-                  <Text style={[styles.rowSubtitle, { color: iconColor }]}>
-                    {remote.config._tag.toUpperCase()} · {remote.config.rootUrl}
-                  </Text>
-                  <Text style={[styles.rowSubtitle, { color: iconColor }]}>
-                    Added {DateTime.formatLocal(remote.addedAt)}
-                  </Text>
-                </View>
-                <View style={styles.actions}>
-                  <Pressable
-                    style={[styles.actionButton, { borderColor: tintColor }]}
-                    onPress={() =>
-                      router.navigate({
-                        pathname: '/run-sync-modal',
-                        params: { accountId: remote.id },
-                      })
-                    }
-                  >
-                    <Text style={[styles.actionText, { color: tintColor }]}>Import Now</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.actionButton, { borderColor: iconColor }]}
-                    onPress={() =>
-                      router.navigate({
-                        pathname: '/account-config-modal',
-                        params: { accountId: remote.id },
-                      })
-                    }
-                  >
-                    <Text style={[styles.actionText, { color: iconColor }]}>Edit</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.actionButton, styles.deleteButton]}
-                    onPress={() =>
-                      Alert.alert(
-                        'Delete Account',
-                        `Are you sure you want to delete "${remote.name}"?`,
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Delete',
-                            style: 'destructive',
-                            onPress: (): void => {
-                              store.commit(
-                                events.remoteDeleted({ id: RemoteIdSchema.make(remote.id) })
-                              )
-                            },
-                          },
-                        ]
-                      )
-                    }
-                  >
-                    <Text style={styles.deleteText}>Delete</Text>
-                  </Pressable>
-                </View>
-              </View>
-            )}
-          />
-        </>
+        <ItemList
+          title="Accounts"
+          actions={[
+            { key: 'edit', label: 'Edit', systemImage: 'pencil' },
+            { key: 'import', label: 'Import Now', systemImage: 'arrow.down.circle' },
+            { key: 'delete', label: 'Delete', role: 'destructive', systemImage: 'trash' },
+          ]}
+          onAction={(actionKey, item) => {
+            if (actionKey === 'edit') {
+              router.navigate({
+                pathname: '/account-config-modal',
+                params: { accountId: item.id },
+              })
+            } else if (actionKey === 'import') {
+              router.navigate({
+                pathname: '/run-sync-modal',
+                params: { accountId: item.id },
+              })
+            } else if (actionKey === 'delete') {
+              const remote = remotes.find((r) => r.id === item.id)
+              if (!remote) return
+              Alert.alert('Delete Account', `Are you sure you want to delete "${remote.name}"?`, [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete',
+                  style: 'destructive',
+                  onPress: (): void => {
+                    store.commit(events.remoteDeleted({ id: RemoteIdSchema.make(remote.id) }))
+                  },
+                },
+              ])
+            }
+          }}
+          items={remotes.map((remote) => ({
+            id: remote.id,
+            title: remote.name,
+            destination: `/account-config-modal?accountId=${remote.id}` as Href,
+            subtitle: `${remote.config._tag.toUpperCase()} · ${remote.config.rootUrl}\nAdded ${DateTime.formatLocal(remote.addedAt)}`,
+          }))}
+        />
       )}
       <View style={styles.footer}>
         <ThemedButton
@@ -102,67 +73,11 @@ export default function AccountList(): React.JSX.Element {
           onPress={() => router.navigate('/account-config-modal')}
         />
       </View>
-      {/* </View> */}
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scroll: {
-    flex: 1,
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  row: {
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-  },
-  rowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ccc',
-  },
-  rowContent: {
-    gap: 2,
-    marginBottom: 8,
-  },
-  rowTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  rowSubtitle: {
-    fontSize: 13,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionButton: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  actionText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  deleteButton: {
-    borderColor: '#c33',
-  },
-  deleteText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#c33',
-  },
   emptyText: {
     fontSize: 14,
     textAlign: 'center',
