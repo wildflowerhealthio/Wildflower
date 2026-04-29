@@ -1,10 +1,15 @@
+// Demo/test-harness app — disable strict type-safety rules for fetch().json()
+// responses since this file exercises the server in the same way an integration
+// test would.
+/* oxlint-disable typescript-eslint/no-unsafe-assignment */
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from '@effect/platform'
 import { Effect, Layer } from 'effect'
 import { ExpoHttpServer, ExpoContext } from 'expo-effect-platform'
-import NativeModule from 'expo-effect-platform/build/ExpoEffectPlatformModule'
+import NativeModule from 'expo-effect-platform/ExpoEffectPlatformModule'
+import type { ReactElement } from 'react'
 import { useState } from 'react'
-import { SafeAreaView, ScrollView, Text, View, Button, StyleSheet } from 'react-native'
-
+import { ScrollView, Text, View, Button, StyleSheet } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -41,7 +46,7 @@ const router = HttpRouter.empty.pipe(
     '/fancy',
     HttpServerResponse.text('created', {
       status: 201,
-      headers: { 'x-custom': 'hello', 'x-server': 'expo-effect' } as any,
+      headers: { 'x-custom': 'hello', 'x-server': 'expo-effect' },
     })
   ),
 
@@ -59,11 +64,14 @@ const router = HttpRouter.empty.pipe(
 // Server (2s handler timeout for /slow test)
 // ---------------------------------------------------------------------------
 
-const ServerLive = ExpoHttpServer.layer({
-  port: 8080,
-  hostname: '127.0.0.1',
-  handlerTimeoutSeconds: 2,
-}).pipe(Layer.provide(ExpoContext.layer))
+const ServerLive = Layer.provideMerge(
+  ExpoContext.layer,
+  ExpoHttpServer.layer({
+    port: 8080,
+    hostname: '127.0.0.1',
+    handlerTimeoutSeconds: 2,
+  })
+)
 
 const program = router.pipe(HttpServer.serve(), Layer.provide(ServerLive), Layer.launch)
 
@@ -78,7 +86,7 @@ const BASE = 'http://127.0.0.1:8080'
 
 const t = (name: string, fn: () => Promise<{ pass: boolean; detail: string }>): Test => ({
   name,
-  run: async () => ({ name, ...(await fn()) }),
+  run: async (): Promise<TestResult> => ({ name, ...(await fn()) }),
 })
 
 const tests: Test[] = [
@@ -152,15 +160,14 @@ const tests: Test[] = [
       // Server should respond with an error status before the handler completes
       const pass = res.status >= 400
       return { pass, detail: `status=${res.status} (expected timeout error)` }
-    } catch (err: any) {
+    } catch (err) {
       clearTimeout(timer)
       // Connection dropped by server counts as a pass too
-      const isAbort = err.name === 'AbortError'
+      const isAbort = err instanceof Error && err.name === 'AbortError'
+      const message = err instanceof Error ? err.message : String(err)
       return {
         pass: !isAbort,
-        detail: isAbort
-          ? 'client timeout (server never responded)'
-          : `server dropped: ${err.message}`,
+        detail: isAbort ? 'client timeout (server never responded)' : `server dropped: ${message}`,
       }
     }
   }),
@@ -184,10 +191,11 @@ const tests: Test[] = [
       clearTimeout(timer)
       // If we got a response, the server is reachable on LAN — that's a failure
       return { pass: false, detail: `unexpected status=${res.status} on ${lanIp}` }
-    } catch (err: any) {
+    } catch (err) {
       clearTimeout(timer)
       // Connection refused or timeout means the hostname binding worked
-      return { pass: true, detail: `${lanIp} refused: ${err.message}` }
+      const message = err instanceof Error ? err.message : String(err)
+      return { pass: true, detail: `${lanIp} refused: ${message}` }
     }
   }),
 ]
@@ -196,13 +204,13 @@ const tests: Test[] = [
 // App
 // ---------------------------------------------------------------------------
 
-export default function App() {
+export default function App(): ReactElement {
   const [status, setStatus] = useState('Stopped')
   const [address, setAddress] = useState('')
   const [results, setResults] = useState<TestResult[]>([])
   const [testing, setTesting] = useState(false)
 
-  const startServer = () => {
+  const startServer = (): void => {
     setStatus('Starting...')
     setAddress('http://127.0.0.1:8080')
 
@@ -210,15 +218,17 @@ export default function App() {
     setStatus('Running')
   }
 
-  const runTests = async () => {
+  const runTests = async (): Promise<void> => {
     setTesting(true)
     setResults([])
     const out: TestResult[] = []
     for (const test of tests) {
       try {
+        // oxlint-disable-next-line no-await-in-loop
         out.push(await test.run())
-      } catch (err: any) {
-        out.push({ name: test.name, pass: false, detail: err.message ?? String(err) })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        out.push({ name: test.name, pass: false, detail: message })
       }
       setResults([...out])
     }
@@ -261,8 +271,8 @@ export default function App() {
             </View>
           )}
 
-          {results.map((r, i) => (
-            <View key={i} style={[s.testRow, r.pass ? s.pass : s.fail]}>
+          {results.map((r) => (
+            <View key={r.name} style={[s.testRow, r.pass ? s.pass : s.fail]}>
               <Text style={s.testLabel}>
                 {r.pass ? 'PASS' : 'FAIL'} {r.name}
               </Text>

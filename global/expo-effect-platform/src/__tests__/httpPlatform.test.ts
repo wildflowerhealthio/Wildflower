@@ -1,3 +1,4 @@
+/* oxlint-disable typescript-eslint/no-explicit-any, typescript-eslint/no-unsafe-type-assertion, typescript-eslint/no-unsafe-assignment, unicorn/no-array-callback-reference, typescript-eslint/explicit-function-return-type */
 import * as Etag from '@effect/platform/Etag'
 import * as FileSystem from '@effect/platform/FileSystem'
 import * as Headers from '@effect/platform/Headers'
@@ -13,7 +14,14 @@ jest.mock('../ExpoEffectPlatformModule', () => ({
   default: {},
 }))
 
-const { make } = require('../internal/httpPlatform') as typeof import('../internal/httpPlatform')
+import type * as HttpPlatformModule from '../internal/httpPlatform.ts'
+
+// `require` (not `import`) for consistency with the sibling test files where the
+// `jest.mock()` factories capture module-local mock variables that ES imports
+// would race against. Here the factory is empty, but keeping the same shape
+// avoids inviting future contributors to switch the others and silently break
+// their mocks.
+const { make } = require('../internal/httpPlatform') as typeof HttpPlatformModule
 
 // ---------------------------------------------------------------------------
 // Mock FileSystem — HttpPlatform.make() uses fs.stat() internally

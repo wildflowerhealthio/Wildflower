@@ -1,3 +1,4 @@
+/* oxlint-disable typescript-eslint/no-explicit-any, typescript-eslint/no-unsafe-type-assertion, typescript-eslint/no-unsafe-assignment, typescript-eslint/no-unnecessary-type-assertion */
 import * as ServerRequest from '@effect/platform/HttpServerRequest'
 import * as HttpServerResponse from '@effect/platform/HttpServerResponse'
 import * as Effect from 'effect/Effect'
@@ -30,7 +31,14 @@ jest.mock('../ExpoEffectPlatformModule', () => ({
   },
 }))
 
-const { make } = require('../internal/httpServer') as typeof import('../internal/httpServer')
+import type * as HttpServerModule from '../internal/httpServer.ts'
+
+// `require` (not `import`) is load-bearing: jest hoists `jest.mock()` above all
+// ES imports, but the mock factory above captures the module-local `mockStartServer`
+// etc. by reference. An ES import here would also be hoisted and would resolve
+// `../internal/httpServer` before those mock variables are initialized, breaking
+// the factory. `require` runs in source order, after the mocks are set up.
+const { make } = require('../internal/httpServer') as typeof HttpServerModule
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -45,6 +53,7 @@ function makePayload(overrides: Partial<OnHttpRequestPayload> = {}): OnHttpReque
     path: '/',
     headers: {},
     body: null,
+    bodyBase64: null,
     bodyFilePath: null,
     ip: '127.0.0.1',
     ...overrides,
@@ -100,31 +109,39 @@ describe('integration: response handling', () => {
     mockAddListener.mockReturnValue({ remove: mockRemoveSub })
   })
 
-  test('text response', async () => {
+  test('text response sends utf8-encoded body', async () => {
     const app = Effect.succeed(HttpServerResponse.text('Hello World'))
     await runWithServer(app, makePayload({ requestId: 'req-text' }))
     expect(mockRespondToRequest).toHaveBeenCalledWith(
       'req-text',
       200,
       expect.any(Object),
-      'Hello World'
+      'Hello World',
+      'utf8'
     )
   }, 5000)
 
-  test('JSON response', async () => {
+  test('JSON response is sent as utf8 stringified body', async () => {
     const app = Effect.succeed(HttpServerResponse.unsafeJson({ status: 'ok', count: 42 }))
     await runWithServer(app, makePayload({ requestId: 'req-json' }))
-    const body = JSON.parse(mockRespondToRequest.mock.calls[0][3])
-    expect(body).toEqual({ status: 'ok', count: 42 })
+    const call = mockRespondToRequest.mock.calls[0]
+    expect(JSON.parse(call[3])).toEqual({ status: 'ok', count: 42 })
+    expect(call[4]).toBe('utf8')
   }, 5000)
 
-  test('empty response defaults to 204', async () => {
+  test('empty response defaults to 204 with utf8 empty body', async () => {
     const app = Effect.succeed(HttpServerResponse.empty())
     await runWithServer(app, makePayload({ requestId: 'req-empty' }))
-    expect(mockRespondToRequest).toHaveBeenCalledWith('req-empty', 204, expect.any(Object), '')
+    expect(mockRespondToRequest).toHaveBeenCalledWith(
+      'req-empty',
+      204,
+      expect.any(Object),
+      '',
+      'utf8'
+    )
   }, 5000)
 
-  test('file response via ExpoFileBody sentinel', async () => {
+  test('file response forwards path + start/end (defaulting to nulls)', async () => {
     const app = Effect.succeed(
       HttpServerResponse.raw(
         { __expoFilePath: '/data/scan.dcm', start: 0, end: undefined },
@@ -136,23 +153,59 @@ describe('integration: response handling', () => {
       'req-file',
       200,
       expect.any(Object),
-      '/data/scan.dcm'
+      '/data/scan.dcm',
+      0,
+      null
     )
     expect(mockRespondToRequest).not.toHaveBeenCalled()
   }, 5000)
 
-  test('raw string body', async () => {
+  test('file response with byte range threads start/end to native', async () => {
+    const app = Effect.succeed(
+      HttpServerResponse.raw(
+        { __expoFilePath: '/data/scan.dcm', start: 1024, end: 1536 },
+        { status: 206 }
+      )
+    )
+    await runWithServer(
+      app,
+      makePayload({ requestId: 'req-file-range' }),
+      mockRespondToRequestWithFile
+    )
+    expect(mockRespondToRequestWithFile).toHaveBeenCalledWith(
+      'req-file-range',
+      206,
+      expect.any(Object),
+      '/data/scan.dcm',
+      1024,
+      1536
+    )
+  }, 5000)
+
+  test('Uint8Array response is base64-encoded across the bridge', async () => {
+    const bytes = new Uint8Array([0xff, 0x00, 0x01, 0x02, 0xfe])
+    const app = Effect.succeed(HttpServerResponse.uint8Array(bytes))
+    await runWithServer(app, makePayload({ requestId: 'req-bytes' }))
+    const call = mockRespondToRequest.mock.calls[0]
+    expect(call[0]).toBe('req-bytes')
+    expect(call[4]).toBe('base64')
+    const decoded = new Uint8Array(Buffer.from(call[3], 'base64'))
+    expect(decoded).toEqual(bytes)
+  }, 5000)
+
+  test('raw string body is sent utf8', async () => {
     const app = Effect.succeed(HttpServerResponse.raw('raw string data', { status: 200 }))
     await runWithServer(app, makePayload({ requestId: 'req-raw' }))
     expect(mockRespondToRequest).toHaveBeenCalledWith(
       'req-raw',
       200,
       expect.any(Object),
-      'raw string data'
+      'raw string data',
+      'utf8'
     )
   }, 5000)
 
-  test('stream response is buffered and sent', async () => {
+  test('stream response is buffered and base64-encoded', async () => {
     const encoder = new TextEncoder()
     const app = Effect.succeed(
       HttpServerResponse.stream(
@@ -160,33 +213,39 @@ describe('integration: response handling', () => {
       )
     )
     await runWithServer(app, makePayload({ requestId: 'req-stream' }))
-    expect(mockRespondToRequest).toHaveBeenCalledWith(
-      'req-stream',
-      200,
-      expect.any(Object),
-      'hello world'
-    )
+    const call = mockRespondToRequest.mock.calls[0]
+    expect(call[0]).toBe('req-stream')
+    expect(call[4]).toBe('base64')
+    expect(Buffer.from(call[3], 'base64').toString('utf-8')).toBe('hello world')
   }, 5000)
 
   test('HEAD request returns empty body', async () => {
     const app = Effect.succeed(HttpServerResponse.text('This body should be ignored'))
     await runWithServer(app, makePayload({ requestId: 'req-head', method: 'HEAD' }))
-    expect(mockRespondToRequest).toHaveBeenCalledWith('req-head', 200, expect.any(Object), '')
+    expect(mockRespondToRequest).toHaveBeenCalledWith(
+      'req-head',
+      200,
+      expect.any(Object),
+      '',
+      'utf8'
+    )
   }, 5000)
 
-  test('response includes set-cookie header', async () => {
-    // setCookie returns an Effect, so use gen to yield it
+  test('Set-Cookie is sent as an array, not a comma-joined string', async () => {
     const app = Effect.gen(function* () {
-      return yield* HttpServerResponse.setCookie(
-        HttpServerResponse.empty({ status: 200 }),
-        'session',
-        'abc123'
-      )
+      let r = HttpServerResponse.empty({ status: 200 })
+      r = yield* HttpServerResponse.setCookie(r, 'session', 'abc123')
+      r = yield* HttpServerResponse.setCookie(r, 'theme', 'dark')
+      return r
     }).pipe(Effect.orDie)
 
     await runWithServer(app, makePayload({ requestId: 'req-cookie' }))
-    const headers = mockRespondToRequest.mock.calls[0][2]
-    expect(headers['set-cookie']).toContain('session=abc123')
+    const headers = mockRespondToRequest.mock.calls[0][2] as Record<string, string[]>
+    expect(Array.isArray(headers['set-cookie'])).toBe(true)
+    expect(headers['set-cookie']).toEqual([
+      expect.stringContaining('session=abc123'),
+      expect.stringContaining('theme=dark'),
+    ])
   }, 5000)
 })
 
@@ -220,7 +279,7 @@ describe('integration: request properties', () => {
         requestId: 'req-props',
         method: 'post',
         path: '/api/data?q=test',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': ['application/json'] },
       })
     )
 
@@ -242,7 +301,8 @@ describe('integration: request properties', () => {
       'req-ip',
       200,
       expect.any(Object),
-      '10.0.0.42'
+      '10.0.0.42',
+      'utf8'
     )
   }, 5000)
 
@@ -253,7 +313,13 @@ describe('integration: request properties', () => {
     }).pipe(Effect.orDie)
 
     await runWithServer(app, makePayload({ requestId: 'req-no-ip', ip: '' }))
-    expect(mockRespondToRequest).toHaveBeenCalledWith('req-no-ip', 200, expect.any(Object), 'none')
+    expect(mockRespondToRequest).toHaveBeenCalledWith(
+      'req-no-ip',
+      200,
+      expect.any(Object),
+      'none',
+      'utf8'
+    )
   }, 5000)
 
   test('handler receives parsed cookies', async () => {
@@ -266,7 +332,7 @@ describe('integration: request properties', () => {
       app,
       makePayload({
         requestId: 'req-cookies',
-        headers: { cookie: 'session=xyz; theme=dark' },
+        headers: { cookie: ['session=xyz; theme=dark'] },
       })
     )
 
@@ -295,7 +361,35 @@ describe('integration: request properties', () => {
       'req-text-body',
       200,
       expect.any(Object),
-      'Echo: hello world'
+      'Echo: hello world',
+      'utf8'
+    )
+  }, 5000)
+
+  test('handler decodes a base64 binary request body via arrayBuffer', async () => {
+    const app = Effect.gen(function* () {
+      const req = yield* ServerRequest.HttpServerRequest
+      const ab = yield* req.arrayBuffer
+      return HttpServerResponse.text(new Uint8Array(ab).join(','))
+    }).pipe(Effect.orDie)
+
+    const original = new Uint8Array([0xff, 0x00, 0xab, 0xcd])
+    await runWithServer(
+      app,
+      makePayload({
+        requestId: 'req-binary',
+        method: 'POST',
+        body: null,
+        bodyBase64: Buffer.from(original).toString('base64'),
+      })
+    )
+
+    expect(mockRespondToRequest).toHaveBeenCalledWith(
+      'req-binary',
+      200,
+      expect.any(Object),
+      '255,0,171,205',
+      'utf8'
     )
   }, 5000)
 
@@ -352,6 +446,7 @@ describe('integration: request properties', () => {
       makePayload({
         requestId: 'req-empty-body',
         body: null,
+        bodyBase64: null,
         bodyFilePath: null,
       })
     )
@@ -360,7 +455,8 @@ describe('integration: request properties', () => {
       'req-empty-body',
       200,
       expect.any(Object),
-      '[]'
+      '[]',
+      'utf8'
     )
   }, 5000)
 
@@ -379,7 +475,8 @@ describe('integration: request properties', () => {
       'req-multipart',
       501,
       expect.any(Object),
-      'multipart-not-supported'
+      'multipart-not-supported',
+      'utf8'
     )
   }, 5000)
 
@@ -398,7 +495,8 @@ describe('integration: request properties', () => {
       'req-upgrade',
       501,
       expect.any(Object),
-      'upgrade-not-supported'
+      'upgrade-not-supported',
+      'utf8'
     )
   }, 5000)
 
@@ -414,7 +512,8 @@ describe('integration: request properties', () => {
       'req-modify',
       200,
       expect.any(Object),
-      '/overridden'
+      '/overridden',
+      'utf8'
     )
   }, 5000)
 
@@ -477,49 +576,23 @@ describe('integration: server lifecycle', () => {
     expect(mockRemoveSub).toHaveBeenCalled()
   }, 5000)
 
-  test('server address reflects network interfaces', async () => {
-    mockGetNetworkInterfaces.mockReturnValue({ en0: '10.0.1.50' })
-
+  test('default hostname is the loopback 127.0.0.1 (safe by default)', async () => {
     const program = Effect.gen(function* () {
       const server = yield* make(9090)
-      expect(server.address._tag).toBe('TcpAddress')
-      expect((server.address as any).hostname).toBe('10.0.1.50')
-      expect((server.address as any).port).toBe(9090)
+      const address = server.address as { _tag: string; hostname: string; port: number }
+      expect(address._tag).toBe('TcpAddress')
+      expect(address.hostname).toBe('127.0.0.1')
+      expect(address.port).toBe(9090)
     }).pipe(Effect.scoped)
 
     await Effect.runPromise(program as Effect.Effect<void>)
   }, 5000)
 
-  test('falls back to wlan0 when en0 unavailable', async () => {
-    mockGetNetworkInterfaces.mockReturnValue({ wlan0: '192.168.0.50' })
-
+  test('server address uses provided hostname when supplied', async () => {
     const program = Effect.gen(function* () {
-      const server = yield* make(8080)
-      expect((server.address as any).hostname).toBe('192.168.0.50')
-    }).pipe(Effect.scoped)
-
-    await Effect.runPromise(program as Effect.Effect<void>)
-  }, 5000)
-
-  test('falls back to 0.0.0.0 when no interfaces available', async () => {
-    mockGetNetworkInterfaces.mockReturnValue({})
-
-    const program = Effect.gen(function* () {
-      const server = yield* make(8080)
-      expect((server.address as any).hostname).toBe('0.0.0.0')
-    }).pipe(Effect.scoped)
-
-    await Effect.runPromise(program as Effect.Effect<void>)
-  }, 5000)
-
-  test('server address uses provided hostname over network interfaces', async () => {
-    mockGetNetworkInterfaces.mockReturnValue({ en0: '10.0.1.50' })
-
-    const program = Effect.gen(function* () {
-      const server = yield* make(9090, { hostname: '127.0.0.1' })
-      expect(server.address._tag).toBe('TcpAddress')
-      expect((server.address as any).hostname).toBe('127.0.0.1')
-      expect((server.address as any).port).toBe(9090)
+      const server = yield* make(9090, { hostname: '0.0.0.0' })
+      const address = server.address as { hostname: string }
+      expect(address.hostname).toBe('0.0.0.0')
     }).pipe(Effect.scoped)
 
     await Effect.runPromise(program as Effect.Effect<void>)
@@ -534,5 +607,16 @@ describe('integration: server lifecycle', () => {
     await Effect.runPromise(program as Effect.Effect<void>)
 
     expect(mockStartServer).toHaveBeenCalledWith(8080, { hostname: '127.0.0.1' })
+  }, 5000)
+
+  test('calling serve() twice on the same server fails as a defect', async () => {
+    const program = Effect.gen(function* () {
+      const server = yield* make(8080)
+      yield* server.serve(Effect.succeed(HttpServerResponse.empty()) as any)
+      yield* server.serve(Effect.succeed(HttpServerResponse.empty()) as any)
+    }).pipe(Effect.scoped)
+
+    const exit = await Effect.runPromiseExit(program as Effect.Effect<void>)
+    expect(exit._tag).toBe('Failure')
   }, 5000)
 })

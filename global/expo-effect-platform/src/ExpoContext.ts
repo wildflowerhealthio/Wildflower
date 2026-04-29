@@ -1,28 +1,30 @@
+/**
+ * Combined context layer providing the Expo `HttpPlatform` together with the
+ * default `FileSystem` (noop), `Etag.Generator`, and `Path` services from
+ * `@effect/platform`'s `HttpServer.layerContext`.
+ *
+ * @since 0.1.0
+ */
 import type * as Etag from '@effect/platform/Etag'
 import type * as FileSystem from '@effect/platform/FileSystem'
 import type * as HttpPlatform from '@effect/platform/HttpPlatform'
 import * as Server from '@effect/platform/HttpServer'
 import type * as Path from '@effect/platform/Path'
-/**
- * Combined context layer providing HttpPlatform and Etag services.
- *
- * For v1, FileSystem is not provided — use `@effect/platform`'s noop
- * FileSystem via `HttpServer.layerContext` if needed.
- *
- * @since 0.1.0
- */
-import type * as Layer from 'effect/Layer'
+import * as Layer from 'effect/Layer'
+import * as ExpoHttpPlatform from './ExpoHttpPlatform.ts'
 
 /**
- * Provides `HttpPlatform`, `FileSystem` (noop), `Etag.Generator`, and `Path`.
+ * Provides the Expo `HttpPlatform` together with `FileSystem` (noop),
+ * `Etag.Generator`, and `Path`.
  *
- * Uses the noop FileSystem and default Path from `@effect/platform`'s
- * `layerContext`. For file serving via `HttpServerResponse.file()`, the
- * ExpoHttpPlatform layer intercepts and passes file paths to native.
+ * Built by merging `@effect/platform`'s `HttpServer.layerContext` with the
+ * Expo-specific `HttpPlatform`, so `HttpServerResponse.file()` produces the
+ * `ExpoFileBody` sentinel that the native bridge serves directly without
+ * crossing the JS bridge as bytes.
  *
  * @since 0.1.0
  * @category layers
  */
 export const layer: Layer.Layer<
   HttpPlatform.HttpPlatform | FileSystem.FileSystem | Etag.Generator | Path.Path
-> = Server.layerContext
+> = Layer.provideMerge(ExpoHttpPlatform.layer, Server.layerContext)

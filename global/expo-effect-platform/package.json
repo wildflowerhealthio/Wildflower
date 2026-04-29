@@ -8,15 +8,16 @@
     "expo-effect-platform",
     "react-native"
   ],
-  "homepage": "https://github.com/ruthmarks151/expo-effect-platform#readme",
+  "homepage": "https://github.com/Assessment-is/wildlflower/tree/main/global/expo-effect-platform#readme",
   "bugs": {
-    "url": "https://github.com/ruthmarks151/expo-effect-platform/issues"
+    "url": "https://github.com/Assessment-is/wildlflower/issues"
   },
   "license": "MIT",
   "author": "Ruth Marks <ruthmarks151@gmail.com> (https://github.com/ruthmarks151)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ruthmarks151/expo-effect-platform.git"
+    "url": "git+https://github.com/Assessment-is/wildlflower.git",
+    "directory": "global/expo-effect-platform"
   },
   "files": [
     "android",
@@ -50,24 +51,27 @@
   "devDependencies": {
     "@babel/core": "^7.26.10",
     "@effect/platform": "catalog:",
+    "@fast-check/jest": "catalog:",
     "@types/jest": "catalog:",
+    "@types/node": "catalog:",
     "@types/react": "~19.2.14",
     "babel-preset-expo": "~55.0.13",
     "effect": "catalog:",
-    "expo": "55.0.9",
+    "expo": "catalog:",
     "expo-module-scripts": "^55.0.2",
+    "fast-check": "catalog:",
     "jest": "catalog:",
     "jest-expo": "catalog:",
     "react": "catalog:",
     "react-native": "catalog:",
-    "typescript": "^6.0.2",
+    "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "@effect/platform": "catalog:",
-    "effect": "catalog:",
-    "expo": "*",
-    "react": "catalog:",
-    "react-native": "catalog:"
+    "@effect/platform": ">=0.93.0",
+    "effect": ">=3.19.0",
+    "expo": "~55.0.0",
+    "react": ">=19.0.0",
+    "react-native": ">=0.83.0"
   }
 }

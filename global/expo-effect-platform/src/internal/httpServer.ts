@@ -17,7 +17,7 @@ import type {
   HttpMethod,
   HttpMiddleware,
 } from '@effect/platform'
-import { Effect, FiberSet, Inspectable, Layer, Option, Stream } from 'effect'
+import { Effect, FiberSet, Inspectable, Layer, Option, Ref, Stream } from 'effect'
 import type { Record as RecordNS, Scope } from 'effect'
 import type { OnHttpRequestPayload, ServerOptions } from '../ExpoEffectPlatform.types.ts'
 import NativeModule from '../ExpoEffectPlatformModule.ts'
@@ -35,6 +35,32 @@ const ServerRequestTypeId: ServerRequest.TypeId = Symbol.for(
 const IncomingMessageTypeId: IncomingMessage.TypeId = Symbol.for(
   '@effect/platform/HttpIncomingMessage'
 ) as IncomingMessage.TypeId
+
+const flattenHeaders = (input: Record<string, ReadonlyArray<string>>): Headers.Headers => {
+  const out: Record<string, string | ReadonlyArray<string>> = {}
+  for (const [k, values] of Object.entries(input)) {
+    if (values.length === 0) continue
+    if (values.length === 1) {
+      out[k] = values[0]!
+    } else {
+      out[k] = values
+    }
+  }
+  return Headers.fromInput(out)
+}
+
+const decodeBase64 = (b64: string): Uint8Array => {
+  const bin = globalThis.atob(b64)
+  const out = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+  return out
+}
+
+const encodeBase64 = (bytes: Uint8Array): string => {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return globalThis.btoa(bin)
+}
 
 class ServerRequestImpl extends Inspectable.Class implements ServerRequest.HttpServerRequest {
   readonly [ServerRequest.TypeId]: ServerRequest.TypeId
@@ -86,13 +112,17 @@ class ServerRequestImpl extends Inspectable.Class implements ServerRequest.HttpS
   }
 
   get remoteAddress(): Option.Option<string> {
-    return Option.fromNullable(this.remoteAddressOverride).pipe(
-      Option.orElse(() => Option.fromNullable(this.source.ip))
+    const fromOverride = Option.fromNullable(this.remoteAddressOverride).pipe(
+      Option.filter((s) => s.trim().length > 0)
     )
+    const fromSource = Option.fromNullable(this.source.ip).pipe(
+      Option.filter((s) => s.trim().length > 0)
+    )
+    return Option.orElse(fromOverride, () => fromSource)
   }
 
   get headers(): Headers.Headers {
-    this.headersOverride ??= Headers.fromInput(Object.entries(this.source.headers))
+    this.headersOverride ??= flattenHeaders(this.source.headers)
     return this.headersOverride
   }
 
@@ -101,23 +131,36 @@ class ServerRequestImpl extends Inspectable.Class implements ServerRequest.HttpS
     if (this.cachedCookies) {
       return this.cachedCookies
     }
-    return (this.cachedCookies = Cookies.parseHeader(this.headers.cookie ?? ''))
+    const cookieValues = this.source.headers['cookie'] ?? this.source.headers['Cookie'] ?? []
+    return (this.cachedCookies = Cookies.parseHeader(cookieValues.join('; ')))
   }
 
   // -- Body access --
 
-  private textEffect: Effect.Effect<string, Error.RequestError> | undefined
-  get text(): Effect.Effect<string, Error.RequestError> {
-    if (this.textEffect) {
-      return this.textEffect
-    }
-    let source: Effect.Effect<string, Error.RequestError>
+  private bytesEffect: Effect.Effect<Uint8Array, Error.RequestError> | undefined
+  private get bytes(): Effect.Effect<Uint8Array, Error.RequestError> {
+    if (this.bytesEffect) return this.bytesEffect
+    let source: Effect.Effect<Uint8Array, Error.RequestError>
     if (this.source.body != null) {
-      source = Effect.succeed(this.source.body)
+      source = Effect.succeed(new TextEncoder().encode(this.source.body))
+    } else if (this.source.bodyBase64 != null) {
+      const b64 = this.source.bodyBase64
+      source = Effect.try({
+        try: () => decodeBase64(b64),
+        catch: (cause) =>
+          new Error.RequestError({
+            request: this,
+            reason: 'Decode',
+            cause,
+          }),
+      })
     } else if (this.source.bodyFilePath != null) {
       const filePath = this.source.bodyFilePath
       source = Effect.tryPromise({
-        try: () => fetch(`file://${filePath}`).then((r) => r.text()),
+        try: () =>
+          fetch(`file://${encodeURI(filePath)}`)
+            .then((r) => r.arrayBuffer())
+            .then((ab) => new Uint8Array(ab)),
         catch: (cause) =>
           new Error.RequestError({
             request: this,
@@ -126,10 +169,14 @@ class ServerRequestImpl extends Inspectable.Class implements ServerRequest.HttpS
           }),
       })
     } else {
-      source = Effect.succeed('')
+      source = Effect.succeed(new Uint8Array(0))
     }
-    this.textEffect = Effect.runSync(Effect.cached(source))
-    return this.textEffect
+    this.bytesEffect = Effect.runSync(Effect.cached(source))
+    return this.bytesEffect
+  }
+
+  get text(): Effect.Effect<string, Error.RequestError> {
+    return this.bytes.pipe(Effect.map((b) => new TextDecoder().decode(b)))
   }
 
   get json(): Effect.Effect<unknown, Error.RequestError> {
@@ -160,38 +207,44 @@ class ServerRequestImpl extends Inspectable.Class implements ServerRequest.HttpS
     )
   }
 
-  private arrayBufferEffect: Effect.Effect<ArrayBuffer, Error.RequestError> | undefined
   get arrayBuffer(): Effect.Effect<ArrayBuffer, Error.RequestError> {
-    if (this.arrayBufferEffect) {
-      return this.arrayBufferEffect
-    }
-    this.arrayBufferEffect = Effect.runSync(
-      Effect.cached(this.text.pipe(Effect.map((t) => new TextEncoder().encode(t).buffer)))
+    return this.bytes.pipe(
+      Effect.map((b) => {
+        const copy = new Uint8Array(b)
+        return copy.buffer
+      })
     )
-    return this.arrayBufferEffect
   }
 
   get stream(): Stream.Stream<Uint8Array, Error.RequestError> {
-    if (this.source.body != null) {
-      return Stream.succeed(new TextEncoder().encode(this.source.body))
-    }
     if (this.source.bodyFilePath != null) {
+      // Read the file body as chunks via fetch().body to avoid buffering the
+      // entire payload into JS memory at once. Falls back to a single chunk
+      // when ReadableStream is unavailable.
       return Stream.fromEffect(
         Effect.tryPromise({
-          try: () =>
-            fetch(`file://${this.source.bodyFilePath}`)
-              .then((r) => r.arrayBuffer())
-              .then((ab) => new Uint8Array(ab)),
-          catch: (cause) =>
-            new Error.RequestError({
-              request: this,
-              reason: 'Decode',
-              cause,
-            }),
+          try: () => fetch(`file://${encodeURI(this.source.bodyFilePath ?? '')}`),
+          catch: (cause) => new Error.RequestError({ request: this, reason: 'Decode', cause }),
+        })
+      ).pipe(
+        Stream.flatMap((res): Stream.Stream<Uint8Array, Error.RequestError> => {
+          if (res.body == null) {
+            return Stream.fromEffect(
+              Effect.tryPromise({
+                try: () => res.arrayBuffer().then((ab) => new Uint8Array(ab)),
+                catch: (cause) =>
+                  new Error.RequestError({ request: this, reason: 'Decode', cause }),
+              })
+            )
+          }
+          return Stream.fromReadableStream(
+            () => res.body!,
+            (cause) => new Error.RequestError({ request: this, reason: 'Decode', cause })
+          )
         })
       )
     }
-    return Stream.succeed(new Uint8Array(0))
+    return Stream.fromEffect(this.bytes)
   }
 
   get multipart(): Effect.Effect<
@@ -244,6 +297,40 @@ const isExpoFileBody = (body: unknown): body is ExpoFileBody =>
   '__expoFilePath' in body &&
   typeof body.__expoFilePath === 'string'
 
+/**
+ * True when a media type carries text content that round-trips losslessly as a
+ * UTF-8 JS string. `HttpServerResponse.text()` and `unsafeJson()` produce
+ * `Uint8Array` bodies (text → encoded bytes) but should be sent over the
+ * native bridge as `utf8` to avoid the base64 round-trip; `uint8Array()` with
+ * an octet-stream type stays binary.
+ */
+const isTextContentType = (contentType: string | undefined): boolean => {
+  if (!contentType) return false
+  const mediaType = (contentType.split(';')[0] ?? '').trim().toLowerCase()
+  if (mediaType.startsWith('text/')) return true
+  if (/\+(json|xml|text)$/.test(mediaType)) return true
+  return (
+    mediaType === 'application/json' ||
+    mediaType === 'application/javascript' ||
+    mediaType === 'application/xml' ||
+    mediaType === 'application/x-www-form-urlencoded'
+  )
+}
+
+const expandHeaders = (
+  responseHeaders: Headers.Headers,
+  setCookies: ReadonlyArray<string>
+): Record<string, ReadonlyArray<string>> => {
+  const out: Record<string, Array<string>> = {}
+  for (const [k, v] of Object.entries(responseHeaders)) {
+    out[k] = [v]
+  }
+  if (setCookies.length > 0) {
+    out['set-cookie'] = setCookies.slice()
+  }
+  return out
+}
+
 const handleResponse = (
   request: ServerRequest.HttpServerRequest,
   response: ServerResponse.HttpServerResponse
@@ -261,15 +348,15 @@ const handleResponse = (
     }
     const requestId = request.requestId
 
-    const headers: Record<string, string> = { ...response.headers }
+    let setCookies: ReadonlyArray<string> = []
     if (!Cookies.isEmpty(response.cookies)) {
-      const setCookies = Cookies.toSetCookieHeaders(response.cookies)
-      headers['set-cookie'] = setCookies.join(', ')
+      setCookies = Cookies.toSetCookieHeaders(response.cookies)
     }
+    const headers = expandHeaders(response.headers, setCookies)
 
     if (request.method === 'HEAD') {
       yield* Effect.promise(() =>
-        NativeModule.respondToRequest(requestId, response.status, headers, '')
+        NativeModule.respondToRequest(requestId, response.status, headers, '', 'utf8')
       )
       return
     }
@@ -280,7 +367,7 @@ const handleResponse = (
     switch (body._tag) {
       case 'Empty': {
         yield* Effect.promise(() =>
-          NativeModule.respondToRequest(requestId, response.status, headers, '')
+          NativeModule.respondToRequest(requestId, response.status, headers, '', 'utf8')
         )
         break
       }
@@ -292,7 +379,9 @@ const handleResponse = (
               requestId,
               response.status,
               headers,
-              rawBody.__expoFilePath
+              rawBody.__expoFilePath,
+              rawBody.start ?? null,
+              rawBody.end ?? null
             )
           )
         } else {
@@ -303,16 +392,23 @@ const handleResponse = (
             rawText = JSON.stringify(rawBody)
           }
           yield* Effect.promise(() =>
-            NativeModule.respondToRequest(requestId, response.status, headers, rawText)
+            NativeModule.respondToRequest(requestId, response.status, headers, rawText, 'utf8')
           )
         }
         break
       }
       case 'Uint8Array': {
-        const text = new TextDecoder().decode(body.body)
-        yield* Effect.promise(() =>
-          NativeModule.respondToRequest(requestId, response.status, headers, text)
-        )
+        if (isTextContentType(body.contentType)) {
+          const text = new TextDecoder('utf-8').decode(body.body)
+          yield* Effect.promise(() =>
+            NativeModule.respondToRequest(requestId, response.status, headers, text, 'utf8')
+          )
+        } else {
+          const b64 = encodeBase64(body.body)
+          yield* Effect.promise(() =>
+            NativeModule.respondToRequest(requestId, response.status, headers, b64, 'base64')
+          )
+        }
         break
       }
       case 'FormData': {
@@ -321,7 +417,8 @@ const handleResponse = (
             requestId,
             response.status,
             headers,
-            'FormData responses are not supported in expo-effect-platform v1'
+            'FormData responses are not supported in expo-effect-platform v1',
+            'utf8'
           )
         )
         break
@@ -340,9 +437,9 @@ const handleResponse = (
           combined.set(chunk, offset)
           offset += chunk.length
         }
-        const text = new TextDecoder().decode(combined)
+        const b64 = encodeBase64(combined)
         yield* Effect.promise(() =>
-          NativeModule.respondToRequest(requestId, response.status, headers, text)
+          NativeModule.respondToRequest(requestId, response.status, headers, b64, 'base64')
         )
         break
       }
@@ -363,12 +460,12 @@ const make = (
       () => Effect.promise(() => NativeModule.stopServer(5))
     )
 
-    const hostname =
-      options?.hostname ??
-      (() => {
-        const interfaces = NativeModule.getNetworkInterfaces()
-        return interfaces['en0'] ?? interfaces['wlan0'] ?? '0.0.0.0'
-      })()
+    const hostname = options?.hostname ?? '127.0.0.1'
+
+    // Track whether serve() has already been invoked on this server. The
+    // HttpServer contract is one-serve-per-server; a second call would attach
+    // a second listener and dispatch every request twice. Fail fast on misuse.
+    const servedRef = yield* Ref.make(false)
 
     return Server.make({
       address: { _tag: 'TcpAddress', hostname, port },
@@ -377,6 +474,15 @@ const make = (
         middleware?: HttpMiddleware.HttpMiddleware
       ): Effect.Effect<void, never, Scope.Scope> {
         return Effect.gen(function* () {
+          const alreadyServed = yield* Ref.getAndSet(servedRef, true)
+          if (alreadyServed) {
+            yield* Effect.die(
+              new globalThis.Error(
+                'ExpoHttpServer: serve() called more than once on the same server. ' +
+                  'HttpServer.serve() is single-shot — start a new server instead.'
+              )
+            )
+          }
           const runFork = yield* FiberSet.makeRuntime<never>()
           const app = App.toHandled(httpApp, handleResponse, middleware)
 
@@ -401,5 +507,5 @@ const make = (
 const layer = (options: { port: number } & ServerOptions): Layer.Layer<Server.HttpServer> =>
   Layer.scoped(Server.HttpServer, make(options.port, options))
 
-export { make, layer }
+export { make, layer, ServerRequestImpl }
 export type { ExpoFileBody }

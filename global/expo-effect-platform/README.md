@@ -53,15 +53,18 @@ Effect.runFork(program)
 
 Creates an `HttpServer` layer.
 
-| Option                   | Type     | Default      | Description                                                                         |
-| ------------------------ | -------- | ------------ | ----------------------------------------------------------------------------------- |
-| `port`                   | `number` | _required_   | TCP port to listen on                                                               |
-| `handlerTimeoutSeconds`  | `number` | —            | Max seconds per request before the server responds 504                              |
-| `bodyDiskThresholdBytes` | `number` | `10 000 000` | Request bodies above this size are spilled to a temp file instead of kept in memory |
+| Option                   | Type       | Default      | Description                                                                             |
+| ------------------------ | ---------- | ------------ | --------------------------------------------------------------------------------------- |
+| `port`                   | `number`   | _required_   | TCP port to listen on                                                                   |
+| `hostname`               | `string`   | `127.0.0.1`  | Interface to bind. Use `0.0.0.0` to expose to LAN (see [Threat model](#threat-model))   |
+| `handlerTimeoutSeconds`  | `number`   | —            | Max seconds per request before the server responds 504                                  |
+| `bodyDiskThresholdBytes` | `number`   | `10_000_000` | Request bodies above this size are spilled to a temp file instead of kept in memory     |
+| `maxConcurrentRequests`  | `number`   | `256`        | Cap on concurrent in-flight requests; the server returns 503 above this limit           |
+| `fileSandboxRoots`       | `string[]` | App-defaults | Allow-listed prefixes for `respondToRequestWithFile`; paths outside any root return 403 |
 
 ### `ExpoContext.layer`
 
-Provides the context services (`HttpPlatform`, `FileSystem`, `Etag`, `Path`) that `HttpServer.serve()` requires. Uses `@effect/platform`'s built-in `layerContext` with an Expo-specific `HttpPlatform` that passes file paths to the native layer for zero-copy file responses.
+Provides the context services (`HttpPlatform`, `FileSystem`, `Etag`, `Path`) that `HttpServer.serve()` requires. Built on `@effect/platform`'s `HttpServer.layerContext` and overridden with the Expo-specific `HttpPlatform` so `HttpServerResponse.file()` passes paths to native for zero-copy file responses.
 
 ### `ExpoHttpPlatform.layer`
 
@@ -72,11 +75,12 @@ Lower-level — just the `HttpPlatform` service. Use this if you're composing yo
 These `@effect/platform` features are fully supported:
 
 - **`HttpRouter`** — all HTTP methods, path matching, nested routers
-- **`HttpServerResponse`** — `.text()`, `.unsafeJson()`, `.raw()`, `.file()`, custom status codes, custom headers, cookies
-- **`HttpServerRequest`** — `.method`, `.url`, `.headers`, `.cookies`, `.remoteAddress`, `.text`, `.json`, `.urlParamsBody`, `.arrayBuffer`, `.stream`
-- **`HttpServer.serve()`** — with optional middleware
-- **File responses** — `HttpServerResponse.file()` passes the path directly to native; large files never cross the JS bridge as bytes
-- **Large request bodies** — bodies above `bodyDiskThresholdBytes` are written to a temp file and read lazily, keeping memory bounded
+- **`HttpServerResponse`** — `.text()`, `.unsafeJson()`, `.raw()`, `.file()`, `.uint8Array()`, custom status codes, custom headers, cookies (including multiple `Set-Cookie` lines)
+- **`HttpServerRequest`** — `.method`, `.url`, `.headers` (multi-valued), `.cookies`, `.remoteAddress`, `.text`, `.json`, `.urlParamsBody`, `.arrayBuffer`, `.stream`
+- **Multi-valued headers** — multiple values for the same header (e.g. `Set-Cookie`, `X-Forwarded-For`) round-trip end-to-end as arrays without lossy comma joins
+- **Binary bodies** — `Uint8Array` request and response bodies are byte-safe (base64 over the bridge); non-UTF-8 request bodies are surfaced via `req.arrayBuffer` / `req.stream`
+- **File responses** — `HttpServerResponse.file()` passes the path directly to native; large files never cross the JS bridge as bytes; byte ranges (`offset`, `bytesToRead`) are honored
+- **Large request bodies** — bodies above `bodyDiskThresholdBytes` are streamed to a temp file as they arrive (works for chunked-transfer requests with no `Content-Length`); a hard cap returns 413 on excessive bodies
 - **Handler timeouts** — native layer returns 504 if the Effect handler exceeds `handlerTimeoutSeconds`
 - **Graceful shutdown** — `stopServer` drains pending requests with 503
 
@@ -84,13 +88,22 @@ These `@effect/platform` features are fully supported:
 
 These `@effect/platform` features are **not yet implemented**:
 
-| Feature                 | Behavior                                                                             |
-| ----------------------- | ------------------------------------------------------------------------------------ |
-| **WebSocket upgrade**   | `request.upgrade` fails with a `RequestError`                                        |
-| **Multipart parsing**   | `request.multipart` / `request.multipartStream` fail with `MultipartError`           |
-| **Streaming responses** | Stream bodies are buffered into a single response — not truly streamed to the client |
-| **FormData responses**  | Returns an unsupported message                                                       |
-| **`fileWebResponse`**   | Returns 501                                                                          |
+| Feature                      | Behavior                                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **WebSocket upgrade**        | `request.upgrade` fails with a `RequestError`                                                                 |
+| **Multipart parsing**        | `request.multipart` / `request.multipartStream` fail with `MultipartError`                                    |
+| **Truly chunked responses**  | Stream bodies are buffered into a single response (base64 over the bridge) — not chunk-streamed to the client |
+| **Streaming request bodies** | `req.stream` from a disk-spilled body is read in chunks, but in-memory bodies emit as a single chunk          |
+| **FormData responses**       | Returns an unsupported message                                                                                |
+| **`fileWebResponse`**        | Returns 501                                                                                                   |
+
+## Threat model
+
+The defaults aim for safety on a single device:
+
+- **Default bind is `127.0.0.1`** — the server is only reachable from inside the same device. Pass `hostname: '0.0.0.0'` to expose to the LAN, but only after considering what the JS handler can read.
+- **`respondToRequestWithFile` is sandboxed** — by default file responses must resolve under the app's documents directory, cache directory, or temp directory. Override with `fileSandboxRoots` to allow specific extra paths. Symlinks are resolved before the prefix check so a symlink can't smuggle a path out of the sandbox.
+- **Concurrent-request cap** — `maxConcurrentRequests` (default 256) limits how many requests can be in-flight at once; further requests return 503. Combined with `bodyDiskThresholdBytes` and the hard body-size cap, this bounds memory under a flood.
 
 ## Example app
 

@@ -1,6 +1,10 @@
 import { NativeModule, requireNativeModule } from 'expo'
 
-import type { ExpoEffectPlatformModuleEvents, ServerOptions } from './ExpoEffectPlatform.types.ts'
+import type {
+  BodyEncoding,
+  ExpoEffectPlatformModuleEvents,
+  ServerOptions,
+} from './ExpoEffectPlatform.types.ts'
 
 declare class ExpoEffectPlatformModule extends NativeModule<ExpoEffectPlatformModuleEvents> {
   getNetworkInterfaces(): Record<string, string>
@@ -9,14 +13,17 @@ declare class ExpoEffectPlatformModule extends NativeModule<ExpoEffectPlatformMo
   respondToRequest(
     requestId: string,
     statusCode: number,
-    headers: Record<string, string>,
-    body: string
+    headers: Record<string, ReadonlyArray<string>>,
+    body: string,
+    bodyEncoding: BodyEncoding
   ): Promise<void>
   respondToRequestWithFile(
     requestId: string,
     statusCode: number,
-    headers: Record<string, string>,
-    filePath: string
+    headers: Record<string, ReadonlyArray<string>>,
+    filePath: string,
+    start: number | null,
+    end: number | null
   ): Promise<void>
 }
 
