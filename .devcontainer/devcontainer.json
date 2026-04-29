@@ -19,9 +19,8 @@
     "source=claude-config,target=/node/.claude,type=volume",
     "source=node_modules,target=${containerWorkspaceFolder}/node_modules,type=volume"
   ],
+  "runArgs": ["--env-file", ".devcontainer/devcontainer.env"],
   "forwardPorts": [5173],
-  "containerEnv": {
-    "GH_TOKEN": "${localEnv:GH_TOKEN}"
-  },
+
   "postCreateCommand": "bash -i .devcontainer/postCreateCommand.sh"
 }

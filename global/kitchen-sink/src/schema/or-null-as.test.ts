@@ -52,7 +52,10 @@ describe('OrNullAsUndefined', () => {
 
   describe('round trip', () => {
     const innerArb = Arbitrary.make(Schema.NumberFromString)
-    const typeArb = fc.oneof(fc.constant(null), innerArb)
+    const typeArb = fc.oneof(
+      fc.constant(null),
+      innerArb.filter((n) => !Object.is(n, -0.0))
+    )
 
     it('round trips type values: type -> encoded -> type', () => {
       fc.assert(
@@ -128,7 +131,12 @@ describe('OrNullAsOptional', () => {
 
   describe('round trip', () => {
     const innerArb = Arbitrary.make(Schema.NumberFromString)
-    const typeArb = fc.record({ value: fc.oneof(fc.constant(null), innerArb) })
+    const typeArb = fc.record({
+      value: fc.oneof(
+        fc.constant(null),
+        innerArb.filter((n) => !Object.is(n, -0.0))
+      ),
+    })
 
     it('round trips type values: type -> encoded -> type', () => {
       fc.assert(

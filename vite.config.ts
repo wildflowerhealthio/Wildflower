@@ -37,8 +37,14 @@ export default defineConfig({
       partitionByNewline: true,
       newlinesBetween: false,
     },
-
-    excludeFiles: ['**/tapes/**/*', 'dist/**', 'coverage/**', '**/vendor/**', 'test/snapshots/**'],
+    ignorePatterns: [
+      '**/tapes/**/*',
+      '**/dist/**',
+      '**/coverage/**',
+      '**/vendor/**',
+      '**/test/snapshots/**',
+      'slices/apps/vendor-apps/src/generated-*.ts',
+    ],
   },
   lint: {
     ignorePatterns: [
@@ -48,6 +54,7 @@ export default defineConfig({
       '**/coverage/**',
       '**/vendor/**',
       '**/test/snapshots/**',
+      'slices/apps/vendor-apps/src/generated-*.ts',
     ],
     plugins: ['typescript', 'react', 'unicorn', 'import'],
     categories: {
