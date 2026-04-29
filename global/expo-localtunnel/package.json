@@ -1,0 +1,63 @@
+{
+  "name": "expo-localtunnel",
+  "version": "0.1.0",
+  "description": "An Expo compatible version of localtunnel",
+  "keywords": [
+    "ExpoLocaltunnel",
+    "expo",
+    "expo-localtunnel",
+    "react-native"
+  ],
+  "homepage": "https://github.com/ruthmarks151/expo-localtunnel#readme",
+  "bugs": {
+    "url": "https://github.com/ruthmarks151/expo-localtunnel/issues"
+  },
+  "license": "MIT",
+  "author": "Ruth Marks <ruthmarks151@gmail.com> (https://github.com/ruthmarks151)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ruthmarks151/expo-localtunnel.git"
+  },
+  "files": [
+    "android",
+    "ios",
+    "dist",
+    "expo-module.config.json"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.mjs"
+    },
+    "./package.json": "./package.json",
+    "./expo-module.config.json": "./expo-module.config.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "eventemitter3": "^5.0.4"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.14",
+    "expo": "55.0.9",
+    "expo-module-scripts": "^55.0.2",
+    "react": "catalog:",
+    "react-native": "catalog:",
+    "typescript": "^6.0.2",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "react": "catalog:",
+    "react-native": "catalog:"
+  }
+}

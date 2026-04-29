@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["ExpoLocaltunnelModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.localtunnel.ExpoLocaltunnelModule"]
+  }
+}
