@@ -115,7 +115,7 @@ const age = computeAge(user)
 **👍 Prefer** leveraging `@fast-check/vitest`, if installed
 
 ```ts
-import { describe } from 'vitest'
+import { describe } from 'vite-plus/test'
 import { it, fc } from '@fast-check/vitest'
 
 describe('computeAge', () => {
@@ -354,7 +354,7 @@ it('...', ({ g }) => {
 })
 
 // with fast-check
-import { it } from 'vitest'
+import { it } from 'vite-plus/test'
 import fc from 'fast-check'
 it('...', () => {
   fc.assert(
@@ -375,7 +375,7 @@ it.prop([...arbitraries])('...', (...values) => {
 })
 
 // with fast-check
-import { it } from 'vitest'
+import { it } from 'vite-plus/test'
 import fc from 'fast-check'
 it('...', () => {
   fc.assert(
@@ -396,7 +396,7 @@ it.prop([...arbitraries])('...', async (...values) => {
 })
 
 // with fast-check
-import { it } from 'vitest'
+import { it } from 'vite-plus/test'
 import fc from 'fast-check'
 it('...', async () => {
   await fc.assert(

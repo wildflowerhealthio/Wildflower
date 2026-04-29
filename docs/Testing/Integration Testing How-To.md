@@ -30,7 +30,7 @@ Create `test/helpers/test-config.ts`:
 
 ```typescript
 import { http, HttpResponse } from 'msw'
-import { beforeAll, afterAll, afterEach } from 'vitest'
+import { beforeAll, afterAll, afterEach } from 'vite-plus/test'
 import { setupServer } from 'msw/node'
 import { setupInterceptServer } from '@assessmentis/vcr-js'
 
