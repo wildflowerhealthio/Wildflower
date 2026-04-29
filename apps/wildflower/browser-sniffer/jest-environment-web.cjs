@@ -1,4 +1,3 @@
-// oxlint-disable @typescript-eslint/no-unsafe-assignment
 // Custom jest environment that extends jsdom with modern Web API globals.
 // jest-environment-jsdom doesn't expose Node.js built-in fetch APIs (Response,
 // Request, Headers, TransformStream, etc.) because jsdom's window doesn't
