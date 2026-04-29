@@ -1,0 +1,51 @@
+{
+  "name": "react-tundraish",
+  "version": "0.0.0",
+  "description": "Tundra-inspired shared React (DOM) components for Wildflower web bundles.",
+  "keywords": [
+    "design-system",
+    "react",
+    "tundra",
+    "ui",
+    "web"
+  ],
+  "license": "MIT",
+  "author": "Ruth Marks <ruthmarks151@gmail.com> (https://github.com/ruthmarks151)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildlflower.git",
+    "directory": "global/react-tundraish"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.14",
+    "react": "catalog:",
+    "tundra-css": "^0.14.0",
+    "typescript": "^6.0.2",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "catalog:",
+    "tundra-css": "^0.14.0"
+  }
+}
