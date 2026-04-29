@@ -66,14 +66,13 @@ function captureListener(): (payload: OnHttpRequestPayload) => void {
   return lastCall[1]
 }
 
-function whenRespondedTo(mock: jest.Mock = mockRespondToRequest, timeout = 3000): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`Response timeout after ${timeout}ms`)),
-      timeout
-    )
-    mock.mockImplementationOnce((..._args: any[]) => {
-      clearTimeout(timer)
+// Returns a promise that resolves the next time `mock` is invoked. No internal
+// timeout — if the mock is never called, jest's per-test timeout will fail the
+// test with a clearer error than a racing wall-clock setTimeout would. Wall-
+// clock waits would also make CI flaky under load.
+function whenRespondedTo(mock: jest.Mock = mockRespondToRequest): Promise<void> {
+  return new Promise<void>((resolve) => {
+    mock.mockImplementationOnce(() => {
       resolve()
       return Promise.resolve()
     })

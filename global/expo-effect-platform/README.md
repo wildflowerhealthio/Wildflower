@@ -105,6 +105,14 @@ The defaults aim for safety on a single device:
 - **`respondToRequestWithFile` is sandboxed** — by default file responses must resolve under the app's documents directory, cache directory, or temp directory. Override with `fileSandboxRoots` to allow specific extra paths. Symlinks are resolved before the prefix check so a symlink can't smuggle a path out of the sandbox.
 - **Concurrent-request cap** — `maxConcurrentRequests` (default 256) limits how many requests can be in-flight at once; further requests return 503. Combined with `bodyDiskThresholdBytes` and the hard body-size cap, this bounds memory under a flood.
 
+## Testing
+
+This package uses **Jest** (via `jest-expo`), not the repo-default `vp test` (Vitest). Run with `pnpm test`.
+
+The reason: `expo-modules-core`'s test infrastructure (`jest-expo`, the Expo babel preset, the runtime mock module map) is built around Jest. Migrating Expo modules to Vitest is a known open issue upstream — until that lands, native-module-touching test files in this package have to use `jest.mock()` against the resolved module graph that `jest-expo` produces. `vite-plus/test` can't drive that.
+
+If you're tempted to "fix" `"test": "jest"` to `"test": "vp test"` to align with `CLAUDE.md`: don't. The mocks in `src/__tests__/*.test.ts` will silently stop intercepting `expo-effect-platform/ExpoEffectPlatformModule` and the tests will load the real native bridge (and fail outside Expo).
+
 ## Example app
 
 The [`example/`](example/) directory contains an Expo app that starts the server and runs feature tests (text, JSON, POST echo, headers, query params, status codes, timeouts) with PASS/FAIL output.
