@@ -1,0 +1,71 @@
+name: Lint Docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  lint-comments:
+    name: Lint doc comments (TSDoc)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: vp install
+
+      - name: Enable ESLint problem matcher
+        run: echo "::add-matcher::.github/eslint-problem-matcher.json"
+
+      - name: Run ESLint with eslint-plugin-tsdoc
+        run: vp run lint:comments
+        continue-on-error: true
+
+  check-markdown-changes:
+    name: Detect markdown changes
+    runs-on: ubuntu-latest
+    outputs:
+      has-markdown: ${{ steps.filter.outputs.markdown }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            markdown:
+              - '**/*.md'
+
+  markdownlint:
+    name: Markdownlint
+    needs: check-markdown-changes
+    if: needs.check-markdown-changes.outputs.has-markdown == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: vp install
+
+      - uses: DavidAnson/markdownlint-cli2-action@v22
+        with:
+          config: .markdownlint-cli2.mjs

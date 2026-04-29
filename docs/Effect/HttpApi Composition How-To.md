@@ -65,13 +65,13 @@ What each export is for:
 
 ### Naming conventions
 
-| Symbol | Convention |
-| --- | --- |
-| The Api | `<SliceName>Api` (PascalCase) |
-| Group-name union | `<SliceName>GroupNames` (string-literal union of every group's name) |
-| Standalone Layer | `<SliceName>ApiLive` |
-| Internal handlers Layer | `<SliceName>ApiHandlersLive` |
-| Cross-slice helper | `<SliceName>ApiHandlersFor` |
+| Symbol                  | Convention                                                           |
+| ----------------------- | -------------------------------------------------------------------- |
+| The Api                 | `<SliceName>Api` (PascalCase)                                        |
+| Group-name union        | `<SliceName>GroupNames` (string-literal union of every group's name) |
+| Standalone Layer        | `<SliceName>ApiLive`                                                 |
+| Internal handlers Layer | `<SliceName>ApiHandlersLive`                                         |
+| Cross-slice helper      | `<SliceName>ApiHandlersFor`                                          |
 
 ### Required comment + lint disable
 
@@ -92,9 +92,7 @@ import { Layer } from 'effect'
 import { AppsApi, AppsApiHandlersFor } from '@wildflower/apps-core'
 import { AuthApi, AuthApiHandlersFor } from '@wildflower/gatekeeper-core'
 
-const WildflowerNodeApi = HttpApi.make('WildflowerNodeApi')
-  .addHttpApi(AuthApi)
-  .addHttpApi(AppsApi)
+const WildflowerNodeApi = HttpApi.make('WildflowerNodeApi').addHttpApi(AuthApi).addHttpApi(AppsApi)
 
 const WildflowerNodeApiHandlersLive = Layer.mergeAll(
   AuthApiHandlersFor<'WildflowerNodeApi'>(),
