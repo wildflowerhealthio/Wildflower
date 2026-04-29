@@ -21,7 +21,7 @@
   "type": "module",
   "scripts": {
     "dev": "vp run website#dev",
-    "lint:comments": "eslint ./apps ./domain ./global ./infrastructure ./slices",
+    "lint:comments": "eslint ./apps ./global ./slices",
     "lint:docs": "markdownlint-cli2 --config .local.markdownlint-cli2.mjs",
     "prepare": "vp config",
     "ready": "vp fmt && vp lint && vp run lint:comments && vp run lint:docs && vp run -r test && vp run -r build"

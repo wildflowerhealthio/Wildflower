@@ -19,7 +19,14 @@ const config = {
     },
   },
   globs: ['**/*.md'],
-  ignores: ['**/node_modules', '**/dist/**', '**/dist-html/**', '**/vendor/**'],
+  ignores: [
+    '**/node_modules',
+    '**/dist/**',
+    '**/dist-html/**',
+    '**/vendor/**',
+    '**/Pods/**',
+    '**/.expo/**',
+  ],
 }
 
 export default config

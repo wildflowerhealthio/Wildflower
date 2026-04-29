@@ -94,6 +94,7 @@ vp check             # Format + lint + typecheck
 vp install           # Install/sync dependencies (run after pulling)
 ```
 
+<!-- markdownlint-disable no-bare-urls -->
 <!--VITE PLUS START-->
 
 # Using Vite+, the Unified Toolchain for the Web

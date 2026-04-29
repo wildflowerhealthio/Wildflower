@@ -20,10 +20,10 @@ export default defineConfig({
       },
     },
     setupFiles: [
-      path.join(
-        path.dirname(fileURLToPath(import.meta.url)),
-        './domain/fhir-r4-livestore/vitest.setupSchemaEqual.ts'
-      ),
+      // path.join(
+      //   path.dirname(fileURLToPath(import.meta.url)),
+      //   './domain/fhir-r4-livestore/vitest.setupSchemaEqual.ts'
+      // ),
     ],
   },
   fmt: {

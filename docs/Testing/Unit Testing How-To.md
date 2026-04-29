@@ -72,7 +72,7 @@ expect(error._tag).toBe('SomeError')
 
 ```typescript
 import { Composition } from './Composition'
-import { Composition as FhirComposition } from 'fhir/r4.d.ts'
+import type { Composition as FhirComposition } from 'fhir/r4.d.ts'
 
 // Compile-time check: Encoded schema must match FHIR R4 type
 const _check: DeepReadonly<FhirComposition> = Composition.Encoded
