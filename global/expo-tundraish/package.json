@@ -1,0 +1,80 @@
+{
+  "name": "expo-tundraish",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tundra-inspired shared UI primitives, theme tokens, and hooks for Expo/React Native apps.",
+  "keywords": [
+    "design-system",
+    "expo",
+    "react-native",
+    "tundra",
+    "ui"
+  ],
+  "license": "MIT",
+  "author": "Ruth Marks <ruthmarks151@gmail.com> (https://github.com/ruthmarks151)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildlflower.git",
+    "directory": "global/expo-tundraish"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.10",
+    "@babel/plugin-syntax-import-attributes": "^7.26.0",
+    "@babel/runtime": "^7.26.10",
+    "@expo/vector-icons": "^15.0.3",
+    "@react-navigation/bottom-tabs": "^7.15.5",
+    "@react-navigation/elements": "^2.9.13",
+    "@testing-library/react-native": "catalog:",
+    "@types/jest": "catalog:",
+    "@types/react": "~19.2.14",
+    "babel-preset-expo": "~55.0.13",
+    "effect": "catalog:",
+    "expo": "55.0.9",
+    "expo-haptics": "~55.0.9",
+    "expo-router": "~55.0.8",
+    "expo-symbols": "~55.0.5",
+    "expo-web-browser": "~55.0.12",
+    "jest": "catalog:",
+    "jest-expo": "catalog:",
+    "react": "catalog:",
+    "react-native": "catalog:",
+    "react-native-reanimated": "catalog:",
+    "react-native-webview": "13.16.0",
+    "react-native-worklets": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@expo/vector-icons": "^15.0.0",
+    "@react-navigation/bottom-tabs": "^7.0.0",
+    "@react-navigation/elements": "^2.0.0",
+    "effect": "catalog:",
+    "expo": "~55.0.0",
+    "expo-haptics": "~55.0.0",
+    "expo-router": "~55.0.0",
+    "expo-symbols": "~55.0.0",
+    "expo-web-browser": "~55.0.0",
+    "react": "catalog:",
+    "react-native": "catalog:",
+    "react-native-reanimated": "catalog:",
+    "react-native-webview": "^13.0.0"
+  }
+}
