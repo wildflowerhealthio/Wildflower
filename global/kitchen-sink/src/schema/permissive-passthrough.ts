@@ -54,6 +54,6 @@ export const PermissivePassthrough = Schema.declare<unknown, any, []>(
     arbitrary: () => Arbitrary.makeLazy(Schema.Object),
     equivalence: () => deepEqual,
     description: 'A placeholder schema that accepts any value.',
-    jsonSchema: { type: 'unknown' },
+    jsonSchema: {},
   }
 )

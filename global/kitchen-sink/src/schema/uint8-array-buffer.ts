@@ -19,12 +19,12 @@ const Uint8ArrayBufferFromSelf: Schema.Schema<
   description: 'a Uint8Array with an ArrayBuffer as its buffer',
 })
 
-const Uint8ArrayBufferFromBase64: Schema.Schema<
+const Base64FromUint8ArrayBuffer: Schema.Schema<
   string,
   Uint8Array<ArrayBuffer>
 > = Schema.transformOrFail(
   Uint8ArrayBufferFromSelf,
-  Schema.String.annotations({ description: 'a string to be decoded into a Uint8Array' }),
+  Schema.String.annotations({ description: 'a base64-encoded string representation of the bytes' }),
   {
     strict: true,
     encode: (i, _, ast) =>
@@ -36,9 +36,9 @@ const Uint8ArrayBufferFromBase64: Schema.Schema<
     decode: (a) => ParseResult.succeed(Encoding.encodeBase64(a)),
   }
 ).annotations({
-  identifier: 'Uint8ArrayBufferFromBase64',
+  identifier: 'Base64FromUint8ArrayBuffer',
   arbitrary: () => (fc: typeof FastCheck) =>
     arbitraryArrayBuffer()(fc).map((a) => Encoding.encodeBase64(a)),
 })
 
-export { Uint8ArrayBufferFromBase64, Uint8ArrayBufferFromSelf }
+export { Base64FromUint8ArrayBuffer, Uint8ArrayBufferFromSelf }

@@ -2,7 +2,7 @@ import { Arbitrary, Either, Encoding, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { Uint8ArrayBufferFromBase64, Uint8ArrayBufferFromSelf } from './uint8-array-buffer.ts'
+import { Base64FromUint8ArrayBuffer, Uint8ArrayBufferFromSelf } from './uint8-array-buffer.ts'
 
 describe('Uint8ArrayBufferFromSelf', () => {
   it('should decode a Uint8Array with an ArrayBuffer as its buffer', () => {
@@ -36,22 +36,22 @@ describe('Uint8ArrayBufferFromSelf', () => {
   })
 })
 
-describe('Uint8ArrayBufferFromBase64', () => {
+describe('Base64FromUint8ArrayBuffer', () => {
   it('should decode a Uint8Array into its base64 string representation', () => {
     const input = new Uint8Array([0, 1, 2])
-    const result = Schema.decodeSync(Uint8ArrayBufferFromBase64)(input)
+    const result = Schema.decodeSync(Base64FromUint8ArrayBuffer)(input)
     expect(result).toBe('AAEC')
   })
 
   it('should encode a base64 string into a Uint8Array', () => {
-    const result = Schema.encodeSync(Uint8ArrayBufferFromBase64)('AAEC')
+    const result = Schema.encodeSync(Base64FromUint8ArrayBuffer)('AAEC')
     expect(result).toBeInstanceOf(Uint8Array)
     expect(result.buffer).toBeInstanceOf(ArrayBuffer)
     expect(Array.from(result)).toEqual([0, 1, 2])
   })
 
   it('should fail to encode an invalid base64 string', () => {
-    const result = Schema.encodeEither(Uint8ArrayBufferFromBase64)('not*valid*base64')
+    const result = Schema.encodeEither(Base64FromUint8ArrayBuffer)('not*valid*base64')
     expect(Either.isLeft(result)).toBe(true)
   })
 
@@ -59,8 +59,8 @@ describe('Uint8ArrayBufferFromBase64', () => {
     const arb = Arbitrary.make(Uint8ArrayBufferFromSelf)
     fc.assert(
       fc.property(arb, (bytes) => {
-        const encoded = Schema.decodeSync(Uint8ArrayBufferFromBase64)(bytes)
-        const decoded = Schema.encodeSync(Uint8ArrayBufferFromBase64)(encoded)
+        const encoded = Schema.decodeSync(Base64FromUint8ArrayBuffer)(bytes)
+        const decoded = Schema.encodeSync(Base64FromUint8ArrayBuffer)(encoded)
         expect(Array.from(decoded)).toEqual(Array.from(bytes))
       })
     )
@@ -70,19 +70,19 @@ describe('Uint8ArrayBufferFromBase64', () => {
     const base64Arb = fc.uint8Array().map((bytes) => Encoding.encodeBase64(bytes))
     fc.assert(
       fc.property(base64Arb, (base64) => {
-        const bytes = Schema.encodeSync(Uint8ArrayBufferFromBase64)(base64)
-        const reEncoded = Schema.decodeSync(Uint8ArrayBufferFromBase64)(bytes)
+        const bytes = Schema.encodeSync(Base64FromUint8ArrayBuffer)(base64)
+        const reEncoded = Schema.decodeSync(Base64FromUint8ArrayBuffer)(bytes)
         expect(reEncoded).toBe(base64)
       })
     )
   })
 
   it('should generate valid base64 strings via its arbitrary annotation', () => {
-    const arb = Arbitrary.make(Uint8ArrayBufferFromBase64)
+    const arb = Arbitrary.make(Base64FromUint8ArrayBuffer)
     fc.assert(
       fc.property(arb, (value) => {
         expect(typeof value).toBe('string')
-        const result = Schema.encodeEither(Uint8ArrayBufferFromBase64)(value)
+        const result = Schema.encodeEither(Base64FromUint8ArrayBuffer)(value)
         expect(Either.isRight(result)).toBe(true)
       })
     )
