@@ -1,8 +1,6 @@
 import { render } from '@testing-library/react-native'
 
-jest.mock('react-native-worklets', () =>
-  require('react-native-worklets/src/mock')
-);
+jest.mock('react-native-worklets', () => require('react-native-worklets/src/mock'))
 
 import { AnimatedHeaderBackground } from './animated-header-background'
 

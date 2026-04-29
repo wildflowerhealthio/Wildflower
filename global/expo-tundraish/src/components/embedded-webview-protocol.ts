@@ -30,4 +30,7 @@ type HostToPageMessage = typeof HostToPageMessage.Type
 const decodePageToHost = Schema.decodeOption(Schema.parseJson(PageToHostMessage))
 
 export { decodePageToHost, HostToPageMessage, PageToHostMessage }
-export type { HostToPageMessage as HostToPageMessageType, PageToHostMessage as PageToHostMessageType }
+export type {
+  HostToPageMessage as HostToPageMessageType,
+  PageToHostMessage as PageToHostMessageType,
+}

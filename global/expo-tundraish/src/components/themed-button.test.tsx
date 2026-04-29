@@ -28,9 +28,7 @@ describe('ThemedButton', () => {
     ['ghost', 'Ghost'],
   ] as const)('renders variant %s and still fires onPress', (variant, label) => {
     const onPress = jest.fn()
-    const { getByText } = render(
-      <ThemedButton title={label} variant={variant} onPress={onPress} />
-    )
+    const { getByText } = render(<ThemedButton title={label} variant={variant} onPress={onPress} />)
     expect(getByText(label)).toBeTruthy()
     fireEvent.press(getByText(label))
     expect(onPress).toHaveBeenCalledTimes(1)

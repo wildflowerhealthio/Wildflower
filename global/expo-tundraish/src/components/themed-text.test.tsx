@@ -27,9 +27,7 @@ describe('ThemedText', () => {
   })
 
   it('forwards arbitrary text props', () => {
-    const { getByText } = render(
-      <ThemedText accessibilityLabel="hello-label">hello</ThemedText>
-    )
+    const { getByText } = render(<ThemedText accessibilityLabel="hello-label">hello</ThemedText>)
     expect(getByText('hello').props.accessibilityLabel).toBe('hello-label')
   })
 })

@@ -126,8 +126,6 @@ const EmbeddedWebView = forwardRef<EmbeddedWebViewHandle, EmbeddedWebViewProps>(
       [dispatchPageMessage, onMessage]
     )
 
-    
-
     useEffect(() => {
       if (!canGoBack) {
         navigation.setOptions({ headerLeft: undefined })
