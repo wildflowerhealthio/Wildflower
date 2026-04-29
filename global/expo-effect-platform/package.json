@@ -1,0 +1,73 @@
+{
+  "name": "expo-effect-platform",
+  "version": "0.1.0",
+  "description": "An Effect platform using expo modules",
+  "keywords": [
+    "ExpoEffectPlatform",
+    "expo",
+    "expo-effect-platform",
+    "react-native"
+  ],
+  "homepage": "https://github.com/ruthmarks151/expo-effect-platform#readme",
+  "bugs": {
+    "url": "https://github.com/ruthmarks151/expo-effect-platform/issues"
+  },
+  "license": "MIT",
+  "author": "Ruth Marks <ruthmarks151@gmail.com> (https://github.com/ruthmarks151)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ruthmarks151/expo-effect-platform.git"
+  },
+  "files": [
+    "android",
+    "ios",
+    "dist",
+    "expo-module.config.json"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.mjs"
+    },
+    "./ExpoEffectPlatformModule": {
+      "source": "./src/ExpoEffectPlatformModule.ts",
+      "default": "./dist/ExpoEffectPlatformModule.mjs"
+    },
+    "./package.json": "./package.json",
+    "./expo-module.config.json": "./expo-module.config.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.10",
+    "@effect/platform": "catalog:",
+    "@types/jest": "catalog:",
+    "@types/react": "~19.2.14",
+    "babel-preset-expo": "~55.0.13",
+    "effect": "catalog:",
+    "expo": "55.0.9",
+    "expo-module-scripts": "^55.0.2",
+    "jest": "catalog:",
+    "jest-expo": "catalog:",
+    "react": "catalog:",
+    "react-native": "catalog:",
+    "typescript": "^6.0.2",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "effect": "catalog:",
+    "expo": "*",
+    "react": "catalog:",
+    "react-native": "catalog:"
+  }
+}
