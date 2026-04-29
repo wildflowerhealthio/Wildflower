@@ -80,6 +80,7 @@
     "eslint-plugin-expo": "^1.0.0",
     "fast-check": "catalog:",
     "jest": "catalog:",
+    "jest-environment-jsdom": "catalog:",
     "jest-expo": "catalog:",
     "typescript": "^5.8.3",
     "vite-plus": "^0.1.20"
