@@ -13,9 +13,18 @@
   ],
   "type": "module",
   "exports": {
-    ".": "./dist/index.mjs",
-    "./schema": "./dist/schema.mjs",
-    "./types": "./dist/types.mjs",
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.mjs"
+    },
+    "./schema": {
+      "source": "./src/schema/index.ts",
+      "default": "./dist/schema.mjs"
+    },
+    "./types": {
+      "source": "./src/types/index.ts",
+      "default": "./dist/types.mjs"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -28,15 +37,16 @@
     "prepublishOnly": "vp run build",
     "test": "vp test"
   },
-  "dependencies": {
-    "effect": "catalog:"
-  },
   "devDependencies": {
     "@types/node": "^25.5.0",
     "@typescript/native-preview": "7.0.0-dev.20260328.1",
     "bumpp": "^11.0.1",
+    "effect": "catalog:",
     "fast-check": "catalog:",
     "typescript": "^6.0.2",
     "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:"
   }
 }
