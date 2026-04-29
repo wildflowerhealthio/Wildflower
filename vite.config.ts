@@ -40,16 +40,16 @@ export default defineConfig({
       newlinesBetween: false,
     },
 
-    excludeFiles: ['**/tapes/**/*', 'dist/**', 'coverage/**', 'vendor/**', 'test/snapshots/**'],
+    excludeFiles: ['**/tapes/**/*', 'dist/**', 'coverage/**', '**/vendor/**', 'test/snapshots/**'],
   },
   lint: {
     ignorePatterns: [
       '**/tapes/**/*',
       '**/dist/**',
-      '/dist/**',
-      'coverage/**',
-      'vendor/**',
-      'test/snapshots/**',
+      '**/dist/**',
+      '**/coverage/**',
+      '**/vendor/**',
+      '**/test/snapshots/**',
     ],
     plugins: ['typescript', 'react', 'unicorn', 'import'],
     categories: {
