@@ -5,29 +5,8 @@ import type { SymbolWeight } from 'expo-symbols'
 import { type JSX } from 'react'
 import type { OpaqueColorValue, StyleProp, TextStyle } from 'react-native'
 
-type IconSymbolName = keyof typeof MAPPING
+import { MAPPING, type IconSymbolName } from './icon-symbol-mapping.ts'
 
-/**
- * Add your SF Symbols to Material Icons mappings here.
- * - see Material Icons in the [Icons Directory](https://icons.expo.fyi).
- * - see SF Symbols in the [SF Symbols](https://developer.apple.com/sf-symbols/) app.
- */
-const MAPPING = {
-  'house.fill': 'home',
-  'paperplane.fill': 'send',
-  'chevron.left.forwardslash.chevron.right': 'code',
-  'chevron.right': 'chevron-right',
-  // Records
-  'folder.fill': 'folder',
-  // Context menu actions
-  pencil: 'edit',
-  trash: 'delete',
-  eye: 'visibility',
-  'arrow.down.circle': 'file-download',
-  'checkmark.circle': 'check-circle',
-  'xmark.circle': 'cancel',
-  ellipsis: 'more-horiz',
-} as const satisfies { [k: string]: React.ComponentProps<typeof MaterialIcons>['name'] }
 /**
  * An icon component that uses native SF Symbols on iOS, and Material Icons on Android and web.
  * This ensures a consistent look across platforms, and optimal resource usage.

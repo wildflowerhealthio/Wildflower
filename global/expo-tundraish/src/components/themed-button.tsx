@@ -35,45 +35,29 @@ export function ThemedButton({
     Match.exhaustive
   )
 
-  const getVariantStyle = (pressed: boolean): ViewStyle =>
-    Match.value({ disabled, variant, pressed }).pipe(
-      Match.when({ disabled: true, variant: 'filled', pressed: Match.any }, () => ({
-        backgroundColor: textMuted,
-        borderColor: textMuted,
-      })),
-      Match.when(
-        { disabled: true, variant: Match.is('outline', 'ghost'), pressed: Match.any },
-        () => ({
-          backgroundColor: 'transparent',
-          borderColor: 'transparent',
-        })
-      ),
-      Match.when({ disabled: false, variant: 'filled', pressed: true }, () => ({
-        backgroundColor: accentPressed,
-        borderColor: accentPressed,
-      })),
-      Match.when({ disabled: false, variant: 'filled', pressed: false }, () => ({
-        backgroundColor: accent,
-        borderColor: accent,
-      })),
-      Match.when({ disabled: false, variant: 'outline', pressed: true }, () => ({
-        backgroundColor: accentSubtle,
-        borderColor: accentPressed,
-      })),
-      Match.when({ disabled: false, variant: 'outline', pressed: false }, () => ({
-        backgroundColor: 'transparent',
-        borderColor: accent,
-      })),
-      Match.when({ disabled: false, variant: 'ghost', pressed: true }, () => ({
-        backgroundColor: surfacePressed,
-        borderColor: 'transparent',
-      })),
-      Match.when({ disabled: false, variant: 'ghost', pressed: false }, () => ({
-        backgroundColor: 'transparent',
-        borderColor: 'transparent',
-      })),
-      Match.exhaustive
-    )
+  const variantStyles = Match.value({ disabled, variant }).pipe(
+    Match.when({ disabled: true, variant: 'filled' }, () => ({
+      idle: { backgroundColor: textMuted, borderColor: textMuted } satisfies ViewStyle,
+      pressed: { backgroundColor: textMuted, borderColor: textMuted } satisfies ViewStyle,
+    })),
+    Match.when({ disabled: true, variant: Match.is('outline', 'ghost') }, () => ({
+      idle: { backgroundColor: 'transparent', borderColor: 'transparent' } satisfies ViewStyle,
+      pressed: { backgroundColor: 'transparent', borderColor: 'transparent' } satisfies ViewStyle,
+    })),
+    Match.when({ disabled: false, variant: 'filled' }, () => ({
+      idle: { backgroundColor: accent, borderColor: accent } satisfies ViewStyle,
+      pressed: { backgroundColor: accentPressed, borderColor: accentPressed } satisfies ViewStyle,
+    })),
+    Match.when({ disabled: false, variant: 'outline' }, () => ({
+      idle: { backgroundColor: 'transparent', borderColor: accent } satisfies ViewStyle,
+      pressed: { backgroundColor: accentSubtle, borderColor: accentPressed } satisfies ViewStyle,
+    })),
+    Match.when({ disabled: false, variant: 'ghost' }, () => ({
+      idle: { backgroundColor: 'transparent', borderColor: 'transparent' } satisfies ViewStyle,
+      pressed: { backgroundColor: surfacePressed, borderColor: 'transparent' } satisfies ViewStyle,
+    })),
+    Match.exhaustive
+  )
 
   const textColor = Match.value({ disabled, variant }).pipe(
     Match.when({ disabled: Match.any, variant: 'filled' }, () => background),
@@ -87,7 +71,11 @@ export function ThemedButton({
     <Pressable
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.base, sizeStyle, getVariantStyle(pressed)]}
+      style={({ pressed }) => [
+        styles.base,
+        sizeStyle,
+        pressed ? variantStyles.pressed : variantStyles.idle,
+      ]}
     >
       <Text
         style={[

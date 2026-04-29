@@ -8,8 +8,14 @@ export {
   type EmbeddedWebViewProps,
   type EmbeddedWebViewSource,
 } from './components/embedded-webview.tsx'
-export { ExternalLink } from './components/external-link.tsx'
+export {
+  HostToPageMessage,
+  type HostToPageMessageType,
+  PageToHostMessage,
+  type PageToHostMessageType,
+} from './components/embedded-webview-protocol.ts'
 export { IconSymbol } from './components/icon-symbol.tsx'
+export { type IconSymbolName } from './components/icon-symbol-mapping.ts'
 export { ThemedButton, type ThemedButtonProps } from './components/themed-button.tsx'
 export { ThemedText, type ThemedTextProps } from './components/themed-text.tsx'
 export { ThemedView, type ThemedViewProps } from './components/themed-view.tsx'

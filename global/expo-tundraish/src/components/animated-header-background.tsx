@@ -1,4 +1,4 @@
-import { useEffect, useRef, type JSX } from 'react'
+import { useEffect, type JSX } from 'react'
 import { StyleSheet } from 'react-native'
 import Animated, {
   interpolateColor,
@@ -16,47 +16,38 @@ type AnimatedHeaderBackgroundProps = {
   active: boolean
 }
 
+const ANIMATION_DURATION_MS = 400
+const ACTIVE_SHADOW_OPACITY = 0.4
+const ACTIVE_SHADOW_RADIUS = 8
+const ACTIVE_SHADOW_OFFSET_Y = 2
+const ACTIVE_ELEVATION = 4
+
 function AnimatedHeaderBackground({
   cardColor,
   warningColor,
   borderColor,
   active,
 }: AnimatedHeaderBackgroundProps): JSX.Element {
-  const targetColor = active ? warningColor : cardColor
-  const prevColor = useRef(targetColor)
-  const progress = useSharedValue(1)
+  const progress = useSharedValue(active ? 1 : 0)
 
   useEffect(() => {
-    progress.set(0)
-    progress.value = withTiming(1, { duration: 400 })
-    return (): void => {
-      prevColor.current = targetColor
-    }
-  }, [targetColor, progress])
-
-  const fromColor = prevColor.current
-  const toColor = targetColor
+    progress.value = withTiming(active ? 1 : 0, { duration: ANIMATION_DURATION_MS })
+  }, [active, progress])
 
   const animatedStyle = useAnimatedStyle(() => {
-    const backgroundColor = interpolateColor(progress.value, [0, 1], [fromColor, toColor])
-    return { backgroundColor, shadowColor: backgroundColor }
+    const backgroundColor = interpolateColor(progress.value, [0, 1], [cardColor, warningColor])
+    return {
+      backgroundColor,
+      shadowColor: backgroundColor,
+      shadowOpacity: progress.value * ACTIVE_SHADOW_OPACITY,
+      shadowRadius: progress.value * ACTIVE_SHADOW_RADIUS,
+      shadowOffset: { width: 0, height: progress.value * ACTIVE_SHADOW_OFFSET_Y },
+      elevation: progress.value * ACTIVE_ELEVATION,
+      borderBottomColor: interpolateColor(progress.value, [0, 1], [borderColor, 'transparent']),
+    }
   })
 
-  return (
-    <Animated.View
-      style={[
-        styles.headerBackground,
-        animatedStyle,
-        { borderBottomColor: active ? 'transparent' : borderColor },
-        active && {
-          shadowOpacity: 0.4,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 2 },
-          elevation: 4,
-        },
-      ]}
-    />
-  )
+  return <Animated.View style={[styles.headerBackground, animatedStyle]} />
 }
 
 const styles = StyleSheet.create({

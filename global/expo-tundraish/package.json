@@ -1,11 +1,11 @@
 {
   "name": "expo-tundraish",
-  "version": "0.1.0",
+  "version": "0.0.0",
+  "private": true,
   "description": "Tundra-inspired shared UI primitives, theme tokens, and hooks for Expo/React Native apps.",
   "keywords": [
     "design-system",
     "expo",
-    "expo-tundraish",
     "react-native",
     "tundra",
     "ui"
@@ -28,9 +28,6 @@
     },
     "./package.json": "./package.json"
   },
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "vp pack",
     "check": "vp check",
@@ -41,6 +38,7 @@
   "devDependencies": {
     "@babel/core": "^7.26.10",
     "@babel/plugin-syntax-import-attributes": "^7.26.0",
+    "@babel/runtime": "^7.26.10",
     "@expo/vector-icons": "^15.0.3",
     "@react-navigation/bottom-tabs": "^7.15.5",
     "@react-navigation/elements": "^2.9.13",
@@ -60,22 +58,23 @@
     "react-native": "catalog:",
     "react-native-reanimated": "catalog:",
     "react-native-webview": "13.16.0",
-    "typescript": "^6.0.2",
+    "react-native-worklets": "catalog:",
+    "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "@expo/vector-icons": "*",
-    "@react-navigation/bottom-tabs": "*",
-    "@react-navigation/elements": "*",
+    "@expo/vector-icons": "^15.0.0",
+    "@react-navigation/bottom-tabs": "^7.0.0",
+    "@react-navigation/elements": "^2.0.0",
     "effect": "catalog:",
-    "expo": "*",
-    "expo-haptics": "*",
-    "expo-router": "*",
-    "expo-symbols": "*",
-    "expo-web-browser": "*",
+    "expo": "~55.0.0",
+    "expo-haptics": "~55.0.0",
+    "expo-router": "~55.0.0",
+    "expo-symbols": "~55.0.0",
+    "expo-web-browser": "~55.0.0",
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-reanimated": "catalog:",
-    "react-native-webview": "*"
+    "react-native-webview": "^13.0.0"
   }
 }

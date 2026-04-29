@@ -1,3 +1,4 @@
+import { Option } from 'effect'
 import { useNavigation, useRouter } from 'expo-router'
 import * as WebBrowser from 'expo-web-browser'
 import {
@@ -6,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -13,40 +15,55 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 import { useColorScheme } from '../hooks/use-color-scheme.ts'
 import { Colors } from '../theme.ts'
+import {
+  decodePageToHost,
+  HostToPageMessage,
+  PageToHostMessage,
+  type HostToPageMessageType,
+  type PageToHostMessageType,
+} from './embedded-webview-protocol.ts'
 
+/**
+ * Imperative handle exposed to parents via `ref`. Use it to push messages back
+ * into the embedded page (host → page direction). The page should listen on
+ * `window.addEventListener('message', ...)` (iOS) or `document.addEventListener`
+ * (Android) for the JSON-encoded payload.
+ */
 interface EmbeddedWebViewHandle {
+  /** Send a JSON string to the embedded page. Caller is responsible for serialising. */
   postMessage(message: string): void
 }
 
+/**
+ * What the embedded WebView should load:
+ * - `{ uri }` — load a remote URL or `file://` asset.
+ * - `{ html, baseUrl? }` — inline HTML, with `baseUrl` controlling relative-path resolution.
+ */
 type EmbeddedWebViewSource = { uri: string } | { html: string; baseUrl?: string }
 
 interface EmbeddedWebViewProps {
+  /** Page contents to load. The first navigation is treated as "internal"; subsequent navigations open in the system browser. */
   readonly source: EmbeddedWebViewSource
+  /** JS injected before any page script runs — useful for declaring `host:overrideReady` early or polyfilling globals. */
   readonly injectedScript?: string
+  /** Catch-all for non-bridge `postMessage` calls from the page. Bridge messages (`host:*`) are intercepted before this fires. */
   readonly onMessage?: (event: WebViewMessageEvent) => void
 }
 
-type HostBridgeMessage =
-  | { type: 'host:route'; canGoBack: boolean }
-  | { type: 'host:ready' }
-  | { type: 'host:navigate'; path: string }
-
-const isHostBridgeMessage = (value: unknown): value is HostBridgeMessage => {
-  if (typeof value !== 'object' || value === null) return false
-  const type: unknown = Reflect.get(value, 'type')
-  return type === 'host:route' || type === 'host:ready' || type === 'host:navigate'
-}
+/**
+ * `null` — no readiness signal received yet; `onLoadEnd` will auto-ready when the document finishes loading.
+ * `false` — the page sent `host:overrideReady`, so auto-ready is suppressed and we wait for `host:ready`.
+ * `true` — the page is ready; the loading overlay is dismissed.
+ */
+type ReadyState = boolean | null
 
 /**
- * WebView wrapper that hosts a single bundle's source.html and integrates with
- * the host navigator. Top-level navigations away from the initial source are
+ * WebView wrapper that hosts a single bundle's page and integrates with the
+ * host navigator. Top-level navigations away from the initial source are
  * intercepted and opened in the system browser (SFSafariViewController on iOS,
  * Custom Tabs on Android), so the embedded bundle stays mounted.
  *
- * The page may use the host-bridge protocol via `postMessage`:
- * - `host:route { canGoBack }` — drives the screen header's back chevron
- * - `host:ready` — dismisses the native loading overlay
- * - `host:navigate { path }` — asks the host to `router.push(path)`
+ * See `PageToHostMessage` and `HostToPageMessage` for the bridge protocol.
  *
  * Two-way messaging: pass `onMessage` to receive non-`host:*` postMessage
  * calls from the page, and call `postMessage` on the imperative ref to push
@@ -60,57 +77,78 @@ const EmbeddedWebView = forwardRef<EmbeddedWebViewHandle, EmbeddedWebViewProps>(
     const colorScheme = useColorScheme()
     const palette = colorScheme === 'dark' ? Colors.dark : Colors.light
     const [canGoBack, setCanGoBack] = useState(false)
-    const [isReady, setIsReady] = useState(false)
+    const [isReady, setIsReady] = useState<ReadyState>(null)
     const initialUrlRef = useRef<string | null>(null)
 
     useImperativeHandle(
       ref,
       () => ({
-        postMessage(message) {
+        postMessage(message): void {
           webviewRef.current?.postMessage(message)
         },
       }),
       []
     )
 
+    const sendToPage = useCallback((message: HostToPageMessageType): void => {
+      webviewRef.current?.postMessage(JSON.stringify(message))
+    }, [])
+
+    const dispatchPageMessage = useCallback(
+      (message: PageToHostMessageType): void => {
+        switch (message.type) {
+          case 'host:route':
+            setCanGoBack(message.canGoBack)
+            return
+          case 'host:ready':
+            setIsReady(true)
+            return
+          case 'host:overrideReady':
+            setIsReady((current) => (current === null ? false : current))
+            return
+          case 'host:navigate':
+            router.push(message.path)
+            return
+        }
+      },
+      [router]
+    )
+
     const handleMessage = useCallback(
       (event: WebViewMessageEvent): void => {
-        const raw = event.nativeEvent.data
-        let parsed: unknown
-        try {
-          parsed = JSON.parse(raw)
-        } catch {
+        const decoded = decodePageToHost(event.nativeEvent.data)
+        if (Option.isNone(decoded)) {
           onMessage?.(event)
           return
         }
-        if (isHostBridgeMessage(parsed)) {
-          if (parsed.type === 'host:route') setCanGoBack(parsed.canGoBack)
-          else if (parsed.type === 'host:ready') setIsReady(true)
-          else if (parsed.type === 'host:navigate') router.push(parsed.path)
-          return
-        }
-        onMessage?.(event)
+        dispatchPageMessage(decoded.value)
       },
-      [onMessage, router]
+      [dispatchPageMessage, onMessage]
     )
 
-    const renderHeaderLeft = useCallback(
-      ({ tintColor }: { tintColor?: string }): JSX.Element => (
+    
+
+    useEffect(() => {
+      if (!canGoBack) {
+        navigation.setOptions({ headerLeft: undefined })
+        return
+      }
+
+      const headerLeft = ({ tintColor }: { tintColor?: string }): JSX.Element => (
         <Pressable
-          onPress={() => webviewRef.current?.postMessage(JSON.stringify({ type: 'host:back' }))}
+          onPress={() => sendToPage({ type: 'host:back' })}
           accessibilityRole="button"
           accessibilityLabel="Back"
           hitSlop={12}
         >
           <Text style={[styles.backLabel, tintColor ? { color: tintColor } : null]}>‹ Back</Text>
         </Pressable>
-      ),
-      []
-    )
+      )
 
-    useEffect(() => {
-      navigation.setOptions({ headerLeft: canGoBack ? renderHeaderLeft : undefined })
-    }, [canGoBack, navigation, renderHeaderLeft])
+      navigation.setOptions({ headerLeft })
+    }, [canGoBack, navigation, sendToPage])
+
+    const showLoader = useMemo(() => isReady !== true, [isReady])
 
     return (
       <View style={styles.container}>
@@ -120,7 +158,10 @@ const EmbeddedWebView = forwardRef<EmbeddedWebViewHandle, EmbeddedWebViewProps>(
           injectedJavaScriptBeforeContentLoaded={injectedScript}
           onMessage={handleMessage}
           onLoadEnd={() => {
-            setIsReady(true)
+            // Default-ready for pages that don't use the bridge. Pages that
+            // declared `host:overrideReady` already moved isReady to `false`,
+            // and we don't override their decision here.
+            setIsReady((current) => (current === null ? true : current))
           }}
           onShouldStartLoadWithRequest={(request) => {
             // Allow the very first load (the bundle's source.html) and any
@@ -140,7 +181,7 @@ const EmbeddedWebView = forwardRef<EmbeddedWebViewHandle, EmbeddedWebViewProps>(
           javaScriptEnabled={true}
           domStorageEnabled={true}
         />
-        {!isReady && (
+        {showLoader && (
           <View
             style={[styles.loaderOverlay, { backgroundColor: palette.background }]}
             pointerEvents="none"
@@ -170,5 +211,5 @@ const styles = StyleSheet.create({
   },
 })
 
-export { EmbeddedWebView }
+export { EmbeddedWebView, HostToPageMessage, PageToHostMessage }
 export type { EmbeddedWebViewHandle, EmbeddedWebViewProps, EmbeddedWebViewSource }

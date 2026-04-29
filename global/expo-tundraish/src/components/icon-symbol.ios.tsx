@@ -1,6 +1,8 @@
-import { SymbolView, type SymbolViewProps, type SymbolWeight } from 'expo-symbols'
+import { SymbolView, type SymbolWeight } from 'expo-symbols'
 import { type JSX } from 'react'
 import type { StyleProp, ViewStyle } from 'react-native'
+
+import { type IconSymbolName } from './icon-symbol-mapping.ts'
 
 export function IconSymbol({
   name,
@@ -9,7 +11,7 @@ export function IconSymbol({
   style,
   weight = 'regular',
 }: {
-  name: SymbolViewProps['name']
+  name: IconSymbolName
   size?: number
   color: string
   style?: StyleProp<ViewStyle>

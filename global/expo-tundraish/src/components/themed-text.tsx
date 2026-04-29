@@ -4,13 +4,25 @@ import { type JSX } from 'react'
 import { useThemeColors } from '../hooks/use-theme-colors.ts'
 import { FontSize, FontWeight, LetterSpacing, LineHeight } from '../theme.ts'
 
-export type ThemedTextProps = TextProps & {
+type ThemedTextVariant =
+  | 'body'
+  | 'bodySemiBold'
+  | 'heading1'
+  | 'heading2'
+  | 'heading3'
+  | 'heading4'
+  | 'label'
+  | 'link'
+  | 'button'
+  | 'mono'
+
+type ThemedTextProps = TextProps & {
   lightTextColor?: string
   darkTextColor?: string
-  type?: keyof typeof styles
+  type?: ThemedTextVariant
 }
 
-export function ThemedText({
+function ThemedText({
   style,
   lightTextColor,
   darkTextColor,
@@ -86,3 +98,8 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
   },
 })
+
+styles satisfies Record<ThemedTextVariant, unknown>
+
+export { ThemedText }
+export type { ThemedTextProps, ThemedTextVariant }

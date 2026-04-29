@@ -1,5 +1,5 @@
 /**
- * Tundra-inspired design tokens for the Wildflower app.
+ * Tundra-inspired design tokens.
  * Based on https://github.com/joshdales/tundra-css
  *
  * Light-mode-first, minimal aesthetic: white background, near-black text,
@@ -81,7 +81,7 @@ const Colors = {
     borderSubtle: neutral[8],
     icon: neutral[5],
     textSecondary: neutral[4],
-    textMuted: neutral[5],
+    textMuted: neutral[4],
     destructive: red[5],
     destructiveSubtle: red[9],
     success: green[5],
@@ -109,7 +109,7 @@ const Colors = {
     warning: yellow[7],
     warningSubtle: yellow[2],
     cardBackground: neutral[2],
-    surfacePressed: neutral[2],
+    surfacePressed: neutral[3],
   },
 } as const
 
@@ -120,6 +120,12 @@ type ColorToken = keyof typeof Colors.light
 
 // --- Spacing ---
 
+/**
+ * Spacing scale in points. Mostly a 4/8 grid (`s1=4, s2=8, s3=12, s5=16, s7=20, s8=24, …`)
+ * with intentional `s4=14` and `s6=18` half-steps inherited from the Tundra source.
+ * The opaque `s1..s13` naming is preserved to keep the keys stable, but consumers
+ * picking a key by intuition should look up the value rather than assume it tracks `4 * n`.
+ */
 const Spacing = {
   s1: 4,
   s2: 8,
@@ -151,26 +157,38 @@ const FontSize = {
 } as const
 
 const FontWeight = {
-  regular: '400' as const,
-  medium: '500' as const,
-  semibold: '600' as const,
-  bold: '700' as const,
-}
+  regular: '400',
+  medium: '500',
+  semibold: '600',
+  bold: '700',
+} as const
 
+/**
+ * Line-height multipliers (unitless). Multiply by the relevant `FontSize.*` value
+ * before assigning to RN's `lineHeight`, which expects points — e.g.
+ * `lineHeight: FontSize.base * LineHeight.relaxed`. Using a value from this object
+ * directly gives a 1–2 px line height and is almost always wrong.
+ */
 const LineHeight = {
   tight: 1.0,
   snug: 1.15,
   normal: 1.25,
   relaxed: 1.5,
-}
+} as const
 
+/**
+ * Letter-spacing values expressed as em fractions of the surrounding font size.
+ * RN's `letterSpacing` is in points, so consumers must multiply by font size before
+ * assigning — e.g. `letterSpacing: FontSize.base * LetterSpacing.tight`. Using a value
+ * from this object directly produces a sub-pixel offset (effectively zero).
+ */
 const LetterSpacing = {
   tighter: -0.04,
   tight: -0.02,
   normal: 0,
   wide: 0.02,
   wider: 0.04,
-}
+} as const
 
 // --- Borders ---
 
