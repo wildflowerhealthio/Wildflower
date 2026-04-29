@@ -1,5 +1,5 @@
 import { Host, Text, ListItem, LazyColumn, Card } from '@expo/ui/jetpack-compose'
-import { background, clickable, fillMaxWidth, paddingAll } from '@expo/ui/jetpack-compose/modifiers'
+import { clickable, fillMaxWidth, paddingAll } from '@expo/ui/jetpack-compose/modifiers'
 import { type Href, useRouter } from 'expo-router'
 import { type JSX } from 'react'
 
