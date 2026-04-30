@@ -4,7 +4,11 @@ import {
   type TelemetryConfig,
   type TelemetryConfigOverrides,
 } from 'telemetry-core'
-import { getGlobalTracer, initWebTelemetry, makeWebTelemetryLayer } from './layer.ts'
+import {
+  getGlobalTracer,
+  initReactNativeTelemetry,
+  makeReactNativeTelemetryLayer,
+} from './layer.ts'
 
 /**
  * Read EXPO_PUBLIC_*-prefixed env vars from `process.env` (inlined by the
@@ -21,13 +25,15 @@ const configFromExpoEnv = (overrides?: TelemetryConfigOverrides): TelemetryConfi
  * prefix). Call this at the very top of the app entry, before creating the
  * Livestore store or launching the Effect runtime.
  */
-const initWebTelemetryFromEnv = (
+const initReactNativeTelemetryFromEnv = (
   overrides?: TelemetryConfigOverrides
-): ReturnType<typeof initWebTelemetry> => initWebTelemetry(configFromExpoEnv(overrides))
+): ReturnType<typeof initReactNativeTelemetry> =>
+  initReactNativeTelemetry(configFromExpoEnv(overrides))
 
-const webTelemetryLayerFromEnv = (
+const reactNativeTelemetryLayerFromEnv = (
   overrides?: TelemetryConfigOverrides
-): ReturnType<typeof makeWebTelemetryLayer> => makeWebTelemetryLayer(configFromExpoEnv(overrides))
+): ReturnType<typeof makeReactNativeTelemetryLayer> =>
+  makeReactNativeTelemetryLayer(configFromExpoEnv(overrides))
 
 export {
   getLivestoreOtelOptions,
@@ -37,9 +43,9 @@ export {
 } from 'telemetry-core/livestore'
 export {
   getGlobalTracer,
-  initWebTelemetry,
-  initWebTelemetryFromEnv,
-  makeWebTelemetryLayer,
-  webTelemetryLayerFromEnv,
+  initReactNativeTelemetry,
+  initReactNativeTelemetryFromEnv,
+  makeReactNativeTelemetryLayer,
+  reactNativeTelemetryLayerFromEnv,
 }
-export { initSentryWeb, Sentry } from './sentry.ts'
+export { initSentryReactNative, Sentry } from './sentry.ts'

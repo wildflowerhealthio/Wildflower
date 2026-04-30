@@ -5,18 +5,19 @@ import {
   type SentryAdapter,
   type TelemetryConfig,
 } from 'telemetry-core'
-import { initSentryWeb, Sentry } from './sentry.ts'
+import { initSentryReactNative, Sentry } from './sentry.ts'
 
 const sentryAdapter: SentryAdapter = {
-  init: initSentryWeb,
+  init: initSentryReactNative,
   getClient: () => Sentry.getClient(),
 }
 
-const initWebTelemetry = (config: TelemetryConfig): ReturnType<typeof initClientTelemetry> =>
-  initClientTelemetry(config, sentryAdapter)
+const initReactNativeTelemetry = (
+  config: TelemetryConfig
+): ReturnType<typeof initClientTelemetry> => initClientTelemetry(config, sentryAdapter)
 
-const makeWebTelemetryLayer = (
+const makeReactNativeTelemetryLayer = (
   config: TelemetryConfig
 ): ReturnType<typeof makeClientTelemetryLayer> => makeClientTelemetryLayer(config, sentryAdapter)
 
-export { getGlobalTracer, initWebTelemetry, makeWebTelemetryLayer }
+export { getGlobalTracer, initReactNativeTelemetry, makeReactNativeTelemetryLayer }

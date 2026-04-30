@@ -27,7 +27,9 @@ interface TelemetryConfigOverrides {
 
 const isSentryEnabled = (c: TelemetryConfig): boolean => c.sentry.dsn.length > 0
 
-const isOtlpEnabled = (c: TelemetryConfig): boolean =>
+const isOtlpEnabled = (
+  c: TelemetryConfig
+): c is TelemetryConfig & { readonly otel: { readonly otlpEndpoint: string } } =>
   c.otel.otlpEndpoint !== null && c.otel.otlpEndpoint.length > 0
 
 const isTelemetryEnabled = (c: TelemetryConfig): boolean => isSentryEnabled(c) || isOtlpEnabled(c)

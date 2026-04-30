@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildlflower.git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
     "directory": "slices/telemetry/telemetry-web"
   },
   "files": [

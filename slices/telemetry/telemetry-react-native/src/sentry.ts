@@ -14,7 +14,7 @@ const resolveRelease = (raw: string): string | undefined => {
  * here because @sentry/react-native does not register a TracerProvider — we
  * own that via `@opentelemetry/sdk-trace-base`. Safe to call repeatedly.
  */
-const initSentryWeb = (config: TelemetryConfig): boolean => {
+const initSentryReactNative = (config: TelemetryConfig): boolean => {
   if (!isSentryEnabled(config)) return false
   if (initialized) return true
 
@@ -35,4 +35,4 @@ const initSentryWeb = (config: TelemetryConfig): boolean => {
   return true
 }
 
-export { initSentryWeb, Sentry }
+export { initSentryReactNative, Sentry }

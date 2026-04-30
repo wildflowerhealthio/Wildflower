@@ -26,7 +26,7 @@ let registered: BasicTracerProvider | undefined
 const buildProcessors = (config: TelemetryConfig, sentryOn: boolean): SpanProcessor[] => {
   const processors: SpanProcessor[] = []
   if (sentryOn) processors.push(new SentrySpanProcessor())
-  if (isOtlpEnabled(config) && config.otel.otlpEndpoint !== null) {
+  if (isOtlpEnabled(config)) {
     processors.push(
       new BatchSpanProcessor(
         new OTLPTraceExporter({
