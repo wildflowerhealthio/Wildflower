@@ -53,8 +53,9 @@ const Menu = ({
   const lastEnabledIndex = findLastEnabled(items)
 
   useEffect(() => {
-    if (open && firstEnabledIndex >= 0) {
-      setActiveIndex(firstEnabledIndex)
+    if (!open) return
+    setActiveIndex(firstEnabledIndex)
+    if (firstEnabledIndex >= 0) {
       itemRefs.current[firstEnabledIndex]?.focus()
     }
   }, [open, firstEnabledIndex])
@@ -166,7 +167,7 @@ const Menu = ({
                 }}
                 type="button"
                 role="menuitem"
-                tabIndex={index === activeIndex ? 0 : -1}
+                tabIndex={index === activeIndex && item.disabled !== true ? 0 : -1}
                 className={cn('menu__item', {
                   'menu__item--destructive': item.destructive === true,
                 })}

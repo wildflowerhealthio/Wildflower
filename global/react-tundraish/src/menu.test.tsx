@@ -143,6 +143,29 @@ describe('Menu', () => {
     expect(document.activeElement).toBe(trigger)
   })
 
+  it('does not put a disabled menuitem in the tab order when all items are disabled', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    render(
+      <Menu
+        items={[
+          { id: 'rename', label: 'Rename', disabled: true },
+          { id: 'archive', label: 'Archive', disabled: true },
+        ]}
+        label="Row actions"
+      />
+    )
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Row actions' }))
+
+    // Assert — every rendered menuitem has tabIndex=-1, so no disabled item
+    // claims the tab stop.
+    for (const menuitem of screen.getAllByRole('menuitem')) {
+      expect(menuitem.getAttribute('tabindex')).toBe('-1')
+    }
+  })
+
   it('a click outside the root closes the menu', async () => {
     // Arrange
     const outside = document.createElement('div')

@@ -5,7 +5,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { Dialog } from './dialog.tsx'
 
 // jsdom does not implement the native <dialog> element. Stub the methods we
-// rely on so we can assert against them and still drive the close event.
+// rely on per-test and restore the original descriptors after so the patches
+// don't leak across test files.
+const originalShowModalDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLDialogElement.prototype,
+  'showModal'
+)
+const originalCloseDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLDialogElement.prototype,
+  'close'
+)
+
+const restoreOrDelete = (
+  key: 'showModal' | 'close',
+  descriptor: PropertyDescriptor | undefined
+): void => {
+  if (descriptor === undefined) {
+    Reflect.deleteProperty(HTMLDialogElement.prototype, key)
+  } else {
+    Object.defineProperty(HTMLDialogElement.prototype, key, descriptor)
+  }
+}
+
 beforeEach(() => {
   // oxlint-disable unicorn/consistent-function-scoping
   HTMLDialogElement.prototype.showModal = function showModal(): void {
@@ -19,6 +40,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  restoreOrDelete('showModal', originalShowModalDescriptor)
+  restoreOrDelete('close', originalCloseDescriptor)
   document.body.innerHTML = ''
   vi.restoreAllMocks()
 })
