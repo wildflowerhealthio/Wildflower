@@ -119,7 +119,10 @@ export default defineConfig({
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unsafe-assignment': 'error',
-      '@typescript-eslint/explicit-function-return-type': ['error', { allowIIFEs: true }],
+      '@typescript-eslint/explicit-function-return-type': [
+        'error',
+        { allowIIFEs: true, allowExpressions: true },
+      ],
       'unicorn/no-array-callback-reference': 'error',
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',

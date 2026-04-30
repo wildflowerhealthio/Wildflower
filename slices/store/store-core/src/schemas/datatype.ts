@@ -15,6 +15,7 @@ import FhirR4ChoiceElements from './fhir-r4-choice-elements.ts'
 interface Datatype<out Name extends string, A, I> {
   readonly name: Name
   readonly schema: Schema.Schema<A, I>
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- `Others` lets callers preserve their tagged-union type through the call instead of widening to `{ _tag: string }`.
   from: <Others extends { _tag: string }>(
     value: Others | undefined | ({ _tag: Name } & Record<Name, A>)
   ) => A | undefined
@@ -30,6 +31,7 @@ const Datatype = <const Name extends string, A, I>(
   schema: Schema.Schema<A, I>
 ): Datatype<Name, A, I> =>
   ({
+    // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- `Others` lets callers preserve their tagged-union type through the call instead of widening to `{ _tag: string }`.
     from: <Others extends { _tag: string }>(
       value: Others | undefined | ({ _tag: Name } & { [K in Name]: A })
     ) =>

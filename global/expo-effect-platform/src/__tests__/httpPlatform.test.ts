@@ -1,4 +1,4 @@
-/* oxlint-disable typescript-eslint/no-explicit-any, typescript-eslint/no-unsafe-type-assertion, typescript-eslint/no-unsafe-assignment, unicorn/no-array-callback-reference, typescript-eslint/explicit-function-return-type */
+/* oxlint-disable typescript-eslint/no-explicit-any, typescript-eslint/no-unsafe-type-assertion, typescript-eslint/no-unsafe-assignment, unicorn/no-array-callback-reference */
 import * as Etag from '@effect/platform/Etag'
 import * as FileSystem from '@effect/platform/FileSystem'
 import * as Headers from '@effect/platform/Headers'

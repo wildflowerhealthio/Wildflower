@@ -24,8 +24,8 @@ const BundleType = Schema.Enums({
 const EntrySchema = <BundleContentType, BundleContentEncoded>(
   contentTypeSchema: Schema.Schema<BundleContentType, BundleContentEncoded, never>
   // oxlint-disable-next-line typescript/explicit-function-return-type
-) => {
-  return StructNoContext({
+) =>
+  StructNoContext({
     ...BackboneElementSchema.fields,
     fullUrl: Schema.NullOr(Schema.URL),
     link: Schema.Array(Schema.Any),
@@ -34,7 +34,6 @@ const EntrySchema = <BundleContentType, BundleContentEncoded>(
     response: Schema.NullOr(Schema.Any),
     search: Schema.NullOr(Schema.Any),
   })
-}
 
 /**
  * A container for a collection of resources. Call `Bundle.Schema(contentSchema)`

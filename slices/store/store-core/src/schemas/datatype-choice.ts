@@ -29,6 +29,7 @@ import { type Datatype, type DatatypeName, baseDatatypes } from './datatype.ts'
  */
 // oxlint-disable-next-line typescript-eslint/explicit-function-return-type -- return type depends on computed local types and cannot be expressed externally
 function DatatypeChoice<
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- `Prefix` is consumed by the local `Fields` type to build template-literal property names; the lint rule only inspects the outer signature.
   const Prefix extends string,
   const DatatypeNames extends readonly DatatypeName[],
   // oxlint-disable-next-line typescript/no-explicit-any

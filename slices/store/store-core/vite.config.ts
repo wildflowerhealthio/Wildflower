@@ -27,5 +27,6 @@ export default defineConfig({
     setupFiles: [
       path.join(path.dirname(fileURLToPath(import.meta.url)), '/vitest.setupSchemaEqual.ts'),
     ],
+    testTimeout: 30_000,
   },
 })

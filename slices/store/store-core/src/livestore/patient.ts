@@ -4,14 +4,16 @@ import { AnnotateArrayWithArbitrary, TimelessDateFromString } from 'kitchen-sink
 
 import { State } from '@livestore/livestore'
 import { makeRowSchemas } from '../internal/make-row-schemas.ts'
-import * as Address from '../schemas/complex/address.ts'
-import { AdministrativeGender } from '../schemas/complex/administrative-gender.ts'
-import * as Attachment from '../schemas/complex/attachment.ts'
-import * as CodeableConcept from '../schemas/complex/codeable-concept.ts'
-import * as ContactPoint from '../schemas/complex/contact-point.ts'
-import * as HumanName from '../schemas/complex/human-name.ts'
-import * as Identifier from '../schemas/complex/identifier.ts'
-import * as Reference from '../schemas/complex/reference.ts'
+import {
+  Reference,
+  Identifier,
+  HumanName,
+  ContactPoint,
+  CodeableConcept,
+  Attachment,
+  AdministrativeGender,
+  Address,
+} from '../schemas/index.ts'
 import * as DomainResource from './domain-resource.ts'
 import * as PatientCommunication from './patient-communication.ts'
 import * as PatientContact from './patient-contact.ts'
