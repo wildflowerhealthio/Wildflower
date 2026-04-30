@@ -27,5 +27,8 @@ jobs:
       - name: Install dependencies
         run: vp install
 
+      - name: Build internal projects
+        run: vp run pack
+
       - name: Run vp check (format, lint, typecheck)
         run: vp check
