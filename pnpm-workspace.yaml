@@ -5,6 +5,8 @@ packages:
   - global/expo-effect-platform/example
   - global/expo-localtunnel/example
   - infrastructure/*
+  - slices/**
+  - '!slices/apps/vendor-apps/vendor/**'
 
 catalog:
   '@babel/core': ^7.26.10
@@ -38,10 +40,19 @@ catalog:
   '@livestore/react': 0.4.0-dev.22
   '@livestore/sync-cf': 0.4.0-dev.22
   '@opentelemetry/api': 1.9.0
+  '@opentelemetry/exporter-trace-otlp-http': ^0.214.0
   '@opentelemetry/resources': 2.2.0
+  '@opentelemetry/sdk-trace-base': ^2.7.0
+  '@opentelemetry/sdk-trace-node': ^2.7.0
+  '@opentelemetry/sdk-trace-web': ^2.7.0
+  '@opentelemetry/semantic-conventions': ^1.40.0
   '@react-navigation/bottom-tabs': ^7.15.5
   '@react-navigation/elements': ^2.9.13
   '@react-navigation/native': ^7.1.33
+  '@sentry/node': 10.48.0
+  '@sentry/opentelemetry': 10.48.0
+  '@sentry/react': 10.48.0
+  '@sentry/react-native': ~8.8.0
   '@testing-library/react-native': ^13.3.3
   '@types/fhir': ^0.0.41
   '@types/jest': 29.5.14

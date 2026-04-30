@@ -1,0 +1,67 @@
+{
+  "name": "telemetry-core",
+  "version": "0.0.0",
+  "description": "Shared telemetry config shapes and Livestore/OpenTelemetry bridges for the Wildflower monorepo.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/telemetry/telemetry-core"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./livestore": {
+      "source": "./src/livestore.ts",
+      "default": "./dist/livestore.js"
+    },
+    "./client-layer": {
+      "source": "./src/client-layer.ts",
+      "default": "./dist/client-layer.js"
+    },
+    "./merge-config": {
+      "source": "./src/merge-config.ts",
+      "default": "./dist/merge-config.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "vp test --passWithNoTests"
+  },
+  "devDependencies": {
+    "@effect/opentelemetry": "catalog:",
+    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/exporter-trace-otlp-http": "catalog:",
+    "@opentelemetry/sdk-trace-base": "catalog:",
+    "@opentelemetry/sdk-trace-web": "catalog:",
+    "@sentry/opentelemetry": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "bumpp": "^11.0.1",
+    "effect": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/opentelemetry": "catalog:",
+    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/exporter-trace-otlp-http": "catalog:",
+    "@opentelemetry/sdk-trace-base": "catalog:",
+    "@opentelemetry/sdk-trace-web": "catalog:",
+    "@sentry/opentelemetry": "catalog:",
+    "effect": "catalog:"
+  }
+}
