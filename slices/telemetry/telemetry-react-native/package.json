@@ -27,20 +27,20 @@
     "check": "vp check",
     "dev": "vp pack --watch",
     "prepublishOnly": "vp run build",
-    "test": "vp test"
+    "test": "vp test --passWithNoTests"
   },
   "devDependencies": {
     "@effect/opentelemetry": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@sentry/opentelemetry": "catalog:",
     "@sentry/react-native": "catalog:",
-    "@types/node": "^25.5.0",
-    "@typescript/native-preview": "7.0.0-dev.20260328.1",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
     "bumpp": "^11.0.1",
     "effect": "catalog:",
     "telemetry-core": "workspace:*",
-    "typescript": "^6.0.2",
-    "vite-plus": "^0.1.14"
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@effect/opentelemetry": "catalog:",
