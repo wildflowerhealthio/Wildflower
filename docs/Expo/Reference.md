@@ -6,16 +6,16 @@ Gotchas and conventions for Expo apps and modules in this monorepo. For dependen
 
 These keys are valid in SDK 54 and earlier; SDK 55 removed them because the behavior became default. `expo-doctor` schema check fails on them.
 
-| Key                          | Status in SDK 55                            | Action            |
-| ---------------------------- | ------------------------------------------- | ----------------- |
-| `newArchEnabled`             | Removed; New Architecture is the default    | Delete from `app.json` |
-| `android.edgeToEdgeEnabled`  | Removed; edge-to-edge is the default        | Delete from `app.json` |
+| Key                         | Status in SDK 55                         | Action                 |
+| --------------------------- | ---------------------------------------- | ---------------------- |
+| `newArchEnabled`            | Removed; New Architecture is the default | Delete from `app.json` |
+| `android.edgeToEdgeEnabled` | Removed; edge-to-edge is the default     | Delete from `app.json` |
 
 The keys are ignored at runtime, so the failure is hygiene, not breakage. Scrub them when bumping the catalog past SDK 54.
 
 ## Metro config: trust the defaults in workspace examples
 
-`expo/metro-config` (SDK 53+) auto-detects pnpm workspaces — it walks up to find `pnpm-workspace.yaml`, then sets `watchFolders` and `resolver.nodeModulesPaths` to the workspace root. Manually overriding those values *replaces* (not extends) the defaults, which is exactly what `expo-doctor`'s metro check flags ("watchFolders does not contain all entries from Expo's defaults").
+`expo/metro-config` (SDK 53+) auto-detects pnpm workspaces — it walks up to find `pnpm-workspace.yaml`, then sets `watchFolders` and `resolver.nodeModulesPaths` to the workspace root. Manually overriding those values _replaces_ (not extends) the defaults, which is exactly what `expo-doctor`'s metro check flags ("watchFolders does not contain all entries from Expo's defaults").
 
 For an example app under `global/<package>/example`, the minimal correct config is:
 

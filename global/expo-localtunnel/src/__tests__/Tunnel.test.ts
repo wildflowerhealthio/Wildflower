@@ -10,8 +10,9 @@
  * Calling `tunnel.close()` mid-retry must:
  *  - Abort any in-flight `fetch` (the `AbortController.signal` is passed to fetch).
  *  - Prevent further retries (no additional fetch calls).
- *  - Prevent the success/failure callback from firing for the previously
- *    started attempt (the contract is "no callback after close").
+ *  - Invoke the open callback exactly once with
+ *    `Error('tunnel closed before connection established')`, so callers
+ *    awaiting the Promise see a predictable rejection instead of hanging.
  *
  * `await` inside the step loops is intentional: each step depends on the
  * timers/microtasks of the previous step, so `Promise.all` would change the
@@ -261,9 +262,12 @@ describe('Tunnel._init cancellation via close()', () => {
     tunnel.close()
 
     expect(seenSignals[0]?.aborted).toBe(true)
-    // The close() path swallows the rejection — no callback should fire.
+    // close() rejects the open callback synchronously via the abort listener.
     await flushMicrotasks()
-    expect(cb).not.toHaveBeenCalled()
+    expect(cb).toHaveBeenCalledTimes(1)
+    const err = cb.mock.calls[0]?.[0] as Error
+    expect(err).toBeInstanceOf(Error)
+    expect(err.message).toMatch(/closed before connection established/i)
 
     // Sanity: keep the lint-checker happy that we held the resolve handle.
     expect(typeof neverResolve).toBe('function')
@@ -289,7 +293,10 @@ describe('Tunnel._init cancellation via close()', () => {
     await flushMicrotasks()
 
     expect(fetchFn).toHaveBeenCalledTimes(1)
-    expect(cb).not.toHaveBeenCalled()
+    expect(cb).toHaveBeenCalledTimes(1)
+    const err = cb.mock.calls[0]?.[0] as Error
+    expect(err).toBeInstanceOf(Error)
+    expect(err.message).toMatch(/closed before connection established/i)
   })
 
   test('the AbortController signal is forwarded to fetch on every attempt', async () => {

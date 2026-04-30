@@ -10,3 +10,5 @@ sudo chown -R $(whoami) /workspaces/wildflower/node_modules
 npm install -g vite-plus
 npm install -g @typescript/native-preview
 vp install
+
+echo 'alias danger-claude="claude --dangerously-skip-permissions"' >> ~/.bashrc

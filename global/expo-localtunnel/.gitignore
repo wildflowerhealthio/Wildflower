@@ -55,3 +55,6 @@ yarn-error.log
 
 # Expo
 .expo/*
+
+# TypeScript build artifacts (declarations are emitted to dist/ via tsgo)
+src/**/*.d.ts

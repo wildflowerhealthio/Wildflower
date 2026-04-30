@@ -72,7 +72,7 @@ export default class Tunnel extends EventEmitter {
       name: id,
       url,
       cachedUrl: cached_url,
-      maxConn: max_conn_count || 1,
+      maxConn: max_conn_count ?? 1,
       remoteHost: new URL(host!).hostname,
       remoteIp: ip,
       remotePort: port,
@@ -91,6 +91,23 @@ export default class Tunnel extends EventEmitter {
     const controller = new AbortController()
     this.initController = controller
 
+    let settled = false
+    const settle = (err: Error | null, info?: TunnelInfo): void => {
+      if (settled) return
+      settled = true
+      cb(err, info)
+    }
+
+    // If `close()` aborts mid-init, reject the open callback so callers
+    // awaiting the Promise see a predictable rejection rather than hanging.
+    controller.signal.addEventListener(
+      'abort',
+      () => {
+        settle(new Error('tunnel closed before connection established'))
+      },
+      { once: true }
+    )
+
     const fetchOnce = (): Promise<TunnelInfo> =>
       fetch(uri, { signal: controller.signal })
         .then((res) => {
@@ -108,7 +125,7 @@ export default class Tunnel extends EventEmitter {
           return this._getInfo(body)
         })
 
-    // Wait `delay` ms; resolve `true` if aborted/closed before the delay elapses.
+    // Wait `delay` ms; resolve `true` if aborted before the delay elapses.
     const wait = (delay: number): Promise<boolean> =>
       new Promise<boolean>((resolve) => {
         const timer = setTimeout(() => {
@@ -123,19 +140,18 @@ export default class Tunnel extends EventEmitter {
       })
 
     const attempt = (i: number): void => {
-      if (this.closed || controller.signal.aborted) return
+      if (settled) return
 
       void fetchOnce().then(
         (info) => {
-          if (this.closed || controller.signal.aborted) return
-          cb(null, info)
+          settle(null, info)
         },
         (err: unknown) => {
-          if (controller.signal.aborted || this.closed) return
+          if (settled) return
           const nextError = toError(err)
           const delay = RETRY_DELAYS_MS[i]
           if (delay === undefined) {
-            cb(
+            settle(
               new Error(
                 `failed to reach localtunnel server after ${RETRY_DELAYS_MS.length + 1} attempts: ${nextError.message}`
               )
@@ -143,7 +159,7 @@ export default class Tunnel extends EventEmitter {
             return
           }
           void wait(delay).then((cancelled) => {
-            if (cancelled || this.closed) return
+            if (settled || cancelled) return
             attempt(i + 1)
           })
         }
