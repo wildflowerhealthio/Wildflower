@@ -1,6 +1,7 @@
-import localtunnel from 'expo-localtunnel'
-import { useState, useCallback } from 'react'
-import { SafeAreaView, ScrollView, Text, View, Button, Platform } from 'react-native'
+import localtunnel, { type Tunnel } from 'expo-localtunnel'
+import { useState, useCallback, type JSX } from 'react'
+import { ScrollView, Text, View, Button, Platform } from 'react-native'
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 
 type TestResult = {
   name: string
@@ -12,7 +13,11 @@ const LOCAL_PORT = 8765
 // Android emulator uses 10.0.2.2 to reach the host machine
 const LOCAL_HOST = Platform.OS === 'android' ? '10.0.2.2' : 'localhost'
 
-export default function App() {
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
+
+export default function App(): JSX.Element {
   const [results, setResults] = useState<TestResult[]>([])
   const [running, setRunning] = useState(false)
 
@@ -32,7 +37,7 @@ export default function App() {
     ]
     setResults(tests)
 
-    let tunnel: any = null
+    let tunnel: Tunnel | null = null
     let requestFired = false
 
     // --- Test 1: Create tunnel ---
@@ -50,12 +55,18 @@ export default function App() {
       })
 
       tunnel.on('error', (err: Error) => {
+        // oxlint-disable-next-line no-console
         console.warn('Tunnel error:', err.message)
       })
 
       updateResult(t1, { status: 'pass', detail: 'Tunnel created' })
-    } catch (e: any) {
-      updateResult(t1, { status: 'fail', detail: e.message })
+    } catch (e) {
+      updateResult(t1, { status: 'fail', detail: errorMessage(e) })
+      setRunning(false)
+      return
+    }
+
+    if (!tunnel) {
       setRunning(false)
       return
     }
@@ -66,7 +77,7 @@ export default function App() {
     if (tunnel.url && typeof tunnel.url === 'string' && tunnel.url.startsWith('https://')) {
       updateResult(t2, { status: 'pass', detail: tunnel.url })
     } else {
-      updateResult(t2, { status: 'fail', detail: `Got: ${tunnel.url}` })
+      updateResult(t2, { status: 'fail', detail: `Got: ${String(tunnel.url)}` })
     }
 
     // --- Test 3: Fetch through tunnel ---
@@ -75,19 +86,20 @@ export default function App() {
     try {
       // Give connections a moment to establish
       await sleep(1000)
-      const res = await fetch(tunnel.url, {
+      const res = await fetch(tunnel.url ?? '', {
         headers: { Accept: 'application/json' },
       })
-      const body = await res.json()
-      if (body.ok === true) {
+      const body: unknown = await res.json()
+      const isOk = typeof body === 'object' && body !== null && 'ok' in body && body.ok === true
+      if (isOk) {
         updateResult(t3, { status: 'pass', detail: `HTTP ${res.status}, body.ok=true` })
       } else {
         updateResult(t3, { status: 'fail', detail: `Unexpected body: ${JSON.stringify(body)}` })
       }
-    } catch (e: any) {
+    } catch (e) {
       updateResult(t3, {
         status: 'fail',
-        detail: `${e.message} (is test-server.js running on port ${LOCAL_PORT}?)`,
+        detail: `${errorMessage(e)} (is test-server.js running on port ${LOCAL_PORT}?)`,
       })
     }
 
@@ -108,8 +120,8 @@ export default function App() {
     try {
       tunnel.close()
       updateResult(t5, { status: 'pass', detail: 'Closed without error' })
-    } catch (e: any) {
-      updateResult(t5, { status: 'fail', detail: e.message })
+    } catch (e) {
+      updateResult(t5, { status: 'fail', detail: errorMessage(e) })
     }
 
     // --- Test 6: local_https throws ---
@@ -121,11 +133,12 @@ export default function App() {
       await sleep(500)
       t.close()
       updateResult(t6, { status: 'fail', detail: 'No error thrown for local_https' })
-    } catch (e: any) {
-      if (e.message.includes('local_https')) {
+    } catch (e) {
+      const message = errorMessage(e)
+      if (message.includes('local_https')) {
         updateResult(t6, { status: 'pass', detail: 'Threw expected error' })
       } else {
-        updateResult(t6, { status: 'fail', detail: `Wrong error: ${e.message}` })
+        updateResult(t6, { status: 'fail', detail: `Wrong error: ${message}` })
       }
     }
 
@@ -137,53 +150,55 @@ export default function App() {
   const total = results.length
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.container}>
-        <Text style={styles.header}>expo-localtunnel E2E Tests</Text>
-        <Text style={styles.hint}>
-          Run `node test-server.js` on host machine first (port {LOCAL_PORT})
-        </Text>
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.container}>
+        <ScrollView style={styles.container}>
+          <Text style={styles.header}>expo-localtunnel E2E Tests</Text>
+          <Text style={styles.hint}>
+            Run `node test-server.js` on host machine first (port {LOCAL_PORT})
+          </Text>
 
-        <View style={styles.buttonRow}>
-          <Button
-            title={running ? 'Running...' : 'Run Tests'}
-            onPress={runTests}
-            disabled={running}
-          />
-        </View>
-
-        {total > 0 && (
-          <View style={styles.summary}>
-            <Text style={styles.summaryText}>
-              {passed}/{total} passed
-              {failed > 0 ? ` | ${failed} failed` : ''}
-            </Text>
+          <View style={styles.buttonRow}>
+            <Button
+              title={running ? 'Running...' : 'Run Tests'}
+              onPress={runTests}
+              disabled={running}
+            />
           </View>
-        )}
 
-        {results.map((r, i) => (
-          <View key={i} style={styles.result}>
-            <Text style={styles.resultIcon}>
-              {r.status === 'pass'
-                ? 'PASS'
-                : r.status === 'fail'
-                  ? 'FAIL'
-                  : r.status === 'running'
-                    ? '...'
-                    : '  '}
-            </Text>
-            <View style={styles.resultText}>
-              <Text style={styles.resultName}>{r.name}</Text>
-              {r.detail ? <Text style={styles.resultDetail}>{r.detail}</Text> : null}
+          {total > 0 && (
+            <View style={styles.summary}>
+              <Text style={styles.summaryText}>
+                {passed}/{total} passed
+                {failed > 0 ? ` | ${failed} failed` : ''}
+              </Text>
             </View>
-          </View>
-        ))}
-      </ScrollView>
-    </SafeAreaView>
+          )}
+
+          {results.map((r) => (
+            <View key={r.name} style={styles.result}>
+              <Text style={styles.resultIcon}>
+                {r.status === 'pass'
+                  ? 'PASS'
+                  : r.status === 'fail'
+                    ? 'FAIL'
+                    : r.status === 'running'
+                      ? '...'
+                      : '  '}
+              </Text>
+              <View style={styles.resultText}>
+                <Text style={styles.resultName}>{r.name}</Text>
+                {r.detail ? <Text style={styles.resultDetail}>{r.detail}</Text> : null}
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      </SafeAreaView>
+    </SafeAreaProvider>
   )
 }
 
-function sleep(ms: number) {
+function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 

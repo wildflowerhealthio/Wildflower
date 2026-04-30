@@ -47,17 +47,17 @@
     "eventemitter3": "^5.0.4"
   },
   "devDependencies": {
-    "@types/react": "~19.2.14",
-    "expo": "55.0.9",
-    "expo-module-scripts": "^55.0.2",
+    "@types/react": "catalog:",
+    "expo": "catalog:",
+    "expo-module-scripts": "catalog:",
     "react": "catalog:",
     "react-native": "catalog:",
-    "typescript": "^6.0.2",
+    "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "expo": "*",
-    "react": "catalog:",
-    "react-native": "catalog:"
+    "expo": ">=55.0.0",
+    "react": ">=19.0.0",
+    "react-native": ">=0.83.0"
   }
 }

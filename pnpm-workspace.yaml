@@ -3,6 +3,7 @@ packages:
   - domain/*
   - global/*
   - global/expo-effect-platform/example
+  - global/expo-localtunnel/example
   - infrastructure/*
 
 catalog:

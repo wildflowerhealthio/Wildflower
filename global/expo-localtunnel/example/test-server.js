@@ -1,3 +1,4 @@
+/* oxlint-disable @typescript-eslint/no-unsafe-assignment, no-console */
 // Simple HTTP server for E2E testing.
 // Run this on your host machine before launching the example app:
 //   node test-server.js
