@@ -8,15 +8,16 @@
     "expo-localtunnel",
     "react-native"
   ],
-  "homepage": "https://github.com/ruthmarks151/expo-localtunnel#readme",
+  "homepage": "https://github.com/Assessment-is/wildlflower/tree/main/global/expo-localtunnel#readme",
   "bugs": {
-    "url": "https://github.com/ruthmarks151/expo-localtunnel/issues"
+    "url": "https://github.com/Assessment-is/wildlflower/issues"
   },
   "license": "MIT",
   "author": "Ruth Marks <ruthmarks151@gmail.com> (https://github.com/ruthmarks151)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ruthmarks151/expo-localtunnel.git"
+    "url": "git+https://github.com/Assessment-is/wildlflower.git",
+    "directory": "global/expo-localtunnel"
   },
   "files": [
     "android",
@@ -41,15 +42,23 @@
     "check": "vp check",
     "dev": "vp pack --watch",
     "prepublishOnly": "vp run build",
-    "test": "vp test"
+    "test": "jest"
   },
   "dependencies": {
     "eventemitter3": "^5.0.4"
   },
   "devDependencies": {
+    "@babel/core": "catalog:",
+    "@fast-check/jest": "catalog:",
+    "@types/jest": "catalog:",
+    "@types/node": "catalog:",
     "@types/react": "catalog:",
+    "babel-preset-expo": "catalog:",
     "expo": "catalog:",
     "expo-module-scripts": "catalog:",
+    "fast-check": "catalog:",
+    "jest": "catalog:",
+    "jest-expo": "catalog:",
     "react": "catalog:",
     "react-native": "catalog:",
     "typescript": "catalog:",

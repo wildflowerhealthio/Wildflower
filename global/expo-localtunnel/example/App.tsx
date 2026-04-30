@@ -1,3 +1,4 @@
+import Constants from 'expo-constants'
 import localtunnel, { type Tunnel } from 'expo-localtunnel'
 import { useState, useCallback, type JSX } from 'react'
 import { ScrollView, Text, View, Button, Platform } from 'react-native'
@@ -10,8 +11,19 @@ type TestResult = {
 }
 
 const LOCAL_PORT = 8765
-// Android emulator uses 10.0.2.2 to reach the host machine
-const LOCAL_HOST = Platform.OS === 'android' ? '10.0.2.2' : 'localhost'
+// Resolve the dev machine's address. Prefer Expo's `hostUri` when it carries a real
+// LAN IP (works on iOS sim, Android emulator, and physical devices). When `hostUri`
+// is `localhost`/`127.0.0.1` (e.g. Metro tunneled via `adb reverse`) or absent
+// (production), fall back to the platform-appropriate default — Android emulator
+// needs `10.0.2.2` to reach the host loopback; iOS sim shares the host's `localhost`.
+const HOST_URI = Constants.expoConfig?.hostUri ?? Constants.expoGoConfig?.debuggerHost
+const HOST_FROM_URI = HOST_URI?.split(':')[0]
+const LOCAL_HOST =
+  HOST_FROM_URI && HOST_FROM_URI !== 'localhost' && HOST_FROM_URI !== '127.0.0.1'
+    ? HOST_FROM_URI
+    : Platform.OS === 'android'
+      ? '10.0.2.2'
+      : 'localhost'
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
@@ -46,7 +58,7 @@ export default function App(): JSX.Element {
     try {
       tunnel = await localtunnel({
         port: LOCAL_PORT,
-        local_host: LOCAL_HOST,
+        localHost: LOCAL_HOST,
         host: 'https://localtunnel.me',
       })
 
@@ -128,14 +140,14 @@ export default function App(): JSX.Element {
     const t6 = 5
     setResults((prev) => prev.map((r, i) => (i === t6 ? { ...r, status: 'running' } : r)))
     try {
-      const t = await localtunnel({ port: LOCAL_PORT, local_https: true })
+      const t = await localtunnel({ port: LOCAL_PORT, localHttps: true })
       // If we get here, it should still error via event
       await sleep(500)
       t.close()
-      updateResult(t6, { status: 'fail', detail: 'No error thrown for local_https' })
+      updateResult(t6, { status: 'fail', detail: 'No error thrown for localHttps' })
     } catch (e) {
       const message = errorMessage(e)
-      if (message.includes('local_https')) {
+      if (message.includes('localHttps')) {
         updateResult(t6, { status: 'pass', detail: 'Threw expected error' })
       } else {
         updateResult(t6, { status: 'fail', detail: `Wrong error: ${message}` })

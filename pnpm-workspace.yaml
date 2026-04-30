@@ -25,6 +25,7 @@ catalog:
   '@effect/sql': 0.48.6
   '@effect/typeclass': 0.38.0
   '@effect/vitest': ^0.29.0
+  '@expo/dom-webview': ~55.0.5
   '@expo/metro-runtime': ^55.0.10
   '@expo/ui': ~55.0.12
   '@expo/vector-icons': ^15.0.3

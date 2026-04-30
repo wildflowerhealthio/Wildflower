@@ -6,6 +6,15 @@ public class ExpoLocaltunnelModule: Module {
   private let connectionsLock = NSLock()
   private let queue = DispatchQueue(label: "expo.localtunnel", qos: .userInitiated)
 
+  /// Synchronous wrapper around `connectionsLock`. The helper itself is non-`async`,
+  /// so the `noasync`-annotated `NSLock.lock()`/`unlock()` calls inside are reachable
+  /// from `AsyncFunction` closures without tripping Swift 6 concurrency diagnostics.
+  private func withConnectionsLock<T>(_ body: () -> T) -> T {
+    connectionsLock.lock()
+    defer { connectionsLock.unlock() }
+    return body()
+  }
+
   public func definition() -> ModuleDefinition {
     Name("ExpoLocaltunnel")
 
@@ -18,10 +27,11 @@ public class ExpoLocaltunnelModule: Module {
     )
 
     OnDestroy {
-      self.connectionsLock.lock()
-      let snapshot = self.connections
-      self.connections.removeAll()
-      self.connectionsLock.unlock()
+      let snapshot = self.withConnectionsLock { () -> [String: TunnelConnection] in
+        let snap = self.connections
+        self.connections.removeAll()
+        return snap
+      }
       for (_, conn) in snapshot {
         conn.close()
       }
@@ -29,9 +39,7 @@ public class ExpoLocaltunnelModule: Module {
 
     AsyncFunction("createTunnelConnection") { (connectionId: String, config: TunnelConnectionConfig) in
       // Clean up existing connection with this ID if any
-      self.connectionsLock.lock()
-      let existing = self.connections[connectionId]
-      self.connectionsLock.unlock()
+      let existing = self.withConnectionsLock { self.connections[connectionId] }
       existing?.close()
 
       let conn = TunnelConnection(
@@ -41,24 +49,21 @@ public class ExpoLocaltunnelModule: Module {
       ) { (name: String, body: [String: Any]) in
         self.sendEvent(name, body)
       }
-      self.connectionsLock.lock()
-      self.connections[connectionId] = conn
-      self.connectionsLock.unlock()
+      self.withConnectionsLock { self.connections[connectionId] = conn }
       try await conn.connectRemote()
     }
 
     AsyncFunction("closeTunnelConnection") { (connectionId: String) in
-      self.connectionsLock.lock()
-      let conn = self.connections.removeValue(forKey: connectionId)
-      self.connectionsLock.unlock()
+      let conn = self.withConnectionsLock { self.connections.removeValue(forKey: connectionId) }
       conn?.close()
     }
 
     AsyncFunction("closeAllTunnelConnections") {
-      self.connectionsLock.lock()
-      let snapshot = self.connections
-      self.connections.removeAll()
-      self.connectionsLock.unlock()
+      let snapshot = self.withConnectionsLock { () -> [String: TunnelConnection] in
+        let snap = self.connections
+        self.connections.removeAll()
+        return snap
+      }
       for (_, conn) in snapshot {
         conn.close()
       }

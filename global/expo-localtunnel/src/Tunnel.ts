@@ -6,20 +6,45 @@ export interface TunnelOptions {
   port: number
   host?: string
   subdomain?: string
-  local_host?: string
-  local_https?: boolean
-  local_cert?: string
-  local_key?: string
-  local_ca?: string
-  allow_invalid_cert?: boolean
+  localHost?: string
+  localHttps?: boolean
+  localCert?: string
+  localKey?: string
+  localCa?: string
+  allowInvalidCert?: boolean
 }
 
 interface TunnelInfo extends TunnelClusterOpts {
   name: string
   url: string
+  cachedUrl?: string
+  maxConn: number
+  localHttps?: boolean
+}
+
+interface AssignResponseBody {
+  id: string
+  ip?: string
+  port: number
+  url: string
   cached_url?: string
-  max_conn: number
-  local_https?: boolean
+  max_conn_count?: number
+}
+
+// Exponential backoff schedule (ms): 1s, 2s, 4s, 8s, 16s — total ~31s before failing.
+const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000] as const
+
+const toError = (err: unknown): Error => {
+  if (err instanceof Error) return err
+  return new Error(String(err))
+}
+
+const isAssignResponseBody = (value: unknown): value is AssignResponseBody => {
+  if (typeof value !== 'object' || value === null) return false
+  if (!('id' in value) || typeof value.id !== 'string') return false
+  if (!('port' in value) || typeof value.port !== 'number') return false
+  if (!('url' in value) || typeof value.url !== 'string') return false
+  return true
 }
 
 export default class Tunnel extends EventEmitter {
@@ -30,6 +55,7 @@ export default class Tunnel extends EventEmitter {
   clientId?: string
 
   private tunnelCluster?: TunnelCluster
+  private initController?: AbortController
 
   constructor(opts: TunnelOptions) {
     super()
@@ -39,40 +65,34 @@ export default class Tunnel extends EventEmitter {
     }
   }
 
-  private _getInfo(body: {
-    id: string
-    ip?: string
-    port: number
-    url: string
-    cached_url?: string
-    max_conn_count?: number
-  }): TunnelInfo {
+  private _getInfo(body: AssignResponseBody): TunnelInfo {
     const { id, ip, port, url, cached_url, max_conn_count } = body
-    const { host, port: local_port, local_host, local_https } = this.opts
+    const { host, port: localPort, localHost, localHttps } = this.opts
     return {
       name: id,
       url,
-      cached_url,
-      max_conn: max_conn_count || 1,
-      remote_host: new URL(host!).hostname,
-      remote_ip: ip,
-      remote_port: port,
-      local_port,
-      local_host,
-      local_https,
+      cachedUrl: cached_url,
+      maxConn: max_conn_count || 1,
+      remoteHost: new URL(host!).hostname,
+      remoteIp: ip,
+      remotePort: port,
+      localPort,
+      localHost,
+      localHttps,
     }
   }
 
   private _init(cb: (err: Error | null, info?: TunnelInfo) => void): void {
     const opt = this.opts
-    const getInfo = this._getInfo.bind(this)
-
     const baseUri = `${opt.host}/`
     const assignedDomain = opt.subdomain
     const uri = baseUri + (assignedDomain || '?new')
 
-    ;(function getUrl() {
-      fetch(uri)
+    const controller = new AbortController()
+    this.initController = controller
+
+    const fetchOnce = (): Promise<TunnelInfo> =>
+      fetch(uri, { signal: controller.signal })
         .then((res) => {
           if (!res.ok) {
             return res.text().then((text) => {
@@ -81,13 +101,56 @@ export default class Tunnel extends EventEmitter {
           }
           return res.json()
         })
-        .then((body) => {
-          cb(null, getInfo(body))
+        .then((body: unknown) => {
+          if (!isAssignResponseBody(body)) {
+            throw new Error('localtunnel server returned an unexpected response shape')
+          }
+          return this._getInfo(body)
         })
-        .catch(() => {
-          setTimeout(getUrl, 1000)
-        })
-    })()
+
+    // Wait `delay` ms; resolve `true` if aborted/closed before the delay elapses.
+    const wait = (delay: number): Promise<boolean> =>
+      new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => {
+          controller.signal.removeEventListener('abort', onAbort)
+          resolve(false)
+        }, delay)
+        const onAbort = (): void => {
+          clearTimeout(timer)
+          resolve(true)
+        }
+        controller.signal.addEventListener('abort', onAbort, { once: true })
+      })
+
+    const attempt = (i: number): void => {
+      if (this.closed || controller.signal.aborted) return
+
+      void fetchOnce().then(
+        (info) => {
+          if (this.closed || controller.signal.aborted) return
+          cb(null, info)
+        },
+        (err: unknown) => {
+          if (controller.signal.aborted || this.closed) return
+          const nextError = toError(err)
+          const delay = RETRY_DELAYS_MS[i]
+          if (delay === undefined) {
+            cb(
+              new Error(
+                `failed to reach localtunnel server after ${RETRY_DELAYS_MS.length + 1} attempts: ${nextError.message}`
+              )
+            )
+            return
+          }
+          void wait(delay).then((cancelled) => {
+            if (cancelled || this.closed) return
+            attempt(i + 1)
+          })
+        }
+      )
+    }
+
+    attempt(0)
   }
 
   private _establish(info: TunnelInfo): void {
@@ -103,19 +166,8 @@ export default class Tunnel extends EventEmitter {
       this.emit('error', err)
     })
 
-    let _tunnelCount = 0
-
-    // track open count
-    this.tunnelCluster.on('open', () => {
-      _tunnelCount++
-      if (this.closed) {
-        return
-      }
-    })
-
     // when a tunnel dies, open a new one
     this.tunnelCluster.on('dead', () => {
-      _tunnelCount--
       if (this.closed) {
         return
       }
@@ -127,7 +179,7 @@ export default class Tunnel extends EventEmitter {
     })
 
     // establish as many tunnels as allowed
-    for (let count = 0; count < info.max_conn; ++count) {
+    for (let count = 0; count < info.maxConn; ++count) {
       this.tunnelCluster.open()
     }
   }
@@ -138,10 +190,10 @@ export default class Tunnel extends EventEmitter {
         return cb(err)
       }
 
-      if (info!.local_https) {
+      if (info!.localHttps) {
         return cb(
           new Error(
-            'local_https is not supported in expo-localtunnel. Only plaintext HTTP to the local server is supported.'
+            'localHttps is not supported in expo-localtunnel. Only plaintext HTTP to the local server is supported.'
           )
         )
       }
@@ -149,9 +201,9 @@ export default class Tunnel extends EventEmitter {
       this.clientId = info!.name
       this.url = info!.url
 
-      // `cached_url` is only returned by proxy servers that support resource caching.
-      if (info!.cached_url) {
-        this.cachedUrl = info!.cached_url
+      // `cachedUrl` is only returned by proxy servers that support resource caching.
+      if (info!.cachedUrl) {
+        this.cachedUrl = info!.cachedUrl
       }
 
       this._establish(info!)
@@ -161,6 +213,9 @@ export default class Tunnel extends EventEmitter {
 
   close(): void {
     this.closed = true
+    if (this.initController) {
+      this.initController.abort()
+    }
     if (this.tunnelCluster) {
       this.tunnelCluster.close()
     }

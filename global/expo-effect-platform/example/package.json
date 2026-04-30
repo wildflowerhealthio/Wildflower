@@ -4,10 +4,10 @@
   "private": true,
   "main": "index.ts",
   "scripts": {
-    "android": "expo run:android",
-    "ios": "expo run:ios",
-    "start": "expo start",
-    "web": "expo start --web"
+    "android": "NODE_OPTIONS=--dns-result-order=ipv4first npx expo run:android",
+    "ios": "NODE_OPTIONS=--dns-result-order=ipv4first npx expo run:ios",
+    "start": "NODE_OPTIONS=--dns-result-order=ipv4first npx expo start",
+    "web": "npx expo start --web"
   },
   "dependencies": {
     "@effect/platform": "catalog:",

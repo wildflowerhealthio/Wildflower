@@ -1,0 +1,18 @@
+# expo-localtunnel-example
+
+Manual end-to-end test harness for [`expo-localtunnel`](../). Builds a dev client APK/IPA that exercises tunnel creation, request forwarding, and teardown against the public `localtunnel.me` relay.
+
+## Run
+
+```sh
+node test-server.js   # in one terminal — local HTTP server on :8765
+pnpm start            # in another — Metro + dev client launcher
+```
+
+Then press `a` for Android, `i` for iOS. Once the app loads, tap **Run Tests**.
+
+## Why `NODE_OPTIONS=--dns-result-order=ipv4first` in every script
+
+On macOS, `getaddrinfo("localhost")` returns `::1` (IPv6 loopback) before `127.0.0.1`. Node binds servers to the first resolved address only, so `expo start --localhost` ends up with Metro listening on `[::1]:8081`. The Android emulator's `adb reverse` forwards traffic via IPv4 — it can't reach IPv6-only Metro and the dev client crashes with `Unable to load script` before any JS runs.
+
+`--dns-result-order=ipv4first` flips Node's DNS preference so Metro binds to `127.0.0.1`. iOS Simulator works either way (it shares the host's network stack), but the flag is harmless there and keeps the scripts symmetric.
