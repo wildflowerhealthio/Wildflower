@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "expo-localtunnel": ["../src/index"],
+      "expo-localtunnel/*": ["../src/*"]
+    }
+  }
+}

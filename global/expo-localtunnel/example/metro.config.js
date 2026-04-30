@@ -3,9 +3,9 @@ const path = require('path')
 
 const config = getDefaultConfig(__dirname)
 
-// Self-alias so `import 'expo-effect-platform'` from this example resolves to the parent package.
+// Self-alias so `import 'expo-localtunnel'` from this example resolves to the parent package.
 config.resolver.extraNodeModules = {
-  'expo-effect-platform': path.resolve(__dirname, '..'),
+  'expo-localtunnel': path.resolve(__dirname, '..'),
 }
 
 module.exports = config

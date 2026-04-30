@@ -25,7 +25,8 @@
     "lint:docs": "markdownlint-cli2 --config .local.markdownlint-cli2.mjs",
     "pack": "vp run --cache -r build",
     "prepare": "vp config",
-    "ready": "vp fmt && vp lint && vp run lint:comments && vp run lint:docs && vp run -r test && vp run -r build"
+    "ready": "vp fmt && vp lint && vp run lint:comments && vp run lint:docs && vp run -r test && vp run -r build",
+    "test": "vp run -r test"
   },
   "devDependencies": {
     "@typescript/native-preview": "catalog:",

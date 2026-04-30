@@ -59,3 +59,9 @@ A running log of non-obvious insights discovered during agent sessions. Triage i
 **Discovered during**: ruthmarks/add-fhir-server — Phase 2a (gatekeeper-web)
 **Learning**: Running `vp check --fix` stripped the `| PinRequest` member from a multi-line discriminated-union type alias and inlined an oxlint-disable comment where it no longer applied. `vp fmt` alone is safer for formatting, and the `--fix` flag is best reserved for narrow, recently-edited files you can diff carefully afterward.
 **Suggested destination**: Strategies
+
+## Expo Metro on macOS binds IPv6-only without `--dns-result-order=ipv4first`
+
+**Discovered during**: ruthmarks/global-expo-localtunnel — diagnosing Android dev client "Unable to load script"
+**Learning**: On macOS, `getaddrinfo("localhost")` returns `::1` before `127.0.0.1`, and Node binds `server.listen({ host: 'localhost' })` to the first resolved address only. `expo start --localhost` therefore lands Metro on `[::1]:8081`. The Android emulator's `adb reverse` forwards via IPv4, so the dev client cannot fetch the bundle and crashes with `Unable to load script` before any JS runs. Symptom: blank white screen on Android, iOS Simulator works fine because it shares the host's network stack and reaches `[::1]` directly. Fix: prefix every Expo CLI script (`start`, `run:android`, `run:ios`) with `NODE_OPTIONS=--dns-result-order=ipv4first`. Both example apps under `global/expo-localtunnel/example` and `global/expo-effect-platform/example` already do this — copy the pattern when adding new Expo example apps.
+**Suggested destination**: Strategies (or a new `docs/Expo/Local Dev How-To.md`)
