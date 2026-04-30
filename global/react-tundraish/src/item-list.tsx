@@ -1,16 +1,20 @@
 import { cn } from 'kitchen-sink'
 import type { JSX, ReactNode } from 'react'
 
-type ItemListItem = {
+type ItemListItemBase = {
   readonly id: string
   readonly title: ReactNode
   readonly subtitle?: ReactNode
   readonly badge?: ReactNode
-  readonly href?: string
-  readonly onClick?: () => void
   readonly disabled?: boolean
   readonly actions?: ReactNode
 }
+
+type ItemListItem = ItemListItemBase &
+  (
+    | { readonly href: string; readonly onClick?: never }
+    | { readonly href?: never; readonly onClick: () => void }
+  )
 
 type ItemListProps = {
   readonly title?: ReactNode
@@ -84,7 +88,7 @@ const ItemListRow = ({ item }: { item: ItemListItem }): JSX.Element => {
         type="button"
         className="item-list__button"
         disabled={item.disabled}
-        onClick={() => item.onClick?.()}
+        onClick={() => item.onClick()}
       >
         {body}
       </button>

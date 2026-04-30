@@ -82,6 +82,7 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — Dev setup, code style, formatting, git workflow
 - [docs/Testing/](./docs/Testing/Testing%20Reference.md) — Property testing, unit testing, React testing, integration testing
 - [Documentation Reference](./docs/Documentation/Reference.md) — Naming rules for docs
+- [Dependency Sync How-To](./docs/Expo/Dependency%20Sync%20How-To.md) — Catalog + peer-range conventions for Expo/RN packages
 
 ## Commands
 
