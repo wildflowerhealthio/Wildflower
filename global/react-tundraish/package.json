@@ -1,0 +1,60 @@
+{
+  "name": "react-tundraish",
+  "version": "0.0.0",
+  "description": "Tundra-CSS-styled React DOM component primitives.",
+  "keywords": [
+    "design-system",
+    "react",
+    "tundra",
+    "ui",
+    "web"
+  ],
+  "license": "MIT",
+  "author": "Ruth Marks <ruthmarks151@gmail.com> (https://github.com/ruthmarks151)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildlflower.git",
+    "directory": "global/react-tundraish"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/react": "~19.2.14",
+    "@types/react-dom": "~19.2.0",
+    "jsdom": "^26.0.0",
+    "kitchen-sink": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tundra-css": "^0.14.0",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "kitchen-sink": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tundra-css": "^0.14.0"
+  }
+}

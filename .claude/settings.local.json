@@ -12,7 +12,8 @@
       "Bash(ls :*)",
       "Bash(ls -la :*)",
       "Bash(npx tsc:*)",
-      "Bash(vp test:*)"
+      "Bash(vp test:*)",
+      "Bash(npx expo-doctor)"
     ]
   }
 }
