@@ -45,6 +45,7 @@ catalog:
   '@types/jest': 29.5.14
   '@types/node': ^24
   '@types/react': ~19.2.14
+  '@typescript/native-preview': 7.0.0-dev.20260429.1
   babel-preset-expo: ~55.0.13
   effect: 3.19.12
   eslint-plugin-expo: ^1.0.0
