@@ -12,6 +12,9 @@ const getCheckbox = (name: string): HTMLInputElement =>
   screen.getByRole<HTMLInputElement>('checkbox', { name })
 
 describe('Checkbox', () => {
+  // First-render React Testing Library setup (jsdom environment + render) can
+  // exceed the 5s default under the CPU contention of `vp run -r test`. Bumped
+  // for headroom; cheap once the renderer has warmed up for later tests.
   it('reflects the controlled checked state on the input', () => {
     // Arrange
     // Act
@@ -19,7 +22,7 @@ describe('Checkbox', () => {
 
     // Assert
     expect(getCheckbox('Accept').checked).toBe(true)
-  })
+  }, 15_000)
 
   it('fires onChange with the new checked state when toggled by the user', async () => {
     // Arrange

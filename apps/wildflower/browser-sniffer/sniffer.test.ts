@@ -3,8 +3,6 @@
  */
 // oxlint-disable @typescript-eslint/no-unsafe-type-assertion
 // oxlint-disable @typescript-eslint/require-array-sort-compare
-// ox lint-disable @typescript-eslint/no-unsafe-assignment
-// oxlint-disable @typescript-eslint/explicit-function-return-type
 import { it, fc } from '@fast-check/jest'
 import { Schema } from 'effect'
 
@@ -28,12 +26,12 @@ interface Message {
   readonly [key: string]: unknown
 }
 
-const injectSniffer = () => {
+const injectSniffer = (): void => {
   // oxlint-disable-next-line no-implied-eval -- Intentional dynamic code injection
   new Function(snifferCode)()
 }
 
-const resetShims = () => {
+const resetShims = (): void => {
   if (window.nativeFetch) {
     window.fetch = window.nativeFetch
   }
@@ -53,17 +51,17 @@ const setupEnv = () => {
   return () => postMessage.mock.calls.map(([json]: [string]) => JSON.parse(json) as Message)
 }
 
-const withTag = (msgs: Message[], tag: string) => msgs.filter((m) => m._tag === tag)
+const withTag = (msgs: Message[], tag: string): Message[] => msgs.filter((m) => m._tag === tag)
 
 const decodeAnyMessage = Schema.decodeUnknownSync(AnyMessage)
 
-const validateMessages = (msgs: Message[]) => {
+const validateMessages = (msgs: Message[]): void => {
   for (const msg of msgs) {
     expect(() => decodeAnyMessage(msg)).not.toThrow()
   }
 }
 
-const fromBase64 = (b64: string) =>
+const fromBase64 = (b64: string): string =>
   new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)))
 
 describe('fetch shim', () => {

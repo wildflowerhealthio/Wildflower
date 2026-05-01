@@ -1,6 +1,15 @@
 # Testing Reference
 
-Vitest across all packages. Property-based testing is the default approach.
+Vitest across most packages; Expo packages run Jest with `jest-expo`. Property-based testing is the default approach.
+
+## Test Runners
+
+| Runner                  | Where it runs                                                                                        | How to invoke                                                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Vitest (via Vite+)      | Every non-Expo package                                                                               | `vp test` (Vitest projects mode wired in root `vite.config.ts`; works from the root or any package directory) |
+| Jest (with `jest-expo`) | `apps/wildflower`, `global/expo-effect-platform`, `global/expo-localtunnel`, `global/expo-tundraish` | `vp run jest` (in a package), `vp run jest` (root, fans out with `--concurrency-limit 1`)                     |
+
+`vp run test-all` runs Vitest then Jest for a complete pass; `vp run ready` includes it.
 
 ## When to Use Each Approach
 

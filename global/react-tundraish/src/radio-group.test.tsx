@@ -18,6 +18,9 @@ const getRadio = (name: string): HTMLInputElement =>
   screen.getByRole<HTMLInputElement>('radio', { name })
 
 describe('RadioGroup', () => {
+  // First-render React Testing Library setup (jsdom environment + render) can
+  // exceed the 5s default under the CPU contention of `vp run -r test`. Bumped
+  // for headroom; cheap once the renderer has warmed up for later tests.
   it('marks the input matching the value prop as checked', () => {
     // Arrange
     // Act
@@ -26,7 +29,7 @@ describe('RadioGroup', () => {
     // Assert
     expect(getRadio('Banana').checked).toBe(true)
     expect(getRadio('Apple').checked).toBe(false)
-  })
+  }, 15_000)
 
   it('fires onChange with the value of the option the user selects', async () => {
     // Arrange

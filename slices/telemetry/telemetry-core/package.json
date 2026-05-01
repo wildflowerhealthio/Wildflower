@@ -52,6 +52,7 @@
     "@typescript/native-preview": "catalog:",
     "bumpp": "^11.0.1",
     "effect": "catalog:",
+    "fast-check": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },

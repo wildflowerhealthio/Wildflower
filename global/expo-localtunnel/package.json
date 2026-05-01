@@ -41,8 +41,8 @@
     "build": "vp pack",
     "check": "vp check",
     "dev": "vp pack --watch",
-    "prepublishOnly": "vp run build",
-    "test": "jest"
+    "jest": "jest",
+    "prepublishOnly": "vp run build"
   },
   "dependencies": {
     "eventemitter3": "^5.0.4"
