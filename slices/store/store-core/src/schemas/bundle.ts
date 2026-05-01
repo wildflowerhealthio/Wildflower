@@ -5,7 +5,12 @@ import { Schema as BackboneElementSchema } from './base/backbone-element.ts'
 import * as Resource from './base/resource.ts'
 import * as Identifier from './complex/identifier.ts'
 
-const BundleType = Schema.Enums({
+/**
+ * FHIR R4 value set for `Bundle.type`: document | message | transaction |
+ * transaction-response | batch | batch-response | history | searchset |
+ * collection.
+ */
+const TypeSchema = Schema.Enums({
   batch: 'batch',
   'batch-response': 'batch-response',
   collection: 'collection',
@@ -65,7 +70,7 @@ export const Bundle = {
       signature: Schema.NullOr(Schema.Any),
       timestamp: Schema.NullOr(Schema.String),
       total: Schema.NullOr(Schema.Int),
-      type: BundleType,
+      type: TypeSchema,
     }),
   EntrySchema,
 }

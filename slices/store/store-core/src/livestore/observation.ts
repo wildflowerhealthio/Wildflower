@@ -3,21 +3,21 @@ import { Arbitrary, type FastCheck, Schema } from 'effect'
 import { AnnotateArrayWithArbitrary, PermissivePassthrough } from 'kitchen-sink/schema'
 
 import { State } from '@livestore/livestore'
+import { makeDomainResourcePersistence } from '../internal/domain-resource-persistence.ts'
 import { makeRowSchemas } from '../internal/make-row-schemas.ts'
 import * as Annotation from '../schemas/complex/annotation.ts'
 import * as CodeableConcept from '../schemas/complex/codeable-concept.ts'
 import * as Identifier from '../schemas/complex/identifier.ts'
 import * as Reference from '../schemas/complex/reference.ts'
-import * as DatatypeChoice from '../schemas/datatype-choice.ts'
-import FhirR4ChoiceElements from '../schemas/fhir-r4-choice-elements.ts'
 import * as DomainResource from './domain-resource.ts'
 import * as ObservationComponent from './observation-component.ts'
 import * as ObservationReferenceRange from './observation-reference-range.ts'
 
 /**
- * The status of the result value.
+ * FHIR R4 value set for `Observation.status`: registered | preliminary | final |
+ * amended | corrected | cancelled | entered-in-error | unknown.
  */
-const ObservationStatus = Schema.Enums({
+const StatusSchema = Schema.Enums({
   amended: 'amended',
   cancelled: 'cancelled',
   corrected: 'corrected',
@@ -29,48 +29,9 @@ const ObservationStatus = Schema.Enums({
 } as const)
 
 /** Decoded status value for an Observation. */
-type ObservationStatus = typeof ObservationStatus.Type
+type Status = typeof StatusSchema.Type
 
 const resourceType = 'Observation' as const
-
-const observationValue = DatatypeChoice.DatatypeChoice(
-  'value',
-  FhirR4ChoiceElements['Observation.value[x]']
-)
-
-const fields = {
-  resourceType: Schema.Literal(resourceType),
-  basedOn: Schema.Array(Reference.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
-  bodySite: Schema.NullOr(CodeableConcept.Schema),
-  category: Schema.Array(CodeableConcept.Schema),
-  code: CodeableConcept.Schema,
-  component: Schema.Array(ObservationComponent.Schema).pipe(
-    AnnotateArrayWithArbitrary({ maxLength: 2 })
-  ),
-  dataAbsentReason: Schema.NullOr(CodeableConcept.Schema),
-  derivedFrom: Schema.Array(Reference.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
-  device: Schema.NullOr(Reference.Schema),
-  effectiveDateTime: Schema.NullOr(Schema.DateTimeUtc),
-  encounter: Schema.NullOr(Reference.Schema),
-  focus: Schema.Array(Reference.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
-  hasMember: Schema.Array(Reference.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
-  identifier: Schema.Array(Identifier.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
-  interpretation: Schema.Array(CodeableConcept.Schema).pipe(
-    AnnotateArrayWithArbitrary({ maxLength: 2 })
-  ),
-  issued: Schema.NullOr(Schema.DateTimeUtc),
-  method: Schema.NullOr(CodeableConcept.Schema),
-  note: Schema.Array(Annotation.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
-  partOf: Schema.Array(Reference.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
-  performer: Schema.Array(Reference.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
-  referenceRange: Schema.Array(ObservationReferenceRange.Schema).pipe(
-    AnnotateArrayWithArbitrary({ maxLength: 2 })
-  ),
-  specimen: Schema.NullOr(Reference.Schema),
-  status: ObservationStatus,
-  subject: Schema.NullOr(Reference.Schema),
-  ...observationValue.fields,
-} as const
 
 const columns = {
   ...DomainResource.columns,
@@ -126,7 +87,7 @@ const columns = {
     ),
   }),
   specimen: State.SQLite.json({ nullable: true, schema: Reference.Schema }),
-  status: State.SQLite.text({ schema: ObservationStatus }),
+  status: State.SQLite.text({ schema: StatusSchema }),
   subject: State.SQLite.json({ nullable: true, schema: Reference.Schema }),
   valueQuantity: State.SQLite.json({ nullable: true, schema: PermissivePassthrough }),
   valueCodeableConcept: State.SQLite.json({ nullable: true, schema: PermissivePassthrough }),
@@ -143,7 +104,7 @@ const columns = {
 
 const table = State.SQLite.table({ name: resourceType, columns })
 
-const { RowSchema: BaseRowSchema, RowSchemaOptionalId } = makeRowSchemas(columns, {
+const { RowSchema: BaseRowSchema, RowSchemaNullableId } = makeRowSchemas(columns, {
   name: resourceType,
 })
 
@@ -159,4 +120,19 @@ const RowSchema = BaseRowSchema.annotations({
     ),
 })
 
-export { ObservationStatus, resourceType, fields, table, RowSchema, RowSchemaOptionalId }
+const { events, materializers, queries } = makeDomainResourcePersistence({
+  table,
+  rowSchema: RowSchema,
+})
+
+export {
+  events,
+  materializers,
+  queries,
+  resourceType,
+  RowSchema,
+  RowSchemaNullableId,
+  StatusSchema,
+  table,
+}
+export type { Status }

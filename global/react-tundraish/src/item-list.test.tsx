@@ -18,6 +18,9 @@ describe('ItemList', () => {
     expect(container.firstChild).toBeNull()
   })
 
+  // First-render React Testing Library setup (jsdom environment + render) can
+  // exceed the 5s default under the CPU contention of `vp run -r test`. Bumped
+  // for headroom; cheap once the renderer has warmed up for later tests.
   it('renders an <a> with href when an item has href and is not disabled', () => {
     // Arrange
     const items: ItemListItem[] = [{ id: '1', title: 'Settings', href: '/settings' }]
@@ -27,7 +30,7 @@ describe('ItemList', () => {
 
     // Assert
     expect(screen.getByRole('link', { name: /Settings/ }).getAttribute('href')).toBe('/settings')
-  })
+  }, 15_000)
 
   it('does NOT render a navigable link when href is set but the item is disabled', () => {
     // Arrange

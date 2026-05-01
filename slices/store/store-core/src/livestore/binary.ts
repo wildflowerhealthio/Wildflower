@@ -1,31 +1,15 @@
 import { Arbitrary, type FastCheck, Schema } from 'effect'
 
-import { Base64FromUint8ArrayBuffer, type FieldsNoContext } from 'kitchen-sink/schema'
+import { Base64FromUint8ArrayBuffer } from 'kitchen-sink/schema'
 
 import { State } from '@livestore/livestore'
+import { makeDomainResourcePersistence } from '../internal/domain-resource-persistence.ts'
 import { makeRowSchemas } from '../internal/make-row-schemas.ts'
 import * as DomainResource from '../livestore/domain-resource.ts'
 import { Code } from '../schemas/complex/code.ts'
 import * as Reference from '../schemas/complex/reference.ts'
 
 const resourceType = 'Binary' as const
-
-const fields = {
-  resourceType: Schema.Literal(resourceType),
-  /**
-   * MimeType of the binary content represented as a standard MimeType (BCP 13).
-   */
-  contentType: Code,
-  /**
-   * The actual content, base64 encoded.
-   */
-  data: Schema.NullOr(Schema.String),
-  /**
-   * Identifies another resource to use as proxy when enforcing access control
-   * on the Binary resource.
-   */
-  securityContext: Schema.NullOr(Reference.Schema),
-} as const satisfies FieldsNoContext
 
 const columns = {
   ...DomainResource.columns,
@@ -47,7 +31,7 @@ const columns = {
 
 const table = State.SQLite.table({ name: resourceType, columns })
 
-const { RowSchema: BaseRowSchema, RowSchemaOptionalId } = makeRowSchemas(columns, {
+const { RowSchema: BaseRowSchema, RowSchemaNullableId } = makeRowSchemas(columns, {
   name: resourceType,
 })
 
@@ -64,4 +48,9 @@ const RowSchema = BaseRowSchema.annotations({
     ),
 })
 
-export { resourceType, fields, table, RowSchema, RowSchemaOptionalId }
+const { events, materializers, queries } = makeDomainResourcePersistence({
+  table,
+  rowSchema: RowSchema,
+})
+
+export { events, materializers, queries, resourceType, RowSchema, RowSchemaNullableId, table }

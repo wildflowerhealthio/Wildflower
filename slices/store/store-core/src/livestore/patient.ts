@@ -3,6 +3,7 @@ import { Schema } from 'effect'
 import { AnnotateArrayWithArbitrary, TimelessDateFromString } from 'kitchen-sink/schema'
 
 import { State } from '@livestore/livestore'
+import { makeDomainResourcePersistence } from '../internal/domain-resource-persistence.ts'
 import { makeRowSchemas } from '../internal/make-row-schemas.ts'
 import {
   Reference,
@@ -20,34 +21,6 @@ import * as PatientContact from './patient-contact.ts'
 import * as PatientLink from './patient-link.ts'
 
 const resourceType = 'Patient' as const
-
-const fields = {
-  resourceType: Schema.Literal(resourceType),
-  active: Schema.NullOr(Schema.Boolean),
-  address: Schema.Array(Address.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
-  birthDate: Schema.NullOr(TimelessDateFromString),
-  communication: Schema.NullOr(
-    Schema.Array(PatientCommunication.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 }))
-  ),
-  contact: Schema.NullOr(
-    Schema.Array(PatientContact.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 }))
-  ),
-  deceasedBoolean: Schema.NullOr(Schema.Boolean),
-  deceasedDateTime: Schema.NullOr(Schema.DateTimeUtc),
-  gender: Schema.NullOr(AdministrativeGender),
-  generalPractitioner: Schema.Array(Reference.Schema).pipe(
-    AnnotateArrayWithArbitrary({ maxLength: 2 })
-  ),
-  identifier: Schema.Array(Identifier.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
-  link: Schema.Array(PatientLink.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
-  managingOrganization: Schema.NullOr(Reference.Schema),
-  maritalStatus: Schema.NullOr(CodeableConcept.Schema),
-  multipleBirthBoolean: Schema.NullOr(Schema.Boolean),
-  multipleBirthInteger: Schema.NullOr(Schema.Int),
-  name: Schema.Array(HumanName.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
-  photo: Schema.Array(Attachment.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
-  telecom: Schema.Array(ContactPoint.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
-} as const
 
 const columns = {
   ...DomainResource.columns,
@@ -100,6 +73,11 @@ const columns = {
 
 const table = State.SQLite.table({ name: resourceType, columns })
 
-const { RowSchema, RowSchemaOptionalId } = makeRowSchemas(columns, { name: resourceType })
+const { RowSchema, RowSchemaNullableId } = makeRowSchemas(columns, { name: resourceType })
 
-export { resourceType, fields, table, RowSchema, RowSchemaOptionalId }
+const { events, materializers, queries } = makeDomainResourcePersistence({
+  table,
+  rowSchema: RowSchema,
+})
+
+export { events, materializers, queries, resourceType, RowSchema, RowSchemaNullableId, table }

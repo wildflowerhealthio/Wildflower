@@ -1,4 +1,4 @@
-import { Schema as ES } from 'effect'
+import { Schema } from 'effect'
 
 import {
   AnnotateArrayWithArbitrary,
@@ -18,23 +18,23 @@ const ResourceType = 'PatientContact' as const
 type ResourceType = typeof ResourceType
 
 const fields = {
-  address: ES.NullOr(Address.Schema),
-  gender: ES.NullOr(AdministrativeGender),
-  name: ES.NullOr(HumanName.Schema),
-  organization: ES.NullOr(Reference.Schema),
-  period: ES.NullOr(Period.Schema),
-  relationship: ES.NullOr(
-    ES.Array(CodeableConcept.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 }))
+  address: Schema.NullOr(Address.Schema),
+  gender: Schema.NullOr(AdministrativeGender),
+  name: Schema.NullOr(HumanName.Schema),
+  organization: Schema.NullOr(Reference.Schema),
+  period: Schema.NullOr(Period.Schema),
+  relationship: Schema.NullOr(
+    Schema.Array(CodeableConcept.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 }))
   ),
-  telecom: ES.NullOr(
-    ES.Array(ContactPoint.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 }))
+  telecom: Schema.NullOr(
+    Schema.Array(ContactPoint.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 }))
   ),
 } as const satisfies FieldsNoContext
 
 /** A contact party (e.g. guardian, partner) for a Patient. */
-const Schema = StructNoContext({
+const PatientContactSchema = StructNoContext({
   ...BackboneElementSchema.fields,
   ...fields,
 })
 
-export { ResourceType, Schema }
+export { ResourceType, PatientContactSchema as Schema }

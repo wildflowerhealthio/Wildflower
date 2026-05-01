@@ -7,7 +7,7 @@ interface CustomMatchers<R = unknown> {
 }
 
 declare module 'vite-plus/test' {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // oxlint-disable-next-line typescript/no-explicit-any -- module-augmentation default for `Assertion<T>`; `unknown` would force every `expect()` call site into a manual cast.
   interface Assertion<T = any> extends CustomMatchers<T> {}
   interface AsymmetricMatchersContaining extends CustomMatchers {}
 }

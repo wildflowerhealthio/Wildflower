@@ -1,4 +1,4 @@
-import { Schema as ES } from 'effect'
+import { Schema } from 'effect'
 
 import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
 import { Schema as ElementSchema } from '../base/element.ts'
@@ -8,14 +8,21 @@ import { Code } from './code.ts'
 const ResourceType = 'Quantity' as const
 type ResourceType = typeof ResourceType
 
+/** How the value should be understood and represented - whether the actual value is greater or less than the stated value due to measurement issues. */
+const ComparatorSchema = Schema.Union(
+  Schema.Literal('<'),
+  Schema.Literal('<='),
+  Schema.Literal('>='),
+  Schema.Literal('>')
+)
+type Comparator = typeof ComparatorSchema.Type
+
 const fields = {
-  value: ES.NullOr(ES.Finite),
-  unit: ES.NullOr(ES.String),
-  system: ES.NullOr(ES.String),
-  code: ES.NullOr(Code),
-  comparator: ES.NullOr(
-    ES.Union(ES.Literal('<'), ES.Literal('<='), ES.Literal('>='), ES.Literal('>'))
-  ),
+  value: Schema.NullOr(Schema.Finite),
+  unit: Schema.NullOr(Schema.String),
+  system: Schema.NullOr(Schema.String),
+  code: Schema.NullOr(Code),
+  comparator: Schema.NullOr(ComparatorSchema),
 } as const satisfies FieldsNoContext
 
 /**
@@ -27,11 +34,12 @@ const fields = {
  * The context of use may frequently define what kind of quantity this is and therefore what kind
  * of units can be used. The context of use may also restrict the values for the comparator.
  */
-const Schema = StructNoContext({
+const QuantitySchema = StructNoContext({
   ...ElementSchema.fields,
   ...fields,
 })
 
-const Datatype = makeDatatype(ResourceType, Schema)
+const Datatype = makeDatatype(ResourceType, QuantitySchema)
 
-export { Datatype, ResourceType, Schema }
+export { Datatype, ResourceType, ComparatorSchema, QuantitySchema as Schema }
+export type { Comparator }

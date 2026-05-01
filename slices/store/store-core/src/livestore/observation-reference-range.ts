@@ -1,4 +1,4 @@
-import { Schema as ES } from 'effect'
+import { Schema } from 'effect'
 
 import {
   AnnotateArrayWithArbitrary,
@@ -15,24 +15,24 @@ const ResourceType = 'ObservationReferenceRange' as const
 type ResourceType = typeof ResourceType
 
 const fields = {
-  age: ES.optional(Range.Schema),
-  appliesTo: ES.Array(CodeableConcept.Schema).pipe(
+  age: Schema.optional(Range.Schema),
+  appliesTo: Schema.Array(CodeableConcept.Schema).pipe(
     AnnotateArrayWithArbitrary({ maxLength: 2 }),
-    ES.optionalWith({ default: () => [] })
+    Schema.optionalWith({ default: () => [] })
   ),
-  high: ES.optional(Quantity.Schema),
-  low: ES.optional(Quantity.Schema),
-  text: ES.optional(ES.String),
-  type: ES.optional(CodeableConcept.Schema),
+  high: Schema.optional(Quantity.Schema),
+  low: Schema.optional(Quantity.Schema),
+  text: Schema.optional(Schema.String),
+  type: Schema.optional(CodeableConcept.Schema),
 } as const satisfies FieldsNoContext
 
 /**
  * Guidance on how to interpret an Observation value relative to normal or
  * recommended ranges.
  */
-const Schema = StructNoContext({
+const ObservationReferenceRangeSchema = StructNoContext({
   ...BackboneElementSchema.fields,
   ...fields,
 })
 
-export { ResourceType, Schema }
+export { ResourceType, ObservationReferenceRangeSchema as Schema }

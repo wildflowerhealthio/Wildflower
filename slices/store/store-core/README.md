@@ -1,23 +1,16 @@
-# vite-plus-starter
+# store-core
 
-A starter for creating a Vite Plus project.
+FHIR R4 data types, schemas, queries, and resources backed by LiveStore.
 
-## Development
+## Entry points
 
-- Install dependencies:
+- `store-core/schemas` — Effect Schemas for FHIR base, complex, and special-purpose data types (Address, CodeableConcept, Identifier, Reference, etc.), plus the choice-element machinery and `Bundle`.
+- `store-core/livestore` — LiveStore tables, events, materializers, and queries for the persisted resources (`Patient`, `Binary`, `Observation`).
+- `store-core/contexts` — Effect Context tags and Layer factories (`LivestoreStore`, `makeLivestoreStoreLayer`).
 
-```bash
-vp install
-```
+## Layout
 
-- Run the unit tests:
-
-```bash
-vp test
-```
-
-- Build the library:
-
-```bash
-vp pack
-```
+- `src/schemas/` — pure FHIR R4 Effect Schemas, no platform or storage assumptions.
+- `src/livestore/` — per-resource modules that wrap the schemas in LiveStore tables and expose events/materializers/queries.
+- `src/internal/domain-resource-persistence.ts` — generic factory that derives upsert/delete events, materializers, and `all$` / `getById$` / `search$` / `count$` queries from a table and row schema.
+- `src/contexts/` — Effect Context tags shared across consumers.

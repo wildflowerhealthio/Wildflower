@@ -1,21 +1,27 @@
-import { Schema as ES } from 'effect'
+import { Schema } from 'effect'
 
 import { Schema as ElementSchema } from '../base/element.ts'
 
 const ResourceType = 'Narrative' as const
 type ResourceType = typeof ResourceType
 
-const NarrativeStatus = ES.Union(
-  /** The contents of the narrative are entirely generated from the core elements in the content. */
-  ES.Literal('generated'),
-  ES.Literal('extensions'),
-  ES.Literal('additional'),
-  ES.Literal('empty')
+/**
+ * FHIR R4 value set for `Narrative.status`:
+ * - `generated` — the contents of the narrative are entirely generated from the core elements in the content
+ * - `extensions` — additionally contains extensions from FHIR resources
+ * - `additional` — additional information beyond the structured data
+ * - `empty` — the narrative is empty (e.g., the resource has no narrative)
+ */
+const StatusSchema = Schema.Union(
+  Schema.Literal('generated'),
+  Schema.Literal('extensions'),
+  Schema.Literal('additional'),
+  Schema.Literal('empty')
 )
-type NarrativeStatus = typeof NarrativeStatus.Type
+type Status = typeof StatusSchema.Type
 
 const fields = {
-  status: NarrativeStatus,
+  status: StatusSchema,
   /**
    * Limited xhtml content
    * + Rule: The narrative SHALL contain only the basic html formatting
@@ -24,16 +30,17 @@ const fields = {
    * href), images and internally contained style attributes, and SHALL contain
    * some non-whitespace characters
    */
-  div: ES.String,
-} as const satisfies ES.Struct.Fields
+  div: Schema.String,
+} as const satisfies Schema.Struct.Fields
 
 /**
  * Human-readable XHTML summary of a resource, with a `status` indicating
  * whether the narrative is generated, additional, or empty.
  */
-const Schema = ES.Struct({
+const NarrativeSchema = Schema.Struct({
   ...ElementSchema.fields,
   ...fields,
 })
 
-export { NarrativeStatus, ResourceType, Schema }
+export { ResourceType, NarrativeSchema as Schema, StatusSchema }
+export type { Status }

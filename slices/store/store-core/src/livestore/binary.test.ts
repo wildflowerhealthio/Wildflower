@@ -9,6 +9,8 @@ const BinarySchema = Binary.RowSchema
 const binaryArb = Arbitrary.make(BinarySchema)
 
 describe('Binary model', () => {
+  // Property tests over the full Binary row schema can trip the 5s default
+  // under the CPU contention of `vp run -r test`. Bumped for headroom.
   test('property: encode-decode cycle', () => {
     fc.assert(
       fc.property(binaryArb, (binary) => {
@@ -17,7 +19,7 @@ describe('Binary model', () => {
         expect(decoded).toSchemaEqual(BinarySchema, binary)
       })
     )
-  })
+  }, 15_000)
 
   test('Binary.resourceType is "Binary"', () => {
     expect(Binary.resourceType).toBe('Binary')

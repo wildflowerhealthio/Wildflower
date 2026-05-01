@@ -11,6 +11,8 @@ const PatientSchema = Patient.RowSchema
 const patientArb = Arbitrary.make(PatientSchema)
 
 describe('Patient model', () => {
+  // Property tests over the full Patient row schema run ~1.5s solo but trip the
+  // 5s default under the CPU contention of `vp run -r test`. Bumped for headroom.
   test('property: encode-decode cycle', () => {
     fc.assert(
       fc.property(patientArb, (patient) => {
@@ -19,7 +21,7 @@ describe('Patient model', () => {
         expect(decoded).toSchemaEqual(PatientSchema, patient)
       })
     )
-  })
+  }, 15_000)
 
   test('decodes a realistic FHIR R4 Patient JSON payload', () => {
     const wirePayload: typeof PatientSchema.Encoded = {

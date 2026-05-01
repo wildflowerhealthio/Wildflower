@@ -13,6 +13,12 @@ describe('Observation model', () => {
     expect(Observation.resourceType).toBe('Observation')
   })
 
+  // Observation's RowSchema fans out the value[x] choice element across many
+  // primitive and complex datatypes, so 100 fast-check iterations of full
+  // encode/decode round-trips runs ~5s solo and grows several-fold under the
+  // CPU contention of `vp run -r test`. Bumped well past the 5s default to
+  // absorb worst-case worker-contention slowdown — the other property tests
+  // sit at 15s; this one is the genuine outlier in the suite.
   test('property: encode-decode cycle', () => {
     fc.assert(
       fc.property(observationArb, (obs) => {
@@ -21,7 +27,7 @@ describe('Observation model', () => {
         expect(decoded).toSchemaEqual(ObservationSchema, obs)
       })
     )
-  })
+  }, 45_000)
 
   test('property: missing required fields always fail', () => {
     fc.assert(

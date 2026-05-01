@@ -1,5 +1,4 @@
 /**
- * eslint-disable-next-line tsdoc/syntax
  * @jest-environment ./browser-sniffer/jest-environment-web.cjs
  */
 // oxlint-disable @typescript-eslint/no-unsafe-type-assertion

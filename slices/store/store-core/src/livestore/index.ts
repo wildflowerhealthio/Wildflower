@@ -2,21 +2,24 @@
  * LiveStore bindings for FHIR R4 domain resources.
  *
  * Each per-resource module (`patient.ts`, `binary.ts`, `observation.ts`)
- * exports its resource name, column-derived `RowSchema` / `RowSchemaOptionalId`
- * Structs, and a columns-based livestore `table`. This composer passes each
- * `table` plus the explicit `RowSchema` through `makeDomainResourcePersistence`
- * to derive events, materializers, and queries.
+ * owns its own composition: column-derived `RowSchema` /
+ * `RowSchemaNullableId`, the livestore `table`, and the
+ * `events` / `materializers` / `queries` produced by
+ * `makeDomainResourcePersistence`. This file just re-exposes those
+ * per-resource surfaces and stitches them together for app-level wiring.
  *
  * Exports:
  *  - `Patient` / `Binary` / `Observation` — per-resource namespaces; consumers
- *    access `Patient.RowSchema`, `Patient.RowSchemaOptionalId`, `Patient.table`,
+ *    access `Patient.RowSchema`, `Patient.events.upsert`, `Patient.queries.all$`,
  *    etc. through a single import.
  *  - `tables` — keyed by ResourceType; the raw livestore tableDefs.
  *  - `events` / `queries` — flat objects, spread-safe for an app-level
- *    livestore schema.
- *  - `materializers` — composed materializer map, likewise spread-safe.
+ *    livestore schema. Keys are prefixed by resource (`patientUpsert`,
+ *    `binaryAll$`, ...).
+ *  - `materializers` — composed materializer map, keyed by globally-unique
+ *    event names so per-resource maps spread directly.
  *  - `domainResources` — `Record<ResourceType, { resourceType, table,
- *    RowSchema, RowSchemaOptionalId, events, queries }>`, the structured
+ *    RowSchema, RowSchemaNullableId, events, queries }>`, the structured
  *    surface for generic UI / wiring code.
  *  - `schema` / `state` / `SyncPayload` — the package-level livestore schema.
  *
@@ -26,114 +29,65 @@
 import { State, makeSchema } from '@livestore/livestore'
 
 import { Schema } from 'effect'
-import { makeDomainResourcePersistence } from '../internal/domain-resource-persistence.ts'
 import * as Binary from './binary.ts'
 import * as Observation from './observation.ts'
 import * as Patient from './patient.ts'
-
-// ---------------------------------------------------------------------------
-// Per-resource composition
-// ---------------------------------------------------------------------------
-
-const patient = (() => {
-  const { events, materializers, queries } = makeDomainResourcePersistence({
-    table: Patient.table,
-    rowSchema: Patient.RowSchema,
-  })
-  return {
-    resourceType: Patient.resourceType,
-    table: Patient.table,
-    RowSchema: Patient.RowSchema,
-    RowSchemaOptionalId: Patient.RowSchemaOptionalId,
-    events,
-    materializers,
-    queries,
-  } as const
-})()
-
-const binary = (() => {
-  const { events, materializers, queries } = makeDomainResourcePersistence({
-    table: Binary.table,
-    rowSchema: Binary.RowSchema,
-  })
-  return {
-    resourceType: Binary.resourceType,
-    table: Binary.table,
-    RowSchema: Binary.RowSchema,
-    RowSchemaOptionalId: Binary.RowSchemaOptionalId,
-    events,
-    materializers,
-    queries,
-  } as const
-})()
-
-const observation = (() => {
-  const { events, materializers, queries } = makeDomainResourcePersistence({
-    table: Observation.table,
-    rowSchema: Observation.RowSchema,
-  })
-  return {
-    resourceType: Observation.resourceType,
-    table: Observation.table,
-    RowSchema: Observation.RowSchema,
-    RowSchemaOptionalId: Observation.RowSchemaOptionalId,
-    events,
-    materializers,
-    queries,
-  } as const
-})()
 
 // ---------------------------------------------------------------------------
 // Flat, spread-safe composed bindings
 // ---------------------------------------------------------------------------
 
 const tables = {
-  [patient.resourceType]: patient.table,
-  [binary.resourceType]: binary.table,
-  [observation.resourceType]: observation.table,
+  [Patient.resourceType]: Patient.table,
+  [Binary.resourceType]: Binary.table,
+  [Observation.resourceType]: Observation.table,
 } as const
 
 const events = {
-  patientUpsert: patient.events.upsert,
-  patientDeleteById: patient.events.deleteById,
-  binaryUpsert: binary.events.upsert,
-  binaryDeleteById: binary.events.deleteById,
-  observationUpsert: observation.events.upsert,
-  observationDeleteById: observation.events.deleteById,
+  patientUpsert: Patient.events.upsert,
+  patientDeleteById: Patient.events.deleteById,
+  binaryUpsert: Binary.events.upsert,
+  binaryDeleteById: Binary.events.deleteById,
+  observationUpsert: Observation.events.upsert,
+  observationDeleteById: Observation.events.deleteById,
 } as const
 
 const queries = {
-  patientAll$: patient.queries.all$,
-  patientGetById$: patient.queries.getById$,
-  binaryAll$: binary.queries.all$,
-  binaryGetById$: binary.queries.getById$,
-  observationAll$: observation.queries.all$,
-  observationGetById$: observation.queries.getById$,
+  patientAll$: Patient.queries.all$,
+  patientGetById$: Patient.queries.getById$,
+  binaryAll$: Binary.queries.all$,
+  binaryGetById$: Binary.queries.getById$,
+  observationAll$: Observation.queries.all$,
+  observationGetById$: Observation.queries.getById$,
 } as const
 
 // Materializers are keyed by globally-unique event `.name` strings, so
 // spreading the per-resource materializer outputs composes them directly.
 const materializers = {
-  ...patient.materializers,
-  ...binary.materializers,
-  ...observation.materializers,
+  ...Patient.materializers,
+  ...Binary.materializers,
+  ...Observation.materializers,
 } as const
 
 // ---------------------------------------------------------------------------
 // Structured per-resource surface
 // ---------------------------------------------------------------------------
 
-type DomainResourceBinding<R extends typeof patient | typeof binary | typeof observation> = Pick<
-  R,
-  'resourceType' | 'table' | 'RowSchema' | 'RowSchemaOptionalId' | 'events' | 'queries'
->
+type DomainResourceBinding<R extends typeof Patient | typeof Binary | typeof Observation> = {
+  readonly resourceType: R['resourceType']
+  readonly table: R['table']
+  readonly RowSchema: R['RowSchema']
+  readonly RowSchemaNullableId: R['RowSchemaNullableId']
+  readonly events: R['events']
+  readonly queries: R['queries']
+}
 
 type DomainResources = {
-  readonly [K in typeof Patient.resourceType]: DomainResourceBinding<typeof patient>
+  readonly [K in typeof Patient.resourceType]: DomainResourceBinding<typeof Patient>
 } & {
-  readonly [K in typeof Binary.resourceType]: DomainResourceBinding<typeof binary>
+  readonly [K in typeof Binary.resourceType]: DomainResourceBinding<typeof Binary>
 } & {
-  readonly [K in typeof Observation.resourceType]: DomainResourceBinding<typeof observation>
+  readonly [K in typeof Observation.resourceType]: DomainResourceBinding<typeof Observation>
 }
 
 /**
@@ -143,29 +97,29 @@ type DomainResources = {
  * deleteById), and queries (all$ / getById$).
  */
 const domainResources: DomainResources = {
-  [patient.resourceType]: {
-    resourceType: patient.resourceType,
-    table: patient.table,
-    RowSchema: patient.RowSchema,
-    RowSchemaOptionalId: patient.RowSchemaOptionalId,
-    events: patient.events,
-    queries: patient.queries,
+  [Patient.resourceType]: {
+    resourceType: Patient.resourceType,
+    table: Patient.table,
+    RowSchema: Patient.RowSchema,
+    RowSchemaNullableId: Patient.RowSchemaNullableId,
+    events: Patient.events,
+    queries: Patient.queries,
   },
-  [binary.resourceType]: {
-    resourceType: binary.resourceType,
-    table: binary.table,
-    RowSchema: binary.RowSchema,
-    RowSchemaOptionalId: binary.RowSchemaOptionalId,
-    events: binary.events,
-    queries: binary.queries,
+  [Binary.resourceType]: {
+    resourceType: Binary.resourceType,
+    table: Binary.table,
+    RowSchema: Binary.RowSchema,
+    RowSchemaNullableId: Binary.RowSchemaNullableId,
+    events: Binary.events,
+    queries: Binary.queries,
   },
-  [observation.resourceType]: {
-    resourceType: observation.resourceType,
-    table: observation.table,
-    RowSchema: observation.RowSchema,
-    RowSchemaOptionalId: observation.RowSchemaOptionalId,
-    events: observation.events,
-    queries: observation.queries,
+  [Observation.resourceType]: {
+    resourceType: Observation.resourceType,
+    table: Observation.table,
+    RowSchema: Observation.RowSchema,
+    RowSchemaNullableId: Observation.RowSchemaNullableId,
+    events: Observation.events,
+    queries: Observation.queries,
   },
 } as const
 

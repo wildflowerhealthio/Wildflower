@@ -1,10 +1,7 @@
-import { Schema as ES } from 'effect'
+import { Schema } from 'effect'
 
 import { Datatype as makeDatatype } from '../datatype.ts'
-import {
-  ReferenceResourceType as ResourceType,
-  ReferenceSchema as Schema,
-} from './identifier-and-reference.ts'
+import { ReferenceResourceType, ReferenceSchema } from './identifier-and-reference.ts'
 
 /**
  * Creates a Reference pointing to a resource, or `undefined` if the
@@ -16,11 +13,11 @@ const fromResource = (
     readonly resourceType: string
   },
   display: string | null = null
-): typeof Schema.Type | undefined => {
+): typeof ReferenceSchema.Type | undefined => {
   if (!resource.meta.source) {
     return undefined
   }
-  return ES.decodeSync(Schema)({
+  return Schema.decodeSync(ReferenceSchema)({
     display,
     reference: resource.meta.source,
     type: resource.resourceType,
@@ -30,6 +27,6 @@ const fromResource = (
   })
 }
 
-const Datatype = makeDatatype(ResourceType, Schema)
+const Datatype = makeDatatype(ReferenceResourceType, ReferenceSchema)
 
-export { Datatype, fromResource, ResourceType, Schema }
+export { Datatype, fromResource, ReferenceResourceType as ResourceType, ReferenceSchema as Schema }

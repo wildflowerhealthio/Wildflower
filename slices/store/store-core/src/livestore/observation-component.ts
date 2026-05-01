@@ -1,4 +1,4 @@
-import { Schema as ES } from 'effect'
+import { Schema } from 'effect'
 
 import {
   AnnotateArrayWithArbitrary,
@@ -16,14 +16,14 @@ type ResourceType = typeof ResourceType
 
 const fields = {
   code: CodeableConcept.Schema,
-  dataAbsentReason: ES.optional(CodeableConcept.Schema),
-  interpretation: ES.Array(CodeableConcept.Schema).pipe(
+  dataAbsentReason: Schema.optional(CodeableConcept.Schema),
+  interpretation: Schema.Array(CodeableConcept.Schema).pipe(
     AnnotateArrayWithArbitrary({ maxLength: 2 }),
-    ES.optionalWith({ default: () => [] })
+    Schema.optionalWith({ default: () => [] })
   ),
-  referenceRange: ES.Array(ObservationReferenceRange.Schema).pipe(
+  referenceRange: Schema.Array(ObservationReferenceRange.Schema).pipe(
     AnnotateArrayWithArbitrary({ maxLength: 2 }),
-    ES.optionalWith({ default: () => [] })
+    Schema.optionalWith({ default: () => [] })
   ),
   ...DatatypeChoice.DatatypeChoice('value', FhirR4ChoiceElements['Observation.component.value[x]'])
     .fields,
@@ -33,9 +33,9 @@ const fields = {
  * A component result within an Observation, carrying its own code and
  * value[x] choice.
  */
-const Schema = StructNoContext({
+const ObservationComponentSchema = StructNoContext({
   ...BackboneElementSchema.fields,
   ...fields,
 })
 
-export { ResourceType, Schema }
+export { ObservationComponentSchema as Schema, ResourceType }

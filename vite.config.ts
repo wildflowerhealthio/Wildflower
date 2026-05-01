@@ -1,5 +1,6 @@
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { defineConfig } from 'vite-plus'
-
 export default defineConfig({
   staged: {
     '*': 'vp check --fix',
@@ -18,10 +19,10 @@ export default defineConfig({
       },
     },
     setupFiles: [
-      // path.join(
-      //   path.dirname(fileURLToPath(import.meta.url)),
-      //   './domain/fhir-r4-livestore/vitest.setupSchemaEqual.ts'
-      // ),
+      path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        './slices/store/store-core/vitest.setupSchemaEqual.ts'
+      ),
     ],
   },
   fmt: {

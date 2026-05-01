@@ -1,4 +1,4 @@
-import { Schema as ES } from 'effect'
+import { Schema } from 'effect'
 
 import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
 import { Schema as ElementSchema } from '../base/element.ts'
@@ -16,49 +16,44 @@ const fields = {
   /**
    * A symbol in syntax defined by the system. The symbol may be a predefined code or an expression in a syntax defined by the coding system (e.g. post-coordination).
    */
-  code: ES.NullOr(Code),
+  code: Schema.NullOr(Code),
   /**
    * A representation of the meaning of the code in the system, following the rules of the system.
    */
-  display: ES.NullOr(ES.String),
+  display: Schema.NullOr(Schema.String),
   /**
    * The URI may be an OID (urn:oid:...) or a UUID (urn:uuid:...).
    */
-  system: ES.NullOr(ES.String),
+  system: Schema.NullOr(Schema.String),
   /**
    * Amongst a set of alternatives, a directly chosen code is the most appropriate starting point for new translations.
    */
-  userSelected: ES.NullOr(ES.Boolean),
+  userSelected: Schema.NullOr(Schema.Boolean),
   /**
    * Version of the terminology definition.
    */
-  version: ES.NullOr(ES.String),
+  version: Schema.NullOr(Schema.String),
 } as const satisfies FieldsNoContext
 
 /**
  * A reference to a code defined by a terminology system. Binds a `code` to
  * a `system` URI and optional `display` text.
  */
-const Schema = StructNoContext({
+const CodingSchema = StructNoContext({
   ...ElementSchema.fields,
   ...fields,
 })
 
-/** Encoded (wire-format) shape of a Coding. */
-interface CodingEncoded
-  extends ES.Struct.Encoded<typeof fields>, ES.Schema.Encoded<typeof ElementSchema> {}
-
-const Datatype = makeDatatype(ResourceType, Schema)
+const Datatype = makeDatatype(ResourceType, CodingSchema)
 
 /**
  * Construct a Coding with a const-narrowed return type — useful for literals
  * whose `code`/`system`/`display` values are meant to be exact types.
  */
-const makeLiteral = <const C extends Parameters<typeof Schema.make>[0]>(
+const makeLiteral = <const C extends Parameters<typeof CodingSchema.make>[0]>(
   params: C
-): ES.Schema.Type<typeof Schema> & C =>
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  Schema.make(params) as ES.Schema.Type<typeof Schema> & C
+): Schema.Schema.Type<typeof CodingSchema> & C =>
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `Schema.make` widens the const-narrowed `params` to the schema's full Type; the cast restores the caller-visible literal narrowing.
+  CodingSchema.make(params) as Schema.Schema.Type<typeof CodingSchema> & C
 
-export { Datatype, makeLiteral, ResourceType, Schema }
-export type { CodingEncoded }
+export { CodingSchema as Schema, Datatype, makeLiteral, ResourceType }

@@ -12,6 +12,9 @@ describe('Reference model', () => {
     expect(Reference.ResourceType).toBe('Reference')
   })
 
+  // Reference embeds Identifier (which embeds Reference), so its arbitrary
+  // pulls in a mutually-recursive shape that runs ~1.4s solo and over 5s under
+  // the CPU contention of `vp run -r test`. Bumped for headroom.
   test('property: encode-decode cycle', () => {
     fc.assert(
       fc.property(referenceArb, (reference) => {
@@ -20,7 +23,7 @@ describe('Reference model', () => {
         expect(decoded).toSchemaEqual(Reference.Schema, reference)
       })
     )
-  })
+  }, 15_000)
 
   describe('fromResource', () => {
     test('returns a Reference when url is present', () => {
@@ -61,6 +64,9 @@ describe('Identifier model', () => {
     expect(Identifier.ResourceType).toBe('Identifier')
   })
 
+  // Identifier embeds Reference (which embeds Identifier); the mutually-recursive
+  // arbitrary pushes this property test past the 5s default under the CPU
+  // contention of `vp run -r test`. Bumped for headroom.
   test('property: encode-decode cycle', () => {
     fc.assert(
       fc.property(identifierArb, (identifier) => {
@@ -69,5 +75,5 @@ describe('Identifier model', () => {
         expect(decoded).toSchemaEqual(Identifier.Schema, identifier)
       })
     )
-  })
+  }, 15_000)
 })

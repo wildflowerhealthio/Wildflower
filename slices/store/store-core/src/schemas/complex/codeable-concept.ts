@@ -1,4 +1,4 @@
-import { Schema as ES } from 'effect'
+import { Schema } from 'effect'
 
 import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
 import { Schema as ElementSchema } from '../base/element.ts'
@@ -18,23 +18,23 @@ const fields = {
    * very formal definitions such as SNOMED CT - see the HL7 v3 Core Principles
    * for more information.
    */
-  coding: ES.Array(CodingSchema),
+  coding: Schema.Array(CodingSchema),
   /**
    * Very often the text is the same as a displayName of one of the codings.
    */
-  text: ES.NullOr(ES.String),
+  text: Schema.NullOr(Schema.String),
 } as const satisfies FieldsNoContext
 
 /**
  * A concept that may be defined by one or more coding systems. Wraps an
  * array of Coding values plus optional free-text.
  */
-const Schema = StructNoContext({
+const CodeableConceptSchema = StructNoContext({
   ...ElementSchema.fields,
   ...fields,
 })
 
 /** {@link makeDatatype} wrapper for use in DatatypeChoice value[x] unions. */
-const Datatype = makeDatatype(ResourceType, Schema)
+const Datatype = makeDatatype(ResourceType, CodeableConceptSchema)
 
-export { Datatype, ResourceType, Schema }
+export { Datatype, ResourceType, CodeableConceptSchema as Schema }

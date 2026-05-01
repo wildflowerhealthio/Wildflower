@@ -1,4 +1,4 @@
-import { Schema as ES } from 'effect'
+import { Schema } from 'effect'
 
 import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
 import { Schema as ElementSchema } from '../base/element.ts'
@@ -9,8 +9,8 @@ const ResourceType = 'Range' as const
 type ResourceType = typeof ResourceType
 
 const fields = {
-  low: ES.NullOr(QuantitySchema),
-  high: ES.NullOr(QuantitySchema),
+  low: Schema.NullOr(QuantitySchema),
+  high: Schema.NullOr(QuantitySchema),
 } as const satisfies FieldsNoContext
 
 /**
@@ -19,11 +19,11 @@ const fields = {
  * A Range specifies a set of possible values; usually, one value from the range applies
  * (e.g. "give the patient between 2 and 4 tablets"). Ranges are typically used in instructions.
  */
-const Schema = StructNoContext({
+const RangeSchema = StructNoContext({
   ...ElementSchema.fields,
   ...fields,
 })
 
-const Datatype = makeDatatype(ResourceType, Schema)
+const Datatype = makeDatatype(ResourceType, RangeSchema)
 
-export { Datatype, ResourceType, Schema }
+export { Datatype, ResourceType, RangeSchema as Schema }

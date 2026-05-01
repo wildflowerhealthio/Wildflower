@@ -10,6 +10,8 @@ const TestBundle = Bundle.Schema(Schema.String)
 const bundleArb = Arbitrary.make(TestBundle)
 
 describe('Bundle resource', () => {
+  // Property tests over the full Bundle envelope can trip the 5s default
+  // under the CPU contention of `vp run -r test`. Bumped for headroom.
   test('property: encode-decode cycle', () => {
     fc.assert(
       fc.property(bundleArb, (bundle) => {
@@ -18,5 +20,5 @@ describe('Bundle resource', () => {
         expect(decoded).toSchemaEqual(TestBundle, bundle)
       })
     )
-  })
+  }, 15_000)
 })
