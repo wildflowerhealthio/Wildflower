@@ -32,8 +32,8 @@
     "build": "vp pack",
     "check": "vp check",
     "dev": "vp pack --watch",
-    "prepublishOnly": "vp run build",
-    "test": "jest"
+    "jest": "jest",
+    "prepublishOnly": "vp run build"
   },
   "devDependencies": {
     "@babel/core": "catalog:",

@@ -1,9 +1,9 @@
 import { Schema } from 'effect'
 
 import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
-import { Schema as ElementSchema } from '../base/element.ts'
-import { Datatype as makeDatatype } from '../datatype.ts'
+import { registerDatatypeSchema } from '../datatype-registry.ts'
 import { Code } from './code.ts'
+import { Schema as ElementSchema } from './element.ts'
 
 const ResourceType = 'Quantity' as const
 type ResourceType = typeof ResourceType
@@ -39,7 +39,7 @@ const QuantitySchema = StructNoContext({
   ...fields,
 })
 
-const Datatype = makeDatatype(ResourceType, QuantitySchema)
+registerDatatypeSchema(ResourceType, QuantitySchema)
 
-export { Datatype, ResourceType, ComparatorSchema, QuantitySchema as Schema }
+export { ResourceType, ComparatorSchema, QuantitySchema as Schema }
 export type { Comparator }

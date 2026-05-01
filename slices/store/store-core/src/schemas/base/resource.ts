@@ -2,8 +2,8 @@ import { Schema } from 'effect'
 
 import { State } from '@livestore/common/schema'
 import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
-import { Code } from '../complex/code.ts'
-import { Schema as MetaSchema } from './meta.ts'
+import { Code } from '../datatypes/code.ts'
+import { Schema as MetaSchema } from '../datatypes/meta.ts'
 
 // ---------------------------------------------------------------------------
 // Types

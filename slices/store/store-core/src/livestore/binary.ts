@@ -6,8 +6,8 @@ import { State } from '@livestore/livestore'
 import { makeDomainResourcePersistence } from '../internal/domain-resource-persistence.ts'
 import { makeRowSchemas } from '../internal/make-row-schemas.ts'
 import * as DomainResource from '../livestore/domain-resource.ts'
-import { Code } from '../schemas/complex/code.ts'
-import * as Reference from '../schemas/complex/reference.ts'
+import { Code } from '../schemas/datatypes/code.ts'
+import * as Reference from '../schemas/datatypes/reference.ts'
 
 const resourceType = 'Binary' as const
 

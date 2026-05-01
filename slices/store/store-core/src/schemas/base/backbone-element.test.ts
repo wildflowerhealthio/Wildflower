@@ -2,7 +2,7 @@ import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, expectTypeOf, test } from 'vite-plus/test'
 
-import type { Schema as ExtensionSchema } from '../special-purpose/extension.ts'
+import type { Schema as ExtensionSchema } from '../datatypes/extension.ts'
 import { Schema as TestBackboneSchema } from './backbone-element.ts'
 
 describe('BackboneElement', () => {

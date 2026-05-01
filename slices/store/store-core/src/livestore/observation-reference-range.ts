@@ -7,9 +7,9 @@ import {
 } from 'kitchen-sink/schema'
 
 import { Schema as BackboneElementSchema } from '../schemas/base/backbone-element.ts'
-import * as CodeableConcept from '../schemas/complex/codeable-concept.ts'
-import * as Quantity from '../schemas/complex/quantity.ts'
-import * as Range from '../schemas/complex/range.ts'
+import * as CodeableConcept from '../schemas/datatypes/codeable-concept.ts'
+import * as Quantity from '../schemas/datatypes/quantity.ts'
+import * as Range from '../schemas/datatypes/range.ts'
 
 const ResourceType = 'ObservationReferenceRange' as const
 type ResourceType = typeof ResourceType

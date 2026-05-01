@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 
-import { Schema as ElementSchema } from '../base/element.ts'
-import { Datatype as makeDatatype } from '../datatype.ts'
+import { registerDatatypeSchema } from '../datatype-registry.ts'
+import { Schema as ElementSchema } from './element.ts'
 import { Schema as PeriodSchema } from './period.ts'
 
 const ResourceType = 'Address' as const
@@ -77,7 +77,7 @@ const AddressSchema = Schema.Struct({
   ...fields,
 })
 
-const Datatype = makeDatatype(ResourceType, AddressSchema)
+registerDatatypeSchema(ResourceType, AddressSchema)
 
-export { Datatype, ResourceType, UseSchema, TypeSchema, AddressSchema as Schema }
+export { ResourceType, UseSchema, TypeSchema, AddressSchema as Schema }
 export type { Use, Type }

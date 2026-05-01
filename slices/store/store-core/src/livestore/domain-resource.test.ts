@@ -2,7 +2,7 @@ import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { AllDatatypeNames, DatatypeChoice } from '../schemas/index.ts'
+import { ChoiceElementSet, Datatype } from '../schemas/index.ts'
 import * as Patient from './patient.ts'
 
 const PatientSchema = Patient.RowSchema
@@ -24,24 +24,20 @@ describe('DomainResource columns: contained / extension / modifierExtension', ()
   })
 
   test('round-trips when contained / extension / modifierExtension are populated', () => {
-    // Extension.Schema unions every FHIR R4 datatype as `value[x]`, so
-    // building a wire-encoded Extension means filling every `value*` slot
-    // with `null`. `DatatypeChoice(...).emptyEncoded` is the wire-shape with
-    // every choice slot pre-set to `null`; spreading + overriding is the
-    // canonical way to populate exactly one variant.
-    const valueChoice = DatatypeChoice.DatatypeChoice('value', AllDatatypeNames)
+    const emptyValueChoice = ChoiceElementSet.empty('value', Datatype.names)
+
     const stringExtensionEncoded = {
       id: null,
       extension: [],
       url: 'http://example.org/StructureDefinition/some-marker',
-      ...valueChoice.emptyEncoded,
+      ...emptyValueChoice,
       valueString: 'marker-value',
     }
     const booleanExtensionEncoded = {
       id: null,
       extension: [],
       url: 'http://example.org/StructureDefinition/critical-flag',
-      ...valueChoice.emptyEncoded,
+      ...emptyValueChoice,
       valueBoolean: true,
     }
 

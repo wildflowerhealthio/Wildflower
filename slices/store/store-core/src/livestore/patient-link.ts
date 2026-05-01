@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 
 import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
 import { Schema as BackboneElementSchema } from '../schemas/base/backbone-element.ts'
-import * as Reference from '../schemas/complex/reference.ts'
+import * as Reference from '../schemas/datatypes/reference.ts'
 
 const ResourceType = 'PatientLink' as const
 type ResourceType = typeof ResourceType

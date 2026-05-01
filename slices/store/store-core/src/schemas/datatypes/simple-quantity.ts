@@ -1,5 +1,7 @@
 import { Schema } from 'effect'
 
+import { registerDatatypeSchema } from '../datatype-registry.ts'
+
 const ResourceType = 'SimpleQuantity' as const
 type ResourceType = typeof ResourceType
 
@@ -33,5 +35,7 @@ const fields = {
  * of units can be used. The context of use may also restrict the values for the comparator.
  */
 const SimpleQuantitySchema = Schema.Struct(fields)
+
+registerDatatypeSchema(ResourceType, SimpleQuantitySchema)
 
 export { ResourceType, SimpleQuantitySchema as Schema }

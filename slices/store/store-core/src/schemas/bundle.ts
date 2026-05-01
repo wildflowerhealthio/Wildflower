@@ -3,7 +3,7 @@ import { Schema } from 'effect'
 import { StructNoContext } from 'kitchen-sink/schema'
 import { Schema as BackboneElementSchema } from './base/backbone-element.ts'
 import * as Resource from './base/resource.ts'
-import * as Identifier from './complex/identifier.ts'
+import * as Identifier from './datatypes/identifier.ts'
 
 /**
  * FHIR R4 value set for `Bundle.type`: document | message | transaction |

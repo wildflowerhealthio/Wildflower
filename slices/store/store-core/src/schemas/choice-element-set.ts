@@ -1,3 +1,135 @@
+import { Schema } from 'effect'
+import { capitalize } from 'effect/String'
+
+import * as ChoiceElement from './choice-element.ts'
+import type * as Datatype from './datatype.ts'
+
+import { baseDatatypes } from './datatype-registry.ts'
+
+type ChoiceElementSetSchemaFields<
+  Prefix extends string,
+  DatatypeNames extends readonly Datatype.Name[],
+> = {
+  [DatatypeName in DatatypeNames[number] as ChoiceElement.Name<
+    Prefix,
+    DatatypeName
+  >]: Schema.NullOr<Datatype.SchemaFor<DatatypeName>>
+}
+
+/**
+ * Builds a `Schema.Struct` of flat, prefix-namespaced optional fields for a
+ * FHIR `value[x]`-style choice element. Each data type name becomes a single
+ * field of type `Schema.NullOr<...>` whose name is
+ * `${prefix}${Capitalize<name>}`.
+ *
+ * Field schemas resolve through the lazy {@link baseDatatypes} registry via
+ * `Schema.suspend`, so consumers can compose choice fields before every
+ * complex datatype module has self-registered.
+ *
+ * No mutual exclusion is enforced at the schema level — any combination of
+ * the generated fields may be present in a decoded or encoded value. Callers
+ * that need "exactly one" semantics must layer that on themselves.
+ *
+ * @example
+ * ```typescript
+ * const valueFields = ChoiceElementSet.SchemaFields('value', ['string', 'boolean', 'Quantity'])
+ * // Schema fields: { valueString?: string, valueBoolean?: boolean, valueQuantity?: ... }
+ *
+ * // Spread into a resource:
+ * const Observation = Schema.Struct({ code: CodeableConcept.Schema, ...valueFields })
+ * ```
+ *
+ * @param prefix - Prefix for each generated field (e.g. `'value'`, `'effective'`)
+ * @param datatypeNames - Array of data type names to include in the choice
+ */
+function ChoiceElementSetSchemaFields<
+  const Prefix extends string,
+  const DatatypeNames extends readonly Datatype.Name[],
+>(
+  prefix: Prefix,
+  datatypeNames: DatatypeNames
+): ChoiceElementSetSchemaFields<Prefix, DatatypeNames> {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries returns Record<string, unknown>; the typed shape is recovered from the prefix/name pairs by construction.
+  return Object.fromEntries(
+    datatypeNames.map((name) => [
+      ChoiceElement.Name(prefix, name),
+      Schema.NullOr(Schema.suspend(() => baseDatatypes[name].schema())),
+    ])
+  ) as unknown as ChoiceElementSetSchemaFields<Prefix, DatatypeNames>
+}
+
+type Empty<Prefix extends string, DatatypeNames extends readonly Datatype.Name[]> = {
+  [K in DatatypeNames[number] as ChoiceElement.Name<Prefix, K>]: null
+}
+
+function empty<const Prefix extends string, const DatatypeNames extends readonly Datatype.Name[]>(
+  prefix: Prefix,
+  datatypeNames: DatatypeNames
+): Empty<Prefix, DatatypeNames> {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries returns Record<string, null>; the typed shape is recovered from the prefix/name pairs by construction.
+  return Object.fromEntries(
+    datatypeNames.map((name) => [`${prefix}${capitalize(name)}`, null])
+  ) as unknown as Empty<Prefix, DatatypeNames>
+}
+
+const fhirR4AllDatatypeNames = [
+  // Primitive Types
+  'base64Binary',
+  'boolean',
+  'canonical',
+  'code',
+  'date',
+  'dateTime',
+  'decimal',
+  'id',
+  'instant',
+  'integer',
+  'markdown',
+  'oid',
+  'positiveInt',
+  'string',
+  'time',
+  'unsignedInt',
+  'uri',
+  'url',
+  'uuid',
+  // Data Types
+  'Address',
+  'Age',
+  'Annotation',
+  'Attachment',
+  'CodeableConcept',
+  'Coding',
+  'ContactPoint',
+  'Count',
+  'Distance',
+  'Duration',
+  'HumanName',
+  'Identifier',
+  'Money',
+  'Period',
+  'Quantity',
+  'Range',
+  'Ratio',
+  'Reference',
+  'SampledData',
+  'Signature',
+  'SimpleQuantity',
+  'Timing',
+  'MetaDataTypes',
+  'ContactDetail',
+  'Contributor',
+  'DataRequirement',
+  'Expression',
+  'ParameterDefinition',
+  'RelatedArtifact',
+  'TriggerDefinition',
+  'UsageContext',
+  // Special Types
+  'Dosage',
+  'Meta',
+] as const
+
 /**
  * Static mapping from FHIR R4 choice element paths (e.g. `'Observation.value[x]'`)
  * to their allowed data type names. Sourced from `https://hl7.org/fhir/R4/choice-elements.json`.
@@ -5,66 +137,10 @@
  * @remarks
  * The wildcard `'*'` key lists every data type that can appear in an
  * unconstrained choice element (e.g. `Task.input.value[x]`). Used at
- * build time to derive typed union schemas via {@link DatatypeChoice}.
+ * build time to derive typed union schemas via {@link ChoiceElementSetSchemaFields}.
  */
-const FhirR4ChoiceElements = {
-  '*': [
-    // Primitive Types
-    'base64Binary',
-    'boolean',
-    'canonical',
-    'code',
-    'date',
-    'dateTime',
-    'decimal',
-    'id',
-    'instant',
-    'integer',
-    'markdown',
-    'oid',
-    'positiveInt',
-    'string',
-    'time',
-    'unsignedInt',
-    'uri',
-    'url',
-    'uuid',
-    // Data Types
-    'Address',
-    'Age',
-    'Annotation',
-    'Attachment',
-    'CodeableConcept',
-    'Coding',
-    'ContactPoint',
-    'Count',
-    'Distance',
-    'Duration',
-    'HumanName',
-    'Identifier',
-    'Money',
-    'Period',
-    'Quantity',
-    'Range',
-    'Ratio',
-    'Reference',
-    'SampledData',
-    'Signature',
-    'SimpleQuantity',
-    'Timing',
-    'MetaDataTypes',
-    'ContactDetail',
-    'Contributor',
-    'DataRequirement',
-    'Expression',
-    'ParameterDefinition',
-    'RelatedArtifact',
-    'TriggerDefinition',
-    'UsageContext',
-    // Special Types
-    'Dosage',
-    'Meta',
-  ],
+const FhirR4Datatypes = {
+  '*': fhirR4AllDatatypeNames,
   'ActivityDefinition.product[x]': ['Reference', 'CodeableConcept'],
   'ActivityDefinition.subject[x]': ['CodeableConcept', 'Reference'],
   'ActivityDefinition.timing[x]': ['Timing', 'dateTime', 'Age', 'Period', 'Range', 'Duration'],
@@ -364,7 +440,7 @@ const FhirR4ChoiceElements = {
   'Specimen.processing.time[x]': ['dateTime', 'Period'],
   'SpecimenDefinition.typeTested.container.additive.additive[x]': ['CodeableConcept', 'Reference'],
   'SpecimenDefinition.typeTested.container.minimumVolume[x]': ['SimpleQuantity', 'string'],
-  'StructureMap.group.rule.source.defaultValue[x]': ['*'],
+  'StructureMap.group.rule.source.defaultValue[x]': fhirR4AllDatatypeNames,
   'StructureMap.group.rule.target.parameter.value[x]': [
     'id',
     'string',
@@ -385,8 +461,8 @@ const FhirR4ChoiceElements = {
   'SupplyRequest.item[x]': ['CodeableConcept', 'Reference'],
   'SupplyRequest.occurrence[x]': ['dateTime', 'Period', 'Timing'],
   'SupplyRequest.parameter.value[x]': ['CodeableConcept', 'Quantity', 'Range', 'boolean'],
-  'Task.input.value[x]': ['*'],
-  'Task.output.value[x]': ['*'],
+  'Task.input.value[x]': fhirR4AllDatatypeNames,
+  'Task.output.value[x]': fhirR4AllDatatypeNames,
   'Timing.repeat.bounds[x]': ['Duration', 'Range', 'Period'],
   'TriggerDefinition.timing[x]': ['Timing', 'Reference', 'date', 'dateTime'],
   'UsageContext.value[x]': ['CodeableConcept', 'Quantity', 'Range', 'Reference'],
@@ -399,7 +475,11 @@ const FhirR4ChoiceElements = {
     'code',
     'dateTime',
   ],
-} as const
-type FhirR4ChoiceElements = typeof FhirR4ChoiceElements
+} as const satisfies Record<string, readonly (Datatype.Name | '*')[]>
 
-export default FhirR4ChoiceElements
+export {
+  ChoiceElementSetSchemaFields as SchemaFields,
+  type Empty,
+  empty,
+  FhirR4Datatypes as FhirR4SetChoices,
+}

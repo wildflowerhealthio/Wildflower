@@ -1,9 +1,9 @@
 import { Schema } from 'effect'
 
 import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
-import { Schema as ElementSchema } from '../base/element.ts'
-import { Datatype as makeDatatype } from '../datatype.ts'
+import { registerDatatypeSchema } from '../datatype-registry.ts'
 import { Code } from './code.ts'
+import { Schema as ElementSchema } from './element.ts'
 
 // ---------------------------------------------------------------------------
 // Coding
@@ -44,7 +44,7 @@ const CodingSchema = StructNoContext({
   ...fields,
 })
 
-const Datatype = makeDatatype(ResourceType, CodingSchema)
+registerDatatypeSchema(ResourceType, CodingSchema)
 
 /**
  * Construct a Coding with a const-narrowed return type — useful for literals
@@ -56,4 +56,4 @@ const makeLiteral = <const C extends Parameters<typeof CodingSchema.make>[0]>(
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `Schema.make` widens the const-narrowed `params` to the schema's full Type; the cast restores the caller-visible literal narrowing.
   CodingSchema.make(params) as Schema.Schema.Type<typeof CodingSchema> & C
 
-export { CodingSchema as Schema, Datatype, makeLiteral, ResourceType }
+export { CodingSchema as Schema, makeLiteral, ResourceType }

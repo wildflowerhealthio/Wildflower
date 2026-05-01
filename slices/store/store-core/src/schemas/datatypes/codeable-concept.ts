@@ -1,9 +1,9 @@
 import { Schema } from 'effect'
 
 import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
-import { Schema as ElementSchema } from '../base/element.ts'
-import { Datatype as makeDatatype } from '../datatype.ts'
+import { registerDatatypeSchema } from '../datatype-registry.ts'
 import { Schema as CodingSchema } from './coding.ts'
+import { Schema as ElementSchema } from './element.ts'
 
 // ---------------------------------------------------------------------------
 // CodeableConcept
@@ -34,7 +34,6 @@ const CodeableConceptSchema = StructNoContext({
   ...fields,
 })
 
-/** {@link makeDatatype} wrapper for use in DatatypeChoice value[x] unions. */
-const Datatype = makeDatatype(ResourceType, CodeableConceptSchema)
+registerDatatypeSchema(ResourceType, CodeableConceptSchema)
 
-export { Datatype, ResourceType, CodeableConceptSchema as Schema }
+export { ResourceType, CodeableConceptSchema as Schema }

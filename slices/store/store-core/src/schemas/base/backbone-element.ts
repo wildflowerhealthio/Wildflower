@@ -1,8 +1,8 @@
 import { Schema, pipe } from 'effect'
 import type { Arbitrary, FastCheck } from 'effect'
 
-import { Schema as ExtensionSchema } from '../special-purpose/extension.ts'
-import { Schema as ElementSchema } from './element.ts'
+import { Schema as ElementSchema } from '../datatypes/element.ts'
+import { Schema as ExtensionSchema } from '../datatypes/extension.ts'
 
 /**
  * Factory that returns a plain Effect Schema struct for a given FHIR R4

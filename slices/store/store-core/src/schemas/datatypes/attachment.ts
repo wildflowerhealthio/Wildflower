@@ -1,9 +1,9 @@
 import { Schema } from 'effect'
 
 import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
-import { Schema as ElementSchema } from '../base/element.ts'
-import { Datatype as makeDatatype } from '../datatype.ts'
+import { registerDatatypeSchema } from '../datatype-registry.ts'
 import { Code } from './code.ts'
+import { Schema as ElementSchema } from './element.ts'
 
 const ResourceType = 'Attachment' as const
 type ResourceType = typeof ResourceType
@@ -29,6 +29,6 @@ const AttachmentSchema = StructNoContext({
   ...fields,
 })
 
-const Datatype = makeDatatype(ResourceType, AttachmentSchema)
+registerDatatypeSchema(ResourceType, AttachmentSchema)
 
-export { Datatype, ResourceType, AttachmentSchema as Schema }
+export { ResourceType, AttachmentSchema as Schema }

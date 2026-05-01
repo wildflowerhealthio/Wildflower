@@ -138,5 +138,5 @@ export * as PatientCommunication from './patient-communication.ts'
 export * as PatientContact from './patient-contact.ts'
 export * as PatientLink from './patient-link.ts'
 
-export type { ExtensionType, ExtensionEncoded } from '../schemas/special-purpose/extension.ts'
+export type { ExtensionType, ExtensionEncoded } from '../schemas/datatypes/extension.ts'
 export { schema, state, tables, events, queries, materializers, domainResources, SyncPayload }

@@ -6,9 +6,9 @@ import {
   type FieldsNoContext,
 } from 'kitchen-sink/schema'
 import { Schema as BackboneElementSchema } from '../schemas/base/backbone-element.ts'
-import * as CodeableConcept from '../schemas/complex/codeable-concept.ts'
-import * as DatatypeChoice from '../schemas/datatype-choice.ts'
-import FhirR4ChoiceElements from '../schemas/fhir-r4-choice-elements.ts'
+import * as ChoiceElementSet from '../schemas/choice-element-set.ts'
+import * as CodeableConcept from '../schemas/datatypes/codeable-concept.ts'
+
 import * as ObservationReferenceRange from './observation-reference-range.ts'
 
 const ResourceType = 'ObservationComponent' as const
@@ -25,8 +25,10 @@ const fields = {
     AnnotateArrayWithArbitrary({ maxLength: 2 }),
     Schema.optionalWith({ default: () => [] })
   ),
-  ...DatatypeChoice.DatatypeChoice('value', FhirR4ChoiceElements['Observation.component.value[x]'])
-    .fields,
+  ...ChoiceElementSet.SchemaFields(
+    'value',
+    ChoiceElementSet.FhirR4SetChoices['Observation.component.value[x]']
+  ),
 } as const satisfies FieldsNoContext
 
 /**

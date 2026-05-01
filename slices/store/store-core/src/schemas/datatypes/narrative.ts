@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-import { Schema as ElementSchema } from '../base/element.ts'
+import { Schema as ElementSchema } from './element.ts'
 
 const ResourceType = 'Narrative' as const
 type ResourceType = typeof ResourceType

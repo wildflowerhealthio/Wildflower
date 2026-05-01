@@ -1,8 +1,8 @@
 import { Schema } from 'effect'
 
 import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
-import { Schema as ElementSchema } from '../base/element.ts'
-import { Datatype as makeDatatype } from '../datatype.ts'
+import { registerDatatypeSchema } from '../datatype-registry.ts'
+import { Schema as ElementSchema } from './element.ts'
 import { Schema as PeriodSchema } from './period.ts'
 
 const ResourceType = 'ContactPoint' as const
@@ -46,7 +46,7 @@ const ContactPointSchema = StructNoContext({
   ...fields,
 })
 
-const Datatype = makeDatatype(ResourceType, ContactPointSchema)
+registerDatatypeSchema(ResourceType, ContactPointSchema)
 
-export { Datatype, ResourceType, SystemSchema, UseSchema, ContactPointSchema as Schema }
+export { ResourceType, SystemSchema, UseSchema, ContactPointSchema as Schema }
 export type { System, Use }

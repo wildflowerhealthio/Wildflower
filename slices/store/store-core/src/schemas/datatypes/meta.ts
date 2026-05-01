@@ -1,6 +1,7 @@
 import { Schema } from 'effect'
 
-import { Schema as CodingSchema } from '../complex/coding.ts'
+import { registerDatatypeSchema } from '../datatype-registry.ts'
+import { Schema as CodingSchema } from './coding.ts'
 
 // ---------------------------------------------------------------------------
 // Meta
@@ -22,5 +23,7 @@ const fields = {
  * updated timestamp, source, security labels, and tags.
  */
 const MetaSchema = Schema.Struct(fields)
+
+registerDatatypeSchema(ResourceType, MetaSchema)
 
 export { ResourceType, MetaSchema as Schema }

@@ -1,8 +1,8 @@
 import { Schema } from 'effect'
 
 import { StructNoContext } from 'kitchen-sink/schema'
-import { Schema as ElementSchema } from '../base/element.ts'
 import { Schema as CodeableConceptSchema } from './codeable-concept.ts'
+import { Schema as ElementSchema } from './element.ts'
 import { Schema as PeriodSchema } from './period.ts'
 
 /**

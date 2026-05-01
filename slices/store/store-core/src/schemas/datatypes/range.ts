@@ -1,8 +1,8 @@
 import { Schema } from 'effect'
 
 import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
-import { Schema as ElementSchema } from '../base/element.ts'
-import { Datatype as makeDatatype } from '../datatype.ts'
+import { registerDatatypeSchema } from '../datatype-registry.ts'
+import { Schema as ElementSchema } from './element.ts'
 import { Schema as QuantitySchema } from './quantity.ts'
 
 const ResourceType = 'Range' as const
@@ -24,6 +24,6 @@ const RangeSchema = StructNoContext({
   ...fields,
 })
 
-const Datatype = makeDatatype(ResourceType, RangeSchema)
+registerDatatypeSchema(ResourceType, RangeSchema)
 
-export { Datatype, ResourceType, RangeSchema as Schema }
+export { ResourceType, RangeSchema as Schema }

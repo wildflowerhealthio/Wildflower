@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-import { Datatype as makeDatatype } from '../datatype.ts'
+import { registerDatatypeSchema } from '../datatype-registry.ts'
 import { ReferenceResourceType, ReferenceSchema } from './identifier-and-reference.ts'
 
 /**
@@ -27,6 +27,6 @@ const fromResource = (
   })
 }
 
-const Datatype = makeDatatype(ReferenceResourceType, ReferenceSchema)
+registerDatatypeSchema(ReferenceResourceType, ReferenceSchema)
 
-export { Datatype, fromResource, ReferenceResourceType as ResourceType, ReferenceSchema as Schema }
+export { fromResource, ReferenceResourceType as ResourceType, ReferenceSchema as Schema }

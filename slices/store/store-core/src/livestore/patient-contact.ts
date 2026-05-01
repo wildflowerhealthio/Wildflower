@@ -6,13 +6,13 @@ import {
   type FieldsNoContext,
 } from 'kitchen-sink/schema'
 import { Schema as BackboneElementSchema } from '../schemas/base/backbone-element.ts'
-import * as Address from '../schemas/complex/address.ts'
-import { AdministrativeGender } from '../schemas/complex/administrative-gender.ts'
-import * as CodeableConcept from '../schemas/complex/codeable-concept.ts'
-import * as ContactPoint from '../schemas/complex/contact-point.ts'
-import * as HumanName from '../schemas/complex/human-name.ts'
-import * as Period from '../schemas/complex/period.ts'
-import * as Reference from '../schemas/complex/reference.ts'
+import * as Address from '../schemas/datatypes/address.ts'
+import { AdministrativeGender } from '../schemas/datatypes/administrative-gender.ts'
+import * as CodeableConcept from '../schemas/datatypes/codeable-concept.ts'
+import * as ContactPoint from '../schemas/datatypes/contact-point.ts'
+import * as HumanName from '../schemas/datatypes/human-name.ts'
+import * as Period from '../schemas/datatypes/period.ts'
+import * as Reference from '../schemas/datatypes/reference.ts'
 
 const ResourceType = 'PatientContact' as const
 type ResourceType = typeof ResourceType

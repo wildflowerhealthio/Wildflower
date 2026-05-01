@@ -1,28 +1,19 @@
-import path from 'path'
-import { fileURLToPath } from 'url'
 import { defineConfig } from 'vite-plus'
 export default defineConfig({
   staged: {
     '*': 'vp check --fix',
   },
   test: {
-    exclude: [
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/*.interface.test.{ts,tsx}',
-      // This is a react native app and the tests are run in jest
-      './apps/wildflower/**',
-    ],
-    server: {
-      deps: {
-        inline: ['@effect/vitest', '@fast-check/vitest', '@testing-library/react'],
-      },
-    },
-    setupFiles: [
-      path.join(
-        path.dirname(fileURLToPath(import.meta.url)),
-        './slices/store/store-core/vitest.setupSchemaEqual.ts'
-      ),
+    // Each Vitest package owns its own vite.config.ts; listing them as
+    // projects lets `vp test` from the workspace root honor per-package
+    // settings (e.g. `environment: 'jsdom'` in react-tundraish) instead of
+    // running everything under a single root config. Expo packages run on
+    // Jest and are intentionally absent.
+    projects: [
+      './global/kitchen-sink/vite.config.ts',
+      './global/react-tundraish/vite.config.ts',
+      './slices/**/vite.config.ts',
+      '!./slices/apps/vendor-apps/vendor/**',
     ],
   },
   fmt: {
