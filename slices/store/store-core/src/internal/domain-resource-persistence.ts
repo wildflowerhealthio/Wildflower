@@ -17,6 +17,11 @@ import { StructNoContext } from 'kitchen-sink/schema'
 // Public types
 // ---------------------------------------------------------------------------
 
+/**
+ * Livestore SQLite table definition for a domain resource. The `name` literal
+ * carries the FHIR `ResourceType` through the type system so downstream
+ * helpers (event names, registry keys) can reference it without re-passing.
+ */
 type Table<
   ResourceType extends string,
   RowSchema extends Schema.Schema.AnyNoContext,
@@ -26,6 +31,13 @@ type Table<
   RowSchema
 >
 
+/**
+ * Synced livestore event raised when a resource is created or replaced.
+ *
+ * Name: `v1.${ResourceType}Upserted`. Payload carries the full row at both
+ * decoded and wire shapes so materializers can `insert(...).onConflict(...)`
+ * against the table.
+ */
 type UpsertEvent<
   ResourceType extends string,
   RowSchema extends Schema.Schema.AnyNoContext,
@@ -35,22 +47,42 @@ type UpsertEvent<
   { readonly resource: Schema.Schema.Encoded<RowSchema> }
 >
 
+/**
+ * Synced livestore event raised when a resource is deleted by id.
+ *
+ * Name: `v1.${ResourceType}Deleted`. Payload is `{ id }`.
+ */
 type DeleteEvent<ResourceType extends string> = EventDef<
   `v1.${ResourceType}Deleted`,
   { readonly id: string },
   { readonly id: string }
 >
 
+/**
+ * Per-resource event pair: the upsert and delete event defs that
+ * `makeDomainResourcePersistence` synthesises from the table and row schema.
+ * Spread-safe into an app-level event registry.
+ */
 type EventBundle<ResourceType extends string, RowSchema extends Schema.Schema.AnyNoContext> = {
   upsert: UpsertEvent<ResourceType, RowSchema>
   deleteById: DeleteEvent<ResourceType>
 }
 
+/**
+ * Materializer map for a resource's `EventBundle`, keyed by the unique event
+ * names. Spread-safe into an app-level materializer registry passed to
+ * `State.SQLite.makeState`.
+ */
 type Materializers<
   ResourceType extends string,
   RowSchema extends Schema.Schema.AnyNoContext,
 > = ReturnType<typeof materializers<EventBundle<ResourceType, RowSchema>>>
 
+/**
+ * Output of `makeDomainResourcePersistence`: the events, the materializers
+ * that consume them, and the standard read queries (`all$`, `getById$`,
+ * `search$`, `count$`) the persistence layer exposes for this resource.
+ */
 type PersistenceResult<
   ResourceType extends string,
   RowSchema extends Schema.Schema.AnyNoContext,

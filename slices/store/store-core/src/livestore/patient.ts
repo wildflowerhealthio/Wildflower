@@ -81,3 +81,6 @@ const { events, materializers, queries } = makeDomainResourcePersistence({
 })
 
 export { events, materializers, queries, resourceType, RowSchema, RowSchemaNullableId, table }
+export * as Communication from './patient-communication.ts'
+export * as Contact from './patient-contact.ts'
+export * as Link from './patient-link.ts'

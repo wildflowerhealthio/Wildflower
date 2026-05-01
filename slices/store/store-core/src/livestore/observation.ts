@@ -136,3 +136,5 @@ export {
   table,
 }
 export type { Status }
+export * as Component from './observation-component.ts'
+export * as ReferenceRange from './observation-reference-range.ts'
