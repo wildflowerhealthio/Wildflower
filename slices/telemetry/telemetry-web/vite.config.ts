@@ -5,7 +5,7 @@ export default defineConfig({
     {
       dts: { tsgo: true },
       exports: false,
-      platform: 'node',
+      platform: 'browser',
       entry: { index: 'src/index.ts' },
     },
   ],

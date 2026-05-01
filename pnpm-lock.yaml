@@ -899,6 +899,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 3.19.12
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.1
       typescript:
         specifier: 5.9.3
         version: 5.9.3

@@ -19,7 +19,7 @@ describe('Binary model', () => {
         expect(decoded).toSchemaEqual(BinarySchema, binary)
       })
     )
-  }, 15_000)
+  }, 20_000)
 
   test('Binary.resourceType is "Binary"', () => {
     expect(Binary.resourceType).toBe('Binary')

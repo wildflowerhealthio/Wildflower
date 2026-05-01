@@ -10,10 +10,12 @@ export default defineConfig({
     // running everything under a single root config. Expo packages run on
     // Jest and are intentionally absent.
     projects: [
-      './global/kitchen-sink/vite.config.ts',
-      './global/react-tundraish/vite.config.ts',
-      './slices/**/vite.config.ts',
-      '!./slices/apps/vendor-apps/vendor/**',
+      'global/kitchen-sink/vite.config.ts',
+      'global/react-tundraish/vite.config.ts',
+      'slices/**/vite.config.ts',
+      '!slices/apps/vendor-apps/vendor/**',
+      '!slices/telemetry/telemetry-react-native/**',
+      '!**/node_modules/**',
     ],
   },
   fmt: {
