@@ -1,12 +1,12 @@
-# store-core
+# emr-core
 
 FHIR R4 data types, schemas, queries, and resources backed by LiveStore.
 
 ## Entry points
 
-- `store-core/schemas` — Effect Schemas for FHIR R4 data types (Address, CodeableConcept, Identifier, Reference, Extension, Narrative, etc.) under `datatypes/`, the structural bases (`BackboneElement`, `Resource`) under `base/`, plus the choice-element machinery and `Bundle`.
-- `store-core/livestore` — LiveStore tables, events, materializers, and queries for the persisted resources (`Patient`, `Binary`, `Observation`).
-- `store-core/contexts` — Effect Context tags and Layer factories (`LivestoreStore`, `makeLivestoreStoreLayer`).
+- `emr-core/schemas` — Effect Schemas for FHIR R4 data types (Address, CodeableConcept, Identifier, Reference, Extension, Narrative, etc.) under `datatypes/`, the structural bases (`BackboneElement`, `Resource`) under `base/`, plus the choice-element machinery and `Bundle`.
+- `emr-core/livestore` — LiveStore tables, events, materializers, and queries for the persisted resources (`Patient`, `Binary`, `Observation`).
+- `emr-core/contexts` — Effect Context tags and Layer factories (`LivestoreStore`, `makeLivestoreStoreLayer`).
 
 ## Layout
 

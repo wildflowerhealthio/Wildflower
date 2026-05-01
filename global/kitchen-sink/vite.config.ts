@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite-plus'
 
 export default defineConfig({
+  test: {
+    include: ['src/**/*.test.ts'],
+  },
   resolve: {
     alias: [{ find: /^@\/(.*)$/, replacement: './src/$1' }],
   },
