@@ -265,7 +265,10 @@ const ObservationSchema: Schema.Schema<
         'value',
         ChoiceElementSet.FhirR4SetChoices['Observation.value[x]']
       ),
-      effectiveDateTime: OrNullAsOptional(Schema.DateTimeUtc),
+      ...choiceElementSetPassthroughFields(
+        'effective',
+        ChoiceElementSet.FhirR4SetChoices['Observation.effective[x]']
+      ),
     })
   )
 ).annotations({ jsonSchema: observationJsonSchema })

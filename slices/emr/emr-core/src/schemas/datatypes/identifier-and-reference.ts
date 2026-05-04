@@ -41,7 +41,14 @@ const referenceOwnFields = {
    */
   reference: Schema.NullOr(Schema.String),
   /**
-   * This element is used to indicate the type of  the target of the reference. This may be used which ever of the other elements are populated (or not). In some cases, the type of the target may be determined by inspection of the reference (e.g. a RESTful URL) or by resolving the target of the reference; if both the type and a reference is provided, the reference SHALL resolve to a resource of the same type as that specified.
+   * This element is used to indicate the type of the target of the reference.
+   *
+   * Per FHIR R4, `Reference.type` is typed as `uri`, but conventional values
+   * are bare resource type names ("Patient", "Practitioner") that cannot be
+   * parsed by the URL constructor. We therefore keep this as `string`. The
+   * looser typing — together with the absence of target-type enforcement —
+   * is captured under "Reference target-type enforcement" in
+   * `slices/emr/fhir-r4/docs/Capability Statement.md`.
    */
   type: Schema.NullOr(Schema.String),
 } as const satisfies Schema.Struct.Fields
@@ -53,8 +60,12 @@ const identifierOwnFields = {
   period: Schema.NullOr(PeriodSchema),
   /**
    * Identifier.system is always case sensitive.
+   *
+   * Per FHIR R4, `Identifier.system` is `uri` — typically an absolute URL
+   * or a `urn:` URN (e.g. `urn:oid:1.2.36.146.595.217.0.1`). Both parse via
+   * the URL constructor.
    */
-  system: Schema.NullOr(Schema.String),
+  system: Schema.NullOr(Schema.URL),
   /**
    * This element deals only with general categories of identifiers.  It SHOULD not be used for codes that correspond 1..1 with the Identifier.system.
    */

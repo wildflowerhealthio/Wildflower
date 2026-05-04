@@ -18,7 +18,7 @@ const AttachmentSchema: Schema.Schema<
     contentType: OrNullAsOptional(Code),
     creation: OrNullAsOptional(Schema.DateTimeUtc),
     data: OrNullAsOptional(Schema.String),
-    url: OrNullAsOptional(Schema.String),
+    url: OrNullAsOptional(Schema.URL),
     hash: OrNullAsOptional(Schema.String),
     language: OrNullAsOptional(Code),
     size: OrNullAsOptional(Schema.Int),

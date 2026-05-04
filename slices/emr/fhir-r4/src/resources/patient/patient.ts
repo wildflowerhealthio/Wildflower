@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 
 import type { Patient as StorePatient } from 'emr-core/livestore'
-import { AdministrativeGender } from 'emr-core/schemas'
+import { AdministrativeGender, ChoiceElementSet } from 'emr-core/schemas'
 import {
   OrNullAsOptional,
   StructNoContext,
@@ -11,13 +11,16 @@ import {
 
 import type FhirR4 from 'fhir/r4.d.ts'
 
-import * as DomainResource from '../../data-types/base/domain-resource.ts'
-import * as Address from '../../data-types/complex/address.ts'
-import * as Attachment from '../../data-types/complex/attachment.ts'
-import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
-import * as ContactPoint from '../../data-types/complex/contact-point.ts'
-import * as HumanName from '../../data-types/complex/human-name.ts'
-import * as IdentifierAndReference from '../../data-types/complex/identifier-and-reference.ts'
+import {
+  Address,
+  Attachment,
+  CodeableConcept,
+  choiceElementSetPassthroughFields,
+  ContactPoint,
+  DomainResource,
+  HumanName,
+  IdentifierAndReference,
+} from '../../data-types/index.ts'
 import * as PatientCommunication from './patient-communication.ts'
 import * as PatientContact from './patient-contact.ts'
 import * as PatientLink from './patient-link.ts'
@@ -150,10 +153,17 @@ const PatientSchema: Schema.Schema<
         { default: (): readonly (typeof Address.Schema.Type)[] => [] }
       ),
       birthDate: OrNullAsOptional(TimelessDateFromString),
-      communication: OrNullAsOptional(mutableEncoded(Schema.Array(PatientCommunication.Schema))),
-      contact: OrNullAsOptional(mutableEncoded(Schema.Array(PatientContact.Schema))),
-      deceasedBoolean: OrNullAsOptional(Schema.Boolean),
-      deceasedDateTime: OrNullAsOptional(Schema.DateTimeUtc),
+      communication: Schema.optionalWith(
+        mutableEncoded(Schema.Array(PatientCommunication.Schema)),
+        { default: (): readonly (typeof PatientCommunication.Schema.Type)[] => [] }
+      ),
+      contact: Schema.optionalWith(mutableEncoded(Schema.Array(PatientContact.Schema)), {
+        default: (): readonly (typeof PatientContact.Schema.Type)[] => [],
+      }),
+      ...choiceElementSetPassthroughFields(
+        'deceased',
+        ChoiceElementSet.FhirR4SetChoices['Patient.deceased[x]']
+      ),
       gender: OrNullAsOptional(AdministrativeGender),
       generalPractitioner: Schema.optionalWith(
         mutableEncoded(Schema.Array(Schema.suspend(() => IdentifierAndReference.ReferenceSchema))),
@@ -174,8 +184,10 @@ const PatientSchema: Schema.Schema<
         Schema.suspend(() => IdentifierAndReference.ReferenceSchema)
       ),
       maritalStatus: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
-      multipleBirthBoolean: OrNullAsOptional(Schema.Boolean),
-      multipleBirthInteger: OrNullAsOptional(Schema.Int),
+      ...choiceElementSetPassthroughFields(
+        'multipleBirth',
+        ChoiceElementSet.FhirR4SetChoices['Patient.multipleBirth[x]']
+      ),
       name: Schema.optionalWith(
         mutableEncoded(Schema.Array(Schema.suspend(() => HumanName.Schema))),
         { default: (): readonly (typeof HumanName.Schema.Type)[] => [] }

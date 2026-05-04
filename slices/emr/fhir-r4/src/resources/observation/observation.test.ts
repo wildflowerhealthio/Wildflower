@@ -31,6 +31,7 @@ const sampleObservation: typeof StoreObservation.RowSchema.Type = {
     versionId: '',
     lastUpdated: null,
     source: '',
+    profile: [],
     security: [],
     tag: [],
   },
@@ -49,6 +50,9 @@ const sampleObservation: typeof StoreObservation.RowSchema.Type = {
   derivedFrom: [],
   device: null,
   effectiveDateTime: null,
+  effectivePeriod: null,
+  effectiveTiming: null,
+  effectiveInstant: null,
   encounter: null,
   focus: [],
   hasMember: [],
@@ -188,15 +192,23 @@ describe('FhirR4Observation', () => {
 
   test('property: shell primitives round-trip', () => {
     const shellArb = Arbitrary.make(
-      StoreObservation.RowSchema.pick(
-        'effectiveDateTime',
-        'issued',
-        'language',
-        'implicitRules',
-        'meta'
-      )
+      StoreObservation.RowSchema.pick('issued', 'language', 'implicitRules', 'meta')
     )
     fc.assert(fc.property(shellArb, (override) => roundTrip({ ...sampleObservation, ...override })))
+  })
+
+  test('property: effective[x] choice field round-trips', () => {
+    const effectiveArb = Arbitrary.make(
+      StoreObservation.RowSchema.pick(
+        'effectiveDateTime',
+        'effectivePeriod',
+        'effectiveTiming',
+        'effectiveInstant'
+      )
+    )
+    fc.assert(
+      fc.property(effectiveArb, (override) => roundTrip({ ...sampleObservation, ...override }))
+    )
   })
 
   test('property: value[x] choice field round-trips', () => {

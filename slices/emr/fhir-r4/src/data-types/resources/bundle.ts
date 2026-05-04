@@ -21,6 +21,79 @@ const BundleType = Schema.Enums({
   'transaction-response': 'transaction-response',
 } as const)
 
+const EntryRequestMethod = Schema.Enums({
+  DELETE: 'DELETE',
+  GET: 'GET',
+  HEAD: 'HEAD',
+  PATCH: 'PATCH',
+  POST: 'POST',
+  PUT: 'PUT',
+} as const)
+
+// FHIR R4 § Bundle.entry.request — required on transaction/batch entries.
+const EntryRequestSchema: Schema.Schema<
+  typeof StoreBundle.EntryRequestSchema.Type,
+  FhirR4.BundleEntryRequest,
+  never
+> = mutableEncoded(
+  StructNoContext({
+    ...BackboneElement.fields,
+    method: EntryRequestMethod,
+    url: Schema.String,
+    ifNoneMatch: OrNullAsOptional(Schema.String),
+    ifModifiedSince: OrNullAsOptional(Schema.String),
+    ifMatch: OrNullAsOptional(Schema.String),
+    ifNoneExist: OrNullAsOptional(Schema.String),
+  })
+)
+
+// FHIR R4 § Bundle.entry.response — populated on transaction/batch-response.
+const EntryResponseSchema: Schema.Schema<
+  typeof StoreBundle.EntryResponseSchema.Type,
+  FhirR4.BundleEntryResponse,
+  never
+> = mutableEncoded(
+  StructNoContext({
+    ...BackboneElement.fields,
+    status: Schema.String,
+    location: OrNullAsOptional(Schema.String),
+    etag: OrNullAsOptional(Schema.String),
+    lastModified: OrNullAsOptional(Schema.DateTimeUtc),
+  })
+)
+
+const EntrySearchMode = Schema.Enums({
+  include: 'include',
+  match: 'match',
+  outcome: 'outcome',
+} as const)
+
+// FHIR R4 § Bundle.entry.search — present on searchset bundles.
+const EntrySearchSchema: Schema.Schema<
+  typeof StoreBundle.EntrySearchSchema.Type,
+  FhirR4.BundleEntrySearch,
+  never
+> = mutableEncoded(
+  StructNoContext({
+    ...BackboneElement.fields,
+    mode: OrNullAsOptional(EntrySearchMode),
+    score: OrNullAsOptional(Schema.Number.pipe(Schema.finite())),
+  })
+)
+
+// FHIR R4 § BundleLink — same shape for top-level Bundle.link and entry.link.
+const BundleLinkSchema: Schema.Schema<
+  typeof StoreBundle.LinkSchema.Type,
+  FhirR4.BundleLink,
+  never
+> = mutableEncoded(
+  StructNoContext({
+    ...BackboneElement.fields,
+    relation: Schema.String,
+    url: Schema.String,
+  })
+)
+
 const EntrySchema = <ContentTypeSchema extends Schema.Schema.AnyNoContext>(
   contentTypeSchema: ContentTypeSchema
 ): Schema.Schema<
@@ -36,13 +109,13 @@ const EntrySchema = <ContentTypeSchema extends Schema.Schema.AnyNoContext>(
     StructNoContext({
       ...BackboneElement.fields,
       fullUrl: OrNullAsOptional(Schema.URL),
-      link: Schema.optionalWith(mutableEncoded(Schema.Array(Schema.Any)), {
-        default: (): [] => [],
+      link: Schema.optionalWith(mutableEncoded(Schema.Array(BundleLinkSchema)), {
+        default: (): readonly (typeof BundleLinkSchema.Type)[] => [],
       }),
-      request: OrNullAsOptional(Schema.Any),
+      request: OrNullAsOptional(EntryRequestSchema),
       resource: OrNullAsOptional(contentTypeSchema),
-      response: OrNullAsOptional(Schema.Any),
-      search: OrNullAsOptional(Schema.Any),
+      response: OrNullAsOptional(EntryResponseSchema),
+      search: OrNullAsOptional(EntrySearchSchema),
     })
   )
 
@@ -136,8 +209,8 @@ const BundleSchema = <FhirResourceSchema extends Schema.Schema.AnyNoContext>(
           default: (): [] => [],
         }),
         identifier: OrNullAsOptional(Schema.suspend(() => IdentifierSchema)),
-        link: Schema.optionalWith(mutableEncoded(Schema.Array(Schema.Any)), {
-          default: (): [] => [],
+        link: Schema.optionalWith(mutableEncoded(Schema.Array(BundleLinkSchema)), {
+          default: (): readonly (typeof BundleLinkSchema.Type)[] => [],
         }),
         signature: OrNullAsOptional(Schema.Any),
         timestamp: OrNullAsOptional(Schema.String),

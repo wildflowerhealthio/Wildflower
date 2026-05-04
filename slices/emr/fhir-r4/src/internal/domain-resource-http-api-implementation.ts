@@ -108,7 +108,13 @@ export function makeDomainResourceHandlerLayer<
       language: null,
       type: 'searchset',
       identifier: null,
-      link: link.map((l) => ({ relation: l.relation, url: l.url })),
+      link: link.map((l) => ({
+        id: null,
+        extension: [],
+        modifierExtension: [],
+        relation: l.relation,
+        url: l.url,
+      })),
       signature: null,
       timestamp: null,
       total,
@@ -122,7 +128,13 @@ export function makeDomainResourceHandlerLayer<
           request: null,
           resource: resource,
           response: null,
-          search: { mode: 'match' },
+          search: {
+            id: null,
+            extension: [],
+            modifierExtension: [],
+            mode: 'match',
+            score: null,
+          },
         })
       ),
     })
@@ -216,6 +228,17 @@ export function makeDomainResourceHandlerLayer<
       })
     )
 
+  // `HttpApiBuilder.group` against a generically-built group cannot recover
+  // the precise per-endpoint request shape — `request` arrives typed as the
+  // union of every endpoint's request, so each handler narrows it back down
+  // to the schema declared in `domain-resource-http-api-definition.ts`
+  // (which is the source of truth and what the runtime decodes against).
+  // The casts below are this narrowing; they are sound by construction
+  // because the definition and implementation are derived from the same
+  // generic parameters in this file. CLAUDE.md exception 4 (technical
+  // foundation code) applies; tests in
+  // `tests/{patient,binary,observation}-endpoint.test.ts` exercise each
+  // handler.
   return HttpApiBuilder.group(localApi, resourceType, (handlers) =>
     handlers
       .handle('SearchByGet', (request) => {
@@ -291,7 +314,15 @@ export function makeDomainResourceHandlerLayer<
             language: null,
             type: 'searchset',
             identifier: null,
-            link: [{ relation: 'self', url: requestUrl.toString() }],
+            link: [
+              {
+                id: null,
+                extension: [],
+                modifierExtension: [],
+                relation: 'self',
+                url: requestUrl.toString(),
+              },
+            ],
             signature: null,
             timestamp: null,
             total: entries.length,
@@ -305,7 +336,13 @@ export function makeDomainResourceHandlerLayer<
                 request: null,
                 resource,
                 response: null,
-                search: { mode: 'match' },
+                search: {
+                  id: null,
+                  extension: [],
+                  modifierExtension: [],
+                  mode: 'match',
+                  score: null,
+                },
               })
             ),
           })

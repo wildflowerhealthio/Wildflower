@@ -23,6 +23,78 @@ const TypeSchema = Schema.Enums({
 } as const)
 
 /**
+ * Per FHIR R4 § Bundle, both `Bundle.link` and `Bundle.entry.link` carry the
+ * same shape: a `relation` string plus a `url`.
+ */
+const LinkSchema = StructNoContext({
+  ...BackboneElementSchema.fields,
+  relation: Schema.String,
+  url: Schema.String,
+})
+
+/**
+ * FHIR R4 value set for `Bundle.entry.request.method`: HTTP verbs used in
+ * transaction/batch bundles.
+ */
+const EntryRequestMethod = Schema.Enums({
+  DELETE: 'DELETE',
+  GET: 'GET',
+  HEAD: 'HEAD',
+  PATCH: 'PATCH',
+  POST: 'POST',
+  PUT: 'PUT',
+} as const)
+
+/**
+ * Additional information about how this entry should be processed as part of
+ * a transaction or batch. Required when the bundle type is transaction or
+ * batch.
+ */
+const EntryRequestSchema = StructNoContext({
+  ...BackboneElementSchema.fields,
+  method: EntryRequestMethod,
+  url: Schema.String,
+  ifNoneMatch: Schema.NullOr(Schema.String),
+  ifModifiedSince: Schema.NullOr(Schema.String),
+  ifMatch: Schema.NullOr(Schema.String),
+  ifNoneExist: Schema.NullOr(Schema.String),
+})
+
+/**
+ * Indicates the results of processing the corresponding `request` (in a
+ * transaction-response or batch-response bundle).
+ */
+const EntryResponseSchema = StructNoContext({
+  ...BackboneElementSchema.fields,
+  status: Schema.String,
+  location: Schema.NullOr(Schema.String),
+  etag: Schema.NullOr(Schema.String),
+  lastModified: Schema.NullOr(Schema.DateTimeUtc),
+})
+
+/**
+ * FHIR R4 value set for `Bundle.entry.search.mode`: match | include | outcome.
+ */
+const EntrySearchMode = Schema.Enums({
+  include: 'include',
+  match: 'match',
+  outcome: 'outcome',
+} as const)
+
+/**
+ * Information about the search process that lead to the creation of this
+ * entry — `mode` (match/include/outcome) and an optional `score` (0–1).
+ *
+ * `score` is constrained to finite numbers because NaN/Infinity don't
+ * round-trip through JSON (`JSON.stringify(NaN) === 'null'`).
+ */
+const EntrySearchSchema = StructNoContext({
+  ...BackboneElementSchema.fields,
+  mode: Schema.NullOr(EntrySearchMode),
+  score: Schema.NullOr(Schema.Number.pipe(Schema.finite())),
+})
+
+/**
  * An entry in a bundle resource - will either contain a resource or information
  * about a resource (transactions and history only).
  */
@@ -33,11 +105,11 @@ const EntrySchema = <BundleContentType, BundleContentEncoded>(
   StructNoContext({
     ...BackboneElementSchema.fields,
     fullUrl: Schema.NullOr(Schema.URL),
-    link: Schema.Array(Schema.Any),
-    request: Schema.NullOr(Schema.Any),
+    link: Schema.Array(LinkSchema),
+    request: Schema.NullOr(EntryRequestSchema),
     resource: Schema.NullOr(contentTypeSchema),
-    response: Schema.NullOr(Schema.Any),
-    search: Schema.NullOr(Schema.Any),
+    response: Schema.NullOr(EntryResponseSchema),
+    search: Schema.NullOr(EntrySearchSchema),
   })
 
 /**
@@ -66,11 +138,15 @@ export const Bundle = {
       id: Schema.NullOr(Schema.String),
       entry: Schema.Array(EntrySchema(contentTypeSchema)),
       identifier: Schema.NullOr(Identifier.Schema),
-      link: Schema.Array(Schema.Any),
+      link: Schema.Array(LinkSchema),
       signature: Schema.NullOr(Schema.Any),
       timestamp: Schema.NullOr(Schema.String),
       total: Schema.NullOr(Schema.Int),
       type: TypeSchema,
     }),
   EntrySchema,
+  EntryRequestSchema,
+  EntryResponseSchema,
+  EntrySearchSchema,
+  LinkSchema,
 }

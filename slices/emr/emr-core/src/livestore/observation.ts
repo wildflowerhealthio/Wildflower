@@ -57,7 +57,14 @@ const columns = {
     schema: Schema.Array(Reference.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
   }),
   device: State.SQLite.json({ nullable: true, schema: Reference.Schema }),
-  effectiveDateTime: State.SQLite.text({ nullable: true, schema: Schema.DateTimeUtc }),
+  // FHIR R4 `Observation.effective[x]`: choice of `dateTime | Period |
+  // Timing | instant`. Using the column helper keeps storage parallel with
+  // `value[x]` below; mutex enforcement is not implemented (see Capability
+  // Statement.md).
+  ...ChoiceElementSet.Columns(
+    'effective',
+    ChoiceElementSet.FhirR4SetChoices['Observation.effective[x]']
+  ),
   encounter: State.SQLite.json({ nullable: true, schema: Reference.Schema }),
   focus: State.SQLite.json({
     schema: Schema.Array(Reference.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),

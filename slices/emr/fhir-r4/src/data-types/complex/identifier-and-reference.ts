@@ -29,7 +29,7 @@ const IdentifierSchema: Schema.Schema<
     ...Element.fields,
     assigner: OrNullAsOptional(Schema.suspend(() => ReferenceSchema)),
     period: OrNullAsOptional(Schema.suspend(() => Period.Schema)),
-    system: OrNullAsOptional(Schema.String),
+    system: OrNullAsOptional(Schema.URL),
     type: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
     use: OrNullAsOptional(
       Schema.Union(

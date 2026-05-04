@@ -2,6 +2,7 @@ import { type HttpApiGroup, HttpApiBuilder } from '@effect/platform'
 import { Layer } from 'effect'
 
 import type { LivestoreStore } from 'emr-core/contexts'
+import type { Origin } from 'kitchen-sink'
 import { FhirPublicApi, FhirResourcesApi } from '../http-api-definition/index.ts'
 import {
   SmartConfiguration as SmartConfigurationTag,
@@ -24,19 +25,29 @@ type FhirResourcesGroupNames = 'Patient' | 'Binary' | 'Observation'
 const FhirResourcesApiHandlersFor = <ParentId extends string>(): Layer.Layer<
   HttpApiGroup.ApiGroup<ParentId, FhirResourcesGroupNames>,
   never,
-  LivestoreStore
+  LivestoreStore | Origin
 > =>
   // The phantom-id bridge: `ApiGroup<ApiId, Name>` is a structural marker
   // with no runtime presence (HttpApiBuilder.group only registers routes on
   // the shared Router; nothing reads `apiId`), so a Layer built against
   // FhirResourcesApi is sound to satisfy the same group requirement under
-  // any consumer's parent ApiId. This cast is the one place that bridge
-  // lives for the FHIR resource side.
+  // any consumer's parent ApiId. This cast bridges the API-id phantom only.
+  //
+  // The `satisfies` clause pins the source layer's actual shape — provided
+  // group, error channel, and required services — against what we're about
+  // to widen. If a handler grows a new requirement (e.g. when `Origin` got
+  // added), this fails to compile before the `as unknown as` masks it. The
+  // cast that follows only widens the API-id phantom; everything else flows
+  // through unchanged.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  FhirResourcesApiHandlersLive as unknown as Layer.Layer<
+  FhirResourcesApiHandlersLive satisfies Layer.Layer<
+    HttpApiGroup.ApiGroup<'FhirResourcesApi', FhirResourcesGroupNames>,
+    never,
+    LivestoreStore | Origin
+  > as unknown as Layer.Layer<
     HttpApiGroup.ApiGroup<ParentId, FhirResourcesGroupNames>,
     never,
-    LivestoreStore
+    LivestoreStore | Origin
   >
 
 const FhirPublicApiHandlersLive = Layer.mergeAll(SmartConfiguration.layer)
@@ -53,9 +64,18 @@ const FhirPublicApiHandlersFor = <ParentId extends string>(): Layer.Layer<
   never,
   SmartConfigurationTag
 > =>
-  // Phantom-id bridge — same rationale as FhirResourcesApiHandlersFor.
+  // Phantom-id bridge — same rationale as FhirResourcesApiHandlersFor; the
+  // `satisfies` clause pins the source layer's actual shape so a new
+  // requirement on `SmartConfiguration.layer` fails to compile before the
+  // cast widens the API-id phantom. Consumers composing this with the bare
+  // `*HandlersFor` helper must also provide `SmartConfigurationLive` (which
+  // itself requires `Origin`).
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  FhirPublicApiHandlersLive as unknown as Layer.Layer<
+  FhirPublicApiHandlersLive satisfies Layer.Layer<
+    HttpApiGroup.ApiGroup<'FhirPublicApi', FhirPublicGroupNames>,
+    never,
+    SmartConfigurationTag
+  > as unknown as Layer.Layer<
     HttpApiGroup.ApiGroup<ParentId, FhirPublicGroupNames>,
     never,
     SmartConfigurationTag

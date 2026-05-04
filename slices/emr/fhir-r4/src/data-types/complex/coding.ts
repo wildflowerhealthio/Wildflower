@@ -14,7 +14,7 @@ const CodingSchema: Schema.Schema<typeof StoreCoding.Schema.Type, FhirR4.Coding,
       ...Element.fields,
       code: OrNullAsOptional(Code),
       display: OrNullAsOptional(Schema.String),
-      system: OrNullAsOptional(Schema.String),
+      system: OrNullAsOptional(Schema.URL),
       userSelected: OrNullAsOptional(Schema.Boolean),
       version: OrNullAsOptional(Schema.String),
     })
