@@ -4,7 +4,6 @@ import { StructNoContext } from 'kitchen-sink/schema'
 import { Schema as CodeableConceptSchema } from './codeable-concept.ts'
 import { Schema as ElementSchema } from './element.ts'
 import { Schema as PeriodSchema } from './period.ts'
-
 /**
  * Circular dependency note:
  * Reference and Identifier have a mutual dependency:
@@ -70,6 +69,16 @@ const identifierOwnFields = {
   value: Schema.NullOr(Schema.String),
 } as const satisfies Schema.Struct.Fields
 
+type ReferenceType = typeof ElementSchema.Type &
+  Schema.Struct.Type<typeof referenceOwnFields> & {
+    readonly identifier: IdentifierType | null
+  }
+
+type ReferenceEncoded = typeof ElementSchema.Encoded &
+  Schema.Struct.Encoded<typeof referenceOwnFields> & {
+    readonly identifier: IdentifierEncoded | null
+  }
+
 /**
  * A reference from one FHIR resource to another, by URL, type, display text,
  * and/or Identifier.
@@ -78,16 +87,11 @@ const identifierOwnFields = {
  * points to an Identifier, while `Identifier.assigner` points back to a
  * Reference. `Schema.suspend` breaks this cycle at schema evaluation time.
  */
-const ReferenceSchema: Schema.Schema<
-  Schema.Schema.Type<typeof ElementSchema> &
-    Schema.Struct.Type<typeof referenceOwnFields> & {
-      readonly identifier: null | Schema.Schema.Type<typeof IdentifierSchema>
-    },
-  Schema.Schema.Encoded<typeof ElementSchema> &
-    Schema.Struct.Encoded<typeof referenceOwnFields> & {
-      readonly identifier: Schema.Schema.Encoded<typeof IdentifierSchema> | null
-    },
-  never
+const ReferenceSchema: StructNoContext<
+  typeof ElementSchema.fields &
+    typeof referenceOwnFields & {
+      readonly identifier: Schema.suspend<IdentifierType | null, IdentifierEncoded | null, never>
+    }
 > = StructNoContext({
   ...ElementSchema.fields,
   ...referenceOwnFields,
@@ -122,20 +126,25 @@ const ReferenceSchema: Schema.Schema<
   },
 })
 
+type IdentifierType = typeof ElementSchema.Type &
+  Schema.Struct.Type<typeof identifierOwnFields> & {
+    readonly assigner: ReferenceType | null
+  }
+
+type IdentifierEncoded = typeof ElementSchema.Encoded &
+  Schema.Struct.Encoded<typeof identifierOwnFields> & {
+    readonly assigner: ReferenceEncoded | null
+  }
+
 /**
  * An identifier intended for computation — carries a `system` URI, a `value`,
  * an optional `type`, `use`, `period`, and an optional `assigner` Reference.
  */
-const IdentifierSchema: Schema.Schema<
-  Schema.Schema.Type<typeof ElementSchema> &
-    Schema.Struct.Type<typeof identifierOwnFields> & {
-      readonly assigner: null | Schema.Schema.Type<typeof ReferenceSchema>
-    },
-  Schema.Schema.Encoded<typeof ElementSchema> &
-    Schema.Struct.Encoded<typeof identifierOwnFields> & {
-      readonly assigner: null | Schema.Schema.Encoded<typeof ReferenceSchema>
-    },
-  never
+const IdentifierSchema: StructNoContext<
+  typeof ElementSchema.fields &
+    typeof identifierOwnFields & {
+      readonly assigner: Schema.Schema<ReferenceType | null, ReferenceEncoded | null, never>
+    }
 > = StructNoContext({
   ...ElementSchema.fields,
   ...identifierOwnFields,

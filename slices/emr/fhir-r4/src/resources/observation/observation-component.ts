@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 
 import type { Observation as StoreObservation } from 'emr-core/livestore'
 import { ChoiceElementSet } from 'emr-core/schemas'
-import { StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
+import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
 import type FhirR4 from 'fhir/r4.d.ts'
 
@@ -19,7 +19,7 @@ const ObservationComponentSchema: Schema.Schema<
   StructNoContext({
     ...BackboneElement.fields,
     code: Schema.suspend(() => CodeableConcept.Schema),
-    dataAbsentReason: Schema.optional(Schema.suspend(() => CodeableConcept.Schema)),
+    dataAbsentReason: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
     interpretation: Schema.optionalWith(
       mutableEncoded(Schema.Array(Schema.suspend(() => CodeableConcept.Schema))),
       { default: (): readonly (typeof CodeableConcept.Schema.Type)[] => [] }

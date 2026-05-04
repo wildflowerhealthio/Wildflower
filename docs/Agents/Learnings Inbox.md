@@ -4,7 +4,29 @@ A running log of non-obvious insights discovered during agent sessions. Triage i
 
 <!-- Append new entries below this line -->
 
-## LiveStore row types widen `text()` columns to `string`
+## Decompose property tests by column to escape graph-walk fan-out
+
+**Discovered during**: ruthmarks/add-fhir-r4-slice — slow-test investigation
+**Learning**: A property test that does `Arbitrary.make(WholeSchema)` walks the entire schema graph every iteration. For FHIR resource-level schemas (Patient, Observation, Bundle) that's untenable — Reference→Identifier cycle, CodeableConcept-with-Coding[], Element/Extension fan-out, plus JSON column encode/decode all multiply. The fix is **per-column decomposition**: pick one field via `Schema.pick(name)` and round-trip just that sub-schema. Drove emr-core wall-clock from 745s with 14 timeouts to ~78s with 0. Use `test.each` with a `columnCases` array of `{ name, numRuns? }` so per-column overrides stay readable. Two viable patterns: pick-only round-trip (fastest, used in emr-core) and shell-spread + whole-schema round-trip (used in fhir-r4 to preserve wire-format adapter end-to-end coverage).
+**Suggested destination**: docs/Testing/Property Testing Reference.md
+
+## `Schema.Struct.pick(...)` doesn't propagate `R = never` when fields use `Schema.suspend`
+
+**Discovered during**: ruthmarks/add-fhir-r4-slice — slow-test investigation
+**Learning**: When a `Schema.Struct` has fields that reach `Schema.suspend(...)` (e.g. Reference→Identifier cycle), `Schema.Struct.pick(...)` widens the resulting schema's `Context` parameter to `unknown` at the type level, even though every column is no-context at runtime. `Schema.encodeSync`/`Schema.decodeSync` then fail to typecheck because they require `R = never`. Workaround in test files: cast via `as unknown as Schema.Schema.AnyNoContext` (or `as unknown as fc.Arbitrary<Pick<T, K>>` if the helper returns the Arbitrary). The runtime is correct; the cast just bridges the structural-vs-named-type mismatch in TS inference. Pair with an `oxlint-disable-next-line typescript/no-unsafe-type-assertion` and a comment explaining the bridge.
+**Suggested destination**: docs/Effect/Patterns Reference.md
+
+## `AnnotateArrayWithArbitrary({ maxLength: N })` is a test-only knob, not a schema constraint
+
+**Discovered during**: ruthmarks/add-fhir-r4-slice — slow-test investigation
+**Learning**: `AnnotateArrayWithArbitrary` (from kitchen-sink/schema) only modifies `Arbitrary.make(...)`'s output — encode/decode behaviour is unchanged. Use it to cap unbounded arrays whose size only matters for property-test fan-out (e.g. CodeableConcept's unbounded `coding: Coding[]`, Meta's `security`/`tag` Coding arrays). Production code can still hold arbitrary-length arrays. Capping CodeableConcept.coding to maxLength 2 alone gave a ~5× speedup on every CodeableConcept-bearing test.
+**Suggested destination**: docs/Testing/Property Testing Reference.md
+
+## Avoid `Arbitrary.make(...).map(encode→decode)` normalisation in property tests — it doubles per-iteration cost
+
+**Discovered during**: ruthmarks/add-fhir-r4-slice — slow-test investigation
+**Learning**: When a sub-schema has `Schema.optional` fields that emit `undefined` from arbitrary but get stripped on encode, the round-trip `expect(decoded).toSchemaEqual(sub, value)` fails on undefined-vs-missing-key. The "fix" of normalising via `Arbitrary.make(sub).map(v => decodeSync(sub)(encodeSync(sub)(v)))` works but doubles every iteration's encode/decode cost — applying it universally tipped many other tests over their timeouts. Better: write a fixture-based test for the specific Schema.optional case, or constrain the field's arbitrary annotation. The whole-RowSchema arbitrary in `livestore/observation.ts` uses this same trick and is the slowest test in the suite — be aware it inflates costs.
+**Suggested destination**: Strategies
 
 **Discovered during**: ruthmarks/add-fhir-server — Phase 3 (gatekeeper-core dashboard endpoints)
 **Learning**: When an HTTP response Schema uses `Schema.Literal(...)` for a field backed by a `State.SQLite.text()` column, `store.query(...)` won't type-check — the row's field is typed `string`, not the narrow union. Widen the response schema to `Schema.String` rather than projecting rows through a cast; the DB genuinely holds unconstrained strings.

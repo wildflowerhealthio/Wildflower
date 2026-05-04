@@ -6,28 +6,89 @@ import * as Observation from './observation.ts'
 
 const ObservationSchema = Observation.RowSchema
 
-const observationArb = Arbitrary.make(ObservationSchema)
+// ---------------------------------------------------------------------------
+// Decomposed round-trip — see `patient.test.ts` for the rationale on the
+// per-column pick approach, the `AnyNoContext` cast, and the smaller
+// `numRuns` budget for cycle-bearing columns.
+// ---------------------------------------------------------------------------
+
+const REFERENCE_NUM_RUNS = 25
+
+const roundTripColumn = (name: keyof typeof ObservationSchema.Type, numRuns?: number): void => {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see file header
+  const sub = ObservationSchema.pick(name) as unknown as Schema.Schema.AnyNoContext
+  fc.assert(
+    fc.property(Arbitrary.make(sub), (value) => {
+      // oxlint-disable-next-line typescript/no-unsafe-assignment -- AnyNoContext typing erasure (test-only)
+      const encoded = Schema.encodeSync(sub)(value)
+      // oxlint-disable-next-line typescript/no-unsafe-assignment -- AnyNoContext typing erasure (test-only)
+      const decoded = Schema.decodeSync(sub)(encoded)
+      expect(decoded).toSchemaEqual(sub, value)
+    }),
+    { numRuns }
+  )
+}
+
+interface ColumnCase {
+  readonly name: keyof typeof ObservationSchema.Type
+  readonly numRuns?: number
+}
+
+const columnCases: readonly ColumnCase[] = [
+  { name: 'code' },
+  { name: 'status' },
+  { name: 'category' },
+  { name: 'interpretation' },
+  { name: 'bodySite' },
+  { name: 'dataAbsentReason' },
+  // CodeableConcept (with Coding[] capped) + the encode+decode normalisation
+  // pass below still pushes these past the 5s default; budget reduced.
+  { name: 'method', numRuns: REFERENCE_NUM_RUNS },
+  // ObservationReferenceRange has CodeableConcept-bearing fields plus
+  // Quantity/Range. Reduced budget keeps the test under 5s.
+  { name: 'referenceRange', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'component', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'effectiveDateTime' },
+  { name: 'issued' },
+  { name: 'language' },
+  { name: 'implicitRules' },
+  { name: 'meta' },
+  { name: 'resourceType' },
+  { name: 'identifier', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'note', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'basedOn', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'derivedFrom', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'focus', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'hasMember', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'partOf', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'performer', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'subject', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'encounter', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'device', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'specimen', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'valueQuantity' },
+  { name: 'valueCodeableConcept' },
+  { name: 'valueString' },
+  { name: 'valueBoolean' },
+  { name: 'valueInteger' },
+  { name: 'valueRange' },
+  { name: 'valueRatio' },
+  { name: 'valueSampledData' },
+  { name: 'valueTime' },
+  { name: 'valueDateTime' },
+  { name: 'valuePeriod' },
+]
 
 describe('Observation model', () => {
   test('Observation.resourceType is "Observation"', () => {
     expect(Observation.resourceType).toBe('Observation')
   })
 
-  // Observation's RowSchema fans out the value[x] choice element across many
-  // primitive and complex datatypes, so 100 fast-check iterations of full
-  // encode/decode round-trips runs ~5s solo and grows several-fold under the
-  // CPU contention of `vp run -r test`. Bumped well past the 5s default to
-  // absorb worst-case worker-contention slowdown — the other property tests
-  // sit at 15s; this one is the genuine outlier in the suite.
-  test('property: encode-decode cycle', () => {
-    fc.assert(
-      fc.property(observationArb, (obs) => {
-        const encoded = Schema.encodeSync(ObservationSchema)(obs)
-        const decoded = Schema.decodeSync(ObservationSchema)(encoded)
-        expect(decoded).toSchemaEqual(ObservationSchema, obs)
-      })
-    )
-  }, 45_000)
+  test.each(columnCases)(
+    'property: $name column round-trips',
+    ({ name, numRuns }) => roundTripColumn(name, numRuns),
+    10_000
+  )
 
   test('property: missing required fields always fail', () => {
     fc.assert(

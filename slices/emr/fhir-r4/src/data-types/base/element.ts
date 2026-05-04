@@ -1,7 +1,12 @@
 import { Schema } from 'effect'
 
 import type { Element, Extension as StoreExtension } from 'emr-core/schemas'
-import { mutableEncoded, OrNullAsOptional, type FieldsNoContext } from 'kitchen-sink/schema'
+import {
+  mutableEncoded,
+  OrNullAsOptional,
+  type FieldsNoContext,
+  AnnotateArrayWithArbitrary,
+} from 'kitchen-sink/schema'
 
 import type FhirR4 from 'fhir/r4.d.ts'
 
@@ -9,9 +14,10 @@ import * as Extension from '../special-purpose/extension.ts'
 
 const fields = {
   id: OrNullAsOptional(Schema.String),
-  extension: Schema.optionalWith(
-    mutableEncoded(Schema.Array(Schema.suspend(() => Extension.Schema))),
-    { default: (): StoreExtension.Type[] => [] }
+  extension: Schema.Array(Schema.suspend(() => Extension.Schema)).pipe(
+    AnnotateArrayWithArbitrary({ maxLength: 2 }),
+    mutableEncoded,
+    Schema.optionalWith({ default: (): StoreExtension.Type[] => [] })
   ),
 } as const satisfies FieldsNoContext
 
