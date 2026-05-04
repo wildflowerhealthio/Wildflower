@@ -50,6 +50,17 @@ describe('TimeSchema', () => {
       })
     )
   })
+
+  test('property: encode/decode round-trip preserves value', () => {
+    const arb = Arbitrary.make(TimeSchema)
+    const encode = Schema.encodeSync(TimeSchema)
+    const decodeSync = Schema.decodeSync(TimeSchema)
+    fc.assert(
+      fc.property(arb, (value) => {
+        expect(decodeSync(encode(value))).toBe(value)
+      })
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -94,6 +105,17 @@ describe('UriSchema', () => {
       })
     )
   })
+
+  test('property: encode/decode round-trip preserves value', () => {
+    const arb = Arbitrary.make(UriSchema)
+    const encode = Schema.encodeSync(UriSchema)
+    const decodeSync = Schema.decodeSync(UriSchema)
+    fc.assert(
+      fc.property(arb, (value) => {
+        expect(decodeSync(encode(value))).toBe(value)
+      })
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -135,6 +157,17 @@ describe('IdSchema', () => {
     fc.assert(
       fc.property(arb, (value) => {
         expect(decode(value)._tag).toBe('Right')
+      })
+    )
+  })
+
+  test('property: encode/decode round-trip preserves value', () => {
+    const arb = Arbitrary.make(IdSchema)
+    const encode = Schema.encodeSync(IdSchema)
+    const decodeSync = Schema.decodeSync(IdSchema)
+    fc.assert(
+      fc.property(arb, (value) => {
+        expect(decodeSync(encode(value))).toBe(value)
       })
     )
   })

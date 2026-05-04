@@ -1,8 +1,20 @@
-import type { Schema } from 'effect'
+import { type Schema, type Arbitrary, type FastCheck } from 'effect'
 
 import { PermissivePassthrough } from 'kitchen-sink/schema'
 
 import * as Datatype from './datatype.ts'
+
+/**
+ * Fallback schema for any datatype that has not registered a concrete schema
+ * yet. Decode/encode behavior is identical to {@link PermissivePassthrough},
+ * but `Arbitrary.make` always emits `null` instead of an arbitrary object —
+ * which keeps property-test inputs over choice elements (`value[x]`,
+ * Extension's full ~50-field choice) tractable. Replace with a concrete
+ * schema via {@link registerDatatypeSchema} once a strict definition exists.
+ */
+const FallbackSchema = PermissivePassthrough.annotations({
+  arbitrary: (): Arbitrary.LazyArbitrary<unknown> => (fc: typeof FastCheck) => fc.constant(null),
+})
 
 // ---------------------------------------------------------------------------
 // Lazy registry
@@ -33,7 +45,7 @@ const initialEntry = <Name extends Datatype.Name>(name: Name): LazyDatatype<Name
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- baseSchemas keys are strict Datatype.Name; widening to string lets us index by an arbitrary Name without a per-name conditional.
     (Datatype.baseSchemas as unknown as Record<string, Schema.Schema<unknown> | undefined>)[name]
   if (schema !== undefined) return { name, schema: () => schema }
-  return { name, schema: () => PermissivePassthrough }
+  return { name, schema: () => FallbackSchema }
 }
 
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries widens to Record<string, LazyDatatype>; the per-key LazyDatatype<K> shape is recovered by construction over Datatype.names.

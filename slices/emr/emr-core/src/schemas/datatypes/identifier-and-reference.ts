@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { type Arbitrary, type FastCheck, Schema, pipe } from 'effect'
 
 import { StructNoContext } from 'kitchen-sink/schema'
 import { Schema as CodeableConceptSchema } from './codeable-concept.ts'
@@ -98,6 +98,12 @@ const ReferenceSchema: Schema.Schema<
    */
   identifier: Schema.NullOr(Schema.suspend(() => IdentifierSchema)),
 }).annotations({
+  // Reference → Identifier → Reference is a mutual cycle. `Schema.suspend`
+  // breaks it at schema-eval time, but the default arbitrary still walks
+  // each recursion the regex/struct way and amplifies generation cost
+  // exponentially across resources that hold many Reference fields
+  // (Observation, Patient, …). Capping `assigner` to `null` on the
+  // Identifier side (below) bounds depth to one Reference→Identifier hop.
   jsonSchema: {
     description: 'A reference from one FHIR resource to another',
     type: 'object',
@@ -137,8 +143,17 @@ const IdentifierSchema: Schema.Schema<
    * The Identifier.assigner may omit the .reference element and only contain a .display element.
    *
    * Schema.suspend breaks the circular dependency between Identifier and Reference at runtime.
+   * The arbitrary annotation caps `Arbitrary.make(...)` at `null` so property tests don't
+   * recursively generate Reference→Identifier→Reference chains. The mutual cycle is
+   * exercised explicitly by `cycles.test.ts`; everywhere else, capping keeps generation
+   * tractable.
    */
-  assigner: Schema.NullOr(Schema.suspend(() => ReferenceSchema)),
+  assigner: pipe(
+    Schema.NullOr(Schema.suspend(() => ReferenceSchema)),
+    Schema.annotations({
+      arbitrary: (): Arbitrary.LazyArbitrary<null> => (fc: typeof FastCheck) => fc.constant(null),
+    })
+  ),
 }).annotations({
   jsonSchema: {
     description: 'An identifier intended for computation',

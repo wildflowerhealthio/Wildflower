@@ -1,0 +1,41 @@
+import { Schema } from 'effect'
+
+import type { HumanName as StoreHumanName } from 'emr-core/schemas'
+import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
+
+import type FhirR4 from 'fhir/r4.d.ts'
+
+import * as Element from '../base/element.ts'
+import * as Period from './period.ts'
+
+const HumanNameSchema: Schema.Schema<typeof StoreHumanName.Schema.Type, FhirR4.HumanName, never> =
+  mutableEncoded(
+    StructNoContext({
+      ...Element.fields,
+      family: OrNullAsOptional(Schema.String),
+      given: Schema.optionalWith(mutableEncoded(Schema.Array(Schema.String)), {
+        default: () => [] as readonly string[],
+      }),
+      period: OrNullAsOptional(Schema.suspend(() => Period.Schema)),
+      prefix: Schema.optionalWith(mutableEncoded(Schema.Array(Schema.String)), {
+        default: () => [] as readonly string[],
+      }),
+      suffix: Schema.optionalWith(mutableEncoded(Schema.Array(Schema.String)), {
+        default: () => [] as readonly string[],
+      }),
+      text: OrNullAsOptional(Schema.String),
+      use: OrNullAsOptional(
+        Schema.Union(
+          Schema.Literal('usual'),
+          Schema.Literal('official'),
+          Schema.Literal('temp'),
+          Schema.Literal('nickname'),
+          Schema.Literal('anonymous'),
+          Schema.Literal('old'),
+          Schema.Literal('maiden')
+        )
+      ),
+    })
+  )
+
+export { HumanNameSchema as Schema }

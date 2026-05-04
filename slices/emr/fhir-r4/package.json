@@ -1,0 +1,65 @@
+{
+  "name": "fhir-r4",
+  "version": "0.0.1",
+  "description": "FHIR client domain types and utilities",
+  "license": "UNLICENSED",
+  "author": "Ruth Marks",
+  "type": "module",
+  "exports": {
+    "./data-types": {
+      "source": "./src/data-types/index.ts",
+      "default": "./dist/data-types/index.js"
+    },
+    "./http-api-definition": {
+      "source": "./src/http-api-definition/index.ts",
+      "default": "./dist/http-api-definition/index.js"
+    },
+    "./http-api-implementation": {
+      "source": "./src/http-api-implementation/index.ts",
+      "default": "./dist/http-api-implementation/index.js"
+    },
+    "./resources": {
+      "source": "./src/resources/index.ts",
+      "default": "./dist/resources/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@livestore/adapter-node": "catalog:",
+    "@livestore/common": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "@livestore/utils": "catalog:",
+    "@types/fhir": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "bumpp": "^11.0.1",
+    "effect": "catalog:",
+    "emr-core": "workspace:*",
+    "fast-check": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "@livestore/common": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "@livestore/utils": "catalog:",
+    "effect": "catalog:",
+    "emr-core": "workspace:*",
+    "kitchen-sink": "workspace:*"
+  }
+}

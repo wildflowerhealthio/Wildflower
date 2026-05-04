@@ -1,0 +1,13 @@
+// Import needed for module extension
+import type { Schema } from 'effect'
+import 'vite-plus/test'
+
+interface CustomMatchers<R = unknown> {
+  toSchemaEqual: <A, I>(schema: Schema.Schema<A, I>, expected: A) => R
+}
+
+declare module 'vite-plus/test' {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  interface Assertion<T = any> extends CustomMatchers<T> {}
+  interface AsymmetricMatchersContaining extends CustomMatchers {}
+}
