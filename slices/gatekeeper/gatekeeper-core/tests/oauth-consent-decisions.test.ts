@@ -107,3 +107,42 @@ test('denyAuthorizationRequest is a no-op when the request is missing', async ()
   await runWithStore(denyAuthorizationRequest('missing'), store)
   expect(committed).toEqual([])
 })
+
+test('approveAuthorizationRequest returns null when the request is not pending', async () => {
+  const { store, committed } = makeFakeStore({
+    request: makeRequest({ status: 'approved' }),
+  })
+  const redirect = await runWithStore(
+    approveAuthorizationRequest('req-1', ['patient/*.read']),
+    store
+  )
+  expect(redirect).toBeNull()
+  expect(committed).toEqual([])
+})
+
+test('approveAuthorizationRequest rejects scope escalation', async () => {
+  const { store, committed } = makeFakeStore({
+    request: makeRequest({ requestedScopes: ['patient/*.read'] }),
+  })
+  const redirect = await runWithStore(
+    approveAuthorizationRequest('req-1', ['patient/*.read', 'patient/*.write']),
+    store
+  )
+  expect(redirect).toBeNull()
+  expect(committed).toEqual([])
+})
+
+test('approveAuthorizationRequest accepts a strict subset of requestedScopes', async () => {
+  const { store, committed } = makeFakeStore({
+    request: makeRequest({ requestedScopes: ['patient/*.read', 'launch'] }),
+  })
+  const redirect = await runWithStore(
+    approveAuthorizationRequest('req-1', ['patient/*.read']),
+    store
+  )
+  expect(redirect).not.toBeNull()
+  expect(committed.map((e) => e.name)).toEqual([
+    'v1.AuthorizationRequestApproved',
+    'v1.AuthorizationCodeIssued',
+  ])
+})

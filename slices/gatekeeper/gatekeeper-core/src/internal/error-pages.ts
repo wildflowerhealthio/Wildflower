@@ -1,4 +1,11 @@
-type OAuthErrorKind = 'unsupported_code_challenge' | 'invalid_redirect_uri' | 'invalid_scheme'
+type OAuthErrorKind =
+  | 'unsupported_code_challenge'
+  | 'invalid_redirect_uri'
+  | 'invalid_scheme'
+  | 'unknown_client'
+  | 'disabled_client'
+  | 'redirect_uri_not_allowed'
+  | 'scope_not_allowed'
 type PinErrorKind = 'invalid_returnTo'
 
 const escape = (value: string): string =>
@@ -16,6 +23,22 @@ const oauthErrorMessage: Record<OAuthErrorKind, { title: string; body: string }>
   invalid_scheme: {
     title: 'Invalid redirect URI scheme',
     body: 'The supplied redirect_uri must use http or https.',
+  },
+  unknown_client: {
+    title: 'Unknown client',
+    body: 'The supplied client_id is not registered.',
+  },
+  disabled_client: {
+    title: 'Disabled client',
+    body: 'The supplied client_id has been disabled.',
+  },
+  redirect_uri_not_allowed: {
+    title: 'Redirect URI not allowed',
+    body: 'The supplied redirect_uri is not registered for this client.',
+  },
+  scope_not_allowed: {
+    title: 'Scope not allowed',
+    body: 'One or more requested scopes are not permitted for this client.',
   },
 }
 

@@ -17,7 +17,7 @@ import { verifyJwt } from '../internal/jwt.ts'
 const authenticateToken = (
   token: string
 ): Effect.Effect<void, HttpApiError.Unauthorized, GatekeeperStore | Origin> =>
-  verifyJwt(token.trim())
+  Effect.asVoid(verifyJwt(token.trim()))
 
 const authenticateStore: Effect.Effect<
   void,

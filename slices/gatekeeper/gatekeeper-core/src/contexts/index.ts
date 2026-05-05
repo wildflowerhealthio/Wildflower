@@ -12,3 +12,8 @@ export {
   OAuthDisplayDefaultOutOfBandPolling,
 } from './oauth-display-default.ts'
 export type { OAuthDisplayMode } from './oauth-display-default.ts'
+export {
+  FIRST_PARTY_CLIENT_ID,
+  seedFirstPartyClient,
+  SeedFirstPartyClientLive,
+} from './seed-first-party-client.ts'

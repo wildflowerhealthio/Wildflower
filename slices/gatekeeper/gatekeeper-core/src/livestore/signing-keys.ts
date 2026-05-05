@@ -6,7 +6,7 @@ import * as jose from 'jose'
 class SigningKey extends Schema.Class<SigningKey>('SigningKey')({
   kty: Schema.Literal('RSA'),
   alg: Schema.Literal('RS256'),
-  kid: Schema.String.pipe(State.SQLite.withPrimaryKey),
+  kid: Schema.String,
   values: Schema.Struct({
     d: Schema.String,
     dp: Schema.String,
@@ -88,25 +88,61 @@ class SigningKey extends Schema.Class<SigningKey>('SigningKey')({
   }
 }
 
+const SigningKeyValuesSchema = Schema.Struct({
+  d: Schema.String,
+  dp: Schema.String,
+  dq: Schema.String,
+  e: Schema.String,
+  n: Schema.String,
+  p: Schema.String,
+  q: Schema.String,
+  qi: Schema.String,
+})
+
 const table = State.SQLite.table({
   name: 'signingKeys',
-  schema: SigningKey,
+  columns: {
+    kid: State.SQLite.text({ primaryKey: true }),
+    kty: State.SQLite.text(),
+    alg: State.SQLite.text(),
+    values: State.SQLite.json({ schema: SigningKeyValuesSchema }),
+    isActive: State.SQLite.boolean(),
+  },
 })
+
+type SigningKeyRow = (typeof table)['Type']
+
+const rowToSigningKey = (row: SigningKeyRow): SigningKey =>
+  SigningKey.make({
+    kid: row.kid,
+    kty: 'RSA' as const,
+    alg: 'RS256' as const,
+    values: row.values,
+  })
 
 const queries = {
   findByKid$: (kid: string): LiveQueryDef<SigningKey | null> =>
     queryDb(table.where({ kid }), {
       map: (rows): SigningKey | null => {
         if (Array.isNonEmptyReadonlyArray(rows)) {
-          return SigningKey.make(rows[0])
+          return rowToSigningKey(rows[0])
         }
         return null
       },
       label: 'signingKeyByKid',
     }),
   all$: queryDb(table, {
-    map: (rows): readonly SigningKey[] => rows.map((row) => SigningKey.make(row)),
+    map: (rows): readonly SigningKey[] => rows.map((row) => rowToSigningKey(row)),
     label: 'allSigningKeys',
+  }),
+  active$: queryDb(table.where({ isActive: true }), {
+    map: (rows): SigningKey | null => {
+      if (Array.isNonEmptyReadonlyArray(rows)) {
+        return rowToSigningKey(rows[0])
+      }
+      return null
+    },
+    label: 'activeSigningKey',
   }),
 }
 
@@ -117,10 +153,28 @@ const events = {
       signingKey: SigningKey,
     }),
   }),
+  signingKeyActivated: Events.synced({
+    name: 'v1.SigningKeyActivated',
+    schema: Schema.Struct({
+      kid: Schema.String,
+    }),
+  }),
 } as const
 
 const materializers = State.SQLite.materializers(events, {
-  'v1.SigningKeyAdded': ({ signingKey }) => table.insert(signingKey),
+  'v1.SigningKeyAdded': ({ signingKey }) =>
+    table.insert({
+      kid: signingKey.kid,
+      kty: signingKey.kty,
+      alg: signingKey.alg,
+      values: signingKey.values,
+      isActive: false,
+    }),
+  'v1.SigningKeyActivated': ({ kid }) => [
+    table.update({ isActive: false }).where({ isActive: true }),
+    table.update({ isActive: true }).where({ kid }),
+  ],
 })
 
 export { SigningKey, table, queries, events, materializers }
+export type { SigningKeyRow }

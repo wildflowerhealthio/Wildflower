@@ -5,7 +5,12 @@ import { GatekeeperStore } from './gatekeeper-store.ts'
 /**
  * Mark an authorization request as approved, issue a single-use authorization
  * code, and return the redirect URL the OAuth client should be sent to.
- * Returns `null` when the request is not found.
+ *
+ * Returns `null` when the request is not found, is not in `pending` status,
+ * or when `grantedScopes` is not a subset of the request's `requestedScopes`
+ * (scope-escalation guard). The caller cannot distinguish these cases — that
+ * is intentional: from the OAuth client's perspective they all collapse to
+ * "consent did not produce a code".
  */
 const approveAuthorizationRequest = (
   requestId: string,
@@ -16,6 +21,9 @@ const approveAuthorizationRequest = (
     const store = yield* GatekeeperStore
     const pending = store.query(AuthorizationRequests.queries.byId$(requestId))
     if (pending == null) return null
+    if (pending.status !== 'pending') return null
+    const requestedScopeSet = new Set(pending.requestedScopes)
+    if (!grantedScopes.every((s) => requestedScopeSet.has(s))) return null
 
     const code = crypto.randomUUID()
     const issuedAt = yield* DateTime.now

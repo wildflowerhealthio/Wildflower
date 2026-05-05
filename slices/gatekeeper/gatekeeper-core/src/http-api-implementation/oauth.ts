@@ -1,16 +1,18 @@
 import { HttpApiBuilder, HttpServerResponse } from '@effect/platform'
-import { Array, Clock, DateTime, Effect, Schema } from 'effect'
+import { Array, DateTime, Effect, Schema } from 'effect'
 import { Origin } from 'kitchen-sink'
 import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { OAuthDisplayDefault } from '../contexts/oauth-display-default.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
 import { httpApiGroup } from '../http-api-definition/oauth.ts'
 import { oauthErrorHtml } from '../internal/error-pages.ts'
+import { mintAccessToken } from '../internal/jwt.ts'
 import { computeCodeChallenge } from '../internal/pkce.ts'
 import { timingSafeEqual } from '../internal/timing-safe-equal.ts'
 import {
   AuthorizationCodes,
   AuthorizationRequests,
+  Clients,
   Grants,
   SigningKeys,
 } from '../livestore/index.ts'
@@ -18,8 +20,9 @@ import {
 const decodeTokenExchangePayload = Schema.decodeUnknown(
   Schema.Struct({
     client_id: Schema.NonEmptyString,
+    client_secret: Schema.optional(Schema.String),
     code: Schema.NonEmptyString,
-    code_verifier: Schema.NonEmptyString,
+    code_verifier: Schema.String.pipe(Schema.minLength(43), Schema.maxLength(128)),
     grant_type: Schema.Literal('authorization_code'),
     redirect_uri: Schema.NonEmptyString,
   })
@@ -71,12 +74,40 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
           })
         }
 
+        const client = store.query(Clients.queries.byId$(client_id))
+        if (client == null) {
+          return HttpServerResponse.text(oauthErrorHtml('unknown_client'), {
+            status: 400,
+            contentType: 'text/html; charset=utf-8',
+          })
+        }
+        if (client.disabledAt != null) {
+          return HttpServerResponse.text(oauthErrorHtml('disabled_client'), {
+            status: 400,
+            contentType: 'text/html; charset=utf-8',
+          })
+        }
+        if (!client.redirectUris.includes(redirect_uri)) {
+          return HttpServerResponse.text(oauthErrorHtml('redirect_uri_not_allowed'), {
+            status: 400,
+            contentType: 'text/html; charset=utf-8',
+          })
+        }
+        const requestedScopes = scope.split(' ').filter(Boolean)
+        const allowedScopeSet = new Set(client.allowedScopes)
+        const allRequestedScopesAllowed = requestedScopes.every((s) => allowedScopeSet.has(s))
+        if (!allRequestedScopesAllowed) {
+          return HttpServerResponse.text(oauthErrorHtml('scope_not_allowed'), {
+            status: 400,
+            contentType: 'text/html; charset=utf-8',
+          })
+        }
+
         const requestId = crypto.randomUUID()
 
-        const requestedScopes = scope.split(' ').filter(Boolean)
-        const approvedGrant = store
-          .query(Grants.queries.byClientId$(client_id))
-          .find((grant) => grant.redirectUri === redirect_uri)
+        const approvedGrant = store.query(
+          Grants.queries.byClientIdAndRedirectUri$(client_id, redirect_uri)
+        )
 
         const previouslyApproved = new Set<string>(approvedGrant?.scopes ?? [])
         const preApproved = requestedScopes.filter((requested) => previouslyApproved.has(requested))
@@ -103,7 +134,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
           })
         )
 
-        if (approvedGrant !== undefined) {
+        if (approvedGrant != null) {
           const allScopesApproved = requestedScopes.every((requested) =>
             previouslyApproved.has(requested)
           )
@@ -223,7 +254,50 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
           )
         }
 
-        const { client_id, code, code_verifier, redirect_uri } = parsedPayloadEither.right
+        const { client_id, client_secret, code, code_verifier, redirect_uri } =
+          parsedPayloadEither.right
+
+        const client = store.query(Clients.queries.byId$(client_id))
+        if (client == null) {
+          return HttpServerResponse.unsafeJson(
+            { error: 'invalid_client', error_description: 'Unknown client_id' },
+            { status: 401 }
+          )
+        }
+        if (client.disabledAt != null) {
+          return HttpServerResponse.unsafeJson(
+            { error: 'invalid_client', error_description: 'Client is disabled' },
+            { status: 401 }
+          )
+        }
+
+        if (client.kind === 'confidential') {
+          if (client.secretHash == null) {
+            return HttpServerResponse.unsafeJson(
+              { error: 'invalid_client', error_description: 'Client secret not configured' },
+              { status: 401 }
+            )
+          }
+          if (client_secret == null) {
+            return HttpServerResponse.unsafeJson(
+              { error: 'invalid_client', error_description: 'Client secret required' },
+              { status: 401 }
+            )
+          }
+          const presentedHashEither = yield* Effect.either(sha256Hex(client_secret))
+          if (presentedHashEither._tag === 'Left') {
+            return HttpServerResponse.unsafeJson(
+              { error: 'server_error', error_description: 'Failed to hash client_secret' },
+              { status: 500 }
+            )
+          }
+          if (!timingSafeEqual(presentedHashEither.right, client.secretHash)) {
+            return HttpServerResponse.unsafeJson(
+              { error: 'invalid_client', error_description: 'Invalid client_secret' },
+              { status: 401 }
+            )
+          }
+        }
 
         const issuedCode = store.query(AuthorizationCodes.queries.byCode$(code))
         if (issuedCode == null) {
@@ -274,8 +348,10 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
           )
         }
 
-        const [jwk] = store.query(SigningKeys.queries.all$)
-        if (jwk === undefined) {
+        const activeKey = store.query(SigningKeys.queries.active$)
+        const allKeys = store.query(SigningKeys.queries.all$)
+        const signingKey = activeKey ?? allKeys[0]
+        if (signingKey === undefined) {
           return HttpServerResponse.unsafeJson(
             {
               error: 'server_error',
@@ -288,23 +364,14 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
         store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code }))
 
         const origin = yield* Origin
-        const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
-        const grantedScope = issuedCode.grantedScopes.join(' ')
-        const jwtPayload: Record<string, unknown> = {
-          iss: origin,
-          sub: issuedCode.clientId,
-          aud: `${origin}/fhir`,
-          exp: now + 3600,
-          iat: now,
-          scope: grantedScope,
-          type: 'access_token',
-        }
-        if (issuedCode.patient != null) {
-          jwtPayload.patient = issuedCode.patient
-        }
-
         const signedTokenEither = yield* Effect.either(
-          Effect.tryPromise(() => jwk.signJwt(jwtPayload))
+          mintAccessToken(signingKey, origin, {
+            clientId: issuedCode.clientId,
+            scope: issuedCode.grantedScopes,
+            ttlSeconds: 60 * 60,
+            audience: `${origin}/fhir`,
+            patient: issuedCode.patient,
+          })
         )
         if (signedTokenEither._tag === 'Left') {
           return HttpServerResponse.unsafeJson(
@@ -313,6 +380,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
           )
         }
 
+        const grantedScope = issuedCode.grantedScopes.join(' ')
         const tokenResponse: Record<string, unknown> = {
           access_token: signedTokenEither.right,
           token_type: 'Bearer',
@@ -334,4 +402,10 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
     )
 )
 
-export { httpApiGroup, layer }
+const sha256Hex = (input: string): Effect.Effect<string, Error> =>
+  Effect.tryPromise(async () => {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('')
+  })
+
+export { httpApiGroup, layer, sha256Hex }

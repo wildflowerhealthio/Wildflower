@@ -1,25 +1,15 @@
-import { Effect, Either, Layer } from 'effect'
+import { DateTime, Effect, Either, Layer } from 'effect'
 import { Origin } from 'kitchen-sink'
 import { expect, test } from 'vite-plus/test'
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { verifyJwt } from '../src/internal/jwt.ts'
-import { Grants, Sessions, SigningKeys } from '../src/livestore/index.ts'
+import { Clients, type ClientRow, SigningKeys } from '../src/livestore/index.ts'
 
 type FakeJwk = {
   signJwt: (payload: Record<string, unknown>) => Promise<string>
   verifyJwt: (token: string) => Promise<{ payload: Record<string, unknown> }>
   publicJwk: () => Record<string, unknown>
 }
-
-type GrantRow = {
-  id: string
-  clientId: string
-  scopes: ReadonlyArray<string>
-  redirectUri: string
-  patient: string | null
-}
-
-type SessionRow = { id: string }
 
 const labelOf = (q: unknown): string | undefined => {
   if (typeof q === 'object' && q !== null && 'label' in q && typeof q.label === 'string') {
@@ -36,30 +26,19 @@ const hashOf = (q: unknown): string | undefined => {
 
 const makeStubStore = (options: {
   jwks: ReadonlyArray<FakeJwk>
-  grants?: ReadonlyArray<GrantRow>
-  sessions?: ReadonlyArray<SessionRow>
+  clients?: ReadonlyArray<ClientRow>
 }): typeof GatekeeperStore.Service => {
-  const { jwks, grants = [], sessions = [] } = options
-  const grantRows = [...grants]
-  const sessionMap = new Map(sessions.map((s) => [s.id, s]))
+  const { jwks, clients = [] } = options
+  const clientMap = new Map(clients.map((c) => [c.clientId, c]))
 
   const query = (q: unknown): unknown => {
     if (q === SigningKeys.queries.all$) return jwks
     const label = labelOf(q)
     const hash = hashOf(q)
-    if (label === 'grantsByClientId' && hash !== undefined) {
-      const seen = new Set(grantRows.map((g) => g.clientId))
-      for (const clientId of seen) {
-        if (Grants.queries.byClientId$(clientId).hash === hash) {
-          return grantRows.filter((g) => g.clientId === clientId)
-        }
-      }
-      return []
-    }
-    if (label === 'sessionById' && hash !== undefined) {
-      for (const id of sessionMap.keys()) {
-        if (Sessions.queries.byId$(id).hash === hash) {
-          return sessionMap.get(id) ?? null
+    if (label === 'clientById' && hash !== undefined) {
+      for (const clientId of clientMap.keys()) {
+        if (Clients.queries.byId$(clientId).hash === hash) {
+          return clientMap.get(clientId) ?? null
         }
       }
       return null
@@ -79,10 +58,22 @@ const fakeJwk = (payload: Record<string, unknown>): FakeJwk => ({
   publicJwk: () => ({}),
 })
 
+const makeClient = (overrides: Partial<ClientRow> = {}): ClientRow => ({
+  clientId: 'client-1',
+  name: 'Test Client',
+  kind: 'public',
+  redirectUris: [],
+  allowedScopes: ['owner'],
+  secretHash: null,
+  registeredAt: DateTime.unsafeNow(),
+  disabledAt: null,
+  ...overrides,
+})
+
 const runVerify = (
   store: typeof GatekeeperStore.Service,
   token: string
-): Promise<Either.Either<void, unknown>> =>
+): Promise<Either.Either<unknown, unknown>> =>
   Effect.runPromise(
     verifyJwt(token).pipe(
       Effect.provide(makeGatekeeperStoreLayer(store)),
@@ -91,137 +82,91 @@ const runVerify = (
     )
   )
 
-test('access_token JWT verifies when a matching grant exists', async () => {
+test('JWT verifies when sub matches a registered client (no type claim)', async () => {
   const store = makeStubStore({
     jwks: [
       fakeJwk({
         iss: ORIGIN,
         aud: `${ORIGIN}/fhir`,
         sub: 'client-1',
-        type: 'access_token',
       }),
     ],
-    grants: [
-      {
-        id: 'g-1',
-        clientId: 'client-1',
-        scopes: [],
-        redirectUri: 'https://app.example/cb',
-        patient: null,
-      },
-    ],
+    clients: [makeClient()],
   })
   const result = await runVerify(store, 'token')
   expect(Either.isRight(result)).toBe(true)
 })
 
-test('access_token JWT is rejected when no grant matches', async () => {
+test('JWT is rejected when sub does not match any client', async () => {
   const store = makeStubStore({
     jwks: [
       fakeJwk({
         iss: ORIGIN,
         aud: `${ORIGIN}/fhir`,
         sub: 'unknown-client',
-        type: 'access_token',
       }),
     ],
+    clients: [makeClient()],
   })
   const result = await runVerify(store, 'token')
   expect(Either.isLeft(result)).toBe(true)
 })
 
-test('session JWT verifies when a matching session exists', async () => {
-  const store = makeStubStore({
-    jwks: [
-      fakeJwk({
-        iss: ORIGIN,
-        aud: ORIGIN,
-        sub: 'session-1',
-        type: 'session',
-      }),
-    ],
-    sessions: [{ id: 'session-1' }],
-  })
-  const result = await runVerify(store, 'token')
-  expect(Either.isRight(result)).toBe(true)
-})
-
-test('session JWT is rejected when no matching session exists', async () => {
-  const store = makeStubStore({
-    jwks: [
-      fakeJwk({
-        iss: ORIGIN,
-        aud: ORIGIN,
-        sub: 'session-missing',
-        type: 'session',
-      }),
-    ],
-  })
-  const result = await runVerify(store, 'token')
-  expect(Either.isLeft(result)).toBe(true)
-})
-
-test('JWT without recognised type claim is rejected', async () => {
+test('JWT is rejected when client is disabled', async () => {
   const store = makeStubStore({
     jwks: [
       fakeJwk({
         iss: ORIGIN,
         aud: `${ORIGIN}/fhir`,
         sub: 'client-1',
-        // no `type` claim
       }),
     ],
-    grants: [
-      {
-        id: 'g-1',
-        clientId: 'client-1',
-        scopes: [],
-        redirectUri: 'https://app.example/cb',
-        patient: null,
-      },
-    ],
+    clients: [makeClient({ disabledAt: DateTime.unsafeNow() })],
   })
   const result = await runVerify(store, 'token')
   expect(Either.isLeft(result)).toBe(true)
 })
 
-test('access_token JWT presented at session-required path is rejected when sub is not a grant', async () => {
-  // Session-shape token (sub is a session id) but type=access_token: should
-  // miss the grant lookup and fail.
-  const store = makeStubStore({
-    jwks: [
-      fakeJwk({
-        iss: ORIGIN,
-        aud: ORIGIN,
-        sub: 'session-1',
-        type: 'access_token',
-      }),
-    ],
-    sessions: [{ id: 'session-1' }],
-  })
-  const result = await runVerify(store, 'token')
-  expect(Either.isLeft(result)).toBe(true)
-})
-
-test('session JWT with sub that points to a grant only is rejected', async () => {
+test('JWT verifies when audience is the origin', async () => {
   const store = makeStubStore({
     jwks: [
       fakeJwk({
         iss: ORIGIN,
         aud: ORIGIN,
         sub: 'client-1',
-        type: 'session',
       }),
     ],
-    grants: [
-      {
-        id: 'g-1',
-        clientId: 'client-1',
-        scopes: [],
-        redirectUri: 'https://app.example/cb',
-        patient: null,
-      },
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, 'token')
+  expect(Either.isRight(result)).toBe(true)
+})
+
+test('JWT is rejected when issuer mismatches origin', async () => {
+  const store = makeStubStore({
+    jwks: [
+      fakeJwk({
+        iss: 'https://other.example',
+        aud: ORIGIN,
+        sub: 'client-1',
+      }),
     ],
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, 'token')
+  expect(Either.isLeft(result)).toBe(true)
+})
+
+test('JWT is rejected when sub is not a string', async () => {
+  const store = makeStubStore({
+    jwks: [
+      fakeJwk({
+        iss: ORIGIN,
+        aud: ORIGIN,
+        sub: 12345,
+      }),
+    ],
+    clients: [makeClient()],
   })
   const result = await runVerify(store, 'token')
   expect(Either.isLeft(result)).toBe(true)

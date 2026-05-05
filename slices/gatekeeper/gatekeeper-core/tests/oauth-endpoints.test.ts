@@ -15,6 +15,8 @@ import {
   type AuthorizationCodeRow,
   AuthorizationRequests,
   type AuthorizationRequestRow,
+  Clients,
+  type ClientRow,
   Grants,
   PinChallenges,
   type PinChallengeRow,
@@ -42,7 +44,6 @@ type MockGrant = {
   redirectUri: string
   grantedAt: DateTime.Utc
   lastUsedAt: DateTime.Utc | null
-  label: string
   patient: string | null
 }
 
@@ -51,11 +52,24 @@ type MockStoreOptions = {
     signJwt: (payload: Record<string, unknown>) => Promise<string>
     verifyJwt: (token: string) => Promise<{ payload: Record<string, unknown> }>
   }>
+  clients?: ReadonlyArray<ClientRow>
   grants?: ReadonlyArray<MockGrant>
   authorizationRequests?: ReadonlyArray<AuthorizationRequestRow>
   authorizationCodes?: ReadonlyArray<AuthorizationCodeRow>
   pinChallenges?: ReadonlyArray<PinChallengeRow>
 }
+
+const makeClient = (overrides: Partial<ClientRow> = {}): ClientRow => ({
+  clientId: 'test-client',
+  name: 'Test Client',
+  kind: 'public',
+  redirectUris: ['https://example.com/cb', 'https://app.example/callback'],
+  allowedScopes: ['patient/*.read', 'launch'],
+  secretHash: null,
+  registeredAt: DateTime.unsafeNow(),
+  disabledAt: null,
+  ...overrides,
+})
 
 type CommittedEvent = { name: string; args: Record<string, unknown> }
 
@@ -78,11 +92,16 @@ const queryLabel = (q: unknown): string | undefined => {
 
 const makeStore = ({
   jwks = [],
+  clients = [],
   grants = [],
   authorizationRequests = [],
   authorizationCodes = [],
   pinChallenges = [],
 }: MockStoreOptions): typeof GatekeeperStore.Service => {
+  const clientRows = new Map<string, ClientRow>()
+  for (const row of clients) {
+    clientRows.set(row.clientId, row)
+  }
   const requestRows = new Map<string, AuthorizationRequestRow>()
   for (const row of authorizationRequests) {
     requestRows.set(row.id, row)
@@ -149,6 +168,28 @@ const makeStore = ({
         }
       }
       return []
+    }
+
+    if (label === 'grantByClientIdAndRedirectUri' && hash !== undefined) {
+      for (const g of grantRows) {
+        if (Grants.queries.byClientIdAndRedirectUri$(g.clientId, g.redirectUri).hash === hash) {
+          return g
+        }
+      }
+      return null
+    }
+
+    if (label === 'clientById' && hash !== undefined) {
+      for (const clientId of clientRows.keys()) {
+        if (Clients.queries.byId$(clientId).hash === hash) {
+          return clientRows.get(clientId) ?? null
+        }
+      }
+      return null
+    }
+
+    if (label === 'activeSigningKey') {
+      return jwks[0] ?? null
     }
 
     if (label === 'authorizationRequests') return [...requestRows.values()]
@@ -301,7 +342,7 @@ const makeStore = ({
           }
           break
         }
-        // Other events (e.g. GrantUpserted, SessionStarted, SigningKeyAdded) are no-ops in this mock.
+        // Other events (e.g. GrantCreated, GrantUpdated, SessionStarted, SigningKeyAdded) are no-ops in this mock.
         default:
           break
       }
@@ -356,7 +397,7 @@ test('authorize returns inline error HTML for unsupported code challenge method'
   }
 })
 
-test('authorize auto-approves using matching redirect row from byClientId results', async () => {
+test('authorize auto-approves using matching redirect row from byClientIdAndRedirectUri', async () => {
   const grantedAt = DateTime.unsafeNow()
   const { handler, dispose } = createOAuthHandler(
     makeStore({
@@ -366,6 +407,13 @@ test('authorize auto-approves using matching redirect row from byClientId result
           verifyJwt: async () => ({ payload: {} }),
         },
       ],
+      clients: [
+        makeClient({
+          clientId: 'client-123',
+          redirectUris: ['https://other.example/callback', 'https://app.example/callback'],
+          allowedScopes: ['patient/*.read', 'launch'],
+        }),
+      ],
       grants: [
         {
           id: 'app-a',
@@ -374,7 +422,6 @@ test('authorize auto-approves using matching redirect row from byClientId result
           redirectUri: 'https://other.example/callback',
           grantedAt,
           lastUsedAt: null,
-          label: 'Other Redirect',
           patient: null,
         },
         {
@@ -384,7 +431,6 @@ test('authorize auto-approves using matching redirect row from byClientId result
           redirectUri: 'https://app.example/callback',
           grantedAt,
           lastUsedAt: null,
-          label: 'Matching Redirect',
           patient: 'patient-1',
         },
       ],
@@ -418,6 +464,7 @@ test('authorize redirects to authorization UI by default', async () => {
           verifyJwt: async () => ({ payload: {} }),
         },
       ],
+      clients: [makeClient()],
     })
   )
 
@@ -445,6 +492,7 @@ test('authorize redirects to polling page URL when display=polling', async () =>
           verifyJwt: async () => ({ payload: {} }),
         },
       ],
+      clients: [makeClient()],
     })
   )
 
@@ -493,7 +541,7 @@ test('token exchange rejects invalid content type before handler logic', async (
 })
 
 test('token exchange succeeds with valid form payload', async () => {
-  const codeVerifier = 'sample-verifier-123'
+  const codeVerifier = 'sample-verifier-123-padded-to-meet-rfc-7636-min-length'
   const codeChallenge = await Effect.runPromise(computeCodeChallenge(codeVerifier))
 
   const seededCode: AuthorizationCodeRow = {
@@ -515,6 +563,13 @@ test('token exchange succeeds with valid form payload', async () => {
           signJwt: async () => 'signed.jwt.token',
           verifyJwt: async () => ({ payload: {} }),
         },
+      ],
+      clients: [
+        makeClient({
+          clientId: 'client-1',
+          redirectUris: ['https://app.example/callback'],
+          allowedScopes: ['patient/*.read'],
+        }),
       ],
       authorizationCodes: [seededCode],
     })
@@ -546,6 +601,146 @@ test('token exchange succeeds with valid form payload', async () => {
     expect(bodyText).toContain('"expires_in":3600')
     expect(bodyText).toContain('"scope":"patient/*.read"')
     expect(bodyText).toContain('"patient":"patient-123"')
+  } finally {
+    await dispose()
+  }
+})
+
+test('authorize rejects an unknown client_id', async () => {
+  const { handler, dispose } = createOAuthHandler(
+    makeStore({
+      jwks: [{ signJwt: async () => 'unused', verifyJwt: async () => ({ payload: {} }) }],
+    })
+  )
+
+  try {
+    const response = await handler(
+      new Request(
+        'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=unknown-client&scope=patient/*.read&code_challenge=abc&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=s'
+      )
+    )
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('Unknown client')
+  } finally {
+    await dispose()
+  }
+})
+
+test('authorize rejects a disabled client', async () => {
+  const { handler, dispose } = createOAuthHandler(
+    makeStore({
+      jwks: [{ signJwt: async () => 'unused', verifyJwt: async () => ({ payload: {} }) }],
+      clients: [makeClient({ disabledAt: DateTime.unsafeNow() })],
+    })
+  )
+
+  try {
+    const response = await handler(
+      new Request(
+        'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=s'
+      )
+    )
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('Disabled client')
+  } finally {
+    await dispose()
+  }
+})
+
+test('authorize rejects redirect_uri not in client allowlist', async () => {
+  const { handler, dispose } = createOAuthHandler(
+    makeStore({
+      jwks: [{ signJwt: async () => 'unused', verifyJwt: async () => ({ payload: {} }) }],
+      clients: [makeClient({ redirectUris: ['https://allowed.example/cb'] })],
+    })
+  )
+
+  try {
+    const response = await handler(
+      new Request(
+        'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc&redirect_uri=https%3A%2F%2Fmalicious.example%2Fcb&state=s'
+      )
+    )
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('Redirect URI not allowed')
+  } finally {
+    await dispose()
+  }
+})
+
+test('authorize rejects requested scope not in client allowedScopes', async () => {
+  const { handler, dispose } = createOAuthHandler(
+    makeStore({
+      jwks: [{ signJwt: async () => 'unused', verifyJwt: async () => ({ payload: {} }) }],
+      clients: [makeClient({ allowedScopes: ['launch'] })],
+    })
+  )
+
+  try {
+    const response = await handler(
+      new Request(
+        'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=test-client&scope=patient/*.read%20launch&code_challenge=abc&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=s'
+      )
+    )
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('Scope not allowed')
+  } finally {
+    await dispose()
+  }
+})
+
+test('token exchange rejects unknown client_id with 401', async () => {
+  const { handler, dispose } = createOAuthHandler(
+    makeStore({
+      jwks: [{ signJwt: async () => 'signed', verifyJwt: async () => ({ payload: {} }) }],
+    })
+  )
+
+  try {
+    const payload = new URLSearchParams({
+      client_id: 'unknown-client',
+      code: 'auth-code-1',
+      code_verifier: 'sample-verifier-123-padded-to-meet-rfc-7636-min-length',
+      grant_type: 'authorization_code',
+      redirect_uri: 'https://app.example/callback',
+    })
+    const response = await handler(
+      new Request('http://localhost/oauth/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: payload,
+      })
+    )
+    expect(response.status).toBe(401)
+  } finally {
+    await dispose()
+  }
+})
+
+test('token exchange rejects code_verifier shorter than 43 chars', async () => {
+  const { handler, dispose } = createOAuthHandler(
+    makeStore({
+      jwks: [{ signJwt: async () => 'signed', verifyJwt: async () => ({ payload: {} }) }],
+      clients: [makeClient({ clientId: 'client-1' })],
+    })
+  )
+
+  try {
+    const payload = new URLSearchParams({
+      client_id: 'client-1',
+      code: 'auth-code-1',
+      code_verifier: 'too-short',
+      grant_type: 'authorization_code',
+      redirect_uri: 'https://app.example/callback',
+    })
+    const response = await handler(
+      new Request('http://localhost/oauth/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: payload,
+      })
+    )
+    expect(response.status).toBe(400)
   } finally {
     await dispose()
   }

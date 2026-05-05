@@ -9,7 +9,6 @@ const GrantSchema = Schema.Struct({
   redirectUri: Schema.String,
   grantedAt: Schema.DateTimeUtc,
   lastUsedAt: Schema.NullOr(Schema.DateTimeUtc),
-  label: Schema.String,
   patient: Schema.NullOr(Schema.String),
 })
 

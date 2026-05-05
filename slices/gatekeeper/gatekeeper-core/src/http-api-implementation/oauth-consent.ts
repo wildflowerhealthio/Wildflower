@@ -43,23 +43,42 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth-consent', (handlers) =>
             id,
           })
         }
-        yield* approveAuthorizationRequest(
+        const redirect = yield* approveAuthorizationRequest(
           id,
           [...payload.approvedScopes],
           payload.patient ?? undefined
         )
-        const grantedAt = yield* DateTime.now
-        store.commit(
-          Grants.events.grantUpserted({
-            id: nanoid(),
-            clientId: pending.clientId,
-            scopes: payload.approvedScopes,
-            redirectUri: pending.redirectUri,
-            grantedAt,
-            label: pending.clientId,
-            patient: payload.patient ?? null,
+        if (redirect == null) {
+          return yield* Effect.fail({
+            error: 'OAuthConsentNotFound' as const,
+            id,
           })
+        }
+        const grantedAt = yield* DateTime.now
+        const existingGrant = store.query(
+          Grants.queries.byClientIdAndRedirectUri$(pending.clientId, pending.redirectUri)
         )
+        if (existingGrant == null) {
+          store.commit(
+            Grants.events.grantCreated({
+              id: nanoid(),
+              clientId: pending.clientId,
+              scopes: payload.approvedScopes,
+              redirectUri: pending.redirectUri,
+              grantedAt,
+              patient: payload.patient ?? null,
+            })
+          )
+        } else {
+          store.commit(
+            Grants.events.grantUpdated({
+              id: existingGrant.id,
+              scopes: payload.approvedScopes,
+              grantedAt,
+              patient: payload.patient ?? null,
+            })
+          )
+        }
         return { status: 'approved' as const }
       })
     )

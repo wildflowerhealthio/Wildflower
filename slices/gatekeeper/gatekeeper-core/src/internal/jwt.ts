@@ -4,11 +4,22 @@ import type { UnknownException } from 'effect/Cause'
 import type * as jose from 'jose'
 import { Origin } from 'kitchen-sink'
 import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
-import { Grants, Sessions, SigningKeys, type SigningKey } from '../livestore/index.ts'
+import { Clients, type SigningKey, SigningKeys } from '../livestore/index.ts'
+
+type VerifiedPayload = {
+  iss: string
+  sub: string
+  aud: string | ReadonlyArray<string>
+  exp?: number
+  iat?: number
+  scope?: string
+  patient?: string
+  [key: string]: unknown
+}
 
 const verifyJwt = (
   token: string
-): Effect.Effect<void, HttpApiError.Unauthorized, GatekeeperStore | Origin> =>
+): Effect.Effect<VerifiedPayload, HttpApiError.Unauthorized, GatekeeperStore | Origin> =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
     const origin = yield* Origin
@@ -55,26 +66,14 @@ const verifyJwt = (
       if (typeof payload.sub !== 'string') {
         return yield* Effect.fail(new HttpApiError.Unauthorized())
       }
-      const sub = payload.sub
-      const tokenType = payload['type']
 
-      if (tokenType === 'access_token') {
-        const grants = store.query(Grants.queries.byClientId$(sub))
-        if (grants.length === 0) {
-          return yield* Effect.fail(new HttpApiError.Unauthorized())
-        }
-        return undefined
+      const client = store.query(Clients.queries.byId$(payload.sub))
+      if (client == null || client.disabledAt != null) {
+        return yield* Effect.fail(new HttpApiError.Unauthorized())
       }
 
-      if (tokenType === 'session') {
-        const session = store.query(Sessions.queries.byId$(sub))
-        if (session == null) {
-          return yield* Effect.fail(new HttpApiError.Unauthorized())
-        }
-        return undefined
-      }
-
-      return yield* Effect.fail(new HttpApiError.Unauthorized())
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      return payload as VerifiedPayload
     }
 
     return yield* Effect.fail(new HttpApiError.Unauthorized())
@@ -85,6 +84,36 @@ const signJwt = (
   payload: jose.JWTPayload
 ): Effect.Effect<string, UnknownException> => Effect.tryPromise(() => jwk.signJwt(payload))
 
+type MintAccessTokenPayload = {
+  clientId: string
+  scope: ReadonlyArray<string>
+  ttlSeconds: number
+  audience?: string
+  patient?: string | null
+}
+
+const mintAccessToken = (
+  signingKey: SigningKey,
+  origin: string,
+  { clientId, scope, ttlSeconds, audience, patient }: MintAccessTokenPayload
+): Effect.Effect<string, UnknownException> =>
+  Effect.gen(function* () {
+    const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
+    const payload: jose.JWTPayload = {
+      iss: origin,
+      sub: clientId,
+      aud: audience ?? origin,
+      exp: now + ttlSeconds,
+      iat: now,
+      scope: scope.join(' '),
+    }
+    if (patient != null) {
+      payload.patient = patient
+    }
+    return yield* signJwt(signingKey, payload)
+  })
+
+// Deprecated: scheduled for deletion alongside the PIN/session surface.
 const signSessionJwt = (
   jwk: SigningKey,
   payload: Omit<jose.JWTPayload, 'iat' | 'exp'>,
@@ -99,4 +128,5 @@ const signSessionJwt = (
     })
   })
 
-export { verifyJwt, signJwt, signSessionJwt }
+export { verifyJwt, signJwt, signSessionJwt, mintAccessToken }
+export type { VerifiedPayload, MintAccessTokenPayload }
