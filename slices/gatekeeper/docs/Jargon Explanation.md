@@ -59,9 +59,10 @@ boundary.
   (soft delete via `disabledAt`).
 
 The `wildflower-host` first-party client is auto-seeded at startup by
-`SeedFirstPartyClientLive` with `kind: 'public'`, empty `redirectUris`
-(it gets tokens via the [bootstrap URL](#bootstrap-url), not OAuth
-redirects), and `allowedScopes: ['owner']`.
+calling `seedFirstPartyClient` once the LiveStore is ready, with
+`kind: 'public'`, empty `redirectUris` (it gets tokens via the
+[bootstrap URL](#bootstrap-url), not OAuth redirects), and
+`allowedScopes: ['owner']`.
 
 ### AuthorizationRequest
 
@@ -69,7 +70,8 @@ A pending OAuth 2.0 authorization that has been started but not yet
 resolved.
 
 - **Table:** `authorizationRequests`
-- **Discriminator:** `flow: 'authorization_code' | 'device_code'`.
+- **Discriminator:** `grantType: 'authorization_code' | 'device_code'`
+  (matches the OAuth `grant_type` request parameter).
 - **Status field:** `'pending' | 'approved' | 'denied' | 'expired'`.
 - **TTL:** 5 minutes.
 - **Identifier:** `id` (UUID — for code flow, the request id; for
@@ -206,7 +208,7 @@ requests. These all go through `RequireAuthMiddleware`.
 A separate, Gatekeeper-as-proxy concern: inbound HTTP requests are logged
 to `httpRequests` and pause until the Owner approves or denies them.
 **Not currently wired** — the table, queries, and `/access/requests`
-endpoints exist but no producer pushes rows yet (see `out-of-band-approval.ts`'s
+endpoints exist but no producer pushes rows yet (see `await-row.ts`'s
 `waitForRow` helper, which is the missing-call-site referenced in the
 README).
 

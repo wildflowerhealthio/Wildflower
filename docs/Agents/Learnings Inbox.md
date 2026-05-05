@@ -87,3 +87,39 @@ A running log of non-obvious insights discovered during agent sessions. Triage i
 **Discovered during**: ruthmarks/global-expo-localtunnel — diagnosing Android dev client "Unable to load script"
 **Learning**: On macOS, `getaddrinfo("localhost")` returns `::1` before `127.0.0.1`, and Node binds `server.listen({ host: 'localhost' })` to the first resolved address only. `expo start --localhost` therefore lands Metro on `[::1]:8081`. The Android emulator's `adb reverse` forwards via IPv4, so the dev client cannot fetch the bundle and crashes with `Unable to load script` before any JS runs. Symptom: blank white screen on Android, iOS Simulator works fine because it shares the host's network stack and reaches `[::1]` directly. Fix: prefix every Expo CLI script (`start`, `run:android`, `run:ios`) with `NODE_OPTIONS=--dns-result-order=ipv4first`. Both example apps under `global/expo-localtunnel/example` and `global/expo-effect-platform/example` already do this — copy the pattern when adding new Expo example apps.
 **Suggested destination**: Strategies (or a new `docs/Expo/Local Dev How-To.md`)
+
+## Token validity ≠ consent record — `verifyJwt` looks up the wrong table
+
+**Discovered during**: ruthmarks/add-gatekeeper-core — Plan.md review for the device-flow rework
+**Learning**: It's tempting to gate token validity on "is there an OAuth Grant for this `sub`?". That's a category error: a Grant is a consent record (skip-prompt fast path on `/oauth/authorize`); token validity is a separate question (signature + exp + iss + aud + sub-is-known-client). Conflating the two means any token minted directly by a privileged process — e.g. a bootstrap URL where the host signs a token using the signing key it already holds — gets rejected by its own verifier, because no Grant exists for the sub. Fix: `verifyJwt` looks up `sub` in `Clients` (the registration table), not `Grants`. Grants stay; they drive the consent fast path. Tokens carry their `scope` claim; per-route middleware enforces scope. Caught this in plan review before any code was written, but the original `gatekeeper-core` actually shipped the wrong shape — it just happened that nothing minted tokens outside the auth-code flow yet.
+**Suggested destination**: Strategies
+
+## `HttpApiEndpoint` has `.middleware()` — per-endpoint, not just per-group
+
+**Discovered during**: ruthmarks/add-gatekeeper-core — adding auth to a subset of `gatekeeper-pages`
+**Learning**: `HttpApiGroup.make(...).middleware(M)` applies `M` to every endpoint in the group. If the group has mixed auth requirements (e.g. some HTML pages public, others operator-only), you can chain `.middleware(M)` on the individual `HttpApiEndpoint` builder before `.add(...)`-ing it to the group instead of splitting the group. Saves a phantom-id bridge for what is really one logical page contract.
+**Suggested destination**: docs/Effect/HttpApi Composition How-To.md
+
+## Bearer-only auth makes HTML pages public; cookie auth makes them gateable
+
+**Discovered during**: ruthmarks/add-gatekeeper-core — migrating away from session cookies
+**Learning**: Browsers auto-attach `Cookie` headers on top-level navigations. They don't auto-attach `Authorization` headers. So `RequireAuthMiddleware` on an HTML page endpoint is meaningful in a cookie-auth world (server-side gate intercepts unauthorized navigations), but it's wrong in a Bearer-auth world (the navigation has no Authorization header, so the page is permanently 401 — no JS gets a chance to attach the token). In Bearer-auth: HTML pages are public; the JS on them gates UI by checking for a token in `localStorage` and attaches it to the API calls the page makes. Easy to almost-ship a half-correct middleware addition that has to be reverted as part of an auth-model migration.
+**Suggested destination**: Strategies
+
+## Replying to and resolving PR review comments mixes REST and GraphQL
+
+**Discovered during**: ruthmarks/add-gatekeeper-core — bulk-resolving rocket-reacted threads on PR #19
+**Learning**: Inline replies use REST: `POST /repos/{o}/{r}/pulls/{n}/comments/{commentId}/replies` with `{ body }`. Thread resolution is GraphQL only: `mutation { resolveReviewThread(input: { threadId }) { thread { isResolved } } }` — no REST endpoint exposes this. To map comment IDs → thread IDs, query `repository.pullRequest.reviewThreads` via GraphQL once and join on `comments.nodes[0].databaseId`. A small bash helper that wraps both calls is enough to bulk-resolve dozens of stale threads with one-line replies pointing at the commit that addressed them.
+**Suggested destination**: Strategies
+
+## When a custom flow feels slapdash, check if it's a partial RFC
+
+**Discovered during**: ruthmarks/add-gatekeeper-core — recognizing the PIN flow as proto-RFC 8628
+**Learning**: The bespoke PIN flow (PIN displayed on a polling page, Owner enters it on a different device, polling page picks up approval, browser session established) was a hand-rolled variant of OAuth Device Authorization Flow (RFC 8628). Once you see it, the mapping is line-by-line: PIN ↔ user_code, challenge id ↔ device_code, `/login/pin/:id/page` ↔ verification_uri, `/login/pin/:id/complete` ↔ token endpoint. Recognizing this collapsed three concepts (bespoke PIN flow + sessions table + cookies) into one (RFC 8628) and shrunk the slice. Meta-strategy: when a flow you've designed feels slapdash, search "OAuth/IETF/RFC + the words you used to name the flow" — chances are someone wrote a spec for it and you're partway to implementing it without the discoverability and familiar UX the standard buys you.
+**Suggested destination**: Strategies
+
+## Mint-and-hand-off-URL as a universal bootstrap primitive
+
+**Discovered during**: ruthmarks/add-gatekeeper-core — designing Owner bootstrap for fresh deployments
+**Learning**: Any process with signing-key access can mint a short-lived access token without going through HTTP. Hand it to a browser via URL (`?token=...`); page JS reads it on load, stashes in localStorage, strips via `history.replaceState` so it doesn't persist in the address bar / Referer / browser history. This single primitive replaces a bunch of bespoke shapes: cold-start "first-Owner" bootstrap, native-shell embed (URL handed to webview), dev-mode auto-login (`vp run dev` prints a URL), CLI login (open in default browser), share-with-other-device. Defenses against URL leakage: short TTL (5 min), `Referrer-Policy: no-referrer` on the receiving page, replaceState strip on first read. JTI single-use tracking is a deferable hardening if a real threat model demands it. Lesson: when designing a bootstrap mechanism, look for a primitive the privileged process _already has_ (signing key, DB write, etc.) and build the hand-off shape around it rather than introducing a new "setup mode" concept.
+**Suggested destination**: Strategies

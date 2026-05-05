@@ -145,4 +145,3 @@ test/tapes/
 
 - [Unit Testing How-To](./Unit%20Testing%20How-To.md)
 - [React Testing Reference](./React%20Testing%20Reference.md)
-- [google-fhir-node-infrastructure tests](../../infrastructure/google-fhir-node-infrastructure/test/) — Working example
