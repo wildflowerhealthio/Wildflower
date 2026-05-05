@@ -1,7 +1,5 @@
 import { Events, queryDb, State } from '@livestore/livestore'
-import { pipe, Schema } from 'effect'
-
-const SessionIdSchema = pipe(Schema.String, Schema.brand('Session/id'))
+import { Schema } from 'effect'
 
 const SessionDurationSchema = Schema.Literal('request', '1min', '15min')
 
@@ -33,7 +31,7 @@ const events = {
   sessionStarted: Events.synced({
     name: 'v1.SessionStarted',
     schema: Schema.Struct({
-      id: SessionIdSchema,
+      id: Schema.String,
       startedAt: Schema.DateTimeUtc,
       expiresAt: Schema.DateTimeUtc,
       duration: SessionDurationSchema,
@@ -42,7 +40,7 @@ const events = {
   }),
   sessionEnded: Events.synced({
     name: 'v1.SessionEnded',
-    schema: Schema.Struct({ id: SessionIdSchema }),
+    schema: Schema.Struct({ id: Schema.String }),
   }),
 } as const
 
@@ -59,5 +57,5 @@ const materializers = {
     table.delete().where({ id }),
 }
 
-export { SessionIdSchema, SessionDurationSchema, table, queries, events, materializers }
+export { SessionDurationSchema, table, queries, events, materializers }
 export type { SessionRow, SessionDuration }

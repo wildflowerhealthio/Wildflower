@@ -5,7 +5,7 @@ const table = State.SQLite.table({
   name: 'pinChallenges',
   columns: {
     id: State.SQLite.text({ primaryKey: true }),
-    pin: State.SQLite.text(),
+    pinHash: State.SQLite.text(),
     returnTo: State.SQLite.text(),
     expiresAt: State.SQLite.json({ schema: Schema.DateTimeUtc }),
     status: State.SQLite.text(), // 'pending' | 'verified' | 'rejected' | 'expired'
@@ -35,7 +35,7 @@ const events = {
     name: 'v1.PinChallengeIssued',
     schema: Schema.Struct({
       id: Schema.String,
-      pin: Schema.String,
+      pinHash: Schema.String,
       returnTo: Schema.String,
       expiresAt: Schema.DateTimeUtc,
     }),
@@ -70,13 +70,13 @@ const events = {
 const materializers = {
   'v1.PinChallengeIssued': ({
     id,
-    pin,
+    pinHash,
     returnTo,
     expiresAt,
   }: typeof events.pinChallengeIssued.schema.Type) =>
     table.insert({
       id,
-      pin,
+      pinHash,
       returnTo,
       expiresAt,
       status: 'pending',

@@ -1,21 +1,18 @@
 import {
   HttpApiBuilder,
   HttpApiError,
-  HttpApiMiddleware,
-  HttpApiSecurity,
   HttpServerRequest,
   HttpServerResponse,
 } from '@effect/platform'
 import { Effect, Layer, Redacted } from 'effect'
 import { Origin } from 'kitchen-sink'
-import { GatekeeperStore } from '../contexts/GatekeeperStore.ts'
+import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
+import {
+  BearerTokenSecurity,
+  RequireAuthMiddleware,
+  SessionCookieSecurity,
+} from '../http-api-definition/require-auth.ts'
 import { verifyJwt } from '../internal/jwt.ts'
-
-const BearerTokenSecurity = HttpApiSecurity.bearer
-const SessionCookieSecurity = HttpApiSecurity.apiKey({
-  key: '__wildflower_session',
-  in: 'cookie',
-})
 
 const authenticateToken = (
   token: string
@@ -59,17 +56,6 @@ const requireAuthOrRedirect = Effect.catchAll(authenticateStore, () =>
     return yield* Effect.fail(new HttpApiError.Unauthorized())
   })
 )
-
-class RequireAuthMiddleware extends HttpApiMiddleware.Tag<RequireAuthMiddleware>()(
-  'RequireAuthMiddleware',
-  {
-    failure: HttpApiError.Unauthorized,
-    security: {
-      bearer: BearerTokenSecurity,
-      session: SessionCookieSecurity,
-    },
-  }
-) {}
 
 const RequireAuthMiddlewareLive = Layer.effect(
   RequireAuthMiddleware,

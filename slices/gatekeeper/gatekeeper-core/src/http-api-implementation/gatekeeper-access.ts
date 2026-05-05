@@ -1,8 +1,8 @@
 import { HttpApiBuilder } from '@effect/platform'
 import { DateTime, Effect } from 'effect'
-import { GatekeeperStore } from '../contexts/GatekeeperStore.ts'
+import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
-import { Grants, GrantIdSchema, HttpRequests } from '../livestore/index.ts'
+import { Grants, HttpRequests } from '../livestore/index.ts'
 
 const layer = HttpApiBuilder.group(GatekeeperApi, 'gatekeeper-access', (handlers) =>
   handlers
@@ -54,7 +54,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'gatekeeper-access', (handlers
             id,
           })
         }
-        store.commit(Grants.events.grantRevoked({ id: GrantIdSchema.make(id) }))
+        store.commit(Grants.events.grantRevoked({ id }))
         return undefined
       })
     )
@@ -68,11 +68,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'gatekeeper-access', (handlers
             id,
           })
         }
-        store.commit(
-          HttpRequests.events.httpRequestApproved({
-            id: HttpRequests.HttpRequestIdSchema.make(id),
-          })
-        )
+        store.commit(HttpRequests.events.httpRequestApproved({ id }))
         return undefined
       })
     )
@@ -88,7 +84,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'gatekeeper-access', (handlers
         }
         store.commit(
           HttpRequests.events.httpRequestRejected({
-            id: HttpRequests.HttpRequestIdSchema.make(id),
+            id,
             respondedAt: DateTime.unsafeNow(),
           })
         )

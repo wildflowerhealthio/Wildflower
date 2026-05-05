@@ -54,9 +54,7 @@ export {
   tables,
   materializers,
 }
-export { GrantIdSchema } from './grants.ts'
-export { HttpRequestIdSchema } from './http-requests.ts'
-export { SessionIdSchema, SessionDurationSchema } from './sessions.ts'
+export { SessionDurationSchema } from './sessions.ts'
 export { SigningKey } from './signing-keys.ts'
 export type { AuthorizationCodeRow } from './authorization-codes.ts'
 export type { AuthorizationRequestRow } from './authorization-requests.ts'

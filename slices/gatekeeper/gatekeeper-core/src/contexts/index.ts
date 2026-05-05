@@ -1,11 +1,6 @@
-export { GatekeeperStore, makeGatekeeperStoreLayer } from './GatekeeperStore.ts'
-export {
-  approveAuthorizationRequest,
-  denyAuthorizationRequest,
-  verifyPinChallenge,
-  denyPinChallenge,
-  MAX_PIN_ATTEMPTS,
-} from './consent-decisions.ts'
+export { GatekeeperStore, makeGatekeeperStoreLayer } from './gatekeeper-store.ts'
+export { approveAuthorizationRequest, denyAuthorizationRequest } from './oauth-consent-decisions.ts'
+export { verifyPinChallenge, denyPinChallenge, MAX_PIN_ATTEMPTS } from './pin-consent-decisions.ts'
 export {
   cleanupExpiredAuthorizationRequests,
   cleanupExpiredAuthorizationCodes,
@@ -15,5 +10,5 @@ export {
   OAuthDisplayDefault,
   OAuthDisplayDefaultInteractive,
   OAuthDisplayDefaultOutOfBandPolling,
-} from './OAuthDisplayDefault.ts'
-export type { OAuthDisplayMode } from './OAuthDisplayDefault.ts'
+} from './oauth-display-default.ts'
+export type { OAuthDisplayMode } from './oauth-display-default.ts'

@@ -1,6 +1,6 @@
 import { HttpApiBuilder } from '@effect/platform'
 import { Effect } from 'effect'
-import { GatekeeperStore } from '../contexts/GatekeeperStore.ts'
+import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
 import { httpApiGroup } from '../http-api-definition/jwks.ts'
 import { SigningKeys } from '../livestore/index.ts'

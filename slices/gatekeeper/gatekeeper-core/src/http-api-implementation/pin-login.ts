@@ -1,15 +1,27 @@
 import { HttpApiBuilder, HttpServerRequest, HttpServerResponse } from '@effect/platform'
 import { DateTime, Effect } from 'effect'
 import { Origin } from 'kitchen-sink'
-import { GatekeeperStore } from '../contexts/GatekeeperStore.ts'
+import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
 import { httpApiGroup } from '../http-api-definition/pin-login.ts'
 import { buildSessionCookie } from '../internal/cookies.ts'
 import { pinErrorHtml } from '../internal/error-pages.ts'
 import { signSessionJwt } from '../internal/jwt.ts'
+import { hashPin } from '../internal/pin-hash.ts'
 import { PinChallenges, Sessions, SigningKeys } from '../livestore/index.ts'
 
 const isSafeReturnTo = (value: string): boolean => value.startsWith('/') && !value.startsWith('//')
+
+const generatePin = (): string => {
+  const pinBuf = new Uint32Array(1)
+  const pinBiasLimit = Math.floor(0xffffffff / 900000) * 900000
+  let pinRandom: number
+  do {
+    crypto.getRandomValues(pinBuf)
+    pinRandom = pinBuf[0]!
+  } while (pinRandom >= pinBiasLimit)
+  return (100000 + (pinRandom % 900000)).toString()
+}
 
 const layer = HttpApiBuilder.group(GatekeeperApi, 'pin-login', (handlers) =>
   handlers
@@ -32,20 +44,15 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'pin-login', (handlers) =>
         }
 
         const id = crypto.randomUUID()
-        const pinBuf = new Uint32Array(1)
-        const pinBiasLimit = Math.floor(0xffffffff / 900000) * 900000
-        let pinRandom: number
-        do {
-          crypto.getRandomValues(pinBuf)
-          pinRandom = pinBuf[0]!
-        } while (pinRandom >= pinBiasLimit)
-        const pin = (100000 + (pinRandom % 900000)).toString()
+        const pin = generatePin()
+        const pinHash = yield* hashPin(id, pin)
 
-        const expiresAt = DateTime.addDuration(DateTime.unsafeNow(), '2 minutes')
+        const now = yield* DateTime.now
+        const expiresAt = DateTime.addDuration(now, '2 minutes')
         store.commit(
           PinChallenges.events.pinChallengeIssued({
             id,
-            pin,
+            pinHash,
             returnTo,
             expiresAt,
           })
@@ -66,10 +73,8 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'pin-login', (handlers) =>
           )
         }
 
-        if (
-          pending.status === 'pending' &&
-          DateTime.lessThan(pending.expiresAt, DateTime.unsafeNow())
-        ) {
+        const now = yield* DateTime.now
+        if (pending.status === 'pending' && DateTime.lessThan(pending.expiresAt, now)) {
           store.commit(PinChallenges.events.pinChallengeExpired({ id }))
           return HttpServerResponse.unsafeJson({ status: 'expired' })
         }
@@ -114,10 +119,8 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'pin-login', (handlers) =>
           )
         }
 
-        const maxAge = Math.max(
-          0,
-          Math.floor(DateTime.distance(DateTime.unsafeNow(), session.expiresAt) / 1000)
-        )
+        const now = yield* DateTime.now
+        const maxAge = Math.max(0, Math.floor(DateTime.distance(now, session.expiresAt) / 1000))
 
         const [jwk] = store.query(SigningKeys.queries.all$)
         if (jwk === undefined) {
@@ -131,7 +134,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'pin-login', (handlers) =>
           signSessionJwt(
             jwk,
             {
-              iss: `${origin}/fhir`,
+              iss: origin,
               sub: session.id,
               aud: origin,
               type: 'session',

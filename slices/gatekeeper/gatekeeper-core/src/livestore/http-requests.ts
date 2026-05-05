@@ -1,7 +1,5 @@
 import { Events, queryDb, State } from '@livestore/livestore'
-import { pipe, Schema } from 'effect'
-
-const HttpRequestIdSchema = pipe(Schema.String, Schema.brand('HttpRequest/id'))
+import { Schema } from 'effect'
 
 const table = State.SQLite.table({
   name: 'httpRequests',
@@ -34,7 +32,7 @@ const events = {
   httpRequestReceived: Events.synced({
     name: 'v1.HttpRequestReceived',
     schema: Schema.Struct({
-      id: HttpRequestIdSchema,
+      id: Schema.String,
       method: Schema.String,
       url: Schema.String,
       origin: Schema.String,
@@ -44,19 +42,19 @@ const events = {
   }),
   httpRequestApproved: Events.synced({
     name: 'v1.HttpRequestApproved',
-    schema: Schema.Struct({ id: HttpRequestIdSchema }),
+    schema: Schema.Struct({ id: Schema.String }),
   }),
   httpRequestRejected: Events.synced({
     name: 'v1.HttpRequestRejected',
     schema: Schema.Struct({
-      id: HttpRequestIdSchema,
+      id: Schema.String,
       respondedAt: Schema.DateTimeUtc,
     }),
   }),
   httpRequestResponded: Events.synced({
     name: 'v1.HttpRequestResponded',
     schema: Schema.Struct({
-      id: HttpRequestIdSchema,
+      id: Schema.String,
       statusCode: Schema.Int,
       respondedAt: Schema.DateTimeUtc,
     }),
@@ -95,5 +93,5 @@ const materializers = {
     table.update({ statusCode, respondedAt }).where({ id }),
 }
 
-export { HttpRequestIdSchema, table, queries, events, materializers }
+export { table, queries, events, materializers }
 export type { HttpRequestRow }

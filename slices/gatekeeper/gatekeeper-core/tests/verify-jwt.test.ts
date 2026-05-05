@@ -1,7 +1,7 @@
 import { Effect, Either, Layer } from 'effect'
 import { Origin } from 'kitchen-sink'
 import { expect, test } from 'vite-plus/test'
-import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/GatekeeperStore.ts'
+import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { verifyJwt } from '../src/internal/jwt.ts'
 import { Grants, Sessions, SigningKeys } from '../src/livestore/index.ts'
 
@@ -95,7 +95,7 @@ test('access_token JWT verifies when a matching grant exists', async () => {
   const store = makeStubStore({
     jwks: [
       fakeJwk({
-        iss: `${ORIGIN}/fhir`,
+        iss: ORIGIN,
         aud: `${ORIGIN}/fhir`,
         sub: 'client-1',
         type: 'access_token',
@@ -119,7 +119,7 @@ test('access_token JWT is rejected when no grant matches', async () => {
   const store = makeStubStore({
     jwks: [
       fakeJwk({
-        iss: `${ORIGIN}/fhir`,
+        iss: ORIGIN,
         aud: `${ORIGIN}/fhir`,
         sub: 'unknown-client',
         type: 'access_token',
@@ -134,7 +134,7 @@ test('session JWT verifies when a matching session exists', async () => {
   const store = makeStubStore({
     jwks: [
       fakeJwk({
-        iss: `${ORIGIN}/fhir`,
+        iss: ORIGIN,
         aud: ORIGIN,
         sub: 'session-1',
         type: 'session',
@@ -150,7 +150,7 @@ test('session JWT is rejected when no matching session exists', async () => {
   const store = makeStubStore({
     jwks: [
       fakeJwk({
-        iss: `${ORIGIN}/fhir`,
+        iss: ORIGIN,
         aud: ORIGIN,
         sub: 'session-missing',
         type: 'session',
@@ -165,7 +165,7 @@ test('JWT without recognised type claim is rejected', async () => {
   const store = makeStubStore({
     jwks: [
       fakeJwk({
-        iss: `${ORIGIN}/fhir`,
+        iss: ORIGIN,
         aud: `${ORIGIN}/fhir`,
         sub: 'client-1',
         // no `type` claim
@@ -191,7 +191,7 @@ test('access_token JWT presented at session-required path is rejected when sub i
   const store = makeStubStore({
     jwks: [
       fakeJwk({
-        iss: `${ORIGIN}/fhir`,
+        iss: ORIGIN,
         aud: ORIGIN,
         sub: 'session-1',
         type: 'access_token',
@@ -207,7 +207,7 @@ test('session JWT with sub that points to a grant only is rejected', async () =>
   const store = makeStubStore({
     jwks: [
       fakeJwk({
-        iss: `${ORIGIN}/fhir`,
+        iss: ORIGIN,
         aud: ORIGIN,
         sub: 'client-1',
         type: 'session',

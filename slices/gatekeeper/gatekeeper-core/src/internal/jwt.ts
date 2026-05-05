@@ -1,9 +1,9 @@
 import { HttpApiError } from '@effect/platform'
-import { Effect } from 'effect'
+import { Clock, Effect } from 'effect'
 import type { UnknownException } from 'effect/Cause'
 import type * as jose from 'jose'
 import { Origin } from 'kitchen-sink'
-import { GatekeeperStore } from '../contexts/GatekeeperStore.ts'
+import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { Grants, Sessions, SigningKeys, type SigningKey } from '../livestore/index.ts'
 
 const verifyJwt = (
@@ -21,8 +21,9 @@ const verifyJwt = (
       return yield* Effect.fail(new HttpApiError.Unauthorized())
     }
 
-    const expectedIssuer = `${origin}/fhir`
+    const expectedIssuer = origin
     const acceptedAudiences = [`${origin}/fhir`, origin]
+    const nowSeconds = Math.floor((yield* Clock.currentTimeMillis) / 1000)
 
     for (const jwk of signingKeys) {
       const result = yield* Effect.either(Effect.tryPromise(() => jwk.verifyJwt(token)))
@@ -32,7 +33,7 @@ const verifyJwt = (
 
       const payload = result.right.payload
 
-      if (payload.exp != null && payload.exp < Math.floor(Date.now() / 1000)) {
+      if (payload.exp != null && payload.exp < nowSeconds) {
         return yield* Effect.fail(new HttpApiError.Unauthorized())
       }
 
@@ -90,7 +91,7 @@ const signSessionJwt = (
   maxAgeSeconds: number
 ): Effect.Effect<string, UnknownException> =>
   Effect.gen(function* () {
-    const now = Math.floor(Date.now() / 1000)
+    const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
     return yield* signJwt(jwk, {
       ...payload,
       iat: now,

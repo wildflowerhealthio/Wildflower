@@ -1,13 +1,13 @@
 import { HttpApiBuilder } from '@effect/platform'
 import { nanoid } from '@livestore/livestore'
 import { DateTime, Effect } from 'effect'
+import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import {
   approveAuthorizationRequest,
   denyAuthorizationRequest,
-} from '../contexts/consent-decisions.ts'
-import { GatekeeperStore } from '../contexts/GatekeeperStore.ts'
+} from '../contexts/oauth-consent-decisions.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
-import { AuthorizationRequests, Grants, GrantIdSchema } from '../livestore/index.ts'
+import { AuthorizationRequests, Grants } from '../livestore/index.ts'
 
 const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth-consent', (handlers) =>
   handlers
@@ -43,19 +43,19 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth-consent', (handlers) =>
             id,
           })
         }
-        approveAuthorizationRequest(
-          store,
+        yield* approveAuthorizationRequest(
           id,
           [...payload.approvedScopes],
           payload.patient ?? undefined
         )
+        const grantedAt = yield* DateTime.now
         store.commit(
           Grants.events.grantUpserted({
-            id: GrantIdSchema.make(nanoid()),
+            id: nanoid(),
             clientId: pending.clientId,
             scopes: payload.approvedScopes,
             redirectUri: pending.redirectUri,
-            grantedAt: DateTime.unsafeNow(),
+            grantedAt,
             label: pending.clientId,
             patient: payload.patient ?? null,
           })
@@ -73,7 +73,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth-consent', (handlers) =>
             id,
           })
         }
-        denyAuthorizationRequest(store, id)
+        yield* denyAuthorizationRequest(id)
         return { status: 'denied' as const }
       })
     )

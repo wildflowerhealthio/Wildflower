@@ -1,6 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
-import { RequireAuthMiddleware } from '../http-api-implementation/require-auth.ts'
+import { RequireAuthMiddleware } from './require-auth.ts'
 
 const GrantSchema = Schema.Struct({
   id: Schema.String,

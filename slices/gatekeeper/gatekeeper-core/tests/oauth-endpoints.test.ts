@@ -2,10 +2,13 @@ import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { DateTime, Effect, Layer } from 'effect'
 import { Origin } from 'kitchen-sink'
 import { expect, test } from 'vite-plus/test'
-import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/GatekeeperStore.ts'
-import { OAuthDisplayDefaultInteractive } from '../src/contexts/OAuthDisplayDefault.ts'
+import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
+import { OAuthDisplayDefaultInteractive } from '../src/contexts/oauth-display-default.ts'
 import { GatekeeperApi } from '../src/http-api-definition/index.ts'
-import { GatekeeperApiLive } from '../src/http-api-implementation/index.ts'
+import {
+  GatekeeperApiLive,
+  RequireAuthMiddlewareLive,
+} from '../src/http-api-implementation/index.ts'
 import { computeCodeChallenge } from '../src/internal/pkce.ts'
 import {
   AuthorizationCodes,
@@ -30,7 +33,7 @@ const StubGatekeeperPagesLive = HttpApiBuilder.group(
       .handle('OAuthConsentPage', () => Effect.succeed('<!doctype html><html></html>'))
       .handle('PinLoginPage', () => Effect.succeed('<!doctype html><html></html>'))
       .handle('PinVerificationPage', () => Effect.succeed('<!doctype html><html></html>'))
-)
+).pipe(Layer.provide(RequireAuthMiddlewareLive))
 
 type MockGrant = {
   id: string
@@ -248,13 +251,13 @@ const makeStore = ({
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion
           const args = event.args as {
             id: string
-            pin: string
+            pinHash: string
             returnTo: string
             expiresAt: DateTime.Utc
           }
           pinChallengeRows.set(args.id, {
             id: args.id,
-            pin: args.pin,
+            pinHash: args.pinHash,
             returnTo: args.returnTo,
             expiresAt: args.expiresAt,
             status: 'pending',

@@ -1,8 +1,8 @@
 import { HttpApiBuilder, HttpServerResponse } from '@effect/platform'
-import { Array, DateTime, Effect, Schema } from 'effect'
+import { Array, Clock, DateTime, Effect, Schema } from 'effect'
 import { Origin } from 'kitchen-sink'
-import { GatekeeperStore } from '../contexts/GatekeeperStore.ts'
-import { OAuthDisplayDefault } from '../contexts/OAuthDisplayDefault.ts'
+import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
+import { OAuthDisplayDefault } from '../contexts/oauth-display-default.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
 import { httpApiGroup } from '../http-api-definition/oauth.ts'
 import { oauthErrorHtml } from '../internal/error-pages.ts'
@@ -40,10 +40,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
 
         const signingKeys = store.query(SigningKeys.queries.all$)
         if (!Array.isNonEmptyReadonlyArray(signingKeys)) {
-          return HttpServerResponse.unsafeJson(
-            { status: 'error', message: `No JSON Web Keys available` },
-            { status: 503 }
-          )
+          return HttpServerResponse.empty({ status: 503 })
         }
 
         const { code_challenge_method, client_id, scope, code_challenge, redirect_uri, display } =
@@ -88,7 +85,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
           preApprovedToPersist = preApproved
         }
 
-        const requestedAt = DateTime.unsafeNow()
+        const requestedAt = yield* DateTime.now
         const requestExpiresAt = DateTime.addDuration(requestedAt, '5 minutes')
 
         store.commit(
@@ -112,7 +109,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
           )
           if (allScopesApproved) {
             const code = crypto.randomUUID()
-            const issuedAt = DateTime.unsafeNow()
+            const issuedAt = yield* DateTime.now
             const codeExpiresAt = DateTime.addDuration(issuedAt, '60 seconds')
             store.commit(
               AuthorizationRequests.events.authorizationRequestApproved({
@@ -252,7 +249,8 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
           )
         }
 
-        if (DateTime.lessThan(issuedCode.expiresAt, DateTime.unsafeNow())) {
+        const tokenNow = yield* DateTime.now
+        if (DateTime.lessThan(issuedCode.expiresAt, tokenNow)) {
           store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code }))
           return HttpServerResponse.unsafeJson(
             { error: 'invalid_request', error_description: 'Code has expired' },
@@ -290,10 +288,10 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
         store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code }))
 
         const origin = yield* Origin
-        const now = Math.floor(Date.now() / 1000)
+        const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
         const grantedScope = issuedCode.grantedScopes.join(' ')
         const jwtPayload: Record<string, unknown> = {
-          iss: `${origin}/fhir`,
+          iss: origin,
           sub: issuedCode.clientId,
           aud: `${origin}/fhir`,
           exp: now + 3600,

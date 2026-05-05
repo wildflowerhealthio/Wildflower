@@ -1,7 +1,7 @@
 import { HttpApiBuilder } from '@effect/platform'
 import { Effect } from 'effect'
-import { denyPinChallenge, verifyPinChallenge } from '../contexts/consent-decisions.ts'
-import { GatekeeperStore } from '../contexts/GatekeeperStore.ts'
+import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
+import { denyPinChallenge, verifyPinChallenge } from '../contexts/pin-consent-decisions.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
 import { PinChallenges } from '../livestore/index.ts'
 
@@ -36,7 +36,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'pin-verification', (handlers)
             id,
           })
         }
-        const ok = verifyPinChallenge(store, id, payload.pin, payload.duration)
+        const ok = yield* verifyPinChallenge(id, payload.pin, payload.duration)
         if (!ok) return { status: 'invalid_pin' as const }
         return { status: 'approved' as const }
       })
@@ -51,7 +51,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'pin-verification', (handlers)
             id,
           })
         }
-        denyPinChallenge(store, id)
+        yield* denyPinChallenge(id)
         return { status: 'denied' as const }
       })
     )

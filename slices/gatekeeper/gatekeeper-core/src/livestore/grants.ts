@@ -1,7 +1,5 @@
 import { Events, queryDb, State } from '@livestore/livestore'
-import { pipe, Schema } from 'effect'
-
-const GrantIdSchema = pipe(Schema.String, Schema.brand('Grant/id'))
+import { Schema } from 'effect'
 
 const table = State.SQLite.table({
   name: 'grants',
@@ -36,7 +34,7 @@ const events = {
   grantUpserted: Events.synced({
     name: 'v1.GrantUpserted',
     schema: Schema.Struct({
-      id: GrantIdSchema,
+      id: Schema.String,
       clientId: Schema.String,
       scopes: Schema.Array(Schema.String),
       redirectUri: Schema.String,
@@ -47,7 +45,7 @@ const events = {
   }),
   grantRevoked: Events.synced({
     name: 'v1.GrantRevoked',
-    schema: Schema.Struct({ id: GrantIdSchema }),
+    schema: Schema.Struct({ id: Schema.String }),
   }),
   // Re-housed `clientAccessRecorded` event slot — kept under the original name
   // because the rename is deferred until the consumer lands (tracked in #17).
@@ -55,7 +53,7 @@ const events = {
   clientAccessRecorded: Events.synced({
     name: 'v1.ClientAccessRecorded',
     schema: Schema.Struct({
-      id: GrantIdSchema,
+      id: Schema.String,
       lastAccessedAt: Schema.DateTimeUtc,
     }),
   }),
@@ -90,5 +88,5 @@ const materializers = {
     table.update({ lastUsedAt: lastAccessedAt }).where({ id }),
 }
 
-export { GrantIdSchema, table, queries, events, materializers }
+export { table, queries, events, materializers }
 export type { GrantRow }

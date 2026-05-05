@@ -1,7 +1,7 @@
 import type { LiveQueryDef } from '@livestore/livestore'
 import { Duration, Effect, Either, Exit, Fiber, TestClock, TestContext } from 'effect'
 import { expect, test } from 'vite-plus/test'
-import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/GatekeeperStore.ts'
+import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { ApprovalTimedOut, GATE_TIMEOUT, waitForRow } from '../src/internal/out-of-band-approval.ts'
 
 type Row = { id: string; status: 'pending' | 'approved' }

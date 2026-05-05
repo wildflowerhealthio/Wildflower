@@ -1,6 +1,6 @@
 import type { LiveQueryDef } from '@livestore/livestore'
 import { Duration, Effect, Schema } from 'effect'
-import { GatekeeperStore } from '../contexts/GatekeeperStore.ts'
+import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 
 const GATE_TIMEOUT: Duration.Duration = Duration.minutes(5)
 
@@ -14,8 +14,8 @@ class ApprovalTimedOut extends Schema.TaggedError<ApprovalTimedOut>()('ApprovalT
  * success, timeout, and interruption.
  *
  * Designed for the out-of-band approval gate: the caller commits an event to
- * record the request, then awaits a state transition driven by an
- * out-of-band approver — without holding any in-memory listener registry.
+ * record the request, then awaits a state transition driven by the Owner
+ * out of band — without holding any in-memory listener registry.
  */
 const waitForRow = <A>(
   query: LiveQueryDef<A | null | undefined>,
