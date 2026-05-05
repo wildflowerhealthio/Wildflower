@@ -57,6 +57,13 @@ const events = {
     name: 'v1.AuthorizationCodeConsumed',
     schema: Schema.Struct({ code: Schema.String }),
   }),
+  // Bulk-expire event: cleanup pass commits one event with all expired
+  // codes in the payload. Replicas converge because the codes list is
+  // deterministic (computed by the cleanup Effect from a snapshot read).
+  authorizationCodesExpiredAsOf: Events.synced({
+    name: 'v1.AuthorizationCodesExpiredAsOf',
+    schema: Schema.Struct({ codes: Schema.Array(Schema.String) }),
+  }),
 } as const
 
 const materializers = {
@@ -84,6 +91,10 @@ const materializers = {
     }),
   'v1.AuthorizationCodeConsumed': ({ code }: typeof events.authorizationCodeConsumed.schema.Type) =>
     table.delete().where({ code }),
+  'v1.AuthorizationCodesExpiredAsOf': ({
+    codes,
+  }: typeof events.authorizationCodesExpiredAsOf.schema.Type) =>
+    codes.map((code) => table.delete().where({ code })),
 }
 
 export { table, queries, events, materializers }

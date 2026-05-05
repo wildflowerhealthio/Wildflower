@@ -402,7 +402,7 @@ test('authorize redirects to the polling page', async () => {
 
     expect(response.status).toBe(302)
     const location = response.headers.get('location')
-    expect(location).toMatch(/\/oauth\/authorize\/[0-9a-f-]+\/page$/)
+    expect(location).toMatch(/\/oauth\/authorize\/[0-9a-f-]+\/ui$/)
   } finally {
     await dispose()
   }
@@ -453,11 +453,15 @@ test('token exchange succeeds with valid form payload', async () => {
     expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '60 seconds'),
   }
 
+  let capturedJwtPayload: Record<string, unknown> | undefined
   const { handler, dispose } = createOAuthHandler(
     makeStore({
       jwks: [
         {
-          signJwt: async () => 'signed.jwt.token',
+          signJwt: async (payload: Record<string, unknown>) => {
+            capturedJwtPayload = payload
+            return 'signed.jwt.token'
+          },
           verifyJwt: async () => ({ payload: {} }),
         },
       ],
@@ -498,6 +502,20 @@ test('token exchange succeeds with valid form payload', async () => {
     expect(bodyText).toContain('"expires_in":3600')
     expect(bodyText).toContain('"scope":"patient/*.read"')
     expect(bodyText).toContain('"patient":"patient-123"')
+
+    // The signed JWT payload itself: regression-guards every claim we
+    // mint into a token. Without these, dropping `iss` or flipping the
+    // payload shape ships green.
+    expect(capturedJwtPayload).toBeDefined()
+    expect(capturedJwtPayload?.['iss']).toBe('http://localhost:8787')
+    expect(capturedJwtPayload?.['sub']).toBe('client-1')
+    expect(capturedJwtPayload?.['aud']).toBe('http://localhost:8787/fhir')
+    expect(capturedJwtPayload?.['scope']).toBe('patient/*.read')
+    expect(capturedJwtPayload?.['patient']).toBe('patient-123')
+    expect(typeof capturedJwtPayload?.['iat']).toBe('number')
+    expect(typeof capturedJwtPayload?.['exp']).toBe('number')
+    // Single token shape: no `type` claim (the PIN/session split is gone).
+    expect(capturedJwtPayload?.['type']).toBeUndefined()
   } finally {
     await dispose()
   }

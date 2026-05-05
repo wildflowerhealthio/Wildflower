@@ -1,5 +1,5 @@
 import { HttpApiError } from '@effect/platform'
-import { Clock, Effect } from 'effect'
+import { DateTime, Effect } from 'effect'
 import type { UnknownException } from 'effect/Cause'
 import type * as jose from 'jose'
 import { Origin } from 'kitchen-sink'
@@ -33,35 +33,21 @@ const verifyJwt = (
     }
 
     const expectedIssuer = origin
-    const acceptedAudiences = [`${origin}/fhir`, origin]
-    const nowSeconds = Math.floor((yield* Clock.currentTimeMillis) / 1000)
+    const acceptedAudiences: ReadonlyArray<string> = [`${origin}/fhir`, origin]
 
+    // `jose.jwtVerify` (called by `SigningKey#verifyJwt`) enforces
+    // signature, exp, iss, and aud now that we pass them as options.
+    // The remaining checks here gate on slice-specific policy: `sub`
+    // must be a registered, enabled `Client`.
     for (const jwk of signingKeys) {
-      const result = yield* Effect.either(Effect.tryPromise(() => jwk.verifyJwt(token)))
+      const result = yield* Effect.either(
+        Effect.tryPromise(() => jwk.verifyJwt(token, { expectedIssuer, acceptedAudiences }))
+      )
       if (result._tag === 'Left') {
         continue
       }
 
       const payload = result.right.payload
-
-      if (payload.exp != null && payload.exp < nowSeconds) {
-        return yield* Effect.fail(new HttpApiError.Unauthorized())
-      }
-
-      if (payload.iss !== expectedIssuer) {
-        return yield* Effect.fail(new HttpApiError.Unauthorized())
-      }
-
-      const audClaim = payload.aud
-      let audMatches = false
-      if (typeof audClaim === 'string') {
-        audMatches = acceptedAudiences.includes(audClaim)
-      } else if (Array.isArray(audClaim)) {
-        audMatches = audClaim.some((a) => acceptedAudiences.includes(a))
-      }
-      if (!audMatches) {
-        return yield* Effect.fail(new HttpApiError.Unauthorized())
-      }
 
       if (typeof payload.sub !== 'string') {
         return yield* Effect.fail(new HttpApiError.Unauthorized())
@@ -98,7 +84,8 @@ const mintAccessToken = (
   { clientId, scope, ttlSeconds, audience, patient }: MintAccessTokenPayload
 ): Effect.Effect<string, UnknownException> =>
   Effect.gen(function* () {
-    const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
+    const nowDt = yield* DateTime.now
+    const now = Math.floor(DateTime.toEpochMillis(nowDt) / 1000)
     const payload: jose.JWTPayload = {
       iss: origin,
       sub: clientId,

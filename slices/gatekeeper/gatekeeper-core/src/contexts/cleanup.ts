@@ -7,11 +7,9 @@ const cleanupExpiredAuthorizationRequests: Effect.Effect<void, never, Gatekeeper
     const store = yield* GatekeeperStore
     const now = yield* DateTime.now
     const expired = store.query(AuthorizationRequests.queries.allExpired$(now))
-    for (const row of expired) {
-      if (row.status === 'pending') {
-        store.commit(AuthorizationRequests.events.authorizationRequestExpired({ id: row.id }))
-      }
-    }
+    const ids = expired.filter((row) => row.status === 'pending').map((row) => row.id)
+    if (ids.length === 0) return
+    store.commit(AuthorizationRequests.events.authorizationRequestsExpiredAsOf({ ids }))
   }
 )
 
@@ -20,9 +18,9 @@ const cleanupExpiredAuthorizationCodes: Effect.Effect<void, never, GatekeeperSto
     const store = yield* GatekeeperStore
     const now = yield* DateTime.now
     const expired = store.query(AuthorizationCodes.queries.allExpired$(now))
-    for (const row of expired) {
-      store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code: row.code }))
-    }
+    const codes = expired.map((row) => row.code)
+    if (codes.length === 0) return
+    store.commit(AuthorizationCodes.events.authorizationCodesExpiredAsOf({ codes }))
   }
 )
 

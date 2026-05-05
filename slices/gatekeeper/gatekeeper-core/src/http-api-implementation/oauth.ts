@@ -186,7 +186,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
         }
 
         const origin = yield* Origin
-        return HttpServerResponse.redirect(`${origin}/oauth/authorize/${requestId}/page`, {
+        return HttpServerResponse.redirect(`${origin}/oauth/authorize/${requestId}/ui`, {
           status: 302,
         })
       })

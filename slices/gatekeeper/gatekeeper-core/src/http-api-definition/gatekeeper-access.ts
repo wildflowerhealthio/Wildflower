@@ -1,7 +1,23 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
+import type { GrantRow, HttpRequestRow } from '../livestore/index.ts'
 import { RequireAuthMiddleware } from './require-auth.ts'
 
+/**
+ * `Grant`: a record that the Owner approved a specific `(clientId,
+ * redirectUri)` pair to receive tokens for a specific scope set, at a
+ * specific point in time. A Grant is the materialized consent decision —
+ * it survives across requests so the OAuth client doesn't have to be
+ * re-approved on every authorize call.
+ *
+ * The wire shape mirrors the `grants` table row 1:1; the
+ * `_grantWireMirrorsRow` thunk below is a compile-time guard — it never
+ * runs, but if a column is added or renamed on the table, the assignment
+ * stops type-checking here and forces the schema to track.
+ *
+ * `lastUsedAt` is null until the first time a token minted from this
+ * Grant gets used.
+ */
 const GrantSchema = Schema.Struct({
   id: Schema.String,
   clientId: Schema.String,
@@ -12,6 +28,11 @@ const GrantSchema = Schema.Struct({
   patient: Schema.NullOr(Schema.String),
 })
 
+const _grantWireMirrorsRow = (row: GrantRow): Schema.Schema.Type<typeof GrantSchema> => row
+const _grantRowMirrorsWire = (wire: Schema.Schema.Type<typeof GrantSchema>): GrantRow => wire
+void _grantWireMirrorsRow
+void _grantRowMirrorsWire
+
 const GrantsSchema = Schema.Array(GrantSchema)
 
 const GrantNotFoundSchema = Schema.Struct({
@@ -19,6 +40,15 @@ const GrantNotFoundSchema = Schema.Struct({
   id: Schema.String,
 })
 
+/**
+ * `HttpRequest`: a record of an inbound FHIR request that the gatekeeper
+ * has parked for the Owner to approve or deny out-of-band. Lives on the
+ * `httpRequests` table; the wire shape mirrors the row 1:1 (the
+ * `_httpRequestWireMirrorsRow` thunk below is the compile-time guard).
+ *
+ * `respondedAt` and `statusCode` populate once the Owner approves /
+ * denies and the upstream call completes.
+ */
 const HttpRequestSchema = Schema.Struct({
   id: Schema.String,
   method: Schema.String,
@@ -31,6 +61,15 @@ const HttpRequestSchema = Schema.Struct({
   respondedAt: Schema.NullOr(Schema.DateTimeUtc),
 })
 
+const _httpRequestWireMirrorsRow = (
+  row: HttpRequestRow
+): Schema.Schema.Type<typeof HttpRequestSchema> => row
+const _httpRequestRowMirrorsWire = (
+  wire: Schema.Schema.Type<typeof HttpRequestSchema>
+): HttpRequestRow => wire
+void _httpRequestWireMirrorsRow
+void _httpRequestRowMirrorsWire
+
 const HttpRequestsSchema = Schema.Array(HttpRequestSchema)
 
 const HttpRequestNotFoundSchema = Schema.Struct({
@@ -38,6 +77,22 @@ const HttpRequestNotFoundSchema = Schema.Struct({
   id: Schema.String,
 })
 
+/**
+ * Owner-only operator surface. Every endpoint here carries
+ * `RequireAuthMiddleware` so the slice's `-core` layer cannot ship them
+ * unauthenticated by accident.
+ *
+ * Endpoint roles:
+ * - `ListGrants` / `GetGrant` / `RevokeGrant`: read or revoke previously
+ *   recorded consent decisions. Revoking a Grant means the next
+ *   `/oauth/authorize` for that `(clientId, redirectUri)` will hit the
+ *   consent UI again instead of auto-approving.
+ * - `ListRequests` / `GetRequest`: inspect parked FHIR requests waiting
+ *   on Owner decision.
+ * - `ApproveRequest` / `DenyRequest`: Owner decision for a parked FHIR
+ *   request — the upstream consumer (`waitForRow`) resumes once the
+ *   status flips.
+ */
 const httpApiGroup = HttpApiGroup.make('gatekeeper-access', { topLevel: false })
   .add(HttpApiEndpoint.get('ListGrants', '/grants').addSuccess(GrantsSchema))
   .add(

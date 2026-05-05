@@ -1,9 +1,22 @@
 import { expect, test } from 'vite-plus/test'
 import * as Gatekeeper from '../src/contexts/index.ts'
 
-test('root exports consent decision functions and seed helpers', () => {
-  expect(typeof Gatekeeper.approveAuthorizationRequest).toBe('function')
-  expect(typeof Gatekeeper.denyAuthorizationRequest).toBe('function')
-  expect(typeof Gatekeeper.seedFirstPartyClient).toBe('object')
-  expect(Gatekeeper.FIRST_PARTY_CLIENT_ID).toBe('wildflower-host')
+// Surface-snapshot: catches accidental removal of an exported helper that
+// downstream adapters depend on. Failures here are intentional flags —
+// when an export is removed on purpose, update the expected list and the
+// reviewer can see the surface change in the diff.
+test('contexts/index re-exports the published surface', () => {
+  expect(Object.keys(Gatekeeper).toSorted()).toEqual(
+    [
+      'FIRST_PARTY_CLIENT_ID',
+      'GatekeeperStore',
+      'SeedFirstPartyClientLive',
+      'approveAuthorizationRequest',
+      'cleanupExpiredAuthorizationCodes',
+      'cleanupExpiredAuthorizationRequests',
+      'denyAuthorizationRequest',
+      'makeGatekeeperStoreLayer',
+      'seedFirstPartyClient',
+    ].toSorted()
+  )
 })

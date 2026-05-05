@@ -17,7 +17,7 @@ const HtmlSuccess = HttpApiSchema.Text({ contentType: 'text/html; charset=utf-8'
  */
 const httpApiGroup = HttpApiGroup.make('gatekeeper-pages', { topLevel: false })
   .add(
-    HttpApiEndpoint.get('OAuthPollingPage', '/oauth/authorize/:id/page')
+    HttpApiEndpoint.get('OAuthPollingPage', '/oauth/authorize/:id/ui')
       .setPath(Schema.Struct({ id: Schema.String }))
       .addSuccess(HtmlSuccess)
   )

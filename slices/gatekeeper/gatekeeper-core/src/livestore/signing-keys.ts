@@ -52,10 +52,25 @@ class SigningKey extends Schema.Class<SigningKey>('SigningKey')({
     return await new jose.SignJWT(payload).setProtectedHeader({ alg: 'RS256' }).sign(joseKey)
   }
 
-  async verifyJwt(token: string): Promise<jose.JWTVerifyResult<jose.JWTPayload>> {
+  /**
+   * Verify a JWT against this key. Callers MUST supply
+   * `expectedIssuer` and `acceptedAudiences` so iss/aud are checked by
+   * `jose.jwtVerify` itself — the library is the canonical place for
+   * those checks. The method exists so the wrapper in `internal/jwt.ts`
+   * can iterate over multiple keys during rotation; direct callers are
+   * forced to be explicit about issuer/audience instead of getting a
+   * silent-accept default.
+   */
+  async verifyJwt(
+    token: string,
+    options: { expectedIssuer: string; acceptedAudiences: ReadonlyArray<string> }
+  ): Promise<jose.JWTVerifyResult<jose.JWTPayload>> {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const testPub = (await jose.importJWK(this.publicJwk())) as jose.CryptoKey
-    return await jose.jwtVerify(token, testPub)
+    return await jose.jwtVerify(token, testPub, {
+      issuer: options.expectedIssuer,
+      audience: [...options.acceptedAudiences],
+    })
   }
 
   static async fromJosePrivateJwk(jwk: jose.CryptoKey): Promise<SigningKey> {

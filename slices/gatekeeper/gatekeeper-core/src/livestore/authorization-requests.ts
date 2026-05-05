@@ -92,6 +92,12 @@ const events = {
     name: 'v1.AuthorizationRequestExpired',
     schema: Schema.Struct({ id: Schema.String }),
   }),
+  // Bulk-expire event: cleanup pass commits one event per pass with the
+  // ids of every still-pending request that has aged past `expiresAt`.
+  authorizationRequestsExpiredAsOf: Events.synced({
+    name: 'v1.AuthorizationRequestsExpiredAsOf',
+    schema: Schema.Struct({ ids: Schema.Array(Schema.String) }),
+  }),
   deviceAuthorizationPolled: Events.synced({
     name: 'v1.DeviceAuthorizationPolled',
     schema: Schema.Struct({
@@ -170,6 +176,10 @@ const materializers = {
     id,
   }: typeof events.authorizationRequestExpired.schema.Type) =>
     table.update({ status: 'expired' }).where({ id }),
+  'v1.AuthorizationRequestsExpiredAsOf': ({
+    ids,
+  }: typeof events.authorizationRequestsExpiredAsOf.schema.Type) =>
+    ids.map((id) => table.update({ status: 'expired' }).where({ id })),
   'v1.DeviceAuthorizationPolled': ({
     id,
     polledAt,
