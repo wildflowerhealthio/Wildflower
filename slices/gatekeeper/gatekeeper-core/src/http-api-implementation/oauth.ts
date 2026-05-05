@@ -1,5 +1,5 @@
 import { HttpApiBuilder, HttpServerResponse } from '@effect/platform'
-import { Array, DateTime, Effect, Schema } from 'effect'
+import { Array, DateTime, Effect } from 'effect'
 import { Origin } from 'kitchen-sink'
 import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
@@ -13,39 +13,32 @@ import {
   AuthorizationCodes,
   AuthorizationRequests,
   Clients,
+  type ClientRow,
   Grants,
   SigningKeys,
 } from '../livestore/index.ts'
 
-const DEVICE_CODE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
 const DEVICE_CODE_POLL_INTERVAL_SECONDS = 5
 
-const decodeAuthorizationCodePayload = Schema.decodeUnknown(
-  Schema.Struct({
-    client_id: Schema.NonEmptyString,
-    client_secret: Schema.optional(Schema.String),
-    code: Schema.NonEmptyString,
-    code_verifier: Schema.String.pipe(Schema.minLength(43), Schema.maxLength(128)),
-    grant_type: Schema.Literal('authorization_code'),
-    redirect_uri: Schema.NonEmptyString,
-  })
-)
-
-const decodeDeviceCodePayload = Schema.decodeUnknown(
-  Schema.Struct({
-    client_id: Schema.NonEmptyString,
-    client_secret: Schema.optional(Schema.String),
-    device_code: Schema.NonEmptyString,
-    grant_type: Schema.Literal(DEVICE_CODE_GRANT_TYPE),
-  })
-)
-
-const decodeDeviceAuthorizationPayload = Schema.decodeUnknown(
-  Schema.Struct({
-    client_id: Schema.NonEmptyString,
-    scope: Schema.optional(Schema.String),
-  })
-)
+type OAuthError400 = {
+  error:
+    | 'invalid_request'
+    | 'invalid_grant'
+    | 'invalid_scope'
+    | 'authorization_pending'
+    | 'access_denied'
+    | 'expired_token'
+    | 'slow_down'
+  error_description?: string
+}
+type OAuthError401 = {
+  error: 'invalid_client'
+  error_description?: string
+}
+type OAuthError500 = {
+  error: 'server_error'
+  error_description?: string
+}
 
 const buildClientRedirect = (redirectUri: string, code: string, clientState: string): string => {
   const url = new URL(redirectUri)
@@ -191,117 +184,80 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
         })
       })
     )
-    .handleRaw('AuthorizationStatus', ({ path: { id } }) =>
+    .handle('AuthorizationStatus', ({ path: { id } }) =>
       Effect.gen(function* () {
         const store = yield* GatekeeperStore
 
         const request = store.query(AuthorizationRequests.queries.byId$(id))
         if (request == null) {
-          return HttpServerResponse.unsafeJson(
-            { status: 'error', message: 'Unknown id' },
-            { status: 404 }
-          )
+          return yield* Effect.fail({
+            error: 'AuthorizationRequestNotFound' as const,
+            id,
+          })
         }
 
         if (request.status === 'approved') {
           if (request.redirectUri == null || request.clientState == null) {
-            return HttpServerResponse.unsafeJson(
-              { status: 'error', message: 'Authorization request is not a code-flow request' },
-              { status: 400 }
-            )
+            return yield* Effect.fail({
+              error: 'server_error' as const,
+              error_description: 'Authorization request is not a code-flow request',
+            } satisfies OAuthError500)
           }
           const issuedCode = store.query(AuthorizationCodes.queries.byRequestId$(id))
           if (issuedCode == null) {
-            return HttpServerResponse.unsafeJson(
-              { status: 'error', message: 'Authorization code missing' },
-              { status: 500 }
-            )
+            return yield* Effect.fail({
+              error: 'server_error' as const,
+              error_description: 'Authorization code missing',
+            } satisfies OAuthError500)
           }
-          return HttpServerResponse.unsafeJson({
-            status: 'approved',
+          return {
+            status: 'approved' as const,
             redirect: buildClientRedirect(
               request.redirectUri,
               issuedCode.code,
               request.clientState
             ),
-          })
+          }
         }
 
         if (request.status === 'denied') {
-          return HttpServerResponse.unsafeJson({ status: 'declined' })
+          return { status: 'declined' as const }
         }
 
         if (request.status === 'expired') {
-          return HttpServerResponse.unsafeJson({
-            status: 'error',
-            message: 'Authorization request expired',
-          })
+          return { status: 'error' as const, message: 'Authorization request expired' }
         }
 
-        return HttpServerResponse.unsafeJson({ status: 'pending' })
+        return { status: 'pending' as const }
       })
     )
-    .handleRaw('TokenExchange', ({ request }) =>
+    .handle('TokenExchange', ({ payload }) =>
       Effect.gen(function* () {
         const store = yield* GatekeeperStore
-
-        const bodyTextEither = yield* Effect.either(request.text)
-        if (bodyTextEither._tag === 'Left') {
-          return HttpServerResponse.unsafeJson(
-            { error: 'invalid_request', error_description: 'Failed to read request body' },
-            { status: 400 }
-          )
+        if (payload.grant_type === 'urn:ietf:params:oauth:grant-type:device_code') {
+          return yield* handleDeviceCodeTokenExchange(store, payload)
         }
-
-        const params = Object.fromEntries(new URLSearchParams(bodyTextEither.right))
-
-        if (params['grant_type'] === DEVICE_CODE_GRANT_TYPE) {
-          return yield* handleDeviceCodeTokenExchange(store, params)
-        }
-
-        return yield* handleAuthorizationCodeTokenExchange(store, params)
+        return yield* handleAuthorizationCodeTokenExchange(store, payload)
       })
     )
-    .handleRaw('DeviceAuthorization', ({ request }) =>
+    .handle('DeviceAuthorization', ({ payload }) =>
       Effect.gen(function* () {
         const store = yield* GatekeeperStore
+        const requestedScopes = (payload.scope ?? '').split(' ').filter(Boolean)
 
-        const bodyTextEither = yield* Effect.either(request.text)
-        if (bodyTextEither._tag === 'Left') {
-          return HttpServerResponse.unsafeJson(
-            { error: 'invalid_request', error_description: 'Failed to read request body' },
-            { status: 400 }
-          )
-        }
-
-        const parsedEither = yield* Effect.either(
-          decodeDeviceAuthorizationPayload(
-            Object.fromEntries(new URLSearchParams(bodyTextEither.right))
-          )
-        )
-        if (parsedEither._tag === 'Left') {
-          return HttpServerResponse.unsafeJson(
-            { error: 'invalid_request', error_description: 'Invalid device authorization payload' },
-            { status: 400 }
-          )
-        }
-
-        const { client_id, scope } = parsedEither.right
-        const requestedScopes = (scope ?? '').split(' ').filter(Boolean)
-
-        const client = store.query(Clients.queries.byId$(client_id))
+        const client = store.query(Clients.queries.byId$(payload.client_id))
         if (client == null || client.disabledAt != null) {
-          return HttpServerResponse.unsafeJson(
-            { error: 'invalid_client', error_description: 'Unknown or disabled client_id' },
-            { status: 401 }
-          )
+          return yield* Effect.fail({
+            error: 'invalid_client' as const,
+            error_description: 'Unknown or disabled client_id',
+          } satisfies OAuthError401)
         }
         const allowedScopeSet = new Set(client.allowedScopes)
         if (!requestedScopes.every((s) => allowedScopeSet.has(s))) {
-          return HttpServerResponse.unsafeJson(
-            { error: 'invalid_scope', error_description: 'Scope not allowed for client' },
-            { status: 400 }
-          )
+          return yield* Effect.fail({
+            error: 'invalid_scope' as const,
+            error_description: 'Scope not allowed for client',
+          } satisfies OAuthError400)
         }
 
         const requestedAt = yield* DateTime.now
@@ -312,7 +268,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
         store.commit(
           AuthorizationRequests.events.deviceAuthorizationRequestStarted({
             id,
-            clientId: client_id,
+            clientId: payload.client_id,
             requestedScopes,
             userCode,
             requestedAt,
@@ -321,84 +277,101 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
         )
 
         const origin = yield* Origin
-        return HttpServerResponse.unsafeJson({
+        return {
           device_code: id,
           user_code: userCode,
           verification_uri: `${origin}/access/devices`,
           verification_uri_complete: `${origin}/access/devices?user_code=${userCode}`,
           expires_in: 300,
           interval: DEVICE_CODE_POLL_INTERVAL_SECONDS,
-        })
+        }
       })
     )
 )
 
+type AuthorizationCodeExchange = {
+  readonly grant_type: 'authorization_code'
+  readonly client_id: string
+  readonly client_secret?: string
+  readonly code: string
+  readonly code_verifier: string
+  readonly redirect_uri: string
+}
+
+type DeviceCodeExchange = {
+  readonly grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
+  readonly client_id: string
+  readonly client_secret?: string
+  readonly device_code: string
+}
+
+type TokenExchangeError = OAuthError400 | OAuthError401 | OAuthError500
+type TokenResponse = {
+  readonly access_token: string
+  readonly token_type: string
+  readonly expires_in: number
+  readonly scope: string
+  readonly patient: string | null | undefined
+}
+
 const handleAuthorizationCodeTokenExchange = (
   store: typeof GatekeeperStore.Service,
-  params: Record<string, string>
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, Origin> =>
+  payload: AuthorizationCodeExchange
+): Effect.Effect<TokenResponse, TokenExchangeError, Origin> =>
   Effect.gen(function* () {
-    const parsedPayloadEither = yield* Effect.either(decodeAuthorizationCodePayload(params))
-    if (parsedPayloadEither._tag === 'Left') {
-      return HttpServerResponse.unsafeJson(
-        { error: 'invalid_request', error_description: 'Invalid token exchange payload' },
-        { status: 400 }
-      )
-    }
+    const { client_id, client_secret, code, code_verifier, redirect_uri } = payload
 
-    const { client_id, client_secret, code, code_verifier, redirect_uri } =
-      parsedPayloadEither.right
-
-    const clientCheck = yield* validateClientForToken(store, client_id, client_secret)
-    if (clientCheck.kind === 'error') return clientCheck.response
+    yield* validateClientForToken(store, client_id, client_secret)
 
     const issuedCode = store.query(AuthorizationCodes.queries.byCode$(code))
     if (issuedCode == null) {
-      return HttpServerResponse.unsafeJson(
-        { error: 'invalid_request', error_description: 'Invalid code parameter' },
-        { status: 400 }
-      )
+      return yield* Effect.fail({
+        error: 'invalid_request' as const,
+        error_description: 'Invalid code parameter',
+      } satisfies OAuthError400)
     }
 
     if (issuedCode.clientId !== client_id) {
       store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code }))
-      return HttpServerResponse.unsafeJson(
-        { error: 'invalid_request', error_description: 'Invalid client_id parameter' },
-        { status: 400 }
-      )
+      return yield* Effect.fail({
+        error: 'invalid_request' as const,
+        error_description: 'Invalid client_id parameter',
+      } satisfies OAuthError400)
     }
 
     if (issuedCode.redirectUri !== redirect_uri) {
       store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code }))
-      return HttpServerResponse.unsafeJson(
-        { error: 'invalid_request', error_description: 'Invalid redirect_uri parameter' },
-        { status: 400 }
-      )
+      return yield* Effect.fail({
+        error: 'invalid_request' as const,
+        error_description: 'Invalid redirect_uri parameter',
+      } satisfies OAuthError400)
     }
 
     const tokenNow = yield* DateTime.now
     if (DateTime.lessThan(issuedCode.expiresAt, tokenNow)) {
       store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code }))
-      return HttpServerResponse.unsafeJson(
-        { error: 'invalid_request', error_description: 'Code has expired' },
-        { status: 400 }
-      )
+      return yield* Effect.fail({
+        error: 'invalid_request' as const,
+        error_description: 'Code has expired',
+      } satisfies OAuthError400)
     }
 
-    const codeChallengeEither = yield* Effect.either(computeCodeChallenge(code_verifier))
-    if (codeChallengeEither._tag === 'Left') {
-      return HttpServerResponse.unsafeJson(
-        { error: 'server_error', error_description: 'Failed to compute code challenge' },
-        { status: 500 }
+    const computedChallenge = yield* computeCodeChallenge(code_verifier).pipe(
+      Effect.mapError(
+        () =>
+          ({
+            error: 'server_error' as const,
+            error_description: 'Failed to compute code challenge',
+          }) satisfies OAuthError500
       )
-    }
+    )
 
-    if (!timingSafeEqual(issuedCode.codeChallenge, codeChallengeEither.right)) {
+    if (!timingSafeEqual(issuedCode.codeChallenge, computedChallenge)) {
       store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code }))
-      return HttpServerResponse.unsafeJson(
-        { error: 'invalid_request', error_description: 'Invalid code_verifier parameter' },
-        { status: 400 }
-      )
+      return yield* Effect.fail({
+        error: 'invalid_request' as const,
+        error_description: 'Invalid code_verifier parameter',
+      } satisfies OAuthError400)
     }
 
     store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code }))
@@ -411,40 +384,31 @@ const handleAuthorizationCodeTokenExchange = (
 
 const handleDeviceCodeTokenExchange = (
   store: typeof GatekeeperStore.Service,
-  params: Record<string, string>
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, Origin> =>
+  payload: DeviceCodeExchange
+): Effect.Effect<TokenResponse, TokenExchangeError, Origin> =>
   Effect.gen(function* () {
-    const parsedEither = yield* Effect.either(decodeDeviceCodePayload(params))
-    if (parsedEither._tag === 'Left') {
-      return HttpServerResponse.unsafeJson(
-        { error: 'invalid_request', error_description: 'Invalid token exchange payload' },
-        { status: 400 }
-      )
-    }
+    const { client_id, client_secret, device_code } = payload
 
-    const { client_id, client_secret, device_code } = parsedEither.right
-
-    const clientCheck = yield* validateClientForToken(store, client_id, client_secret)
-    if (clientCheck.kind === 'error') return clientCheck.response
+    yield* validateClientForToken(store, client_id, client_secret)
 
     const pending = store.query(AuthorizationRequests.queries.byId$(device_code))
     if (pending == null || pending.flow !== 'device_code' || pending.clientId !== client_id) {
-      return HttpServerResponse.unsafeJson(
-        { error: 'invalid_grant', error_description: 'Unknown device_code' },
-        { status: 400 }
-      )
+      return yield* Effect.fail({
+        error: 'invalid_grant' as const,
+        error_description: 'Unknown device_code',
+      } satisfies OAuthError400)
     }
 
     const now = yield* DateTime.now
     if (DateTime.lessThan(pending.expiresAt, now)) {
-      return HttpServerResponse.unsafeJson({ error: 'expired_token' }, { status: 400 })
+      return yield* Effect.fail({ error: 'expired_token' as const } satisfies OAuthError400)
     }
 
     if (pending.lastPolledAt != null) {
       const intervalMs = DEVICE_CODE_POLL_INTERVAL_SECONDS * 1000
       const sinceLastPoll = DateTime.distance(pending.lastPolledAt, now)
       if (sinceLastPoll < intervalMs) {
-        return HttpServerResponse.unsafeJson({ error: 'slow_down' }, { status: 400 })
+        return yield* Effect.fail({ error: 'slow_down' as const } satisfies OAuthError400)
       }
     }
     store.commit(
@@ -452,25 +416,26 @@ const handleDeviceCodeTokenExchange = (
     )
 
     if (pending.status === 'pending') {
-      return HttpServerResponse.unsafeJson({ error: 'authorization_pending' }, { status: 400 })
+      return yield* Effect.fail({
+        error: 'authorization_pending' as const,
+      } satisfies OAuthError400)
     }
     if (pending.status === 'denied') {
-      return HttpServerResponse.unsafeJson({ error: 'access_denied' }, { status: 400 })
+      return yield* Effect.fail({ error: 'access_denied' as const } satisfies OAuthError400)
     }
     if (pending.status === 'expired') {
-      return HttpServerResponse.unsafeJson({ error: 'expired_token' }, { status: 400 })
+      return yield* Effect.fail({ error: 'expired_token' as const } satisfies OAuthError400)
     }
     if (pending.status !== 'approved') {
-      return HttpServerResponse.unsafeJson(
-        { error: 'invalid_grant', error_description: 'Unsupported status' },
-        { status: 400 }
-      )
+      return yield* Effect.fail({
+        error: 'invalid_grant' as const,
+        error_description: 'Unsupported status',
+      } satisfies OAuthError400)
     }
 
-    const grantedScopes = pending.grantedScopes ?? []
     return yield* issueTokenResponse(store, {
       clientId: pending.clientId,
-      grantedScopes,
+      grantedScopes: pending.grantedScopes ?? [],
       patient: pending.patient,
     })
   })
@@ -479,118 +444,93 @@ const validateClientForToken = (
   store: typeof GatekeeperStore.Service,
   clientId: string,
   clientSecret: string | undefined
-): Effect.Effect<
-  { kind: 'ok' } | { kind: 'error'; response: HttpServerResponse.HttpServerResponse },
-  never,
-  never
-> =>
+): Effect.Effect<ClientRow, OAuthError401 | OAuthError500> =>
   Effect.gen(function* () {
     const client = store.query(Clients.queries.byId$(clientId))
     if (client == null) {
-      return {
-        kind: 'error' as const,
-        response: HttpServerResponse.unsafeJson(
-          { error: 'invalid_client', error_description: 'Unknown client_id' },
-          { status: 401 }
-        ),
-      }
+      return yield* Effect.fail({
+        error: 'invalid_client' as const,
+        error_description: 'Unknown client_id',
+      } satisfies OAuthError401)
     }
     if (client.disabledAt != null) {
-      return {
-        kind: 'error' as const,
-        response: HttpServerResponse.unsafeJson(
-          { error: 'invalid_client', error_description: 'Client is disabled' },
-          { status: 401 }
-        ),
-      }
+      return yield* Effect.fail({
+        error: 'invalid_client' as const,
+        error_description: 'Client is disabled',
+      } satisfies OAuthError401)
     }
     if (client.kind === 'confidential') {
       if (client.secretHash == null) {
-        return {
-          kind: 'error' as const,
-          response: HttpServerResponse.unsafeJson(
-            { error: 'invalid_client', error_description: 'Client secret not configured' },
-            { status: 401 }
-          ),
-        }
+        return yield* Effect.fail({
+          error: 'invalid_client' as const,
+          error_description: 'Client secret not configured',
+        } satisfies OAuthError401)
       }
       if (clientSecret == null) {
-        return {
-          kind: 'error' as const,
-          response: HttpServerResponse.unsafeJson(
-            { error: 'invalid_client', error_description: 'Client secret required' },
-            { status: 401 }
-          ),
-        }
+        return yield* Effect.fail({
+          error: 'invalid_client' as const,
+          error_description: 'Client secret required',
+        } satisfies OAuthError401)
       }
-      const presentedHashEither = yield* Effect.either(sha256Hex(clientSecret))
-      if (presentedHashEither._tag === 'Left') {
-        return {
-          kind: 'error' as const,
-          response: HttpServerResponse.unsafeJson(
-            { error: 'server_error', error_description: 'Failed to hash client_secret' },
-            { status: 500 }
-          ),
-        }
-      }
-      if (!timingSafeEqual(presentedHashEither.right, client.secretHash)) {
-        return {
-          kind: 'error' as const,
-          response: HttpServerResponse.unsafeJson(
-            { error: 'invalid_client', error_description: 'Invalid client_secret' },
-            { status: 401 }
-          ),
-        }
+      const presentedHash = yield* sha256Hex(clientSecret).pipe(
+        Effect.mapError(
+          () =>
+            ({
+              error: 'server_error' as const,
+              error_description: 'Failed to hash client_secret',
+            }) satisfies OAuthError500
+        )
+      )
+      if (!timingSafeEqual(presentedHash, client.secretHash)) {
+        return yield* Effect.fail({
+          error: 'invalid_client' as const,
+          error_description: 'Invalid client_secret',
+        } satisfies OAuthError401)
       }
     }
-    return { kind: 'ok' as const }
+    return client
   })
 
 const issueTokenResponse = (
   store: typeof GatekeeperStore.Service,
   payload: { clientId: string; grantedScopes: ReadonlyArray<string>; patient: string | null }
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, Origin> =>
+): Effect.Effect<TokenResponse, OAuthError500, Origin> =>
   Effect.gen(function* () {
     const activeKey = store.query(SigningKeys.queries.active$)
     const allKeys = store.query(SigningKeys.queries.all$)
     const signingKey = activeKey ?? allKeys[0]
     if (signingKey === undefined) {
-      return HttpServerResponse.unsafeJson(
-        { error: 'server_error', error_description: 'No JSON Web Keys available to sign token' },
-        { status: 500 }
-      )
+      return yield* Effect.fail({
+        error: 'server_error' as const,
+        error_description: 'No JSON Web Keys available to sign token',
+      } satisfies OAuthError500)
     }
 
     const origin = yield* Origin
-    const signedTokenEither = yield* Effect.either(
-      mintAccessToken(signingKey, origin, {
-        clientId: payload.clientId,
-        scope: payload.grantedScopes,
-        ttlSeconds: 60 * 60,
-        audience: `${origin}/fhir`,
-        patient: payload.patient,
-      })
-    )
-    if (signedTokenEither._tag === 'Left') {
-      return HttpServerResponse.unsafeJson(
-        { error: 'server_error', error_description: 'Failed to sign JWT' },
-        { status: 500 }
+    const signedToken = yield* mintAccessToken(signingKey, origin, {
+      clientId: payload.clientId,
+      scope: payload.grantedScopes,
+      ttlSeconds: 60 * 60,
+      audience: `${origin}/fhir`,
+      patient: payload.patient,
+    }).pipe(
+      Effect.mapError(
+        () =>
+          ({
+            error: 'server_error' as const,
+            error_description: 'Failed to sign JWT',
+          }) satisfies OAuthError500
       )
-    }
+    )
 
     const grantedScope = payload.grantedScopes.join(' ')
-    const tokenResponse: Record<string, unknown> = {
-      access_token: signedTokenEither.right,
+    return {
+      access_token: signedToken,
       token_type: 'Bearer',
       expires_in: 60 * 60,
       scope: grantedScope,
-    }
-    if (payload.patient != null) {
-      tokenResponse.patient = payload.patient
-    }
-    return HttpServerResponse.unsafeJson(tokenResponse, {
-      headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' },
-    })
+      patient: payload.patient ?? undefined,
+    } satisfies TokenResponse
   })
 
 const generateUniqueUserCode = (store: typeof GatekeeperStore.Service): string => {
