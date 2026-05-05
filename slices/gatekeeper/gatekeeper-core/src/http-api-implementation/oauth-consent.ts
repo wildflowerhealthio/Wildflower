@@ -16,7 +16,11 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth-consent', (handlers) =>
         const store = yield* GatekeeperStore
 
         const request = store.query(AuthorizationRequests.queries.byId$(id))
-        if (request == null) {
+        if (
+          request == null ||
+          request.flow !== 'authorization_code' ||
+          request.redirectUri == null
+        ) {
           return yield* Effect.fail({
             error: 'OAuthConsentNotFound' as const,
             id,
@@ -37,7 +41,11 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth-consent', (handlers) =>
       Effect.gen(function* () {
         const store = yield* GatekeeperStore
         const pending = store.query(AuthorizationRequests.queries.byId$(id))
-        if (pending == null) {
+        if (
+          pending == null ||
+          pending.flow !== 'authorization_code' ||
+          pending.redirectUri == null
+        ) {
           return yield* Effect.fail({
             error: 'OAuthConsentNotFound' as const,
             id,

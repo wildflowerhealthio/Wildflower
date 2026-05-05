@@ -36,6 +36,15 @@ const FormUrlEncodedHeadersSchema = Schema.Struct({
   ),
 })
 
+const DeviceAuthorizationResponseSchema = Schema.Struct({
+  device_code: Schema.String,
+  user_code: Schema.String,
+  verification_uri: Schema.String,
+  verification_uri_complete: Schema.String,
+  expires_in: Schema.Int,
+  interval: Schema.Int,
+})
+
 const httpApiGroup = HttpApiGroup.make('oauth', { topLevel: false })
   .add(
     HttpApiEndpoint.get('Authorize', '/authorize')
@@ -52,6 +61,11 @@ const httpApiGroup = HttpApiGroup.make('oauth', { topLevel: false })
       .setHeaders(FormUrlEncodedHeadersSchema)
       .addSuccess(TokenResponseSchema)
   )
+  .add(
+    HttpApiEndpoint.post('DeviceAuthorization', '/device_authorization')
+      .setHeaders(FormUrlEncodedHeadersSchema)
+      .addSuccess(DeviceAuthorizationResponseSchema)
+  )
   .prefix('/oauth')
 
-export { httpApiGroup }
+export { httpApiGroup, DeviceAuthorizationResponseSchema }

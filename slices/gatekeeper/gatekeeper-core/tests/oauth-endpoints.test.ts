@@ -35,6 +35,8 @@ const StubGatekeeperPagesLive = HttpApiBuilder.group(
       .handle('OAuthConsentPage', () => Effect.succeed('<!doctype html><html></html>'))
       .handle('PinLoginPage', () => Effect.succeed('<!doctype html><html></html>'))
       .handle('PinVerificationPage', () => Effect.succeed('<!doctype html><html></html>'))
+      .handle('DeviceEntryPage', () => Effect.succeed('<!doctype html><html></html>'))
+      .handle('DeviceConsentPage', () => Effect.succeed('<!doctype html><html></html>'))
 ).pipe(Layer.provide(RequireAuthMiddlewareLive))
 
 type MockGrant = {
@@ -225,12 +227,14 @@ const makeStore = ({
           }
           requestRows.set(args.id, {
             id: args.id,
+            flow: 'authorization_code',
             clientId: args.clientId,
             requestedScopes: args.requestedScopes,
             codeChallenge: args.codeChallenge,
             codeChallengeMethod: args.codeChallengeMethod,
             redirectUri: args.redirectUri,
             clientState: args.clientState,
+            userCode: null,
             preApprovedScopes: args.preApprovedScopes,
             requestedAt: args.requestedAt,
             expiresAt: args.expiresAt,

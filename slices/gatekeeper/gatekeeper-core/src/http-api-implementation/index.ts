@@ -4,6 +4,7 @@ import type { Origin } from 'kitchen-sink'
 import type { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import type { OAuthDisplayDefault } from '../contexts/oauth-display-default.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
+import * as Devices from './devices.ts'
 import * as GatekeeperAccess from './gatekeeper-access.ts'
 import * as Jwks from './jwks.ts'
 import * as OAuthConsent from './oauth-consent.ts'
@@ -18,7 +19,8 @@ const GatekeeperApiHandlersLive = Layer.mergeAll(
   PinLogin.layer,
   OAuthConsent.layer,
   PinVerification.layer,
-  GatekeeperAccess.layer
+  GatekeeperAccess.layer,
+  Devices.layer
 ).pipe(Layer.provide(RequireAuthMiddlewareLive))
 
 const GatekeeperApiLive = HttpApiBuilder.api(GatekeeperApi).pipe(
@@ -32,6 +34,7 @@ type GatekeeperGroupNames =
   | 'oauth-consent'
   | 'pin-verification'
   | 'gatekeeper-access'
+  | 'devices'
 
 const GatekeeperApiHandlersFor = <ParentId extends string>(): Layer.Layer<
   HttpApiGroup.ApiGroup<ParentId, GatekeeperGroupNames>,

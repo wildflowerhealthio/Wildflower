@@ -1,4 +1,5 @@
 import { HttpApi } from '@effect/platform'
+import * as Devices from './devices.ts'
 import * as GatekeeperAccess from './gatekeeper-access.ts'
 import * as Jwks from './jwks.ts'
 import * as OAuthConsent from './oauth-consent.ts'
@@ -14,10 +15,12 @@ const GatekeeperApi = HttpApi.make('GatekeeperApi')
   .add(OAuthConsent.httpApiGroup)
   .add(PinVerification.httpApiGroup)
   .add(GatekeeperAccess.httpApiGroup)
+  .add(Devices.httpApiGroup)
   .add(Pages.httpApiGroup)
 
 export {
   GatekeeperApi,
+  Devices,
   GatekeeperAccess,
   Jwks,
   OAuth,

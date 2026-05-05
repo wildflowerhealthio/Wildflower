@@ -41,5 +41,12 @@ const httpApiGroup = HttpApiGroup.make('gatekeeper-pages', { topLevel: false })
       .addSuccess(HtmlSuccess)
       .middleware(RequireAuthMiddleware)
   )
+  .add(HttpApiEndpoint.get('DeviceEntryPage', '/access/devices').addSuccess(HtmlSuccess))
+  .add(
+    HttpApiEndpoint.get('DeviceConsentPage', '/access/devices/:userCode/ui')
+      .setPath(Schema.Struct({ userCode: Schema.String }))
+      .addSuccess(HtmlSuccess)
+      .middleware(RequireAuthMiddleware)
+  )
 
 export { httpApiGroup }

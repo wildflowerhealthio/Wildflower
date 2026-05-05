@@ -1,16 +1,22 @@
 import { Events, queryDb, State } from '@livestore/livestore'
 import { DateTime, Schema } from 'effect'
 
+const AuthorizationFlowSchema = Schema.Literal('authorization_code', 'device_code')
+
+type AuthorizationFlow = typeof AuthorizationFlowSchema.Type
+
 const table = State.SQLite.table({
   name: 'authorizationRequests',
   columns: {
     id: State.SQLite.text({ primaryKey: true }),
+    flow: State.SQLite.json({ schema: AuthorizationFlowSchema }),
     clientId: State.SQLite.text(),
     requestedScopes: State.SQLite.json({ schema: Schema.Array(Schema.String) }),
-    codeChallenge: State.SQLite.text(),
-    codeChallengeMethod: State.SQLite.text(),
-    redirectUri: State.SQLite.text(),
-    clientState: State.SQLite.text(),
+    codeChallenge: State.SQLite.json({ schema: Schema.NullOr(Schema.String) }),
+    codeChallengeMethod: State.SQLite.json({ schema: Schema.NullOr(Schema.String) }),
+    redirectUri: State.SQLite.json({ schema: Schema.NullOr(Schema.String) }),
+    clientState: State.SQLite.json({ schema: Schema.NullOr(Schema.String) }),
+    userCode: State.SQLite.json({ schema: Schema.NullOr(Schema.String) }),
     preApprovedScopes: State.SQLite.json({ schema: Schema.NullOr(Schema.Array(Schema.String)) }),
     requestedAt: State.SQLite.json({ schema: Schema.DateTimeUtc }),
     expiresAt: State.SQLite.json({ schema: Schema.DateTimeUtc }),
@@ -28,6 +34,11 @@ const queries = {
     queryDb(table.where({ id }), {
       map: (rows): AuthorizationRequestRow | null => rows[0] ?? null,
       label: 'authorizationRequestById',
+    }),
+  byUserCode$: (userCode: string) =>
+    queryDb(table.where({ userCode }), {
+      map: (rows): AuthorizationRequestRow | null => rows[0] ?? null,
+      label: 'authorizationRequestByUserCode',
     }),
   allExpired$: (now: DateTime.Utc) =>
     queryDb(table, {
@@ -49,6 +60,17 @@ const events = {
       redirectUri: Schema.String,
       clientState: Schema.String,
       preApprovedScopes: Schema.NullOr(Schema.Array(Schema.String)),
+      requestedAt: Schema.DateTimeUtc,
+      expiresAt: Schema.DateTimeUtc,
+    }),
+  }),
+  deviceAuthorizationRequestStarted: Events.synced({
+    name: 'v1.DeviceAuthorizationRequestStarted',
+    schema: Schema.Struct({
+      id: Schema.String,
+      clientId: Schema.String,
+      requestedScopes: Schema.Array(Schema.String),
+      userCode: Schema.String,
       requestedAt: Schema.DateTimeUtc,
       expiresAt: Schema.DateTimeUtc,
     }),
@@ -86,13 +108,40 @@ const materializers = {
   }: typeof events.authorizationRequestStarted.schema.Type) =>
     table.insert({
       id,
+      flow: 'authorization_code',
       clientId,
       requestedScopes,
       codeChallenge,
       codeChallengeMethod,
       redirectUri,
       clientState,
+      userCode: null,
       preApprovedScopes,
+      requestedAt,
+      expiresAt,
+      status: 'pending',
+      grantedScopes: null,
+      patient: null,
+    }),
+  'v1.DeviceAuthorizationRequestStarted': ({
+    id,
+    clientId,
+    requestedScopes,
+    userCode,
+    requestedAt,
+    expiresAt,
+  }: typeof events.deviceAuthorizationRequestStarted.schema.Type) =>
+    table.insert({
+      id,
+      flow: 'device_code',
+      clientId,
+      requestedScopes,
+      codeChallenge: null,
+      codeChallengeMethod: null,
+      redirectUri: null,
+      clientState: null,
+      userCode,
+      preApprovedScopes: null,
       requestedAt,
       expiresAt,
       status: 'pending',
@@ -113,5 +162,5 @@ const materializers = {
     table.update({ status: 'expired' }).where({ id }),
 }
 
-export { table, queries, events, materializers }
-export type { AuthorizationRequestRow }
+export { AuthorizationFlowSchema, table, queries, events, materializers }
+export type { AuthorizationFlow, AuthorizationRequestRow }

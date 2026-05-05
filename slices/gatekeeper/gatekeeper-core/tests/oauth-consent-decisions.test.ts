@@ -52,12 +52,14 @@ const makeRequest = (
   overrides: Partial<AuthorizationRequestRow> = {}
 ): AuthorizationRequestRow => ({
   id: 'req-1',
+  flow: 'authorization_code',
   clientId: 'client-1',
   requestedScopes: ['patient/*.read'],
   codeChallenge: 'challenge',
   codeChallengeMethod: 'S256',
   redirectUri: 'https://app.example/cb',
   clientState: 'state-x',
+  userCode: null,
   preApprovedScopes: null,
   requestedAt: DateTime.unsafeNow(),
   expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '5 minutes'),
