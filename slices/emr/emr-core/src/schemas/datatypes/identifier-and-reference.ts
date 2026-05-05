@@ -1,6 +1,6 @@
 import { type Arbitrary, type FastCheck, Schema, pipe } from 'effect'
 
-import { StructNoContext } from 'kitchen-sink/schema'
+import { StructNoContext, suspendWithShallowJson } from 'kitchen-sink/schema'
 import { Schema as CodeableConceptSchema } from './codeable-concept.ts'
 import { Schema as ElementSchema } from './element.ts'
 import { Schema as PeriodSchema } from './period.ts'
@@ -101,7 +101,7 @@ type ReferenceEncoded = typeof ElementSchema.Encoded &
 const ReferenceSchema: StructNoContext<
   typeof ElementSchema.fields &
     typeof referenceOwnFields & {
-      readonly identifier: Schema.suspend<IdentifierType | null, IdentifierEncoded | null, never>
+      readonly identifier: Schema.Schema<IdentifierType | null, IdentifierEncoded | null, never>
     }
 > = StructNoContext({
   ...ElementSchema.fields,
@@ -109,9 +109,12 @@ const ReferenceSchema: StructNoContext<
   /**
    * When both an identifier and a literal reference are provided, the literal reference is preferred.
    *
-   * Schema.suspend breaks the circular dependency between Reference and Identifier at runtime.
+   * `suspendWithShallowJson` breaks the circular dependency between Reference
+   * and Identifier at runtime AND prevents `JSON.stringify(schema.ast)` from
+   * expanding the cycle into an exponential blob (livestore's per-event
+   * schema-hash uses JSON.stringify and would otherwise OOM at boot).
    */
-  identifier: Schema.NullOr(Schema.suspend(() => IdentifierSchema)),
+  identifier: Schema.NullOr(suspendWithShallowJson(() => IdentifierSchema, 'Identifier')),
 }).annotations({
   // Reference → Identifier → Reference is a mutual cycle. `Schema.suspend`
   // breaks it at schema-eval time, but the default arbitrary still walks
@@ -169,7 +172,7 @@ const IdentifierSchema: StructNoContext<
    * tractable.
    */
   assigner: pipe(
-    Schema.NullOr(Schema.suspend(() => ReferenceSchema)),
+    Schema.NullOr(suspendWithShallowJson(() => ReferenceSchema, 'Reference')),
     Schema.annotations({
       arbitrary: (): Arbitrary.LazyArbitrary<null> => (fc: typeof FastCheck) => fc.constant(null),
     })

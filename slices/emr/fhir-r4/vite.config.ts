@@ -34,5 +34,10 @@ export default defineConfig({
       path.join(path.dirname(fileURLToPath(import.meta.url)), '/vitest.setupSchemaEqual.ts'),
     ],
     testTimeout: 120_000,
+    // Integration suites live under `integration-tests/` and run only via
+    // `vp run integration` (which uses `vite.integration.config.ts`). They
+    // boot a real in-memory livestore per case, so they're slower than unit
+    // tests and intentionally excluded from the default `vp test`.
+    exclude: ['**/node_modules/**', '**/dist/**', '**/integration-tests/**'],
   },
 })

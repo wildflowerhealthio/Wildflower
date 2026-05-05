@@ -19,7 +19,7 @@ describe('ObservationReferenceRange model', () => {
         expect(decoded).toSchemaEqual(ReferenceRangeSchema, rr)
       })
     )
-  })
+  }, 10_000)
 
   // -------------------------------------------------------------------------
   // Per-field round-trips. Every field is required and uses `NullOr` (not

@@ -246,12 +246,7 @@ describe('Patient model', () => {
     expect(Either.isLeft(result)).toBe(true)
   })
 
-  test.skip('commits Patient upsert with boolean active', async () => {
-    // Skipped: `createStorePromise` hangs indefinitely on this schema. Likely
-    // livestore is walking the cyclic FHIR schema graph (Reference⇄Identifier
-    // via Schema.suspend, plus Extension.value[x]) at store-init time and
-    // recursing without bound. Tracking in
-    // https://github.com/Assessment-is/Wildflower/issues/16.
+  test('commits Patient upsert with boolean active', async () => {
     const store = await createStorePromise({
       adapter: makeAdapter({ storage: { type: 'in-memory' } }),
       schema,

@@ -32,7 +32,7 @@ export function buildDomainResourceHttpApiGroup<
     HttpApiSchema.withEncoding({ kind: 'UrlParams' })
   )
 
-  return HttpApiGroup.make(resourceType, { topLevel: true })
+  return HttpApiGroup.make(resourceType)
     .add(
       HttpApiEndpoint.get('SearchByGet', `/`)
         .setUrlParams(searchParamsSchema)

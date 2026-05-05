@@ -22,6 +22,7 @@
   "type": "module",
   "scripts": {
     "dev": "vp run website#dev",
+    "integration": "vp run -r --concurrency-limit 1 integration",
     "jest": "vp run -r --concurrency-limit 1 jest",
     "lint:comments": "eslint ./apps ./global ./slices",
     "lint:docs": "markdownlint-cli2 --config .local.markdownlint-cli2.mjs",

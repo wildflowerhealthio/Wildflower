@@ -1,6 +1,7 @@
 import { type Arbitrary, type FastCheck, Schema } from 'effect'
 import { capitalize } from 'effect/String'
 
+import { suspendWithShallowJson } from 'kitchen-sink/schema'
 import * as ChoiceElement from './choice-element.ts'
 import * as Datatype from './datatype.ts'
 
@@ -64,7 +65,7 @@ function ChoiceElementSetSchemaFields<
       // `null` here keeps generated examples small and avoids cross-test cost
       // from re-walking ~50 datatype variants.
       Schema.NullOr(
-        Schema.suspend(() => baseDatatypes[name].schema()).annotations({
+        suspendWithShallowJson(() => baseDatatypes[name].schema(), name).annotations({
           arbitrary: (): Arbitrary.LazyArbitrary<null> => (fc: typeof FastCheck) =>
             fc.constant(null),
         })
@@ -138,7 +139,7 @@ const columnFor = (name: Datatype.Name): SqliteDsl.ColumnDefinition.Any => {
       // arbitrary), preserving the prior hand-written behavior.
       return State.SQLite.json({
         nullable: true,
-        schema: Schema.suspend(() => baseDatatypes[name].schema()),
+        schema: suspendWithShallowJson(() => baseDatatypes[name].schema(), name),
       })
     }
     default: {

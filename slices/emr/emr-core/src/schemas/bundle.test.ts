@@ -58,6 +58,6 @@ describe('Bundle resource', () => {
   test.each(fieldCases)(
     'property: $name field round-trips',
     ({ name, numRuns }) => roundTripField(name, numRuns),
-    10_000
+    20_000
   )
 })

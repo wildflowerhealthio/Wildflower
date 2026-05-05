@@ -34,6 +34,7 @@
     "build": "vp pack",
     "check": "vp check",
     "dev": "vp pack --watch",
+    "integration": "vp test run --config vite.integration.config.ts",
     "prepublishOnly": "vp run build",
     "test": "vp test"
   },
