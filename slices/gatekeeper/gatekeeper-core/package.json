@@ -1,0 +1,70 @@
+{
+  "name": "gatekeeper-core",
+  "version": "0.0.0",
+  "description": "OAuth and PIN auth domain package backed by LiveStore.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildlflower.git",
+    "directory": "slices/gatekeeper/gatekeeper-core"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    "./contexts": {
+      "source": "./src/contexts/index.ts",
+      "default": "./dist/contexts/index.js"
+    },
+    "./http-api-definition": {
+      "source": "./src/http-api-definition/index.ts",
+      "default": "./dist/http-api-definition/index.js"
+    },
+    "./http-api-implementation": {
+      "source": "./src/http-api-implementation/index.ts",
+      "default": "./dist/http-api-implementation/index.js"
+    },
+    "./livestore": {
+      "source": "./src/livestore/index.ts",
+      "default": "./dist/livestore/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@livestore/common": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "@livestore/utils": "catalog:",
+    "@types/fhir": "catalog:",
+    "@types/node": "^25.5.0",
+    "@typescript/native-preview": "7.0.0-dev.20260316.1",
+    "bumpp": "^11.0.1",
+    "effect": "catalog:",
+    "jose": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "typescript": "^5.9.3",
+    "vite-plus": "^0.1.11"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "@livestore/common": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "@livestore/utils": "catalog:",
+    "effect": "catalog:",
+    "jose": "catalog:",
+    "kitchen-sink": "workspace:*"
+  }
+}
