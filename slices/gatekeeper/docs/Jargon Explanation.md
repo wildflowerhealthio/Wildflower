@@ -128,7 +128,7 @@ act on the system.
 > resolves at `/access/...`. The two flows already diverge at
 > `oauth-consent` vs `pin-verification` HttpApi groups but the underlying
 > "request awaiting human decision" abstraction could plausibly unify.
-
+>
 > **Open question:** The PIN flow is essentially a hand-rolled OAuth
 > Device Authorization Flow (RFC 8628). Replacing it with the spec'd
 > shape is under consideration — see the device-flow follow-up thread.

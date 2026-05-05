@@ -660,3 +660,225 @@ test('token exchange rejects code_verifier shorter than 43 chars', async () => {
     await dispose()
   }
 })
+
+const VALID_VERIFIER = 'sample-verifier-123-padded-to-meet-rfc-7636-min-length'
+
+const seededClient = (overrides: Partial<ClientRow> = {}): ClientRow =>
+  makeClient({
+    clientId: 'client-1',
+    redirectUris: ['https://app.example/callback'],
+    allowedScopes: ['patient/*.read'],
+    ...overrides,
+  })
+
+const formBody = (overrides: Record<string, string> = {}): URLSearchParams =>
+  new URLSearchParams({
+    client_id: 'client-1',
+    code: 'auth-code-1',
+    code_verifier: VALID_VERIFIER,
+    grant_type: 'authorization_code',
+    redirect_uri: 'https://app.example/callback',
+    ...overrides,
+  })
+
+test('token exchange returns 400 invalid_request when code is unknown', async () => {
+  const { handler, dispose } = createOAuthHandler(
+    makeStore({
+      jwks: [{ signJwt: async () => 'signed', verifyJwt: async () => ({ payload: {} }) }],
+      clients: [seededClient()],
+      // No authorization codes seeded — `byCode$` returns null.
+    })
+  )
+  try {
+    const response = await handler(
+      new Request('http://localhost/oauth/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: formBody(),
+      })
+    )
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('"error":"invalid_request"')
+  } finally {
+    await dispose()
+  }
+})
+
+test('token exchange returns 400 when code clientId does not match form client_id', async () => {
+  const codeChallenge = await Effect.runPromise(computeCodeChallenge(VALID_VERIFIER))
+  const seededCode: AuthorizationCodeRow = {
+    code: 'auth-code-1',
+    requestId: 'req-1',
+    clientId: 'OTHER-CLIENT',
+    redirectUri: 'https://app.example/callback',
+    codeChallenge,
+    grantedScopes: ['patient/*.read'],
+    patient: null,
+    issuedAt: DateTime.unsafeNow(),
+    expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '60 seconds'),
+  }
+  const { handler, dispose } = createOAuthHandler(
+    makeStore({
+      jwks: [{ signJwt: async () => 'signed', verifyJwt: async () => ({ payload: {} }) }],
+      clients: [seededClient()],
+      authorizationCodes: [seededCode],
+    })
+  )
+  try {
+    const response = await handler(
+      new Request('http://localhost/oauth/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: formBody(),
+      })
+    )
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('Invalid client_id parameter')
+  } finally {
+    await dispose()
+  }
+})
+
+test('token exchange returns 400 when redirect_uri does not match the issued code', async () => {
+  const codeChallenge = await Effect.runPromise(computeCodeChallenge(VALID_VERIFIER))
+  const seededCode: AuthorizationCodeRow = {
+    code: 'auth-code-1',
+    requestId: 'req-1',
+    clientId: 'client-1',
+    redirectUri: 'https://other.example/callback',
+    codeChallenge,
+    grantedScopes: ['patient/*.read'],
+    patient: null,
+    issuedAt: DateTime.unsafeNow(),
+    expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '60 seconds'),
+  }
+  const { handler, dispose } = createOAuthHandler(
+    makeStore({
+      jwks: [{ signJwt: async () => 'signed', verifyJwt: async () => ({ payload: {} }) }],
+      clients: [seededClient()],
+      authorizationCodes: [seededCode],
+    })
+  )
+  try {
+    const response = await handler(
+      new Request('http://localhost/oauth/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: formBody(),
+      })
+    )
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('Invalid redirect_uri parameter')
+  } finally {
+    await dispose()
+  }
+})
+
+test('token exchange returns 400 when the code has expired', async () => {
+  const codeChallenge = await Effect.runPromise(computeCodeChallenge(VALID_VERIFIER))
+  const seededCode: AuthorizationCodeRow = {
+    code: 'auth-code-1',
+    requestId: 'req-1',
+    clientId: 'client-1',
+    redirectUri: 'https://app.example/callback',
+    codeChallenge,
+    grantedScopes: ['patient/*.read'],
+    patient: null,
+    issuedAt: DateTime.subtract(DateTime.unsafeNow(), { hours: 1 }),
+    expiresAt: DateTime.subtract(DateTime.unsafeNow(), { minutes: 5 }),
+  }
+  const { handler, dispose } = createOAuthHandler(
+    makeStore({
+      jwks: [{ signJwt: async () => 'signed', verifyJwt: async () => ({ payload: {} }) }],
+      clients: [seededClient()],
+      authorizationCodes: [seededCode],
+    })
+  )
+  try {
+    const response = await handler(
+      new Request('http://localhost/oauth/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: formBody(),
+      })
+    )
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('Code has expired')
+  } finally {
+    await dispose()
+  }
+})
+
+test('token exchange returns 400 when code_verifier does not match the stored challenge', async () => {
+  const realCodeChallenge = await Effect.runPromise(computeCodeChallenge(VALID_VERIFIER))
+  const seededCode: AuthorizationCodeRow = {
+    code: 'auth-code-1',
+    requestId: 'req-1',
+    clientId: 'client-1',
+    redirectUri: 'https://app.example/callback',
+    codeChallenge: realCodeChallenge,
+    grantedScopes: ['patient/*.read'],
+    patient: null,
+    issuedAt: DateTime.unsafeNow(),
+    expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '60 seconds'),
+  }
+  const { handler, dispose } = createOAuthHandler(
+    makeStore({
+      jwks: [{ signJwt: async () => 'signed', verifyJwt: async () => ({ payload: {} }) }],
+      clients: [seededClient()],
+      authorizationCodes: [seededCode],
+    })
+  )
+  try {
+    const response = await handler(
+      new Request('http://localhost/oauth/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        // Submit a *different* verifier of valid length — its hash won't
+        // match the seeded challenge.
+        body: formBody({
+          code_verifier: 'a-different-verifier-of-the-right-length-12345678901234567890',
+        }),
+      })
+    )
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('Invalid code_verifier parameter')
+  } finally {
+    await dispose()
+  }
+})
+
+test('token exchange returns 500 server_error when no signing keys are available', async () => {
+  const codeChallenge = await Effect.runPromise(computeCodeChallenge(VALID_VERIFIER))
+  const seededCode: AuthorizationCodeRow = {
+    code: 'auth-code-1',
+    requestId: 'req-1',
+    clientId: 'client-1',
+    redirectUri: 'https://app.example/callback',
+    codeChallenge,
+    grantedScopes: ['patient/*.read'],
+    patient: null,
+    issuedAt: DateTime.unsafeNow(),
+    expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '60 seconds'),
+  }
+  const { handler, dispose } = createOAuthHandler(
+    makeStore({
+      jwks: [], // empty signing-keys table
+      clients: [seededClient()],
+      authorizationCodes: [seededCode],
+    })
+  )
+  try {
+    const response = await handler(
+      new Request('http://localhost/oauth/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: formBody(),
+      })
+    )
+    expect(response.status).toBe(500)
+    expect(await response.text()).toContain('"error":"server_error"')
+  } finally {
+    await dispose()
+  }
+})
