@@ -10,7 +10,7 @@ const table = State.SQLite.table({
     redirectUri: State.SQLite.text(),
     grantedAt: State.SQLite.json({ schema: Schema.DateTimeUtc }),
     lastUsedAt: State.SQLite.json({ schema: Schema.NullOr(Schema.DateTimeUtc) }),
-    patient: State.SQLite.json({ schema: Schema.NullOr(Schema.String) }),
+    patient: State.SQLite.text({ nullable: true }),
   },
 })
 

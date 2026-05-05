@@ -13,7 +13,7 @@ const table = State.SQLite.table({
     kind: State.SQLite.json({ schema: ClientKindSchema }),
     redirectUris: State.SQLite.json({ schema: Schema.Array(Schema.String) }),
     allowedScopes: State.SQLite.json({ schema: Schema.Array(Schema.String) }),
-    secretHash: State.SQLite.json({ schema: Schema.NullOr(Schema.String) }),
+    secretHash: State.SQLite.text({ nullable: true }),
     registeredAt: State.SQLite.json({ schema: Schema.DateTimeUtc }),
     disabledAt: State.SQLite.json({ schema: Schema.NullOr(Schema.DateTimeUtc) }),
   },

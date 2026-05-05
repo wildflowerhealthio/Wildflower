@@ -10,7 +10,7 @@ const table = State.SQLite.table({
     redirectUri: State.SQLite.text(),
     codeChallenge: State.SQLite.text(),
     grantedScopes: State.SQLite.json({ schema: Schema.Array(Schema.String) }),
-    patient: State.SQLite.json({ schema: Schema.NullOr(Schema.String) }),
+    patient: State.SQLite.text({ nullable: true }),
     issuedAt: State.SQLite.json({ schema: Schema.DateTimeUtc }),
     expiresAt: State.SQLite.json({ schema: Schema.DateTimeUtc }),
   },
