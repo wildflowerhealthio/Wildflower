@@ -5,6 +5,7 @@ import { AnnotateArrayWithArbitrary, TimelessDateFromString } from 'kitchen-sink
 import { State } from '@livestore/livestore'
 import { makeDomainResourcePersistence } from '../internal/domain-resource-persistence.ts'
 import { makeRowSchemas } from '../internal/make-row-schemas.ts'
+import * as ChoiceElementSet from '../schemas/choice-element-set.ts'
 import {
   Reference,
   Identifier,
@@ -35,17 +36,14 @@ const columns = {
   }),
   birthDate: State.SQLite.text({ nullable: true, schema: TimelessDateFromString }),
   communication: State.SQLite.json({
-    nullable: true,
     schema: Schema.Array(PatientCommunication.Schema).pipe(
       AnnotateArrayWithArbitrary({ maxLength: 2 })
     ),
   }),
   contact: State.SQLite.json({
-    nullable: true,
     schema: Schema.Array(PatientContact.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
   }),
-  deceasedBoolean: State.SQLite.boolean({ nullable: true }),
-  deceasedDateTime: State.SQLite.text({ nullable: true, schema: Schema.DateTimeUtc }),
+  ...ChoiceElementSet.Columns('deceased', ChoiceElementSet.FhirR4SetChoices['Patient.deceased[x]']),
   gender: State.SQLite.text({ nullable: true, schema: AdministrativeGender }),
   generalPractitioner: State.SQLite.json({
     schema: Schema.Array(Reference.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
@@ -58,8 +56,10 @@ const columns = {
   }),
   managingOrganization: State.SQLite.json({ nullable: true, schema: Reference.Schema }),
   maritalStatus: State.SQLite.json({ nullable: true, schema: CodeableConcept.Schema }),
-  multipleBirthBoolean: State.SQLite.boolean({ nullable: true }),
-  multipleBirthInteger: State.SQLite.integer({ nullable: true, schema: Schema.Int }),
+  ...ChoiceElementSet.Columns(
+    'multipleBirth',
+    ChoiceElementSet.FhirR4SetChoices['Patient.multipleBirth[x]']
+  ),
   name: State.SQLite.json({
     schema: Schema.Array(HumanName.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
   }),

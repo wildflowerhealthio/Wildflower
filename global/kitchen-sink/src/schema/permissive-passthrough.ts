@@ -1,5 +1,5 @@
-import type { ParseResult, SchemaAST } from 'effect'
-import { Arbitrary, Effect, Schema } from 'effect'
+import type { Arbitrary, FastCheck, ParseResult, SchemaAST } from 'effect'
+import { Effect, Schema } from 'effect'
 
 // Without this, Schema.equivalence falls back to Equal.equals on the bare
 // Declaration, which is reference equality for plain objects/arrays — so a
@@ -51,7 +51,15 @@ export const PermissivePassthrough = Schema.declare<unknown, any, []>(
         Effect.succeed(x),
   },
   {
-    arbitrary: () => Arbitrary.makeLazy(Schema.Object),
+    // `Arbitrary.make(...)` always emits `null`. PermissivePassthrough is a
+    // "TODO: register a strict schema later" placeholder; its only job is to
+    // round-trip values losslessly. Random object/array generation explodes
+    // property-test cost on resources that use it for choice-element columns
+    // (e.g. Observation.value[x]), and the resulting shapes don't match any
+    // real datatype — so callers that care about specific value variants
+    // construct values explicitly anyway. Once a strict schema replaces this
+    // placeholder, arbitrary inherits from there.
+    arbitrary: (): Arbitrary.LazyArbitrary<unknown> => (fc: typeof FastCheck) => fc.constant(null),
     equivalence: () => deepEqual,
     description: 'A placeholder schema that accepts any value.',
     jsonSchema: {},

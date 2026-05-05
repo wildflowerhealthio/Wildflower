@@ -15,15 +15,14 @@ const ResourceType = 'ObservationReferenceRange' as const
 type ResourceType = typeof ResourceType
 
 const fields = {
-  age: Schema.optional(Range.Schema),
+  age: Schema.NullOr(Range.Schema),
   appliesTo: Schema.Array(CodeableConcept.Schema).pipe(
-    AnnotateArrayWithArbitrary({ maxLength: 2 }),
-    Schema.optionalWith({ default: () => [] })
+    AnnotateArrayWithArbitrary({ maxLength: 2 })
   ),
-  high: Schema.optional(Quantity.Schema),
-  low: Schema.optional(Quantity.Schema),
-  text: Schema.optional(Schema.String),
-  type: Schema.optional(CodeableConcept.Schema),
+  high: Schema.NullOr(Quantity.Schema),
+  low: Schema.NullOr(Quantity.Schema),
+  text: Schema.NullOr(Schema.String),
+  type: Schema.NullOr(CodeableConcept.Schema),
 } as const satisfies FieldsNoContext
 
 /**

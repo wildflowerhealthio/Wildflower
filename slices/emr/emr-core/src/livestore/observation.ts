@@ -1,10 +1,11 @@
 import { Arbitrary, type FastCheck, Schema } from 'effect'
 
-import { AnnotateArrayWithArbitrary, PermissivePassthrough } from 'kitchen-sink/schema'
+import { AnnotateArrayWithArbitrary } from 'kitchen-sink/schema'
 
 import { State } from '@livestore/livestore'
 import { makeDomainResourcePersistence } from '../internal/domain-resource-persistence.ts'
 import { makeRowSchemas } from '../internal/make-row-schemas.ts'
+import * as ChoiceElementSet from '../schemas/choice-element-set.ts'
 import * as Annotation from '../schemas/datatypes/annotation.ts'
 import * as CodeableConcept from '../schemas/datatypes/codeable-concept.ts'
 import * as Identifier from '../schemas/datatypes/identifier.ts'
@@ -56,7 +57,14 @@ const columns = {
     schema: Schema.Array(Reference.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
   }),
   device: State.SQLite.json({ nullable: true, schema: Reference.Schema }),
-  effectiveDateTime: State.SQLite.text({ nullable: true, schema: Schema.DateTimeUtc }),
+  // FHIR R4 `Observation.effective[x]`: choice of `dateTime | Period |
+  // Timing | instant`. Using the column helper keeps storage parallel with
+  // `value[x]` below; mutex enforcement is not implemented (see Capability
+  // Statement.md).
+  ...ChoiceElementSet.Columns(
+    'effective',
+    ChoiceElementSet.FhirR4SetChoices['Observation.effective[x]']
+  ),
   encounter: State.SQLite.json({ nullable: true, schema: Reference.Schema }),
   focus: State.SQLite.json({
     schema: Schema.Array(Reference.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
@@ -89,17 +97,7 @@ const columns = {
   specimen: State.SQLite.json({ nullable: true, schema: Reference.Schema }),
   status: State.SQLite.text({ schema: StatusSchema }),
   subject: State.SQLite.json({ nullable: true, schema: Reference.Schema }),
-  valueQuantity: State.SQLite.json({ nullable: true, schema: PermissivePassthrough }),
-  valueCodeableConcept: State.SQLite.json({ nullable: true, schema: PermissivePassthrough }),
-  valueString: State.SQLite.text({ nullable: true }),
-  valueBoolean: State.SQLite.boolean({ nullable: true }),
-  valueInteger: State.SQLite.integer({ nullable: true, schema: Schema.Int }),
-  valueRange: State.SQLite.json({ nullable: true, schema: PermissivePassthrough }),
-  valueRatio: State.SQLite.json({ nullable: true, schema: PermissivePassthrough }),
-  valueSampledData: State.SQLite.json({ nullable: true, schema: PermissivePassthrough }),
-  valueTime: State.SQLite.text({ nullable: true }),
-  valueDateTime: State.SQLite.text({ nullable: true, schema: Schema.DateTimeUtc }),
-  valuePeriod: State.SQLite.json({ nullable: true, schema: PermissivePassthrough }),
+  ...ChoiceElementSet.Columns('value', ChoiceElementSet.FhirR4SetChoices['Observation.value[x]']),
 } as const
 
 const table = State.SQLite.table({ name: resourceType, columns })

@@ -16,14 +16,12 @@ type ResourceType = typeof ResourceType
 
 const fields = {
   code: CodeableConcept.Schema,
-  dataAbsentReason: Schema.optional(CodeableConcept.Schema),
+  dataAbsentReason: Schema.NullOr(CodeableConcept.Schema),
   interpretation: Schema.Array(CodeableConcept.Schema).pipe(
-    AnnotateArrayWithArbitrary({ maxLength: 2 }),
-    Schema.optionalWith({ default: () => [] })
+    AnnotateArrayWithArbitrary({ maxLength: 2 })
   ),
   referenceRange: Schema.Array(ObservationReferenceRange.Schema).pipe(
-    AnnotateArrayWithArbitrary({ maxLength: 2 }),
-    Schema.optionalWith({ default: () => [] })
+    AnnotateArrayWithArbitrary({ maxLength: 2 })
   ),
   ...ChoiceElementSet.SchemaFields(
     'value',

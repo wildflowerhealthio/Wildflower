@@ -1,10 +1,9 @@
-import { Schema } from 'effect'
+import { type Arbitrary, type FastCheck, Schema, pipe } from 'effect'
 
-import { StructNoContext } from 'kitchen-sink/schema'
+import { StructNoContext, suspendWithShallowJson } from 'kitchen-sink/schema'
 import { Schema as CodeableConceptSchema } from './codeable-concept.ts'
 import { Schema as ElementSchema } from './element.ts'
 import { Schema as PeriodSchema } from './period.ts'
-
 /**
  * Circular dependency note:
  * Reference and Identifier have a mutual dependency:
@@ -42,7 +41,14 @@ const referenceOwnFields = {
    */
   reference: Schema.NullOr(Schema.String),
   /**
-   * This element is used to indicate the type of  the target of the reference. This may be used which ever of the other elements are populated (or not). In some cases, the type of the target may be determined by inspection of the reference (e.g. a RESTful URL) or by resolving the target of the reference; if both the type and a reference is provided, the reference SHALL resolve to a resource of the same type as that specified.
+   * This element is used to indicate the type of the target of the reference.
+   *
+   * Per FHIR R4, `Reference.type` is typed as `uri`, but conventional values
+   * are bare resource type names ("Patient", "Practitioner") that cannot be
+   * parsed by the URL constructor. We therefore keep this as `string`. The
+   * looser typing — together with the absence of target-type enforcement —
+   * is captured under "Reference target-type enforcement" in
+   * `slices/emr/fhir-r4/docs/Capability Statement.md`.
    */
   type: Schema.NullOr(Schema.String),
 } as const satisfies Schema.Struct.Fields
@@ -54,8 +60,12 @@ const identifierOwnFields = {
   period: Schema.NullOr(PeriodSchema),
   /**
    * Identifier.system is always case sensitive.
+   *
+   * Per FHIR R4, `Identifier.system` is `uri` — typically an absolute URL
+   * or a `urn:` URN (e.g. `urn:oid:1.2.36.146.595.217.0.1`). Both parse via
+   * the URL constructor.
    */
-  system: Schema.NullOr(Schema.String),
+  system: Schema.NullOr(Schema.URL),
   /**
    * This element deals only with general categories of identifiers.  It SHOULD not be used for codes that correspond 1..1 with the Identifier.system.
    */
@@ -70,6 +80,16 @@ const identifierOwnFields = {
   value: Schema.NullOr(Schema.String),
 } as const satisfies Schema.Struct.Fields
 
+type ReferenceType = typeof ElementSchema.Type &
+  Schema.Struct.Type<typeof referenceOwnFields> & {
+    readonly identifier: IdentifierType | null
+  }
+
+type ReferenceEncoded = typeof ElementSchema.Encoded &
+  Schema.Struct.Encoded<typeof referenceOwnFields> & {
+    readonly identifier: IdentifierEncoded | null
+  }
+
 /**
  * A reference from one FHIR resource to another, by URL, type, display text,
  * and/or Identifier.
@@ -78,26 +98,30 @@ const identifierOwnFields = {
  * points to an Identifier, while `Identifier.assigner` points back to a
  * Reference. `Schema.suspend` breaks this cycle at schema evaluation time.
  */
-const ReferenceSchema: Schema.Schema<
-  Schema.Schema.Type<typeof ElementSchema> &
-    Schema.Struct.Type<typeof referenceOwnFields> & {
-      readonly identifier: null | Schema.Schema.Type<typeof IdentifierSchema>
-    },
-  Schema.Schema.Encoded<typeof ElementSchema> &
-    Schema.Struct.Encoded<typeof referenceOwnFields> & {
-      readonly identifier: Schema.Schema.Encoded<typeof IdentifierSchema> | null
-    },
-  never
+const ReferenceSchema: StructNoContext<
+  typeof ElementSchema.fields &
+    typeof referenceOwnFields & {
+      readonly identifier: Schema.Schema<IdentifierType | null, IdentifierEncoded | null, never>
+    }
 > = StructNoContext({
   ...ElementSchema.fields,
   ...referenceOwnFields,
   /**
    * When both an identifier and a literal reference are provided, the literal reference is preferred.
    *
-   * Schema.suspend breaks the circular dependency between Reference and Identifier at runtime.
+   * `suspendWithShallowJson` breaks the circular dependency between Reference
+   * and Identifier at runtime AND prevents `JSON.stringify(schema.ast)` from
+   * expanding the cycle into an exponential blob (livestore's per-event
+   * schema-hash uses JSON.stringify and would otherwise OOM at boot).
    */
-  identifier: Schema.NullOr(Schema.suspend(() => IdentifierSchema)),
+  identifier: Schema.NullOr(suspendWithShallowJson(() => IdentifierSchema, 'Identifier')),
 }).annotations({
+  // Reference → Identifier → Reference is a mutual cycle. `Schema.suspend`
+  // breaks it at schema-eval time, but the default arbitrary still walks
+  // each recursion the regex/struct way and amplifies generation cost
+  // exponentially across resources that hold many Reference fields
+  // (Observation, Patient, …). Capping `assigner` to `null` on the
+  // Identifier side (below) bounds depth to one Reference→Identifier hop.
   jsonSchema: {
     description: 'A reference from one FHIR resource to another',
     type: 'object',
@@ -116,20 +140,25 @@ const ReferenceSchema: Schema.Schema<
   },
 })
 
+type IdentifierType = typeof ElementSchema.Type &
+  Schema.Struct.Type<typeof identifierOwnFields> & {
+    readonly assigner: ReferenceType | null
+  }
+
+type IdentifierEncoded = typeof ElementSchema.Encoded &
+  Schema.Struct.Encoded<typeof identifierOwnFields> & {
+    readonly assigner: ReferenceEncoded | null
+  }
+
 /**
  * An identifier intended for computation — carries a `system` URI, a `value`,
  * an optional `type`, `use`, `period`, and an optional `assigner` Reference.
  */
-const IdentifierSchema: Schema.Schema<
-  Schema.Schema.Type<typeof ElementSchema> &
-    Schema.Struct.Type<typeof identifierOwnFields> & {
-      readonly assigner: null | Schema.Schema.Type<typeof ReferenceSchema>
-    },
-  Schema.Schema.Encoded<typeof ElementSchema> &
-    Schema.Struct.Encoded<typeof identifierOwnFields> & {
-      readonly assigner: null | Schema.Schema.Encoded<typeof ReferenceSchema>
-    },
-  never
+const IdentifierSchema: StructNoContext<
+  typeof ElementSchema.fields &
+    typeof identifierOwnFields & {
+      readonly assigner: Schema.Schema<ReferenceType | null, ReferenceEncoded | null, never>
+    }
 > = StructNoContext({
   ...ElementSchema.fields,
   ...identifierOwnFields,
@@ -137,8 +166,17 @@ const IdentifierSchema: Schema.Schema<
    * The Identifier.assigner may omit the .reference element and only contain a .display element.
    *
    * Schema.suspend breaks the circular dependency between Identifier and Reference at runtime.
+   * The arbitrary annotation caps `Arbitrary.make(...)` at `null` so property tests don't
+   * recursively generate Reference→Identifier→Reference chains. The mutual cycle is
+   * exercised explicitly by `cycles.test.ts`; everywhere else, capping keeps generation
+   * tractable.
    */
-  assigner: Schema.NullOr(Schema.suspend(() => ReferenceSchema)),
+  assigner: pipe(
+    Schema.NullOr(suspendWithShallowJson(() => ReferenceSchema, 'Reference')),
+    Schema.annotations({
+      arbitrary: (): Arbitrary.LazyArbitrary<null> => (fc: typeof FastCheck) => fc.constant(null),
+    })
+  ),
 }).annotations({
   jsonSchema: {
     description: 'An identifier intended for computation',

@@ -12,7 +12,7 @@ const fields = {
   contentType: Schema.NullOr(Code),
   language: Schema.NullOr(Code),
   data: Schema.NullOr(Schema.String),
-  url: Schema.NullOr(Schema.String),
+  url: Schema.NullOr(Schema.URL),
   size: Schema.NullOr(Schema.Int),
   hash: Schema.NullOr(Schema.String),
   title: Schema.NullOr(Schema.String),

@@ -8,22 +8,79 @@ import { events, queries, schema, Patient } from './index.ts'
 
 const PatientSchema = Patient.RowSchema
 
-const patientArb = Arbitrary.make(PatientSchema)
+// ---------------------------------------------------------------------------
+// Decomposed round-trip.
+//
+// Round-tripping `Arbitrary.make(PatientSchema)` walked the entire Patient
+// graph (HumanName[], Address[], Identifier[], Reference[], …) every
+// iteration, blowing the 60s timeout. Each per-column property below picks
+// ONE column out via `RowSchema.pick(name)` and round-trips just that
+// sub-schema, so generation cost drops to O(field) per iteration.
+//
+// `Schema.Struct.pick(...)` doesn't always propagate the no-context
+// constraint when columns reach `Schema.suspend(...)` (e.g. Reference
+// →Identifier). At runtime every column schema is no-context, so the cast
+// to `Schema.Schema.AnyNoContext` is sound and isolated to this helper.
+//
+// Reference-bearing columns walk a Reference→Identifier cycle each
+// iteration. The cycle is exercised exhaustively in `cycles.test.ts`, so
+// these columns get a smaller `numRuns` here purely to fit under 5s.
+// ---------------------------------------------------------------------------
+
+const REFERENCE_NUM_RUNS = 25
+
+const roundTripColumn = (name: keyof typeof PatientSchema.Type, numRuns?: number): void => {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see file header
+  const sub = PatientSchema.pick(name) as unknown as Schema.Schema.AnyNoContext
+  fc.assert(
+    fc.property(Arbitrary.make(sub), (value) => {
+      // oxlint-disable-next-line typescript/no-unsafe-assignment -- AnyNoContext typing erasure (test-only)
+      const encoded = Schema.encodeSync(sub)(value)
+      // oxlint-disable-next-line typescript/no-unsafe-assignment -- AnyNoContext typing erasure (test-only)
+      const decoded = Schema.decodeSync(sub)(encoded)
+      expect(decoded).toSchemaEqual(sub, value)
+    }),
+    { numRuns }
+  )
+}
+
+interface ColumnCase {
+  readonly name: keyof typeof PatientSchema.Type
+  readonly numRuns?: number
+}
+
+const columnCases: readonly ColumnCase[] = [
+  { name: 'name' },
+  { name: 'address' },
+  { name: 'telecom' },
+  { name: 'photo' },
+  { name: 'maritalStatus' },
+  // PatientLink carries a Reference; falls under the cycle budget.
+  { name: 'link', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'identifier', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'generalPractitioner', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'communication', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'contact', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'managingOrganization', numRuns: REFERENCE_NUM_RUNS },
+  { name: 'active' },
+  { name: 'birthDate' },
+  { name: 'deceasedBoolean' },
+  { name: 'deceasedDateTime' },
+  { name: 'gender' },
+  { name: 'multipleBirthBoolean' },
+  { name: 'multipleBirthInteger' },
+  { name: 'language' },
+  { name: 'implicitRules' },
+  { name: 'meta' },
+  { name: 'resourceType' },
+]
 
 describe('Patient model', () => {
-  // Property tests over the full Patient row schema fan out through Reference
-  // (which embeds Identifier, which embeds Reference) — generation is heavy
-  // enough to take ~10s solo and well over that under `vp run -r test`
-  // contention. The 60s timeout is sized for worst-case worker contention.
-  test('property: encode-decode cycle', () => {
-    fc.assert(
-      fc.property(patientArb, (patient) => {
-        const encoded = Schema.encodeSync(PatientSchema)(patient)
-        const decoded = Schema.decodeSync(PatientSchema)(encoded)
-        expect(decoded).toSchemaEqual(PatientSchema, patient)
-      })
-    )
-  }, 60_000)
+  test.each(columnCases)(
+    'property: $name column round-trips',
+    ({ name, numRuns }) => roundTripColumn(name, numRuns),
+    10_000
+  )
 
   test('decodes a realistic FHIR R4 Patient JSON payload', () => {
     const wirePayload: typeof PatientSchema.Encoded = {
@@ -104,8 +161,8 @@ describe('Patient model', () => {
           assigner: null,
         },
       ]),
-      communication: null,
-      contact: null,
+      communication: '[]',
+      contact: '[]',
       deceasedBoolean: null,
       deceasedDateTime: null,
       generalPractitioner: '[]',
@@ -157,8 +214,8 @@ describe('Patient model', () => {
       active: null,
       address: '[]',
       birthDate: null,
-      communication: null,
-      contact: null,
+      communication: '[]',
+      contact: '[]',
       deceasedBoolean: null,
       deceasedDateTime: null,
       gender: null,
@@ -189,12 +246,7 @@ describe('Patient model', () => {
     expect(Either.isLeft(result)).toBe(true)
   })
 
-  test.skip('commits Patient upsert with boolean active', async () => {
-    // Skipped: `createStorePromise` hangs indefinitely on this schema. Likely
-    // livestore is walking the cyclic FHIR schema graph (Reference⇄Identifier
-    // via Schema.suspend, plus Extension.value[x]) at store-init time and
-    // recursing without bound. Tracking in
-    // https://github.com/Assessment-is/Wildflower/issues/16.
+  test('commits Patient upsert with boolean active', async () => {
     const store = await createStorePromise({
       adapter: makeAdapter({ storage: { type: 'in-memory' } }),
       schema,
@@ -208,8 +260,8 @@ describe('Patient model', () => {
         active: 1,
         address: '[]',
         birthDate: null,
-        communication: null,
-        contact: null,
+        communication: '[]',
+        contact: '[]',
         deceasedBoolean: null,
         deceasedDateTime: null,
         gender: null,

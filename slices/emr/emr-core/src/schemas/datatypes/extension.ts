@@ -1,5 +1,6 @@
 import { type Arbitrary, type FastCheck, Schema, pipe } from 'effect'
 
+import { suspendWithShallowJson } from 'kitchen-sink/schema'
 import * as ChoiceElementSet from '../choice-element-set.ts'
 import * as Datatype from '../datatype.ts'
 
@@ -42,7 +43,7 @@ const ExtensionSchema: Schema.Schema<ExtensionType, ExtensionEncoded, never> = S
   id: Schema.NullOr(Schema.String),
   extension: pipe(
     Schema.Array(
-      Schema.suspend(() => ExtensionSchema).annotations({
+      suspendWithShallowJson(() => ExtensionSchema, 'Extension').annotations({
         identifier: 'extension',
       })
     ),

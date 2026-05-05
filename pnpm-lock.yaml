@@ -867,6 +867,57 @@ importers:
         specifier: 'catalog:'
         version: 0.1.20(@opentelemetry/api@1.9.0)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(sass@1.99.0)(terser@5.46.1)(typescript@5.9.3)(vite@7.2.4(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3))(yaml@2.8.3)
 
+  slices/emr/fhir-r4:
+    devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.93.8(effect@3.19.12)
+      '@livestore/adapter-node':
+        specifier: 'catalog:'
+        version: 0.4.0-dev.22(1d7ea96b3ef7d61894b4dc176e929189)
+      '@livestore/common':
+        specifier: 'catalog:'
+        version: 0.4.0-dev.22(2d004e5dfa8e30e8463d36e3a9b81197)
+      '@livestore/livestore':
+        specifier: 'catalog:'
+        version: 0.4.0-dev.22(2d004e5dfa8e30e8463d36e3a9b81197)
+      '@livestore/peer-deps':
+        specifier: 'catalog:'
+        version: 0.4.0-dev.22(@effect/workflow@0.15.2(@effect/experimental@0.57.11(@effect/platform@0.93.8(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.93.8(effect@3.19.12))(@effect/rpc@0.72.2(@effect/platform@0.93.8(effect@3.19.12))(effect@3.19.12))(effect@3.19.12))(@opentelemetry/sdk-logs@0.214.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.6.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.7.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.7.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)
+      '@livestore/utils':
+        specifier: 'catalog:'
+        version: 0.4.0-dev.22(b01b354b42e232858288adcdbe62372b)
+      '@types/fhir':
+        specifier: 'catalog:'
+        version: 0.0.41
+      '@types/node':
+        specifier: ^24
+        version: 24.12.2
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260429.1
+      bumpp:
+        specifier: ^11.0.1
+        version: 11.0.1
+      effect:
+        specifier: 'catalog:'
+        version: 3.19.12
+      emr-core:
+        specifier: workspace:*
+        version: link:../emr-core
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.1.20(@opentelemetry/api@1.9.0)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(sass@1.99.0)(terser@5.46.1)(typescript@5.9.3)(vite@7.2.4(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3))(yaml@2.8.3)
+
   slices/telemetry/telemetry-core:
     devDependencies:
       '@effect/opentelemetry':

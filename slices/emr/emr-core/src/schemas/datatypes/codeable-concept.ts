@@ -1,6 +1,10 @@
 import { Schema } from 'effect'
 
-import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
+import {
+  AnnotateArrayWithArbitrary,
+  StructNoContext,
+  type FieldsNoContext,
+} from 'kitchen-sink/schema'
 import { registerDatatypeSchema } from '../datatype-registry.ts'
 import { Schema as CodingSchema } from './coding.ts'
 import { Schema as ElementSchema } from './element.ts'
@@ -17,8 +21,14 @@ const fields = {
    * Codes may be defined very casually in enumerations, or code lists, up to
    * very formal definitions such as SNOMED CT - see the HL7 v3 Core Principles
    * for more information.
+   *
+   * `Arbitrary.make(...)` caps generated arrays to length ≤ 2; FHIR allows
+   * any number of codings, so production decode/encode behavior is unchanged.
+   * The cap exists purely to keep property-test fan-out tractable — every
+   * CodeableConcept-bearing schema (Identifier.type, Reference.identifier,
+   * Patient.contact.relationship, …) inherits this generator cost.
    */
-  coding: Schema.Array(CodingSchema),
+  coding: Schema.Array(CodingSchema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
   /**
    * Very often the text is the same as a displayName of one of the codings.
    */

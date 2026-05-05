@@ -23,8 +23,10 @@ const fields = {
   display: Schema.NullOr(Schema.String),
   /**
    * The URI may be an OID (urn:oid:...) or a UUID (urn:uuid:...).
+   * Per FHIR R4 § Coding, `system` is a URI; absolute URIs (including the
+   * `urn:oid:` and `urn:uuid:` schemes) parse via the URL constructor.
    */
-  system: Schema.NullOr(Schema.String),
+  system: Schema.NullOr(Schema.URL),
   /**
    * Amongst a set of alternatives, a directly chosen code is the most appropriate starting point for new translations.
    */
