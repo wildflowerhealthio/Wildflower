@@ -463,6 +463,70 @@ test('device-flow token exchange mints token after approval', async () => {
   }
 })
 
+test('device_code is single-use: a second token poll returns expired_token', async () => {
+  const signingKey = await SigningKey.generate()
+  const approved: AuthorizationRequestRow = {
+    id: 'dev-1',
+    flow: 'device_code',
+    clientId: 'wildflower-host',
+    requestedScopes: ['owner'],
+    codeChallenge: null,
+    codeChallengeMethod: null,
+    redirectUri: null,
+    clientState: null,
+    userCode: 'BCDF-GHJK',
+    preApprovedScopes: null,
+    requestedAt: DateTime.unsafeNow(),
+    expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '5 minutes'),
+    lastPolledAt: null,
+    status: 'approved',
+    grantedScopes: ['owner'],
+    patient: null,
+  }
+  const store = makeStore({
+    signingKeys: [signingKey],
+    clients: [makeClient()],
+    authorizationRequests: [approved],
+  })
+  const { handler, dispose } = createHandler(store)
+
+  try {
+    // First exchange: success.
+    const first = await handler(
+      new Request(`${ORIGIN}/oauth/token`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: 'wildflower-host',
+          device_code: 'dev-1',
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        }),
+      })
+    )
+    expect(first.status).toBe(200)
+
+    // Second exchange against the same device_code: must reject — the
+    // approve-then-consume transition should have flipped status to
+    // 'expired' on the first call.
+    const second = await handler(
+      new Request(`${ORIGIN}/oauth/token`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: 'wildflower-host',
+          device_code: 'dev-1',
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        }),
+      })
+    )
+    expect(second.status).toBe(400)
+    const body = await readJsonObject(second)
+    expect(body['error']).toBe('expired_token')
+  } finally {
+    await dispose()
+  }
+})
+
 test('GET /access/devices/:userCode returns the pending consent for an owner', async () => {
   const signingKey = await SigningKey.generate()
   const pending: AuthorizationRequestRow = {
@@ -576,6 +640,78 @@ test('POST /access/devices/:userCode/approve flips status to approved', async ()
       })
     )
     expect(tokenResponse.status).toBe(200)
+  } finally {
+    await dispose()
+  }
+})
+
+test('POST /access/devices/:userCode/approve with empty granted scopes routes through deny', async () => {
+  const signingKey = await SigningKey.generate()
+  const pending: AuthorizationRequestRow = {
+    id: 'dev-1',
+    flow: 'device_code',
+    clientId: 'wildflower-host',
+    requestedScopes: ['owner'],
+    codeChallenge: null,
+    codeChallengeMethod: null,
+    redirectUri: null,
+    clientState: null,
+    userCode: 'BCDF-GHJK',
+    preApprovedScopes: null,
+    requestedAt: DateTime.unsafeNow(),
+    expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '5 minutes'),
+    lastPolledAt: null,
+    status: 'pending',
+    grantedScopes: null,
+    patient: null,
+  }
+  const store = makeStore({
+    signingKeys: [signingKey],
+    clients: [makeClient()],
+    authorizationRequests: [pending],
+  })
+  const { handler, dispose } = createHandler(store)
+  const ownerToken = await Effect.runPromise(
+    mintAccessToken(signingKey, ORIGIN, {
+      clientId: 'wildflower-host',
+      scope: ['owner'],
+      ttlSeconds: 60,
+    })
+  )
+
+  try {
+    // Owner submits an empty `approvedScopes` array (or one with only
+    // non-requested scopes). Treated as a denial — the OAuth client
+    // would otherwise get a `scope=''` token that grants nothing.
+    const response = await handler(
+      new Request(`${ORIGIN}/access/devices/BCDF-GHJK/approve`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${ownerToken}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ approvedScopes: [] }),
+      })
+    )
+    expect(response.status).toBe(200)
+    const body = await readJsonObject(response)
+    expect(body['status']).toBe('denied')
+
+    // The device-code branch should now return access_denied.
+    const tokenResponse = await handler(
+      new Request(`${ORIGIN}/oauth/token`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: 'wildflower-host',
+          device_code: 'dev-1',
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        }),
+      })
+    )
+    expect(tokenResponse.status).toBe(400)
+    const tokenBody = await readJsonObject(tokenResponse)
+    expect(tokenBody['error']).toBe('access_denied')
   } finally {
     await dispose()
   }

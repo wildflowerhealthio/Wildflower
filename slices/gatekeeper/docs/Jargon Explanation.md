@@ -12,20 +12,22 @@ questions about whether two concepts should collapse are flagged with
 ## What gatekeeper is for
 
 The Gatekeeper system allows an authorized **Owner** on one device to
-issue **Grants** to OAuth Clients or to **Session** cookies requested
-on a separate device, allowing them to access data in a system, and
-possibly act as Owners.
+issue **Grants** to OAuth Clients (registered in the
+[`clients`](#client) table) requesting access on a separate device,
+allowing them to access data in a system. The host browser bootstraps
+onto a fresh deployment via either the RFC 8628 device authorization
+flow or a one-shot [bootstrap URL](#bootstrap-url).
 
 ## Roles
 
 Three distinct human/machine roles whose names collide easily — get these
 straight first.
 
-| Role               | Who they are                                                                                                                 | Where they show up                                                  |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| **OAuth client**   | Remote third-party app requesting access (the SMART-on-FHIR caller).                                                         | `client_id`, `redirect_uri`, `/oauth/...` endpoints                 |
-| **Owner**          | Human with absolute control over the data this gatekeeper protects. Approves consent, verifies PINs, gates inbound requests. | `/access/...` endpoints, `RequireAuthMiddleware`, `Session` cookies |
-| **Resource owner** | OAuth-spec name for the Owner — the person whose data is being shared.                                                       | OAuth spec only; we say "Owner"                                     |
+| Role               | Who they are                                                                                                  | Where they show up                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **OAuth client**   | Remote app requesting access (the SMART-on-FHIR caller, or `wildflower-host` itself).                         | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table  |
+| **Owner**          | Human with absolute control over the data this gatekeeper protects. Approves consent, gates inbound requests. | `/access/...` endpoints, `RequireAuthMiddleware`, Bearer tokens with `'owner'` scope |
+| **Resource owner** | OAuth-spec name for the Owner — the person whose data is being shared.                                        | OAuth spec only; we say "Owner"                                                      |
 
 > **Open question:** The OAuth `client` (third-party app) is unrelated to
 > any LiveStore "client" instance — the word is overloaded. The spec name
@@ -38,26 +40,53 @@ These are the concepts named in `gatekeeper-core/src/livestore/` and
 `gatekeeper-core/src/contexts/`. Each one corresponds to either a table,
 an event, or a Tag.
 
+### Client
+
+A registered OAuth client. Every `client_id` accepted on
+`/oauth/authorize`, `/oauth/token`, or `/oauth/device_authorization` must
+resolve to a row in this table — unknown ids are rejected at the
+boundary.
+
+- **Table:** `clients`
+- **Identifier:** `clientId` (string PK, not a generated id — the
+  registrar supplies it).
+- **Kind:** `'public' | 'confidential'`. Confidential clients carry a
+  `secretHash` (SHA-256) and must present `client_secret` on
+  `/oauth/token`, verified by `timingSafeEqual`.
+- **Allowlists:** `redirectUris` (exact match) and `allowedScopes`
+  (hard cap on what this client can request).
+- **Lifecycle:** `clientRegistered` → `clientUpdated` → `clientDisabled`
+  (soft delete via `disabledAt`).
+
+The `wildflower-host` first-party client is auto-seeded at startup by
+`SeedFirstPartyClientLive` with `kind: 'public'`, empty `redirectUris`
+(it gets tokens via the [bootstrap URL](#bootstrap-url), not OAuth
+redirects), and `allowedScopes: ['owner']`.
+
 ### AuthorizationRequest
 
 A pending OAuth 2.0 authorization that has been started but not yet
-resolved. Created when an OAuth client hits `GET /oauth/authorize`.
+resolved.
 
 - **Table:** `authorizationRequests`
-- **Status field:** `'pending' | 'approved' | 'denied' | 'expired'`
+- **Discriminator:** `flow: 'authorization_code' | 'device_code'`.
+- **Status field:** `'pending' | 'approved' | 'denied' | 'expired'`.
 - **TTL:** 5 minutes.
-- **Identifier:** `requestId` (UUID).
+- **Identifier:** `id` (UUID — for code flow, the request id; for
+  device flow, the `device_code`).
+- **Device-flow extras:** `userCode` (the human-typed RFC 8628 §6.1
+  code, formatted `BCDF-GHJK`); `lastPolledAt` (for the `slow_down`
+  rate limit).
 
-The row carries everything the Owner needs to decide (client id, requested
-scopes, code challenge, redirect URI, PKCE method, the OAuth `state`
-parameter), plus a `preApprovedScopes` snapshot of any matching standing
-[Grant](#grant) at the time the request was started.
+Code-flow rows carry the OAuth client's PKCE `code_challenge`,
+`redirect_uri`, requested `scope`, and the `state` parameter. Device-flow
+rows leave those columns null.
 
 ### AuthorizationCode
 
-A single-use bearer credential issued **after** an `AuthorizationRequest`
-is approved. The OAuth client redeems it at `POST /oauth/token` to receive
-a JWT access token.
+A single-use bearer credential issued **after** an
+`AuthorizationRequest` (code flow only) is approved. The OAuth client
+redeems it at `POST /oauth/token` to receive a JWT access token.
 
 - **Table:** `authorizationCodes`
 - **Identifier:** `code` (UUID, the primary key).
@@ -66,11 +95,8 @@ a JWT access token.
   `authorizationCodeConsumed` on every terminal token-exchange path
   (success, expiry, mismatch, verifier failure).
 
-> **Open question:** `code` is the primary key but `requestId` is also a
-> column — the two ids cover the same logical row at different stages of
-> the OAuth flow. Worth deciding whether code issuance should be modeled
-> as a state transition on `AuthorizationRequest` rather than a separate
-> table.
+Device-flow does not use `AuthorizationCode`; the device-code branch of
+`/oauth/token` reads the approval directly off `AuthorizationRequest`.
 
 ### Grant
 
@@ -80,126 +106,94 @@ re-authorizations.
 
 - **Table:** `grants`
 - **Identifier:** plain string.
-- **Indexed by:** `(clientId, redirectUri)` pair (no DB unique constraint
-  yet, but this is the lookup the OAuth handler does).
+- **Indexed by:** `(clientId, redirectUri)` pair, queried via
+  `byClientIdAndRedirectUri$`. Re-approval updates via `grantUpdated`
+  rather than minting a duplicate row.
 - **Key fields:** `clientId`, `scopes`, `redirectUri`, `grantedAt`,
   `lastUsedAt` (event slot reserved, materializer present, but **no
-  consumer commits `clientAccessRecorded` yet**), `label` (human-shown),
-  `patient` (SMART-on-FHIR launch context).
+  consumer commits `clientAccessRecorded` yet**), `patient`
+  (SMART-on-FHIR launch context).
 
-> **Open question:** `Grant` carries client metadata (`clientId`, `label`)
-> that more naturally lives on a future `Client` row. Issue #20 proposes
-> splitting client identity out of `Grant` so `(clientId, redirectUri)`
-> is validated against a registration before a grant is even possible.
-
-### Session
-
-A short-lived authenticated session for the **Owner** (not the OAuth
-client). Created when a [PinChallenge](#pinchallenge) succeeds. The
-session id reuses the challenge id so `/login/pin/:id/complete` can
-find it.
-
-- **Table:** `sessions`
-- **Identifier:** plain string (no brand).
-- **Duration:** `'request' | '1min' | '15min'` — chosen by the Owner on
-  the PIN form. `'request'` = 30 seconds.
-- **Backs:** the session JWT in the `__wildflower_session` cookie. The
-  JWT `sub` matches the session row id.
-
-### PinChallenge
-
-An out-of-band login attempt for the Owner: a 6-digit PIN displayed on
-one device, entered by the Owner on another device. Distinct from an
-[AuthorizationRequest](#authorizationrequest) — a PIN never grants an
-OAuth client access; it grants the **Owner themselves** a session to
-act on the system.
-
-- **Table:** `pinChallenges`
-- **Identifier:** challenge id (UUID).
-- **Status field:** `'pending' | 'verified' | 'rejected' | 'expired'`
-- **TTL:** issued by `pin-login.ts`, expired by `cleanupExpiredPinChallenges`.
-- **Brute-force protection:** `attempts` column; `MAX_PIN_ATTEMPTS = 5`
-  flips the row to `rejected`.
-- **PIN storage:** stored as `pinHash` (SHA-256 of `id:pin`); the event
-  log never sees plaintext.
-
-> **Open question:** `PinChallenge` and `AuthorizationRequest` share a
-> shape: both are pending → approved/denied/expired records the Owner
-> resolves at `/access/...`. The two flows already diverge at
-> `oauth-consent` vs `pin-verification` HttpApi groups but the underlying
-> "request awaiting human decision" abstraction could plausibly unify.
->
-> **Open question:** The PIN flow is essentially a hand-rolled OAuth
-> Device Authorization Flow (RFC 8628). Replacing it with the spec'd
-> shape is under consideration — see the device-flow follow-up thread.
+Display name lives on [`Client`](#client)`.name`, not on `Grant`.
 
 ### SigningKey
 
-An RSA 2048-bit JWK used to sign and verify gatekeeper-issued JWTs (both
-access tokens and session cookies). Public components are published at
-`/.well-known/jwks.json`.
+An RSA 2048-bit JWK used to sign and verify gatekeeper-issued JWTs.
+Public components are published at `/.well-known/jwks.json`.
 
 - **Table:** `signingKeys`
-- **Identifier:** `kid` (JWK key id, nanoid).
+- **Identifier:** `kid` (JWK key id, nanoid). Set on every signed
+  JWT's protected header so verifiers can resolve the right key.
 - **Algorithm:** RS256.
-- **Selection:** `verifyJwt` tries every key in the table; signing today
-  picks `[0]` (no concept of an "active" key — see issue #20).
+- **Active-key selection:** `isActive: boolean` column;
+  `signingKeyActivated({ kid })` flips the named key on (and any
+  prior active key off, in one materializer step). Sign-side picks
+  via `SigningKeys.queries.active$`. Verify-side iterates every key
+  in the table — that's the rotation-safe path.
 
 ### Owner auth middleware (`RequireAuthMiddleware`)
 
-The authorization wall on every `/access/...` endpoint. Reads the
-`__wildflower_session` cookie, verifies it as a session JWT, looks the
-session up in the [`sessions`](#session) table. If the JWT is an
-`access_token` JWT instead it falls through to the OAuth client path
-(grants lookup).
+The authorization wall on every Owner-facing JSON endpoint
+(`/access/oauth-consents/*`, `/access/devices/*`, `/access/grants/*`,
+`/access/requests/*`). Two-stage check:
 
-> **Open question:** The same middleware accepts both session JWTs (from
-> Owner login) and access-token JWTs (from OAuth-client tokens) by
-> dispatching on `payload.type`. That makes "did this request come from
-> a logged-in Owner" and "did this request come from a tokened OAuth
-> client" indistinguishable to downstream handlers. They probably should
-> be distinct middlewares.
+1. `internal/jwt.ts:verifyJwt` validates the Bearer token (signature,
+   `iss`, `aud`, `exp` — all enforced by `jose.jwtVerify`'s options),
+   then looks up the JWT's `sub` in the [`clients`](#client) table.
+   Disabled clients are rejected.
+2. The middleware then enforces `'owner' ∈ payload.scope`. A
+   third-party SMART client's token (with `patient/*.read` scope)
+   verifies fine but doesn't pass this gate.
 
-### OAuthDisplayDefault
+HTML pages in the `gatekeeper-pages` group do **not** carry this
+middleware; they're public, and their JS gates UI client-side via the
+Bearer token in `localStorage` (which it uses on the JSON endpoints
+this middleware protects).
 
-A `Context.Tag` carrying `'interactive' | 'out-of-band-polling'`. Decides
-where `/oauth/authorize` redirects when the OAuth client did not pass
-`?display=polling`:
+### Device flow (RFC 8628)
 
-- `'interactive'` → `/access/oauth-consents/:id/ui` (Owner clicks on
-  same device).
-- `'out-of-band-polling'` → `/oauth/authorize/:id/page` (browser shows
-  pending page; Owner decides on a different device, browser polls
-  status).
+The first-party host browser's path to becoming an Owner-authenticated
+client. Flow:
 
-The URL param value is the public-facing literal `'polling'`; we translate
-to the internal `'out-of-band-polling'` mode at the boundary.
+1. Browser POSTs `/oauth/device_authorization` with `client_id`. Server
+   creates a `flow='device_code'` `AuthorizationRequest` and returns
+   `{ device_code, user_code, verification_uri, ... }`.
+2. Owner enters the `user_code` at `/access/devices` (or scans the QR
+   for `verification_uri_complete`) on a separate, already-Owner-authed
+   device.
+3. Owner approves via `POST /access/devices/:userCode/approve`.
+4. Browser polls `POST /oauth/token` with `grant_type=urn:ietf:params:oauth:grant-type:device_code`
+   until status flips. Returns `authorization_pending` while waiting,
+   `slow_down` if polled faster than the advertised `interval` (5s),
+   `access_denied` / `expired_token` on terminal failure.
 
-### `display=polling`
+The device_code is single-use: the row's status flips to `expired` on
+the first successful token mint so a second poll returns `expired_token`.
 
-Public OAuth-client query parameter on `/oauth/authorize`. Single
-permitted value today (`'polling'`); switches the redirect target to the
-out-of-band browser page regardless of the [OAuthDisplayDefault](#oauthdisplaydefault)
-setting.
+### Bootstrap URL
 
-### Out-of-band approval
+Replaces the deleted PIN flow's "operator gets onto a cold deployment"
+mechanism. The host process (gatekeeper-node, native-shell wrapper, dev
+server) has direct access to the signing key, mints a short-lived
+access token via `internal/jwt.ts:mintAccessToken`, and hands the URL
+to a browser. The browser's root shell consumes the token from a
+`?token=` query param, stashes it in `localStorage`, and strips it
+from the URL via `history.replaceState`.
 
-The whole UX shape this slice is built around: the OAuth client redirects
-to a polling page that does **not** ask the Owner to consent in-place.
-The Owner instead decides on a separate device through `/access/...`,
-and the original browser polls `/oauth/authorize/:id` until it sees
-`approved` and follows the carried redirect. See
-`internal/out-of-band-approval.ts` for the `waitForRow` Effect helper
-(5-min `ApprovalTimedOut`).
+The token verifies normally because `wildflower-host` is a registered
+[`Client`](#client) and `'owner' ∈ scope`. No new endpoint, no
+redemption table — the token's TTL (5 min default) plus the URL strip
+plus a `Referrer-Policy: no-referrer` on static pages are the
+load-bearing defenses against URL leakage.
 
 ### `gatekeeper-pages` group
 
-The HttpApi group whose four endpoints serve **HTML** to humans. Core
-ships definitions only; consumer slices (`gatekeeper-web`) provide the
-handler layer through the phantom-id bridge described in
-`docs/Effect/HttpApi Composition How-To.md`. Operator-facing pages
-under `/access/...` carry `RequireAuthMiddleware`; the polling/PIN
-entry pages remain public (the requester has no session yet).
+The HttpApi group whose endpoints serve **HTML** to humans
+(`OAuthPollingPage`, `OAuthConsentPage`, `DeviceEntryPage`,
+`DeviceConsentPage`). Core ships definitions only; consumer slices
+(`gatekeeper-web`) provide the handler layer through the phantom-id
+bridge described in `docs/Effect/HttpApi Composition How-To.md`. Every
+page is public; auth is JS-driven on the JSON endpoints behind them.
 
 ### `gatekeeper-access`
 
@@ -216,10 +210,9 @@ endpoints exist but no producer pushes rows yet (see `out-of-band-approval.ts`'s
 `waitForRow` helper, which is the missing-call-site referenced in the
 README).
 
-> **Open question:** The HTTP-request gating flow is a third instance of
-> the same "row pending human decision" pattern (after AuthorizationRequest
-> and PinChallenge). If there's a future merge of those two, gated HTTP
-> requests are a candidate to fold in too.
+> **Open question:** The HTTP-request gating flow shares the
+> "row pending human decision" pattern with `AuthorizationRequest`.
+> Candidate for folding the two together.
 
 ## OAuth 2.0 / OIDC spec terms
 
@@ -229,22 +222,23 @@ it shows up" for the call sites.
 
 ### `client_id`
 
-Identifier of the OAuth client (the third-party app). Form-supplied at
-`/oauth/authorize` and `/oauth/token`. **Today there is no client
-registration:** any string is accepted, no `redirect_uri` allowlist
-exists, and `TokenExchange` does not authenticate `client_id`. That's
-the design hole driving issue #20 (Clients table).
+Identifier of the OAuth client. Form-supplied at `/oauth/authorize`,
+`/oauth/token`, and `/oauth/device_authorization`. Every accepted value
+must resolve to a row in [`clients`](#client). Unknown or disabled
+clients are rejected at the boundary.
 
 ### `redirect_uri`
 
 Where the OAuth client wants the authorization code delivered after
-approval. Validated to be `http(s)` only. Not currently checked against
-any per-client allowlist — see `client_id`.
+approval. Validated to be `http(s)` and to match an entry in the
+client's `redirectUris` allowlist (exact match — no prefix games).
 
 ### `scope`
 
 Space-delimited list of permission strings the OAuth client is asking
-for. Stored in `AuthorizationRequest.requestedScopes`,
+for. Capped per-client by `client.allowedScopes`; the request is
+rejected if any requested scope falls outside. Stored on
+`AuthorizationRequest.requestedScopes`,
 `AuthorizationCode.grantedScopes`, and `Grant.scopes`.
 
 ### `state`
@@ -261,6 +255,8 @@ interception by binding the code to a high-entropy secret only the client
 holds.
 
 - **`code_verifier`** — random string the client generates and keeps.
+  RFC 7636 §4.1 requires 43–128 characters; the schema enforces this
+  via `Schema.minLength(43).pipe(Schema.maxLength(128))`.
 - **`code_challenge`** — `BASE64URL(SHA-256(code_verifier))` per RFC 7636
   §4.2. Sent on `/oauth/authorize` and persisted on the
   `AuthorizationRequest` and `AuthorizationCode` rows.
@@ -270,73 +266,64 @@ holds.
   the challenge from the verifier at token exchange and compares with
   `timingSafeEqual`.
 
-> **Open question:** RFC 7636 §4.1 says `code_verifier` must be 43–128
-> characters of unreserved chars; we accept any `NonEmptyString`.
-> Issue #20 flag.
+### `iss` (issuer) and `aud` (audience)
 
-### `iss` (issuer)
-
-JWT claim — who minted this token. Today: the `Origin` value (no path
-suffix). The gatekeeper signs every JWT it issues; tokens are used
-across multiple subsystems (FHIR, gatekeeper-access, future surfaces),
-so the issuer doesn't bind to any one of them.
-
-### `aud` (audience)
-
-JWT claim — who this token is intended for. RFC 7519 §4.1.3: a token's
-`aud` must match the verifier's identity, otherwise reject. Today
-`verifyJwt` accepts either `origin` or `${origin}/fhir`.
+JWT claims (RFC 7519 §4.1.1, §4.1.3) — _who_ minted this token and _for
+whom_ it's intended. Today: `iss` is the `Origin` value (no path suffix);
+`aud` is `${origin}/fhir` for tokens minted off the OAuth code flow and
+just `origin` for tokens minted via the bootstrap URL.
 
 A loose intuition: **`iss` is "who I am, the signer"; `aud` is "who I'm
 talking to, the verifier."** A token signed for `aud=A` should not be
 honored by `aud=B`, even if the signature is valid.
 
-> **Open question:** We currently accept _both_ `origin` and
-> `${origin}/fhir` as audiences. Once the Clients table (#20) lands,
-> per-client audience policy can replace this loose acceptance.
+`verifyJwt` accepts either `origin` or `${origin}/fhir` as the audience.
+Both checks are performed by `jose.jwtVerify`'s `{ issuer, audience }`
+options — not by manual post-verify checks — so a future caller using
+`SigningKey#verifyJwt` directly is forced to pass them and can't silently
+accept any iss/aud.
 
 ### `sub` (subject)
 
-JWT claim — _whom_ the token is about. Required to be a string. For an
-`access_token` JWT, `sub` is the OAuth `client_id`. For a `session` JWT,
-`sub` is the [Session](#session) id.
+JWT claim — _whom_ the token is about. Required to be a string; required
+to resolve to a registered, enabled [`Client`](#client) row. The
+[`clients`](#client) lookup is the authoritative gate that distinguishes
+"valid token issued by this gatekeeper" from "valid signature but
+not-our-issuer".
 
 ### `exp`, `iat`
 
-JWT claim timestamps (Unix seconds). `exp` is enforced manually in
-`verifyJwt`; `iat` is set by `signSessionJwt` and unused on verify.
-
-### `type` (custom claim — not RFC 7519)
-
-Our private claim that disambiguates session JWTs from access-token
-JWTs:
-
-- `type: 'access_token'` — `verifyJwt` looks `sub` up in `Grants`.
-- `type: 'session'` — `verifyJwt` looks `sub` up in `Sessions`.
-
-Anything else: reject.
+JWT claim timestamps (Unix seconds). Both set by `mintAccessToken`; `exp`
+is enforced by `jose.jwtVerify`'s default behavior.
 
 ### JWKS / JWK / `kid`
 
 - **JWK** — a JSON-serialized cryptographic key (RFC 7517).
 - **JWKS** — a JSON document at `/.well-known/jwks.json` listing this
   server's public verifying keys. The HttpApi group is named
-  `oauth-discovery` (the JWKS endpoint sits under
-  `/.well-known/jwks.json`); the file is `http-api-definition/jwks.ts`.
+  `oauth-discovery`.
 - **`kid`** — JWK key id; the [SigningKey](#signingkey) primary key.
+  Set on every signed JWT's protected header so multi-key verifiers can
+  pick the right one without trying every key in the JWKS.
 
 ### Authorization code flow / `grant_type=authorization_code`
 
-The only OAuth grant type this server implements. The `/oauth/token`
-endpoint requires `grant_type=authorization_code` in the form body.
-Other RFC 6749 flows (client credentials, refresh tokens, password) are
-not supported.
+The standard OAuth 2.0 grant for browser-redirect flows. The `/oauth/token`
+endpoint dispatches on `grant_type`; the `authorization_code` branch
+verifies PKCE + redirect_uri + client_id match the issued code, then
+mints a JWT.
+
+### Device authorization flow / `grant_type=urn:ietf:params:oauth:grant-type:device_code`
+
+RFC 8628. The grant type used by `wildflower-host` (and any other
+no-redirect-capable OAuth client) to bootstrap onto a deployment. See
+the [Device flow](#device-flow-rfc-8628) section above.
 
 ### Bearer token / `token_type=Bearer`
 
 The single token-type literal we hand back at `/oauth/token`. RFC 6750
-defines the `Authorization: Bearer <token>` header convention; we don't
-parse Authorization headers ourselves yet — that's the consumer's job.
+defines the `Authorization: Bearer <token>` header convention.
+`RequireAuthMiddleware` consumes the header for Owner-facing endpoints.
 
 ### `.well-known`
 
@@ -363,18 +350,9 @@ A short index of pairs/triples flagged with **Open question** above,
 collected for the next round:
 
 1. **AuthorizationCode ↔ AuthorizationRequest** — same row at different
-   stages? Could be one table with a `status: 'issued' | 'consumed'`
-   transition.
-2. **AuthorizationRequest ↔ PinChallenge ↔ HTTP request gate** — three
-   instances of "row pending an Owner decision." Candidate for a shared
-   `pendingApprovals` shape.
-3. **Grant ↔ future Clients table** — `Grant` carries client metadata
-   that wants to live on a `Client` row. See issue #20.
-4. **`RequireAuthMiddleware`** — accepts both session and access-token
-   JWTs by dispatching on `type`. Probably two middlewares, not one.
-5. **PIN flow ↔ OAuth Device Authorization Flow (RFC 8628)** — the
-   current PIN flow is a hand-rolled variant of the spec'd device flow.
-   Replacing with RFC 8628 shape is under discussion.
+   stages? Could be one table with a richer `status` discriminator.
+2. **AuthorizationRequest ↔ HTTP request gate** — both are "row pending
+   an Owner decision." Candidate for a shared `pendingApprovals` shape.
 
 ## References
 

@@ -49,7 +49,9 @@ class SigningKey extends Schema.Class<SigningKey>('SigningKey')({
   async signJwt(payload: jose.JWTPayload): Promise<string> {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const joseKey = (await jose.importJWK(this.privateJwk())) as jose.CryptoKey
-    return await new jose.SignJWT(payload).setProtectedHeader({ alg: 'RS256' }).sign(joseKey)
+    return await new jose.SignJWT(payload)
+      .setProtectedHeader({ alg: 'RS256', kid: this.kid })
+      .sign(joseKey)
   }
 
   /**

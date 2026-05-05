@@ -433,6 +433,11 @@ const handleDeviceCodeTokenExchange = (
       } satisfies OAuthError400)
     }
 
+    // device_code is single-use: consume the row before minting so a
+    // second poll returns `expired_token`. Per RFC 8628 §3.4 the device
+    // code is valid only until the first successful exchange.
+    store.commit(AuthorizationRequests.events.authorizationRequestExpired({ id: pending.id }))
+
     return yield* issueTokenResponse(store, {
       clientId: pending.clientId,
       grantedScopes: pending.grantedScopes ?? [],

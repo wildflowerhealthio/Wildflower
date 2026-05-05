@@ -6,7 +6,6 @@ type OAuthErrorKind =
   | 'disabled_client'
   | 'redirect_uri_not_allowed'
   | 'scope_not_allowed'
-type PinErrorKind = 'invalid_returnTo'
 
 const escape = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -42,13 +41,6 @@ const oauthErrorMessage: Record<OAuthErrorKind, { title: string; body: string }>
   },
 }
 
-const pinErrorMessage: Record<PinErrorKind, { title: string; body: string }> = {
-  invalid_returnTo: {
-    title: 'Invalid return URL',
-    body: 'The supplied returnTo parameter must be a same-origin path beginning with "/".',
-  },
-}
-
 const renderErrorHtml = (title: string, body: string): string =>
   `<!doctype html>
 <html lang="en">
@@ -71,9 +63,4 @@ const oauthErrorHtml = (kind: OAuthErrorKind, method?: string): string => {
   return renderErrorHtml(title, `${body}${suffix}.`)
 }
 
-const pinErrorHtml = (kind: PinErrorKind): string => {
-  const { title, body } = pinErrorMessage[kind]
-  return renderErrorHtml(title, body)
-}
-
-export { oauthErrorHtml, pinErrorHtml }
+export { oauthErrorHtml }

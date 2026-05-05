@@ -10,10 +10,10 @@ const HtmlSuccess = HttpApiSchema.Text({ contentType: 'text/html; charset=utf-8'
  * phantom-id bridge described in `docs/Effect/HttpApi Composition How-To.md`.
  *
  * All pages are public (no `RequireAuthMiddleware`). Auth is JS-driven via
- * Bearer tokens on the API calls each page makes against `/access/*`.
- *
- * See `Pages.md` for the page contract: each endpoint's path, params, and
- * the minimum HTML the consumer is expected to produce.
+ * Bearer tokens on the API calls each page makes against `/access/*`. The
+ * Page contract — path, params, and the minimum HTML each consumer should
+ * produce — is documented inline on each endpoint above and in the
+ * gatekeeper-core README's "Page contract" section.
  */
 const httpApiGroup = HttpApiGroup.make('gatekeeper-pages', { topLevel: false })
   .add(

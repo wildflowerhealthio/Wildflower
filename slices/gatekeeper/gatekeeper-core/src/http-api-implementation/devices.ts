@@ -37,6 +37,14 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'devices', (handlers) =>
         }
         const requestedScopeSet = new Set(pending.requestedScopes)
         const grantedScopes = payload.approvedScopes.filter((s) => requestedScopeSet.has(s))
+        // Approving with empty granted scopes is semantically a denial:
+        // the OAuth client would otherwise receive a token with `scope=''`
+        // that grants nothing. Route through the deny path so the caller
+        // sees `access_denied` on its next poll.
+        if (grantedScopes.length === 0) {
+          store.commit(AuthorizationRequests.events.authorizationRequestDenied({ id: pending.id }))
+          return { status: 'denied' as const }
+        }
         store.commit(
           AuthorizationRequests.events.authorizationRequestApproved({
             id: pending.id,
