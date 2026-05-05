@@ -5,7 +5,7 @@ const JwksSchema = Schema.Struct({
   keys: Schema.Array(Schema.Unknown),
 })
 
-const httpApiGroup = HttpApiGroup.make('auth-well-known', { topLevel: false })
+const httpApiGroup = HttpApiGroup.make('oauth-discovery', { topLevel: false })
   .add(HttpApiEndpoint.get('JwksJson', '/jwks.json').addSuccess(JwksSchema))
   .prefix('/.well-known')
 

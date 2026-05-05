@@ -1,6 +1,6 @@
 import { Context, Layer } from 'effect'
 
-type OAuthDisplayMode = 'interactive' | 'polling'
+type OAuthDisplayMode = 'interactive' | 'out-of-band-polling'
 
 class OAuthDisplayDefault extends Context.Tag('OAuthDisplayDefault')<
   OAuthDisplayDefault,
@@ -12,10 +12,10 @@ const OAuthDisplayDefaultInteractive: Layer.Layer<OAuthDisplayDefault> = Layer.s
   'interactive'
 )
 
-const OAuthDisplayDefaultPolling: Layer.Layer<OAuthDisplayDefault> = Layer.succeed(
+const OAuthDisplayDefaultOutOfBandPolling: Layer.Layer<OAuthDisplayDefault> = Layer.succeed(
   OAuthDisplayDefault,
-  'polling'
+  'out-of-band-polling'
 )
 
-export { OAuthDisplayDefault, OAuthDisplayDefaultInteractive, OAuthDisplayDefaultPolling }
+export { OAuthDisplayDefault, OAuthDisplayDefaultInteractive, OAuthDisplayDefaultOutOfBandPolling }
 export type { OAuthDisplayMode }

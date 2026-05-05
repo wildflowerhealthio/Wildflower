@@ -2,22 +2,21 @@ import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
 import { RequireAuthMiddleware } from '../http-api-implementation/require-auth.ts'
 
-const ClientSchema = Schema.Struct({
+const GrantSchema = Schema.Struct({
   id: Schema.String,
   clientId: Schema.String,
-  type: Schema.String,
   scopes: Schema.Array(Schema.String),
-  redirectUri: Schema.NullOr(Schema.String),
-  approvedAt: Schema.DateTimeUtc,
-  lastAccessedAt: Schema.NullOr(Schema.DateTimeUtc),
+  redirectUri: Schema.String,
+  grantedAt: Schema.DateTimeUtc,
+  lastUsedAt: Schema.NullOr(Schema.DateTimeUtc),
   label: Schema.String,
   patient: Schema.NullOr(Schema.String),
 })
 
-const ClientsSchema = Schema.Array(ClientSchema)
+const GrantsSchema = Schema.Array(GrantSchema)
 
-const ClientNotFoundSchema = Schema.Struct({
-  error: Schema.Literal('ClientNotFound'),
+const GrantNotFoundSchema = Schema.Struct({
+  error: Schema.Literal('GrantNotFound'),
   id: Schema.String,
 })
 
@@ -40,22 +39,18 @@ const HttpRequestNotFoundSchema = Schema.Struct({
   id: Schema.String,
 })
 
-const RequestDecisionSchema = Schema.Struct({
-  status: Schema.Literal('approved', 'rejected'),
-})
-
-const httpApiGroup = HttpApiGroup.make('auth-dashboard', { topLevel: false })
-  .add(HttpApiEndpoint.get('ListClients', '/clients').addSuccess(ClientsSchema))
+const httpApiGroup = HttpApiGroup.make('gatekeeper-access', { topLevel: false })
+  .add(HttpApiEndpoint.get('ListGrants', '/grants').addSuccess(GrantsSchema))
   .add(
-    HttpApiEndpoint.get('GetClient', '/clients/:id')
+    HttpApiEndpoint.get('GetGrant', '/grants/:id')
       .setPath(Schema.Struct({ id: Schema.String }))
-      .addSuccess(ClientSchema)
-      .addError(ClientNotFoundSchema, { status: 404 })
+      .addSuccess(GrantSchema)
+      .addError(GrantNotFoundSchema, { status: 404 })
   )
   .add(
-    HttpApiEndpoint.del('RevokeClient', '/clients/:id')
+    HttpApiEndpoint.del('RevokeGrant', '/grants/:id')
       .setPath(Schema.Struct({ id: Schema.String }))
-      .addError(ClientNotFoundSchema, { status: 404 })
+      .addError(GrantNotFoundSchema, { status: 404 })
   )
   .add(HttpApiEndpoint.get('ListRequests', '/requests').addSuccess(HttpRequestsSchema))
   .add(
@@ -65,21 +60,24 @@ const httpApiGroup = HttpApiGroup.make('auth-dashboard', { topLevel: false })
       .addError(HttpRequestNotFoundSchema, { status: 404 })
   )
   .add(
-    HttpApiEndpoint.patch('DecideRequest', '/requests/:id')
+    HttpApiEndpoint.post('ApproveRequest', '/requests/:id/approve')
       .setPath(Schema.Struct({ id: Schema.String }))
-      .setPayload(RequestDecisionSchema)
+      .addError(HttpRequestNotFoundSchema, { status: 404 })
+  )
+  .add(
+    HttpApiEndpoint.post('DenyRequest', '/requests/:id/deny')
+      .setPath(Schema.Struct({ id: Schema.String }))
       .addError(HttpRequestNotFoundSchema, { status: 404 })
   )
   .middleware(RequireAuthMiddleware)
-  .prefix('/auth')
+  .prefix('/access')
 
 export {
   httpApiGroup,
-  ClientSchema,
-  ClientsSchema,
-  ClientNotFoundSchema,
+  GrantSchema,
+  GrantsSchema,
+  GrantNotFoundSchema,
   HttpRequestSchema,
   HttpRequestsSchema,
   HttpRequestNotFoundSchema,
-  RequestDecisionSchema,
 }

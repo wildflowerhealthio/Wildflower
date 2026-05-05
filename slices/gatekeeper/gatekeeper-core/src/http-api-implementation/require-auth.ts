@@ -8,7 +8,7 @@ import {
 } from '@effect/platform'
 import { Effect, Layer, Redacted } from 'effect'
 import { Origin } from 'kitchen-sink'
-import { AuthStore } from '../contexts/AuthStore.ts'
+import { GatekeeperStore } from '../contexts/GatekeeperStore.ts'
 import { verifyJwt } from '../internal/jwt.ts'
 
 const BearerTokenSecurity = HttpApiSecurity.bearer
@@ -19,12 +19,16 @@ const SessionCookieSecurity = HttpApiSecurity.apiKey({
 
 const authenticateToken = (
   token: string
-): Effect.Effect<void, HttpApiError.Unauthorized, AuthStore | Origin> => verifyJwt(token.trim())
+): Effect.Effect<void, HttpApiError.Unauthorized, GatekeeperStore | Origin> =>
+  verifyJwt(token.trim())
 
 const authenticateStore: Effect.Effect<
   void,
   HttpApiError.Unauthorized,
-  AuthStore | Origin | HttpServerRequest.HttpServerRequest | HttpServerRequest.ParsedSearchParams
+  | GatekeeperStore
+  | Origin
+  | HttpServerRequest.HttpServerRequest
+  | HttpServerRequest.ParsedSearchParams
 > = Effect.gen(function* () {
   const bearer = yield* Effect.either(
     Effect.flatMap(HttpApiBuilder.securityDecode(BearerTokenSecurity), (token) =>
@@ -49,7 +53,7 @@ const requireAuthOrRedirect = Effect.catchAll(authenticateStore, () =>
       const origin = yield* Origin
       const returnTo = encodeURIComponent(req.url)
       return yield* Effect.fail(
-        HttpServerResponse.redirect(`${origin}/auth/pin?returnTo=${returnTo}`, { status: 302 })
+        HttpServerResponse.redirect(`${origin}/login/pin?returnTo=${returnTo}`, { status: 302 })
       )
     }
     return yield* Effect.fail(new HttpApiError.Unauthorized())
@@ -70,17 +74,17 @@ class RequireAuthMiddleware extends HttpApiMiddleware.Tag<RequireAuthMiddleware>
 const RequireAuthMiddlewareLive = Layer.effect(
   RequireAuthMiddleware,
   Effect.gen(function* () {
-    const store = yield* AuthStore
+    const store = yield* GatekeeperStore
     const origin = yield* Origin
     return {
       bearer: (token: Redacted.Redacted<string>) =>
         authenticateToken(Redacted.value(token)).pipe(
-          Effect.provideService(AuthStore, store),
+          Effect.provideService(GatekeeperStore, store),
           Effect.provideService(Origin, origin)
         ),
       session: (token: Redacted.Redacted<string>) =>
         authenticateToken(Redacted.value(token)).pipe(
-          Effect.provideService(AuthStore, store),
+          Effect.provideService(GatekeeperStore, store),
           Effect.provideService(Origin, origin)
         ),
     }

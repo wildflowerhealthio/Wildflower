@@ -1,7 +1,7 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from '@effect/platform'
 import { Schema } from 'effect'
 
-const AuthorizeStatusSchema = Schema.Union(
+const AuthorizationStatusSchema = Schema.Union(
   Schema.Struct({ status: Schema.Literal('pending') }),
   Schema.Struct({ status: Schema.Literal('declined') }),
   Schema.Struct({ status: Schema.Literal('approved'), redirect: Schema.String }),
@@ -23,6 +23,8 @@ const AuthorizeUrlParamsSchema = Schema.Struct({
   code_challenge: Schema.NonEmptyString,
   redirect_uri: Schema.NonEmptyString,
   state: Schema.String,
+  // Public OAuth client-facing literal. Internally translated to
+  // `'out-of-band-polling'` at the boundary.
   display: Schema.optional(Schema.Literal('polling')),
 })
 
@@ -41,15 +43,15 @@ const httpApiGroup = HttpApiGroup.make('oauth', { topLevel: false })
       .addSuccess(HttpApiSchema.Text({ contentType: 'text/html; charset=utf-8' }))
   )
   .add(
-    HttpApiEndpoint.get('AuthorizeStatus', '/status/:code')
-      .setPath(Schema.Struct({ code: Schema.String }))
-      .addSuccess(AuthorizeStatusSchema)
+    HttpApiEndpoint.get('AuthorizationStatus', '/authorize/:id')
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .addSuccess(AuthorizationStatusSchema)
   )
   .add(
     HttpApiEndpoint.post('TokenExchange', '/token')
       .setHeaders(FormUrlEncodedHeadersSchema)
       .addSuccess(TokenResponseSchema)
   )
-  .prefix('/auth')
+  .prefix('/oauth')
 
 export { httpApiGroup }

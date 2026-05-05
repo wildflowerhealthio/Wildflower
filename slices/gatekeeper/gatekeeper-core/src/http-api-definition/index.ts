@@ -1,15 +1,28 @@
 import { HttpApi } from '@effect/platform'
-import * as AuthorizationRequest from './authorization-request.ts'
-import * as Dashboard from './dashboard.ts'
+import * as GatekeeperAccess from './gatekeeper-access.ts'
 import * as Jwks from './jwks.ts'
+import * as OAuthConsent from './oauth-consent.ts'
 import * as OAuth from './oauth.ts'
-import * as Pin from './pin.ts'
+import * as Pages from './pages.ts'
+import * as PinLogin from './pin-login.ts'
+import * as PinVerification from './pin-verification.ts'
 
-const AuthApi = HttpApi.make('AuthApi')
+const GatekeeperApi = HttpApi.make('GatekeeperApi')
   .add(Jwks.httpApiGroup)
   .add(OAuth.httpApiGroup)
-  .add(Pin.httpApiGroup)
-  .add(AuthorizationRequest.httpApiGroup)
-  .add(Dashboard.httpApiGroup)
+  .add(PinLogin.httpApiGroup)
+  .add(OAuthConsent.httpApiGroup)
+  .add(PinVerification.httpApiGroup)
+  .add(GatekeeperAccess.httpApiGroup)
+  .add(Pages.httpApiGroup)
 
-export { AuthApi, AuthorizationRequest, Dashboard, Jwks, OAuth, Pin }
+export {
+  GatekeeperApi,
+  GatekeeperAccess,
+  Jwks,
+  OAuth,
+  OAuthConsent,
+  Pages,
+  PinLogin,
+  PinVerification,
+}

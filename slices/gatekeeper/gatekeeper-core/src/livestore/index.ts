@@ -1,59 +1,66 @@
 import { makeSchema, State } from '@livestore/livestore'
-import * as AuthCodes from './auth-codes.ts'
-import * as Clients from './clients.ts'
+import * as AuthorizationCodes from './authorization-codes.ts'
+import * as AuthorizationRequests from './authorization-requests.ts'
+import * as Grants from './grants.ts'
 import * as HttpRequests from './http-requests.ts'
-import * as JsonWebKeys from './json-web-keys.ts'
-import * as PinAuths from './pin-auths.ts'
+import * as PinChallenges from './pin-challenges.ts'
+import * as Sessions from './sessions.ts'
+import * as SigningKeys from './signing-keys.ts'
 
 const tables = {
-  authCodes: AuthCodes.table,
-  clients: Clients.table,
+  authorizationCodes: AuthorizationCodes.table,
+  authorizationRequests: AuthorizationRequests.table,
+  grants: Grants.table,
   httpRequests: HttpRequests.table,
-  jsonWebKeys: JsonWebKeys.table,
-  pinAuths: PinAuths.table,
+  pinChallenges: PinChallenges.table,
+  sessions: Sessions.table,
+  signingKeys: SigningKeys.table,
 } as const
 
 const events = {
-  ...AuthCodes.events,
-  ...Clients.events,
+  ...AuthorizationCodes.events,
+  ...AuthorizationRequests.events,
+  ...Grants.events,
   ...HttpRequests.events,
-  ...JsonWebKeys.events,
-  ...PinAuths.events,
+  ...PinChallenges.events,
+  ...Sessions.events,
+  ...SigningKeys.events,
 } as const
 
 const materializers = State.SQLite.materializers(events, {
-  ...AuthCodes.materializers,
-  ...Clients.materializers,
+  ...AuthorizationCodes.materializers,
+  ...AuthorizationRequests.materializers,
+  ...Grants.materializers,
   ...HttpRequests.materializers,
-  ...JsonWebKeys.materializers,
-  ...PinAuths.materializers,
+  ...PinChallenges.materializers,
+  ...Sessions.materializers,
+  ...SigningKeys.materializers,
 })
 
-// AuthCodes => RequestTokens
-// Clients => Consumer
-// HttpRequests => HttpRequestEvents
-// JsonWebKeys => JsonWebKeys (unchanged)
-//
 const state = State.SQLite.makeState({ tables, materializers })
 
 const schema = makeSchema({ events, state })
 
 export {
-  AuthCodes,
-  Clients,
+  AuthorizationCodes,
+  AuthorizationRequests,
+  Grants,
   HttpRequests,
-  JsonWebKeys,
-  PinAuths,
+  PinChallenges,
+  Sessions,
+  SigningKeys,
   schema,
   events,
   tables,
   materializers,
 }
-export { ClientIdSchema } from './clients.ts'
+export { GrantIdSchema } from './grants.ts'
 export { HttpRequestIdSchema } from './http-requests.ts'
-export { RsaJwk } from './json-web-keys.ts'
-export { PinAuthDurationSchema } from './pin-auths.ts'
-export type { AuthCodeRow } from './auth-codes.ts'
-export type { ClientRow } from './clients.ts'
+export { SessionIdSchema, SessionDurationSchema } from './sessions.ts'
+export { SigningKey } from './signing-keys.ts'
+export type { AuthorizationCodeRow } from './authorization-codes.ts'
+export type { AuthorizationRequestRow } from './authorization-requests.ts'
+export type { GrantRow } from './grants.ts'
 export type { HttpRequestRow } from './http-requests.ts'
-export type { PinAuthRow, PinAuthDuration } from './pin-auths.ts'
+export type { PinChallengeRow } from './pin-challenges.ts'
+export type { SessionRow, SessionDuration } from './sessions.ts'

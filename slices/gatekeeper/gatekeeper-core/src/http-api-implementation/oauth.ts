@@ -1,15 +1,19 @@
 import { HttpApiBuilder, HttpServerResponse } from '@effect/platform'
 import { Array, DateTime, Effect, Schema } from 'effect'
 import { Origin } from 'kitchen-sink'
-import { approveAuthRequest, notifyAuthRequestListeners } from '../contexts/AuthListeners.ts'
-import { AuthRenderer } from '../contexts/AuthRenderer.ts'
-import { AuthStore } from '../contexts/AuthStore.ts'
+import { GatekeeperStore } from '../contexts/GatekeeperStore.ts'
 import { OAuthDisplayDefault } from '../contexts/OAuthDisplayDefault.ts'
-import { AuthApi } from '../http-api-definition/index.ts'
+import { GatekeeperApi } from '../http-api-definition/index.ts'
 import { httpApiGroup } from '../http-api-definition/oauth.ts'
+import { oauthErrorHtml } from '../internal/error-pages.ts'
 import { computeCodeChallenge } from '../internal/pkce.ts'
 import { timingSafeEqual } from '../internal/timing-safe-equal.ts'
-import { AuthCodes, Clients, JsonWebKeys } from '../livestore/index.ts'
+import {
+  AuthorizationCodes,
+  AuthorizationRequests,
+  Grants,
+  SigningKeys,
+} from '../livestore/index.ts'
 
 const decodeTokenExchangePayload = Schema.decodeUnknown(
   Schema.Struct({
@@ -21,15 +25,21 @@ const decodeTokenExchangePayload = Schema.decodeUnknown(
   })
 )
 
-const layer = HttpApiBuilder.group(AuthApi, 'oauth', (handlers) =>
+const buildClientRedirect = (redirectUri: string, code: string, clientState: string): string => {
+  const url = new URL(redirectUri)
+  url.searchParams.set('code', code)
+  url.searchParams.set('state', clientState)
+  return url.toString()
+}
+
+const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
   handlers
     .handleRaw('Authorize', ({ urlParams }) =>
       Effect.gen(function* () {
-        const store = yield* AuthStore
-        const renderer = yield* AuthRenderer
+        const store = yield* GatekeeperStore
 
-        const jsonWebKeys = store.query(JsonWebKeys.queries.allJwks$)
-        if (!Array.isNonEmptyReadonlyArray(jsonWebKeys)) {
+        const signingKeys = store.query(SigningKeys.queries.all$)
+        if (!Array.isNonEmptyReadonlyArray(signingKeys)) {
           return HttpServerResponse.unsafeJson(
             { status: 'error', message: `No JSON Web Keys available` },
             { status: 503 }
@@ -41,109 +51,150 @@ const layer = HttpApiBuilder.group(AuthApi, 'oauth', (handlers) =>
         const stateParam = urlParams.state
 
         if (code_challenge_method !== 'S256') {
-          return renderer.oauthError({
-            kind: 'unsupported_code_challenge',
-            method: code_challenge_method,
-          })
+          return HttpServerResponse.text(
+            oauthErrorHtml('unsupported_code_challenge', code_challenge_method),
+            { status: 400, contentType: 'text/html; charset=utf-8' }
+          )
         }
 
         let parsedRedirect: URL
         try {
           parsedRedirect = new URL(redirect_uri)
         } catch {
-          return renderer.oauthError({ kind: 'invalid_redirect_uri' })
+          return HttpServerResponse.text(oauthErrorHtml('invalid_redirect_uri'), {
+            status: 400,
+            contentType: 'text/html; charset=utf-8',
+          })
         }
 
         if (parsedRedirect.protocol !== 'http:' && parsedRedirect.protocol !== 'https:') {
-          return renderer.oauthError({ kind: 'invalid_scheme' })
+          return HttpServerResponse.text(oauthErrorHtml('invalid_scheme'), {
+            status: 400,
+            contentType: 'text/html; charset=utf-8',
+          })
         }
 
-        const code = crypto.randomUUID()
+        const requestId = crypto.randomUUID()
 
         const requestedScopes = scope.split(' ').filter(Boolean)
-        const approvedClient = store
-          .query(Clients.queries.byClientId$(client_id))
-          .find((client) => client.redirectUri === redirect_uri)
+        const approvedGrant = store
+          .query(Grants.queries.byClientId$(client_id))
+          .find((grant) => grant.redirectUri === redirect_uri)
 
-        const previouslyApproved = new Set<string>(approvedClient?.scopes ?? [])
+        const previouslyApproved = new Set<string>(approvedGrant?.scopes ?? [])
         const preApproved = requestedScopes.filter((requested) => previouslyApproved.has(requested))
         let preApprovedToPersist: ReadonlyArray<string> | null = null
         if (preApproved.length > 0) {
           preApprovedToPersist = preApproved
         }
 
+        const requestedAt = DateTime.unsafeNow()
+        const requestExpiresAt = DateTime.addDuration(requestedAt, '5 minutes')
+
         store.commit(
-          AuthCodes.events.authCodeCreated({
-            code,
+          AuthorizationRequests.events.authorizationRequestStarted({
+            id: requestId,
             clientId: client_id,
-            scope,
+            requestedScopes,
             codeChallenge: code_challenge,
+            codeChallengeMethod: code_challenge_method,
             redirectUri: redirect_uri,
-            state: stateParam,
-            exp: DateTime.addDuration(DateTime.unsafeNow(), '5 minutes'),
+            clientState: stateParam,
             preApprovedScopes: preApprovedToPersist,
+            requestedAt,
+            expiresAt: requestExpiresAt,
           })
         )
 
-        if (approvedClient !== undefined) {
+        if (approvedGrant !== undefined) {
           const allScopesApproved = requestedScopes.every((requested) =>
             previouslyApproved.has(requested)
           )
           if (allScopesApproved) {
-            const redirect = approveAuthRequest(
-              store,
-              code,
-              requestedScopes,
-              approvedClient.patient ?? undefined
+            const code = crypto.randomUUID()
+            const issuedAt = DateTime.unsafeNow()
+            const codeExpiresAt = DateTime.addDuration(issuedAt, '60 seconds')
+            store.commit(
+              AuthorizationRequests.events.authorizationRequestApproved({
+                id: requestId,
+                grantedScopes: requestedScopes,
+                patient: approvedGrant.patient ?? null,
+              }),
+              AuthorizationCodes.events.authorizationCodeIssued({
+                code,
+                requestId,
+                clientId: client_id,
+                redirectUri: redirect_uri,
+                codeChallenge: code_challenge,
+                grantedScopes: requestedScopes,
+                patient: approvedGrant.patient ?? null,
+                issuedAt,
+                expiresAt: codeExpiresAt,
+              })
             )
-            if (redirect != null) {
-              store.commit(AuthCodes.events.authCodeDeleted({ code }))
-              return HttpServerResponse.redirect(redirect, { status: 302 })
-            }
+            return HttpServerResponse.redirect(
+              buildClientRedirect(redirect_uri, code, stateParam),
+              { status: 302 }
+            )
           }
-        }
-
-        const created = store.query(AuthCodes.queries.byCode$(code))
-        if (created != null) {
-          notifyAuthRequestListeners(created)
         }
 
         const origin = yield* Origin
         const displayDefault = yield* OAuthDisplayDefault
-        const effectiveDisplay = display ?? displayDefault
+        // URL param keeps the OAuth client-facing literal `'polling'`; we
+        // translate to the internal `'out-of-band-polling'` mode here.
+        let effectiveDisplay: 'interactive' | 'out-of-band-polling' = displayDefault
+        if (display === 'polling') effectiveDisplay = 'out-of-band-polling'
 
-        if (effectiveDisplay === 'polling') {
-          return renderer.oauthPollingPage({
-            code,
-            clientId: client_id,
-            statusUrl: `${origin}/auth/status/${code}`,
+        if (effectiveDisplay === 'out-of-band-polling') {
+          return HttpServerResponse.redirect(`${origin}/oauth/authorize/${requestId}/page`, {
+            status: 302,
           })
         }
 
-        return HttpServerResponse.redirect(`${origin}/auth/ui/authorization_request/${code}`, {
+        return HttpServerResponse.redirect(`${origin}/access/oauth-consents/${requestId}/ui`, {
           status: 302,
         })
       })
     )
-    .handleRaw('AuthorizeStatus', ({ path: { code } }) =>
+    .handleRaw('AuthorizationStatus', ({ path: { id } }) =>
       Effect.gen(function* () {
-        const store = yield* AuthStore
+        const store = yield* GatekeeperStore
 
-        const pending = store.query(AuthCodes.queries.byCode$(code))
-        if (pending == null) {
+        const request = store.query(AuthorizationRequests.queries.byId$(id))
+        if (request == null) {
           return HttpServerResponse.unsafeJson(
-            { status: 'error', message: 'Unknown code' },
+            { status: 'error', message: 'Unknown id' },
             { status: 404 }
           )
         }
 
-        if (pending.status === 'approved') {
-          const redirect = new URL(pending.redirectUri)
-          redirect.searchParams.set('code', code)
-          redirect.searchParams.set('state', pending.state)
+        if (request.status === 'approved') {
+          const issuedCode = store.query(AuthorizationCodes.queries.byRequestId$(id))
+          if (issuedCode == null) {
+            return HttpServerResponse.unsafeJson(
+              { status: 'error', message: 'Authorization code missing' },
+              { status: 500 }
+            )
+          }
           return HttpServerResponse.unsafeJson({
             status: 'approved',
-            redirect: redirect.toString(),
+            redirect: buildClientRedirect(
+              request.redirectUri,
+              issuedCode.code,
+              request.clientState
+            ),
+          })
+        }
+
+        if (request.status === 'denied') {
+          return HttpServerResponse.unsafeJson({ status: 'declined' })
+        }
+
+        if (request.status === 'expired') {
+          return HttpServerResponse.unsafeJson({
+            status: 'error',
+            message: 'Authorization request expired',
           })
         }
 
@@ -152,7 +203,7 @@ const layer = HttpApiBuilder.group(AuthApi, 'oauth', (handlers) =>
     )
     .handleRaw('TokenExchange', ({ request }) =>
       Effect.gen(function* () {
-        const store = yield* AuthStore
+        const store = yield* GatekeeperStore
 
         const bodyTextEither = yield* Effect.either(request.text)
         if (bodyTextEither._tag === 'Left') {
@@ -177,42 +228,34 @@ const layer = HttpApiBuilder.group(AuthApi, 'oauth', (handlers) =>
 
         const { client_id, code, code_verifier, redirect_uri } = parsedPayloadEither.right
 
-        const previous = store.query(AuthCodes.queries.byCode$(code))
-        if (previous == null) {
+        const issuedCode = store.query(AuthorizationCodes.queries.byCode$(code))
+        if (issuedCode == null) {
           return HttpServerResponse.unsafeJson(
             { error: 'invalid_request', error_description: 'Invalid code parameter' },
             { status: 400 }
           )
         }
 
-        if (previous.clientId !== client_id) {
-          store.commit(AuthCodes.events.authCodeDeleted({ code }))
+        if (issuedCode.clientId !== client_id) {
+          store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code }))
           return HttpServerResponse.unsafeJson(
             { error: 'invalid_request', error_description: 'Invalid client_id parameter' },
             { status: 400 }
           )
         }
 
-        if (previous.redirectUri !== redirect_uri) {
-          store.commit(AuthCodes.events.authCodeDeleted({ code }))
+        if (issuedCode.redirectUri !== redirect_uri) {
+          store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code }))
           return HttpServerResponse.unsafeJson(
             { error: 'invalid_request', error_description: 'Invalid redirect_uri parameter' },
             { status: 400 }
           )
         }
 
-        if (DateTime.lessThan(previous.exp, DateTime.unsafeNow())) {
-          store.commit(AuthCodes.events.authCodeDeleted({ code }))
+        if (DateTime.lessThan(issuedCode.expiresAt, DateTime.unsafeNow())) {
+          store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code }))
           return HttpServerResponse.unsafeJson(
             { error: 'invalid_request', error_description: 'Code has expired' },
-            { status: 400 }
-          )
-        }
-
-        if (previous.approvedScopes == null) {
-          store.commit(AuthCodes.events.authCodeDeleted({ code }))
-          return HttpServerResponse.unsafeJson(
-            { error: 'invalid_grant', error_description: 'Authorization not approved' },
             { status: 400 }
           )
         }
@@ -225,15 +268,15 @@ const layer = HttpApiBuilder.group(AuthApi, 'oauth', (handlers) =>
           )
         }
 
-        if (!timingSafeEqual(previous.codeChallenge, codeChallengeEither.right)) {
-          store.commit(AuthCodes.events.authCodeDeleted({ code }))
+        if (!timingSafeEqual(issuedCode.codeChallenge, codeChallengeEither.right)) {
+          store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code }))
           return HttpServerResponse.unsafeJson(
             { error: 'invalid_request', error_description: 'Invalid code_verifier parameter' },
             { status: 400 }
           )
         }
 
-        const [jwk] = store.query(JsonWebKeys.queries.allJwks$)
+        const [jwk] = store.query(SigningKeys.queries.all$)
         if (jwk === undefined) {
           return HttpServerResponse.unsafeJson(
             {
@@ -244,20 +287,22 @@ const layer = HttpApiBuilder.group(AuthApi, 'oauth', (handlers) =>
           )
         }
 
-        store.commit(AuthCodes.events.authCodeDeleted({ code }))
+        store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code }))
 
         const origin = yield* Origin
         const now = Math.floor(Date.now() / 1000)
+        const grantedScope = issuedCode.grantedScopes.join(' ')
         const jwtPayload: Record<string, unknown> = {
           iss: `${origin}/fhir`,
-          sub: previous.clientId,
+          sub: issuedCode.clientId,
           aud: `${origin}/fhir`,
           exp: now + 3600,
           iat: now,
-          scope: previous.scope,
+          scope: grantedScope,
+          type: 'access_token',
         }
-        if (previous.patient != null) {
-          jwtPayload.patient = previous.patient
+        if (issuedCode.patient != null) {
+          jwtPayload.patient = issuedCode.patient
         }
 
         const signedTokenEither = yield* Effect.either(
@@ -274,11 +319,11 @@ const layer = HttpApiBuilder.group(AuthApi, 'oauth', (handlers) =>
           access_token: signedTokenEither.right,
           token_type: 'Bearer',
           expires_in: 60 * 60,
-          scope: previous.scope,
+          scope: grantedScope,
         }
 
-        if (previous.patient != null) {
-          tokenResponse.patient = previous.patient
+        if (issuedCode.patient != null) {
+          tokenResponse.patient = issuedCode.patient
         }
 
         return HttpServerResponse.unsafeJson(tokenResponse, {

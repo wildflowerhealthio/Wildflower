@@ -1,28 +1,19 @@
-export { AuthStore, makeAuthStoreLayer } from './AuthStore.ts'
+export { GatekeeperStore, makeGatekeeperStoreLayer } from './GatekeeperStore.ts'
 export {
-  addAuthRequestListener,
-  approveAuthRequest,
-  declineAuthRequest,
-  addPinAuthListener,
-  approvePinAuth,
-  declinePinAuth,
-  notifyAuthRequestListeners,
-  notifyPinAuthListeners,
+  approveAuthorizationRequest,
+  denyAuthorizationRequest,
+  verifyPinChallenge,
+  denyPinChallenge,
   MAX_PIN_ATTEMPTS,
-} from './AuthListeners.ts'
-export { cleanupExpiredAuthCodes, cleanupExpiredPinAuths } from './cleanup.ts'
-export { AuthRenderer } from './AuthRenderer.ts'
-export type { AuthRendererInterface } from './AuthRenderer.ts'
+} from './consent-decisions.ts'
+export {
+  cleanupExpiredAuthorizationRequests,
+  cleanupExpiredAuthorizationCodes,
+  cleanupExpiredPinChallenges,
+} from './cleanup.ts'
 export {
   OAuthDisplayDefault,
   OAuthDisplayDefaultInteractive,
-  OAuthDisplayDefaultPolling,
+  OAuthDisplayDefaultOutOfBandPolling,
 } from './OAuthDisplayDefault.ts'
 export type { OAuthDisplayMode } from './OAuthDisplayDefault.ts'
-export {
-  setRequestRegistryStore,
-  registerPendingApproval,
-  resolveApproval,
-  recordResponse,
-} from './RequestRegistry.ts'
-export type { StoreHandle } from './RequestRegistry.ts'

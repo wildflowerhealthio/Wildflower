@@ -9,20 +9,22 @@ const PinStatusSchema = Schema.Union(
   Schema.Struct({ status: Schema.Literal('error'), message: Schema.String })
 )
 
-const httpApiGroup = HttpApiGroup.make('pin', { topLevel: false })
+const httpApiGroup = HttpApiGroup.make('pin-login', { topLevel: false })
   .add(
     HttpApiEndpoint.get('PinPage', '/pin').addSuccess(
       HttpApiSchema.Text({ contentType: 'text/html; charset=utf-8' })
     )
   )
   .add(
-    HttpApiEndpoint.get('PinStatus', '/pin/status/:id')
+    HttpApiEndpoint.get('PinStatus', '/pin/:id')
       .setPath(Schema.Struct({ id: Schema.String }))
       .addSuccess(PinStatusSchema)
   )
   .add(
-    HttpApiEndpoint.get('PinGrant', '/pin/grant/:id').setPath(Schema.Struct({ id: Schema.String }))
+    HttpApiEndpoint.get('PinComplete', '/pin/:id/complete').setPath(
+      Schema.Struct({ id: Schema.String })
+    )
   )
-  .prefix('/auth')
+  .prefix('/login')
 
 export { httpApiGroup }

@@ -3,7 +3,7 @@ import { Events, type LiveQueryDef, queryDb, State, nanoid } from '@livestore/li
 import { Array, Schema } from 'effect'
 import * as jose from 'jose'
 
-class RsaJwk extends Schema.Class<RsaJwk>('RsaJwk')({
+class SigningKey extends Schema.Class<SigningKey>('SigningKey')({
   kty: Schema.Literal('RSA'),
   alg: Schema.Literal('RS256'),
   kid: Schema.String.pipe(State.SQLite.withPrimaryKey),
@@ -58,10 +58,10 @@ class RsaJwk extends Schema.Class<RsaJwk>('RsaJwk')({
     return await jose.jwtVerify(token, testPub)
   }
 
-  static async fromJosePrivateJwk(jwk: jose.CryptoKey): Promise<RsaJwk> {
+  static async fromJosePrivateJwk(jwk: jose.CryptoKey): Promise<SigningKey> {
     const privateJoseJwk = await jose.exportJWK(jwk)
     const kid = nanoid()
-    return Schema.decodeUnknownSync(RsaJwk)({
+    return Schema.decodeUnknownSync(SigningKey)({
       kid,
       kty: 'RSA' as const,
       alg: 'RS256' as const,
@@ -79,48 +79,48 @@ class RsaJwk extends Schema.Class<RsaJwk>('RsaJwk')({
     })
   }
 
-  static async generate(): Promise<RsaJwk> {
+  static async generate(): Promise<SigningKey> {
     const { privateKey } = await jose.generateKeyPair('RS256', {
       modulusLength: 2048,
       extractable: true,
     })
-    return await RsaJwk.fromJosePrivateJwk(privateKey)
+    return await SigningKey.fromJosePrivateJwk(privateKey)
   }
 }
 
 const table = State.SQLite.table({
-  name: 'RsaJwks',
-  schema: RsaJwk,
+  name: 'signingKeys',
+  schema: SigningKey,
 })
 
 const queries = {
-  findJwkByKid$: (kid: string): LiveQueryDef<RsaJwk | null> =>
+  findByKid$: (kid: string): LiveQueryDef<SigningKey | null> =>
     queryDb(table.where({ kid }), {
-      map: (rows): RsaJwk | null => {
+      map: (rows): SigningKey | null => {
         if (Array.isNonEmptyReadonlyArray(rows)) {
-          return RsaJwk.make(rows[0])
+          return SigningKey.make(rows[0])
         }
         return null
       },
-      label: 'findJwkByKid',
+      label: 'signingKeyByKid',
     }),
-  allJwks$: queryDb(table, {
-    map: (rows): readonly RsaJwk[] => rows.map((row) => RsaJwk.make(row)),
-    label: 'allJwks',
+  all$: queryDb(table, {
+    map: (rows): readonly SigningKey[] => rows.map((row) => SigningKey.make(row)),
+    label: 'allSigningKeys',
   }),
 }
 
 const events = {
-  jwkAdded: Events.synced({
-    name: 'v1.JwkAdded',
+  signingKeyAdded: Events.synced({
+    name: 'v1.SigningKeyAdded',
     schema: Schema.Struct({
-      rsaJwk: RsaJwk,
+      signingKey: SigningKey,
     }),
   }),
 } as const
 
 const materializers = State.SQLite.materializers(events, {
-  'v1.JwkAdded': ({ rsaJwk }) => table.insert(rsaJwk),
+  'v1.SigningKeyAdded': ({ signingKey }) => table.insert(signingKey),
 })
 
-export { RsaJwk, table, queries, events, materializers }
+export { SigningKey, table, queries, events, materializers }

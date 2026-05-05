@@ -1,32 +1,44 @@
 import type { Store } from '@livestore/livestore'
 import { DateTime } from 'effect'
-import { AuthCodes, PinAuths, type schema } from '../livestore/index.ts'
+import {
+  AuthorizationCodes,
+  AuthorizationRequests,
+  PinChallenges,
+  type schema,
+} from '../livestore/index.ts'
 
 type StoreHandle = Store<typeof schema, object>
 
-/**
- * Delete all expired PIN auth rows. Intended to be called by consumers at
- * startup so that orphaned `pinAuths` rows from a previous run are pruned
- * before traffic is served.
- */
-const cleanupExpiredPinAuths = (store: StoreHandle): void => {
+const cleanupExpiredPinChallenges = (store: StoreHandle): void => {
   const now = DateTime.unsafeNow()
-  const expired = store.query(PinAuths.queries.allExpired$(now))
+  const expired = store.query(PinChallenges.queries.allExpired$(now))
   for (const row of expired) {
-    store.commit(PinAuths.events.pinAuthDeleted({ id: row.id }))
+    if (row.status === 'pending') {
+      store.commit(PinChallenges.events.pinChallengeExpired({ id: row.id }))
+    }
   }
 }
 
-/**
- * Delete all expired auth code rows. Mirror of {@link cleanupExpiredPinAuths}
- * for the OAuth `authCodes` table.
- */
-const cleanupExpiredAuthCodes = (store: StoreHandle): void => {
+const cleanupExpiredAuthorizationRequests = (store: StoreHandle): void => {
   const now = DateTime.unsafeNow()
-  const expired = store.query(AuthCodes.queries.allExpired$(now))
+  const expired = store.query(AuthorizationRequests.queries.allExpired$(now))
   for (const row of expired) {
-    store.commit(AuthCodes.events.authCodeDeleted({ code: row.code }))
+    if (row.status === 'pending') {
+      store.commit(AuthorizationRequests.events.authorizationRequestExpired({ id: row.id }))
+    }
   }
 }
 
-export { cleanupExpiredPinAuths, cleanupExpiredAuthCodes }
+const cleanupExpiredAuthorizationCodes = (store: StoreHandle): void => {
+  const now = DateTime.unsafeNow()
+  const expired = store.query(AuthorizationCodes.queries.allExpired$(now))
+  for (const row of expired) {
+    store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code: row.code }))
+  }
+}
+
+export {
+  cleanupExpiredPinChallenges,
+  cleanupExpiredAuthorizationRequests,
+  cleanupExpiredAuthorizationCodes,
+}

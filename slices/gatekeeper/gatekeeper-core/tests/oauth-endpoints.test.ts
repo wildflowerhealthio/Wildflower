@@ -1,38 +1,44 @@
-import { HttpApiBuilder, HttpServer, HttpServerResponse } from '@effect/platform'
+import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { DateTime, Effect, Layer } from 'effect'
 import { Origin } from 'kitchen-sink'
 import { expect, test } from 'vite-plus/test'
-import { type AuthRendererInterface, AuthRenderer } from '../src/contexts/AuthRenderer.ts'
-import { type AuthStore, makeAuthStoreLayer } from '../src/contexts/AuthStore.ts'
+import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/GatekeeperStore.ts'
 import { OAuthDisplayDefaultInteractive } from '../src/contexts/OAuthDisplayDefault.ts'
-import { AuthApiLive } from '../src/http-api-implementation/index.ts'
+import { GatekeeperApi } from '../src/http-api-definition/index.ts'
+import { GatekeeperApiLive } from '../src/http-api-implementation/index.ts'
 import { computeCodeChallenge } from '../src/internal/pkce.ts'
 import {
-  AuthCodes,
-  type AuthCodeRow,
-  Clients,
-  JsonWebKeys,
-  PinAuths,
-  type PinAuthRow,
+  AuthorizationCodes,
+  type AuthorizationCodeRow,
+  AuthorizationRequests,
+  type AuthorizationRequestRow,
+  Grants,
+  PinChallenges,
+  type PinChallengeRow,
+  SigningKeys,
 } from '../src/livestore/index.ts'
 
-const renderer: AuthRendererInterface = {
-  oauthPollingPage: ({ clientId, statusUrl }) =>
-    HttpServerResponse.html(`<html><body>client:${clientId};status:${statusUrl}</body></html>`),
-  oauthError: ({ kind, method }) =>
-    HttpServerResponse.html(`<html><body>error:${kind}:${method ?? ''}</body></html>`),
-  pinPage: () => HttpServerResponse.html('<html><body>pin</body></html>'),
-  pinError: () => HttpServerResponse.html('<html><body>pin-error</body></html>'),
-}
+// Tests don't exercise page endpoints; supply a stub pages layer so
+// `HttpApiBuilder.toWebHandler` finds a handler for the gatekeeper-pages
+// group (which has no core handler — by design).
+const StubGatekeeperPagesLive = HttpApiBuilder.group(
+  GatekeeperApi,
+  'gatekeeper-pages',
+  (handlers) =>
+    handlers
+      .handle('OAuthPollingPage', () => Effect.succeed('<!doctype html><html></html>'))
+      .handle('OAuthConsentPage', () => Effect.succeed('<!doctype html><html></html>'))
+      .handle('PinLoginPage', () => Effect.succeed('<!doctype html><html></html>'))
+      .handle('PinVerificationPage', () => Effect.succeed('<!doctype html><html></html>'))
+)
 
-type MockClient = {
+type MockGrant = {
   id: string
   clientId: string
-  type: string
   scopes: ReadonlyArray<string>
-  redirectUri: string | null
-  approvedAt: DateTime.Utc
-  lastAccessedAt: DateTime.Utc | null
+  redirectUri: string
+  grantedAt: DateTime.Utc
+  lastUsedAt: DateTime.Utc | null
   label: string
   patient: string | null
 }
@@ -42,9 +48,10 @@ type MockStoreOptions = {
     signJwt: (payload: Record<string, unknown>) => Promise<string>
     verifyJwt: (token: string) => Promise<{ payload: Record<string, unknown> }>
   }>
-  clients?: ReadonlyArray<MockClient>
-  authCodes?: ReadonlyArray<AuthCodeRow>
-  pinAuths?: ReadonlyArray<PinAuthRow>
+  grants?: ReadonlyArray<MockGrant>
+  authorizationRequests?: ReadonlyArray<AuthorizationRequestRow>
+  authorizationCodes?: ReadonlyArray<AuthorizationCodeRow>
+  pinChallenges?: ReadonlyArray<PinChallengeRow>
 }
 
 type CommittedEvent = { name: string; args: Record<string, unknown> }
@@ -68,172 +75,230 @@ const queryLabel = (q: unknown): string | undefined => {
 
 const makeStore = ({
   jwks = [],
-  clients = [],
-  authCodes = [],
-  pinAuths = [],
-}: MockStoreOptions): typeof AuthStore.Service => {
-  const authCodeRows = new Map<string, AuthCodeRow>()
-  for (const row of authCodes) {
-    authCodeRows.set(row.code, row)
+  grants = [],
+  authorizationRequests = [],
+  authorizationCodes = [],
+  pinChallenges = [],
+}: MockStoreOptions): typeof GatekeeperStore.Service => {
+  const requestRows = new Map<string, AuthorizationRequestRow>()
+  for (const row of authorizationRequests) {
+    requestRows.set(row.id, row)
   }
-  const pinAuthRows = new Map<string, PinAuthRow>()
-  for (const row of pinAuths) {
-    pinAuthRows.set(row.id, row)
+  const codeRows = new Map<string, AuthorizationCodeRow>()
+  for (const row of authorizationCodes) {
+    codeRows.set(row.code, row)
   }
-  const clientRows: MockClient[] = [...clients]
+  const pinChallengeRows = new Map<string, PinChallengeRow>()
+  for (const row of pinChallenges) {
+    pinChallengeRows.set(row.id, row)
+  }
+  const grantRows: MockGrant[] = [...grants]
 
   const query = (q: unknown): unknown => {
-    if (q === JsonWebKeys.queries.allJwks$) {
+    if (q === SigningKeys.queries.all$) {
       return jwks
     }
 
     const label = queryLabel(q)
     const hash = queryHash(q)
 
-    if (label === 'authCodeByCode' && hash !== undefined) {
-      for (const code of authCodeRows.keys()) {
-        if (AuthCodes.queries.byCode$(code).hash === hash) {
-          return authCodeRows.get(code) ?? null
+    if (label === 'authorizationRequestById' && hash !== undefined) {
+      for (const id of requestRows.keys()) {
+        if (AuthorizationRequests.queries.byId$(id).hash === hash) {
+          return requestRows.get(id) ?? null
         }
       }
       return null
     }
 
-    if (label === 'pinAuthById' && hash !== undefined) {
-      for (const id of pinAuthRows.keys()) {
-        if (PinAuths.queries.byId$(id).hash === hash) {
-          return pinAuthRows.get(id) ?? null
+    if (label === 'authorizationCodeByCode' && hash !== undefined) {
+      for (const code of codeRows.keys()) {
+        if (AuthorizationCodes.queries.byCode$(code).hash === hash) {
+          return codeRows.get(code) ?? null
         }
       }
       return null
     }
 
-    if (label === 'clientByClientId' && hash !== undefined) {
-      const seenClientIds = new Set(clientRows.map((c) => c.clientId))
+    if (label === 'authorizationCodeByRequestId' && hash !== undefined) {
+      for (const requestId of new Set([...codeRows.values()].map((r) => r.requestId))) {
+        if (AuthorizationCodes.queries.byRequestId$(requestId).hash === hash) {
+          return [...codeRows.values()].find((r) => r.requestId === requestId) ?? null
+        }
+      }
+      return null
+    }
+
+    if (label === 'pinChallengeById' && hash !== undefined) {
+      for (const id of pinChallengeRows.keys()) {
+        if (PinChallenges.queries.byId$(id).hash === hash) {
+          return pinChallengeRows.get(id) ?? null
+        }
+      }
+      return null
+    }
+
+    if (label === 'grantsByClientId' && hash !== undefined) {
+      const seenClientIds = new Set(grantRows.map((g) => g.clientId))
       for (const clientId of seenClientIds) {
-        if (Clients.queries.byClientId$(clientId).hash === hash) {
-          return clientRows.filter((c) => c.clientId === clientId)
+        if (Grants.queries.byClientId$(clientId).hash === hash) {
+          return grantRows.filter((g) => g.clientId === clientId)
         }
       }
       return []
     }
 
-    if (label === 'authCodes') {
-      return [...authCodeRows.values()]
-    }
-    if (label === 'pinAuths') {
-      return [...pinAuthRows.values()]
-    }
-    if (label === 'authCodesExpired' || label === 'pinAuthsExpired') {
+    if (label === 'authorizationRequests') return [...requestRows.values()]
+    if (label === 'authorizationCodes') return [...codeRows.values()]
+    if (label === 'pinChallenges') return [...pinChallengeRows.values()]
+    if (
+      label === 'authorizationRequestsExpired' ||
+      label === 'authorizationCodesExpired' ||
+      label === 'pinChallengesExpired'
+    ) {
       return []
     }
 
-    return clientRows
+    return grantRows
   }
 
   const commit = (...events: ReadonlyArray<CommittedEvent>): void => {
     for (const event of events) {
       switch (event.name) {
-        case 'v1.AuthCodeCreated': {
+        case 'v1.AuthorizationRequestStarted': {
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion
           const args = event.args as {
-            code: string
+            id: string
             clientId: string
-            scope: string
+            requestedScopes: ReadonlyArray<string>
             codeChallenge: string
+            codeChallengeMethod: string
             redirectUri: string
-            state: string
-            exp: DateTime.Utc
+            clientState: string
             preApprovedScopes: ReadonlyArray<string> | null
+            requestedAt: DateTime.Utc
+            expiresAt: DateTime.Utc
           }
-          authCodeRows.set(args.code, {
-            code: args.code,
+          requestRows.set(args.id, {
+            id: args.id,
             clientId: args.clientId,
-            scope: args.scope,
+            requestedScopes: args.requestedScopes,
             codeChallenge: args.codeChallenge,
+            codeChallengeMethod: args.codeChallengeMethod,
             redirectUri: args.redirectUri,
-            state: args.state,
-            exp: args.exp,
-            status: 'pending',
-            approvedScopes: null,
-            patient: null,
+            clientState: args.clientState,
             preApprovedScopes: args.preApprovedScopes,
+            requestedAt: args.requestedAt,
+            expiresAt: args.expiresAt,
+            status: 'pending',
+            grantedScopes: null,
+            patient: null,
           })
           break
         }
-        case 'v1.AuthCodeApproved': {
+        case 'v1.AuthorizationRequestApproved': {
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion
           const args = event.args as {
-            code: string
-            approvedScopes: ReadonlyArray<string>
+            id: string
+            grantedScopes: ReadonlyArray<string>
             patient: string | null
           }
-          const existing = authCodeRows.get(args.code)
+          const existing = requestRows.get(args.id)
           if (existing !== undefined) {
-            authCodeRows.set(args.code, {
+            requestRows.set(args.id, {
               ...existing,
               status: 'approved',
-              approvedScopes: args.approvedScopes,
+              grantedScopes: args.grantedScopes,
               patient: args.patient,
-              scope: args.approvedScopes.join(' '),
             })
           }
           break
         }
-        case 'v1.AuthCodeDeleted': {
+        case 'v1.AuthorizationRequestDenied': {
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          const args = event.args as { code: string }
-          authCodeRows.delete(args.code)
+          const args = event.args as { id: string }
+          const existing = requestRows.get(args.id)
+          if (existing !== undefined) {
+            requestRows.set(args.id, { ...existing, status: 'denied' })
+          }
           break
         }
-        case 'v1.PinAuthCreated': {
+        case 'v1.AuthorizationRequestExpired': {
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const args = event.args as { id: string }
+          const existing = requestRows.get(args.id)
+          if (existing !== undefined) {
+            requestRows.set(args.id, { ...existing, status: 'expired' })
+          }
+          break
+        }
+        case 'v1.AuthorizationCodeIssued': {
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const args = event.args as AuthorizationCodeRow
+          codeRows.set(args.code, args)
+          break
+        }
+        case 'v1.AuthorizationCodeConsumed': {
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const args = event.args as { code: string }
+          codeRows.delete(args.code)
+          break
+        }
+        case 'v1.PinChallengeIssued': {
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion
           const args = event.args as {
             id: string
             pin: string
             returnTo: string
-            exp: DateTime.Utc
+            expiresAt: DateTime.Utc
           }
-          pinAuthRows.set(args.id, {
+          pinChallengeRows.set(args.id, {
             id: args.id,
             pin: args.pin,
             returnTo: args.returnTo,
-            exp: args.exp,
+            expiresAt: args.expiresAt,
             status: 'pending',
-            duration: null,
             attempts: 0,
           })
           break
         }
-        case 'v1.PinAuthApproved': {
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          const args = event.args as { id: string; duration: PinAuthRow['duration'] }
-          const existing = pinAuthRows.get(args.id)
-          if (existing !== undefined) {
-            pinAuthRows.set(args.id, {
-              ...existing,
-              status: 'approved',
-              duration: args.duration,
-            })
-          }
-          break
-        }
-        case 'v1.PinAuthAttemptFailed': {
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          const args = event.args as { id: string; attempts: number }
-          const existing = pinAuthRows.get(args.id)
-          if (existing !== undefined) {
-            pinAuthRows.set(args.id, { ...existing, attempts: args.attempts })
-          }
-          break
-        }
-        case 'v1.PinAuthDeleted': {
+        case 'v1.PinChallengeVerified': {
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion
           const args = event.args as { id: string }
-          pinAuthRows.delete(args.id)
+          const existing = pinChallengeRows.get(args.id)
+          if (existing !== undefined) {
+            pinChallengeRows.set(args.id, { ...existing, status: 'verified' })
+          }
           break
         }
-        // Other events (e.g. ClientApproved, JwkAdded) are no-ops in this mock.
+        case 'v1.PinChallengeAttemptFailed': {
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const args = event.args as { id: string; attempts: number }
+          const existing = pinChallengeRows.get(args.id)
+          if (existing !== undefined) {
+            pinChallengeRows.set(args.id, { ...existing, attempts: args.attempts })
+          }
+          break
+        }
+        case 'v1.PinChallengeRejected': {
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const args = event.args as { id: string }
+          const existing = pinChallengeRows.get(args.id)
+          if (existing !== undefined) {
+            pinChallengeRows.set(args.id, { ...existing, status: 'rejected' })
+          }
+          break
+        }
+        case 'v1.PinChallengeExpired': {
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const args = event.args as { id: string }
+          const existing = pinChallengeRows.get(args.id)
+          if (existing !== undefined) {
+            pinChallengeRows.set(args.id, { ...existing, status: 'expired' })
+          }
+          break
+        }
+        // Other events (e.g. GrantUpserted, SessionStarted, SigningKeyAdded) are no-ops in this mock.
         default:
           break
       }
@@ -244,15 +309,15 @@ const makeStore = ({
   return {
     query,
     commit,
-  } as unknown as typeof AuthStore.Service
+  } as unknown as typeof GatekeeperStore.Service
 }
 
 const createOAuthHandler = (
-  store: typeof AuthStore.Service
+  store: typeof GatekeeperStore.Service
 ): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
-  const apiLive = AuthApiLive.pipe(
-    Layer.provide(makeAuthStoreLayer(store)),
-    Layer.provide(Layer.succeed(AuthRenderer, renderer)),
+  const apiLive = GatekeeperApiLive.pipe(
+    Layer.provide(StubGatekeeperPagesLive),
+    Layer.provide(makeGatekeeperStoreLayer(store)),
     Layer.provide(Layer.succeed(Origin, 'http://localhost:8787')),
     Layer.provide(OAuthDisplayDefaultInteractive)
   )
@@ -260,7 +325,7 @@ const createOAuthHandler = (
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }
 
-test('authorize returns renderer error for unsupported code challenge method', async () => {
+test('authorize returns inline error HTML for unsupported code challenge method', async () => {
   const { handler, dispose } = createOAuthHandler(
     makeStore({
       jwks: [
@@ -275,19 +340,21 @@ test('authorize returns renderer error for unsupported code challenge method', a
   try {
     const response = await handler(
       new Request(
-        'http://localhost/auth/authorize?code_challenge_method=plain&client_id=test-client&scope=patient/*.read&code_challenge=abc123&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=test-state'
+        'http://localhost/oauth/authorize?code_challenge_method=plain&client_id=test-client&scope=patient/*.read&code_challenge=abc123&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=test-state'
       )
     )
 
-    expect(response.status).toBe(200)
-    await expect(response.text()).resolves.toContain('error:unsupported_code_challenge:plain')
+    expect(response.status).toBe(400)
+    const body = await response.text()
+    expect(body).toContain('Unsupported code challenge method')
+    expect(body).toContain('plain')
   } finally {
     await dispose()
   }
 })
 
 test('authorize auto-approves using matching redirect row from byClientId results', async () => {
-  const approvedAt = DateTime.unsafeNow()
+  const grantedAt = DateTime.unsafeNow()
   const { handler, dispose } = createOAuthHandler(
     makeStore({
       jwks: [
@@ -296,26 +363,24 @@ test('authorize auto-approves using matching redirect row from byClientId result
           verifyJwt: async () => ({ payload: {} }),
         },
       ],
-      clients: [
+      grants: [
         {
           id: 'app-a',
           clientId: 'client-123',
-          type: 'oauth',
           scopes: ['launch'],
           redirectUri: 'https://other.example/callback',
-          approvedAt,
-          lastAccessedAt: null,
+          grantedAt,
+          lastUsedAt: null,
           label: 'Other Redirect',
           patient: null,
         },
         {
           id: 'app-b',
           clientId: 'client-123',
-          type: 'oauth',
           scopes: ['patient/*.read', 'launch'],
           redirectUri: 'https://app.example/callback',
-          approvedAt,
-          lastAccessedAt: null,
+          grantedAt,
+          lastUsedAt: null,
           label: 'Matching Redirect',
           patient: 'patient-1',
         },
@@ -326,7 +391,7 @@ test('authorize auto-approves using matching redirect row from byClientId result
   try {
     const response = await handler(
       new Request(
-        'http://localhost/auth/authorize?code_challenge_method=S256&client_id=client-123&scope=patient/*.read%20launch&code_challenge=test-challenge&redirect_uri=https%3A%2F%2Fapp.example%2Fcallback&state=state-123'
+        'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=client-123&scope=patient/*.read%20launch&code_challenge=test-challenge&redirect_uri=https%3A%2F%2Fapp.example%2Fcallback&state=state-123'
       )
     )
 
@@ -356,19 +421,19 @@ test('authorize redirects to authorization UI by default', async () => {
   try {
     const response = await handler(
       new Request(
-        'http://localhost/auth/authorize?code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc123&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=test-state'
+        'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc123&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=test-state'
       )
     )
 
     expect(response.status).toBe(302)
     const location = response.headers.get('location')
-    expect(location).toMatch(/\/auth\/ui\/authorization_request\/[0-9a-f-]+$/)
+    expect(location).toMatch(/\/access\/oauth-consents\/[0-9a-f-]+\/ui$/)
   } finally {
     await dispose()
   }
 })
 
-test('authorize renders polling page when display=polling', async () => {
+test('authorize redirects to polling page URL when display=polling', async () => {
   const { handler, dispose } = createOAuthHandler(
     makeStore({
       jwks: [
@@ -383,12 +448,13 @@ test('authorize renders polling page when display=polling', async () => {
   try {
     const response = await handler(
       new Request(
-        'http://localhost/auth/authorize?code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc123&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=test-state&display=polling'
+        'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc123&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=test-state&display=polling'
       )
     )
 
-    expect(response.status).toBe(200)
-    await expect(response.text()).resolves.toContain('client:test-client')
+    expect(response.status).toBe(302)
+    const location = response.headers.get('location')
+    expect(location).toMatch(/\/oauth\/authorize\/[0-9a-f-]+\/page$/)
   } finally {
     await dispose()
   }
@@ -408,7 +474,7 @@ test('token exchange rejects invalid content type before handler logic', async (
 
   try {
     const response = await handler(
-      new Request('http://localhost/auth/token', {
+      new Request('http://localhost/oauth/token', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -427,18 +493,16 @@ test('token exchange succeeds with valid form payload', async () => {
   const codeVerifier = 'sample-verifier-123'
   const codeChallenge = await Effect.runPromise(computeCodeChallenge(codeVerifier))
 
-  const seededAuthCode: AuthCodeRow = {
+  const seededCode: AuthorizationCodeRow = {
     code: 'auth-code-1',
-    codeChallenge,
+    requestId: 'req-1',
     clientId: 'client-1',
-    scope: 'patient/*.read',
     redirectUri: 'https://app.example/callback',
-    state: 'state-1',
-    exp: DateTime.addDuration(DateTime.unsafeNow(), '5 minutes'),
-    status: 'approved',
-    approvedScopes: ['patient/*.read'],
+    codeChallenge,
+    grantedScopes: ['patient/*.read'],
     patient: 'patient-123',
-    preApprovedScopes: null,
+    issuedAt: DateTime.unsafeNow(),
+    expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '60 seconds'),
   }
 
   const { handler, dispose } = createOAuthHandler(
@@ -449,7 +513,7 @@ test('token exchange succeeds with valid form payload', async () => {
           verifyJwt: async () => ({ payload: {} }),
         },
       ],
-      authCodes: [seededAuthCode],
+      authorizationCodes: [seededCode],
     })
   )
 
@@ -463,7 +527,7 @@ test('token exchange succeeds with valid form payload', async () => {
     })
 
     const response = await handler(
-      new Request('http://localhost/auth/token', {
+      new Request('http://localhost/oauth/token', {
         method: 'POST',
         headers: {
           'content-type': 'application/x-www-form-urlencoded',

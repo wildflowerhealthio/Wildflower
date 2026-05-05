@@ -1,52 +1,56 @@
 import { type HttpApiGroup, HttpApiBuilder } from '@effect/platform'
 import { Layer } from 'effect'
 import type { Origin } from 'kitchen-sink'
-import type { AuthRenderer } from '../contexts/AuthRenderer.ts'
-import type { AuthStore } from '../contexts/AuthStore.ts'
+import type { GatekeeperStore } from '../contexts/GatekeeperStore.ts'
 import type { OAuthDisplayDefault } from '../contexts/OAuthDisplayDefault.ts'
-import { AuthApi } from '../http-api-definition/index.ts'
-import * as AuthorizationRequest from './authorization-request.ts'
-import * as Dashboard from './dashboard.ts'
+import { GatekeeperApi } from '../http-api-definition/index.ts'
+import * as GatekeeperAccess from './gatekeeper-access.ts'
 import * as Jwks from './jwks.ts'
+import * as OAuthConsent from './oauth-consent.ts'
 import * as OAuth from './oauth.ts'
-import * as Pin from './pin.ts'
+import * as PinLogin from './pin-login.ts'
+import * as PinVerification from './pin-verification.ts'
 import { RequireAuthMiddlewareLive } from './require-auth.ts'
 
-const AuthApiHandlersLive = Layer.mergeAll(
+const GatekeeperApiHandlersLive = Layer.mergeAll(
   Jwks.layer,
   OAuth.layer,
-  Pin.layer,
-  AuthorizationRequest.layer,
-  Dashboard.layer
+  PinLogin.layer,
+  OAuthConsent.layer,
+  PinVerification.layer,
+  GatekeeperAccess.layer
 ).pipe(Layer.provide(RequireAuthMiddlewareLive))
 
-const AuthApiLive = HttpApiBuilder.api(AuthApi).pipe(Layer.provide(AuthApiHandlersLive))
+const GatekeeperApiLive = HttpApiBuilder.api(GatekeeperApi).pipe(
+  Layer.provide(GatekeeperApiHandlersLive)
+)
 
-type AuthGroupNames =
-  | 'auth-well-known'
+type GatekeeperGroupNames =
+  | 'oauth-discovery'
   | 'oauth'
-  | 'pin'
-  | 'authorization-request'
-  | 'auth-dashboard'
+  | 'pin-login'
+  | 'oauth-consent'
+  | 'pin-verification'
+  | 'gatekeeper-access'
 
-const AuthApiHandlersFor = <ParentId extends string>(): Layer.Layer<
-  HttpApiGroup.ApiGroup<ParentId, AuthGroupNames>,
+const GatekeeperApiHandlersFor = <ParentId extends string>(): Layer.Layer<
+  HttpApiGroup.ApiGroup<ParentId, GatekeeperGroupNames>,
   never,
-  AuthRenderer | AuthStore | Origin | OAuthDisplayDefault
+  GatekeeperStore | Origin | OAuthDisplayDefault
 > =>
   // The phantom-id bridge: `ApiGroup<ApiId, Name>` is a structural marker
   // with no runtime presence (HttpApiBuilder.group only registers routes on
   // the shared Router; nothing reads `apiId`), so a Layer built against
-  // AuthApi is sound to satisfy the same group requirement under any
+  // GatekeeperApi is sound to satisfy the same group requirement under any
   // consumer's parent ApiId. This cast is the one place that bridge lives.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  AuthApiHandlersLive as unknown as Layer.Layer<
-    HttpApiGroup.ApiGroup<ParentId, AuthGroupNames>,
+  GatekeeperApiHandlersLive as unknown as Layer.Layer<
+    HttpApiGroup.ApiGroup<ParentId, GatekeeperGroupNames>,
     never,
-    AuthRenderer | AuthStore | Origin | OAuthDisplayDefault
+    GatekeeperStore | Origin | OAuthDisplayDefault
   >
 
-export { AuthApi, AuthApiHandlersLive, AuthApiHandlersFor, AuthApiLive }
+export { GatekeeperApi, GatekeeperApiHandlersLive, GatekeeperApiHandlersFor, GatekeeperApiLive }
 export {
   RequireAuthMiddleware,
   RequireAuthMiddlewareLive,

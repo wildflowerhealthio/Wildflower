@@ -1,24 +1,21 @@
 import { HttpApiBuilder, HttpServerRequest, HttpServerResponse } from '@effect/platform'
-import { nanoid } from '@livestore/livestore'
 import { DateTime, Effect } from 'effect'
 import { Origin } from 'kitchen-sink'
-import { notifyPinAuthListeners } from '../contexts/AuthListeners.ts'
-import { AuthRenderer } from '../contexts/AuthRenderer.ts'
-import { AuthStore } from '../contexts/AuthStore.ts'
-import { AuthApi } from '../http-api-definition/index.ts'
-import { httpApiGroup } from '../http-api-definition/pin.ts'
+import { GatekeeperStore } from '../contexts/GatekeeperStore.ts'
+import { GatekeeperApi } from '../http-api-definition/index.ts'
+import { httpApiGroup } from '../http-api-definition/pin-login.ts'
 import { buildSessionCookie } from '../internal/cookies.ts'
+import { pinErrorHtml } from '../internal/error-pages.ts'
 import { signSessionJwt } from '../internal/jwt.ts'
-import { Clients, JsonWebKeys, PinAuths } from '../livestore/index.ts'
+import { PinChallenges, Sessions, SigningKeys } from '../livestore/index.ts'
 
 const isSafeReturnTo = (value: string): boolean => value.startsWith('/') && !value.startsWith('//')
 
-const layer = HttpApiBuilder.group(AuthApi, 'pin', (handlers) =>
+const layer = HttpApiBuilder.group(GatekeeperApi, 'pin-login', (handlers) =>
   handlers
     .handleRaw('PinPage', () =>
       Effect.gen(function* () {
-        const store = yield* AuthStore
-        const renderer = yield* AuthRenderer
+        const store = yield* GatekeeperStore
         const origin = yield* Origin
         const searchParams = yield* HttpServerRequest.ParsedSearchParams
         const returnTo = (() => {
@@ -28,7 +25,10 @@ const layer = HttpApiBuilder.group(AuthApi, 'pin', (handlers) =>
         })()
 
         if (!isSafeReturnTo(returnTo)) {
-          return renderer.pinError({ kind: 'invalid_returnTo' })
+          return HttpServerResponse.text(pinErrorHtml('invalid_returnTo'), {
+            status: 400,
+            contentType: 'text/html; charset=utf-8',
+          })
         }
 
         const id = crypto.randomUUID()
@@ -41,34 +41,24 @@ const layer = HttpApiBuilder.group(AuthApi, 'pin', (handlers) =>
         } while (pinRandom >= pinBiasLimit)
         const pin = (100000 + (pinRandom % 900000)).toString()
 
-        const exp = DateTime.addDuration(DateTime.unsafeNow(), '2 minutes')
+        const expiresAt = DateTime.addDuration(DateTime.unsafeNow(), '2 minutes')
         store.commit(
-          PinAuths.events.pinAuthCreated({
+          PinChallenges.events.pinChallengeIssued({
             id,
             pin,
             returnTo,
-            exp,
+            expiresAt,
           })
         )
 
-        const created = store.query(PinAuths.queries.byId$(id))
-        if (created != null) {
-          notifyPinAuthListeners(created)
-        }
-
-        return renderer.pinPage({
-          id,
-          pin,
-          statusUrl: `${origin}/auth/pin/status/${id}`,
-          timeoutMs: 2 * 60 * 1000,
-        })
+        return HttpServerResponse.redirect(`${origin}/login/pin/${id}/page`, { status: 302 })
       })
     )
     .handleRaw('PinStatus', ({ path: { id } }) =>
       Effect.gen(function* () {
-        const store = yield* AuthStore
+        const store = yield* GatekeeperStore
 
-        const pending = store.query(PinAuths.queries.byId$(id))
+        const pending = store.query(PinChallenges.queries.byId$(id))
         if (pending == null) {
           return HttpServerResponse.unsafeJson(
             { status: 'error', message: 'Unknown id' },
@@ -76,43 +66,60 @@ const layer = HttpApiBuilder.group(AuthApi, 'pin', (handlers) =>
           )
         }
 
-        if (DateTime.lessThan(pending.exp, DateTime.unsafeNow())) {
-          store.commit(PinAuths.events.pinAuthDeleted({ id }))
+        if (
+          pending.status === 'pending' &&
+          DateTime.lessThan(pending.expiresAt, DateTime.unsafeNow())
+        ) {
+          store.commit(PinChallenges.events.pinChallengeExpired({ id }))
           return HttpServerResponse.unsafeJson({ status: 'expired' })
         }
 
-        if (pending.status === 'approved') {
+        if (pending.status === 'expired') {
+          return HttpServerResponse.unsafeJson({ status: 'expired' })
+        }
+
+        if (pending.status === 'rejected') {
+          return HttpServerResponse.unsafeJson({ status: 'declined' })
+        }
+
+        if (pending.status === 'verified') {
           const origin = yield* Origin
           return HttpServerResponse.unsafeJson({
             status: 'approved',
-            redirect: `${origin}/auth/pin/grant/${id}`,
+            redirect: `${origin}/login/pin/${id}/complete`,
           })
         }
 
         return HttpServerResponse.unsafeJson({ status: 'pending' })
       })
     )
-    .handleRaw('PinGrant', ({ path: { id } }) =>
+    .handleRaw('PinComplete', ({ path: { id } }) =>
       Effect.gen(function* () {
-        const store = yield* AuthStore
+        const store = yield* GatekeeperStore
         const origin = yield* Origin
 
-        const pending = store.query(PinAuths.queries.byId$(id))
-        if (pending == null || pending.status !== 'approved') {
+        const challenge = store.query(PinChallenges.queries.byId$(id))
+        if (challenge == null || challenge.status !== 'verified') {
           return HttpServerResponse.unsafeJson(
             { status: 'error', message: 'Invalid or expired request' },
             { status: 400 }
           )
         }
 
-        const duration = pending.duration ?? 'request'
-        const maxAge = (() => {
-          if (duration === '15min') return 900
-          if (duration === '1min') return 60
-          return 30
-        })()
+        const session = store.query(Sessions.queries.byId$(id))
+        if (session == null) {
+          return HttpServerResponse.unsafeJson(
+            { status: 'error', message: 'Session not found' },
+            { status: 500 }
+          )
+        }
 
-        const [jwk] = store.query(JsonWebKeys.queries.allJwks$)
+        const maxAge = Math.max(
+          0,
+          Math.floor(DateTime.distance(DateTime.unsafeNow(), session.expiresAt) / 1000)
+        )
+
+        const [jwk] = store.query(SigningKeys.queries.all$)
         if (jwk === undefined) {
           return HttpServerResponse.unsafeJson(
             { status: 'error', message: 'No signing keys available' },
@@ -120,15 +127,14 @@ const layer = HttpApiBuilder.group(AuthApi, 'pin', (handlers) =>
           )
         }
 
-        const sessionId = nanoid()
         const signedTokenEither = yield* Effect.either(
           signSessionJwt(
             jwk,
             {
               iss: `${origin}/fhir`,
-              sub: sessionId,
+              sub: session.id,
               aud: origin,
-              type: 'pin',
+              type: 'session',
             },
             maxAge
           )
@@ -140,22 +146,7 @@ const layer = HttpApiBuilder.group(AuthApi, 'pin', (handlers) =>
           )
         }
 
-        store.commit(
-          Clients.events.clientApproved({
-            id: Clients.ClientIdSchema.make(sessionId),
-            clientId: sessionId,
-            type: 'pin',
-            scopes: [],
-            redirectUri: '',
-            approvedAt: DateTime.unsafeNow(),
-            label: 'PIN session',
-            patient: null,
-          })
-        )
-
-        store.commit(PinAuths.events.pinAuthDeleted({ id }))
-
-        return HttpServerResponse.redirect(pending.returnTo, {
+        return HttpServerResponse.redirect(challenge.returnTo, {
           status: 302,
           headers: {
             'Set-Cookie': buildSessionCookie(signedTokenEither.right, maxAge),

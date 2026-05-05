@@ -3,28 +3,28 @@ import { Effect } from 'effect'
 import type { UnknownException } from 'effect/Cause'
 import type * as jose from 'jose'
 import { Origin } from 'kitchen-sink'
-import { AuthStore } from '../contexts/AuthStore.ts'
-import { Clients, JsonWebKeys, type RsaJwk } from '../livestore/index.ts'
+import { GatekeeperStore } from '../contexts/GatekeeperStore.ts'
+import { Grants, Sessions, SigningKeys, type SigningKey } from '../livestore/index.ts'
 
 const verifyJwt = (
   token: string
-): Effect.Effect<void, HttpApiError.Unauthorized, AuthStore | Origin> =>
+): Effect.Effect<void, HttpApiError.Unauthorized, GatekeeperStore | Origin> =>
   Effect.gen(function* () {
-    const store = yield* AuthStore
+    const store = yield* GatekeeperStore
     const origin = yield* Origin
     if (token.trim().length === 0) {
       return yield* Effect.fail(new HttpApiError.Unauthorized())
     }
 
-    const jsonWebKeys = store.query(JsonWebKeys.queries.allJwks$)
-    if (jsonWebKeys.length === 0) {
+    const signingKeys = store.query(SigningKeys.queries.all$)
+    if (signingKeys.length === 0) {
       return yield* Effect.fail(new HttpApiError.Unauthorized())
     }
 
     const expectedIssuer = `${origin}/fhir`
     const acceptedAudiences = [`${origin}/fhir`, origin]
 
-    for (const jwk of jsonWebKeys) {
+    for (const jwk of signingKeys) {
       const result = yield* Effect.either(Effect.tryPromise(() => jwk.verifyJwt(token)))
       if (result._tag === 'Left') {
         continue
@@ -54,23 +54,38 @@ const verifyJwt = (
       if (typeof payload.sub !== 'string') {
         return yield* Effect.fail(new HttpApiError.Unauthorized())
       }
-      const clientId = payload.sub
-      const approved = store.query(Clients.queries.byClientId$(clientId))
-      if (approved.length === 0) {
-        return yield* Effect.fail(new HttpApiError.Unauthorized())
+      const sub = payload.sub
+      const tokenType = payload['type']
+
+      if (tokenType === 'access_token') {
+        const grants = store.query(Grants.queries.byClientId$(sub))
+        if (grants.length === 0) {
+          return yield* Effect.fail(new HttpApiError.Unauthorized())
+        }
+        return undefined
       }
 
-      return undefined
+      if (tokenType === 'session') {
+        const session = store.query(Sessions.queries.byId$(sub))
+        if (session == null) {
+          return yield* Effect.fail(new HttpApiError.Unauthorized())
+        }
+        return undefined
+      }
+
+      return yield* Effect.fail(new HttpApiError.Unauthorized())
     }
 
     return yield* Effect.fail(new HttpApiError.Unauthorized())
   })
 
-const signJwt = (jwk: RsaJwk, payload: jose.JWTPayload): Effect.Effect<string, UnknownException> =>
-  Effect.tryPromise(() => jwk.signJwt(payload))
+const signJwt = (
+  jwk: SigningKey,
+  payload: jose.JWTPayload
+): Effect.Effect<string, UnknownException> => Effect.tryPromise(() => jwk.signJwt(payload))
 
 const signSessionJwt = (
-  jwk: RsaJwk,
+  jwk: SigningKey,
   payload: Omit<jose.JWTPayload, 'iat' | 'exp'>,
   maxAgeSeconds: number
 ): Effect.Effect<string, UnknownException> =>
