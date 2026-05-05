@@ -1,5 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
+import { RequireAuthMiddleware } from '../http-api-implementation/require-auth.ts'
 
 const OAuth2AuthorizationRequest = Schema.Struct({
   _tag: Schema.Literal('oauth2'),
@@ -87,6 +88,7 @@ const httpApiGroup = HttpApiGroup.make('authorization-request', { topLevel: fals
       .addError(AuthorizationRequestNotFoundSchema, { status: 404 })
       .addError(InvalidPatchTagSchema, { status: 400 })
   )
+  .middleware(RequireAuthMiddleware)
   .prefix('/auth')
 
 export {

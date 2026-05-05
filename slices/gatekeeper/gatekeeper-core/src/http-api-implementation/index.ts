@@ -1,9 +1,7 @@
 import { type HttpApiGroup, HttpApiBuilder } from '@effect/platform'
 import { Layer } from 'effect'
 import type { Origin } from 'kitchen-sink'
-import { AuthListenersLive } from '../contexts/AuthListeners.ts'
 import type { AuthRenderer } from '../contexts/AuthRenderer.ts'
-import { AuthStateLive } from '../contexts/AuthState.ts'
 import type { AuthStore } from '../contexts/AuthStore.ts'
 import type { OAuthDisplayDefault } from '../contexts/OAuthDisplayDefault.ts'
 import { AuthApi } from '../http-api-definition/index.ts'
@@ -12,6 +10,7 @@ import * as Dashboard from './dashboard.ts'
 import * as Jwks from './jwks.ts'
 import * as OAuth from './oauth.ts'
 import * as Pin from './pin.ts'
+import { RequireAuthMiddlewareLive } from './require-auth.ts'
 
 const AuthApiHandlersLive = Layer.mergeAll(
   Jwks.layer,
@@ -19,7 +18,7 @@ const AuthApiHandlersLive = Layer.mergeAll(
   Pin.layer,
   AuthorizationRequest.layer,
   Dashboard.layer
-).pipe(Layer.provide(AuthListenersLive), Layer.provide(AuthStateLive))
+).pipe(Layer.provide(RequireAuthMiddlewareLive))
 
 const AuthApiLive = HttpApiBuilder.api(AuthApi).pipe(Layer.provide(AuthApiHandlersLive))
 

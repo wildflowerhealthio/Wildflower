@@ -2,15 +2,14 @@ import { HttpApiBuilder, HttpServerRequest, HttpServerResponse } from '@effect/p
 import { nanoid } from '@livestore/livestore'
 import { DateTime, Effect } from 'effect'
 import { Origin } from 'kitchen-sink'
-import { AuthListeners } from '../contexts/AuthListeners.ts'
+import { notifyPinAuthListeners } from '../contexts/AuthListeners.ts'
 import { AuthRenderer } from '../contexts/AuthRenderer.ts'
-import { AuthState } from '../contexts/AuthState.ts'
 import { AuthStore } from '../contexts/AuthStore.ts'
 import { AuthApi } from '../http-api-definition/index.ts'
 import { httpApiGroup } from '../http-api-definition/pin.ts'
 import { buildSessionCookie } from '../internal/cookies.ts'
 import { signSessionJwt } from '../internal/jwt.ts'
-import { ApprovedApps, JsonWebKeys } from '../livestore/index.ts'
+import { Clients, JsonWebKeys, PinAuths } from '../livestore/index.ts'
 
 const isSafeReturnTo = (value: string): boolean => value.startsWith('/') && !value.startsWith('//')
 
@@ -18,9 +17,8 @@ const layer = HttpApiBuilder.group(AuthApi, 'pin', (handlers) =>
   handlers
     .handleRaw('PinPage', () =>
       Effect.gen(function* () {
-        const state = yield* AuthState
+        const store = yield* AuthStore
         const renderer = yield* AuthRenderer
-        const listeners = yield* AuthListeners
         const origin = yield* Origin
         const searchParams = yield* HttpServerRequest.ParsedSearchParams
         const returnTo = (() => {
@@ -34,18 +32,29 @@ const layer = HttpApiBuilder.group(AuthApi, 'pin', (handlers) =>
         }
 
         const id = crypto.randomUUID()
-        const pin = Math.floor(100000 + Math.random() * 900000).toString()
+        const pinBuf = new Uint32Array(1)
+        const pinBiasLimit = Math.floor(0xffffffff / 900000) * 900000
+        let pinRandom: number
+        do {
+          crypto.getRandomValues(pinBuf)
+          pinRandom = pinBuf[0]!
+        } while (pinRandom >= pinBiasLimit)
+        const pin = (100000 + (pinRandom % 900000)).toString()
 
-        const pending = {
-          id,
-          pin,
-          returnTo,
-          exp: DateTime.addDuration(DateTime.unsafeNow(), '2 minutes'),
-          status: 'pending' as const,
+        const exp = DateTime.addDuration(DateTime.unsafeNow(), '2 minutes')
+        store.commit(
+          PinAuths.events.pinAuthCreated({
+            id,
+            pin,
+            returnTo,
+            exp,
+          })
+        )
+
+        const created = store.query(PinAuths.queries.byId$(id))
+        if (created != null) {
+          notifyPinAuthListeners(created)
         }
-        state.pinAuths.set(id, pending)
-
-        listeners.notifyPinAuthListeners(pending)
 
         return renderer.pinPage({
           id,
@@ -57,9 +66,9 @@ const layer = HttpApiBuilder.group(AuthApi, 'pin', (handlers) =>
     )
     .handleRaw('PinStatus', ({ path: { id } }) =>
       Effect.gen(function* () {
-        const state = yield* AuthState
+        const store = yield* AuthStore
 
-        const pending = state.pinAuths.get(id)
+        const pending = store.query(PinAuths.queries.byId$(id))
         if (pending == null) {
           return HttpServerResponse.unsafeJson(
             { status: 'error', message: 'Unknown id' },
@@ -68,13 +77,8 @@ const layer = HttpApiBuilder.group(AuthApi, 'pin', (handlers) =>
         }
 
         if (DateTime.lessThan(pending.exp, DateTime.unsafeNow())) {
-          state.pinAuths.delete(id)
+          store.commit(PinAuths.events.pinAuthDeleted({ id }))
           return HttpServerResponse.unsafeJson({ status: 'expired' })
-        }
-
-        if (pending.status === 'declined') {
-          state.pinAuths.delete(id)
-          return HttpServerResponse.unsafeJson({ status: 'declined' })
         }
 
         if (pending.status === 'approved') {
@@ -91,10 +95,9 @@ const layer = HttpApiBuilder.group(AuthApi, 'pin', (handlers) =>
     .handleRaw('PinGrant', ({ path: { id } }) =>
       Effect.gen(function* () {
         const store = yield* AuthStore
-        const state = yield* AuthState
         const origin = yield* Origin
 
-        const pending = state.pinAuths.get(id)
+        const pending = store.query(PinAuths.queries.byId$(id))
         if (pending == null || pending.status !== 'approved') {
           return HttpServerResponse.unsafeJson(
             { status: 'error', message: 'Invalid or expired request' },
@@ -138,8 +141,8 @@ const layer = HttpApiBuilder.group(AuthApi, 'pin', (handlers) =>
         }
 
         store.commit(
-          ApprovedApps.events.appApproved({
-            id: ApprovedApps.ApprovedAppIdSchema.make(sessionId),
+          Clients.events.clientApproved({
+            id: Clients.ClientIdSchema.make(sessionId),
             clientId: sessionId,
             type: 'pin',
             scopes: [],
@@ -150,7 +153,7 @@ const layer = HttpApiBuilder.group(AuthApi, 'pin', (handlers) =>
           })
         )
 
-        state.pinAuths.delete(id)
+        store.commit(PinAuths.events.pinAuthDeleted({ id }))
 
         return HttpServerResponse.redirect(pending.returnTo, {
           status: 302,

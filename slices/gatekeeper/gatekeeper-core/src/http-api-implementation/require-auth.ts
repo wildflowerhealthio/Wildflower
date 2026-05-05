@@ -19,12 +19,12 @@ const SessionCookieSecurity = HttpApiSecurity.apiKey({
 
 const authenticateToken = (
   token: string
-): Effect.Effect<void, HttpApiError.Unauthorized, AuthStore> => verifyJwt(token.trim())
+): Effect.Effect<void, HttpApiError.Unauthorized, AuthStore | Origin> => verifyJwt(token.trim())
 
 const authenticateStore: Effect.Effect<
   void,
   HttpApiError.Unauthorized,
-  AuthStore | HttpServerRequest.HttpServerRequest | HttpServerRequest.ParsedSearchParams
+  AuthStore | Origin | HttpServerRequest.HttpServerRequest | HttpServerRequest.ParsedSearchParams
 > = Effect.gen(function* () {
   const bearer = yield* Effect.either(
     Effect.flatMap(HttpApiBuilder.securityDecode(BearerTokenSecurity), (token) =>
@@ -69,13 +69,22 @@ class RequireAuthMiddleware extends HttpApiMiddleware.Tag<RequireAuthMiddleware>
 
 const RequireAuthMiddlewareLive = Layer.effect(
   RequireAuthMiddleware,
-
-  Effect.map(AuthStore, (store) => ({
-    bearer: (token: Redacted.Redacted<string>) =>
-      authenticateToken(Redacted.value(token)).pipe(Effect.provideService(AuthStore, store)),
-    session: (token: Redacted.Redacted<string>) =>
-      authenticateToken(Redacted.value(token)).pipe(Effect.provideService(AuthStore, store)),
-  }))
+  Effect.gen(function* () {
+    const store = yield* AuthStore
+    const origin = yield* Origin
+    return {
+      bearer: (token: Redacted.Redacted<string>) =>
+        authenticateToken(Redacted.value(token)).pipe(
+          Effect.provideService(AuthStore, store),
+          Effect.provideService(Origin, origin)
+        ),
+      session: (token: Redacted.Redacted<string>) =>
+        authenticateToken(Redacted.value(token)).pipe(
+          Effect.provideService(AuthStore, store),
+          Effect.provideService(Origin, origin)
+        ),
+    }
+  })
 )
 
 export { RequireAuthMiddleware, RequireAuthMiddlewareLive, requireAuthOrRedirect }

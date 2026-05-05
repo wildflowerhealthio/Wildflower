@@ -1,14 +1,17 @@
-/* oxlint-disable */
 import { HttpApiError } from '@effect/platform'
 import { Effect } from 'effect'
 import type { UnknownException } from 'effect/Cause'
 import type * as jose from 'jose'
+import { Origin } from 'kitchen-sink'
 import { AuthStore } from '../contexts/AuthStore.ts'
-import { ApprovedApps, JsonWebKeys, type RsaJwk } from '../livestore/index.ts'
+import { Clients, JsonWebKeys, type RsaJwk } from '../livestore/index.ts'
 
-const verifyJwt = (token: string): Effect.Effect<void, HttpApiError.Unauthorized, AuthStore> =>
+const verifyJwt = (
+  token: string
+): Effect.Effect<void, HttpApiError.Unauthorized, AuthStore | Origin> =>
   Effect.gen(function* () {
     const store = yield* AuthStore
+    const origin = yield* Origin
     if (token.trim().length === 0) {
       return yield* Effect.fail(new HttpApiError.Unauthorized())
     }
@@ -18,29 +21,46 @@ const verifyJwt = (token: string): Effect.Effect<void, HttpApiError.Unauthorized
       return yield* Effect.fail(new HttpApiError.Unauthorized())
     }
 
+    const expectedIssuer = `${origin}/fhir`
+    const acceptedAudiences = [`${origin}/fhir`, origin]
+
     for (const jwk of jsonWebKeys) {
       const result = yield* Effect.either(Effect.tryPromise(() => jwk.verifyJwt(token)))
       if (result._tag === 'Left') {
         continue
       }
 
-      if (
-        result.right.payload.exp != null &&
-        result.right.payload.exp < Math.floor(Date.now() / 1000)
-      ) {
+      const payload = result.right.payload
+
+      if (payload.exp != null && payload.exp < Math.floor(Date.now() / 1000)) {
         return yield* Effect.fail(new HttpApiError.Unauthorized())
       }
 
-      const clientId =
-        typeof result.right.payload.sub === 'string' ? result.right.payload.sub : null
-      if (clientId != null) {
-        const approved = store.query(ApprovedApps.queries.byClientId$(clientId))
-        if (approved.length === 0) {
-          return yield* Effect.fail(new HttpApiError.Unauthorized())
-        }
+      if (payload.iss !== expectedIssuer) {
+        return yield* Effect.fail(new HttpApiError.Unauthorized())
       }
 
-      return
+      const audClaim = payload.aud
+      let audMatches = false
+      if (typeof audClaim === 'string') {
+        audMatches = acceptedAudiences.includes(audClaim)
+      } else if (Array.isArray(audClaim)) {
+        audMatches = audClaim.some((a) => acceptedAudiences.includes(a))
+      }
+      if (!audMatches) {
+        return yield* Effect.fail(new HttpApiError.Unauthorized())
+      }
+
+      if (typeof payload.sub !== 'string') {
+        return yield* Effect.fail(new HttpApiError.Unauthorized())
+      }
+      const clientId = payload.sub
+      const approved = store.query(Clients.queries.byClientId$(clientId))
+      if (approved.length === 0) {
+        return yield* Effect.fail(new HttpApiError.Unauthorized())
+      }
+
+      return undefined
     }
 
     return yield* Effect.fail(new HttpApiError.Unauthorized())

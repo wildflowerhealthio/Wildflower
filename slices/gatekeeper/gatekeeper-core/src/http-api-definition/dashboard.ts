@@ -1,7 +1,8 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
+import { RequireAuthMiddleware } from '../http-api-implementation/require-auth.ts'
 
-const ApprovedAppSchema = Schema.Struct({
+const ClientSchema = Schema.Struct({
   id: Schema.String,
   clientId: Schema.String,
   type: Schema.String,
@@ -13,10 +14,10 @@ const ApprovedAppSchema = Schema.Struct({
   patient: Schema.NullOr(Schema.String),
 })
 
-const ApprovedAppsSchema = Schema.Array(ApprovedAppSchema)
+const ClientsSchema = Schema.Array(ClientSchema)
 
-const ApprovedAppNotFoundSchema = Schema.Struct({
-  error: Schema.Literal('ApprovedAppNotFound'),
+const ClientNotFoundSchema = Schema.Struct({
+  error: Schema.Literal('ClientNotFound'),
   id: Schema.String,
 })
 
@@ -44,17 +45,17 @@ const RequestDecisionSchema = Schema.Struct({
 })
 
 const httpApiGroup = HttpApiGroup.make('auth-dashboard', { topLevel: false })
-  .add(HttpApiEndpoint.get('ListApprovedApps', '/approved_apps').addSuccess(ApprovedAppsSchema))
+  .add(HttpApiEndpoint.get('ListClients', '/clients').addSuccess(ClientsSchema))
   .add(
-    HttpApiEndpoint.get('GetApprovedApp', '/approved_apps/:id')
+    HttpApiEndpoint.get('GetClient', '/clients/:id')
       .setPath(Schema.Struct({ id: Schema.String }))
-      .addSuccess(ApprovedAppSchema)
-      .addError(ApprovedAppNotFoundSchema, { status: 404 })
+      .addSuccess(ClientSchema)
+      .addError(ClientNotFoundSchema, { status: 404 })
   )
   .add(
-    HttpApiEndpoint.del('RevokeApprovedApp', '/approved_apps/:id')
+    HttpApiEndpoint.del('RevokeClient', '/clients/:id')
       .setPath(Schema.Struct({ id: Schema.String }))
-      .addError(ApprovedAppNotFoundSchema, { status: 404 })
+      .addError(ClientNotFoundSchema, { status: 404 })
   )
   .add(HttpApiEndpoint.get('ListRequests', '/requests').addSuccess(HttpRequestsSchema))
   .add(
@@ -69,13 +70,14 @@ const httpApiGroup = HttpApiGroup.make('auth-dashboard', { topLevel: false })
       .setPayload(RequestDecisionSchema)
       .addError(HttpRequestNotFoundSchema, { status: 404 })
   )
+  .middleware(RequireAuthMiddleware)
   .prefix('/auth')
 
 export {
   httpApiGroup,
-  ApprovedAppSchema,
-  ApprovedAppsSchema,
-  ApprovedAppNotFoundSchema,
+  ClientSchema,
+  ClientsSchema,
+  ClientNotFoundSchema,
   HttpRequestSchema,
   HttpRequestsSchema,
   HttpRequestNotFoundSchema,

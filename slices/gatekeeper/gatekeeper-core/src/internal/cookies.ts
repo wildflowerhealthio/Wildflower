@@ -9,7 +9,7 @@ function parseCookie(cookieHeader: string, name: string): string | null {
 }
 
 function buildSessionCookie(token: string, maxAgeSeconds: number): string {
-  return `__wildflower_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAgeSeconds}`
+  return `__wildflower_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAgeSeconds}`
 }
 
 export { parseCookie, buildSessionCookie }

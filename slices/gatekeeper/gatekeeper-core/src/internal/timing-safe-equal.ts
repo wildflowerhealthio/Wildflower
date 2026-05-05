@@ -1,14 +1,16 @@
 /**
- * Constant-time string comparison to reduce timing side-channel leakage.
+ * Constant-time string comparison. Runs in time proportional to the longer
+ * input regardless of length-mismatch or content, so neither the secret's
+ * length nor its bytes leak via observable timing.
  */
 function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
   const encoder = new TextEncoder()
   const bufA = encoder.encode(a)
   const bufB = encoder.encode(b)
-  let result = 0
-  for (let i = 0; i < bufA.length; i++) {
-    result |= bufA[i] ^ bufB[i]
+  const max = Math.max(bufA.length, bufB.length)
+  let result = bufA.length ^ bufB.length
+  for (let i = 0; i < max; i++) {
+    result |= (bufA[i] ?? 0) ^ (bufB[i] ?? 0)
   }
   return result === 0
 }

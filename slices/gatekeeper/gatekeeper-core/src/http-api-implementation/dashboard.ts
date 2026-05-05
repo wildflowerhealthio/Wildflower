@@ -2,23 +2,23 @@ import { HttpApiBuilder } from '@effect/platform'
 import { DateTime, Effect } from 'effect'
 import { AuthStore } from '../contexts/AuthStore.ts'
 import { AuthApi } from '../http-api-definition/index.ts'
-import { ApprovedApps, ApprovedAppIdSchema, HttpRequests } from '../livestore/index.ts'
+import { Clients, ClientIdSchema, HttpRequests } from '../livestore/index.ts'
 
 const layer = HttpApiBuilder.group(AuthApi, 'auth-dashboard', (handlers) =>
   handlers
-    .handle('ListApprovedApps', () =>
+    .handle('ListClients', () =>
       Effect.gen(function* () {
         const store = yield* AuthStore
-        return store.query(ApprovedApps.queries.all$)
+        return store.query(Clients.queries.all$)
       })
     )
-    .handle('GetApprovedApp', ({ path: { id } }) =>
+    .handle('GetClient', ({ path: { id } }) =>
       Effect.gen(function* () {
         const store = yield* AuthStore
-        const row = store.query(ApprovedApps.queries.byId$(id))
+        const row = store.query(Clients.queries.byId$(id))
         if (row === undefined) {
           return yield* Effect.fail({
-            error: 'ApprovedAppNotFound' as const,
+            error: 'ClientNotFound' as const,
             id,
           })
         }
@@ -44,17 +44,17 @@ const layer = HttpApiBuilder.group(AuthApi, 'auth-dashboard', (handlers) =>
         return row
       })
     )
-    .handle('RevokeApprovedApp', ({ path: { id } }) =>
+    .handle('RevokeClient', ({ path: { id } }) =>
       Effect.gen(function* () {
         const store = yield* AuthStore
-        const row = store.query(ApprovedApps.queries.byId$(id))
+        const row = store.query(Clients.queries.byId$(id))
         if (row === undefined) {
           return yield* Effect.fail({
-            error: 'ApprovedAppNotFound' as const,
+            error: 'ClientNotFound' as const,
             id,
           })
         }
-        store.commit(ApprovedApps.events.appRevoked({ id: ApprovedAppIdSchema.make(id) }))
+        store.commit(Clients.events.clientRevoked({ id: ClientIdSchema.make(id) }))
         return undefined
       })
     )

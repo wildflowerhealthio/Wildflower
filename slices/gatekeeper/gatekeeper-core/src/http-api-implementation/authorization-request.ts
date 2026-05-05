@@ -7,32 +7,31 @@ import {
   declineAuthRequest,
   declinePinAuth,
 } from '../contexts/AuthListeners.ts'
-import { AuthState } from '../contexts/AuthState.ts'
 import { AuthStore } from '../contexts/AuthStore.ts'
 import { AuthApi } from '../http-api-definition/index.ts'
-import { ApprovedApps, ApprovedAppIdSchema } from '../livestore/index.ts'
+import { AuthCodes, Clients, ClientIdSchema, PinAuths } from '../livestore/index.ts'
 
 const layer = HttpApiBuilder.group(AuthApi, 'authorization-request', (handlers) =>
   handlers
     .handle('GetAuthorizationRequest', ({ path: { id } }) =>
       Effect.gen(function* () {
-        const state = yield* AuthState
+        const store = yield* AuthStore
 
-        const oauth = state.pendingAuths.get(id)
-        if (oauth !== undefined) {
+        const oauth = store.query(AuthCodes.queries.byCode$(id))
+        if (oauth != null) {
           return {
             _tag: 'oauth2' as const,
             id,
-            clientId: oauth.client_id,
+            clientId: oauth.clientId,
             scopes: oauth.scope.split(' ').filter(Boolean),
-            redirectUri: oauth.redirect_uri,
+            redirectUri: oauth.redirectUri,
             preApprovedScopes: oauth.preApprovedScopes ?? [],
             patient: oauth.patient ?? null,
           }
         }
 
-        const pin = state.pinAuths.get(id)
-        if (pin !== undefined) {
+        const pin = store.query(PinAuths.queries.byId$(id))
+        if (pin != null) {
           return {
             _tag: 'pin_cookie' as const,
             id,
@@ -49,50 +48,49 @@ const layer = HttpApiBuilder.group(AuthApi, 'authorization-request', (handlers) 
     )
     .handle('PatchAuthorizationRequest', ({ path: { id }, payload }) =>
       Effect.gen(function* () {
-        const state = yield* AuthState
         const store = yield* AuthStore
 
         if (payload._tag === 'oauth2') {
-          const pending = state.pendingAuths.get(id)
-          if (pending === undefined) {
+          const pending = store.query(AuthCodes.queries.byCode$(id))
+          if (pending == null) {
             return yield* Effect.fail({
               error: 'AuthorizationRequestNotFound' as const,
               id,
             })
           }
           if (payload.status === 'approved') {
-            approveAuthRequest(id, [...payload.approvedScopes], payload.patient ?? undefined)
+            approveAuthRequest(store, id, [...payload.approvedScopes], payload.patient ?? undefined)
             store.commit(
-              ApprovedApps.events.appApproved({
-                id: ApprovedAppIdSchema.make(nanoid()),
-                clientId: pending.client_id,
+              Clients.events.clientApproved({
+                id: ClientIdSchema.make(nanoid()),
+                clientId: pending.clientId,
                 type: 'oauth',
                 scopes: payload.approvedScopes,
-                redirectUri: pending.redirect_uri,
+                redirectUri: pending.redirectUri,
                 approvedAt: DateTime.unsafeNow(),
-                label: pending.client_id,
+                label: pending.clientId,
                 patient: payload.patient ?? null,
               })
             )
             return { status: 'approved' as const }
           }
-          declineAuthRequest(id)
+          declineAuthRequest(store, id)
           return { status: 'denied' as const }
         }
 
-        const pin = state.pinAuths.get(id)
-        if (pin === undefined) {
+        const pin = store.query(PinAuths.queries.byId$(id))
+        if (pin == null) {
           return yield* Effect.fail({
             error: 'AuthorizationRequestNotFound' as const,
             id,
           })
         }
         if (payload.status === 'approved') {
-          const ok = approvePinAuth(id, payload.pin, payload.duration)
+          const ok = approvePinAuth(store, id, payload.pin, payload.duration)
           if (!ok) return { status: 'invalid_pin' as const }
           return { status: 'approved' as const }
         }
-        declinePinAuth(id)
+        declinePinAuth(store, id)
         return { status: 'denied' as const }
       })
     )

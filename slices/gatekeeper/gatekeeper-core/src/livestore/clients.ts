@@ -1,14 +1,14 @@
 import { Events, queryDb, State } from '@livestore/livestore'
 import { pipe, Schema } from 'effect'
 
-const ApprovedAppIdSchema = pipe(Schema.String, Schema.brand('ApprovedApp/id'))
+const ClientIdSchema = pipe(Schema.String, Schema.brand('Client/id'))
 
 const table = State.SQLite.table({
-  name: 'approvedApps',
+  name: 'clients',
   columns: {
     id: State.SQLite.text({ primaryKey: true }),
     clientId: State.SQLite.text(),
-    type: State.SQLite.text(), // 'oauth' | 'ip'
+    type: State.SQLite.text(),
     scopes: State.SQLite.json({ schema: Schema.Array(Schema.String) }),
     redirectUri: State.SQLite.json({ schema: Schema.NullOr(Schema.String) }),
     approvedAt: State.SQLite.json({ schema: Schema.DateTimeUtc }),
@@ -18,26 +18,26 @@ const table = State.SQLite.table({
   },
 })
 
-type ApprovedAppRow = (typeof table)['Type']
+type ClientRow = (typeof table)['Type']
 
 const queries = {
-  all$: queryDb(table, { label: 'approvedApps' }),
+  all$: queryDb(table, { label: 'clients' }),
   byId$: (id: string) =>
     queryDb(table.where({ id }), {
       map: (rows) => rows[0],
-      label: 'approvedAppById',
+      label: 'clientById',
     }),
   byClientId$: (clientId: string) =>
     queryDb(table.where({ clientId }), {
-      label: 'approvedAppByClientId',
+      label: 'clientByClientId',
     }),
 }
 
 const events = {
-  appApproved: Events.synced({
-    name: 'v1.AppApproved',
+  clientApproved: Events.synced({
+    name: 'v1.ClientApproved',
     schema: Schema.Struct({
-      id: ApprovedAppIdSchema,
+      id: ClientIdSchema,
       clientId: Schema.String,
       type: Schema.Literal('oauth', 'ip', 'pin'),
       scopes: Schema.Array(Schema.String),
@@ -47,21 +47,21 @@ const events = {
       patient: Schema.optionalWith(Schema.NullOr(Schema.String), { default: () => null }),
     }),
   }),
-  appRevoked: Events.synced({
-    name: 'v1.AppRevoked',
-    schema: Schema.Struct({ id: ApprovedAppIdSchema }),
+  clientRevoked: Events.synced({
+    name: 'v1.ClientRevoked',
+    schema: Schema.Struct({ id: ClientIdSchema }),
   }),
-  appAccessRecorded: Events.synced({
-    name: 'v1.AppAccessRecorded',
+  clientAccessRecorded: Events.synced({
+    name: 'v1.ClientAccessRecorded',
     schema: Schema.Struct({
-      id: ApprovedAppIdSchema,
+      id: ClientIdSchema,
       lastAccessedAt: Schema.DateTimeUtc,
     }),
   }),
 } as const
 
 const materializers = {
-  'v1.AppApproved': ({
+  'v1.ClientApproved': ({
     id,
     clientId,
     type,
@@ -70,7 +70,7 @@ const materializers = {
     approvedAt,
     label,
     patient,
-  }: typeof events.appApproved.schema.Type) =>
+  }: typeof events.clientApproved.schema.Type) =>
     table.insert({
       id,
       clientId,
@@ -82,10 +82,14 @@ const materializers = {
       label,
       patient: patient ?? null,
     }),
-  'v1.AppRevoked': ({ id }: typeof events.appRevoked.schema.Type) => table.delete().where({ id }),
-  'v1.AppAccessRecorded': ({ id, lastAccessedAt }: typeof events.appAccessRecorded.schema.Type) =>
+  'v1.ClientRevoked': ({ id }: typeof events.clientRevoked.schema.Type) =>
+    table.delete().where({ id }),
+  'v1.ClientAccessRecorded': ({
+    id,
+    lastAccessedAt,
+  }: typeof events.clientAccessRecorded.schema.Type) =>
     table.update({ lastAccessedAt }).where({ id }),
 }
 
-export { ApprovedAppIdSchema, table, queries, events, materializers }
-export type { ApprovedAppRow }
+export { ClientIdSchema, table, queries, events, materializers }
+export type { ClientRow }

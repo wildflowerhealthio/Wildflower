@@ -1,4 +1,3 @@
-/* oxlint-disable */
 import { Events, type LiveQueryDef, queryDb, State, nanoid } from '@livestore/livestore'
 
 import { Array, Schema } from 'effect'
@@ -48,11 +47,13 @@ class RsaJwk extends Schema.Class<RsaJwk>('RsaJwk')({
   }
 
   async signJwt(payload: jose.JWTPayload): Promise<string> {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const joseKey = (await jose.importJWK(this.privateJwk())) as jose.CryptoKey
     return await new jose.SignJWT(payload).setProtectedHeader({ alg: 'RS256' }).sign(joseKey)
   }
 
   async verifyJwt(token: string): Promise<jose.JWTVerifyResult<jose.JWTPayload>> {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const testPub = (await jose.importJWK(this.publicJwk())) as jose.CryptoKey
     return await jose.jwtVerify(token, testPub)
   }
