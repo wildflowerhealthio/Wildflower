@@ -40,13 +40,11 @@ type MockStoreOptions = {
 const makeStore = ({ jwks = [], approvedApps = [] }: MockStoreOptions): typeof AuthStore.Service =>
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   ({
-    query: <TResult>(query: unknown): TResult => {
+    query: (query: unknown): unknown => {
       if (query === JsonWebKeys.queries.allJwks$) {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- query result type is selected by callsite query object
-        return jwks as TResult
+        return jwks
       }
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- query result type is selected by callsite query object
-      return approvedApps as TResult
+      return approvedApps
     },
     commit: () => undefined,
   }) as unknown as typeof AuthStore.Service

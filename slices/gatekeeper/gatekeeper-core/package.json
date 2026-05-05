@@ -43,28 +43,28 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
-    "@livestore/common": "catalog:",
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
-    "@livestore/utils": "catalog:",
+    "@livestore/common": "0.4.0-dev.22",
+    "@livestore/livestore": "0.4.0-dev.22",
+    "@livestore/peer-deps": "0.4.0-dev.22",
+    "@livestore/utils": "0.4.0-dev.22",
     "@types/fhir": "catalog:",
     "@types/node": "^25.5.0",
     "@typescript/native-preview": "7.0.0-dev.20260316.1",
     "bumpp": "^11.0.1",
     "effect": "catalog:",
-    "jose": "catalog:",
+    "jose": "^6.2.2",
     "kitchen-sink": "workspace:*",
     "typescript": "^5.9.3",
     "vite-plus": "^0.1.11"
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
-    "@livestore/common": "catalog:",
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
-    "@livestore/utils": "catalog:",
+    "@livestore/common": "0.4.0-dev.22",
+    "@livestore/livestore": "0.4.0-dev.22",
+    "@livestore/peer-deps": "0.4.0-dev.22",
+    "@livestore/utils": "0.4.0-dev.22",
     "effect": "catalog:",
-    "jose": "catalog:",
+    "jose": "^6.2.2",
     "kitchen-sink": "workspace:*"
   }
 }
