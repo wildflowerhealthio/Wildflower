@@ -3,7 +3,7 @@ import { Schema } from 'effect'
 import { type Bundle as StoreBundle } from 'emr-core/schemas'
 import { mutableEncoded, OrNullAsOptional, StructNoContext } from 'kitchen-sink/schema'
 
-import type FhirR4 from 'fhir/r4.d.ts'
+import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as BackboneElement from '../base/backbone-element.ts'
 import * as Resource from '../base/resource.ts'

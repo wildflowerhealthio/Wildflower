@@ -9,7 +9,7 @@ import {
   mutableEncoded,
 } from 'kitchen-sink/schema'
 
-import type FhirR4 from 'fhir/r4.d.ts'
+import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import {
   Address,

@@ -3,7 +3,7 @@ import { type Schema } from 'effect'
 import type { Range as StoreRange } from 'emr-core/schemas'
 import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
-import type FhirR4 from 'fhir/r4.d.ts'
+import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as Element from '../base/element.ts'
 import * as Quantity from './quantity.ts'

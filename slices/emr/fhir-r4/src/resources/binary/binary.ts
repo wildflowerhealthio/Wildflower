@@ -4,7 +4,7 @@ import type { Binary as StoreBinary } from 'emr-core/livestore'
 import { Code } from 'emr-core/schemas'
 import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
-import type FhirR4 from 'fhir/r4.d.ts'
+import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as DomainResource from '../../data-types/base/domain-resource.ts'
 import * as IdentifierAndReference from '../../data-types/complex/identifier-and-reference.ts'

@@ -4,7 +4,7 @@ import type { Patient as StorePatient } from 'emr-core/livestore'
 import { AdministrativeGender } from 'emr-core/schemas'
 import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
-import type FhirR4 from 'fhir/r4.d.ts'
+import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as BackboneElement from '../../data-types/base/backbone-element.ts'
 import * as Address from '../../data-types/complex/address.ts'

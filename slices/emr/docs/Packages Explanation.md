@@ -13,7 +13,7 @@ EMR domain — patient/observation/binary FHIR resources, plus the FHIR R4 wire 
 
 The dependency arrow is:
 
-```
+```plaintext
 fhir-r4  →  emr-core
 ```
 
@@ -38,4 +38,3 @@ Places where `fhir-r4` deviates from, narrows, or postpones the FHIR R4 spec are
 - [HttpApi Composition How-To](../../../docs/Effect/HttpApi%20Composition%20How-To.md) — phantom-id bridge between `emr-core` and `fhir-r4` API groups
 - [Effect Patterns Reference](../../../docs/Effect/Patterns%20Reference.md)
 - [Capability Statement](../fhir-r4/docs/Capability%20Statement.md)
-- [Integration test plan](../fhir-r4/docs/Integration%20test%20plan.md)

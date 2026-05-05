@@ -4,7 +4,7 @@ import { Datatype } from 'emr-core/schemas'
 import type { Extension as StoreExtension } from 'emr-core/schemas'
 import { mutableEncoded, OrNullAsOptional, StructNoContext } from 'kitchen-sink/schema'
 
-import type FhirR4 from 'fhir/r4.d.ts'
+import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import { choiceElementSetPassthroughFields } from '../base/choice-element-passthrough-fields.ts'
 

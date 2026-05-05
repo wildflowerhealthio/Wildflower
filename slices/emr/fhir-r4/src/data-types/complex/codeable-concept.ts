@@ -3,7 +3,7 @@ import { Schema } from 'effect'
 import type { CodeableConcept as StoreCodeableConcept } from 'emr-core/schemas'
 import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
 
-import type FhirR4 from 'fhir/r4.d.ts'
+import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as Element from '../base/element.ts'
 import * as Coding from './coding.ts'

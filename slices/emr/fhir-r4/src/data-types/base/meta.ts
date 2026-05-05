@@ -3,7 +3,7 @@ import { Schema } from 'effect'
 import { type Meta as StoreMeta } from 'emr-core/schemas'
 import { mutableEncoded, OrNullAsOptional } from 'kitchen-sink/schema'
 
-import type FhirR4 from 'fhir/r4.d.ts'
+import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as Coding from '../complex/coding.ts'
 
