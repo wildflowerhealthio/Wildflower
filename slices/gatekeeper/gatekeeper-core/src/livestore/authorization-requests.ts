@@ -20,6 +20,7 @@ const table = State.SQLite.table({
     preApprovedScopes: State.SQLite.json({ schema: Schema.NullOr(Schema.Array(Schema.String)) }),
     requestedAt: State.SQLite.json({ schema: Schema.DateTimeUtc }),
     expiresAt: State.SQLite.json({ schema: Schema.DateTimeUtc }),
+    lastPolledAt: State.SQLite.json({ schema: Schema.NullOr(Schema.DateTimeUtc) }),
     status: State.SQLite.text(), // 'pending' | 'approved' | 'denied' | 'expired'
     grantedScopes: State.SQLite.json({ schema: Schema.NullOr(Schema.Array(Schema.String)) }),
     patient: State.SQLite.json({ schema: Schema.NullOr(Schema.String) }),
@@ -91,6 +92,13 @@ const events = {
     name: 'v1.AuthorizationRequestExpired',
     schema: Schema.Struct({ id: Schema.String }),
   }),
+  deviceAuthorizationPolled: Events.synced({
+    name: 'v1.DeviceAuthorizationPolled',
+    schema: Schema.Struct({
+      id: Schema.String,
+      polledAt: Schema.DateTimeUtc,
+    }),
+  }),
 } as const
 
 const materializers = {
@@ -119,6 +127,7 @@ const materializers = {
       preApprovedScopes,
       requestedAt,
       expiresAt,
+      lastPolledAt: null,
       status: 'pending',
       grantedScopes: null,
       patient: null,
@@ -144,6 +153,7 @@ const materializers = {
       preApprovedScopes: null,
       requestedAt,
       expiresAt,
+      lastPolledAt: null,
       status: 'pending',
       grantedScopes: null,
       patient: null,
@@ -160,6 +170,11 @@ const materializers = {
     id,
   }: typeof events.authorizationRequestExpired.schema.Type) =>
     table.update({ status: 'expired' }).where({ id }),
+  'v1.DeviceAuthorizationPolled': ({
+    id,
+    polledAt,
+  }: typeof events.deviceAuthorizationPolled.schema.Type) =>
+    table.update({ lastPolledAt: polledAt }).where({ id }),
 }
 
 export { AuthorizationFlowSchema, table, queries, events, materializers }

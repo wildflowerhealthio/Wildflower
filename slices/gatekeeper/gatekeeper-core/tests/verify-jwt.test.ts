@@ -171,3 +171,80 @@ test('JWT is rejected when sub is not a string', async () => {
   const result = await runVerify(store, 'token')
   expect(Either.isLeft(result)).toBe(true)
 })
+
+test('JWT is rejected when exp is in the past', async () => {
+  const past = Math.floor(Date.now() / 1000) - 60
+  const store = makeStubStore({
+    jwks: [
+      fakeJwk({
+        iss: ORIGIN,
+        aud: ORIGIN,
+        sub: 'client-1',
+        exp: past,
+      }),
+    ],
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, 'token')
+  expect(Either.isLeft(result)).toBe(true)
+})
+
+test('JWT is rejected when audience is not in accepted set', async () => {
+  const store = makeStubStore({
+    jwks: [
+      fakeJwk({
+        iss: ORIGIN,
+        aud: 'https://malicious.example',
+        sub: 'client-1',
+      }),
+    ],
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, 'token')
+  expect(Either.isLeft(result)).toBe(true)
+})
+
+test('JWT is rejected when no signing keys are present', async () => {
+  const store = makeStubStore({ jwks: [], clients: [makeClient()] })
+  const result = await runVerify(store, 'token')
+  expect(Either.isLeft(result)).toBe(true)
+})
+
+test('JWT is verified when one of multiple signing keys can verify it', async () => {
+  // First key fails verification; the second succeeds. verifyJwt loops
+  // through every available key, so rotation works on the verify side.
+  const store = makeStubStore({
+    jwks: [
+      {
+        signJwt: async () => 'unused',
+        verifyJwt: async () => {
+          throw new Error('signature mismatch')
+        },
+        publicJwk: () => ({}),
+      },
+      fakeJwk({
+        iss: ORIGIN,
+        aud: ORIGIN,
+        sub: 'client-1',
+      }),
+    ],
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, 'token')
+  expect(Either.isRight(result)).toBe(true)
+})
+
+test('JWT is verified when audience is an array containing an accepted entry', async () => {
+  const store = makeStubStore({
+    jwks: [
+      fakeJwk({
+        iss: ORIGIN,
+        aud: ['https://other.example', `${ORIGIN}/fhir`],
+        sub: 'client-1',
+      }),
+    ],
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, 'token')
+  expect(Either.isRight(result)).toBe(true)
+})

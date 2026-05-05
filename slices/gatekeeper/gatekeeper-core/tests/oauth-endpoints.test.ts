@@ -213,6 +213,7 @@ const makeStore = ({
             preApprovedScopes: args.preApprovedScopes,
             requestedAt: args.requestedAt,
             expiresAt: args.expiresAt,
+            lastPolledAt: null,
             status: 'pending',
             grantedScopes: null,
             patient: null,

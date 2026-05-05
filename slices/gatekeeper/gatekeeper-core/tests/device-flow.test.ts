@@ -62,6 +62,9 @@ const decodeApprovedArgs = Schema.decodeUnknownSync(
 const decodeDeniedArgs = Schema.decodeUnknownSync(
   AuthorizationRequests.events.authorizationRequestDenied.schema
 )
+const decodePolledArgs = Schema.decodeUnknownSync(
+  AuthorizationRequests.events.deviceAuthorizationPolled.schema
+)
 
 type StoreOpts = {
   signingKeys: ReadonlyArray<SigningKey>
@@ -132,6 +135,7 @@ const makeStore = (opts: StoreOpts): typeof GatekeeperStore.Service => {
             preApprovedScopes: null,
             requestedAt: args.requestedAt,
             expiresAt: args.expiresAt,
+            lastPolledAt: null,
             status: 'pending',
             grantedScopes: null,
             patient: null,
@@ -156,6 +160,14 @@ const makeStore = (opts: StoreOpts): typeof GatekeeperStore.Service => {
           const existing = requestRows.get(args.id)
           if (existing !== undefined) {
             requestRows.set(args.id, { ...existing, status: 'denied' })
+          }
+          break
+        }
+        case 'v1.DeviceAuthorizationPolled': {
+          const args = decodePolledArgs(event.args)
+          const existing = requestRows.get(args.id)
+          if (existing !== undefined) {
+            requestRows.set(args.id, { ...existing, lastPolledAt: args.polledAt })
           }
           break
         }
@@ -276,6 +288,7 @@ test('device-flow token exchange returns authorization_pending while consent is 
     preApprovedScopes: null,
     requestedAt,
     expiresAt,
+    lastPolledAt: null,
     status: 'pending',
     grantedScopes: null,
     patient: null,
@@ -322,6 +335,7 @@ test('device-flow token exchange returns access_denied when consent was denied',
     preApprovedScopes: null,
     requestedAt: DateTime.unsafeNow(),
     expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '5 minutes'),
+    lastPolledAt: null,
     status: 'denied',
     grantedScopes: null,
     patient: null,
@@ -367,6 +381,7 @@ test('device-flow token exchange returns expired_token after expiry', async () =
     preApprovedScopes: null,
     requestedAt: DateTime.subtract(DateTime.unsafeNow(), { hours: 1 }),
     expiresAt: DateTime.subtract(DateTime.unsafeNow(), { minutes: 5 }),
+    lastPolledAt: null,
     status: 'pending',
     grantedScopes: null,
     patient: null,
@@ -414,6 +429,7 @@ test('device-flow token exchange mints token after approval', async () => {
     preApprovedScopes: null,
     requestedAt,
     expiresAt,
+    lastPolledAt: null,
     status: 'approved',
     grantedScopes: ['owner'],
     patient: null,
@@ -462,6 +478,7 @@ test('GET /access/devices/:userCode returns the pending consent for an owner', a
     preApprovedScopes: null,
     requestedAt: DateTime.unsafeNow(),
     expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '5 minutes'),
+    lastPolledAt: null,
     status: 'pending',
     grantedScopes: null,
     patient: null,
@@ -512,6 +529,7 @@ test('POST /access/devices/:userCode/approve flips status to approved', async ()
     preApprovedScopes: null,
     requestedAt: DateTime.unsafeNow(),
     expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '5 minutes'),
+    lastPolledAt: null,
     status: 'pending',
     grantedScopes: null,
     patient: null,
@@ -578,6 +596,7 @@ test('POST /access/devices/:userCode/deny without auth is rejected', async () =>
     preApprovedScopes: null,
     requestedAt: DateTime.unsafeNow(),
     expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '5 minutes'),
+    lastPolledAt: null,
     status: 'pending',
     grantedScopes: null,
     patient: null,
@@ -594,6 +613,53 @@ test('POST /access/devices/:userCode/deny without auth is rejected', async () =>
       new Request(`${ORIGIN}/access/devices/BCDF-GHJK/deny`, { method: 'POST' })
     )
     expect(response.status).toBe(401)
+  } finally {
+    await dispose()
+  }
+})
+
+test('device-flow token exchange returns slow_down when polled within interval', async () => {
+  const signingKey = await SigningKey.generate()
+  // Pretend the row was polled 1 second ago — under the 5-second interval.
+  const pending: AuthorizationRequestRow = {
+    id: 'dev-1',
+    flow: 'device_code',
+    clientId: 'wildflower-host',
+    requestedScopes: ['owner'],
+    codeChallenge: null,
+    codeChallengeMethod: null,
+    redirectUri: null,
+    clientState: null,
+    userCode: 'BCDF-GHJK',
+    preApprovedScopes: null,
+    requestedAt: DateTime.unsafeNow(),
+    expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '5 minutes'),
+    lastPolledAt: DateTime.subtract(DateTime.unsafeNow(), { seconds: 1 }),
+    status: 'pending',
+    grantedScopes: null,
+    patient: null,
+  }
+  const store = makeStore({
+    signingKeys: [signingKey],
+    clients: [makeClient()],
+    authorizationRequests: [pending],
+  })
+  const { handler, dispose } = createHandler(store)
+
+  try {
+    const response = await handler(
+      new Request(`${ORIGIN}/oauth/token`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: 'wildflower-host',
+          device_code: 'dev-1',
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        }),
+      })
+    )
+    const body = await readJsonObject(response)
+    expect(body['error']).toBe('slow_down')
   } finally {
     await dispose()
   }

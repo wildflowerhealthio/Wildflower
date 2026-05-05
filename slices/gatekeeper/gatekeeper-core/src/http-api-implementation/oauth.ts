@@ -18,6 +18,7 @@ import {
 } from '../livestore/index.ts'
 
 const DEVICE_CODE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
+const DEVICE_CODE_POLL_INTERVAL_SECONDS = 5
 
 const decodeAuthorizationCodePayload = Schema.decodeUnknown(
   Schema.Struct({
@@ -326,7 +327,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
           verification_uri: `${origin}/access/devices`,
           verification_uri_complete: `${origin}/access/devices?user_code=${userCode}`,
           expires_in: 300,
-          interval: 5,
+          interval: DEVICE_CODE_POLL_INTERVAL_SECONDS,
         })
       })
     )
@@ -438,6 +439,17 @@ const handleDeviceCodeTokenExchange = (
     if (DateTime.lessThan(pending.expiresAt, now)) {
       return HttpServerResponse.unsafeJson({ error: 'expired_token' }, { status: 400 })
     }
+
+    if (pending.lastPolledAt != null) {
+      const intervalMs = DEVICE_CODE_POLL_INTERVAL_SECONDS * 1000
+      const sinceLastPoll = DateTime.distance(pending.lastPolledAt, now)
+      if (sinceLastPoll < intervalMs) {
+        return HttpServerResponse.unsafeJson({ error: 'slow_down' }, { status: 400 })
+      }
+    }
+    store.commit(
+      AuthorizationRequests.events.deviceAuthorizationPolled({ id: pending.id, polledAt: now })
+    )
 
     if (pending.status === 'pending') {
       return HttpServerResponse.unsafeJson({ error: 'authorization_pending' }, { status: 400 })

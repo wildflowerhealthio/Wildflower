@@ -63,6 +63,7 @@ const makeRequest = (
   preApprovedScopes: null,
   requestedAt: DateTime.unsafeNow(),
   expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '5 minutes'),
+  lastPolledAt: null,
   status: 'pending',
   grantedScopes: null,
   patient: null,
