@@ -2,23 +2,18 @@ import { type HttpApiGroup, HttpApiBuilder } from '@effect/platform'
 import { Layer } from 'effect'
 import type { Origin } from 'kitchen-sink'
 import type { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
-import type { OAuthDisplayDefault } from '../contexts/oauth-display-default.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
 import * as Devices from './devices.ts'
 import * as GatekeeperAccess from './gatekeeper-access.ts'
 import * as Jwks from './jwks.ts'
 import * as OAuthConsent from './oauth-consent.ts'
 import * as OAuth from './oauth.ts'
-import * as PinLogin from './pin-login.ts'
-import * as PinVerification from './pin-verification.ts'
 import { RequireAuthMiddlewareLive } from './require-auth.ts'
 
 const GatekeeperApiHandlersLive = Layer.mergeAll(
   Jwks.layer,
   OAuth.layer,
-  PinLogin.layer,
   OAuthConsent.layer,
-  PinVerification.layer,
   GatekeeperAccess.layer,
   Devices.layer
 ).pipe(Layer.provide(RequireAuthMiddlewareLive))
@@ -30,16 +25,14 @@ const GatekeeperApiLive = HttpApiBuilder.api(GatekeeperApi).pipe(
 type GatekeeperGroupNames =
   | 'oauth-discovery'
   | 'oauth'
-  | 'pin-login'
   | 'oauth-consent'
-  | 'pin-verification'
   | 'gatekeeper-access'
   | 'devices'
 
 const GatekeeperApiHandlersFor = <ParentId extends string>(): Layer.Layer<
   HttpApiGroup.ApiGroup<ParentId, GatekeeperGroupNames>,
   never,
-  GatekeeperStore | Origin | OAuthDisplayDefault
+  GatekeeperStore | Origin
 > =>
   // The phantom-id bridge: `ApiGroup<ApiId, Name>` is a structural marker
   // with no runtime presence (HttpApiBuilder.group only registers routes on
@@ -50,12 +43,8 @@ const GatekeeperApiHandlersFor = <ParentId extends string>(): Layer.Layer<
   GatekeeperApiHandlersLive as unknown as Layer.Layer<
     HttpApiGroup.ApiGroup<ParentId, GatekeeperGroupNames>,
     never,
-    GatekeeperStore | Origin | OAuthDisplayDefault
+    GatekeeperStore | Origin
   >
 
 export { GatekeeperApi, GatekeeperApiHandlersLive, GatekeeperApiHandlersFor, GatekeeperApiLive }
-export {
-  RequireAuthMiddleware,
-  RequireAuthMiddlewareLive,
-  requireAuthOrRedirect,
-} from './require-auth.ts'
+export { RequireAuthMiddleware, RequireAuthMiddlewareLive } from './require-auth.ts'

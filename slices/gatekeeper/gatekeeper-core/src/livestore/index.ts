@@ -4,8 +4,6 @@ import * as AuthorizationRequests from './authorization-requests.ts'
 import * as Clients from './clients.ts'
 import * as Grants from './grants.ts'
 import * as HttpRequests from './http-requests.ts'
-import * as PinChallenges from './pin-challenges.ts'
-import * as Sessions from './sessions.ts'
 import * as SigningKeys from './signing-keys.ts'
 
 const tables = {
@@ -14,8 +12,6 @@ const tables = {
   clients: Clients.table,
   grants: Grants.table,
   httpRequests: HttpRequests.table,
-  pinChallenges: PinChallenges.table,
-  sessions: Sessions.table,
   signingKeys: SigningKeys.table,
 } as const
 
@@ -25,8 +21,6 @@ const events = {
   ...Clients.events,
   ...Grants.events,
   ...HttpRequests.events,
-  ...PinChallenges.events,
-  ...Sessions.events,
   ...SigningKeys.events,
 } as const
 
@@ -36,8 +30,6 @@ const materializers = State.SQLite.materializers(events, {
   ...Clients.materializers,
   ...Grants.materializers,
   ...HttpRequests.materializers,
-  ...PinChallenges.materializers,
-  ...Sessions.materializers,
   ...SigningKeys.materializers,
 })
 
@@ -51,15 +43,12 @@ export {
   Clients,
   Grants,
   HttpRequests,
-  PinChallenges,
-  Sessions,
   SigningKeys,
   schema,
   events,
   tables,
   materializers,
 }
-export { SessionDurationSchema } from './sessions.ts'
 export { SigningKey } from './signing-keys.ts'
 export { ClientKindSchema } from './clients.ts'
 export type { AuthorizationCodeRow } from './authorization-codes.ts'
@@ -67,5 +56,3 @@ export type { AuthorizationRequestRow } from './authorization-requests.ts'
 export type { ClientKind, ClientRow } from './clients.ts'
 export type { GrantRow } from './grants.ts'
 export type { HttpRequestRow } from './http-requests.ts'
-export type { PinChallengeRow } from './pin-challenges.ts'
-export type { SessionRow, SessionDuration } from './sessions.ts'

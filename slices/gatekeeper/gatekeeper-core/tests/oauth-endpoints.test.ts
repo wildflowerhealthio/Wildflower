@@ -3,7 +3,6 @@ import { DateTime, Effect, Layer } from 'effect'
 import { Origin } from 'kitchen-sink'
 import { expect, test } from 'vite-plus/test'
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
-import { OAuthDisplayDefaultInteractive } from '../src/contexts/oauth-display-default.ts'
 import { GatekeeperApi } from '../src/http-api-definition/index.ts'
 import {
   GatekeeperApiLive,
@@ -18,8 +17,6 @@ import {
   Clients,
   type ClientRow,
   Grants,
-  PinChallenges,
-  type PinChallengeRow,
   SigningKeys,
 } from '../src/livestore/index.ts'
 
@@ -33,8 +30,6 @@ const StubGatekeeperPagesLive = HttpApiBuilder.group(
     handlers
       .handle('OAuthPollingPage', () => Effect.succeed('<!doctype html><html></html>'))
       .handle('OAuthConsentPage', () => Effect.succeed('<!doctype html><html></html>'))
-      .handle('PinLoginPage', () => Effect.succeed('<!doctype html><html></html>'))
-      .handle('PinVerificationPage', () => Effect.succeed('<!doctype html><html></html>'))
       .handle('DeviceEntryPage', () => Effect.succeed('<!doctype html><html></html>'))
       .handle('DeviceConsentPage', () => Effect.succeed('<!doctype html><html></html>'))
 ).pipe(Layer.provide(RequireAuthMiddlewareLive))
@@ -58,7 +53,6 @@ type MockStoreOptions = {
   grants?: ReadonlyArray<MockGrant>
   authorizationRequests?: ReadonlyArray<AuthorizationRequestRow>
   authorizationCodes?: ReadonlyArray<AuthorizationCodeRow>
-  pinChallenges?: ReadonlyArray<PinChallengeRow>
 }
 
 const makeClient = (overrides: Partial<ClientRow> = {}): ClientRow => ({
@@ -98,7 +92,6 @@ const makeStore = ({
   grants = [],
   authorizationRequests = [],
   authorizationCodes = [],
-  pinChallenges = [],
 }: MockStoreOptions): typeof GatekeeperStore.Service => {
   const clientRows = new Map<string, ClientRow>()
   for (const row of clients) {
@@ -111,10 +104,6 @@ const makeStore = ({
   const codeRows = new Map<string, AuthorizationCodeRow>()
   for (const row of authorizationCodes) {
     codeRows.set(row.code, row)
-  }
-  const pinChallengeRows = new Map<string, PinChallengeRow>()
-  for (const row of pinChallenges) {
-    pinChallengeRows.set(row.id, row)
   }
   const grantRows: MockGrant[] = [...grants]
 
@@ -148,15 +137,6 @@ const makeStore = ({
       for (const requestId of new Set([...codeRows.values()].map((r) => r.requestId))) {
         if (AuthorizationCodes.queries.byRequestId$(requestId).hash === hash) {
           return [...codeRows.values()].find((r) => r.requestId === requestId) ?? null
-        }
-      }
-      return null
-    }
-
-    if (label === 'pinChallengeById' && hash !== undefined) {
-      for (const id of pinChallengeRows.keys()) {
-        if (PinChallenges.queries.byId$(id).hash === hash) {
-          return pinChallengeRows.get(id) ?? null
         }
       }
       return null
@@ -196,12 +176,7 @@ const makeStore = ({
 
     if (label === 'authorizationRequests') return [...requestRows.values()]
     if (label === 'authorizationCodes') return [...codeRows.values()]
-    if (label === 'pinChallenges') return [...pinChallengeRows.values()]
-    if (
-      label === 'authorizationRequestsExpired' ||
-      label === 'authorizationCodesExpired' ||
-      label === 'pinChallengesExpired'
-    ) {
+    if (label === 'authorizationRequestsExpired' || label === 'authorizationCodesExpired') {
       return []
     }
 
@@ -292,61 +267,7 @@ const makeStore = ({
           codeRows.delete(args.code)
           break
         }
-        case 'v1.PinChallengeIssued': {
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          const args = event.args as {
-            id: string
-            pinHash: string
-            returnTo: string
-            expiresAt: DateTime.Utc
-          }
-          pinChallengeRows.set(args.id, {
-            id: args.id,
-            pinHash: args.pinHash,
-            returnTo: args.returnTo,
-            expiresAt: args.expiresAt,
-            status: 'pending',
-            attempts: 0,
-          })
-          break
-        }
-        case 'v1.PinChallengeVerified': {
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          const args = event.args as { id: string }
-          const existing = pinChallengeRows.get(args.id)
-          if (existing !== undefined) {
-            pinChallengeRows.set(args.id, { ...existing, status: 'verified' })
-          }
-          break
-        }
-        case 'v1.PinChallengeAttemptFailed': {
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          const args = event.args as { id: string; attempts: number }
-          const existing = pinChallengeRows.get(args.id)
-          if (existing !== undefined) {
-            pinChallengeRows.set(args.id, { ...existing, attempts: args.attempts })
-          }
-          break
-        }
-        case 'v1.PinChallengeRejected': {
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          const args = event.args as { id: string }
-          const existing = pinChallengeRows.get(args.id)
-          if (existing !== undefined) {
-            pinChallengeRows.set(args.id, { ...existing, status: 'rejected' })
-          }
-          break
-        }
-        case 'v1.PinChallengeExpired': {
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          const args = event.args as { id: string }
-          const existing = pinChallengeRows.get(args.id)
-          if (existing !== undefined) {
-            pinChallengeRows.set(args.id, { ...existing, status: 'expired' })
-          }
-          break
-        }
-        // Other events (e.g. GrantCreated, GrantUpdated, SessionStarted, SigningKeyAdded) are no-ops in this mock.
+        // Other events (e.g. GrantCreated, GrantUpdated, SigningKeyAdded) are no-ops in this mock.
         default:
           break
       }
@@ -366,8 +287,7 @@ const createOAuthHandler = (
   const apiLive = GatekeeperApiLive.pipe(
     Layer.provide(StubGatekeeperPagesLive),
     Layer.provide(makeGatekeeperStoreLayer(store)),
-    Layer.provide(Layer.succeed(Origin, 'http://localhost:8787')),
-    Layer.provide(OAuthDisplayDefaultInteractive)
+    Layer.provide(Layer.succeed(Origin, 'http://localhost:8787'))
   )
 
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
@@ -459,7 +379,7 @@ test('authorize auto-approves using matching redirect row from byClientIdAndRedi
   }
 })
 
-test('authorize redirects to authorization UI by default', async () => {
+test('authorize redirects to the polling page', async () => {
   const { handler, dispose } = createOAuthHandler(
     makeStore({
       jwks: [
@@ -476,34 +396,6 @@ test('authorize redirects to authorization UI by default', async () => {
     const response = await handler(
       new Request(
         'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc123&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=test-state'
-      )
-    )
-
-    expect(response.status).toBe(302)
-    const location = response.headers.get('location')
-    expect(location).toMatch(/\/access\/oauth-consents\/[0-9a-f-]+\/ui$/)
-  } finally {
-    await dispose()
-  }
-})
-
-test('authorize redirects to polling page URL when display=polling', async () => {
-  const { handler, dispose } = createOAuthHandler(
-    makeStore({
-      jwks: [
-        {
-          signJwt: async () => 'unused',
-          verifyJwt: async () => ({ payload: {} }),
-        },
-      ],
-      clients: [makeClient()],
-    })
-  )
-
-  try {
-    const response = await handler(
-      new Request(
-        'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc123&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=test-state&display=polling'
       )
     )
 

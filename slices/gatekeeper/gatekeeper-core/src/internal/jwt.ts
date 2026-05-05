@@ -113,20 +113,5 @@ const mintAccessToken = (
     return yield* signJwt(signingKey, payload)
   })
 
-// Deprecated: scheduled for deletion alongside the PIN/session surface.
-const signSessionJwt = (
-  jwk: SigningKey,
-  payload: Omit<jose.JWTPayload, 'iat' | 'exp'>,
-  maxAgeSeconds: number
-): Effect.Effect<string, UnknownException> =>
-  Effect.gen(function* () {
-    const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
-    return yield* signJwt(jwk, {
-      ...payload,
-      iat: now,
-      exp: now + maxAgeSeconds,
-    })
-  })
-
-export { verifyJwt, signJwt, signSessionJwt, mintAccessToken }
+export { verifyJwt, signJwt, mintAccessToken }
 export type { VerifiedPayload, MintAccessTokenPayload }

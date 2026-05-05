@@ -23,9 +23,6 @@ const AuthorizeUrlParamsSchema = Schema.Struct({
   code_challenge: Schema.NonEmptyString,
   redirect_uri: Schema.NonEmptyString,
   state: Schema.String,
-  // Public OAuth client-facing literal. Internally translated to
-  // `'out-of-band-polling'` at the boundary.
-  display: Schema.optional(Schema.Literal('polling')),
 })
 
 const FormUrlEncodedHeadersSchema = Schema.Struct({

@@ -10,7 +10,6 @@ const readJsonObject = async (response: Response): Promise<Record<string, unknow
   return decodeJsonObject(raw)
 }
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
-import { OAuthDisplayDefaultInteractive } from '../src/contexts/oauth-display-default.ts'
 import { GatekeeperApi } from '../src/http-api-definition/index.ts'
 import {
   GatekeeperApiLive,
@@ -35,8 +34,6 @@ const StubGatekeeperPagesLive = HttpApiBuilder.group(
     handlers
       .handle('OAuthPollingPage', () => Effect.succeed('<!doctype html><html></html>'))
       .handle('OAuthConsentPage', () => Effect.succeed('<!doctype html><html></html>'))
-      .handle('PinLoginPage', () => Effect.succeed('<!doctype html><html></html>'))
-      .handle('PinVerificationPage', () => Effect.succeed('<!doctype html><html></html>'))
       .handle('DeviceEntryPage', () => Effect.succeed('<!doctype html><html></html>'))
       .handle('DeviceConsentPage', () => Effect.succeed('<!doctype html><html></html>'))
 ).pipe(Layer.provide(RequireAuthMiddlewareLive))
@@ -190,8 +187,7 @@ const createHandler = (
   const apiLive = GatekeeperApiLive.pipe(
     Layer.provide(StubGatekeeperPagesLive),
     Layer.provide(makeGatekeeperStoreLayer(store)),
-    Layer.provide(Layer.succeed(Origin, ORIGIN)),
-    Layer.provide(OAuthDisplayDefaultInteractive)
+    Layer.provide(Layer.succeed(Origin, ORIGIN))
   )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }

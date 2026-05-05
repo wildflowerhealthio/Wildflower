@@ -2,7 +2,6 @@ import { HttpApiBuilder, HttpServerResponse } from '@effect/platform'
 import { Array, DateTime, Effect, Schema } from 'effect'
 import { Origin } from 'kitchen-sink'
 import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
-import { OAuthDisplayDefault } from '../contexts/oauth-display-default.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
 import { httpApiGroup } from '../http-api-definition/oauth.ts'
 import { oauthErrorHtml } from '../internal/error-pages.ts'
@@ -65,8 +64,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
           return HttpServerResponse.empty({ status: 503 })
         }
 
-        const { code_challenge_method, client_id, scope, code_challenge, redirect_uri, display } =
-          urlParams
+        const { code_challenge_method, client_id, scope, code_challenge, redirect_uri } = urlParams
         const stateParam = urlParams.state
 
         if (code_challenge_method !== 'S256') {
@@ -187,19 +185,7 @@ const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth', (handlers) =>
         }
 
         const origin = yield* Origin
-        const displayDefault = yield* OAuthDisplayDefault
-        // URL param keeps the OAuth client-facing literal `'polling'`; we
-        // translate to the internal `'out-of-band-polling'` mode here.
-        let effectiveDisplay: 'interactive' | 'out-of-band-polling' = displayDefault
-        if (display === 'polling') effectiveDisplay = 'out-of-band-polling'
-
-        if (effectiveDisplay === 'out-of-band-polling') {
-          return HttpServerResponse.redirect(`${origin}/oauth/authorize/${requestId}/page`, {
-            status: 302,
-          })
-        }
-
-        return HttpServerResponse.redirect(`${origin}/access/oauth-consents/${requestId}/ui`, {
+        return HttpServerResponse.redirect(`${origin}/oauth/authorize/${requestId}/page`, {
           status: 302,
         })
       })
