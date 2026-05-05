@@ -10,12 +10,14 @@ class ApprovalTimedOut extends Schema.TaggedError<ApprovalTimedOut>()('ApprovalT
 
 /**
  * Suspend until a LiveStore row matching `predicate` appears (or already
- * exists), or {@link GATE_TIMEOUT} elapses. The subscription is disposed on
- * success, timeout, and interruption.
+ * exists), or {@link GATE_TIMEOUT} elapses. The subscription is disposed
+ * on success, timeout, and interruption.
  *
- * Designed for the out-of-band approval gate: the caller commits an event to
- * record the request, then awaits a state transition driven by the Owner
- * out of band — without holding any in-memory listener registry.
+ * Used by the HTTP-request approval gate: a handler commits an event to
+ * record the request, then awaits the row transitioning to an
+ * Owner-decided state. Distinct from RFC 8628 device-flow polling — the
+ * client never re-issues; the wait is driven entirely by the LiveStore
+ * subscription.
  */
 const waitForRow = <A>(
   query: LiveQueryDef<A | null | undefined>,

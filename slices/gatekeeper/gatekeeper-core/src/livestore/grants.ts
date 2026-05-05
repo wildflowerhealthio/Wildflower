@@ -46,13 +46,16 @@ const events = {
       patient: Schema.optionalWith(Schema.NullOr(Schema.String), { default: () => null }),
     }),
   }),
+  // Patch shape: only `id` is required. Omitted fields are unchanged;
+  // `patient: null` clears the binding while `patient: undefined` (i.e.
+  // not provided) leaves it as is.
   grantUpdated: Events.synced({
     name: 'v1.GrantUpdated',
     schema: Schema.Struct({
       id: Schema.String,
-      scopes: Schema.Array(Schema.String),
-      grantedAt: Schema.DateTimeUtc,
-      patient: Schema.optionalWith(Schema.NullOr(Schema.String), { default: () => null }),
+      scopes: Schema.optional(Schema.Array(Schema.String)),
+      grantedAt: Schema.optional(Schema.DateTimeUtc),
+      patient: Schema.optional(Schema.NullOr(Schema.String)),
     }),
   }),
   grantRevoked: Events.synced({
@@ -89,8 +92,13 @@ const materializers = {
       lastUsedAt: null,
       patient: patient ?? null,
     }),
-  'v1.GrantUpdated': ({ id, scopes, grantedAt, patient }: typeof events.grantUpdated.schema.Type) =>
-    table.update({ scopes, grantedAt, patient: patient ?? null }).where({ id }),
+  'v1.GrantUpdated': ({ id, ...patch }: typeof events.grantUpdated.schema.Type) => {
+    const set: { -readonly [K in keyof typeof table.Type]?: (typeof table.Type)[K] } = {}
+    if (patch.scopes !== undefined) set.scopes = patch.scopes
+    if (patch.grantedAt !== undefined) set.grantedAt = patch.grantedAt
+    if (patch.patient !== undefined) set.patient = patch.patient
+    return table.update(set).where({ id })
+  },
   'v1.GrantRevoked': ({ id }: typeof events.grantRevoked.schema.Type) =>
     table.delete().where({ id }),
   'v1.ClientAccessRecorded': ({

@@ -1,19 +1,31 @@
 import { Events, queryDb, State } from '@livestore/livestore'
-import { DateTime, Schema } from 'effect'
+import { Schema } from 'effect'
 
-const AuthorizationFlowSchema = Schema.Literal('authorization_code', 'device_code')
+// Maps to the OAuth `grant_type` request parameter (RFC 6749 §1.3, RFC
+// 8628 §3.4). The URN `urn:ietf:params:oauth:grant-type:device_code`
+// stored on the wire is shortened to `device_code` here; both names
+// refer to the Device Authorization Grant.
+const AuthorizationGrantTypeSchema = Schema.Literal('authorization_code', 'device_code')
 
-type AuthorizationFlow = typeof AuthorizationFlowSchema.Type
+type AuthorizationGrantType = typeof AuthorizationGrantTypeSchema.Type
+
+// PKCE code-challenge method per RFC 7636 §4.2. Only `S256` is accepted;
+// the deprecated `plain` method is rejected at the `Authorize` endpoint.
+const CodeChallengeMethodSchema = Schema.Literal('S256')
+
+type CodeChallengeMethod = typeof CodeChallengeMethodSchema.Type
 
 const table = State.SQLite.table({
   name: 'authorizationRequests',
   columns: {
     id: State.SQLite.text({ primaryKey: true }),
-    flow: State.SQLite.json({ schema: AuthorizationFlowSchema }),
+    grantType: State.SQLite.json({ schema: AuthorizationGrantTypeSchema }),
     clientId: State.SQLite.text(),
     requestedScopes: State.SQLite.json({ schema: Schema.Array(Schema.String) }),
     codeChallenge: State.SQLite.text({ nullable: true }),
-    codeChallengeMethod: State.SQLite.text({ nullable: true }),
+    codeChallengeMethod: State.SQLite.json({
+      schema: Schema.NullOr(CodeChallengeMethodSchema),
+    }),
     redirectUri: State.SQLite.text({ nullable: true }),
     clientState: State.SQLite.text({ nullable: true }),
     userCode: State.SQLite.text({ nullable: true }),
@@ -41,12 +53,6 @@ const queries = {
       map: (rows): AuthorizationRequestRow | null => rows[0] ?? null,
       label: 'authorizationRequestByUserCode',
     }),
-  allExpired$: (now: DateTime.Utc) =>
-    queryDb(table, {
-      map: (rows): readonly AuthorizationRequestRow[] =>
-        rows.filter((row) => DateTime.lessThan(row.expiresAt, now)),
-      label: 'authorizationRequestsExpired',
-    }),
 }
 
 const events = {
@@ -57,7 +63,7 @@ const events = {
       clientId: Schema.String,
       requestedScopes: Schema.Array(Schema.String),
       codeChallenge: Schema.String,
-      codeChallengeMethod: Schema.String,
+      codeChallengeMethod: CodeChallengeMethodSchema,
       redirectUri: Schema.String,
       clientState: Schema.String,
       preApprovedScopes: Schema.NullOr(Schema.Array(Schema.String)),
@@ -92,11 +98,12 @@ const events = {
     name: 'v1.AuthorizationRequestExpired',
     schema: Schema.Struct({ id: Schema.String }),
   }),
-  // Bulk-expire event: cleanup pass commits one event per pass with the
-  // ids of every still-pending request that has aged past `expiresAt`.
-  authorizationRequestsExpiredAsOf: Events.synced({
-    name: 'v1.AuthorizationRequestsExpiredAsOf',
-    schema: Schema.Struct({ ids: Schema.Array(Schema.String) }),
+  // Bulk-delete pass: remove every request whose `expiresAt` is
+  // on-or-before `expiredAfter`. Carries a single timestamp instead of a
+  // row-id list so replicas converge purely on the cutoff.
+  deleteAuthorizationRequestsExpiredAsOf: Events.synced({
+    name: 'v1.DeleteAuthorizationRequestsExpiredAsOf',
+    schema: Schema.Struct({ expiredAfter: Schema.DateTimeUtc }),
   }),
   deviceAuthorizationPolled: Events.synced({
     name: 'v1.DeviceAuthorizationPolled',
@@ -122,7 +129,7 @@ const materializers = {
   }: typeof events.authorizationRequestStarted.schema.Type) =>
     table.insert({
       id,
-      flow: 'authorization_code',
+      grantType: 'authorization_code',
       clientId,
       requestedScopes,
       codeChallenge,
@@ -148,7 +155,7 @@ const materializers = {
   }: typeof events.deviceAuthorizationRequestStarted.schema.Type) =>
     table.insert({
       id,
-      flow: 'device_code',
+      grantType: 'device_code',
       clientId,
       requestedScopes,
       codeChallenge: null,
@@ -176,10 +183,10 @@ const materializers = {
     id,
   }: typeof events.authorizationRequestExpired.schema.Type) =>
     table.update({ status: 'expired' }).where({ id }),
-  'v1.AuthorizationRequestsExpiredAsOf': ({
-    ids,
-  }: typeof events.authorizationRequestsExpiredAsOf.schema.Type) =>
-    ids.map((id) => table.update({ status: 'expired' }).where({ id })),
+  'v1.DeleteAuthorizationRequestsExpiredAsOf': ({
+    expiredAfter,
+  }: typeof events.deleteAuthorizationRequestsExpiredAsOf.schema.Type) =>
+    table.delete().where({ expiresAt: { op: '<=', value: expiredAfter } }),
   'v1.DeviceAuthorizationPolled': ({
     id,
     polledAt,
@@ -187,5 +194,12 @@ const materializers = {
     table.update({ lastPolledAt: polledAt }).where({ id }),
 }
 
-export { AuthorizationFlowSchema, table, queries, events, materializers }
-export type { AuthorizationFlow, AuthorizationRequestRow }
+export {
+  AuthorizationGrantTypeSchema,
+  CodeChallengeMethodSchema,
+  table,
+  queries,
+  events,
+  materializers,
+}
+export type { AuthorizationGrantType, AuthorizationRequestRow, CodeChallengeMethod }

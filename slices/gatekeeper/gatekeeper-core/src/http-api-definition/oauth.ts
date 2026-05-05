@@ -3,7 +3,7 @@ import { Schema } from 'effect'
 
 const AuthorizationStatusSchema = Schema.Union(
   Schema.Struct({ status: Schema.Literal('pending') }),
-  Schema.Struct({ status: Schema.Literal('declined') }),
+  Schema.Struct({ status: Schema.Literal('denied') }),
   Schema.Struct({ status: Schema.Literal('approved'), redirect: Schema.String }),
   Schema.Struct({ status: Schema.Literal('error'), message: Schema.String })
 )

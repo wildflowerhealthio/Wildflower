@@ -17,18 +17,18 @@ const HtmlSuccess = HttpApiSchema.Text({ contentType: 'text/html; charset=utf-8'
  */
 const httpApiGroup = HttpApiGroup.make('gatekeeper-pages', { topLevel: false })
   .add(
-    HttpApiEndpoint.get('OAuthPollingPage', '/oauth/authorize/:id/ui')
+    HttpApiEndpoint.get('OAuthPollingPage', '/oauth/authorize/:id/view')
       .setPath(Schema.Struct({ id: Schema.String }))
       .addSuccess(HtmlSuccess)
   )
   .add(
-    HttpApiEndpoint.get('OAuthConsentPage', '/access/oauth-consents/:id/ui')
+    HttpApiEndpoint.get('OAuthConsentPage', '/access/oauth-consents/:id/view')
       .setPath(Schema.Struct({ id: Schema.String }))
       .addSuccess(HtmlSuccess)
   )
   .add(HttpApiEndpoint.get('DeviceEntryPage', '/access/devices').addSuccess(HtmlSuccess))
   .add(
-    HttpApiEndpoint.get('DeviceConsentPage', '/access/devices/:userCode/ui')
+    HttpApiEndpoint.get('DeviceConsentPage', '/access/devices/:userCode/view')
       .setPath(Schema.Struct({ userCode: Schema.String }))
       .addSuccess(HtmlSuccess)
   )

@@ -52,7 +52,7 @@ const makeRequest = (
   overrides: Partial<AuthorizationRequestRow> = {}
 ): AuthorizationRequestRow => ({
   id: 'req-1',
-  flow: 'authorization_code',
+  grantType: 'authorization_code',
   clientId: 'client-1',
   requestedScopes: ['patient/*.read'],
   codeChallenge: 'challenge',

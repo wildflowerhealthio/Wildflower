@@ -43,14 +43,20 @@ const events = {
       registeredAt: Schema.DateTimeUtc,
     }),
   }),
+  // Patch shape: only `clientId` is required, every other field is
+  // optional. An omitted field is left unchanged; a present field
+  // (including `secretHash: null`) overwrites. This lets Owner-side UIs
+  // edit individual fields without echoing the rest of the row back —
+  // and avoids races where two concurrent edits clobber each other's
+  // unrelated fields.
   clientUpdated: Events.synced({
     name: 'v1.ClientUpdated',
     schema: Schema.Struct({
       clientId: Schema.String,
-      name: Schema.String,
-      redirectUris: Schema.Array(Schema.String),
-      allowedScopes: Schema.Array(Schema.String),
-      secretHash: Schema.NullOr(Schema.String),
+      name: Schema.optional(Schema.String),
+      redirectUris: Schema.optional(Schema.Array(Schema.String)),
+      allowedScopes: Schema.optional(Schema.Array(Schema.String)),
+      secretHash: Schema.optional(Schema.NullOr(Schema.String)),
     }),
   }),
   clientDisabled: Events.synced({
@@ -82,16 +88,19 @@ const materializers = {
       registeredAt,
       disabledAt: null,
     }),
-  'v1.ClientUpdated': ({
-    clientId,
-    name,
-    redirectUris,
-    allowedScopes,
-    secretHash,
-  }: typeof events.clientUpdated.schema.Type) =>
-    table.update({ name, redirectUris, allowedScopes, secretHash }).where({ clientId }),
+  'v1.ClientUpdated': ({ clientId, ...patch }: typeof events.clientUpdated.schema.Type) => {
+    const set: { -readonly [K in keyof typeof table.Type]?: (typeof table.Type)[K] } = {}
+    if (patch.name !== undefined) set.name = patch.name
+    if (patch.redirectUris !== undefined) set.redirectUris = patch.redirectUris
+    if (patch.allowedScopes !== undefined) set.allowedScopes = patch.allowedScopes
+    if (patch.secretHash !== undefined) set.secretHash = patch.secretHash
+    return table.update(set).where({ clientId })
+  },
+  // Don't bump `disabledAt` if the client is already disabled — the
+  // first disable wins and downstream auditors care about that
+  // timestamp.
   'v1.ClientDisabled': ({ clientId, disabledAt }: typeof events.clientDisabled.schema.Type) =>
-    table.update({ disabledAt }).where({ clientId }),
+    table.update({ disabledAt }).where({ clientId, disabledAt: null }),
 }
 
 export { ClientKindSchema, table, queries, events, materializers }

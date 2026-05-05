@@ -193,7 +193,7 @@ const makeStore = ({
             clientId: string
             requestedScopes: ReadonlyArray<string>
             codeChallenge: string
-            codeChallengeMethod: string
+            codeChallengeMethod: 'S256'
             redirectUri: string
             clientState: string
             preApprovedScopes: ReadonlyArray<string> | null
@@ -202,7 +202,7 @@ const makeStore = ({
           }
           requestRows.set(args.id, {
             id: args.id,
-            flow: 'authorization_code',
+            grantType: 'authorization_code',
             clientId: args.clientId,
             requestedScopes: args.requestedScopes,
             codeChallenge: args.codeChallenge,
@@ -402,7 +402,7 @@ test('authorize redirects to the polling page', async () => {
 
     expect(response.status).toBe(302)
     const location = response.headers.get('location')
-    expect(location).toMatch(/\/oauth\/authorize\/[0-9a-f-]+\/ui$/)
+    expect(location).toMatch(/\/oauth\/authorize\/[0-9a-f-]+\/view$/)
   } finally {
     await dispose()
   }

@@ -1,4 +1,4 @@
-import { DateTime, Effect, Either, Layer } from 'effect'
+import { DateTime, Duration, Effect, Either, Layer } from 'effect'
 import { Origin } from 'kitchen-sink'
 import { expect, test } from 'vite-plus/test'
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
@@ -68,7 +68,7 @@ test('mintAccessToken round-trips through verifyJwt', async () => {
     mintAccessToken(signingKey, ORIGIN, {
       clientId: 'wildflower-host',
       scope: ['owner'],
-      ttlSeconds: 60,
+      ttl: Duration.minutes(1),
     })
   )
 
@@ -99,7 +99,7 @@ test('mintAccessToken issues a token whose verification fails when client is not
     mintAccessToken(signingKey, ORIGIN, {
       clientId: 'wildflower-host',
       scope: ['owner'],
-      ttlSeconds: 60,
+      ttl: Duration.minutes(1),
     })
   )
 
@@ -125,7 +125,7 @@ test('mintAccessToken issues a token that fails verification once expired', asyn
     mintAccessToken(signingKey, ORIGIN, {
       clientId: 'wildflower-host',
       scope: ['owner'],
-      ttlSeconds: -1,
+      ttl: Duration.seconds(-1),
     })
   )
 
@@ -151,7 +151,7 @@ test('mintAccessToken includes patient claim when supplied', async () => {
     mintAccessToken(signingKey, ORIGIN, {
       clientId: 'smart-app',
       scope: ['patient/*.read'],
-      ttlSeconds: 60,
+      ttl: Duration.minutes(1),
       audience: `${ORIGIN}/fhir`,
       patient: 'patient-1',
     })

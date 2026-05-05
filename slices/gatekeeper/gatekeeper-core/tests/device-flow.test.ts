@@ -1,5 +1,5 @@
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
-import { DateTime, Effect, Layer, Schema } from 'effect'
+import { DateTime, Duration, Effect, Layer, Schema } from 'effect'
 import { Origin } from 'kitchen-sink'
 import { expect, test } from 'vite-plus/test'
 
@@ -124,7 +124,7 @@ const makeStore = (opts: StoreOpts): typeof GatekeeperStore.Service => {
           const args = decodeDeviceStartedArgs(event.args)
           requestRows.set(args.id, {
             id: args.id,
-            flow: 'device_code',
+            grantType: 'device_code',
             clientId: args.clientId,
             requestedScopes: args.requestedScopes,
             codeChallenge: null,
@@ -277,7 +277,7 @@ test('device-flow token exchange returns authorization_pending while consent is 
   const expiresAt = DateTime.addDuration(requestedAt, '5 minutes')
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
-    flow: 'device_code',
+    grantType: 'device_code',
     clientId: 'wildflower-host',
     requestedScopes: ['owner'],
     codeChallenge: null,
@@ -324,7 +324,7 @@ test('device-flow token exchange returns access_denied when consent was denied',
   const signingKey = await SigningKey.generate()
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
-    flow: 'device_code',
+    grantType: 'device_code',
     clientId: 'wildflower-host',
     requestedScopes: ['owner'],
     codeChallenge: null,
@@ -370,7 +370,7 @@ test('device-flow token exchange returns expired_token after expiry', async () =
   const signingKey = await SigningKey.generate()
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
-    flow: 'device_code',
+    grantType: 'device_code',
     clientId: 'wildflower-host',
     requestedScopes: ['owner'],
     codeChallenge: null,
@@ -418,7 +418,7 @@ test('device-flow token exchange mints token after approval', async () => {
   const expiresAt = DateTime.addDuration(requestedAt, '5 minutes')
   const approved: AuthorizationRequestRow = {
     id: 'dev-1',
-    flow: 'device_code',
+    grantType: 'device_code',
     clientId: 'wildflower-host',
     requestedScopes: ['owner'],
     codeChallenge: null,
@@ -467,7 +467,7 @@ test('device_code is single-use: a second token poll returns expired_token', asy
   const signingKey = await SigningKey.generate()
   const approved: AuthorizationRequestRow = {
     id: 'dev-1',
-    flow: 'device_code',
+    grantType: 'device_code',
     clientId: 'wildflower-host',
     requestedScopes: ['owner'],
     codeChallenge: null,
@@ -531,7 +531,7 @@ test('GET /access/devices/:userCode returns the pending consent for an owner', a
   const signingKey = await SigningKey.generate()
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
-    flow: 'device_code',
+    grantType: 'device_code',
     clientId: 'wildflower-host',
     requestedScopes: ['owner'],
     codeChallenge: null,
@@ -557,7 +557,7 @@ test('GET /access/devices/:userCode returns the pending consent for an owner', a
     mintAccessToken(signingKey, ORIGIN, {
       clientId: 'wildflower-host',
       scope: ['owner'],
-      ttlSeconds: 60,
+      ttl: Duration.minutes(1),
     })
   )
 
@@ -582,7 +582,7 @@ test('POST /access/devices/:userCode/approve flips status to approved', async ()
   const signingKey = await SigningKey.generate()
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
-    flow: 'device_code',
+    grantType: 'device_code',
     clientId: 'wildflower-host',
     requestedScopes: ['owner'],
     codeChallenge: null,
@@ -608,7 +608,7 @@ test('POST /access/devices/:userCode/approve flips status to approved', async ()
     mintAccessToken(signingKey, ORIGIN, {
       clientId: 'wildflower-host',
       scope: ['owner'],
-      ttlSeconds: 60,
+      ttl: Duration.minutes(1),
     })
   )
 
@@ -649,7 +649,7 @@ test('POST /access/devices/:userCode/approve with empty granted scopes routes th
   const signingKey = await SigningKey.generate()
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
-    flow: 'device_code',
+    grantType: 'device_code',
     clientId: 'wildflower-host',
     requestedScopes: ['owner'],
     codeChallenge: null,
@@ -675,7 +675,7 @@ test('POST /access/devices/:userCode/approve with empty granted scopes routes th
     mintAccessToken(signingKey, ORIGIN, {
       clientId: 'wildflower-host',
       scope: ['owner'],
-      ttlSeconds: 60,
+      ttl: Duration.minutes(1),
     })
   )
 
@@ -721,7 +721,7 @@ test('POST /access/devices/:userCode/deny without auth is rejected', async () =>
   const signingKey = await SigningKey.generate()
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
-    flow: 'device_code',
+    grantType: 'device_code',
     clientId: 'wildflower-host',
     requestedScopes: ['owner'],
     codeChallenge: null,
@@ -759,7 +759,7 @@ test('device-flow token exchange returns slow_down when polled within interval',
   // Pretend the row was polled 1 second ago — under the 5-second interval.
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
-    flow: 'device_code',
+    grantType: 'device_code',
     clientId: 'wildflower-host',
     requestedScopes: ['owner'],
     codeChallenge: null,

@@ -10,7 +10,6 @@ test('contexts/index re-exports the published surface', () => {
     [
       'FIRST_PARTY_CLIENT_ID',
       'GatekeeperStore',
-      'SeedFirstPartyClientLive',
       'approveAuthorizationRequest',
       'cleanupExpiredAuthorizationCodes',
       'cleanupExpiredAuthorizationRequests',

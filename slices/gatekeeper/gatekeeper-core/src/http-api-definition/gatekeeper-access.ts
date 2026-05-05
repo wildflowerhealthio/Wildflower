@@ -26,12 +26,8 @@ const GrantSchema = Schema.Struct({
   grantedAt: Schema.DateTimeUtc,
   lastUsedAt: Schema.NullOr(Schema.DateTimeUtc),
   patient: Schema.NullOr(Schema.String),
-})
-
-const _grantWireMirrorsRow = (row: GrantRow): Schema.Schema.Type<typeof GrantSchema> => row
-const _grantRowMirrorsWire = (wire: Schema.Schema.Type<typeof GrantSchema>): GrantRow => wire
-void _grantWireMirrorsRow
-void _grantRowMirrorsWire
+  // oxlint-disable-next-line typescript/no-explicit-any
+}) satisfies Schema.Schema<GrantRow, any, never>
 
 const GrantsSchema = Schema.Array(GrantSchema)
 
@@ -42,9 +38,9 @@ const GrantNotFoundSchema = Schema.Struct({
 
 /**
  * `HttpRequest`: a record of an inbound FHIR request that the gatekeeper
- * has parked for the Owner to approve or deny out-of-band. Lives on the
- * `httpRequests` table; the wire shape mirrors the row 1:1 (the
- * `_httpRequestWireMirrorsRow` thunk below is the compile-time guard).
+ * has parked for the Owner to approve or deny. Lives on the
+ * `httpRequests` table; the wire shape mirrors the row 1:1 — the
+ * `satisfies` clause below is the compile-time guard.
  *
  * `respondedAt` and `statusCode` populate once the Owner approves /
  * denies and the upstream call completes.
@@ -59,16 +55,8 @@ const HttpRequestSchema = Schema.Struct({
   status: Schema.String,
   statusCode: Schema.NullOr(Schema.Int),
   respondedAt: Schema.NullOr(Schema.DateTimeUtc),
-})
-
-const _httpRequestWireMirrorsRow = (
-  row: HttpRequestRow
-): Schema.Schema.Type<typeof HttpRequestSchema> => row
-const _httpRequestRowMirrorsWire = (
-  wire: Schema.Schema.Type<typeof HttpRequestSchema>
-): HttpRequestRow => wire
-void _httpRequestWireMirrorsRow
-void _httpRequestRowMirrorsWire
+  // oxlint-disable-next-line typescript/no-explicit-any
+}) satisfies Schema.Schema<HttpRequestRow, any, never>
 
 const HttpRequestsSchema = Schema.Array(HttpRequestSchema)
 
@@ -90,8 +78,8 @@ const HttpRequestNotFoundSchema = Schema.Struct({
  * - `ListRequests` / `GetRequest`: inspect parked FHIR requests waiting
  *   on Owner decision.
  * - `ApproveRequest` / `DenyRequest`: Owner decision for a parked FHIR
- *   request — the upstream consumer (`waitForRow`) resumes once the
- *   status flips.
+ *   request — the upstream consumer (`internal/await-row.ts`) resumes
+ *   once the status flips.
  */
 const httpApiGroup = HttpApiGroup.make('gatekeeper-access', { topLevel: false })
   .add(HttpApiEndpoint.get('ListGrants', '/grants').addSuccess(GrantsSchema))

@@ -22,7 +22,7 @@ const approveAuthorizationRequest = (
     const pending = store.query(AuthorizationRequests.queries.byId$(requestId))
     if (pending == null) return null
     if (pending.status !== 'pending') return null
-    if (pending.flow !== 'authorization_code') return null
+    if (pending.grantType !== 'authorization_code') return null
     if (pending.redirectUri == null || pending.clientState == null || pending.codeChallenge == null)
       return null
     const requestedScopeSet = new Set(pending.requestedScopes)

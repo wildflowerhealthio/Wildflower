@@ -1,5 +1,5 @@
 import { Events, queryDb, State } from '@livestore/livestore'
-import { DateTime, Schema } from 'effect'
+import { Schema } from 'effect'
 
 const table = State.SQLite.table({
   name: 'authorizationCodes',
@@ -30,12 +30,6 @@ const queries = {
       map: (rows): AuthorizationCodeRow | null => rows[0] ?? null,
       label: 'authorizationCodeByRequestId',
     }),
-  allExpired$: (now: DateTime.Utc) =>
-    queryDb(table, {
-      map: (rows): readonly AuthorizationCodeRow[] =>
-        rows.filter((row) => DateTime.lessThan(row.expiresAt, now)),
-      label: 'authorizationCodesExpired',
-    }),
 }
 
 const events = {
@@ -57,12 +51,13 @@ const events = {
     name: 'v1.AuthorizationCodeConsumed',
     schema: Schema.Struct({ code: Schema.String }),
   }),
-  // Bulk-expire event: cleanup pass commits one event with all expired
-  // codes in the payload. Replicas converge because the codes list is
-  // deterministic (computed by the cleanup Effect from a snapshot read).
-  authorizationCodesExpiredAsOf: Events.synced({
-    name: 'v1.AuthorizationCodesExpiredAsOf',
-    schema: Schema.Struct({ codes: Schema.Array(Schema.String) }),
+  // Bulk-delete pass: remove every code whose `expiresAt` is on-or-before
+  // `expiredAfter`. Carries a single timestamp instead of a row-id list
+  // so replicas converge purely on the cutoff — no risk of two cleanup
+  // passes building diverging id sets between snapshot read and commit.
+  deleteAuthorizationCodesExpiredAsOf: Events.synced({
+    name: 'v1.DeleteAuthorizationCodesExpiredAsOf',
+    schema: Schema.Struct({ expiredAfter: Schema.DateTimeUtc }),
   }),
 } as const
 
@@ -91,10 +86,10 @@ const materializers = {
     }),
   'v1.AuthorizationCodeConsumed': ({ code }: typeof events.authorizationCodeConsumed.schema.Type) =>
     table.delete().where({ code }),
-  'v1.AuthorizationCodesExpiredAsOf': ({
-    codes,
-  }: typeof events.authorizationCodesExpiredAsOf.schema.Type) =>
-    codes.map((code) => table.delete().where({ code })),
+  'v1.DeleteAuthorizationCodesExpiredAsOf': ({
+    expiredAfter,
+  }: typeof events.deleteAuthorizationCodesExpiredAsOf.schema.Type) =>
+    table.delete().where({ expiresAt: { op: '<=', value: expiredAfter } }),
 }
 
 export { table, queries, events, materializers }

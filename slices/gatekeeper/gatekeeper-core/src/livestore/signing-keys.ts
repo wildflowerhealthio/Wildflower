@@ -3,108 +3,6 @@ import { Events, type LiveQueryDef, queryDb, State, nanoid } from '@livestore/li
 import { Array, Schema } from 'effect'
 import * as jose from 'jose'
 
-class SigningKey extends Schema.Class<SigningKey>('SigningKey')({
-  kty: Schema.Literal('RSA'),
-  alg: Schema.Literal('RS256'),
-  kid: Schema.String,
-  values: Schema.Struct({
-    d: Schema.String,
-    dp: Schema.String,
-    dq: Schema.String,
-    e: Schema.String,
-    n: Schema.String,
-    p: Schema.String,
-    q: Schema.String,
-    qi: Schema.String,
-  }),
-}) {
-  publicJwk(): jose.JWK_RSA_Public {
-    return {
-      kid: this.kid,
-      key_ops: ['verify'],
-      e: this.values.e,
-      n: this.values.n,
-      kty: 'RSA' as const,
-      alg: 'RS256' as const,
-    }
-  }
-
-  privateJwk(): jose.JWK_RSA_Private {
-    return {
-      kid: this.kid,
-      key_ops: ['sign'],
-      d: this.values.d,
-      dp: this.values.dp,
-      dq: this.values.dq,
-      e: this.values.e,
-      n: this.values.n,
-      kty: 'RSA' as const,
-      alg: 'RS256' as const,
-      p: this.values.p,
-      q: this.values.q,
-      qi: this.values.qi,
-    }
-  }
-
-  async signJwt(payload: jose.JWTPayload): Promise<string> {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const joseKey = (await jose.importJWK(this.privateJwk())) as jose.CryptoKey
-    return await new jose.SignJWT(payload)
-      .setProtectedHeader({ alg: 'RS256', kid: this.kid })
-      .sign(joseKey)
-  }
-
-  /**
-   * Verify a JWT against this key. Callers MUST supply
-   * `expectedIssuer` and `acceptedAudiences` so iss/aud are checked by
-   * `jose.jwtVerify` itself — the library is the canonical place for
-   * those checks. The method exists so the wrapper in `internal/jwt.ts`
-   * can iterate over multiple keys during rotation; direct callers are
-   * forced to be explicit about issuer/audience instead of getting a
-   * silent-accept default.
-   */
-  async verifyJwt(
-    token: string,
-    options: { expectedIssuer: string; acceptedAudiences: ReadonlyArray<string> }
-  ): Promise<jose.JWTVerifyResult<jose.JWTPayload>> {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const testPub = (await jose.importJWK(this.publicJwk())) as jose.CryptoKey
-    return await jose.jwtVerify(token, testPub, {
-      issuer: options.expectedIssuer,
-      audience: [...options.acceptedAudiences],
-    })
-  }
-
-  static async fromJosePrivateJwk(jwk: jose.CryptoKey): Promise<SigningKey> {
-    const privateJoseJwk = await jose.exportJWK(jwk)
-    const kid = nanoid()
-    return Schema.decodeUnknownSync(SigningKey)({
-      kid,
-      kty: 'RSA' as const,
-      alg: 'RS256' as const,
-      values: {
-        d: privateJoseJwk.d,
-        dp: privateJoseJwk.dp,
-        dq: privateJoseJwk.dq,
-        e: privateJoseJwk.e,
-        n: privateJoseJwk.n,
-
-        p: privateJoseJwk.p,
-        q: privateJoseJwk.q,
-        qi: privateJoseJwk.qi,
-      },
-    })
-  }
-
-  static async generate(): Promise<SigningKey> {
-    const { privateKey } = await jose.generateKeyPair('RS256', {
-      modulusLength: 2048,
-      extractable: true,
-    })
-    return await SigningKey.fromJosePrivateJwk(privateKey)
-  }
-}
-
 const SigningKeyValuesSchema = Schema.Struct({
   d: Schema.String,
   dp: Schema.String,
@@ -115,6 +13,110 @@ const SigningKeyValuesSchema = Schema.Struct({
   q: Schema.String,
   qi: Schema.String,
 })
+
+const SigningKeySchema = Schema.Struct({
+  kty: Schema.Literal('RSA'),
+  alg: Schema.Literal('RS256'),
+  kid: Schema.String,
+  values: SigningKeyValuesSchema,
+})
+
+type SigningKey = typeof SigningKeySchema.Type
+
+const decodeSigningKey = Schema.decodeUnknownSync(SigningKeySchema)
+
+const publicJwk = (key: SigningKey): jose.JWK_RSA_Public => ({
+  kid: key.kid,
+  key_ops: ['verify'],
+  e: key.values.e,
+  n: key.values.n,
+  kty: 'RSA' as const,
+  alg: 'RS256' as const,
+})
+
+const privateJwk = (key: SigningKey): jose.JWK_RSA_Private => ({
+  kid: key.kid,
+  key_ops: ['sign'],
+  d: key.values.d,
+  dp: key.values.dp,
+  dq: key.values.dq,
+  e: key.values.e,
+  n: key.values.n,
+  kty: 'RSA' as const,
+  alg: 'RS256' as const,
+  p: key.values.p,
+  q: key.values.q,
+  qi: key.values.qi,
+})
+
+const signJwt = async (key: SigningKey, payload: jose.JWTPayload): Promise<string> => {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const joseKey = (await jose.importJWK(privateJwk(key))) as jose.CryptoKey
+  return await new jose.SignJWT(payload)
+    .setProtectedHeader({ alg: 'RS256', kid: key.kid })
+    .sign(joseKey)
+}
+
+/**
+ * Verify a JWT against `key`. Callers MUST supply `expectedIssuer` and
+ * `acceptedAudiences` so iss/aud are checked by `jose.jwtVerify` itself
+ * — the library is the canonical place for those checks. The wrapper in
+ * `internal/jwt.ts` iterates over multiple keys for rotation; direct
+ * callers are forced to be explicit about issuer/audience instead of
+ * getting a silent-accept default.
+ */
+const verifyJwt = async (
+  key: SigningKey,
+  token: string,
+  options: { expectedIssuer: string; acceptedAudiences: ReadonlyArray<string> }
+): Promise<jose.JWTVerifyResult<jose.JWTPayload>> => {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const testPub = (await jose.importJWK(publicJwk(key))) as jose.CryptoKey
+  return await jose.jwtVerify(token, testPub, {
+    issuer: options.expectedIssuer,
+    audience: [...options.acceptedAudiences],
+  })
+}
+
+const fromJosePrivateJwk = async (jwk: jose.CryptoKey): Promise<SigningKey> => {
+  const privateJoseJwk = await jose.exportJWK(jwk)
+  return decodeSigningKey({
+    kid: nanoid(),
+    kty: 'RSA' as const,
+    alg: 'RS256' as const,
+    values: {
+      d: privateJoseJwk.d,
+      dp: privateJoseJwk.dp,
+      dq: privateJoseJwk.dq,
+      e: privateJoseJwk.e,
+      n: privateJoseJwk.n,
+      p: privateJoseJwk.p,
+      q: privateJoseJwk.q,
+      qi: privateJoseJwk.qi,
+    },
+  })
+}
+
+const generate = async (): Promise<SigningKey> => {
+  const { privateKey } = await jose.generateKeyPair('RS256', {
+    modulusLength: 2048,
+    extractable: true,
+  })
+  return await fromJosePrivateJwk(privateKey)
+}
+
+const make = (input: typeof SigningKeySchema.Type): SigningKey => decodeSigningKey(input)
+
+const SigningKey = {
+  schema: SigningKeySchema,
+  publicJwk,
+  privateJwk,
+  signJwt,
+  verifyJwt,
+  fromJosePrivateJwk,
+  generate,
+  make,
+} as const
 
 const table = State.SQLite.table({
   name: 'signingKeys',
@@ -129,13 +131,12 @@ const table = State.SQLite.table({
 
 type SigningKeyRow = (typeof table)['Type']
 
-const rowToSigningKey = (row: SigningKeyRow): SigningKey =>
-  SigningKey.make({
-    kid: row.kid,
-    kty: 'RSA' as const,
-    alg: 'RS256' as const,
-    values: row.values,
-  })
+const rowToSigningKey = (row: SigningKeyRow): SigningKey => ({
+  kid: row.kid,
+  kty: 'RSA' as const,
+  alg: 'RS256' as const,
+  values: row.values,
+})
 
 const queries = {
   findByKid$: (kid: string): LiveQueryDef<SigningKey | null> =>
@@ -167,7 +168,7 @@ const events = {
   signingKeyAdded: Events.synced({
     name: 'v1.SigningKeyAdded',
     schema: Schema.Struct({
-      signingKey: SigningKey,
+      signingKey: SigningKeySchema,
     }),
   }),
   signingKeyActivated: Events.synced({
@@ -193,5 +194,5 @@ const materializers = State.SQLite.materializers(events, {
   ],
 })
 
-export { SigningKey, table, queries, events, materializers }
+export { SigningKey, SigningKeySchema, table, queries, events, materializers }
 export type { SigningKeyRow }
