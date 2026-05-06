@@ -130,7 +130,7 @@ Public components are published at `/.well-known/jwks.json`.
 - **Active-key selection:** `isActive: boolean` column;
   `signingKeyActivated({ kid })` flips the named key on (and any
   prior active key off, in one materializer step). Sign-side picks
-  via `SigningKeys.queries.active$`. Verify-side iterates every key
+  via `SigningKey.queries.active$`. Verify-side iterates every key
   in the table — that's the rotation-safe path.
 
 ### Owner auth middleware (`RequireAuthMiddleware`)

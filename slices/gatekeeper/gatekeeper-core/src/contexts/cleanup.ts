@@ -5,9 +5,9 @@ import { GatekeeperStore } from './gatekeeper-store.ts'
 const cleanupExpiredAuthorizationRequests: Effect.Effect<void, never, GatekeeperStore> = Effect.gen(
   function* () {
     const store = yield* GatekeeperStore
-    const expiredAfter = yield* DateTime.now
+    const expiredBefore = yield* DateTime.now
     store.commit(
-      AuthorizationRequests.events.deleteAuthorizationRequestsExpiredAsOf({ expiredAfter })
+      AuthorizationRequests.events.deleteAuthorizationRequestsExpiredAsOf({ expiredBefore })
     )
   }
 )
@@ -15,8 +15,8 @@ const cleanupExpiredAuthorizationRequests: Effect.Effect<void, never, Gatekeeper
 const cleanupExpiredAuthorizationCodes: Effect.Effect<void, never, GatekeeperStore> = Effect.gen(
   function* () {
     const store = yield* GatekeeperStore
-    const expiredAfter = yield* DateTime.now
-    store.commit(AuthorizationCodes.events.deleteAuthorizationCodesExpiredAsOf({ expiredAfter }))
+    const expiredBefore = yield* DateTime.now
+    store.commit(AuthorizationCodes.events.deleteAuthorizationCodesExpiredAsOf({ expiredBefore }))
   }
 )
 

@@ -1,6 +1,6 @@
 import { Events, type LiveQueryDef, queryDb, State, nanoid } from '@livestore/livestore'
 
-import { Array, Schema } from 'effect'
+import { Schema } from 'effect'
 import * as jose from 'jose'
 
 const SigningKeyValuesSchema = Schema.Struct({
@@ -21,31 +21,18 @@ const SigningKeySchema = Schema.Struct({
   values: SigningKeyValuesSchema,
 })
 
-type SigningKeyData = typeof SigningKeySchema.Type
-
 /**
- * Runtime SigningKey: the schema-derived data (`kid`, `kty`, `alg`,
- * `values`) plus crypto methods bound to it. Test stubs satisfy this
- * shape directly so they can intercept `signJwt` / `verifyJwt`.
- *
- * Use {@link SigningKey.make} (or `SigningKey.fromJosePrivateJwk` /
- * `SigningKey.generate`) to construct one — the methods are attached
- * there. Plain decoded data (e.g. an event payload) is `SigningKeyData`,
- * not `SigningKey`.
+ * Pure data shape of an RSA signing key (kid/kty/alg/values). Crypto
+ * operations are exposed as standalone functions on this module —
+ * callers should use `SigningKey.signJwt(key, ...)` /
+ * `SigningKey.verifyJwt(key, ...)` rather than reaching for methods on
+ * the value.
  */
-type SigningKey = SigningKeyData & {
-  publicJwk(): jose.JWK_RSA_Public
-  privateJwk(): jose.JWK_RSA_Private
-  signJwt(payload: jose.JWTPayload): Promise<string>
-  verifyJwt(
-    token: string,
-    options: { expectedIssuer: string; acceptedAudiences: ReadonlyArray<string> }
-  ): Promise<jose.JWTVerifyResult<jose.JWTPayload>>
-}
+type SigningKey = typeof SigningKeySchema.Type
 
-const decodeSigningKeyData = Schema.decodeUnknownSync(SigningKeySchema)
+const decodeSigningKey = Schema.decodeUnknownSync(SigningKeySchema)
 
-const publicJwk = (key: SigningKeyData): jose.JWK_RSA_Public => ({
+const publicJwk = (key: SigningKey): jose.JWK_RSA_Public => ({
   kid: key.kid,
   key_ops: ['verify'],
   e: key.values.e,
@@ -54,7 +41,7 @@ const publicJwk = (key: SigningKeyData): jose.JWK_RSA_Public => ({
   alg: 'RS256' as const,
 })
 
-const privateJwk = (key: SigningKeyData): jose.JWK_RSA_Private => ({
+const privateJwk = (key: SigningKey): jose.JWK_RSA_Private => ({
   kid: key.kid,
   key_ops: ['sign'],
   d: key.values.d,
@@ -69,11 +56,23 @@ const privateJwk = (key: SigningKeyData): jose.JWK_RSA_Private => ({
   qi: key.values.qi,
 })
 
-const signJwt = async (key: SigningKeyData, payload: jose.JWTPayload): Promise<string> => {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const joseKey = (await jose.importJWK(privateJwk(key))) as jose.CryptoKey
+// `jose.importJWK` returns `CryptoKey | Uint8Array`. For RSA JWKs it's
+// always a `CryptoKey`, but verify that at runtime — the type union
+// otherwise leaks into our sign/verify call sites and forces an unsafe
+// cast. Throwing here surfaces as a rejected Promise, which the Effect
+// wrappers in `internal/jwt.ts` already handle.
+const importRsaJwk = async (jwk: jose.JWK): Promise<jose.CryptoKey> => {
+  const imported = await jose.importJWK(jwk)
+  if (!(imported instanceof CryptoKey)) {
+    throw new Error('Expected jose.importJWK to return a CryptoKey for an RSA JWK')
+  }
+  return imported
+}
+
+const signJwt = async (key: SigningKey, payload: jose.JWTPayload): Promise<string> => {
+  const joseKey = await importRsaJwk(privateJwk(key))
   return await new jose.SignJWT(payload)
-    .setProtectedHeader({ alg: 'RS256', kid: key.kid })
+    .setProtectedHeader({ alg: key.alg, kid: key.kid })
     .sign(joseKey)
 }
 
@@ -86,47 +85,18 @@ const signJwt = async (key: SigningKeyData, payload: jose.JWTPayload): Promise<s
  * getting a silent-accept default.
  */
 const verifyJwt = async (
-  key: SigningKeyData,
+  key: SigningKey,
   token: string,
   options: { expectedIssuer: string; acceptedAudiences: ReadonlyArray<string> }
 ): Promise<jose.JWTVerifyResult<jose.JWTPayload>> => {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const testPub = (await jose.importJWK(publicJwk(key))) as jose.CryptoKey
+  const testPub = await importRsaJwk(publicJwk(key))
   return await jose.jwtVerify(token, testPub, {
     issuer: options.expectedIssuer,
     audience: [...options.acceptedAudiences],
   })
 }
 
-const make = (input: SigningKeyData): SigningKey => {
-  const data = decodeSigningKeyData(input)
-  return Object.assign(
-    {
-      kid: data.kid,
-      kty: data.kty,
-      alg: data.alg,
-      values: data.values,
-    },
-    {
-      publicJwk(this: SigningKeyData): jose.JWK_RSA_Public {
-        return publicJwk(this)
-      },
-      privateJwk(this: SigningKeyData): jose.JWK_RSA_Private {
-        return privateJwk(this)
-      },
-      signJwt(this: SigningKeyData, payload: jose.JWTPayload): Promise<string> {
-        return signJwt(this, payload)
-      },
-      verifyJwt(
-        this: SigningKeyData,
-        token: string,
-        options: { expectedIssuer: string; acceptedAudiences: ReadonlyArray<string> }
-      ): Promise<jose.JWTVerifyResult<jose.JWTPayload>> {
-        return verifyJwt(this, token, options)
-      },
-    }
-  )
-}
+const make = (input: SigningKey): SigningKey => decodeSigningKey(input)
 
 const fromJosePrivateJwk = async (jwk: jose.CryptoKey): Promise<SigningKey> => {
   const privateJoseJwk = await jose.exportJWK(jwk)
@@ -155,23 +125,14 @@ const generate = async (): Promise<SigningKey> => {
   return await fromJosePrivateJwk(privateKey)
 }
 
-const SigningKey = {
-  schema: SigningKeySchema,
-  publicJwk,
-  privateJwk,
-  signJwt,
-  verifyJwt,
-  fromJosePrivateJwk,
-  generate,
-  make,
-} as const
-
 const table = State.SQLite.table({
   name: 'signingKeys',
   columns: {
     kid: State.SQLite.text({ primaryKey: true }),
-    kty: State.SQLite.text(),
-    alg: State.SQLite.text(),
+    // Schema-narrow `kty`/`alg` so the row type structurally satisfies
+    // `SigningKeyData` and `make(row)` typechecks without re-listing fields.
+    kty: State.SQLite.text({ schema: SigningKeySchema.fields.kty }),
+    alg: State.SQLite.text({ schema: SigningKeySchema.fields.alg }),
     values: State.SQLite.json({ schema: SigningKeyValuesSchema }),
     isActive: State.SQLite.boolean(),
   },
@@ -179,36 +140,23 @@ const table = State.SQLite.table({
 
 type SigningKeyRow = (typeof table)['Type']
 
-const rowToSigningKey = (row: SigningKeyRow): SigningKey =>
-  make({
-    kid: row.kid,
-    kty: 'RSA' as const,
-    alg: 'RS256' as const,
-    values: row.values,
-  })
+// `row` already structurally satisfies `SigningKey` (kid/kty/alg/values
+// — `isActive` is just an extra field), so query maps return rows
+// directly without a copy step. Schema-narrowed `kty`/`alg` columns
+// keep the literal types intact.
 
 const queries = {
   findByKid$: (kid: string): LiveQueryDef<SigningKey | null> =>
     queryDb(table.where({ kid }), {
-      map: (rows): SigningKey | null => {
-        if (Array.isNonEmptyReadonlyArray(rows)) {
-          return rowToSigningKey(rows[0])
-        }
-        return null
-      },
+      map: (rows): SigningKey | null => rows[0] ?? null,
       label: 'signingKeyByKid',
     }),
   all$: queryDb(table, {
-    map: (rows): readonly SigningKey[] => rows.map((row) => rowToSigningKey(row)),
+    map: (rows): readonly SigningKey[] => rows,
     label: 'allSigningKeys',
   }),
   active$: queryDb(table.where({ isActive: true }), {
-    map: (rows): SigningKey | null => {
-      if (Array.isNonEmptyReadonlyArray(rows)) {
-        return rowToSigningKey(rows[0])
-      }
-      return null
-    },
+    map: (rows): SigningKey | null => rows[0] ?? null,
     label: 'activeSigningKey',
   }),
 }
@@ -243,5 +191,18 @@ const materializers = State.SQLite.materializers(events, {
   ],
 })
 
-export { SigningKey, SigningKeySchema, table, queries, events, materializers }
-export type { SigningKeyRow }
+export {
+  SigningKeySchema as Schema,
+  fromJosePrivateJwk,
+  generate,
+  make,
+  publicJwk,
+  privateJwk,
+  signJwt,
+  verifyJwt,
+  table,
+  queries,
+  events,
+  materializers,
+}
+export type { SigningKey as Type, SigningKeyRow }

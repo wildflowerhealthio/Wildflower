@@ -4,7 +4,7 @@ import * as AuthorizationRequests from './authorization-requests.ts'
 import * as Clients from './clients.ts'
 import * as Grants from './grants.ts'
 import * as HttpRequests from './http-requests.ts'
-import * as SigningKeys from './signing-keys.ts'
+import * as SigningKey from './signing-key.ts'
 
 const tables = {
   authorizationCodes: AuthorizationCodes.table,
@@ -12,7 +12,7 @@ const tables = {
   clients: Clients.table,
   grants: Grants.table,
   httpRequests: HttpRequests.table,
-  signingKeys: SigningKeys.table,
+  signingKeys: SigningKey.table,
 } as const
 
 const events = {
@@ -21,7 +21,7 @@ const events = {
   ...Clients.events,
   ...Grants.events,
   ...HttpRequests.events,
-  ...SigningKeys.events,
+  ...SigningKey.events,
 } as const
 
 const materializers = State.SQLite.materializers(events, {
@@ -30,7 +30,7 @@ const materializers = State.SQLite.materializers(events, {
   ...Clients.materializers,
   ...Grants.materializers,
   ...HttpRequests.materializers,
-  ...SigningKeys.materializers,
+  ...SigningKey.materializers,
 })
 
 const state = State.SQLite.makeState({ tables, materializers })
@@ -43,13 +43,12 @@ export {
   Clients,
   Grants,
   HttpRequests,
-  SigningKeys,
+  SigningKey,
   schema,
   events,
   tables,
   materializers,
 }
-export { SigningKey } from './signing-keys.ts'
 export { ClientKindSchema } from './clients.ts'
 export type { AuthorizationCodeRow } from './authorization-codes.ts'
 export type { AuthorizationRequestRow } from './authorization-requests.ts'

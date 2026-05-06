@@ -62,6 +62,12 @@ const denyAuthorizationRequest = (requestId: string): Effect.Effect<void, never,
     const store = yield* GatekeeperStore
     const pending = store.query(AuthorizationRequests.queries.byId$(requestId))
     if (pending == null) return
+    // Same invariants as approval: only mutate live, code-flow rows.
+    // Without these guards, a previously-approved request could be
+    // flipped to denied after a code was issued — leaving polling
+    // / audit state inconsistent.
+    if (pending.status !== 'pending') return
+    if (pending.grantType !== 'authorization_code') return
     store.commit(AuthorizationRequests.events.authorizationRequestDenied({ id: requestId }))
   })
 

@@ -1,7 +1,7 @@
 {
   "name": "gatekeeper-core",
   "version": "0.0.0",
-  "description": "OAuth and PIN auth domain package backed by LiveStore.",
+  "description": "OAuth domain package backed by LiveStore.",
   "license": "MIT",
   "repository": {
     "type": "git",

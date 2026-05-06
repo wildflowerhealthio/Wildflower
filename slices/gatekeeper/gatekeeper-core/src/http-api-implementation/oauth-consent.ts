@@ -34,6 +34,7 @@ const getPendingCodeFlowRequest = (
     const request = store.query(AuthorizationRequests.queries.byId$(id))
     if (
       request == null ||
+      request.status !== 'pending' ||
       request.grantType !== 'authorization_code' ||
       request.redirectUri == null
     ) {

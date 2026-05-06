@@ -3,11 +3,12 @@ import { Layer } from 'effect'
 import type { Origin } from 'kitchen-sink'
 import type { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
+import type { CryptoRandomByte } from '../internal/user-code.ts'
 import * as Devices from './devices.ts'
 import * as GatekeeperAccess from './gatekeeper-access.ts'
 import * as Jwks from './jwks.ts'
 import * as OAuthConsent from './oauth-consent.ts'
-import * as OAuth from './oauth.ts'
+import * as OAuth from './oauth/index.ts'
 import { RequireAuthMiddlewareLive } from './require-auth.ts'
 
 const GatekeeperApiHandlersLive = Layer.mergeAll(
@@ -32,7 +33,7 @@ type GatekeeperGroupNames =
 const GatekeeperApiHandlersFor = <ParentId extends string>(): Layer.Layer<
   HttpApiGroup.ApiGroup<ParentId, GatekeeperGroupNames>,
   never,
-  GatekeeperStore | Origin
+  GatekeeperStore | Origin | CryptoRandomByte
 > =>
   // The phantom-id bridge: `ApiGroup<ApiId, Name>` is a structural marker
   // with no runtime presence (HttpApiBuilder.group only registers routes on
@@ -43,8 +44,9 @@ const GatekeeperApiHandlersFor = <ParentId extends string>(): Layer.Layer<
   GatekeeperApiHandlersLive as unknown as Layer.Layer<
     HttpApiGroup.ApiGroup<ParentId, GatekeeperGroupNames>,
     never,
-    GatekeeperStore | Origin
+    GatekeeperStore | Origin | CryptoRandomByte
   >
 
 export { GatekeeperApi, GatekeeperApiHandlersLive, GatekeeperApiHandlersFor, GatekeeperApiLive }
+export { CryptoRandomByte, CryptoRandomByteLayerLive } from '../internal/user-code.ts'
 export { RequireAuthMiddleware, RequireAuthMiddlewareLive } from './require-auth.ts'

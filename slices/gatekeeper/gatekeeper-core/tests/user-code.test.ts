@@ -1,27 +1,48 @@
+import { Effect, Layer } from 'effect'
 import * as fc from 'fast-check'
 import { expect, test } from 'vite-plus/test'
 import {
   ALPHABET,
+  BLOCK_COUNT,
   BLOCK_LENGTH,
+  CryptoRandomByte,
+  CryptoRandomByteLayerLive,
   generateUserCode,
   isValidUserCode,
 } from '../src/internal/user-code.ts'
 
+const runUserCode = (): string =>
+  Effect.runSync(Effect.provide(generateUserCode, CryptoRandomByteLayerLive))
+
+const REJECTION_LIMIT = 256 - (256 % ALPHABET.length)
+
+const stubBytes = (queue: ReadonlyArray<number>): Layer.Layer<CryptoRandomByte> => {
+  let i = 0
+  return Layer.succeed(CryptoRandomByte, {
+    next: Effect.sync(() => {
+      const b = queue[i++]
+      if (b === undefined) throw new Error('stub byte queue exhausted')
+      return b
+    }),
+  })
+}
+
+const runWithStub = (queue: ReadonlyArray<number>): string =>
+  Effect.runSync(Effect.provide(generateUserCode, stubBytes(queue)))
+
 test('generateUserCode produces a value matching the RFC 8628 alphabet', () => {
-  const code = generateUserCode()
-  expect(isValidUserCode(code)).toBe(true)
+  expect(isValidUserCode(runUserCode())).toBe(true)
 })
 
 test('generateUserCode formats as XXXX-XXXX', () => {
-  const code = generateUserCode()
-  expect(code).toMatch(/^[A-Z]{4}-[A-Z]{4}$/)
+  expect(runUserCode()).toMatch(/^[A-Z]{4}-[A-Z]{4}$/)
 })
 
 test('generateUserCode never emits ambiguous characters', () => {
   fc.assert(
     fc.property(fc.integer({ min: 1, max: 256 }), (count) => {
       for (let i = 0; i < count; i++) {
-        const code = generateUserCode()
+        const code = runUserCode()
         for (const char of code) {
           if (char === '-') continue
           expect(ALPHABET).toContain(char)
@@ -32,13 +53,50 @@ test('generateUserCode never emits ambiguous characters', () => {
   )
 })
 
-test('generateUserCode produces distinct codes across many draws', () => {
-  // 1000 draws against ~1.6e10 keyspace — collisions should be vanishingly rare.
-  const seen = new Set<string>()
+test('generateUserCode draws every alphabet character given enough samples', () => {
+  // 1000 codes × 8 chars per code = 8000 alphabet draws. Birthday-style
+  // expectation: every one of the 20 alphabet characters should appear
+  // at least once, which is deterministically near-certain (probability
+  // ~1 - 20·(19/20)^8000 ≈ 1) and doesn't depend on RNG outputs being
+  // distinct (which can't be asserted without flake risk).
+  const seenChars = new Set<string>()
   for (let i = 0; i < 1000; i++) {
-    seen.add(generateUserCode())
+    for (const ch of runUserCode()) {
+      if (ch !== '-') seenChars.add(ch)
+    }
   }
-  expect(seen.size).toBe(1000)
+  expect(seenChars.size).toBe(ALPHABET.length)
+})
+
+test('generateUserCode maps accepted bytes to alphabet via modulo', () => {
+  // Bytes 0..3 in each block → ALPHABET[0..3] in each block.
+  const code = runWithStub([0, 1, 2, 3, 0, 1, 2, 3])
+  const block = ALPHABET.slice(0, BLOCK_LENGTH)
+  expect(code).toBe(`${block}-${block}`)
+})
+
+test('generateUserCode rejects bytes ≥ REJECTION_LIMIT and resamples', () => {
+  // First two bytes are out-of-range and must be skipped; the third
+  // (0) is accepted and yields ALPHABET[0]. Repeat across the full code.
+  const queue: number[] = []
+  for (let i = 0; i < BLOCK_COUNT * BLOCK_LENGTH; i++) {
+    queue.push(REJECTION_LIMIT, REJECTION_LIMIT + 7, 0)
+  }
+  const code = runWithStub(queue)
+  const block = ALPHABET[0]?.repeat(BLOCK_LENGTH)
+  expect(code).toBe(`${block}-${block}`)
+})
+
+test('generateUserCode pulls exactly BLOCK_COUNT × BLOCK_LENGTH bytes when none are rejected', () => {
+  let pulls = 0
+  const layer = Layer.succeed(CryptoRandomByte, {
+    next: Effect.sync(() => {
+      pulls++
+      return 0
+    }),
+  })
+  Effect.runSync(Effect.provide(generateUserCode, layer))
+  expect(pulls).toBe(BLOCK_COUNT * BLOCK_LENGTH)
 })
 
 test('isValidUserCode rejects codes that contain alphabet outsiders', () => {

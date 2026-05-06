@@ -1,15 +1,10 @@
 import { DateTime, Effect, Either, Layer } from 'effect'
+import * as jose from 'jose'
 import { Origin } from 'kitchen-sink'
 import { expect, test } from 'vite-plus/test'
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { verifyJwt } from '../src/internal/jwt.ts'
-import { Clients, type ClientRow, SigningKeys } from '../src/livestore/index.ts'
-
-type FakeJwk = {
-  signJwt: (payload: Record<string, unknown>) => Promise<string>
-  verifyJwt: (token: string) => Promise<{ payload: Record<string, unknown> }>
-  publicJwk: () => Record<string, unknown>
-}
+import { Clients, type ClientRow, SigningKey } from '../src/livestore/index.ts'
 
 const labelOf = (q: unknown): string | undefined => {
   if (typeof q === 'object' && q !== null && 'label' in q && typeof q.label === 'string') {
@@ -25,14 +20,14 @@ const hashOf = (q: unknown): string | undefined => {
 }
 
 const makeStubStore = (options: {
-  jwks: ReadonlyArray<FakeJwk>
+  signingKeys: ReadonlyArray<SigningKey.Type>
   clients?: ReadonlyArray<ClientRow>
 }): typeof GatekeeperStore.Service => {
-  const { jwks, clients = [] } = options
+  const { signingKeys, clients = [] } = options
   const clientMap = new Map(clients.map((c) => [c.clientId, c]))
 
   const query = (q: unknown): unknown => {
-    if (q === SigningKeys.queries.all$) return jwks
+    if (q === SigningKey.queries.all$) return signingKeys
     const label = labelOf(q)
     const hash = hashOf(q)
     if (label === 'clientById' && hash !== undefined) {
@@ -52,11 +47,45 @@ const makeStubStore = (options: {
 
 const ORIGIN = 'https://example.test'
 
-const fakeJwk = (payload: Record<string, unknown>): FakeJwk => ({
-  signJwt: async () => 'unused',
-  verifyJwt: async () => ({ payload }),
-  publicJwk: () => ({}),
-})
+// Cache RSA key generation across tests — generating a 2048-bit RSA key
+// is ~200–400ms, and these tests don't care which key, only that it's a
+// real one. A second key (`getSecondaryKey`) is lazily generated for the
+// rotation scenario.
+let primaryKeyPromise: Promise<SigningKey.Type> | null = null
+const getPrimaryKey = (): Promise<SigningKey.Type> => {
+  if (primaryKeyPromise === null) {
+    primaryKeyPromise = SigningKey.generate()
+  }
+  return primaryKeyPromise
+}
+
+let secondaryKeyPromise: Promise<SigningKey.Type> | null = null
+const getSecondaryKey = (): Promise<SigningKey.Type> => {
+  if (secondaryKeyPromise === null) {
+    secondaryKeyPromise = SigningKey.generate()
+  }
+  return secondaryKeyPromise
+}
+
+// `jose.importJWK` returns `CryptoKey | Uint8Array`. For RSA JWKs it's
+// always `CryptoKey`, so we runtime-check rather than unsafely cast.
+const importRsaJwk = async (jwk: jose.JWK): Promise<jose.CryptoKey> => {
+  const imported = await jose.importJWK(jwk)
+  if (!(imported instanceof CryptoKey)) {
+    throw new Error('Expected jose.importJWK to return a CryptoKey for an RSA JWK')
+  }
+  return imported
+}
+
+// Sign an arbitrary payload with a given SigningKey via raw `jose.SignJWT`.
+// `mintAccessToken`'s typed signature won't allow non-string `sub`,
+// custom `aud` shapes, or explicit `exp`, so we go through jose directly.
+const signWith = async (key: SigningKey.Type, payload: jose.JWTPayload): Promise<string> => {
+  const joseKey = await importRsaJwk(SigningKey.privateJwk(key))
+  return await new jose.SignJWT(payload)
+    .setProtectedHeader({ alg: key.alg, kid: key.kid })
+    .sign(joseKey)
+}
 
 const makeClient = (overrides: Partial<ClientRow> = {}): ClientRow => ({
   clientId: 'client-1',
@@ -83,168 +112,169 @@ const runVerify = (
   )
 
 test('JWT verifies when sub matches a registered client (no type claim)', async () => {
+  const key = await getPrimaryKey()
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: `${ORIGIN}/fhir`,
+    sub: 'client-1',
+  })
   const store = makeStubStore({
-    jwks: [
-      fakeJwk({
-        iss: ORIGIN,
-        aud: `${ORIGIN}/fhir`,
-        sub: 'client-1',
-      }),
-    ],
+    signingKeys: [key],
     clients: [makeClient()],
   })
-  const result = await runVerify(store, 'token')
+  const result = await runVerify(store, token)
   expect(Either.isRight(result)).toBe(true)
 })
 
 test('JWT is rejected when sub does not match any client', async () => {
+  const key = await getPrimaryKey()
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: `${ORIGIN}/fhir`,
+    sub: 'unknown-client',
+  })
   const store = makeStubStore({
-    jwks: [
-      fakeJwk({
-        iss: ORIGIN,
-        aud: `${ORIGIN}/fhir`,
-        sub: 'unknown-client',
-      }),
-    ],
+    signingKeys: [key],
     clients: [makeClient()],
   })
-  const result = await runVerify(store, 'token')
+  const result = await runVerify(store, token)
   expect(Either.isLeft(result)).toBe(true)
 })
 
 test('JWT is rejected when client is disabled', async () => {
+  const key = await getPrimaryKey()
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: `${ORIGIN}/fhir`,
+    sub: 'client-1',
+  })
   const store = makeStubStore({
-    jwks: [
-      fakeJwk({
-        iss: ORIGIN,
-        aud: `${ORIGIN}/fhir`,
-        sub: 'client-1',
-      }),
-    ],
+    signingKeys: [key],
     clients: [makeClient({ disabledAt: DateTime.unsafeNow() })],
   })
-  const result = await runVerify(store, 'token')
+  const result = await runVerify(store, token)
   expect(Either.isLeft(result)).toBe(true)
 })
 
 test('JWT verifies when audience is the origin', async () => {
+  const key = await getPrimaryKey()
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: ORIGIN,
+    sub: 'client-1',
+  })
   const store = makeStubStore({
-    jwks: [
-      fakeJwk({
-        iss: ORIGIN,
-        aud: ORIGIN,
-        sub: 'client-1',
-      }),
-    ],
+    signingKeys: [key],
     clients: [makeClient()],
   })
-  const result = await runVerify(store, 'token')
+  const result = await runVerify(store, token)
   expect(Either.isRight(result)).toBe(true)
 })
 
 test('JWT is rejected when issuer mismatches origin', async () => {
+  const key = await getPrimaryKey()
+  const token = await signWith(key, {
+    iss: 'https://other.example',
+    aud: ORIGIN,
+    sub: 'client-1',
+  })
   const store = makeStubStore({
-    jwks: [
-      fakeJwk({
-        iss: 'https://other.example',
-        aud: ORIGIN,
-        sub: 'client-1',
-      }),
-    ],
+    signingKeys: [key],
     clients: [makeClient()],
   })
-  const result = await runVerify(store, 'token')
+  const result = await runVerify(store, token)
   expect(Either.isLeft(result)).toBe(true)
 })
 
 test('JWT is rejected when sub is not a string', async () => {
+  const key = await getPrimaryKey()
+  // `jose.JWTPayload.sub` is typed `string | undefined`; we deliberately
+  // bypass that here to exercise the runtime guard in `verifyJwt`.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: ORIGIN,
+    sub: 12345,
+  } as unknown as jose.JWTPayload)
   const store = makeStubStore({
-    jwks: [
-      fakeJwk({
-        iss: ORIGIN,
-        aud: ORIGIN,
-        sub: 12345,
-      }),
-    ],
+    signingKeys: [key],
     clients: [makeClient()],
   })
-  const result = await runVerify(store, 'token')
+  const result = await runVerify(store, token)
   expect(Either.isLeft(result)).toBe(true)
 })
 
 test('JWT is rejected when exp is in the past', async () => {
+  const key = await getPrimaryKey()
   const past = Math.floor(Date.now() / 1000) - 60
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: ORIGIN,
+    sub: 'client-1',
+    exp: past,
+  })
   const store = makeStubStore({
-    jwks: [
-      fakeJwk({
-        iss: ORIGIN,
-        aud: ORIGIN,
-        sub: 'client-1',
-        exp: past,
-      }),
-    ],
+    signingKeys: [key],
     clients: [makeClient()],
   })
-  const result = await runVerify(store, 'token')
+  const result = await runVerify(store, token)
   expect(Either.isLeft(result)).toBe(true)
 })
 
 test('JWT is rejected when audience is not in accepted set', async () => {
+  const key = await getPrimaryKey()
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: 'https://malicious.example',
+    sub: 'client-1',
+  })
   const store = makeStubStore({
-    jwks: [
-      fakeJwk({
-        iss: ORIGIN,
-        aud: 'https://malicious.example',
-        sub: 'client-1',
-      }),
-    ],
+    signingKeys: [key],
     clients: [makeClient()],
   })
-  const result = await runVerify(store, 'token')
+  const result = await runVerify(store, token)
   expect(Either.isLeft(result)).toBe(true)
 })
 
 test('JWT is rejected when no signing keys are present', async () => {
-  const store = makeStubStore({ jwks: [], clients: [makeClient()] })
+  // verifyJwt now surfaces the empty-keys path as InternalServerError
+  // (server misconfiguration), not Unauthorized. The shape we assert on
+  // is `Either.isLeft`, which still holds for either failure type.
+  const store = makeStubStore({ signingKeys: [], clients: [makeClient()] })
   const result = await runVerify(store, 'token')
   expect(Either.isLeft(result)).toBe(true)
 })
 
 test('JWT is verified when one of multiple signing keys can verify it', async () => {
-  // First key fails verification; the second succeeds. verifyJwt loops
-  // through every available key, so rotation works on the verify side.
+  // Sign with key B, present `[key A, key B]`. verifyAgainstAnyKey
+  // iterates every key — key A's signature check fails, key B's
+  // succeeds. This is the rotation scenario.
+  const keyA = await getPrimaryKey()
+  const keyB = await getSecondaryKey()
+  const token = await signWith(keyB, {
+    iss: ORIGIN,
+    aud: ORIGIN,
+    sub: 'client-1',
+  })
   const store = makeStubStore({
-    jwks: [
-      {
-        signJwt: async () => 'unused',
-        verifyJwt: async () => {
-          throw new Error('signature mismatch')
-        },
-        publicJwk: () => ({}),
-      },
-      fakeJwk({
-        iss: ORIGIN,
-        aud: ORIGIN,
-        sub: 'client-1',
-      }),
-    ],
+    signingKeys: [keyA, keyB],
     clients: [makeClient()],
   })
-  const result = await runVerify(store, 'token')
+  const result = await runVerify(store, token)
   expect(Either.isRight(result)).toBe(true)
 })
 
 test('JWT is verified when audience is an array containing an accepted entry', async () => {
+  const key = await getPrimaryKey()
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: ['https://other.example', `${ORIGIN}/fhir`],
+    sub: 'client-1',
+  })
   const store = makeStubStore({
-    jwks: [
-      fakeJwk({
-        iss: ORIGIN,
-        aud: ['https://other.example', `${ORIGIN}/fhir`],
-        sub: 'client-1',
-      }),
-    ],
+    signingKeys: [key],
     clients: [makeClient()],
   })
-  const result = await runVerify(store, 'token')
+  const result = await runVerify(store, token)
   expect(Either.isRight(result)).toBe(true)
 })

@@ -4,7 +4,7 @@ import type { UnknownException } from 'effect/Cause'
 import type * as jose from 'jose'
 import { Origin } from 'kitchen-sink'
 import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
-import { Clients, type SigningKey, SigningKeys } from '../livestore/index.ts'
+import { Clients, SigningKey } from '../livestore/index.ts'
 
 type VerifiedPayload = {
   iss: string
@@ -25,12 +25,14 @@ const unauthorized = (): HttpApiError.Unauthorized => new HttpApiError.Unauthori
 // signed a token with the wrong iss/aud also fails here.
 const verifyAgainstAnyKey = (
   token: string,
-  keys: ReadonlyArray<SigningKey>,
+  keys: ReadonlyArray<SigningKey.Type>,
   options: { expectedIssuer: string; acceptedAudiences: ReadonlyArray<string> }
 ): Effect.Effect<jose.JWTVerifyResult<jose.JWTPayload>, HttpApiError.Unauthorized> =>
   pipe(
     keys.map((jwk) =>
-      Effect.tryPromise(() => jwk.verifyJwt(token, options)).pipe(Effect.mapError(unauthorized))
+      Effect.tryPromise(() => SigningKey.verifyJwt(jwk, token, options)).pipe(
+        Effect.mapError(unauthorized)
+      )
     ),
     Effect.firstSuccessOf,
     Effect.catchAll(() => Effect.fail(unauthorized()))
@@ -44,22 +46,24 @@ const verifyAgainstAnyKey = (
 const requireIssuerMatches = (
   payload: jose.JWTPayload,
   expectedIssuer: string
-): Effect.Effect<void, HttpApiError.Unauthorized> =>
-  payload.iss === expectedIssuer ? Effect.void : Effect.fail(unauthorized())
+): Effect.Effect<void, HttpApiError.Unauthorized> => {
+  if (payload.iss === expectedIssuer) return Effect.void
+  return Effect.fail(unauthorized())
+}
+
+const presentedAudiences = (audClaim: jose.JWTPayload['aud']): ReadonlyArray<string> => {
+  if (Array.isArray(audClaim)) return audClaim
+  if (typeof audClaim === 'string') return [audClaim]
+  return []
+}
 
 const requireAudienceAccepted = (
   payload: jose.JWTPayload,
   acceptedAudiences: ReadonlyArray<string>
 ): Effect.Effect<void, HttpApiError.Unauthorized> => {
-  const audClaim = payload.aud
-  const presented = Array.isArray(audClaim)
-    ? audClaim
-    : typeof audClaim === 'string'
-      ? [audClaim]
-      : []
-  return presented.some((a) => acceptedAudiences.includes(a))
-    ? Effect.void
-    : Effect.fail(unauthorized())
+  const presented = presentedAudiences(payload.aud)
+  if (presented.some((a) => acceptedAudiences.includes(a))) return Effect.void
+  return Effect.fail(unauthorized())
 }
 
 const requireNotExpired = (
@@ -74,11 +78,17 @@ const requireNotExpired = (
     }
   })
 
-const requireRegisteredEnabledSubject = (
+const requirePayloadWithRegisteredEnabledSubject = (
   payload: jose.JWTPayload
-): Effect.Effect<string, HttpApiError.Unauthorized, GatekeeperStore> =>
+): Effect.Effect<VerifiedPayload, HttpApiError.Unauthorized, GatekeeperStore> =>
   Effect.gen(function* () {
     if (typeof payload.sub !== 'string') {
+      return yield* Effect.fail(unauthorized())
+    }
+    if (typeof payload.iss !== 'string') {
+      return yield* Effect.fail(unauthorized())
+    }
+    if (typeof payload.aud !== 'string' && !Array.isArray(payload.aud)) {
       return yield* Effect.fail(unauthorized())
     }
     const store = yield* GatekeeperStore
@@ -86,21 +96,32 @@ const requireRegisteredEnabledSubject = (
     if (client == null || client.disabledAt != null) {
       return yield* Effect.fail(unauthorized())
     }
-    return payload.sub
+    return {
+      ...payload,
+      iss: payload.iss,
+      sub: payload.sub,
+      aud: payload.aud,
+    }
   })
 
 const verifyJwt = (
   token: string
-): Effect.Effect<VerifiedPayload, HttpApiError.Unauthorized, GatekeeperStore | Origin> =>
+): Effect.Effect<
+  VerifiedPayload,
+  HttpApiError.Unauthorized | HttpApiError.InternalServerError,
+  GatekeeperStore | Origin
+> =>
   Effect.gen(function* () {
     if (token.trim().length === 0) {
       return yield* Effect.fail(unauthorized())
     }
     const store = yield* GatekeeperStore
     const origin = yield* Origin
-    const signingKeys = store.query(SigningKeys.queries.all$)
+    const signingKeys = store.query(SigningKey.queries.all$)
     if (signingKeys.length === 0) {
-      return yield* Effect.fail(unauthorized())
+      // No keys configured is a server-side issue, not a client auth
+      // failure — surface as a typed 500.
+      return yield* Effect.fail(new HttpApiError.InternalServerError())
     }
     const expectedIssuer = origin
     const acceptedAudiences: ReadonlyArray<string> = [`${origin}/fhir`, origin]
@@ -111,15 +132,14 @@ const verifyJwt = (
     yield* requireIssuerMatches(verified.payload, expectedIssuer)
     yield* requireAudienceAccepted(verified.payload, acceptedAudiences)
     yield* requireNotExpired(verified.payload)
-    yield* requireRegisteredEnabledSubject(verified.payload)
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    return verified.payload as VerifiedPayload
+    return yield* requirePayloadWithRegisteredEnabledSubject(verified.payload)
   })
 
 const signJwt = (
-  jwk: SigningKey,
+  jwk: SigningKey.Type,
   payload: jose.JWTPayload
-): Effect.Effect<string, UnknownException> => Effect.tryPromise(() => jwk.signJwt(payload))
+): Effect.Effect<string, UnknownException> =>
+  Effect.tryPromise(() => SigningKey.signJwt(jwk, payload))
 
 type MintAccessTokenPayload = {
   clientId: string
@@ -130,7 +150,7 @@ type MintAccessTokenPayload = {
 }
 
 const mintAccessToken = (
-  signingKey: SigningKey,
+  signingKey: SigningKey.Type,
   origin: string,
   { clientId, scope, ttl, audience, patient }: MintAccessTokenPayload
 ): Effect.Effect<string, UnknownException> =>

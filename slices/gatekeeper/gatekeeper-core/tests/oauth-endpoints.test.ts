@@ -1,10 +1,12 @@
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { DateTime, Effect, Layer } from 'effect'
+import * as jose from 'jose'
 import { Origin } from 'kitchen-sink'
 import { expect, test } from 'vite-plus/test'
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../src/http-api-definition/index.ts'
 import {
+  CryptoRandomByteLayerLive,
   GatekeeperApiLive,
   RequireAuthMiddlewareLive,
 } from '../src/http-api-implementation/index.ts'
@@ -17,8 +19,13 @@ import {
   Clients,
   type ClientRow,
   Grants,
-  SigningKeys,
+  SigningKey,
 } from '../src/livestore/index.ts'
+
+// RSA key generation is ~200–400ms; reuse one across the whole file.
+// Tests that just need a non-empty signingKeys list share this; tests
+// that intentionally seed an empty list pass `[]` directly.
+const sharedSigningKey = await SigningKey.generate()
 
 // Tests don't exercise page endpoints; supply a stub pages layer so
 // `HttpApiBuilder.toWebHandler` finds a handler for the gatekeeper-pages
@@ -45,10 +52,7 @@ type MockGrant = {
 }
 
 type MockStoreOptions = {
-  jwks?: ReadonlyArray<{
-    signJwt: (payload: Record<string, unknown>) => Promise<string>
-    verifyJwt: (token: string) => Promise<{ payload: Record<string, unknown> }>
-  }>
+  signingKeys?: ReadonlyArray<SigningKey.Type>
   clients?: ReadonlyArray<ClientRow>
   grants?: ReadonlyArray<MockGrant>
   authorizationRequests?: ReadonlyArray<AuthorizationRequestRow>
@@ -87,7 +91,7 @@ const queryLabel = (q: unknown): string | undefined => {
 }
 
 const makeStore = ({
-  jwks = [],
+  signingKeys = [],
   clients = [],
   grants = [],
   authorizationRequests = [],
@@ -108,8 +112,8 @@ const makeStore = ({
   const grantRows: MockGrant[] = [...grants]
 
   const query = (q: unknown): unknown => {
-    if (q === SigningKeys.queries.all$) {
-      return jwks
+    if (q === SigningKey.queries.all$) {
+      return signingKeys
     }
 
     const label = queryLabel(q)
@@ -171,7 +175,7 @@ const makeStore = ({
     }
 
     if (label === 'activeSigningKey') {
-      return jwks[0] ?? null
+      return signingKeys[0] ?? null
     }
 
     if (label === 'authorizationRequests') return [...requestRows.values()]
@@ -288,7 +292,8 @@ const createOAuthHandler = (
   const apiLive = GatekeeperApiLive.pipe(
     Layer.provide(StubGatekeeperPagesLive),
     Layer.provide(makeGatekeeperStoreLayer(store)),
-    Layer.provide(Layer.succeed(Origin, 'http://localhost:8787'))
+    Layer.provide(Layer.succeed(Origin, 'http://localhost:8787')),
+    Layer.provide(CryptoRandomByteLayerLive)
   )
 
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
@@ -297,12 +302,7 @@ const createOAuthHandler = (
 test('authorize returns inline error HTML for unsupported code challenge method', async () => {
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [
-        {
-          signJwt: async () => 'unused',
-          verifyJwt: async () => ({ payload: {} }),
-        },
-      ],
+      signingKeys: [sharedSigningKey],
     })
   )
 
@@ -326,12 +326,7 @@ test('authorize auto-approves using matching redirect row from byClientIdAndRedi
   const grantedAt = DateTime.unsafeNow()
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [
-        {
-          signJwt: async () => 'unused',
-          verifyJwt: async () => ({ payload: {} }),
-        },
-      ],
+      signingKeys: [sharedSigningKey],
       clients: [
         makeClient({
           clientId: 'client-123',
@@ -383,12 +378,7 @@ test('authorize auto-approves using matching redirect row from byClientIdAndRedi
 test('authorize redirects to the polling page', async () => {
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [
-        {
-          signJwt: async () => 'unused',
-          verifyJwt: async () => ({ payload: {} }),
-        },
-      ],
+      signingKeys: [sharedSigningKey],
       clients: [makeClient()],
     })
   )
@@ -411,12 +401,7 @@ test('authorize redirects to the polling page', async () => {
 test('token exchange rejects invalid content type before handler logic', async () => {
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [
-        {
-          signJwt: async () => 'unused',
-          verifyJwt: async () => ({ payload: {} }),
-        },
-      ],
+      signingKeys: [sharedSigningKey],
     })
   )
 
@@ -453,18 +438,9 @@ test('token exchange succeeds with valid form payload', async () => {
     expiresAt: DateTime.addDuration(DateTime.unsafeNow(), '60 seconds'),
   }
 
-  let capturedJwtPayload: Record<string, unknown> | undefined
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [
-        {
-          signJwt: async (payload: Record<string, unknown>) => {
-            capturedJwtPayload = payload
-            return 'signed.jwt.token'
-          },
-          verifyJwt: async () => ({ payload: {} }),
-        },
-      ],
+      signingKeys: [sharedSigningKey],
       clients: [
         makeClient({
           clientId: 'client-1',
@@ -497,25 +473,28 @@ test('token exchange succeeds with valid form payload', async () => {
 
     expect(response.status).toBe(200)
     const bodyText = await response.text()
-    expect(bodyText).toContain('"access_token":"signed.jwt.token"')
     expect(bodyText).toContain('"token_type":"Bearer"')
     expect(bodyText).toContain('"expires_in":3600')
     expect(bodyText).toContain('"scope":"patient/*.read"')
     expect(bodyText).toContain('"patient":"patient-123"')
 
-    // The signed JWT payload itself: regression-guards every claim we
-    // mint into a token. Without these, dropping `iss` or flipping the
-    // payload shape ships green.
-    expect(capturedJwtPayload).toBeDefined()
-    expect(capturedJwtPayload?.['iss']).toBe('http://localhost:8787')
-    expect(capturedJwtPayload?.['sub']).toBe('client-1')
-    expect(capturedJwtPayload?.['aud']).toBe('http://localhost:8787/fhir')
-    expect(capturedJwtPayload?.['scope']).toBe('patient/*.read')
-    expect(capturedJwtPayload?.['patient']).toBe('patient-123')
-    expect(typeof capturedJwtPayload?.['iat']).toBe('number')
-    expect(typeof capturedJwtPayload?.['exp']).toBe('number')
+    // Decode the freshly minted JWT and regression-guard every claim we
+    // emit. Without these, dropping `iss` or flipping the payload shape
+    // ships green.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const body = JSON.parse(bodyText) as { access_token: string }
+    expect(typeof body.access_token).toBe('string')
+    expect(body.access_token.length).toBeGreaterThan(0)
+    const decoded = jose.decodeJwt(body.access_token)
+    expect(decoded.iss).toBe('http://localhost:8787')
+    expect(decoded.sub).toBe('client-1')
+    expect(decoded.aud).toBe('http://localhost:8787/fhir')
+    expect(decoded['scope']).toBe('patient/*.read')
+    expect(decoded['patient']).toBe('patient-123')
+    expect(typeof decoded.iat).toBe('number')
+    expect(typeof decoded.exp).toBe('number')
     // Single token shape: no `type` claim (the PIN/session split is gone).
-    expect(capturedJwtPayload?.['type']).toBeUndefined()
+    expect(decoded['type']).toBeUndefined()
   } finally {
     await dispose()
   }
@@ -524,7 +503,7 @@ test('token exchange succeeds with valid form payload', async () => {
 test('authorize rejects an unknown client_id', async () => {
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [{ signJwt: async () => 'unused', verifyJwt: async () => ({ payload: {} }) }],
+      signingKeys: [sharedSigningKey],
     })
   )
 
@@ -544,7 +523,7 @@ test('authorize rejects an unknown client_id', async () => {
 test('authorize rejects a disabled client', async () => {
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [{ signJwt: async () => 'unused', verifyJwt: async () => ({ payload: {} }) }],
+      signingKeys: [sharedSigningKey],
       clients: [makeClient({ disabledAt: DateTime.unsafeNow() })],
     })
   )
@@ -565,7 +544,7 @@ test('authorize rejects a disabled client', async () => {
 test('authorize rejects redirect_uri not in client allowlist', async () => {
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [{ signJwt: async () => 'unused', verifyJwt: async () => ({ payload: {} }) }],
+      signingKeys: [sharedSigningKey],
       clients: [makeClient({ redirectUris: ['https://allowed.example/cb'] })],
     })
   )
@@ -586,7 +565,7 @@ test('authorize rejects redirect_uri not in client allowlist', async () => {
 test('authorize rejects requested scope not in client allowedScopes', async () => {
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [{ signJwt: async () => 'unused', verifyJwt: async () => ({ payload: {} }) }],
+      signingKeys: [sharedSigningKey],
       clients: [makeClient({ allowedScopes: ['launch'] })],
     })
   )
@@ -607,7 +586,7 @@ test('authorize rejects requested scope not in client allowedScopes', async () =
 test('token exchange rejects unknown client_id with 401', async () => {
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [{ signJwt: async () => 'signed', verifyJwt: async () => ({ payload: {} }) }],
+      signingKeys: [sharedSigningKey],
     })
   )
 
@@ -635,7 +614,7 @@ test('token exchange rejects unknown client_id with 401', async () => {
 test('token exchange rejects code_verifier shorter than 43 chars', async () => {
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [{ signJwt: async () => 'signed', verifyJwt: async () => ({ payload: {} }) }],
+      signingKeys: [sharedSigningKey],
       clients: [makeClient({ clientId: 'client-1' })],
     })
   )
@@ -684,7 +663,7 @@ const formBody = (overrides: Record<string, string> = {}): URLSearchParams =>
 test('token exchange returns 400 invalid_request when code is unknown', async () => {
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [{ signJwt: async () => 'signed', verifyJwt: async () => ({ payload: {} }) }],
+      signingKeys: [sharedSigningKey],
       clients: [seededClient()],
       // No authorization codes seeded — `byCode$` returns null.
     })
@@ -719,7 +698,7 @@ test('token exchange returns 400 when code clientId does not match form client_i
   }
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [{ signJwt: async () => 'signed', verifyJwt: async () => ({ payload: {} }) }],
+      signingKeys: [sharedSigningKey],
       clients: [seededClient()],
       authorizationCodes: [seededCode],
     })
@@ -754,7 +733,7 @@ test('token exchange returns 400 when redirect_uri does not match the issued cod
   }
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [{ signJwt: async () => 'signed', verifyJwt: async () => ({ payload: {} }) }],
+      signingKeys: [sharedSigningKey],
       clients: [seededClient()],
       authorizationCodes: [seededCode],
     })
@@ -789,7 +768,7 @@ test('token exchange returns 400 when the code has expired', async () => {
   }
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [{ signJwt: async () => 'signed', verifyJwt: async () => ({ payload: {} }) }],
+      signingKeys: [sharedSigningKey],
       clients: [seededClient()],
       authorizationCodes: [seededCode],
     })
@@ -824,7 +803,7 @@ test('token exchange returns 400 when code_verifier does not match the stored ch
   }
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [{ signJwt: async () => 'signed', verifyJwt: async () => ({ payload: {} }) }],
+      signingKeys: [sharedSigningKey],
       clients: [seededClient()],
       authorizationCodes: [seededCode],
     })
@@ -863,7 +842,7 @@ test('token exchange returns 500 server_error when no signing keys are available
   }
   const { handler, dispose } = createOAuthHandler(
     makeStore({
-      jwks: [], // empty signing-keys table
+      signingKeys: [], // empty signing-keys table
       clients: [seededClient()],
       authorizationCodes: [seededCode],
     })

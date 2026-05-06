@@ -99,11 +99,11 @@ const events = {
     schema: Schema.Struct({ id: Schema.String }),
   }),
   // Bulk-delete pass: remove every request whose `expiresAt` is
-  // on-or-before `expiredAfter`. Carries a single timestamp instead of a
+  // on-or-before `expiredBefore`. Carries a single timestamp instead of a
   // row-id list so replicas converge purely on the cutoff.
   deleteAuthorizationRequestsExpiredAsOf: Events.synced({
     name: 'v1.DeleteAuthorizationRequestsExpiredAsOf',
-    schema: Schema.Struct({ expiredAfter: Schema.DateTimeUtc }),
+    schema: Schema.Struct({ expiredBefore: Schema.DateTimeUtc }),
   }),
   deviceAuthorizationPolled: Events.synced({
     name: 'v1.DeviceAuthorizationPolled',
@@ -184,9 +184,9 @@ const materializers = {
   }: typeof events.authorizationRequestExpired.schema.Type) =>
     table.update({ status: 'expired' }).where({ id }),
   'v1.DeleteAuthorizationRequestsExpiredAsOf': ({
-    expiredAfter,
+    expiredBefore,
   }: typeof events.deleteAuthorizationRequestsExpiredAsOf.schema.Type) =>
-    table.delete().where({ expiresAt: { op: '<=', value: expiredAfter } }),
+    table.delete().where({ expiresAt: { op: '<=', value: expiredBefore } }),
   'v1.DeviceAuthorizationPolled': ({
     id,
     polledAt,

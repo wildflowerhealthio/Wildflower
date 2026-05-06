@@ -136,9 +136,12 @@ const httpApiGroup = HttpApiGroup.make('oauth', { topLevel: false })
 export {
   httpApiGroup,
   AuthorizationCodePayload,
+  AuthorizationStatusSchema,
+  AuthorizeUrlParamsSchema,
   DeviceCodePayload,
   DeviceAuthorizationPayloadSchema,
   DeviceAuthorizationResponseSchema,
+  TokenResponseSchema,
   OAuthError400Schema,
   OAuthError401Schema,
   OAuthError500Schema,

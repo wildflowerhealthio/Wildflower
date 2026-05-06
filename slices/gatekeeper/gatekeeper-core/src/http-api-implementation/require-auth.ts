@@ -9,7 +9,11 @@ const OWNER_SCOPE = 'owner'
 
 const authenticateOwner = (
   token: string
-): Effect.Effect<void, HttpApiError.Unauthorized, GatekeeperStore | Origin> =>
+): Effect.Effect<
+  void,
+  HttpApiError.Unauthorized | HttpApiError.InternalServerError,
+  GatekeeperStore | Origin
+> =>
   Effect.gen(function* () {
     const payload = yield* verifyJwt(token.trim())
     const scope = payload.scope ?? ''

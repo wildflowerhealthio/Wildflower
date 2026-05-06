@@ -12,6 +12,7 @@ const readJsonObject = async (response: Response): Promise<Record<string, unknow
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../src/http-api-definition/index.ts'
 import {
+  CryptoRandomByteLayerLive,
   GatekeeperApiLive,
   RequireAuthMiddlewareLive,
 } from '../src/http-api-implementation/index.ts'
@@ -22,7 +23,6 @@ import {
   Clients,
   type ClientRow,
   SigningKey,
-  SigningKeys,
 } from '../src/livestore/index.ts'
 
 const ORIGIN = 'http://localhost:8787'
@@ -64,7 +64,7 @@ type ExpiredArgs = typeof AuthorizationRequests.events.authorizationRequestExpir
 type PolledArgs = typeof AuthorizationRequests.events.deviceAuthorizationPolled.schema.Type
 
 type StoreOpts = {
-  signingKeys: ReadonlyArray<SigningKey>
+  signingKeys: ReadonlyArray<SigningKey.Type>
   clients: ReadonlyArray<ClientRow>
   authorizationRequests?: ReadonlyArray<AuthorizationRequestRow>
 }
@@ -77,7 +77,7 @@ const makeStore = (opts: StoreOpts): typeof GatekeeperStore.Service => {
   }
 
   const query = (q: unknown): unknown => {
-    if (q === SigningKeys.queries.all$) return opts.signingKeys
+    if (q === SigningKey.queries.all$) return opts.signingKeys
     const label = labelOf(q)
     const hash = hashOf(q)
 
@@ -209,7 +209,8 @@ const createHandler = (
   const apiLive = GatekeeperApiLive.pipe(
     Layer.provide(StubGatekeeperPagesLive),
     Layer.provide(makeGatekeeperStoreLayer(store)),
-    Layer.provide(Layer.succeed(Origin, ORIGIN))
+    Layer.provide(Layer.succeed(Origin, ORIGIN)),
+    Layer.provide(CryptoRandomByteLayerLive)
   )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }
