@@ -560,8 +560,16 @@ const handleDeviceCodeTokenExchange = (
     yield* requireValidClientForToken(payload.client_id, payload.client_secret)
     const pending = yield* getPendingDeviceCodeRequest(payload.device_code, payload.client_id)
     yield* requireDeviceCodeNotExpired(pending)
-    yield* requireDevicePollIntervalElapsed(pending)
-    yield* recordDevicePoll(pending)
+    // `slow_down` is a back-pressure signal for clients still waiting on
+    // Owner consent — it only applies while the row is `pending`. Once
+    // the row is `approved` (and we're about to consume) or has reached
+    // a terminal status (`denied` / `expired`), report the real
+    // disposition instead so the client doesn't busy-wait on a row that
+    // has already been resolved.
+    if (pending.status === 'pending') {
+      yield* requireDevicePollIntervalElapsed(pending)
+      yield* recordDevicePoll(pending)
+    }
     yield* requireDeviceConsentResolved(pending)
     yield* consumeDeviceCode(pending)
     return yield* issueTokenResponse({

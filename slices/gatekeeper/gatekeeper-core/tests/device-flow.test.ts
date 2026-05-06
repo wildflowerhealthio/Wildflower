@@ -53,18 +53,15 @@ const hashOf = (q: unknown): string | undefined => {
 
 type CommittedEvent = { name: string; args: Record<string, unknown> }
 
-const decodeDeviceStartedArgs = Schema.decodeUnknownSync(
-  AuthorizationRequests.events.deviceAuthorizationRequestStarted.schema
-)
-const decodeApprovedArgs = Schema.decodeUnknownSync(
-  AuthorizationRequests.events.authorizationRequestApproved.schema
-)
-const decodeDeniedArgs = Schema.decodeUnknownSync(
-  AuthorizationRequests.events.authorizationRequestDenied.schema
-)
-const decodePolledArgs = Schema.decodeUnknownSync(
-  AuthorizationRequests.events.deviceAuthorizationPolled.schema
-)
+// Event factories pass args through in their decoded form (e.g.
+// `requestedAt: DateTime.Utc`, not the encoded ISO string). The schema
+// check ran when `events.X({...})` was called, so we just cast here.
+type DeviceStartedArgs =
+  typeof AuthorizationRequests.events.deviceAuthorizationRequestStarted.schema.Type
+type ApprovedArgs = typeof AuthorizationRequests.events.authorizationRequestApproved.schema.Type
+type DeniedArgs = typeof AuthorizationRequests.events.authorizationRequestDenied.schema.Type
+type ExpiredArgs = typeof AuthorizationRequests.events.authorizationRequestExpired.schema.Type
+type PolledArgs = typeof AuthorizationRequests.events.deviceAuthorizationPolled.schema.Type
 
 type StoreOpts = {
   signingKeys: ReadonlyArray<SigningKey>
@@ -121,7 +118,8 @@ const makeStore = (opts: StoreOpts): typeof GatekeeperStore.Service => {
     for (const event of events) {
       switch (event.name) {
         case 'v1.DeviceAuthorizationRequestStarted': {
-          const args = decodeDeviceStartedArgs(event.args)
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const args = event.args as unknown as DeviceStartedArgs
           requestRows.set(args.id, {
             id: args.id,
             grantType: 'device_code',
@@ -143,7 +141,8 @@ const makeStore = (opts: StoreOpts): typeof GatekeeperStore.Service => {
           break
         }
         case 'v1.AuthorizationRequestApproved': {
-          const args = decodeApprovedArgs(event.args)
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const args = event.args as unknown as ApprovedArgs
           const existing = requestRows.get(args.id)
           if (existing !== undefined) {
             requestRows.set(args.id, {
@@ -156,15 +155,26 @@ const makeStore = (opts: StoreOpts): typeof GatekeeperStore.Service => {
           break
         }
         case 'v1.AuthorizationRequestDenied': {
-          const args = decodeDeniedArgs(event.args)
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const args = event.args as unknown as DeniedArgs
           const existing = requestRows.get(args.id)
           if (existing !== undefined) {
             requestRows.set(args.id, { ...existing, status: 'denied' })
           }
           break
         }
+        case 'v1.AuthorizationRequestExpired': {
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const args = event.args as unknown as ExpiredArgs
+          const existing = requestRows.get(args.id)
+          if (existing !== undefined) {
+            requestRows.set(args.id, { ...existing, status: 'expired' })
+          }
+          break
+        }
         case 'v1.DeviceAuthorizationPolled': {
-          const args = decodePolledArgs(event.args)
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const args = event.args as unknown as PolledArgs
           const existing = requestRows.get(args.id)
           if (existing !== undefined) {
             requestRows.set(args.id, { ...existing, lastPolledAt: args.polledAt })

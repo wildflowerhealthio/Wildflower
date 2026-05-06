@@ -55,7 +55,8 @@
     "jose": "^6.2.2",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
-    "vite-plus": "catalog:"
+    "vite-plus": "catalog:",
+    "why-is-node-running": "catalog:"
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",

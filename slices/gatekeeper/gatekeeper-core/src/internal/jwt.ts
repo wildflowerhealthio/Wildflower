@@ -4,7 +4,7 @@ import type { UnknownException } from 'effect/Cause'
 import type * as jose from 'jose'
 import { Origin } from 'kitchen-sink'
 import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
-import { Clients, SigningKey, SigningKeys } from '../livestore/index.ts'
+import { Clients, type SigningKey, SigningKeys } from '../livestore/index.ts'
 
 type VerifiedPayload = {
   iss: string
@@ -30,13 +30,49 @@ const verifyAgainstAnyKey = (
 ): Effect.Effect<jose.JWTVerifyResult<jose.JWTPayload>, HttpApiError.Unauthorized> =>
   pipe(
     keys.map((jwk) =>
-      Effect.tryPromise(() => SigningKey.verifyJwt(jwk, token, options)).pipe(
-        Effect.mapError(unauthorized)
-      )
+      Effect.tryPromise(() => jwk.verifyJwt(token, options)).pipe(Effect.mapError(unauthorized))
     ),
     Effect.firstSuccessOf,
     Effect.catchAll(() => Effect.fail(unauthorized()))
   )
+
+// `jose.jwtVerify` already enforces iss/aud/exp when we pass the
+// options, but we re-check in the wrapper too. Belt and braces: any
+// custom `SigningKey` impl that bypasses jose (e.g. a test stub) still
+// gets the same gating, so wrapper-level invariants don't depend on
+// what the verifier returns.
+const requireIssuerMatches = (
+  payload: jose.JWTPayload,
+  expectedIssuer: string
+): Effect.Effect<void, HttpApiError.Unauthorized> =>
+  payload.iss === expectedIssuer ? Effect.void : Effect.fail(unauthorized())
+
+const requireAudienceAccepted = (
+  payload: jose.JWTPayload,
+  acceptedAudiences: ReadonlyArray<string>
+): Effect.Effect<void, HttpApiError.Unauthorized> => {
+  const audClaim = payload.aud
+  const presented = Array.isArray(audClaim)
+    ? audClaim
+    : typeof audClaim === 'string'
+      ? [audClaim]
+      : []
+  return presented.some((a) => acceptedAudiences.includes(a))
+    ? Effect.void
+    : Effect.fail(unauthorized())
+}
+
+const requireNotExpired = (
+  payload: jose.JWTPayload
+): Effect.Effect<void, HttpApiError.Unauthorized> =>
+  Effect.gen(function* () {
+    if (typeof payload.exp !== 'number') return
+    const nowDt = yield* DateTime.now
+    const nowSeconds = Math.floor(DateTime.toEpochMillis(nowDt) / 1000)
+    if (payload.exp <= nowSeconds) {
+      yield* Effect.fail(unauthorized())
+    }
+  })
 
 const requireRegisteredEnabledSubject = (
   payload: jose.JWTPayload
@@ -66,10 +102,15 @@ const verifyJwt = (
     if (signingKeys.length === 0) {
       return yield* Effect.fail(unauthorized())
     }
+    const expectedIssuer = origin
+    const acceptedAudiences: ReadonlyArray<string> = [`${origin}/fhir`, origin]
     const verified = yield* verifyAgainstAnyKey(token, signingKeys, {
-      expectedIssuer: origin,
-      acceptedAudiences: [`${origin}/fhir`, origin],
+      expectedIssuer,
+      acceptedAudiences,
     })
+    yield* requireIssuerMatches(verified.payload, expectedIssuer)
+    yield* requireAudienceAccepted(verified.payload, acceptedAudiences)
+    yield* requireNotExpired(verified.payload)
     yield* requireRegisteredEnabledSubject(verified.payload)
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     return verified.payload as VerifiedPayload
@@ -78,8 +119,7 @@ const verifyJwt = (
 const signJwt = (
   jwk: SigningKey,
   payload: jose.JWTPayload
-): Effect.Effect<string, UnknownException> =>
-  Effect.tryPromise(() => SigningKey.signJwt(jwk, payload))
+): Effect.Effect<string, UnknownException> => Effect.tryPromise(() => jwk.signJwt(payload))
 
 type MintAccessTokenPayload = {
   clientId: string

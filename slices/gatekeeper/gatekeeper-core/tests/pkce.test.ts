@@ -16,7 +16,15 @@ test('computeCodeChallenge matches RFC 7636 §A.1 known-answer', async () => {
 test('computeCodeChallenge produces base64url output (no +, /, =)', async () => {
   await fc.assert(
     fc.asyncProperty(
-      fc.string({ minLength: 43, maxLength: 128 }).filter((s) => /^[A-Za-z0-9\-_.~]+$/.test(s)),
+      fc
+        .string({
+          minLength: 43,
+          maxLength: 128,
+          unit: fc.constantFrom(
+            ...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'.split('')
+          ),
+        })
+        .filter((s) => /^[A-Za-z0-9\-_.~]+$/.test(s)),
       async (verifier) => {
         const challenge = await Effect.runPromise(computeCodeChallenge(verifier))
         expect(challenge).toMatch(/^[A-Za-z0-9_-]+$/)
@@ -29,11 +37,17 @@ test('computeCodeChallenge produces base64url output (no +, /, =)', async () => 
 
 test('computeCodeChallenge is deterministic', async () => {
   await fc.assert(
-    fc.asyncProperty(fc.string({ minLength: 43, maxLength: 128 }), async (verifier) => {
-      const a = await Effect.runPromise(computeCodeChallenge(verifier))
-      const b = await Effect.runPromise(computeCodeChallenge(verifier))
-      expect(a).toBe(b)
-    }),
+    fc.asyncProperty(
+      fc.string({
+        minLength: 43,
+        maxLength: 128,
+      }),
+      async (verifier) => {
+        const a = await Effect.runPromise(computeCodeChallenge(verifier))
+        const b = await Effect.runPromise(computeCodeChallenge(verifier))
+        expect(a).toBe(b)
+      }
+    ),
     { numRuns: 25 }
   )
 })

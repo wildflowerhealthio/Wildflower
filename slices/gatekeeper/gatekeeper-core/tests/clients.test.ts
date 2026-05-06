@@ -1,4 +1,4 @@
-import { DateTime, Effect, Schema } from 'effect'
+import { DateTime, Effect } from 'effect'
 import { expect, test } from 'vite-plus/test'
 import type { GatekeeperStore } from '../src/contexts/gatekeeper-store.ts'
 import { makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
@@ -8,7 +8,12 @@ import {
 } from '../src/contexts/seed-first-party-client.ts'
 import { Clients, type ClientRow } from '../src/livestore/index.ts'
 
-const decodeClientRegisteredArgs = Schema.decodeUnknownSync(Clients.events.clientRegistered.schema)
+// Event factories pass args through in their decoded form (e.g.
+// `registeredAt` is `DateTime.Utc`, not the encoded ISO string).
+// Re-decoding with `Schema.decodeUnknownSync` would reject the value
+// for the encoded-side mismatch, so we just cast — the schema check
+// already happened when `events.clientRegistered({...})` was called.
+type ClientRegisteredArgs = typeof Clients.events.clientRegistered.schema.Type
 
 const labelOf = (q: unknown): string | undefined => {
   if (typeof q === 'object' && q !== null && 'label' in q && typeof q.label === 'string') {
@@ -49,7 +54,8 @@ const makeFakeStore = (
     committed.push(...events)
     for (const event of events) {
       if (event.name === 'v1.ClientRegistered') {
-        const args = decodeClientRegisteredArgs(event.args)
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        const args = event.args as unknown as ClientRegisteredArgs
         clientMap.set(args.clientId, { ...args, disabledAt: null })
       }
     }
