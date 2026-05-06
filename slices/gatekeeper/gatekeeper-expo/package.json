@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildlflower.git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
     "directory": "slices/gatekeeper/gatekeeper-expo"
   },
   "files": [
@@ -33,11 +33,11 @@
     "@livestore/common": "catalog:",
     "@livestore/livestore": "catalog:",
     "@livestore/peer-deps": "catalog:",
-    "@livestore/react": "0.4.0-dev.22",
+    "@livestore/react": "catalog:",
     "@livestore/utils": "catalog:",
-    "@types/node": "^25.5.0",
-    "@types/react": "~19.2.14",
-    "@typescript/native-preview": "7.0.0-dev.20260328.1",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "expo-notifications": "catalog:",
     "expo-router": "~55.0.8",
@@ -47,13 +47,13 @@
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-webview": "13.16.0",
-    "store-core": "workspace:*",
-    "typescript": "^6.0.2",
-    "vite-plus": "^0.1.14"
+    "emr-core": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@livestore/livestore": "catalog:",
-    "@livestore/react": "0.4.0-dev.22",
+    "@livestore/react": "catalog:",
     "effect": "catalog:",
     "expo-notifications": "*",
     "expo-router": "*",
@@ -63,6 +63,6 @@
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-webview": "*",
-    "store-core": "workspace:*"
+    "emr-core": "workspace:*"
   }
 }
