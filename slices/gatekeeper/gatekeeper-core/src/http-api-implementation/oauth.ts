@@ -28,6 +28,7 @@ import {
   Grants,
   type SigningKey,
   SigningKeys,
+  type GrantRow,
 } from '../livestore/index.ts'
 
 const DEVICE_CODE_POLL_INTERVAL: Duration.Duration = Duration.seconds(5)
@@ -229,6 +230,29 @@ const buildClientRedirectUrl = (redirectUri: string, code: string, clientState: 
 const buildPollingPageUrl = (origin: string, requestId: string): string =>
   `${origin}/oauth/authorize/${requestId}/view`
 
+const computePreapprovedScopes = (
+  requestedScopes: readonly string[],
+  approvedGrant: GrantRow | null
+): {
+  preApprovedScopes: null | Array.NonEmptyArray<string>
+  allScopesPreapproved: boolean
+} => {
+  const previouslyApproved = new Set<string>(approvedGrant?.scopes ?? [])
+  const preApproved = requestedScopes.filter((s) => previouslyApproved.has(s))
+  const allScopesPreapproved =
+    approvedGrant != null && requestedScopes.every((s) => previouslyApproved.has(s))
+
+  let preApprovedScopes: null | Array.NonEmptyArray<string> = null
+  if (Array.isNonEmptyArray(preApproved)) {
+    preApprovedScopes = preApproved
+  }
+
+  return {
+    preApprovedScopes,
+    allScopesPreapproved,
+  }
+}
+
 const handleAuthorize = (
   urlParams: AuthorizeParams
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, never, GatekeeperStore | Origin> => {
@@ -246,8 +270,11 @@ const handleAuthorize = (
       const approvedGrant = store.query(
         Grants.queries.byClientIdAndRedirectUri$(urlParams.client_id, urlParams.redirect_uri)
       )
-      const previouslyApproved = new Set<string>(approvedGrant?.scopes ?? [])
-      const preApproved = requestedScopes.filter((s) => previouslyApproved.has(s))
+
+      const { preApprovedScopes, allScopesPreapproved } = computePreapprovedScopes(
+        requestedScopes,
+        approvedGrant
+      )
 
       const requestId = crypto.randomUUID()
       yield* startCodeAuthorizationRequest({
@@ -257,11 +284,9 @@ const handleAuthorize = (
         codeChallenge: urlParams.code_challenge,
         redirectUri: urlParams.redirect_uri,
         clientState: urlParams.state,
-        preApprovedScopes: preApproved.length > 0 ? preApproved : null,
+        preApprovedScopes,
       })
 
-      const allScopesPreapproved =
-        approvedGrant != null && requestedScopes.every((s) => previouslyApproved.has(s))
       if (allScopesPreapproved) {
         const code = yield* issueCodeForAutoApprovedRequest({
           requestId,
@@ -269,7 +294,7 @@ const handleAuthorize = (
           redirectUri: urlParams.redirect_uri,
           codeChallenge: urlParams.code_challenge,
           grantedScopes: requestedScopes,
-          patient: approvedGrant.patient ?? null,
+          patient: approvedGrant?.patient ?? null,
         })
         return HttpServerResponse.redirect(
           buildClientRedirectUrl(urlParams.redirect_uri, code, urlParams.state),
