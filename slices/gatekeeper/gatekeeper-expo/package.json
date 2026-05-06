@@ -39,7 +39,8 @@
     "@types/react": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
-    "expo-notifications": "catalog:",
+    "emr-core": "workspace:*",
+    "expo-notifications": "~55.0.17",
     "expo-router": "~55.0.8",
     "expo-tundraish": "workspace:*",
     "gatekeeper-core": "workspace:*",
@@ -47,7 +48,6 @@
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-webview": "13.16.0",
-    "emr-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -55,6 +55,7 @@
     "@livestore/livestore": "catalog:",
     "@livestore/react": "catalog:",
     "effect": "catalog:",
+    "emr-core": "workspace:*",
     "expo-notifications": "*",
     "expo-router": "*",
     "expo-tundraish": "workspace:*",
@@ -62,7 +63,6 @@
     "gatekeeper-web": "workspace:*",
     "react": "catalog:",
     "react-native": "catalog:",
-    "react-native-webview": "*",
-    "emr-core": "workspace:*"
+    "react-native-webview": "*"
   }
 }

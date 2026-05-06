@@ -8,5 +8,8 @@ export {
 } from './contexts/index.ts'
 
 export { useAuthRequestHandler } from './hooks/use-auth-request-handler.ts'
-export { usePinAuthHandler } from './hooks/use-pin-auth-handler.ts'
-export { useRequestRegistry } from './hooks/use-request-registry.ts'
+export { useDeviceAuthRequestHandler } from './hooks/use-device-auth-request-handler.ts'
+export {
+  useNotificationTapHandler,
+  type NotificationTap,
+} from './hooks/use-notification-tap-handler.ts'
