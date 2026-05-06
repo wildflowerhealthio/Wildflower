@@ -17,6 +17,10 @@
       "source": "./src/index.ts",
       "default": "./dist/index.mjs"
     },
+    "./crypto-random": {
+      "source": "./src/crypto-random/index.ts",
+      "default": "./dist/crypto-random.mjs"
+    },
     "./schema": {
       "source": "./src/schema/index.ts",
       "default": "./dist/schema.mjs"

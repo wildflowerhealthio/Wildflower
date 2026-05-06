@@ -1,4 +1,5 @@
 import { DateTime, Effect, Layer } from 'effect'
+import { type CryptoRandom, cryptoRandomCounter } from 'kitchen-sink/crypto-random'
 import { expect, test } from 'vite-plus/test'
 import { GatekeeperStore } from '../src/contexts/gatekeeper-store.ts'
 import {
@@ -71,10 +72,15 @@ const makeRequest = (
 })
 
 const runWithStore = <A>(
-  effect: Effect.Effect<A, never, GatekeeperStore>,
+  effect: Effect.Effect<A, never, GatekeeperStore | CryptoRandom>,
   store: typeof GatekeeperStore.Service
 ): Promise<A> =>
-  Effect.runPromise(effect.pipe(Effect.provide(Layer.succeed(GatekeeperStore, store))))
+  Effect.runPromise(
+    effect.pipe(
+      Effect.provide(Layer.succeed(GatekeeperStore, store)),
+      Effect.provide(cryptoRandomCounter({ uuidPrefix: 'authcode' }))
+    )
+  )
 
 test('approveAuthorizationRequest commits approval + code-issued and returns redirect URL', async () => {
   const { store, committed } = makeFakeStore({ request: makeRequest() })
@@ -82,10 +88,7 @@ test('approveAuthorizationRequest commits approval + code-issued and returns red
     approveAuthorizationRequest('req-1', ['patient/*.read'], 'patient-7'),
     store
   )
-  expect(redirect).not.toBeNull()
-  expect(redirect).toContain('https://app.example/cb?')
-  expect(redirect).toContain('code=')
-  expect(redirect).toContain('state=state-x')
+  expect(redirect).toBe('https://app.example/cb?code=authcode-0001&state=state-x')
   expect(committed.map((e) => e.name)).toEqual([
     'v1.AuthorizationRequestApproved',
     'v1.AuthorizationCodeIssued',

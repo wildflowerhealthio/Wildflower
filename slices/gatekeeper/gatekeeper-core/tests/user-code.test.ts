@@ -1,28 +1,33 @@
 import { Effect, Layer } from 'effect'
 import * as fc from 'fast-check'
+import { CryptoRandom, CryptoRandomLayerLive } from 'kitchen-sink/crypto-random'
 import { expect, test } from 'vite-plus/test'
 import {
   ALPHABET,
   BLOCK_COUNT,
   BLOCK_LENGTH,
-  CryptoRandomByte,
-  CryptoRandomByteLayerLive,
   generateUserCode,
   isValidUserCode,
 } from '../src/internal/user-code.ts'
 
-const runUserCode = (): string =>
-  Effect.runSync(Effect.provide(generateUserCode, CryptoRandomByteLayerLive))
+const LiveLayer = CryptoRandomLayerLive<
+  Uint8Array & ReturnType<typeof globalThis.crypto.getRandomValues>
+>(globalThis.crypto, new Uint8Array(1))
+
+const runUserCode = (): string => Effect.runSync(Effect.provide(generateUserCode, LiveLayer))
 
 const REJECTION_LIMIT = 256 - (256 % ALPHABET.length)
 
-const stubBytes = (queue: ReadonlyArray<number>): Layer.Layer<CryptoRandomByte> => {
+const stubBytes = (queue: ReadonlyArray<number>): Layer.Layer<CryptoRandom> => {
   let i = 0
-  return Layer.succeed(CryptoRandomByte, {
-    next: Effect.sync(() => {
+  return Layer.succeed(CryptoRandom, {
+    nextByte: Effect.sync(() => {
       const b = queue[i++]
       if (b === undefined) throw new Error('stub byte queue exhausted')
       return b
+    }),
+    nextUuid: Effect.sync(() => {
+      throw new Error('user-code generation should not consume UUIDs')
     }),
   })
 }
@@ -89,10 +94,13 @@ test('generateUserCode rejects bytes ≥ REJECTION_LIMIT and resamples', () => {
 
 test('generateUserCode pulls exactly BLOCK_COUNT × BLOCK_LENGTH bytes when none are rejected', () => {
   let pulls = 0
-  const layer = Layer.succeed(CryptoRandomByte, {
-    next: Effect.sync(() => {
+  const layer = Layer.succeed(CryptoRandom, {
+    nextByte: Effect.sync(() => {
       pulls++
       return 0
+    }),
+    nextUuid: Effect.sync(() => {
+      throw new Error('user-code generation should not consume UUIDs')
     }),
   })
   Effect.runSync(Effect.provide(generateUserCode, layer))

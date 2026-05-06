@@ -1,4 +1,5 @@
 import { DateTime, Effect } from 'effect'
+import { CryptoRandom } from 'kitchen-sink/crypto-random'
 import { AuthorizationCodes, AuthorizationRequests } from '../livestore/index.ts'
 import { GatekeeperStore } from './gatekeeper-store.ts'
 
@@ -16,7 +17,7 @@ const approveAuthorizationRequest = (
   requestId: string,
   grantedScopes: readonly string[],
   patient?: string
-): Effect.Effect<string | null, never, GatekeeperStore> =>
+): Effect.Effect<string | null, never, GatekeeperStore | CryptoRandom> =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
     const pending = store.query(AuthorizationRequests.queries.byId$(requestId))
@@ -28,7 +29,8 @@ const approveAuthorizationRequest = (
     const requestedScopeSet = new Set(pending.requestedScopes)
     if (!grantedScopes.every((s) => requestedScopeSet.has(s))) return null
 
-    const code = crypto.randomUUID()
+    const cryptoRandom = yield* CryptoRandom
+    const code = yield* cryptoRandom.nextUuid
     const issuedAt = yield* DateTime.now
     const codeExpiresAt = DateTime.addDuration(issuedAt, '60 seconds')
 

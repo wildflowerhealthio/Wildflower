@@ -1,6 +1,7 @@
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { DateTime, Duration, Effect, Layer, Schema } from 'effect'
 import { Origin } from 'kitchen-sink'
+import { cryptoRandomCounter } from 'kitchen-sink/crypto-random'
 import { expect, test } from 'vite-plus/test'
 
 const JsonObjectSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
@@ -12,7 +13,6 @@ const readJsonObject = async (response: Response): Promise<Record<string, unknow
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../src/http-api-definition/index.ts'
 import {
-  CryptoRandomByteLayerLive,
   GatekeeperApiLive,
   RequireAuthMiddlewareLive,
 } from '../src/http-api-implementation/index.ts'
@@ -210,7 +210,7 @@ const createHandler = (
     Layer.provide(StubGatekeeperPagesLive),
     Layer.provide(makeGatekeeperStoreLayer(store)),
     Layer.provide(Layer.succeed(Origin, ORIGIN)),
-    Layer.provide(CryptoRandomByteLayerLive)
+    Layer.provide(cryptoRandomCounter({ uuidPrefix: 'device' }))
   )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }
@@ -230,12 +230,10 @@ test('POST /oauth/device_authorization issues device_code + user_code', async ()
     )
     expect(response.status).toBe(200)
     const body = await readJsonObject(response)
-    expect(typeof body['device_code']).toBe('string')
-    expect(body['user_code']).toMatch(/^[A-Z]{4}-[A-Z]{4}$/)
+    expect(body['device_code']).toBe('device-0001')
+    expect(body['user_code']).toBe('BCDF-GHJK')
     expect(body['verification_uri']).toBe(`${ORIGIN}/access/devices`)
-    expect(body['verification_uri_complete']).toBe(
-      `${ORIGIN}/access/devices?user_code=${String(body['user_code'])}`
-    )
+    expect(body['verification_uri_complete']).toBe(`${ORIGIN}/access/devices?user_code=BCDF-GHJK`)
     expect(body['expires_in']).toBe(300)
     expect(body['interval']).toBe(5)
   } finally {

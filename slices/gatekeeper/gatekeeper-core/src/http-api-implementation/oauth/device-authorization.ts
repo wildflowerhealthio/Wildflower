@@ -1,6 +1,7 @@
 import type { Schema } from 'effect'
 import { DateTime, Duration, Effect } from 'effect'
 import { Origin } from 'kitchen-sink'
+import { CryptoRandom } from 'kitchen-sink/crypto-random'
 import { GatekeeperStore } from '../../contexts/gatekeeper-store.ts'
 import {
   type DeviceAuthorizationPayloadSchema,
@@ -8,7 +9,7 @@ import {
   OAuthError400Schema,
   OAuthError401Schema,
 } from '../../http-api-definition/oauth.ts'
-import { type CryptoRandomByte, generateUserCode } from '../../internal/user-code.ts'
+import { generateUserCode } from '../../internal/user-code.ts'
 import { AuthorizationRequests, Clients, type ClientRow } from '../../livestore/index.ts'
 import { DEVICE_CODE_POLL_INTERVAL, type OAuthError400, type OAuthError401 } from './shared.ts'
 
@@ -63,7 +64,7 @@ const requireValidDeviceAuthorizationClient = (
 
 const generateUniqueUserCode = (
   store: typeof GatekeeperStore.Service
-): Effect.Effect<string, never, CryptoRandomByte> =>
+): Effect.Effect<string, never, CryptoRandom> =>
   Effect.gen(function* () {
     for (let attempt = 0; attempt < 10; attempt++) {
       const candidate = yield* generateUserCode
@@ -76,10 +77,11 @@ const generateUniqueUserCode = (
 const startDeviceAuthorizationRequest = (input: {
   clientId: string
   requestedScopes: ReadonlyArray<string>
-}): Effect.Effect<{ id: string; userCode: string }, never, GatekeeperStore | CryptoRandomByte> =>
+}): Effect.Effect<{ id: string; userCode: string }, never, GatekeeperStore | CryptoRandom> =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
-    const id = crypto.randomUUID()
+    const cryptoRandom = yield* CryptoRandom
+    const id = yield* cryptoRandom.nextUuid
     const userCode = yield* generateUniqueUserCode(store)
     const requestedAt = yield* DateTime.now
     const expiresAt = DateTime.addDuration(requestedAt, DEVICE_AUTHORIZATION_TTL)
@@ -115,7 +117,7 @@ const handleDeviceAuthorization = (
 ): Effect.Effect<
   DeviceAuthorizationResponse,
   OAuthError400 | OAuthError401,
-  GatekeeperStore | Origin | CryptoRandomByte
+  GatekeeperStore | Origin | CryptoRandom
 > => {
   const requestedScopes = (payload.scope ?? '').split(' ').filter(Boolean)
   return Effect.gen(function* () {

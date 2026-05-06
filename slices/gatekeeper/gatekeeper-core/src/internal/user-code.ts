@@ -8,14 +8,13 @@
  * device-flow approval endpoint also requires a valid Owner Bearer
  * token).
  *
- * Random bytes are pulled through the `CryptoRandomByte` service so
- * tests can drive `generateUserCode` deterministically. The live
- * implementation in `CryptoRandomByteLayerLive` uses
- * `crypto.getRandomValues` with rejection sampling to avoid modulo
- * bias.
+ * Random bytes are pulled through `CryptoRandom` (from kitchen-sink) so
+ * tests can drive `generateUserCode` deterministically. Rejection
+ * sampling is used to avoid modulo bias.
  */
 
-import { Context, Effect, Layer } from 'effect'
+import { Effect } from 'effect'
+import { CryptoRandom } from 'kitchen-sink/crypto-random'
 
 const ALPHABET = 'BCDFGHJKLMNPQRSTVWXZ'
 const BLOCK_LENGTH = 4
@@ -25,30 +24,10 @@ const BLOCK_COUNT = 2
 // from `[0, limit)` avoids modulo bias.
 const REJECTION_LIMIT = 256 - (256 % ALPHABET.length)
 
-class CryptoRandomByte extends Context.Tag('CryptoRandomByte')<
-  CryptoRandomByte,
-  { readonly next: Effect.Effect<number> }
->() {}
-
-const CryptoRandomByteLayerLive: Layer.Layer<CryptoRandomByte> = Layer.succeed(CryptoRandomByte, {
-  next: Effect.suspend(() => {
-    const buf = new Uint8Array(1)
-    crypto.getRandomValues(buf)
-    const byte = buf[0]
-    if (byte === undefined) {
-      // Web Crypto guarantees the buffer is filled. Treat a missing byte
-      // as a runtime invariant violation rather than silently retrying
-      // or defaulting to a fixed value.
-      return Effect.die(new Error('crypto.getRandomValues did not fill buffer'))
-    }
-    return Effect.succeed(byte)
-  }),
-})
-
-const sampleAlphabetChar: Effect.Effect<string, never, CryptoRandomByte> = Effect.gen(function* () {
-  const cryptoByte = yield* CryptoRandomByte
+const sampleAlphabetChar: Effect.Effect<string, never, CryptoRandom> = Effect.gen(function* () {
+  const cryptoRandom = yield* CryptoRandom
   for (;;) {
-    const byte = yield* cryptoByte.next
+    const byte = yield* cryptoRandom.nextByte
     if (byte < REJECTION_LIMIT) {
       const char = ALPHABET[byte % ALPHABET.length]
       if (char === undefined) {
@@ -61,7 +40,7 @@ const sampleAlphabetChar: Effect.Effect<string, never, CryptoRandomByte> = Effec
   }
 })
 
-const generateUserCode: Effect.Effect<string, never, CryptoRandomByte> = Effect.gen(function* () {
+const generateUserCode: Effect.Effect<string, never, CryptoRandom> = Effect.gen(function* () {
   const blocks: string[] = []
   for (let block = 0; block < BLOCK_COUNT; block++) {
     const chars: string[] = []
@@ -79,12 +58,4 @@ const USER_CODE_REGEX = new RegExp(
 
 const isValidUserCode = (value: string): boolean => USER_CODE_REGEX.test(value)
 
-export {
-  ALPHABET,
-  BLOCK_COUNT,
-  BLOCK_LENGTH,
-  CryptoRandomByte,
-  CryptoRandomByteLayerLive,
-  generateUserCode,
-  isValidUserCode,
-}
+export { ALPHABET, BLOCK_COUNT, BLOCK_LENGTH, generateUserCode, isValidUserCode }

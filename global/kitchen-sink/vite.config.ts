@@ -17,6 +17,7 @@ export default defineConfig({
     exports: false,
     entry: {
       index: 'src/index.ts',
+      'crypto-random': 'src/crypto-random/index.ts',
       schema: 'src/schema/index.ts',
       types: 'src/types/index.ts',
     },

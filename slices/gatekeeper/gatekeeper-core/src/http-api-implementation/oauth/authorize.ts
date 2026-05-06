@@ -2,6 +2,7 @@ import { HttpServerResponse } from '@effect/platform'
 import type { Schema } from 'effect'
 import { Array, DateTime, Duration, Effect, pipe } from 'effect'
 import { Origin } from 'kitchen-sink'
+import { CryptoRandom } from 'kitchen-sink/crypto-random'
 import { GatekeeperStore } from '../../contexts/gatekeeper-store.ts'
 import type { AuthorizeUrlParamsSchema } from '../../http-api-definition/oauth.ts'
 import { oauthErrorHtml } from '../../internal/error-pages.ts'
@@ -133,10 +134,11 @@ const issueCodeForAutoApprovedRequest = (input: {
   codeChallenge: string
   grantedScopes: ReadonlyArray<string>
   patient: string | null
-}): Effect.Effect<string, never, GatekeeperStore> =>
+}): Effect.Effect<string, never, GatekeeperStore | CryptoRandom> =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
-    const code = crypto.randomUUID()
+    const cryptoRandom = yield* CryptoRandom
+    const code = yield* cryptoRandom.nextUuid
     const issuedAt = yield* DateTime.now
     const expiresAt = DateTime.addDuration(issuedAt, AUTHORIZATION_CODE_TTL)
     store.commit(
@@ -211,7 +213,11 @@ const getAuthorizationRequestParameters = (
 
 const handleAuthorize = (
   urlParams: AuthorizeParams
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, GatekeeperStore | Origin> =>
+): Effect.Effect<
+  HttpServerResponse.HttpServerResponse,
+  never,
+  GatekeeperStore | Origin | CryptoRandom
+> =>
   pipe(
     Effect.gen(function* () {
       yield* requireSigningKey()
@@ -222,7 +228,8 @@ const handleAuthorize = (
       yield* requireRedirectUriOnAllowlist(client, urlParams.redirect_uri)
       yield* requireClientAllowsRequesterScopes(client, scopes.requested)
 
-      const requestId = crypto.randomUUID()
+      const cryptoRandom = yield* CryptoRandom
+      const requestId = yield* cryptoRandom.nextUuid
       yield* startCodeAuthorizationRequest({
         requestId,
         clientId: urlParams.client_id,

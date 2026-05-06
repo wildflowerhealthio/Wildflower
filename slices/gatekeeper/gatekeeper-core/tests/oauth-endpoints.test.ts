@@ -2,11 +2,11 @@ import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { DateTime, Effect, Layer } from 'effect'
 import * as jose from 'jose'
 import { Origin } from 'kitchen-sink'
+import { cryptoRandomCounter } from 'kitchen-sink/crypto-random'
 import { expect, test } from 'vite-plus/test'
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../src/http-api-definition/index.ts'
 import {
-  CryptoRandomByteLayerLive,
   GatekeeperApiLive,
   RequireAuthMiddlewareLive,
 } from '../src/http-api-implementation/index.ts'
@@ -293,7 +293,7 @@ const createOAuthHandler = (
     Layer.provide(StubGatekeeperPagesLive),
     Layer.provide(makeGatekeeperStoreLayer(store)),
     Layer.provide(Layer.succeed(Origin, 'http://localhost:8787')),
-    Layer.provide(CryptoRandomByteLayerLive)
+    Layer.provide(cryptoRandomCounter({ uuidPrefix: 'oauth' }))
   )
 
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
@@ -392,7 +392,7 @@ test('authorize redirects to the polling page', async () => {
 
     expect(response.status).toBe(302)
     const location = response.headers.get('location')
-    expect(location).toMatch(/\/oauth\/authorize\/[0-9a-f-]+\/view$/)
+    expect(location).toBe('http://localhost:8787/oauth/authorize/oauth-0001/view')
   } finally {
     await dispose()
   }
