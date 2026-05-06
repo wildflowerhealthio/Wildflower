@@ -1,0 +1,52 @@
+{
+  "name": "gatekeeper-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/http-api.ts",
+      "default": "./dist/http-api.js"
+    },
+    "./http-api-implementation": {
+      "source": "./src/http-api-implementation.ts",
+      "default": "./dist/http-api-implementation.js"
+    },
+    "./auth-renderer": {
+      "types": "./dist/auth-renderer.d.ts",
+      "default": "./dist/auth-renderer.js"
+    },
+    "./html": {
+      "types": "./dist-html/html.d.ts",
+      "default": "./dist-html/html.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp run build:html && vp run build:lib",
+    "build:html": "vp build",
+    "build:lib": "vp pack",
+    "check": "vp check",
+    "dev": "vp dev",
+    "preview": "vp preview"
+  },
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "effect": "catalog:",
+    "gatekeeper-core": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router": "^7.8.0",
+    "react-tundraish": "workspace:*",
+    "telemetry-web": "workspace:*",
+    "tundra-css": "^0.14.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.14",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "^5.0.4",
+    "typescript": "catalog:",
+    "vite-plugin-singlefile": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

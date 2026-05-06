@@ -1,0 +1,68 @@
+{
+  "name": "gatekeeper-expo",
+  "version": "0.0.0",
+  "description": "Expo screens and hooks for managing gatekeeper access, approved apps, and authorization modals.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildlflower.git",
+    "directory": "slices/gatekeeper/gatekeeper-expo"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@livestore/common": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "@livestore/react": "0.4.0-dev.22",
+    "@livestore/utils": "catalog:",
+    "@types/node": "^25.5.0",
+    "@types/react": "~19.2.14",
+    "@typescript/native-preview": "7.0.0-dev.20260328.1",
+    "effect": "catalog:",
+    "expo-notifications": "catalog:",
+    "expo-router": "~55.0.8",
+    "expo-tundraish": "workspace:*",
+    "gatekeeper-core": "workspace:*",
+    "gatekeeper-web": "workspace:*",
+    "react": "catalog:",
+    "react-native": "catalog:",
+    "react-native-webview": "13.16.0",
+    "store-core": "workspace:*",
+    "typescript": "^6.0.2",
+    "vite-plus": "^0.1.14"
+  },
+  "peerDependencies": {
+    "@livestore/livestore": "catalog:",
+    "@livestore/react": "0.4.0-dev.22",
+    "effect": "catalog:",
+    "expo-notifications": "*",
+    "expo-router": "*",
+    "expo-tundraish": "workspace:*",
+    "gatekeeper-core": "workspace:*",
+    "gatekeeper-web": "workspace:*",
+    "react": "catalog:",
+    "react-native": "catalog:",
+    "react-native-webview": "*",
+    "store-core": "workspace:*"
+  }
+}
