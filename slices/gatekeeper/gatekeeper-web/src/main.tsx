@@ -12,9 +12,7 @@ if (container === null) {
 }
 
 const injectedRoute = (window as Window & { __INITIAL_ROUTE__?: string }).__INITIAL_ROUTE__
-const initialEntry =
-  injectedRoute ??
-  (window.location.pathname.replace(/^\/auth\/ui/, '') || '/') + window.location.search
+const initialEntry = injectedRoute ?? '/'
 
 createRoot(container).render(
   <StrictMode>

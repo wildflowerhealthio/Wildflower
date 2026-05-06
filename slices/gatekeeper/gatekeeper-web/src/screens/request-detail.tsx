@@ -1,12 +1,11 @@
 import type { Schema } from 'effect'
-import type { Dashboard } from 'gatekeeper-core/http-api-definition'
+import type { GatekeeperAccess } from 'gatekeeper-core/http-api-definition'
 import { useEffect, useState, type JSX } from 'react'
 import { useParams } from 'react-router'
 import { StatusBadge, type StatusTone } from 'react-tundraish'
 import { runAuth } from '../client.ts'
-import { clearInitial, readInitial } from '../data/initial.ts'
 
-type HttpRequest = Schema.Schema.Type<typeof Dashboard.HttpRequestSchema>
+type HttpRequest = Schema.Schema.Type<typeof GatekeeperAccess.HttpRequestSchema>
 
 const formatDate = (value: { epochMillis: number } | Date | string): string => {
   const ms =
@@ -27,16 +26,12 @@ const statusTone = (status: string): StatusTone => {
 
 const RequestDetailScreen = (): JSX.Element => {
   const { id = '' } = useParams<{ id: string }>()
-  const [request, setRequest] = useState<HttpRequest | null>(() => {
-    const initial = readInitial<HttpRequest>()
-    clearInitial()
-    return initial
-  })
+  const [request, setRequest] = useState<HttpRequest | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = async (): Promise<void> => {
     try {
-      const row = await runAuth((c) => c['auth-dashboard'].GetRequest({ path: { id } }))
+      const row = await runAuth((c) => c['gatekeeper-access'].GetRequest({ path: { id } }))
       setRequest(row)
       setError(null)
     } catch (e) {
@@ -51,7 +46,11 @@ const RequestDetailScreen = (): JSX.Element => {
 
   const decide = async (status: 'approved' | 'rejected'): Promise<void> => {
     try {
-      await runAuth((c) => c['auth-dashboard'].DecideRequest({ path: { id }, payload: { status } }))
+      if (status === 'approved') {
+        await runAuth((c) => c['gatekeeper-access'].ApproveRequest({ path: { id } }))
+      } else {
+        await runAuth((c) => c['gatekeeper-access'].DenyRequest({ path: { id } }))
+      }
       await refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))

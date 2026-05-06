@@ -1,27 +1,22 @@
 import type { Schema } from 'effect'
-import type { Dashboard } from 'gatekeeper-core/http-api-definition'
+import type { GatekeeperAccess } from 'gatekeeper-core/http-api-definition'
 import { useEffect, useState, type JSX } from 'react'
 import { useParams } from 'react-router'
 import { runAuth } from '../client.ts'
-import { clearInitial, readInitial } from '../data/initial.ts'
 
-type ApprovedApp = Schema.Schema.Type<typeof Dashboard.ApprovedAppSchema>
+type Grant = Schema.Schema.Type<typeof GatekeeperAccess.GrantSchema>
 
 const ApprovedAppDetailScreen = (): JSX.Element => {
   const { id = '' } = useParams<{ id: string }>()
-  const [app, setApp] = useState<ApprovedApp | null>(() => {
-    const initial = readInitial<ApprovedApp>()
-    clearInitial()
-    return initial
-  })
+  const [grant, setGrant] = useState<Grant | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
       try {
-        const row = await runAuth((c) => c['auth-dashboard'].GetApprovedApp({ path: { id } }))
-        if (!cancelled) setApp(row)
+        const row = await runAuth((c) => c['gatekeeper-access'].GetGrant({ path: { id } }))
+        if (!cancelled) setGrant(row)
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e))
       }
@@ -31,7 +26,7 @@ const ApprovedAppDetailScreen = (): JSX.Element => {
     }
   }, [id])
 
-  if (error !== null && app === null) {
+  if (error !== null && grant === null) {
     return (
       <div className="gk-page">
         <h1 className="text-heading-4">Not Found</h1>
@@ -39,7 +34,7 @@ const ApprovedAppDetailScreen = (): JSX.Element => {
       </div>
     )
   }
-  if (app === null) {
+  if (grant === null) {
     return (
       <div className="gk-page">
         <p className="text-body-2">Loading…</p>
@@ -49,8 +44,8 @@ const ApprovedAppDetailScreen = (): JSX.Element => {
 
   return (
     <div className="gk-page">
-      <h1 className="text-heading-4">{app.label}</h1>
-      <pre className="gk-json">{JSON.stringify(app, null, 2)}</pre>
+      <h1 className="text-heading-4">{grant.clientId}</h1>
+      <pre className="gk-json">{JSON.stringify(grant, null, 2)}</pre>
     </div>
   )
 }

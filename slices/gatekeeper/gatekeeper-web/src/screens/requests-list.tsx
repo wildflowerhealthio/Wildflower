@@ -1,14 +1,11 @@
 import type { Schema } from 'effect'
-import type { Dashboard } from 'gatekeeper-core/http-api-definition'
+import type { GatekeeperAccess } from 'gatekeeper-core/http-api-definition'
 import { useEffect, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router'
 import { ItemList } from 'react-tundraish'
 import { runAuth } from '../client.ts'
-import { clearInitial, readInitial } from '../data/initial.ts'
 
-type HttpRequest = Schema.Schema.Type<typeof Dashboard.HttpRequestSchema>
-
-type InitialState = { readonly requests: readonly HttpRequest[] }
+type HttpRequest = Schema.Schema.Type<typeof GatekeeperAccess.HttpRequestSchema>
 
 const formatDate = (value: { epochMillis: number } | Date | string): string => {
   const ms =
@@ -22,16 +19,12 @@ const formatDate = (value: { epochMillis: number } | Date | string): string => {
 
 const RequestsListScreen = (): JSX.Element => {
   const navigate = useNavigate()
-  const [requests, setRequests] = useState<readonly HttpRequest[]>(() => {
-    const initial = readInitial<InitialState>()
-    clearInitial()
-    return initial?.requests ?? []
-  })
+  const [requests, setRequests] = useState<readonly HttpRequest[]>([])
   const [error, setError] = useState<string | null>(null)
 
   const refresh = async (): Promise<void> => {
     try {
-      const list = await runAuth((c) => c['auth-dashboard'].ListRequests())
+      const list = await runAuth((c) => c['gatekeeper-access'].ListRequests())
       setRequests(list)
       setError(null)
     } catch (e) {
@@ -45,7 +38,11 @@ const RequestsListScreen = (): JSX.Element => {
 
   const decide = async (id: string, status: 'approved' | 'rejected'): Promise<void> => {
     try {
-      await runAuth((c) => c['auth-dashboard'].DecideRequest({ path: { id }, payload: { status } }))
+      if (status === 'approved') {
+        await runAuth((c) => c['gatekeeper-access'].ApproveRequest({ path: { id } }))
+      } else {
+        await runAuth((c) => c['gatekeeper-access'].DenyRequest({ path: { id } }))
+      }
       await refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))

@@ -1,14 +1,11 @@
 import type { Schema } from 'effect'
-import type { Dashboard } from 'gatekeeper-core/http-api-definition'
+import type { GatekeeperAccess } from 'gatekeeper-core/http-api-definition'
 import { useEffect, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router'
 import { Dialog, ItemList, Menu, type MenuItem } from 'react-tundraish'
 import { runAuth } from '../client.ts'
-import { clearInitial, readInitial } from '../data/initial.ts'
 
-type ApprovedApp = Schema.Schema.Type<typeof Dashboard.ApprovedAppSchema>
-
-type InitialState = { readonly approvedApps: readonly ApprovedApp[] }
+type Grant = Schema.Schema.Type<typeof GatekeeperAccess.GrantSchema>
 
 const formatDate = (value: { epochMillis: number } | Date | string): string => {
   const ms =
@@ -22,18 +19,14 @@ const formatDate = (value: { epochMillis: number } | Date | string): string => {
 
 const AccessIndexScreen = (): JSX.Element => {
   const navigate = useNavigate()
-  const [apps, setApps] = useState<readonly ApprovedApp[]>(() => {
-    const initial = readInitial<InitialState>()
-    clearInitial()
-    return initial?.approvedApps ?? []
-  })
+  const [grants, setGrants] = useState<readonly Grant[]>([])
   const [error, setError] = useState<string | null>(null)
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null)
 
   const refresh = async (): Promise<void> => {
     try {
-      const list = await runAuth((c) => c['auth-dashboard'].ListApprovedApps())
-      setApps(list)
+      const list = await runAuth((c) => c['gatekeeper-access'].ListGrants())
+      setGrants(list)
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -46,7 +39,7 @@ const AccessIndexScreen = (): JSX.Element => {
 
   const revoke = async (id: string): Promise<void> => {
     try {
-      await runAuth((c) => c['auth-dashboard'].RevokeApprovedApp({ path: { id } }))
+      await runAuth((c) => c['gatekeeper-access'].RevokeGrant({ path: { id } }))
       setConfirmRevokeId(null)
       await refresh()
     } catch (e) {
@@ -54,7 +47,7 @@ const AccessIndexScreen = (): JSX.Element => {
     }
   }
 
-  const appToRevoke = apps.find((a) => a.id === confirmRevokeId)
+  const grantToRevoke = grants.find((g) => g.id === confirmRevokeId)
 
   return (
     <div className="gk-page">
@@ -74,20 +67,19 @@ const AccessIndexScreen = (): JSX.Element => {
         ]}
       />
 
-      {apps.length > 0 ? (
+      {grants.length > 0 ? (
         <ItemList
           title="Approved Apps"
-          items={apps.map((app) => ({
-            id: app.id,
-            title: app.label,
-            badge: app.type.toUpperCase(),
-            subtitle: `${app.scopes.join(', ')} · Approved ${formatDate(app.approvedAt)}`,
+          items={grants.map((grant) => ({
+            id: grant.id,
+            title: grant.clientId,
+            subtitle: `${grant.scopes.join(', ')} · Granted ${formatDate(grant.grantedAt)}`,
             onClick: () => {
-              void navigate(`/approved/${encodeURIComponent(app.id)}`)
+              void navigate(`/approved/${encodeURIComponent(grant.id)}`)
             },
             actions: (
               <Menu
-                label={`Actions for ${app.label}`}
+                label={`Actions for ${grant.clientId}`}
                 items={
                   [
                     {
@@ -95,7 +87,7 @@ const AccessIndexScreen = (): JSX.Element => {
                       label: 'Revoke',
                       destructive: true,
                       onSelect: () => {
-                        setConfirmRevokeId(app.id)
+                        setConfirmRevokeId(grant.id)
                       },
                     },
                   ] as readonly MenuItem[]
@@ -107,21 +99,21 @@ const AccessIndexScreen = (): JSX.Element => {
       ) : null}
 
       <Dialog
-        open={appToRevoke !== undefined}
+        open={grantToRevoke !== undefined}
         onClose={() => {
           setConfirmRevokeId(null)
         }}
         title="Revoke Access"
       >
         <p className="text-body-2">
-          Are you sure you want to revoke access for &quot;{appToRevoke?.label}&quot;?
+          Are you sure you want to revoke access for &quot;{grantToRevoke?.clientId}&quot;?
         </p>
         <div className="gk-buttons">
           <button
             type="button"
             className="button-2 filled accent-red"
             onClick={() => {
-              if (appToRevoke !== undefined) void revoke(appToRevoke.id)
+              if (grantToRevoke !== undefined) void revoke(grantToRevoke.id)
             }}
           >
             Revoke

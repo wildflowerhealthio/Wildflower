@@ -5,18 +5,11 @@
   "type": "module",
   "exports": {
     ".": {
-      "source": "./src/http-api.ts",
-      "default": "./dist/http-api.js"
-    },
-    "./http-api-implementation": {
-      "source": "./src/http-api-implementation.ts",
-      "default": "./dist/http-api-implementation.js"
-    },
-    "./auth-renderer": {
-      "types": "./dist/auth-renderer.d.ts",
-      "default": "./dist/auth-renderer.js"
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
     },
     "./html": {
+      "source": "./src/html.ts",
       "types": "./dist-html/html.d.ts",
       "default": "./dist-html/html.js"
     },
@@ -43,10 +36,10 @@
   },
   "devDependencies": {
     "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
+    "@types/react-dom": "~19.2.0",
     "@vitejs/plugin-react": "^5.0.4",
     "typescript": "catalog:",
-    "vite-plugin-singlefile": "catalog:",
+    "vite-plugin-singlefile": "^2.3.3",
     "vite-plus": "catalog:"
   }
 }

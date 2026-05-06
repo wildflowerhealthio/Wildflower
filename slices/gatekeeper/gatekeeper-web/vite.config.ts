@@ -45,9 +45,7 @@ export default defineConfig({
     exports: false,
     clean: false,
     entry: {
-      'http-api': 'src/http-api.ts',
-      'http-api-implementation': 'src/http-api-implementation.ts',
-      'auth-renderer': 'src/auth-renderer.tsx',
+      index: 'src/index.ts',
     },
   },
   lint: { options: { typeAware: true, typeCheck: true } },
