@@ -1,12 +1,6 @@
 import './instrument.ts'
 import { createServer } from 'node:http'
-import {
-  HttpApi,
-  HttpApiBuilder,
-  type HttpApiGroup,
-  HttpApiSwagger,
-  HttpMiddleware,
-} from '@effect/platform'
+import { HttpApi, HttpApiBuilder, HttpApiSwagger, HttpMiddleware } from '@effect/platform'
 import { NodeHttpServer, NodeRuntime } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { makeLivestoreStoreLayer } from 'emr-core/contexts'
