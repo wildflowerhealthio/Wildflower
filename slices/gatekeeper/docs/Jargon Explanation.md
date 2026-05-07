@@ -197,7 +197,7 @@ The HttpApi group whose endpoints serve **HTML** to humans
 bridge described in `docs/Effect/HttpApi Composition How-To.md`. Every
 page is public; auth is JS-driven on the JSON endpoints behind them.
 
-### `gatekeeper-access`
+### `access-management`
 
 The HttpApi group fronting the **Owner-facing** JSON endpoints under
 `/access/...` — list/inspect/revoke `Grant`s, list/decide pending HTTP

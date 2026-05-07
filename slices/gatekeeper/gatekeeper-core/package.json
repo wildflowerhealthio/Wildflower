@@ -13,6 +13,10 @@
   ],
   "type": "module",
   "exports": {
+    "./clients": {
+      "source": "./src/clients/index.ts",
+      "default": "./dist/clients/index.js"
+    },
     "./contexts": {
       "source": "./src/contexts/index.ts",
       "default": "./dist/contexts/index.js"

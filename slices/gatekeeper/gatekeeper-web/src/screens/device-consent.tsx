@@ -1,66 +1,66 @@
-import type { Schema } from 'effect'
+import { Effect, type Schema } from 'effect'
+import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { Devices } from 'gatekeeper-core/http-api-definition'
-import { useEffect, useState, type JSX } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { Suspense, useMemo, useState, type JSX } from 'react'
+import { useEffectTs } from 'react-kitchen-sink'
+import { Await, useNavigate, useParams } from 'react-router'
 import { Checkbox } from 'react-tundraish'
-import { runAuth } from '../client.ts'
+
+import type { AuthenticatedSession } from '../client.ts'
+import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
+import { PageLoading } from '../components/PageLoading.tsx'
+import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
 
 type DeviceConsent = Schema.Schema.Type<typeof Devices.DeviceConsentSchema>
 
+/**
+ * Suspense + `Await` pattern: the consent fetch is a single Effect
+ * run through the session runtime, returning a stable Promise (via
+ * `useEffectTs`). The form's approve/decline actions stay
+ * imperative — they fire once on click, navigate away on success.
+ */
 const DeviceConsentScreen = (): JSX.Element => {
-  const { userCode = '' } = useParams<{ userCode: string }>()
+  const session = useGatekeeperClient()
   const navigate = useNavigate()
-  const [consent, setConsent] = useState<DeviceConsent | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { userCode = '' } = useParams<{ userCode: string }>()
 
-  useEffect(() => {
-    if (consent !== null) return () => undefined
-    let cancelled = false
-    void (async () => {
-      try {
-        const result = await runAuth((c) => c.devices.GetDeviceConsent({ path: { userCode } }))
-        if (!cancelled) setConsent(result)
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [userCode, consent])
+  const consentEffect = useMemo(
+    () =>
+      Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+        c.devices.GetDeviceConsent({ path: { userCode } })
+      ),
+    [userCode]
+  )
 
-  if (error !== null && consent === null) {
-    return (
-      <div className="gk-page">
-        <h1 className="text-heading-4">Device Authorization</h1>
-        <p className="gk-error text-body-3">{error}</p>
-      </div>
-    )
-  }
-  if (consent === null) {
-    return (
-      <div className="gk-page">
-        <p className="text-body-2">Loading…</p>
-      </div>
-    )
-  }
+  const consentPromise = useEffectTs(consentEffect, session.runtime)
 
   return (
-    <DeviceConsentForm
-      consent={consent}
-      onDone={() => {
-        void navigate('/', { replace: true })
-      }}
-    />
+    <Suspense fallback={<PageLoading />}>
+      <Await
+        resolve={consentPromise}
+        errorElement={<AsyncErrorView title="Device Authorization" />}
+      >
+        {(consent: DeviceConsent) => (
+          <DeviceConsentForm
+            session={session}
+            consent={consent}
+            onDone={() => {
+              void navigate('/', { replace: true })
+            }}
+          />
+        )}
+      </Await>
+    </Suspense>
   )
 }
 
-type DeviceConsentFormProps = {
+interface DeviceConsentFormProps {
+  readonly session: AuthenticatedSession
   readonly consent: DeviceConsent
   readonly onDone: () => void
 }
 
-const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Element => {
+const DeviceConsentForm = ({ session, consent, onDone }: DeviceConsentFormProps): JSX.Element => {
   const requestedScopes = consent.requestedScopes
   const [selectedScopes, setSelectedScopes] = useState<ReadonlySet<string>>(
     () => new Set(requestedScopes)
@@ -84,13 +84,19 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
     setSubmitting(true)
     setError(null)
     try {
-      await runAuth((c) =>
-        c.devices.ApproveDeviceConsent({
-          path: { userCode: consent.userCode },
-          payload: { approvedScopes: [...selectedScopes] },
-        })
+      const result = await session.runPromise(
+        Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+          c.devices.ApproveDeviceConsent({
+            path: { userCode: consent.userCode },
+            payload: { approvedScopes: [...selectedScopes] },
+          })
+        )
       )
-      onDone()
+      if (result.status === 'approved') {
+        onDone()
+      } else {
+        setError('Authorization request was denied.')
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -102,8 +108,14 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
     setSubmitting(true)
     setError(null)
     try {
-      await runAuth((c) => c.devices.DenyDeviceConsent({ path: { userCode: consent.userCode } }))
-      onDone()
+      const result = await session.runPromise(
+        Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+          c.devices.DenyDeviceConsent({ path: { userCode: consent.userCode } })
+        )
+      )
+      if (result.status === 'denied' || result.status === 'approved') {
+        onDone()
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {

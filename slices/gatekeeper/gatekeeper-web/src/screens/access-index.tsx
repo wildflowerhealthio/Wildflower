@@ -1,53 +1,82 @@
-import type { Schema } from 'effect'
-import type { GatekeeperAccess } from 'gatekeeper-core/http-api-definition'
-import { useEffect, useState, type JSX } from 'react'
-import { useNavigate } from 'react-router'
-import { Dialog, ItemList, Menu, type MenuItem } from 'react-tundraish'
-import { runAuth } from '../client.ts'
+import { Effect, type Schema } from 'effect'
+import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
+import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
+import { Suspense, useMemo, useState, type JSX } from 'react'
+import { useEffectTs } from 'react-kitchen-sink'
+import { Await, useNavigate } from 'react-router'
+import { ItemList, Menu, type MenuItem } from 'react-tundraish'
 
-type Grant = Schema.Schema.Type<typeof GatekeeperAccess.GrantSchema>
+import type { AuthenticatedSession } from '../client.ts'
+import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
+import { PageLoading } from '../components/PageLoading.tsx'
+import { RevokeGrantDialog } from '../components/RevokeGrantDialog.tsx'
+import { formatInstant } from '../format-date.ts'
+import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
 
-const formatDate = (value: { epochMillis: number } | Date | string): string => {
-  const ms =
-    typeof value === 'string'
-      ? Date.parse(value)
-      : value instanceof Date
-        ? value.getTime()
-        : value.epochMillis
-  return new Date(ms).toLocaleString()
+type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
+
+/**
+ * Suspense + `Await` pattern: the grants fetch is a single Effect
+ * routed through `useEffectTs`. Revoking a grant bumps a
+ * `refreshKey` so the list re-fetches and the revoked entry
+ * disappears.
+ */
+const AccessIndexScreen = (): JSX.Element => {
+  const session = useGatekeeperClient()
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const grantsEffect = useMemo(
+    () => Effect.flatMap(GatekeeperHttpApiClient, (c) => c['access-management'].ListGrants()),
+    // refreshKey is the explicit re-fetch trigger after Revoke
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- intentional re-fetch dependency
+    [refreshKey]
+  )
+
+  const grantsPromise = useEffectTs(grantsEffect, session.runtime)
+
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <Await resolve={grantsPromise} errorElement={<AsyncErrorView />}>
+        {(grants: readonly Grant[]) => (
+          <AccessIndexBody
+            session={session}
+            grants={grants}
+            onRevoked={() => {
+              setRefreshKey((n) => n + 1)
+            }}
+          />
+        )}
+      </Await>
+    </Suspense>
+  )
 }
 
-const AccessIndexScreen = (): JSX.Element => {
+interface AccessIndexBodyProps {
+  readonly session: AuthenticatedSession
+  readonly grants: readonly Grant[]
+  readonly onRevoked: () => void
+}
+
+const AccessIndexBody = ({ session, grants, onRevoked }: AccessIndexBodyProps): JSX.Element => {
   const navigate = useNavigate()
-  const [grants, setGrants] = useState<readonly Grant[]>([])
   const [error, setError] = useState<string | null>(null)
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null)
 
-  const refresh = async (): Promise<void> => {
-    try {
-      const list = await runAuth((c) => c['gatekeeper-access'].ListGrants())
-      setGrants(list)
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }
-
-  useEffect(() => {
-    void refresh()
-  }, [])
-
   const revoke = async (id: string): Promise<void> => {
     try {
-      await runAuth((c) => c['gatekeeper-access'].RevokeGrant({ path: { id } }))
+      await session.runPromise(
+        Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+          c['access-management'].RevokeGrant({ path: { id } })
+        )
+      )
       setConfirmRevokeId(null)
-      await refresh()
+      onRevoked()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
   }
 
-  const grantToRevoke = grants.find((g) => g.id === confirmRevokeId)
+  const grantToRevoke = grants.find((g) => g.id === confirmRevokeId) ?? null
 
   return (
     <div className="gk-page">
@@ -73,7 +102,7 @@ const AccessIndexScreen = (): JSX.Element => {
           items={grants.map((grant) => ({
             id: grant.id,
             title: grant.clientId,
-            subtitle: `${grant.scopes.join(', ')} · Granted ${formatDate(grant.grantedAt)}`,
+            subtitle: `${grant.scopes.join(', ')} · Granted ${formatInstant(grant.grantedAt)}`,
             onClick: () => {
               void navigate(`/approved/${encodeURIComponent(grant.id)}`)
             },
@@ -98,37 +127,15 @@ const AccessIndexScreen = (): JSX.Element => {
         />
       ) : null}
 
-      <Dialog
-        open={grantToRevoke !== undefined}
-        onClose={() => {
+      <RevokeGrantDialog
+        clientId={grantToRevoke?.clientId ?? null}
+        onConfirm={() => {
+          if (grantToRevoke !== null) void revoke(grantToRevoke.id)
+        }}
+        onCancel={() => {
           setConfirmRevokeId(null)
         }}
-        title="Revoke Access"
-      >
-        <p className="text-body-2">
-          Are you sure you want to revoke access for &quot;{grantToRevoke?.clientId}&quot;?
-        </p>
-        <div className="gk-buttons">
-          <button
-            type="button"
-            className="button-2 filled accent-red"
-            onClick={() => {
-              if (grantToRevoke !== undefined) void revoke(grantToRevoke.id)
-            }}
-          >
-            Revoke
-          </button>
-          <button
-            type="button"
-            className="button-2 outline"
-            onClick={() => {
-              setConfirmRevokeId(null)
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </Dialog>
+      />
     </div>
   )
 }

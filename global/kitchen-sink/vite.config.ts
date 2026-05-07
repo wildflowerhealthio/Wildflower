@@ -17,7 +17,9 @@ export default defineConfig({
     exports: false,
     entry: {
       index: 'src/index.ts',
+      bundling: 'src/bundling/index.ts',
       'crypto-random': 'src/crypto-random/index.ts',
+      'polyfills/promise-with-resolvers': 'src/polyfills/promise-with-resolvers.ts',
       schema: 'src/schema/index.ts',
       types: 'src/types/index.ts',
     },

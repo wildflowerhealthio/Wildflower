@@ -1,89 +1,19 @@
-import type { Schema } from 'effect'
-import type { OAuthConsent } from 'gatekeeper-core/http-api-definition'
-import { useEffect, useState, type JSX } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { Effect } from 'effect'
+import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
+import { useState, type JSX } from 'react'
 import { Checkbox, RadioGroup } from 'react-tundraish'
-import { runAuth } from '../client.ts'
 
-type Consent = Schema.Schema.Type<typeof OAuthConsent.OAuthConsentSchema>
+import type { AuthenticatedSession } from '../../client.ts'
+import type { Consent } from './types.ts'
+import { usePatientOptions } from './use-patient-options.ts'
 
-type PatientOption = { readonly id: string; readonly displayName: string }
-
-type FhirName = { readonly given?: readonly string[]; readonly family?: string }
-type FhirPatientResource = {
-  readonly id?: string
-  readonly name?: readonly FhirName[]
-}
-type FhirBundleEntry = { readonly resource?: FhirPatientResource }
-type FhirBundle = { readonly entry?: readonly FhirBundleEntry[] }
-
-const fetchPatientOptions = async (): Promise<readonly PatientOption[]> => {
-  const res = await fetch('/fhir-r4/Patient')
-  if (!res.ok) throw new Error(`Fetch patients failed: ${res.status}`)
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const bundle = (await res.json()) as FhirBundle
-  return (bundle.entry ?? []).flatMap((e): PatientOption[] => {
-    const resource = e.resource
-    if (resource === undefined || resource.id === undefined) return []
-    const name = resource.name?.[0]
-    const given = name?.given?.join(' ') ?? ''
-    const family = name?.family ?? ''
-    const joined = [given, family].filter((s) => s !== '').join(' ')
-    return [{ id: resource.id, displayName: joined !== '' ? joined : resource.id }]
-  })
+interface OAuthConsentFormProps {
+  readonly session: AuthenticatedSession
+  readonly consent: Consent
+  readonly onDone: () => void
 }
 
-const OAuthConsentScreen = (): JSX.Element => {
-  const { id = '' } = useParams<{ id: string }>()
-  const navigate = useNavigate()
-  const [consent, setConsent] = useState<Consent | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (consent !== null) return () => undefined
-    let cancelled = false
-    void (async () => {
-      try {
-        const result = await runAuth((c) => c['oauth-consent'].GetOAuthConsent({ path: { id } }))
-        if (!cancelled) setConsent(result)
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [id, consent])
-
-  if (error !== null) {
-    return (
-      <div className="gk-page">
-        <h1 className="text-heading-4">Authorization Request</h1>
-        <p className="gk-error text-body-3">{error}</p>
-      </div>
-    )
-  }
-  if (consent === null) {
-    return (
-      <div className="gk-page">
-        <p className="text-body-2">Loading…</p>
-      </div>
-    )
-  }
-
-  return (
-    <OAuthConsentForm
-      consent={consent}
-      onDone={() => {
-        void navigate('/', { replace: true })
-      }}
-    />
-  )
-}
-
-type OAuthConsentFormProps = { readonly consent: Consent; readonly onDone: () => void }
-
-const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Element => {
+const OAuthConsentForm = ({ session, consent, onDone }: OAuthConsentFormProps): JSX.Element => {
   const requestedScopes = consent.scopes
   const hasPatientScope = requestedScopes.some(
     (s) => s.startsWith('patient/') || s === 'launch/patient'
@@ -94,25 +24,9 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
       : new Set(requestedScopes)
   )
   const [selectedPatient, setSelectedPatient] = useState<string>(consent.patient ?? '')
-  const [patients, setPatients] = useState<readonly PatientOption[]>([])
+  const { options: patients } = usePatientOptions(session, hasPatientScope)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!hasPatientScope) return () => undefined
-    let cancelled = false
-    void (async () => {
-      try {
-        const options = await fetchPatientOptions()
-        if (!cancelled) setPatients(options)
-      } catch {
-        // Leave patients empty; user can still approve without patient context
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [hasPatientScope])
 
   const toggleScope = (scope: string): void => {
     setSelectedScopes((prev) => {
@@ -130,16 +44,24 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
     setSubmitting(true)
     setError(null)
     try {
-      await runAuth((c) =>
-        c['oauth-consent'].ApproveOAuthConsent({
-          path: { id: consent.id },
-          payload: {
-            approvedScopes: [...selectedScopes],
-            patient: selectedPatient === '' ? null : selectedPatient,
-          },
-        })
+      const result = await session.runPromise(
+        Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+          c['oauth-consent'].ApproveOAuthConsent({
+            path: { id: consent.id },
+            payload: {
+              approvedScopes: [...selectedScopes],
+              patient: selectedPatient === '' ? null : selectedPatient,
+            },
+          })
+        )
       )
-      onDone()
+      if (result.status === 'approved') {
+        onDone()
+      } else if (result.status === 'denied') {
+        setError('Authorization request was denied.')
+      } else {
+        setError(result.message)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -151,12 +73,18 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
     setSubmitting(true)
     setError(null)
     try {
-      await runAuth((c) =>
-        c['oauth-consent'].DenyOAuthConsent({
-          path: { id: consent.id },
-        })
+      const result = await session.runPromise(
+        Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+          c['oauth-consent'].DenyOAuthConsent({
+            path: { id: consent.id },
+          })
+        )
       )
-      onDone()
+      if (result.status === 'denied' || result.status === 'approved') {
+        onDone()
+      } else {
+        setError(result.message)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -247,4 +175,5 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
   )
 }
 
-export { OAuthConsentScreen }
+export { OAuthConsentForm }
+export type { OAuthConsentFormProps }

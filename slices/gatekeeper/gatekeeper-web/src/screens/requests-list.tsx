@@ -1,49 +1,81 @@
-import type { Schema } from 'effect'
-import type { GatekeeperAccess } from 'gatekeeper-core/http-api-definition'
-import { useEffect, useState, type JSX } from 'react'
-import { useNavigate } from 'react-router'
+import { Effect, type Schema } from 'effect'
+import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
+import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
+import { Suspense, useMemo, useState, type JSX } from 'react'
+import { useEffectTs } from 'react-kitchen-sink'
+import { Await, useNavigate } from 'react-router'
 import { ItemList } from 'react-tundraish'
-import { runAuth } from '../client.ts'
 
-type HttpRequest = Schema.Schema.Type<typeof GatekeeperAccess.HttpRequestSchema>
+import type { AuthenticatedSession } from '../client.ts'
+import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
+import { PageLoading } from '../components/PageLoading.tsx'
+import { formatInstant } from '../format-date.ts'
+import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
 
-const formatDate = (value: { epochMillis: number } | Date | string): string => {
-  const ms =
-    typeof value === 'string'
-      ? Date.parse(value)
-      : value instanceof Date
-        ? value.getTime()
-        : value.epochMillis
-  return new Date(ms).toLocaleString()
+type HttpRequest = Schema.Schema.Type<typeof AccessManagement.HttpRequestSchema>
+
+/**
+ * Suspense + `Await` pattern: the list fetch is a single Effect
+ * routed through `useEffectTs`. Per-row Approve/Reject actions
+ * bump a `refreshKey` so the list re-fetches and the row
+ * disappears from "In-Flight" once the server responds.
+ */
+const RequestsListScreen = (): JSX.Element => {
+  const session = useGatekeeperClient()
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const requestsEffect = useMemo(
+    () => Effect.flatMap(GatekeeperHttpApiClient, (c) => c['access-management'].ListRequests()),
+    // refreshKey is the explicit re-fetch trigger after Approve/Reject
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- intentional re-fetch dependency
+    [refreshKey]
+  )
+
+  const requestsPromise = useEffectTs(requestsEffect, session.runtime)
+
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <Await resolve={requestsPromise} errorElement={<AsyncErrorView />}>
+        {(requests: readonly HttpRequest[]) => (
+          <RequestsListBody
+            session={session}
+            requests={requests}
+            onDecided={() => {
+              setRefreshKey((n) => n + 1)
+            }}
+          />
+        )}
+      </Await>
+    </Suspense>
+  )
 }
 
-const RequestsListScreen = (): JSX.Element => {
+interface RequestsListBodyProps {
+  readonly session: AuthenticatedSession
+  readonly requests: readonly HttpRequest[]
+  readonly onDecided: () => void
+}
+
+const RequestsListBody = ({ session, requests, onDecided }: RequestsListBodyProps): JSX.Element => {
   const navigate = useNavigate()
-  const [requests, setRequests] = useState<readonly HttpRequest[]>([])
   const [error, setError] = useState<string | null>(null)
-
-  const refresh = async (): Promise<void> => {
-    try {
-      const list = await runAuth((c) => c['gatekeeper-access'].ListRequests())
-      setRequests(list)
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }
-
-  useEffect(() => {
-    void refresh()
-  }, [])
 
   const decide = async (id: string, status: 'approved' | 'rejected'): Promise<void> => {
     try {
       if (status === 'approved') {
-        await runAuth((c) => c['gatekeeper-access'].ApproveRequest({ path: { id } }))
+        await session.runPromise(
+          Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+            c['access-management'].ApproveRequest({ path: { id } })
+          )
+        )
       } else {
-        await runAuth((c) => c['gatekeeper-access'].DenyRequest({ path: { id } }))
+        await session.runPromise(
+          Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+            c['access-management'].DenyRequest({ path: { id } })
+          )
+        )
       }
-      await refresh()
+      onDecided()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -61,7 +93,9 @@ const RequestsListScreen = (): JSX.Element => {
     id: r.id,
     title: `${r.method} ${r.url}`,
     subtitle:
-      r.origin !== '' ? `${r.origin} · ${formatDate(r.requestedAt)}` : formatDate(r.requestedAt),
+      r.origin !== ''
+        ? `${r.origin} · ${formatInstant(r.requestedAt)}`
+        : formatInstant(r.requestedAt),
     onClick: () => {
       void navigate(`/requests/${encodeURIComponent(r.id)}`)
     },

@@ -35,6 +35,12 @@ function HostBridge(): JSX.Element | null {
 
   useEffect(() => {
     const handler = (event: MessageEvent<unknown>): void => {
+      // The RN host posts to web by injecting JS that calls
+      // `window.postMessage`, so legitimate events have `event.source ===
+      // window` and the page's own origin. Anything else (iframe,
+      // browser extension, foreign origin) should be ignored.
+      if (event.source !== window) return
+      if (event.origin !== window.location.origin && event.origin !== '') return
       const data = event.data
       if (typeof data !== 'string') return
       let parsed: unknown

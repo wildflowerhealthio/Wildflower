@@ -4,7 +4,7 @@ import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
 import { Grants, HttpRequests } from '../livestore/index.ts'
 
-const layer = HttpApiBuilder.group(GatekeeperApi, 'gatekeeper-access', (handlers) =>
+const layer = HttpApiBuilder.group(GatekeeperApi, 'access-management', (handlers) =>
   handlers
     .handle('ListGrants', () =>
       Effect.gen(function* () {

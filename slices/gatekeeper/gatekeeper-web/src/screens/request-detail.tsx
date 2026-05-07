@@ -1,21 +1,18 @@
-import type { Schema } from 'effect'
-import type { GatekeeperAccess } from 'gatekeeper-core/http-api-definition'
-import { useEffect, useState, type JSX } from 'react'
-import { useParams } from 'react-router'
+import { Effect, type Schema } from 'effect'
+import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
+import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
+import { Suspense, useMemo, useState, type JSX } from 'react'
+import { useEffectTs } from 'react-kitchen-sink'
+import { Await, useParams } from 'react-router'
 import { StatusBadge, type StatusTone } from 'react-tundraish'
-import { runAuth } from '../client.ts'
 
-type HttpRequest = Schema.Schema.Type<typeof GatekeeperAccess.HttpRequestSchema>
+import type { AuthenticatedSession } from '../client.ts'
+import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
+import { PageLoading } from '../components/PageLoading.tsx'
+import { formatInstant } from '../format-date.ts'
+import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
 
-const formatDate = (value: { epochMillis: number } | Date | string): string => {
-  const ms =
-    typeof value === 'string'
-      ? Date.parse(value)
-      : value instanceof Date
-        ? value.getTime()
-        : value.epochMillis
-  return new Date(ms).toLocaleString()
-}
+type HttpRequest = Schema.Schema.Type<typeof AccessManagement.HttpRequestSchema>
 
 const statusTone = (status: string): StatusTone => {
   if (status === 'approved') return 'success'
@@ -24,54 +21,82 @@ const statusTone = (status: string): StatusTone => {
   return 'neutral'
 }
 
+/**
+ * Suspense + `Await` pattern: the fetch is a single Effect routed
+ * through `useEffectTs`. Approve/reject actions bump a
+ * `refreshKey` that's part of the effect's `useMemo` deps — the
+ * new effect identity causes `useEffectTs` to interrupt the prior
+ * fiber and re-fetch, so the row re-renders with the latest state.
+ */
 const RequestDetailScreen = (): JSX.Element => {
+  const session = useGatekeeperClient()
   const { id = '' } = useParams<{ id: string }>()
-  const [request, setRequest] = useState<HttpRequest | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const requestEffect = useMemo(
+    () =>
+      Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+        c['access-management'].GetRequest({ path: { id } })
+      ),
+    // refreshKey is the explicit re-fetch trigger after Approve/Reject
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- intentional re-fetch dependency
+    [id, refreshKey]
+  )
+
+  const requestPromise = useEffectTs(requestEffect, session.runtime)
+
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <Await resolve={requestPromise} errorElement={<AsyncErrorView title="Not Found" />}>
+        {(request: HttpRequest) => (
+          <RequestDetailBody
+            session={session}
+            request={request}
+            id={id}
+            onDecided={() => {
+              setRefreshKey((n) => n + 1)
+            }}
+          />
+        )}
+      </Await>
+    </Suspense>
+  )
+}
+
+interface RequestDetailBodyProps {
+  readonly session: AuthenticatedSession
+  readonly request: HttpRequest
+  readonly id: string
+  readonly onDecided: () => void
+}
+
+const RequestDetailBody = ({
+  session,
+  request,
+  id,
+  onDecided,
+}: RequestDetailBodyProps): JSX.Element => {
   const [error, setError] = useState<string | null>(null)
-
-  const refresh = async (): Promise<void> => {
-    try {
-      const row = await runAuth((c) => c['gatekeeper-access'].GetRequest({ path: { id } }))
-      setRequest(row)
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }
-
-  useEffect(() => {
-    void refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
 
   const decide = async (status: 'approved' | 'rejected'): Promise<void> => {
     try {
       if (status === 'approved') {
-        await runAuth((c) => c['gatekeeper-access'].ApproveRequest({ path: { id } }))
+        await session.runPromise(
+          Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+            c['access-management'].ApproveRequest({ path: { id } })
+          )
+        )
       } else {
-        await runAuth((c) => c['gatekeeper-access'].DenyRequest({ path: { id } }))
+        await session.runPromise(
+          Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+            c['access-management'].DenyRequest({ path: { id } })
+          )
+        )
       }
-      await refresh()
+      onDecided()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
-  }
-
-  if (error !== null && request === null) {
-    return (
-      <div className="gk-page">
-        <h1 className="text-heading-4">Not Found</h1>
-        <p className="gk-error text-body-3">{error}</p>
-      </div>
-    )
-  }
-
-  if (request === null) {
-    return (
-      <div className="gk-page">
-        <p className="text-body-2">Loading…</p>
-      </div>
-    )
   }
 
   return (
@@ -85,7 +110,7 @@ const RequestDetailScreen = (): JSX.Element => {
 
       <div className="gk-section">
         <strong className="text-label-3">Request</strong>
-        <span className="text-body-3">Received: {formatDate(request.requestedAt)}</span>
+        <span className="text-body-3">Received: {formatInstant(request.requestedAt)}</span>
         {request.origin !== '' ? (
           <span className="text-body-3">Origin: {request.origin}</span>
         ) : null}
@@ -97,7 +122,7 @@ const RequestDetailScreen = (): JSX.Element => {
       {request.respondedAt !== null ? (
         <div className="gk-section">
           <strong className="text-label-3">Response</strong>
-          <span className="text-body-3">Responded: {formatDate(request.respondedAt)}</span>
+          <span className="text-body-3">Responded: {formatInstant(request.respondedAt)}</span>
           {request.statusCode !== null ? (
             <span className="text-body-3">Status: {request.statusCode}</span>
           ) : null}
