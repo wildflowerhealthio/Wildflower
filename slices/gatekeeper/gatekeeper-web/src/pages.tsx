@@ -53,11 +53,19 @@ const GatekeeperPagesHandlersLive = HttpApiBuilder.group(
 >
 
 const GatekeeperPagesHandlersFor = <ParentId extends string>(): Layer.Layer<
-  HttpApiGroup.ApiGroup<ParentId, GatekeeperWebGroupNames>
+  HttpApiGroup.ApiGroup<ParentId, GatekeeperWebGroupNames>,
+  never,
+  never
 > =>
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  GatekeeperPagesHandlersLive as unknown as Layer.Layer<
-    HttpApiGroup.ApiGroup<ParentId, GatekeeperWebGroupNames>
+  GatekeeperPagesHandlersLive satisfies Layer.Layer<
+    HttpApiGroup.ApiGroup<'GatekeeperApi', GatekeeperWebGroupNames>,
+    never,
+    never
+  > as unknown as Layer.Layer<
+    HttpApiGroup.ApiGroup<ParentId, GatekeeperWebGroupNames>,
+    never,
+    never
   >
 
 export { GatekeeperPagesHandlersFor, GatekeeperPagesHandlersLive }

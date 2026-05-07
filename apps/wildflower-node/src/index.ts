@@ -60,23 +60,11 @@ const CryptoRandomLive = CryptoRandomLayerLive<
 const run = Effect.gen(function* () {
   const store = yield* Effect.promise(() => createStore())
 
-  // GatekeeperPagesHandlersFor's return type omits the E/R parameters and
-  // relies on the `Layer.Layer` defaults; when chained through
-  // `.pipe(Layer.provide(...))` alongside other handler layers TS loses
-  // those defaults and the resulting layer collapses to `Layer<Api, any,
-  // any>`. Pinning E=never and R=never on a local restores type flow.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const PagesHandlers = GatekeeperPagesHandlersFor<'WildflowerNodeApi'>() as Layer.Layer<
-    HttpApiGroup.ApiGroup<'WildflowerNodeApi', 'gatekeeper-pages'>,
-    never,
-    never
-  >
-
   const WildflowerNodeApiLive = HttpApiBuilder.api(WildflowerNodeApi).pipe(
     Layer.provide(GatekeeperApiHandlersFor<'WildflowerNodeApi'>()),
     Layer.provide(FhirResourcesApiHandlersFor<'WildflowerNodeApi'>()),
     Layer.provide(FhirPublicApiHandlersFor<'WildflowerNodeApi'>()),
-    Layer.provide(PagesHandlers),
+    Layer.provide(GatekeeperPagesHandlersFor<'WildflowerNodeApi'>()),
     Layer.provide(RequireAuthMiddlewareLive),
     Layer.provide(SmartConfigurationLive),
     Layer.provide(makeLivestoreStoreLayer(store)),
