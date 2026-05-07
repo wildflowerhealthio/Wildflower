@@ -6,7 +6,7 @@ import type { AuthorizationCodePayload } from '../../../http-api-definition/oaut
 import { OAuthError400Schema, OAuthError500Schema } from '../../../http-api-definition/oauth.ts'
 import { computeCodeChallenge } from '../../../internal/pkce.ts'
 import { timingSafeEqual } from '../../../internal/timing-safe-equal.ts'
-import { AuthorizationCodes, type AuthorizationCodeRow } from '../../../livestore/index.ts'
+import { AuthorizationCode, type AuthorizationCodeRow } from '../../../livestore/index.ts'
 import {
   issueTokenResponse,
   type OAuthError400,
@@ -23,7 +23,7 @@ const getIssuedAuthorizationCode = (
 ): Effect.Effect<AuthorizationCodeRow, OAuthError400, GatekeeperStore> =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
-    const issued = store.query(AuthorizationCodes.queries.byCode$(code))
+    const issued = store.query(AuthorizationCode.queries.byCode$(code))
     if (issued == null) {
       return yield* Effect.fail(
         OAuthError400Schema.make({
@@ -102,7 +102,7 @@ const requireValidCodeVerifier = (
 const consumeAuthorizationCode = (code: string): Effect.Effect<void, never, GatekeeperStore> =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
-    store.commit(AuthorizationCodes.events.authorizationCodeConsumed({ code }))
+    store.commit(AuthorizationCode.events.authorizationCodeConsumed({ code }))
   })
 
 const handleAuthorizationCodeTokenExchange = (

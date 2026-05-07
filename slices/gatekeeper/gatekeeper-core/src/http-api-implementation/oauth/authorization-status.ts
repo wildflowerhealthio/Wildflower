@@ -7,8 +7,8 @@ import type {
 } from '../../http-api-definition/oauth.ts'
 import { OAuthError500Schema } from '../../http-api-definition/oauth.ts'
 import {
-  AuthorizationCodes,
-  AuthorizationRequests,
+  AuthorizationCode,
+  AuthorizationRequest,
   type AuthorizationRequestRow,
 } from '../../livestore/index.ts'
 import { buildClientRedirectUrl, type OAuthError500 } from './shared.ts'
@@ -21,7 +21,7 @@ const getAuthorizationRequestForStatus = (
 ): Effect.Effect<AuthorizationRequestRow, AuthorizationStatusNotFound, GatekeeperStore> =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
-    const request = store.query(AuthorizationRequests.queries.byId$(id))
+    const request = store.query(AuthorizationRequest.queries.byId$(id))
     if (request == null) {
       return yield* Effect.fail({
         error: 'AuthorizationRequestNotFound' as const,
@@ -44,7 +44,7 @@ const renderApprovedAuthorizationRedirect = (
       )
     }
     const store = yield* GatekeeperStore
-    const issuedCode = store.query(AuthorizationCodes.queries.byRequestId$(request.id))
+    const issuedCode = store.query(AuthorizationCode.queries.byRequestId$(request.id))
     if (issuedCode == null) {
       return yield* Effect.fail(
         OAuthError500Schema.make({

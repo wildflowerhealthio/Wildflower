@@ -57,6 +57,7 @@ catalog:
   '@sentry/react': 10.48.0
   '@sentry/react-native': ~8.8.0
   '@testing-library/react-native': ^13.3.3
+  '@tsdown/css': ^0.21.10
   '@types/fhir': ^0.0.41
   '@types/jest': 29.5.14
   '@types/node': ^24
@@ -77,6 +78,7 @@ catalog:
   expo-image: ~55.0.9
   expo-linking: ~55.0.14
   expo-module-scripts: ^55.0.2
+  expo-notifications: ~55.0.17
   expo-router: ~55.0.13
   expo-sqlite: ~55.0.15
   expo-status-bar: ~55.0.5

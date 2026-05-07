@@ -6,7 +6,7 @@ import {
   approveAuthorizationRequest,
   denyAuthorizationRequest,
 } from '../src/contexts/oauth-consent-decisions.ts'
-import { AuthorizationRequests, type AuthorizationRequestRow } from '../src/livestore/index.ts'
+import { AuthorizationRequest, type AuthorizationRequestRow } from '../src/livestore/index.ts'
 
 type Committed = { name: string; args: Record<string, unknown> }
 
@@ -33,7 +33,7 @@ const makeFakeStore = (seed: {
     const label = labelOf(q)
     const hash = hashOf(q)
     if (label === 'authorizationRequestById' && hash !== undefined && requestRow != null) {
-      if (AuthorizationRequests.queries.byId$(requestRow.id).hash === hash) {
+      if (AuthorizationRequest.queries.byId$(requestRow.id).hash === hash) {
         return requestRow
       }
     }

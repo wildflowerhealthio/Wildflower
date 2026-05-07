@@ -61,6 +61,7 @@
     "expo-symbols": "catalog:",
     "expo-system-ui": "catalog:",
     "expo-web-browser": "catalog:",
+    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-reanimated": "catalog:",

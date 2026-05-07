@@ -81,7 +81,7 @@ const HttpRequestNotFoundSchema = Schema.Struct({
  *   request — the upstream consumer (`internal/await-row.ts`) resumes
  *   once the status flips.
  */
-const httpApiGroup = HttpApiGroup.make('gatekeeper-access', { topLevel: false })
+const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
   .add(HttpApiEndpoint.get('ListGrants', '/grants').addSuccess(GrantsSchema))
   .add(
     HttpApiEndpoint.get('GetGrant', '/grants/:id')

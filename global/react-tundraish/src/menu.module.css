@@ -1,0 +1,81 @@
+.menu {
+  position: relative;
+  display: inline-block;
+}
+
+.menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-2);
+  color: var(--color-neutral-3);
+  cursor: pointer;
+}
+
+.menu__trigger:hover,
+.menu__trigger[aria-expanded='true'] {
+  background: var(--color-neutral-8);
+  border-color: var(--color-neutral-7);
+}
+
+.menu__dots {
+  font-size: var(--font-size-4);
+  line-height: 1;
+}
+
+.menu__list {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + var(--space-1));
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  background: var(--color-background);
+  border: 1px solid var(--color-neutral-7);
+  border-radius: var(--radius-2);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  min-width: 160px;
+}
+
+.menu--align-start .menu__list {
+  left: 0;
+}
+
+.menu--align-end .menu__list {
+  right: 0;
+}
+
+.menu__item-wrapper {
+  margin: 0;
+}
+
+.menu__item {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-1);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.menu__item:hover:not(:disabled) {
+  background: var(--color-neutral-9);
+}
+
+.menu__item--destructive {
+  color: var(--color-red-4, #c0392b);
+}
+
+.menu__item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -1,0 +1,6 @@
+/*
+ * No-op for source-mode (Vite dev) consumers. Tundraish primitives import
+ * their own per-component `*.module.css` files, so dev consumers receive the
+ * real CSS through the JS import chain. Built consumers resolve to the
+ * bundled `dist/style.css` via the `default` export condition.
+ */

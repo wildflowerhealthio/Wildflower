@@ -4,7 +4,7 @@ import type { UnknownException } from 'effect/Cause'
 import type * as jose from 'jose'
 import { Origin } from 'kitchen-sink'
 import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
-import { Clients, SigningKey } from '../livestore/index.ts'
+import { Client, SigningKey } from '../livestore/index.ts'
 
 type VerifiedPayload = {
   iss: string
@@ -92,7 +92,7 @@ const requirePayloadWithRegisteredEnabledSubject = (
       return yield* Effect.fail(unauthorized())
     }
     const store = yield* GatekeeperStore
-    const client = store.query(Clients.queries.byId$(payload.sub))
+    const client = store.query(Client.queries.byId$(payload.sub))
     if (client == null || client.disabledAt != null) {
       return yield* Effect.fail(unauthorized())
     }

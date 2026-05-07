@@ -34,6 +34,7 @@ export default defineConfig({
     ignorePatterns: [
       '**/tapes/**/*',
       '**/dist/**',
+      '**/dist-html/**',
       '**/coverage/**',
       '**/vendor/**',
       '**/test/snapshots/**',
@@ -45,6 +46,7 @@ export default defineConfig({
       '**/tapes/**/*',
       '**/dist/**',
       '**/dist/**',
+      '**/dist-html/**',
       '**/coverage/**',
       '**/vendor/**',
       '**/test/snapshots/**',

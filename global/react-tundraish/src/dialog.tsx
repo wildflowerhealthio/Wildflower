@@ -1,6 +1,8 @@
 import { cn } from 'kitchen-sink'
 import { useLayoutEffect, useRef, type JSX, type ReactNode, type SyntheticEvent } from 'react'
 
+import styles from './dialog.module.css'
+
 type DialogProps = {
   readonly open: boolean
   readonly onClose: () => void
@@ -37,7 +39,7 @@ const Dialog = ({
   return (
     <dialog
       ref={ref}
-      className={cn('dialog', className)}
+      className={cn(styles['dialog'], className)}
       onClose={() => {
         previouslyFocusedRef.current?.focus()
         previouslyFocusedRef.current = null
@@ -50,8 +52,10 @@ const Dialog = ({
         }
       }}
     >
-      {title !== undefined ? <h2 className="text-heading-4 dialog__title">{title}</h2> : null}
-      <div className="dialog__body">{children}</div>
+      {title !== undefined ? (
+        <h2 className={cn('text-heading-4', styles['dialog__title'])}>{title}</h2>
+      ) : null}
+      <div className={styles['dialog__body']}>{children}</div>
     </dialog>
   )
 }

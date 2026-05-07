@@ -1,6 +1,6 @@
 import { DateTime, Effect } from 'effect'
 import { CryptoRandom } from 'kitchen-sink/crypto-random'
-import { AuthorizationCodes, AuthorizationRequests } from '../livestore/index.ts'
+import { AuthorizationCode, AuthorizationRequest } from '../livestore/index.ts'
 import { GatekeeperStore } from './gatekeeper-store.ts'
 
 /**
@@ -20,7 +20,7 @@ const approveAuthorizationRequest = (
 ): Effect.Effect<string | null, never, GatekeeperStore | CryptoRandom> =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
-    const pending = store.query(AuthorizationRequests.queries.byId$(requestId))
+    const pending = store.query(AuthorizationRequest.queries.byId$(requestId))
     if (pending == null) return null
     if (pending.status !== 'pending') return null
     if (pending.grantType !== 'authorization_code') return null
@@ -35,12 +35,12 @@ const approveAuthorizationRequest = (
     const codeExpiresAt = DateTime.addDuration(issuedAt, '60 seconds')
 
     store.commit(
-      AuthorizationRequests.events.authorizationRequestApproved({
+      AuthorizationRequest.events.authorizationRequestApproved({
         id: requestId,
         grantedScopes,
         patient: patient ?? null,
       }),
-      AuthorizationCodes.events.authorizationCodeIssued({
+      AuthorizationCode.events.authorizationCodeIssued({
         code,
         requestId,
         clientId: pending.clientId,
@@ -62,7 +62,7 @@ const approveAuthorizationRequest = (
 const denyAuthorizationRequest = (requestId: string): Effect.Effect<void, never, GatekeeperStore> =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
-    const pending = store.query(AuthorizationRequests.queries.byId$(requestId))
+    const pending = store.query(AuthorizationRequest.queries.byId$(requestId))
     if (pending == null) return
     // Same invariants as approval: only mutate live, code-flow rows.
     // Without these guards, a previously-approved request could be
@@ -70,7 +70,7 @@ const denyAuthorizationRequest = (requestId: string): Effect.Effect<void, never,
     // / audit state inconsistent.
     if (pending.status !== 'pending') return
     if (pending.grantType !== 'authorization_code') return
-    store.commit(AuthorizationRequests.events.authorizationRequestDenied({ id: requestId }))
+    store.commit(AuthorizationRequest.events.authorizationRequestDenied({ id: requestId }))
   })
 
 export { approveAuthorizationRequest, denyAuthorizationRequest }

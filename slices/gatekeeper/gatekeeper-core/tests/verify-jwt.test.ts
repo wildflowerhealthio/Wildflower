@@ -4,7 +4,7 @@ import { Origin } from 'kitchen-sink'
 import { expect, test } from 'vite-plus/test'
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { verifyJwt } from '../src/internal/jwt.ts'
-import { Clients, type ClientRow, SigningKey } from '../src/livestore/index.ts'
+import { Client, type ClientRow, SigningKey } from '../src/livestore/index.ts'
 
 const labelOf = (q: unknown): string | undefined => {
   if (typeof q === 'object' && q !== null && 'label' in q && typeof q.label === 'string') {
@@ -32,7 +32,7 @@ const makeStubStore = (options: {
     const hash = hashOf(q)
     if (label === 'clientById' && hash !== undefined) {
       for (const clientId of clientMap.keys()) {
-        if (Clients.queries.byId$(clientId).hash === hash) {
+        if (Client.queries.byId$(clientId).hash === hash) {
           return clientMap.get(clientId) ?? null
         }
       }

@@ -17,9 +17,17 @@
       "source": "./src/index.ts",
       "default": "./dist/index.mjs"
     },
+    "./bundling": {
+      "source": "./src/bundling/index.ts",
+      "default": "./dist/bundling.mjs"
+    },
     "./crypto-random": {
       "source": "./src/crypto-random/index.ts",
       "default": "./dist/crypto-random.mjs"
+    },
+    "./polyfills/promise-with-resolvers": {
+      "source": "./src/polyfills/promise-with-resolvers.ts",
+      "default": "./dist/polyfills/promise-with-resolvers.mjs"
     },
     "./schema": {
       "source": "./src/schema/index.ts",
@@ -50,6 +58,12 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "vite-plus": {
+      "optional": true
+    }
   }
 }

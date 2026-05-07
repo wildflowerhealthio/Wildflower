@@ -4,8 +4,8 @@ import type { Origin } from 'kitchen-sink'
 import type { CryptoRandom } from 'kitchen-sink/crypto-random'
 import type { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
+import * as AccessManagement from './access-management.ts'
 import * as Devices from './devices.ts'
-import * as GatekeeperAccess from './gatekeeper-access.ts'
 import * as Jwks from './jwks.ts'
 import * as OAuthConsent from './oauth-consent.ts'
 import * as OAuth from './oauth/index.ts'
@@ -15,7 +15,7 @@ const GatekeeperApiHandlersLive = Layer.mergeAll(
   Jwks.layer,
   OAuth.layer,
   OAuthConsent.layer,
-  GatekeeperAccess.layer,
+  AccessManagement.layer,
   Devices.layer
 ).pipe(Layer.provide(RequireAuthMiddlewareLive))
 
@@ -27,7 +27,7 @@ type GatekeeperGroupNames =
   | 'oauth-discovery'
   | 'oauth'
   | 'oauth-consent'
-  | 'gatekeeper-access'
+  | 'access-management'
   | 'devices'
 
 const GatekeeperApiHandlersFor = <ParentId extends string>(): Layer.Layer<
