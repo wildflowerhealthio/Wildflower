@@ -99,7 +99,7 @@ const RequestsListBody = ({ session, requests, onDecided }: RequestsListBodyProp
         ? `${r.origin} · ${formatInstant(r.requestedAt)}`
         : formatInstant(r.requestedAt),
     onClick: () => {
-      void navigate(`/requests/${encodeURIComponent(r.id)}`)
+      void navigate(`/gatekeeper/requests/${encodeURIComponent(r.id)}`)
     },
     actions:
       r.status === 'pending' ? (

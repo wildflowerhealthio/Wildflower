@@ -17,7 +17,7 @@ jest.mock('expo-tundraish', () => {
   }
 })
 
-jest.mock('gatekeeper-web/html', () => ({ html: '<!doctype html><html></html>' }))
+jest.mock('wildflower-react/embeddable-html', () => ({ html: '<!doctype html><html></html>' }))
 
 import { GatekeeperWebView } from './GatekeeperWebView.tsx'
 
@@ -29,29 +29,39 @@ beforeEach(() => {
 
 describe('GatekeeperWebView', () => {
   it('injects the initial route', () => {
-    render(<GatekeeperWebView baseUrl="https://example.test" route="/oauth-consent/abc" />)
-    expect(lastInjectedScript).toContain('window.__INITIAL_ROUTE__ = "/oauth-consent/abc"')
+    render(
+      <GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper/oauth-consent/abc" />
+    )
+    expect(lastInjectedScript).toContain(
+      'window.__INITIAL_ROUTE__ = "/gatekeeper/oauth-consent/abc"'
+    )
   })
 
   it('injects the bearer token when provided so the embedded SPA can authenticate', () => {
-    render(<GatekeeperWebView baseUrl="https://example.test" route="/" token="bearer-xyz" />)
+    render(
+      <GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper" token="bearer-xyz" />
+    )
     expect(lastInjectedScript).toContain('window.__GATEKEEPER_TOKEN__ = "bearer-xyz"')
   })
 
   it('omits the token injection when no token is passed', () => {
-    render(<GatekeeperWebView baseUrl="https://example.test" route="/" />)
+    render(<GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper" />)
     expect(lastInjectedScript).not.toContain('window.__GATEKEEPER_TOKEN__')
   })
 
   it('serializes initialData as a JSON literal', () => {
     render(
-      <GatekeeperWebView baseUrl="https://example.test" route="/" initialData={{ user: 'alice' }} />
+      <GatekeeperWebView
+        baseUrl="https://example.test"
+        route="/gatekeeper"
+        initialData={{ user: 'alice' }}
+      />
     )
     expect(lastInjectedScript).toContain('window.__GATEKEEPER_INITIAL__ = {"user":"alice"}')
   })
 
   it('terminates the injected script with `true;` so RN does not warn about an undefined return value', () => {
-    render(<GatekeeperWebView baseUrl="https://example.test" route="/" />)
+    render(<GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper" />)
     expect(lastInjectedScript?.trimEnd().endsWith('true;')).toBe(true)
   })
 })

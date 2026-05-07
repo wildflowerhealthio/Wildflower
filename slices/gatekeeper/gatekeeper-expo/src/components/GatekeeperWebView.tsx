@@ -1,6 +1,6 @@
 import { EmbeddedWebView } from 'expo-tundraish'
-import { html } from 'gatekeeper-web/html'
 import { type JSX } from 'react'
+import { html } from 'wildflower-react/embeddable-html'
 
 interface GatekeeperWebViewProps {
   readonly baseUrl: string
@@ -17,7 +17,7 @@ function GatekeeperWebView({
 }: GatekeeperWebViewProps): JSX.Element {
   const parts = [`window.__INITIAL_ROUTE__ = ${JSON.stringify(route)};`]
   if (token !== undefined) {
-    // Read by `gatekeeper-web/instrument.ts`, which forwards to
+    // Read by `gatekeeper-web/host-token-bootstrap`, which forwards to
     // `writeToken()` so the storage key stays a single-source-of-truth
     // on the web side.
     parts.push(`window.__GATEKEEPER_TOKEN__ = ${JSON.stringify(token)};`)

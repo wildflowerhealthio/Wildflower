@@ -36,13 +36,13 @@ redirectUri)`. Grant lookups drive the auto-approve fast path.
 
 - `/.well-known/jwks.json` — public JWKs for token verification.
 - `/oauth/authorize` — OAuth 2.0 authorization endpoint. Always
-  redirects to the polling page (`/oauth/authorize/:id/view`); the
+  redirects to the polling page (`/gatekeeper/oauth-polling/:id`); the
   browser's JS picks same-device-vs-cross-device based on
   `localStorage` Bearer presence.
 - `/oauth/authorize/:id` — long-poll JSON status of an authorization
   request.
 - `/oauth/device_authorization` — RFC 8628 device flow: returns
-  `device_code` + `user_code` + verification URIs.
+  `device_code` + `user_code` + verification URIs (under `/gatekeeper/devices`).
 - `/oauth/token` — OAuth 2.0 token exchange. Accepts
   `grant_type=authorization_code` and
   `grant_type=urn:ietf:params:oauth:grant-type:device_code`.
@@ -55,20 +55,17 @@ redirectUri)`. Grant lookups drive the auto-approve fast path.
 - `/access/requests`, `/access/requests/:id` (+ `/approve`, `/deny`) —
   gate decisions on inbound HTTP requests.
 
-## Page contract (`gatekeeper-pages`)
+## SPA page paths
 
-Core ships only the HttpApi **definitions** for HTML pages — no handler layer.
-A consumer slice (typically `gatekeeper-web`) provides the implementation via
-`Layer.provide`. All pages are public HTML; auth is JS-driven via the Bearer
-token the page's JS pulls from `localStorage`, which gates calls to the
-`/access/*` JSON endpoints behind each page.
-
-| Endpoint            | Path                                  | Purpose                                                                     |
-| ------------------- | ------------------------------------- | --------------------------------------------------------------------------- |
-| `OAuthPollingPage`  | `GET /oauth/authorize/:id/view`       | Browser long-poll page; calls `GET /oauth/authorize/:id`.                   |
-| `OAuthConsentPage`  | `GET /access/oauth-consents/:id/view` | Owner UI; reads `GET /access/oauth-consents/:id`.                           |
-| `DeviceEntryPage`   | `GET /access/devices`                 | Manual `user_code` entry form; submits to `/access/devices/:userCode/view`. |
-| `DeviceConsentPage` | `GET /access/devices/:userCode/view`  | Owner UI; reads `GET /access/devices/:userCode`.                            |
+The gatekeeper API redirects to URLs under `/gatekeeper/`, which the host app
+serves with a single-page app. The redirect targets are typed in
+[`gatekeeper-core/page-paths`](./src/page-paths.ts) (`GatekeeperPaths`); the
+SPA's React Router config in [`gatekeeper-web`](../gatekeeper-web/src/routes.tsx)
+mirrors them, and a drift test in
+[`gatekeeper-web/tests/routes.test.tsx`](../gatekeeper-web/tests/routes.test.tsx)
+enforces consistency. Serving the SPA itself is the host app's static-asset
+concern (see [`apps/wildflower-react`](../../../apps/wildflower-react)), not
+part of the gatekeeper-core contract.
 
 Error pages are rendered inline by core via `internal/error-pages.ts` and are
 not part of the page contract.

@@ -160,7 +160,7 @@ client. Flow:
 1. Browser POSTs `/oauth/device_authorization` with `client_id`. Server
    creates a `flow='device_code'` `AuthorizationRequest` and returns
    `{ device_code, user_code, verification_uri, ... }`.
-2. Owner enters the `user_code` at `/access/devices` (or scans the QR
+2. Owner enters the `user_code` at `/gatekeeper/devices` (or scans the QR
    for `verification_uri_complete`) on a separate, already-Owner-authed
    device.
 3. Owner approves via `POST /access/devices/:userCode/approve`.

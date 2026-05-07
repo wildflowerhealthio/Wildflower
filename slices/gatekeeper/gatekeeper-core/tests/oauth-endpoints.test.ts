@@ -5,11 +5,7 @@ import { Origin } from 'kitchen-sink'
 import { cryptoRandomCounter } from 'kitchen-sink/crypto-random'
 import { expect, test } from 'vite-plus/test'
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
-import { GatekeeperApi } from '../src/http-api-definition/index.ts'
-import {
-  GatekeeperApiLive,
-  RequireAuthMiddlewareLive,
-} from '../src/http-api-implementation/index.ts'
+import { GatekeeperApiLive } from '../src/http-api-implementation/index.ts'
 import { computeCodeChallenge } from '../src/internal/pkce.ts'
 import {
   AuthorizationCode,
@@ -21,25 +17,9 @@ import {
   Grant,
   SigningKey,
 } from '../src/livestore/index.ts'
+import { testingKey1 } from './fixtures/signing-keys.ts'
 
-// RSA key generation is ~200–400ms; reuse one across the whole file.
-// Tests that just need a non-empty signingKeys list share this; tests
-// that intentionally seed an empty list pass `[]` directly.
-const sharedSigningKey = await SigningKey.generate()
-
-// Tests don't exercise page endpoints; supply a stub pages layer so
-// `HttpApiBuilder.toWebHandler` finds a handler for the gatekeeper-pages
-// group (which has no core handler — by design).
-const StubGatekeeperPagesLive = HttpApiBuilder.group(
-  GatekeeperApi,
-  'gatekeeper-pages',
-  (handlers) =>
-    handlers
-      .handle('OAuthPollingPage', () => Effect.succeed('<!doctype html><html></html>'))
-      .handle('OAuthConsentPage', () => Effect.succeed('<!doctype html><html></html>'))
-      .handle('DeviceEntryPage', () => Effect.succeed('<!doctype html><html></html>'))
-      .handle('DeviceConsentPage', () => Effect.succeed('<!doctype html><html></html>'))
-).pipe(Layer.provide(RequireAuthMiddlewareLive))
+const sharedSigningKey = testingKey1
 
 type MockGrant = {
   id: string
@@ -290,7 +270,6 @@ const createOAuthHandler = (
   store: typeof GatekeeperStore.Service
 ): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = GatekeeperApiLive.pipe(
-    Layer.provide(StubGatekeeperPagesLive),
     Layer.provide(makeGatekeeperStoreLayer(store)),
     Layer.provide(Layer.succeed(Origin, 'http://localhost:8787')),
     Layer.provide(cryptoRandomCounter({ uuidPrefix: 'oauth' }))
@@ -392,7 +371,7 @@ test('authorize redirects to the polling page', async () => {
 
     expect(response.status).toBe(302)
     const location = response.headers.get('location')
-    expect(location).toBe('http://localhost:8787/oauth/authorize/oauth-0001/view')
+    expect(location).toBe('http://localhost:8787/gatekeeper/oauth-polling/oauth-0001')
   } finally {
     await dispose()
   }

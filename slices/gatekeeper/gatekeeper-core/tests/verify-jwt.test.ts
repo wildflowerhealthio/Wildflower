@@ -5,6 +5,7 @@ import { expect, test } from 'vite-plus/test'
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { verifyJwt } from '../src/internal/jwt.ts'
 import { Client, type ClientRow, SigningKey } from '../src/livestore/index.ts'
+import { testingKey1, testingKey2 } from './fixtures/signing-keys.ts'
 
 const labelOf = (q: unknown): string | undefined => {
   if (typeof q === 'object' && q !== null && 'label' in q && typeof q.label === 'string') {
@@ -46,26 +47,6 @@ const makeStubStore = (options: {
 }
 
 const ORIGIN = 'https://example.test'
-
-// Cache RSA key generation across tests — generating a 2048-bit RSA key
-// is ~200–400ms, and these tests don't care which key, only that it's a
-// real one. A second key (`getSecondaryKey`) is lazily generated for the
-// rotation scenario.
-let primaryKeyPromise: Promise<SigningKey.Type> | null = null
-const getPrimaryKey = (): Promise<SigningKey.Type> => {
-  if (primaryKeyPromise === null) {
-    primaryKeyPromise = SigningKey.generate()
-  }
-  return primaryKeyPromise
-}
-
-let secondaryKeyPromise: Promise<SigningKey.Type> | null = null
-const getSecondaryKey = (): Promise<SigningKey.Type> => {
-  if (secondaryKeyPromise === null) {
-    secondaryKeyPromise = SigningKey.generate()
-  }
-  return secondaryKeyPromise
-}
 
 // `jose.importJWK` returns `CryptoKey | Uint8Array`. For RSA JWKs it's
 // always `CryptoKey`, so we runtime-check rather than unsafely cast.
@@ -112,7 +93,7 @@ const runVerify = (
   )
 
 test('JWT verifies when sub matches a registered client (no type claim)', async () => {
-  const key = await getPrimaryKey()
+  const key = testingKey1
   const token = await signWith(key, {
     iss: ORIGIN,
     aud: `${ORIGIN}/fhir`,
@@ -127,7 +108,7 @@ test('JWT verifies when sub matches a registered client (no type claim)', async 
 })
 
 test('JWT is rejected when sub does not match any client', async () => {
-  const key = await getPrimaryKey()
+  const key = testingKey1
   const token = await signWith(key, {
     iss: ORIGIN,
     aud: `${ORIGIN}/fhir`,
@@ -142,7 +123,7 @@ test('JWT is rejected when sub does not match any client', async () => {
 })
 
 test('JWT is rejected when client is disabled', async () => {
-  const key = await getPrimaryKey()
+  const key = testingKey1
   const token = await signWith(key, {
     iss: ORIGIN,
     aud: `${ORIGIN}/fhir`,
@@ -157,7 +138,7 @@ test('JWT is rejected when client is disabled', async () => {
 })
 
 test('JWT verifies when audience is the origin', async () => {
-  const key = await getPrimaryKey()
+  const key = testingKey1
   const token = await signWith(key, {
     iss: ORIGIN,
     aud: ORIGIN,
@@ -172,7 +153,7 @@ test('JWT verifies when audience is the origin', async () => {
 })
 
 test('JWT is rejected when issuer mismatches origin', async () => {
-  const key = await getPrimaryKey()
+  const key = testingKey1
   const token = await signWith(key, {
     iss: 'https://other.example',
     aud: ORIGIN,
@@ -187,7 +168,7 @@ test('JWT is rejected when issuer mismatches origin', async () => {
 })
 
 test('JWT is rejected when sub is not a string', async () => {
-  const key = await getPrimaryKey()
+  const key = testingKey1
   // `jose.JWTPayload.sub` is typed `string | undefined`; we deliberately
   // bypass that here to exercise the runtime guard in `verifyJwt`.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -205,7 +186,7 @@ test('JWT is rejected when sub is not a string', async () => {
 })
 
 test('JWT is rejected when exp is in the past', async () => {
-  const key = await getPrimaryKey()
+  const key = testingKey1
   const past = Math.floor(Date.now() / 1000) - 60
   const token = await signWith(key, {
     iss: ORIGIN,
@@ -222,7 +203,7 @@ test('JWT is rejected when exp is in the past', async () => {
 })
 
 test('JWT is rejected when audience is not in accepted set', async () => {
-  const key = await getPrimaryKey()
+  const key = testingKey1
   const token = await signWith(key, {
     iss: ORIGIN,
     aud: 'https://malicious.example',
@@ -249,8 +230,8 @@ test('JWT is verified when one of multiple signing keys can verify it', async ()
   // Sign with key B, present `[key A, key B]`. verifyAgainstAnyKey
   // iterates every key — key A's signature check fails, key B's
   // succeeds. This is the rotation scenario.
-  const keyA = await getPrimaryKey()
-  const keyB = await getSecondaryKey()
+  const keyA = testingKey1
+  const keyB = testingKey2
   const token = await signWith(keyB, {
     iss: ORIGIN,
     aud: ORIGIN,
@@ -265,7 +246,7 @@ test('JWT is verified when one of multiple signing keys can verify it', async ()
 })
 
 test('JWT is verified when audience is an array containing an accepted entry', async () => {
-  const key = await getPrimaryKey()
+  const key = testingKey1
   const token = await signWith(key, {
     iss: ORIGIN,
     aud: ['https://other.example', `${ORIGIN}/fhir`],

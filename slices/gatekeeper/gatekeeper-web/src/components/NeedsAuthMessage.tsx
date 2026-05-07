@@ -29,6 +29,31 @@ const errorCodeOf = (error: unknown): string | undefined => {
   return typeof code === 'string' ? code : undefined
 }
 
+const errorDescriptionOf = (error: unknown): string | undefined => {
+  if (typeof error !== 'object' || error === null) return undefined
+  const description = (error as Record<string, unknown>)['error_description'] // oxlint-disable-line typescript/no-unsafe-type-assertion -- HttpApi error bodies are decoded but escape as unknown at this boundary
+  return typeof description === 'string' ? description : undefined
+}
+
+// Format an HttpApi-decoded OAuth error (or any thrown value) as a single
+// human-readable line. Plain Error.message would render as "[object Object]"
+// for typed schema errors like `OAuthError401Schema.make(...)`, since those
+// aren't Error subclasses.
+const formatError = (error: unknown): string => {
+  if (error instanceof Error) return error.message
+  const code = errorCodeOf(error)
+  const description = errorDescriptionOf(error)
+  if (code !== undefined && description !== undefined) return `${code}: ${description}`
+  if (code !== undefined) return code
+  if (description !== undefined) return description
+  if (typeof error === 'string') return error
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return String(error)
+  }
+}
+
 /** RFC 8628 §3.5: keep polling while the issuer is still waiting. */
 const isPollingPending = (error: unknown): boolean => {
   const code = errorCodeOf(error)
@@ -39,7 +64,7 @@ const terminalState = (error: unknown): DeviceFlowState => {
   const code = errorCodeOf(error)
   if (code === 'access_denied') return { tag: 'denied' }
   if (code === 'expired_token') return { tag: 'expired' }
-  return { tag: 'error', message: error instanceof Error ? error.message : String(error) }
+  return { tag: 'error', message: formatError(error) }
 }
 
 /**

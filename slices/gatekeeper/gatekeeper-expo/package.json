@@ -1,6 +1,7 @@
 {
   "name": "gatekeeper-expo",
   "version": "0.0.0",
+  "private": true,
   "description": "Expo screens and hooks for managing gatekeeper access, approved apps, and authorization modals.",
   "license": "MIT",
   "repository": {
@@ -18,9 +19,6 @@
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "scripts": {
     "build": "vp pack",
@@ -51,14 +49,14 @@
     "expo-router": "catalog:",
     "expo-tundraish": "workspace:*",
     "gatekeeper-core": "workspace:*",
-    "gatekeeper-web": "workspace:*",
     "jest": "catalog:",
     "jest-expo": "catalog:",
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-webview": "catalog:",
     "typescript": "catalog:",
-    "vite-plus": "catalog:"
+    "vite-plus": "catalog:",
+    "wildflower-react": "workspace:*"
   },
   "peerDependencies": {
     "@livestore/livestore": "catalog:",
@@ -69,7 +67,6 @@
     "expo-router": ">=55.0.0",
     "expo-tundraish": "workspace:*",
     "gatekeeper-core": "workspace:*",
-    "gatekeeper-web": "workspace:*",
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-webview": ">=13.0.0"

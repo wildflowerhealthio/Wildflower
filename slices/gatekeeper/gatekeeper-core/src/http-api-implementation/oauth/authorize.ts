@@ -14,6 +14,7 @@ import {
   Grant,
   SigningKey,
 } from '../../livestore/index.ts'
+import { GatekeeperPaths } from '../../page-paths.ts'
 import { buildClientRedirectUrl } from './shared.ts'
 
 type AuthorizeParams = Schema.Schema.Type<typeof AuthorizeUrlParamsSchema>
@@ -163,7 +164,7 @@ const issueCodeForAutoApprovedRequest = (input: {
   })
 
 const buildPollingPageUrl = (origin: string, requestId: string): string =>
-  `${origin}/oauth/authorize/${requestId}/view`
+  `${origin}${GatekeeperPaths.oauthPolling(requestId)}`
 
 const getAuthorizationRequestParameters = (
   urlParams: AuthorizeParams

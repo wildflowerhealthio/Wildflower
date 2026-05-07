@@ -22,7 +22,7 @@ const DeviceEntryScreen = (): JSX.Element => {
 
   const submit = (): void => {
     if (!isValid) return
-    void navigate(`/devices/${encodeURIComponent(code)}`)
+    void navigate(`/gatekeeper/devices/${encodeURIComponent(code)}`)
   }
 
   return (

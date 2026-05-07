@@ -11,6 +11,7 @@ import {
 } from '../../http-api-definition/oauth.ts'
 import { generateUserCode } from '../../internal/user-code.ts'
 import { AuthorizationRequest, Client, type ClientRow } from '../../livestore/index.ts'
+import { GatekeeperPaths } from '../../page-paths.ts'
 import { DEVICE_CODE_POLL_INTERVAL, type OAuthError400, type OAuthError401 } from './shared.ts'
 
 type DeviceAuthorizationPayload = Schema.Schema.Type<typeof DeviceAuthorizationPayloadSchema>
@@ -106,8 +107,8 @@ const buildDeviceAuthorizationResponse = (input: {
   DeviceAuthorizationResponseSchema.make({
     device_code: input.id,
     user_code: input.userCode,
-    verification_uri: `${input.origin}/access/devices`,
-    verification_uri_complete: `${input.origin}/access/devices?user_code=${input.userCode}`,
+    verification_uri: `${input.origin}${GatekeeperPaths.deviceEntry()}`,
+    verification_uri_complete: `${input.origin}${GatekeeperPaths.deviceEntry()}?user_code=${input.userCode}`,
     expires_in: Math.floor(Duration.toMillis(DEVICE_AUTHORIZATION_TTL) / 1000),
     interval: Math.floor(Duration.toMillis(DEVICE_CODE_POLL_INTERVAL) / 1000),
   })

@@ -42,7 +42,7 @@ const OAuthConsentScreen = (): JSX.Element => {
             session={session}
             consent={consent}
             onDone={() => {
-              void navigate('/', { replace: true })
+              void navigate('/gatekeeper', { replace: true })
             }}
           />
         )}

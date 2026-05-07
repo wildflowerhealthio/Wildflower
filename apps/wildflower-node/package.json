@@ -21,10 +21,10 @@
     "emr-core": "workspace:*",
     "fhir-r4": "workspace:*",
     "gatekeeper-core": "workspace:*",
-    "gatekeeper-web": "workspace:*",
     "kitchen-sink": "workspace:*",
     "telemetry-core": "workspace:*",
-    "telemetry-node": "workspace:*"
+    "telemetry-node": "workspace:*",
+    "wildflower-react": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

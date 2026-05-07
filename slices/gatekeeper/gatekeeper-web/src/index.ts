@@ -1,1 +1,1 @@
-export { GatekeeperPagesHandlersFor, GatekeeperPagesHandlersLive } from './pages.ts'
+export { gatekeeperRoutesFragment } from './routes.tsx'

@@ -17,10 +17,6 @@
       "source": "./src/index.ts",
       "default": "./dist/index.mjs"
     },
-    "./bundling": {
-      "source": "./src/bundling/index.ts",
-      "default": "./dist/bundling.mjs"
-    },
     "./crypto-random": {
       "source": "./src/crypto-random/index.ts",
       "default": "./dist/crypto-random.mjs"
