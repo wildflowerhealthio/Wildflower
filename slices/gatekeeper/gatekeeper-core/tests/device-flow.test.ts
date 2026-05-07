@@ -18,9 +18,9 @@ import {
 } from '../src/http-api-implementation/index.ts'
 import { mintAccessToken } from '../src/internal/jwt.ts'
 import {
-  AuthorizationRequests,
+  AuthorizationRequest,
   type AuthorizationRequestRow,
-  Clients,
+  Client,
   type ClientRow,
   SigningKey,
 } from '../src/livestore/index.ts'
@@ -57,11 +57,11 @@ type CommittedEvent = { name: string; args: Record<string, unknown> }
 // `requestedAt: DateTime.Utc`, not the encoded ISO string). The schema
 // check ran when `events.X({...})` was called, so we just cast here.
 type DeviceStartedArgs =
-  typeof AuthorizationRequests.events.deviceAuthorizationRequestStarted.schema.Type
-type ApprovedArgs = typeof AuthorizationRequests.events.authorizationRequestApproved.schema.Type
-type DeniedArgs = typeof AuthorizationRequests.events.authorizationRequestDenied.schema.Type
-type ExpiredArgs = typeof AuthorizationRequests.events.authorizationRequestExpired.schema.Type
-type PolledArgs = typeof AuthorizationRequests.events.deviceAuthorizationPolled.schema.Type
+  typeof AuthorizationRequest.events.deviceAuthorizationRequestStarted.schema.Type
+type ApprovedArgs = typeof AuthorizationRequest.events.authorizationRequestApproved.schema.Type
+type DeniedArgs = typeof AuthorizationRequest.events.authorizationRequestDenied.schema.Type
+type ExpiredArgs = typeof AuthorizationRequest.events.authorizationRequestExpired.schema.Type
+type PolledArgs = typeof AuthorizationRequest.events.deviceAuthorizationPolled.schema.Type
 
 type StoreOpts = {
   signingKeys: ReadonlyArray<SigningKey.Type>
@@ -85,7 +85,7 @@ const makeStore = (opts: StoreOpts): typeof GatekeeperStore.Service => {
 
     if (label === 'clientById' && hash !== undefined) {
       for (const clientId of clientMap.keys()) {
-        if (Clients.queries.byId$(clientId).hash === hash) {
+        if (Client.queries.byId$(clientId).hash === hash) {
           return clientMap.get(clientId) ?? null
         }
       }
@@ -94,7 +94,7 @@ const makeStore = (opts: StoreOpts): typeof GatekeeperStore.Service => {
 
     if (label === 'authorizationRequestById' && hash !== undefined) {
       for (const id of requestRows.keys()) {
-        if (AuthorizationRequests.queries.byId$(id).hash === hash) {
+        if (AuthorizationRequest.queries.byId$(id).hash === hash) {
           return requestRows.get(id) ?? null
         }
       }
@@ -104,7 +104,7 @@ const makeStore = (opts: StoreOpts): typeof GatekeeperStore.Service => {
     if (label === 'authorizationRequestByUserCode' && hash !== undefined) {
       for (const row of requestRows.values()) {
         if (row.userCode == null) continue
-        if (AuthorizationRequests.queries.byUserCode$(row.userCode).hash === hash) {
+        if (AuthorizationRequest.queries.byUserCode$(row.userCode).hash === hash) {
           return row
         }
       }

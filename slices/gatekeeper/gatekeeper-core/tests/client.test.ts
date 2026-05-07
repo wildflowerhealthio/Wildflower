@@ -6,14 +6,14 @@ import {
   FIRST_PARTY_CLIENT_ID,
   seedFirstPartyClient,
 } from '../src/contexts/seed-first-party-client.ts'
-import { Clients, type ClientRow } from '../src/livestore/index.ts'
+import { Client, type ClientRow } from '../src/livestore/index.ts'
 
 // Event factories pass args through in their decoded form (e.g.
 // `registeredAt` is `DateTime.Utc`, not the encoded ISO string).
 // Re-decoding with `Schema.decodeUnknownSync` would reject the value
 // for the encoded-side mismatch, so we just cast — the schema check
 // already happened when `events.clientRegistered({...})` was called.
-type ClientRegisteredArgs = typeof Clients.events.clientRegistered.schema.Type
+type ClientRegisteredArgs = typeof Client.events.clientRegistered.schema.Type
 
 const labelOf = (q: unknown): string | undefined => {
   if (typeof q === 'object' && q !== null && 'label' in q && typeof q.label === 'string') {
@@ -41,7 +41,7 @@ const makeFakeStore = (
     const hash = hashOf(q)
     if (label === 'clientById' && hash !== undefined) {
       for (const clientId of clientMap.keys()) {
-        if (Clients.queries.byId$(clientId).hash === hash) {
+        if (Client.queries.byId$(clientId).hash === hash) {
           return clientMap.get(clientId) ?? null
         }
       }
@@ -65,16 +65,16 @@ const makeFakeStore = (
   return { store: { query, commit } as unknown as typeof GatekeeperStore.Service, committed }
 }
 
-test('Clients events expose registered, updated, disabled', () => {
-  expect(typeof Clients.events.clientRegistered).toBe('function')
-  expect(typeof Clients.events.clientUpdated).toBe('function')
-  expect(typeof Clients.events.clientDisabled).toBe('function')
+test('Client events expose registered, updated, disabled', () => {
+  expect(typeof Client.events.clientRegistered).toBe('function')
+  expect(typeof Client.events.clientUpdated).toBe('function')
+  expect(typeof Client.events.clientDisabled).toBe('function')
 })
 
-test('Clients.queries.byId$ has a stable hash that distinguishes by id', () => {
-  const a = Clients.queries.byId$('client-a').hash
-  const b = Clients.queries.byId$('client-b').hash
-  const aAgain = Clients.queries.byId$('client-a').hash
+test('Client.queries.byId$ has a stable hash that distinguishes by id', () => {
+  const a = Client.queries.byId$('client-a').hash
+  const b = Client.queries.byId$('client-b').hash
+  const aAgain = Client.queries.byId$('client-a').hash
   expect(a).toBe(aAgain)
   expect(a).not.toBe(b)
 })

@@ -12,13 +12,13 @@ import {
 } from '../src/http-api-implementation/index.ts'
 import { computeCodeChallenge } from '../src/internal/pkce.ts'
 import {
-  AuthorizationCodes,
+  AuthorizationCode,
   type AuthorizationCodeRow,
-  AuthorizationRequests,
+  AuthorizationRequest,
   type AuthorizationRequestRow,
-  Clients,
+  Client,
   type ClientRow,
-  Grants,
+  Grant,
   SigningKey,
 } from '../src/livestore/index.ts'
 
@@ -121,7 +121,7 @@ const makeStore = ({
 
     if (label === 'authorizationRequestById' && hash !== undefined) {
       for (const id of requestRows.keys()) {
-        if (AuthorizationRequests.queries.byId$(id).hash === hash) {
+        if (AuthorizationRequest.queries.byId$(id).hash === hash) {
           return requestRows.get(id) ?? null
         }
       }
@@ -130,7 +130,7 @@ const makeStore = ({
 
     if (label === 'authorizationCodeByCode' && hash !== undefined) {
       for (const code of codeRows.keys()) {
-        if (AuthorizationCodes.queries.byCode$(code).hash === hash) {
+        if (AuthorizationCode.queries.byCode$(code).hash === hash) {
           return codeRows.get(code) ?? null
         }
       }
@@ -139,7 +139,7 @@ const makeStore = ({
 
     if (label === 'authorizationCodeByRequestId' && hash !== undefined) {
       for (const requestId of new Set([...codeRows.values()].map((r) => r.requestId))) {
-        if (AuthorizationCodes.queries.byRequestId$(requestId).hash === hash) {
+        if (AuthorizationCode.queries.byRequestId$(requestId).hash === hash) {
           return [...codeRows.values()].find((r) => r.requestId === requestId) ?? null
         }
       }
@@ -149,7 +149,7 @@ const makeStore = ({
     if (label === 'grantsByClientId' && hash !== undefined) {
       const seenClientIds = new Set(grantRows.map((g) => g.clientId))
       for (const clientId of seenClientIds) {
-        if (Grants.queries.byClientId$(clientId).hash === hash) {
+        if (Grant.queries.byClientId$(clientId).hash === hash) {
           return grantRows.filter((g) => g.clientId === clientId)
         }
       }
@@ -158,7 +158,7 @@ const makeStore = ({
 
     if (label === 'grantByClientIdAndRedirectUri' && hash !== undefined) {
       for (const g of grantRows) {
-        if (Grants.queries.byClientIdAndRedirectUri$(g.clientId, g.redirectUri).hash === hash) {
+        if (Grant.queries.byClientIdAndRedirectUri$(g.clientId, g.redirectUri).hash === hash) {
           return g
         }
       }
@@ -167,7 +167,7 @@ const makeStore = ({
 
     if (label === 'clientById' && hash !== undefined) {
       for (const clientId of clientRows.keys()) {
-        if (Clients.queries.byId$(clientId).hash === hash) {
+        if (Client.queries.byId$(clientId).hash === hash) {
           return clientRows.get(clientId) ?? null
         }
       }

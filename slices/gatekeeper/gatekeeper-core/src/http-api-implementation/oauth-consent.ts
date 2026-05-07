@@ -9,7 +9,7 @@ import {
 } from '../contexts/oauth-consent-decisions.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
 import type { OAuthConsentNotFoundSchema } from '../http-api-definition/oauth-consent.ts'
-import { AuthorizationRequests, type AuthorizationRequestRow, Grants } from '../livestore/index.ts'
+import { AuthorizationRequest, type AuthorizationRequestRow, Grant } from '../livestore/index.ts'
 
 type OAuthConsentNotFound = Schema.Schema.Type<typeof OAuthConsentNotFoundSchema>
 
@@ -31,7 +31,7 @@ const getPendingCodeFlowRequest = (
 > =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
-    const request = store.query(AuthorizationRequests.queries.byId$(id))
+    const request = store.query(AuthorizationRequest.queries.byId$(id))
     if (
       request == null ||
       request.status !== 'pending' ||
@@ -53,11 +53,11 @@ const upsertGrant = (input: {
     const store = yield* GatekeeperStore
     const grantedAt = yield* DateTime.now
     const existing = store.query(
-      Grants.queries.byClientIdAndRedirectUri$(input.clientId, input.redirectUri)
+      Grant.queries.byClientIdAndRedirectUri$(input.clientId, input.redirectUri)
     )
     if (existing == null) {
       store.commit(
-        Grants.events.grantCreated({
+        Grant.events.grantCreated({
           id: nanoid(),
           clientId: input.clientId,
           scopes: input.scopes,
@@ -68,7 +68,7 @@ const upsertGrant = (input: {
       )
     } else {
       store.commit(
-        Grants.events.grantUpdated({
+        Grant.events.grantUpdated({
           id: existing.id,
           scopes: input.scopes,
           grantedAt,

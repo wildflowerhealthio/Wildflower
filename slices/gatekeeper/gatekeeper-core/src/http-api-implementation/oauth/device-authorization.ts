@@ -10,7 +10,7 @@ import {
   OAuthError401Schema,
 } from '../../http-api-definition/oauth.ts'
 import { generateUserCode } from '../../internal/user-code.ts'
-import { AuthorizationRequests, Clients, type ClientRow } from '../../livestore/index.ts'
+import { AuthorizationRequest, Client, type ClientRow } from '../../livestore/index.ts'
 import { DEVICE_CODE_POLL_INTERVAL, type OAuthError400, type OAuthError401 } from './shared.ts'
 
 type DeviceAuthorizationPayload = Schema.Schema.Type<typeof DeviceAuthorizationPayloadSchema>
@@ -26,7 +26,7 @@ const getEnabledClientForDeviceAuth = (
 ): Effect.Effect<ClientRow & { disabledAt: null }, OAuthError401, GatekeeperStore> =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
-    const client = store.query(Clients.queries.byId$(clientId))
+    const client = store.query(Client.queries.byId$(clientId))
     if (client == null || client.disabledAt != null) {
       return yield* Effect.fail(
         OAuthError401Schema.make({
@@ -68,7 +68,7 @@ const generateUniqueUserCode = (
   Effect.gen(function* () {
     for (let attempt = 0; attempt < 10; attempt++) {
       const candidate = yield* generateUserCode
-      const existing = store.query(AuthorizationRequests.queries.byUserCode$(candidate))
+      const existing = store.query(AuthorizationRequest.queries.byUserCode$(candidate))
       if (existing == null || existing.status !== 'pending') return candidate
     }
     return yield* Effect.die(new Error('Could not generate a unique user_code after 10 attempts'))
@@ -86,7 +86,7 @@ const startDeviceAuthorizationRequest = (input: {
     const requestedAt = yield* DateTime.now
     const expiresAt = DateTime.addDuration(requestedAt, DEVICE_AUTHORIZATION_TTL)
     store.commit(
-      AuthorizationRequests.events.deviceAuthorizationRequestStarted({
+      AuthorizationRequest.events.deviceAuthorizationRequestStarted({
         id,
         clientId: input.clientId,
         requestedScopes: input.requestedScopes,

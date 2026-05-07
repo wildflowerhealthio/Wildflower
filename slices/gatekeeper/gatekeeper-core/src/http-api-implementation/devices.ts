@@ -4,7 +4,7 @@ import { Effect, pipe } from 'effect'
 import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import type { DeviceConsentNotFoundSchema } from '../http-api-definition/devices.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
-import { AuthorizationRequests, type AuthorizationRequestRow, Clients } from '../livestore/index.ts'
+import { AuthorizationRequest, type AuthorizationRequestRow, Client } from '../livestore/index.ts'
 
 type DeviceConsentNotFound = Schema.Schema.Type<typeof DeviceConsentNotFoundSchema>
 
@@ -13,7 +13,7 @@ const getPendingDeviceCodeRequest = (
 ): Effect.Effect<AuthorizationRequestRow, DeviceConsentNotFound, GatekeeperStore> =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
-    const pending = store.query(AuthorizationRequests.queries.byUserCode$(userCode))
+    const pending = store.query(AuthorizationRequest.queries.byUserCode$(userCode))
     if (pending == null || pending.grantType !== 'device_code' || pending.status !== 'pending') {
       return yield* Effect.fail({
         error: 'DeviceConsentNotFound' as const,
@@ -38,7 +38,7 @@ const buildDeviceConsentResponse = (
 > =>
   GatekeeperStore.pipe(
     Effect.map((store) => {
-      const client = store.query(Clients.queries.byId$(pending.clientId))
+      const client = store.query(Client.queries.byId$(pending.clientId))
       return {
         userCode,
         clientId: pending.clientId,
@@ -53,7 +53,7 @@ const denyPending = (
 ): Effect.Effect<{ readonly status: 'denied' }, never, GatekeeperStore> =>
   GatekeeperStore.pipe(
     Effect.map((store) => {
-      store.commit(AuthorizationRequests.events.authorizationRequestDenied({ id: pending.id }))
+      store.commit(AuthorizationRequest.events.authorizationRequestDenied({ id: pending.id }))
       return { status: 'denied' as const }
     })
   )
@@ -65,7 +65,7 @@ const commitApproval = (
   GatekeeperStore.pipe(
     Effect.map((store) => {
       store.commit(
-        AuthorizationRequests.events.authorizationRequestApproved({
+        AuthorizationRequest.events.authorizationRequestApproved({
           id: pending.id,
           grantedScopes,
           patient: null,

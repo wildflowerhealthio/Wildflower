@@ -1,5 +1,5 @@
 import { DateTime, Effect } from 'effect'
-import { AuthorizationCodes, AuthorizationRequests } from '../livestore/index.ts'
+import { AuthorizationCode, AuthorizationRequest } from '../livestore/index.ts'
 import { GatekeeperStore } from './gatekeeper-store.ts'
 
 const cleanupExpiredAuthorizationRequests: Effect.Effect<void, never, GatekeeperStore> = Effect.gen(
@@ -7,7 +7,7 @@ const cleanupExpiredAuthorizationRequests: Effect.Effect<void, never, Gatekeeper
     const store = yield* GatekeeperStore
     const expiredBefore = yield* DateTime.now
     store.commit(
-      AuthorizationRequests.events.deleteAuthorizationRequestsExpiredAsOf({ expiredBefore })
+      AuthorizationRequest.events.deleteAuthorizationRequestsExpiredAsOf({ expiredBefore })
     )
   }
 )
@@ -16,7 +16,7 @@ const cleanupExpiredAuthorizationCodes: Effect.Effect<void, never, GatekeeperSto
   function* () {
     const store = yield* GatekeeperStore
     const expiredBefore = yield* DateTime.now
-    store.commit(AuthorizationCodes.events.deleteAuthorizationCodesExpiredAsOf({ expiredBefore }))
+    store.commit(AuthorizationCode.events.deleteAuthorizationCodesExpiredAsOf({ expiredBefore }))
   }
 )
 

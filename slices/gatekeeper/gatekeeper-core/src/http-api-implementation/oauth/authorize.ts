@@ -7,11 +7,11 @@ import { GatekeeperStore } from '../../contexts/gatekeeper-store.ts'
 import type { AuthorizeUrlParamsSchema } from '../../http-api-definition/oauth.ts'
 import { oauthErrorHtml } from '../../internal/error-pages.ts'
 import {
-  AuthorizationCodes,
-  AuthorizationRequests,
-  Clients,
+  AuthorizationCode,
+  AuthorizationRequest,
+  Client,
   type ClientRow,
-  Grants,
+  Grant,
   SigningKey,
 } from '../../livestore/index.ts'
 import { buildClientRedirectUrl } from './shared.ts'
@@ -71,7 +71,7 @@ const getEnabledClient = (
 > =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
-    const client = store.query(Clients.queries.byId$(clientId))
+    const client = store.query(Client.queries.byId$(clientId))
     if (client == null) {
       return yield* Effect.fail(htmlBadRequestResponse(oauthErrorHtml('unknown_client')))
     }
@@ -112,7 +112,7 @@ const startCodeAuthorizationRequest = (input: {
     const requestedAt = yield* DateTime.now
     const expiresAt = DateTime.addDuration(requestedAt, AUTHORIZATION_REQUEST_TTL)
     store.commit(
-      AuthorizationRequests.events.authorizationRequestStarted({
+      AuthorizationRequest.events.authorizationRequestStarted({
         id: input.requestId,
         clientId: input.clientId,
         requestedScopes: input.requestedScopes,
@@ -142,12 +142,12 @@ const issueCodeForAutoApprovedRequest = (input: {
     const issuedAt = yield* DateTime.now
     const expiresAt = DateTime.addDuration(issuedAt, AUTHORIZATION_CODE_TTL)
     store.commit(
-      AuthorizationRequests.events.authorizationRequestApproved({
+      AuthorizationRequest.events.authorizationRequestApproved({
         id: input.requestId,
         grantedScopes: input.grantedScopes,
         patient: input.patient,
       }),
-      AuthorizationCodes.events.authorizationCodeIssued({
+      AuthorizationCode.events.authorizationCodeIssued({
         code,
         requestId: input.requestId,
         clientId: input.clientId,
@@ -185,7 +185,7 @@ const getAuthorizationRequestParameters = (
     const requestedScopes = urlParams.scope.split(' ').filter(Boolean)
 
     const approvedGrant = store.query(
-      Grants.queries.byClientIdAndRedirectUri$(urlParams.client_id, urlParams.redirect_uri)
+      Grant.queries.byClientIdAndRedirectUri$(urlParams.client_id, urlParams.redirect_uri)
     )
     const previouslyApproved = new Set<string>(approvedGrant?.scopes ?? [])
     const preApproved = requestedScopes.filter((s) => previouslyApproved.has(s))

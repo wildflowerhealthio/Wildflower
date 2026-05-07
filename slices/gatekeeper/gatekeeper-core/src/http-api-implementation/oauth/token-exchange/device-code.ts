@@ -4,7 +4,7 @@ import type { Origin } from 'kitchen-sink'
 import { GatekeeperStore } from '../../../contexts/gatekeeper-store.ts'
 import type { DeviceCodePayload } from '../../../http-api-definition/oauth.ts'
 import { OAuthError400Schema } from '../../../http-api-definition/oauth.ts'
-import { AuthorizationRequests, type AuthorizationRequestRow } from '../../../livestore/index.ts'
+import { AuthorizationRequest, type AuthorizationRequestRow } from '../../../livestore/index.ts'
 import {
   DEVICE_CODE_POLL_INTERVAL,
   issueTokenResponse,
@@ -23,7 +23,7 @@ const getPendingDeviceCodeRequest = (
 ): Effect.Effect<AuthorizationRequestRow, OAuthError400, GatekeeperStore> =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
-    const pending = store.query(AuthorizationRequests.queries.byId$(deviceCode))
+    const pending = store.query(AuthorizationRequest.queries.byId$(deviceCode))
     if (pending == null || pending.grantType !== 'device_code' || pending.clientId !== clientId) {
       return yield* Effect.fail(
         OAuthError400Schema.make({
@@ -64,7 +64,7 @@ const recordDevicePoll = (
     const store = yield* GatekeeperStore
     const polledAt = yield* DateTime.now
     store.commit(
-      AuthorizationRequests.events.deviceAuthorizationPolled({ id: pending.id, polledAt })
+      AuthorizationRequest.events.deviceAuthorizationPolled({ id: pending.id, polledAt })
     )
   })
 
@@ -95,7 +95,7 @@ const consumeDeviceCode = (
     const store = yield* GatekeeperStore
     // device_code is single-use per RFC 8628 §3.4: mark expired so a
     // second poll returns expired_token rather than re-issuing a token.
-    store.commit(AuthorizationRequests.events.authorizationRequestExpired({ id: pending.id }))
+    store.commit(AuthorizationRequest.events.authorizationRequestExpired({ id: pending.id }))
   })
 
 const handleDeviceCodeTokenExchange = (

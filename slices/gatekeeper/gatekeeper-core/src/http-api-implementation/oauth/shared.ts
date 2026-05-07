@@ -6,7 +6,7 @@ import type { OAuthError400Schema, TokenResponseSchema } from '../../http-api-de
 import { OAuthError401Schema, OAuthError500Schema } from '../../http-api-definition/oauth.ts'
 import { mintAccessToken } from '../../internal/jwt.ts'
 import { timingSafeEqual } from '../../internal/timing-safe-equal.ts'
-import { Clients, type ClientRow, SigningKey } from '../../livestore/index.ts'
+import { Client, type ClientRow, SigningKey } from '../../livestore/index.ts'
 
 const DEVICE_CODE_POLL_INTERVAL: Duration.Duration = Duration.seconds(5)
 const ACCESS_TOKEN_TTL: Duration.Duration = Duration.hours(1)
@@ -40,7 +40,7 @@ const requireValidClientForToken = (
 ): Effect.Effect<ClientRow, OAuthError401 | OAuthError500, GatekeeperStore> =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
-    const client = store.query(Clients.queries.byId$(clientId))
+    const client = store.query(Client.queries.byId$(clientId))
     if (client == null) {
       return yield* Effect.fail(
         OAuthError401Schema.make({
