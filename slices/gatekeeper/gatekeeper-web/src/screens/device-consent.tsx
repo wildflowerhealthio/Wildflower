@@ -1,6 +1,7 @@
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { Devices } from 'gatekeeper-core/http-api-definition'
+import { cn } from 'kitchen-sink'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { useEffectTs } from 'react-kitchen-sink'
 import { Await, useNavigate, useParams } from 'react-router'
@@ -8,8 +9,11 @@ import { Checkbox } from 'react-tundraish'
 
 import type { AuthenticatedSession } from '../client.ts'
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
+import { Field, FieldDescription } from '../components/Field.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
 import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
+import pageLayout from '../styles/page-layout.module.css'
+import scopeListStyles from '../styles/scope-list.module.css'
 
 type DeviceConsent = Schema.Schema.Type<typeof Devices.DeviceConsentSchema>
 
@@ -124,30 +128,25 @@ const DeviceConsentForm = ({ session, consent, onDone }: DeviceConsentFormProps)
   }
 
   return (
-    <div className="gk-page">
+    <div className={pageLayout['page']}>
       <h1 className="text-heading-4">Device Authorization</h1>
 
-      <div className="gk-field">
-        <span className="gk-field__label text-label-3">Code</span>
+      <Field label="Code">
         <span className="text-body-2">
           <code>{consent.userCode}</code>
         </span>
-      </div>
+      </Field>
 
-      <div className="gk-field">
-        <span className="gk-field__label text-label-3">Application</span>
+      <Field label="Application">
         <span className="text-body-2">{consent.clientName}</span>
-        <span className="gk-field__description text-body-3">
+        <FieldDescription>
           <code>{consent.clientId}</code>
-        </span>
-      </div>
+        </FieldDescription>
+      </Field>
 
-      <div className="gk-field">
-        <span className="gk-field__label text-label-3">Requested Scopes</span>
-        <span className="gk-field__description text-body-3">
-          Select which permissions to grant this device.
-        </span>
-        <div className="gk-scope-list">
+      <Field label="Requested Scopes">
+        <FieldDescription>Select which permissions to grant this device.</FieldDescription>
+        <div className={scopeListStyles['scope-list']}>
           {requestedScopes.map((scope) => (
             <Checkbox
               key={scope}
@@ -159,11 +158,11 @@ const DeviceConsentForm = ({ session, consent, onDone }: DeviceConsentFormProps)
             />
           ))}
         </div>
-      </div>
+      </Field>
 
-      {error !== null ? <p className="gk-error text-body-3">{error}</p> : null}
+      {error !== null ? <p className={cn(pageLayout['error'], 'text-body-3')}>{error}</p> : null}
 
-      <div className="gk-buttons">
+      <div className={pageLayout['buttons']}>
         <button
           type="button"
           className="button-2 filled"

@@ -1,6 +1,8 @@
 import type { JSX } from 'react'
 import { Dialog } from 'react-tundraish'
 
+import pageLayout from '../styles/page-layout.module.css'
+
 interface RevokeGrantDialogProps {
   readonly clientId: string | null
   readonly onConfirm: () => void
@@ -22,7 +24,7 @@ const RevokeGrantDialog = ({
     <p className="text-body-2">
       Are you sure you want to revoke access for &quot;{clientId ?? ''}&quot;?
     </p>
-    <div className="gk-buttons">
+    <div className={pageLayout['buttons']}>
       <button type="button" className="button-2 filled accent-red" onClick={onConfirm}>
         Revoke
       </button>

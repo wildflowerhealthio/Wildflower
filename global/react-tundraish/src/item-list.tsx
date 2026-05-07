@@ -1,6 +1,8 @@
 import { cn } from 'kitchen-sink'
 import type { JSX, ReactNode } from 'react'
 
+import styles from './item-list.module.css'
+
 type ItemListItemBase = {
   readonly id: string
   readonly title: ReactNode
@@ -25,9 +27,11 @@ type ItemListProps = {
 const ItemList = ({ title, items, className }: ItemListProps): JSX.Element | null => {
   if (items.length === 0) return null
   return (
-    <section className={cn('item-list', className)}>
-      {title !== undefined ? <h3 className="text-label-3 item-list__title">{title}</h3> : null}
-      <ul className="item-list__rows">
+    <section className={cn(styles['item-list'], className)}>
+      {title !== undefined ? (
+        <h3 className={cn('text-label-3', styles['item-list__title'])}>{title}</h3>
+      ) : null}
+      <ul className={styles['item-list__rows']}>
         {items.map((item) => (
           <ItemListRow key={item.id} item={item} />
         ))}
@@ -38,36 +42,42 @@ const ItemList = ({ title, items, className }: ItemListProps): JSX.Element | nul
 
 const ItemListRow = ({ item }: { item: ItemListItem }): JSX.Element => {
   const badgeJsx =
-    item.badge !== undefined ? <span className="item-list__badge">{item.badge}</span> : null
+    item.badge !== undefined ? (
+      <span className={styles['item-list__badge']}>{item.badge}</span>
+    ) : null
   const subtitleJsx =
     item.subtitle !== undefined ? (
-      <span className="item-list__subtitle text-body-3">{item.subtitle}</span>
+      <span className={cn(styles['item-list__subtitle'], 'text-body-3')}>{item.subtitle}</span>
     ) : null
   const actionsJsx =
-    item.actions !== undefined ? <span className="item-list__actions">{item.actions}</span> : null
+    item.actions !== undefined ? (
+      <span className={styles['item-list__actions']}>{item.actions}</span>
+    ) : null
   const body = (
     <>
-      <div className="item-list__text">
-        <div className="item-list__title-row">
-          <span className="item-list__name text-body-2">{item.title}</span>
+      <div className={styles['item-list__text']}>
+        <div className={styles['item-list__title-row']}>
+          <span className={cn(styles['item-list__name'], 'text-body-2')}>{item.title}</span>
           {badgeJsx}
         </div>
         {subtitleJsx}
       </div>
       {actionsJsx}
-      <span aria-hidden="true" className="item-list__chevron">
+      <span aria-hidden="true" className={styles['item-list__chevron']}>
         ›
       </span>
     </>
   )
 
-  const rowClass = cn('item-list__row', { 'item-list__row--disabled': item.disabled === true })
+  const rowClass = cn(styles['item-list__row'], {
+    [styles['item-list__row--disabled']]: item.disabled === true,
+  })
 
   if (item.href !== undefined) {
     if (item.disabled === true) {
       return (
         <li className={rowClass}>
-          <span className="item-list__link" aria-disabled="true">
+          <span className={styles['item-list__link']} aria-disabled="true">
             {body}
           </span>
         </li>
@@ -75,7 +85,7 @@ const ItemListRow = ({ item }: { item: ItemListItem }): JSX.Element => {
     }
     return (
       <li className={rowClass}>
-        <a className="item-list__link" href={item.href}>
+        <a className={styles['item-list__link']} href={item.href}>
           {body}
         </a>
       </li>
@@ -86,7 +96,7 @@ const ItemListRow = ({ item }: { item: ItemListItem }): JSX.Element => {
     <li className={rowClass}>
       <button
         type="button"
-        className="item-list__button"
+        className={styles['item-list__button']}
         disabled={item.disabled}
         onClick={() => item.onClick()}
       >

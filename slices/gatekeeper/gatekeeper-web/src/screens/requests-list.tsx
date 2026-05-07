@@ -1,6 +1,7 @@
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
+import { cn } from 'kitchen-sink'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { useEffectTs } from 'react-kitchen-sink'
 import { Await, useNavigate } from 'react-router'
@@ -11,6 +12,7 @@ import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
 import { formatInstant } from '../format-date.ts'
 import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
+import pageLayout from '../styles/page-layout.module.css'
 
 type HttpRequest = Schema.Schema.Type<typeof AccessManagement.HttpRequestSchema>
 
@@ -101,7 +103,7 @@ const RequestsListBody = ({ session, requests, onDecided }: RequestsListBodyProp
     },
     actions:
       r.status === 'pending' ? (
-        <div className="gk-row-actions">
+        <div className={pageLayout['row-actions']}>
           <button
             type="button"
             className="button-2 filled"
@@ -131,8 +133,8 @@ const RequestsListBody = ({ session, requests, onDecided }: RequestsListBodyProp
   const rejected = requests.filter((r) => r.status === 'rejected')
 
   return (
-    <div className="gk-page">
-      {error !== null ? <p className="gk-error text-body-3">{error}</p> : null}
+    <div className={pageLayout['page']}>
+      {error !== null ? <p className={cn(pageLayout['error'], 'text-body-3')}>{error}</p> : null}
       <ItemList title="In-Flight" items={pending.map((r) => toItem(r))} />
       <ItemList title="Approved" items={approved.map((r) => toItem(r))} />
       <ItemList title="Rejected" items={rejected.map((r) => toItem(r))} />

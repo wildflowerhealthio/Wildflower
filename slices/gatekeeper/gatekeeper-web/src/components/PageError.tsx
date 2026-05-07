@@ -1,6 +1,8 @@
 import { cn } from 'kitchen-sink'
 import type { JSX } from 'react'
 
+import pageLayout from '../styles/page-layout.module.css'
+
 interface PageErrorProps {
   /**
    * Heading shown above the error message. Omit for a bare error
@@ -10,13 +12,14 @@ interface PageErrorProps {
   /** The thrown / rejected value. Stringified safely. */
   readonly error: unknown
   /**
-   * Extra class names appended to the outer `gk-page` div — e.g.
-   * `'gk-poll'` to share layout with the polling spinner.
+   * Extra class names appended to the outer page div — e.g. a
+   * polling-screen layout class to share visual framing with the
+   * spinner.
    */
   readonly className?: string
   /**
-   * Extra class names appended to the heading — e.g.
-   * `'gk-poll-declined'` for the red-text variant.
+   * Extra class names appended to the heading — e.g. the
+   * red-text variant used by failure states.
    */
   readonly titleClassName?: string
 }
@@ -30,11 +33,11 @@ interface PageErrorProps {
 const PageError = ({ title, error, className, titleClassName }: PageErrorProps): JSX.Element => {
   const message = error instanceof Error ? error.message : String(error)
   return (
-    <div className={cn('gk-page', className)}>
+    <div className={cn(pageLayout['page'], className)}>
       {title === undefined ? null : (
         <h1 className={cn('text-heading-4', titleClassName)}>{title}</h1>
       )}
-      <p className="gk-error text-body-3">{message}</p>
+      <p className={cn(pageLayout['error'], 'text-body-3')}>{message}</p>
     </div>
   )
 }

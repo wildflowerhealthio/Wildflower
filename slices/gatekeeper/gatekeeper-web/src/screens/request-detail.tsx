@@ -1,6 +1,7 @@
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
+import { cn } from 'kitchen-sink'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { useEffectTs } from 'react-kitchen-sink'
 import { Await, useParams } from 'react-router'
@@ -11,6 +12,7 @@ import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
 import { formatInstant } from '../format-date.ts'
 import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
+import pageLayout from '../styles/page-layout.module.css'
 
 type HttpRequest = Schema.Schema.Type<typeof AccessManagement.HttpRequestSchema>
 
@@ -100,15 +102,15 @@ const RequestDetailBody = ({
   }
 
   return (
-    <div className="gk-page">
-      <div className="gk-section">
+    <div className={pageLayout['page']}>
+      <div className={pageLayout['section']}>
         <h2 className="text-label-3">{request.method}</h2>
         <h1 className="text-heading-4">{request.url}</h1>
       </div>
 
       <StatusBadge tone={statusTone(request.status)}>{request.status.toUpperCase()}</StatusBadge>
 
-      <div className="gk-section">
+      <div className={pageLayout['section']}>
         <strong className="text-label-3">Request</strong>
         <span className="text-body-3">Received: {formatInstant(request.requestedAt)}</span>
         {request.origin !== '' ? (
@@ -120,7 +122,7 @@ const RequestDetailBody = ({
       </div>
 
       {request.respondedAt !== null ? (
-        <div className="gk-section">
+        <div className={pageLayout['section']}>
           <strong className="text-label-3">Response</strong>
           <span className="text-body-3">Responded: {formatInstant(request.respondedAt)}</span>
           {request.statusCode !== null ? (
@@ -130,7 +132,7 @@ const RequestDetailBody = ({
       ) : null}
 
       {request.status === 'pending' ? (
-        <div className="gk-buttons">
+        <div className={pageLayout['buttons']}>
           <button
             type="button"
             className="button-2 filled"
@@ -152,7 +154,7 @@ const RequestDetailBody = ({
         </div>
       ) : null}
 
-      {error !== null ? <p className="gk-error text-body-3">{error}</p> : null}
+      {error !== null ? <p className={cn(pageLayout['error'], 'text-body-3')}>{error}</p> : null}
     </div>
   )
 }

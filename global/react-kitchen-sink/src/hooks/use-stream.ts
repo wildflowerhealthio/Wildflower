@@ -1,5 +1,4 @@
-import { Cause, Chunk, Effect, Exit, Fiber, type ManagedRuntime, Stream } from 'effect'
-import type { Scope } from 'effect'
+import { Cause, Chunk, Effect, Exit, Fiber, type ManagedRuntime, type Scope, Stream } from 'effect'
 import { useEffect } from 'react'
 
 import { useStatePromise } from './use-state-promise.ts'

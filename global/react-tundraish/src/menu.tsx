@@ -1,6 +1,8 @@
 import { cn } from 'kitchen-sink'
 import { useEffect, useId, useRef, useState, type JSX, type ReactNode } from 'react'
 
+import styles from './menu.module.css'
+
 type MenuItemBase = {
   readonly id: string
   readonly label: ReactNode
@@ -104,11 +106,11 @@ const Menu = ({
   }
 
   return (
-    <div ref={rootRef} className={cn('menu', `menu--align-${align}`, className)}>
+    <div ref={rootRef} className={cn(styles['menu'], styles[`menu--align-${align}`], className)}>
       <button
         ref={triggerRef}
         type="button"
-        className="menu__trigger"
+        className={styles['menu__trigger']}
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -121,14 +123,14 @@ const Menu = ({
           }
         }}
       >
-        <span aria-hidden="true" className="menu__dots">
+        <span aria-hidden="true" className={styles['menu__dots']}>
           ⋮
         </span>
       </button>
       {open ? (
         <ul
           id={menuId}
-          className="menu__list"
+          className={styles['menu__list']}
           role="menu"
           aria-label={label}
           onKeyDown={(event) => {
@@ -160,7 +162,7 @@ const Menu = ({
           }}
         >
           {items.map((item, index) => (
-            <li key={item.id} role="none" className="menu__item-wrapper">
+            <li key={item.id} role="none" className={styles['menu__item-wrapper']}>
               <button
                 ref={(node) => {
                   itemRefs.current[index] = node
@@ -168,8 +170,8 @@ const Menu = ({
                 type="button"
                 role="menuitem"
                 tabIndex={index === activeIndex && item.disabled !== true ? 0 : -1}
-                className={cn('menu__item', {
-                  'menu__item--destructive': item.destructive === true,
+                className={cn(styles['menu__item'], {
+                  [styles['menu__item--destructive']]: item.destructive === true,
                 })}
                 disabled={item.disabled}
                 onClick={() => {

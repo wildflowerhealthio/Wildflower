@@ -3,8 +3,9 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter } from 'react-router'
 import 'tundra-css'
+import 'react-tundraish/styles.css'
 import { App } from './App.tsx'
-import './styles.css'
+import './styles/global.css'
 
 const container = document.getElementById('root')
 if (container === null) {

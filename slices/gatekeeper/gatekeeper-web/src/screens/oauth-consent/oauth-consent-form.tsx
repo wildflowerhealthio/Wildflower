@@ -1,11 +1,15 @@
 import { Effect } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
+import { cn } from 'kitchen-sink'
 import { useState, type JSX } from 'react'
 import { Checkbox, RadioGroup } from 'react-tundraish'
 
 import type { AuthenticatedSession } from '../../client.ts'
+import { Field, FieldDescription } from '../../components/Field.tsx'
 import type { Consent } from './types.ts'
 import { usePatientOptions } from './use-patient-options.ts'
+import pageLayout from '../../styles/page-layout.module.css'
+import scopeListStyles from '../../styles/scope-list.module.css'
 
 interface OAuthConsentFormProps {
   readonly session: AuthenticatedSession
@@ -93,20 +97,16 @@ const OAuthConsentForm = ({ session, consent, onDone }: OAuthConsentFormProps): 
   }
 
   return (
-    <div className="gk-page">
+    <div className={pageLayout['page']}>
       <h1 className="text-heading-4">Authorization Request</h1>
 
-      <div className="gk-field">
-        <span className="gk-field__label text-label-3">Application</span>
+      <Field label="Application">
         <span className="text-body-2">{consent.clientId}</span>
-      </div>
+      </Field>
 
-      <div className="gk-field">
-        <span className="gk-field__label text-label-3">Requested Scopes</span>
-        <span className="gk-field__description text-body-3">
-          Select which permissions to grant this application.
-        </span>
-        <div className="gk-scope-list">
+      <Field label="Requested Scopes">
+        <FieldDescription>Select which permissions to grant this application.</FieldDescription>
+        <div className={scopeListStyles['scope-list']}>
           {requestedScopes.map((scope) => (
             <Checkbox
               key={scope}
@@ -118,14 +118,13 @@ const OAuthConsentForm = ({ session, consent, onDone }: OAuthConsentFormProps): 
             />
           ))}
         </div>
-      </div>
+      </Field>
 
       {hasPatientScope && patients.length > 0 ? (
-        <div className="gk-field">
-          <span className="gk-field__label text-label-3">Patient Context</span>
-          <span className="gk-field__description text-body-3">
+        <Field label="Patient Context">
+          <FieldDescription>
             Choose which patient record to share with this application.
-          </span>
+          </FieldDescription>
           <RadioGroup
             name="patient"
             value={selectedPatient}
@@ -142,12 +141,12 @@ const OAuthConsentForm = ({ session, consent, onDone }: OAuthConsentFormProps): 
               })),
             ]}
           />
-        </div>
+        </Field>
       ) : null}
 
-      {error !== null ? <p className="gk-error text-body-3">{error}</p> : null}
+      {error !== null ? <p className={cn(pageLayout['error'], 'text-body-3')}>{error}</p> : null}
 
-      <div className="gk-buttons">
+      <div className={pageLayout['buttons']}>
         <button
           type="button"
           className="button-2 filled"

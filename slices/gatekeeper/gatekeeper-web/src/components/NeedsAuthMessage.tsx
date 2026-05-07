@@ -1,9 +1,13 @@
 import { Duration, Effect, Fiber, Schedule } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
+import { cn } from 'kitchen-sink'
 import { useEffect, useState, type JSX } from 'react'
 
 import { makeUnauthenticatedSession, writeToken } from '../client.ts'
+import { Field, FieldDescription } from './Field.tsx'
+import deviceEntryStyles from '../screens/device-entry.module.css'
+import pageLayout from '../styles/page-layout.module.css'
 
 type DeviceFlowState =
   | { readonly tag: 'starting' }
@@ -124,44 +128,43 @@ const NeedsAuthMessage = (): JSX.Element => {
 
   if (state.tag === 'starting') {
     return (
-      <div className="gk-page">
+      <div className={pageLayout['page']}>
         <p className="text-body-2">Starting sign-in…</p>
       </div>
     )
   }
   if (state.tag === 'pending') {
     return (
-      <div className="gk-page">
+      <div className={pageLayout['page']}>
         <h1 className="text-heading-4">Sign in on another device</h1>
         <p className="text-body-2">
           Open <code>{state.verificationUri}</code> on a signed-in device and enter the code below.
         </p>
-        <div className="gk-field">
-          <span className="gk-field__label text-label-3">Code</span>
-          <pre className="gk-pin-input">{state.userCode}</pre>
-        </div>
-        <p className="text-body-3 gk-field__description">
+        <Field label="Code">
+          <pre className={deviceEntryStyles['pin-input']}>{state.userCode}</pre>
+        </Field>
+        <FieldDescription>
           Or open the direct link:{' '}
           <a href={state.verificationUriComplete}>{state.verificationUriComplete}</a>
-        </p>
-        <p className="text-body-3 gk-field__description">
+        </FieldDescription>
+        <FieldDescription>
           Waiting for approval — this page will reload automatically once you sign in.
-        </p>
+        </FieldDescription>
       </div>
     )
   }
   if (state.tag === 'denied') {
     return (
-      <div className="gk-page">
-        <h1 className="gk-poll-declined text-heading-4">Sign-in denied</h1>
+      <div className={pageLayout['page']}>
+        <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Sign-in denied</h1>
         <p className="text-body-2">The sign-in request was denied. Refresh to try again.</p>
       </div>
     )
   }
   if (state.tag === 'expired') {
     return (
-      <div className="gk-page">
-        <h1 className="gk-poll-declined text-heading-4">Sign-in expired</h1>
+      <div className={pageLayout['page']}>
+        <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Sign-in expired</h1>
         <p className="text-body-2">
           The code expired before sign-in completed. Refresh to try again.
         </p>
@@ -169,9 +172,9 @@ const NeedsAuthMessage = (): JSX.Element => {
     )
   }
   return (
-    <div className="gk-page">
-      <h1 className="gk-poll-declined text-heading-4">Sign-in failed</h1>
-      <p className="gk-error text-body-3">{state.message}</p>
+    <div className={pageLayout['page']}>
+      <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Sign-in failed</h1>
+      <p className={cn(pageLayout['error'], 'text-body-3')}>{state.message}</p>
     </div>
   )
 }

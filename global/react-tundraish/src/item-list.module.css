@@ -1,0 +1,112 @@
+.item-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.item-list__title {
+  margin: 0;
+  color: var(--color-neutral-4);
+  text-transform: uppercase;
+}
+
+.item-list__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.item-list__row {
+  background: var(--color-background);
+  border: 1px solid var(--color-neutral-8);
+  border-radius: var(--radius-2);
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.item-list__row:hover:not(.item-list__row--disabled) {
+  border-color: var(--color-neutral-6);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.item-list__row--disabled {
+  opacity: 0.55;
+}
+
+.item-list__button,
+.item-list__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  border: none;
+  text-align: left;
+  text-decoration: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: inherit;
+}
+
+.item-list__button:disabled,
+.item-list__link[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
+.item-list__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.item-list__title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.item-list__name {
+  font-weight: var(--font-weight-3, 600);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-list__subtitle {
+  color: var(--color-neutral-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-list__badge {
+  flex-shrink: 0;
+  font-size: var(--font-size-1);
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  background: var(--color-neutral-8);
+  color: var(--color-neutral-3);
+}
+
+.item-list__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.item-list__chevron {
+  color: var(--color-neutral-5);
+  font-size: var(--font-size-5);
+  line-height: 1;
+  flex-shrink: 0;
+}

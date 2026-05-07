@@ -1,6 +1,7 @@
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
+import { cn } from 'kitchen-sink'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { useEffectTs } from 'react-kitchen-sink'
 import { Await, useNavigate } from 'react-router'
@@ -12,6 +13,7 @@ import { PageLoading } from '../components/PageLoading.tsx'
 import { RevokeGrantDialog } from '../components/RevokeGrantDialog.tsx'
 import { formatInstant } from '../format-date.ts'
 import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
+import pageLayout from '../styles/page-layout.module.css'
 
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
 
@@ -79,8 +81,8 @@ const AccessIndexBody = ({ session, grants, onRevoked }: AccessIndexBodyProps): 
   const grantToRevoke = grants.find((g) => g.id === confirmRevokeId) ?? null
 
   return (
-    <div className="gk-page">
-      {error !== null ? <p className="gk-error text-body-3">{error}</p> : null}
+    <div className={pageLayout['page']}>
+      {error !== null ? <p className={cn(pageLayout['error'], 'text-body-3')}>{error}</p> : null}
 
       <ItemList
         title="Requests"

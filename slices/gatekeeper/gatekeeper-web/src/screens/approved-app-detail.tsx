@@ -8,6 +8,8 @@ import { Await, useParams } from 'react-router'
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
 import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
+import pageLayout from '../styles/page-layout.module.css'
+import styles from './approved-app-detail.module.css'
 
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
 
@@ -37,9 +39,9 @@ const ApprovedAppDetailScreen = (): JSX.Element => {
     <Suspense fallback={<PageLoading />}>
       <Await resolve={grantPromise} errorElement={<AsyncErrorView title="Not Found" />}>
         {(grant: Grant) => (
-          <div className="gk-page">
+          <div className={pageLayout['page']}>
             <h1 className="text-heading-4">{grant.clientId}</h1>
-            <pre className="gk-json">{JSON.stringify(grant, null, 2)}</pre>
+            <pre className={styles['json']}>{JSON.stringify(grant, null, 2)}</pre>
           </div>
         )}
       </Await>

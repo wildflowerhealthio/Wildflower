@@ -10,14 +10,7 @@
       "packages/*",
       "slices/**",
       "tools/*"
-    ],
-    "catalog": {
-      "@types/node": "^24",
-      "eslint-plugin-expo": "^1.0.0",
-      "typescript": "^5",
-      "vite": "npm:@voidzero-dev/vite-plus-core@latest",
-      "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
-    }
+    ]
   },
   "type": "module",
   "scripts": {
