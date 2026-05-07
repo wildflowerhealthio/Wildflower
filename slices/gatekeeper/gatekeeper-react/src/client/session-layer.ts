@@ -1,5 +1,5 @@
 /**
- * Layer-construction shared by every gatekeeper-web HTTP session
+ * Layer-construction shared by every gatekeeper-react HTTP session
  * (authenticated and unauthenticated). Centralising here means the
  * runtime context — `HttpClient.HttpClient` for sibling-API calls,
  * `GatekeeperHttpApiClient` for typed gatekeeper API access — is wired

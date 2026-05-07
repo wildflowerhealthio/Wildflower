@@ -1,102 +1,78 @@
-import "./instrument.ts";
-import { createServer } from "node:http";
-import { HttpApi, HttpApiBuilder, HttpApiSwagger, HttpMiddleware } from "@effect/platform";
-import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
-import { Effect, Layer, pipe } from "effect";
-import { makeLivestoreStoreLayer } from "emr-core/contexts";
-import { FhirPublicApi, FhirResourcesApi } from "fhir-r4/http-api-definition";
-import {
-  FhirPublicApiHandlersFor,
-  FhirResourcesApiHandlersFor,
-  SmartConfigurationLive,
-} from "fhir-r4/http-api-implementation";
+import './instrument.ts'
+import { createServer } from 'node:http'
+import { NodeFileSystem, NodeHttpServer, NodePath, NodeRuntime } from '@effect/platform-node'
+import { Duration, Effect, Layer } from 'effect'
+import { makeLivestoreStoreLayer } from 'emr-core/contexts'
 import {
   makeGatekeeperStoreLayer,
   mintHostOwnerToken,
   seedFirstPartyClient,
-} from "gatekeeper-core/contexts";
-import { GatekeeperApi } from "gatekeeper-core/http-api-definition";
-import {
-  GatekeeperApiHandlersFor,
-  RequireAuthMiddleware,
-  RequireAuthMiddlewareLive,
-} from "gatekeeper-core/http-api-implementation";
-import { Origin } from "kitchen-sink";
-import { CryptoRandomLayerLive } from "kitchen-sink/crypto-random";
-import { createStore } from "./LivestoreStore.ts";
-import { StaticSpaLive } from "./static-spa.ts";
-import { TelemetryLive } from "./telemetry.ts";
+} from 'gatekeeper-core/contexts'
+import { Origin } from 'kitchen-sink'
+import { CryptoRandomLayerLive } from 'kitchen-sink/crypto-random'
+import { StringLiteralTypes } from 'kitchen-sink/types'
+import { webAssetsDir } from 'wildflower-react/web-assets'
+import { WebAssetsDir, WildflowerServerLive } from 'wildflower-server'
+import { createStore } from './LivestoreStore.ts'
+import { TelemetryLive } from './telemetry.ts'
 
-const PORT = 3000;
-const ORIGIN = `http://localhost:${PORT}`;
-
-const corsMiddleware = HttpMiddleware.cors({
-  allowedOrigins: ["*"],
-  allowedMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "origin",
-    "accept",
-    "x-requested-with",
-    "traceparent",
-    "tracestate",
-    "baggage",
-    "sentry-trace",
-  ],
-});
-
-const WildflowerNodeApi = HttpApi.make("WildflowerNodeApi")
-  .addHttpApi(GatekeeperApi)
-  .addHttpApi(FhirResourcesApi.middleware(RequireAuthMiddleware))
-  .addHttpApi(FhirPublicApi);
+const PORT = Number(process.env['PORT'] ?? 3000)
+const ORIGIN = process.env['ORIGIN'] ?? `http://localhost:${PORT}`
+if (!StringLiteralTypes.endsWithAlphanumericCharacter(ORIGIN)) {
+  throw new Error(`Invalid origin: ${ORIGIN}`)
+}
+const IS_DEV = process.env['NODE_ENV'] !== 'production'
+const BOOTSTRAP_TOKEN_TTL = Duration.hours(1)
 
 const CryptoRandomLive = CryptoRandomLayerLive<
   Uint8Array & ReturnType<typeof globalThis.crypto.getRandomValues>
->(globalThis.crypto, new Uint8Array(1));
+>(globalThis.crypto, new Uint8Array(1))
 
 const run = Effect.gen(function* () {
-  const store = yield* Effect.promise(() => createStore());
+  const store = yield* Effect.promise(() => createStore())
+  const gatekeeperStoreLayer = makeGatekeeperStoreLayer(store)
+  const originLayer = Layer.succeed(Origin, ORIGIN)
 
-  // Boot-time bootstrap: register the first-party host client (idempotent)
-  // and mint an Owner token for it. The token is appended to the printed
-  // server URL via `?token=` so an operator who opens the URL lands in the
-  // SPA already authenticated; `gatekeeper-web/host-token-bootstrap`
-  // consumes the param and strips it from the address bar.
-  const bootstrapToken = yield* Effect.gen(function* () {
-    yield* seedFirstPartyClient;
-    return yield* mintHostOwnerToken();
-  }).pipe(
-    Effect.provide(makeGatekeeperStoreLayer(store)),
-    Effect.provide(Layer.succeed(Origin, ORIGIN)),
-    Effect.catchAll((err) =>
-      pipe(Effect.logError("Error generating auth token", err), Effect.as("TOKEN_ERROR")),
-    ),
-  );
+  // Always seed the first-party `wildflower-host` client — that's this
+  // server's own identity, idempotent across restarts. The Owner-token mint
+  // and the bootstrap-URL log line are dev-only convenience: in production
+  // the operator authenticates via the device flow, not a token printed to
+  // stdout. Gated on NODE_ENV so the token never lands in prod logs.
+  yield* seedFirstPartyClient.pipe(
+    Effect.provide(gatekeeperStoreLayer),
+    Effect.provide(originLayer)
+  )
 
-  const WildflowerNodeApiLive = HttpApiBuilder.api(WildflowerNodeApi).pipe(
-    Layer.provide(GatekeeperApiHandlersFor<"WildflowerNodeApi">()),
-    Layer.provide(FhirResourcesApiHandlersFor<"WildflowerNodeApi">()),
-    Layer.provide(FhirPublicApiHandlersFor<"WildflowerNodeApi">()),
-    Layer.provide(RequireAuthMiddlewareLive),
-    Layer.provide(SmartConfigurationLive),
+  if (IS_DEV) {
+    yield* mintHostOwnerToken({ ttl: BOOTSTRAP_TOKEN_TTL }).pipe(
+      Effect.provide(gatekeeperStoreLayer),
+      Effect.provide(originLayer),
+      Effect.tap((token) =>
+        Effect.logInfo(
+          `Server is running. Bootstrap: ${ORIGIN}/gatekeeper?token=${encodeURIComponent(token)}`
+        )
+      ),
+      Effect.catchAll((err) =>
+        Effect.logError(`Server is running on ${ORIGIN}. Bootstrap token unavailable.`, err)
+      )
+    )
+  } else {
+    yield* Effect.logInfo(`Server is running on ${ORIGIN}.`)
+  }
+
+  const FullServerLive = WildflowerServerLive.pipe(
     Layer.provide(makeLivestoreStoreLayer(store)),
-    Layer.provide(makeGatekeeperStoreLayer(store)),
+    Layer.provide(gatekeeperStoreLayer),
     Layer.provide(CryptoRandomLive),
-  );
-
-  const ServerLive = HttpApiBuilder.serve(corsMiddleware).pipe(
-    Layer.provide(HttpApiSwagger.layer()),
-    Layer.provide(WildflowerNodeApiLive),
-    Layer.provide(StaticSpaLive),
     Layer.provide(NodeHttpServer.layer(createServer, { port: PORT })),
-    Layer.provide(Layer.succeed(Origin, ORIGIN)),
-    Layer.provide(TelemetryLive),
-  );
+    Layer.provide(NodeFileSystem.layer),
+    Layer.provide(NodePath.layer),
+    Layer.provide(Layer.succeed(WebAssetsDir, webAssetsDir)),
+    Layer.provide(originLayer),
+    Layer.provide(TelemetryLive)
+  )
 
-  const bootstrapUrl = `${ORIGIN}/gatekeeper?token=${encodeURIComponent(bootstrapToken)}`;
-  yield* Effect.logInfo(`Server is running. Bootstrap: ${bootstrapUrl}`);
-  yield* Layer.launch(ServerLive);
-});
+  yield* Layer.launch(FullServerLive)
+})
 
-NodeRuntime.runMain(run);
+NodeRuntime.runMain(run)

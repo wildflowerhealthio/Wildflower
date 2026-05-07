@@ -7,7 +7,7 @@ host browser bootstraps onto a fresh deployment via RFC 8628 device
 authorization or a one-shot bootstrap URL minted by the host process.
 
 This package is the pure layer — schemas, HttpApi definitions, and business
-rules. Platform adapters (e.g. `gatekeeper-web`) wire it up. SMART-on-FHIR is
+rules. Platform adapters (e.g. `gatekeeper-react`) wire it up. SMART-on-FHIR is
 the OAuth dialect spoken on the wire; details are in
 [`docs/Jargon Explanation.md`](../docs/Jargon%20Explanation.md).
 
@@ -60,9 +60,9 @@ redirectUri)`. Grant lookups drive the auto-approve fast path.
 The gatekeeper API redirects to URLs under `/gatekeeper/`, which the host app
 serves with a single-page app. The redirect targets are typed in
 [`gatekeeper-core/page-paths`](./src/page-paths.ts) (`GatekeeperPaths`); the
-SPA's React Router config in [`gatekeeper-web`](../gatekeeper-web/src/routes.tsx)
+SPA's React Router config in [`gatekeeper-react`](../gatekeeper-react/src/routes.tsx)
 mirrors them, and a drift test in
-[`gatekeeper-web/tests/routes.test.tsx`](../gatekeeper-web/tests/routes.test.tsx)
+[`gatekeeper-react/tests/routes.test.tsx`](../gatekeeper-react/tests/routes.test.tsx)
 enforces consistency. Serving the SPA itself is the host app's static-asset
 concern (see [`apps/wildflower-react`](../../../apps/wildflower-react)), not
 part of the gatekeeper-core contract.
@@ -70,17 +70,23 @@ part of the gatekeeper-core contract.
 Error pages are rendered inline by core via `internal/error-pages.ts` and are
 not part of the page contract.
 
-## Bootstrap URL
+## Bootstrap URL (dev-mode workaround)
 
 The host process (gatekeeper-node, native shell, dev server) has direct
 access to the signing key and can mint an access token via
-`internal/jwt.ts:mintAccessToken(activeKey, origin, { clientId:
-'wildflower-host', scope: ['owner'], ttl: Duration.minutes(5) })`. The
-browser consumes the token from a `?token=` query param at startup,
-stashes it in `localStorage`, and strips it from the URL via
-`history.replaceState`.
-Same primitive serves first-Owner bootstrap, native-shell launch, dev
-workflow, CLI login, share-with-other-device, and test fixtures.
+`mintHostOwnerToken({ ttl })` (or `internal/jwt.ts:mintAccessToken` for
+ad-hoc cases). The browser consumes the token from a `?token=` query
+param at startup, stashes it in `localStorage`, and strips it from the
+URL via `history.replaceState`.
+
+**This is a dev convenience, not a shipping pattern.** The long-term
+story for first-Owner onboarding (native shell, fresh deployment, CLI
+login) is unsettled; the device flow is the production path. Until that
+shakes out, the helpers live behind a dev gate at the call site (e.g.
+`apps/wildflower-node` only mints when `NODE_ENV !== 'production'`).
+A 1-hour TTL is the current default in dev — long enough to be less
+annoying than re-minting through every page reload, short enough that a
+leaked URL stops being useful within a working session.
 
 ## Row-await helper
 

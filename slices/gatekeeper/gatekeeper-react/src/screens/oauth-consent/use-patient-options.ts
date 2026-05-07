@@ -35,7 +35,9 @@ const fetchPatientOptionsEffect = (
       return [{ id: resource.id, displayName }]
     })
   }).pipe(
-    Effect.tapErrorCause((cause) => Effect.logError('gatekeeper-web: patient lookup failed', cause))
+    Effect.tapErrorCause((cause) =>
+      Effect.logError('gatekeeper-react: patient lookup failed', cause)
+    )
   )
 
 interface PatientOptionsState {

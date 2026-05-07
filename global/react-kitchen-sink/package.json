@@ -33,7 +33,7 @@
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.0",
     "@types/react": "catalog:",
-    "@types/react-dom": "~19.2.0",
+    "@types/react-dom": "catalog:",
     "effect": "catalog:",
     "jsdom": "^26.0.0",
     "kitchen-sink": "workspace:*",

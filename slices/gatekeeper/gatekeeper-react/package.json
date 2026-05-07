@@ -1,5 +1,5 @@
 {
-  "name": "gatekeeper-web",
+  "name": "gatekeeper-react",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -19,7 +19,25 @@
     "check": "vp check",
     "dev": "vp pack --watch"
   },
-  "dependencies": {
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "gatekeeper-core": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-router": "catalog:",
+    "react-tundraish": "workspace:*",
+    "telemetry-web": "workspace:*",
+    "tundra-css": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
     "@effect/platform": "catalog:",
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
@@ -28,15 +46,9 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
-    "react-router": "^7.8.0",
+    "react-router": "catalog:",
     "react-tundraish": "workspace:*",
     "telemetry-web": "workspace:*",
-    "tundra-css": "^0.14.0"
-  },
-  "devDependencies": {
-    "@types/react": "catalog:",
-    "@types/react-dom": "~19.2.0",
-    "typescript": "catalog:",
-    "vite-plus": "catalog:"
+    "tundra-css": "catalog:"
   }
 }

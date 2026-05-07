@@ -8,23 +8,19 @@
     "start": "node --conditions=source --env-file=.env.local --experimental-transform-types src/index.ts"
   },
   "dependencies": {
-    "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
     "@livestore/adapter-node": "catalog:",
-    "@livestore/common": "catalog:",
     "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
-    "@livestore/utils": "catalog:",
     "@sentry/node": "catalog:",
     "@sentry/opentelemetry": "catalog:",
     "effect": "catalog:",
     "emr-core": "workspace:*",
-    "fhir-r4": "workspace:*",
     "gatekeeper-core": "workspace:*",
     "kitchen-sink": "workspace:*",
     "telemetry-core": "workspace:*",
     "telemetry-node": "workspace:*",
-    "wildflower-react": "workspace:*"
+    "wildflower-react": "workspace:*",
+    "wildflower-server": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

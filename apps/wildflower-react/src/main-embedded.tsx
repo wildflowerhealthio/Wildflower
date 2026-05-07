@@ -1,5 +1,5 @@
 import './instrument.ts'
-import 'gatekeeper-web/host-token-bootstrap'
+import 'gatekeeper-react/host-token-bootstrap'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Routes } from 'react-router'

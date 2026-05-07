@@ -1,0 +1,50 @@
+{
+  "name": "wildflower-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema": {
+      "source": "./src/schema.ts",
+      "default": "./dist/schema.js"
+    },
+    "./static-spa": {
+      "source": "./src/static-spa.ts",
+      "default": "./dist/static-spa.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "effect": "catalog:",
+    "emr-core": "workspace:*",
+    "fhir-r4": "workspace:*",
+    "gatekeeper-core": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "effect": "catalog:",
+    "emr-core": "workspace:*",
+    "fhir-r4": "workspace:*",
+    "gatekeeper-core": "workspace:*",
+    "kitchen-sink": "workspace:*"
+  }
+}

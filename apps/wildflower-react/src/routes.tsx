@@ -1,4 +1,4 @@
-import { gatekeeperRoutesFragment } from 'gatekeeper-web'
+import { gatekeeperRoutesFragment } from 'gatekeeper-react'
 import type { JSX } from 'react'
 
 // Composed route fragment. Exported as a JSX.Element (not a component)

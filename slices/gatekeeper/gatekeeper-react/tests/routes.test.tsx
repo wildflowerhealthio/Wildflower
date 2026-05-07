@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vite-plus/test'
-import { GatekeeperPaths } from '../../gatekeeper-core/src/page-paths.ts'
+import * as GatekeeperPaths from '../../gatekeeper-core/src/page-paths.ts'
 
 // The drift test reads routes.tsx as text rather than importing it. Importing
 // the JSX module pulls in every screen and their transitive deps
@@ -27,15 +27,21 @@ const declaredRoutePaths = ((): readonly string[] => {
   return paths
 })()
 
-test('every GatekeeperPaths target has a matching <Route path>', () => {
-  // GatekeeperPaths percent-encodes path params for path-segment use, but
-  // <Route path> literals use the un-encoded ":param" form. Decode the
+// One-direction drift: every redirect target in `GatekeeperPaths` must have
+// a matching `<Route path>`. We do NOT check the reverse — owner-navigation
+// routes (`/gatekeeper`, `/gatekeeper/requests`, `/gatekeeper/approved/:id`)
+// are intentionally absent from `GatekeeperPaths` because they're internal
+// nav, not redirect targets. Those routes are validated by the screens
+// themselves.
+test('every GatekeeperPaths redirect target has a matching <Route path>', () => {
+  // `*Path` builders percent-encode path params for path-segment use, but
+  // `<Route path>` literals use the un-encoded ":param" form. Decode the
   // builder output so the two representations align.
   const expectedPaths: readonly string[] = [
-    decodeURIComponent(GatekeeperPaths.oauthPolling(':id')),
-    decodeURIComponent(GatekeeperPaths.oauthConsent(':id')),
-    decodeURIComponent(GatekeeperPaths.deviceEntry()),
-    decodeURIComponent(GatekeeperPaths.deviceConsent(':userCode')),
+    decodeURIComponent(GatekeeperPaths.oauthPollingPath(':id')),
+    decodeURIComponent(GatekeeperPaths.oauthConsentPath(':id')),
+    decodeURIComponent(GatekeeperPaths.deviceEntryPath()),
+    decodeURIComponent(GatekeeperPaths.deviceConsentPath(':userCode')),
   ]
 
   for (const expected of expectedPaths) {

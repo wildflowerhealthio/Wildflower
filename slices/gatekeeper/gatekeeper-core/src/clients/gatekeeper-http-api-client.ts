@@ -11,7 +11,7 @@ type GatekeeperHttpApiClientShape = Effect.Effect.Success<typeof _bareGatekeeper
 
 /**
  * Effect Service providing the resolved `GatekeeperApi` HttpApi
- * client. Adapter layers (`gatekeeper-web`, `gatekeeper-expo`) build
+ * client. Adapter layers (`gatekeeper-react`, `gatekeeper-expo`) build
  * the client and provide it via `Layer.effect(GatekeeperHttpApiClient, …)`;
  * call sites consume it Effect-natively:
  *

@@ -1,6 +1,7 @@
-import { Duration, Effect, Fiber, Schedule } from 'effect'
+import { Duration, Effect, Fiber, Match, Predicate, Schedule, Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
+import { OAuth } from 'gatekeeper-core/http-api-definition'
 import { cn } from 'kitchen-sink'
 import { useEffect, useState, type JSX } from 'react'
 
@@ -23,29 +24,20 @@ type DeviceFlowState =
 
 const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
 
-const errorCodeOf = (error: unknown): string | undefined => {
-  if (typeof error !== 'object' || error === null) return undefined
-  const code = (error as Record<string, unknown>)['error'] // oxlint-disable-line typescript/no-unsafe-type-assertion -- HttpApi error bodies are decoded but escape as unknown at this boundary
-  return typeof code === 'string' ? code : undefined
-}
+type OAuth400 = Schema.Schema.Type<typeof OAuth.OAuthError400Schema>
+type OAuth401 = Schema.Schema.Type<typeof OAuth.OAuthError401Schema>
+type OAuthErrorBody = OAuth400 | OAuth401
 
-const errorDescriptionOf = (error: unknown): string | undefined => {
-  if (typeof error !== 'object' || error === null) return undefined
-  const description = (error as Record<string, unknown>)['error_description'] // oxlint-disable-line typescript/no-unsafe-type-assertion -- HttpApi error bodies are decoded but escape as unknown at this boundary
-  return typeof description === 'string' ? description : undefined
-}
+const formatOAuthError = (body: OAuthErrorBody): string =>
+  body.error_description !== undefined ? `${body.error}: ${body.error_description}` : body.error
 
-// Format an HttpApi-decoded OAuth error (or any thrown value) as a single
-// human-readable line. Plain Error.message would render as "[object Object]"
-// for typed schema errors like `OAuthError401Schema.make(...)`, since those
-// aren't Error subclasses.
-const formatError = (error: unknown): string => {
+// Fallback for anything that isn't a recognised OAuth error body. Plain
+// `Error.message` would render as "[object Object]" for typed schema
+// errors like `OAuthError401Schema.make(...)`, but those match cleanly
+// on the OAuth branches; this path only handles network failures,
+// unexpected shapes, and thrown strings.
+const formatGenericError = (error: unknown): string => {
   if (error instanceof Error) return error.message
-  const code = errorCodeOf(error)
-  const description = errorDescriptionOf(error)
-  if (code !== undefined && description !== undefined) return `${code}: ${description}`
-  if (code !== undefined) return code
-  if (description !== undefined) return description
   if (typeof error === 'string') return error
   try {
     return JSON.stringify(error)
@@ -55,17 +47,30 @@ const formatError = (error: unknown): string => {
 }
 
 /** RFC 8628 §3.5: keep polling while the issuer is still waiting. */
-const isPollingPending = (error: unknown): boolean => {
-  const code = errorCodeOf(error)
-  return code === 'authorization_pending' || code === 'slow_down'
-}
+const matchIsRetryable: (err: unknown) => boolean = Match.type<unknown>().pipe(
+  Match.withReturnType<boolean>(),
+  Match.when({ error: 'authorization_pending' }, () => true),
+  Match.when({ error: 'slow_down' }, () => true),
+  Match.orElse(() => false)
+)
 
-const terminalState = (error: unknown): DeviceFlowState => {
-  const code = errorCodeOf(error)
-  if (code === 'access_denied') return { tag: 'denied' }
-  if (code === 'expired_token') return { tag: 'expired' }
-  return { tag: 'error', message: formatError(error) }
-}
+/**
+ * Map any thrown value to the next `DeviceFlowState`. Each arm matches
+ * type + value at once: `Match.when({ error: 'access_denied' }, …)`
+ * uses Match's structural-pattern syntax to test the discriminator
+ * literal directly. The schema-union arm catches any remaining 400/401
+ * codes; `orElse` handles non-OAuth errors.
+ */
+const matchErrorState: (err: unknown) => DeviceFlowState = Match.type<unknown>().pipe(
+  Match.withReturnType<DeviceFlowState>(),
+  Match.when({ error: 'access_denied' }, () => ({ tag: 'denied' })),
+  Match.when({ error: 'expired_token' }, () => ({ tag: 'expired' })),
+  Match.when(
+    Predicate.or(Schema.is(OAuth.OAuthError400Schema), Schema.is(OAuth.OAuthError401Schema)),
+    (body) => ({ tag: 'error', message: formatOAuthError(body) })
+  ),
+  Match.orElse((err) => ({ tag: 'error', message: formatGenericError(err) }))
+)
 
 /**
  * Replaces the previous "you need a token" stub: actually starts the
@@ -130,7 +135,7 @@ const NeedsAuthMessage = (): JSX.Element => {
         .pipe(
           Effect.retry({
             schedule: Schedule.spaced(Duration.seconds(Math.max(auth.interval, 1))),
-            while: isPollingPending,
+            while: matchIsRetryable,
           })
         )
 
@@ -140,7 +145,7 @@ const NeedsAuthMessage = (): JSX.Element => {
     }).pipe(
       Effect.catchAll((err) =>
         Effect.sync(() => {
-          setState(terminalState(err))
+          setState(matchErrorState(err))
         })
       )
     )

@@ -3,9 +3,10 @@ import { viteSingleFile } from 'vite-plugin-singlefile'
 import type { Plugin } from 'vite-plus'
 import { defineConfig } from 'vite-plus'
 
-// Inlined from the previous `kitchen-sink/bundling` helper. After this
-// package owns the only `viteSingleFile` consumer, the helper has no
-// remaining callers; it lives here to keep the dependency edge narrow.
+// Re-emit `viteSingleFile`'s inlined HTML as both a JS string export and a
+// `.d.ts` declaration. Lets downstream packages (`gatekeeper-expo`) import
+// `embeddable-html` and pass the bundled SPA into a `react-native-webview`
+// without shipping a separate static asset.
 const emitHtmlAsModule = (): Plugin => ({
   name: 'wildflower-react:emit-html-as-module',
   enforce: 'post',

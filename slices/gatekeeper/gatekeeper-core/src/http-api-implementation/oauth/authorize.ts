@@ -1,7 +1,7 @@
 import { HttpServerResponse } from '@effect/platform'
 import type { Schema } from 'effect'
 import { Array, DateTime, Duration, Effect, pipe } from 'effect'
-import { Origin } from 'kitchen-sink'
+import type { Origin } from 'kitchen-sink'
 import { CryptoRandom } from 'kitchen-sink/crypto-random'
 import { GatekeeperStore } from '../../contexts/gatekeeper-store.ts'
 import type { AuthorizeUrlParamsSchema } from '../../http-api-definition/oauth.ts'
@@ -14,7 +14,7 @@ import {
   Grant,
   SigningKey,
 } from '../../livestore/index.ts'
-import { GatekeeperPaths } from '../../page-paths.ts'
+import * as GatekeeperPaths from '../../page-paths.ts'
 import { buildClientRedirectUrl } from './shared.ts'
 
 type AuthorizeParams = Schema.Schema.Type<typeof AuthorizeUrlParamsSchema>
@@ -163,9 +163,6 @@ const issueCodeForAutoApprovedRequest = (input: {
     return code
   })
 
-const buildPollingPageUrl = (origin: string, requestId: string): string =>
-  `${origin}${GatekeeperPaths.oauthPolling(requestId)}`
-
 const getAuthorizationRequestParameters = (
   urlParams: AuthorizeParams
 ): Effect.Effect<
@@ -256,8 +253,8 @@ const handleAuthorize = (
         )
       }
 
-      const origin = yield* Origin
-      return HttpServerResponse.redirect(buildPollingPageUrl(origin, requestId), { status: 302 })
+      const pollingUrl = yield* GatekeeperPaths.oauthPollingUrl(requestId)
+      return HttpServerResponse.redirect(pollingUrl, { status: 302 })
     }),
     // Validation steps short-circuit by failing with a fully-formed
     // response; surface that response to the framework as success.

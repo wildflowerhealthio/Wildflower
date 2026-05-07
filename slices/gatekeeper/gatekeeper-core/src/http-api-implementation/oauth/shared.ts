@@ -135,7 +135,7 @@ const issueTokenResponse = (input: {
     return {
       access_token: signed,
       token_type: 'Bearer',
-      expires_in: Math.floor(Duration.toMillis(ACCESS_TOKEN_TTL) / 1000),
+      expires_in: Math.floor(Duration.toSeconds(ACCESS_TOKEN_TTL)),
       scope: input.grantedScopes.join(' '),
       patient: input.patient ?? undefined,
     }

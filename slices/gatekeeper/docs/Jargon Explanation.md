@@ -193,7 +193,7 @@ load-bearing defenses against URL leakage.
 The HttpApi group whose endpoints serve **HTML** to humans
 (`OAuthPollingPage`, `OAuthConsentPage`, `DeviceEntryPage`,
 `DeviceConsentPage`). Core ships definitions only; consumer slices
-(`gatekeeper-web`) provide the handler layer through the phantom-id
+(`gatekeeper-react`) provide the handler layer through the phantom-id
 bridge described in `docs/Effect/HttpApi Composition How-To.md`. Every
 page is public; auth is JS-driven on the JSON endpoints behind them.
 

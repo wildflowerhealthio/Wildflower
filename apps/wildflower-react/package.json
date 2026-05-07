@@ -8,8 +8,8 @@
       "types": "./dist-embedded/html.d.ts",
       "default": "./dist-embedded/html.js"
     },
-    "./web-assets-dir": {
-      "source": "./src/web-assets-dir.ts"
+    "./web-assets": {
+      "source": "./src/web-assets.ts"
     },
     "./package.json": "./package.json"
   },
@@ -21,17 +21,17 @@
     "dev": "vp dev --config vite.config.web.ts"
   },
   "dependencies": {
-    "gatekeeper-web": "workspace:*",
+    "gatekeeper-react": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-router": "^7.8.0",
+    "react-router": "catalog:",
     "react-tundraish": "workspace:*",
     "telemetry-web": "workspace:*",
-    "tundra-css": "^0.14.0"
+    "tundra-css": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:",
-    "@types/react-dom": "~19.2.0",
+    "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "^5.0.4",
     "typescript": "catalog:",
     "vite-plugin-singlefile": "^2.3.3",
