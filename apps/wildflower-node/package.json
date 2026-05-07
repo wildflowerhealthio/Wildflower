@@ -1,0 +1,41 @@
+{
+  "name": "wildflower-node",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --conditions=source --env-file=.env.local --experimental-transform-types src/index.ts",
+    "start": "node --conditions=source --env-file=.env.local --experimental-transform-types src/index.ts"
+  },
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@livestore/adapter-node": "catalog:",
+    "@livestore/common": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "@livestore/utils": "catalog:",
+    "@sentry/node": "catalog:",
+    "@sentry/opentelemetry": "catalog:",
+    "@sentry/vite-plugin": "catalog:",
+    "apps-core": "workspace:*",
+    "apps-web": "workspace:*",
+    "collector-core": "workspace:*",
+    "collector-web": "workspace:*",
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "gatekeeper-core": "workspace:*",
+    "gatekeeper-web": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "store-core": "workspace:*",
+    "telemetry-core": "workspace:*",
+    "telemetry-node": "workspace:*",
+    "vendor-apps": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "~6.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
