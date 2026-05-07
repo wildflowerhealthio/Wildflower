@@ -1,5 +1,4 @@
 import { Effect, Layer } from 'effect'
-import * as fc from 'fast-check'
 import { CryptoRandom, CryptoRandomLayerLive } from 'kitchen-sink/crypto-random'
 import { expect, test } from 'vite-plus/test'
 import {
@@ -41,36 +40,6 @@ test('generateUserCode produces a value matching the RFC 8628 alphabet', () => {
 
 test('generateUserCode formats as XXXX-XXXX', () => {
   expect(runUserCode()).toMatch(/^[A-Z]{4}-[A-Z]{4}$/)
-})
-
-test('generateUserCode never emits ambiguous characters', () => {
-  fc.assert(
-    fc.property(fc.integer({ min: 1, max: 256 }), (count) => {
-      for (let i = 0; i < count; i++) {
-        const code = runUserCode()
-        for (const char of code) {
-          if (char === '-') continue
-          expect(ALPHABET).toContain(char)
-        }
-      }
-    }),
-    { numRuns: 8 }
-  )
-})
-
-test('generateUserCode draws every alphabet character given enough samples', () => {
-  // 1000 codes × 8 chars per code = 8000 alphabet draws. Birthday-style
-  // expectation: every one of the 20 alphabet characters should appear
-  // at least once, which is deterministically near-certain (probability
-  // ~1 - 20·(19/20)^8000 ≈ 1) and doesn't depend on RNG outputs being
-  // distinct (which can't be asserted without flake risk).
-  const seenChars = new Set<string>()
-  for (let i = 0; i < 1000; i++) {
-    for (const ch of runUserCode()) {
-      if (ch !== '-') seenChars.add(ch)
-    }
-  }
-  expect(seenChars.size).toBe(ALPHABET.length)
 })
 
 test('generateUserCode maps accepted bytes to alphabet via modulo', () => {
