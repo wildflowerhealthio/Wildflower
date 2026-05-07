@@ -1,7 +1,7 @@
 import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise, type Store } from '@livestore/livestore'
 import { Array } from 'effect'
-import { JsonWebKeys } from 'gatekeeper-core/livestore'
+import { SigningKey } from 'gatekeeper-core/livestore'
 import { getLivestoreOtelOptions, injectActiveOtelContext } from 'telemetry-core/livestore'
 import { events, schema } from './schema.ts'
 
@@ -16,10 +16,10 @@ const createStore = async (): Promise<Store<typeof schema, object>> => {
     storeId: 'livestore-data',
     otelOptions: getLivestoreOtelOptions('wildflower-node'),
   })
-  const jsonWebKeys = store.query(JsonWebKeys.queries.allJwks$)
-  if (!Array.isNonEmptyReadonlyArray(jsonWebKeys)) {
-    const jwk = await JsonWebKeys.RsaJwk.generate()
-    store.commit(events.jwkAdded({ rsaJwk: jwk }))
+  const signingKeys = store.query(SigningKey.queries.all$)
+  if (!Array.isNonEmptyReadonlyArray(signingKeys)) {
+    const signingKey = await SigningKey.generate()
+    store.commit(events.signingKeyAdded({ signingKey }))
   }
   return injectActiveOtelContext(store)
 }

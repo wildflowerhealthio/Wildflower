@@ -17,24 +17,18 @@
     "@livestore/utils": "catalog:",
     "@sentry/node": "catalog:",
     "@sentry/opentelemetry": "catalog:",
-    "@sentry/vite-plugin": "catalog:",
-    "apps-core": "workspace:*",
-    "apps-web": "workspace:*",
-    "collector-core": "workspace:*",
-    "collector-web": "workspace:*",
     "effect": "catalog:",
+    "emr-core": "workspace:*",
     "fhir-r4": "workspace:*",
     "gatekeeper-core": "workspace:*",
     "gatekeeper-web": "workspace:*",
     "kitchen-sink": "workspace:*",
-    "store-core": "workspace:*",
     "telemetry-core": "workspace:*",
-    "telemetry-node": "workspace:*",
-    "vendor-apps": "workspace:*"
+    "telemetry-node": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "typescript": "~6.0.2",
+    "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   }

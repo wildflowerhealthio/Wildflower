@@ -1,43 +1,33 @@
-/* oxlint-disable max-dependencies */
 import './instrument.ts'
 import { createServer } from 'node:http'
-import { HttpApi, HttpApiBuilder, HttpApiSwagger, HttpMiddleware } from '@effect/platform'
+import {
+  HttpApi,
+  HttpApiBuilder,
+  type HttpApiGroup,
+  HttpApiSwagger,
+  HttpMiddleware,
+} from '@effect/platform'
 import { NodeHttpServer, NodeRuntime } from '@effect/platform-node'
-import type { ServerState } from 'apps-core/contexts'
-import { makeAppsStoreLayer } from 'apps-core/contexts'
-import { AppsApi } from 'apps-core/http-api-definition'
-import { AppsApiHandlersFor } from 'apps-core/http-api-implementation'
-import { AppsWebApi } from 'apps-web'
-import { AppsWebApiHandlersFor } from 'apps-web/http-api-implementation'
-import { makeCollectorStoreLayer } from 'collector-core/contexts'
-import { CollectorApi } from 'collector-core/http-api-definition'
-import { CollectorApiHandlersFor } from 'collector-core/http-api-implementation'
-import { CollectorWebApi } from 'collector-web'
-import { CollectorWebApiHandlersFor } from 'collector-web/http-api-implementation'
 import { Effect, Layer } from 'effect'
+import { makeLivestoreStoreLayer } from 'emr-core/contexts'
 import { FhirPublicApi, FhirResourcesApi } from 'fhir-r4/http-api-definition'
 import {
   FhirPublicApiHandlersFor,
   FhirResourcesApiHandlersFor,
   SmartConfigurationLive,
 } from 'fhir-r4/http-api-implementation'
-import { makeAuthStoreLayer, OAuthDisplayDefaultInteractive } from 'gatekeeper-core/contexts'
-import { AuthApi } from 'gatekeeper-core/http-api-definition'
+import { makeGatekeeperStoreLayer } from 'gatekeeper-core/contexts'
+import { GatekeeperApi } from 'gatekeeper-core/http-api-definition'
 import {
-  AuthApiHandlersFor,
+  GatekeeperApiHandlersFor,
   RequireAuthMiddleware,
   RequireAuthMiddlewareLive,
 } from 'gatekeeper-core/http-api-implementation'
-import { GatekeeperWebApi } from 'gatekeeper-web'
-import { AuthRendererLive } from 'gatekeeper-web/auth-renderer'
-import { GatekeeperWebApiHandlersFor } from 'gatekeeper-web/http-api-implementation'
+import { GatekeeperPagesHandlersFor } from 'gatekeeper-web'
 import { Origin } from 'kitchen-sink'
-import { makeLivestoreStoreLayer } from 'store-core/contexts'
-import { VendorAppsApi } from 'vendor-apps/http-api-definition'
-import { VendorAppsApiHandlersFor } from 'vendor-apps/http-api-implementation'
+import { CryptoRandomLayerLive } from 'kitchen-sink/crypto-random'
 import { createStore } from './LivestoreStore.ts'
 import { TelemetryLive } from './telemetry.ts'
-import { TunnelControlLive } from './tunnel-control.ts'
 
 const PORT = 3000
 const ORIGIN = `http://localhost:${PORT}`
@@ -59,50 +49,44 @@ const corsMiddleware = HttpMiddleware.cors({
 })
 
 const WildflowerNodeApi = HttpApi.make('WildflowerNodeApi')
-  .addHttpApi(AuthApi)
+  .addHttpApi(GatekeeperApi)
   .addHttpApi(FhirResourcesApi.middleware(RequireAuthMiddleware))
   .addHttpApi(FhirPublicApi)
-  .addHttpApi(AppsApi)
-  .addHttpApi(CollectorApi)
-  .addHttpApi(VendorAppsApi)
-  .addHttpApi(AppsWebApi)
-  .addHttpApi(GatekeeperWebApi)
-  .addHttpApi(CollectorWebApi)
 
-const state: ServerState = {
-  origin: ORIGIN,
-  localOrigin: ORIGIN,
-  port: PORT,
-  tunnelActive: false,
-}
+const CryptoRandomLive = CryptoRandomLayerLive<
+  Uint8Array & ReturnType<typeof globalThis.crypto.getRandomValues>
+>(globalThis.crypto, new Uint8Array(1))
 
 const run = Effect.gen(function* () {
   const store = yield* Effect.promise(() => createStore())
 
+  // GatekeeperPagesHandlersFor's return type omits the E/R parameters and
+  // relies on the `Layer.Layer` defaults; when chained through
+  // `.pipe(Layer.provide(...))` alongside other handler layers TS loses
+  // those defaults and the resulting layer collapses to `Layer<Api, any,
+  // any>`. Pinning E=never and R=never on a local restores type flow.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const PagesHandlers = GatekeeperPagesHandlersFor<'WildflowerNodeApi'>() as Layer.Layer<
+    HttpApiGroup.ApiGroup<'WildflowerNodeApi', 'gatekeeper-pages'>,
+    never,
+    never
+  >
+
   const WildflowerNodeApiLive = HttpApiBuilder.api(WildflowerNodeApi).pipe(
-    Layer.provide(AuthApiHandlersFor<'WildflowerNodeApi'>()),
-    Layer.provide(FhirPublicApiHandlersFor<'WildflowerNodeApi'>()),
+    Layer.provide(GatekeeperApiHandlersFor<'WildflowerNodeApi'>()),
     Layer.provide(FhirResourcesApiHandlersFor<'WildflowerNodeApi'>()),
-    Layer.provide(AppsApiHandlersFor<'WildflowerNodeApi'>()),
-    Layer.provide(CollectorApiHandlersFor<'WildflowerNodeApi'>()),
-    Layer.provide(VendorAppsApiHandlersFor<'WildflowerNodeApi'>()),
-    Layer.provide(AppsWebApiHandlersFor<'WildflowerNodeApi'>()),
-    Layer.provide(GatekeeperWebApiHandlersFor<'WildflowerNodeApi'>()),
-    Layer.provide(CollectorWebApiHandlersFor<'WildflowerNodeApi'>()),
-    Layer.provide(AuthRendererLive),
+    Layer.provide(FhirPublicApiHandlersFor<'WildflowerNodeApi'>()),
+    Layer.provide(PagesHandlers),
     Layer.provide(RequireAuthMiddlewareLive),
-    Layer.provide(OAuthDisplayDefaultInteractive),
     Layer.provide(SmartConfigurationLive),
     Layer.provide(makeLivestoreStoreLayer(store)),
-    Layer.provide(makeAuthStoreLayer(store)),
-    Layer.provide(makeAppsStoreLayer(store)),
-    Layer.provide(makeCollectorStoreLayer(store))
+    Layer.provide(makeGatekeeperStoreLayer(store)),
+    Layer.provide(CryptoRandomLive)
   )
 
   const ServerLive = HttpApiBuilder.serve(corsMiddleware).pipe(
     Layer.provide(HttpApiSwagger.layer()),
     Layer.provide(WildflowerNodeApiLive),
-    Layer.provide(TunnelControlLive(state)),
     Layer.provide(NodeHttpServer.layer(createServer, { port: PORT })),
     Layer.provide(Layer.succeed(Origin, ORIGIN)),
     Layer.provide(TelemetryLive)
