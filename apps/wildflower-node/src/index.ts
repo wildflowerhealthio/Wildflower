@@ -80,6 +80,7 @@ const run = Effect.gen(function* () {
     Layer.provide(TelemetryLive)
   )
 
+  yield* Effect.logInfo(`Server is running at ${ORIGIN}...`)
   yield* Layer.launch(ServerLive)
 })
 

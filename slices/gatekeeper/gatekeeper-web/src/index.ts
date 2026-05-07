@@ -1,1 +1,1 @@
-export { GatekeeperPagesHandlersFor, GatekeeperPagesHandlersLive } from './pages.tsx'
+export { GatekeeperPagesHandlersFor, GatekeeperPagesHandlersLive } from './pages.ts'
