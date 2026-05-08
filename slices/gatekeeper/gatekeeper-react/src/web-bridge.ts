@@ -1,6 +1,6 @@
+import { ContractQueryParam } from 'contracts-react'
 import { Effect } from 'effect'
-import { GatekeeperBridge } from 'gatekeeper-core/bridge'
-import { consumeUrlParam } from 'interop-react'
+import GatekeeperBridge from 'gatekeeper-core/bridge'
 import { writeToken } from './client/token-storage.ts'
 
 /**
@@ -11,7 +11,7 @@ import { writeToken } from './client/token-storage.ts'
  * gatekeeper-core's "Bootstrap URL" notes.
  */
 const bootstrapTokenFromUrl = (): void => {
-  const fromUrl = consumeUrlParam('token')
+  const fromUrl = ContractQueryParam.consumeQueryParam('token')
   if (fromUrl !== null && fromUrl !== '') writeToken(fromUrl)
 }
 

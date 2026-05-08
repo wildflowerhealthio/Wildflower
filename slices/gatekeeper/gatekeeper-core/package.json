@@ -63,8 +63,8 @@
     "@typescript/native-preview": "catalog:",
     "bumpp": "^11.0.1",
     "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
-    "interop-core": "workspace:*",
     "jose": "^6.2.2",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
@@ -78,7 +78,7 @@
     "@livestore/peer-deps": "catalog:",
     "@livestore/utils": "catalog:",
     "effect": "catalog:",
-    "interop-core": "workspace:*",
+    "effect-messaging-core": "workspace:*",
     "jose": "^6.2.2",
     "kitchen-sink": "workspace:*"
   }

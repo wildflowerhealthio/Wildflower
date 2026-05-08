@@ -2,6 +2,7 @@ packages:
   - apps/*
   - domain/*
   - global/*
+  - global/effect-messaging/*
   - global/expo-effect-platform/example
   - global/expo-localtunnel/example
   - infrastructure/*

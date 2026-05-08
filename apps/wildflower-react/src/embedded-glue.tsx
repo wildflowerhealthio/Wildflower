@@ -1,8 +1,7 @@
+import { NavigateBinder as ContractsNavigateBinder, useRouteChangeWatcher } from 'contracts-react'
 import { Effect } from 'effect'
-import { useRouteChangeWatcher } from 'interop-react'
 import type { JSX } from 'react'
-import { useNavigate } from 'react-router'
-import { bindNavigate, transport } from './embedded-runtime.ts'
+import { navRef, pendingNavigations, transport } from './embedded-runtime.ts'
 
 /**
  * Glue components for the embedded SPA. Both are zero-render React
@@ -16,18 +15,13 @@ import { bindNavigate, transport } from './embedded-runtime.ts'
  */
 
 /**
- * Populates the embedded runtime's navigate ref on mount and flushes
- * any queued navigation events. Mount this once near the top of the
- * router tree; rendering it has no DOM effect.
- *
- * react-router's `NavigateFunction` is a callable with overloaded
- * signatures (`number` and `To`); the runtime's ref type captures
- * that intersection.
+ * Embedded-app instantiation of `contracts-react`'s `<NavigateBinder>`,
+ * wired against the navRef + queue the runtime exports. Pre-mount nav
+ * events queue up; post-mount they flow through `useNavigate()`. Mount
+ * once inside the router tree.
  */
 function NavigateBinder(): JSX.Element | null {
-  const navigate = useNavigate()
-  bindNavigate(navigate as Parameters<typeof bindNavigate>[0])
-  return null
+  return <ContractsNavigateBinder navRef={navRef} queue={pendingNavigations} />
 }
 
 /**

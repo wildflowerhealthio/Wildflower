@@ -21,6 +21,7 @@ export default defineConfig({
       'crypto-random': 'src/crypto-random/index.ts',
       'polyfills/promise-with-resolvers': 'src/polyfills/promise-with-resolvers.ts',
       schema: 'src/schema/index.ts',
+      test: 'src/test/index.ts',
       types: 'src/types/index.ts',
     },
   },

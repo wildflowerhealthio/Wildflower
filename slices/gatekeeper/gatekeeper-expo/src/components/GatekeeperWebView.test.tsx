@@ -10,10 +10,11 @@ import type { ReactElement } from 'react'
 // `makeExpoTransport` mock and read in test bodies — pure-write inside
 // the factory, so it passes the hoist guard.
 //
-// We replace `interop-expo` wholesale because the real module's
-// `embedded-webview.tsx` imports `react-native-webview`, which calls
-// `TurboModuleRegistry.getEnforcing('RNCWebViewModule')` at module-load
-// time and blows up without a native binary. Mocking `EmbeddedWebView`
+// We replace `effect-messaging-expo` wholesale because the real module's
+// `effect-messaging-webview.tsx` imports `react-native-webview`, which
+// calls `TurboModuleRegistry.getEnforcing('RNCWebViewModule')` at
+// module-load time and blows up without a native binary. Mocking
+// `EffectMessagingWebView`
 // + `makeExpoTransport` keeps the surface this test cares about (the
 // `initialMessages` GatekeeperWebView passes into the transport) intact
 // while skipping the react-native-webview load chain.
@@ -23,12 +24,12 @@ import type { ReactElement } from 'react'
 // `Effect.runSync(Scope.extend(...))` resolves it on the spot.
 let mockLastInitialMessages: ReadonlyArray<unknown> | undefined
 
-jest.mock('interop-expo', () => {
+jest.mock('effect-messaging-expo', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
   const Effect = jest.requireActual<typeof effectImportNamespace>('effect').Effect
   return {
-    EmbeddedWebView: (props: { readonly injectedScript?: string }): ReactElement =>
-      ReactInner.createElement('EmbeddedWebView', props),
+    EffectMessagingWebView: (props: { readonly injectedScript?: string }): ReactElement =>
+      ReactInner.createElement('EffectMessagingWebView', props),
     makeExpoTransport: (config: {
       readonly bridges: ReadonlyArray<unknown>
       readonly layers: ReadonlyArray<unknown>
@@ -50,26 +51,39 @@ jest.mock('interop-expo', () => {
 // `@babel/runtime/helpers/interopRequireDefault` from a node_modules
 // path next to the dist; pnpm-symlinked workspace packages resolve to
 // `slices/.../dist/`, which doesn't have one. The component only uses
-// these to call `.Native.ReceiverLayer({...})` and pass the result into
+// these to call `.Host.ReceiverLayer({...})` and pass the result into
 // the (mocked) `makeExpoTransport`, so a plain pass-through stub
 // suffices.
 //
 // The factory body inlines the stub because hoisting forbids reading
 // non-`mock`-prefixed outer references.
-jest.mock('interop-core', () => ({
+jest.mock('contracts-core', () => ({
   NavigationBridge: {
-    Native: { ReceiverLayer: (handlers: unknown): unknown => ({ handlers }) },
+    Host: { ReceiverLayer: (handlers: unknown): unknown => ({ handlers }) },
     Web: { ReceiverLayer: (handlers: unknown): unknown => ({ handlers }) },
   },
 }))
 jest.mock('gatekeeper-core/bridge', () => ({
-  GatekeeperBridge: {
-    Native: { ReceiverLayer: (handlers: unknown): unknown => ({ handlers }) },
+  __esModule: true,
+  default: {
+    Host: { ReceiverLayer: (handlers: unknown): unknown => ({ handlers }) },
     Web: { ReceiverLayer: (handlers: unknown): unknown => ({ handlers }) },
   },
 }))
 
 jest.mock('wildflower-react/embeddable-html', () => ({ html: '<!doctype html><html></html>' }))
+
+// Stub `expo-tundraish` to dodge its barrel — re-exporting reanimated
+// and vector-icons-backed components would trip the TurboModule chain
+// in jest. The component only reaches for `Colors` (static data) and
+// `useColorScheme` (returns a literal here).
+jest.mock('expo-tundraish', () => ({
+  useColorScheme: (): 'light' => 'light',
+  Colors: {
+    light: { background: '#fff', icon: '#000' },
+    dark: { background: '#000', icon: '#fff' },
+  },
+}))
 
 import { GatekeeperWebView } from './GatekeeperWebView.tsx'
 
@@ -78,12 +92,12 @@ beforeEach(() => {
 })
 
 describe('GatekeeperWebView', () => {
-  it('passes a NativeRequestedWebNavigation initialMessage for the route', () => {
+  it('passes a HostRequestedWebNavigation initialMessage for the route', () => {
     render(
       <GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper/oauth-consent/abc" />
     )
     expect(mockLastInitialMessages).toEqual([
-      { _tag: 'NativeRequestedWebNavigation', path: '/gatekeeper/oauth-consent/abc' },
+      { _tag: 'HostRequestedWebNavigation', path: '/gatekeeper/oauth-consent/abc' },
     ])
   })
 
@@ -92,7 +106,7 @@ describe('GatekeeperWebView', () => {
       <GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper" token="bearer-xyz" />
     )
     expect(mockLastInitialMessages).toEqual([
-      { _tag: 'NativeRequestedWebNavigation', path: '/gatekeeper' },
+      { _tag: 'HostRequestedWebNavigation', path: '/gatekeeper' },
       { _tag: 'AuthTokenIssued', token: 'bearer-xyz' },
     ])
   })
@@ -100,7 +114,7 @@ describe('GatekeeperWebView', () => {
   it('omits the AuthTokenIssued initialMessage when no token is passed', () => {
     render(<GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper" />)
     expect(mockLastInitialMessages).toEqual([
-      { _tag: 'NativeRequestedWebNavigation', path: '/gatekeeper' },
+      { _tag: 'HostRequestedWebNavigation', path: '/gatekeeper' },
     ])
   })
 })

@@ -29,6 +29,10 @@
       "source": "./src/schema/index.ts",
       "default": "./dist/schema.mjs"
     },
+    "./test": {
+      "source": "./src/test/index.ts",
+      "default": "./dist/test.mjs"
+    },
     "./types": {
       "source": "./src/types/index.ts",
       "default": "./dist/types.mjs"

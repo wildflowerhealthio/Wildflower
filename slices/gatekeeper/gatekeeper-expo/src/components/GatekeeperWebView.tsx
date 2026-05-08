@@ -1,8 +1,14 @@
+import { NavigationBridge } from 'contracts-core'
 import { Effect, Exit, Scope } from 'effect'
-import { GatekeeperBridge } from 'gatekeeper-core/bridge'
-import { NavigationBridge } from 'interop-core'
-import { EmbeddedWebView, type ExpoTransport, makeExpoTransport } from 'interop-expo'
+import {
+  EffectMessagingWebView,
+  type ExpoTransport,
+  makeExpoTransport,
+} from 'effect-messaging-expo'
+import { Colors, useColorScheme } from 'expo-tundraish'
+import GatekeeperBridge from 'gatekeeper-core/bridge'
 import { type JSX, useEffect, useState } from 'react'
+import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import { html } from 'wildflower-react/embeddable-html'
 
 interface GatekeeperWebViewProps {
@@ -11,12 +17,12 @@ interface GatekeeperWebViewProps {
   readonly token?: string
 }
 
-type Bridges = readonly [typeof NavigationBridge, typeof GatekeeperBridge]
+type Bridges = readonly [NavigationBridge, typeof GatekeeperBridge]
 
 /**
  * Embedded gatekeeper SPA wrapped for the Expo host. Composes
  * {@link NavigationBridge} (initial route, host-driven nav, route
- * tracking, native back) with {@link GatekeeperBridge} (bearer token
+ * tracking, host-side back) with {@link GatekeeperBridge} (bearer token
  * delivery) and threads them through {@link makeExpoTransport}.
  *
  * The transport is constructed inside `useEffect` rather than at module
@@ -34,27 +40,29 @@ type Bridges = readonly [typeof NavigationBridge, typeof GatekeeperBridge]
 function GatekeeperWebView({ baseUrl, route, token }: GatekeeperWebViewProps): JSX.Element {
   const [transport, setTransport] = useState<ExpoTransport<Bridges> | null>(null)
   const [canGoBack, setCanGoBack] = useState(false)
+  const colorScheme = useColorScheme()
+  const palette = colorScheme === 'dark' ? Colors.dark : Colors.light
 
   useEffect(() => {
     // Build initial messages from the props. Each entry is a typed
     // value; the transport encodes them into `__INITIAL_MESSAGES__`.
     const initialMessages = [
       {
-        _tag: 'NativeRequestedWebNavigation' as const,
+        _tag: 'HostRequestedWebNavigation' as const,
         path: route,
       },
       ...(token === undefined ? [] : [{ _tag: 'AuthTokenIssued' as const, token }]),
     ]
 
-    const navigationLayer = NavigationBridge.Native.ReceiverLayer({
+    const navigationLayer = NavigationBridge.Host.ReceiverLayer({
       // The web side reports route changes; the host updates its back
       // chevron state from each one.
       RouteChanged: ({ canGoBack: cgb }) => Effect.sync(() => setCanGoBack(cgb)),
     })
 
-    // Gatekeeper has no Web→Native messages today, so its Native
+    // Gatekeeper has no Web→Host messages today, so its Host
     // ReceiverLayer accepts an empty handlers record.
-    const gatekeeperLayer = GatekeeperBridge.Native.ReceiverLayer({})
+    const gatekeeperLayer = GatekeeperBridge.Host.ReceiverLayer({})
 
     // Manual Scope management: build a scope, run the construction
     // Effect against it, store the resolved transport in state. Cleanup
@@ -77,7 +85,7 @@ function GatekeeperWebView({ baseUrl, route, token }: GatekeeperWebViewProps): J
 
   const onBackPress = (): void => {
     if (transport === null) return
-    Effect.runSync(transport.sendMessage({ _tag: 'NativeBackRequested' }))
+    Effect.runSync(transport.sendMessage({ _tag: 'HostBackRequested' }))
   }
 
   // Render the WebView once the transport is ready. The brief
@@ -85,17 +93,39 @@ function GatekeeperWebView({ baseUrl, route, token }: GatekeeperWebViewProps): J
   // so the second render lands within the same React tick.
   if (transport === null) return <></>
 
+  const loader = (
+    <View
+      style={[styles.loaderOverlay, { backgroundColor: palette.background }]}
+      pointerEvents="none"
+    >
+      <ActivityIndicator size="large" color={palette.icon} />
+    </View>
+  )
+
   return (
-    <EmbeddedWebView
+    <EffectMessagingWebView
       ref={transport.webviewHandleRef}
       source={{ html, baseUrl }}
       injectedScript={transport.injectedScript}
       onMessage={transport.onMessage}
+      loader={loader}
       canGoBack={canGoBack}
       onBackPress={onBackPress}
     />
   )
 }
+
+const styles = StyleSheet.create({
+  loaderOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+})
 
 export { GatekeeperWebView }
 export type { GatekeeperWebViewProps }
