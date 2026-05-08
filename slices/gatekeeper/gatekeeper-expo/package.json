@@ -18,10 +18,6 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
-    "./contexts/GatekeeperExpoMessageHandler": {
-      "source": "./src/contexts/GatekeeperExpoMessageHandler.ts",
-      "default": "./dist/contexts/GatekeeperExpoMessageHandler.js"
-    },
     "./package.json": "./package.json"
   },
   "scripts": {

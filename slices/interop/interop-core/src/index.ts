@@ -1,22 +1,38 @@
 export {
-  AppNavigationRequested,
-  type AppNavigationRequestedType,
-  InteropNativeToWeb,
-  InteropWebToNative,
   NativeBackRequested,
   type NativeBackRequestedType,
+  NativeRequestedWebNavigation,
+  type NativeRequestedWebNavigationType,
+  NavigationBridge,
   RouteChanged,
   type RouteChangedType,
-} from './message-schemas.ts'
-export {
-  type BufferedDispatcher,
-  makeBufferedDispatcher,
-  makeMessageRecord,
-  type MessageHandler,
-  type MessageReader,
-  type MessageSchema,
-  type MessageSchemaPair,
-  type MessageSchemaRecord,
-  type MessageWriter,
-} from './messages.ts'
-export { SURFACE_EXPO, SURFACE_QUERY_KEY } from './url-params.ts'
+} from './bridge.ts'
+export { defineBridge } from './define-bridge.ts'
+export type {
+  BareSender,
+  BridgeDefinition,
+  BridgeHalf,
+  HandlersFor,
+  HandlerTagId,
+  MessageOf,
+  OptionsShape,
+  RecordFromPairs,
+  SchemaRecord,
+  SenderFn,
+  ValidatedPairs,
+} from './define-bridge.ts'
+export { DisposedReceived, envelopeSchema, errorToLog, UnknownTag } from './dispatch.ts'
+export type {
+  AnyBridge,
+  AnyBridgeHalf,
+  BridgeSendableMessage,
+  BridgeSenderIntersection,
+  BridgeTransportLayers,
+  DispatchError,
+  DispatchSource,
+  UnionToIntersection,
+} from './dispatch.ts'
+export { getInteropRuntime, setInteropRuntime } from './runtime.ts'
+export { makeTransport } from './transport.ts'
+export type { PlatformAdapter, Transport } from './transport.ts'
+export { Surface } from './url-params.ts'

@@ -1,5 +1,5 @@
 import './instrument.ts'
-import { bootstrapTokenFromUrl } from 'gatekeeper-react/host-token-bootstrap'
+import { bootstrapTokenFromUrl } from 'gatekeeper-react/web-bridge'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes } from 'react-router'

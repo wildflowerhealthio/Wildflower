@@ -16,7 +16,6 @@ export default defineConfig({
     exports: false,
     entry: {
       index: 'src/index.ts',
-      'contexts/GatekeeperExpoMessageHandler': 'src/contexts/GatekeeperExpoMessageHandler.ts',
     },
   },
   lint: {

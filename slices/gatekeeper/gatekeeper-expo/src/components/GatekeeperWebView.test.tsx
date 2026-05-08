@@ -1,98 +1,106 @@
 import { render } from '@testing-library/react-native'
+import type * as effectImportNamespace from 'effect'
 import * as React from 'react'
 
 import type { ReactElement } from 'react'
 
 // `jest.mock` factories are hoisted above imports and forbidden to read
 // out-of-scope variables; `mock`-prefixed and pure-write outer references
-// are exempt. `lastInjectedScript` is assigned inside the EmbeddedWebView
-// mock and read in test bodies — pure-write inside the factory, so it
-// passes the hoist guard.
+// are exempt. `mockLastInitialMessages` is assigned inside the
+// `makeExpoTransport` mock and read in test bodies — pure-write inside
+// the factory, so it passes the hoist guard.
 //
-// We replace `interop-expo` wholesale rather than spreading a real
-// `requireActual('interop-expo')` because the real module's
+// We replace `interop-expo` wholesale because the real module's
 // `embedded-webview.tsx` imports `react-native-webview`, which calls
 // `TurboModuleRegistry.getEnforcing('RNCWebViewModule')` at module-load
-// time and blows up without a native binary. Stubbing both
-// `EmbeddedWebView` and `useMessageHandler` keeps the surface this test
-// cares about (the injectedScript shape) intact while skipping the
-// expo-tundraish / react-native-webview load chain.
-let lastInjectedScript: string | undefined
+// time and blows up without a native binary. Mocking `EmbeddedWebView`
+// + `makeExpoTransport` keeps the surface this test cares about (the
+// `initialMessages` GatekeeperWebView passes into the transport) intact
+// while skipping the react-native-webview load chain.
+//
+// `makeExpoTransport`'s real return type is `Effect<Transport, never,
+// Scope>`. We mirror that with an `Effect.succeed`; the component's
+// `Effect.runSync(Scope.extend(...))` resolves it on the spot.
+let mockLastInitialMessages: ReadonlyArray<unknown> | undefined
 
 jest.mock('interop-expo', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
+  const Effect = jest.requireActual<typeof effectImportNamespace>('effect').Effect
   return {
-    EmbeddedWebView: (props: { readonly injectedScript?: string }): ReactElement => {
-      lastInjectedScript = props.injectedScript
-      return ReactInner.createElement('EmbeddedWebView', props)
+    EmbeddedWebView: (props: { readonly injectedScript?: string }): ReactElement =>
+      ReactInner.createElement('EmbeddedWebView', props),
+    makeExpoTransport: (config: {
+      readonly bridges: ReadonlyArray<unknown>
+      readonly layers: ReadonlyArray<unknown>
+      readonly initialMessages: ReadonlyArray<unknown>
+    }) => {
+      mockLastInitialMessages = config.initialMessages
+      return Effect.succeed({
+        sendMessage: (): unknown => Effect.void,
+        webviewHandleRef: { current: null },
+        injectedScript: '',
+        onMessage: (): void => undefined,
+      })
     },
-    useMessageHandler: ({
-      initialMessages,
-    }: {
-      readonly initialMessages: ReadonlyArray<string>
-    }): {
-      readonly handler: {
-        readonly setMessageListener: () => () => void
-        readonly sendMessage: () => void
-        readonly consumeBuffered: () => ReadonlyArray<unknown>
-        readonly dispose: () => void
-      }
-      readonly webviewHandleRef: { current: null }
-      readonly injectedScript: string
-      readonly onMessage: () => void
-    } => ({
-      handler: {
-        setMessageListener: () => (): void => undefined,
-        sendMessage: (): void => undefined,
-        consumeBuffered: (): ReadonlyArray<unknown> => [],
-        dispose: (): void => undefined,
-      },
-      webviewHandleRef: { current: null },
-      // Mirrors the real makeExpoMessageHandler's injectedScript form so
-      // the assertions below see the same string shape.
-      injectedScript: `window.__INITIAL_MESSAGES__ = ${JSON.stringify(initialMessages)}; true;`,
-      onMessage: (): void => undefined,
-    }),
   }
 })
+
+// Stub the bridge modules so jest doesn't pull their tsdown-built ESM
+// dists through babel-jest. The transform output references
+// `@babel/runtime/helpers/interopRequireDefault` from a node_modules
+// path next to the dist; pnpm-symlinked workspace packages resolve to
+// `slices/.../dist/`, which doesn't have one. The component only uses
+// these to call `.Native.ReceiverLayer({...})` and pass the result into
+// the (mocked) `makeExpoTransport`, so a plain pass-through stub
+// suffices.
+//
+// The factory body inlines the stub because hoisting forbids reading
+// non-`mock`-prefixed outer references.
+jest.mock('interop-core', () => ({
+  NavigationBridge: {
+    Native: { ReceiverLayer: (handlers: unknown): unknown => ({ handlers }) },
+    Web: { ReceiverLayer: (handlers: unknown): unknown => ({ handlers }) },
+  },
+}))
+jest.mock('gatekeeper-core/bridge', () => ({
+  GatekeeperBridge: {
+    Native: { ReceiverLayer: (handlers: unknown): unknown => ({ handlers }) },
+    Web: { ReceiverLayer: (handlers: unknown): unknown => ({ handlers }) },
+  },
+}))
 
 jest.mock('wildflower-react/embeddable-html', () => ({ html: '<!doctype html><html></html>' }))
 
 import { GatekeeperWebView } from './GatekeeperWebView.tsx'
 
 beforeEach(() => {
-  lastInjectedScript = undefined
+  mockLastInitialMessages = undefined
 })
 
 describe('GatekeeperWebView', () => {
-  it('publishes __INITIAL_MESSAGES__ with an AppNavigationRequested for the route', () => {
+  it('passes a NativeRequestedWebNavigation initialMessage for the route', () => {
     render(
       <GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper/oauth-consent/abc" />
     )
-    expect(lastInjectedScript).toContain('window.__INITIAL_MESSAGES__')
-    // The injected script is `window.__INITIAL_MESSAGES__ = <json>; true;`,
-    // where `<json>` is a JSON.stringify'd array of pre-encoded JSON
-    // message strings — so every inner double-quote is backslash-escaped
-    // by the outer encode. We match on bare substrings to dodge that.
-    expect(lastInjectedScript).toContain('AppNavigationRequested')
-    expect(lastInjectedScript).toContain('/gatekeeper/oauth-consent/abc')
+    expect(mockLastInitialMessages).toEqual([
+      { _tag: 'NativeRequestedWebNavigation', path: '/gatekeeper/oauth-consent/abc' },
+    ])
   })
 
-  it('includes an AuthTokenIssued entry when token is provided', () => {
+  it('appends an AuthTokenIssued initialMessage when a token is provided', () => {
     render(
       <GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper" token="bearer-xyz" />
     )
-    expect(lastInjectedScript).toContain('AuthTokenIssued')
-    expect(lastInjectedScript).toContain('bearer-xyz')
+    expect(mockLastInitialMessages).toEqual([
+      { _tag: 'NativeRequestedWebNavigation', path: '/gatekeeper' },
+      { _tag: 'AuthTokenIssued', token: 'bearer-xyz' },
+    ])
   })
 
-  it('omits the AuthTokenIssued entry when no token is passed', () => {
+  it('omits the AuthTokenIssued initialMessage when no token is passed', () => {
     render(<GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper" />)
-    expect(lastInjectedScript).not.toContain('AuthTokenIssued')
-  })
-
-  it('terminates the injected script with `true;` so RN does not warn about an undefined return value', () => {
-    render(<GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper" />)
-    expect(lastInjectedScript?.trimEnd().endsWith('true;')).toBe(true)
+    expect(mockLastInitialMessages).toEqual([
+      { _tag: 'NativeRequestedWebNavigation', path: '/gatekeeper' },
+    ])
   })
 })

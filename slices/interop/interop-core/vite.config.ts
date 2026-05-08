@@ -5,7 +5,7 @@ export default defineConfig({
     dts: { tsgo: true },
     exports: false,
     platform: 'neutral',
-    entry: { index: 'src/index.ts' },
+    entry: { index: 'src/index.ts', testing: 'src/testing.ts' },
   },
   lint: {
     options: {

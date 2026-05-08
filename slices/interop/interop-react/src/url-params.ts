@@ -1,4 +1,5 @@
-import { SURFACE_EXPO, SURFACE_QUERY_KEY } from 'interop-core'
+import { Option, Schema } from 'effect'
+import { Surface } from 'interop-core'
 
 /** Read a URL query-string parameter without mutating the address bar. */
 const readUrlParam = (key: string): string | null => {
@@ -21,14 +22,15 @@ const consumeUrlParam = (key: string): string | null => {
   return value
 }
 
+const tryDecodeSurfaceFromUnknown = Schema.decodeUnknownOption(Surface.Schema)
+
 /**
  * Returns `'expo'` when the page is running inside the Expo embedded
  * surface (signaled via `?surface=expo`), `null` otherwise.
  */
-const readSurface = (): 'expo' | null => {
-  const value = readUrlParam(SURFACE_QUERY_KEY)
-  if (value === SURFACE_EXPO) return SURFACE_EXPO
-  return null
+const readSurface = (): typeof Surface.Schema.Type | null => {
+  const value = readUrlParam(Surface.key)
+  return tryDecodeSurfaceFromUnknown(value).pipe(Option.getOrNull)
 }
 
 export { consumeUrlParam, readSurface, readUrlParam }

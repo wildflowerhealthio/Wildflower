@@ -29,13 +29,13 @@
       "source": "./src/http-api-implementation/index.ts",
       "default": "./dist/http-api-implementation/index.js"
     },
+    "./bridge": {
+      "source": "./src/bridge.ts",
+      "default": "./dist/bridge.js"
+    },
     "./livestore": {
       "source": "./src/livestore/index.ts",
       "default": "./dist/livestore/index.js"
-    },
-    "./message-schemas": {
-      "source": "./src/message-schemas.ts",
-      "default": "./dist/message-schemas.js"
     },
     "./page-paths": {
       "source": "./src/page-paths.ts",

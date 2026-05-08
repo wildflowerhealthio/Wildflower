@@ -1435,6 +1435,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 3.21.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.1
       interop-core:
         specifier: workspace:*
         version: link:../interop-core

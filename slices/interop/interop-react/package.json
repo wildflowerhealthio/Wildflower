@@ -33,6 +33,7 @@
     "@types/react-dom": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
+    "fast-check": "catalog:",
     "interop-core": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",

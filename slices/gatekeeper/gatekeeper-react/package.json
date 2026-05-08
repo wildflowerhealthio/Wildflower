@@ -8,13 +8,9 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
-    "./contexts/GatekeeperWebMessageHandler": {
-      "source": "./src/contexts/GatekeeperWebMessageHandler.ts",
-      "default": "./dist/contexts/GatekeeperWebMessageHandler.js"
-    },
-    "./host-token-bootstrap": {
-      "source": "./src/host-token-bootstrap.ts",
-      "default": "./dist/host-token-bootstrap.js"
+    "./web-bridge": {
+      "source": "./src/web-bridge.ts",
+      "default": "./dist/web-bridge.js"
     },
     "./package.json": "./package.json"
   },

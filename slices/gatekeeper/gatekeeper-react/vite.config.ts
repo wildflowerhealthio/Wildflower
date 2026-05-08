@@ -7,8 +7,7 @@ export default defineConfig({
     exports: false,
     entry: {
       index: 'src/index.ts',
-      'contexts/GatekeeperWebMessageHandler': 'src/contexts/GatekeeperWebMessageHandler.ts',
-      'host-token-bootstrap': 'src/host-token-bootstrap.ts',
+      'web-bridge': 'src/web-bridge.ts',
     },
   },
   lint: { options: { typeAware: true, typeCheck: true } },

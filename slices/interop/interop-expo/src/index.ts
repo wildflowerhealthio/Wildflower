@@ -4,5 +4,9 @@ export {
   type EmbeddedWebViewProps,
   type EmbeddedWebViewSource,
 } from './embedded-webview.tsx'
-export { type ExpoMessageHandlerBundle, makeExpoMessageHandler } from './message-handler.ts'
-export { useMessageHandler, type UseMessageHandlerResult } from './use-message-handler.ts'
+export {
+  type ExpoTransport,
+  type ExpoTransportLayers,
+  makeExpoTransport,
+  type WebViewHandle,
+} from './transport.ts'
