@@ -6,6 +6,7 @@ export default defineConfig({
   },
   resolve: {
     alias: [{ find: /^@\/(.*)$/, replacement: './src/$1' }],
+    conditions: ['source'],
   },
   pack: {
     dts: {

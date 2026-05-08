@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite-plus'
 
 export default defineConfig({
+  resolve: { conditions: ['source'] },
   test: {
     // Tests in this package run on Jest (jest-expo preset) so that
     // `react-native` + `expo-*` resolve correctly. Vitest is excluded

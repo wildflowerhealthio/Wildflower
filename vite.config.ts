@@ -3,6 +3,17 @@ export default defineConfig({
   staged: {
     '*': 'vp check --fix',
   },
+  // Resolve workspace-package imports against their `source` export
+  // condition (TS source) instead of the default-built dist. Each
+  // package.json declares both: `{ "exports": { ".": { "source":
+  // "./src/index.ts", "default": "./dist/index.js" } } }`. With this set,
+  // `vp dev` / `vp build` / per-app builds skip the slice build step and
+  // pick up source edits directly. Vitest projects mode loads each
+  // per-package vite.config.ts independently, so the same `resolve.conditions`
+  // is duplicated there — without it, tests would still pull from `dist`.
+  resolve: {
+    conditions: ['source'],
+  },
   test: {
     // Each Vitest package owns its own vite.config.ts; listing them as
     // projects lets `vp test` from the workspace root honor per-package

@@ -9,6 +9,7 @@ import { defineConfig } from 'vite-plus'
 // `vite.config.ts` so the root `test.projects` glob doesn't pick it up
 // alongside the unit config.
 export default defineConfig({
+  resolve: { conditions: ['source'] },
   test: {
     include: ['integration-tests/**/*.test.ts'],
     setupFiles: [

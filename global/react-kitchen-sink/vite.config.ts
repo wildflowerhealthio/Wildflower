@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite-plus'
 
 export default defineConfig({
+  resolve: { conditions: ['source'] },
   test: {
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     environment: 'jsdom',
