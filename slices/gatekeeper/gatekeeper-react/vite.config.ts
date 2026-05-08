@@ -7,6 +7,7 @@ export default defineConfig({
     exports: false,
     entry: {
       index: 'src/index.ts',
+      'contexts/GatekeeperWebMessageHandler': 'src/contexts/GatekeeperWebMessageHandler.ts',
       'host-token-bootstrap': 'src/host-token-bootstrap.ts',
     },
   },

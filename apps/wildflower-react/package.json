@@ -21,7 +21,11 @@
     "dev": "vp dev --config vite.config.web.ts"
   },
   "dependencies": {
+    "effect": "catalog:",
+    "gatekeeper-core": "workspace:*",
     "gatekeeper-react": "workspace:*",
+    "interop-core": "workspace:*",
+    "interop-react": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router": "catalog:",

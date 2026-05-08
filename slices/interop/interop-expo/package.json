@@ -1,13 +1,13 @@
 {
-  "name": "gatekeeper-expo",
+  "name": "interop-expo",
   "version": "0.0.0",
   "private": true,
-  "description": "Expo screens and hooks for managing gatekeeper access, approved apps, and authorization modals.",
+  "description": "Expo / React Native adapter for the cross-process Message bridge: WebView transport, __INITIAL_MESSAGES__ injection, EmbeddedWebView wrapper.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/gatekeeper/gatekeeper-expo"
+    "directory": "slices/interop/interop-expo"
   },
   "files": [
     "dist"
@@ -17,10 +17,6 @@
     ".": {
       "source": "./src/index.ts",
       "default": "./dist/index.js"
-    },
-    "./contexts/GatekeeperExpoMessageHandler": {
-      "source": "./src/contexts/GatekeeperExpoMessageHandler.ts",
-      "default": "./dist/contexts/GatekeeperExpoMessageHandler.js"
     },
     "./package.json": "./package.json"
   },
@@ -35,11 +31,6 @@
     "@babel/core": "catalog:",
     "@babel/plugin-syntax-import-attributes": "catalog:",
     "@babel/runtime": "catalog:",
-    "@livestore/common": "catalog:",
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
-    "@livestore/react": "catalog:",
-    "@livestore/utils": "catalog:",
     "@testing-library/react-native": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
@@ -47,32 +38,25 @@
     "@typescript/native-preview": "catalog:",
     "babel-preset-expo": "catalog:",
     "effect": "catalog:",
-    "emr-core": "workspace:*",
     "expo": "catalog:",
-    "expo-notifications": "catalog:",
     "expo-router": "catalog:",
-    "gatekeeper-core": "workspace:*",
+    "expo-tundraish": "workspace:*",
+    "expo-web-browser": "catalog:",
     "interop-core": "workspace:*",
-    "interop-expo": "workspace:*",
     "jest": "catalog:",
     "jest-expo": "catalog:",
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-webview": "catalog:",
     "typescript": "catalog:",
-    "vite-plus": "catalog:",
-    "wildflower-react": "workspace:*"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "@livestore/livestore": "catalog:",
-    "@livestore/react": "catalog:",
     "effect": "catalog:",
-    "emr-core": "workspace:*",
-    "expo-notifications": ">=55.0.0",
     "expo-router": ">=55.0.0",
-    "gatekeeper-core": "workspace:*",
+    "expo-tundraish": "workspace:*",
+    "expo-web-browser": ">=55.0.0",
     "interop-core": "workspace:*",
-    "interop-expo": "workspace:*",
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-webview": ">=13.0.0"

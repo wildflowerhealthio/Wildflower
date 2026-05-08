@@ -9,15 +9,10 @@ export default defineConfig({
     passWithNoTests: true,
   },
   pack: {
-    dts: {
-      tsgo: true,
-    },
+    dts: { tsgo: true },
     platform: 'neutral',
     exports: false,
-    entry: {
-      index: 'src/index.ts',
-      'contexts/GatekeeperExpoMessageHandler': 'src/contexts/GatekeeperExpoMessageHandler.ts',
-    },
+    entry: { index: 'src/index.ts' },
   },
   lint: {
     options: {

@@ -33,6 +33,10 @@
       "source": "./src/livestore/index.ts",
       "default": "./dist/livestore/index.js"
     },
+    "./message-schemas": {
+      "source": "./src/message-schemas.ts",
+      "default": "./dist/message-schemas.js"
+    },
     "./page-paths": {
       "source": "./src/page-paths.ts",
       "default": "./dist/page-paths.js"
@@ -60,6 +64,7 @@
     "bumpp": "^11.0.1",
     "effect": "catalog:",
     "fast-check": "catalog:",
+    "interop-core": "workspace:*",
     "jose": "^6.2.2",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
@@ -73,6 +78,7 @@
     "@livestore/peer-deps": "catalog:",
     "@livestore/utils": "catalog:",
     "effect": "catalog:",
+    "interop-core": "workspace:*",
     "jose": "^6.2.2",
     "kitchen-sink": "workspace:*"
   }

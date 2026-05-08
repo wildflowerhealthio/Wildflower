@@ -8,6 +8,10 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./contexts/GatekeeperWebMessageHandler": {
+      "source": "./src/contexts/GatekeeperWebMessageHandler.ts",
+      "default": "./dist/contexts/GatekeeperWebMessageHandler.js"
+    },
     "./host-token-bootstrap": {
       "source": "./src/host-token-bootstrap.ts",
       "default": "./dist/host-token-bootstrap.js"
@@ -26,6 +30,8 @@
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "gatekeeper-core": "workspace:*",
+    "interop-core": "workspace:*",
+    "interop-react": "workspace:*",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -42,6 +48,8 @@
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "gatekeeper-core": "workspace:*",
+    "interop-core": "workspace:*",
+    "interop-react": "workspace:*",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",

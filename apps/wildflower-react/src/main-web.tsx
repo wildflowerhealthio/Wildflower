@@ -1,5 +1,5 @@
 import './instrument.ts'
-import 'gatekeeper-react/host-token-bootstrap'
+import { bootstrapTokenFromUrl } from 'gatekeeper-react/host-token-bootstrap'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes } from 'react-router'
@@ -7,6 +7,8 @@ import 'tundra-css'
 import 'react-tundraish/styles.css'
 import { appRoutesFragment } from './routes.tsx'
 import './styles/global.css'
+
+bootstrapTokenFromUrl()
 
 const container = document.getElementById('root')
 if (container === null) {
