@@ -58,7 +58,6 @@ const useNavigateHandlerUpdater = (): void => {
       Match.exhaustive
     )
 
-    // oxlint-disable-next-line unicorn/no-array-callback-reference
     const maybeHandler = Option.some(handler)
     WindowNavigationState.navigateFunctionRef.current = maybeHandler
 

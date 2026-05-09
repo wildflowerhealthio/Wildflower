@@ -135,7 +135,7 @@ export default defineConfig({
         'error',
         { allowIIFEs: true, allowExpressions: true },
       ],
-      'unicorn/no-array-callback-reference': 'error',
+      'unicorn/no-array-callback-reference': 'off',
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
       'import/default': 'error',

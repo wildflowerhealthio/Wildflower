@@ -65,7 +65,6 @@ const parsePathToAssetFile = (pathname: string): Option.Option<string> => {
   // `URL` collapses `'.'`-only paths (`'/.'`, `'/./.'`) to `'.'`. Treat
   // those as the SPA root rather than trying to look up a `.` directory.
   if (stripped === '.') return Option.some('')
-  // oxlint-disable-next-line unicorn/no-array-callback-reference -- false positive: `Option.some` is a constructor, not an iterator method
   return Option.some(stripped)
 }
 
@@ -87,7 +86,6 @@ const tryFindAssetFileForPath = (
     const candidate = path.join(webAssetsDir, relPath)
     const stat = yield* Effect.option(fs.stat(candidate))
     if (Option.isSome(stat) && stat.value.type === 'File') {
-      // oxlint-disable-next-line unicorn/no-array-callback-reference -- false positive: `Option.some` is a constructor, not an iterator method
       return Option.some(candidate)
     }
     return Option.none()
