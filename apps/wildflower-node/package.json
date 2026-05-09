@@ -18,6 +18,7 @@
     "emr-core": "workspace:*",
     "gatekeeper-core": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "navigation-core": "workspace:*",
     "telemetry-core": "workspace:*",
     "telemetry-node": "workspace:*",
     "wildflower-react": "workspace:*",

@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { Origin } from 'kitchen-sink'
+import { Origin } from 'navigation-core'
 
 /**
  * Single source of truth for the URLs the gatekeeper API redirects to.

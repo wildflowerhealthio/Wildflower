@@ -33,7 +33,7 @@ jest.mock('effect-messaging-expo', () => {
 
 // Stub workspace bridge modules: babel-jest transforms their pnpm-symlinked dists
 // and fails to find `@babel/runtime/helpers/interopRequireDefault`.
-jest.mock('contracts-core', () => ({
+jest.mock('navigation-core', () => ({
   NavigationBridge: {
     Host: { ReceiverLayer: (handlers: unknown): unknown => ({ handlers }) },
     Web: { ReceiverLayer: (handlers: unknown): unknown => ({ handlers }) },

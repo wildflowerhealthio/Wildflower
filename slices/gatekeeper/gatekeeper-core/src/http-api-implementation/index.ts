@@ -1,7 +1,7 @@
 import { type HttpApiGroup, HttpApiBuilder } from '@effect/platform'
 import { Layer } from 'effect'
-import type { Origin } from 'kitchen-sink'
 import type { CryptoRandom } from 'kitchen-sink/crypto-random'
+import type { Origin } from 'navigation-core'
 import type { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
 import * as AccessManagement from './access-management.ts'

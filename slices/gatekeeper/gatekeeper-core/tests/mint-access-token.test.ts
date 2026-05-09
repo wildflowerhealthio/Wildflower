@@ -1,5 +1,5 @@
 import { DateTime, Duration, Effect, Either, Layer } from 'effect'
-import { Origin } from 'kitchen-sink'
+import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { mintAccessToken, verifyJwt } from '../src/internal/jwt.ts'

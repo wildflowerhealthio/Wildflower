@@ -42,7 +42,6 @@
     "@types/react": "catalog:",
     "@typescript/native-preview": "catalog:",
     "babel-preset-expo": "catalog:",
-    "contracts-core": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-expo": "workspace:*",
     "emr-core": "workspace:*",
@@ -53,6 +52,7 @@
     "gatekeeper-core": "workspace:*",
     "jest": "catalog:",
     "jest-expo": "catalog:",
+    "navigation-core": "workspace:*",
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-webview": "catalog:",
@@ -63,7 +63,6 @@
   "peerDependencies": {
     "@livestore/livestore": "catalog:",
     "@livestore/react": "catalog:",
-    "contracts-core": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-expo": "workspace:*",
     "emr-core": "workspace:*",
@@ -71,6 +70,7 @@
     "expo-router": ">=55.0.0",
     "expo-tundraish": "workspace:*",
     "gatekeeper-core": "workspace:*",
+    "navigation-core": "workspace:*",
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-webview": ">=13.0.0"

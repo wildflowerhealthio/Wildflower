@@ -1,5 +1,5 @@
-import { NavigationBridge } from 'contracts-core'
 import { Match, Option } from 'effect'
+import { NavigationBridge } from 'navigation-core'
 import { type JSX, useEffect, useRef } from 'react'
 import { NavigationType, useLocation, useNavigate, useNavigationType } from 'react-router'
 import * as WindowNavigationState from './internal/window-navigation-state'
@@ -32,8 +32,8 @@ const useNavigateHandlerUpdater = (): void => {
   const navigate = useNavigate()
 
   useEffect(() => {
+    // Split number/string branches so React Router's `navigate` overload picks the right signature.
     const handler = Match.type<NavTarget>().pipe(
-      // Unpack number and string so React Router's `navigate` overload typechecks.
       Match.when(Match.number, (to) => void navigate(to)),
       Match.when(Match.string, (to) => void navigate(to)),
       Match.exhaustive

@@ -1,6 +1,6 @@
 import { Effect, Layer } from 'effect'
 import * as fc from 'fast-check'
-import { Origin } from 'kitchen-sink'
+import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
 import { GatekeeperPaths } from '../src/page-paths.ts'
 

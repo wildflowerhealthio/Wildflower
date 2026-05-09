@@ -1,13 +1,13 @@
 {
-  "name": "contracts-react",
+  "name": "navigation-core",
   "version": "0.0.0",
   "private": true,
-  "description": "React-side wildflower contracts: route-change watcher and surface URL helper.",
+  "description": "Slice-neutral navigation contract shared between embedded web and Expo host: cross-process navigation bridge and origin URL tag.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/contracts/contracts-react"
+    "directory": "slices/navigation/navigation-core"
   },
   "files": [
     "dist"
@@ -24,31 +24,21 @@
     "build": "vp pack",
     "check": "vp check",
     "dev": "vp pack --watch",
-    "test": "vp test --passWithNoTests"
+    "test": "vp test"
   },
   "devDependencies": {
-    "@testing-library/dom": "^10.4.0",
-    "@testing-library/react": "^16.3.0",
-    "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
+    "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "contracts-core": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
-    "effect-messaging-react": "workspace:*",
     "fast-check": "catalog:",
-    "react": "catalog:",
-    "react-dom": "catalog:",
-    "react-router": "catalog:",
+    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "contracts-core": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
-    "effect-messaging-react": "workspace:*",
-    "react": "catalog:",
-    "react-router": "catalog:"
+    "kitchen-sink": "workspace:*"
   }
 }

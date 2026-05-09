@@ -1,4 +1,4 @@
-import { NavigationBridge } from 'contracts-core'
+import { NavigationBridge } from 'navigation-core'
 import { Schema } from 'effect'
 import { afterEach, describe, expect, type Mock, test, vi } from 'vite-plus/test'
 import { findInitialPath } from '../src/bridges/find-initial-path.ts'

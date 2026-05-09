@@ -1,4 +1,4 @@
-import { NavigationBridge } from 'contracts-core'
+import { NavigationBridge } from 'navigation-core'
 import { Either, Schema } from 'effect'
 import { Message } from 'effect-messaging-core'
 

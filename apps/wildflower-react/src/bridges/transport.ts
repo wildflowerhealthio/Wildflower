@@ -1,17 +1,15 @@
-import { NavigationBridge, EffectRuntimeGlobal } from 'contracts-core'
-import { navigationWebReceiverLayer } from 'contracts-react'
 import { Effect, Exit, Layer, ManagedRuntime, Scope } from 'effect'
 import { BridgeTransport, PlatformAdapter } from 'effect-messaging-core'
 import { WebPlatformAdapter } from 'effect-messaging-react'
 import GatekeeperBridge from 'gatekeeper-core/bridge'
 import { gatekeeperWebReceiverLayer } from 'gatekeeper-react/web-bridge'
+import { NavigationBridge } from 'navigation-core'
+import { navigationWebReceiverLayer } from 'navigation-react'
 
-// Top-level await note: `await managedRuntime.runtime()` blocks first paint on
+// Top-level await on `managedRuntime.runPromise` below blocks first paint on
 // the runtime build. Cheap with `Layer.empty`; if telemetry/logger overrides
 // plug in here later, move into a lazy-init seam.
 const managedRuntime = ManagedRuntime.make(Layer.empty)
-const runtime = await managedRuntime.runtime()
-EffectRuntimeGlobal.setEffectRuntime(runtime)
 
 const webAdapter = WebPlatformAdapter.make()
 const initialMessages: ReadonlyArray<string> = Effect.runSync(webAdapter.drainInitial)

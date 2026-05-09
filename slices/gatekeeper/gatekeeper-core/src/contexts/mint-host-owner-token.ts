@@ -1,6 +1,6 @@
 import { type Duration, Effect } from 'effect'
 import { UnknownException } from 'effect/Cause'
-import { Origin } from 'kitchen-sink'
+import { Origin } from 'navigation-core'
 import { mintAccessToken } from '../internal/jwt.ts'
 import { SigningKey } from '../livestore/index.ts'
 import { GatekeeperStore } from './gatekeeper-store.ts'

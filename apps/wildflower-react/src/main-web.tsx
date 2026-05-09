@@ -1,5 +1,5 @@
 import './instrument.ts'
-import { NavigationBridgeHandler } from 'contracts-react'
+import { NavigationBridgeHandler } from 'navigation-react'
 import { BrowserRouter, Routes } from 'react-router'
 import 'tundra-css'
 import 'react-tundraish/styles.css'

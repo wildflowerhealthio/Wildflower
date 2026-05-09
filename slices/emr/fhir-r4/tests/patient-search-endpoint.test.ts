@@ -3,7 +3,7 @@ import { Layer } from 'effect'
 import type { LivestoreStore } from 'emr-core/contexts'
 import { makeLivestoreStoreLayer } from 'emr-core/contexts'
 import type { Patient as StorePatient } from 'emr-core/livestore'
-import { Origin } from 'kitchen-sink'
+import { Origin } from 'navigation-core'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { FhirResourcesApiLive } from '../src/http-api-implementation/index.ts'

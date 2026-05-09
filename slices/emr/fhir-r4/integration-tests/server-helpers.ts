@@ -6,7 +6,7 @@ import { Effect, Layer } from 'effect'
 
 import { makeLivestoreStoreLayer } from 'emr-core/contexts'
 import { schema } from 'emr-core/livestore'
-import { Origin } from 'kitchen-sink'
+import { Origin } from 'navigation-core'
 
 import { FhirPublicApi, FhirResourcesApi } from '../src/http-api-definition/index.ts'
 import {

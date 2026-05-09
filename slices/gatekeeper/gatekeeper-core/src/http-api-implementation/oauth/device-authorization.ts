@@ -1,7 +1,7 @@
 import type { Schema } from 'effect'
 import { DateTime, Duration, Effect } from 'effect'
-import type { Origin } from 'kitchen-sink'
 import { CryptoRandom } from 'kitchen-sink/crypto-random'
+import type { Origin } from 'navigation-core'
 import { GatekeeperStore } from '../../contexts/gatekeeper-store.ts'
 import {
   type DeviceAuthorizationPayloadSchema,

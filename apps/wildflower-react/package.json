@@ -23,13 +23,13 @@
     "test": "vp test"
   },
   "dependencies": {
-    "contracts-core": "workspace:*",
-    "contracts-react": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "effect-messaging-react": "workspace:*",
     "gatekeeper-core": "workspace:*",
     "gatekeeper-react": "workspace:*",
+    "navigation-core": "workspace:*",
+    "navigation-react": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router": "catalog:",

@@ -68,6 +68,7 @@
     "fast-check": "catalog:",
     "jose": "^6.2.2",
     "kitchen-sink": "workspace:*",
+    "navigation-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:",
     "why-is-node-running": "catalog:"
@@ -81,6 +82,7 @@
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "jose": "^6.2.2",
-    "kitchen-sink": "workspace:*"
+    "kitchen-sink": "workspace:*",
+    "navigation-core": "workspace:*"
   }
 }

@@ -1,4 +1,4 @@
-import { NavigationBridge } from 'contracts-core'
+import { NavigationBridge } from 'navigation-core'
 import { Effect, Exit, Scope } from 'effect'
 import {
   EffectMessagingWebView,

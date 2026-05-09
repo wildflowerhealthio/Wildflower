@@ -7,7 +7,6 @@ import { Bridge } from 'effect-messaging-core'
  * embedded SPA's history pops without popping the native screen.
  */
 const HostBackRequested = Schema.parseJson(Schema.TaggedStruct('HostBackRequested', {}))
-type HostBackRequested = Schema.Schema.Type<typeof HostBackRequested>
 
 /**
  * Host → Web: navigate the embedded SPA to `path`. Carries both the
@@ -18,7 +17,6 @@ type HostBackRequested = Schema.Schema.Type<typeof HostBackRequested>
 const HostRequestedWebNavigation = Schema.parseJson(
   Schema.TaggedStruct('HostRequestedWebNavigation', { path: Schema.String })
 )
-type HostRequestedWebNavigation = Schema.Schema.Type<typeof HostRequestedWebNavigation>
 
 /**
  * Web → Host: embedded SPA router state has changed. `canGoBack` drives
@@ -30,7 +28,6 @@ const RouteChanged = Schema.parseJson(
     canGoBack: Schema.Boolean,
   })
 )
-type RouteChanged = Schema.Schema.Type<typeof RouteChanged>
 
 const hostOptionsShape = Schema.Struct({ initialPath: Schema.String })
 const webOptionsShape = Schema.Struct({})

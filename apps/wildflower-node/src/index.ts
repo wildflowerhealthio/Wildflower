@@ -10,9 +10,9 @@ import {
   seedFirstPartyClient,
   seedSigningKey,
 } from 'gatekeeper-core/contexts'
-import { Origin } from 'kitchen-sink'
 import { cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { StringLiteralTypes } from 'kitchen-sink/types'
+import { Origin } from 'navigation-core'
 import { webAssetsDir } from 'wildflower-react/web-assets'
 import { WebAssetsDir, WildflowerServerLive } from 'wildflower-server'
 import { createStore } from './livestore-store.ts'

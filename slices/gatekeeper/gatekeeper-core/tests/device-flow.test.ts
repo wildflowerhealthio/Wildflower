@@ -1,7 +1,7 @@
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { DateTime, Duration, Effect, Layer, Schema } from 'effect'
-import { Origin } from 'kitchen-sink'
 import { cryptoRandomCounter } from 'kitchen-sink/crypto-random'
+import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
 
 const JsonObjectSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })

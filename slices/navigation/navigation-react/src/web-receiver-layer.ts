@@ -1,5 +1,5 @@
-import { NavigationBridge } from 'contracts-core'
 import { Effect, Option } from 'effect'
+import { NavigationBridge } from 'navigation-core'
 import * as NavigationState from './internal/window-navigation-state'
 import type { NavTarget } from './internal/window-navigation-state'
 
