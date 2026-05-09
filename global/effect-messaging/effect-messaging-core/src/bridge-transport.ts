@@ -152,7 +152,7 @@ const make = <
                 Effect.catchAll(DispatchError.toLog),
                 // Handler defects don't take the dispatch fiber down.
                 Effect.catchAllDefect((defect) =>
-                  Effect.logWarning(
+                  Effect.logError(
                     `[effect-messaging] handler defect; dispatch continues: ${String(defect)}`
                   )
                 )

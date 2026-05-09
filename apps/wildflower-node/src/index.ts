@@ -13,10 +13,13 @@ import {
 import { cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { StringLiteralTypes } from 'kitchen-sink/types'
 import { Origin } from 'navigation-core'
+import { nodeTelemetryLayerFromEnv } from 'telemetry-node'
 import { webAssetsDir } from 'wildflower-react/web-assets'
 import { WebAssetsDir, WildflowerServerLive } from 'wildflower-server'
 import { createStore } from './livestore-store.ts'
-import { TelemetryLive } from './telemetry.ts'
+import { SERVICE_NAME } from './service-name.ts'
+
+// Config
 
 const PORT = Number(process.env['PORT'] ?? 3000)
 const ORIGIN = process.env['ORIGIN'] ?? `http://localhost:${PORT}`
@@ -25,7 +28,13 @@ if (!StringLiteralTypes.endsWithAlphanumericCharacter(ORIGIN)) {
 }
 const IS_DEV = process.env['NODE_ENV'] !== 'production'
 
+// Platform dependent layer setup
+
 const CryptoRandomLive = cryptoRandomLayerFromWebCrypto(globalThis.crypto)
+
+const TelemetryLive = nodeTelemetryLayerFromEnv({
+  otel: { serviceName: SERVICE_NAME },
+})
 
 const run = Effect.gen(function* () {
   const store = yield* Effect.promise(() => createStore())
@@ -48,17 +57,17 @@ const run = Effect.gen(function* () {
     )
   }
 
-  // `Layer.tap` after `withLogAddress` emits this once the port is bound.
-  const logBootstrapUrl =
-    bootstrapToken == null
-      ? Effect.void
-      : Effect.logInfo(
-          `Bootstrap: ${ORIGIN}/gatekeeper?token=${encodeURIComponent(bootstrapToken)}`
-        )
+  // `Layer.tap` after `afterStartupEffect` emits this once the port is bound.
+  let afterStartupEffect = Effect.void
+  if (bootstrapToken != null) {
+    afterStartupEffect = Effect.logInfo(
+      `Bootstrap: ${ORIGIN}/gatekeeper?token=${encodeURIComponent(bootstrapToken)}`
+    )
+  }
 
   const FullServerLive = WildflowerServerLive.pipe(
     HttpServer.withLogAddress,
-    Layer.tap(() => logBootstrapUrl),
+    Layer.tap(() => afterStartupEffect),
     Layer.provide(makeLivestoreStoreLayer(store)),
     Layer.provide(gatekeeperStoreLayer),
     Layer.provide(CryptoRandomLive),

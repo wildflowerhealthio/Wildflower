@@ -14,7 +14,7 @@ If a consuming Expo app drops the `web` platform from `app.json`, this package w
 
 ## Main exports
 
-- **Components**: `AnimatedHeaderBackground`, `EmbeddedWebView`, `ExternalLink`, `IconSymbol`, `ThemedButton`, `ThemedText`, `ThemedView`
+- **Components**: `AnimatedHeaderBackground`, `IconSymbol`, `ThemedButton`, `ThemedText`, `ThemedView`
 - **Hooks**: `useColorScheme`, `useThemeColors`
 - **Theme tokens**: `Colors`, `Palette`, `Spacing`, `FontSize`, `FontWeight`, `LineHeight`, `LetterSpacing`, `Borders`, `Shadows`
 
