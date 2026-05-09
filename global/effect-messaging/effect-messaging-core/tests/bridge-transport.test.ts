@@ -10,7 +10,6 @@ const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.Number
 const Pong = Schema.parseJson(Schema.TaggedStruct('Pong', { reply: Schema.String }))
 const NoOptions = Schema.Struct({})
 
-// Inferred return type — restating the generic `Bridge.Bridge<...>` is verbose.
 // oxlint-disable-next-line typescript-eslint/explicit-function-return-type
 const makeBridges = () => {
   const NavigationLike = Bridge.make({
@@ -55,11 +54,7 @@ describe('BridgeTransport.make — duplicate outbound-tag throw', () => {
 
 describe('BridgeTransport.make — internal-error variant', () => {
   test('logs an Internal warning when a bridge handler is missing for an indexed tag', async () => {
-    // Construct a handlers record whose `Ping` slot is `undefined` at
-    // runtime — emulating a wiring drift the type system can't catch
-    // (e.g. a future refactor partially populating a layer). The
-    // `tagToBridgeIndex` resolves `Ping`, the schema decodes, but
-    // `handlers[_tag]` is undefined → Internal error fires.
+    // Emulates wiring drift: tag indexes, schema decodes, but `handlers[_tag]` is undefined.
     const { NavigationLike } = makeBridges()
     // oxlint-disable-next-line typescript-eslint/no-explicit-any
     const handlers = { Ping: undefined as any }
@@ -102,8 +97,6 @@ describe('BridgeTransport.make — live-attachment path', () => {
           layers: [layer] as const,
           side: 'Web',
         }).pipe(Effect.provide(adapterLayer))
-        // The capture-stub stores `enqueue` in `liveEnqueueRef.current`.
-        // Drive it as the platform's listener would.
         if (liveEnqueueRef.current === null) throw new Error('liveEnqueueRef not captured')
         liveEnqueueRef.current(Schema.encodeSync(Ping)({ _tag: 'Ping', value: 99 }))
         yield* transport.flushed
@@ -130,7 +123,6 @@ describe('BridgeTransport.make — live-attachment path', () => {
       })
     )
     await promise
-    // After scope close, the acquireRelease finalizer ran and cleared the ref.
     expect(liveEnqueueRef.current).toBeNull()
   })
 })
@@ -162,10 +154,6 @@ describe('BridgeTransport.make — initial-message replay', () => {
 })
 
 describe('BridgeTransport.make — queue lifecycle', () => {
-  // Property: after scope close, `enqueue` calls drop cleanly — no
-  // throw, no orphaned messages piling up. The shut-down queue rejects
-  // offers; the Stream-from-queue with `shutdown: true` ensures the
-  // fiber's release also shuts the queue.
   test('property: late enqueues after scope close drop without throwing', async () => {
     const { NavigationLike } = makeBridges()
     const layer = NavigationLike.Web.ReceiverLayer({ Ping: () => Effect.void })
@@ -186,8 +174,6 @@ describe('BridgeTransport.make — queue lifecycle', () => {
             })
           )
           await promise
-          // After the scope has closed, fire the captured enqueue with
-          // arbitrary inputs. A correct lifecycle drops cleanly.
           if (capturedEnqueue === null) throw new Error('enqueue not captured')
           for (const msg of lateMessages) {
             // oxlint-disable-next-line typescript-eslint/no-unsafe-call

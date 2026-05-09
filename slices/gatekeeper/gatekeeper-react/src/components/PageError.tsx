@@ -4,32 +4,15 @@ import { cn } from 'react-kitchen-sink'
 import pageLayout from '../styles/page-layout.module.css'
 
 interface PageErrorProps {
-  /**
-   * Heading shown above the error message. Omit for a bare error
-   * panel (e.g. inside an `ItemList`-shaped page).
-   */
+  /** Heading shown above the error message; omit for a bare error panel. */
   readonly title?: string
   /** The thrown / rejected value. Stringified safely. */
   readonly error: unknown
-  /**
-   * Extra class names appended to the outer page div — e.g. a
-   * polling-screen layout class to share visual framing with the
-   * spinner.
-   */
   readonly className?: string
-  /**
-   * Extra class names appended to the heading — e.g. the
-   * red-text variant used by failure states.
-   */
   readonly titleClassName?: string
 }
 
-/**
- * Page-level error panel with optional heading. Used both by
- * imperative error states (e.g. action handlers that catch and
- * display) and by `<Await errorElement={…}>` fallbacks via
- * `<AsyncErrorView />`.
- */
+/** Page-level error panel with optional heading. */
 const PageError = ({ title, error, className, titleClassName }: PageErrorProps): JSX.Element => {
   const message = error instanceof Error ? error.message : String(error)
   return (

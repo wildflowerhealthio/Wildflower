@@ -5,13 +5,9 @@ import { Schema } from 'effect'
  * carries on either side.
  *
  * @remarks
- * Effect's `Schema.Schema<A, I, R>` is **invariant** in `A`, so a
- * precise `Schema<{readonly _tag: 'X'}, string>` is *not* assignable to
- * `Schema<unknown, string>`. Using `any` for `A` exempts this internal
- * bound from the variance check; the precise type is recovered at every
- * public boundary via `infer A` (a covariant extraction position) inside
- * {@link Of}, {@link RecordFromPairs}, and {@link ValidatedPairs}'s
- * conditional. The `any` lives only inside this file.
+ * `any` widens `Schema`'s invariant `A` parameter; the precise type is
+ * recovered at every public boundary via `infer A`. See `README.md` for
+ * the variance write-up.
  */
 // oxlint-disable-next-line typescript-eslint/no-explicit-any
 type StringEncodedSchema = Schema.Schema<any, string, never>
@@ -20,15 +16,8 @@ type StringEncodedSchema = Schema.Schema<any, string, never>
 type OptionsShape = Schema.Schema.AnyNoContext
 
 /**
- * Per-pair validation. Infers `Tag` from position 0 of each pair, then
- * checks the schema's *decoded* type against `{readonly _tag: Tag}`.
- * Mismatching pairs resolve to a structured error tuple so the call
- * site fails to typecheck.
- *
- * @remarks
- * Schema's invariance applies when matching `Schema<X, ...>` against
- * `Schema<Y, ...>` directly — the `infer A` form sidesteps that by
- * extracting `A` and testing it structurally.
+ * Per-pair validation. Mismatching pairs resolve to a structured error
+ * tuple so the call site fails to typecheck.
  */
 type ValidatedPairs<Pairs extends ReadonlyArray<readonly [string, StringEncodedSchema]>> = {
   readonly [I in keyof Pairs]: Pairs[I] extends readonly [infer Tag extends string, infer S]
@@ -59,9 +48,8 @@ type Of<R extends SchemaRecord> = {
 
 /**
  * JSON-encoded routing envelope. Decoded form is `{ _tag: string }`,
- * encoded form is `string`. Used by transports / initial-message
- * peekers to extract the tag off a wire string before routing through
- * a per-bridge schema.
+ * encoded form is `string`. Used by transports and initial-message
+ * peekers to extract the tag off a wire string before routing.
  */
 const wireRoutingEnvelope = Schema.parseJson(Schema.Struct({ _tag: Schema.String }))
 

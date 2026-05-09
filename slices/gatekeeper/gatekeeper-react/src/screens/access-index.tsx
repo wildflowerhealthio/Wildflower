@@ -17,20 +17,13 @@ import pageLayout from '../styles/page-layout.module.css'
 
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
 
-/**
- * Suspense + `Await` pattern: the grants fetch is a single Effect
- * routed through `useEffectTs`. Revoking a grant bumps a
- * `refreshKey` so the list re-fetches and the revoked entry
- * disappears.
- */
 const AccessIndexScreen = (): JSX.Element => {
   const session = useGatekeeperClient()
   const [refreshKey, setRefreshKey] = useState(0)
 
   const grantsEffect = useMemo(
     () => Effect.flatMap(GatekeeperHttpApiClient, (c) => c['access-management'].ListGrants()),
-    // refreshKey is the explicit re-fetch trigger after Revoke
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- intentional re-fetch dependency
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- refreshKey is the intentional re-fetch trigger
     [refreshKey]
   )
 

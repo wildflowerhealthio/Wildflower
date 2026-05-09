@@ -23,13 +23,6 @@ const statusTone = (status: string): StatusTone => {
   return 'neutral'
 }
 
-/**
- * Suspense + `Await` pattern: the fetch is a single Effect routed
- * through `useEffectTs`. Approve/reject actions bump a
- * `refreshKey` that's part of the effect's `useMemo` deps — the
- * new effect identity causes `useEffectTs` to interrupt the prior
- * fiber and re-fetch, so the row re-renders with the latest state.
- */
 const RequestDetailScreen = (): JSX.Element => {
   const session = useGatekeeperClient()
   const { id = '' } = useParams<{ id: string }>()
@@ -40,8 +33,7 @@ const RequestDetailScreen = (): JSX.Element => {
       Effect.flatMap(GatekeeperHttpApiClient, (c) =>
         c['access-management'].GetRequest({ path: { id } })
       ),
-    // refreshKey is the explicit re-fetch trigger after Approve/Reject
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- intentional re-fetch dependency
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- refreshKey is the intentional re-fetch trigger
     [id, refreshKey]
   )
 

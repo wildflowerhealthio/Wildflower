@@ -9,22 +9,15 @@ import { FIRST_PARTY_CLIENT_ID } from './seed-first-party-client.ts'
 /**
  * Mint an Owner-scoped access token for the first-party host client.
  *
- * Dev-mode bootstrap helper for processes that have direct access to the
- * gatekeeper store (wildflower-node, native shell, dev server, CLI login).
- * The host can sign a token for itself and surface it on the SPA's
- * `?token=` query param, so an operator opening the app lands authenticated
- * without going through the device-flow handshake. **Not a production
- * pattern** — the long-term first-Owner story is unsettled; until then this
- * lives behind a dev gate at the call site.
+ * @remarks
+ * Dev-mode bootstrap helper for processes with direct gatekeeper-store
+ * access. **Not a production pattern** — gate behind a dev check at the
+ * call site. `ttl` has no default because the right value is context-
+ * dependent (dev server lifetime, CI run length, etc.). Picks the active
+ * signing key, falling back to the first available; caller should run
+ * `seedFirstPartyClient` first.
  *
- * `ttl` is required because the right value depends on context the minter
- * has and this helper does not (dev-server lifetime, CI run length, native
- * shell first-launch grace window). No silent default; the caller picks.
- *
- * Picks the active signing key when one is flagged, otherwise the first
- * key in the store. Caller should run `seedFirstPartyClient` first — the
- * token only fails verification later if `wildflower-host` is missing or
- * disabled.
+ * @see [README — Bootstrap URL](../../README.md)
  */
 const mintHostOwnerToken = (options: {
   readonly ttl: Duration.Duration

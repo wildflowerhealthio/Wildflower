@@ -1,6 +1,4 @@
-// Boots Sentry + OpenTelemetry before any other module loads. Imported for
-// its side effect from the top of `index.ts`. Convention name matches the
-// Sentry Node SDK wizard output.
+// Side-effect import from the top of `index.ts`; filename matches the Sentry SDK convention.
 import { initNodeTelemetryFromEnv } from 'telemetry-node'
 
 initNodeTelemetryFromEnv({ otel: { serviceName: 'wildflower-node' } })

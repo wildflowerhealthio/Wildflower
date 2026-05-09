@@ -4,13 +4,14 @@ import { GatekeeperStore } from './gatekeeper-store.ts'
 
 /**
  * Idempotently ensure the gatekeeper store has at least one active
- * signing key. Designed to be invoked once after the LiveStore is
- * available — alongside `seedFirstPartyClient`. No-op if a key already
- * exists. Fresh stores get a new RSA-2048 key, committed via
- * `signingKeyAdded` + `signingKeyActivated` so `SigningKey.queries.active$`
- * resolves (the materialiser sets `isActive: false` on `signingKeyAdded`
- * alone, so without the activation the active query stays empty
- * forever and sign-side callers fall through to `all[0]`).
+ * signing key. No-op if a key already exists; fresh stores get a new
+ * RSA-2048 key.
+ *
+ * @remarks
+ * Commits both `signingKeyAdded` and `signingKeyActivated`. Without the
+ * activation event, `SigningKey.queries.active$` stays empty (the
+ * materialiser flags `isActive: false` on `signingKeyAdded` alone), and
+ * sign-side callers fall through to `all[0]`.
  */
 const seedSigningKey: Effect.Effect<void, never, GatekeeperStore> = Effect.gen(function* () {
   const store = yield* GatekeeperStore

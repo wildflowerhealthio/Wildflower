@@ -9,12 +9,11 @@ const decodeNavigation = Schema.decodeEither(
 
 /**
  * Find the path the host requested in the pre-injected initial messages.
- * Returns `'/'` when no `HostRequestedWebNavigation` entry is present
- * (e.g. the bundle is running standalone-web). Malformed entries — JSON
- * that doesn't match the envelope — are surfaced via `console.warn` so a
- * malformed first entry isn't indistinguishable from "no host route".
- * Entries with the wrong tag are skipped silently (the bridge replay
- * fiber is the canonical decoder; we only peek for the route).
+ *
+ * @returns The first `HostRequestedWebNavigation`'s path, or `'/'` when
+ * none is present (e.g. standalone-web). Malformed envelopes are surfaced
+ * via `console.warn`; entries with other tags are skipped — the bridge
+ * replay fiber is the canonical decoder.
  */
 const findInitialPath = (messages: ReadonlyArray<string>): string => {
   for (const entry of messages) {

@@ -7,8 +7,6 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 
-// httpPlatform.ts has a type-only import of httpServer, so no native module
-// import at runtime. Mock anyway in case Jest resolves transitive imports.
 jest.mock('../ExpoEffectPlatformModule', () => ({
   __esModule: true,
   default: {},
@@ -16,16 +14,9 @@ jest.mock('../ExpoEffectPlatformModule', () => ({
 
 import type * as HttpPlatformModule from '../internal/httpPlatform.ts'
 
-// `require` (not `import`) for consistency with the sibling test files where the
-// `jest.mock()` factories capture module-local mock variables that ES imports
-// would race against. Here the factory is empty, but keeping the same shape
-// avoids inviting future contributors to switch the others and silently break
-// their mocks.
+// `require` (not `import`) matches sibling test files where mock factories
+// capture module-local variables that ES imports would race against.
 const { make } = require('../internal/httpPlatform') as typeof HttpPlatformModule
-
-// ---------------------------------------------------------------------------
-// Mock FileSystem — HttpPlatform.make() uses fs.stat() internally
-// ---------------------------------------------------------------------------
 
 function makeMockFsLayer(size: number = 1024): Layer.Layer<FileSystem.FileSystem> {
   return Layer.succeed(FileSystem.FileSystem, {

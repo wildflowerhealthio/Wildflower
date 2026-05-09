@@ -1,10 +1,6 @@
 import { DateTime } from 'effect'
 
-/**
- * Format a `DateTime.Utc` for the UI. By routing every screen
- * through one helper we own the locale style in one place — change
- * here, every screen updates.
- */
+/** Format a `DateTime.Utc` for the UI. Single source of truth for locale style. */
 const formatInstant = (dt: DateTime.Utc): string =>
   DateTime.formatLocal(dt, { dateStyle: 'medium', timeStyle: 'short' })
 

@@ -15,20 +15,13 @@ import pageLayout from '../styles/page-layout.module.css'
 
 type HttpRequest = Schema.Schema.Type<typeof AccessManagement.HttpRequestSchema>
 
-/**
- * Suspense + `Await` pattern: the list fetch is a single Effect
- * routed through `useEffectTs`. Per-row Approve/Reject actions
- * bump a `refreshKey` so the list re-fetches and the row
- * disappears from "In-Flight" once the server responds.
- */
 const RequestsListScreen = (): JSX.Element => {
   const session = useGatekeeperClient()
   const [refreshKey, setRefreshKey] = useState(0)
 
   const requestsEffect = useMemo(
     () => Effect.flatMap(GatekeeperHttpApiClient, (c) => c['access-management'].ListRequests()),
-    // refreshKey is the explicit re-fetch trigger after Approve/Reject
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- intentional re-fetch dependency
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- refreshKey is the intentional re-fetch trigger
     [refreshKey]
   )
 

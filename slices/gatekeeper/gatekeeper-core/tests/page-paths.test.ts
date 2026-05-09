@@ -25,18 +25,13 @@ test('deviceConsentPath percent-encodes the user code', () => {
 })
 
 test('deviceConsentPath percent-encodes characters outside the RFC 8628 alphabet', () => {
-  // Regression guard: if the user-code generator's character class ever
-  // expands to include `/`, `?`, `#`, `&`, etc., the URL must remain
-  // syntactically valid. This test exercises every character that has
-  // path-segment significance.
+  // Regression guard for future user-code character-class expansion.
   const inputs = ['a/b', 'a?b', 'a#b', 'a&b', 'a b', 'a%b', 'aÆb']
   for (const input of inputs) {
     const path = GatekeeperPaths.deviceConsentPath(input)
     expect(path.startsWith('/gatekeeper/devices/')).toBe(true)
-    // Round-trip: decoding the segment yields the original input.
     const segment = path.replace('/gatekeeper/devices/', '')
     expect(decodeURIComponent(segment)).toBe(input)
-    // The encoded segment never contains a raw special path char.
     expect(segment).not.toContain('/')
     expect(segment).not.toContain('?')
     expect(segment).not.toContain('#')
@@ -60,11 +55,8 @@ test('deviceEntryUrlWithCode includes the user_code as a URL-encoded query param
 })
 
 test('deviceEntryUrlWithCode handles characters outside the RFC 8628 alphabet', () => {
-  // Same regression guard as deviceConsentPath: the URLSearchParams
-  // encoder must keep the URL well-formed for any string.
   const url = runUrl(GatekeeperPaths.deviceEntryUrlWithCode('foo bar?'))
   expect(url).toBe(`${ORIGIN}/gatekeeper/devices?user_code=foo+bar%3F`)
-  // Round-trip via URL parser.
   const parsed = new URL(url)
   expect(parsed.searchParams.get('user_code')).toBe('foo bar?')
 })

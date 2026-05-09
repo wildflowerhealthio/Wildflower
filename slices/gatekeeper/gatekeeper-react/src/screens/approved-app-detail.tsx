@@ -13,14 +13,6 @@ import styles from './approved-app-detail.module.css'
 
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
 
-/**
- * Suspense + `Await` pattern: the grant fetch is a single Effect run
- * through the session runtime, returning a stable `Promise` (via
- * `useEffectTs`). React's Suspense boundary handles the pending
- * state; `<Await>`'s `errorElement` + `useAsyncError()` handle
- * rejection — no manual `try`/`catch`, `cancelled` flag, or
- * `setError` needed.
- */
 const ApprovedAppDetailScreen = (): JSX.Element => {
   const session = useGatekeeperClient()
   const { id = '' } = useParams<{ id: string }>()

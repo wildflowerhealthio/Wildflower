@@ -16,10 +16,7 @@ const readToken = (): string | null => {
 const writeToken = (token: string): void => {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(TOKEN_STORAGE_KEY, token)
-  // The browser only fires `storage` events to *other* tabs, so we
-  // dispatch a same-window event here for `subscribeToken` listeners
-  // (e.g. `<GatekeeperAuthorizedRoutes>`) to react to token rotation
-  // without a full reload.
+  // Native `storage` events only fire in *other* tabs; dispatch a same-tab event for subscribers.
   window.dispatchEvent(new Event(TOKEN_CHANGE_EVENT))
 }
 

@@ -29,17 +29,10 @@ type Bridges = readonly [NavigationBridge, typeof GatekeeperBridge]
  * delivery) and threads them through {@link makeExpoTransport}.
  *
  * @remarks
- * The transport is constructed inside `useEffect` rather than at module
- * load: it owns a `Scope` whose finalizers (dispatch fiber interrupt,
- * queue shutdown) must run on unmount. The ref forwarding the
- * `EffectMessagingWebView` exposes is created here and passed down to
- * the transport — the generic transport package no longer owns
- * navigator chrome.
- *
- * The back-chevron is rendered into the navigator's header here:
- * `useNavigation()` from expo-router gives the slice access to the
- * screen's `headerLeft`, and the bridge's `RouteChanged` payload's
- * `canGoBack` flag drives whether the chevron renders.
+ * Transport is built inside `useEffect` so its `Scope` finalizers
+ * (dispatch interrupt, queue shutdown) run on unmount. The back-chevron
+ * is rendered into the screen's header via expo-router's
+ * `useNavigation()`, gated on `RouteChanged.canGoBack`.
  */
 function GatekeeperWebView({ baseUrl, route, token }: GatekeeperWebViewProps): JSX.Element {
   const [transport, setTransport] = useState<ExpoTransport<Bridges> | null>(null)
@@ -47,10 +40,7 @@ function GatekeeperWebView({ baseUrl, route, token }: GatekeeperWebViewProps): J
   const colorScheme = useColorScheme()
   const palette = colorScheme === 'dark' ? Colors.dark : Colors.light
 
-  // The consumer owns the WebView ref so the transport package stays
-  // navigator-agnostic. `EffectMessagingWebViewHandle` is structurally
-  // identical to the transport's `WebViewHandle` (both
-  // `{ postMessage(s: string): void }`), so one cell drives both.
+  // `EffectMessagingWebViewHandle` and the transport's `WebViewHandle` are structurally identical.
   const webviewHandleRef = useRef<EffectMessagingWebViewHandle | null>(null)
 
   useEffect(() => {
@@ -83,10 +73,7 @@ function GatekeeperWebView({ baseUrl, route, token }: GatekeeperWebViewProps): J
     Effect.runSync(transport.sendMessage({ _tag: 'HostBackRequested' }))
   }, [transport])
 
-  // Bridge the navigator-agnostic `setHeaderLeft` prop to expo-router's
-  // `useNavigation().setOptions({ headerLeft })`. The chevron only
-  // renders when `canGoBack` is true; otherwise we send `undefined` so
-  // the navigator falls back to its default header.
+  // Bridge `setHeaderLeft` to expo-router's `useNavigation().setOptions`.
   const navigation = useNavigation()
   const setHeaderLeft: SetHeaderLeft = useCallback(
     (renderer) => {

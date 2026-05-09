@@ -1,11 +1,7 @@
 import { type ReactNode, StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-/**
- * Mount the app under `#root`, wrapped in `<StrictMode>`. Shared by
- * `main-web.tsx` and `main-embedded.tsx` so the bootstrap shape stays
- * identical across entrypoints — only the router differs.
- */
+/** Mount the app under `#root`, wrapped in `<StrictMode>`. */
 const mount = (children: ReactNode): void => {
   const container = document.getElementById('root')
   if (container === null) {

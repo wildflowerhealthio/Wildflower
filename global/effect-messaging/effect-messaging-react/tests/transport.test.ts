@@ -15,11 +15,7 @@ const dispatchPostMessage = (raw: string, origin: string = window.location.origi
   window.dispatchEvent(event)
 }
 
-// In-test fixture matching the shape of the wildflower NavigationBridge.
-// Effect-messaging packages must not import slice contracts; this
-// fixture stays in the test file. The generic test value covers the
-// patterns those contracts depend on (host-to-web tags, web-to-host
-// tags, `_tag`-discriminated payloads).
+// Test fixture — the package can't import slice contracts.
 const HostBackRequested = Schema.parseJson(Schema.TaggedStruct('HostBackRequested', {}))
 const HostRequestedWebNavigation = Schema.parseJson(
   Schema.TaggedStruct('HostRequestedWebNavigation', { path: Schema.String })
@@ -38,9 +34,6 @@ const NavigationBridge = Bridge.make({
   webOptionsShape: Schema.Struct({}),
 })
 
-// Using the live web adapter — the page-side production wiring. The
-// inferred return type matches `BridgeTransport.make` minus the
-// `PlatformAdapter` requirement (which we provide via Layer here).
 // oxlint-disable-next-line typescript-eslint/explicit-function-return-type
 const webTransport = <Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
   readonly bridges: Bridges
@@ -503,8 +496,6 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
         }),
       HostRequestedWebNavigation: () => Effect.void,
     })
-    // Run with a tight scope; the handler started but never finishes
-    // because scope close interrupts it.
     const { promise } = LoggingLayerTest.runScoped(
       Effect.gen(function* () {
         const transport = yield* webTransport({
@@ -516,7 +507,6 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
             _tag: 'HostBackRequested',
           })
         )
-        // Wait for the slow handler to start before letting the scope close.
         yield* Effect.sleep(10)
         return transport
       })
@@ -527,9 +517,6 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
   })
 })
 
-// Property: `decodeAndDispatch` produces some `DispatchError` outcome
-// for any input — never a thrown defect. The transport's `flushed`
-// resolves cleanly regardless of the inputs queued.
 test('property: receive path survives arbitrary string inputs', async () => {
   const Buzz = Schema.parseJson(Schema.TaggedStruct('Buzz', {}))
   const SmallBridge = Bridge.make({
@@ -541,8 +528,6 @@ test('property: receive path survives arbitrary string inputs', async () => {
   })
   const layer = SmallBridge.Web.ReceiverLayer({ Buzz: () => Effect.void })
 
-  // A mix of well-formed envelopes, malformed JSON, well-formed
-  // envelopes with bad payloads, and unknown tags.
   const wellFormed = fc.constant(JSON.stringify({ _tag: 'Buzz' }))
   const badPayload = fc.constant(JSON.stringify({ _tag: 'Buzz', extra: { unexpected: true } }))
   const unknownTag = fc.string({ minLength: 1, maxLength: 6 }).map((t) => JSON.stringify({ _tag: t }))
@@ -567,9 +552,6 @@ test('property: receive path survives arbitrary string inputs', async () => {
   )
 })
 
-// Property: send → posts round-trip identity for arbitrary message
-// sequences. (Retained from the prior test surface for coverage of
-// the send-side encoding pipeline.)
 test('property: sendMessage routes to the correct bridge for arbitrary message sequences', async () => {
   const Alpha = Schema.parseJson(Schema.TaggedStruct('Alpha', { x: Schema.Number }))
   const Beta = Schema.parseJson(Schema.TaggedStruct('Beta', { y: Schema.String }))

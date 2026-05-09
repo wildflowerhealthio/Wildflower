@@ -10,15 +10,10 @@ import { OAuthPollingScreen } from './screens/oauth-polling.tsx'
 import { RequestDetailScreen } from './screens/request-detail.tsx'
 import { RequestsListScreen } from './screens/requests-list.tsx'
 
-// Exported as a JSX.Element fragment, not a component function. React Router's
-// <Routes> walks its JSX children syntactically (via createRoutesFromChildren)
-// and only accepts <Route> or <React.Fragment>; a custom component that
-// *returns* routes is never unwrapped. Path strings hardcode the /gatekeeper
-// prefix so they match the URLs the API redirects to (see
-// gatekeeper-core/page-paths.ts) under both MemoryRouter (embedded bundle) and
-// BrowserRouter (web bundle) without basename gymnastics. The drift test in
-// tests/routes.test.tsx asserts each redirect target in `GatekeeperPaths` has
-// a matching <Route path>.
+// Exported as a JSX.Element (not a component): <Routes> walks children syntactically.
+// Paths hardcode the /gatekeeper prefix so they match `gatekeeper-core/page-paths`
+// under both MemoryRouter and BrowserRouter without basename gymnastics; the
+// drift test in tests/routes.test.tsx asserts each redirect target has a matching <Route>.
 const gatekeeperRoutesFragment: JSX.Element = (
   <>
     {/* Public — no bearer token required */}

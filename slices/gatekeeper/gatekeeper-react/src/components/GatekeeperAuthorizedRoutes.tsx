@@ -8,16 +8,9 @@ import { NeedsAuthMessage } from './NeedsAuthMessage.tsx'
 const noToken = (): null => null
 
 /**
- * Route-level gate for screens that need a bearer token. Subscribes
- * to token changes (same-window via `writeToken`'s dispatched event,
- * cross-tab via the native `storage` event); when the token rotates,
- * `useSyncExternalStore` triggers a re-render so the provider remounts
- * with the new session and downstream screens swap in transparently.
- *
- * @remarks
- * Designed for `<Route element={<GatekeeperAuthorizedRoutes />}>` nesting
- * in react-router. Uses `<Outlet />` so the wrapper composes with
- * any number of child routes.
+ * Route-level gate for screens that need a bearer token. Renders
+ * {@link NeedsAuthMessage} when no token is present; remounts the
+ * authenticated provider on token rotation.
  */
 const GatekeeperAuthorizedRoutes = (): JSX.Element => {
   const token = useSyncExternalStore(subscribeToken, readToken, noToken)

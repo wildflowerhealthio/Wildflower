@@ -53,9 +53,7 @@ const makeClient = (overrides: Partial<ClientRow> = {}): ClientRow => ({
 
 type CommittedEvent = { name: string; args: Record<string, unknown> }
 
-// Each LiveQueryDef carries a stable `hash` derived from its query string and
-// bind values. We reconstruct the matching def for each known row and compare
-// hashes to figure out what the production code is asking for.
+// Identify a LiveQueryDef by its stable `hash` (query + bind values).
 const queryHash = (q: unknown): string | undefined => {
   if (typeof q === 'object' && q !== null && 'hash' in q && typeof q.hash === 'string') {
     return q.hash

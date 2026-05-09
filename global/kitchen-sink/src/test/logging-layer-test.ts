@@ -1,26 +1,7 @@
 import type { Layer, Scope } from 'effect'
 import { Effect, Logger } from 'effect'
 
-/**
- * Generic logger-capture test fixture. Replaces Effect's default
- * `Logger` with one that pushes every entry into a shared array, so
- * tests can run scoped programs and assert on what got logged.
- *
- * Re-exported as the `LoggingLayerTest` namespace from
- * `kitchen-sink/test`. Idiomatic use:
- *
- * ```ts
- * import { LoggingLayerTest } from 'kitchen-sink/test'
- *
- * test('warns on bad input', async () => {
- *   const { promise, logSink } = LoggingLayerTest.runScoped(program)
- *   await promise
- *   LoggingLayerTest.expectWarningContaining(logSink, 'bad input')
- * })
- * ```
- */
-
-/** One captured log entry — the log level label and rendered message. */
+/** One captured log entry. */
 interface CapturedLog {
   readonly level: string
   readonly message: string
@@ -29,11 +10,15 @@ interface CapturedLog {
 /**
  * Build a logger-replacement layer paired with a fresh capture array.
  *
- * @returns An object `{ layer, logSink }` where:
- *   - `layer` — replaces the default Effect logger with one that pushes
- *     each entry into `logSink`; propagates via FiberRef so forked fibers
- *     inherit the same sink
- *   - `logSink` — the array that receives every captured entry
+ * @returns `{ layer, logSink }` — `layer` swaps the default logger for one
+ * that pushes into `logSink`.
+ *
+ * @example
+ * ```ts
+ * const { layer, logSink } = LoggingLayerTest.make()
+ * Effect.runSync(program.pipe(Effect.provide(layer)))
+ * LoggingLayerTest.expectWarningContaining(logSink, 'bad input')
+ * ```
  */
 const make = (): { layer: Layer.Layer<never, never, never>; logSink: CapturedLog[] } => {
   const logSink: CapturedLog[] = []
@@ -47,15 +32,9 @@ const make = (): { layer: Layer.Layer<never, never, never>; logSink: CapturedLog
 }
 
 /**
- * Wrap a scoped Effect program with the capturing-logger layer and
- * run it as a Promise. Tests build the program inline (with
- * `Effect.gen` and any other primitives) and pass it here — the
- * helper is just `Effect.scoped + Effect.provide(layer) + runPromise`
- * boilerplate.
- *
- * Scope close (when the program resolves) interrupts any forked
- * fiber and detaches platform listeners through their
- * `Effect.acquireRelease` chains.
+ * Wrap a scoped Effect program with the capturing-logger layer and run
+ * it as a Promise. Equivalent to
+ * `Effect.scoped + Effect.provide(layer) + runPromise`.
  */
 const runScoped = <A>(
   program: Effect.Effect<A, never, Scope.Scope>
@@ -65,11 +44,7 @@ const runScoped = <A>(
   return { promise: Effect.runPromise(Effect.scoped(program).pipe(Effect.provide(layer))), logSink }
 }
 
-/**
- * Assert that {@link logs} contains at least one WARN entry whose
- * message includes `substring`. Throws with the full captured log
- * when no match is found, which keeps the failure message debuggable.
- */
+/** Assert that `logs` contains a WARN entry whose message includes `substring`. */
 const expectWarningContaining = (logs: ReadonlyArray<CapturedLog>, substring: string): void => {
   const match = logs.find((l) => l.level === 'WARN' && l.message.includes(substring))
   if (match === undefined) {

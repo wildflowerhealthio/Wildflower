@@ -10,12 +10,6 @@ import { useGatekeeperClient } from '../../use-gatekeeper-client.ts'
 import { OAuthConsentForm } from './oauth-consent-form.tsx'
 import type { Consent } from './types.ts'
 
-/**
- * Suspense + `Await` pattern: the consent fetch is a single Effect
- * run through the session runtime, returning a stable Promise (via
- * `useEffectTs`). The form's approve/decline actions stay
- * imperative — they fire once on click, navigate away on success.
- */
 const OAuthConsentScreen = (): JSX.Element => {
   const session = useGatekeeperClient()
   const navigate = useNavigate()

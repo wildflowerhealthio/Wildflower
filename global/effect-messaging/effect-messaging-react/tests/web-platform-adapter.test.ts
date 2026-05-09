@@ -82,13 +82,11 @@ describe('WebPlatformAdapter.make — attachLive', () => {
     const scope = Effect.runSync(Scope.make())
     await Effect.runPromise(Scope.extend(attachLive((raw) => seen.push(raw)), scope))
 
-    // Listener active: same-origin string event from this window dispatches.
     window.dispatchEvent(
       new MessageEvent('message', { data: 'live', origin: window.location.origin, source: window })
     )
     expect(seen).toEqual(['live'])
 
-    // After scope close, the listener is detached and no further events arrive.
     await Effect.runPromise(Scope.close(scope, Exit.void))
     window.dispatchEvent(
       new MessageEvent('message', { data: 'after', origin: window.location.origin, source: window })

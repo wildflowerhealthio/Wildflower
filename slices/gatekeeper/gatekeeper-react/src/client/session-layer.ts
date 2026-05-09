@@ -1,11 +1,3 @@
-/**
- * Layer-construction shared by every gatekeeper-react HTTP session
- * (authenticated and unauthenticated). Centralising here means the
- * runtime context — `HttpClient.HttpClient` for sibling-API calls,
- * `GatekeeperHttpApiClient` for typed gatekeeper API access — is wired
- * exactly once for the whole web bundle.
- */
-
 import { FetchHttpClient, HttpApiClient, HttpClient, HttpClientRequest } from '@effect/platform'
 import type { ManagedRuntime } from 'effect'
 import { Layer } from 'effect'
@@ -16,10 +8,7 @@ import { webTelemetryLayerFromEnv } from 'telemetry-web'
 type SessionEnv = HttpClient.HttpClient | GatekeeperHttpApiClient
 type SessionRuntime = ManagedRuntime.ManagedRuntime<SessionEnv, never>
 
-/**
- * Authentication header transform shared by the gatekeeper client
- * and any sibling-API client built off the same session.
- */
+/** Sets `Authorization: Bearer <token>` on every request. */
 const setBearerToken =
   (token: string) =>
   (c: HttpClient.HttpClient): HttpClient.HttpClient =>
@@ -32,12 +21,7 @@ const httpLayer: Layer.Layer<HttpClient.HttpClient> = Layer.mergeAll(
   webTelemetryLayerFromEnv()
 ).pipe(Layer.provideMerge(FetchHttpClient.layer))
 
-/**
- * Build the `GatekeeperHttpApiClient` service backed by `HttpApiClient.make`
- * — with a bearer header when `token` is provided, plain otherwise.
- * Provided downstream of `httpLayer` so the resulting layer's only
- * unsatisfied requirement at the runtime boundary is `never`.
- */
+/** Build a `GatekeeperHttpApiClient` layer; attaches a bearer header when `token` is non-null. */
 const buildGatekeeperClientLayer = (
   token: string | null
 ): Layer.Layer<GatekeeperHttpApiClient, never, HttpClient.HttpClient> => {

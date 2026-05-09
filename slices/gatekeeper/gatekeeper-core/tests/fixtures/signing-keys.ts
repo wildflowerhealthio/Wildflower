@@ -1,16 +1,7 @@
 import { SigningKey } from '../../src/livestore/index.ts'
 
-// Pre-generated RSA-2048 keys for tests. RSA generation is ~200–400ms each;
-// baking three deterministic fixtures into the repo eliminates that cost
-// from every test that just needs a non-empty signing-key list. The kids
-// are stable (`test-key-1` / `2` / `3`) so snapshots stay deterministic.
-//
-// DO NOT use these in production — they're exported in plain text in this
-// repo and have no security value beyond unit-test signing/verification.
-//
-// Regenerate via a one-off node script if a future schema change forces
-// re-encoding. The schema is `SigningKey.Schema` in
-// `src/livestore/signing-key.ts`.
+// Deterministic RSA-2048 fixtures with stable kids — RSA generation is ~200–400ms each.
+// DO NOT use in production: keys are committed in plain text.
 const testingKey1 = SigningKey.make({
   kid: 'test-key-1',
   kty: 'RSA',

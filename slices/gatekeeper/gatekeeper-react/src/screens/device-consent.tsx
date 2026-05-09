@@ -17,12 +17,6 @@ import scopeListStyles from '../styles/scope-list.module.css'
 
 type DeviceConsent = Schema.Schema.Type<typeof Devices.DeviceConsentSchema>
 
-/**
- * Suspense + `Await` pattern: the consent fetch is a single Effect
- * run through the session runtime, returning a stable Promise (via
- * `useEffectTs`). The form's approve/decline actions stay
- * imperative — they fire once on click, navigate away on success.
- */
 const DeviceConsentScreen = (): JSX.Element => {
   const session = useGatekeeperClient()
   const navigate = useNavigate()

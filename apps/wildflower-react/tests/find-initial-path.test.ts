@@ -24,7 +24,6 @@ describe('findInitialPath', () => {
   })
 
   test("returns '/' when no entry decodes as HostRequestedWebNavigation", () => {
-    // Well-formed envelopes with other tags should be skipped, not crash.
     const warn = stubWarn()
     const otherTag = JSON.stringify({ _tag: 'SomeOtherTag', payload: 'whatever' })
     expect(findInitialPath([otherTag])).toBe('/')

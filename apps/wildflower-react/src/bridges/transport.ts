@@ -6,19 +6,9 @@ import { WebPlatformAdapter } from 'effect-messaging-react'
 import GatekeeperBridge from 'gatekeeper-core/bridge'
 import { gatekeeperWebReceiverLayer } from 'gatekeeper-react/web-bridge'
 
-/**
- * Module-load wiring for the SPA bundle: builds the runtime, drains the
- * host-injected initial messages once, and stands up the multi-bridge
- * web transport against a replay adapter so the dispatch fiber sees
- * those messages exactly once.
- *
- * Top-level await note: `await managedRuntime.runtime()` blocks first
- * paint on the runtime build. With `Layer.empty` that's effectively
- * free; if telemetry/logger overrides plug in here later, the cost
- * grows and this should be moved into a lazy-init seam (Layer.unwrap or
- * a React provider) so paint doesn't wait on it.
- */
-
+// Top-level await note: `await managedRuntime.runtime()` blocks first paint on
+// the runtime build. Cheap with `Layer.empty`; if telemetry/logger overrides
+// plug in here later, move into a lazy-init seam.
 const managedRuntime = ManagedRuntime.make(Layer.empty)
 const runtime = await managedRuntime.runtime()
 EffectRuntimeGlobal.setEffectRuntime(runtime)
@@ -26,8 +16,7 @@ EffectRuntimeGlobal.setEffectRuntime(runtime)
 const webAdapter = WebPlatformAdapter.make()
 const initialMessages: ReadonlyArray<string> = Effect.runSync(webAdapter.drainInitial)
 
-// Replay adapter: shares `bareSender` / `attachLive`, hands the drained
-// strings back through `drainInitial` so the dispatch fiber sees them.
+// Replay adapter — see `effect-messaging-react/README.md` for the drain-then-replay rationale.
 const replayAdapter: PlatformAdapter['Type'] = {
   bareSender: webAdapter.bareSender,
   drainInitial: Effect.succeed(initialMessages),

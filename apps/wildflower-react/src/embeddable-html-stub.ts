@@ -1,11 +1,9 @@
 /**
  * Source-condition fallback for `wildflower-react/embeddable-html`. The
- * real artifact lives at `dist-embedded/html.{js,d.ts}` and is generated
- * by `vp run build:embedded`. Until that build runs, consumers resolving
- * with `--conditions=source` (e.g. Expo dev) get this stub: an HTML
- * document whose body is the warning. Surfacing the missing-build state
- * in the rendered WebView is louder and faster to debug than a silent
- * blank screen.
+ * real artifact at `dist-embedded/html.{js,d.ts}` is built by
+ * `vp run build:embedded`; until then, consumers resolving with
+ * `--conditions=source` (e.g. Expo dev) get this stub instead of a
+ * silent blank screen.
  */
 export const html: string = `<!doctype html>
 <html lang="en">

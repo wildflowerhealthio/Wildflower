@@ -39,9 +39,7 @@ const hashOf = (q: unknown): string | undefined => {
 
 type CommittedEvent = { name: string; args: Record<string, unknown> }
 
-// Event factories pass args through in their decoded form (e.g.
-// `requestedAt: DateTime.Utc`, not the encoded ISO string). The schema
-// check ran when `events.X({...})` was called, so we just cast here.
+// Event factories pass args in decoded form (DateTime.Utc, not ISO strings).
 type DeviceStartedArgs =
   typeof AuthorizationRequest.events.deviceAuthorizationRequestStarted.schema.Type
 type ApprovedArgs = typeof AuthorizationRequest.events.authorizationRequestApproved.schema.Type
@@ -487,7 +485,6 @@ test('device_code is single-use: a second token poll returns expired_token', asy
   const { handler, dispose } = createHandler(store)
 
   try {
-    // First exchange: success.
     const first = await handler(
       new Request(`${ORIGIN}/oauth/token`, {
         method: 'POST',
@@ -501,9 +498,7 @@ test('device_code is single-use: a second token poll returns expired_token', asy
     )
     expect(first.status).toBe(200)
 
-    // Second exchange against the same device_code: must reject — the
-    // approve-then-consume transition should have flipped status to
-    // 'expired' on the first call.
+    // Second exchange must reject: the first transition should have flipped status to 'expired'.
     const second = await handler(
       new Request(`${ORIGIN}/oauth/token`, {
         method: 'POST',
@@ -623,7 +618,6 @@ test('POST /access/devices/:userCode/approve flips status to approved', async ()
     const body = await readJsonObject(response)
     expect(body['status']).toBe('approved')
 
-    // Subsequent token exchange should now succeed.
     const tokenResponse = await handler(
       new Request(`${ORIGIN}/oauth/token`, {
         method: 'POST',
@@ -676,9 +670,7 @@ test('POST /access/devices/:userCode/approve with empty granted scopes routes th
   )
 
   try {
-    // Owner submits an empty `approvedScopes` array (or one with only
-    // non-requested scopes). Treated as a denial — the OAuth client
-    // would otherwise get a `scope=''` token that grants nothing.
+    // Empty `approvedScopes` is treated as a denial; otherwise the client gets a scope='' token.
     const response = await handler(
       new Request(`${ORIGIN}/access/devices/BCDF-GHJK/approve`, {
         method: 'POST',
@@ -693,7 +685,6 @@ test('POST /access/devices/:userCode/approve with empty granted scopes routes th
     const body = await readJsonObject(response)
     expect(body['status']).toBe('denied')
 
-    // The device-code branch should now return access_denied.
     const tokenResponse = await handler(
       new Request(`${ORIGIN}/oauth/token`, {
         method: 'POST',
@@ -752,7 +743,7 @@ test('POST /access/devices/:userCode/deny without auth is rejected', async () =>
 
 test('device-flow token exchange returns slow_down when polled within interval', async () => {
   const signingKey = testingKey1
-  // Pretend the row was polled 1 second ago — under the 5-second interval.
+  // Last poll 1s ago, under the 5s interval.
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
     grantType: 'device_code',

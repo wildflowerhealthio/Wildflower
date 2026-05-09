@@ -7,12 +7,7 @@ import {
 } from '@effect/platform'
 import { Context, Effect, Layer, Option } from 'effect'
 
-/**
- * Absolute path to the directory containing the SPA bundle (`index.html`
- * plus the asset tree to serve verbatim). The platform-specific runner
- * provides a value via `Layer.succeed(WebAssetsDir, …)` — for
- * `wildflower-node`, that's `wildflower-react/web-assets`.
- */
+/** Absolute path to the directory containing the SPA bundle (`index.html` plus the asset tree). */
 class WebAssetsDir extends Context.Tag('wildflower-server/WebAssetsDir')<WebAssetsDir, string>() {}
 
 const containsParentSegment = (pathname: string): boolean => {
@@ -27,19 +22,16 @@ const containsParentSegment = (pathname: string): boolean => {
 }
 
 /**
- * Determine a safe relative asset path from an HTTP request pathname.
+ * Sanitise an HTTP request pathname to a safe relative asset path.
  *
- * Returns `Option.some(rel)` for a sanitised path (no leading slash, no
+ * @returns `Option.some(rel)` for a clean path (no leading slash, no
  * `..` segments, no `\0`, no malformed encoding); `Option.none()` when
- * no safe path exists. The handler bounces `none()` to `/`. The empty
- * string `''` represents the SPA root and falls through to `index.html`
- * via the `tryFindAssetFileForPath` stat-miss branch.
+ * no safe path exists. The empty string `''` represents the SPA root.
  */
 const sanitizeRequestPath = (pathname: string): Option.Option<string> => {
   if (pathname.includes('\0')) return Option.none()
   if (containsParentSegment(pathname)) return Option.none()
-  // Collapse leading slashes: `new URL('//foo/bar', base)` treats `//foo`
-  // as a protocol-relative authority and would drop the first segment.
+  // `new URL('//foo/bar', base)` treats `//foo` as a protocol-relative authority.
   const cleaned = pathname.replace(/^\/+/, '/')
   const normalized = new URL(cleaned, 'http://placeholder/').pathname
   const stripped = normalized.replace(/^\/+/, '').replace(/\/+/g, '/')
@@ -48,11 +40,12 @@ const sanitizeRequestPath = (pathname: string): Option.Option<string> => {
 }
 
 /**
- * Resolve a sanitised relative path to an absolute asset-file path on
- * disk. Returns `Option.none()` when no real file lives there or when
- * the resolved path escapes `webAssetsDir` (defense in depth against
- * encoded-slash escapes that decode to `..` inside the platform `Path`
- * implementation). Caller falls back to `index.html` on `none()`.
+ * Resolve a sanitised relative path to an absolute asset-file path on disk.
+ *
+ * @returns `Option.some(absolute)` when a real file lives at the resolved
+ * path; `Option.none()` when no file exists or when the resolved path
+ * escapes `webAssetsDir`. Defense in depth against encoded-slash escapes
+ * that decode to `..` inside the platform `Path` implementation.
  */
 const tryFindAssetFileForPath = (
   webAssetsDir: string,
@@ -89,26 +82,21 @@ const makeStaticSpaLayer = (webAssetsDir: string): Layer.Layer<never, never, nev
       const assetFile = yield* tryFindAssetFileForPath(webAssetsDir, relPath.value)
       return yield* HttpServerResponse.file(Option.getOrElse(assetFile, () => indexFile))
     })
-    // GET serves the asset; HEAD returns the same headers without the
-    // body. Other methods (POST, PUT, …) on an unmatched path should
-    // 404 rather than fall through to the SPA shell — masking client
-    // bugs by serving 200 OK is worse than the obvious failure.
+    // Only GET/HEAD fall back to the SPA shell; other methods on an unmatched path 404.
     return router.get('*', handler).pipe(Effect.zipRight(router.head('*', handler)))
   })
 
 /**
- * SPA fallback. Serves real files under the configured `WebAssetsDir`
- * verbatim (assets, etc.) and falls back to `index.html` for any
- * unmatched GET/HEAD path so deep links rehydrate the router on
- * refresh. Registered on `HttpApiBuilder.Router` (the same router
- * `HttpApiBuilder.api` endpoints land on), so the API's specific paths
- * win and only unmatched GET/HEAD requests fall through here.
+ * SPA fallback. Serves real files under {@link WebAssetsDir} verbatim
+ * and falls back to `index.html` for any unmatched GET/HEAD path so
+ * deep links rehydrate the router on refresh. Registered on
+ * `HttpApiBuilder.Router` so the API's specific paths win.
  *
+ * @remarks
  * Reads `WebAssetsDir` at Layer-build time via `Layer.unwrapEffect` so
- * the route handler closes over a plain string. This sidesteps
+ * the route handler closes over a plain string — sidesteps
  * `HttpApiBuilder.Router.use`'s constraint that route-handler
- * requirements fit `DefaultServices | Provided` — the Tag never appears
- * in the handler's R, only in the outer Layer's R.
+ * requirements fit `DefaultServices | Provided`.
  */
 const StaticSpaLive: Layer.Layer<never, never, WebAssetsDir> = Layer.unwrapEffect(
   Effect.map(WebAssetsDir, makeStaticSpaLayer)

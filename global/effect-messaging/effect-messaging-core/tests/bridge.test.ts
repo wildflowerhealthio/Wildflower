@@ -218,21 +218,17 @@ describe('Bridge.make — type-level surface', () => {
     const bridge = makeTestBridge()
     type Inbound = (typeof bridge.Web.InboundSchemas)['Ping']
     type InboundType = Schema.Schema.Type<Inbound>
-    // The schema's decoded type is what handlers receive.
     assertType<InboundType>({ _tag: 'Ping', value: 1 })
 
-    // The HandlerTag's service type is `HandlersFor<Inbound>` — handlers are Effect-typed.
     type HandlerService = Context.Tag.Service<typeof bridge.Web.HandlerTag>
     assertType<HandlerService>({
       Ping: ({ value }) => Effect.sync(() => expect(typeof value).toBe('number')),
       Buzz: () => Effect.void,
     })
 
-    // The OptionsShape's decoded type comes from the schema itself.
     type HostOptions = Schema.Schema.Type<typeof bridge.Host.OptionsShape>
     assertType<HostOptions>({ greeting: 'hello' })
 
-    // A typed sender for one side accepts the union of that side's outbound messages.
     type HostSender = typeof bridge.Host.send
     assertType<Parameters<HostSender>[0]>({ _tag: 'Ping', value: 1 })
     assertType<Parameters<HostSender>[0]>({ _tag: 'Buzz' })
@@ -276,11 +272,8 @@ describe('Bridge.make — Layer integration', () => {
   })
 })
 
-// Property: `Bridge.make` produces outbound-schema records keyed by the
-// declared tag set, regardless of how many tags are wired. The pair
-// arrays are cast through `never` because the dynamic shape doesn't
-// statically satisfy `ValidatedPairs`'s positional check — fine in a
-// property test that runs concrete pre-validated schemas.
+// Pair arrays are cast through `never`: dynamic shape doesn't satisfy
+// `ValidatedPairs`'s positional check, fine for pre-validated schemas.
 test('property: outbound schema keys equal declared tag set', () => {
   const tagAlphabet = ['Ping', 'Pong', 'Buzz'] as const
   // oxlint-disable-next-line typescript-eslint/no-explicit-any
@@ -290,8 +283,7 @@ test('property: outbound schema keys equal declared tag set', () => {
       fc.uniqueArray(fc.constantFrom(...tagAlphabet), { minLength: 0, maxLength: 3 }),
       fc.uniqueArray(fc.constantFrom(...tagAlphabet), { minLength: 0, maxLength: 3 }),
       (hostTags, webTags) => {
-        // Ensure no overlap between host-outbound and web-outbound — a
-        // bridge's outbound record on each side is a disjoint set.
+        // Each side's outbound record is a disjoint set.
         const webTagSet = new Set(webTags)
         const hostOnly = hostTags.filter((t) => !webTagSet.has(t))
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
@@ -312,8 +304,6 @@ test('property: outbound schema keys equal declared tag set', () => {
   )
 })
 
-// Property: `send(msg)` encoded via the adapter then decodeSync on the
-// matching `InboundSchemas` round-trips identity.
 test('property: send → decodeSync round-trips identity for any wired message', () => {
   const bridge = makeTestBridge()
   fc.assert(
@@ -335,8 +325,6 @@ test('property: send → decodeSync round-trips identity for any wired message',
   )
 })
 
-// Property: two `Bridge.make` calls with the same name produce non-equal
-// `HandlerTag` instances regardless of pair shapes.
 test('property: same-name bridges always mint distinct HandlerTag instances', () => {
   fc.assert(
     fc.property(

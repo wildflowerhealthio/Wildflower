@@ -4,12 +4,6 @@ import type * as MessageHandler from './message-handler.ts'
 import type * as Message from './message.ts'
 import { PlatformAdapter } from './platform-adapter.ts'
 
-/**
- * The slice-paired primitive that binds outbound senders to inbound
- * receivers at the type level. Re-exported as the `Bridge` namespace
- * from `effect-messaging-core`. Construct with {@link make}.
- */
-
 /** Typed sender for one side. Each call returns an Effect that requires {@link PlatformAdapter}. */
 type SenderFn<R extends Message.SchemaRecord> = (
   message: Message.Of<R>
@@ -25,22 +19,14 @@ interface Half<
 > {
   readonly OutboundSchemas: Outbound
   readonly InboundSchemas: Inbound
-
-  /** Fresh-per-call `Context.Tag` for this side's typed handler record. */
   readonly HandlerTag: Context.Tag<
     MessageHandler.TagId<Name, Side>,
     MessageHandler.HandlersFor<Inbound>
   >
-
-  /** Build a `Layer` that supplies `HandlerTag` with the caller's handlers. */
   readonly ReceiverLayer: (
     handlers: MessageHandler.HandlersFor<Inbound>
   ) => Layer.Layer<MessageHandler.TagId<Name, Side>>
-
-  /** Typed sender for this side's outbound messages. Requires {@link PlatformAdapter} from context. */
   readonly send: SenderFn<Outbound>
-
-  /** Schema describing the options the aggregator on this side expects when wiring this bridge. */
   readonly OptionsShape: Options
 }
 
@@ -62,13 +48,9 @@ interface Bridge<
  * Structural bound for "any half of a bridge a transport can drive".
  *
  * @remarks
- * Concrete `Half<...>` values fit via structural typing. `Half`'s
- * schema/options generics appear in covariant *and* contravariant
- * positions across the two sides of the bridge so it's invariant;
- * `Context.Tag<any, any>` lets a concrete tag through Tag's own
- * invariant bound. The `send` argument is `never` so concrete senders
- * — including empty-outbound bridges typed `(m: never) => ...` —
- * fit via function-parameter contravariance.
+ * `Context.Tag<any, any>` and `(m: never) => …` widen invariant
+ * positions so concrete halves fit. See `README.md` for the full
+ * variance write-up.
  */
 type AnyHalf = {
   readonly InboundSchemas: Message.SchemaRecord
@@ -88,9 +70,7 @@ type AnyBridge = {
 /**
  * Function-intersection of every wired bridge's typed sender for the
  * specified side. The transport's public `sendMessage` strips the
- * {@link PlatformAdapter} requirement (the transport provides it
- * internally), so the surfaced shape is `(m) => Effect<void>` per
- * bridge.
+ * {@link PlatformAdapter} requirement.
  */
 type SenderIntersection<
   Bridges extends ReadonlyArray<AnyBridge>,
@@ -111,6 +91,8 @@ type SenderIntersection<
 
 /**
  * Union of every decoded message a wired bridge's `Side` can send.
+ *
+ * @remarks
  * Used where {@link SenderIntersection}'s function-intersection shape
  * is the wrong tool — `Parameters` doesn't yield a parameter union
  * over intersected functions because TS treats them as overloads.
@@ -131,9 +113,8 @@ type SendableMessage<
   : never
 
 /**
- * Tuple-mapped layers requirement for a bridge transport. Position
- * `I` must supply position `I`'s bridge tag (for the specified side);
- * mismatched lengths or tag identifiers fail at the call site.
+ * Tuple-mapped layers requirement for a bridge transport. Position `I` must
+ * supply position `I`'s bridge tag (for the specified side).
  */
 type TransportLayers<Bridges extends ReadonlyArray<AnyBridge>, Side extends 'Host' | 'Web'> = {
   readonly [I in keyof Bridges]: Bridges[I] extends {
@@ -159,10 +140,9 @@ type TransportLayers<Bridges extends ReadonlyArray<AnyBridge>, Side extends 'Hos
  * ```
  *
  * @remarks
- * Each call mints two fresh `Context.Tag` instances — runtime
- * identities are unique per call, even with the same `name`. Pair
- * tuples are validated via {@link Message.ValidatedPairs} — a
- * mismatched `[tag, schema]` is a compile error at the call site.
+ * Each call mints fresh `Context.Tag` instances. Pair tuples are
+ * validated via {@link Message.ValidatedPairs} — a mismatched
+ * `[tag, schema]` fails at the call site.
  */
 const make = <
   const Name extends string,
@@ -204,9 +184,7 @@ const make = <
       HandlerTag: HostHandlerTag,
       ReceiverLayer: (handlers) => Layer.succeed(HostHandlerTag, handlers),
       send: (message) =>
-        // `message` is contextually typed as `Message.Of<...>`; abstract
-        // inside this body, so TS can't reduce it to a `_tag`-bearing
-        // shape. Runtime invariant: every value is a tagged struct.
+        // `message` is `Message.Of<...>` (abstract); runtime invariant: every value is a tagged struct.
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
         sendThrough(hostToWebRecord, message as { readonly _tag: string }),
       OptionsShape: definition.hostOptionsShape,
@@ -228,11 +206,7 @@ const make = <
   }
 }
 
-/**
- * Build a `{[tag]: schema}` record from a pair tuple. Caller's precise
- * types survive via the `RecordFromPairs<...>` cast in {@link make}'s
- * return — this helper has no per-pair type info to thread through.
- */
+/** Build a `{[tag]: schema}` record from a pair tuple. */
 const recordFromPairs = <
   TPairs extends ReadonlyArray<readonly [string, Message.StringEncodedSchema]>,
 >(
@@ -245,10 +219,8 @@ const recordFromPairs = <
 }
 
 /**
- * Look up a message's outbound schema by tag, encode it, and forward
- * the resulting string through the {@link PlatformAdapter} the
- * caller's Effect context provides. Unknown tags warn and drop —
- * a wiring mistake.
+ * Look up a message's outbound schema by tag, encode, and forward through
+ * the {@link PlatformAdapter}. Unknown tags warn and drop.
  */
 const sendThrough = (
   record: Record<string, Message.StringEncodedSchema>,
@@ -267,21 +239,15 @@ const sendThrough = (
     return undefined
   })
 
-/**
- * Build a `{[tag]: bridgeSenderForTag}` map across a list of bridges
- * for one side. Throws synchronously on outbound-tag collisions
- * across bridges — same wiring-error policy the transport's inbound
- * dup check enforces.
- *
- * @remarks
- * Used both by `BridgeTransport.make`'s dispatch surface and by Expo's
- * initial-message encoder so the two paths agree on the per-tag
- * sender (and so duplicates throw once, in this helper).
- */
 type TaggedSender = (message: {
   readonly _tag: string
 }) => Effect.Effect<void, never, PlatformAdapter>
 
+/**
+ * Build a `{[tag]: bridgeSenderForTag}` map across a list of bridges for one
+ * side. Throws on outbound-tag collisions — same wiring-error policy the
+ * transport's inbound dup check enforces.
+ */
 const senderByTag = <Bridges extends ReadonlyArray<AnyBridge>, Side extends 'Host' | 'Web'>(
   bridges: Bridges,
   side: Side
@@ -293,9 +259,7 @@ const senderByTag = <Bridges extends ReadonlyArray<AnyBridge>, Side extends 'Hos
       if (map.has(tag)) {
         throw new Error(`[effect-messaging] duplicate outbound tag "${tag}" across bridges`)
       }
-      // `half.send` is typed `(m: never) => ...` — the structural escape;
-      // dispatching by `_tag` lands every message on a sender that
-      // accepts it at runtime.
+      // `half.send` is typed `(m: never) => …`; runtime dispatch by `_tag` lands every message correctly.
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
       map.set(tag, half.send as TaggedSender)
     }

@@ -3,10 +3,7 @@ import * as React from 'react'
 import { Pressable, Text, View } from 'react-native'
 import type * as RNType from 'react-native'
 
-// `jest.mock` factories are hoisted above imports and forbidden to read
-// out-of-scope variables. babel-plugin-jest-hoist exempts identifiers
-// matching `/^mock/i`, so every captured-state variable below uses a bare
-// `mock` prefix (no leading underscores — `__mockX` would not match).
+// `mock`-prefix is required for jest factory hoist (babel-plugin-jest-hoist matches /^mock/i).
 type MockWebViewProps = {
   readonly source?: unknown
   readonly injectedJavaScriptBeforeContentLoaded?: string
@@ -19,18 +16,8 @@ let mockExternalUrls: string[] = []
 let mockWebViewPostMessageCalls: string[] = []
 
 jest.mock('react-native-webview', () => {
-  // The mock implements `useImperativeHandle` so `webviewRef.current`
-  // resolves and the EffectMessagingWebView's own
-  // `useImperativeHandle` proxies through to a real spy. The captured
-  // state `mockWebViewPostMessageCalls` keeps a `mock`-prefixed name to
-  // satisfy the babel-plugin-jest-hoist exemption.
-  //
-  // Trade-off note for thread 3210720124: this mock keeps
-  // `useImperativeHandle` so the imperative postMessage path is
-  // exercised end-to-end. When a future test wants to verify behaviour
-  // without an imperative handle (e.g. asserting the optional-chain
-  // guard pre-mount), use a separate test that intentionally omits
-  // `useImperativeHandle` rather than the global mock.
+  // Mock keeps `useImperativeHandle` so the postMessage path is exercised end-to-end.
+  // Tests of pre-mount guards should use a separate dedicated mock.
   const ReactInner = jest.requireActual<typeof React>('react')
   const RN = jest.requireActual<typeof RNType>('react-native')
   const WebView = ReactInner.forwardRef(function MockWebView(

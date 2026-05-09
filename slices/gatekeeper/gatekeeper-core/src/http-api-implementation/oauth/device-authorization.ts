@@ -19,9 +19,7 @@ type DeviceAuthorizationResponse = Schema.Schema.Type<typeof DeviceAuthorization
 
 const DEVICE_AUTHORIZATION_TTL: Duration.Duration = Duration.minutes(5)
 
-// Device-flow client lookup: returns the row narrowed to "enabled"
-// (`disabledAt: null`). Errors are 401-shaped because device-auth speaks
-// JSON, not HTML.
+// Returns the row narrowed to enabled (`disabledAt: null`). Device-auth speaks JSON; errors are 401-shaped.
 const getEnabledClientForDeviceAuth = (
   clientId: string
 ): Effect.Effect<ClientRow & { disabledAt: null }, OAuthError401, GatekeeperStore> =>

@@ -121,10 +121,7 @@ test('CryptoRandomLayerLive forwards to the supplied crypto.randomUUID', () => {
 })
 
 test('cryptoRandomLayerFromWebCrypto wraps Web Crypto without an explicit type argument', () => {
-  // This test exists to pin the type-inference behaviour: passing
-  // `globalThis.crypto` (whose `getRandomValues` is generic) used to
-  // require an explicit `<Uint8Array & ReturnType<...>>` type argument
-  // at every call site. The helper binds Uint8Array internally.
+  // Pins type inference: the helper binds `Uint8Array` internally so callers don't repeat it.
   const layer = cryptoRandomLayerFromWebCrypto(globalThis.crypto)
   const bytes = drainBytes(layer, 4)
   expect(bytes).toHaveLength(4)

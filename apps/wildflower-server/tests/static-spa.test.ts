@@ -63,20 +63,13 @@ test('sanitizeRequestPath passes deep-link routes through', () => {
 })
 
 test('sanitizeRequestPath: %2f-encoded slash variants stay encoded in the relative path', () => {
-  // `URL.pathname` keeps `%2f` percent-encoded; the validator's per-segment
-  // decode catches a `..` only as an exact equality. The literal-substring
-  // path `foo%2f..%2fetc` therefore passes sanitisation, and the FS-side
-  // containment check in `tryFindAssetFileForPath` is responsible for
-  // catching it. This test pins the parser's behaviour so the FS-side
-  // assertion below has a known input shape.
+  // `URL.pathname` keeps `%2f` encoded; the FS-side containment check catches the escape.
   const result = sanitizeRequestPath('/foo%2f..%2fetc/passwd')
   expect(Option.isSome(result)).toBe(true)
 })
 
 test('sanitizeRequestPath: backslash-encoded escapes stay literal', () => {
-  // Same logic as %2f — backslashes are not parent segments by the
-  // per-segment decode, so they pass sanitisation. Containment check
-  // enforces base-dir.
+  // Backslashes aren't parent segments; FS-side containment check enforces base-dir.
   const result = sanitizeRequestPath('/foo\\..\\etc/passwd')
   expect(Option.isSome(result)).toBe(true)
 })
@@ -89,7 +82,6 @@ test('sanitizeRequestPath property: every Some(rel) is a safe relative path', ()
       const rel = result.value
       expect(rel.startsWith('/')).toBe(false)
       expect(rel).not.toContain('\0')
-      // No literal `..` segments in the sanitised output.
       const segments = rel.split('/')
       for (const seg of segments) expect(seg).not.toBe('..')
     }),
@@ -118,18 +110,14 @@ test('tryFindAssetFileForPath returns None when the file is missing', async () =
 })
 
 test('tryFindAssetFileForPath rejects symlinked traversal escape', async () => {
-  // A symlink under the base whose target is outside the base.
+  // Symlinks under the base ARE followed: `path.resolve` doesn't expand them, so the
+  // candidate stays textually under tempBase. Documents the gap — deployers must
+  // not place attacker-controlled symlinks under web-assets.
   const escapeTarget = mkdtempSync(join(tmpdir(), 'static-spa-escape-'))
   try {
     writeFileSync(join(escapeTarget, 'secret.txt'), 'sensitive')
     symlinkSync(escapeTarget, join(tempBase, 'link'))
     const result = await runFsEffect(tryFindAssetFileForPath(tempBase, 'link/secret.txt'))
-    // path.resolve does not follow symlinks; the candidate stays
-    // textually under tempBase, so containment passes and the file
-    // exists. This documents the gap: symlinks ARE followed by the FS
-    // call, which is the desired behaviour for normal asset trees but
-    // means the deployer must not place attacker-controlled symlinks
-    // under web-assets.
     expect(Option.isSome(result)).toBe(true)
   } finally {
     rmSync(escapeTarget, { recursive: true, force: true })
@@ -137,15 +125,12 @@ test('tryFindAssetFileForPath rejects symlinked traversal escape', async () => {
 })
 
 test('tryFindAssetFileForPath rejects an absolute relPath that escapes via path.resolve', async () => {
-  // `path.resolve(base, '/etc/passwd')` returns `/etc/passwd` — the
-  // absolute argument wins. The containment check rejects this case.
+  // `path.resolve(base, '/etc/passwd')` returns `/etc/passwd` — the absolute argument wins.
   const result = await runFsEffect(tryFindAssetFileForPath(tempBase, '/etc/passwd'))
   expect(result).toEqual(Option.none())
 })
 
 test('tryFindAssetFileForPath rejects path.resolve escapes via embedded ..', async () => {
-  // If sanitizeRequestPath ever regresses, the FS-side check still
-  // rejects when path.resolve collapses `..` past the base.
   const result = await runFsEffect(tryFindAssetFileForPath(tempBase, '../escape'))
   expect(result).toEqual(Option.none())
 })
@@ -160,7 +145,6 @@ test('tryFindAssetFileForPath property: returned path always lives under webAsse
       async (relPath) => {
         const result = await runFsEffect(tryFindAssetFileForPath(tempBase, relPath))
         if (Option.isNone(result)) return
-        // Some implies a real file under base.
         expect(result.value.startsWith(tempBase)).toBe(true)
       }
     ),

@@ -48,8 +48,7 @@ const makeStubStore = (options: {
 
 const ORIGIN = 'https://example.test'
 
-// `jose.importJWK` returns `CryptoKey | Uint8Array`. For RSA JWKs it's
-// always `CryptoKey`, so we runtime-check rather than unsafely cast.
+// `jose.importJWK` returns `CryptoKey | Uint8Array`; runtime-check rather than unsafe-cast.
 const importRsaJwk = async (jwk: jose.JWK): Promise<jose.CryptoKey> => {
   const imported = await jose.importJWK(jwk)
   if (!(imported instanceof CryptoKey)) {
@@ -58,9 +57,7 @@ const importRsaJwk = async (jwk: jose.JWK): Promise<jose.CryptoKey> => {
   return imported
 }
 
-// Sign an arbitrary payload with a given SigningKey via raw `jose.SignJWT`.
-// `mintAccessToken`'s typed signature won't allow non-string `sub`,
-// custom `aud` shapes, or explicit `exp`, so we go through jose directly.
+// Raw jose call: `mintAccessToken`'s signature rejects non-string `sub`, custom `aud`, explicit `exp`.
 const signWith = async (key: SigningKey.Type, payload: jose.JWTPayload): Promise<string> => {
   const joseKey = await importRsaJwk(SigningKey.privateJwk(key))
   return await new jose.SignJWT(payload)
@@ -169,8 +166,7 @@ test('JWT is rejected when issuer mismatches origin', async () => {
 
 test('JWT is rejected when sub is not a string', async () => {
   const key = testingKey1
-  // `jose.JWTPayload.sub` is typed `string | undefined`; we deliberately
-  // bypass that here to exercise the runtime guard in `verifyJwt`.
+  // Deliberately bypass the typed `sub` to exercise the runtime guard.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const token = await signWith(key, {
     iss: ORIGIN,
@@ -218,18 +214,13 @@ test('JWT is rejected when audience is not in accepted set', async () => {
 })
 
 test('JWT is rejected when no signing keys are present', async () => {
-  // verifyJwt now surfaces the empty-keys path as InternalServerError
-  // (server misconfiguration), not Unauthorized. The shape we assert on
-  // is `Either.isLeft`, which still holds for either failure type.
   const store = makeStubStore({ signingKeys: [], clients: [makeClient()] })
   const result = await runVerify(store, 'token')
   expect(Either.isLeft(result)).toBe(true)
 })
 
 test('JWT is verified when one of multiple signing keys can verify it', async () => {
-  // Sign with key B, present `[key A, key B]`. verifyAgainstAnyKey
-  // iterates every key — key A's signature check fails, key B's
-  // succeeds. This is the rotation scenario.
+  // Rotation scenario: sign with key B, present `[A, B]`; verifyAgainstAnyKey iterates.
   const keyA = testingKey1
   const keyB = testingKey2
   const token = await signWith(keyB, {

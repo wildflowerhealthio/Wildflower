@@ -10,12 +10,7 @@ interface AsyncErrorViewProps {
   readonly titleClassName?: string
 }
 
-/**
- * `errorElement` for `<Await>`: pulls the rejected value from
- * `useAsyncError()` and renders it via `PageError`. Saves every
- * screen from re-implementing the same three-line wrapper around
- * `useAsyncError`.
- */
+/** `errorElement` for `<Await>`: renders `useAsyncError()` via {@link PageError}. */
 const AsyncErrorView = ({ title, className, titleClassName }: AsyncErrorViewProps): JSX.Element => {
   const error = useAsyncError()
   return (

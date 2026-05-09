@@ -24,9 +24,7 @@ test('seedSigningKey commits both signingKeyAdded and signingKeyActivated on a f
   await Effect.runPromise(seedSigningKey.pipe(Effect.provide(makeGatekeeperStoreLayer(store))))
   const keys = store.query(SigningKey.queries.all$)
   expect(keys).toHaveLength(1)
-  // Activation flips isActive=true; the active query must resolve to a
-  // value (not null). This is the load-bearing reason for committing
-  // both events.
+  // Activation makes the active query resolve to a value, not null.
   const active = store.query(SigningKey.queries.active$)
   expect(active).not.toBeNull()
   expect(active?.kid).toBe(keys[0]?.kid)
@@ -36,7 +34,6 @@ test('seedSigningKey is a no-op on a store that already has a key', async () => 
   await Effect.runPromise(seedSigningKey.pipe(Effect.provide(makeGatekeeperStoreLayer(store))))
   const firstKey = store.query(SigningKey.queries.active$)
   expect(firstKey).not.toBeNull()
-  // Second call must not generate a new key.
   await Effect.runPromise(seedSigningKey.pipe(Effect.provide(makeGatekeeperStoreLayer(store))))
   const keys = store.query(SigningKey.queries.all$)
   expect(keys).toHaveLength(1)

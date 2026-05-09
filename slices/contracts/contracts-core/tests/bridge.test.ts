@@ -33,12 +33,8 @@ describe('NavigationBridge', () => {
     expect(decoded).toEqual({ _tag: 'RouteChanged', pathname: '/x', canGoBack: true })
   })
 
-  // Aggregator contract: slice-expo packages (e.g. GatekeeperWebView)
-  // read hostOptions of shape `{ initialPath }` and emit a single
-  // `HostRequestedWebNavigation` initial message with `path =
-  // initialPath`. This test pins that field-name mapping through the
-  // bridge's wire encoding so a rename on either side fails here
-  // rather than silently at integration time.
+  // Aggregator contract: slice-expo packages map `hostOptions.initialPath`
+  // to `HostRequestedWebNavigation.path`. Pin the mapping so a rename fails here.
   test('hostOptions { initialPath } feeds HostRequestedWebNavigation.path on the wire', () => {
     const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make({})
     const opts = Schema.decodeUnknownSync(NavigationBridge.Host.OptionsShape)({

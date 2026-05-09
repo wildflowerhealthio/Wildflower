@@ -9,12 +9,7 @@ interface RevokeGrantDialogProps {
   readonly onCancel: () => void
 }
 
-/**
- * Confirm-revoke modal lifted out of the access index so the
- * top-level screen reads as a list of `Section`s. The dialog is open
- * iff `clientId !== null` — passing `null` from the parent dismisses
- * it without an extra `open` prop.
- */
+/** Confirm-revoke modal. Open iff `clientId !== null`. */
 const RevokeGrantDialog = ({
   clientId,
   onConfirm,

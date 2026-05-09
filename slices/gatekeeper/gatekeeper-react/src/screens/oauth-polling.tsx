@@ -10,17 +10,9 @@ import pageLayout from '../styles/page-layout.module.css'
 import styles from './oauth-polling.module.css'
 
 /**
- * SPA route that replaces the previously server-rendered polling
- * page. Subscribes to `pollAuthorizationStatus(id)` from
- * `gatekeeper-core` — that stream owns the polling cadence,
- * transient retry, and "stop on terminal status" logic; this
- * screen just renders the latest emission. Suspense covers the
- * pre-first-emission gap; `<Await>`'s `errorElement` surfaces
- * stream failures (e.g. 404 / 500 after retries are exhausted).
- *
- * The screen is mounted outside `<GatekeeperAuthorizedRoutes>`
- * because `/oauth/authorize/:id` is cookie-driven (no bearer
- * token), so it builds its own unauthenticated session.
+ * SPA route that subscribes to `pollAuthorizationStatus(id)` and renders the
+ * latest emission. Mounted outside `<GatekeeperAuthorizedRoutes>` — builds its
+ * own unauthenticated session because the page has no bearer token.
  */
 const OAuthPollingScreen = (): JSX.Element => {
   const { id = '' } = useParams<{ id: string }>()
@@ -51,9 +43,6 @@ interface PollingResultProps {
 }
 
 const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
-  // `useStream` re-resolves on every emission, so React renders
-  // the latest status. The redirect side effect runs once when
-  // the status reaches `approved`.
   useEffect(() => {
     if (status.status === 'approved') {
       window.location.replace(status.redirect)
@@ -76,7 +65,7 @@ const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
       </div>
     )
   }
-  // Pending heartbeat or post-approved-pre-redirect — same UI.
+  // Pending heartbeat or post-approved-pre-redirect — same spinner.
   return <PollingSpinner />
 }
 

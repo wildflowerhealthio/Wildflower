@@ -32,8 +32,7 @@ const run = Effect.gen(function* () {
   const gatekeeperStoreLayer = makeGatekeeperStoreLayer(store)
   const originLayer = Layer.succeed(Origin, ORIGIN)
 
-  // Idempotent bootstrap: signing key (sign-side requires it) and the
-  // first-party `wildflower-host` client (host's own identity).
+  // Idempotent: signing key + first-party `wildflower-host` client identity.
   yield* seedSigningKey.pipe(Effect.provide(gatekeeperStoreLayer))
   yield* seedFirstPartyClient.pipe(Effect.provide(gatekeeperStoreLayer))
 
@@ -49,7 +48,7 @@ const run = Effect.gen(function* () {
     )
   }
 
-  // Logged inside the Layer lifecycle so it fires after the port binds.
+  // `Layer.tap` after `withLogAddress` emits this once the port is bound.
   const logBootstrapUrl =
     bootstrapToken == null
       ? Effect.void

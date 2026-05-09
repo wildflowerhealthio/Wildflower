@@ -16,11 +16,7 @@ type OAuthError401 = Schema.Schema.Type<typeof OAuthError401Schema>
 type OAuthError500 = Schema.Schema.Type<typeof OAuthError500Schema>
 type TokenResponse = Schema.Schema.Type<typeof TokenResponseSchema>
 
-// Builds the OAuth client redirect carrying `code` + `state`. Used by
-// both the Authorize handler (for auto-approved requests) and the
-// AuthorizationStatus handler. There is no HttpApi-driven URL-builder
-// for arbitrary client redirects (the target is a third-party URL, not
-// an endpoint we serve), so manual `URL` assembly is unavoidable.
+// Manual `URL` assembly: the target is a third-party redirect, not a route we serve.
 const buildClientRedirectUrl = (redirectUri: string, code: string, clientState: string): string => {
   const url = new URL(redirectUri)
   url.searchParams.set('code', code)

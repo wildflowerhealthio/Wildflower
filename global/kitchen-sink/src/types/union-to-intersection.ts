@@ -1,13 +1,10 @@
 /**
- * Standard union-to-intersection trick. A union in a contravariant
- * position (function argument) inverts to an intersection during
- * inference: TS's distributivity over the union produces a candidate
- * for each member, and the inferred-from-multiple-candidates rule
- * picks the intersection.
+ * Convert a union `A | B` into an intersection `A & B`.
  *
- * Useful for merging multiple typed callbacks into a single overloaded
- * function callable with any of their argument unions, among other
- * variance gymnastics.
+ * @remarks
+ * Distributes the union into a contravariant position; the
+ * inferred-from-multiple-candidates rule then picks the intersection.
+ * Useful for merging typed callbacks into one overloaded function.
  */
 export type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (
   k: infer I

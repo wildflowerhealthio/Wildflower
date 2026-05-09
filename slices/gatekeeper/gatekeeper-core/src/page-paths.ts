@@ -4,19 +4,12 @@ import { Origin } from 'kitchen-sink'
 /**
  * Single source of truth for the URLs the gatekeeper API redirects to.
  * The SPA router in `gatekeeper-react` declares matching `<Route path>`
- * values for each entry; a drift test asserts they cannot disagree.
+ * values; a drift test asserts they agree.
  *
- * Each route exposes a pair:
- * - `*Path(...)` — the absolute path string (`/gatekeeper/...`),
- *   suitable for `<Route path>` literals and for callers that already
- *   hold an origin to concatenate with.
- * - `*Url(...)` — an `Effect<string, never, Origin>` that resolves the
- *   `Origin` Tag and returns the full URL. Use this on the server side
- *   (token-exchange responses, redirects) so the origin source is the
- *   kitchen-sink `Origin` Tag, not a parameter passed by every caller.
- *
- * Path params are percent-encoded for path-segment use, so callers MUST
- * NOT `encodeURIComponent` again at the call site.
+ * @remarks
+ * Each route exposes `*Path(...)` (absolute path) and `*Url(...)`
+ * (`Effect<string, never, Origin>` for server-side redirects).
+ * Path params are percent-encoded — callers MUST NOT re-encode.
  */
 export namespace GatekeeperPaths {
   const withOrigin = (path: string): Effect.Effect<string, never, Origin> =>
@@ -43,12 +36,9 @@ export namespace GatekeeperPaths {
     withOrigin(deviceEntryPath())
 
   /**
-   * Prefilled variant of the device-entry page, used to populate
-   * RFC 8628's `verification_uri_complete` (§3.3.1) — the same
-   * `/gatekeeper/devices` route, but with `?user_code=` appended so the
-   * SPA can hydrate the form without the user re-typing the code.
-   * Built with `URLSearchParams` so any future change to `userCode`'s
-   * character class encodes correctly.
+   * Prefilled device-entry URL for RFC 8628's `verification_uri_complete`
+   * (§3.3.1) — `/gatekeeper/devices?user_code=…` so the SPA hydrates the
+   * form without re-typing.
    */
   export const deviceEntryUrlWithCode = (
     userCode: string

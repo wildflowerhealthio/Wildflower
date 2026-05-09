@@ -46,10 +46,8 @@ interface PatientOptionsState {
 }
 
 /**
- * Fetches the patient list from the FHIR R4 service using the
- * shared session runtime. Failures are logged to the runtime's
- * logger (telemetry-web wires Effect's logger through to Sentry +
- * console) so an empty list isn't a silent dead-end.
+ * Fetches the patient list from the FHIR R4 service. Failures log through
+ * the session runtime's logger (Sentry + console via telemetry-web).
  */
 const usePatientOptions = (
   session: AuthenticatedSession,

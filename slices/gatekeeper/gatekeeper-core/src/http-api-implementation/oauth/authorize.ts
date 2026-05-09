@@ -25,9 +25,6 @@ const AUTHORIZATION_REQUEST_TTL: Duration.Duration = Duration.minutes(5)
 const htmlBadRequestResponse = (html: string): HttpServerResponse.HttpServerResponse =>
   HttpServerResponse.text(html, { status: 400, contentType: 'text/html; charset=utf-8' })
 
-// `AuthorizeUrlParams` are validated for non-emptiness by the schema; the
-// payload-validation steps below add the application-level guards.
-
 const requireSigningKey = (): Effect.Effect<
   void,
   HttpServerResponse.HttpServerResponse,
@@ -61,8 +58,7 @@ const parseRedirectUri = (
     catch: () => htmlBadRequestResponse(oauthErrorHtml('invalid_redirect_uri')),
   }).pipe(Effect.flatMap(requireHttpScheme))
 
-// Authorize-flow client lookup: returns the row narrowed to "enabled"
-// (`disabledAt: null`) so callers don't repeat the null-check.
+// Returns the row narrowed to enabled (`disabledAt: null`).
 const getEnabledClient = (
   clientId: string
 ): Effect.Effect<
@@ -256,8 +252,7 @@ const handleAuthorize = (
       const pollingUrl = yield* GatekeeperPaths.oauthPollingUrl(requestId)
       return HttpServerResponse.redirect(pollingUrl, { status: 302 })
     }),
-    // Validation steps short-circuit by failing with a fully-formed
-    // response; surface that response to the framework as success.
+    // Validation failures are fully-formed responses; surface them as success.
     Effect.catchAll((response: HttpServerResponse.HttpServerResponse) => Effect.succeed(response))
   )
 

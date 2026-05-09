@@ -23,18 +23,11 @@ import {
 import { StaticSpaLive } from './static-spa.ts'
 
 /**
- * CORS allows any origin: this server is intended for broad consumption by
- * SMART-on-FHIR clients, embedded SPAs, and third-party tooling that may
- * run from any origin (vendor-app webviews, dev tools, partner
- * integrations). Tokens travel in `Authorization: Bearer …`, never
- * cookies, so this is not a CSRF surface — the wide allowlist is the
- * desired contract, not a dev shortcut.
- *
- * The cookie-stripping policy in `stripCookiesMiddleware` enforces that
- * contract at runtime: any handler that tries to set a cookie has its
- * Set-Cookie stripped and emits a loud error. If a future handler opts
- * into cookie auth, the audit signal fires before the CORS posture
- * silently becomes a vulnerability.
+ * CORS allows any origin — this server is intended for broad consumption
+ * by SMART-on-FHIR clients, embedded SPAs, and third-party tooling.
+ * Tokens travel in `Authorization: Bearer …`, never cookies, so this is
+ * not a CSRF surface; {@link stripCookiesMiddleware} enforces the
+ * bearer-only contract at runtime.
  */
 const corsMiddleware = HttpMiddleware.cors({
   allowedOrigins: ['*'],
@@ -53,13 +46,13 @@ const corsMiddleware = HttpMiddleware.cors({
 })
 
 /**
- * Strip outgoing `Set-Cookie` headers and any `cookies` set on the
- * `HttpServerResponse`. Because `corsMiddleware` allows any origin and
- * the auth design is bearer-token-only, a handler that sets a cookie
- * would be both unintended and a CSRF risk. Logs an error so the
- * deviation is visible in operator logs. Reconstructs the response via
- * `HttpServerResponse.empty` + `setBody` because the public API lacks a
- * direct "remove header" combinator on responses.
+ * Strip outgoing `Set-Cookie` headers and response cookies, logging an
+ * error. With `corsMiddleware` allowing any origin and bearer-only auth,
+ * any cookie write is unintended and a CSRF risk.
+ *
+ * @remarks
+ * Reconstructs the response via `HttpServerResponse.empty` + `setBody`;
+ * the public API has no "remove header" combinator on responses.
  */
 const stripCookiesMiddleware = HttpMiddleware.make((app) =>
   Effect.flatMap(app, (response) => {
@@ -105,12 +98,11 @@ const WildflowerHttpApiLive = HttpApiBuilder.api(WildflowerHttpApi).pipe(
  * Cross-platform server Layer. Composes the HTTP API (Gatekeeper + FHIR
  * resources/public), the SPA static-file fallback, and Swagger docs.
  *
- * Requires the platform-specific runner to provide:
- * - `HttpServer.HttpServer` (e.g. `NodeHttpServer.layer`)
- * - `FileSystem.FileSystem` and `Path.Path` (for the SPA fallback)
- * - `WebAssetsDir` (path to the SPA bundle)
- * - `Origin`, `CryptoRandom`, `LivestoreStore`, `GatekeeperStore`
- *   (consumed by the API handlers).
+ * @remarks
+ * Platform runner must supply: `HttpServer.HttpServer`,
+ * `FileSystem.FileSystem`, `Path.Path`, `WebAssetsDir`, plus the
+ * services the API handlers consume (`Origin`, `CryptoRandom`,
+ * `LivestoreStore`, `GatekeeperStore`).
  */
 const WildflowerServerLive = HttpApiBuilder.serve(middleware).pipe(
   Layer.provide(HttpApiSwagger.layer()),

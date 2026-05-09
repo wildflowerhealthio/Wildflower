@@ -25,11 +25,7 @@ type DeviceFlowState =
 
 const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
 
-// All OAuth error bodies the gatekeeper may throw at the device-flow
-// caller, decoded from `unknown` via the schema union. `decodeOAuthError`
-// constrains downstream branches to the literal `error` codes the schemas
-// declare, so `Match.when({ error: 'access_denied' }, …)` is exhaustive
-// against the union without hand-rolled shape probes.
+// Decoding gives literal `error` codes so downstream `Match.when({error: '…'})` is exhaustive.
 const OAuthErrorSchema = Schema.Union(OAuth.OAuthError400Schema, OAuth.OAuthError401Schema)
 type OAuthErrorBody = Schema.Schema.Type<typeof OAuthErrorSchema>
 const decodeOAuthError = Schema.decodeUnknownEither(OAuthErrorSchema)
@@ -37,11 +33,7 @@ const decodeOAuthError = Schema.decodeUnknownEither(OAuthErrorSchema)
 const formatOAuthError = (body: OAuthErrorBody): string =>
   body.error_description !== undefined ? `${body.error}: ${body.error_description}` : body.error
 
-// Fallback for anything that fails to decode as an OAuth error body.
-// Plain `Error.message` renders as "[object Object]" for typed schema
-// errors like `OAuthError401Schema.make(...)`, but those decode cleanly
-// on the OAuth branch; this path only handles network failures,
-// unexpected shapes, and thrown strings.
+// Network failures, unexpected shapes, thrown strings — typed OAuth errors decode on the OAuth branch.
 const formatGenericError = (error: unknown): string => {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
@@ -59,12 +51,7 @@ const isRetryable = (error: unknown): boolean =>
     onRight: (body) => body.error === 'authorization_pending' || body.error === 'slow_down',
   })
 
-/**
- * Map any thrown value to the next `DeviceFlowState`. The error is first
- * decoded against the OAuth 400/401 union; on success, `Match` discriminates
- * on the literal `error` code. Anything that fails to decode falls through
- * to the generic formatter.
- */
+/** Map a thrown value to the next `DeviceFlowState`. */
 const toErrorState = (error: unknown): DeviceFlowState =>
   Either.match(decodeOAuthError(error), {
     onLeft: () => ({ tag: 'error', message: formatGenericError(error) }),
@@ -77,12 +64,9 @@ const toErrorState = (error: unknown): DeviceFlowState =>
   })
 
 /**
- * Replaces the previous "you need a token" stub: actually starts the
- * RFC 8628 device-authorization flow against the gatekeeper, displays
- * the resulting `user_code` for the user to enter on a sign-in
- * device, and polls `/oauth/token` until the request is approved (at
- * which point the token is written to localStorage and the auth gate
- * mounts the authenticated provider).
+ * Starts the RFC 8628 device-authorization flow, surfaces the `user_code`,
+ * and polls `/oauth/token` until approval. On success writes the token to
+ * `localStorage`, where the auth gate's `useSyncExternalStore` picks it up.
  */
 const NeedsAuthMessage = (): JSX.Element => {
   const [state, setState] = useState<DeviceFlowState>({ tag: 'starting' })
@@ -90,21 +74,6 @@ const NeedsAuthMessage = (): JSX.Element => {
   useEffect(() => {
     const session = makeUnauthenticatedSession()
 
-    /**
-     * The whole device-authorization flow as a single Effect:
-     *   1. POST `/oauth/device_authorization` for `user_code`/`device_code`.
-     *   2. Surface the user_code via React state.
-     *   3. Poll `/oauth/token`, retrying while the server says
-     *      `authorization_pending` or `slow_down` (Schedule.spaced).
-     *   4. On success, write the token; the auth gate's
-     *      `useSyncExternalStore` picks it up and remounts.
-     *   5. On terminal errors (`access_denied` / `expired_token`),
-     *      transition to the matching state via `Effect.catchAll`.
-     *
-     * Cancellation is handled by `Fiber.interrupt`: a pending sleep
-     * inside `Effect.retry` is interrupted cleanly, so no manual
-     * `cancelled` flag is needed.
-     */
     const flow = Effect.gen(function* () {
       const client = yield* GatekeeperHttpApiClient
 
@@ -121,13 +90,7 @@ const NeedsAuthMessage = (): JSX.Element => {
         })
       })
 
-      // RFC 8628 lets the issuer hint a longer interval via
-      // `slow_down`; we approximate by polling at the original
-      // interval and treating the hint as another "keep waiting"
-      // signal — a growing interval would need a per-iteration Ref
-      // and the issuer typically just keeps replying `slow_down`
-      // until its rate window reopens, which is functionally the
-      // same as our fixed retry.
+      // RFC 8628 `slow_down` is treated as another "keep waiting" signal — a fixed retry approximates a growing interval.
       const tokenResponse = yield* client.oauth
         .TokenExchange({
           payload: {
