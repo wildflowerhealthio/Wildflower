@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./embeddable-html": {
+      "source": "./src/embeddable-html-stub.ts",
       "types": "./dist-embedded/html.d.ts",
       "default": "./dist-embedded/html.js"
     },
@@ -18,7 +19,8 @@
     "build:embedded": "vp build --config vite.config.embedded.ts",
     "build:web": "vp build --config vite.config.web.ts",
     "check": "vp check",
-    "dev": "vp dev --config vite.config.web.ts"
+    "dev": "vp dev --config vite.config.web.ts",
+    "test": "vp test"
   },
   "dependencies": {
     "contracts-core": "workspace:*",

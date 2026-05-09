@@ -13,7 +13,4 @@ import { fileURLToPath } from 'node:url'
 // resolve with `--conditions=source` (which `wildflower-node`'s `dev`/`start`
 // scripts already do). A built bundle that statically inlines `import.meta.url`
 // would point at the bundle, not the asset directory, and silently break.
-const here = dirname(fileURLToPath(import.meta.url))
-const webAssetsDir = resolve(here, '..', 'dist-web')
-
-export { webAssetsDir }
+export const webAssetsDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dist-web')

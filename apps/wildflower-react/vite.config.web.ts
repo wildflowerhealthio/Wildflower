@@ -1,16 +1,11 @@
-import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite-plus'
+import baseConfig from './vite.config.base.ts'
 
 export default defineConfig({
-  plugins: [react()],
-  resolve: { conditions: ['source'] },
+  ...baseConfig,
   base: '/',
   build: {
     outDir: 'dist-web',
-    rollupOptions: {
-      input: 'index.html',
-    },
+    rollupOptions: { input: 'index.html' },
   },
-  lint: { options: { typeAware: true, typeCheck: true } },
-  fmt: {},
 })

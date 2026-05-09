@@ -1,25 +1,19 @@
 import './instrument.ts'
 import { NavigationBridgeHandler } from 'contracts-react'
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
+import { MemoryRouter, Routes } from 'react-router'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
-import { MemoryRouter, Routes } from 'react-router'
-import * as NavigationBridge from './bridges/navigation.ts'
+import { findInitialPath } from './bridges/find-initial-path.ts'
 import * as BridgeTransport from './bridges/transport.ts'
-import './styles/global.css'
+import { mount } from './mount.tsx'
 import { appRoutesFragment } from './routes.tsx'
+import './styles/global.css'
 
-const container = document.getElementById('root')
-if (container === null) {
-  throw new Error('root element not found')
-}
+const initialPath = findInitialPath(BridgeTransport.initialMessages)
 
-createRoot(container).render(
-  <StrictMode>
-    <MemoryRouter initialEntries={[NavigationBridge.initialPath]}>
-      <NavigationBridgeHandler sender={BridgeTransport.transport.sendMessage} />
-      <Routes>{appRoutesFragment}</Routes>
-    </MemoryRouter>
-  </StrictMode>
+mount(
+  <MemoryRouter initialEntries={[initialPath]}>
+    <NavigationBridgeHandler sender={BridgeTransport.transport.sendMessage} />
+    <Routes>{appRoutesFragment}</Routes>
+  </MemoryRouter>
 )

@@ -1,26 +1,21 @@
-import react from '@vitejs/plugin-react'
 import { viteSingleFile } from 'vite-plugin-singlefile'
 import type { Plugin } from 'vite-plus'
 import { defineConfig } from 'vite-plus'
+import baseConfig from './vite.config.base.ts'
 
 // Re-emit `viteSingleFile`'s inlined HTML as both a JS string export and a
 // `.d.ts` declaration. Lets downstream packages (`gatekeeper-expo`) import
 // `embeddable-html` and pass the bundled SPA into a `react-native-webview`
 // without shipping a separate static asset.
 const emitHtmlAsModule = (): Plugin => ({
-  name: 'wildflower-react:emit-html-as-module',
+  name: 'single-file:emit-html-as-module',
   enforce: 'post',
   generateBundle(_options, bundle) {
     const entry = Object.values(bundle).find(
       (item) => item.type === 'asset' && item.fileName.endsWith('.html')
     )
     if (entry === undefined || entry.type !== 'asset') return
-    let source: string
-    if (typeof entry.source === 'string') {
-      source = entry.source
-    } else {
-      source = entry.source.toString()
-    }
+    const source = typeof entry.source === 'string' ? entry.source : entry.source.toString()
     this.emitFile({
       type: 'asset',
       fileName: 'html.js',
@@ -35,14 +30,10 @@ const emitHtmlAsModule = (): Plugin => ({
 })
 
 export default defineConfig({
-  plugins: [react(), viteSingleFile(), emitHtmlAsModule()],
-  resolve: { conditions: ['source'] },
+  ...baseConfig,
+  plugins: [...(baseConfig.plugins ?? []), viteSingleFile(), emitHtmlAsModule()],
   build: {
     outDir: 'dist-embedded',
-    rollupOptions: {
-      input: 'index-embedded.html',
-    },
+    rollupOptions: { input: 'index-embedded.html' },
   },
-  lint: { options: { typeAware: true, typeCheck: true } },
-  fmt: {},
 })

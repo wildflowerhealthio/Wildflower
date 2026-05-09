@@ -21,6 +21,7 @@ export default defineConfig({
     // running everything under a single root config. Expo packages run on
     // Jest and are intentionally absent.
     projects: [
+      'apps/wildflower-react/vite.config.ts',
       'global/effect-messaging/effect-messaging-core/vite.config.ts',
       'global/effect-messaging/effect-messaging-react/vite.config.ts',
       'global/kitchen-sink/vite.config.ts',

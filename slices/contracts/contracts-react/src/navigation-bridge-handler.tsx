@@ -3,6 +3,7 @@ import { Match, Option } from 'effect'
 import { type JSX, useEffect, useRef } from 'react'
 import { NavigationType, useLocation, useNavigate, useNavigationType } from 'react-router'
 import * as WindowNavigationState from './internal/window-navigation-state'
+import type { NavTarget } from './internal/window-navigation-state'
 /**
  * Mutable nav-handle a {@link NavigationBridge} receiver closes over.
  * The embedded-app aggregator builds this before the transport so the
@@ -51,7 +52,7 @@ const useNavigateHandlerUpdater = (): void => {
 
   useEffect(() => {
     // First, update the global handler ref
-    const handler = Match.type<number | string>().pipe(
+    const handler = Match.type<NavTarget>().pipe(
       // Unpack the cases so React Router's navigate typechecks
       Match.when(Match.number, (to) => void navigate(to)),
       Match.when(Match.string, (to) => void navigate(to)),
