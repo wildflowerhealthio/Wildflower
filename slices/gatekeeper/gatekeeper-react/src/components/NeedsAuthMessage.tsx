@@ -1,4 +1,4 @@
-import { Duration, Effect, Fiber, Match, Predicate, Schedule, Schema } from 'effect'
+import { Duration, Effect, Either, Fiber, Match, Schedule, Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
 import { OAuth } from 'gatekeeper-core/http-api-definition'
@@ -25,17 +25,22 @@ type DeviceFlowState =
 
 const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
 
-type OAuth400 = Schema.Schema.Type<typeof OAuth.OAuthError400Schema>
-type OAuth401 = Schema.Schema.Type<typeof OAuth.OAuthError401Schema>
-type OAuthErrorBody = OAuth400 | OAuth401
+// All OAuth error bodies the gatekeeper may throw at the device-flow
+// caller, decoded from `unknown` via the schema union. `decodeOAuthError`
+// constrains downstream branches to the literal `error` codes the schemas
+// declare, so `Match.when({ error: 'access_denied' }, …)` is exhaustive
+// against the union without hand-rolled shape probes.
+const OAuthErrorSchema = Schema.Union(OAuth.OAuthError400Schema, OAuth.OAuthError401Schema)
+type OAuthErrorBody = Schema.Schema.Type<typeof OAuthErrorSchema>
+const decodeOAuthError = Schema.decodeUnknownEither(OAuthErrorSchema)
 
 const formatOAuthError = (body: OAuthErrorBody): string =>
   body.error_description !== undefined ? `${body.error}: ${body.error_description}` : body.error
 
-// Fallback for anything that isn't a recognised OAuth error body. Plain
-// `Error.message` would render as "[object Object]" for typed schema
-// errors like `OAuthError401Schema.make(...)`, but those match cleanly
-// on the OAuth branches; this path only handles network failures,
+// Fallback for anything that fails to decode as an OAuth error body.
+// Plain `Error.message` renders as "[object Object]" for typed schema
+// errors like `OAuthError401Schema.make(...)`, but those decode cleanly
+// on the OAuth branch; this path only handles network failures,
 // unexpected shapes, and thrown strings.
 const formatGenericError = (error: unknown): string => {
   if (error instanceof Error) return error.message
@@ -48,30 +53,28 @@ const formatGenericError = (error: unknown): string => {
 }
 
 /** RFC 8628 §3.5: keep polling while the issuer is still waiting. */
-const matchIsRetryable: (err: unknown) => boolean = Match.type<unknown>().pipe(
-  Match.withReturnType<boolean>(),
-  Match.when({ error: 'authorization_pending' }, () => true),
-  Match.when({ error: 'slow_down' }, () => true),
-  Match.orElse(() => false)
-)
+const isRetryable = (error: unknown): boolean =>
+  Either.match(decodeOAuthError(error), {
+    onLeft: () => false,
+    onRight: (body) => body.error === 'authorization_pending' || body.error === 'slow_down',
+  })
 
 /**
- * Map any thrown value to the next `DeviceFlowState`. Each arm matches
- * type + value at once: `Match.when({ error: 'access_denied' }, …)`
- * uses Match's structural-pattern syntax to test the discriminator
- * literal directly. The schema-union arm catches any remaining 400/401
- * codes; `orElse` handles non-OAuth errors.
+ * Map any thrown value to the next `DeviceFlowState`. The error is first
+ * decoded against the OAuth 400/401 union; on success, `Match` discriminates
+ * on the literal `error` code. Anything that fails to decode falls through
+ * to the generic formatter.
  */
-const matchErrorState: (err: unknown) => DeviceFlowState = Match.type<unknown>().pipe(
-  Match.withReturnType<DeviceFlowState>(),
-  Match.when({ error: 'access_denied' }, () => ({ tag: 'denied' })),
-  Match.when({ error: 'expired_token' }, () => ({ tag: 'expired' })),
-  Match.when(
-    Predicate.or(Schema.is(OAuth.OAuthError400Schema), Schema.is(OAuth.OAuthError401Schema)),
-    (body) => ({ tag: 'error', message: formatOAuthError(body) })
-  ),
-  Match.orElse((err) => ({ tag: 'error', message: formatGenericError(err) }))
-)
+const toErrorState = (error: unknown): DeviceFlowState =>
+  Either.match(decodeOAuthError(error), {
+    onLeft: () => ({ tag: 'error', message: formatGenericError(error) }),
+    onRight: Match.type<OAuthErrorBody>().pipe(
+      Match.withReturnType<DeviceFlowState>(),
+      Match.when({ error: 'access_denied' }, () => ({ tag: 'denied' })),
+      Match.when({ error: 'expired_token' }, () => ({ tag: 'expired' })),
+      Match.orElse((body) => ({ tag: 'error', message: formatOAuthError(body) }))
+    ),
+  })
 
 /**
  * Replaces the previous "you need a token" stub: actually starts the
@@ -136,7 +139,7 @@ const NeedsAuthMessage = (): JSX.Element => {
         .pipe(
           Effect.retry({
             schedule: Schedule.spaced(Duration.seconds(Math.max(auth.interval, 1))),
-            while: matchIsRetryable,
+            while: isRetryable,
           })
         )
 
@@ -146,7 +149,7 @@ const NeedsAuthMessage = (): JSX.Element => {
     }).pipe(
       Effect.catchAll((err) =>
         Effect.sync(() => {
-          setState(matchErrorState(err))
+          setState(toErrorState(err))
         })
       )
     )
