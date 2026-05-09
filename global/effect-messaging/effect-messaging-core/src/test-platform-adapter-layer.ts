@@ -32,9 +32,9 @@ const make = (config?: {
   const sentSink: string[] = []
   const initialMessages = config?.initialMessages ?? []
   const liveEnqueueRef: { current: ((raw: string) => void) | null } = { current: null }
-  const attachLive: (
-    enqueue: (raw: string) => void
-  ) => Effect.Effect<void, never, Scope.Scope> = (enqueue) =>
+  const attachLive: (enqueue: (raw: string) => void) => Effect.Effect<void, never, Scope.Scope> = (
+    enqueue
+  ) =>
     Effect.acquireRelease(
       Effect.sync(() => {
         liveEnqueueRef.current = enqueue

@@ -1,4 +1,3 @@
-import { NavigationBridge } from 'navigation-core'
 import { Effect, Exit, Scope } from 'effect'
 import {
   EffectMessagingWebView,
@@ -10,6 +9,7 @@ import {
 import { useNavigation } from 'expo-router'
 import { Colors, useColorScheme } from 'expo-tundraish'
 import GatekeeperBridge from 'gatekeeper-core/bridge'
+import { NavigationBridge } from 'navigation-core'
 import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { html } from 'wildflower-react/embeddable-html'

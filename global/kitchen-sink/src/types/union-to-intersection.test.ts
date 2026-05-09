@@ -4,9 +4,7 @@ import type { UnionToIntersection } from './union-to-intersection.ts'
 
 describe('UnionToIntersection', () => {
   it('intersects two disjoint object types', () => {
-    expectTypeOf<UnionToIntersection<{ a: 1 } | { b: 2 }>>().toEqualTypeOf<
-      { a: 1 } & { b: 2 }
-    >()
+    expectTypeOf<UnionToIntersection<{ a: 1 } | { b: 2 }>>().toEqualTypeOf<{ a: 1 } & { b: 2 }>()
   })
 
   it('intersects three disjoint object types', () => {

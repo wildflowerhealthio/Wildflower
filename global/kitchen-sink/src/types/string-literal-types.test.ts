@@ -1,11 +1,7 @@
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import {
-  endsWithAlphanumericCharacter,
-  endsWithDigit,
-  isDigit,
-} from './string-literal-types.ts'
+import { endsWithAlphanumericCharacter, endsWithDigit, isDigit } from './string-literal-types.ts'
 
 describe('isDigit', () => {
   it('returns true iff the input matches /^[0-9]$/', () => {

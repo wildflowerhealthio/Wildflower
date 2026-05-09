@@ -164,9 +164,7 @@ const make = <
     // After scope close the queue is shut down; `Effect.ignore` drops the resulting interrupt cleanly.
     const runtime = yield* Effect.runtime<never>()
     const enqueue = (raw: string): void => {
-      Runtime.runSync(runtime)(
-        Queue.offer(queue, { raw, source: 'live' }).pipe(Effect.ignore)
-      )
+      Runtime.runSync(runtime)(Queue.offer(queue, { raw, source: 'live' }).pipe(Effect.ignore))
     }
 
     const initial = yield* adapter.drainInitial

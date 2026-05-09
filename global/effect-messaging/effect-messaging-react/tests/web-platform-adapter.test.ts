@@ -80,7 +80,12 @@ describe('WebPlatformAdapter.make — attachLive', () => {
     const attachLive = requireAttachLive(adapter)
     const seen: string[] = []
     const scope = Effect.runSync(Scope.make())
-    await Effect.runPromise(Scope.extend(attachLive((raw) => seen.push(raw)), scope))
+    await Effect.runPromise(
+      Scope.extend(
+        attachLive((raw) => seen.push(raw)),
+        scope
+      )
+    )
 
     window.dispatchEvent(
       new MessageEvent('message', { data: 'live', origin: window.location.origin, source: window })
@@ -99,10 +104,18 @@ describe('WebPlatformAdapter.make — attachLive', () => {
     const attachLive = requireAttachLive(adapter)
     const seen: string[] = []
     const scope = Effect.runSync(Scope.make())
-    await Effect.runPromise(Scope.extend(attachLive((raw) => seen.push(raw)), scope))
+    await Effect.runPromise(
+      Scope.extend(
+        attachLive((raw) => seen.push(raw)),
+        scope
+      )
+    )
     window.dispatchEvent(
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-      new MessageEvent('message', { data: { not: 'a string' } as unknown as string, origin: window.location.origin, source: window })
+      new MessageEvent('message', {
+        data: { not: 'a string' },
+        origin: window.location.origin,
+        source: window,
+      })
     )
     expect(seen).toEqual([])
     await Effect.runPromise(Scope.close(scope, Exit.void))
@@ -113,7 +126,12 @@ describe('WebPlatformAdapter.make — attachLive', () => {
     const attachLive = requireAttachLive(adapter)
     const seen: string[] = []
     const scope = Effect.runSync(Scope.make())
-    await Effect.runPromise(Scope.extend(attachLive((raw) => seen.push(raw)), scope))
+    await Effect.runPromise(
+      Scope.extend(
+        attachLive((raw) => seen.push(raw)),
+        scope
+      )
+    )
     window.dispatchEvent(
       new MessageEvent('message', {
         data: 'foreign',

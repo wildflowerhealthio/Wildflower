@@ -1,6 +1,6 @@
 import { act, render } from '@testing-library/react'
 import { Effect } from 'effect'
-import { NavigationBridge } from 'navigation-core'
+import type { NavigationBridge } from 'navigation-core'
 import { type JSX, useEffect } from 'react'
 import { MemoryRouter, type NavigateFunction, useNavigate } from 'react-router'
 import { describe, expect, test } from 'vite-plus/test'

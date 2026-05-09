@@ -1,5 +1,5 @@
 import { Match, Option } from 'effect'
-import { NavigationBridge } from 'navigation-core'
+import type { NavigationBridge } from 'navigation-core'
 import { type JSX, useEffect, useRef } from 'react'
 import { NavigationType, useLocation, useNavigate, useNavigationType } from 'react-router'
 import * as WindowNavigationState from './internal/window-navigation-state'

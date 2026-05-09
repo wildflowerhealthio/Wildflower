@@ -36,16 +36,17 @@ const CryptoRandomLayerLive = <TByteArray extends ArrayLike<number>>(
     nextUuid: Effect.sync(() => crypto.randomUUID()),
   })
 
-interface WebCryptoLike {
-  getRandomValues<T extends ArrayBufferView>(array: T): T
-  randomUUID(): string
-}
-
 /**
  * Live `CryptoRandom` backed by a standard Web Crypto-shaped object —
  * `globalThis.crypto`, `node:crypto.webcrypto`, or an RN polyfill.
+ *
+ * Takes the exact shape of `globalThis.crypto` so the helper is
+ * assignable from the standard `Crypto` type without widening generic
+ * constraints.
  */
-const cryptoRandomLayerFromWebCrypto = (crypto: WebCryptoLike): Layer.Layer<CryptoRandom> =>
+const cryptoRandomLayerFromWebCrypto = (
+  crypto: typeof globalThis.crypto
+): Layer.Layer<CryptoRandom> =>
   CryptoRandomLayerLive<Uint8Array>(
     {
       getRandomValues: (array: Uint8Array) => crypto.getRandomValues(array),
@@ -101,7 +102,7 @@ const cryptoRandomFromSeed = (seed: number): Layer.Layer<CryptoRandom> => {
   })
 }
 
-export type { CryptoLike, WebCryptoLike }
+export type { CryptoLike }
 export {
   CryptoRandom,
   CryptoRandomLayerLive,

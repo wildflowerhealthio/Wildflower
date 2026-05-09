@@ -32,9 +32,5 @@ class PlatformAdapter extends Context.Tag('@effect-messaging/PlatformAdapter')<
   Service
 >() {}
 
-export {
-  INITIAL_MESSAGES_WINDOW_GLOBAL,
-  PlatformAdapter,
-  REACT_NATIVE_WEBVIEW_GLOBAL,
-}
+export { INITIAL_MESSAGES_WINDOW_GLOBAL, PlatformAdapter, REACT_NATIVE_WEBVIEW_GLOBAL }
 export type { BareSender }

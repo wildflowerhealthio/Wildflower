@@ -42,10 +42,12 @@ describe('makeExpoTransport — injectedScript', () => {
     const m = transport.injectedScript.match(/window\.__INITIAL_MESSAGES__ = (\[.*\])/)
     if (m === null) throw new Error(`unexpected script: ${transport.injectedScript}`)
     const parsed: unknown = JSON.parse(m[1] ?? '[]')
-    expect(Array.isArray(parsed)).toBe(true)
-    const arr = parsed as string[]
+    if (!Array.isArray(parsed)) throw new Error('expected array')
+    const arr: ReadonlyArray<unknown> = parsed
     expect(arr).toHaveLength(1)
-    const decoded: unknown = JSON.parse(arr[0] ?? '')
+    const first = arr[0]
+    if (typeof first !== 'string') throw new Error('expected string entry')
+    const decoded: unknown = JSON.parse(first)
     expect(decoded).toEqual({ _tag: 'Ping', value: 7 })
   })
 })

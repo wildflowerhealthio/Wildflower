@@ -1,6 +1,6 @@
-import { NavigationBridge } from 'navigation-core'
 import { Either, Schema } from 'effect'
 import { Message } from 'effect-messaging-core'
+import { NavigationBridge } from 'navigation-core'
 
 const decodeEnvelope = Schema.decodeUnknownEither(Message.wireRoutingEnvelope)
 const decodeNavigation = Schema.decodeEither(

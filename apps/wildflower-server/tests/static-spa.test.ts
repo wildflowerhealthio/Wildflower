@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { FileSystem, Path } from '@effect/platform'
+import type { FileSystem, Path } from '@effect/platform'
 import { NodeFileSystem, NodePath } from '@effect/platform-node'
 import { Effect, Layer, Option } from 'effect'
 import * as fc from 'fast-check'

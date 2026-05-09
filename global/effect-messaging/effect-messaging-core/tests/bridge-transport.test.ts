@@ -2,8 +2,8 @@ import { Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { LoggingLayerTest } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
-import * as Bridge from '../src/bridge.ts'
 import * as BridgeTransport from '../src/bridge-transport.ts'
+import * as Bridge from '../src/bridge.ts'
 import * as TestPlatformAdapterLayer from '../src/test-platform-adapter-layer.ts'
 
 const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.Number }))
@@ -56,10 +56,8 @@ describe('BridgeTransport.make — internal-error variant', () => {
   test('logs an Internal warning when a bridge handler is missing for an indexed tag', async () => {
     // Emulates wiring drift: tag indexes, schema decodes, but `handlers[_tag]` is undefined.
     const { NavigationLike } = makeBridges()
-    // oxlint-disable-next-line typescript-eslint/no-explicit-any
-    const handlers = { Ping: undefined as any }
     // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-    const layer = NavigationLike.Web.ReceiverLayer(handlers as never)
+    const layer = NavigationLike.Web.ReceiverLayer({ Ping: undefined } as never)
     const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
     const { promise, logSink } = LoggingLayerTest.runScoped(
       Effect.gen(function* () {
@@ -176,7 +174,6 @@ describe('BridgeTransport.make — queue lifecycle', () => {
           await promise
           if (capturedEnqueue === null) throw new Error('enqueue not captured')
           for (const msg of lateMessages) {
-            // oxlint-disable-next-line typescript-eslint/no-unsafe-call
             ;(capturedEnqueue as (raw: string) => void)(msg)
           }
         }

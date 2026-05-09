@@ -97,8 +97,8 @@ const EffectMessagingWebView = forwardRef<
     []
   )
 
-  useEffect(() => {
-    if (setHeaderLeft === undefined) return
+  useEffect((): (() => void) | undefined => {
+    if (setHeaderLeft === undefined) return undefined
     setHeaderLeft(headerLeft)
     return (): void => setHeaderLeft(undefined)
   }, [setHeaderLeft, headerLeft])

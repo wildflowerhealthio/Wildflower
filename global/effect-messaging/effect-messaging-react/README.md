@@ -7,7 +7,7 @@ service.
 
 ## Why an adapter, not a wrapped transport
 
-The page often needs to *peek* at the host-injected initial
+The page often needs to _peek_ at the host-injected initial
 messages before mounting (e.g. to seed a `<MemoryRouter
 initialEntries={[...]}>` at the right path). Doing that with a
 single fused `WebTransport.make({...})` wrapper requires reaching
@@ -35,8 +35,9 @@ const replayAdapter = {
 
 const transport = await managedRuntime.runPromise(
   Scope.extend(
-    BridgeTransport.make({ bridges, layers, side: 'Web' })
-      .pipe(Effect.provide(Layer.succeed(PlatformAdapter, replayAdapter))),
+    BridgeTransport.make({ bridges, layers, side: 'Web' }).pipe(
+      Effect.provide(Layer.succeed(PlatformAdapter, replayAdapter))
+    ),
     scope
   )
 )

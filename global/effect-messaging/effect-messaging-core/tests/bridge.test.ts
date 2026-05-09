@@ -316,9 +316,10 @@ test('property: send → decodeSync round-trips identity for any wired message',
         const { layer, sentSink } = TestPlatformAdapterLayer.make()
         Effect.runSync(bridge.Host.send(message).pipe(Effect.provide(layer)))
         expect(sentSink).toHaveLength(1)
-        const inboundSchema =
-          message._tag === 'Ping' ? bridge.Web.InboundSchemas.Ping : bridge.Web.InboundSchemas.Buzz
-        const decoded: unknown = Schema.decodeSync(inboundSchema)(sentSink[0] ?? '')
+        const decoded: unknown =
+          message._tag === 'Ping'
+            ? Schema.decodeSync(bridge.Web.InboundSchemas.Ping)(sentSink[0] ?? '')
+            : Schema.decodeSync(bridge.Web.InboundSchemas.Buzz)(sentSink[0] ?? '')
         expect(decoded).toEqual(message)
       }
     )
@@ -336,7 +337,7 @@ test('property: same-name bridges always mint distinct HandlerTag instances', ()
           ...(includePing ? [['Ping', Ping] as const] : []),
           ...(includeBuzz ? [['Buzz', Buzz] as const] : []),
         ]
-        const bPairs = [...(includeBuzz ? [['Buzz', Buzz] as const] : [])]
+        const bPairs = includeBuzz ? [['Buzz', Buzz] as const] : []
         const a = Bridge.make({
           name,
           // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion

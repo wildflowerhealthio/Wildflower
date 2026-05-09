@@ -40,9 +40,7 @@ export namespace GatekeeperPaths {
    * (§3.3.1) — `/gatekeeper/devices?user_code=…` so the SPA hydrates the
    * form without re-typing.
    */
-  export const deviceEntryUrlWithCode = (
-    userCode: string
-  ): Effect.Effect<string, never, Origin> =>
+  export const deviceEntryUrlWithCode = (userCode: string): Effect.Effect<string, never, Origin> =>
     Effect.map(Origin, (origin) => {
       const query = new URLSearchParams({ user_code: userCode }).toString()
       return `${origin}${deviceEntryPath()}?${query}`

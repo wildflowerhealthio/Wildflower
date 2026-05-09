@@ -78,8 +78,7 @@ const stripCookiesMiddleware = HttpMiddleware.make((app) =>
   })
 )
 
-const middleware: HttpMiddleware.HttpMiddleware = (app) =>
-  stripCookiesMiddleware(corsMiddleware(app))
+const middleware = HttpMiddleware.make((app) => stripCookiesMiddleware(corsMiddleware(app)))
 
 const WildflowerHttpApi = HttpApi.make('WildflowerApi')
   .addHttpApi(GatekeeperApi)

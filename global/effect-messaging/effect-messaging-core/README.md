@@ -37,7 +37,7 @@ type AnyHalf = {
 Two design points are load-bearing:
 
 - **`Context.Tag<any, any>`** — `Context.Tag` is invariant in both
-  parameters, so `Context.Tag<MyId, MyHandlers>` is *not* assignable
+  parameters, so `Context.Tag<MyId, MyHandlers>` is _not_ assignable
   to `Context.Tag<string, unknown>`. `any` widens both invariant
   positions; concrete tags pass through.
 - **`(m: never) => …`** — function parameters are contravariant.
@@ -59,7 +59,7 @@ The Web platform adapter's `drainInitial` reads
 the strings. The transport then offers each string into its dispatch
 queue.
 
-Web consumers that need to *peek* at the initial messages before
+Web consumers that need to _peek_ at the initial messages before
 mounting (e.g. to seed `<MemoryRouter initialEntries={[…]}>` at the
 right path) can construct the adapter, drain it, and provide a replay
 adapter that hands the same strings back through `drainInitial` to

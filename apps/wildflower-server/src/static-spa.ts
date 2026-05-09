@@ -56,7 +56,9 @@ const tryFindAssetFileForPath = (
     const path = yield* Path.Path
     const candidate = path.resolve(webAssetsDir, relPath)
     const baseAbsolute = path.resolve(webAssetsDir)
-    const baseWithSep = baseAbsolute.endsWith(path.sep) ? baseAbsolute : `${baseAbsolute}${path.sep}`
+    const baseWithSep = baseAbsolute.endsWith(path.sep)
+      ? baseAbsolute
+      : `${baseAbsolute}${path.sep}`
     if (candidate !== baseAbsolute && !candidate.startsWith(baseWithSep)) {
       return Option.none()
     }

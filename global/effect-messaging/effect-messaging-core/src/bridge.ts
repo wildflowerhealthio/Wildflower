@@ -248,9 +248,9 @@ type TaggedSender = (message: {
  * side. Throws on outbound-tag collisions — same wiring-error policy the
  * transport's inbound dup check enforces.
  */
-const senderByTag = <Bridges extends ReadonlyArray<AnyBridge>, Side extends 'Host' | 'Web'>(
-  bridges: Bridges,
-  side: Side
+const senderByTag = (
+  bridges: ReadonlyArray<AnyBridge>,
+  side: 'Host' | 'Web'
 ): Map<string, TaggedSender> => {
   const map = new Map<string, TaggedSender>()
   for (const bridge of bridges) {

@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema } from 'effect'
+import { Effect, Layer, Schema, type Scope } from 'effect'
 import { Bridge, BridgeTransport, PlatformAdapter } from 'effect-messaging-core'
 import * as fc from 'fast-check'
 import { LoggingLayerTest } from 'kitchen-sink/test'
@@ -34,11 +34,10 @@ const NavigationBridge = Bridge.make({
   webOptionsShape: Schema.Struct({}),
 })
 
-// oxlint-disable-next-line typescript-eslint/explicit-function-return-type
 const webTransport = <Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
   readonly bridges: Bridges
   readonly layers: Bridge.TransportLayers<Bridges, 'Web'>
-}) =>
+}): Effect.Effect<BridgeTransport.BridgeTransport<Bridges, 'Web'>, never, Scope.Scope> =>
   BridgeTransport.make({
     bridges: config.bridges,
     layers: config.layers,
@@ -530,7 +529,9 @@ test('property: receive path survives arbitrary string inputs', async () => {
 
   const wellFormed = fc.constant(JSON.stringify({ _tag: 'Buzz' }))
   const badPayload = fc.constant(JSON.stringify({ _tag: 'Buzz', extra: { unexpected: true } }))
-  const unknownTag = fc.string({ minLength: 1, maxLength: 6 }).map((t) => JSON.stringify({ _tag: t }))
+  const unknownTag = fc
+    .string({ minLength: 1, maxLength: 6 })
+    .map((t) => JSON.stringify({ _tag: t }))
   const malformedJson = fc.string()
   const inputArb = fc.oneof(wellFormed, badPayload, unknownTag, malformedJson)
 
