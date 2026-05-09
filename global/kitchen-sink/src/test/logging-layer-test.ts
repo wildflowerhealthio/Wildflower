@@ -13,9 +13,9 @@ import { Effect, Logger } from 'effect'
  * import { LoggingLayerTest } from 'kitchen-sink/test'
  *
  * test('warns on bad input', async () => {
- *   const logs: LoggingLayerTest.CapturedLog[] = []
- *   await LoggingLayerTest.runScoped(program, logs)
- *   LoggingLayerTest.expectWarningContaining(logs, 'bad input')
+ *   const { promise, logSink } = LoggingLayerTest.runScoped(program)
+ *   await promise
+ *   LoggingLayerTest.expectWarningContaining(logSink, 'bad input')
  * })
  * ```
  */
@@ -27,10 +27,13 @@ interface CapturedLog {
 }
 
 /**
- * Layer that replaces the default Effect logger with one that pushes
- * each log entry into the supplied {@link sink}. The replacement
- * propagates via FiberRef so any forked fiber inherits the same
- * sink.
+ * Build a logger-replacement layer paired with a fresh capture array.
+ *
+ * @returns An object `{ layer, logSink }` where:
+ *   - `layer` — replaces the default Effect logger with one that pushes
+ *     each entry into `logSink`; propagates via FiberRef so forked fibers
+ *     inherit the same sink
+ *   - `logSink` — the array that receives every captured entry
  */
 const make = (): { layer: Layer.Layer<never, never, never>; logSink: CapturedLog[] } => {
   const logSink: CapturedLog[] = []
