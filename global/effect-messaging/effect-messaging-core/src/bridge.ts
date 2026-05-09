@@ -2,12 +2,12 @@ import { Context, Effect, Layer, Schema } from 'effect'
 import type { UnionToIntersection } from 'kitchen-sink/types'
 import type * as MessageHandler from './message-handler.ts'
 import type * as Message from './message.ts'
-import { PlatformAdapter } from './platform-adapter.ts'
+import { TransportAdapter } from './transport-adapter.ts'
 
-/** Typed sender for one side. Each call returns an Effect that requires {@link PlatformAdapter}. */
+/** Typed sender for one side. Each call returns an Effect that requires {@link TransportAdapter}. */
 type SenderFn<R extends Message.SchemaRecord> = (
   message: Message.Of<R>
-) => Effect.Effect<void, never, PlatformAdapter>
+) => Effect.Effect<void, never, TransportAdapter>
 
 /** One side of a bridge. `Outbound` is what this side sends; `Inbound` is what it receives. */
 interface Half<
@@ -57,7 +57,7 @@ type AnyHalf = {
   readonly OutboundSchemas: Message.SchemaRecord
   // oxlint-disable-next-line typescript/no-explicit-any
   readonly HandlerTag: Context.Tag<any, any>
-  readonly send: (m: never) => Effect.Effect<void, never, PlatformAdapter>
+  readonly send: (m: never) => Effect.Effect<void, never, TransportAdapter>
 }
 
 /** Structural bound for "any wired bridge". */
@@ -70,7 +70,7 @@ type AnyBridge = {
 /**
  * Function-intersection of every wired bridge's typed sender for the
  * specified side. The transport's public `sendMessage` strips the
- * {@link PlatformAdapter} requirement.
+ * {@link TransportAdapter} requirement.
  */
 type SenderIntersection<
   Bridges extends ReadonlyArray<AnyBridge>,
@@ -81,7 +81,7 @@ type SenderIntersection<
         readonly [K in Side]: {
           readonly send: (
             m: infer M extends { readonly _tag: string }
-          ) => Effect.Effect<void, never, PlatformAdapter>
+          ) => Effect.Effect<void, never, TransportAdapter>
         }
       }
       ? (message: M) => Effect.Effect<void>
@@ -105,7 +105,7 @@ type SendableMessage<
       readonly [K in Side]: {
         readonly send: (
           m: infer M extends { readonly _tag: string }
-        ) => Effect.Effect<void, never, PlatformAdapter>
+        ) => Effect.Effect<void, never, TransportAdapter>
       }
     }
     ? M
@@ -220,12 +220,12 @@ const recordFromPairs = <
 
 /**
  * Look up a message's outbound schema by tag, encode, and forward through
- * the {@link PlatformAdapter}. Unknown tags warn and drop.
+ * the {@link TransportAdapter}. Unknown tags warn and drop.
  */
 const sendThrough = (
   record: Record<string, Message.StringEncodedSchema>,
   message: { readonly _tag: string }
-): Effect.Effect<void, never, PlatformAdapter> =>
+): Effect.Effect<void, never, TransportAdapter> =>
   Effect.gen(function* () {
     const schema = record[message._tag]
     if (schema === undefined) {
@@ -234,14 +234,14 @@ const sendThrough = (
       )
       return undefined
     }
-    const adapter = yield* PlatformAdapter
+    const adapter = yield* TransportAdapter
     yield* adapter.bareSender(Schema.encodeSync(schema)(message))
     return undefined
   })
 
 type TaggedSender = (message: {
   readonly _tag: string
-}) => Effect.Effect<void, never, PlatformAdapter>
+}) => Effect.Effect<void, never, TransportAdapter>
 
 /**
  * Build a `{[tag]: bridgeSenderForTag}` map across a list of bridges for one

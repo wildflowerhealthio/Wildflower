@@ -1,5 +1,5 @@
 import { Effect, Layer, Schema, type Scope } from 'effect'
-import { Bridge, BridgeTransport, PlatformAdapter } from 'effect-messaging-core'
+import { Bridge, BridgeTransport, TransportAdapter } from 'effect-messaging-core'
 import * as fc from 'fast-check'
 import { LoggingLayerTest } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
@@ -42,7 +42,7 @@ const webTransport = <Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
     bridges: config.bridges,
     layers: config.layers,
     side: 'Web',
-  }).pipe(Effect.provide(Layer.succeed(PlatformAdapter, WebPlatformAdapter.make())))
+  }).pipe(Effect.provide(Layer.succeed(TransportAdapter, WebPlatformAdapter.make())))
 
 describe('BridgeTransport (Web) — live dispatch', () => {
   beforeEach(() => {

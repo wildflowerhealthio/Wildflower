@@ -5,7 +5,7 @@ import {
   Bridge,
   BridgeTransport,
   INITIAL_MESSAGES_WINDOW_GLOBAL,
-  PlatformAdapter,
+  TransportAdapter,
 } from 'effect-messaging-core'
 import type { WebViewMessageEvent } from 'react-native-webview'
 
@@ -117,14 +117,14 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
     // uses) so a cross-bridge outbound-tag collision is detected once,
     // here, instead of by drift between two ad-hoc maps.
     const initialEncoded: string[] = []
-    const captureAdapter: PlatformAdapter['Type'] = {
+    const captureAdapter: TransportAdapter['Type'] = {
       bareSender: (encoded) =>
         Effect.sync(() => {
           initialEncoded.push(encoded)
         }),
       drainInitial: Effect.succeed([]),
     }
-    const captureLayer = Layer.succeed(PlatformAdapter, captureAdapter)
+    const captureLayer = Layer.succeed(TransportAdapter, captureAdapter)
     const taggedSenders = Bridge.senderByTag(config.bridges, 'Host')
     for (const message of config.initialMessages) {
       // `Bridge.SendableMessage<...>` is a union that doesn't reduce
@@ -139,7 +139,7 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
 
     // The Expo platform doesn't attach its own listener — the
     // consumer wires `onMessage` to the WebView's `onMessage` prop.
-    const liveAdapter: PlatformAdapter['Type'] = {
+    const liveAdapter: TransportAdapter['Type'] = {
       bareSender,
       drainInitial: Effect.succeed([]),
     }
@@ -148,7 +148,7 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
       bridges: config.bridges,
       layers: config.layers,
       side: 'Host',
-    }).pipe(Effect.provide(Layer.succeed(PlatformAdapter, liveAdapter)))
+    }).pipe(Effect.provide(Layer.succeed(TransportAdapter, liveAdapter)))
 
     const onMessage = (event: WebViewMessageEvent): void => {
       transport.enqueue(event.nativeEvent.data)

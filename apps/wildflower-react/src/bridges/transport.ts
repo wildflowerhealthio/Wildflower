@@ -1,5 +1,5 @@
 import { Effect, Exit, Layer, ManagedRuntime, Scope } from 'effect'
-import { BridgeTransport, PlatformAdapter } from 'effect-messaging-core'
+import { BridgeTransport, TransportAdapter } from 'effect-messaging-core'
 import { WebPlatformAdapter } from 'effect-messaging-react'
 import GatekeeperBridge from 'gatekeeper-core/bridge'
 import { gatekeeperWebReceiverLayer } from 'gatekeeper-react/web-bridge'
@@ -15,7 +15,7 @@ const webAdapter = WebPlatformAdapter.make()
 const initialMessages: ReadonlyArray<string> = Effect.runSync(webAdapter.drainInitial)
 
 // Replay adapter — see `effect-messaging-react/README.md` for the drain-then-replay rationale.
-const replayAdapter: PlatformAdapter['Type'] = {
+const replayAdapter: TransportAdapter['Type'] = {
   bareSender: webAdapter.bareSender,
   drainInitial: Effect.succeed(initialMessages),
   attachLive: webAdapter.attachLive,
@@ -28,7 +28,7 @@ const transport = await managedRuntime.runPromise(
       bridges: [NavigationBridge, GatekeeperBridge] as const,
       layers: [navigationWebReceiverLayer, gatekeeperWebReceiverLayer] as const,
       side: 'Web',
-    }).pipe(Effect.provide(Layer.succeed(PlatformAdapter, replayAdapter))),
+    }).pipe(Effect.provide(Layer.succeed(TransportAdapter, replayAdapter))),
     scope
   )
 )

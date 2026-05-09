@@ -3,7 +3,7 @@ import { Deferred, Effect, Queue, Runtime, Schema, Stream } from 'effect'
 import * as Bridge from './bridge.ts'
 import * as DispatchError from './dispatch-error.ts'
 import * as Message from './message.ts'
-import { PlatformAdapter } from './platform-adapter.ts'
+import { TransportAdapter } from './transport-adapter.ts'
 
 /**
  * Cross-platform bridge transport composing one or more
@@ -35,10 +35,10 @@ const make = <
   readonly bridges: Bridges
   readonly layers: Bridge.TransportLayers<Bridges, Side>
   readonly side: Side
-}): Effect.Effect<BridgeTransport<Bridges, Side>, never, PlatformAdapter | Scope.Scope> =>
+}): Effect.Effect<BridgeTransport<Bridges, Side>, never, TransportAdapter | Scope.Scope> =>
   Effect.gen(function* () {
     const { bridges, layers, side } = config
-    const adapter = yield* PlatformAdapter
+    const adapter = yield* TransportAdapter
 
     type AnyHandlers = Readonly<Record<string, (message: unknown) => Effect.Effect<void>>>
     const handlersByBridgeIndex: Array<AnyHandlers | undefined> = []
@@ -194,7 +194,7 @@ const make = <
         }
         yield* sender(message)
         return undefined
-      }).pipe(Effect.provideService(PlatformAdapter, adapter))
+      }).pipe(Effect.provideService(TransportAdapter, adapter))
 
     return {
       // Runtime is `(m: {_tag: string}) => Effect<void>`; public type is the function-intersection.

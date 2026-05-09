@@ -3,7 +3,7 @@
 Platform-agnostic core of the cross-process bridge transport. Provides
 the `Bridge.make` factory for declaring typed bridges, the
 `BridgeTransport.make` Effect for wiring multiple bridges through a
-single dispatch fiber, and the `PlatformAdapter` Tag the platform
+single dispatch fiber, and the `TransportAdapter` Tag the platform
 packages (`effect-messaging-react`, `effect-messaging-expo`) supply.
 
 ## Concepts
@@ -30,7 +30,7 @@ type AnyHalf = {
   readonly InboundSchemas: Message.SchemaRecord
   readonly OutboundSchemas: Message.SchemaRecord
   readonly HandlerTag: Context.Tag<any, any>
-  readonly send: (m: never) => Effect.Effect<void, never, PlatformAdapter>
+  readonly send: (m: never) => Effect.Effect<void, never, TransportAdapter>
 }
 ```
 
@@ -69,5 +69,5 @@ full pattern.
 ## Subpaths
 
 - `effect-messaging-core` — main barrel: `Bridge`, `BridgeTransport`,
-  `Message`, `MessageHandler`, `DispatchError`, `PlatformAdapter`,
+  `Message`, `MessageHandler`, `DispatchError`, `TransportAdapter`,
   `TestPlatformAdapterLayer`.

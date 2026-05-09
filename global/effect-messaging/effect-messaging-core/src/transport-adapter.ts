@@ -9,7 +9,7 @@ const REACT_NATIVE_WEBVIEW_GLOBAL = 'ReactNativeWebView' as const
 /** Writes one encoded message string to the underlying transport. */
 type BareSender = (encoded: string) => Effect.Effect<void>
 
-/** Service shape supplied at the {@link PlatformAdapter} `Context.Tag`. */
+/** Service shape supplied at the {@link TransportAdapter} `Context.Tag`. */
 interface Service {
   /** Send one already-encoded string to the other process. */
   readonly bareSender: BareSender
@@ -25,12 +25,12 @@ interface Service {
 
 /**
  * `Context.Tag` for the platform adapter. Aggregators (web/expo wrappers,
- * tests) provide it via `Layer.succeed(PlatformAdapter, …)`.
+ * tests) provide it via `Layer.succeed(TransportAdapter, …)`.
  */
-class PlatformAdapter extends Context.Tag('@effect-messaging/PlatformAdapter')<
-  PlatformAdapter,
+class TransportAdapter extends Context.Tag('@effect-messaging/TransportAdapter')<
+  TransportAdapter,
   Service
 >() {}
 
-export { INITIAL_MESSAGES_WINDOW_GLOBAL, PlatformAdapter, REACT_NATIVE_WEBVIEW_GLOBAL }
+export { INITIAL_MESSAGES_WINDOW_GLOBAL, TransportAdapter, REACT_NATIVE_WEBVIEW_GLOBAL }
 export type { BareSender }

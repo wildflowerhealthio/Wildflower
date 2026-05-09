@@ -1,9 +1,9 @@
 import type { Scope } from 'effect'
 import { Effect, Layer } from 'effect'
-import { PlatformAdapter } from './platform-adapter.ts'
+import { TransportAdapter } from './transport-adapter.ts'
 
 /**
- * Capturing-stub `Layer<PlatformAdapter>` for tests.
+ * Capturing-stub `Layer<TransportAdapter>` for tests.
  *
  * @example
  * ```ts
@@ -25,7 +25,7 @@ const make = (config?: {
   readonly initialMessages?: ReadonlyArray<string>
   readonly captureAttachLive?: boolean
 }): {
-  readonly layer: Layer.Layer<PlatformAdapter>
+  readonly layer: Layer.Layer<TransportAdapter>
   readonly sentSink: string[]
   readonly liveEnqueueRef: { current: ((raw: string) => void) | null }
 } => {
@@ -46,7 +46,7 @@ const make = (config?: {
         })
     ).pipe(Effect.asVoid)
 
-  const adapter: PlatformAdapter['Type'] = {
+  const adapter: TransportAdapter['Type'] = {
     bareSender: (encoded) =>
       Effect.sync(() => {
         sentSink.push(encoded)
@@ -54,7 +54,7 @@ const make = (config?: {
     drainInitial: Effect.succeed(initialMessages),
     ...(config?.captureAttachLive === true ? { attachLive } : {}),
   }
-  return { layer: Layer.succeed(PlatformAdapter, adapter), sentSink, liveEnqueueRef }
+  return { layer: Layer.succeed(TransportAdapter, adapter), sentSink, liveEnqueueRef }
 }
 
 export { make }

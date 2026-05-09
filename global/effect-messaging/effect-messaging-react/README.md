@@ -2,7 +2,7 @@
 
 Browser-side adapter for `effect-messaging-core`. Provides a
 `WebPlatformAdapter` factory that wires the page side of the
-WebView ↔ host postMessage bridge into Effect's `PlatformAdapter`
+WebView ↔ host postMessage bridge into Effect's `TransportAdapter`
 service.
 
 ## Why an adapter, not a wrapped transport
@@ -18,7 +18,7 @@ same messages exactly once.
 
 ```ts
 import { Effect, Layer, ManagedRuntime } from 'effect'
-import { BridgeTransport, PlatformAdapter } from 'effect-messaging-core'
+import { BridgeTransport, TransportAdapter } from 'effect-messaging-core'
 import { WebPlatformAdapter } from 'effect-messaging-react'
 
 const webAdapter = WebPlatformAdapter.make()
@@ -36,7 +36,7 @@ const replayAdapter = {
 const transport = await managedRuntime.runPromise(
   Scope.extend(
     BridgeTransport.make({ bridges, layers, side: 'Web' }).pipe(
-      Effect.provide(Layer.succeed(PlatformAdapter, replayAdapter))
+      Effect.provide(Layer.succeed(TransportAdapter, replayAdapter))
     ),
     scope
   )
@@ -45,7 +45,7 @@ const transport = await managedRuntime.runPromise(
 
 ## Behaviors
 
-The adapter exposes the three `PlatformAdapter` surfaces:
+The adapter exposes the three `TransportAdapter` surfaces:
 
 - **`bareSender`** — calls
   `window.ReactNativeWebView.postMessage(encoded)`. Warns and

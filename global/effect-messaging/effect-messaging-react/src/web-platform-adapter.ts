@@ -3,7 +3,7 @@ import { Effect } from 'effect'
 import {
   INITIAL_MESSAGES_WINDOW_GLOBAL,
   type BareSender,
-  type PlatformAdapter,
+  type TransportAdapter,
   REACT_NATIVE_WEBVIEW_GLOBAL,
 } from 'effect-messaging-core'
 
@@ -16,7 +16,7 @@ interface MessagingWindowGlobals {
 }
 
 /**
- * Build a {@link PlatformAdapter} service for the page side: sends to
+ * Build a {@link TransportAdapter} service for the page side: sends to
  * `window.ReactNativeWebView.postMessage`, drains
  * `window.__INITIAL_MESSAGES__` once, and listens for live `message`
  * events with an origin/source filter.
@@ -26,7 +26,7 @@ interface MessagingWindowGlobals {
  * consumers can peek at the initial messages before mounting and provide
  * a replay adapter to `BridgeTransport.make`. See `README.md`.
  */
-const make = (): PlatformAdapter['Type'] => {
+const make = (): TransportAdapter['Type'] => {
   const winGlobals = (): Window & MessagingWindowGlobals =>
     window as Window & MessagingWindowGlobals
 
