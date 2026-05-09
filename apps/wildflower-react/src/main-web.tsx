@@ -1,14 +1,14 @@
 import './instrument.ts'
-import { bootstrapTokenFromUrl } from 'gatekeeper-react/web-bridge'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes } from 'react-router'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
+import * as BridgeTransport from './bridges/transport.ts'
 import { appRoutesFragment } from './routes.tsx'
-import './styles/global.css'
 
-bootstrapTokenFromUrl()
+import './styles/global.css'
+import { NavigationBridgeHandler } from 'contracts-react'
 
 const container = document.getElementById('root')
 if (container === null) {
@@ -18,6 +18,7 @@ if (container === null) {
 createRoot(container).render(
   <StrictMode>
     <BrowserRouter>
+      <NavigationBridgeHandler sender={BridgeTransport.transport.sendMessage} />
       <Routes>{appRoutesFragment}</Routes>
     </BrowserRouter>
   </StrictMode>

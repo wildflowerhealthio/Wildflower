@@ -1,7 +1,7 @@
 import { type AuthorizationStatus, pollAuthorizationStatus } from 'gatekeeper-core/clients'
-import { cn } from 'kitchen-sink'
+
 import { Suspense, useEffect, useMemo, type JSX } from 'react'
-import { useStream } from 'react-kitchen-sink'
+import { cn, useStream } from 'react-kitchen-sink'
 import { Await, useParams } from 'react-router'
 
 import { makeUnauthenticatedSession } from '../client.ts'

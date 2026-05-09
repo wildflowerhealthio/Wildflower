@@ -1,5 +1,5 @@
-import { cn } from 'kitchen-sink'
 import type { ChangeEvent, JSX, ReactNode } from 'react'
+import { cn } from 'react-kitchen-sink'
 
 type CheckboxBase = {
   readonly checked: boolean

@@ -1,5 +1,5 @@
-import { cn } from 'kitchen-sink'
 import type { JSX } from 'react'
+import { cn } from 'react-kitchen-sink'
 
 import pageLayout from '../styles/page-layout.module.css'
 

@@ -1,10 +1,10 @@
 import { NavigationBridge, EffectRuntimeGlobal } from 'contracts-core'
-import { type NavRef } from 'contracts-react'
-import { Effect, Layer, ManagedRuntime, Schema, Scope } from 'effect'
-import { BridgeTransport, PlatformAdapter, Message } from 'effect-messaging-core'
+import { navigationWebReceiverLayer } from 'contracts-react'
+import { Effect, Layer, ManagedRuntime, Scope } from 'effect'
+import { BridgeTransport, PlatformAdapter } from 'effect-messaging-core'
 import { WebPlatformAdapter } from 'effect-messaging-react'
 import GatekeeperBridge from 'gatekeeper-core/bridge'
-import { bootstrapTokenFromUrl, gatekeeperWebReceiverLayer } from 'gatekeeper-react/web-bridge'
+import { gatekeeperWebReceiverLayer } from 'gatekeeper-react/web-bridge'
 
 /**
  * Module-level setup for the embedded SPA bundle. Constructs the
@@ -21,35 +21,10 @@ import { bootstrapTokenFromUrl, gatekeeperWebReceiverLayer } from 'gatekeeper-re
  * Exports:
  * - {@link transport} — the live multi-bridge transport. The route
  *   watcher and any future React-side senders go through it.
- * - {@link initialEntry} — the initial path for `<MemoryRouter>` so
+ * - {@link initialPath} — the initial path for `<MemoryRouter>` so
  *   the router mounts at the route the host requested.
- * - {@link navRef}, {@link pendingNavigations} — wired through
- *   `<NavigateBinder>` (from `contracts-react`) inside the router
- *   tree so the navigation bridge's handler can dispatch pre-mount
- *   events into the queue, post-mount events through the ref.
+
  */
-
-// Mutable navigate-binding for `HostBackRequested` and the live
-// `HostRequestedWebNavigation` handlers. Module-load handlers fire
-// before React's `useNavigate` is available; the layer's handler
-// pushes to the queue when `navRef.current === null`, and routes
-// through the ref once `<NavigateBinder>` has mounted.
-const navRef: NavRef = { current: null }
-const pendingNavigations: Array<-1 | string> = []
-
-const enqueueNavigate = (target: -1 | string): void => {
-  const navigate = navRef.current
-  if (navigate !== null) {
-    navigate(target)
-    return
-  }
-  pendingNavigations.push(target)
-}
-
-const navigationLayer = NavigationBridge.Web.ReceiverLayer({
-  HostBackRequested: () => Effect.sync(() => enqueueNavigate(-1)),
-  HostRequestedWebNavigation: ({ path }) => Effect.sync(() => enqueueNavigate(path)),
-})
 
 // Build the runtime once at startup. The `ManagedRuntime` carries any
 // FiberRefs (logger, services) consumers may add; for now it inherits
@@ -74,34 +49,6 @@ EffectRuntimeGlobal.setEffectRuntime(runtime)
 // `Effect.runSync` is appropriate — no logger / services needed.
 const webAdapter = WebPlatformAdapter.make()
 const initialMessages: ReadonlyArray<string> = Effect.runSync(webAdapter.drainInitial)
-
-/**
- * Find the path the host requested in the pre-injected initial
- * messages. Returns `'/'` when no `HostRequestedWebNavigation` entry
- * is present (e.g. the bundle is running standalone-web).
- */
-const findInitialPath = (messages: ReadonlyArray<string>): string => {
-  for (const entry of messages) {
-    try {
-      const envelope = Schema.decodeUnknownSync(Message.taggedMessageSchema)(entry)
-      if (envelope._tag === 'HostRequestedWebNavigation') {
-        return Schema.decodeSync(NavigationBridge.MessageSchemas.HostRequestedWebNavigation)(entry)
-          .path
-      }
-    } catch {
-      continue
-    }
-  }
-  return '/'
-}
-
-/**
- * Initial path extracted from the drained initial messages. Used by
- * `<MemoryRouter initialEntries={[initialEntry]}>` so the router
- * mounts at the right path on first paint, before the dispatch
- * fiber's replay arrives.
- */
-const initialEntry = findInitialPath(initialMessages)
 
 // Replay adapter: shares the live `bareSender` and `attachLive`, but
 // hands the already-drained strings back through `drainInitial` so the
@@ -130,17 +77,11 @@ const transport: BridgeTransport.BridgeTransport<
   Scope.extend(
     BridgeTransport.make({
       bridges: [NavigationBridge, GatekeeperBridge] as const,
-      layers: [navigationLayer, gatekeeperWebReceiverLayer] as const,
+      layers: [navigationWebReceiverLayer, gatekeeperWebReceiverLayer] as const,
       side: 'Web',
     }).pipe(Effect.provide(Layer.succeed(PlatformAdapter, replayAdapter))),
     scope
   )
 )
 
-// URL fallback for the standalone-web bundle (no host bridge present)
-// — populates the bearer from `?token=` if the SPA was opened
-// directly. No-op when the embedded host already provided
-// `AuthTokenIssued`.
-bootstrapTokenFromUrl()
-
-export { initialEntry, navRef, pendingNavigations, transport }
+export { initialMessages, transport }

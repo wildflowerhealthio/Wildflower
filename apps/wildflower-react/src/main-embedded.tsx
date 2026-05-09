@@ -1,13 +1,14 @@
 import './instrument.ts'
+import { NavigationBridgeHandler } from 'contracts-react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { MemoryRouter, Routes } from 'react-router'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
-import { NavigateBinder, RouteChangeWatcher } from './embedded-glue.tsx'
-import { initialEntry } from './embedded-runtime.ts'
-import { appRoutesFragment } from './routes.tsx'
+import { MemoryRouter, Routes } from 'react-router'
+import * as NavigationBridge from './bridges/navigation.ts'
+import * as BridgeTransport from './bridges/transport.ts'
 import './styles/global.css'
+import { appRoutesFragment } from './routes.tsx'
 
 const container = document.getElementById('root')
 if (container === null) {
@@ -16,9 +17,8 @@ if (container === null) {
 
 createRoot(container).render(
   <StrictMode>
-    <MemoryRouter initialEntries={[initialEntry]}>
-      <NavigateBinder />
-      <RouteChangeWatcher />
+    <MemoryRouter initialEntries={[NavigationBridge.initialPath]}>
+      <NavigationBridgeHandler sender={BridgeTransport.transport.sendMessage} />
       <Routes>{appRoutesFragment}</Routes>
     </MemoryRouter>
   </StrictMode>

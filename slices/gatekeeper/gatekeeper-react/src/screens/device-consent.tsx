@@ -1,9 +1,9 @@
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { Devices } from 'gatekeeper-core/http-api-definition'
-import { cn } from 'kitchen-sink'
+
 import { Suspense, useMemo, useState, type JSX } from 'react'
-import { useEffectTs } from 'react-kitchen-sink'
+import { cn, useEffectTs } from 'react-kitchen-sink'
 import { Await, useNavigate, useParams } from 'react-router'
 import { Checkbox } from 'react-tundraish'
 

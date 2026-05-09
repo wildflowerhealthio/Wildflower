@@ -1,7 +1,8 @@
 import { Effect } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-import { cn } from 'kitchen-sink'
+
 import { useState, type JSX } from 'react'
+import { cn } from 'react-kitchen-sink'
 import { Checkbox, RadioGroup } from 'react-tundraish'
 
 import type { AuthenticatedSession } from '../../client.ts'

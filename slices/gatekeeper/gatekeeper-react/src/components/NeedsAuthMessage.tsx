@@ -2,8 +2,9 @@ import { Duration, Effect, Fiber, Match, Predicate, Schedule, Schema } from 'eff
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
 import { OAuth } from 'gatekeeper-core/http-api-definition'
-import { cn } from 'kitchen-sink'
+
 import { useEffect, useState, type JSX } from 'react'
+import { cn } from 'react-kitchen-sink'
 
 import { makeUnauthenticatedSession, writeToken } from '../client.ts'
 import { Field, FieldDescription } from './Field.tsx'

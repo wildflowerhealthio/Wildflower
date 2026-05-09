@@ -1,5 +1,5 @@
-import { cn } from 'kitchen-sink'
 import type { JSX, ReactNode, PropsWithChildren } from 'react'
+import { cn } from 'react-kitchen-sink'
 
 import styles from './Field.module.css'
 

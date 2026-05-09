@@ -1,5 +1,6 @@
-import { fireEvent, render } from '@testing-library/react-native'
+import { act, fireEvent, render } from '@testing-library/react-native'
 import * as React from 'react'
+import { View } from 'react-native'
 import type * as RNType from 'react-native'
 
 // `jest.mock` factories are hoisted above imports and forbidden to read
@@ -16,24 +17,30 @@ type MockWebViewProps = {
 let mockWebViewProps: MockWebViewProps | null = null
 let mockNavigationOptions: { headerLeft?: unknown } = {}
 let mockExternalUrls: string[] = []
+let mockWebViewPostMessageCalls: string[] = []
 
 jest.mock('react-native-webview', () => {
-  // The mock intentionally omits `useImperativeHandle` + the
-  // method-shorthand type generic that earlier versions of this file
-  // used: babel-plugin-jest-hoist flagged the inner method name as an
-  // out-of-scope variable. With no imperative handle here, the outer
-  // `webviewRef.current` stays null inside EffectMessagingWebView; its own
-  // forwarded handle still wires up correctly because the body is
-  // `webviewRef.current?.postMessage(message)` — the optional chain
-  // short-circuits, which is exactly what the "exposes postMessage"
-  // test below checks for ("does not throw").
+  // The mock implements `useImperativeHandle` with property-style (not
+  // method-shorthand) so babel-plugin-jest-hoist doesn't flag inner
+  // identifiers as out-of-scope. The captured state
+  // `mockWebViewPostMessageCalls` keeps a `mock`-prefixed name to
+  // satisfy the hoist exemption.
   const ReactInner = jest.requireActual<typeof React>('react')
   const RN = jest.requireActual<typeof RNType>('react-native')
   const WebView = ReactInner.forwardRef(function MockWebView(
     props: MockWebViewProps,
-    _ref: unknown
+    ref: React.Ref<{ postMessage: (data: string) => void }>
   ): React.ReactElement {
     mockWebViewProps = props
+    ReactInner.useImperativeHandle(
+      ref,
+      () => ({
+        postMessage: (data: string): void => {
+          mockWebViewPostMessageCalls.push(data)
+        },
+      }),
+      []
+    )
     return ReactInner.createElement(RN.View, { testID: 'webview' })
   })
   return { WebView }
@@ -63,6 +70,7 @@ beforeEach(() => {
   mockWebViewProps = null
   mockNavigationOptions = {}
   mockExternalUrls = []
+  mockWebViewPostMessageCalls = []
 })
 
 describe('EffectMessagingWebView (transport surface)', () => {
@@ -85,7 +93,8 @@ describe('EffectMessagingWebView (transport surface)', () => {
     expect(mockNavigationOptions.headerLeft).toBeUndefined()
   })
 
-  it('sets a headerLeft when canGoBack flips to true with onBackPress provided', () => {
+  it('sets a headerLeft that fires onBackPress when canGoBack flips to true', () => {
+    const onBackPress = jest.fn()
     const { rerender } = render(
       <EffectMessagingWebView source={{ html: '' }} onMessage={jest.fn()} canGoBack={false} />
     )
@@ -94,10 +103,16 @@ describe('EffectMessagingWebView (transport surface)', () => {
         source={{ html: '' }}
         onMessage={jest.fn()}
         canGoBack={true}
-        onBackPress={jest.fn()}
+        onBackPress={onBackPress}
       />
     )
-    expect(typeof mockNavigationOptions.headerLeft).toBe('function')
+    const headerLeft = mockNavigationOptions.headerLeft as
+      | ((tint: { tintColor?: string }) => React.ReactElement)
+      | undefined
+    if (headerLeft === undefined) throw new Error('headerLeft not set')
+    const { getByLabelText } = render(headerLeft({ tintColor: '#000' }))
+    fireEvent.press(getByLabelText('Back'))
+    expect(onBackPress).toHaveBeenCalledTimes(1)
   })
 
   it('opens external links in the system browser, not in-page', () => {
@@ -112,28 +127,28 @@ describe('EffectMessagingWebView (transport surface)', () => {
     expect(mockExternalUrls).toEqual(['https://example.com'])
   })
 
-  it('exposes postMessage through the imperative ref handle', () => {
+  it('hands postMessage strings through to the underlying WebView ref', () => {
     const ref = React.createRef<EffectMessagingWebViewHandle>()
     render(<EffectMessagingWebView ref={ref} source={{ html: '' }} onMessage={jest.fn()} />)
-    expect(typeof ref.current?.postMessage).toBe('function')
-    // Calling it does not throw — actual delivery is the WebView's contract.
-    expect(() => ref.current?.postMessage('payload')).not.toThrow()
+    ref.current?.postMessage('payload-A')
+    ref.current?.postMessage('payload-B')
+    expect(mockWebViewPostMessageCalls).toEqual(['payload-A', 'payload-B'])
   })
 
-  it('dismisses the loading overlay on onLoadEnd', () => {
+  it('hides the loader once onLoadEnd fires', () => {
     const { queryByTestId } = render(
-      <EffectMessagingWebView source={{ html: '' }} onMessage={jest.fn()} />
+      <EffectMessagingWebView
+        source={{ html: '' }}
+        onMessage={jest.fn()}
+        loader={<View testID="loader-overlay" />}
+      />
     )
-    // Before onLoadEnd: pre-load state — the WebView is rendered, the
-    // overlay sits on top. We can verify by checking the WebView is mounted
-    // and that triggering onLoadEnd flips internal state without errors.
-    expect(queryByTestId('webview')).not.toBeNull()
-    fireEvent(queryByTestId('webview') ?? new Error('webview not rendered'), 'load')
-    // The component itself doesn't expose a testID for the overlay, but
-    // calling onLoadEnd directly through the captured prop reaches the same
-    // setState. Either way, the test ensures the prop is wired.
+    expect(queryByTestId('loader-overlay')).not.toBeNull()
     const onLoadEnd = mockWebViewProps?.onLoadEnd
-    expect(typeof onLoadEnd).toBe('function')
-    onLoadEnd?.()
+    if (onLoadEnd === undefined) throw new Error('onLoadEnd not captured')
+    act(() => {
+      onLoadEnd()
+    })
+    expect(queryByTestId('loader-overlay')).toBeNull()
   })
 })

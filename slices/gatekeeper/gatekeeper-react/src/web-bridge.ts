@@ -1,19 +1,6 @@
-import { ContractQueryParam } from 'contracts-react'
 import { Effect } from 'effect'
 import GatekeeperBridge from 'gatekeeper-core/bridge'
 import { writeToken } from './client/token-storage.ts'
-
-/**
- * Read a one-shot bearer token from `?token=` and write it to localStorage,
- * stripping it from the address bar so it doesn't persist in history or
- * `Referer` headers. Used by the standalone-web entrypoint where there's
- * no Expo host to deliver `AuthTokenIssued` over the bridge — see
- * gatekeeper-core's "Bootstrap URL" notes.
- */
-const bootstrapTokenFromUrl = (): void => {
-  const fromUrl = ContractQueryParam.consumeQueryParam('token')
-  if (fromUrl !== null && fromUrl !== '') writeToken(fromUrl)
-}
 
 /**
  * Web-side {@link GatekeeperBridge} `ReceiverLayer` — registers the
@@ -32,4 +19,4 @@ const gatekeeperWebReceiverLayer = GatekeeperBridge.Web.ReceiverLayer({
     }),
 })
 
-export { bootstrapTokenFromUrl, gatekeeperWebReceiverLayer }
+export { gatekeeperWebReceiverLayer }

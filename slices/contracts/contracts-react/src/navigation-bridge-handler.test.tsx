@@ -1,9 +1,10 @@
 import { render } from '@testing-library/react'
 import type { NavigationBridge } from 'contracts-core'
+import { Effect } from 'effect'
 import { type JSX, useEffect } from 'react'
 import { MemoryRouter, useNavigate } from 'react-router'
 import { describe, expect, test } from 'vite-plus/test'
-import { useRouteChangeWatcher } from '../src/use-route-change-watcher.ts'
+import { NavigationBridgeHandler } from './navigation-bridge-handler'
 
 /**
  * Hook-level test. Replaces the Effect-typed transport with a plain
@@ -13,16 +14,16 @@ import { useRouteChangeWatcher } from '../src/use-route-change-watcher.ts'
  * `canGoBack` tracking history depth. Transport encoding/dispatch is
  * tested in `transport.test.ts` and shouldn't be re-exercised here.
  */
-describe('useRouteChangeWatcher', () => {
+describe('NavigationBridgeHandler', () => {
   test('fires the callback once per navigation, with canGoBack tracking history depth', () => {
     const calls: NavigationBridge['MessageSchemas']['RouteChanged']['Type'][] = []
-    const send = (message: NavigationBridge['MessageSchemas']['RouteChanged']['Type']): void => {
+    const send: NavigationBridge['Web']['SenderType'] = (message) => {
       calls.push(message)
+      return Effect.void
     }
 
     function RouteSender(): JSX.Element | null {
-      useRouteChangeWatcher(send)
-      return null
+      return <NavigationBridgeHandler sender={send} />
     }
 
     function PushOnMount({ to }: { readonly to: string }): JSX.Element | null {
