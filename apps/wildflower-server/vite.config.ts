@@ -8,8 +8,6 @@ export default defineConfig({
     exports: false,
     entry: {
       index: 'src/index.ts',
-      schema: 'src/schema.ts',
-      'static-spa': 'src/static-spa.ts',
     },
   },
   lint: { options: { typeAware: true, typeCheck: true } },

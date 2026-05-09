@@ -55,6 +55,7 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
+    "@livestore/adapter-node": "catalog:",
     "@livestore/common": "catalog:",
     "@livestore/livestore": "catalog:",
     "@livestore/peer-deps": "catalog:",

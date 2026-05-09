@@ -1,5 +1,6 @@
 import './instrument.ts'
 import { createServer } from 'node:http'
+import { HttpServer } from '@effect/platform'
 import { NodeFileSystem, NodeHttpServer, NodePath, NodeRuntime } from '@effect/platform-node'
 import { Duration, Effect, Layer } from 'effect'
 import { makeLivestoreStoreLayer } from 'emr-core/contexts'
@@ -7,13 +8,14 @@ import {
   makeGatekeeperStoreLayer,
   mintHostOwnerToken,
   seedFirstPartyClient,
+  seedSigningKey,
 } from 'gatekeeper-core/contexts'
 import { Origin } from 'kitchen-sink'
-import { CryptoRandomLayerLive } from 'kitchen-sink/crypto-random'
+import { cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { StringLiteralTypes } from 'kitchen-sink/types'
 import { webAssetsDir } from 'wildflower-react/web-assets'
 import { WebAssetsDir, WildflowerServerLive } from 'wildflower-server'
-import { createStore } from './LivestoreStore.ts'
+import { createStore } from './livestore-store.ts'
 import { TelemetryLive } from './telemetry.ts'
 
 const PORT = Number(process.env['PORT'] ?? 3000)
@@ -22,45 +24,42 @@ if (!StringLiteralTypes.endsWithAlphanumericCharacter(ORIGIN)) {
   throw new Error(`Invalid origin: ${ORIGIN}`)
 }
 const IS_DEV = process.env['NODE_ENV'] !== 'production'
-const BOOTSTRAP_TOKEN_TTL = Duration.hours(1)
 
-const CryptoRandomLive = CryptoRandomLayerLive<
-  Uint8Array & ReturnType<typeof globalThis.crypto.getRandomValues>
->(globalThis.crypto, new Uint8Array(1))
+const CryptoRandomLive = cryptoRandomLayerFromWebCrypto(globalThis.crypto)
 
 const run = Effect.gen(function* () {
   const store = yield* Effect.promise(() => createStore())
   const gatekeeperStoreLayer = makeGatekeeperStoreLayer(store)
   const originLayer = Layer.succeed(Origin, ORIGIN)
 
-  // Always seed the first-party `wildflower-host` client — that's this
-  // server's own identity, idempotent across restarts. The Owner-token mint
-  // and the bootstrap-URL log line are dev-only convenience: in production
-  // the operator authenticates via the device flow, not a token printed to
-  // stdout. Gated on NODE_ENV so the token never lands in prod logs.
-  yield* seedFirstPartyClient.pipe(
-    Effect.provide(gatekeeperStoreLayer),
-    Effect.provide(originLayer)
-  )
+  // Idempotent bootstrap: signing key (sign-side requires it) and the
+  // first-party `wildflower-host` client (host's own identity).
+  yield* seedSigningKey.pipe(Effect.provide(gatekeeperStoreLayer))
+  yield* seedFirstPartyClient.pipe(Effect.provide(gatekeeperStoreLayer))
 
+  // Dev only: mint a bootstrap token; prod uses the device flow.
+  let bootstrapToken: string | null = null
   if (IS_DEV) {
-    yield* mintHostOwnerToken({ ttl: BOOTSTRAP_TOKEN_TTL }).pipe(
+    bootstrapToken = yield* mintHostOwnerToken({ ttl: Duration.hours(1) }).pipe(
       Effect.provide(gatekeeperStoreLayer),
       Effect.provide(originLayer),
-      Effect.tap((token) =>
-        Effect.logInfo(
-          `Server is running. Bootstrap: ${ORIGIN}/gatekeeper?token=${encodeURIComponent(token)}`
-        )
-      ),
       Effect.catchAll((err) =>
-        Effect.logError(`Server is running on ${ORIGIN}. Bootstrap token unavailable.`, err)
+        Effect.as(Effect.logError('Bootstrap token unavailable.', err), null)
       )
     )
-  } else {
-    yield* Effect.logInfo(`Server is running on ${ORIGIN}.`)
   }
 
+  // Logged inside the Layer lifecycle so it fires after the port binds.
+  const logBootstrapUrl =
+    bootstrapToken == null
+      ? Effect.void
+      : Effect.logInfo(
+          `Bootstrap: ${ORIGIN}/gatekeeper?token=${encodeURIComponent(bootstrapToken)}`
+        )
+
   const FullServerLive = WildflowerServerLive.pipe(
+    HttpServer.withLogAddress,
+    Layer.tap(() => logBootstrapUrl),
     Layer.provide(makeLivestoreStoreLayer(store)),
     Layer.provide(gatekeeperStoreLayer),
     Layer.provide(CryptoRandomLive),

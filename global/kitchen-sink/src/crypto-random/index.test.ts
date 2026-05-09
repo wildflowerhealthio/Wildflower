@@ -7,6 +7,7 @@ import {
   CryptoRandomLayerLive,
   cryptoRandomCounter,
   cryptoRandomFromSeed,
+  cryptoRandomLayerFromWebCrypto,
 } from './index.ts'
 
 const drainBytes = (layer: Layer.Layer<CryptoRandom>, count: number): ReadonlyArray<number> =>
@@ -117,4 +118,18 @@ test('CryptoRandomLayerLive forwards to the supplied crypto.randomUUID', () => {
   }
   const uuids = drainUuids(CryptoRandomLayerLive(fakeCrypto, new Uint8Array(1)), 3)
   expect(uuids).toEqual(['id-1', 'id-2', 'id-3'])
+})
+
+test('cryptoRandomLayerFromWebCrypto wraps Web Crypto without an explicit type argument', () => {
+  // This test exists to pin the type-inference behaviour: passing
+  // `globalThis.crypto` (whose `getRandomValues` is generic) used to
+  // require an explicit `<Uint8Array & ReturnType<...>>` type argument
+  // at every call site. The helper binds Uint8Array internally.
+  const layer = cryptoRandomLayerFromWebCrypto(globalThis.crypto)
+  const bytes = drainBytes(layer, 4)
+  expect(bytes).toHaveLength(4)
+  for (const b of bytes) {
+    expect(b).toBeGreaterThanOrEqual(0)
+    expect(b).toBeLessThan(256)
+  }
 })

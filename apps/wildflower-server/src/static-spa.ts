@@ -12,23 +12,9 @@ import { Context, Effect, Layer, Option } from 'effect'
  * plus the asset tree to serve verbatim). The platform-specific runner
  * provides a value via `Layer.succeed(WebAssetsDir, …)` — for
  * `wildflower-node`, that's `wildflower-react/web-assets`.
- *
- * Surfaced as a Tag so this package stays cross-platform: any host that
- * can supply a string path and an `@effect/platform`
- * `FileSystem`/`Path` implementation can serve the SPA, no `node:fs`
- * dependency required.
  */
 class WebAssetsDir extends Context.Tag('wildflower-server/WebAssetsDir')<WebAssetsDir, string>() {}
 
-// Reject any pathname that contains a literal `..` segment OR a
-// percent-encoded variant (`%2e%2e`, mixed case, etc.). The URL constructor
-// would otherwise collapse `/foo/../bar` to `/bar` at normalisation time,
-// silently turning a traversal probe into a "harmless" path that lands in
-// the SPA fallback. The handler bounces these to `/` instead — keeps a
-// confused legitimate user moving forward, and a probe doesn't get to
-// render the SPA shell at its chosen URL.
-// `decodeURIComponent` per segment catches encoded variants; malformed
-// percent-encoding is itself suspicious and rejected.
 const containsParentSegment = (pathname: string): boolean => {
   for (const segment of pathname.split('/')) {
     try {
@@ -41,40 +27,32 @@ const containsParentSegment = (pathname: string): boolean => {
 }
 
 /**
- * Map an HTTP request pathname to one of three buckets:
+ * Determine a safe relative asset path from an HTTP request pathname.
  *
- * - `none()` — sketchy. Traversal attempts (`..` segments, including
- *   percent-encoded variants), null-byte injection, malformed
- *   percent-encoding. The handler responds with a 302 to `/`.
- * - `some('')` — the SPA root (`''`, `'/'`). The handler joins this to
- *   the assets directory, the file-stat misses (a directory, not a
- *   file), and the response falls through to `index.html`.
- * - `some('foo/bar')` — a normal candidate path. The handler stat-checks
- *   it; on hit it serves the file, on miss it falls through to
- *   `index.html` so React Router can claim the deep link.
+ * Returns `Option.some(rel)` for a sanitised path (no leading slash, no
+ * `..` segments, no `\0`, no malformed encoding); `Option.none()` when
+ * no safe path exists. The handler bounces `none()` to `/`. The empty
+ * string `''` represents the SPA root and falls through to `index.html`
+ * via the `tryFindAssetFileForPath` stat-miss branch.
  */
-const parsePathToAssetFile = (pathname: string): Option.Option<string> => {
+const sanitizeRequestPath = (pathname: string): Option.Option<string> => {
   if (pathname.includes('\0')) return Option.none()
   if (containsParentSegment(pathname)) return Option.none()
-  // Collapse leading slashes to a single `/` first: `new URL('//foo/bar', base)`
-  // treats `//foo` as a protocol-relative authority (host=foo), which would
-  // silently drop the first segment of an HTTP request like `GET //assets/app.js`.
+  // Collapse leading slashes: `new URL('//foo/bar', base)` treats `//foo`
+  // as a protocol-relative authority and would drop the first segment.
   const cleaned = pathname.replace(/^\/+/, '/')
   const normalized = new URL(cleaned, 'http://placeholder/').pathname
   const stripped = normalized.replace(/^\/+/, '').replace(/\/+/g, '/')
-  // `URL` collapses `'.'`-only paths (`'/.'`, `'/./.'`) to `'.'`. Treat
-  // those as the SPA root rather than trying to look up a `.` directory.
   if (stripped === '.') return Option.some('')
   return Option.some(stripped)
 }
 
 /**
- * Resolve a validated relative path to an absolute asset-file path on
- * disk, or `Option.none()` when no real file lives there. The handler
- * defaults to `index.html` on `none()` so deep links rehydrate the SPA.
- *
- * Takes a `relPath` already produced by `parsePathToAssetFile` — this
- * function does no validation, only the file-stat check.
+ * Resolve a sanitised relative path to an absolute asset-file path on
+ * disk. Returns `Option.none()` when no real file lives there or when
+ * the resolved path escapes `webAssetsDir` (defense in depth against
+ * encoded-slash escapes that decode to `..` inside the platform `Path`
+ * implementation). Caller falls back to `index.html` on `none()`.
  */
 const tryFindAssetFileForPath = (
   webAssetsDir: string,
@@ -83,7 +61,12 @@ const tryFindAssetFileForPath = (
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
-    const candidate = path.join(webAssetsDir, relPath)
+    const candidate = path.resolve(webAssetsDir, relPath)
+    const baseAbsolute = path.resolve(webAssetsDir)
+    const baseWithSep = baseAbsolute.endsWith(path.sep) ? baseAbsolute : `${baseAbsolute}${path.sep}`
+    if (candidate !== baseAbsolute && !candidate.startsWith(baseWithSep)) {
+      return Option.none()
+    }
     const stat = yield* Effect.option(fs.stat(candidate))
     if (Option.isSome(stat) && stat.value.type === 'File') {
       return Option.some(candidate)
@@ -92,35 +75,34 @@ const tryFindAssetFileForPath = (
   })
 
 const makeStaticSpaLayer = (webAssetsDir: string): Layer.Layer<never, never, never> =>
-  HttpApiBuilder.Router.use((router) =>
-    router.get(
-      '*',
-      Effect.gen(function* () {
-        const path = yield* Path.Path
-        const indexFile = path.join(webAssetsDir, 'index.html')
+  HttpApiBuilder.Router.use((router) => {
+    const handler = Effect.gen(function* () {
+      const path = yield* Path.Path
+      const indexFile = path.join(webAssetsDir, 'index.html')
 
-        const request = yield* HttpServerRequest.HttpServerRequest
-        const url = new URL(request.url, 'http://localhost')
+      const request = yield* HttpServerRequest.HttpServerRequest
+      const url = new URL(request.url, 'http://localhost')
 
-        const relPath = parsePathToAssetFile(url.pathname)
-        // Sketchy path: bounce to `/` rather than render the SPA shell at
-        // the requested URL. A confused user lands somewhere working; a
-        // probe doesn't get a 200 OK at a path it picked.
-        if (Option.isNone(relPath)) return HttpServerResponse.redirect('/')
+      const relPath = sanitizeRequestPath(url.pathname)
+      if (Option.isNone(relPath)) return HttpServerResponse.redirect('/')
 
-        const assetFile = yield* tryFindAssetFileForPath(webAssetsDir, relPath.value)
-        return yield* HttpServerResponse.file(Option.getOrElse(assetFile, () => indexFile))
-      })
-    )
-  )
+      const assetFile = yield* tryFindAssetFileForPath(webAssetsDir, relPath.value)
+      return yield* HttpServerResponse.file(Option.getOrElse(assetFile, () => indexFile))
+    })
+    // GET serves the asset; HEAD returns the same headers without the
+    // body. Other methods (POST, PUT, …) on an unmatched path should
+    // 404 rather than fall through to the SPA shell — masking client
+    // bugs by serving 200 OK is worse than the obvious failure.
+    return router.get('*', handler).pipe(Effect.zipRight(router.head('*', handler)))
+  })
 
 /**
  * SPA fallback. Serves real files under the configured `WebAssetsDir`
- * verbatim (assets, etc.) and falls back to `index.html` for any unmatched
- * path so deep links rehydrate the router on refresh. Registered as a
- * `GET '*'` on `HttpApiBuilder.Router` (the same router
+ * verbatim (assets, etc.) and falls back to `index.html` for any
+ * unmatched GET/HEAD path so deep links rehydrate the router on
+ * refresh. Registered on `HttpApiBuilder.Router` (the same router
  * `HttpApiBuilder.api` endpoints land on), so the API's specific paths
- * win and only unmatched GETs fall through here.
+ * win and only unmatched GET/HEAD requests fall through here.
  *
  * Reads `WebAssetsDir` at Layer-build time via `Layer.unwrapEffect` so
  * the route handler closes over a plain string. This sidesteps
@@ -132,4 +114,4 @@ const StaticSpaLive: Layer.Layer<never, never, WebAssetsDir> = Layer.unwrapEffec
   Effect.map(WebAssetsDir, makeStaticSpaLayer)
 )
 
-export { StaticSpaLive, WebAssetsDir, parsePathToAssetFile }
+export { StaticSpaLive, WebAssetsDir, sanitizeRequestPath, tryFindAssetFileForPath }

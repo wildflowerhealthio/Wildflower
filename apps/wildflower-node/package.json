@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch --conditions=source --env-file=.env.local --experimental-transform-types src/index.ts",
-    "start": "node --conditions=source --env-file=.env.local --experimental-transform-types src/index.ts"
+    "dev": "node --watch --conditions=source --env-file-if-exists=.env.local --experimental-transform-types src/index.ts",
+    "start": "node --conditions=source --env-file-if-exists=.env.local --experimental-transform-types src/index.ts"
   },
   "dependencies": {
+    "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
     "@livestore/adapter-node": "catalog:",
     "@livestore/livestore": "catalog:",

@@ -3,3 +3,4 @@ export { approveAuthorizationRequest, denyAuthorizationRequest } from './oauth-c
 export { cleanupExpiredAuthorizationRequests, cleanupExpiredAuthorizationCodes } from './cleanup.ts'
 export { mintHostOwnerToken } from './mint-host-owner-token.ts'
 export { FIRST_PARTY_CLIENT_ID, seedFirstPartyClient } from './seed-first-party-client.ts'
+export { seedSigningKey } from './seed-signing-key.ts'

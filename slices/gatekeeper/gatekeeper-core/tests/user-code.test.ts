@@ -1,5 +1,5 @@
 import { Effect, Layer } from 'effect'
-import { CryptoRandom, CryptoRandomLayerLive } from 'kitchen-sink/crypto-random'
+import { CryptoRandom, cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { expect, test } from 'vite-plus/test'
 import {
   ALPHABET,
@@ -9,9 +9,7 @@ import {
   isValidUserCode,
 } from '../src/internal/user-code.ts'
 
-const LiveLayer = CryptoRandomLayerLive<
-  Uint8Array & ReturnType<typeof globalThis.crypto.getRandomValues>
->(globalThis.crypto, new Uint8Array(1))
+const LiveLayer = cryptoRandomLayerFromWebCrypto(globalThis.crypto)
 
 const runUserCode = (): string => Effect.runSync(Effect.provide(generateUserCode, LiveLayer))
 

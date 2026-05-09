@@ -17,6 +17,7 @@ test('contexts/index re-exports the published surface', () => {
       'makeGatekeeperStoreLayer',
       'mintHostOwnerToken',
       'seedFirstPartyClient',
+      'seedSigningKey',
     ].toSorted()
   )
 })

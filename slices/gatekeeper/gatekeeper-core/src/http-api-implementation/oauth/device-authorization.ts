@@ -11,7 +11,7 @@ import {
 } from '../../http-api-definition/oauth.ts'
 import { generateUserCode } from '../../internal/user-code.ts'
 import { AuthorizationRequest, Client, type ClientRow } from '../../livestore/index.ts'
-import * as GatekeeperPaths from '../../page-paths.ts'
+import { GatekeeperPaths } from '../../page-paths.ts'
 import { DEVICE_CODE_POLL_INTERVAL, type OAuthError400, type OAuthError401 } from './shared.ts'
 
 type DeviceAuthorizationPayload = Schema.Schema.Type<typeof DeviceAuthorizationPayloadSchema>

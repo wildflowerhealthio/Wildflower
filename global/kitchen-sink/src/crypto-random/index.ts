@@ -56,6 +56,31 @@ const CryptoRandomLayerLive = <TByteArray extends ArrayLike<number>>(
   })
 
 /**
+ * Convenience wrapper around `CryptoRandomLayerLive` for callers that
+ * want to bind the platform's standard Web Crypto API. Pins
+ * `TByteArray` to `Uint8Array` so the generic on
+ * `Crypto.getRandomValues<T extends ArrayBufferView>(array: T): T`
+ * doesn't force the call site to spell out the type argument.
+ *
+ * Usage: `cryptoRandomLayerFromWebCrypto(globalThis.crypto)` — works
+ * for the browser, `node:crypto.webcrypto`, and Expo / React Native
+ * polyfills that expose the same shape.
+ */
+interface WebCryptoLike {
+  getRandomValues<T extends ArrayBufferView>(array: T): T
+  randomUUID(): string
+}
+
+const cryptoRandomLayerFromWebCrypto = (crypto: WebCryptoLike): Layer.Layer<CryptoRandom> =>
+  CryptoRandomLayerLive<Uint8Array>(
+    {
+      getRandomValues: (array: Uint8Array) => crypto.getRandomValues(array),
+      randomUUID: () => crypto.randomUUID(),
+    },
+    new Uint8Array(1)
+  )
+
+/**
  * Test stub that emits `0, 1, 2, …, 255, 0, 1, …` for bytes and
  * `"<prefix>-0001"`, `"<prefix>-0002"`, … for UUIDs. Use when you want
  * deterministic outputs and don't need to assert specific values.
@@ -107,5 +132,11 @@ const cryptoRandomFromSeed = (seed: number): Layer.Layer<CryptoRandom> => {
   })
 }
 
-export type { CryptoLike }
-export { CryptoRandom, CryptoRandomLayerLive, cryptoRandomCounter, cryptoRandomFromSeed }
+export type { CryptoLike, WebCryptoLike }
+export {
+  CryptoRandom,
+  CryptoRandomLayerLive,
+  cryptoRandomCounter,
+  cryptoRandomFromSeed,
+  cryptoRandomLayerFromWebCrypto,
+}

@@ -84,9 +84,12 @@ story for first-Owner onboarding (native shell, fresh deployment, CLI
 login) is unsettled; the device flow is the production path. Until that
 shakes out, the helpers live behind a dev gate at the call site (e.g.
 `apps/wildflower-node` only mints when `NODE_ENV !== 'production'`).
-A 1-hour TTL is the current default in dev — long enough to be less
+The TTL is required at the call site (no silent default) so the
+minter — which has the dev-server / CI / shell context — can pick.
+`apps/wildflower-node` currently passes 1 hour: long enough to be less
 annoying than re-minting through every page reload, short enough that a
-leaked URL stops being useful within a working session.
+leaked URL stops being useful within a working session. The value is a
+dev workaround; long-term TBD.
 
 ## Row-await helper
 

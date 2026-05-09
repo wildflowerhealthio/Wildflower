@@ -184,9 +184,10 @@ from the URL via `history.replaceState`.
 
 The token verifies normally because `wildflower-host` is a registered
 [`Client`](#client) and `'owner' ∈ scope`. No new endpoint, no
-redemption table — the token's TTL (5 min default) plus the URL strip
-plus a `Referrer-Policy: no-referrer` on static pages are the
-load-bearing defenses against URL leakage.
+redemption table — the token's TTL (1 hour current dev default; the
+long-term value is unsettled) plus the URL strip plus a
+`Referrer-Policy: no-referrer` on static pages are the load-bearing
+defenses against URL leakage.
 
 ### `gatekeeper-pages` group
 

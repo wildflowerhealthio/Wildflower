@@ -14,7 +14,7 @@ import {
   Grant,
   SigningKey,
 } from '../../livestore/index.ts'
-import * as GatekeeperPaths from '../../page-paths.ts'
+import { GatekeeperPaths } from '../../page-paths.ts'
 import { buildClientRedirectUrl } from './shared.ts'
 
 type AuthorizeParams = Schema.Schema.Type<typeof AuthorizeUrlParamsSchema>

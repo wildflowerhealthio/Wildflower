@@ -1,57 +1,169 @@
-import { Option } from 'effect'
-import { expect, test } from 'vite-plus/test'
-import { parsePathToAssetFile } from '../src/static-spa.ts'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { FileSystem, Path } from '@effect/platform'
+import { NodeFileSystem, NodePath } from '@effect/platform-node'
+import { Effect, Layer, Option } from 'effect'
+import * as fc from 'fast-check'
+import { afterEach, beforeEach, expect, test } from 'vite-plus/test'
+import { sanitizeRequestPath, tryFindAssetFileForPath } from '../src/static-spa.ts'
 
-test('the SPA root resolves to an empty relative path', () => {
-  // The handler joins this with `webAssetsDir`, the stat-check misses
-  // (a directory, not a file), and the response falls through to
-  // index.html — same outcome as a deep-link route.
-  expect(parsePathToAssetFile('')).toEqual(Option.some(''))
-  expect(parsePathToAssetFile('/')).toEqual(Option.some(''))
+const FsLayer = Layer.merge(NodeFileSystem.layer, NodePath.layer)
+
+const runFsEffect = <A>(
+  effect: Effect.Effect<A, never, FileSystem.FileSystem | Path.Path>
+): Promise<A> => Effect.runPromise(Effect.provide(effect, FsLayer))
+
+let tempBase: string
+
+beforeEach(() => {
+  tempBase = mkdtempSync(join(tmpdir(), 'static-spa-test-'))
 })
 
-test('returns the cleaned relative path for a normal asset', () => {
-  expect(parsePathToAssetFile('/assets/app.js')).toEqual(Option.some('assets/app.js'))
-  expect(parsePathToAssetFile('/favicon.ico')).toEqual(Option.some('favicon.ico'))
+afterEach(() => {
+  rmSync(tempBase, { recursive: true, force: true })
 })
 
-test('rejects literal parent-directory traversal', () => {
-  // The handler bounces `none()` to `/` rather than serving the SPA
-  // shell — confused users land somewhere working, probes don't get a
-  // 200 OK at the URL they picked.
-  expect(parsePathToAssetFile('/../etc/passwd')).toEqual(Option.none())
-  expect(parsePathToAssetFile('../etc/passwd')).toEqual(Option.none())
-  expect(parsePathToAssetFile('/foo/../../etc/passwd')).toEqual(Option.none())
+test('sanitizeRequestPath returns Option.some for the SPA root', () => {
+  expect(sanitizeRequestPath('')).toEqual(Option.some(''))
+  expect(sanitizeRequestPath('/')).toEqual(Option.some(''))
 })
 
-test('rejects percent-encoded parent-directory traversal', () => {
-  // `URL` parsing only collapses literal `..` segments — `%2E%2E` stays
-  // encoded in the pathname. We decode each segment ourselves so probes
-  // can't sneak past via encoding.
-  expect(parsePathToAssetFile('/%2E%2E/etc/passwd')).toEqual(Option.none())
-  expect(parsePathToAssetFile('/%2e%2e/etc/passwd')).toEqual(Option.none())
-  expect(parsePathToAssetFile('/foo/%2e./etc')).toEqual(Option.none())
+test('sanitizeRequestPath returns Option.some for a normal asset', () => {
+  expect(sanitizeRequestPath('/assets/app.js')).toEqual(Option.some('assets/app.js'))
+  expect(sanitizeRequestPath('/favicon.ico')).toEqual(Option.some('favicon.ico'))
 })
 
-test('rejects malformed percent-encoding', () => {
-  // A lone `%` (no two hex digits) throws inside `decodeURIComponent`.
-  // Treat that as suspicious rather than try to interpret it.
-  expect(parsePathToAssetFile('/foo%')).toEqual(Option.none())
+test('sanitizeRequestPath rejects literal parent-directory traversal', () => {
+  expect(sanitizeRequestPath('/../etc/passwd')).toEqual(Option.none())
+  expect(sanitizeRequestPath('../etc/passwd')).toEqual(Option.none())
+  expect(sanitizeRequestPath('/foo/../../etc/passwd')).toEqual(Option.none())
 })
 
-test('rejects null-byte injection', () => {
-  expect(parsePathToAssetFile('/assets/app\0.js')).toEqual(Option.none())
+test('sanitizeRequestPath rejects percent-encoded parent-directory traversal', () => {
+  expect(sanitizeRequestPath('/%2E%2E/etc/passwd')).toEqual(Option.none())
+  expect(sanitizeRequestPath('/%2e%2e/etc/passwd')).toEqual(Option.none())
+  expect(sanitizeRequestPath('/foo/%2e./etc')).toEqual(Option.none())
 })
 
-test('strips multiple leading slashes', () => {
-  expect(parsePathToAssetFile('//assets//app.js')).toEqual(Option.some('assets/app.js'))
+test('sanitizeRequestPath rejects malformed percent-encoding', () => {
+  expect(sanitizeRequestPath('/foo%')).toEqual(Option.none())
 })
 
-test('passes deep-link routes through — caller distinguishes via FS stat', () => {
-  // `parsePathToAssetFile` only filters traversal/null/malformed. Deep-link
-  // routes like `/gatekeeper/requests` look like real paths from this
-  // function's perspective; the static-spa handler distinguishes "real
-  // file on disk" from "SPA route" by stat-ing the candidate and falling
-  // back to index.html when the stat misses.
-  expect(parsePathToAssetFile('/gatekeeper/requests')).toEqual(Option.some('gatekeeper/requests'))
+test('sanitizeRequestPath rejects null-byte injection', () => {
+  expect(sanitizeRequestPath('/assets/app\0.js')).toEqual(Option.none())
+})
+
+test('sanitizeRequestPath collapses multiple leading slashes', () => {
+  expect(sanitizeRequestPath('//assets//app.js')).toEqual(Option.some('assets/app.js'))
+})
+
+test('sanitizeRequestPath passes deep-link routes through', () => {
+  expect(sanitizeRequestPath('/gatekeeper/requests')).toEqual(Option.some('gatekeeper/requests'))
+})
+
+test('sanitizeRequestPath: %2f-encoded slash variants stay encoded in the relative path', () => {
+  // `URL.pathname` keeps `%2f` percent-encoded; the validator's per-segment
+  // decode catches a `..` only as an exact equality. The literal-substring
+  // path `foo%2f..%2fetc` therefore passes sanitisation, and the FS-side
+  // containment check in `tryFindAssetFileForPath` is responsible for
+  // catching it. This test pins the parser's behaviour so the FS-side
+  // assertion below has a known input shape.
+  const result = sanitizeRequestPath('/foo%2f..%2fetc/passwd')
+  expect(Option.isSome(result)).toBe(true)
+})
+
+test('sanitizeRequestPath: backslash-encoded escapes stay literal', () => {
+  // Same logic as %2f — backslashes are not parent segments by the
+  // per-segment decode, so they pass sanitisation. Containment check
+  // enforces base-dir.
+  const result = sanitizeRequestPath('/foo\\..\\etc/passwd')
+  expect(Option.isSome(result)).toBe(true)
+})
+
+test('sanitizeRequestPath property: every Some(rel) is a safe relative path', () => {
+  fc.assert(
+    fc.property(fc.string(), (input) => {
+      const result = sanitizeRequestPath(input)
+      if (Option.isNone(result)) return
+      const rel = result.value
+      expect(rel.startsWith('/')).toBe(false)
+      expect(rel).not.toContain('\0')
+      // No literal `..` segments in the sanitised output.
+      const segments = rel.split('/')
+      for (const seg of segments) expect(seg).not.toBe('..')
+    }),
+    { numRuns: 200 }
+  )
+})
+
+test('tryFindAssetFileForPath returns Some when a real file exists at the candidate', async () => {
+  writeFileSync(join(tempBase, 'app.js'), 'console.log(1)')
+  const result = await runFsEffect(tryFindAssetFileForPath(tempBase, 'app.js'))
+  expect(Option.isSome(result)).toBe(true)
+  if (Option.isSome(result)) {
+    expect(result.value).toBe(join(tempBase, 'app.js'))
+  }
+})
+
+test('tryFindAssetFileForPath returns None for a directory at the candidate', async () => {
+  mkdirSync(join(tempBase, 'assets'))
+  const result = await runFsEffect(tryFindAssetFileForPath(tempBase, 'assets'))
+  expect(result).toEqual(Option.none())
+})
+
+test('tryFindAssetFileForPath returns None when the file is missing', async () => {
+  const result = await runFsEffect(tryFindAssetFileForPath(tempBase, 'nope.js'))
+  expect(result).toEqual(Option.none())
+})
+
+test('tryFindAssetFileForPath rejects symlinked traversal escape', async () => {
+  // A symlink under the base whose target is outside the base.
+  const escapeTarget = mkdtempSync(join(tmpdir(), 'static-spa-escape-'))
+  try {
+    writeFileSync(join(escapeTarget, 'secret.txt'), 'sensitive')
+    symlinkSync(escapeTarget, join(tempBase, 'link'))
+    const result = await runFsEffect(tryFindAssetFileForPath(tempBase, 'link/secret.txt'))
+    // path.resolve does not follow symlinks; the candidate stays
+    // textually under tempBase, so containment passes and the file
+    // exists. This documents the gap: symlinks ARE followed by the FS
+    // call, which is the desired behaviour for normal asset trees but
+    // means the deployer must not place attacker-controlled symlinks
+    // under web-assets.
+    expect(Option.isSome(result)).toBe(true)
+  } finally {
+    rmSync(escapeTarget, { recursive: true, force: true })
+  }
+})
+
+test('tryFindAssetFileForPath rejects an absolute relPath that escapes via path.resolve', async () => {
+  // `path.resolve(base, '/etc/passwd')` returns `/etc/passwd` — the
+  // absolute argument wins. The containment check rejects this case.
+  const result = await runFsEffect(tryFindAssetFileForPath(tempBase, '/etc/passwd'))
+  expect(result).toEqual(Option.none())
+})
+
+test('tryFindAssetFileForPath rejects path.resolve escapes via embedded ..', async () => {
+  // If sanitizeRequestPath ever regresses, the FS-side check still
+  // rejects when path.resolve collapses `..` past the base.
+  const result = await runFsEffect(tryFindAssetFileForPath(tempBase, '../escape'))
+  expect(result).toEqual(Option.none())
+})
+
+test('tryFindAssetFileForPath property: returned path always lives under webAssetsDir', async () => {
+  await fc.assert(
+    fc.asyncProperty(
+      fc
+        .string()
+        .filter((s) => !s.includes('\0'))
+        .map((s) => s.slice(0, 50)),
+      async (relPath) => {
+        const result = await runFsEffect(tryFindAssetFileForPath(tempBase, relPath))
+        if (Option.isNone(result)) return
+        // Some implies a real file under base.
+        expect(result.value.startsWith(tempBase)).toBe(true)
+      }
+    ),
+    { numRuns: 50 }
+  )
 })

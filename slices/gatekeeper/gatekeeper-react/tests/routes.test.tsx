@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vite-plus/test'
-import * as GatekeeperPaths from '../../gatekeeper-core/src/page-paths.ts'
+import { GatekeeperPaths } from '../../gatekeeper-core/src/page-paths.ts'
 
 // The drift test reads routes.tsx as text rather than importing it. Importing
 // the JSX module pulls in every screen and their transitive deps
