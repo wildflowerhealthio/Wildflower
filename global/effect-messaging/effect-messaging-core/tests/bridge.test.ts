@@ -1,6 +1,7 @@
 import type { Context } from 'effect'
 import { Effect, Layer, Schema } from 'effect'
-import { describe, expect, test } from 'vite-plus/test'
+import * as fc from 'fast-check'
+import { assertType, describe, expect, test } from 'vite-plus/test'
 import * as Bridge from '../src/bridge.ts'
 import * as TestPlatformAdapterLayer from '../src/test-platform-adapter-layer.ts'
 
@@ -10,10 +11,6 @@ const Buzz = Schema.parseJson(Schema.TaggedStruct('Buzz', {}))
 
 const NoOptions = Schema.Struct({})
 
-// The return type is the long generic `BridgeDefinition<...>` produced
-// by `Bridge.make`; using `ReturnType<typeof Bridge.make<...>>` would
-// require restating all five generic arguments. Inferred-return is the
-// pragmatic choice here.
 // oxlint-disable-next-line typescript-eslint/explicit-function-return-type
 const makeTestBridge = (name: string = 'Test') =>
   Bridge.make({
@@ -30,18 +27,10 @@ const makeTestBridge = (name: string = 'Test') =>
 describe('Bridge.make — shape', () => {
   test('exposes both halves with the correct outbound/inbound mapping', () => {
     const bridge = makeTestBridge()
-
-    expect(Object.keys(bridge.Host.OutboundSchemas).toSorted()).toEqual(['Buzz', 'Ping'])
-    expect(Object.keys(bridge.Host.InboundSchemas)).toEqual(['Pong'])
-    expect(Object.keys(bridge.Web.OutboundSchemas)).toEqual(['Pong'])
-    expect(Object.keys(bridge.Web.InboundSchemas).toSorted()).toEqual(['Buzz', 'Ping'])
-  })
-
-  test('preserves schema identities across the OutboundSchemas record', () => {
-    const bridge = makeTestBridge()
-    expect(bridge.Host.OutboundSchemas.Ping).toBe(Ping)
-    expect(bridge.Host.OutboundSchemas.Buzz).toBe(Buzz)
-    expect(bridge.Web.OutboundSchemas.Pong).toBe(Pong)
+    expect(bridge).toMatchObject({
+      Host: { OutboundSchemas: { Ping, Buzz }, InboundSchemas: { Pong } },
+      Web: { OutboundSchemas: { Pong }, InboundSchemas: { Ping, Buzz } },
+    })
   })
 
   test('OptionsShape is the literal schema passed in', () => {
@@ -86,7 +75,6 @@ describe('Bridge.make — HandlerTag', () => {
 
   test('Host and Web halves of the same call have distinct tags', () => {
     const bridge = makeTestBridge()
-    // Cross-side comparison only — same call, different sides.
     expect(bridge.Host.HandlerTag).not.toBe(
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
       bridge.Web.HandlerTag as unknown as typeof bridge.Host.HandlerTag
@@ -109,9 +97,6 @@ describe('Bridge.make — ReceiverLayer', () => {
       Buzz: () => Effect.sync(() => seen.push(-1)),
     })
 
-    // Resolve the handlers through the layer's Effect Context, mirroring
-    // how the transport will look them up at dispatch time. Handlers are
-    // Effect-typed; the test runs them via `yield*` inside the gen body.
     const program = Effect.gen(function* () {
       const handlers = yield* bridge.Web.HandlerTag
       yield* handlers.Ping({ _tag: 'Ping', value: 7 })
@@ -125,22 +110,14 @@ describe('Bridge.make — ReceiverLayer', () => {
   test('handlers from one bridge cannot satisfy a different bridge`s tag', () => {
     const a = makeTestBridge('A')
     const b = makeTestBridge('B')
-
     const aLayer = a.Web.ReceiverLayer({
       Ping: () => Effect.void,
       Buzz: () => Effect.void,
     })
-
-    // Effect.provide for B's tag against A's layer should fail to
-    // resolve at runtime: A's tag instance is not the same instance as
-    // B's, so Context lookup misses. The type system also reports this
-    // because the layer's identifier is `A.Web.HandlerTag`, not
-    // `B.Web.HandlerTag`.
     const program = Effect.gen(function* () {
       const handlers = yield* b.Web.HandlerTag
       return handlers
     })
-
     expect(() => Effect.runSync(Effect.provide(program, aLayer))).toThrow()
   })
 })
@@ -148,7 +125,7 @@ describe('Bridge.make — ReceiverLayer', () => {
 describe('Bridge.make — send', () => {
   test('encodes the typed message via the matching outbound schema', () => {
     const bridge = makeTestBridge()
-    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make({})
+    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make()
 
     Effect.runSync(bridge.Host.send({ _tag: 'Ping', value: 42 }).pipe(Effect.provide(adapterLayer)))
     Effect.runSync(bridge.Host.send({ _tag: 'Buzz' }).pipe(Effect.provide(adapterLayer)))
@@ -160,11 +137,8 @@ describe('Bridge.make — send', () => {
 
   test('round-trips a sent message through the inbound schema on the other side', () => {
     const bridge = makeTestBridge()
-    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make({})
-
+    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make()
     Effect.runSync(bridge.Host.send({ _tag: 'Ping', value: 99 }).pipe(Effect.provide(adapterLayer)))
-
-    // The receiving side's InboundSchemas owns the matching schema.
     const decoded = Schema.decodeSync(bridge.Web.InboundSchemas.Ping)(sentSink[0])
     expect(decoded).toEqual({ _tag: 'Ping', value: 99 })
   })
@@ -185,12 +159,8 @@ describe('Bridge.make — send', () => {
       webOptionsShape: NoOptions,
     })
 
-    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make({})
+    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make()
 
-    // Each bridge owns its outbound vocabulary; both share one
-    // {@link PlatformAdapter} layer, mirroring how aggregators (the
-    // transport, the embedded SPA's main entrypoint) wire multiple
-    // bridges through one byte sink.
     Effect.runSync(navBridge.Host.send({ _tag: 'Buzz' }).pipe(Effect.provide(adapterLayer)))
     Effect.runSync(
       gkBridge.Host.send({ _tag: 'Ping', value: 1 }).pipe(Effect.provide(adapterLayer))
@@ -204,10 +174,6 @@ describe('Bridge.make — send', () => {
 
 describe('Bridge.make — ValidatedPairs', () => {
   test('compile-time: a schema whose decoded _tag does not match the declared tag is rejected', () => {
-    // The next call passes `Ping` schema (decodes `_tag: 'Ping'`) under
-    // the declared tag `'Pong'`. ValidatedPairs returns an error tuple
-    // for that pair, breaking the input-shape match. Wrapped in
-    // `// @ts-expect-error` to assert the error fires.
     const bridge = Bridge.make({
       name: 'BadPair',
       hostToWeb: [
@@ -218,9 +184,6 @@ describe('Bridge.make — ValidatedPairs', () => {
       hostOptionsShape: NoOptions,
       webOptionsShape: NoOptions,
     })
-    // The runtime still produces *something* — the type error doesn't
-    // halt execution. The test exists for the compile-time signal; the
-    // expression below just keeps the value referenced.
     expect(bridge.name).toBe('BadPair')
   })
 
@@ -239,8 +202,6 @@ describe('Bridge.make — ValidatedPairs', () => {
   })
 
   test('compile-time: matching pairs typecheck cleanly', () => {
-    // No `@ts-expect-error` — this block is the positive control: the
-    // declared tag matches the schema's `_tag` literal.
     const bridge = Bridge.make({
       name: 'GoodPair',
       hostToWeb: [['Ping', Ping]] as const,
@@ -252,40 +213,29 @@ describe('Bridge.make — ValidatedPairs', () => {
   })
 })
 
-describe('Bridge.make — phantom types', () => {
-  test('phantom-typed properties carry the expected TS types (compile-only)', () => {
+describe('Bridge.make — type-level surface', () => {
+  test('compile-only: derived types match indexed schema accesses', () => {
     const bridge = makeTestBridge()
-    // Each block typechecks the phantom type alias against a manually-
-    // constructed value. No runtime assertion needed; if these
-    // assignments fail TS, the test file won't compile.
-    const _handlers: typeof bridge.Web.HandlerType = {
-      Ping: ({ value }) =>
-        Effect.sync(() => {
-          expect(typeof value).toBe('number')
-        }),
+    type Inbound = (typeof bridge.Web.InboundSchemas)['Ping']
+    type InboundType = Schema.Schema.Type<Inbound>
+    // The schema's decoded type is what handlers receive.
+    assertType<InboundType>({ _tag: 'Ping', value: 1 })
+
+    // The HandlerTag's service type is `HandlersFor<Inbound>` — handlers are Effect-typed.
+    type HandlerService = Context.Tag.Service<typeof bridge.Web.HandlerTag>
+    assertType<HandlerService>({
+      Ping: ({ value }) => Effect.sync(() => expect(typeof value).toBe('number')),
       Buzz: () => Effect.void,
-    }
-    const _sendable: typeof bridge.Host.SendableMessageType = { _tag: 'Ping', value: 1 }
-    const _sender: typeof bridge.Host.SenderType = (msg) =>
-      Effect.sync(() => {
-        expect(msg._tag).toMatch(/Ping|Buzz/)
-      })
-    const _options: typeof bridge.Host.OptionsType = { greeting: 'hello' }
+    })
 
-    expect(_handlers.Ping).toBeTypeOf('function')
-    expect(_sendable._tag).toBe('Ping')
-    expect(_sender).toBeTypeOf('function')
-    expect(_options.greeting).toBe('hello')
-  })
+    // The OptionsShape's decoded type comes from the schema itself.
+    type HostOptions = Schema.Schema.Type<typeof bridge.Host.OptionsShape>
+    assertType<HostOptions>({ greeting: 'hello' })
 
-  test('phantom *runtime* values are placeholders — never call them', () => {
-    const bridge = makeTestBridge()
-    // The HandlerType / SenderType etc. are runtime `undefined`; the
-    // test only proves they exist as properties (the type carrier).
-    expect(bridge.Host.HandlerType).toBeUndefined()
-    expect(bridge.Host.SendableMessageType).toBeUndefined()
-    expect(bridge.Host.SenderType).toBeUndefined()
-    expect(bridge.Host.OptionsType).toBeUndefined()
+    // A typed sender for one side accepts the union of that side's outbound messages.
+    type HostSender = typeof bridge.Host.send
+    assertType<Parameters<HostSender>[0]>({ _tag: 'Ping', value: 1 })
+    assertType<Parameters<HostSender>[0]>({ _tag: 'Buzz' })
   })
 })
 
@@ -326,20 +276,98 @@ describe('Bridge.make — Layer integration', () => {
   })
 })
 
-describe('Bridge.make — internal types stay sealed', () => {
-  test('OutboundSchemas is structurally a record (compile-only assertion)', () => {
-    const bridge = makeTestBridge()
-    // Indexing by a known key returns the precise schema type.
-    const ping: typeof bridge.Host.OutboundSchemas.Ping = Ping
-    expect(ping).toBe(Ping)
+// Property: `Bridge.make` produces outbound-schema records keyed by the
+// declared tag set, regardless of how many tags are wired. The pair
+// arrays are cast through `never` because the dynamic shape doesn't
+// statically satisfy `ValidatedPairs`'s positional check — fine in a
+// property test that runs concrete pre-validated schemas.
+test('property: outbound schema keys equal declared tag set', () => {
+  const tagAlphabet = ['Ping', 'Pong', 'Buzz'] as const
+  // oxlint-disable-next-line typescript-eslint/no-explicit-any
+  const tagToSchema: Record<(typeof tagAlphabet)[number], any> = { Ping, Pong, Buzz }
+  fc.assert(
+    fc.property(
+      fc.uniqueArray(fc.constantFrom(...tagAlphabet), { minLength: 0, maxLength: 3 }),
+      fc.uniqueArray(fc.constantFrom(...tagAlphabet), { minLength: 0, maxLength: 3 }),
+      (hostTags, webTags) => {
+        // Ensure no overlap between host-outbound and web-outbound — a
+        // bridge's outbound record on each side is a disjoint set.
+        const webTagSet = new Set(webTags)
+        const hostOnly = hostTags.filter((t) => !webTagSet.has(t))
+        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+        const hostPairs = hostOnly.map((tag) => [tag, tagToSchema[tag]]) as never
+        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+        const webPairs = webTags.map((tag) => [tag, tagToSchema[tag]]) as never
+        const bridge = Bridge.make({
+          name: 'Prop',
+          hostToWeb: hostPairs,
+          webToHost: webPairs,
+          hostOptionsShape: NoOptions,
+          webOptionsShape: NoOptions,
+        })
+        expect(Object.keys(bridge.Host.OutboundSchemas).toSorted()).toEqual(hostOnly.toSorted())
+        expect(Object.keys(bridge.Web.OutboundSchemas).toSorted()).toEqual(webTags.toSorted())
+      }
+    )
+  )
+})
 
-    // Access through Context.Tag.Service<...> to assert the service
-    // shape is `HandlersFor<Inbound>` as declared.
-    type Service = Context.Tag.Service<typeof bridge.Web.HandlerTag>
-    const _handlers: Service = {
-      Ping: () => Effect.void,
-      Buzz: () => Effect.void,
-    }
-    expect(_handlers.Ping).toBeTypeOf('function')
-  })
+// Property: `send(msg)` encoded via the adapter then decodeSync on the
+// matching `InboundSchemas` round-trips identity.
+test('property: send → decodeSync round-trips identity for any wired message', () => {
+  const bridge = makeTestBridge()
+  fc.assert(
+    fc.property(
+      fc.oneof(
+        fc.integer().map((value) => ({ _tag: 'Ping' as const, value })),
+        fc.constant({ _tag: 'Buzz' as const })
+      ),
+      (message) => {
+        const { layer, sentSink } = TestPlatformAdapterLayer.make()
+        Effect.runSync(bridge.Host.send(message).pipe(Effect.provide(layer)))
+        expect(sentSink).toHaveLength(1)
+        const inboundSchema =
+          message._tag === 'Ping' ? bridge.Web.InboundSchemas.Ping : bridge.Web.InboundSchemas.Buzz
+        const decoded: unknown = Schema.decodeSync(inboundSchema)(sentSink[0] ?? '')
+        expect(decoded).toEqual(message)
+      }
+    )
+  )
+})
+
+// Property: two `Bridge.make` calls with the same name produce non-equal
+// `HandlerTag` instances regardless of pair shapes.
+test('property: same-name bridges always mint distinct HandlerTag instances', () => {
+  fc.assert(
+    fc.property(
+      fc.string({ minLength: 1, maxLength: 10 }),
+      fc.boolean(),
+      fc.boolean(),
+      (name, includePing, includeBuzz) => {
+        const aPairs = [
+          ...(includePing ? [['Ping', Ping] as const] : []),
+          ...(includeBuzz ? [['Buzz', Buzz] as const] : []),
+        ]
+        const bPairs = [...(includeBuzz ? [['Buzz', Buzz] as const] : [])]
+        const a = Bridge.make({
+          name,
+          // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+          hostToWeb: aPairs as never,
+          webToHost: [] as const,
+          hostOptionsShape: NoOptions,
+          webOptionsShape: NoOptions,
+        })
+        const b = Bridge.make({
+          name,
+          // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+          hostToWeb: bPairs as never,
+          webToHost: [] as const,
+          hostOptionsShape: NoOptions,
+          webOptionsShape: NoOptions,
+        })
+        expect(a.Host.HandlerTag).not.toBe(b.Host.HandlerTag)
+        expect(a.Web.HandlerTag).not.toBe(b.Web.HandlerTag)
+      }
+    )
+  )
 })

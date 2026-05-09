@@ -1,4 +1,4 @@
-import type { NavigationBridge } from 'contracts-core'
+import { NavigationBridge } from 'contracts-core'
 import { Match, Option } from 'effect'
 import { type JSX, useEffect, useRef } from 'react'
 import { NavigationType, useLocation, useNavigate, useNavigationType } from 'react-router'
@@ -29,7 +29,7 @@ import * as WindowNavigationState from './internal/window-navigation-state'
  * (e.g. `NavigationBridge.Web.send` or the merged
  * `transport.sendMessage`).
  */
-const useRouteChangeWatcher = (send: NavigationBridge['Web']['SenderType']): void => {
+const useRouteChangeWatcher = (send: typeof NavigationBridge.Web.send): void => {
   const location = useLocation()
   const navigationType = useNavigationType()
   const depthRef = useRef(0)
@@ -89,7 +89,7 @@ const useNavigateHandlerUpdater = (): void => {
 function NavigationBridgeHandler({
   sender,
 }: {
-  sender: NavigationBridge['Web']['SenderType']
+  sender: typeof NavigationBridge.Web.send
 }): JSX.Element | null {
   useRouteChangeWatcher(sender)
   useNavigateHandlerUpdater()

@@ -1,95 +1,89 @@
-import { useNavigation } from 'expo-router'
 import * as WebBrowser from 'expo-web-browser'
 import {
   forwardRef,
   type JSX,
+  type ReactNode,
   useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
   useState,
 } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 
 /**
- * Imperative handle exposed via `ref`. The transport's bare sender holds
- * one of these to push encoded messages into the embedded page;
- * consumers generally don't call this directly — they go through
- * `transport.sendMessage(...)` on a transport built by
- * {@link makeExpoTransport}.
+ * Imperative handle exposed via `ref`. The transport's bare sender
+ * holds one of these to push encoded messages into the embedded page.
  */
 interface EffectMessagingWebViewHandle {
   postMessage(message: string): void
 }
 
 /**
- * What the embedded WebView should load:
- * - `{ uri }` — load a remote URL or `file://` asset.
- * - `{ html, baseUrl? }` — inline HTML, with `baseUrl` controlling
- *   relative-path resolution.
+ * What the embedded WebView should load. Either a URI or inline HTML
+ * with an optional `baseUrl` for relative-path resolution.
  */
 type EffectMessagingWebViewSource = { uri: string } | { html: string; baseUrl?: string }
 
+/**
+ * Render function for a navigator-supplied `headerLeft`. The
+ * navigator (e.g. expo-router) calls `setHeaderLeft(renderer)` on
+ * mount; the consumer composes this with their navigator of choice.
+ */
+type SetHeaderLeft = (renderer: ((args: { tintColor?: string }) => ReactNode) | undefined) => void
+
 interface EffectMessagingWebViewProps {
   /**
-   * Page contents to load. The first navigation is treated as "internal";
-   * subsequent navigations open in the system browser so the embedded
-   * bundle stays mounted.
+   * Page contents to load. The first navigation is treated as
+   * "internal"; subsequent navigations open in the system browser
+   * so the embedded bundle stays mounted.
    */
   readonly source: EffectMessagingWebViewSource
-  /**
-   * JS injected before any page script runs. Used by the transport to
-   * publish `window.__INITIAL_MESSAGES__`.
-   */
+  /** JS injected before any page script runs. */
   readonly injectedScript?: string
-  /**
-   * Receives every message the page posts via
-   * `window.ReactNativeWebView.postMessage`. The transport wires this
-   * to its dispatch fiber's enqueue.
-   */
+  /** Receives every message the page posts via `window.ReactNativeWebView.postMessage`. */
   readonly onMessage: (event: WebViewMessageEvent) => void
-  /**
-   * Element rendered on top of the WebView until its first `onLoadEnd`
-   * fires. The consumer owns the palette and any overlay positioning —
-   * this component just stops rendering it once the page is ready.
-   */
+  /** Element rendered on top of the WebView until its first `onLoadEnd` fires. */
   readonly loader?: JSX.Element
   /**
-   * When `true`, render a `‹ Back` button in the screen header. The
-   * consumer decides what `onBackPress` does (typically: send a
-   * `HostBackRequested` message to the page). Omit (or leave
-   * `false`) when the consumer doesn't expose page-driven back
-   * navigation.
+   * Optional render-prop the consumer wires to its navigator's
+   * `headerLeft`. The component never imports a navigator package —
+   * this prop lets the consumer (e.g. a slice's expo wrapper) inject
+   * a back chevron driven by a `RouteChanged` message without
+   * coupling this generic component to any one router.
    */
-  readonly canGoBack?: boolean
-  /** Invoked when the user taps the header back button. Required when `canGoBack` is `true`. */
-  readonly onBackPress?: () => void
+  readonly setHeaderLeft?: SetHeaderLeft
+  /**
+   * Header-left renderer. When defined and `setHeaderLeft` is
+   * present, the renderer is propagated to the navigator on mount
+   * and updates; on unmount or when `undefined`, the navigator's
+   * `headerLeft` is cleared.
+   */
+  readonly headerLeft?: (args: { tintColor?: string }) => ReactNode
 }
 
 /**
- * WebView wrapper that hosts a single bundle's page and integrates with
- * the host navigator. The component is a pure transport surface — it
- * holds the WebView ref, dismisses its loader overlay on `onLoadEnd`,
- * keeps the user inside the embedded bundle for navigations to its
- * source, and redirects external-link clicks to the system browser.
+ * WebView wrapper that hosts a single bundle's page. Pure transport
+ * surface — holds the WebView ref, dismisses its loader overlay on
+ * `onLoadEnd`, keeps the user inside the embedded bundle for
+ * navigations to its source, and redirects external-link clicks to
+ * the system browser.
  *
- * No domain protocol lives here; the message vocabulary is owned by
- * `effect-messaging` and the slices that wire bridges. The
- * `canGoBack` / `onBackPress` pair
- * is the only cross-cut: it lets the consumer drive the screen
- * header's back chevron from a `RouteChanged` message without coupling
- * this component to the message schemas.
+ * @remarks
+ * Generic and navigator-agnostic. The consumer supplies header
+ * chrome (back chevron, etc.) through `setHeaderLeft` + `headerLeft`
+ * and bridges it to expo-router / react-navigation / etc. on their
+ * side.
  */
 const EffectMessagingWebView = forwardRef<
   EffectMessagingWebViewHandle,
   EffectMessagingWebViewProps
 >(function EffectMessagingWebView(
-  { source, injectedScript, onMessage, loader, canGoBack, onBackPress },
+  { source, injectedScript, onMessage, loader, setHeaderLeft, headerLeft },
   ref
 ): JSX.Element {
   const webviewRef = useRef<WebView>(null)
-  const navigation = useNavigation()
   const [isReady, setIsReady] = useState(false)
   const initialUrlRef = useRef<string | null>(null)
 
@@ -104,23 +98,10 @@ const EffectMessagingWebView = forwardRef<
   )
 
   useEffect(() => {
-    if (canGoBack !== true || onBackPress === undefined) {
-      navigation.setOptions({ headerLeft: undefined })
-      return
-    }
-    const handlePress = onBackPress
-    const headerLeft = ({ tintColor }: { tintColor?: string }): JSX.Element => (
-      <Pressable
-        onPress={handlePress}
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        hitSlop={12}
-      >
-        <Text style={[styles.backLabel, tintColor ? { color: tintColor } : null]}>‹ Back</Text>
-      </Pressable>
-    )
-    navigation.setOptions({ headerLeft })
-  }, [canGoBack, navigation, onBackPress])
+    if (setHeaderLeft === undefined) return
+    setHeaderLeft(headerLeft)
+    return (): void => setHeaderLeft(undefined)
+  }, [setHeaderLeft, headerLeft])
 
   const onLoadEnd = useCallback(() => {
     setIsReady(true)
@@ -135,10 +116,10 @@ const EffectMessagingWebView = forwardRef<
         onMessage={onMessage}
         onLoadEnd={onLoadEnd}
         onShouldStartLoadWithRequest={(request) => {
-          // Allow the very first load (the bundle's source) and any reload
-          // of that same URL. Anything else is an external page — open it
-          // in the system browser so the user gets native chrome and back
-          // gesture without tearing the embedded bundle down.
+          // Allow the very first load (the bundle's source) and any
+          // reload of that same URL. Anything else opens in the system
+          // browser so the user gets native chrome and back gesture
+          // without tearing the embedded bundle down.
           if (initialUrlRef.current === null) {
             initialUrlRef.current = request.url
             return true
@@ -160,7 +141,6 @@ const EffectMessagingWebView = forwardRef<
 const styles = StyleSheet.create({
   container: { flex: 1 },
   webview: { flex: 1 },
-  backLabel: { fontSize: 17 },
 })
 
 export { EffectMessagingWebView }
@@ -168,4 +148,5 @@ export type {
   EffectMessagingWebViewHandle,
   EffectMessagingWebViewProps,
   EffectMessagingWebViewSource,
+  SetHeaderLeft,
 }

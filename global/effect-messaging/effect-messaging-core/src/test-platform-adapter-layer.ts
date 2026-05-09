@@ -1,39 +1,60 @@
+import type { Scope } from 'effect'
 import { Effect, Layer } from 'effect'
 import { PlatformAdapter } from './platform-adapter.ts'
 
 /**
- * Capturing-stub `Layer<PlatformAdapter>` for tests. The stub's
- * `bareSender` pushes every encoded outbound string into the supplied
- * `sent` array; its `drainInitial` returns the supplied
- * `initialMessages` (default empty). Drop the layer into any program
- * that uses bridge senders or the transport — no platform module
- * loads.
- *
- * Re-exported as the `TestPlatformAdapterLayer` namespace from
- * `effect-messaging-core`'s barrel. Construct with {@link make}.
+ * Capturing-stub `Layer<PlatformAdapter>` for tests.
  *
  * @example
  * ```ts
  * import { TestPlatformAdapterLayer } from 'effect-messaging-core'
  *
  * const { layer, sentSink } = TestPlatformAdapterLayer.make()
- * Effect.runSync(SomeBridge.Web.send({ _tag: 'X', ... }).pipe(Effect.provide(layer)))
- * expect(JSON.parse(sent[0])).toEqual({ _tag: 'X', ... })
+ * Effect.runSync(SomeBridge.Web.send({ _tag: 'X' }).pipe(Effect.provide(layer)))
+ * expect(JSON.parse(sentSink[0])).toEqual({ _tag: 'X' })
  * ```
+ *
+ * @remarks
+ * `bareSender` pushes every encoded outbound string into `sentSink`;
+ * `drainInitial` returns `initialMessages` (default `[]`); the
+ * optional `attachLive` capture exposes the supplied `enqueue`
+ * callback through `liveEnqueueRef` so core-level transport tests can
+ * exercise the live-attachment path without standing up jsdom.
  */
 const make = (config?: {
   readonly initialMessages?: ReadonlyArray<string>
-}): { layer: Layer.Layer<PlatformAdapter>; sentSink: string[] } => {
+  readonly captureAttachLive?: boolean
+}): {
+  readonly layer: Layer.Layer<PlatformAdapter>
+  readonly sentSink: string[]
+  readonly liveEnqueueRef: { current: ((raw: string) => void) | null }
+} => {
   const sentSink: string[] = []
   const initialMessages = config?.initialMessages ?? []
+  const liveEnqueueRef: { current: ((raw: string) => void) | null } = { current: null }
+  const attachLive: (
+    enqueue: (raw: string) => void
+  ) => Effect.Effect<void, never, Scope.Scope> = (enqueue) =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        liveEnqueueRef.current = enqueue
+        return enqueue
+      }),
+      () =>
+        Effect.sync(() => {
+          if (liveEnqueueRef.current === enqueue) liveEnqueueRef.current = null
+        })
+    ).pipe(Effect.asVoid)
+
   const adapter: PlatformAdapter['Type'] = {
     bareSender: (encoded) =>
       Effect.sync(() => {
         sentSink.push(encoded)
       }),
     drainInitial: Effect.succeed(initialMessages),
+    ...(config?.captureAttachLive === true ? { attachLive } : {}),
   }
-  return { layer: Layer.succeed(PlatformAdapter, adapter), sentSink }
+  return { layer: Layer.succeed(PlatformAdapter, adapter), sentSink, liveEnqueueRef }
 }
 
 export { make }

@@ -2,7 +2,7 @@
   "name": "effect-messaging-expo",
   "version": "0.0.0",
   "private": true,
-  "description": "Expo adapter for effect-messaging: react-native-webview-backed transport with EmbeddedWebView component.",
+  "description": "Expo adapter for effect-messaging: react-native-webview-backed transport with EffectMessagingWebView component.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -40,7 +40,6 @@
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "expo": "catalog:",
-    "expo-router": "catalog:",
     "expo-web-browser": "catalog:",
     "jest": "catalog:",
     "jest-expo": "catalog:",
@@ -53,7 +52,6 @@
   "peerDependencies": {
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
-    "expo-router": ">=55.0.0",
     "expo-web-browser": ">=55.0.0",
     "react": "catalog:",
     "react-native": "catalog:",

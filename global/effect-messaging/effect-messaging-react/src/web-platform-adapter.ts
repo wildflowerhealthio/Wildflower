@@ -1,33 +1,27 @@
 import type { Scope } from 'effect'
 import { Effect } from 'effect'
-import { type BareSender, type PlatformAdapter } from 'effect-messaging-core'
+import {
+  INITIAL_MESSAGES_WINDOW_GLOBAL,
+  type BareSender,
+  type PlatformAdapter,
+  REACT_NATIVE_WEBVIEW_GLOBAL,
+} from 'effect-messaging-core'
 
 /**
- * Web-side {@link PlatformAdapter} factory — builds the service the
- * `Context.Tag` is supplied with.
+ * Web-side {@link PlatformAdapter} factory. Re-exported as the
+ * `WebPlatformAdapter` namespace from `effect-messaging-react`'s
+ * barrel. Construct with {@link make}.
  *
- * - **Bare sender**: `window.ReactNativeWebView.postMessage(encoded)`
- *   — warns and drops when the host is absent (standalone-web
- *   bundles).
- * - **Initial-message drain**: reads `window.__INITIAL_MESSAGES__`
- *   (the pre-encoded JSON-string array the Expo host injected via
- *   `injectedJavaScriptBeforeContentLoaded`) and deletes the global
- *   so a hot reload doesn't double-replay.
- * - **Live attachment**: `window.addEventListener('message', ...)`
- *   with the standard origin/source filter. Acquired via
- *   `Effect.acquireRelease`, so the listener detaches automatically
- *   when the transport's scope closes.
- *
- * Re-exported as the `WebPlatformAdapter` namespace from
- * `effect-messaging-react`'s barrel. Construct with {@link make}.
- *
- * Exposed as a separate factory (rather than baked into the
- * transport) so consumers that need to peek at the initial messages
+ * @remarks
+ * Exposed as a separate factory (rather than baked into a transport
+ * wrapper) so consumers that need to peek at the initial messages
  * before mounting — e.g. an embedded SPA deriving an initial route —
  * can build the adapter, drain it once, and provide a replay adapter
- * Layer that returns the same messages back through
- * `WebTransport.make`'s dispatch instead of double-reading
- * `window.__INITIAL_MESSAGES__`.
+ * that returns the same messages back through `BridgeTransport.make`'s
+ * dispatch instead of double-reading the initial-messages window
+ * global.
+ *
+ * See `README.md` for the architectural framing.
  */
 
 /** Window globals the web-side adapter observes. */
@@ -38,6 +32,12 @@ interface MessagingWindowGlobals {
   ReactNativeWebView?: { postMessage(data: string): void }
 }
 
+/**
+ * Build a {@link PlatformAdapter} service that sends to
+ * `window.ReactNativeWebView.postMessage`, drains
+ * `window.__INITIAL_MESSAGES__` once, and listens for live
+ * `message` events with an origin/source filter.
+ */
 const make = (): PlatformAdapter['Type'] => {
   const winGlobals = (): Window & MessagingWindowGlobals =>
     window as Window & MessagingWindowGlobals
@@ -45,11 +45,12 @@ const make = (): PlatformAdapter['Type'] => {
   const bareSender: BareSender = (encoded) =>
     Effect.gen(function* () {
       const w = winGlobals()
-      if (w.ReactNativeWebView !== undefined) {
+      const rnBridge = w[REACT_NATIVE_WEBVIEW_GLOBAL]
+      if (rnBridge !== undefined) {
         // RN-WebView's `postMessage` doesn't take a `targetOrigin` —
         // different API surface from `window.postMessage`.
         // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin
-        w.ReactNativeWebView.postMessage(encoded)
+        rnBridge.postMessage(encoded)
       } else {
         yield* Effect.logWarning(
           `[effect-messaging] sendMessage: no ReactNativeWebView in window; running standalone? message dropped.`
@@ -57,22 +58,30 @@ const make = (): PlatformAdapter['Type'] => {
       }
     })
 
+  /**
+   * Drain `window.__INITIAL_MESSAGES__` once and delete the global so
+   * a hot reload can't double-replay. Non-string entries are filtered
+   * out — the host writes only encoded strings, but the global is
+   * untrusted.
+   */
   const drainInitial: Effect.Effect<ReadonlyArray<string>> = Effect.sync(() => {
     const w = winGlobals()
-    const initial = w.__INITIAL_MESSAGES__
+    const initial = w[INITIAL_MESSAGES_WINDOW_GLOBAL]
     if (!Array.isArray(initial)) return []
-    delete w.__INITIAL_MESSAGES__
+    delete w[INITIAL_MESSAGES_WINDOW_GLOBAL]
     return initial.filter((entry): entry is string => typeof entry === 'string')
   })
 
+  /**
+   * Wire `window.addEventListener('message', ...)` into `enqueue`.
+   * The acquireRelease detaches the listener on scope close. The
+   * filter accepts events whose `source === window` and whose
+   * `origin` matches the page origin OR is `''` (sandboxed/file:/data:
+   * documents — see issue #24 for threat model).
+   */
   const attachLive = (enqueue: (raw: string) => void): Effect.Effect<void, never, Scope.Scope> =>
     Effect.acquireRelease(
       Effect.sync(() => {
-        // Live transport: the RN host posts to web by injecting JS
-        // that calls `window.postMessage`, so legitimate events have
-        // `event.source === window` and the page's own origin.
-        // Anything else (iframe, browser extension, foreign origin)
-        // is ignored.
         const onMessage = (event: MessageEvent<unknown>): void => {
           if (event.source !== window) return
           if (event.origin !== window.location.origin && event.origin !== '') return

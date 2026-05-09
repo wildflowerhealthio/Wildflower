@@ -3,6 +3,7 @@ export {
   type EffectMessagingWebViewHandle,
   type EffectMessagingWebViewProps,
   type EffectMessagingWebViewSource,
+  type SetHeaderLeft,
 } from './effect-messaging-webview.tsx'
 export {
   type ExpoTransport,

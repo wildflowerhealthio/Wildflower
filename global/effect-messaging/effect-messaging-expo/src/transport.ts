@@ -2,38 +2,34 @@ import type { Scope } from 'effect'
 import { Effect, Layer } from 'effect'
 import {
   type BareSender,
-  type Bridge,
+  Bridge,
   BridgeTransport,
+  INITIAL_MESSAGES_WINDOW_GLOBAL,
   PlatformAdapter,
 } from 'effect-messaging-core'
 import type { WebViewMessageEvent } from 'react-native-webview'
 
 /**
  * Expo-side cross-process transport. Thin wrapper around the
- * platform-agnostic {@link BridgeTransport.make} core in
- * `effect-messaging-core`; this file supplies only the Expo-specific
- * glue:
+ * platform-agnostic {@link BridgeTransport.make} core.
  *
- * - **Bare sender**: the imperative
- *   `webviewHandleRef.current.postMessage` call. Pre-mount (ref not
- *   yet populated by the WebView component) the send warns and
- *   drops; post-mount messages flow live to the page.
+ * @remarks
+ * Supplies the Expo-specific glue:
+ *
+ * - **Bare sender**: the imperative `webviewHandle.postMessage` call.
+ *   The consumer creates the ref and passes it to both the transport
+ *   and the WebView component. Pre-mount sends warn and drop;
+ *   post-mount messages flow live to the page.
  * - **Initial messages**: the consumer hands typed values; the
  *   wrapper encodes each via the matching bridge's outbound schema
- *   and assembles them into the `injectedScript` string the consumer
- *   threads through
- *   `<EffectMessagingWebView injectedScript={...}>`. The page-side
- *   handler reads `window.__INITIAL_MESSAGES__` on construction and
- *   replays the strings through its own dispatch program.
+ *   (using `Bridge.senderByTag` so duplicate-tag detection matches
+ *   the dispatch core's policy) and assembles them into the
+ *   `injectedScript` string. The page-side handler reads
+ *   `window.__INITIAL_MESSAGES__` on construction and replays the
+ *   strings through its own dispatch program.
  * - **Live attachment**: no platform-level listener is attached. The
  *   transport exposes an `onMessage(event)` callback the consumer
- *   wires to `<EffectMessagingWebView onMessage={...}>`; that
- *   callback enqueues the raw string into the dispatch fiber.
- *
- * The dispatch core (handler resolution, tag-collision detection,
- * decode-then-route fiber, error formatting) lives in
- * `effect-messaging-core`'s `BridgeTransport` namespace; tests for
- * that pipeline live there too.
+ *   wires to `<EffectMessagingWebView onMessage={...}>`.
  */
 
 /** Tuple-positional layer requirement for the Host side of every wired bridge. */
@@ -48,15 +44,15 @@ interface WebViewHandle {
 }
 
 /**
- * Public Expo transport surface. The consumer wires
- * `webviewHandleRef` to `<EffectMessagingWebView ref={...}>`,
- * `injectedScript` to `injectedScript`, and `onMessage` to
- * `onMessage`. `sendMessage` is the typed Effect-returning sender the
- * consumer uses to push messages to the page after mount.
+ * Public Expo transport surface. The consumer wires `injectedScript`
+ * and `onMessage` to the matching `<EffectMessagingWebView>` props,
+ * and uses `sendMessage` to push live messages to the page after
+ * mount. The consumer also creates the WebView ref and passes it to
+ * both the transport (via `webviewHandleRef` config) and the
+ * WebView's `ref` prop.
  */
 interface ExpoTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   readonly sendMessage: Bridge.SenderIntersection<Bridges, 'Host'>
-  readonly webviewHandleRef: { current: WebViewHandle | null }
   readonly injectedScript: string
   readonly onMessage: (event: WebViewMessageEvent) => void
 }
@@ -64,12 +60,11 @@ interface ExpoTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
 /**
  * Construct an Expo {@link ExpoTransport}. Returns a scoped Effect:
  * compose with `Effect.scoped(...)` so the dispatch fiber and the
- * queue release on scope close. Exposes `webviewHandleRef`,
- * `injectedScript`, and `onMessage` for the consumer to wire to
- * `<EffectMessagingWebView>`.
+ * queue release on scope close.
  *
  * @example
  * ```ts
+ * const webviewHandleRef: { current: WebViewHandle | null } = { current: null }
  * const program = Effect.scoped(
  *   Effect.gen(function*() {
  *     const transport = yield* makeExpoTransport({
@@ -79,23 +74,27 @@ interface ExpoTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  *         { _tag: 'HostRequestedWebNavigation', path: '/' },
  *         { _tag: 'AuthTokenIssued', token: 'abc' },
  *       ],
+ *       webviewHandleRef,
  *     })
  *     yield* transport.sendMessage({ _tag: 'HostBackRequested' })
  *   })
  * )
- * Effect.runPromise(program.pipe(Effect.provide(loggerLayer)))
  * ```
+ *
+ * @remarks
+ * The consumer owns the `webviewHandleRef` lifecycle and passes it
+ * to the WebView's `ref` prop. This keeps the transport
+ * platform-implementation-agnostic and lets tests construct the
+ * transport without standing up a WebView.
  */
 const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
   readonly bridges: Bridges
   readonly layers: ExpoTransportLayers<Bridges>
   readonly initialMessages: ReadonlyArray<Bridge.SendableMessage<Bridges, 'Host'>>
+  readonly webviewHandleRef: { current: WebViewHandle | null }
 }): Effect.Effect<ExpoTransport<Bridges>, never, Scope.Scope> =>
   Effect.gen(function* () {
-    // Mutable handle the WebView component populates via
-    // `forwardRef`. `bareSender` reads it on each call; pre-mount
-    // sends warn and drop.
-    const webviewHandleRef: { current: WebViewHandle | null } = { current: null }
+    const { webviewHandleRef } = config
 
     const bareSender: BareSender = (encoded) =>
       Effect.gen(function* () {
@@ -106,21 +105,17 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
           )
           return undefined
         }
-        // RN-WebView's imperative `postMessage(string)` has a
-        // different API surface from `window.postMessage` and doesn't
-        // take a `targetOrigin`.
+        // RN-WebView's imperative `postMessage(string)` doesn't take a `targetOrigin`.
         // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin
         handle.postMessage(encoded)
         return undefined
       })
 
     // Pre-encode the typed initial messages into a string list the
-    // page side will replay via `window.__INITIAL_MESSAGES__`.
-    // Reusing each bridge's `send` keeps encode parity with live
-    // sends — the only difference is the {@link PlatformAdapter} we
-    // provide. The capture adapter writes into a local array; the
-    // live adapter (built below) is provided to
-    // `BridgeTransport.make` via Layer.
+    // page side will replay via the initial-messages window global.
+    // Reuses `Bridge.senderByTag` (the same helper the dispatch core
+    // uses) so a cross-bridge outbound-tag collision is detected once,
+    // here, instead of by drift between two ad-hoc maps.
     const initialEncoded: string[] = []
     const captureAdapter: PlatformAdapter['Type'] = {
       bareSender: (encoded) =>
@@ -130,38 +125,20 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
       drainInitial: Effect.succeed([]),
     }
     const captureLayer = Layer.succeed(PlatformAdapter, captureAdapter)
-
-    // Index outbound tags to their owning bridge's `send`. The
-    // function-intersection bound on the transport's public sender
-    // doesn't survive structural unification at this loop, so we
-    // walk the bridges' outbound schemas directly.
-    type TaggedSender = (m: {
-      readonly _tag: string
-    }) => Effect.Effect<void, never, PlatformAdapter>
-    const senderByTag = new Map<string, TaggedSender>()
-    for (const bridge of config.bridges) {
-      for (const tag of Object.keys(bridge.Host.OutboundSchemas)) {
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-        senderByTag.set(tag, bridge.Host.send as TaggedSender)
-      }
-    }
+    const taggedSenders = Bridge.senderByTag(config.bridges, 'Host')
     for (const message of config.initialMessages) {
       // `Bridge.SendableMessage<...>` is a union that doesn't reduce
-      // inside the generic body — each member has `_tag: string`, so
-      // the cast just makes the invariant legible to TS.
+      // inside the generic body — every member has `_tag: string`.
       const tagged: { readonly _tag: string } = message
-      const sender = senderByTag.get(tagged._tag)
+      const sender = taggedSenders.get(tagged._tag)
       if (sender !== undefined) yield* sender(tagged).pipe(Effect.provide(captureLayer))
     }
     // `JSON.stringify` of the array escapes inner-encoded quotes so
-    // the resulting `[...]` literal is safe to drop into a JS string
-    // context.
-    const injectedScript = `window.__INITIAL_MESSAGES__ = ${JSON.stringify(initialEncoded)}; true;`
+    // the resulting `[...]` literal is safe to drop into a JS string.
+    const injectedScript = `window.${INITIAL_MESSAGES_WINDOW_GLOBAL} = ${JSON.stringify(initialEncoded)}; true;`
 
     // The Expo platform doesn't attach its own listener — the
     // consumer wires `onMessage` to the WebView's `onMessage` prop.
-    // We omit `attachLive`; the transport exposes `enqueue`, which
-    // we expose back through `onMessage`.
     const liveAdapter: PlatformAdapter['Type'] = {
       bareSender,
       drainInitial: Effect.succeed([]),
@@ -179,7 +156,6 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
 
     return {
       sendMessage: transport.sendMessage,
-      webviewHandleRef,
       injectedScript,
       onMessage,
     }

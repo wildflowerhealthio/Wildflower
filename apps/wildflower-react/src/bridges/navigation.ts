@@ -10,7 +10,7 @@ import * as Transport from './transport.ts'
 const findInitialPath = (messages: ReadonlyArray<string>): string => {
   for (const entry of messages) {
     try {
-      const envelope = Schema.decodeUnknownSync(Message.taggedMessageSchema)(entry)
+      const envelope = Schema.decodeUnknownSync(Message.wireRoutingEnvelope)(entry)
       if (envelope._tag === 'HostRequestedWebNavigation') {
         return Schema.decodeSync(NavigationBridge.MessageSchemas.HostRequestedWebNavigation)(entry)
           .path

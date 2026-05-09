@@ -12,17 +12,15 @@ import { Data, Effect } from 'effect'
  *   `_tag` isn't owned by any wired bridge. Distinguished from
  *   `ParseError` so callers can tell "we don't recognise this tag"
  *   from "this tag is ours but the payload is malformed".
- * - {@link DisposedReceived}: a message arrived after the transport
- *   was disposed. Rare; points at a lifecycle bug.
+ * - {@link Internal}: an invariant the dup-check + position-aligned
+ *   indexing should make unreachable. Surfaces a wiring/refactor bug
+ *   loudly instead of dropping the message silently.
  *
  * Re-exported as the `DispatchError` namespace from
  * `effect-messaging-core`'s barrel.
  */
 
-/**
- * Source channel an inbound message arrived through. Used in log
- * messages to distinguish initial-message replay from live traffic.
- */
+/** Source channel an inbound message arrived through. */
 type Source = 'live' | 'initial'
 
 class UnknownTag extends Data.TaggedError('UnknownTag')<{
@@ -30,20 +28,27 @@ class UnknownTag extends Data.TaggedError('UnknownTag')<{
   readonly tag: string
 }> {}
 
-class DisposedReceived extends Data.TaggedError('DisposedReceived')<{
+/**
+ * Internal-invariant failure: the tag indexed but the bridge or
+ * handlers slot is missing. The dup-check + position-aligned
+ * indexing inside `BridgeTransport.make` should make this
+ * unreachable; surfacing it as an error keeps the wire silently
+ * intact and the bug visible in logs.
+ */
+class Internal extends Data.TaggedError('Internal')<{
   readonly source: Source
+  readonly tag: string
+  readonly reason: string
 }> {}
 
 /** Union of every failure variant the inbound-dispatch fiber can yield. */
-type DispatchError = ParseResult.ParseError | UnknownTag | DisposedReceived
+type DispatchError = ParseResult.ParseError | UnknownTag | Internal
 
 /**
  * Map a structured {@link DispatchError} to a single
  * `Effect.logWarning` call. Transports use this in
  * `Effect.catchAll(toLog)` so every dispatch failure surfaces through
- * the same channel; callers that want different behaviour (e.g. a
- * structured telemetry emit instead of a log) can substitute their
- * own catch.
+ * the same channel.
  */
 const toLog = (error: DispatchError): Effect.Effect<void> => {
   if (error._tag === 'UnknownTag') {
@@ -51,16 +56,13 @@ const toLog = (error: DispatchError): Effect.Effect<void> => {
       `[effect-messaging] unknown ${error.source} message tag: "${error.tag}"`
     )
   }
-  if (error._tag === 'DisposedReceived') {
+  if (error._tag === 'Internal') {
     return Effect.logWarning(
-      `[effect-messaging] received ${error.source} message after dispose; dropping`
+      `[effect-messaging] internal dispatch invariant violated for ${error.source} tag "${error.tag}": ${error.reason}`
     )
   }
-  // ParseError: anything Schema rejected. `String(error)` gives a
-  // structured tree-formatted message; sufficient for a single log
-  // line.
   return Effect.logWarning(`[effect-messaging] failed to decode message: ${String(error)}`)
 }
 
-export { DisposedReceived, toLog, UnknownTag }
+export { Internal, toLog, UnknownTag }
 export type { DispatchError, Source }

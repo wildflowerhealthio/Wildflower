@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react'
-import type { NavigationBridge } from 'contracts-core'
+import { NavigationBridge } from 'contracts-core'
 import { Effect } from 'effect'
 import { type JSX, useEffect } from 'react'
 import { MemoryRouter, useNavigate } from 'react-router'
@@ -17,7 +17,7 @@ import { NavigationBridgeHandler } from './navigation-bridge-handler'
 describe('NavigationBridgeHandler', () => {
   test('fires the callback once per navigation, with canGoBack tracking history depth', () => {
     const calls: NavigationBridge['MessageSchemas']['RouteChanged']['Type'][] = []
-    const send: NavigationBridge['Web']['SenderType'] = (message) => {
+    const send: typeof NavigationBridge.Web.send = (message) => {
       calls.push(message)
       return Effect.void
     }

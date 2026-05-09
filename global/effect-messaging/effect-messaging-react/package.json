@@ -32,7 +32,6 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "contracts-core": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",

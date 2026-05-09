@@ -2,13 +2,16 @@ import { NavigationBridge } from 'contracts-core'
 import { Effect, Exit, Scope } from 'effect'
 import {
   EffectMessagingWebView,
+  type EffectMessagingWebViewHandle,
   type ExpoTransport,
   makeExpoTransport,
+  type SetHeaderLeft,
 } from 'effect-messaging-expo'
+import { useNavigation } from 'expo-router'
 import { Colors, useColorScheme } from 'expo-tundraish'
 import GatekeeperBridge from 'gatekeeper-core/bridge'
-import { type JSX, useEffect, useState } from 'react'
-import { ActivityIndicator, StyleSheet, View } from 'react-native'
+import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { html } from 'wildflower-react/embeddable-html'
 
 interface GatekeeperWebViewProps {
@@ -25,17 +28,18 @@ type Bridges = readonly [NavigationBridge, typeof GatekeeperBridge]
  * tracking, host-side back) with {@link GatekeeperBridge} (bearer token
  * delivery) and threads them through {@link makeExpoTransport}.
  *
+ * @remarks
  * The transport is constructed inside `useEffect` rather than at module
  * load: it owns a `Scope` whose finalizers (dispatch fiber interrupt,
- * queue shutdown) must run on unmount. The two-phase `useState +
- * useEffect` lets the component render once with a placeholder while
- * the scoped Effect resolves, then re-render with the live transport's
- * `injectedScript` / `onMessage` props once it's ready.
+ * queue shutdown) must run on unmount. The ref forwarding the
+ * `EffectMessagingWebView` exposes is created here and passed down to
+ * the transport — the generic transport package no longer owns
+ * navigator chrome.
  *
- * Per-prop `useEffect` deps trigger a tear-down + rebuild when `route`
- * or `token` change — initial messages bake into `injectedScript` at
- * construction, so re-running the effect with new opts is the only way
- * to seed a different initial route or token.
+ * The back-chevron is rendered into the navigator's header here:
+ * `useNavigation()` from expo-router gives the slice access to the
+ * screen's `headerLeft`, and the bridge's `RouteChanged` payload's
+ * `canGoBack` flag drives whether the chevron renders.
  */
 function GatekeeperWebView({ baseUrl, route, token }: GatekeeperWebViewProps): JSX.Element {
   const [transport, setTransport] = useState<ExpoTransport<Bridges> | null>(null)
@@ -43,54 +47,67 @@ function GatekeeperWebView({ baseUrl, route, token }: GatekeeperWebViewProps): J
   const colorScheme = useColorScheme()
   const palette = colorScheme === 'dark' ? Colors.dark : Colors.light
 
+  // The consumer owns the WebView ref so the transport package stays
+  // navigator-agnostic. `EffectMessagingWebViewHandle` is structurally
+  // identical to the transport's `WebViewHandle` (both
+  // `{ postMessage(s: string): void }`), so one cell drives both.
+  const webviewHandleRef = useRef<EffectMessagingWebViewHandle | null>(null)
+
   useEffect(() => {
-    // Build initial messages from the props. Each entry is a typed
-    // value; the transport encodes them into `__INITIAL_MESSAGES__`.
     const initialMessages = [
-      {
-        _tag: 'HostRequestedWebNavigation' as const,
-        path: route,
-      },
+      { _tag: 'HostRequestedWebNavigation' as const, path: route },
       ...(token === undefined ? [] : [{ _tag: 'AuthTokenIssued' as const, token }]),
     ]
-
     const navigationLayer = NavigationBridge.Host.ReceiverLayer({
-      // The web side reports route changes; the host updates its back
-      // chevron state from each one.
       RouteChanged: ({ canGoBack: cgb }) => Effect.sync(() => setCanGoBack(cgb)),
     })
-
-    // Gatekeeper has no Web→Host messages today, so its Host
-    // ReceiverLayer accepts an empty handlers record.
     const gatekeeperLayer = GatekeeperBridge.Host.ReceiverLayer({})
 
-    // Manual Scope management: build a scope, run the construction
-    // Effect against it, store the resolved transport in state. Cleanup
-    // closes the scope, which interrupts the dispatch fiber and shuts
-    // down the queue.
     const scope = Effect.runSync(Scope.make())
     const program = makeExpoTransport({
       bridges: [NavigationBridge, GatekeeperBridge] as const,
       layers: [navigationLayer, gatekeeperLayer] as const,
       initialMessages,
+      webviewHandleRef,
     })
     const built = Effect.runSync(Scope.extend(program, scope))
     setTransport(built)
-
     return (): void => {
       Effect.runSync(Scope.close(scope, Exit.void))
       setTransport(null)
     }
   }, [route, token])
 
-  const onBackPress = (): void => {
+  const onBackPress = useCallback((): void => {
     if (transport === null) return
     Effect.runSync(transport.sendMessage({ _tag: 'HostBackRequested' }))
-  }
+  }, [transport])
 
-  // Render the WebView once the transport is ready. The brief
-  // pre-resolution render is a no-op shell — the scoped Effect is sync,
-  // so the second render lands within the same React tick.
+  // Bridge the navigator-agnostic `setHeaderLeft` prop to expo-router's
+  // `useNavigation().setOptions({ headerLeft })`. The chevron only
+  // renders when `canGoBack` is true; otherwise we send `undefined` so
+  // the navigator falls back to its default header.
+  const navigation = useNavigation()
+  const setHeaderLeft: SetHeaderLeft = useCallback(
+    (renderer) => {
+      navigation.setOptions({ headerLeft: renderer })
+    },
+    [navigation]
+  )
+  const headerLeft = useMemo(() => {
+    if (!canGoBack) return undefined
+    return ({ tintColor }: { tintColor?: string }): JSX.Element => (
+      <Pressable
+        onPress={onBackPress}
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+        hitSlop={12}
+      >
+        <Text style={[styles.backLabel, tintColor ? { color: tintColor } : null]}>‹ Back</Text>
+      </Pressable>
+    )
+  }, [canGoBack, onBackPress])
+
   if (transport === null) return <></>
 
   const loader = (
@@ -104,13 +121,13 @@ function GatekeeperWebView({ baseUrl, route, token }: GatekeeperWebViewProps): J
 
   return (
     <EffectMessagingWebView
-      ref={transport.webviewHandleRef}
+      ref={webviewHandleRef}
       source={{ html, baseUrl }}
       injectedScript={transport.injectedScript}
       onMessage={transport.onMessage}
       loader={loader}
-      canGoBack={canGoBack}
-      onBackPress={onBackPress}
+      setHeaderLeft={setHeaderLeft}
+      headerLeft={headerLeft}
     />
   )
 }
@@ -125,6 +142,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  backLabel: { fontSize: 17 },
 })
 
 export { GatekeeperWebView }

@@ -1,6 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native'
 import * as React from 'react'
-import { View } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import type * as RNType from 'react-native'
 
 // `jest.mock` factories are hoisted above imports and forbidden to read
@@ -15,16 +15,22 @@ type MockWebViewProps = {
   readonly onShouldStartLoadWithRequest?: (req: { url: string }) => boolean
 }
 let mockWebViewProps: MockWebViewProps | null = null
-let mockNavigationOptions: { headerLeft?: unknown } = {}
 let mockExternalUrls: string[] = []
 let mockWebViewPostMessageCalls: string[] = []
 
 jest.mock('react-native-webview', () => {
-  // The mock implements `useImperativeHandle` with property-style (not
-  // method-shorthand) so babel-plugin-jest-hoist doesn't flag inner
-  // identifiers as out-of-scope. The captured state
-  // `mockWebViewPostMessageCalls` keeps a `mock`-prefixed name to
-  // satisfy the hoist exemption.
+  // The mock implements `useImperativeHandle` so `webviewRef.current`
+  // resolves and the EffectMessagingWebView's own
+  // `useImperativeHandle` proxies through to a real spy. The captured
+  // state `mockWebViewPostMessageCalls` keeps a `mock`-prefixed name to
+  // satisfy the babel-plugin-jest-hoist exemption.
+  //
+  // Trade-off note for thread 3210720124: this mock keeps
+  // `useImperativeHandle` so the imperative postMessage path is
+  // exercised end-to-end. When a future test wants to verify behaviour
+  // without an imperative handle (e.g. asserting the optional-chain
+  // guard pre-mount), use a separate test that intentionally omits
+  // `useImperativeHandle` rather than the global mock.
   const ReactInner = jest.requireActual<typeof React>('react')
   const RN = jest.requireActual<typeof RNType>('react-native')
   const WebView = ReactInner.forwardRef(function MockWebView(
@@ -46,14 +52,6 @@ jest.mock('react-native-webview', () => {
   return { WebView }
 })
 
-jest.mock('expo-router', () => ({
-  useNavigation: (): { setOptions(o: { headerLeft?: unknown }): void } => ({
-    setOptions: (o) => {
-      mockNavigationOptions = { ...mockNavigationOptions, ...o }
-    },
-  }),
-}))
-
 jest.mock('expo-web-browser', () => ({
   openBrowserAsync: jest.fn((url: string) => {
     mockExternalUrls.push(url)
@@ -68,7 +66,6 @@ import {
 
 beforeEach(() => {
   mockWebViewProps = null
-  mockNavigationOptions = {}
   mockExternalUrls = []
   mockWebViewPostMessageCalls = []
 })
@@ -88,31 +85,51 @@ describe('EffectMessagingWebView (transport surface)', () => {
     expect(mockWebViewProps?.onMessage).toBe(onMessage)
   })
 
-  it('does not set a headerLeft when canGoBack is omitted', () => {
-    render(<EffectMessagingWebView source={{ html: '' }} onMessage={jest.fn()} />)
-    expect(mockNavigationOptions.headerLeft).toBeUndefined()
-  })
-
-  it('sets a headerLeft that fires onBackPress when canGoBack flips to true', () => {
+  it('forwards a headerLeft renderer to the consumer-supplied setHeaderLeft', () => {
     const onBackPress = jest.fn()
-    const { rerender } = render(
-      <EffectMessagingWebView source={{ html: '' }} onMessage={jest.fn()} canGoBack={false} />
+    let captured: ((args: { tintColor?: string }) => React.ReactNode) | undefined
+    const setHeaderLeft = (
+      r: ((args: { tintColor?: string }) => React.ReactNode) | undefined
+    ): void => {
+      captured = r
+    }
+    const headerLeft = ({ tintColor }: { tintColor?: string }): React.ReactElement => (
+      <Pressable onPress={onBackPress} accessibilityLabel="Back" hitSlop={12}>
+        <Text style={tintColor ? { color: tintColor } : undefined}>Back</Text>
+      </Pressable>
     )
-    rerender(
+    render(
       <EffectMessagingWebView
         source={{ html: '' }}
         onMessage={jest.fn()}
-        canGoBack={true}
-        onBackPress={onBackPress}
+        setHeaderLeft={setHeaderLeft}
+        headerLeft={headerLeft}
       />
     )
-    const headerLeft = mockNavigationOptions.headerLeft as
-      | ((tint: { tintColor?: string }) => React.ReactElement)
-      | undefined
-    if (headerLeft === undefined) throw new Error('headerLeft not set')
-    const { getByLabelText } = render(headerLeft({ tintColor: '#000' }))
+    if (captured === undefined) throw new Error('headerLeft renderer not captured')
+    const { getByLabelText } = render(<>{captured({ tintColor: '#000' })}</>)
     fireEvent.press(getByLabelText('Back'))
     expect(onBackPress).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears the consumer-supplied headerLeft on unmount', () => {
+    let captured: ((args: { tintColor?: string }) => React.ReactNode) | undefined = undefined
+    const setHeaderLeft = (
+      r: ((args: { tintColor?: string }) => React.ReactNode) | undefined
+    ): void => {
+      captured = r
+    }
+    const { unmount } = render(
+      <EffectMessagingWebView
+        source={{ html: '' }}
+        onMessage={jest.fn()}
+        setHeaderLeft={setHeaderLeft}
+        headerLeft={() => null}
+      />
+    )
+    expect(captured).toBeDefined()
+    unmount()
+    expect(captured).toBeUndefined()
   })
 
   it('opens external links in the system browser, not in-page', () => {
@@ -120,9 +137,7 @@ describe('EffectMessagingWebView (transport surface)', () => {
     const onShouldStartLoadWithRequest = mockWebViewProps?.onShouldStartLoadWithRequest
     if (onShouldStartLoadWithRequest === undefined)
       throw new Error('onShouldStartLoadWithRequest not captured')
-    // First request is the bundle's source — internal.
     expect(onShouldStartLoadWithRequest({ url: 'about:blank' })).toBe(true)
-    // Subsequent request to a different URL — external.
     expect(onShouldStartLoadWithRequest({ url: 'https://example.com' })).toBe(false)
     expect(mockExternalUrls).toEqual(['https://example.com'])
   })

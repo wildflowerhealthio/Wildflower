@@ -34,11 +34,11 @@ jest.mock('effect-messaging-expo', () => {
       readonly bridges: ReadonlyArray<unknown>
       readonly layers: ReadonlyArray<unknown>
       readonly initialMessages: ReadonlyArray<unknown>
+      readonly webviewHandleRef: { current: unknown }
     }) => {
       mockLastInitialMessages = config.initialMessages
       return Effect.succeed({
         sendMessage: (): unknown => Effect.void,
-        webviewHandleRef: { current: null },
         injectedScript: '',
         onMessage: (): void => undefined,
       })
@@ -72,6 +72,14 @@ jest.mock('gatekeeper-core/bridge', () => ({
 }))
 
 jest.mock('wildflower-react/embeddable-html', () => ({ html: '<!doctype html><html></html>' }))
+
+// `useNavigation` is the only `expo-router` surface this component
+// reaches for (header-chevron mounting). Stub setOptions as a no-op.
+jest.mock('expo-router', () => ({
+  useNavigation: (): { setOptions(o: unknown): void } => ({
+    setOptions: (): void => undefined,
+  }),
+}))
 
 // Stub `expo-tundraish` to dodge its barrel — re-exporting reanimated
 // and vector-icons-backed components would trip the TurboModule chain
