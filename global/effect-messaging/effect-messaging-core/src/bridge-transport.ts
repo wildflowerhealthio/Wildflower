@@ -2,26 +2,26 @@ import type { Scope } from 'effect'
 import { Deferred, Effect, Queue, Runtime, Schema, Stream } from 'effect'
 import * as Bridge from './bridge.ts'
 import * as DispatchError from './dispatch-error.ts'
-import * as Message from './message.ts'
 import { TransportAdapter } from './transport-adapter.ts'
-
-/**
- * Reserved tag prefix for transport-level control messages routed by
- * the dispatch core itself (not by any wired bridge). The wire form is
- * a tagged JSON struct, identical to slice messages — only the routing
- * differs.
- */
-const CONTROL_TAG_PREFIX = '__' as const
 
 /** The web-→-host handshake signal. Resolves the host's `peerReady` Deferred. */
 const READY_TAG = '__Ready' as const
 
 /**
- * Pre-encoded `__Ready` wire string. The control channel doesn't go
- * through `Bridge.senderByTag` — keeping the encoded form local avoids
- * standing up a Schema for what is structurally a bare tag.
+ * Inner (post-`parseJson`) schema for the `__Ready` control message.
+ * Composed into the host-side dispatch union and used to encode the
+ * outbound wire string on the web side via {@link READY_RAW}.
  */
-const READY_RAW = JSON.stringify({ _tag: READY_TAG })
+const ReadyMessage = Schema.TaggedStruct(READY_TAG, {})
+
+/** Wire-format schema for `__Ready`: encoded as a JSON tagged struct. */
+const ReadyMessageWire = Schema.parseJson(ReadyMessage)
+
+/**
+ * Pre-encoded `__Ready` wire string. Schema-encoded so the wire form
+ * stays in lockstep with the inbound dispatch's union member.
+ */
+const READY_RAW = Schema.encodeSync(ReadyMessageWire)({ _tag: READY_TAG })
 
 /**
  * Cross-platform bridge transport composing one or more
@@ -61,6 +61,19 @@ interface BridgeTransport<
   readonly signalReady: Effect.Effect<void>
 }
 
+/**
+ * Loose schema bound for members of the dispatch union. Each member is
+ * a typeSchema'd `parseJson(TaggedStruct(...))` (i.e., `Schema<A, A>`
+ * for some `A extends { _tag: string }`); the heterogeneous decoded
+ * types collapse via `any` here, then re-narrow at the routing site
+ * where we read `_tag` for the handler lookup.
+ */
+// oxlint-disable-next-line typescript/no-explicit-any
+type AnyTaggedSchema = Schema.Schema<any, any, never>
+
+/** Handler invoked by the dispatch fiber when a tag's message arrives. */
+type Handler = (message: { readonly _tag: string }) => Effect.Effect<void>
+
 const make = <
   const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
   const Side extends 'Host' | 'Web',
@@ -73,7 +86,17 @@ const make = <
     const { bridges, layers, side } = config
     const adapter = yield* TransportAdapter
 
-    type AnyHandlers = Readonly<Record<string, (message: unknown) => Effect.Effect<void>>>
+    /**
+     * Send-gating Deferred. The host suspends `sendMessage` on this
+     * until the web posts `__Ready`. On the web side we resolve it
+     * immediately so the same `Deferred.await` is a no-op.
+     */
+    const peerReady = yield* Deferred.make<void>()
+    if (side === 'Web') {
+      yield* Deferred.succeed(peerReady, undefined)
+    }
+
+    type AnyHandlers = Readonly<Record<string, Handler | undefined>>
     const handlersByBridgeIndex: Array<AnyHandlers | undefined> = []
     for (let i = 0; i < bridges.length; i++) {
       const bridge = bridges[i]
@@ -88,103 +111,85 @@ const make = <
       handlersByBridgeIndex.push(handlers)
     }
 
-    // Inbound-tag uniqueness check: duplicate `_tag`s would silently route to whichever was indexed last.
-    const tagToBridgeIndex = new Map<string, number>()
+    /**
+     * Flat tag→handler map plus per-tag inner schemas built in lockstep.
+     * Duplicate-tag detection runs over the same loop so a wiring drift
+     * fails synchronously here, before the dispatch fiber starts.
+     */
+    const handlerByTag = new Map<string, Handler | undefined>()
+    const innerSchemas: AnyTaggedSchema[] = []
     for (let i = 0; i < bridges.length; i++) {
       const bridge = bridges[i]
-      if (bridge === undefined) continue
+      const handlers = handlersByBridgeIndex[i]
+      if (bridge === undefined || handlers === undefined) continue
       const half = bridge[side]
-      for (const tag of Object.keys(half.InboundSchemas)) {
-        const existing = tagToBridgeIndex.get(tag)
-        if (existing !== undefined) {
-          const existingBridge = bridges[existing]?.name ?? '?'
+      for (const [tag, schema] of Object.entries(half.InboundSchemas)) {
+        if (handlerByTag.has(tag)) {
+          const existingBridge =
+            bridges.find((b, j) => j < i && Object.hasOwn(b[side].InboundSchemas, tag))?.name ?? '?'
           throw new Error(
             `[effect-messaging] duplicate inbound tag "${tag}" across bridges "${existingBridge}" and "${bridge.name}"`
           )
         }
-        tagToBridgeIndex.set(tag, i)
+        handlerByTag.set(tag, handlers[tag])
+        innerSchemas.push(Schema.typeSchema(schema))
       }
+    }
+
+    /**
+     * Control-channel hookup. The host receives `__Ready` from web and
+     * resolves the send gate; web doesn't expect any control messages
+     * from the host today, so its dispatch union is bridge-only.
+     */
+    if (side === 'Host') {
+      handlerByTag.set(READY_TAG, () => Deferred.succeed(peerReady, undefined).pipe(Effect.asVoid))
+      innerSchemas.push(ReadyMessage)
     }
 
     const taggedSenders = Bridge.senderByTag(bridges, side)
 
     /**
-     * Send-gating Deferred. The host suspends `sendMessage` on this
-     * until the web posts `__Ready`. On the web side we resolve it
-     * immediately so the same `Deferred.await` is a no-op.
+     * Single-pass decode for inbound dispatch. `Schema.parseJson`
+     * parses the wire string once; the surrounding `Schema.Union`
+     * discriminates by `_tag` and produces the typed message in one
+     * shot. Tags outside the union surface as `ParseError` (no
+     * separate `UnknownTag` distinction — the union folds the two
+     * cases into one).
      */
-    const peerReady = yield* Deferred.make<void>()
-    if (side === 'Web') {
-      yield* Deferred.succeed(peerReady, undefined)
-    }
+    // A side with zero inbound (e.g., bridges that only send) gets
+    // `Schema.Never`, which rejects every message — equivalent to "this
+    // side accepts nothing inbound." Anything that arrives is logged as a
+    // parse error.
+    const firstSchema = innerSchemas[0]
+    const dispatchMessage: AnyTaggedSchema =
+      firstSchema === undefined
+        ? Schema.Never
+        : innerSchemas.length === 1
+          ? firstSchema
+          : Schema.Union(firstSchema, ...innerSchemas.slice(1))
+    const decodeMessage = Schema.decode(Schema.parseJson(dispatchMessage))
 
     /**
-     * Decode one raw inbound message and route it to the owning bridge's handler.
-     *
-     * @remarks
-     * One-pass envelope decode to extract the `_tag`. Tags prefixed with
-     * `__` are reserved for transport-level control messages and routed
-     * inside the core; everything else is routed by bridge. The per-bridge
-     * schema then re-parses the JSON. Effect's Schema doesn't expose a
-     * "decode-from-already-parsed" path for `parseJson`-wrapped schemas;
-     * the redundant `JSON.parse` is cheap relative to the structured-error
-     * distinction (`UnknownTag` vs payload-parse failure).
+     * Decode one raw inbound message and route to its handler. Schema
+     * acceptance implies the tag is in `handlerByTag` (built in lockstep
+     * with `innerSchemas`); a missing handler entry surfaces as
+     * `Internal` so a deliberate `handlers: { Tag: undefined }` cast
+     * doesn't crash the dispatch fiber.
      */
     const decodeAndDispatch = (
       raw: string,
       source: DispatchError.Source
     ): Effect.Effect<void, DispatchError.DispatchError> =>
       Effect.gen(function* () {
-        const { _tag } = yield* Schema.decode(Message.wireRoutingEnvelope)(raw)
-
-        if (_tag.startsWith(CONTROL_TAG_PREFIX)) {
-          if (_tag === READY_TAG) {
-            yield* Deferred.succeed(peerReady, undefined)
-            return undefined
-          }
-          yield* Effect.logWarning(
-            `[effect-messaging] unknown control tag "${_tag}" from ${source}; ignoring`
-          )
-          return undefined
-        }
-
-        const bridgeIndex = tagToBridgeIndex.get(_tag)
-        if (bridgeIndex === undefined)
-          return yield* new DispatchError.UnknownTag({ source, tag: _tag })
-
-        const bridge = bridges[bridgeIndex]
-        const handlers = handlersByBridgeIndex[bridgeIndex]
-        if (bridge === undefined) {
-          return yield* new DispatchError.Internal({
-            source,
-            tag: _tag,
-            reason: 'bridge slot is undefined for an indexed tag',
-          })
-        }
-        if (handlers === undefined) {
-          return yield* new DispatchError.Internal({
-            source,
-            tag: _tag,
-            reason: 'handlers slot is undefined for an indexed tag',
-          })
-        }
-        const half = bridge[side]
-        const schema = half.InboundSchemas[_tag]
-        if (schema === undefined) {
-          return yield* new DispatchError.Internal({
-            source,
-            tag: _tag,
-            reason: 'inbound schema is undefined for an indexed tag',
-          })
-        }
-
-        const decoded: unknown = yield* Schema.decodeUnknown(schema)(raw)
-
-        const handler = handlers[_tag]
+        // The Union schema decodes to `any`; re-narrow at this single
+        // boundary. Schema acceptance guarantees `_tag: string`.
+        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+        const decoded = (yield* decodeMessage(raw)) as { readonly _tag: string }
+        const handler = handlerByTag.get(decoded._tag)
         if (handler === undefined) {
           return yield* new DispatchError.Internal({
             source,
-            tag: _tag,
+            tag: decoded._tag,
             reason: 'handler is undefined for an indexed tag',
           })
         }

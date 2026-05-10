@@ -156,11 +156,14 @@ describe('BridgeTransport (Web) — live dispatch', () => {
         yield* transport.flushed
       }).pipe(
         LoggingLayerTest.expectToLog((logs) => {
+          // Schema.Union folds unknown-tag into the same ParseError variant
+          // as malformed payloads — both surface via the parse-error log.
           expect(logs).toEqual([
-            {
+            expect.objectContaining({
               level: 'WARN',
-              message: '[effect-messaging] unknown live message tag: "NotARealTag"',
-            },
+              // oxlint-disable-next-line typescript/no-unsafe-assignment
+              message: expect.stringContaining('[effect-messaging] failed to decode message:'),
+            }),
           ])
         }),
         Effect.scoped

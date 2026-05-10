@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import type { Schema } from 'effect'
 
 /**
  * "JSON-encoded tagged schema" alias — the schema shape every bridge
@@ -43,12 +43,4 @@ type Of<R extends SchemaRecord> = {
   readonly [Tag in keyof R]: R[Tag] extends Schema.Schema<infer A, string, never> ? A : never
 }[keyof R]
 
-/**
- * JSON-encoded routing envelope. Decoded form is `{ _tag: string }`,
- * encoded form is `string`. Used by transports and initial-message
- * peekers to extract the tag off a wire string before routing.
- */
-const wireRoutingEnvelope = Schema.parseJson(Schema.Struct({ _tag: Schema.String }))
-
-export { wireRoutingEnvelope }
 export type { Of, RecordFromPairs, SchemaRecord, StringEncodedSchema, ValidatedPairs }
