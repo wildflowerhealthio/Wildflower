@@ -1,95 +1,215 @@
+import { Schema } from 'effect'
+import type * as Bridge from './bridge.ts'
+import type * as Message from './message.ts'
+
 /**
- * Wire-format helpers for encoding pre-encoded message strings as URL
- * query parameters and decoding them back.
+ * URL-param wire-format helpers. The page-side bundle reads initial
+ * messages from `window.location.search`; the host builds those params
+ * onto the WebView's source URL. Each bridge owns the projection from a
+ * typed message to its URL value via {@link Bridge.UrlParamSchemas} —
+ * see {@link tagAndField} for the common single-string-field case.
  *
  * @remarks
- * The web side reads initial messages from `window.location.search`
- * instead of an injected script global; the host side encodes them
- * onto the WebView's source URL. The transport reuses the existing
- * `parseJson(TaggedStruct(...))` schemas — the URL is just another
- * channel for the same encoded JSON string.
- *
- * Param shape: `?msg.<Tag>=<base64url(JSON)>`. The tag is duplicated
- * in the key for human-readable URLs; the decoder ignores the key
- * payload (the JSON it encloses owns the canonical tag). Multiple
- * messages with the same tag are supported via `URLSearchParams`'
- * multi-value semantics.
+ * Param shape: `?<Tag>=<value>` (one param per message). The tag is the
+ * URL key, the encoded form is the URL value. Empty values omit the
+ * `=` (`?<Tag>` instead of `?<Tag>=`) so payload-less messages render
+ * as bare flags.
  */
 
-/** Reserved URL-param key prefix for transport-level initial messages. */
-const PARAM_KEY_PREFIX = 'msg.' as const
+/**
+ * Build a URL-param schema for a single-string-field tagged struct.
+ *
+ * @example
+ * ```ts
+ * const HostRequestedWebNavigationUrl = tagAndField(
+ *   'HostRequestedWebNavigation',
+ *   'path'
+ * )
+ * // Schema<{ _tag: 'HostRequestedWebNavigation'; path: string }, string>
+ * ```
+ *
+ * @remarks
+ * The decoded form has `_tag` defaulted to the supplied literal — the
+ * URL value carries only the field. The runtime-key cast is bounded
+ * to the helper internals; the function signature restores precise
+ * types for callers (the dynamic-key shape can't be expressed in
+ * `Schema.Struct`'s input type alone).
+ */
+const tagAndField = <const Tag extends string, const Field extends string>(
+  tag: Tag,
+  field: Field
+): Schema.Schema<TagAndFieldType<Tag, Field>, string> => {
+  type Decoded = TagAndFieldType<Tag, Field>
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+  const decoded = Schema.Struct({
+    _tag: Schema.Literal(tag),
+    [field]: Schema.String,
+  } as never) as unknown as Schema.Schema<Decoded>
 
-/** UTF-8 base64url encode of a string. No padding. */
-const toBase64Url = (s: string): string => {
-  const bytes = new TextEncoder().encode(s)
-  let binary = ''
-  for (const b of bytes) binary += String.fromCharCode(b)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+  return Schema.transform(Schema.String, decoded, {
+    strict: true,
+    decode: (raw) =>
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+      ({ _tag: tag, [field]: raw }) as never as Decoded,
+    encode: (msg) => (msg as Record<Field, string>)[field],
+  })
 }
 
-/** UTF-8 base64url decode back to the original string. */
-const fromBase64Url = (s: string): string => {
-  const swapped = s.replaceAll('-', '+').replaceAll('_', '/')
-  const padded = swapped + '='.repeat((4 - (swapped.length % 4)) % 4)
-  const binary = atob(padded)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  return new TextDecoder().decode(bytes)
+/** Type of the decoded message produced by {@link tagAndField}. */
+type TagAndFieldType<Tag extends string, Field extends string> = Readonly<
+  { readonly _tag: Tag } & Readonly<Record<Field, string>>
+>
+
+/**
+ * Build a URL-param schema for a payload-less tagged struct (e.g.,
+ * `HostBackRequested`). The encoded form is the empty string; the
+ * URL serializer drops the `=` so the param renders as `?<Tag>`.
+ */
+const tagOnly = <const Tag extends string>(
+  tag: Tag
+): Schema.Schema<{ readonly _tag: Tag }, string> => {
+  const decoded = Schema.Struct({ _tag: Schema.Literal(tag) })
+  return Schema.transform(Schema.String, decoded, {
+    strict: true,
+    decode: () => ({ _tag: tag }),
+    encode: () => '',
+  })
 }
 
 /**
- * Build URL params from an array of pre-encoded message strings.
- * Each entry must be a JSON-encoded tagged struct (the wire format
- * `parseJson(TaggedStruct(...))` produces).
- *
- * @throws if any entry is not a parseable JSON tagged struct.
+ * Look up the URL-param schema for a tag across a list of bridges.
+ * Throws on duplicate-tag conflicts so wiring drift fails synchronously.
  */
-const encodeMessagesAsParams = (encodedMessages: ReadonlyArray<string>): URLSearchParams => {
-  const params = new URLSearchParams()
-  for (const raw of encodedMessages) {
-    const tag = readTagFromEncoded(raw)
-    params.append(`${PARAM_KEY_PREFIX}${tag}`, toBase64Url(raw))
+const findUrlParamSchema = (
+  bridges: ReadonlyArray<Bridge.AnyBridge>,
+  tag: string
+  // oxlint-disable-next-line typescript/no-explicit-any
+): Schema.Schema<any, string, never> | undefined => {
+  // oxlint-disable-next-line typescript/no-explicit-any
+  let found: Schema.Schema<any, string, never> | undefined
+  for (const bridge of bridges) {
+    const schema = bridge.urlParams[tag]
+    if (schema === undefined) continue
+    if (found !== undefined) {
+      throw new Error(`[effect-messaging] duplicate urlParams tag "${tag}" across bridges`)
+    }
+    found = schema
   }
-  return params
+  return found
 }
 
 /**
- * Decode message strings from a URL's `search` portion (e.g.
- * `window.location.search`). Returns `[]` if no `msg.*` keys are
- * present. Malformed param values are skipped silently — the dispatch
- * core warns on any downstream decode failure.
+ * Encode a list of typed messages onto an existing URL's search params,
+ * using each bridge's `urlParams` schemas. Empty-value params are
+ * serialized without an `=` suffix.
+ *
+ * @throws if a message's tag has no `urlParams` schema among the supplied bridges.
  */
-const decodeMessagesFromParams = (search: string): ReadonlyArray<string> => {
+const appendMessagesToUrl = (
+  url: URL,
+  bridges: ReadonlyArray<Bridge.AnyBridge>,
+  messages: ReadonlyArray<{ readonly _tag: string } & Readonly<Record<string, unknown>>>
+): URL => {
+  const out = new URL(url.toString())
+  // Re-serialize the existing params (so trailing `=` semantics are
+  // consistent with what we write below) plus the new message ones.
+  const existing: Array<readonly [string, string]> = [...out.searchParams.entries()]
+  out.search = ''
+  const buffer: Array<readonly [string, string]> = [...existing]
+  for (const message of messages) {
+    const schema = findUrlParamSchema(bridges, message._tag)
+    if (schema === undefined) {
+      throw new Error(
+        `[effect-messaging] no urlParams schema for tag "${message._tag}"; cannot encode as URL param`
+      )
+    }
+    const encoded = Schema.encodeSync(schema)(message)
+    buffer.push([message._tag, encoded])
+  }
+  out.search = serializeParams(buffer)
+  return out
+}
+
+/**
+ * Decode `?<Tag>=<value>` URL params into wire-JSON-encoded message
+ * strings ready for the dispatch queue. Tags without a matching
+ * `urlParams` schema are skipped (with a warning via `console.warn`)
+ * — they're either non-message params the consumer should preserve, or
+ * unknown tags. The matching wire schema (`hostToWeb` member) is used
+ * to re-encode for dispatch.
+ */
+const decodeMessagesFromParams = (
+  search: string,
+  bridges: ReadonlyArray<Bridge.AnyBridge>
+): ReadonlyArray<string> => {
   const params = new URLSearchParams(search)
   const result: string[] = []
   for (const [key, value] of params) {
-    if (!key.startsWith(PARAM_KEY_PREFIX)) continue
+    const urlSchema = findUrlParamSchema(bridges, key)
+    if (urlSchema === undefined) continue
+    const wireSchema = findWireSchema(bridges, key)
+    if (wireSchema === undefined) continue
+    let decoded: unknown
     try {
-      result.push(fromBase64Url(value))
+      decoded = Schema.decodeSync(urlSchema)(value)
     } catch {
-      // Malformed base64; skip.
+      continue
     }
+    let wire: string
+    try {
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+      wire = Schema.encodeSync(wireSchema)(decoded as never)
+    } catch {
+      continue
+    }
+    result.push(wire)
   }
   return result
 }
 
-const readTagFromEncoded = (raw: string): string => {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    throw new Error(`[effect-messaging] cannot encode initial message; not valid JSON: ${raw}`)
+/**
+ * Look up the wire (host→web) schema for a tag across the bridges.
+ * Used by the URL decoder to re-encode the decoded message as the
+ * canonical wire JSON the dispatch fiber consumes.
+ */
+const findWireSchema = (
+  bridges: ReadonlyArray<Bridge.AnyBridge>,
+  tag: string
+): Message.StringEncodedSchema | undefined => {
+  for (const bridge of bridges) {
+    const schema = bridge.Web.InboundSchemas[tag]
+    if (schema !== undefined) return schema
   }
-  if (typeof parsed !== 'object' || parsed === null || !('_tag' in parsed)) {
-    throw new Error(`[effect-messaging] cannot encode initial message; not a tagged struct: ${raw}`)
-  }
-  // `'_tag' in parsed` narrows `parsed._tag` to the property's declared type
-  // (`unknown` for an open record); the typeof check then narrows to string.
-  const tag: unknown = parsed._tag
-  if (typeof tag !== 'string') {
-    throw new Error(`[effect-messaging] cannot encode initial message; not a tagged struct: ${raw}`)
-  }
-  return tag
+  return undefined
 }
 
-export { decodeMessagesFromParams, encodeMessagesAsParams, PARAM_KEY_PREFIX }
+/**
+ * Strip every URL param whose key has a `urlParams` schema on any of
+ * the supplied bridges. Used after `decodeMessagesFromParams` so a
+ * Fast Refresh / HMR cycle doesn't re-dispatch them. Non-bridge params
+ * (e.g., third-party tracking) are preserved.
+ */
+const stripMessageParams = (search: string, bridges: ReadonlyArray<Bridge.AnyBridge>): string => {
+  const params = new URLSearchParams(search)
+  const remaining: Array<readonly [string, string]> = []
+  for (const [key, value] of params) {
+    if (findUrlParamSchema(bridges, key) !== undefined) continue
+    remaining.push([key, value])
+  }
+  return serializeParams(remaining)
+}
+
+/**
+ * Serialize an entry list to a search string. Empty values produce a
+ * bare key (`?Tag` instead of `?Tag=`) — the asymmetry stays on the
+ * write side; `URLSearchParams` reads either form back identically.
+ */
+const serializeParams = (entries: ReadonlyArray<readonly [string, string]>): string => {
+  if (entries.length === 0) return ''
+  const parts = entries.map(([k, v]) =>
+    v === '' ? encodeURIComponent(k) : `${encodeURIComponent(k)}=${encodeURIComponent(v)}`
+  )
+  return parts.join('&')
+}
+
+export { appendMessagesToUrl, decodeMessagesFromParams, stripMessageParams, tagAndField, tagOnly }

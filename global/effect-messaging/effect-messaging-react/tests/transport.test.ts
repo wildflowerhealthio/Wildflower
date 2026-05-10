@@ -15,14 +15,6 @@ const dispatchPostMessage = (raw: string, origin: string = window.location.origi
   window.dispatchEvent(event)
 }
 
-const setInitialMessageUrlParams = (encoded: ReadonlyArray<string>): void => {
-  const url = new URL(window.location.href)
-  for (const [k, v] of UrlCodec.encodeMessagesAsParams(encoded)) {
-    url.searchParams.append(k, v)
-  }
-  window.history.replaceState({}, '', url.toString())
-}
-
 const clearUrlSearch = (): void => {
   const url = new URL(window.location.href)
   url.search = ''
@@ -44,7 +36,20 @@ const NavigationBridge = Bridge.make({
     ['HostRequestedWebNavigation', HostRequestedWebNavigation],
   ] as const,
   webToHost: [['RouteChanged', RouteChanged]] as const,
+  urlParams: {
+    HostRequestedWebNavigation: UrlCodec.tagAndField('HostRequestedWebNavigation', 'path'),
+  },
 })
+
+const setInitialNavigationPath = (path: string): void => {
+  const url = new URL(window.location.href)
+  const next = UrlCodec.appendMessagesToUrl(
+    url,
+    [NavigationBridge],
+    [{ _tag: 'HostRequestedWebNavigation', path }]
+  )
+  window.history.replaceState({}, '', next.toString())
+}
 
 const webTransport = <Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
   readonly bridges: Bridges
@@ -54,7 +59,7 @@ const webTransport = <Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
     bridges: config.bridges,
     layers: config.layers,
     side: 'Web',
-  }).pipe(Effect.provide(Layer.succeed(TransportAdapter, WebPlatformAdapter.make())))
+  }).pipe(Effect.provide(Layer.succeed(TransportAdapter, WebPlatformAdapter.make(config.bridges))))
 
 describe('BridgeTransport (Web) — live dispatch', () => {
   beforeEach(() => {
@@ -295,15 +300,10 @@ describe('BridgeTransport (Web) — URL-param initial messages', () => {
     clearUrlSearch()
   })
 
-  test('decodes msg.* params and dispatches them through the queue', async () => {
+  test('decodes ?<Tag>=<value> params and dispatches them through the queue', async () => {
     const seenPaths: string[] = []
     const path = '/gatekeeper/oauth-consent/abc'
-    setInitialMessageUrlParams([
-      Schema.encodeSync(NavigationBridge.MessageSchemas.HostRequestedWebNavigation)({
-        _tag: 'HostRequestedWebNavigation',
-        path,
-      }),
-    ])
+    setInitialNavigationPath(path)
 
     const layer = NavigationBridge.Web.ReceiverLayer({
       HostBackRequested: () => Effect.void,
@@ -324,15 +324,9 @@ describe('BridgeTransport (Web) — URL-param initial messages', () => {
     )
   })
 
-  test('strips msg.* params from the URL after read so HMR does not re-dispatch', async () => {
-    const path = '/x'
-    setInitialMessageUrlParams([
-      Schema.encodeSync(NavigationBridge.MessageSchemas.HostRequestedWebNavigation)({
-        _tag: 'HostRequestedWebNavigation',
-        path,
-      }),
-    ])
-    expect(window.location.search).toContain('msg.HostRequestedWebNavigation')
+  test('strips bridge params from the URL after read so HMR does not re-dispatch', async () => {
+    setInitialNavigationPath('/x')
+    expect(window.location.search).toContain('HostRequestedWebNavigation')
 
     const layer = NavigationBridge.Web.ReceiverLayer({
       HostBackRequested: () => Effect.void,
@@ -345,21 +339,17 @@ describe('BridgeTransport (Web) — URL-param initial messages', () => {
           layers: [layer] as const,
         })
         yield* transport.flushed
-        expect(window.location.search).not.toContain('msg.')
+        expect(window.location.search).not.toContain('HostRequestedWebNavigation')
       }).pipe(Effect.scoped)
     )
   })
 
-  test('preserves non-message URL params untouched', async () => {
+  test('preserves non-bridge URL params untouched', async () => {
     const url = new URL(window.location.href)
     url.search = ''
     url.searchParams.append('keep', 'me')
     window.history.replaceState({}, '', url.toString())
-    setInitialMessageUrlParams([
-      Schema.encodeSync(NavigationBridge.MessageSchemas.HostBackRequested)({
-        _tag: 'HostBackRequested',
-      }),
-    ])
+    setInitialNavigationPath('/anything')
     const layer = NavigationBridge.Web.ReceiverLayer({
       HostBackRequested: () => Effect.void,
       HostRequestedWebNavigation: () => Effect.void,
@@ -374,7 +364,7 @@ describe('BridgeTransport (Web) — URL-param initial messages', () => {
       }).pipe(Effect.scoped)
     )
     expect(new URL(window.location.href).searchParams.get('keep')).toBe('me')
-    expect(window.location.search).not.toContain('msg.')
+    expect(window.location.search).not.toContain('HostRequestedWebNavigation')
   })
 })
 

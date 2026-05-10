@@ -1,5 +1,5 @@
-import { Effect, Exit, Scope } from 'effect'
-import { UrlCodec } from 'effect-messaging-core'
+import { Effect, Exit, Schema, Scope } from 'effect'
+import { Bridge, UrlCodec } from 'effect-messaging-core'
 import { LoggingLayerTest } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
 import * as WebPlatformAdapter from '../src/web-platform-adapter.ts'
@@ -8,6 +8,18 @@ type WindowWithBridge = Window & {
   ReactNativeWebView?: { postMessage(data: string): void }
 }
 
+// Test fixture bridge — a single host→web message with one string field.
+const Hello = Schema.parseJson(Schema.TaggedStruct('Hello', { msg: Schema.String }))
+const TestBridge = Bridge.make({
+  name: 'Test',
+  hostToWeb: [['Hello', Hello]] as const,
+  webToHost: [] as const,
+  urlParams: {
+    Hello: UrlCodec.tagAndField('Hello', 'msg'),
+  },
+})
+const testBridges = [TestBridge] as const
+
 const requireAttachLive = (
   adapter: ReturnType<typeof WebPlatformAdapter.make>
 ): NonNullable<typeof adapter.attachLive> => {
@@ -15,14 +27,10 @@ const requireAttachLive = (
   return adapter.attachLive
 }
 
-const setMsgParams = (entries: ReadonlyArray<readonly [tag: string, raw: string]>): void => {
+const setHelloUrlParam = (msg: string): void => {
   const url = new URL(window.location.href)
-  for (const [, raw] of entries) {
-    for (const [k, v] of UrlCodec.encodeMessagesAsParams([raw])) {
-      url.searchParams.append(k, v)
-    }
-  }
-  window.history.replaceState({}, '', url.toString())
+  const next = UrlCodec.appendMessagesToUrl(url, testBridges, [{ _tag: 'Hello', msg }])
+  window.history.replaceState({}, '', next.toString())
 }
 
 const clearUrlSearch = (): void => {
@@ -42,47 +50,43 @@ afterEach(() => {
 })
 
 describe('WebPlatformAdapter.make — drainInitial', () => {
-  test('decodes msg.* params and strips them from the URL', () => {
-    const a = JSON.stringify({ _tag: 'A' })
-    const b = JSON.stringify({ _tag: 'B', x: 1 })
-    setMsgParams([
-      ['A', a],
-      ['B', b],
-    ])
-    expect(window.location.search).toContain('msg.A')
+  test('decodes URL params via the supplied bridges and strips them', () => {
+    setHelloUrlParam('hi there')
+    expect(window.location.search).toContain('Hello')
 
-    const adapter = WebPlatformAdapter.make()
+    const adapter = WebPlatformAdapter.make(testBridges)
     const drained = Effect.runSync(adapter.drainInitial)
-    expect(drained).toEqual([a, b])
-    expect(window.location.search).not.toContain('msg.')
+    expect(drained).toHaveLength(1)
+    expect(JSON.parse(drained[0] ?? '')).toEqual({ _tag: 'Hello', msg: 'hi there' })
+    expect(window.location.search).not.toContain('Hello')
   })
 
-  test('returns [] and leaves the URL untouched when no msg.* params are present', () => {
+  test('returns [] and leaves the URL untouched when no bridge params are present', () => {
     const url = new URL(window.location.href)
     url.search = '?keep=me'
     window.history.replaceState({}, '', url.toString())
 
-    const adapter = WebPlatformAdapter.make()
+    const adapter = WebPlatformAdapter.make(testBridges)
     expect(Effect.runSync(adapter.drainInitial)).toEqual([])
     expect(window.location.search).toBe('?keep=me')
   })
 
-  test('preserves non-msg params when stripping', () => {
+  test('preserves non-bridge params when stripping', () => {
     const url = new URL(window.location.href)
     url.search = ''
     url.searchParams.append('keep', 'me')
     window.history.replaceState({}, '', url.toString())
-    setMsgParams([['Hello', JSON.stringify({ _tag: 'Hello' })]])
-    const adapter = WebPlatformAdapter.make()
+    setHelloUrlParam('payload')
+    const adapter = WebPlatformAdapter.make(testBridges)
     Effect.runSync(adapter.drainInitial)
     expect(new URL(window.location.href).searchParams.get('keep')).toBe('me')
-    expect(window.location.search).not.toContain('msg.')
+    expect(window.location.search).not.toContain('Hello')
   })
 })
 
 describe('WebPlatformAdapter.make — bareSender', () => {
   test('warns and drops when ReactNativeWebView is absent', async () => {
-    const adapter = WebPlatformAdapter.make()
+    const adapter = WebPlatformAdapter.make([])
     await Effect.runPromise(
       Effect.gen(function* () {
         yield* adapter.bareSender('payload')
@@ -106,7 +110,7 @@ describe('WebPlatformAdapter.make — bareSender', () => {
     ;(window as WindowWithBridge).ReactNativeWebView = {
       postMessage: (data) => sent.push(data),
     }
-    const adapter = WebPlatformAdapter.make()
+    const adapter = WebPlatformAdapter.make([])
     Effect.runSync(adapter.bareSender('payload-1'))
     Effect.runSync(adapter.bareSender('payload-2'))
     expect(sent).toEqual(['payload-1', 'payload-2'])
@@ -115,7 +119,7 @@ describe('WebPlatformAdapter.make — bareSender', () => {
 
 describe('WebPlatformAdapter.make — attachLive', () => {
   test('detaches the window listener on scope close', async () => {
-    const adapter = WebPlatformAdapter.make()
+    const adapter = WebPlatformAdapter.make([])
     const attachLive = requireAttachLive(adapter)
     const seen: string[] = []
     const scope = Effect.runSync(Scope.make())
@@ -139,7 +143,7 @@ describe('WebPlatformAdapter.make — attachLive', () => {
   })
 
   test('ignores non-string event data', async () => {
-    const adapter = WebPlatformAdapter.make()
+    const adapter = WebPlatformAdapter.make([])
     const attachLive = requireAttachLive(adapter)
     const seen: string[] = []
     const scope = Effect.runSync(Scope.make())
@@ -161,7 +165,7 @@ describe('WebPlatformAdapter.make — attachLive', () => {
   })
 
   test('ignores foreign-origin events', async () => {
-    const adapter = WebPlatformAdapter.make()
+    const adapter = WebPlatformAdapter.make([])
     const attachLive = requireAttachLive(adapter)
     const seen: string[] = []
     const scope = Effect.runSync(Scope.make())

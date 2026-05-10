@@ -1,21 +1,18 @@
 import { Effect, Exit, Schema, Scope } from 'effect'
-import { Bridge } from 'effect-messaging-core'
+import { Bridge, UrlCodec } from 'effect-messaging-core'
 import { makeExpoTransport, type WebViewHandle } from './transport.ts'
 
-const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.Number }))
+const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.String }))
 const Pong = Schema.parseJson(Schema.TaggedStruct('Pong', { reply: Schema.String }))
 
 const HostBridge = Bridge.make({
   name: 'HostFix',
   hostToWeb: [['Ping', Ping]] as const,
   webToHost: [['Pong', Pong]] as const,
+  urlParams: {
+    Ping: UrlCodec.tagAndField('Ping', 'value'),
+  },
 })
-
-const fromBase64Url = (s: string): string => {
-  const swapped = s.replaceAll('-', '+').replaceAll('_', '/')
-  const padded = swapped + '='.repeat((4 - (swapped.length % 4)) % 4)
-  return atob(padded)
-}
 
 const runScoped = async <A>(eff: Effect.Effect<A, never, Scope.Scope>): Promise<A> => {
   const scope = Effect.runSync(Scope.make())
@@ -27,24 +24,21 @@ const runScoped = async <A>(eff: Effect.Effect<A, never, Scope.Scope>): Promise<
 }
 
 describe('makeExpoTransport — embedUrl', () => {
-  it('appends each initial message as a msg.<Tag> base64 query param', async () => {
+  it('appends each initial message as a ?<Tag>=<value> query param', async () => {
     const ref: { current: WebViewHandle | null } = { current: null }
     const layer = HostBridge.Host.ReceiverLayer({ Pong: () => Effect.void })
     const transport = await runScoped(
       makeExpoTransport({
         bridges: [HostBridge] as const,
         layers: [layer] as const,
-        initialMessages: [{ _tag: 'Ping', value: 7 }],
+        initialMessages: [{ _tag: 'Ping', value: 'hello' }],
         baseUrl: 'https://app.local/',
         webviewHandleRef: ref,
       })
     )
     const url = new URL(transport.embedUrl)
     expect(url.origin + url.pathname).toBe('https://app.local/')
-    const pingParam = url.searchParams.get('msg.Ping')
-    if (pingParam === null) throw new Error('expected msg.Ping param')
-    const decoded: unknown = JSON.parse(fromBase64Url(pingParam))
-    expect(decoded).toEqual({ _tag: 'Ping', value: 7 })
+    expect(url.searchParams.get('Ping')).toBe('hello')
   })
 
   it('returns the unmodified base URL when no initial messages are supplied', async () => {
@@ -61,7 +55,7 @@ describe('makeExpoTransport — embedUrl', () => {
     )
     const url = new URL(transport.embedUrl)
     expect(url.searchParams.get('keep')).toBe('me')
-    expect([...url.searchParams.keys()].some((k) => k.startsWith('msg.'))).toBe(false)
+    expect([...url.searchParams.keys()]).toEqual(['keep'])
   })
 })
 
@@ -91,7 +85,7 @@ describe('makeExpoTransport — bareSender (with __Ready handshake)', () => {
       // Simulate the page-side handshake.
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
       transport.onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } } as never)
-      await Effect.runPromise(transport.sendMessage({ _tag: 'Ping', value: 1 }))
+      await Effect.runPromise(transport.sendMessage({ _tag: 'Ping', value: 'x' }))
       await Effect.runPromise(Scope.close(scope, Exit.void))
     } finally {
       console.warn = originalLog
@@ -119,9 +113,9 @@ describe('makeExpoTransport — bareSender (with __Ready handshake)', () => {
     )
     // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
     transport.onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } } as never)
-    await Effect.runPromise(transport.sendMessage({ _tag: 'Ping', value: 42 }))
+    await Effect.runPromise(transport.sendMessage({ _tag: 'Ping', value: 'ok' }))
     expect(calls).toHaveLength(1)
-    expect(JSON.parse(calls[0] ?? '')).toEqual({ _tag: 'Ping', value: 42 })
+    expect(JSON.parse(calls[0] ?? '')).toEqual({ _tag: 'Ping', value: 'ok' })
     await Effect.runPromise(Scope.close(scope, Exit.void))
   })
 })

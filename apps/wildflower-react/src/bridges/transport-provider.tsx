@@ -47,11 +47,12 @@ function TransportProvider({
       if (typeof to === 'number') void navigateRef.current(to)
       else void navigateRef.current(to)
     })
-    const adapter = WebPlatformAdapter.make()
+    const bridges = [NavigationBridge, GatekeeperBridge] as const
+    const adapter = WebPlatformAdapter.make(bridges)
     return Effect.runSync(
       Scope.extend(
         BridgeTransport.make({
-          bridges: [NavigationBridge, GatekeeperBridge] as const,
+          bridges,
           layers: [navLayer, gatekeeperWebReceiverLayer] as const,
           side: 'Web',
         }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter))),

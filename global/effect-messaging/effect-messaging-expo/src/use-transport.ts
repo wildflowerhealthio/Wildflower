@@ -11,7 +11,7 @@ import { type ExpoTransport, type ExpoTransportLayers, makeExpoTransport } from 
 interface UseTransportConfig<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   readonly bridges: Bridges
   readonly layers: ExpoTransportLayers<Bridges>
-  readonly initialMessages: ReadonlyArray<Bridge.SendableMessage<Bridges, 'Host'>>
+  readonly initialMessages: ReadonlyArray<Bridge.UrlParamableMessage<Bridges>>
   readonly baseUrl: string
   readonly webviewHandleRef: { readonly current: { postMessage(message: string): void } | null }
 }

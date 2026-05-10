@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { Bridge } from 'effect-messaging-core'
+import { Bridge, UrlCodec } from 'effect-messaging-core'
 
 /**
  * Host → Web: Expo host hands a bearer token to the embedded SPA so
@@ -29,6 +29,9 @@ const GatekeeperBridge: GatekeeperBridge = Bridge.make({
   name: 'Gatekeeper',
   hostToWeb: [['AuthTokenIssued', AuthTokenIssued]] as const,
   webToHost: [] as const,
+  urlParams: {
+    AuthTokenIssued: UrlCodec.tagAndField('AuthTokenIssued', 'token'),
+  },
 })
 
 export default GatekeeperBridge
