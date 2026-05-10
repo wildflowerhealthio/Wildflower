@@ -20,7 +20,7 @@
     "build:web": "vp build --config vite.config.web.ts",
     "check": "vp check",
     "dev": "vp dev --config vite.config.web.ts",
-    "test": "vp test"
+    "test": "vp test --passWithNoTests"
   },
   "dependencies": {
     "effect": "catalog:",

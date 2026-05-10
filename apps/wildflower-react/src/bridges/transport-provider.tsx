@@ -1,5 +1,6 @@
 import { Effect, Exit, Layer, Scope } from 'effect'
 import { BridgeTransport, TransportAdapter } from 'effect-messaging-core'
+import { WebPlatformAdapter } from 'effect-messaging-react'
 import GatekeeperBridge from 'gatekeeper-core/bridge'
 import { gatekeeperWebReceiverLayer } from 'gatekeeper-react/web-bridge'
 import { NavigationBridge } from 'navigation-core'
@@ -7,21 +8,34 @@ import { makeNavigationWebReceiverLayer, NavigationBridgeHandler } from 'navigat
 import { type JSX, type ReactNode, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { TransportContext, type Transport } from './transport-context.ts'
-import { replayAdapter } from './transport.ts'
 
 /**
  * Build the page-side `BridgeTransport` once at mount, with the
- * navigation receiver Layer closing over `useNavigate()`. Posts
- * `__Ready` to the host once the receivers are wired (via
- * `transport.signalReady`), then provides the transport to descendants
- * through context. The dispatch fiber's scope tears down on unmount.
+ * navigation receiver Layer closing over `useNavigate()`. Suspends
+ * `children` rendering until the dispatch fiber drains every URL-encoded
+ * initial message (`transport.flushed`); then posts `__Ready` to the
+ * host so its outbound queue can flow. The dispatch fiber's scope tears
+ * down on unmount.
  *
  * @remarks
  * `useNavigate()` is captured behind a ref so the receiver Layer's
- * handlers always see the latest navigate function without
- * re-building the transport on every render.
+ * handlers always see the latest navigate function without re-building
+ * the transport on every render.
+ *
+ * The render-block — `children` is replaced by `loader` (or `null`)
+ * until drain — is what removes the need for a synchronous initial-path
+ * peek. The router mounts at its default entry; the URL's
+ * `HostRequestedWebNavigation` flows through the same dispatch path as
+ * runtime navigations and the navigation handler calls `navigate(path)`
+ * during bootstrap. One mechanism for every initial message.
  */
-function TransportProvider({ children }: { readonly children: ReactNode }): JSX.Element {
+function TransportProvider({
+  children,
+  loader = null,
+}: {
+  readonly children: ReactNode
+  readonly loader?: ReactNode
+}): JSX.Element {
   const navigate = useNavigate()
   const navigateRef = useRef(navigate)
   navigateRef.current = navigate
@@ -33,24 +47,34 @@ function TransportProvider({ children }: { readonly children: ReactNode }): JSX.
       if (typeof to === 'number') void navigateRef.current(to)
       else void navigateRef.current(to)
     })
+    const adapter = WebPlatformAdapter.make()
     return Effect.runSync(
       Scope.extend(
         BridgeTransport.make({
           bridges: [NavigationBridge, GatekeeperBridge] as const,
           layers: [navLayer, gatekeeperWebReceiverLayer] as const,
           side: 'Web',
-        }).pipe(Effect.provide(Layer.succeed(TransportAdapter, replayAdapter))),
+        }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter))),
         scope
       )
     )
   })
 
+  const [drained, setDrained] = useState(false)
+
   useEffect(() => {
-    Effect.runFork(transport.signalReady)
+    Effect.runFork(
+      transport.flushed.pipe(
+        Effect.tap(() => Effect.sync(() => setDrained(true))),
+        Effect.zipRight(transport.signalReady)
+      )
+    )
     return (): void => {
       Effect.runFork(Scope.close(scope, Exit.void))
     }
   }, [transport, scope])
+
+  if (!drained) return <>{loader}</>
 
   return (
     <TransportContext.Provider value={transport}>
