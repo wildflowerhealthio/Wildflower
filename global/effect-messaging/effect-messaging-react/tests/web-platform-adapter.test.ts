@@ -53,13 +53,22 @@ describe('WebPlatformAdapter.make — drainInitial', () => {
 describe('WebPlatformAdapter.make — bareSender', () => {
   test('warns and drops when ReactNativeWebView is absent', async () => {
     const adapter = WebPlatformAdapter.make()
-    const { promise, logSink } = LoggingLayerTest.runScoped(
+    await Effect.runPromise(
       Effect.gen(function* () {
         yield* adapter.bareSender('payload')
-      })
+      }).pipe(
+        LoggingLayerTest.expectToLog((logs) => {
+          expect(logs).toEqual([
+            {
+              level: 'WARN',
+              message:
+                '[effect-messaging] sendMessage: no ReactNativeWebView in window; running standalone? message dropped.',
+            },
+          ])
+        }),
+        Effect.scoped
+      )
     )
-    await promise
-    LoggingLayerTest.expectWarningContaining(logSink, 'no ReactNativeWebView in window')
   })
 
   test('forwards to ReactNativeWebView.postMessage when present', () => {

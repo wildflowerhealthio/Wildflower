@@ -1,4 +1,4 @@
-import { Duration, Effect, Either, Fiber, Match, Schedule, Schema } from 'effect'
+import { Duration, Effect, Either, Fiber, Match, Predicate, Schedule, Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
 import { OAuth } from 'gatekeeper-core/http-api-definition'
@@ -45,11 +45,10 @@ const formatGenericError = (error: unknown): string => {
 }
 
 /** RFC 8628 §3.5: keep polling while the issuer is still waiting. */
-const isRetryable = (error: unknown): boolean =>
-  Either.match(decodeOAuthError(error), {
-    onLeft: () => false,
-    onRight: (body) => body.error === 'authorization_pending' || body.error === 'slow_down',
-  })
+const isRetryable = Predicate.compose(
+  Schema.is(OAuthErrorSchema),
+  ({ error }) => error === 'authorization_pending' || error === 'slow_down'
+)
 
 /** Map a thrown value to the next `DeviceFlowState`. */
 const toErrorState = (error: unknown): DeviceFlowState =>

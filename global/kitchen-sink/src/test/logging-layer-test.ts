@@ -1,4 +1,4 @@
-import type { Layer, Scope } from 'effect'
+import type { Layer } from 'effect'
 import { Effect, Logger } from 'effect'
 
 /** One captured log entry. */
@@ -17,7 +17,7 @@ interface CapturedLog {
  * ```ts
  * const { layer, logSink } = LoggingLayerTest.make()
  * Effect.runSync(program.pipe(Effect.provide(layer)))
- * LoggingLayerTest.expectWarningContaining(logSink, 'bad input')
+ * expect(logSink).toEqual([{ level: 'WARN', message: 'bad input' }])
  * ```
  */
 const make = (): { layer: Layer.Layer<never, never, never>; logSink: CapturedLog[] } => {
@@ -32,28 +32,33 @@ const make = (): { layer: Layer.Layer<never, never, never>; logSink: CapturedLog
 }
 
 /**
- * Wrap a scoped Effect program with the capturing-logger layer and run
- * it as a Promise. Equivalent to
- * `Effect.scoped + Effect.provide(layer) + runPromise`.
+ * Pipe step that installs the capturing logger over `program` and
+ * runs `logExpect` against the captured entries when the program
+ * ends — including failure, defect, and interruption — via
+ * `Effect.ensuring`. Caller composes with `Effect.scoped` and
+ * `Effect.runPromise`.
+ *
+ * @example
+ * ```ts
+ * await Effect.runPromise(
+ *   program.pipe(
+ *     LoggingLayerTest.expectToLog((logs) => {
+ *       expect(logs).toEqual([{ level: 'WARN', message: 'bad input' }])
+ *     }),
+ *     Effect.scoped
+ *   )
+ * )
+ * ```
  */
-const runScoped = <A>(
-  program: Effect.Effect<A, never, Scope.Scope>
-): { promise: Promise<A>; logSink: CapturedLog[] } => {
-  const { layer, logSink } = make()
-
-  return { promise: Effect.runPromise(Effect.scoped(program).pipe(Effect.provide(layer))), logSink }
-}
-
-/** Assert that `logs` contains a WARN entry whose message includes `substring`. */
-const expectWarningContaining = (logs: ReadonlyArray<CapturedLog>, substring: string): void => {
-  const match = logs.find((l) => l.level === 'WARN' && l.message.includes(substring))
-  if (match === undefined) {
-    throw new Error(
-      `expected a WARN log containing "${substring}", got:\n` +
-        logs.map((l) => `  [${l.level}] ${l.message}`).join('\n')
+const expectToLog =
+  (logExpect: (logs: CapturedLog[]) => void) =>
+  <A, E, R>(program: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {
+    const { layer, logSink } = make()
+    return program.pipe(
+      Effect.ensuring(Effect.sync(() => logExpect(logSink))),
+      Effect.provide(layer)
     )
   }
-}
 
-export { expectWarningContaining, make, runScoped }
+export { expectToLog, make }
 export type { CapturedLog }

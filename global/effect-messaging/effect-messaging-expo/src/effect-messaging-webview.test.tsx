@@ -1,6 +1,6 @@
-import { act, fireEvent, render } from '@testing-library/react-native'
+import { act, render } from '@testing-library/react-native'
 import * as React from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { View } from 'react-native'
 import type * as RNType from 'react-native'
 
 // `mock`-prefix is required for jest factory hoist (babel-plugin-jest-hoist matches /^mock/i).
@@ -70,53 +70,6 @@ describe('EffectMessagingWebView (transport surface)', () => {
     expect(mockWebViewProps?.source).toEqual({ html: '<!doctype html>' })
     expect(mockWebViewProps?.injectedJavaScriptBeforeContentLoaded).toBe('window.__X__ = 1; true;')
     expect(mockWebViewProps?.onMessage).toBe(onMessage)
-  })
-
-  it('forwards a headerLeft renderer to the consumer-supplied setHeaderLeft', () => {
-    const onBackPress = jest.fn()
-    let captured: ((args: { tintColor?: string }) => React.ReactNode) | undefined
-    const setHeaderLeft = (
-      r: ((args: { tintColor?: string }) => React.ReactNode) | undefined
-    ): void => {
-      captured = r
-    }
-    const headerLeft = ({ tintColor }: { tintColor?: string }): React.ReactElement => (
-      <Pressable onPress={onBackPress} accessibilityLabel="Back" hitSlop={12}>
-        <Text style={tintColor ? { color: tintColor } : undefined}>Back</Text>
-      </Pressable>
-    )
-    render(
-      <EffectMessagingWebView
-        source={{ html: '' }}
-        onMessage={jest.fn()}
-        setHeaderLeft={setHeaderLeft}
-        headerLeft={headerLeft}
-      />
-    )
-    if (captured === undefined) throw new Error('headerLeft renderer not captured')
-    const { getByLabelText } = render(<>{captured({ tintColor: '#000' })}</>)
-    fireEvent.press(getByLabelText('Back'))
-    expect(onBackPress).toHaveBeenCalledTimes(1)
-  })
-
-  it('clears the consumer-supplied headerLeft on unmount', () => {
-    let captured: ((args: { tintColor?: string }) => React.ReactNode) | undefined = undefined
-    const setHeaderLeft = (
-      r: ((args: { tintColor?: string }) => React.ReactNode) | undefined
-    ): void => {
-      captured = r
-    }
-    const { unmount } = render(
-      <EffectMessagingWebView
-        source={{ html: '' }}
-        onMessage={jest.fn()}
-        setHeaderLeft={setHeaderLeft}
-        headerLeft={() => null}
-      />
-    )
-    expect(captured).toBeDefined()
-    unmount()
-    expect(captured).toBeUndefined()
   })
 
   it('opens external links in the system browser, not in-page', () => {

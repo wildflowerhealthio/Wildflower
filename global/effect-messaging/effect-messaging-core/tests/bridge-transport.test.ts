@@ -59,7 +59,7 @@ describe('BridgeTransport.make — internal-error variant', () => {
     // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
     const layer = NavigationLike.Web.ReceiverLayer({ Ping: undefined } as never)
     const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
-    const { promise, logSink } = LoggingLayerTest.runScoped(
+    await Effect.runPromise(
       Effect.gen(function* () {
         const transport = yield* BridgeTransport.make({
           bridges: [NavigationLike] as const,
@@ -68,13 +68,21 @@ describe('BridgeTransport.make — internal-error variant', () => {
         }).pipe(Effect.provide(adapterLayer))
         transport.enqueue(Schema.encodeSync(Ping)({ _tag: 'Ping', value: 1 }))
         yield* transport.flushed
-      })
+      }).pipe(
+        LoggingLayerTest.expectToLog((logs) => {
+          expect(logs).toEqual([
+            expect.objectContaining({
+              level: 'WARN',
+              // oxlint-disable-next-line typescript/no-unsafe-assignment
+              message: expect.stringContaining(
+                '[effect-messaging] internal dispatch invariant violated for live tag "Ping"'
+              ),
+            }),
+          ])
+        }),
+        Effect.scoped
+      )
     )
-    await promise
-    const internal = logSink.find(
-      (l) => l.level === 'WARN' && l.message.includes('internal dispatch invariant violated')
-    )
-    expect(internal).toBeDefined()
   })
 })
 
@@ -88,7 +96,7 @@ describe('BridgeTransport.make — live-attachment path', () => {
     const { layer: adapterLayer, liveEnqueueRef } = TestPlatformAdapterLayer.make({
       captureAttachLive: true,
     })
-    const { promise } = LoggingLayerTest.runScoped(
+    await Effect.runPromise(
       Effect.gen(function* () {
         const transport = yield* BridgeTransport.make({
           bridges: [NavigationLike] as const,
@@ -99,9 +107,8 @@ describe('BridgeTransport.make — live-attachment path', () => {
         liveEnqueueRef.current(Schema.encodeSync(Ping)({ _tag: 'Ping', value: 99 }))
         yield* transport.flushed
         expect(pingCalls).toBe(1)
-      })
+      }).pipe(Effect.scoped)
     )
-    await promise
   })
 
   test('scope close detaches the live enqueue', async () => {
@@ -110,7 +117,7 @@ describe('BridgeTransport.make — live-attachment path', () => {
     const { layer: adapterLayer, liveEnqueueRef } = TestPlatformAdapterLayer.make({
       captureAttachLive: true,
     })
-    const { promise } = LoggingLayerTest.runScoped(
+    await Effect.runPromise(
       Effect.gen(function* () {
         yield* BridgeTransport.make({
           bridges: [NavigationLike] as const,
@@ -118,9 +125,8 @@ describe('BridgeTransport.make — live-attachment path', () => {
           side: 'Web',
         }).pipe(Effect.provide(adapterLayer))
         expect(liveEnqueueRef.current).not.toBeNull()
-      })
+      }).pipe(Effect.scoped)
     )
-    await promise
     expect(liveEnqueueRef.current).toBeNull()
   })
 })
@@ -136,7 +142,7 @@ describe('BridgeTransport.make — initial-message replay', () => {
     const { layer: adapterLayer } = TestPlatformAdapterLayer.make({
       initialMessages: [initialEncoded],
     })
-    const { promise } = LoggingLayerTest.runScoped(
+    await Effect.runPromise(
       Effect.gen(function* () {
         const transport = yield* BridgeTransport.make({
           bridges: [NavigationLike] as const,
@@ -145,9 +151,8 @@ describe('BridgeTransport.make — initial-message replay', () => {
         }).pipe(Effect.provide(adapterLayer))
         yield* transport.flushed
         expect(seen).toEqual([7])
-      })
+      }).pipe(Effect.scoped)
     )
-    await promise
   })
 })
 
@@ -161,7 +166,7 @@ describe('BridgeTransport.make — queue lifecycle', () => {
         async (lateMessages: ReadonlyArray<string>) => {
           const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
           let capturedEnqueue: ((raw: string) => void) | null = null
-          const { promise } = LoggingLayerTest.runScoped(
+          await Effect.runPromise(
             Effect.gen(function* () {
               const transport = yield* BridgeTransport.make({
                 bridges: [NavigationLike] as const,
@@ -169,9 +174,8 @@ describe('BridgeTransport.make — queue lifecycle', () => {
                 side: 'Web',
               }).pipe(Effect.provide(adapterLayer))
               capturedEnqueue = transport.enqueue
-            })
+            }).pipe(Effect.scoped)
           )
-          await promise
           if (capturedEnqueue === null) throw new Error('enqueue not captured')
           for (const msg of lateMessages) {
             ;(capturedEnqueue as (raw: string) => void)(msg)

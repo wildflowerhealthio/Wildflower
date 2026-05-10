@@ -1,32 +1,50 @@
 import { render } from '@testing-library/react-native'
-import type * as effectImportNamespace from 'effect'
 import * as React from 'react'
 
 import type { ReactElement } from 'react'
 
-// Mock `effect-messaging-expo` wholesale: the real module loads `react-native-webview`,
-// which fails outside a native runtime. `mockLastInitialMessages` is `mock`-prefixed
-// for the babel-plugin-jest-hoist exemption.
-let mockLastInitialMessages: ReadonlyArray<unknown> | undefined
+// Mock `effect-messaging-expo` wholesale: the real module loads
+// `react-native-webview`, which fails outside a native runtime.
+// `mock`-prefixed names are hoisted-exempt for the babel-plugin-jest-hoist.
+let mockLastUseTransportConfig: {
+  readonly initialMessages: ReadonlyArray<unknown>
+} | null = null
+
+let mockLastWebViewProps: {
+  readonly source?: { readonly html?: string; readonly baseUrl?: string }
+  readonly injectedScript?: string
+  readonly onMessage?: (event: unknown) => void
+} | null = null
+
+let mockLastTransport: {
+  readonly injectedScript: string
+  readonly onMessage: (event: unknown) => void
+  readonly sendMessage: () => unknown
+} | null = null
 
 jest.mock('effect-messaging-expo', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
-  const Effect = jest.requireActual<typeof effectImportNamespace>('effect').Effect
   return {
-    EffectMessagingWebView: (props: { readonly injectedScript?: string }): ReactElement =>
-      ReactInner.createElement('EffectMessagingWebView', props),
-    makeExpoTransport: (config: {
-      readonly bridges: ReadonlyArray<unknown>
-      readonly layers: ReadonlyArray<unknown>
-      readonly initialMessages: ReadonlyArray<unknown>
-      readonly webviewHandleRef: { current: unknown }
-    }) => {
-      mockLastInitialMessages = config.initialMessages
-      return Effect.succeed({
-        sendMessage: (): unknown => Effect.void,
-        injectedScript: '',
+    EffectMessagingWebView: ReactInner.forwardRef(function MockEffectMessagingWebView(
+      props: {
+        readonly source?: { readonly html?: string; readonly baseUrl?: string }
+        readonly injectedScript?: string
+        readonly onMessage?: (event: unknown) => void
+      },
+      _ref: unknown
+    ): ReactElement {
+      mockLastWebViewProps = props
+      return ReactInner.createElement('EffectMessagingWebView', props)
+    }),
+    useTransport: (config: { readonly initialMessages: ReadonlyArray<unknown> }): unknown => {
+      mockLastUseTransportConfig = config
+      const transport = {
+        sendMessage: (): unknown => undefined,
+        injectedScript: 'window.__INITIAL_MESSAGES__ = []; true;',
         onMessage: (): void => undefined,
-      })
+      }
+      mockLastTransport = transport
+      return transport
     },
   }
 })
@@ -67,7 +85,9 @@ jest.mock('expo-tundraish', () => ({
 import { GatekeeperWebView } from './GatekeeperWebView.tsx'
 
 beforeEach(() => {
-  mockLastInitialMessages = undefined
+  mockLastUseTransportConfig = null
+  mockLastWebViewProps = null
+  mockLastTransport = null
 })
 
 describe('GatekeeperWebView', () => {
@@ -75,7 +95,7 @@ describe('GatekeeperWebView', () => {
     render(
       <GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper/oauth-consent/abc" />
     )
-    expect(mockLastInitialMessages).toEqual([
+    expect(mockLastUseTransportConfig?.initialMessages).toEqual([
       { _tag: 'HostRequestedWebNavigation', path: '/gatekeeper/oauth-consent/abc' },
     ])
   })
@@ -84,7 +104,7 @@ describe('GatekeeperWebView', () => {
     render(
       <GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper" token="bearer-xyz" />
     )
-    expect(mockLastInitialMessages).toEqual([
+    expect(mockLastUseTransportConfig?.initialMessages).toEqual([
       { _tag: 'HostRequestedWebNavigation', path: '/gatekeeper' },
       { _tag: 'AuthTokenIssued', token: 'bearer-xyz' },
     ])
@@ -92,8 +112,22 @@ describe('GatekeeperWebView', () => {
 
   it('omits the AuthTokenIssued initialMessage when no token is passed', () => {
     render(<GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper" />)
-    expect(mockLastInitialMessages).toEqual([
+    expect(mockLastUseTransportConfig?.initialMessages).toEqual([
       { _tag: 'HostRequestedWebNavigation', path: '/gatekeeper' },
     ])
+  })
+
+  it('forwards baseUrl into the EffectMessagingWebView source', () => {
+    render(<GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper" />)
+    expect(mockLastWebViewProps?.source).toEqual({
+      html: '<!doctype html><html></html>',
+      baseUrl: 'https://example.test',
+    })
+  })
+
+  it('forwards transport.injectedScript and transport.onMessage through to the WebView', () => {
+    render(<GatekeeperWebView baseUrl="https://example.test" route="/gatekeeper" />)
+    expect(mockLastWebViewProps?.injectedScript).toBe('window.__INITIAL_MESSAGES__ = []; true;')
+    expect(mockLastWebViewProps?.onMessage).toBe(mockLastTransport?.onMessage)
   })
 })

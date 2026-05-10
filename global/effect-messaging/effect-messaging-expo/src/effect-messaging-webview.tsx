@@ -1,14 +1,5 @@
 import * as WebBrowser from 'expo-web-browser'
-import {
-  forwardRef,
-  type JSX,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from 'react'
+import { forwardRef, type JSX, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 
@@ -26,13 +17,6 @@ interface EffectMessagingWebViewHandle {
  */
 type EffectMessagingWebViewSource = { uri: string } | { html: string; baseUrl?: string }
 
-/**
- * Render function for a navigator-supplied `headerLeft`. The
- * navigator (e.g. expo-router) calls `setHeaderLeft(renderer)` on
- * mount; the consumer composes this with their navigator of choice.
- */
-type SetHeaderLeft = (renderer: ((args: { tintColor?: string }) => ReactNode) | undefined) => void
-
 interface EffectMessagingWebViewProps {
   /**
    * Page contents to load. The first navigation is treated as
@@ -46,21 +30,6 @@ interface EffectMessagingWebViewProps {
   readonly onMessage: (event: WebViewMessageEvent) => void
   /** Element rendered on top of the WebView until its first `onLoadEnd` fires. */
   readonly loader?: JSX.Element
-  /**
-   * Optional render-prop the consumer wires to its navigator's
-   * `headerLeft`. The component never imports a navigator package —
-   * this prop lets the consumer (e.g. a slice's expo wrapper) inject
-   * a back chevron driven by a `RouteChanged` message without
-   * coupling this generic component to any one router.
-   */
-  readonly setHeaderLeft?: SetHeaderLeft
-  /**
-   * Header-left renderer. When defined and `setHeaderLeft` is
-   * present, the renderer is propagated to the navigator on mount
-   * and updates; on unmount or when `undefined`, the navigator's
-   * `headerLeft` is cleared.
-   */
-  readonly headerLeft?: (args: { tintColor?: string }) => ReactNode
 }
 
 /**
@@ -69,20 +38,11 @@ interface EffectMessagingWebViewProps {
  * `onLoadEnd`, keeps the user inside the embedded bundle for
  * navigations to its source, and redirects external-link clicks to
  * the system browser.
- *
- * @remarks
- * Generic and navigator-agnostic. The consumer supplies header
- * chrome (back chevron, etc.) through `setHeaderLeft` + `headerLeft`
- * and bridges it to expo-router / react-navigation / etc. on their
- * side.
  */
 const EffectMessagingWebView = forwardRef<
   EffectMessagingWebViewHandle,
   EffectMessagingWebViewProps
->(function EffectMessagingWebView(
-  { source, injectedScript, onMessage, loader, setHeaderLeft, headerLeft },
-  ref
-): JSX.Element {
+>(function EffectMessagingWebView({ source, injectedScript, onMessage, loader }, ref): JSX.Element {
   const webviewRef = useRef<WebView>(null)
   const [isReady, setIsReady] = useState(false)
   const initialUrlRef = useRef<string | null>(null)
@@ -96,12 +56,6 @@ const EffectMessagingWebView = forwardRef<
     }),
     []
   )
-
-  useEffect((): (() => void) | undefined => {
-    if (setHeaderLeft === undefined) return undefined
-    setHeaderLeft(headerLeft)
-    return (): void => setHeaderLeft(undefined)
-  }, [setHeaderLeft, headerLeft])
 
   const onLoadEnd = useCallback(() => {
     setIsReady(true)
@@ -148,5 +102,4 @@ export type {
   EffectMessagingWebViewHandle,
   EffectMessagingWebViewProps,
   EffectMessagingWebViewSource,
-  SetHeaderLeft,
 }

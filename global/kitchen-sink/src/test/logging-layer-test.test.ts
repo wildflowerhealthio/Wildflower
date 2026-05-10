@@ -4,39 +4,16 @@ import { describe, expect, test } from 'vite-plus/test'
 import * as LoggingLayerTest from './logging-layer-test.ts'
 
 describe('LoggingLayerTest', () => {
-  test('runScoped captures Effect.logWarning into the sink at WARN level', async () => {
-    const { promise, logSink } = LoggingLayerTest.runScoped(
-      Effect.gen(function* () {
-        yield* Effect.logWarning('hello world')
-      })
+  test('expectToLog captures Effect.logWarning into the sink at WARN level', async () => {
+    await Effect.runPromise(
+      Effect.logWarning('hello world').pipe(
+        LoggingLayerTest.expectToLog((logs) => {
+          const warn = logs.find((entry) => entry.level === 'WARN')
+          expect(warn).toBeDefined()
+          expect(warn?.message).toContain('hello world')
+        }),
+        Effect.scoped
+      )
     )
-    await promise
-    const warn = logSink.find((entry) => entry.level === 'WARN')
-    expect(warn).toBeDefined()
-    expect(warn?.message).toContain('hello world')
-  })
-
-  test('expectWarningContaining passes when a matching WARN entry is present', async () => {
-    const { promise, logSink } = LoggingLayerTest.runScoped(
-      Effect.gen(function* () {
-        yield* Effect.logWarning('hello world')
-      })
-    )
-    await promise
-    expect(() => {
-      LoggingLayerTest.expectWarningContaining(logSink, 'hello')
-    }).not.toThrow()
-  })
-
-  test('expectWarningContaining throws when the substring is not found in any WARN entry', async () => {
-    const { promise, logSink } = LoggingLayerTest.runScoped(
-      Effect.gen(function* () {
-        yield* Effect.logWarning('hello world')
-      })
-    )
-    await promise
-    expect(() => {
-      LoggingLayerTest.expectWarningContaining(logSink, 'GOODBYE')
-    }).toThrow(/GOODBYE/)
   })
 })

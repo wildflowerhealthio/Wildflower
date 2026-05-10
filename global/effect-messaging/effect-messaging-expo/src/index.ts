@@ -3,7 +3,6 @@ export {
   type EffectMessagingWebViewHandle,
   type EffectMessagingWebViewProps,
   type EffectMessagingWebViewSource,
-  type SetHeaderLeft,
 } from './effect-messaging-webview.tsx'
 export {
   type ExpoTransport,
@@ -11,3 +10,4 @@ export {
   makeExpoTransport,
   type WebViewHandle,
 } from './transport.ts'
+export { useTransport, type UseTransportConfig } from './use-transport.ts'
