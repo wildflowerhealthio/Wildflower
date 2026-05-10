@@ -32,23 +32,4 @@ describe('NavigationBridge', () => {
     )
     expect(decoded).toEqual({ _tag: 'RouteChanged', pathname: '/x', canGoBack: true })
   })
-
-  // Aggregator contract: slice-expo packages map `hostOptions.initialPath`
-  // to `HostRequestedWebNavigation.path`. Pin the mapping so a rename fails here.
-  test('hostOptions { initialPath } feeds HostRequestedWebNavigation.path on the wire', () => {
-    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make({})
-    const opts = Schema.decodeUnknownSync(NavigationBridge.Host.OptionsShape)({
-      initialPath: '/gatekeeper/oauth-consent/abc',
-    })
-    Effect.runSync(
-      NavigationBridge.Host.send({
-        _tag: 'HostRequestedWebNavigation',
-        path: opts.initialPath,
-      }).pipe(Effect.provide(adapterLayer))
-    )
-    const decoded = Schema.decodeSync(
-      NavigationBridge.Web.InboundSchemas.HostRequestedWebNavigation
-    )(sentSink[0])
-    expect(decoded.path).toBe('/gatekeeper/oauth-consent/abc')
-  })
 })

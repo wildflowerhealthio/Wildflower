@@ -29,9 +29,6 @@ const RouteChanged = Schema.parseJson(
   })
 )
 
-const hostOptionsShape = Schema.Struct({ initialPath: Schema.String })
-const webOptionsShape = Schema.Struct({})
-
 type NavigationBridge = Bridge.Bridge<
   'Navigation',
   {
@@ -40,9 +37,7 @@ type NavigationBridge = Bridge.Bridge<
   },
   {
     RouteChanged: typeof RouteChanged
-  },
-  typeof hostOptionsShape,
-  typeof webOptionsShape
+  }
 >
 /**
  * Slice-neutral cross-process navigation contract. Host emits
@@ -56,8 +51,6 @@ const NavigationBridge: NavigationBridge = Bridge.make({
     ['HostRequestedWebNavigation', HostRequestedWebNavigation],
   ] as const,
   webToHost: [['RouteChanged', RouteChanged]] as const,
-  hostOptionsShape,
-  webOptionsShape,
 })
 
 export default NavigationBridge

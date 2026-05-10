@@ -4,15 +4,18 @@ import { makeExpoTransport, type WebViewHandle } from './transport.ts'
 
 const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.Number }))
 const Pong = Schema.parseJson(Schema.TaggedStruct('Pong', { reply: Schema.String }))
-const NoOptions = Schema.Struct({})
 
 const HostBridge = Bridge.make({
   name: 'HostFix',
   hostToWeb: [['Ping', Ping]] as const,
   webToHost: [['Pong', Pong]] as const,
-  hostOptionsShape: NoOptions,
-  webOptionsShape: NoOptions,
 })
+
+const fromBase64Url = (s: string): string => {
+  const swapped = s.replaceAll('-', '+').replaceAll('_', '/')
+  const padded = swapped + '='.repeat((4 - (swapped.length % 4)) % 4)
+  return atob(padded)
+}
 
 const runScoped = async <A>(eff: Effect.Effect<A, never, Scope.Scope>): Promise<A> => {
   const scope = Effect.runSync(Scope.make())
@@ -23,8 +26,8 @@ const runScoped = async <A>(eff: Effect.Effect<A, never, Scope.Scope>): Promise<
   }
 }
 
-describe('makeExpoTransport — injectedScript', () => {
-  it('embeds initialMessages encoded as the page-side window global', async () => {
+describe('makeExpoTransport — embedUrl', () => {
+  it('appends each initial message as a msg.<Tag> base64 query param', async () => {
     const ref: { current: WebViewHandle | null } = { current: null }
     const layer = HostBridge.Host.ReceiverLayer({ Pong: () => Effect.void })
     const transport = await runScoped(
@@ -32,27 +35,37 @@ describe('makeExpoTransport — injectedScript', () => {
         bridges: [HostBridge] as const,
         layers: [layer] as const,
         initialMessages: [{ _tag: 'Ping', value: 7 }],
+        baseUrl: 'https://app.local/',
         webviewHandleRef: ref,
       })
     )
-    // The script writes to `window.__INITIAL_MESSAGES__` with the
-    // encoded array. The exact JSON-of-encoded-strings is the contract
-    // the page-side adapter consumes.
-    expect(transport.injectedScript).toContain('window.__INITIAL_MESSAGES__')
-    const m = transport.injectedScript.match(/window\.__INITIAL_MESSAGES__ = (\[.*\])/)
-    if (m === null) throw new Error(`unexpected script: ${transport.injectedScript}`)
-    const parsed: unknown = JSON.parse(m[1] ?? '[]')
-    if (!Array.isArray(parsed)) throw new Error('expected array')
-    const arr: ReadonlyArray<unknown> = parsed
-    expect(arr).toHaveLength(1)
-    const first = arr[0]
-    if (typeof first !== 'string') throw new Error('expected string entry')
-    const decoded: unknown = JSON.parse(first)
+    const url = new URL(transport.embedUrl)
+    expect(url.origin + url.pathname).toBe('https://app.local/')
+    const pingParam = url.searchParams.get('msg.Ping')
+    if (pingParam === null) throw new Error('expected msg.Ping param')
+    const decoded: unknown = JSON.parse(fromBase64Url(pingParam))
     expect(decoded).toEqual({ _tag: 'Ping', value: 7 })
+  })
+
+  it('returns the unmodified base URL when no initial messages are supplied', async () => {
+    const ref: { current: WebViewHandle | null } = { current: null }
+    const layer = HostBridge.Host.ReceiverLayer({ Pong: () => Effect.void })
+    const transport = await runScoped(
+      makeExpoTransport({
+        bridges: [HostBridge] as const,
+        layers: [layer] as const,
+        initialMessages: [],
+        baseUrl: 'https://app.local/?keep=me',
+        webviewHandleRef: ref,
+      })
+    )
+    const url = new URL(transport.embedUrl)
+    expect(url.searchParams.get('keep')).toBe('me')
+    expect([...url.searchParams.keys()].some((k) => k.startsWith('msg.'))).toBe(false)
   })
 })
 
-describe('makeExpoTransport — bareSender', () => {
+describe('makeExpoTransport — bareSender (with __Ready handshake)', () => {
   it('warns and drops when the WebView ref is null', async () => {
     const ref: { current: WebViewHandle | null } = { current: null }
     const layer = HostBridge.Host.ReceiverLayer({ Pong: () => Effect.void })
@@ -62,40 +75,54 @@ describe('makeExpoTransport — bareSender', () => {
       warnings.push(String(msg))
     }
     try {
-      const transport = await runScoped(
-        makeExpoTransport({
-          bridges: [HostBridge] as const,
-          layers: [layer] as const,
-          initialMessages: [],
-          webviewHandleRef: ref,
-        })
+      const scope = Effect.runSync(Scope.make())
+      const transport = await Effect.runPromise(
+        Scope.extend(
+          makeExpoTransport({
+            bridges: [HostBridge] as const,
+            layers: [layer] as const,
+            initialMessages: [],
+            baseUrl: 'https://app.local/',
+            webviewHandleRef: ref,
+          }),
+          scope
+        )
       )
-      // Pre-mount send: ref.current is null. Effect.runPromise to
-      // surface any defect; logWarning routes through the Effect
-      // logger so the test confirms the call resolves cleanly.
+      // Simulate the page-side handshake.
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+      transport.onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } } as never)
       await Effect.runPromise(transport.sendMessage({ _tag: 'Ping', value: 1 }))
+      await Effect.runPromise(Scope.close(scope, Exit.void))
     } finally {
       console.warn = originalLog
     }
   })
 
-  it('forwards encoded payloads to the ref-supplied handle', async () => {
+  it('forwards encoded payloads to the ref-supplied handle once Ready arrives', async () => {
     const calls: string[] = []
     const ref: { current: WebViewHandle | null } = {
       current: { postMessage: (data) => calls.push(data) },
     }
     const layer = HostBridge.Host.ReceiverLayer({ Pong: () => Effect.void })
-    const transport = await runScoped(
-      makeExpoTransport({
-        bridges: [HostBridge] as const,
-        layers: [layer] as const,
-        initialMessages: [],
-        webviewHandleRef: ref,
-      })
+    const scope = Effect.runSync(Scope.make())
+    const transport = await Effect.runPromise(
+      Scope.extend(
+        makeExpoTransport({
+          bridges: [HostBridge] as const,
+          layers: [layer] as const,
+          initialMessages: [],
+          baseUrl: 'https://app.local/',
+          webviewHandleRef: ref,
+        }),
+        scope
+      )
     )
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+    transport.onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } } as never)
     await Effect.runPromise(transport.sendMessage({ _tag: 'Ping', value: 42 }))
     expect(calls).toHaveLength(1)
     expect(JSON.parse(calls[0] ?? '')).toEqual({ _tag: 'Ping', value: 42 })
+    await Effect.runPromise(Scope.close(scope, Exit.void))
   })
 })
 
@@ -106,26 +133,23 @@ describe('makeExpoTransport — onMessage', () => {
     const layer = HostBridge.Host.ReceiverLayer({
       Pong: ({ reply }) => Effect.sync(() => seen.push(reply)),
     })
-    const transport = await runScoped(
+    await runScoped(
       Effect.gen(function* () {
         const t = yield* makeExpoTransport({
           bridges: [HostBridge] as const,
           layers: [layer] as const,
           initialMessages: [],
+          baseUrl: 'https://app.local/',
           webviewHandleRef: ref,
         })
         const encoded = Schema.encodeSync(Pong)({ _tag: 'Pong', reply: 'hi' })
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
         t.onMessage({ nativeEvent: { data: encoded } } as never)
-        // Wait for the dispatch fiber by enqueuing nothing and
-        // reading any send through the round trip — simplest is to
-        // re-use the helper we got, but the transport's `flushed` is
-        // not exposed to consumers. Use a tight Promise tick instead.
+        // Tick once so the dispatch fiber processes the queued message.
         yield* Effect.sleep(0)
         return t
       })
     )
     expect(seen).toEqual(['hi'])
-    expect(transport.injectedScript).toContain('window.__INITIAL_MESSAGES__')
   })
 })

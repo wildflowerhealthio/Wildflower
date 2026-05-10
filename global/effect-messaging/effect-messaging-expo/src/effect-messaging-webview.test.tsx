@@ -6,7 +6,6 @@ import type * as RNType from 'react-native'
 // `mock`-prefix is required for jest factory hoist (babel-plugin-jest-hoist matches /^mock/i).
 type MockWebViewProps = {
   readonly source?: unknown
-  readonly injectedJavaScriptBeforeContentLoaded?: string
   readonly onMessage?: (event: unknown) => void
   readonly onLoadEnd?: () => void
   readonly onShouldStartLoadWithRequest?: (req: { url: string }) => boolean
@@ -58,17 +57,10 @@ beforeEach(() => {
 })
 
 describe('EffectMessagingWebView (transport surface)', () => {
-  it('forwards source, injectedScript, and onMessage to the underlying WebView', () => {
+  it('forwards source and onMessage to the underlying WebView', () => {
     const onMessage = jest.fn()
-    render(
-      <EffectMessagingWebView
-        source={{ html: '<!doctype html>' }}
-        injectedScript="window.__X__ = 1; true;"
-        onMessage={onMessage}
-      />
-    )
+    render(<EffectMessagingWebView source={{ html: '<!doctype html>' }} onMessage={onMessage} />)
     expect(mockWebViewProps?.source).toEqual({ html: '<!doctype html>' })
-    expect(mockWebViewProps?.injectedJavaScriptBeforeContentLoaded).toBe('window.__X__ = 1; true;')
     expect(mockWebViewProps?.onMessage).toBe(onMessage)
   })
 

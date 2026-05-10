@@ -1,10 +1,10 @@
 import { Effect, Exit, Scope } from 'effect'
+import { UrlCodec } from 'effect-messaging-core'
 import { LoggingLayerTest } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
 import * as WebPlatformAdapter from '../src/web-platform-adapter.ts'
 
 type WindowWithBridge = Window & {
-  __INITIAL_MESSAGES__?: ReadonlyArray<unknown>
   ReactNativeWebView?: { postMessage(data: string): void }
 }
 
@@ -15,38 +15,68 @@ const requireAttachLive = (
   return adapter.attachLive
 }
 
+const setMsgParams = (entries: ReadonlyArray<readonly [tag: string, raw: string]>): void => {
+  const url = new URL(window.location.href)
+  for (const [, raw] of entries) {
+    for (const [k, v] of UrlCodec.encodeMessagesAsParams([raw])) {
+      url.searchParams.append(k, v)
+    }
+  }
+  window.history.replaceState({}, '', url.toString())
+}
+
+const clearUrlSearch = (): void => {
+  const url = new URL(window.location.href)
+  url.search = ''
+  window.history.replaceState({}, '', url.toString())
+}
+
 beforeEach(() => {
-  delete (window as WindowWithBridge).__INITIAL_MESSAGES__
+  clearUrlSearch()
   delete (window as WindowWithBridge).ReactNativeWebView
 })
 
 afterEach(() => {
-  delete (window as WindowWithBridge).__INITIAL_MESSAGES__
+  clearUrlSearch()
   delete (window as WindowWithBridge).ReactNativeWebView
 })
 
 describe('WebPlatformAdapter.make — drainInitial', () => {
-  test('returns the array verbatim and deletes the global', () => {
-    ;(window as WindowWithBridge).__INITIAL_MESSAGES__ = ['a', 'b', 'c']
+  test('decodes msg.* params and strips them from the URL', () => {
+    const a = JSON.stringify({ _tag: 'A' })
+    const b = JSON.stringify({ _tag: 'B', x: 1 })
+    setMsgParams([
+      ['A', a],
+      ['B', b],
+    ])
+    expect(window.location.search).toContain('msg.A')
+
     const adapter = WebPlatformAdapter.make()
     const drained = Effect.runSync(adapter.drainInitial)
-    expect(drained).toEqual(['a', 'b', 'c'])
-    expect((window as WindowWithBridge).__INITIAL_MESSAGES__).toBeUndefined()
+    expect(drained).toEqual([a, b])
+    expect(window.location.search).not.toContain('msg.')
   })
 
-  test('drops non-string entries silently', () => {
-    ;(window as WindowWithBridge).__INITIAL_MESSAGES__ = ['a', 1, null, { _tag: 'X' }, 'b']
+  test('returns [] and leaves the URL untouched when no msg.* params are present', () => {
+    const url = new URL(window.location.href)
+    url.search = '?keep=me'
+    window.history.replaceState({}, '', url.toString())
+
     const adapter = WebPlatformAdapter.make()
-    const drained = Effect.runSync(adapter.drainInitial)
-    expect(drained).toEqual(['a', 'b'])
+    expect(Effect.runSync(adapter.drainInitial)).toEqual([])
+    expect(window.location.search).toBe('?keep=me')
   })
 
-  test('returns [] when the global is missing or not an array', () => {
+  test('preserves non-msg params when stripping', () => {
+    const url = new URL(window.location.href)
+    url.search = ''
+    url.searchParams.append('keep', 'me')
+    window.history.replaceState({}, '', url.toString())
+    setMsgParams([['Hello', JSON.stringify({ _tag: 'Hello' })]])
     const adapter = WebPlatformAdapter.make()
-    expect(Effect.runSync(adapter.drainInitial)).toEqual([])
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-    ;(window as WindowWithBridge).__INITIAL_MESSAGES__ = 'not-an-array' as never
-    expect(Effect.runSync(adapter.drainInitial)).toEqual([])
+    Effect.runSync(adapter.drainInitial)
+    expect(new URL(window.location.href).searchParams.get('keep')).toBe('me')
+    expect(window.location.search).not.toContain('msg.')
   })
 })
 

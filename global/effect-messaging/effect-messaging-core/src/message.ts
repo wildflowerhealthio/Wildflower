@@ -12,9 +12,6 @@ import { Schema } from 'effect'
 // oxlint-disable-next-line typescript-eslint/no-explicit-any
 type StringEncodedSchema = Schema.Schema<any, string, never>
 
-/** Schema describing a per-side options struct an aggregator passes when wiring a bridge. */
-type OptionsShape = Schema.Schema.AnyNoContext
-
 /**
  * Per-pair validation. Mismatching pairs resolve to a structured error
  * tuple so the call site fails to typecheck.
@@ -54,4 +51,4 @@ type Of<R extends SchemaRecord> = {
 const wireRoutingEnvelope = Schema.parseJson(Schema.Struct({ _tag: Schema.String }))
 
 export { wireRoutingEnvelope }
-export type { Of, OptionsShape, RecordFromPairs, SchemaRecord, StringEncodedSchema, ValidatedPairs }
+export type { Of, RecordFromPairs, SchemaRecord, StringEncodedSchema, ValidatedPairs }

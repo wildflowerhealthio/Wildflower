@@ -1,45 +1,23 @@
-import { Effect, Exit, Layer, ManagedRuntime, Scope } from 'effect'
-import { BridgeTransport, TransportAdapter } from 'effect-messaging-core'
+import { Effect } from 'effect'
+import type { TransportAdapter } from 'effect-messaging-core'
 import { WebPlatformAdapter } from 'effect-messaging-react'
-import GatekeeperBridge from 'gatekeeper-core/bridge'
-import { gatekeeperWebReceiverLayer } from 'gatekeeper-react/web-bridge'
-import { NavigationBridge } from 'navigation-core'
-import { navigationWebReceiverLayer } from 'navigation-react'
 
-// Top-level await on `managedRuntime.runPromise` below blocks first paint on
-// the runtime build. Cheap with `Layer.empty`; if telemetry/logger overrides
-// plug in here later, move into a lazy-init seam.
-const managedRuntime = ManagedRuntime.make(Layer.empty)
-
+/**
+ * Page-side transport setup. The `WebPlatformAdapter`-built `drainInitial`
+ * reads `?msg.<Tag>=...` URL params synchronously (and strips them so a
+ * Fast Refresh / HMR cycle does not re-dispatch them); the captured
+ * encoded strings are exposed as {@link initialMessages} so
+ * `find-initial-path` can seed `<MemoryRouter initialEntries>` without
+ * standing up the transport, and as a {@link replayAdapter} the
+ * React-mounted transport consumes via `BridgeTransport.make`.
+ */
 const webAdapter = WebPlatformAdapter.make()
 const initialMessages: ReadonlyArray<string> = Effect.runSync(webAdapter.drainInitial)
 
-// Replay adapter — see `effect-messaging-react/README.md` for the drain-then-replay rationale.
 const replayAdapter: TransportAdapter['Type'] = {
   bareSender: webAdapter.bareSender,
   drainInitial: Effect.succeed(initialMessages),
   attachLive: webAdapter.attachLive,
 }
 
-const scope = Effect.runSync(Scope.make())
-const transport = await managedRuntime.runPromise(
-  Scope.extend(
-    BridgeTransport.make({
-      bridges: [NavigationBridge, GatekeeperBridge] as const,
-      layers: [navigationWebReceiverLayer, gatekeeperWebReceiverLayer] as const,
-      side: 'Web',
-    }).pipe(Effect.provide(Layer.succeed(TransportAdapter, replayAdapter))),
-    scope
-  )
-)
-
-// Vite re-imports the module on hot reload; without this, every reload
-// accumulates a scope, dispatch fiber, ManagedRuntime, and window listener.
-if (import.meta.hot !== undefined) {
-  import.meta.hot.dispose(() => {
-    Effect.runFork(Scope.close(scope, Exit.void))
-    Effect.runFork(managedRuntime.disposeEffect)
-  })
-}
-
-export { initialMessages, transport }
+export { initialMessages, replayAdapter }

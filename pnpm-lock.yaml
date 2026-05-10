@@ -237,6 +237,9 @@ catalogs:
     jest-expo:
       specifier: ~55.0.16
       version: 55.0.16
+    jsdom:
+      specifier: ^26.1.0
+      version: 26.1.0
     react:
       specifier: 19.2.0
       version: 19.2.0
@@ -820,6 +823,9 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.1
+      jsdom:
+        specifier: 'catalog:'
+        version: 26.1.0
       kitchen-sink:
         specifier: workspace:*
         version: link:../../kitchen-sink

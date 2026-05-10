@@ -1,30 +1,35 @@
 import type { Scope } from 'effect'
 import { Effect } from 'effect'
 import {
-  INITIAL_MESSAGES_WINDOW_GLOBAL,
   type BareSender,
   type TransportAdapter,
   REACT_NATIVE_WEBVIEW_GLOBAL,
+  UrlCodec,
 } from 'effect-messaging-core'
 
 /** Window globals the web-side adapter observes. */
 interface MessagingWindowGlobals {
-  /** Pre-encoded message strings the host injected before the bundle ran. */
-  __INITIAL_MESSAGES__?: ReadonlyArray<string>
   /** RN-WebView bridge object. Absent when running standalone in a browser. */
   ReactNativeWebView?: { postMessage(data: string): void }
 }
 
 /**
  * Build a {@link TransportAdapter} service for the page side: sends to
- * `window.ReactNativeWebView.postMessage`, drains
- * `window.__INITIAL_MESSAGES__` once, and listens for live `message`
- * events with an origin/source filter.
+ * `window.ReactNativeWebView.postMessage`, decodes initial messages
+ * from `window.location.search` URL params, and listens for live
+ * `message` events with an origin/source filter.
  *
  * @remarks
- * Exposed as a factory (rather than baked into a transport wrapper) so
- * consumers can peek at the initial messages before mounting and provide
- * a replay adapter to `BridgeTransport.make`. See `README.md`.
+ * Initial messages ride on the embed URL as `?msg.<Tag>=<base64url(JSON)>`
+ * params (one per message; multi-value supported via repeated keys).
+ * The host builds those params on its WebView source URL; the page
+ * synchronously decodes them at boot. Once read, the params are
+ * stripped via `history.replaceState` so a Fast Refresh / HMR cycle
+ * does not re-dispatch them.
+ *
+ * Exposed as a factory (rather than baked into a transport wrapper)
+ * so consumers can peek at the initial messages before mounting and
+ * provide a replay adapter to `BridgeTransport.make`. See `README.md`.
  */
 const make = (): TransportAdapter['Type'] => {
   const winGlobals = (): Window & MessagingWindowGlobals =>
@@ -45,13 +50,21 @@ const make = (): TransportAdapter['Type'] => {
       }
     })
 
-  // Delete the global after read so a hot reload can't double-replay.
+  // Strip the `msg.*` params after read so an HMR / Fast Refresh cycle
+  // doesn't re-dispatch the initial messages. Non-message params are
+  // preserved untouched.
   const drainInitial: Effect.Effect<ReadonlyArray<string>> = Effect.sync(() => {
-    const w = winGlobals()
-    const initial = w[INITIAL_MESSAGES_WINDOW_GLOBAL]
-    if (!Array.isArray(initial)) return []
-    delete w[INITIAL_MESSAGES_WINDOW_GLOBAL]
-    return initial.filter((entry): entry is string => typeof entry === 'string')
+    const messages = UrlCodec.decodeMessagesFromParams(window.location.search)
+    if (messages.length > 0) {
+      const url = new URL(window.location.href)
+      const kept = new URLSearchParams()
+      for (const [k, v] of url.searchParams) {
+        if (!k.startsWith(UrlCodec.PARAM_KEY_PREFIX)) kept.append(k, v)
+      }
+      url.search = kept.toString()
+      window.history.replaceState({}, '', url.toString())
+    }
+    return messages
   })
 
   // Origin filter accepts `''` for sandboxed/file:/data: documents — see issue #24.

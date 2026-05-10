@@ -1,19 +1,32 @@
 import type { Scope } from 'effect'
 import { Effect, Layer, Schema } from 'effect'
-import { Bridge, BridgeTransport, TransportAdapter } from 'effect-messaging-core'
+import { Bridge, BridgeTransport, TransportAdapter, UrlCodec } from 'effect-messaging-core'
 import * as fc from 'fast-check'
 import { LoggingLayerTest } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
 import * as WebPlatformAdapter from '../src/web-platform-adapter.ts'
 
 type WindowWithBridge = Window & {
-  __INITIAL_MESSAGES__?: ReadonlyArray<string>
   ReactNativeWebView?: { postMessage(data: string): void }
 }
 
 const dispatchPostMessage = (raw: string, origin: string = window.location.origin): void => {
   const event = new MessageEvent('message', { data: raw, origin, source: window })
   window.dispatchEvent(event)
+}
+
+const setInitialMessageUrlParams = (encoded: ReadonlyArray<string>): void => {
+  const url = new URL(window.location.href)
+  for (const [k, v] of UrlCodec.encodeMessagesAsParams(encoded)) {
+    url.searchParams.append(k, v)
+  }
+  window.history.replaceState({}, '', url.toString())
+}
+
+const clearUrlSearch = (): void => {
+  const url = new URL(window.location.href)
+  url.search = ''
+  window.history.replaceState({}, '', url.toString())
 }
 
 // Test fixture — the package can't import slice contracts.
@@ -31,8 +44,6 @@ const NavigationBridge = Bridge.make({
     ['HostRequestedWebNavigation', HostRequestedWebNavigation],
   ] as const,
   webToHost: [['RouteChanged', RouteChanged]] as const,
-  hostOptionsShape: Schema.Struct({}),
-  webOptionsShape: Schema.Struct({}),
 })
 
 const webTransport = <Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
@@ -47,7 +58,7 @@ const webTransport = <Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
 
 describe('BridgeTransport (Web) — live dispatch', () => {
   beforeEach(() => {
-    delete (window as WindowWithBridge).__INITIAL_MESSAGES__
+    clearUrlSearch()
     delete (window as WindowWithBridge).ReactNativeWebView
   })
 
@@ -276,20 +287,23 @@ describe('BridgeTransport (Web) — sendMessage', () => {
   })
 })
 
-describe('BridgeTransport (Web) — __INITIAL_MESSAGES__ replay', () => {
+describe('BridgeTransport (Web) — URL-param initial messages', () => {
   beforeEach(() => {
-    delete (window as WindowWithBridge).__INITIAL_MESSAGES__
+    clearUrlSearch()
+  })
+  afterEach(() => {
+    clearUrlSearch()
   })
 
-  test('replays initial messages and deletes the global', async () => {
+  test('decodes msg.* params and dispatches them through the queue', async () => {
     const seenPaths: string[] = []
     const path = '/gatekeeper/oauth-consent/abc'
-    ;(window as WindowWithBridge).__INITIAL_MESSAGES__ = [
+    setInitialMessageUrlParams([
       Schema.encodeSync(NavigationBridge.MessageSchemas.HostRequestedWebNavigation)({
         _tag: 'HostRequestedWebNavigation',
         path,
       }),
-    ]
+    ])
 
     const layer = NavigationBridge.Web.ReceiverLayer({
       HostBackRequested: () => Effect.void,
@@ -306,15 +320,67 @@ describe('BridgeTransport (Web) — __INITIAL_MESSAGES__ replay', () => {
         })
         yield* transport.flushed
         expect(seenPaths).toEqual([path])
-        expect((window as WindowWithBridge).__INITIAL_MESSAGES__).toBeUndefined()
       }).pipe(Effect.scoped)
     )
+  })
+
+  test('strips msg.* params from the URL after read so HMR does not re-dispatch', async () => {
+    const path = '/x'
+    setInitialMessageUrlParams([
+      Schema.encodeSync(NavigationBridge.MessageSchemas.HostRequestedWebNavigation)({
+        _tag: 'HostRequestedWebNavigation',
+        path,
+      }),
+    ])
+    expect(window.location.search).toContain('msg.HostRequestedWebNavigation')
+
+    const layer = NavigationBridge.Web.ReceiverLayer({
+      HostBackRequested: () => Effect.void,
+      HostRequestedWebNavigation: () => Effect.void,
+    })
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const transport = yield* webTransport({
+          bridges: [NavigationBridge] as const,
+          layers: [layer] as const,
+        })
+        yield* transport.flushed
+        expect(window.location.search).not.toContain('msg.')
+      }).pipe(Effect.scoped)
+    )
+  })
+
+  test('preserves non-message URL params untouched', async () => {
+    const url = new URL(window.location.href)
+    url.search = ''
+    url.searchParams.append('keep', 'me')
+    window.history.replaceState({}, '', url.toString())
+    setInitialMessageUrlParams([
+      Schema.encodeSync(NavigationBridge.MessageSchemas.HostBackRequested)({
+        _tag: 'HostBackRequested',
+      }),
+    ])
+    const layer = NavigationBridge.Web.ReceiverLayer({
+      HostBackRequested: () => Effect.void,
+      HostRequestedWebNavigation: () => Effect.void,
+    })
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const transport = yield* webTransport({
+          bridges: [NavigationBridge] as const,
+          layers: [layer] as const,
+        })
+        yield* transport.flushed
+      }).pipe(Effect.scoped)
+    )
+    expect(new URL(window.location.href).searchParams.get('keep')).toBe('me')
+    expect(window.location.search).not.toContain('msg.')
   })
 })
 
 describe('BridgeTransport (Web) — multi-bridge composition', () => {
   beforeEach(() => {
-    delete (window as WindowWithBridge).__INITIAL_MESSAGES__
+    clearUrlSearch()
   })
 
   test('routes inbound messages to the correct bridge by tag', async () => {
@@ -327,8 +393,6 @@ describe('BridgeTransport (Web) — multi-bridge composition', () => {
         ['Buzz', Buzz],
       ] as const,
       webToHost: [] as const,
-      hostOptionsShape: Schema.Struct({}),
-      webOptionsShape: Schema.Struct({}),
     })
 
     let backCalls = 0
@@ -366,8 +430,6 @@ describe('BridgeTransport (Web) — multi-bridge composition', () => {
       name: 'Conflicting',
       hostToWeb: [['HostBackRequested', ConflictingBackRequested]] as const,
       webToHost: [] as const,
-      hostOptionsShape: Schema.Struct({}),
-      webOptionsShape: Schema.Struct({}),
     })
     const navLayer = NavigationBridge.Web.ReceiverLayer({
       HostBackRequested: () => Effect.void,
@@ -556,8 +618,6 @@ test('property: receive path survives arbitrary string inputs', async () => {
     name: 'Small',
     hostToWeb: [['Buzz', Buzz]] as const,
     webToHost: [] as const,
-    hostOptionsShape: Schema.Struct({}),
-    webOptionsShape: Schema.Struct({}),
   })
   const layer = SmallBridge.Web.ReceiverLayer({ Buzz: () => Effect.void })
 
@@ -593,15 +653,11 @@ test('property: sendMessage routes to the correct bridge for arbitrary message s
     name: 'A',
     hostToWeb: [] as const,
     webToHost: [['Alpha', Alpha]] as const,
-    hostOptionsShape: Schema.Struct({}),
-    webOptionsShape: Schema.Struct({}),
   })
   const BridgeB = Bridge.make({
     name: 'B',
     hostToWeb: [] as const,
     webToHost: [['Beta', Beta]] as const,
-    hostOptionsShape: Schema.Struct({}),
-    webOptionsShape: Schema.Struct({}),
   })
   type AlphaMsg = { readonly _tag: 'Alpha'; readonly x: number }
   type BetaMsg = { readonly _tag: 'Beta'; readonly y: string }

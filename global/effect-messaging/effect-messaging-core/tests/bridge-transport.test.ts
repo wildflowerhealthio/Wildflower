@@ -8,7 +8,6 @@ import * as TestPlatformAdapterLayer from '../src/test-platform-adapter-layer.ts
 
 const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.Number }))
 const Pong = Schema.parseJson(Schema.TaggedStruct('Pong', { reply: Schema.String }))
-const NoOptions = Schema.Struct({})
 
 // oxlint-disable-next-line typescript-eslint/explicit-function-return-type
 const makeBridges = () => {
@@ -16,8 +15,6 @@ const makeBridges = () => {
     name: 'NavLike',
     hostToWeb: [['Ping', Ping]] as const,
     webToHost: [['Pong', Pong]] as const,
-    hostOptionsShape: NoOptions,
-    webOptionsShape: NoOptions,
   })
   return { NavigationLike }
 }
@@ -28,15 +25,11 @@ describe('BridgeTransport.make — duplicate outbound-tag throw', () => {
       name: 'A',
       hostToWeb: [['Ping', Ping]] as const,
       webToHost: [] as const,
-      hostOptionsShape: NoOptions,
-      webOptionsShape: NoOptions,
     })
     const B = Bridge.make({
       name: 'B',
       hostToWeb: [['Ping', Ping]] as const,
       webToHost: [] as const,
-      hostOptionsShape: NoOptions,
-      webOptionsShape: NoOptions,
     })
     const aLayer = A.Host.ReceiverLayer({})
     const bLayer = B.Host.ReceiverLayer({})
@@ -151,6 +144,95 @@ describe('BridgeTransport.make — initial-message replay', () => {
         }).pipe(Effect.provide(adapterLayer))
         yield* transport.flushed
         expect(seen).toEqual([7])
+      }).pipe(Effect.scoped)
+    )
+  })
+})
+
+describe('BridgeTransport.make — __Ready handshake', () => {
+  test('Host sendMessage suspends until __Ready is enqueued, then flows', async () => {
+    const { NavigationLike } = makeBridges()
+    const layer = NavigationLike.Host.ReceiverLayer({ Pong: () => Effect.void })
+    const {
+      layer: adapterLayer,
+      sentSink,
+      liveEnqueueRef,
+    } = TestPlatformAdapterLayer.make({
+      captureAttachLive: true,
+    })
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const transport = yield* BridgeTransport.make({
+          bridges: [NavigationLike] as const,
+          layers: [layer] as const,
+          side: 'Host',
+        }).pipe(Effect.provide(adapterLayer))
+        // Pre-Ready: sendMessage suspends. Race with a short timeout to
+        // confirm it doesn't complete until Ready arrives.
+        const sendFiber = yield* Effect.fork(transport.sendMessage({ _tag: 'Ping', value: 1 }))
+        yield* Effect.sleep(20)
+        expect(sentSink).toHaveLength(0)
+        // Post __Ready into the dispatch fiber.
+        if (liveEnqueueRef.current === null) throw new Error('liveEnqueueRef not captured')
+        liveEnqueueRef.current('{"_tag":"__Ready"}')
+        // Now the send completes.
+        yield* sendFiber.await
+        expect(sentSink).toHaveLength(1)
+        expect(JSON.parse(sentSink[0] ?? '')).toEqual({ _tag: 'Ping', value: 1 })
+      }).pipe(Effect.scoped)
+    )
+  })
+
+  test('Web sendMessage flows immediately without a Ready', async () => {
+    const { NavigationLike } = makeBridges()
+    const layer = NavigationLike.Web.ReceiverLayer({
+      Ping: () => Effect.void,
+    })
+    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make()
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const transport = yield* BridgeTransport.make({
+          bridges: [NavigationLike] as const,
+          layers: [layer] as const,
+          side: 'Web',
+        }).pipe(Effect.provide(adapterLayer))
+        yield* transport.sendMessage({ _tag: 'Pong', reply: 'hi' })
+        expect(sentSink).toHaveLength(1)
+        expect(JSON.parse(sentSink[0] ?? '')).toEqual({ _tag: 'Pong', reply: 'hi' })
+      }).pipe(Effect.scoped)
+    )
+  })
+
+  test('Web signalReady posts __Ready via bareSender', async () => {
+    const { NavigationLike } = makeBridges()
+    const layer = NavigationLike.Web.ReceiverLayer({ Ping: () => Effect.void })
+    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make()
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const transport = yield* BridgeTransport.make({
+          bridges: [NavigationLike] as const,
+          layers: [layer] as const,
+          side: 'Web',
+        }).pipe(Effect.provide(adapterLayer))
+        yield* transport.signalReady
+        expect(sentSink).toEqual(['{"_tag":"__Ready"}'])
+      }).pipe(Effect.scoped)
+    )
+  })
+
+  test('Host signalReady is a no-op', async () => {
+    const { NavigationLike } = makeBridges()
+    const layer = NavigationLike.Host.ReceiverLayer({ Pong: () => Effect.void })
+    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make()
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const transport = yield* BridgeTransport.make({
+          bridges: [NavigationLike] as const,
+          layers: [layer] as const,
+          side: 'Host',
+        }).pipe(Effect.provide(adapterLayer))
+        yield* transport.signalReady
+        expect(sentSink).toHaveLength(0)
       }).pipe(Effect.scoped)
     )
   })

@@ -35,6 +35,7 @@
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
+    "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",

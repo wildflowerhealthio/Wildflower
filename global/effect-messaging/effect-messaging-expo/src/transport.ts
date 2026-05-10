@@ -4,8 +4,8 @@ import {
   type BareSender,
   Bridge,
   BridgeTransport,
-  INITIAL_MESSAGES_WINDOW_GLOBAL,
   TransportAdapter,
+  UrlCodec,
 } from 'effect-messaging-core'
 import type { WebViewMessageEvent } from 'react-native-webview'
 
@@ -19,14 +19,14 @@ import type { WebViewMessageEvent } from 'react-native-webview'
  * - **Bare sender**: the imperative `webviewHandle.postMessage` call.
  *   The consumer creates the ref and passes it to both the transport
  *   and the WebView component. Pre-mount sends warn and drop;
- *   post-mount messages flow live to the page.
+ *   post-mount messages flow live to the page. Sends suspend until
+ *   the page posts `__Ready` (handshake gating in the dispatch core).
  * - **Initial messages**: the consumer hands typed values; the
  *   wrapper encodes each via the matching bridge's outbound schema
  *   (using `Bridge.senderByTag` so duplicate-tag detection matches
- *   the dispatch core's policy) and assembles them into the
- *   `injectedScript` string. The page-side handler reads
- *   `window.__INITIAL_MESSAGES__` on construction and replays the
- *   strings through its own dispatch program.
+ *   the dispatch core's policy) and appends them as `msg.<Tag>=<b64>`
+ *   query parameters on the WebView's `baseUrl`. The page reads them
+ *   synchronously from `window.location.search` at boot.
  * - **Live attachment**: no platform-level listener is attached. The
  *   transport exposes an `onMessage(event)` callback the consumer
  *   wires to `<EffectMessagingWebView onMessage={...}>`.
@@ -44,16 +44,21 @@ interface WebViewHandle {
 }
 
 /**
- * Public Expo transport surface. The consumer wires `injectedScript`
- * and `onMessage` to the matching `<EffectMessagingWebView>` props,
- * and uses `sendMessage` to push live messages to the page after
- * mount. The consumer also creates the WebView ref and passes it to
- * both the transport (via `webviewHandleRef` config) and the
- * WebView's `ref` prop.
+ * Public Expo transport surface. The consumer wires `embedUrl` into
+ * the WebView's `source` (as `{ uri }` for remote pages, or as the
+ * `baseUrl` of `{ html, baseUrl }` for inline content) and
+ * `onMessage` to the WebView's `onMessage` prop. `sendMessage`
+ * suspends until the page posts `__Ready`. The consumer also creates
+ * the WebView ref and passes it to both the transport (via
+ * `webviewHandleRef`) and the WebView's `ref` prop.
  */
 interface ExpoTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   readonly sendMessage: Bridge.SenderIntersection<Bridges, 'Host'>
-  readonly injectedScript: string
+  /**
+   * The configured `baseUrl` with `msg.<Tag>=<b64>` params appended
+   * for each typed initial message.
+   */
+  readonly embedUrl: string
   readonly onMessage: (event: WebViewMessageEvent) => void
 }
 
@@ -74,8 +79,10 @@ interface ExpoTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  *         { _tag: 'HostRequestedWebNavigation', path: '/' },
  *         { _tag: 'AuthTokenIssued', token: 'abc' },
  *       ],
+ *       baseUrl: 'https://app.local/',
  *       webviewHandleRef,
  *     })
+ *     // <EffectMessagingWebView source={{ html, baseUrl: transport.embedUrl }} ... />
  *     yield* transport.sendMessage({ _tag: 'HostBackRequested' })
  *   })
  * )
@@ -91,6 +98,7 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
   readonly bridges: Bridges
   readonly layers: ExpoTransportLayers<Bridges>
   readonly initialMessages: ReadonlyArray<Bridge.SendableMessage<Bridges, 'Host'>>
+  readonly baseUrl: string
   readonly webviewHandleRef: { current: WebViewHandle | null }
 }): Effect.Effect<ExpoTransport<Bridges>, never, Scope.Scope> =>
   Effect.gen(function* () {
@@ -111,11 +119,11 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
         return undefined
       })
 
-    // Pre-encode the typed initial messages into a string list the
-    // page side will replay via the initial-messages window global.
-    // Reuses `Bridge.senderByTag` (the same helper the dispatch core
-    // uses) so a cross-bridge outbound-tag collision is detected once,
-    // here, instead of by drift between two ad-hoc maps.
+    // Pre-encode the typed initial messages into wire-format strings
+    // by routing them through `Bridge.senderByTag` (the same helper
+    // the dispatch core uses) so a cross-bridge outbound-tag collision
+    // is detected once, here, instead of by drift between two ad-hoc
+    // maps. Capture the encoded strings via a stub adapter.
     const initialEncoded: string[] = []
     const captureAdapter: TransportAdapter['Type'] = {
       bareSender: (encoded) =>
@@ -133,9 +141,13 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
       const sender = taggedSenders.get(tagged._tag)
       if (sender !== undefined) yield* sender(tagged).pipe(Effect.provide(captureLayer))
     }
-    // `JSON.stringify` of the array escapes inner-encoded quotes so
-    // the resulting `[...]` literal is safe to drop into a JS string.
-    const injectedScript = `window.${INITIAL_MESSAGES_WINDOW_GLOBAL} = ${JSON.stringify(initialEncoded)}; true;`
+
+    // Append the encoded messages to `baseUrl` as `msg.*` params. The
+    // page side reads them from `window.location.search`.
+    const url = new URL(config.baseUrl)
+    const msgParams = UrlCodec.encodeMessagesAsParams(initialEncoded)
+    for (const [key, value] of msgParams) url.searchParams.append(key, value)
+    const embedUrl = url.toString()
 
     // The Expo platform doesn't attach its own listener — the
     // consumer wires `onMessage` to the WebView's `onMessage` prop.
@@ -156,7 +168,7 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
 
     return {
       sendMessage: transport.sendMessage,
-      injectedScript,
+      embedUrl,
       onMessage,
     }
   })

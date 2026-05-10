@@ -1,9 +1,6 @@
-import { Match, Option } from 'effect'
 import type { NavigationBridge } from 'navigation-core'
 import { type JSX, useEffect, useRef } from 'react'
-import { NavigationType, useLocation, useNavigate, useNavigationType } from 'react-router'
-import * as WindowNavigationState from './internal/window-navigation-state'
-import type { NavTarget } from './internal/window-navigation-state'
+import { NavigationType, useLocation, useNavigationType } from 'react-router'
 
 /**
  * Observe every router navigation and emit a `RouteChanged` message.
@@ -28,40 +25,16 @@ const useRouteChangeWatcher = (send: typeof NavigationBridge.Web.send): void => 
   }, [location.key, location.pathname, navigationType, send])
 }
 
-const useNavigateHandlerUpdater = (): void => {
-  const navigate = useNavigate()
-
-  useEffect(() => {
-    // Split number/string branches so React Router's `navigate` overload picks the right signature.
-    const handler = Match.type<NavTarget>().pipe(
-      Match.when(Match.number, (to) => void navigate(to)),
-      Match.when(Match.string, (to) => void navigate(to)),
-      Match.exhaustive
-    )
-
-    const maybeHandler = Option.some(handler)
-    WindowNavigationState.navigateFunctionRef.current = maybeHandler
-
-    while (WindowNavigationState.pendingNavigations.length > 0) {
-      const entry = WindowNavigationState.pendingNavigations.shift()
-      if (entry === undefined) break
-      handler(entry)
-    }
-    return (): void => {
-      // oxlint-disable eslint-plugin-react-hooks/exhaustive-deps
-      if (WindowNavigationState.navigateFunctionRef.current === maybeHandler) {
-        WindowNavigationState.navigateFunctionRef.current = Option.none()
-      }
-      // oxlint-enable eslint-plugin-react-hooks/exhaustive-deps
-    }
-  }, [navigate])
-}
-
 /**
  * Mount under a React Router router. Watches navigation to emit
- * `RouteChanged`, wires the navigate handler to `useNavigate()`, and
- * drains any pre-mount navigation events the receiver layer queued.
- * Renders no DOM.
+ * `RouteChanged`. Renders no DOM.
+ *
+ * @remarks
+ * Inbound navigation messages (`HostBackRequested`,
+ * `HostRequestedWebNavigation`) are handled by the receiver Layer
+ * built via {@link makeNavigationWebReceiverLayer} — call that inside
+ * a component with `useNavigate()` access and pass the layer to
+ * `BridgeTransport.make`.
  */
 function NavigationBridgeHandler({
   sender,
@@ -69,7 +42,6 @@ function NavigationBridgeHandler({
   sender: typeof NavigationBridge.Web.send
 }): JSX.Element | null {
   useRouteChangeWatcher(sender)
-  useNavigateHandlerUpdater()
 
   return null
 }

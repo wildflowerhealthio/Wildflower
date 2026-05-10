@@ -15,7 +15,6 @@ interface Half<
   Side extends 'Host' | 'Web',
   Outbound extends Message.SchemaRecord,
   Inbound extends Message.SchemaRecord,
-  Options extends Message.OptionsShape,
 > {
   readonly OutboundSchemas: Outbound
   readonly InboundSchemas: Inbound
@@ -27,7 +26,6 @@ interface Half<
     handlers: MessageHandler.HandlersFor<Inbound>
   ) => Layer.Layer<MessageHandler.TagId<Name, Side>>
   readonly send: SenderFn<Outbound>
-  readonly OptionsShape: Options
 }
 
 /** A bridge's two halves plus its name. */
@@ -35,12 +33,10 @@ interface Bridge<
   Name extends string,
   HostToWeb extends Message.SchemaRecord,
   WebToHost extends Message.SchemaRecord,
-  HostOptions extends Message.OptionsShape,
-  WebOptions extends Message.OptionsShape,
 > {
   readonly name: Name
-  readonly Host: Half<Name, 'Host', HostToWeb, WebToHost, HostOptions>
-  readonly Web: Half<Name, 'Web', WebToHost, HostToWeb, WebOptions>
+  readonly Host: Half<Name, 'Host', HostToWeb, WebToHost>
+  readonly Web: Half<Name, 'Web', WebToHost, HostToWeb>
   readonly MessageSchemas: HostToWeb & WebToHost
 }
 
@@ -134,8 +130,6 @@ type TransportLayers<Bridges extends ReadonlyArray<AnyBridge>, Side extends 'Hos
  *   name: 'Navigation',
  *   hostToWeb: [['HostBackRequested', HostBackRequested]] as const,
  *   webToHost: [['RouteChanged', RouteChanged]] as const,
- *   hostOptionsShape: Schema.Struct({ initialPath: Schema.String }),
- *   webOptionsShape: Schema.Struct({}),
  * })
  * ```
  *
@@ -148,20 +142,14 @@ const make = <
   const Name extends string,
   const HostToWebPairs extends ReadonlyArray<readonly [string, Message.StringEncodedSchema]>,
   const WebToHostPairs extends ReadonlyArray<readonly [string, Message.StringEncodedSchema]>,
-  HostOptions extends Message.OptionsShape,
-  WebOptions extends Message.OptionsShape,
 >(definition: {
   readonly name: Name
   readonly hostToWeb: HostToWebPairs & Message.ValidatedPairs<HostToWebPairs>
   readonly webToHost: WebToHostPairs & Message.ValidatedPairs<WebToHostPairs>
-  readonly hostOptionsShape: HostOptions
-  readonly webOptionsShape: WebOptions
 }): Bridge<
   Name,
   Message.RecordFromPairs<HostToWebPairs>,
-  Message.RecordFromPairs<WebToHostPairs>,
-  HostOptions,
-  WebOptions
+  Message.RecordFromPairs<WebToHostPairs>
 > => {
   const hostToWebRecord = recordFromPairs<HostToWebPairs>(definition.hostToWeb)
   const webToHostRecord = recordFromPairs<WebToHostPairs>(definition.webToHost)
@@ -187,7 +175,6 @@ const make = <
         // `message` is `Message.Of<...>` (abstract); runtime invariant: every value is a tagged struct.
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
         sendThrough(hostToWebRecord, message as { readonly _tag: string }),
-      OptionsShape: definition.hostOptionsShape,
     },
     Web: {
       OutboundSchemas: webToHostRecord,
@@ -197,7 +184,6 @@ const make = <
       send: (message) =>
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
         sendThrough(webToHostRecord, message as { readonly _tag: string }),
-      OptionsShape: definition.webOptionsShape,
     },
     MessageSchemas: {
       ...hostToWebRecord,

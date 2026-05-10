@@ -12,6 +12,7 @@ interface UseTransportConfig<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   readonly bridges: Bridges
   readonly layers: ExpoTransportLayers<Bridges>
   readonly initialMessages: ReadonlyArray<Bridge.SendableMessage<Bridges, 'Host'>>
+  readonly baseUrl: string
   readonly webviewHandleRef: { readonly current: { postMessage(message: string): void } | null }
 }
 

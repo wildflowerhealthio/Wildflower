@@ -9,8 +9,6 @@ const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.Number
 const Pong = Schema.parseJson(Schema.TaggedStruct('Pong', { reply: Schema.String }))
 const Buzz = Schema.parseJson(Schema.TaggedStruct('Buzz', {}))
 
-const NoOptions = Schema.Struct({})
-
 // oxlint-disable-next-line typescript-eslint/explicit-function-return-type
 const makeTestBridge = (name: string = 'Test') =>
   Bridge.make({
@@ -20,8 +18,6 @@ const makeTestBridge = (name: string = 'Test') =>
       ['Buzz', Buzz],
     ] as const,
     webToHost: [['Pong', Pong]] as const,
-    hostOptionsShape: Schema.Struct({ greeting: Schema.String }),
-    webOptionsShape: NoOptions,
   })
 
 describe('Bridge.make — shape', () => {
@@ -33,32 +29,11 @@ describe('Bridge.make — shape', () => {
     })
   })
 
-  test('OptionsShape is the literal schema passed in', () => {
-    const NativeOpts = Schema.Struct({ greeting: Schema.String })
-    const bridge = Bridge.make({
-      name: 'OptsTest',
-      hostToWeb: [] as const,
-      webToHost: [] as const,
-      hostOptionsShape: NativeOpts,
-      webOptionsShape: NoOptions,
-    })
-    expect(bridge.Host.OptionsShape).toBe(NativeOpts)
-    expect(bridge.Web.OptionsShape).toBe(NoOptions)
-  })
-
-  test('options round-trip through their declared shape', () => {
-    const bridge = makeTestBridge()
-    const decoded = Schema.decodeUnknownSync(bridge.Host.OptionsShape)({ greeting: 'hi' })
-    expect(decoded).toEqual({ greeting: 'hi' })
-  })
-
   test('handles empty pair lists on either side', () => {
     const bridge = Bridge.make({
       name: 'Empty',
       hostToWeb: [] as const,
       webToHost: [] as const,
-      hostOptionsShape: NoOptions,
-      webOptionsShape: NoOptions,
     })
     expect(Object.keys(bridge.Host.OutboundSchemas)).toEqual([])
     expect(Object.keys(bridge.Web.OutboundSchemas)).toEqual([])
@@ -148,15 +123,11 @@ describe('Bridge.make — send', () => {
       name: 'Nav',
       hostToWeb: [['Buzz', Buzz]] as const,
       webToHost: [] as const,
-      hostOptionsShape: NoOptions,
-      webOptionsShape: NoOptions,
     })
     const gkBridge = Bridge.make({
       name: 'Gk',
       hostToWeb: [['Ping', Ping]] as const,
       webToHost: [] as const,
-      hostOptionsShape: NoOptions,
-      webOptionsShape: NoOptions,
     })
 
     const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make()
@@ -181,8 +152,6 @@ describe('Bridge.make — ValidatedPairs', () => {
         ['Pong', Ping],
       ] as const,
       webToHost: [] as const,
-      hostOptionsShape: NoOptions,
-      webOptionsShape: NoOptions,
     })
     expect(bridge.name).toBe('BadPair')
   })
@@ -195,8 +164,6 @@ describe('Bridge.make — ValidatedPairs', () => {
         ['Whatever', 'not-a-schema'],
       ] as const,
       webToHost: [] as const,
-      hostOptionsShape: NoOptions,
-      webOptionsShape: NoOptions,
     })
     expect(bridge.name).toBe('BadShape')
   })
@@ -206,8 +173,6 @@ describe('Bridge.make — ValidatedPairs', () => {
       name: 'GoodPair',
       hostToWeb: [['Ping', Ping]] as const,
       webToHost: [['Pong', Pong]] as const,
-      hostOptionsShape: NoOptions,
-      webOptionsShape: NoOptions,
     })
     expect(bridge.Host.OutboundSchemas.Ping).toBe(Ping)
   })
@@ -226,9 +191,6 @@ describe('Bridge.make — type-level surface', () => {
       Buzz: () => Effect.void,
     })
 
-    type HostOptions = Schema.Schema.Type<typeof bridge.Host.OptionsShape>
-    assertType<HostOptions>({ greeting: 'hello' })
-
     type HostSender = typeof bridge.Host.send
     assertType<Parameters<HostSender>[0]>({ _tag: 'Ping', value: 1 })
     assertType<Parameters<HostSender>[0]>({ _tag: 'Buzz' })
@@ -241,15 +203,11 @@ describe('Bridge.make — Layer integration', () => {
       name: 'A',
       hostToWeb: [['Buzz', Buzz]] as const,
       webToHost: [] as const,
-      hostOptionsShape: NoOptions,
-      webOptionsShape: NoOptions,
     })
     const b = Bridge.make({
       name: 'B',
       hostToWeb: [['Ping', Ping]] as const,
       webToHost: [] as const,
-      hostOptionsShape: NoOptions,
-      webOptionsShape: NoOptions,
     })
 
     const seen: string[] = []
@@ -294,8 +252,6 @@ test('property: outbound schema keys equal declared tag set', () => {
           name: 'Prop',
           hostToWeb: hostPairs,
           webToHost: webPairs,
-          hostOptionsShape: NoOptions,
-          webOptionsShape: NoOptions,
         })
         expect(Object.keys(bridge.Host.OutboundSchemas).toSorted()).toEqual(hostOnly.toSorted())
         expect(Object.keys(bridge.Web.OutboundSchemas).toSorted()).toEqual(webTags.toSorted())
@@ -343,16 +299,12 @@ test('property: same-name bridges always mint distinct HandlerTag instances', ()
           // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
           hostToWeb: aPairs as never,
           webToHost: [] as const,
-          hostOptionsShape: NoOptions,
-          webOptionsShape: NoOptions,
         })
         const b = Bridge.make({
           name,
           // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
           hostToWeb: bPairs as never,
           webToHost: [] as const,
-          hostOptionsShape: NoOptions,
-          webOptionsShape: NoOptions,
         })
         expect(a.Host.HandlerTag).not.toBe(b.Host.HandlerTag)
         expect(a.Web.HandlerTag).not.toBe(b.Web.HandlerTag)

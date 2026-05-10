@@ -61,11 +61,12 @@ const GatekeeperWebView = ({ baseUrl, route, token }: GatekeeperWebViewProps): J
       }),
       GatekeeperBridge.Host.ReceiverLayer({}),
     ] as const,
+    baseUrl,
     webviewHandleRef,
   })
 
   const onBackPress = useCallback((): void => {
-    Effect.runSync(transport.sendMessage({ _tag: 'HostBackRequested' }))
+    void Effect.runPromise(transport.sendMessage({ _tag: 'HostBackRequested' }))
   }, [transport])
 
   const backButton = useMemo(
@@ -86,8 +87,7 @@ const GatekeeperWebView = ({ baseUrl, route, token }: GatekeeperWebViewProps): J
   return (
     <EffectMessagingWebView
       ref={webviewHandleRef}
-      source={{ html, baseUrl }}
-      injectedScript={transport.injectedScript}
+      source={{ html, baseUrl: transport.embedUrl }}
       onMessage={transport.onMessage}
       loader={<Loader />}
     />

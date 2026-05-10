@@ -24,8 +24,6 @@ interface EffectMessagingWebViewProps {
    * so the embedded bundle stays mounted.
    */
   readonly source: EffectMessagingWebViewSource
-  /** JS injected before any page script runs. */
-  readonly injectedScript?: string
   /** Receives every message the page posts via `window.ReactNativeWebView.postMessage`. */
   readonly onMessage: (event: WebViewMessageEvent) => void
   /** Element rendered on top of the WebView until its first `onLoadEnd` fires. */
@@ -42,7 +40,7 @@ interface EffectMessagingWebViewProps {
 const EffectMessagingWebView = forwardRef<
   EffectMessagingWebViewHandle,
   EffectMessagingWebViewProps
->(function EffectMessagingWebView({ source, injectedScript, onMessage, loader }, ref): JSX.Element {
+>(function EffectMessagingWebView({ source, onMessage, loader }, ref): JSX.Element {
   const webviewRef = useRef<WebView>(null)
   const [isReady, setIsReady] = useState(false)
   const initialUrlRef = useRef<string | null>(null)
@@ -66,7 +64,6 @@ const EffectMessagingWebView = forwardRef<
       <WebView
         ref={webviewRef}
         source={source}
-        injectedJavaScriptBeforeContentLoaded={injectedScript}
         onMessage={onMessage}
         onLoadEnd={onLoadEnd}
         onShouldStartLoadWithRequest={(request) => {

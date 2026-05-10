@@ -1,8 +1,5 @@
 import { Context, type Effect, type Scope } from 'effect'
 
-/** Wire-format constant — the page-side global the host pre-populates. */
-const INITIAL_MESSAGES_WINDOW_GLOBAL = '__INITIAL_MESSAGES__' as const
-
 /** Wire-format constant — the RN-WebView bridge object name on `window`. */
 const REACT_NATIVE_WEBVIEW_GLOBAL = 'ReactNativeWebView' as const
 
@@ -13,7 +10,12 @@ type BareSender = (encoded: string) => Effect.Effect<void>
 interface Service {
   /** Send one already-encoded string to the other process. */
   readonly bareSender: BareSender
-  /** Pre-existing initial-message strings the host injected before the bundle ran. */
+  /**
+   * Encoded message strings the platform delivered at boot — e.g. the
+   * web side decodes them from `window.location.search` URL params,
+   * tests inject them inline. The dispatch core enqueues each into the
+   * same path live messages take.
+   */
   readonly drainInitial: Effect.Effect<ReadonlyArray<string>>
   /**
    * Wire the platform's live-message source into `enqueue`. Detaches on
@@ -32,5 +34,5 @@ class TransportAdapter extends Context.Tag('@effect-messaging/TransportAdapter')
   Service
 >() {}
 
-export { INITIAL_MESSAGES_WINDOW_GLOBAL, TransportAdapter, REACT_NATIVE_WEBVIEW_GLOBAL }
+export { TransportAdapter, REACT_NATIVE_WEBVIEW_GLOBAL }
 export type { BareSender }
