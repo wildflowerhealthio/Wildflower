@@ -4,17 +4,15 @@ export {
   GatekeeperClientProvider,
   type GatekeeperClientProviderProps,
 } from './gatekeeper-client-context.tsx'
-export { useGatekeeperClient } from './use-gatekeeper-client.ts'
+export { useGatekeeperClientLayer } from './use-gatekeeper-client-layer.ts'
 
 export {
   buildGatekeeperClientLayer,
-  makeGatekeeperClient,
-  setBearerToken,
-  type GatekeeperClient,
-  type GatekeeperClientEnv,
-  type GatekeeperClientRuntime,
+  makeBearerTokenClientTransformer,
+  type GatekeeperClientRequirements,
 } from './client/gatekeeper-client.ts'
 
 export { NeedsAuthMessage } from './components/NeedsAuthMessage.tsx'
 
 export { TOKEN_STORAGE_KEY, readToken, subscribeToken, writeToken } from './client/token-storage.ts'
+export { useToken } from './client/use-token.ts'

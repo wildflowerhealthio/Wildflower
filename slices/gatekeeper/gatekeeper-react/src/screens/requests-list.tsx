@@ -1,38 +1,44 @@
-import { Effect, type Schema } from 'effect'
+import type { HttpClient } from '@effect/platform'
+import { Effect, type Layer, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 import { Suspense, useMemo, useState, type JSX } from 'react'
-import { useEffectTs, cn } from 'react-kitchen-sink'
+import { cn } from 'react-kitchen-sink'
 import { Await, useNavigate } from 'react-router'
 import { ItemList } from 'react-tundraish'
+import { useEffectTs, webHttpClientLayer } from 'telemetry-react'
 
-import type { GatekeeperClient } from '../client/gatekeeper-client.ts'
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
 import { formatInstant } from '../format-date.ts'
-import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
+import { useGatekeeperClientLayer } from '../use-gatekeeper-client-layer.ts'
 import pageLayout from '../styles/page-layout.module.css'
 
 type HttpRequest = Schema.Schema.Type<typeof AccessManagement.HttpRequestSchema>
 
+type ClientLayer = Layer.Layer<GatekeeperHttpApiClient, never, HttpClient.HttpClient>
+
 const RequestsListScreen = (): JSX.Element => {
-  const client = useGatekeeperClient()
+  const layer = useGatekeeperClientLayer()
   const [refreshKey, setRefreshKey] = useState(0)
 
   const requestsEffect = useMemo(
-    () => Effect.flatMap(GatekeeperHttpApiClient, (c) => c['access-management'].ListRequests()),
+    () =>
+      Effect.flatMap(GatekeeperHttpApiClient, (c) => c['access-management'].ListRequests()).pipe(
+        Effect.provide(layer)
+      ),
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- refreshKey is the intentional re-fetch trigger
-    [refreshKey]
+    [layer, refreshKey]
   )
 
-  const requestsPromise = useEffectTs(requestsEffect, client.runtime)
+  const requestsPromise = useEffectTs(requestsEffect)
 
   return (
     <Suspense fallback={<PageLoading />}>
       <Await resolve={requestsPromise} errorElement={<AsyncErrorView />}>
         {(requests: readonly HttpRequest[]) => (
           <RequestsListBody
-            client={client}
+            layer={layer}
             requests={requests}
             onDecided={() => {
               setRefreshKey((n) => n + 1)
@@ -45,30 +51,28 @@ const RequestsListScreen = (): JSX.Element => {
 }
 
 interface RequestsListBodyProps {
-  readonly client: GatekeeperClient
+  readonly layer: ClientLayer
   readonly requests: readonly HttpRequest[]
   readonly onDecided: () => void
 }
 
-const RequestsListBody = ({ client, requests, onDecided }: RequestsListBodyProps): JSX.Element => {
+const RequestsListBody = ({ layer, requests, onDecided }: RequestsListBodyProps): JSX.Element => {
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
 
   const decide = async (id: string, status: 'approved' | 'rejected'): Promise<void> => {
     try {
-      if (status === 'approved') {
-        await client.runPromise(
-          Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-            c['access-management'].ApproveRequest({ path: { id } })
-          )
-        )
-      } else {
-        await client.runPromise(
-          Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-            c['access-management'].DenyRequest({ path: { id } })
-          )
-        )
-      }
+      const operation =
+        status === 'approved'
+          ? Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+              c['access-management'].ApproveRequest({ path: { id } })
+            )
+          : Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+              c['access-management'].DenyRequest({ path: { id } })
+            )
+      await Effect.runPromise(
+        operation.pipe(Effect.provide(layer), Effect.provide(webHttpClientLayer))
+      )
       onDecided()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))

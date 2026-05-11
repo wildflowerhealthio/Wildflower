@@ -2,8 +2,10 @@ import { HttpApiClient, type HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
 import { FhirResourcesApi } from 'fhir-r4/http-api-definition'
 import { useEffect, useState } from 'react'
+import { webHttpClientLayer } from 'telemetry-react'
 
-import { setBearerToken, type GatekeeperClient } from '../../client/gatekeeper-client.ts'
+import { makeBearerTokenClientTransformer } from '../../client/gatekeeper-client.ts'
+import { useToken } from '../../client/use-token.ts'
 import type { PatientOption } from './types.ts'
 
 const fetchPatientOptionsEffect = (
@@ -12,7 +14,7 @@ const fetchPatientOptionsEffect = (
   Effect.gen(function* () {
     const client = yield* HttpApiClient.make(FhirResourcesApi, {
       baseUrl: '/',
-      transformClient: setBearerToken(token),
+      transformClient: makeBearerTokenClientTransformer(token),
     })
     const bundle = yield* client.Patient.SearchByGet({ urlParams: {} })
     return (bundle.entry ?? []).flatMap((entry): PatientOption[] => {
@@ -45,21 +47,23 @@ interface PatientOptionsState {
 }
 
 /**
- * Fetches the patient list from the FHIR R4 service. Builds a FHIR
- * client inline (rather than going through `GatekeeperHttpApiClient`)
- * because the patient endpoint is on a different API surface. Reuses
- * the gatekeeper client's bearer token + runtime so a single auth
+ * Fetches the patient list from the FHIR R4 service inline (rather
+ * than via `useGatekeeperClientLayer()` — the patient endpoint is on
+ * a different API surface). Uses `useToken()` for the bearer header
+ * and `webHttpClientLayer` for the HTTP transport, so a single auth
  * source still drives both surfaces.
  *
- * Skips entirely when `client.token` is `null` — the patient picker is
- * only meaningful for an authenticated owner consenting to a SMART app.
+ * Skips entirely when `useToken()` returns `null` — the patient picker
+ * is only meaningful for an authenticated owner consenting to a SMART
+ * app.
  */
-const usePatientOptions = (client: GatekeeperClient, enabled: boolean): PatientOptionsState => {
+const usePatientOptions = (enabled: boolean): PatientOptionsState => {
+  const token = useToken()
   const [options, setOptions] = useState<readonly PatientOption[]>([])
-  const [loading, setLoading] = useState(enabled && client.token !== null)
+  const [loading, setLoading] = useState(enabled && token !== null)
 
   useEffect(() => {
-    if (!enabled || client.token === null) {
+    if (!enabled || token === null) {
       setOptions([])
       setLoading(false)
       return () => undefined
@@ -67,7 +71,7 @@ const usePatientOptions = (client: GatekeeperClient, enabled: boolean): PatientO
     setLoading(true)
     let cancelled = false
     const fiber = Effect.runFork(
-      fetchPatientOptionsEffect(client.token).pipe(Effect.provide(client.runtime))
+      fetchPatientOptionsEffect(token).pipe(Effect.provide(webHttpClientLayer))
     )
     fiber.addObserver((exit) => {
       if (cancelled) return
@@ -79,7 +83,7 @@ const usePatientOptions = (client: GatekeeperClient, enabled: boolean): PatientO
     return () => {
       cancelled = true
     }
-  }, [client, enabled])
+  }, [token, enabled])
 
   return { options, loading }
 }

@@ -5,9 +5,10 @@ import { OAuth } from 'gatekeeper-core/http-api-definition'
 
 import { useEffect, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
+import { webHttpClientLayer } from 'telemetry-react'
 
 import { writeToken } from '../client/token-storage.ts'
-import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
+import { useGatekeeperClientLayer } from '../use-gatekeeper-client-layer.ts'
 import { Field, FieldDescription } from './Field.tsx'
 import deviceEntryStyles from '../screens/device-entry.module.css'
 import pageLayout from '../styles/page-layout.module.css'
@@ -70,7 +71,7 @@ const toErrorState = (error: unknown): DeviceFlowState =>
  */
 const NeedsAuthMessage = (): JSX.Element => {
   const [state, setState] = useState<DeviceFlowState>({ tag: 'starting' })
-  const gatekeeperClient = useGatekeeperClient()
+  const layer = useGatekeeperClientLayer()
 
   useEffect(() => {
     const flow = Effect.gen(function* () {
@@ -113,14 +114,16 @@ const NeedsAuthMessage = (): JSX.Element => {
         Effect.sync(() => {
           setState(toErrorState(err))
         })
-      )
+      ),
+      Effect.provide(layer),
+      Effect.provide(webHttpClientLayer)
     )
 
-    const fiber = gatekeeperClient.runtime.runFork(flow)
+    const fiber = Effect.runFork(flow)
     return (): void => {
       void Effect.runPromise(Fiber.interrupt(fiber))
     }
-  }, [gatekeeperClient])
+  }, [layer])
 
   if (state.tag === 'starting') {
     return (

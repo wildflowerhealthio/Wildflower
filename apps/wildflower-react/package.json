@@ -34,6 +34,7 @@
     "react-dom": "catalog:",
     "react-router": "catalog:",
     "react-tundraish": "workspace:*",
+    "telemetry-react": "workspace:*",
     "telemetry-web": "workspace:*",
     "tundra-css": "catalog:"
   },

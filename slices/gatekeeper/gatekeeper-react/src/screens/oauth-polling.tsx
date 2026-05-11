@@ -1,25 +1,27 @@
+import { Stream } from 'effect'
 import { type AuthorizationStatus, pollAuthorizationStatus } from 'gatekeeper-core/clients'
 
 import { Suspense, useEffect, useMemo, type JSX } from 'react'
-import { cn, useStream } from 'react-kitchen-sink'
+import { cn } from 'react-kitchen-sink'
 import { Await, useParams } from 'react-router'
+import { useStream } from 'telemetry-react'
 
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
-import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
+import { useGatekeeperClientLayer } from '../use-gatekeeper-client-layer.ts'
 import pageLayout from '../styles/page-layout.module.css'
 import styles from './oauth-polling.module.css'
 
 /**
  * SPA route that subscribes to `pollAuthorizationStatus(id)` and renders the
  * latest emission. Mounted in the public-routes fragment, so the closest
- * `<GatekeeperClientProvider>` provides a `token=null` client — exactly
+ * `<GatekeeperClientProvider>` provides a `token=null` layer — exactly
  * what the unauthenticated polling endpoint needs.
  */
 const OAuthPollingScreen = (): JSX.Element => {
   const { id = '' } = useParams<{ id: string }>()
-  const client = useGatekeeperClient()
-  const stream = useMemo(() => pollAuthorizationStatus(id), [id])
-  const statusPromise = useStream(stream, client.runtime)
+  const layer = useGatekeeperClientLayer()
+  const stream = useMemo(() => Stream.provideLayer(pollAuthorizationStatus(id), layer), [layer, id])
+  const statusPromise = useStream(stream)
 
   return (
     <Suspense fallback={<PollingSpinner />}>

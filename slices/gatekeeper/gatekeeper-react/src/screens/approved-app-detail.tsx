@@ -2,30 +2,30 @@ import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 import { Suspense, useMemo, type JSX } from 'react'
-import { useEffectTs } from 'react-kitchen-sink'
 import { Await, useParams } from 'react-router'
+import { useEffectTs } from 'telemetry-react'
 
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
-import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
+import { useGatekeeperClientLayer } from '../use-gatekeeper-client-layer.ts'
 import pageLayout from '../styles/page-layout.module.css'
 import styles from './approved-app-detail.module.css'
 
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
 
 const ApprovedAppDetailScreen = (): JSX.Element => {
-  const client = useGatekeeperClient()
+  const layer = useGatekeeperClientLayer()
   const { id = '' } = useParams<{ id: string }>()
 
   const grantEffect = useMemo(
     () =>
       Effect.flatMap(GatekeeperHttpApiClient, (c) =>
         c['access-management'].GetGrant({ path: { id } })
-      ),
-    [id]
+      ).pipe(Effect.provide(layer)),
+    [layer, id]
   )
 
-  const grantPromise = useEffectTs(grantEffect, client.runtime)
+  const grantPromise = useEffectTs(grantEffect)
 
   return (
     <Suspense fallback={<PageLoading />}>

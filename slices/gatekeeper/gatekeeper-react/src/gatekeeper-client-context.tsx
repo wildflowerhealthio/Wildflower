@@ -1,41 +1,39 @@
-import { useEffect, useMemo, type JSX, type PropsWithChildren } from 'react'
+import { useMemo, type JSX, type PropsWithChildren } from 'react'
 
-import { makeGatekeeperClient } from './client/gatekeeper-client.ts'
-import { GatekeeperClientContext } from './gatekeeper-client-context.ts'
+import { buildGatekeeperClientLayer } from './client/gatekeeper-client.ts'
+import { GatekeeperClientLayerContext } from './gatekeeper-client-context.ts'
 
 type GatekeeperClientProviderProps = PropsWithChildren<{
   /**
-   * Bearer token for authenticated calls, or `null` to provide an
-   * unauthenticated client (public OAuth/device endpoints). The provider
-   * memoises on `token`, so a rotation boots a fresh `ManagedRuntime`
-   * and disposes the previous one on unmount.
+   * Bearer token attached to every gatekeeper API call. `null` produces
+   * an unauthenticated client suitable for public endpoints (OAuth device
+   * flow, polling). The provider memoises the layer on `token` so a
+   * rotation rebuilds it lazily; no `ManagedRuntime` is constructed here —
+   * apps compose layers and materialise their own runtime (or rely on
+   * `useEffectTs` from `telemetry-react` to run effects with the layer
+   * already provided).
    */
   readonly token: string | null
 }>
 
 /**
- * Provides a {@link GatekeeperClient} to descendants via
- * {@link GatekeeperClientContext}. The app wraps the entire tree with
- * `token={null}` for public routes; `<AuthorizedAppShell>` re-wraps
- * inside with the live token so authenticated screens see a
- * bearer-attached client without changing their hook calls.
+ * Provides the slice's client `Layer` to descendants via
+ * {@link GatekeeperClientLayerContext}. The root app wraps the whole
+ * tree with `token={null}` for public routes;
+ * `<AuthorizedAppShell>` re-wraps inside with the live token so
+ * authenticated screens see a bearer-attached layer through the same
+ * hook.
  */
 const GatekeeperClientProvider = ({
   token,
   children,
 }: GatekeeperClientProviderProps): JSX.Element => {
-  const client = useMemo(() => makeGatekeeperClient(token), [token])
-
-  // Dispose the previous runtime when `token` rotates or the provider unmounts.
-  useEffect(
-    () => (): void => {
-      void client.runtime.dispose()
-    },
-    [client]
-  )
+  const layer = useMemo(() => buildGatekeeperClientLayer(token), [token])
 
   return (
-    <GatekeeperClientContext.Provider value={client}>{children}</GatekeeperClientContext.Provider>
+    <GatekeeperClientLayerContext.Provider value={layer}>
+      {children}
+    </GatekeeperClientLayerContext.Provider>
   )
 }
 
