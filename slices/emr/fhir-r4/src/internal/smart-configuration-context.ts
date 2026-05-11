@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schema } from 'effect'
-import { Origin } from 'kitchen-sink'
+import { Origin } from 'navigation-core'
 
 // Per the SMART App Launch IG (https://hl7.org/fhir/smart-app-launch/conformance.html#metadata)
 // only `authorization_endpoint`, `token_endpoint`, `grant_types_supported`,

@@ -1,7 +1,7 @@
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { DateTime, Duration, Effect, Layer, Schema } from 'effect'
-import { Origin } from 'kitchen-sink'
 import { cryptoRandomCounter } from 'kitchen-sink/crypto-random'
+import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
 
 const JsonObjectSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
@@ -11,11 +11,7 @@ const readJsonObject = async (response: Response): Promise<Record<string, unknow
   return decodeJsonObject(raw)
 }
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
-import { GatekeeperApi } from '../src/http-api-definition/index.ts'
-import {
-  GatekeeperApiLive,
-  RequireAuthMiddlewareLive,
-} from '../src/http-api-implementation/index.ts'
+import { GatekeeperApiLive } from '../src/http-api-implementation/index.ts'
 import { mintAccessToken } from '../src/internal/jwt.ts'
 import {
   AuthorizationRequest,
@@ -24,19 +20,9 @@ import {
   type ClientRow,
   SigningKey,
 } from '../src/livestore/index.ts'
+import { testingKey1 } from './fixtures/signing-keys.ts'
 
 const ORIGIN = 'http://localhost:8787'
-
-const StubGatekeeperPagesLive = HttpApiBuilder.group(
-  GatekeeperApi,
-  'gatekeeper-pages',
-  (handlers) =>
-    handlers
-      .handle('OAuthPollingPage', () => Effect.succeed('<!doctype html><html></html>'))
-      .handle('OAuthConsentPage', () => Effect.succeed('<!doctype html><html></html>'))
-      .handle('DeviceEntryPage', () => Effect.succeed('<!doctype html><html></html>'))
-      .handle('DeviceConsentPage', () => Effect.succeed('<!doctype html><html></html>'))
-).pipe(Layer.provide(RequireAuthMiddlewareLive))
 
 const labelOf = (q: unknown): string | undefined => {
   if (typeof q === 'object' && q !== null && 'label' in q && typeof q.label === 'string') {
@@ -53,9 +39,7 @@ const hashOf = (q: unknown): string | undefined => {
 
 type CommittedEvent = { name: string; args: Record<string, unknown> }
 
-// Event factories pass args through in their decoded form (e.g.
-// `requestedAt: DateTime.Utc`, not the encoded ISO string). The schema
-// check ran when `events.X({...})` was called, so we just cast here.
+// Event factories pass args in decoded form (DateTime.Utc, not ISO strings).
 type DeviceStartedArgs =
   typeof AuthorizationRequest.events.deviceAuthorizationRequestStarted.schema.Type
 type ApprovedArgs = typeof AuthorizationRequest.events.authorizationRequestApproved.schema.Type
@@ -207,7 +191,6 @@ const createHandler = (
   store: typeof GatekeeperStore.Service
 ): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = GatekeeperApiLive.pipe(
-    Layer.provide(StubGatekeeperPagesLive),
     Layer.provide(makeGatekeeperStoreLayer(store)),
     Layer.provide(Layer.succeed(Origin, ORIGIN)),
     Layer.provide(cryptoRandomCounter({ uuidPrefix: 'device' }))
@@ -216,7 +199,7 @@ const createHandler = (
 }
 
 test('POST /oauth/device_authorization issues device_code + user_code', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const store = makeStore({ signingKeys: [signingKey], clients: [makeClient()] })
   const { handler, dispose } = createHandler(store)
 
@@ -232,8 +215,10 @@ test('POST /oauth/device_authorization issues device_code + user_code', async ()
     const body = await readJsonObject(response)
     expect(body['device_code']).toBe('device-0001')
     expect(body['user_code']).toBe('BCDF-GHJK')
-    expect(body['verification_uri']).toBe(`${ORIGIN}/access/devices`)
-    expect(body['verification_uri_complete']).toBe(`${ORIGIN}/access/devices?user_code=BCDF-GHJK`)
+    expect(body['verification_uri']).toBe(`${ORIGIN}/gatekeeper/devices`)
+    expect(body['verification_uri_complete']).toBe(
+      `${ORIGIN}/gatekeeper/devices?user_code=BCDF-GHJK`
+    )
     expect(body['expires_in']).toBe(300)
     expect(body['interval']).toBe(5)
   } finally {
@@ -242,7 +227,7 @@ test('POST /oauth/device_authorization issues device_code + user_code', async ()
 })
 
 test('POST /oauth/device_authorization rejects unknown client', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const store = makeStore({ signingKeys: [signingKey], clients: [] })
   const { handler, dispose } = createHandler(store)
   try {
@@ -260,7 +245,7 @@ test('POST /oauth/device_authorization rejects unknown client', async () => {
 })
 
 test('POST /oauth/device_authorization rejects scope outside client allowedScopes', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const store = makeStore({
     signingKeys: [signingKey],
     clients: [makeClient({ allowedScopes: ['owner'] })],
@@ -281,7 +266,7 @@ test('POST /oauth/device_authorization rejects scope outside client allowedScope
 })
 
 test('device-flow token exchange returns authorization_pending while consent is pending', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const requestedAt = DateTime.unsafeNow()
   const expiresAt = DateTime.addDuration(requestedAt, '5 minutes')
   const pending: AuthorizationRequestRow = {
@@ -330,7 +315,7 @@ test('device-flow token exchange returns authorization_pending while consent is 
 })
 
 test('device-flow token exchange returns access_denied when consent was denied', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
     grantType: 'device_code',
@@ -376,7 +361,7 @@ test('device-flow token exchange returns access_denied when consent was denied',
 })
 
 test('device-flow token exchange returns expired_token after expiry', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
     grantType: 'device_code',
@@ -422,7 +407,7 @@ test('device-flow token exchange returns expired_token after expiry', async () =
 })
 
 test('device-flow token exchange mints token after approval', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const requestedAt = DateTime.unsafeNow()
   const expiresAt = DateTime.addDuration(requestedAt, '5 minutes')
   const approved: AuthorizationRequestRow = {
@@ -473,7 +458,7 @@ test('device-flow token exchange mints token after approval', async () => {
 })
 
 test('device_code is single-use: a second token poll returns expired_token', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const approved: AuthorizationRequestRow = {
     id: 'dev-1',
     grantType: 'device_code',
@@ -500,7 +485,6 @@ test('device_code is single-use: a second token poll returns expired_token', asy
   const { handler, dispose } = createHandler(store)
 
   try {
-    // First exchange: success.
     const first = await handler(
       new Request(`${ORIGIN}/oauth/token`, {
         method: 'POST',
@@ -514,9 +498,7 @@ test('device_code is single-use: a second token poll returns expired_token', asy
     )
     expect(first.status).toBe(200)
 
-    // Second exchange against the same device_code: must reject — the
-    // approve-then-consume transition should have flipped status to
-    // 'expired' on the first call.
+    // Second exchange must reject: the first transition should have flipped status to 'expired'.
     const second = await handler(
       new Request(`${ORIGIN}/oauth/token`, {
         method: 'POST',
@@ -537,7 +519,7 @@ test('device_code is single-use: a second token poll returns expired_token', asy
 })
 
 test('GET /access/devices/:userCode returns the pending consent for an owner', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
     grantType: 'device_code',
@@ -588,7 +570,7 @@ test('GET /access/devices/:userCode returns the pending consent for an owner', a
 })
 
 test('POST /access/devices/:userCode/approve flips status to approved', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
     grantType: 'device_code',
@@ -636,7 +618,6 @@ test('POST /access/devices/:userCode/approve flips status to approved', async ()
     const body = await readJsonObject(response)
     expect(body['status']).toBe('approved')
 
-    // Subsequent token exchange should now succeed.
     const tokenResponse = await handler(
       new Request(`${ORIGIN}/oauth/token`, {
         method: 'POST',
@@ -655,7 +636,7 @@ test('POST /access/devices/:userCode/approve flips status to approved', async ()
 })
 
 test('POST /access/devices/:userCode/approve with empty granted scopes routes through deny', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
     grantType: 'device_code',
@@ -689,9 +670,7 @@ test('POST /access/devices/:userCode/approve with empty granted scopes routes th
   )
 
   try {
-    // Owner submits an empty `approvedScopes` array (or one with only
-    // non-requested scopes). Treated as a denial — the OAuth client
-    // would otherwise get a `scope=''` token that grants nothing.
+    // Empty `approvedScopes` is treated as a denial; otherwise the client gets a scope='' token.
     const response = await handler(
       new Request(`${ORIGIN}/access/devices/BCDF-GHJK/approve`, {
         method: 'POST',
@@ -706,7 +685,6 @@ test('POST /access/devices/:userCode/approve with empty granted scopes routes th
     const body = await readJsonObject(response)
     expect(body['status']).toBe('denied')
 
-    // The device-code branch should now return access_denied.
     const tokenResponse = await handler(
       new Request(`${ORIGIN}/oauth/token`, {
         method: 'POST',
@@ -727,7 +705,7 @@ test('POST /access/devices/:userCode/approve with empty granted scopes routes th
 })
 
 test('POST /access/devices/:userCode/deny without auth is rejected', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
     grantType: 'device_code',
@@ -764,8 +742,8 @@ test('POST /access/devices/:userCode/deny without auth is rejected', async () =>
 })
 
 test('device-flow token exchange returns slow_down when polled within interval', async () => {
-  const signingKey = await SigningKey.generate()
-  // Pretend the row was polled 1 second ago — under the 5-second interval.
+  const signingKey = testingKey1
+  // Last poll 1s ago, under the 5s interval.
   const pending: AuthorizationRequestRow = {
     id: 'dev-1',
     grantType: 'device_code',

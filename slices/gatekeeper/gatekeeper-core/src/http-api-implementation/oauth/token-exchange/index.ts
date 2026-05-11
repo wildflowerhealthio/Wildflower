@@ -1,5 +1,5 @@
 import type { Effect, Schema } from 'effect'
-import type { Origin } from 'kitchen-sink'
+import type { Origin } from 'navigation-core'
 import type { GatekeeperStore } from '../../../contexts/gatekeeper-store.ts'
 import type {
   AuthorizationCodePayload,

@@ -1,0 +1,54 @@
+{
+  "name": "navigation-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "React-side navigation contract: bridge handler that watches route changes and drains pre-mount navigations.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/navigation/navigation-react"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test --passWithNoTests"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "effect-messaging-react": "workspace:*",
+    "fast-check": "catalog:",
+    "navigation-core": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "effect-messaging-react": "workspace:*",
+    "navigation-core": "workspace:*",
+    "react": "catalog:",
+    "react-router": "catalog:"
+  }
+}

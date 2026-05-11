@@ -46,13 +46,14 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.5.2",
     "@tsdown/css": "catalog:",
-    "@types/react": "~19.2.14",
-    "@types/react-dom": "~19.2.0",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "jsdom": "^26.0.0",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "tundra-css": "^0.14.0",
+    "react-kitchen-sink": "workspace:*",
+    "tundra-css": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -60,6 +61,7 @@
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "tundra-css": "^0.14.0"
+    "react-kitchen-sink": "workspace:*",
+    "tundra-css": "catalog:"
   }
 }

@@ -1,0 +1,33 @@
+{
+  "name": "wildflower-node",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --conditions=source --env-file-if-exists=.env.local --experimental-transform-types src/index.ts",
+    "start": "node --conditions=source --env-file-if-exists=.env.local --experimental-transform-types src/index.ts"
+  },
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@livestore/adapter-node": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@sentry/node": "catalog:",
+    "@sentry/opentelemetry": "catalog:",
+    "effect": "catalog:",
+    "emr-core": "workspace:*",
+    "gatekeeper-core": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "navigation-core": "workspace:*",
+    "telemetry-core": "workspace:*",
+    "telemetry-node": "workspace:*",
+    "wildflower-react": "workspace:*",
+    "wildflower-server": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

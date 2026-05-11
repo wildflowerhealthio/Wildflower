@@ -1,0 +1,37 @@
+import { FetchHttpClient, HttpApiClient, HttpClient, HttpClientRequest } from '@effect/platform'
+import type { ManagedRuntime } from 'effect'
+import { Layer } from 'effect'
+import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
+import { GatekeeperApi } from 'gatekeeper-core/http-api-definition'
+import { webTelemetryLayerFromEnv } from 'telemetry-web'
+
+type SessionEnv = HttpClient.HttpClient | GatekeeperHttpApiClient
+type SessionRuntime = ManagedRuntime.ManagedRuntime<SessionEnv, never>
+
+/** Sets `Authorization: Bearer <token>` on every request. */
+const setBearerToken =
+  (token: string) =>
+  (c: HttpClient.HttpClient): HttpClient.HttpClient =>
+    HttpClient.mapRequest(c, (request) =>
+      HttpClientRequest.setHeader(request, 'Authorization', `Bearer ${token}`)
+    )
+
+const httpLayer: Layer.Layer<HttpClient.HttpClient> = Layer.mergeAll(
+  FetchHttpClient.layer,
+  webTelemetryLayerFromEnv()
+).pipe(Layer.provideMerge(FetchHttpClient.layer))
+
+/** Build a `GatekeeperHttpApiClient` layer; attaches a bearer header when `token` is non-null. */
+const buildGatekeeperClientLayer = (
+  token: string | null
+): Layer.Layer<GatekeeperHttpApiClient, never, HttpClient.HttpClient> => {
+  const baseOptions = { baseUrl: '/' }
+  const options =
+    token === null ? baseOptions : { ...baseOptions, transformClient: setBearerToken(token) } // oxlint-disable-line eslint/no-ternary -- two-arm config object selection
+  return Layer.effect(GatekeeperHttpApiClient, HttpApiClient.make(GatekeeperApi, options))
+}
+
+const buildSessionLayer = (token: string | null): Layer.Layer<SessionEnv> =>
+  Layer.merge(httpLayer, buildGatekeeperClientLayer(token).pipe(Layer.provide(httpLayer)))
+
+export { buildSessionLayer, setBearerToken, type SessionEnv, type SessionRuntime }

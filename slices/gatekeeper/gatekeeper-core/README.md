@@ -7,7 +7,7 @@ host browser bootstraps onto a fresh deployment via RFC 8628 device
 authorization or a one-shot bootstrap URL minted by the host process.
 
 This package is the pure layer — schemas, HttpApi definitions, and business
-rules. Platform adapters (e.g. `gatekeeper-web`) wire it up. SMART-on-FHIR is
+rules. Platform adapters (e.g. `gatekeeper-react`) wire it up. SMART-on-FHIR is
 the OAuth dialect spoken on the wire; details are in
 [`docs/Jargon Explanation.md`](../docs/Jargon%20Explanation.md).
 
@@ -36,13 +36,13 @@ redirectUri)`. Grant lookups drive the auto-approve fast path.
 
 - `/.well-known/jwks.json` — public JWKs for token verification.
 - `/oauth/authorize` — OAuth 2.0 authorization endpoint. Always
-  redirects to the polling page (`/oauth/authorize/:id/view`); the
+  redirects to the polling page (`/gatekeeper/oauth-polling/:id`); the
   browser's JS picks same-device-vs-cross-device based on
   `localStorage` Bearer presence.
 - `/oauth/authorize/:id` — long-poll JSON status of an authorization
   request.
 - `/oauth/device_authorization` — RFC 8628 device flow: returns
-  `device_code` + `user_code` + verification URIs.
+  `device_code` + `user_code` + verification URIs (under `/gatekeeper/devices`).
 - `/oauth/token` — OAuth 2.0 token exchange. Accepts
   `grant_type=authorization_code` and
   `grant_type=urn:ietf:params:oauth:grant-type:device_code`.
@@ -55,35 +55,41 @@ redirectUri)`. Grant lookups drive the auto-approve fast path.
 - `/access/requests`, `/access/requests/:id` (+ `/approve`, `/deny`) —
   gate decisions on inbound HTTP requests.
 
-## Page contract (`gatekeeper-pages`)
+## SPA page paths
 
-Core ships only the HttpApi **definitions** for HTML pages — no handler layer.
-A consumer slice (typically `gatekeeper-web`) provides the implementation via
-`Layer.provide`. All pages are public HTML; auth is JS-driven via the Bearer
-token the page's JS pulls from `localStorage`, which gates calls to the
-`/access/*` JSON endpoints behind each page.
-
-| Endpoint            | Path                                  | Purpose                                                                     |
-| ------------------- | ------------------------------------- | --------------------------------------------------------------------------- |
-| `OAuthPollingPage`  | `GET /oauth/authorize/:id/view`       | Browser long-poll page; calls `GET /oauth/authorize/:id`.                   |
-| `OAuthConsentPage`  | `GET /access/oauth-consents/:id/view` | Owner UI; reads `GET /access/oauth-consents/:id`.                           |
-| `DeviceEntryPage`   | `GET /access/devices`                 | Manual `user_code` entry form; submits to `/access/devices/:userCode/view`. |
-| `DeviceConsentPage` | `GET /access/devices/:userCode/view`  | Owner UI; reads `GET /access/devices/:userCode`.                            |
+The gatekeeper API redirects to URLs under `/gatekeeper/`, which the host app
+serves with a single-page app. The redirect targets are typed in
+[`gatekeeper-core/page-paths`](./src/page-paths.ts) (`GatekeeperPaths`); the
+SPA's React Router config in [`gatekeeper-react`](../gatekeeper-react/src/routes.tsx)
+mirrors them, and a drift test in
+[`gatekeeper-react/tests/routes.test.tsx`](../gatekeeper-react/tests/routes.test.tsx)
+enforces consistency. Serving the SPA itself is the host app's static-asset
+concern (see [`apps/wildflower-react`](../../../apps/wildflower-react)), not
+part of the gatekeeper-core contract.
 
 Error pages are rendered inline by core via `internal/error-pages.ts` and are
 not part of the page contract.
 
-## Bootstrap URL
+## Bootstrap URL (dev-mode workaround)
 
 The host process (gatekeeper-node, native shell, dev server) has direct
 access to the signing key and can mint an access token via
-`internal/jwt.ts:mintAccessToken(activeKey, origin, { clientId:
-'wildflower-host', scope: ['owner'], ttl: Duration.minutes(5) })`. The
-browser consumes the token from a `?token=` query param at startup,
-stashes it in `localStorage`, and strips it from the URL via
-`history.replaceState`.
-Same primitive serves first-Owner bootstrap, native-shell launch, dev
-workflow, CLI login, share-with-other-device, and test fixtures.
+`mintHostOwnerToken({ ttl })` (or `internal/jwt.ts:mintAccessToken` for
+ad-hoc cases). The browser consumes the token from a `?token=` query
+param at startup, stashes it in `localStorage`, and strips it from the
+URL via `history.replaceState`.
+
+**This is a dev convenience, not a shipping pattern.** The long-term
+story for first-Owner onboarding (native shell, fresh deployment, CLI
+login) is unsettled; the device flow is the production path. Until that
+shakes out, the helpers live behind a dev gate at the call site (e.g.
+`apps/wildflower-node` only mints when `NODE_ENV !== 'production'`).
+The TTL is required at the call site (no silent default) so the
+minter — which has the dev-server / CI / shell context — can pick.
+`apps/wildflower-node` currently passes 1 hour: long enough to be less
+annoying than re-minting through every page reload, short enough that a
+leaked URL stops being useful within a working session. The value is a
+dev workaround; long-term TBD.
 
 ## Row-await helper
 

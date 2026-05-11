@@ -1,5 +1,5 @@
-import { cn } from 'kitchen-sink'
 import { useEffect, useId, useRef, useState, type JSX, type ReactNode } from 'react'
+import { cn } from 'react-kitchen-sink'
 
 import styles from './menu.module.css'
 

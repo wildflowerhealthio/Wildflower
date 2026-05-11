@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite-plus'
 
 export default defineConfig({
+  resolve: { conditions: ['source'] },
   pack: {
     dts: {
       tsgo: true,
@@ -8,12 +9,15 @@ export default defineConfig({
     platform: 'neutral',
     exports: false,
     entry: {
+      bridge: 'src/bridge.ts',
       'contexts/index': 'src/contexts/index.ts',
       'http-api-definition/index': 'src/http-api-definition/index.ts',
       'http-api-implementation/index': 'src/http-api-implementation/index.ts',
       'livestore/index': 'src/livestore/index.ts',
+      'page-paths': 'src/page-paths.ts',
     },
   },
+  fmt: {},
   test: {
     include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
     // Integration suites live under `integration-tests/` and run only via

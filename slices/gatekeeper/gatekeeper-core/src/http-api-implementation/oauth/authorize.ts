@@ -1,8 +1,8 @@
 import { HttpServerResponse } from '@effect/platform'
 import type { Schema } from 'effect'
 import { Array, DateTime, Duration, Effect, pipe } from 'effect'
-import { Origin } from 'kitchen-sink'
 import { CryptoRandom } from 'kitchen-sink/crypto-random'
+import type { Origin } from 'navigation-core'
 import { GatekeeperStore } from '../../contexts/gatekeeper-store.ts'
 import type { AuthorizeUrlParamsSchema } from '../../http-api-definition/oauth.ts'
 import { oauthErrorHtml } from '../../internal/error-pages.ts'
@@ -14,6 +14,7 @@ import {
   Grant,
   SigningKey,
 } from '../../livestore/index.ts'
+import { GatekeeperPaths } from '../../page-paths.ts'
 import { buildClientRedirectUrl } from './shared.ts'
 
 type AuthorizeParams = Schema.Schema.Type<typeof AuthorizeUrlParamsSchema>
@@ -23,9 +24,6 @@ const AUTHORIZATION_REQUEST_TTL: Duration.Duration = Duration.minutes(5)
 
 const htmlBadRequestResponse = (html: string): HttpServerResponse.HttpServerResponse =>
   HttpServerResponse.text(html, { status: 400, contentType: 'text/html; charset=utf-8' })
-
-// `AuthorizeUrlParams` are validated for non-emptiness by the schema; the
-// payload-validation steps below add the application-level guards.
 
 const requireSigningKey = (): Effect.Effect<
   void,
@@ -60,8 +58,7 @@ const parseRedirectUri = (
     catch: () => htmlBadRequestResponse(oauthErrorHtml('invalid_redirect_uri')),
   }).pipe(Effect.flatMap(requireHttpScheme))
 
-// Authorize-flow client lookup: returns the row narrowed to "enabled"
-// (`disabledAt: null`) so callers don't repeat the null-check.
+// Returns the row narrowed to enabled (`disabledAt: null`).
 const getEnabledClient = (
   clientId: string
 ): Effect.Effect<
@@ -162,9 +159,6 @@ const issueCodeForAutoApprovedRequest = (input: {
     return code
   })
 
-const buildPollingPageUrl = (origin: string, requestId: string): string =>
-  `${origin}/oauth/authorize/${requestId}/view`
-
 const getAuthorizationRequestParameters = (
   urlParams: AuthorizeParams
 ): Effect.Effect<
@@ -255,11 +249,10 @@ const handleAuthorize = (
         )
       }
 
-      const origin = yield* Origin
-      return HttpServerResponse.redirect(buildPollingPageUrl(origin, requestId), { status: 302 })
+      const pollingUrl = yield* GatekeeperPaths.oauthPollingUrl(requestId)
+      return HttpServerResponse.redirect(pollingUrl, { status: 302 })
     }),
-    // Validation steps short-circuit by failing with a fully-formed
-    // response; surface that response to the framework as success.
+    // Validation failures are fully-formed responses; surface them as success.
     Effect.catchAll((response: HttpServerResponse.HttpServerResponse) => Effect.succeed(response))
   )
 

@@ -123,3 +123,162 @@ A running log of non-obvious insights discovered during agent sessions. Triage i
 **Discovered during**: ruthmarks/add-gatekeeper-core — designing Owner bootstrap for fresh deployments
 **Learning**: Any process with signing-key access can mint a short-lived access token without going through HTTP. Hand it to a browser via URL (`?token=...`); page JS reads it on load, stashes in localStorage, strips via `history.replaceState` so it doesn't persist in the address bar / Referer / browser history. This single primitive replaces a bunch of bespoke shapes: cold-start "first-Owner" bootstrap, native-shell embed (URL handed to webview), dev-mode auto-login (`vp run dev` prints a URL), CLI login (open in default browser), share-with-other-device. Defenses against URL leakage: short TTL (5 min), `Referrer-Policy: no-referrer` on the receiving page, replaceState strip on first read. JTI single-use tracking is a deferable hardening if a real threat model demands it. Lesson: when designing a bootstrap mechanism, look for a primitive the privileged process _already has_ (signing key, DB write, etc.) and build the hand-off shape around it rather than introducing a new "setup mode" concept.
 **Suggested destination**: Strategies
+
+## `Match.when({ field: literal }, ...)` matches type and value in one arm
+
+**Discovered during**: ruthmarks/add-wildflower-node — refactoring OAuth-error dispatch in `NeedsAuthMessage`
+**Learning**: Effect's `Match.when` accepts a structural object pattern that tests fields by literal equality on the runtime input — `Match.when({ error: 'access_denied' }, (body) => …)` matches anything where `body.error === 'access_denied'` and narrows `body.error` to that literal in the handler. Combined with `Match.withReturnType<T>()` to pin the matcher's overall result type, you get Haskell/Rust-style flat dispatch on type AND value with no inner `if` chain or boolean expression: each arm names "this shape" → "this outcome" in one line. Adding a new specific case is one new `Match.when` clause; broader-than-literal cases use `Schema.is(SomeSchema)` or `Predicate.or(Schema.is(A), Schema.is(B))` as the predicate. Order top-to-bottom: most specific to least specific to `orElse`. Custom `Predicate.and(Schema.is(...), hasErrorCode(literal))` helpers are unnecessary when the schemas are uniquely structured by the literal-typed discriminator field — just match on the field directly.
+**Suggested destination**: docs/Effect/Patterns Reference.md
+
+## `HttpApiBuilder.Router.use` route handlers can only require `DefaultServices | Provided`
+
+**Discovered during**: ruthmarks/add-wildflower-node — wiring a static-SPA fallback into the API Router
+**Learning**: `HttpApiBuilder.Router.use((router) => router.get('*', handler))` constrains the handler to `Handler<unknown, DefaultServices | Provided>` where `DefaultServices = HttpPlatform | Etag | FileSystem | Path` and `Provided = RouteContext | HttpServerRequest | ParsedSearchParams | Scope`. Arbitrary application Tags (e.g. a runtime-configured `WebAssetsDir`) don't fit and won't typecheck inside the handler. Two ways out: (a) accept the value as a function parameter and close over it at Layer construction (loses Tag-style DI), or (b) read the Tag at Layer-build time via `Layer.unwrapEffect(Effect.map(Tag, makeLayerFromValue))` — the resulting Layer carries the Tag in its `R`, the inner handler closes over the resolved value, and the runner provides it via `Layer.succeed(Tag, value)`. (b) is the right answer when you want the runner to wire the value through context. Same pattern works for any Effect Layer that needs to read a Tag-bound value at construction time but can't surface that requirement through to a downstream API.
+**Suggested destination**: docs/Effect/HttpApi Composition How-To.md
+
+## URL pathname normalisation: protocol-relative collapse and percent-encoded traversal
+
+**Discovered during**: ruthmarks/add-wildflower-node — replacing `node:path.normalize` with `new URL(...).pathname` in static-spa
+**Learning**: The WHATWG URL constructor normalises `..` segments at parse time, so `new URL('/foo/../bar', 'http://x/').pathname` returns `/bar` — built-in, cross-platform, no `node:path` needed. Two non-obvious gotchas: (1) **protocol-relative collapse** — `new URL('//foo/bar', 'http://x/').pathname` is `/bar` because `//foo` parses as authority (host=foo), silently dropping the first path segment of an HTTP request like `GET //assets/app.js`. Pre-collapse leading slashes to a single `/` before parsing. (2) **percent-encoded traversal slips through** — `URL` only normalises literal `.`/`..` segments, so `/%2E%2E/etc/passwd` survives normalisation as a non-`..` path. To reject probes, decode each `/`-split segment with `decodeURIComponent` and check for `..` against that — also catches mixed-case encodings (`%2e`, `%2E`) and malformed `%`-sequences (decoder throws). Net pattern for SPA static-fallback servers: `URL` for normalisation + per-segment decoded-equality check for traversal rejection.
+**Suggested destination**: Strategies
+
+## Three-bucket SPA static-fallback: file / 302→`/` / index.html
+
+**Discovered during**: ruthmarks/add-wildflower-node — designing the static-spa response policy
+**Learning**: A SPA-fallback HTTP handler has three legitimate response shapes for a given pathname, and conflating any two causes either security blind-spots or UX papercuts: (1) **direct hit** — pathname maps to a real file under the assets root, serve it. (2) **deep link / unknown** — pathname is well-formed but the file doesn't exist (e.g. `/gatekeeper/requests`), serve `index.html` so the SPA's router takes over. (3) **sketchy** — pathname contains `..` segments (literal or percent-encoded) or null bytes, **302 to `/`** rather than 200-OK with the SPA shell. The redirect choice over 404 is intentional: a confused legitimate user lands somewhere working, a probe doesn't get the SPA shell rendered at the URL it picked, and the 302 status code distinguishes the bucket for any log/dashboard watching for traversal probes. The naive "always serve index.html on file-miss" collapses (2) and (3) into the same response, which silently 200-OKs probes; the also-common "404 on traversal" is more hostile to mis-typed legitimate requests than necessary.
+**Suggested destination**: Strategies
+
+## Cross-package `tsconfig.json` includes silently break `vp pack` dts emission
+
+**Discovered during**: ruthmarks/add-wildflower-node — effect-messaging restructure
+**Learning**: A `tsconfig.json` `"include"` entry that points at a sibling package's file (e.g. `"../navigation-react/tests/query-param.test.ts"` inside `navigation-core/tsconfig.json`) widens the TypeScript program for that package to span both directories. Combined with `vp pack`'s `dts: { tsgo: true }` + `declaration: true`, tsgo emits a `.d.ts` for the cross-package file _into the sibling's dist tree_, polluting `slices/navigation/navigation-react/` with output that navigation-core "owns". The path was almost certainly autogen'd by some tool and never load-tested; sibling packages' own tsconfigs already cover their `tests/`, so the cross-include is both wrong and redundant. When chasing "where are these stray .d.ts files coming from," grep `tsconfig.json` `include`/`files`/`references` arrays across the workspace for `..` paths.
+**Suggested destination**: Strategies
+
+## `Context.Tag['Type']` retires the parallel `XxxShape` interface
+
+**Discovered during**: ruthmarks/add-wildflower-node — effect-messaging restructure
+**Learning**: `class Tag extends Context.Tag('...')<Tag, Service>() {}` makes `Tag['Type']` an alias for `Service`, so any place a consumer would otherwise reach for a separately-exported `TagShape` interface can index the Tag directly. Removes the pattern of `interface PlatformAdapterShape { ... } class TransportAdapter extends Context.Tag('...')<TransportAdapter, PlatformAdapterShape>() {}` plus the dual export — one declaration, one source of truth. Callers writing custom adapter values type them as `TransportAdapter['Type']`. Same idea works wherever Effect's `Context.Tag` is the value-bearing type and a sibling interface only exists to seed the second type parameter.
+**Suggested destination**: docs/Effect/Patterns Reference.md
+
+## Bake an internal context requirement via `Effect.provideService` to reshape the public type
+
+**Discovered during**: ruthmarks/add-wildflower-node — effect-messaging restructure
+**Learning**: When a higher-order Effect surface has internal callbacks that need a `Context.Tag` (e.g. each bridge's per-tag sender requires `TransportAdapter`), the natural typing surfaces that requirement on every public-facing call. To keep the consumer-visible type clean (e.g. `transport.sendMessage(m): Effect<void>` instead of `Effect<void, never, TransportAdapter>`), resolve the Tag once at construction time inside the scoped Effect, then satisfy the inner callbacks via `Effect.provideService(Tag, value)` at the boundary. Tests can still swap implementations by providing a different value via `Layer.succeed(Tag, stub)` to the constructor itself; only the _public closure_ hides the requirement. Pattern applies any time you have "this thing internally needs X, but consumers shouldn't have to provide X every time they call into it."
+**Suggested destination**: docs/Effect/Patterns Reference.md
+
+## `SubscriptionRef` is the right shape for a "set-once, observable" runtime slot
+
+**Discovered during**: ruthmarks/add-wildflower-node — `EffectRuntimeGlobal` design
+**Learning**: A wildflower-shaped global slot ("entry-point installs an `Effect.Runtime`, every other consumer reads it") has two consumer flavours: (a) sync readers that need it _now_ (`getEffectRuntimeOrThrow`) and (b) async readers that race the entrypoint and can wait (`getEffectRuntimeAsync`). A plain `let _runtime` works for (a) but forces (b) into a polling loop. `SubscriptionRef.make<T | undefined>(undefined)` collapses both: sync read uses `Effect.runSync(SubscriptionRef.get(ref))`, async read does `ref.changes |> Stream.filter(defined) |> Stream.take(1) |> Stream.runHead` — `changes` re-emits the current value to new subscribers, so already-populated reads resolve immediately while pre-population reads suspend until set. Tests reset via `SubscriptionRef.set(ref, undefined)` (now async, so test hooks `await` it). The sync setter still calls `Effect.runSync(SubscriptionRef.set(...))` for ergonomics — the underlying Effect is sync.
+**Suggested destination**: docs/Effect/Patterns Reference.md
+
+## Noun-focused modules + `export * as Namespace` mirror Effect's library surface
+
+**Discovered during**: ruthmarks/add-wildflower-node — effect-messaging restructure
+**Learning**: Splitting a "task-focused" file (`define-bridge.ts`, `transport.ts`, `testing.ts`) into noun-focused modules (`bridge.ts`, `bridge-transport.ts`, `message.ts`, `message-handler.ts`, `dispatch-error.ts`, `test-platform-adapter-layer.ts`) and re-exporting each as a namespace from the package barrel (`export * as Bridge from './bridge.ts'`) yields a consumer surface that reads like Effect's own (`Bridge.make`, `Bridge.Bridge`, `BridgeTransport.make`, etc.). The convention: file name = kebab-case noun; primary type alias = same name as the namespace (`Bridge.Bridge<...>`, `BridgeTransport.BridgeTransport<...>`); constructor = `make`; secondary types as flat exports inside the namespace (`Bridge.AnyBridge`, `Bridge.SenderIntersection`). User-defined `Context.Tag` classes are the exception — they stay as direct top-level exports (e.g. `TransportAdapter`) since they're values, not modules of types/functions, and `Layer.succeed(TransportAdapter, ...)` reads better than `Layer.succeed(TransportAdapter.TransportAdapter, ...)`.
+**Suggested destination**: Strategies
+
+## Generic test helpers belong in `kitchen-sink/test`; project-shape ones in slice testing subpaths
+
+**Discovered during**: ruthmarks/add-wildflower-node — effect-messaging testing.ts move
+**Learning**: When deciding where shared test helpers live, the question is "could a totally unrelated project reuse this?". Generic Effect/Logger plumbing (`makeCaptureLogger`, capturing-Layer factory, `runScoped` boilerplate, `expectWarningContaining` assertion) goes in `kitchen-sink/test` so any package — including ones in `global/` that must stay project-agnostic — can pull it without violating the layering rule. Wildflower-specific helpers (`installTestEffectRuntime` that touches the singleton runtime slot, anything that hard-codes a slice's contracts) belong in the relevant slice's `<slice>/testing` subpath. The wrong move is dumping everything into a single `effect-messaging-core/testing` and then watching test imports drag wildflower-specific helpers into a global package's tests — at which point you have to either inline duplicates everywhere or break the project-agnostic rule. Doing the split up front saves the retreat.
+**Suggested destination**: Strategies
+
+## Default-exported workspace-package modules need `{ __esModule: true, default: … }` jest mocks
+
+**Discovered during**: ruthmarks/add-wildflower-node — gatekeeper bridge default-export migration
+**Learning**: Switching a workspace-package subpath from named (`export { GatekeeperBridge }`) to default (`export default GatekeeperBridge`) breaks `jest.mock('package/subpath', () => ({ GatekeeperBridge: ... }))` silently — the mock factory has to mimic the ESM-default shape: `{ __esModule: true, default: ... }`. Without `__esModule: true`, jest's interop exposes the entire factory object as the default, and the consumer's `import GatekeeperBridge from '...'` ends up undefined. The named-export form needs no marker because there's no interop layer — the property name on the factory matches the import name directly. When migrating a slice's bridge to the default-export pattern (per the navigation-bridge.ts exemplar), audit `jest.mock('<slice>-core/bridge', ...)` factories at the same time.
+**Suggested destination**: Strategies
+
+## Vitest `test.projects` mode does not inherit root `resolve` config
+
+**Discovered during**: ruthmarks/add-wildflower-node — effect-messaging restructure
+**Learning**: Each path listed in root `vite.config.ts`'s `test.projects` loads its own `vite.config.ts` independently. Root-level `resolve.conditions: ['source']` does NOT propagate to project test runs. To pick up the `source` export condition during `vp test`, set `resolve.conditions: ['source']` on every per-package vite config (and on root, for `vp dev`/`vp build` from root context). Without this, sibling-package tests load each other's prebuilt `dist/`, masking source edits behind stale builds.
+**Suggested destination**: Strategies
+
+## Babel-jest transforms pnpm-symlinked workspace packages, breaking `@babel/runtime` resolution
+
+**Discovered during**: ruthmarks/add-wildflower-node — gatekeeper-expo jest fix
+**Learning**: Workspace deps installed via pnpm symlink resolve to `slices/.../dist/` rather than `node_modules/.../dist/`. The `transformIgnorePatterns` regex (matches `/node_modules/(?!...allow-list...)`) doesn't exclude these paths, so jest babel-transforms the dist file. The transformed CJS references `@babel/runtime/helpers/interopRequireDefault`, which fails to resolve from the workspace package's directory (no local `@babel/runtime`). Symptom: `TypeError: (0, _someWorkspacePkg.someExport) is not a function` (the require is throwing earlier in module init, so the consumer sees the function as undefined). Fix: in jest tests, `jest.mock('workspace-package', () => ...)` the workspace package wholesale rather than letting it be pulled in. Alternative: ship a Jest-only `moduleNameMapper` redirecting workspace-package paths to source.
+**Suggested destination**: Strategies
+
+## `Logger.replace` + capturing logger is the canonical test-logging pattern for Effect
+
+**Discovered during**: ruthmarks/add-wildflower-node — effect-messaging restructure
+**Learning**: For programs that emit `Effect.logWarning`, swap the default logger via `Logger.replace(Logger.defaultLogger, captureLogger)` and provide it as a layer (or install through `ManagedRuntime` for the global runtime slot). The replacement propagates via FiberRef into forked dispatch fibers automatically — no `Runtime.runSync` boundary at the test seam, no console-method spies. The capturing logger pushes `{ level, message }` records into a sink array; tests assert with an `expectWarningContaining(logs, substring)` helper. Beats `vi.spyOn(console, 'warn')` because Effect's logger backend isn't `console.warn` once a layer overrides it — the spy silently catches nothing.
+**Suggested destination**: docs/Testing/Testing Reference.md
+
+## Schema invariance escape hatch: `any` for internal bounds, `infer A` at boundaries
+
+**Discovered during**: ruthmarks/add-wildflower-node — effect-messaging restructure (`defineBridge`)
+**Learning**: `Schema.Schema<X, I, R>` is invariant in `X`, so a precise schema is not assignable to a less-precise abstract bound (`Schema<{readonly _tag: 'X'}, string>` ↛ `Schema<unknown, string>`). To accept "any tagged JSON-encoded schema" inside a generic primitive's input bound, type it as `Schema.Schema<any, string, never>` — `any` is exempt from the variance check. Recover precise types at user-facing positions via `infer A` (a covariant extraction position) inside conditional types like `Pairs[I] extends readonly [infer Tag, infer S] ? S extends Schema.Schema<infer A, string, never> ? ...`. The `any` lives only inside the primitive's signature; user-visible inferred types never widen.
+**Suggested destination**: docs/Effect/Patterns Reference.md
+
+## jest-mock factory variable hoisting: `mock`-prefix only, no leading underscore
+
+**Discovered during**: ruthmarks/add-wildflower-node — gatekeeper-expo / effect-messaging-expo jest tests
+**Learning**: `jest.mock(path, factory)` factories are hoisted above imports and forbidden to read out-of-scope variables. `babel-plugin-jest-hoist` exempts identifiers matching `/^mock/i` (case-insensitive, _no leading underscore_). `__mockX` does NOT match the regex; `mockX` does. Captured-state variables that the factory writes (and the test body reads) must use a bare `mock` prefix — rename `let __captured = ...` → `let mockCaptured = ...` to satisfy the hoist guard.
+**Suggested destination**: Strategies
+
+## Pre-mount `<NavigateBinder navRef queue>` for module-load Effect handlers
+
+**Discovered during**: ruthmarks/add-wildflower-node — embedded SPA navigation wiring
+**Learning**: Module-load Effect handlers (a bridge `ReceiverLayer({ HostBackRequested, HostRequestedWebNavigation })` registered before any React mount) fire before `useNavigate()` is available. Pattern: a module-private `navRef: { current: ((to: number | string) => void) | null }` and a `queue: Array<-1 | string>`; handlers call through `navRef.current` if non-null, otherwise push to the queue. A `<NavigateBinder navRef={navRef} queue={queue} />` component mounted inside the router runs `useEffect` once, sets `navRef.current` to a wrapper around `useNavigate()`, and drains the queue. Lives as a generic component; aggregators wire their own ref + queue. Cleaner than threading `useNavigate()` into the layer construction (which has to happen before React exists).
+**Suggested destination**: Strategies
+
+## Bridge side discriminator: `'Host' | 'Web'`, never `'Native'`
+
+**Discovered during**: ruthmarks/add-wildflower-node — effect-messaging restructure
+**Learning**: For a cross-process WebView bridge, "Native" is the wrong word for the Expo side — it's overloaded (React Native vs JS, "native code" platform layer) and conflates with platform identity. Use `Host` for the side that hosts an embedded WebView, `Web` for the embedded page. Reserve "Native" for `react-native` library context. Names that follow the rename: `bridge.Host`, `'Host' | 'Web'` Side discriminator, `hostToWeb` / `webToHost` config keys, `HostBackRequested` / `HostRequestedWebNavigation` tags, `Navigation.Host.HandlerTag` Context.Tag identifier.
+**Suggested destination**: Strategies
+
+## `effect.Effect` namespace clash inside `jest.requireActual`
+
+**Discovered during**: ruthmarks/add-wildflower-node — gatekeeper-expo jest mocks
+**Learning**: `import * as React from 'react'` works for `requireActual<typeof React>('react')` because React is just a module. `import * as effect from 'effect'` _collides_: inside the factory body `effect.Effect` references both the namespace import (as a property on the `effect` namespace) and the `Effect` member, and the inferred type for `requireActual<typeof effect>('effect').Effect` lands in a confused state TS reports as `consistent-type-imports` lint errors. Use a renamed alias: `import type * as effectImportNamespace from 'effect'` and `jest.requireActual<typeof effectImportNamespace>('effect').Effect`. The `import type` form keeps the namespace at type-only, never reaches the runtime, and the renamed identifier dodges the property-vs-member ambiguity.
+**Suggested destination**: Strategies
+
+## `customConditions: ['source']` for TS-side workspace resolution
+
+**Discovered during**: ruthmarks/add-wildflower-node — effect-messaging restructure
+**Learning**: Mirror `resolve.conditions: ['source']` (vite) with `customConditions: ['source']` in each package's `tsconfig.json` (under `compilerOptions`, alongside `moduleResolution: 'bundler'` or `'nodenext'`). Without it, TS doesn't follow the `source` export condition and resolves workspace deps through `default` (the dist), giving stale type info during edits — even when vite/vitest see the source. The two settings are separate: vite's `resolve.conditions` covers runtime resolution; tsconfig's `customConditions` covers type resolution. Set both, on every package.
+**Suggested destination**: Strategies
+
+## 2026-05-08 — Bridge primitive + web transport (interop slice)
+
+From the `defineBridge` + `makeWebTransport` refactor in `slices/interop/`. Patterns and gotchas worth remembering:
+
+- **Effect `Schema.Schema<A, I, R>` is invariant in `A`.** A precise `Schema<{_tag: 'X'}, ...>` is _not_ assignable to `Schema<unknown, ...>`. Two escapes: (1) `Schema<any, ...>` in _internal_ constraint slots, with the `any` never leaking because user-visible types are extracted via `infer A` (covariant position) at the boundary; (2) per-pair conditional checks where `Tag` is inferred from position 0 of a tuple, so `S extends Schema.Schema<infer A, ...>` only ever runs against a concrete literal. Effect ships `Schema.Schema.AnyNoContext = Schema<any, any, never>` for this same reason.
+
+- **`Context.Tag<in out Id, in out Value>` is invariant in both slots.** A concrete `Tag<'X.Web.HandlerTag', HandlersFor<...>>` does NOT extend a parameterised 'Tag<`${string}.Web.HandlerTag`, ...>' even with `any` for Value. To admit concrete tags through a structural bound, both slots must be`any`. Consequence: two `defineBridge` calls with the same`name`produce _type-equivalent_ but _runtime-distinct_ tags — TS can't catch accidental name collisions, but runtime`Context.GenericTag`instances differ so unrelated bridges never confuse. Same trade-off`Context.Tag` makes elsewhere in this repo.
+
+- **`Layer<in ROut, ...>` contravariance + Effect's `never` trick.** `Layer.mergeAll` uses `readonly [Layer<never, any, any>, ...]` as its variadic bound. Contravariance flips so every concrete `Layer<X>` is assignable to `Layer<never>`. The same idiom applies to function inputs: when a structural bound needs to admit "any sender function" (some with concrete unions, some with empty `never`), put `never` in the contravariant slot — `(m: never) => void` admits both `(m: ConcreteUnion) => void` and `(m: never) => void`.
+
+- **`infer` preserves concrete generics through abstract bounds.** Inside a generic function body, `Bridges[I]['Web']['HandlerTag']` resolves to the bound (`Tag<any, any>`), not the call-site type. To recover the precise `Id`, do a conditional at the type-derivation site: `Bridges[I] extends { readonly Web: { readonly HandlerTag: Context.Tag<infer Id, any> } } ? Layer.Layer<Id> : never`. The `infer` runs against the concrete passed-in `Bridges[I]`, so the precise tag survives. Same idea recovers per-bridge SenderType via `infer F` on `makeSender`'s return.
+
+- **Function-intersection senders need narrowing at call sites.** TS treats `((a: A) => void) & ((b: B) => void)` as overloads — callable with A or B individually — but does NOT synthesise an intersection from a `(m: A | B) => void` implementation. Two consequences: (1) building an intersected sender from a union-argument runtime requires one `as` cast at the boundary; (2) calling the intersected sender with a discriminated-union value fails ("No overload matches this call") because TS can't pick — the caller must narrow first (`if (msg._tag === 'X') sender(msg)`).
+
+- **`vp-test` + `jsdom` resolution: workspace-level breakage.** `vite-plus` installed globally cannot resolve `jsdom` from a slice's `node_modules`. Adding `jsdom` as a devDep does NOT help — vp-test fails with "Cannot find package 'jsdom' imported from .../vite-plus/...". Reproduces across `global/react-tundraish` and any slice using `environment: 'jsdom'`. Pre-existing on the `ruthmarks/add-wildflower-node` branch; unrelated to bridge work, but worth knowing — `vp check` is the only verification axis available for browser-DOM tests today.
+
+- **Phantom-value sentinel pattern.** When a returned object needs type-carrying properties (so consumers can `typeof Bridge.Web.SenderType` etc.), a single module-scope `const PHANTOM = undefined as never` satisfies any property-typed slot via contextual typing of the surrounding interface. One oxlint-disable at the sentinel definition; no per-property casts needed.
+
+- **`Schema.Enums` as a dual-purpose namespaced constant.** `const Surface = { key, Schema: Schema.Enums({ Expo: 'expo' }) } as const` paired with `Schema.decodeUnknownOption(Surface.Schema)(value).pipe(Option.getOrNull)` gives runtime validation + a clean `typeof Surface.Schema.Type` for type-only consumers. Replaces a `SURFACE_KEY` + `SURFACE_EXPO` + type-alias trio with one namespaced object.
+
+- **Tuple-mapped layers enforce per-position pairing.** `bridges: Bridges` (tuple) + `layers: { readonly [I in keyof Bridges]: Layer.Layer<Context.Tag.Identifier<Bridges[I]['Web']['HandlerTag']>> }` enforces that the I-th layer satisfies the I-th bridge's tag. Mismatched lengths or wrong-bridge layers are compile errors. Better than a homogeneous `ReadonlyArray<Layer<Union>>` because the latter can't catch a missing layer for any specific tag.
+
+## Slice-level bridge tests earn their keep on cross-side alignment, not library-primitive round-trips or parent-package shape duplication
+
+**Discovered during**: ruthmarks/add-wildflower-node — review of [slices/navigation/navigation-core/tests/bridge.test.ts](../../slices/navigation/navigation-core/tests/bridge.test.ts)
+**Learning**: A slice's bridge test file landed at 16 tests / 151 lines, but only the last two earned their keep. The per-schema round-trip tests (L6-75) re-test `Schema.parseJson(Schema.TaggedStruct(...))` — a library primitive — three times for HostBackRequested / HostRequestedWebNavigation / RouteChanged. The shape assertions (L78-122) — `Object.keys(Host.OutboundSchemas)`, `HandlerTag.key === 'Navigation.Host.HandlerTag'` — duplicate the equivalent tests already covered in the parent `effect-messaging-core` package one layer down. The valuable tests (L123-150) exercise cross-side alignment via the test adapter: `NavigationBridge.Host.send(...)` then `Schema.decodeSync(NavigationBridge.Web.InboundSchemas.X)(sentSink[0])`. Heuristic when auditing slice-level test files: keep tests that exercise contracts unique to the slice (cross-side schema pairing, slice-specific options-shape honoring by an aggregator's encoding logic, e.g. `hostOptionsShape: { initialPath }` flowing through the Expo wiring); drop tests that re-test library primitives or re-assert parent-package invariants. The budget freed by dropping the duplicates should fund tests on slice-specific encoding behaviour the parent package can't possibly cover.
+**Suggested destination**: docs/Testing/Testing Reference.md
+
+## 2026-05-08 — interop slice planning
+
+- **Aggregation pattern (livestore-style) generalises beyond livestore.** `apps/wildflower-server/src/schema.ts` spreads `{tables, events, materializers}` from each slice's `<slice>-core/livestore/index.ts`. Mirror this shape (named exports + spread-merge in the host) for any new cross-slice primitive — messages, routes, contexts, etc. The user explicitly named this as the pattern to emulate.
+- **Where collector source lives.** On `main` / `ruthmarks/add-wildflower-node` the `slices/collector/*` packages are `dist/`-only — no `src/`. Live source is on `ruthmarks/add-fhir-server`. Check that branch before concluding the slice is empty or stub.
+- **`apps/wildflower-react` is the embedded SPA**, not a standalone site — it's loaded inside Expo's WebView and uses `MemoryRouter` (never `BrowserRouter`). It owns mounting; slices contribute `routesFragment` exports that the app spreads. Slice `*-react` / `*-web` packages should NOT ship their own `main.tsx` even though some currently do; the destination is wildflower-react owns mounting.
+- **Duplication-as-signal.** When the same boundary-crossing wiring (e.g. `host-bridge.tsx`) appears byte-identical in 2+ slices, treat it as a strong "extract to shared slice" signal — not per-slice glue. The fhir-server branch had three identical copies.
+- **Plan-mode handoff convention.** When planning a refactor for another agent to execute, write the final plan to `/workspaces/wildflower/Plan.md`. Make it self-contained: absolute or workspace-relative paths, explicit branch references at each ambiguity, concrete code examples for non-trivial APIs, an itemized Move/Rewrite/Add critical-files section that implicitly conveys execution order.
+- **Premature-abstraction antipattern in planning.** When proposing a new abstraction, enumerate the concrete use cases _first_ and let the user name the concept _after_ seeing them. My first interop draft conflated four distinct concerns under "Bootstrap" (window-globals, URL params, auth-token handoff, postMessage protocol); the user pushed back, we re-decomposed each case, and landed on a cleaner "everything is Messages" framing. Lesson: AskUserQuestion is most useful for naming/scoping _after_ enumeration, not for a priori category proposals.
+- **Project messaging idiom.** Cross-process data uses `_tag`-keyed Effect schemas via `Schema.parseJson(Schema.TaggedStruct(tag, ...))`, sent through a buffered `MessageHandler<Receive, Send>`. Past-tense / event-style naming (`AuthTokenIssued`, `RouteChanged`, `ResponseStarted`) — never imperative (`AnnounceAuthToken`, `SetRoute`). Each slice exports two directional records `<Slice>NativeToWeb` / `<Slice>WebToNative`; per-platform `Context.Tag`s use distinct names (`<Slice>WebMessageHandler` / `<Slice>ExpoMessageHandler`).
+- **`global/expo-tundraish` housed `EmbeddedWebView`** even though that's a cross-process-communication concern, not themed UI. The interop refactor relocates the WebView pieces; themed components stay. Pattern: when a `global/` package starts mixing concerns, look for a `slices/` extraction.

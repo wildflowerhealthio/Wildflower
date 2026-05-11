@@ -1,6 +1,6 @@
 import type { Schema } from 'effect'
 import { Duration, Effect } from 'effect'
-import { Origin } from 'kitchen-sink'
+import { Origin } from 'navigation-core'
 import { GatekeeperStore } from '../../contexts/gatekeeper-store.ts'
 import type { OAuthError400Schema, TokenResponseSchema } from '../../http-api-definition/oauth.ts'
 import { OAuthError401Schema, OAuthError500Schema } from '../../http-api-definition/oauth.ts'
@@ -16,11 +16,7 @@ type OAuthError401 = Schema.Schema.Type<typeof OAuthError401Schema>
 type OAuthError500 = Schema.Schema.Type<typeof OAuthError500Schema>
 type TokenResponse = Schema.Schema.Type<typeof TokenResponseSchema>
 
-// Builds the OAuth client redirect carrying `code` + `state`. Used by
-// both the Authorize handler (for auto-approved requests) and the
-// AuthorizationStatus handler. There is no HttpApi-driven URL-builder
-// for arbitrary client redirects (the target is a third-party URL, not
-// an endpoint we serve), so manual `URL` assembly is unavoidable.
+// Manual `URL` assembly: the target is a third-party redirect, not a route we serve.
 const buildClientRedirectUrl = (redirectUri: string, code: string, clientState: string): string => {
   const url = new URL(redirectUri)
   url.searchParams.set('code', code)
@@ -135,7 +131,7 @@ const issueTokenResponse = (input: {
     return {
       access_token: signed,
       token_type: 'Bearer',
-      expires_in: Math.floor(Duration.toMillis(ACCESS_TOKEN_TTL) / 1000),
+      expires_in: Math.floor(Duration.toSeconds(ACCESS_TOKEN_TTL)),
       scope: input.grantedScopes.join(' '),
       patient: input.patient ?? undefined,
     }

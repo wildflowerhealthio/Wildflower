@@ -1,29 +1,16 @@
-/**
- * `CryptoRandom` is an Effect Service that abstracts the two
- * non-deterministic primitives needed by this codebase: a single
- * uniformly-distributed byte and a v4 UUID. Lifting them behind a
- * service lets tests provide deterministic stubs (counter or seeded
- * PRNG) while production binds the platform's Web Crypto.
- *
- * `kitchen-sink` is platform-agnostic — it does not reach for any
- * global `crypto` object. Callers pass in their platform's crypto
- * (browser `window.crypto`, Node `node:crypto.webcrypto`, an Expo
- * polyfill, etc.) when constructing the live layer.
- */
-
 import { Context, Effect, Layer } from 'effect'
 
-/**
- * Minimum structural shape required from the platform's Web Crypto
- * implementation. Both browser `Crypto` and Node's `webcrypto` satisfy
- * this; an Expo / React Native polyfill that exposes the same two
- * methods does too.
- */
+/** Minimum structural shape required from the platform's Web Crypto implementation. */
 interface CryptoLike<TByteArray> {
   getRandomValues(array: TByteArray): TByteArray
   randomUUID(): string
 }
 
+/**
+ * Effect Service for non-deterministic primitives: a single uniform
+ * byte and a v4 UUID. Tests provide deterministic stubs; production
+ * binds the platform's Web Crypto.
+ */
 class CryptoRandom extends Context.Tag('CryptoRandom')<
   CryptoRandom,
   {
@@ -32,11 +19,7 @@ class CryptoRandom extends Context.Tag('CryptoRandom')<
   }
 >() {}
 
-/**
- * Live `CryptoRandom` backed by the supplied platform crypto. Pass the
- * platform's Web Crypto: `globalThis.crypto` in the browser,
- * `node:crypto.webcrypto` on Node, etc.
- */
+/** Live `CryptoRandom` backed by a generic `CryptoLike` shape. */
 const CryptoRandomLayerLive = <TByteArray extends ArrayLike<number>>(
   crypto: CryptoLike<TByteArray>,
   byteArray: TByteArray
@@ -46,8 +29,6 @@ const CryptoRandomLayerLive = <TByteArray extends ArrayLike<number>>(
       crypto.getRandomValues(byteArray)
       const byte = byteArray[0]
       if (byte === undefined) {
-        // Web Crypto guarantees the buffer is filled. Treat a missing
-        // byte as a runtime invariant violation.
         return Effect.die(new Error('crypto.getRandomValues did not fill buffer'))
       }
       return Effect.succeed(byte)
@@ -56,9 +37,27 @@ const CryptoRandomLayerLive = <TByteArray extends ArrayLike<number>>(
   })
 
 /**
- * Test stub that emits `0, 1, 2, …, 255, 0, 1, …` for bytes and
- * `"<prefix>-0001"`, `"<prefix>-0002"`, … for UUIDs. Use when you want
- * deterministic outputs and don't need to assert specific values.
+ * Live `CryptoRandom` backed by a standard Web Crypto-shaped object —
+ * `globalThis.crypto`, `node:crypto.webcrypto`, or an RN polyfill.
+ *
+ * Takes the exact shape of `globalThis.crypto` so the helper is
+ * assignable from the standard `Crypto` type without widening generic
+ * constraints.
+ */
+const cryptoRandomLayerFromWebCrypto = (
+  crypto: typeof globalThis.crypto
+): Layer.Layer<CryptoRandom> =>
+  CryptoRandomLayerLive<Uint8Array>(
+    {
+      getRandomValues: (array: Uint8Array) => crypto.getRandomValues(array),
+      randomUUID: () => crypto.randomUUID(),
+    },
+    new Uint8Array(1)
+  )
+
+/**
+ * Test stub: bytes cycle `0, 1, …, 255, 0, …`; UUIDs are `<prefix>-0001`,
+ * `<prefix>-0002`, …
  */
 const cryptoRandomCounter = (opts?: { uuidPrefix?: string }): Layer.Layer<CryptoRandom> => {
   let byteCount = 0
@@ -77,11 +76,7 @@ const cryptoRandomCounter = (opts?: { uuidPrefix?: string }): Layer.Layer<Crypto
   })
 }
 
-/**
- * Test stub backed by a seeded mulberry32 PRNG. Same seed → same
- * sequence of bytes and v4-shaped UUIDs. Use for property-based tests
- * where you want variety without flakiness.
- */
+/** Test stub: seeded mulberry32 PRNG. Same seed reproduces the same byte and UUID sequence. */
 const cryptoRandomFromSeed = (seed: number): Layer.Layer<CryptoRandom> => {
   let state = seed >>> 0
   const next32 = (): number => {
@@ -108,4 +103,10 @@ const cryptoRandomFromSeed = (seed: number): Layer.Layer<CryptoRandom> => {
 }
 
 export type { CryptoLike }
-export { CryptoRandom, CryptoRandomLayerLive, cryptoRandomCounter, cryptoRandomFromSeed }
+export {
+  CryptoRandom,
+  CryptoRandomLayerLive,
+  cryptoRandomCounter,
+  cryptoRandomFromSeed,
+  cryptoRandomLayerFromWebCrypto,
+}

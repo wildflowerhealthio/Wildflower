@@ -9,6 +9,7 @@ sudo chown -R $(whoami) /workspaces/wildflower/node_modules
 # curl -fsSL https://claude.ai/install.sh | bash
 npm install -g vite-plus
 npm install -g @typescript/native-preview
+npm install -g @tsdown/css
 vp install
 
 echo 'alias danger-claude="claude --dangerously-skip-permissions"' >> ~/.bashrc

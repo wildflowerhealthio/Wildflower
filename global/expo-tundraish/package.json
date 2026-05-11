@@ -49,15 +49,12 @@
     "effect": "catalog:",
     "expo": "catalog:",
     "expo-haptics": "catalog:",
-    "expo-router": "catalog:",
     "expo-symbols": "catalog:",
-    "expo-web-browser": "catalog:",
     "jest": "catalog:",
     "jest-expo": "catalog:",
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-reanimated": "catalog:",
-    "react-native-webview": "catalog:",
     "react-native-worklets": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
@@ -69,12 +66,9 @@
     "effect": ">=3.0.0",
     "expo": ">=55.0.0",
     "expo-haptics": ">=55.0.0",
-    "expo-router": ">=55.0.0",
     "expo-symbols": ">=55.0.0",
-    "expo-web-browser": ">=55.0.0",
     "react": ">=19.0.0",
     "react-native": ">=0.83.0",
-    "react-native-reanimated": ">=4.0.0",
-    "react-native-webview": ">=13.0.0"
+    "react-native-reanimated": ">=4.0.0"
   }
 }

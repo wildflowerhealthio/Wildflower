@@ -2,7 +2,7 @@ import { HttpApiError } from '@effect/platform'
 import { DateTime, type Duration, Effect, pipe } from 'effect'
 import type { UnknownException } from 'effect/Cause'
 import type * as jose from 'jose'
-import { Origin } from 'kitchen-sink'
+import { Origin } from 'navigation-core'
 import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { Client, SigningKey } from '../livestore/index.ts'
 

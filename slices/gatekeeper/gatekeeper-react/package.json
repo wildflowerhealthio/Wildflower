@@ -1,0 +1,47 @@
+{
+  "name": "gatekeeper-react",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./web-bridge": {
+      "source": "./src/web-bridge.ts",
+      "default": "./dist/web-bridge.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@types/react": "catalog:",
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "gatekeeper-core": "workspace:*",
+    "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-router": "catalog:",
+    "react-tundraish": "workspace:*",
+    "telemetry-web": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "gatekeeper-core": "workspace:*",
+    "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-router": "catalog:",
+    "react-tundraish": "workspace:*",
+    "telemetry-web": "workspace:*"
+  }
+}

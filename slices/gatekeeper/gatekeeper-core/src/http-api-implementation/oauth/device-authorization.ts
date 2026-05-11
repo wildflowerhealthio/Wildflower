@@ -1,7 +1,7 @@
 import type { Schema } from 'effect'
 import { DateTime, Duration, Effect } from 'effect'
-import { Origin } from 'kitchen-sink'
 import { CryptoRandom } from 'kitchen-sink/crypto-random'
+import type { Origin } from 'navigation-core'
 import { GatekeeperStore } from '../../contexts/gatekeeper-store.ts'
 import {
   type DeviceAuthorizationPayloadSchema,
@@ -11,6 +11,7 @@ import {
 } from '../../http-api-definition/oauth.ts'
 import { generateUserCode } from '../../internal/user-code.ts'
 import { AuthorizationRequest, Client, type ClientRow } from '../../livestore/index.ts'
+import { GatekeeperPaths } from '../../page-paths.ts'
 import { DEVICE_CODE_POLL_INTERVAL, type OAuthError400, type OAuthError401 } from './shared.ts'
 
 type DeviceAuthorizationPayload = Schema.Schema.Type<typeof DeviceAuthorizationPayloadSchema>
@@ -18,9 +19,7 @@ type DeviceAuthorizationResponse = Schema.Schema.Type<typeof DeviceAuthorization
 
 const DEVICE_AUTHORIZATION_TTL: Duration.Duration = Duration.minutes(5)
 
-// Device-flow client lookup: returns the row narrowed to "enabled"
-// (`disabledAt: null`). Errors are 401-shaped because device-auth speaks
-// JSON, not HTML.
+// Returns the row narrowed to enabled (`disabledAt: null`). Device-auth speaks JSON; errors are 401-shaped.
 const getEnabledClientForDeviceAuth = (
   clientId: string
 ): Effect.Effect<ClientRow & { disabledAt: null }, OAuthError401, GatekeeperStore> =>
@@ -98,20 +97,6 @@ const startDeviceAuthorizationRequest = (input: {
     return { id, userCode }
   })
 
-const buildDeviceAuthorizationResponse = (input: {
-  id: string
-  userCode: string
-  origin: string
-}): DeviceAuthorizationResponse =>
-  DeviceAuthorizationResponseSchema.make({
-    device_code: input.id,
-    user_code: input.userCode,
-    verification_uri: `${input.origin}/access/devices`,
-    verification_uri_complete: `${input.origin}/access/devices?user_code=${input.userCode}`,
-    expires_in: Math.floor(Duration.toMillis(DEVICE_AUTHORIZATION_TTL) / 1000),
-    interval: Math.floor(Duration.toMillis(DEVICE_CODE_POLL_INTERVAL) / 1000),
-  })
-
 const handleDeviceAuthorization = (
   payload: DeviceAuthorizationPayload
 ): Effect.Effect<
@@ -126,8 +111,16 @@ const handleDeviceAuthorization = (
       clientId: payload.client_id,
       requestedScopes,
     })
-    const origin = yield* Origin
-    return buildDeviceAuthorizationResponse({ id, userCode, origin })
+    const verificationUri = yield* GatekeeperPaths.deviceEntryUrl()
+    const verificationUriComplete = yield* GatekeeperPaths.deviceEntryUrlWithCode(userCode)
+    return DeviceAuthorizationResponseSchema.make({
+      device_code: id,
+      user_code: userCode,
+      verification_uri: verificationUri,
+      verification_uri_complete: verificationUriComplete,
+      expires_in: Math.floor(Duration.toSeconds(DEVICE_AUTHORIZATION_TTL)),
+      interval: Math.floor(Duration.toSeconds(DEVICE_CODE_POLL_INTERVAL)),
+    })
   })
 }
 

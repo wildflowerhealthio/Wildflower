@@ -7,6 +7,7 @@ import {
   CryptoRandomLayerLive,
   cryptoRandomCounter,
   cryptoRandomFromSeed,
+  cryptoRandomLayerFromWebCrypto,
 } from './index.ts'
 
 const drainBytes = (layer: Layer.Layer<CryptoRandom>, count: number): ReadonlyArray<number> =>
@@ -117,4 +118,15 @@ test('CryptoRandomLayerLive forwards to the supplied crypto.randomUUID', () => {
   }
   const uuids = drainUuids(CryptoRandomLayerLive(fakeCrypto, new Uint8Array(1)), 3)
   expect(uuids).toEqual(['id-1', 'id-2', 'id-3'])
+})
+
+test('cryptoRandomLayerFromWebCrypto wraps Web Crypto without an explicit type argument', () => {
+  // Pins type inference: the helper binds `Uint8Array` internally so callers don't repeat it.
+  const layer = cryptoRandomLayerFromWebCrypto(globalThis.crypto)
+  const bytes = drainBytes(layer, 4)
+  expect(bytes).toHaveLength(4)
+  for (const b of bytes) {
+    expect(b).toBeGreaterThanOrEqual(0)
+    expect(b).toBeLessThan(256)
+  }
 })

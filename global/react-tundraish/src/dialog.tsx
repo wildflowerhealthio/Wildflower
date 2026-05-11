@@ -1,5 +1,5 @@
-import { cn } from 'kitchen-sink'
 import { useLayoutEffect, useRef, type JSX, type ReactNode, type SyntheticEvent } from 'react'
+import { cn } from 'react-kitchen-sink'
 
 import styles from './dialog.module.css'
 

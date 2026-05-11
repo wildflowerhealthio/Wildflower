@@ -1,6 +1,6 @@
 import { HttpApiError } from '@effect/platform'
 import { Effect, Layer, Redacted } from 'effect'
-import { Origin } from 'kitchen-sink'
+import { Origin } from 'navigation-core'
 import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { RequireAuthMiddleware } from '../http-api-definition/require-auth.ts'
 import { verifyJwt } from '../internal/jwt.ts'

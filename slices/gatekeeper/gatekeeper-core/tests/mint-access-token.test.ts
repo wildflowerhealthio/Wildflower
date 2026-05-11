@@ -1,9 +1,10 @@
 import { DateTime, Duration, Effect, Either, Layer } from 'effect'
-import { Origin } from 'kitchen-sink'
+import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
 import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { mintAccessToken, verifyJwt } from '../src/internal/jwt.ts'
 import { Client, type ClientRow, SigningKey } from '../src/livestore/index.ts'
+import { testingKey1 } from './fixtures/signing-keys.ts'
 
 const labelOf = (q: unknown): string | undefined => {
   if (typeof q === 'object' && q !== null && 'label' in q && typeof q.label === 'string') {
@@ -58,7 +59,7 @@ const makeClient = (overrides: Partial<ClientRow> = {}): ClientRow => ({
 })
 
 test('mintAccessToken round-trips through verifyJwt', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const store = makeStubStore({
     signingKeys: [signingKey],
     clients: [makeClient()],
@@ -89,7 +90,7 @@ test('mintAccessToken round-trips through verifyJwt', async () => {
 })
 
 test('mintAccessToken issues a token whose verification fails when client is not registered', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const store = makeStubStore({
     signingKeys: [signingKey],
     clients: [],
@@ -115,7 +116,7 @@ test('mintAccessToken issues a token whose verification fails when client is not
 })
 
 test('mintAccessToken issues a token that fails verification once expired', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const store = makeStubStore({
     signingKeys: [signingKey],
     clients: [makeClient()],
@@ -141,7 +142,7 @@ test('mintAccessToken issues a token that fails verification once expired', asyn
 })
 
 test('mintAccessToken includes patient claim when supplied', async () => {
-  const signingKey = await SigningKey.generate()
+  const signingKey = testingKey1
   const store = makeStubStore({
     signingKeys: [signingKey],
     clients: [makeClient({ clientId: 'smart-app', allowedScopes: ['patient/*.read'] })],

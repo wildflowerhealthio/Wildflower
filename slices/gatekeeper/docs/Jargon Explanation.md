@@ -160,7 +160,7 @@ client. Flow:
 1. Browser POSTs `/oauth/device_authorization` with `client_id`. Server
    creates a `flow='device_code'` `AuthorizationRequest` and returns
    `{ device_code, user_code, verification_uri, ... }`.
-2. Owner enters the `user_code` at `/access/devices` (or scans the QR
+2. Owner enters the `user_code` at `/gatekeeper/devices` (or scans the QR
    for `verification_uri_complete`) on a separate, already-Owner-authed
    device.
 3. Owner approves via `POST /access/devices/:userCode/approve`.
@@ -184,16 +184,17 @@ from the URL via `history.replaceState`.
 
 The token verifies normally because `wildflower-host` is a registered
 [`Client`](#client) and `'owner' ∈ scope`. No new endpoint, no
-redemption table — the token's TTL (5 min default) plus the URL strip
-plus a `Referrer-Policy: no-referrer` on static pages are the
-load-bearing defenses against URL leakage.
+redemption table — the token's TTL (1 hour current dev default; the
+long-term value is unsettled) plus the URL strip plus a
+`Referrer-Policy: no-referrer` on static pages are the load-bearing
+defenses against URL leakage.
 
 ### `gatekeeper-pages` group
 
 The HttpApi group whose endpoints serve **HTML** to humans
 (`OAuthPollingPage`, `OAuthConsentPage`, `DeviceEntryPage`,
 `DeviceConsentPage`). Core ships definitions only; consumer slices
-(`gatekeeper-web`) provide the handler layer through the phantom-id
+(`gatekeeper-react`) provide the handler layer through the phantom-id
 bridge described in `docs/Effect/HttpApi Composition How-To.md`. Every
 page is public; auth is JS-driven on the JSON endpoints behind them.
 

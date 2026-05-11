@@ -2,7 +2,7 @@ import { type HttpApiGroup, HttpApiBuilder } from '@effect/platform'
 import { Layer } from 'effect'
 
 import type { LivestoreStore } from 'emr-core/contexts'
-import type { Origin } from 'kitchen-sink'
+import type { Origin } from 'navigation-core'
 import { FhirPublicApi, FhirResourcesApi } from '../http-api-definition/index.ts'
 import {
   SmartConfiguration as SmartConfigurationTag,

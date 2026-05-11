@@ -1,5 +1,5 @@
-import { cn } from 'kitchen-sink'
 import type { JSX, ReactNode } from 'react'
+import { cn } from 'react-kitchen-sink'
 
 import styles from './item-list.module.css'
 

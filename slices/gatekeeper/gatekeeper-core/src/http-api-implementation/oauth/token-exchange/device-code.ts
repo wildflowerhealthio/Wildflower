@@ -1,6 +1,6 @@
 import type { Schema } from 'effect'
 import { DateTime, Duration, Effect, Match } from 'effect'
-import type { Origin } from 'kitchen-sink'
+import type { Origin } from 'navigation-core'
 import { GatekeeperStore } from '../../../contexts/gatekeeper-store.ts'
 import type { DeviceCodePayload } from '../../../http-api-definition/oauth.ts'
 import { OAuthError400Schema } from '../../../http-api-definition/oauth.ts'

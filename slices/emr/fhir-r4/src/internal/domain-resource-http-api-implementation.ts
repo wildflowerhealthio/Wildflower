@@ -9,7 +9,7 @@ import type { Queryable, State } from '@livestore/livestore'
 import { Effect, type Layer, Schema } from 'effect'
 import { LivestoreStore } from 'emr-core/contexts'
 import { Bundle as StoreBundle } from 'emr-core/schemas'
-import { Origin } from 'kitchen-sink'
+import { Origin } from 'navigation-core'
 
 import { withMandatoryId } from '../data-types/with-mandatory-id.ts'
 import { FhirResourcesApiPrefix } from '../http-api-definition/index.ts'
