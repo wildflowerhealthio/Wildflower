@@ -1,0 +1,80 @@
+{
+  "name": "collector-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pure logic for the collector slice: remote/entity/link/source abstractions, livestore bindings for the remotes table, HTTP API definition + handlers, and the cross-process CollectorBridge.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/collector/collector-core"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./bridge": {
+      "source": "./src/bridge.ts",
+      "default": "./dist/bridge.js"
+    },
+    "./clients": {
+      "source": "./src/clients/index.ts",
+      "default": "./dist/clients/index.js"
+    },
+    "./contexts": {
+      "source": "./src/contexts/index.ts",
+      "default": "./dist/contexts/index.js"
+    },
+    "./http-api-definition": {
+      "source": "./src/http-api-definition/index.ts",
+      "default": "./dist/http-api-definition/index.js"
+    },
+    "./http-api-implementation": {
+      "source": "./src/http-api-implementation/index.ts",
+      "default": "./dist/http-api-implementation/index.js"
+    },
+    "./livestore": {
+      "source": "./src/livestore/index.ts",
+      "default": "./dist/livestore/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@fast-check/vitest": "catalog:",
+    "@livestore/common": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "@livestore/utils": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "browser-sniffer-core": "workspace:*",
+    "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "fast-check": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "@livestore/common": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "@livestore/utils": "catalog:",
+    "browser-sniffer-core": "workspace:*",
+    "effect": "catalog:",
+    "effect-messaging-core": "workspace:*"
+  }
+}

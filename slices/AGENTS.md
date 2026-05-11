@@ -15,7 +15,7 @@ slices/<name>/
 └── <name>-expo            # Expo-specific adapter (optional)
 ```
 
-Current slices: `apps`, `browser-sniffer`, `emr`, `gatekeeper`, `navigation`, `telemetry`.
+Current slices: `apps`, `browser-sniffer`, `collector`, `emr`, `gatekeeper`, `navigation`, `telemetry`.
 
 ## Rules
 

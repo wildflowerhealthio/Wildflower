@@ -1,0 +1,48 @@
+{
+  "name": "fhir-r4-client-collector",
+  "version": "0.0.0",
+  "private": true,
+  "description": "FHIR R4 concrete implementation of collector's Remote: patient + observation entities, the FhirR4Remote class, and same-origin upsert helpers.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/collector/fhir-r4-client-collector"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@fast-check/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "collector-core": "workspace:*",
+    "effect": "catalog:",
+    "emr-core": "workspace:*",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "collector-core": "workspace:*",
+    "effect": "catalog:",
+    "emr-core": "workspace:*",
+    "fhir-r4": "workspace:*"
+  }
+}
