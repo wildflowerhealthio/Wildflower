@@ -1,28 +1,43 @@
-import { useMemo, type JSX, type PropsWithChildren } from 'react'
+import { useEffect, useMemo, type JSX, type PropsWithChildren } from 'react'
 
-import { makeAuthenticatedSession } from './client.ts'
-import { AuthenticatedGatekeeperClientContext } from './gatekeeper-client-context.ts'
+import { makeGatekeeperClient } from './client/gatekeeper-client.ts'
+import { GatekeeperClientContext } from './gatekeeper-client-context.ts'
 
-type AuthenticatedGatekeeperClientProviderProps = PropsWithChildren<{
-  /** Bearer token; the session is memoised on `token`, so rotation boots a fresh runtime. */
-  readonly token: string
+type GatekeeperClientProviderProps = PropsWithChildren<{
+  /**
+   * Bearer token for authenticated calls, or `null` to provide an
+   * unauthenticated client (public OAuth/device endpoints). The provider
+   * memoises on `token`, so a rotation boots a fresh `ManagedRuntime`
+   * and disposes the previous one on unmount.
+   */
+  readonly token: string | null
 }>
 
 /**
- * Provides an authenticated session for {@link useGatekeeperClient}. The
- * caller must check whether a token is available before mounting.
+ * Provides a {@link GatekeeperClient} to descendants via
+ * {@link GatekeeperClientContext}. The app wraps the entire tree with
+ * `token={null}` for public routes; `<AuthorizedAppShell>` re-wraps
+ * inside with the live token so authenticated screens see a
+ * bearer-attached client without changing their hook calls.
  */
-const AuthenticatedGatekeeperClientProvider = ({
+const GatekeeperClientProvider = ({
   token,
   children,
-}: AuthenticatedGatekeeperClientProviderProps): JSX.Element => {
-  const session = useMemo(() => makeAuthenticatedSession(token), [token])
+}: GatekeeperClientProviderProps): JSX.Element => {
+  const client = useMemo(() => makeGatekeeperClient(token), [token])
+
+  // Dispose the previous runtime when `token` rotates or the provider unmounts.
+  useEffect(
+    () => (): void => {
+      void client.runtime.dispose()
+    },
+    [client]
+  )
+
   return (
-    <AuthenticatedGatekeeperClientContext.Provider value={session}>
-      {children}
-    </AuthenticatedGatekeeperClientContext.Provider>
+    <GatekeeperClientContext.Provider value={client}>{children}</GatekeeperClientContext.Provider>
   )
 }
 
-export { AuthenticatedGatekeeperClientProvider }
-export type { AuthenticatedGatekeeperClientProviderProps }
+export { GatekeeperClientProvider }
+export type { GatekeeperClientProviderProps }

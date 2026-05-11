@@ -11,7 +11,7 @@ import { OAuthConsentForm } from './oauth-consent-form.tsx'
 import type { Consent } from './types.ts'
 
 const OAuthConsentScreen = (): JSX.Element => {
-  const session = useGatekeeperClient()
+  const client = useGatekeeperClient()
   const navigate = useNavigate()
   const { id = '' } = useParams<{ id: string }>()
 
@@ -23,7 +23,7 @@ const OAuthConsentScreen = (): JSX.Element => {
     [id]
   )
 
-  const consentPromise = useEffectTs(consentEffect, session.runtime)
+  const consentPromise = useEffectTs(consentEffect, client.runtime)
 
   return (
     <Suspense fallback={<PageLoading />}>
@@ -33,7 +33,7 @@ const OAuthConsentScreen = (): JSX.Element => {
       >
         {(consent: Consent) => (
           <OAuthConsentForm
-            session={session}
+            client={client}
             consent={consent}
             onDone={() => {
               void navigate('/gatekeeper', { replace: true })

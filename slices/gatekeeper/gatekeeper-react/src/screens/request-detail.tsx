@@ -7,7 +7,7 @@ import { cn, useEffectTs } from 'react-kitchen-sink'
 import { Await, useParams } from 'react-router'
 import { StatusBadge, type StatusTone } from 'react-tundraish'
 
-import type { AuthenticatedSession } from '../client.ts'
+import type { GatekeeperClient } from '../client/gatekeeper-client.ts'
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
 import { formatInstant } from '../format-date.ts'
@@ -24,7 +24,7 @@ const statusTone = (status: string): StatusTone => {
 }
 
 const RequestDetailScreen = (): JSX.Element => {
-  const session = useGatekeeperClient()
+  const client = useGatekeeperClient()
   const { id = '' } = useParams<{ id: string }>()
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -37,14 +37,14 @@ const RequestDetailScreen = (): JSX.Element => {
     [id, refreshKey]
   )
 
-  const requestPromise = useEffectTs(requestEffect, session.runtime)
+  const requestPromise = useEffectTs(requestEffect, client.runtime)
 
   return (
     <Suspense fallback={<PageLoading />}>
       <Await resolve={requestPromise} errorElement={<AsyncErrorView title="Not Found" />}>
         {(request: HttpRequest) => (
           <RequestDetailBody
-            session={session}
+            client={client}
             request={request}
             id={id}
             onDecided={() => {
@@ -58,14 +58,14 @@ const RequestDetailScreen = (): JSX.Element => {
 }
 
 interface RequestDetailBodyProps {
-  readonly session: AuthenticatedSession
+  readonly client: GatekeeperClient
   readonly request: HttpRequest
   readonly id: string
   readonly onDecided: () => void
 }
 
 const RequestDetailBody = ({
-  session,
+  client,
   request,
   id,
   onDecided,
@@ -75,13 +75,13 @@ const RequestDetailBody = ({
   const decide = async (status: 'approved' | 'rejected'): Promise<void> => {
     try {
       if (status === 'approved') {
-        await session.runPromise(
+        await client.runPromise(
           Effect.flatMap(GatekeeperHttpApiClient, (c) =>
             c['access-management'].ApproveRequest({ path: { id } })
           )
         )
       } else {
-        await session.runPromise(
+        await client.runPromise(
           Effect.flatMap(GatekeeperHttpApiClient, (c) =>
             c['access-management'].DenyRequest({ path: { id } })
           )

@@ -6,7 +6,8 @@ import { OAuth } from 'gatekeeper-core/http-api-definition'
 import { useEffect, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 
-import { makeUnauthenticatedSession, writeToken } from '../client.ts'
+import { writeToken } from '../client/token-storage.ts'
+import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
 import { Field, FieldDescription } from './Field.tsx'
 import deviceEntryStyles from '../screens/device-entry.module.css'
 import pageLayout from '../styles/page-layout.module.css'
@@ -69,10 +70,9 @@ const toErrorState = (error: unknown): DeviceFlowState =>
  */
 const NeedsAuthMessage = (): JSX.Element => {
   const [state, setState] = useState<DeviceFlowState>({ tag: 'starting' })
+  const gatekeeperClient = useGatekeeperClient()
 
   useEffect(() => {
-    const session = makeUnauthenticatedSession()
-
     const flow = Effect.gen(function* () {
       const client = yield* GatekeeperHttpApiClient
 
@@ -116,11 +116,11 @@ const NeedsAuthMessage = (): JSX.Element => {
       )
     )
 
-    const fiber = session.runtime.runFork(flow)
+    const fiber = gatekeeperClient.runtime.runFork(flow)
     return (): void => {
       void Effect.runPromise(Fiber.interrupt(fiber))
     }
-  }, [])
+  }, [gatekeeperClient])
 
   if (state.tag === 'starting') {
     return (

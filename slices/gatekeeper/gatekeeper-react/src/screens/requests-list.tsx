@@ -6,7 +6,7 @@ import { useEffectTs, cn } from 'react-kitchen-sink'
 import { Await, useNavigate } from 'react-router'
 import { ItemList } from 'react-tundraish'
 
-import type { AuthenticatedSession } from '../client.ts'
+import type { GatekeeperClient } from '../client/gatekeeper-client.ts'
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
 import { formatInstant } from '../format-date.ts'
@@ -16,7 +16,7 @@ import pageLayout from '../styles/page-layout.module.css'
 type HttpRequest = Schema.Schema.Type<typeof AccessManagement.HttpRequestSchema>
 
 const RequestsListScreen = (): JSX.Element => {
-  const session = useGatekeeperClient()
+  const client = useGatekeeperClient()
   const [refreshKey, setRefreshKey] = useState(0)
 
   const requestsEffect = useMemo(
@@ -25,14 +25,14 @@ const RequestsListScreen = (): JSX.Element => {
     [refreshKey]
   )
 
-  const requestsPromise = useEffectTs(requestsEffect, session.runtime)
+  const requestsPromise = useEffectTs(requestsEffect, client.runtime)
 
   return (
     <Suspense fallback={<PageLoading />}>
       <Await resolve={requestsPromise} errorElement={<AsyncErrorView />}>
         {(requests: readonly HttpRequest[]) => (
           <RequestsListBody
-            session={session}
+            client={client}
             requests={requests}
             onDecided={() => {
               setRefreshKey((n) => n + 1)
@@ -45,25 +45,25 @@ const RequestsListScreen = (): JSX.Element => {
 }
 
 interface RequestsListBodyProps {
-  readonly session: AuthenticatedSession
+  readonly client: GatekeeperClient
   readonly requests: readonly HttpRequest[]
   readonly onDecided: () => void
 }
 
-const RequestsListBody = ({ session, requests, onDecided }: RequestsListBodyProps): JSX.Element => {
+const RequestsListBody = ({ client, requests, onDecided }: RequestsListBodyProps): JSX.Element => {
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
 
   const decide = async (id: string, status: 'approved' | 'rejected'): Promise<void> => {
     try {
       if (status === 'approved') {
-        await session.runPromise(
+        await client.runPromise(
           Effect.flatMap(GatekeeperHttpApiClient, (c) =>
             c['access-management'].ApproveRequest({ path: { id } })
           )
         )
       } else {
-        await session.runPromise(
+        await client.runPromise(
           Effect.flatMap(GatekeeperHttpApiClient, (c) =>
             c['access-management'].DenyRequest({ path: { id } })
           )

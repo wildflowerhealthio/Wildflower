@@ -5,7 +5,7 @@ import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Checkbox, RadioGroup } from 'react-tundraish'
 
-import type { AuthenticatedSession } from '../../client.ts'
+import type { GatekeeperClient } from '../../client/gatekeeper-client.ts'
 import { Field, FieldDescription } from '../../components/Field.tsx'
 import type { Consent } from './types.ts'
 import { usePatientOptions } from './use-patient-options.ts'
@@ -13,12 +13,12 @@ import pageLayout from '../../styles/page-layout.module.css'
 import scopeListStyles from '../../styles/scope-list.module.css'
 
 interface OAuthConsentFormProps {
-  readonly session: AuthenticatedSession
+  readonly client: GatekeeperClient
   readonly consent: Consent
   readonly onDone: () => void
 }
 
-const OAuthConsentForm = ({ session, consent, onDone }: OAuthConsentFormProps): JSX.Element => {
+const OAuthConsentForm = ({ client, consent, onDone }: OAuthConsentFormProps): JSX.Element => {
   const requestedScopes = consent.scopes
   const hasPatientScope = requestedScopes.some(
     (s) => s.startsWith('patient/') || s === 'launch/patient'
@@ -29,7 +29,7 @@ const OAuthConsentForm = ({ session, consent, onDone }: OAuthConsentFormProps): 
       : new Set(requestedScopes)
   )
   const [selectedPatient, setSelectedPatient] = useState<string>(consent.patient ?? '')
-  const { options: patients } = usePatientOptions(session, hasPatientScope)
+  const { options: patients } = usePatientOptions(client, hasPatientScope)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -49,7 +49,7 @@ const OAuthConsentForm = ({ session, consent, onDone }: OAuthConsentFormProps): 
     setSubmitting(true)
     setError(null)
     try {
-      const result = await session.runPromise(
+      const result = await client.runPromise(
         Effect.flatMap(GatekeeperHttpApiClient, (c) =>
           c['oauth-consent'].ApproveOAuthConsent({
             path: { id: consent.id },
@@ -78,7 +78,7 @@ const OAuthConsentForm = ({ session, consent, onDone }: OAuthConsentFormProps): 
     setSubmitting(true)
     setError(null)
     try {
-      const result = await session.runPromise(
+      const result = await client.runPromise(
         Effect.flatMap(GatekeeperHttpApiClient, (c) =>
           c['oauth-consent'].DenyOAuthConsent({
             path: { id: consent.id },

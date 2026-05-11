@@ -14,7 +14,7 @@ import styles from './approved-app-detail.module.css'
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
 
 const ApprovedAppDetailScreen = (): JSX.Element => {
-  const session = useGatekeeperClient()
+  const client = useGatekeeperClient()
   const { id = '' } = useParams<{ id: string }>()
 
   const grantEffect = useMemo(
@@ -25,7 +25,7 @@ const ApprovedAppDetailScreen = (): JSX.Element => {
     [id]
   )
 
-  const grantPromise = useEffectTs(grantEffect, session.runtime)
+  const grantPromise = useEffectTs(grantEffect, client.runtime)
 
   return (
     <Suspense fallback={<PageLoading />}>

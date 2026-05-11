@@ -7,7 +7,7 @@ import { cn, useEffectTs } from 'react-kitchen-sink'
 import { Await, useNavigate } from 'react-router'
 import { ItemList, Menu, type MenuItem } from 'react-tundraish'
 
-import type { AuthenticatedSession } from '../client.ts'
+import type { GatekeeperClient } from '../client/gatekeeper-client.ts'
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
 import { RevokeGrantDialog } from '../components/RevokeGrantDialog.tsx'
@@ -18,7 +18,7 @@ import pageLayout from '../styles/page-layout.module.css'
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
 
 const AccessIndexScreen = (): JSX.Element => {
-  const session = useGatekeeperClient()
+  const client = useGatekeeperClient()
   const [refreshKey, setRefreshKey] = useState(0)
 
   const grantsEffect = useMemo(
@@ -27,14 +27,14 @@ const AccessIndexScreen = (): JSX.Element => {
     [refreshKey]
   )
 
-  const grantsPromise = useEffectTs(grantsEffect, session.runtime)
+  const grantsPromise = useEffectTs(grantsEffect, client.runtime)
 
   return (
     <Suspense fallback={<PageLoading />}>
       <Await resolve={grantsPromise} errorElement={<AsyncErrorView />}>
         {(grants: readonly Grant[]) => (
           <AccessIndexBody
-            session={session}
+            client={client}
             grants={grants}
             onRevoked={() => {
               setRefreshKey((n) => n + 1)
@@ -47,19 +47,19 @@ const AccessIndexScreen = (): JSX.Element => {
 }
 
 interface AccessIndexBodyProps {
-  readonly session: AuthenticatedSession
+  readonly client: GatekeeperClient
   readonly grants: readonly Grant[]
   readonly onRevoked: () => void
 }
 
-const AccessIndexBody = ({ session, grants, onRevoked }: AccessIndexBodyProps): JSX.Element => {
+const AccessIndexBody = ({ client, grants, onRevoked }: AccessIndexBodyProps): JSX.Element => {
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null)
 
   const revoke = async (id: string): Promise<void> => {
     try {
-      await session.runPromise(
+      await client.runPromise(
         Effect.flatMap(GatekeeperHttpApiClient, (c) =>
           c['access-management'].RevokeGrant({ path: { id } })
         )

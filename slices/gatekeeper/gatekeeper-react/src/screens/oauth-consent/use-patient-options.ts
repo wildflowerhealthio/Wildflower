@@ -3,17 +3,16 @@ import { Effect } from 'effect'
 import { FhirResourcesApi } from 'fhir-r4/http-api-definition'
 import { useEffect, useState } from 'react'
 
-import type { AuthenticatedSession } from '../../client.ts'
-import { setBearerToken } from '../../client.ts'
+import { setBearerToken, type GatekeeperClient } from '../../client/gatekeeper-client.ts'
 import type { PatientOption } from './types.ts'
 
 const fetchPatientOptionsEffect = (
-  session: AuthenticatedSession
+  token: string
 ): Effect.Effect<readonly PatientOption[], unknown, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const client = yield* HttpApiClient.make(FhirResourcesApi, {
       baseUrl: '/',
-      transformClient: setBearerToken(session.token),
+      transformClient: setBearerToken(token),
     })
     const bundle = yield* client.Patient.SearchByGet({ urlParams: {} })
     return (bundle.entry ?? []).flatMap((entry): PatientOption[] => {
@@ -46,18 +45,21 @@ interface PatientOptionsState {
 }
 
 /**
- * Fetches the patient list from the FHIR R4 service. Failures log through
- * the session runtime's logger (Sentry + console via telemetry-web).
+ * Fetches the patient list from the FHIR R4 service. Builds a FHIR
+ * client inline (rather than going through `GatekeeperHttpApiClient`)
+ * because the patient endpoint is on a different API surface. Reuses
+ * the gatekeeper client's bearer token + runtime so a single auth
+ * source still drives both surfaces.
+ *
+ * Skips entirely when `client.token` is `null` — the patient picker is
+ * only meaningful for an authenticated owner consenting to a SMART app.
  */
-const usePatientOptions = (
-  session: AuthenticatedSession,
-  enabled: boolean
-): PatientOptionsState => {
+const usePatientOptions = (client: GatekeeperClient, enabled: boolean): PatientOptionsState => {
   const [options, setOptions] = useState<readonly PatientOption[]>([])
-  const [loading, setLoading] = useState(enabled)
+  const [loading, setLoading] = useState(enabled && client.token !== null)
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || client.token === null) {
       setOptions([])
       setLoading(false)
       return () => undefined
@@ -65,7 +67,7 @@ const usePatientOptions = (
     setLoading(true)
     let cancelled = false
     const fiber = Effect.runFork(
-      fetchPatientOptionsEffect(session).pipe(Effect.provide(session.runtime))
+      fetchPatientOptionsEffect(client.token).pipe(Effect.provide(client.runtime))
     )
     fiber.addObserver((exit) => {
       if (cancelled) return
@@ -77,7 +79,7 @@ const usePatientOptions = (
     return () => {
       cancelled = true
     }
-  }, [session, enabled])
+  }, [client, enabled])
 
   return { options, loading }
 }

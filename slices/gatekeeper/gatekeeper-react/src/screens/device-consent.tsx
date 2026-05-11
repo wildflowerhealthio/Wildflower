@@ -7,7 +7,7 @@ import { cn, useEffectTs } from 'react-kitchen-sink'
 import { Await, useNavigate, useParams } from 'react-router'
 import { Checkbox } from 'react-tundraish'
 
-import type { AuthenticatedSession } from '../client.ts'
+import type { GatekeeperClient } from '../client/gatekeeper-client.ts'
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { Field, FieldDescription } from '../components/Field.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
@@ -18,7 +18,7 @@ import scopeListStyles from '../styles/scope-list.module.css'
 type DeviceConsent = Schema.Schema.Type<typeof Devices.DeviceConsentSchema>
 
 const DeviceConsentScreen = (): JSX.Element => {
-  const session = useGatekeeperClient()
+  const client = useGatekeeperClient()
   const navigate = useNavigate()
   const { userCode = '' } = useParams<{ userCode: string }>()
 
@@ -30,7 +30,7 @@ const DeviceConsentScreen = (): JSX.Element => {
     [userCode]
   )
 
-  const consentPromise = useEffectTs(consentEffect, session.runtime)
+  const consentPromise = useEffectTs(consentEffect, client.runtime)
 
   return (
     <Suspense fallback={<PageLoading />}>
@@ -40,7 +40,7 @@ const DeviceConsentScreen = (): JSX.Element => {
       >
         {(consent: DeviceConsent) => (
           <DeviceConsentForm
-            session={session}
+            client={client}
             consent={consent}
             onDone={() => {
               void navigate('/gatekeeper', { replace: true })
@@ -53,12 +53,12 @@ const DeviceConsentScreen = (): JSX.Element => {
 }
 
 interface DeviceConsentFormProps {
-  readonly session: AuthenticatedSession
+  readonly client: GatekeeperClient
   readonly consent: DeviceConsent
   readonly onDone: () => void
 }
 
-const DeviceConsentForm = ({ session, consent, onDone }: DeviceConsentFormProps): JSX.Element => {
+const DeviceConsentForm = ({ client, consent, onDone }: DeviceConsentFormProps): JSX.Element => {
   const requestedScopes = consent.requestedScopes
   const [selectedScopes, setSelectedScopes] = useState<ReadonlySet<string>>(
     () => new Set(requestedScopes)
@@ -82,7 +82,7 @@ const DeviceConsentForm = ({ session, consent, onDone }: DeviceConsentFormProps)
     setSubmitting(true)
     setError(null)
     try {
-      const result = await session.runPromise(
+      const result = await client.runPromise(
         Effect.flatMap(GatekeeperHttpApiClient, (c) =>
           c.devices.ApproveDeviceConsent({
             path: { userCode: consent.userCode },
@@ -106,7 +106,7 @@ const DeviceConsentForm = ({ session, consent, onDone }: DeviceConsentFormProps)
     setSubmitting(true)
     setError(null)
     try {
-      const result = await session.runPromise(
+      const result = await client.runPromise(
         Effect.flatMap(GatekeeperHttpApiClient, (c) =>
           c.devices.DenyDeviceConsent({ path: { userCode: consent.userCode } })
         )
