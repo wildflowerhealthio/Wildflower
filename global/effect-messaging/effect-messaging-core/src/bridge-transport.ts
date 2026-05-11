@@ -1,5 +1,17 @@
-import type { Scope } from 'effect'
-import { Deferred, Effect, Queue, Runtime, Schema, Stream } from 'effect'
+import type { ParseResult, Scope } from 'effect'
+import {
+  Array,
+  Deferred,
+  Effect,
+  Match,
+  pipe,
+  Queue,
+  Schema,
+  Stream,
+  Record,
+  Option,
+  HashMap,
+} from 'effect'
 import * as Bridge from './bridge.ts'
 import * as DispatchError from './dispatch-error.ts'
 import { TransportAdapter } from './transport-adapter.ts'
@@ -12,16 +24,16 @@ const READY_TAG = '__Ready' as const
  * Composed into the host-side dispatch union and used to encode the
  * outbound wire string on the web side via {@link READY_RAW}.
  */
-const ReadyMessage = Schema.TaggedStruct(READY_TAG, {})
+const ReadyMessageSchema = Schema.TaggedStruct(READY_TAG, {})
 
 /** Wire-format schema for `__Ready`: encoded as a JSON tagged struct. */
-const ReadyMessageWire = Schema.parseJson(ReadyMessage)
+const ReadyMessageWireSchema = Schema.parseJson(ReadyMessageSchema)
 
 /**
  * Pre-encoded `__Ready` wire string. Schema-encoded so the wire form
  * stays in lockstep with the inbound dispatch's union member.
  */
-const READY_RAW = Schema.encodeSync(ReadyMessageWire)({ _tag: READY_TAG })
+const READY_RAW = Schema.encodeSync(ReadyMessageWireSchema)({ _tag: READY_TAG })
 
 /**
  * Cross-platform bridge transport composing one or more
@@ -45,12 +57,12 @@ interface BridgeTransport<
    * is up before the web bundle even loads, so the web doesn't need
    * to wait on anyone.
    */
-  readonly sendMessage: Bridge.SenderIntersection<Bridges, Side>
+  readonly sendMessage: Bridge.MessageSender<Bridges, Side>
   /**
    * Push one raw inbound string into the dispatch fiber. After scope
    * close the call is a no-op (the queue is shut down).
    */
-  readonly enqueue: (raw: string) => void
+  readonly enqueue: (raw: string) => Effect.Effect<void>
   /** Resolves once the dispatch fiber has drained every message enqueued before the call. */
   readonly flushed: Effect.Effect<void>
   /**
@@ -86,65 +98,77 @@ const make = <
     const { bridges, layers, side } = config
     const adapter = yield* TransportAdapter
 
+    type AnyHandlers = Readonly<Record<string, Handler | undefined>>
+    const handlersByBridgeIndex: ReadonlyArray<AnyHandlers | undefined> = yield* pipe(
+      Array.zipWith(bridges, layers, (bridge, layer): Effect.Effect<AnyHandlers | undefined> => {
+        if (bridge === undefined || layer === undefined) {
+          return Effect.succeed<AnyHandlers | undefined>(undefined)
+        }
+        const half = bridge[side]
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        const handlersEffect = Effect.provide(half.HandlerTag, layer) as Effect.Effect<
+          AnyHandlers | undefined
+        >
+        return handlersEffect
+      }),
+      Effect.all
+    )
+
     /**
-     * Send-gating Deferred. The host suspends `sendMessage` on this
-     * until the web posts `__Ready`. On the web side we resolve it
-     * immediately so the same `Deferred.await` is a no-op.
+     * Send-gating Deferred. Resolved when the local `__Ready` handler
+     * runs. Host receives `__Ready` from the web peer; web self-queues
+     * a `__Ready` below so the same dispatch path resolves the gate on
+     * both sides (no parallel pre-resolve branch).
      */
     const peerReady = yield* Deferred.make<void>()
-    if (side === 'Web') {
-      yield* Deferred.succeed(peerReady, undefined)
-    }
 
-    type AnyHandlers = Readonly<Record<string, Handler | undefined>>
-    const handlersByBridgeIndex: Array<AnyHandlers | undefined> = []
-    for (let i = 0; i < bridges.length; i++) {
-      const bridge = bridges[i]
-      const layer = layers[i]
-      if (bridge === undefined || layer === undefined) {
-        handlersByBridgeIndex.push(undefined)
-        continue
-      }
-      const half = bridge[side]
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-      const handlers = (yield* Effect.provide(half.HandlerTag, layer)) as AnyHandlers
-      handlersByBridgeIndex.push(handlers)
-    }
-
-    /**
-     * Flat tag→handler map plus per-tag inner schemas built in lockstep.
-     * Duplicate-tag detection runs over the same loop so a wiring drift
-     * fails synchronously here, before the dispatch fiber starts.
-     */
-    const handlerByTag = new Map<string, Handler | undefined>()
-    const innerSchemas: AnyTaggedSchema[] = []
-    for (let i = 0; i < bridges.length; i++) {
-      const bridge = bridges[i]
-      const handlers = handlersByBridgeIndex[i]
-      if (bridge === undefined || handlers === undefined) continue
-      const half = bridge[side]
-      for (const [tag, schema] of Object.entries(half.InboundSchemas)) {
-        if (handlerByTag.has(tag)) {
-          const existingBridge =
-            bridges.find((b, j) => j < i && Object.hasOwn(b[side].InboundSchemas, tag))?.name ?? '?'
-          throw new Error(
-            `[effect-messaging] duplicate inbound tag "${tag}" across bridges "${existingBridge}" and "${bridge.name}"`
-          )
+    const tagHandlerPairs = pipe(
+      Array.zipWith(
+        bridges,
+        handlersByBridgeIndex,
+        (bridge, handlers): [string, Handler | undefined][] => {
+          if (bridge === undefined || handlers === undefined) {
+            return [] as [string, Handler | undefined][]
+          }
+          return Record.toEntries(handlers)
         }
-        handlerByTag.set(tag, handlers[tag])
-        innerSchemas.push(Schema.typeSchema(schema))
+      ),
+      Array.flatten,
+      Array.filter((entry): entry is [string, Handler] => entry[1] !== undefined),
+      Array.append([
+        READY_TAG,
+        () => Deferred.succeed(peerReady, undefined).pipe(Effect.asVoid),
+      ] as [string, Handler])
+    )
+    const [repeatedTags] = Array.reduce(
+      tagHandlerPairs,
+      [new Set<string>(), new Set<string>()] as const,
+      ([repeats, seen], [tag]) => {
+        if (seen.has(tag)) {
+          repeats.add(tag)
+        } else {
+          seen.add(tag)
+        }
+
+        return [repeats, seen]
       }
+    )
+    if (repeatedTags.size > 0) {
+      throw new Error(`duplicate inbound tag(s) "${[...repeatedTags].join('", "')}"`)
     }
 
     /**
-     * Control-channel hookup. The host receives `__Ready` from web and
-     * resolves the send gate; web doesn't expect any control messages
-     * from the host today, so its dispatch union is bridge-only.
+     * Flat tag→handler map. Duplicate-tag detection runs above on
+     * `tagHandlerPairs` so a wiring drift fails synchronously here,
+     * before the dispatch fiber starts. The schema union below is
+     * built from the same bridges so its tags stay in sync.
      */
-    if (side === 'Host') {
-      handlerByTag.set(READY_TAG, () => Deferred.succeed(peerReady, undefined).pipe(Effect.asVoid))
-      innerSchemas.push(ReadyMessage)
-    }
+    const handlerByTag = HashMap.fromIterable<string, Handler>(tagHandlerPairs)
+    const innerSchemas: Array.NonEmptyArray<AnyTaggedSchema> = pipe(
+      Array.flatMap(bridges, (bridge) => Record.values(bridge[side].InboundSchemas)),
+      Array.map(Schema.typeSchema),
+      Array.append(ReadyMessageSchema)
+    )
 
     const taggedSenders = Bridge.senderByTag(bridges, side)
 
@@ -155,18 +179,22 @@ const make = <
      * shot. Tags outside the union surface as `ParseError` (no
      * separate `UnknownTag` distinction — the union folds the two
      * cases into one).
+     *
+     * Today `innerSchemas` always carries at least `ReadyMessageSchema`
+     * (appended above), so the empty-array branch below is defensive —
+     * `Schema.Never` would reject every inbound message, matching "this
+     * side accepts nothing inbound" if the `__Ready` append is ever
+     * removed.
      */
-    // A side with zero inbound (e.g., bridges that only send) gets
-    // `Schema.Never`, which rejects every message — equivalent to "this
-    // side accepts nothing inbound." Anything that arrives is logged as a
-    // parse error.
-    const firstSchema = innerSchemas[0]
-    const dispatchMessage: AnyTaggedSchema =
-      firstSchema === undefined
-        ? Schema.Never
-        : innerSchemas.length === 1
-          ? firstSchema
-          : Schema.Union(firstSchema, ...innerSchemas.slice(1))
+    const dispatchMessage: AnyTaggedSchema = Match.value(innerSchemas).pipe(
+      Match.withReturnType<AnyTaggedSchema>(),
+      Match.when(
+        (arr): arr is [AnyTaggedSchema] => arr.length == 1,
+        ([first]) => first
+      ),
+      Match.orElse(([first, ...rest]) => Schema.Union(first, ...rest))
+    )
+
     const decodeMessage = Schema.decode(Schema.parseJson(dispatchMessage))
 
     /**
@@ -179,22 +207,25 @@ const make = <
     const decodeAndDispatch = (
       raw: string,
       source: DispatchError.Source
-    ): Effect.Effect<void, DispatchError.DispatchError> =>
+    ): Effect.Effect<void, DispatchError.DispatchError | ParseResult.ParseError> =>
       Effect.gen(function* () {
         // The Union schema decodes to `any`; re-narrow at this single
         // boundary. Schema acceptance guarantees `_tag: string`.
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
         const decoded = (yield* decodeMessage(raw)) as { readonly _tag: string }
-        const handler = handlerByTag.get(decoded._tag)
-        if (handler === undefined) {
-          return yield* new DispatchError.Internal({
-            source,
-            tag: decoded._tag,
-            reason: 'handler is undefined for an indexed tag',
-          })
-        }
-        yield* handler(decoded)
-        return undefined
+        const maybeHandler = HashMap.get(handlerByTag, decoded._tag)
+
+        return yield* Option.match(maybeHandler, {
+          onNone: () =>
+            Effect.fail(
+              new DispatchError.Internal({
+                source,
+                tag: decoded._tag,
+                reason: 'handler is undefined for a dispatched tag',
+              })
+            ),
+          onSome: (handler) => handler(decoded),
+        })
       })
 
     interface QueueItem {
@@ -204,45 +235,58 @@ const make = <
     }
     const queue = yield* Queue.unbounded<QueueItem>()
 
+    const handleDrainMarker = (
+      item: QueueItem & { readonly drainMarker: Deferred.Deferred<void> }
+    ): Effect.Effect<void, never, TransportAdapter | Scope.Scope> =>
+      Deferred.succeed(item.drainMarker, undefined).pipe(Effect.asVoid)
+
+    const handleDecode = (
+      item: QueueItem
+    ): Effect.Effect<void, never, TransportAdapter | Scope.Scope> =>
+      decodeAndDispatch(item.raw, item.source).pipe(
+        Effect.catchAll(DispatchError.toLog),
+        // Handler defects don't take the dispatch fiber down.
+        Effect.catchAllDefect((defect) =>
+          Effect.logError(
+            `[effect-messaging] handler defect; dispatch continues: ${String(defect)}`
+          )
+        )
+      )
+
     yield* Effect.forkScoped(
       Stream.fromQueue(queue, { shutdown: true }).pipe(
-        Stream.runForEach((item) =>
-          item.drainMarker !== undefined
-            ? Deferred.succeed(item.drainMarker, undefined).pipe(Effect.asVoid)
-            : decodeAndDispatch(item.raw, item.source).pipe(
-                Effect.catchAll(DispatchError.toLog),
-                // Handler defects don't take the dispatch fiber down.
-                Effect.catchAllDefect((defect) =>
-                  Effect.logError(
-                    `[effect-messaging] handler defect; dispatch continues: ${String(defect)}`
-                  )
-                )
-              )
+        Stream.runForEach(
+          Match.type<QueueItem>().pipe(
+            Match.withReturnType<Effect.Effect<void, never, TransportAdapter | Scope.Scope>>(),
+            Match.when({ drainMarker: Match.defined }, handleDrainMarker),
+            Match.orElse((item) => handleDecode(item))
+          )
         )
       )
     )
 
-    // After scope close the queue is shut down; `Effect.ignore` drops the resulting interrupt cleanly.
-    const runtime = yield* Effect.runtime<never>()
-    const enqueue = (raw: string): void => {
-      Runtime.runSync(runtime)(Queue.offer(queue, { raw, source: 'live' }).pipe(Effect.ignore))
+    if (side === 'Web') {
+      yield* Queue.offer(queue, { raw: '{"_tag":"__Ready"}', source: 'initial' })
     }
-
     const initial = yield* adapter.drainInitial
     for (const raw of initial) {
       yield* Queue.offer(queue, { raw, source: 'initial' })
     }
+
+    // After scope close the queue is shut down; `Effect.ignore` drops the resulting interrupt cleanly.
+    const enqueue = (raw: string): Effect.Effect<void> =>
+      Queue.offer(queue, { raw, source: 'live' }).pipe(Effect.ignore)
 
     if (adapter.attachLive !== undefined) {
       yield* adapter.attachLive(enqueue)
     }
 
     /** Sentinel-marker drain: the dispatch fiber processes the marker after every prior message. */
-    const flushed: Effect.Effect<void> = Effect.gen(function* () {
-      const marker = yield* Deferred.make<void>()
-      yield* Queue.offer(queue, { raw: '', source: 'live', drainMarker: marker })
-      yield* Deferred.await(marker)
-    })
+    const flushed: Effect.Effect<void> = pipe(
+      Deferred.make<void>(),
+      Effect.tap((marker) => Queue.offer(queue, { raw: '', source: 'live', drainMarker: marker })),
+      Effect.flatMap((marker) => Deferred.await(marker))
+    )
 
     const sendMessage = (message: { readonly _tag: string }): Effect.Effect<void> =>
       Effect.gen(function* () {
@@ -258,13 +302,15 @@ const make = <
         return undefined
       }).pipe(Effect.provideService(TransportAdapter, adapter))
 
-    const signalReady: Effect.Effect<void> =
-      side === 'Web' ? adapter.bareSender(READY_RAW) : Effect.void
+    const signalReady = {
+      Web: adapter.bareSender(READY_RAW),
+      Host: Effect.void,
+    }[side]
 
     return {
       // Runtime is `(m: {_tag: string}) => Effect<void>`; public type is the function-intersection.
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-      sendMessage: sendMessage as Bridge.SenderIntersection<Bridges, Side>,
+      sendMessage: sendMessage as Bridge.MessageSender<Bridges, Side>,
       enqueue,
       flushed,
       signalReady,

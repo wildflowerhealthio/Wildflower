@@ -5,7 +5,7 @@ import {
   type Bridge,
   type TransportAdapter,
   REACT_NATIVE_WEBVIEW_GLOBAL,
-  UrlCodec,
+  UrlParamMessage,
 } from 'effect-messaging-core'
 
 /** Window globals the web-side adapter observes. */
@@ -53,25 +53,29 @@ const make = (bridges: ReadonlyArray<Bridge.AnyBridge>): TransportAdapter['Type'
 
   const drainInitial: Effect.Effect<ReadonlyArray<string>> = Effect.sync(() => {
     const search = window.location.search
-    const messages = UrlCodec.decodeMessagesFromParams(search, bridges)
+    const messages = UrlParamMessage.reEncodeMessagesFromParams(search, bridges)
     if (messages.length > 0) {
       const url = new URL(window.location.href)
-      url.search = UrlCodec.stripMessageParams(search, bridges)
+      url.search = UrlParamMessage.stripMessageParams(search, bridges)
       window.history.replaceState({}, '', url.toString())
     }
     return messages
   })
 
   // Origin filter accepts `''` for sandboxed/file:/data: documents — see issue #24.
-  const attachLive = (enqueue: (raw: string) => void): Effect.Effect<void, never, Scope.Scope> =>
+  const attachLive = (
+    enqueue: (raw: string) => Effect.Effect<void>
+  ): Effect.Effect<void, never, Scope.Scope> =>
     Effect.acquireRelease(
       Effect.sync(() => {
-        const onMessage = (event: MessageEvent<unknown>): void => {
-          if (event.source !== window) return
-          if (event.origin !== window.location.origin && event.origin !== '') return
-          if (typeof event.data !== 'string') return
-          enqueue(event.data)
+        const onMessageEffect = (event: MessageEvent<unknown>): Effect.Effect<void> => {
+          if (event.source !== window) return Effect.void
+          if (event.origin !== window.location.origin && event.origin !== '') return Effect.void
+          if (typeof event.data !== 'string') return Effect.void
+          return enqueue(event.data)
         }
+        const onMessage = (event: MessageEvent<unknown>): Promise<void> =>
+          Effect.runPromise(onMessageEffect(event))
         window.addEventListener('message', onMessage)
         return onMessage
       }),

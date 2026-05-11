@@ -27,14 +27,16 @@ const make = (config?: {
 }): {
   readonly layer: Layer.Layer<TransportAdapter>
   readonly sentSink: string[]
-  readonly liveEnqueueRef: { current: ((raw: string) => void) | null }
+  readonly liveEnqueueRef: { current: ((raw: string) => Effect.Effect<void>) | null }
 } => {
   const sentSink: string[] = []
   const initialMessages = config?.initialMessages ?? []
-  const liveEnqueueRef: { current: ((raw: string) => void) | null } = { current: null }
-  const attachLive: (enqueue: (raw: string) => void) => Effect.Effect<void, never, Scope.Scope> = (
-    enqueue
-  ) =>
+  const liveEnqueueRef: { current: ((raw: string) => Effect.Effect<void>) | null } = {
+    current: null,
+  }
+  const attachLive: (
+    enqueue: (raw: string) => Effect.Effect<void>
+  ) => Effect.Effect<void, never, Scope.Scope> = (enqueue) =>
     Effect.acquireRelease(
       Effect.sync(() => {
         liveEnqueueRef.current = enqueue

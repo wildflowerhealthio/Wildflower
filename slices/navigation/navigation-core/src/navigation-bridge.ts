@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { Bridge, UrlCodec } from 'effect-messaging-core'
+import { Bridge, UrlParamMessage } from 'effect-messaging-core'
 
 /**
  * Host → Web: Expo host detected a back-navigation gesture (header chevron,
@@ -52,7 +52,10 @@ const NavigationBridge: NavigationBridge = Bridge.make({
   ] as const,
   webToHost: [['RouteChanged', RouteChanged]] as const,
   urlParams: {
-    HostRequestedWebNavigation: UrlCodec.tagAndField('HostRequestedWebNavigation', 'path'),
+    HostRequestedWebNavigation: UrlParamMessage.singleStringMessageSchema(
+      'HostRequestedWebNavigation',
+      'path'
+    ),
     // HostBackRequested deliberately omitted — it's a runtime-only signal.
   },
 })

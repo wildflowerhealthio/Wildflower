@@ -1,6 +1,6 @@
 import type { Scope } from 'effect'
 import { Effect, Layer, Schema } from 'effect'
-import { Bridge, BridgeTransport, TransportAdapter, UrlCodec } from 'effect-messaging-core'
+import { Bridge, BridgeTransport, TransportAdapter, UrlParamMessage } from 'effect-messaging-core'
 import * as fc from 'fast-check'
 import { LoggingLayerTest } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
@@ -37,13 +37,16 @@ const NavigationBridge = Bridge.make({
   ] as const,
   webToHost: [['RouteChanged', RouteChanged]] as const,
   urlParams: {
-    HostRequestedWebNavigation: UrlCodec.tagAndField('HostRequestedWebNavigation', 'path'),
+    HostRequestedWebNavigation: UrlParamMessage.singleStringMessageSchema(
+      'HostRequestedWebNavigation',
+      'path'
+    ),
   },
 })
 
 const setInitialNavigationPath = (path: string): void => {
   const url = new URL(window.location.href)
-  const next = UrlCodec.appendMessagesToUrl(
+  const next = UrlParamMessage.appendMessagesToUrl(
     url,
     [NavigationBridge],
     [{ _tag: 'HostRequestedWebNavigation', path }]
@@ -438,7 +441,7 @@ describe('BridgeTransport (Web) — multi-bridge composition', () => {
       })
     )
     await expect(Effect.runPromise(program)).rejects.toThrow(
-      /duplicate inbound tag "HostBackRequested"/
+      /duplicate inbound tag\(s\) "HostBackRequested"/
     )
   })
 })

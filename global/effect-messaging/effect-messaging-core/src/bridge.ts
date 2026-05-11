@@ -1,7 +1,7 @@
-import { Context, Effect, Layer, Schema } from 'effect'
+import { Array, Context, Effect, Layer, Option, Schema } from 'effect'
 import type { UnionToIntersection } from 'kitchen-sink/types'
 import type * as MessageHandler from './message-handler.ts'
-import type * as Message from './message.ts'
+import * as Message from './message.ts'
 import { TransportAdapter } from './transport-adapter.ts'
 
 /** Typed sender for one side. Each call returns an Effect that requires {@link TransportAdapter}. */
@@ -35,7 +35,7 @@ interface Half<
  * `Schema<MessageOf<Tag>, string>` — encoded form is the URL-param
  * value, decoded form is the typed message (with `_tag` populated).
  *
- * Tags without an entry can't ride on URL params. Use {@link tagAndField}
+ * Tags without an entry can't ride on URL params. Use {@link singleStringMessageSchema}
  * for the common single-string-field case.
  */
 type UrlParamSchemas<HostToWeb extends Message.SchemaRecord> = {
@@ -54,7 +54,7 @@ interface Bridge<
   readonly Host: Half<Name, 'Host', HostToWeb, WebToHost>
   readonly Web: Half<Name, 'Web', WebToHost, HostToWeb>
   readonly MessageSchemas: HostToWeb & WebToHost
-  readonly urlParams: UrlParamSchemas<HostToWeb>
+  readonly UrlParamSchemas: UrlParamSchemas<HostToWeb>
 }
 
 /**
@@ -79,7 +79,7 @@ type AnyBridge = {
   readonly Host: AnyHalf
   readonly Web: AnyHalf
   // oxlint-disable-next-line typescript/no-explicit-any
-  readonly urlParams: Readonly<Record<string, Schema.Schema<any, string, never> | undefined>>
+  readonly UrlParamSchemas: Readonly<Record<string, Schema.Schema<any, string, never> | undefined>>
 }
 
 /**
@@ -87,7 +87,7 @@ type AnyBridge = {
  * specified side. The transport's public `sendMessage` strips the
  * {@link TransportAdapter} requirement.
  */
-type SenderIntersection<
+type MessageSender<
   Bridges extends ReadonlyArray<AnyBridge>,
   Side extends 'Host' | 'Web',
 > = UnionToIntersection<
@@ -108,7 +108,7 @@ type SenderIntersection<
  * Union of every decoded message a wired bridge's `Side` can send.
  *
  * @remarks
- * Used where {@link SenderIntersection}'s function-intersection shape
+ * Used where {@link MessageSender}'s function-intersection shape
  * is the wrong tool — `Parameters` doesn't yield a parameter union
  * over intersected functions because TS treats them as overloads.
  */
@@ -138,7 +138,7 @@ type SendableMessage<
  * `undefined` so the `infer A` branch can extract the message type.
  */
 type UrlParamableMessage<Bridges extends ReadonlyArray<AnyBridge>> = Bridges[number] extends infer B
-  ? B extends { readonly urlParams: infer UP }
+  ? B extends { readonly UrlParamSchemas: infer UP }
     ? {
         [Tag in keyof UP]: NonNullable<UP[Tag]> extends Schema.Schema<infer A, string, never>
           ? A extends { readonly _tag: string }
@@ -172,7 +172,7 @@ type TransportLayers<Bridges extends ReadonlyArray<AnyBridge>, Side extends 'Hos
  *   hostToWeb: [['HostBackRequested', HostBackRequested]] as const,
  *   webToHost: [['RouteChanged', RouteChanged]] as const,
  *   urlParams: {
- *     HostRequestedWebNavigation: tagAndField('HostRequestedWebNavigation', 'path'),
+ *     HostRequestedWebNavigation: singleStringMessageSchema('HostRequestedWebNavigation', 'path'),
  *   },
  * })
  * ```
@@ -185,8 +185,8 @@ type TransportLayers<Bridges extends ReadonlyArray<AnyBridge>, Side extends 'Hos
  */
 const make = <
   const Name extends string,
-  const HostToWebPairs extends ReadonlyArray<readonly [string, Message.StringEncodedSchema]>,
-  const WebToHostPairs extends ReadonlyArray<readonly [string, Message.StringEncodedSchema]>,
+  const HostToWebPairs extends ReadonlyArray<readonly [string, Message.AnyStringEncodedSchema]>,
+  const WebToHostPairs extends ReadonlyArray<readonly [string, Message.AnyStringEncodedSchema]>,
 >(definition: {
   readonly name: Name
   readonly hostToWeb: HostToWebPairs & Message.ValidatedPairs<HostToWebPairs>
@@ -197,8 +197,8 @@ const make = <
   Message.RecordFromPairs<HostToWebPairs>,
   Message.RecordFromPairs<WebToHostPairs>
 > => {
-  const hostToWebRecord = recordFromPairs<HostToWebPairs>(definition.hostToWeb)
-  const webToHostRecord = recordFromPairs<WebToHostPairs>(definition.webToHost)
+  const hostToWebRecord = Message.recordFromPairs<HostToWebPairs>(definition.hostToWeb)
+  const webToHostRecord = Message.recordFromPairs<WebToHostPairs>(definition.webToHost)
 
   const HostHandlerTag = Context.GenericTag<
     MessageHandler.TagId<Name, 'Host'>,
@@ -235,20 +235,8 @@ const make = <
       ...hostToWebRecord,
       ...webToHostRecord,
     },
-    urlParams: definition.urlParams ?? {},
+    UrlParamSchemas: definition.urlParams ?? {},
   }
-}
-
-/** Build a `{[tag]: schema}` record from a pair tuple. */
-const recordFromPairs = <
-  TPairs extends ReadonlyArray<readonly [string, Message.StringEncodedSchema]>,
->(
-  pairs: TPairs
-): Message.RecordFromPairs<TPairs> => {
-  const record: Record<string, Message.StringEncodedSchema> = {}
-  for (const [tag, schema] of pairs) record[tag] = schema
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-  return record as Message.RecordFromPairs<TPairs>
 }
 
 /**
@@ -256,7 +244,7 @@ const recordFromPairs = <
  * the {@link TransportAdapter}. Unknown tags warn and drop.
  */
 const sendThrough = (
-  record: Record<string, Message.StringEncodedSchema>,
+  record: Record<string, Message.AnyStringEncodedSchema>,
   message: { readonly _tag: string }
 ): Effect.Effect<void, never, TransportAdapter> =>
   Effect.gen(function* () {
@@ -272,7 +260,7 @@ const sendThrough = (
     return undefined
   })
 
-type TaggedSender = (message: {
+type AnyTaggedMessageSender = (message: {
   readonly _tag: string
 }) => Effect.Effect<void, never, TransportAdapter>
 
@@ -284,8 +272,8 @@ type TaggedSender = (message: {
 const senderByTag = (
   bridges: ReadonlyArray<AnyBridge>,
   side: 'Host' | 'Web'
-): Map<string, TaggedSender> => {
-  const map = new Map<string, TaggedSender>()
+): Map<string, AnyTaggedMessageSender> => {
+  const map = new Map<string, AnyTaggedMessageSender>()
   for (const bridge of bridges) {
     const half = bridge[side]
     for (const tag of Object.keys(half.OutboundSchemas)) {
@@ -294,22 +282,57 @@ const senderByTag = (
       }
       // `half.send` is typed `(m: never) => …`; runtime dispatch by `_tag` lands every message correctly.
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-      map.set(tag, half.send as TaggedSender)
+      map.set(tag, half.send as AnyTaggedMessageSender)
     }
   }
   return map
 }
 
-export { make, senderByTag }
+/**
+ * Look up the URL-param schema for a tag across a list of bridges.
+ * Throws on duplicate-tag conflicts so wiring drift fails synchronously.
+ */
+const findUrlParamSchema = (
+  bridges: ReadonlyArray<AnyBridge>,
+  tag: string
+): Message.AnyStringEncodedSchema | undefined => {
+  const matchingUrlParamSchemas = Array.filterMap(bridges, (bridge) =>
+    Option.fromNullable(bridge.UrlParamSchemas[tag])
+  )
+  if (matchingUrlParamSchemas.length > 1) {
+    throw new Error(`[effect-messaging] duplicate urlParams tag "${tag}" across bridges`)
+  } else if (matchingUrlParamSchemas.length === 1) {
+    return matchingUrlParamSchemas[0]
+  } else {
+    return undefined
+  }
+}
+
+/**
+ * Look up the wire (host→web) schema for a tag across the bridges.
+ * Used by the URL decoder to re-encode the decoded message as the
+ * canonical wire JSON the dispatch fiber consumes.
+ */
+const findWireSchema = (
+  bridges: ReadonlyArray<AnyBridge>,
+  tag: string
+): Message.AnyStringEncodedSchema | undefined => {
+  for (const bridge of bridges) {
+    const schema = bridge.Web.InboundSchemas[tag]
+    if (schema !== undefined) return schema
+  }
+  return undefined
+}
+
+export { make, senderByTag, findUrlParamSchema, findWireSchema }
 export type {
   AnyBridge,
   AnyHalf,
   Bridge,
   Half,
+  MessageSender,
   SendableMessage,
   SenderFn,
-  SenderIntersection,
-  TaggedSender,
   TransportLayers,
   UrlParamableMessage,
   UrlParamSchemas,

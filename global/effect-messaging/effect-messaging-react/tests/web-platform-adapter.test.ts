@@ -1,5 +1,5 @@
 import { Effect, Exit, Schema, Scope } from 'effect'
-import { Bridge, UrlCodec } from 'effect-messaging-core'
+import { Bridge, UrlParamMessage } from 'effect-messaging-core'
 import { LoggingLayerTest } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
 import * as WebPlatformAdapter from '../src/web-platform-adapter.ts'
@@ -15,7 +15,7 @@ const TestBridge = Bridge.make({
   hostToWeb: [['Hello', Hello]] as const,
   webToHost: [] as const,
   urlParams: {
-    Hello: UrlCodec.tagAndField('Hello', 'msg'),
+    Hello: UrlParamMessage.singleStringMessageSchema('Hello', 'msg'),
   },
 })
 const testBridges = [TestBridge] as const
@@ -29,7 +29,7 @@ const requireAttachLive = (
 
 const setHelloUrlParam = (msg: string): void => {
   const url = new URL(window.location.href)
-  const next = UrlCodec.appendMessagesToUrl(url, testBridges, [{ _tag: 'Hello', msg }])
+  const next = UrlParamMessage.appendMessagesToUrl(url, testBridges, [{ _tag: 'Hello', msg }])
   window.history.replaceState({}, '', next.toString())
 }
 
@@ -125,7 +125,11 @@ describe('WebPlatformAdapter.make — attachLive', () => {
     const scope = Effect.runSync(Scope.make())
     await Effect.runPromise(
       Scope.extend(
-        attachLive((raw) => seen.push(raw)),
+        attachLive((raw) =>
+          Effect.sync(() => {
+            seen.push(raw)
+          })
+        ),
         scope
       )
     )
@@ -149,7 +153,11 @@ describe('WebPlatformAdapter.make — attachLive', () => {
     const scope = Effect.runSync(Scope.make())
     await Effect.runPromise(
       Scope.extend(
-        attachLive((raw) => seen.push(raw)),
+        attachLive((raw) =>
+          Effect.sync(() => {
+            seen.push(raw)
+          })
+        ),
         scope
       )
     )
@@ -171,7 +179,11 @@ describe('WebPlatformAdapter.make — attachLive', () => {
     const scope = Effect.runSync(Scope.make())
     await Effect.runPromise(
       Scope.extend(
-        attachLive((raw) => seen.push(raw)),
+        attachLive((raw) =>
+          Effect.sync(() => {
+            seen.push(raw)
+          })
+        ),
         scope
       )
     )

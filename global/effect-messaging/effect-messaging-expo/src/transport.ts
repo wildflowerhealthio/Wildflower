@@ -1,7 +1,12 @@
 import type { Scope } from 'effect'
 import { Effect, Layer } from 'effect'
-import type { Bridge } from 'effect-messaging-core'
-import { type BareSender, BridgeTransport, TransportAdapter, UrlCodec } from 'effect-messaging-core'
+import {
+  type Bridge,
+  type BareSender,
+  BridgeTransport,
+  TransportAdapter,
+  UrlParamMessage,
+} from 'effect-messaging-core'
 import type { WebViewMessageEvent } from 'react-native-webview'
 
 /**
@@ -48,13 +53,13 @@ interface WebViewHandle {
  * `webviewHandleRef`) and the WebView's `ref` prop.
  */
 interface ExpoTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
-  readonly sendMessage: Bridge.SenderIntersection<Bridges, 'Host'>
+  readonly sendMessage: Bridge.MessageSender<Bridges, 'Host'>
   /**
    * The configured `baseUrl` with one `?<Tag>=<value>` param per
    * typed initial message. Empty values render as bare flags.
    */
   readonly embedUrl: string
-  readonly onMessage: (event: WebViewMessageEvent) => void
+  readonly onMessage: (event: WebViewMessageEvent) => Effect.Effect<void, never, never>
 }
 
 /**
@@ -118,7 +123,7 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
     // `appendMessagesToUrl` validates each message has a urlParams
     // schema (throws on mismatch — wiring drift fails fast).
     const baseUrlParsed = new URL(config.baseUrl)
-    const embedUrl = UrlCodec.appendMessagesToUrl(
+    const embedUrl = UrlParamMessage.appendMessagesToUrl(
       baseUrlParsed,
       config.bridges,
       config.initialMessages
@@ -137,9 +142,8 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
       side: 'Host',
     }).pipe(Effect.provide(Layer.succeed(TransportAdapter, liveAdapter)))
 
-    const onMessage = (event: WebViewMessageEvent): void => {
+    const onMessage = (event: WebViewMessageEvent): Effect.Effect<void, never, never> =>
       transport.enqueue(event.nativeEvent.data)
-    }
 
     return {
       sendMessage: transport.sendMessage,

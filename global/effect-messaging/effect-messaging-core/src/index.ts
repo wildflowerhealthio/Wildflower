@@ -9,4 +9,4 @@ export {
   type BareSender,
 } from './transport-adapter.ts'
 export * as TestPlatformAdapterLayer from './test-platform-adapter-layer.ts'
-export * as UrlCodec from './url-codec.ts'
+export * as UrlParamMessage from './url-param-message.ts'

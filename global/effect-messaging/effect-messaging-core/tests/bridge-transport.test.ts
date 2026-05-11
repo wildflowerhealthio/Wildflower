@@ -59,7 +59,7 @@ describe('BridgeTransport.make — internal-error variant', () => {
           layers: [layer] as const,
           side: 'Web',
         }).pipe(Effect.provide(adapterLayer))
-        transport.enqueue(Schema.encodeSync(Ping)({ _tag: 'Ping', value: 1 }))
+        yield* transport.enqueue(Schema.encodeSync(Ping)({ _tag: 'Ping', value: 1 }))
         yield* transport.flushed
       }).pipe(
         LoggingLayerTest.expectToLog((logs) => {
@@ -97,7 +97,7 @@ describe('BridgeTransport.make — live-attachment path', () => {
           side: 'Web',
         }).pipe(Effect.provide(adapterLayer))
         if (liveEnqueueRef.current === null) throw new Error('liveEnqueueRef not captured')
-        liveEnqueueRef.current(Schema.encodeSync(Ping)({ _tag: 'Ping', value: 99 }))
+        yield* liveEnqueueRef.current(Schema.encodeSync(Ping)({ _tag: 'Ping', value: 99 }))
         yield* transport.flushed
         expect(pingCalls).toBe(1)
       }).pipe(Effect.scoped)
@@ -174,7 +174,7 @@ describe('BridgeTransport.make — __Ready handshake', () => {
         expect(sentSink).toHaveLength(0)
         // Post __Ready into the dispatch fiber.
         if (liveEnqueueRef.current === null) throw new Error('liveEnqueueRef not captured')
-        liveEnqueueRef.current('{"_tag":"__Ready"}')
+        yield* liveEnqueueRef.current('{"_tag":"__Ready"}')
         // Now the send completes.
         yield* sendFiber.await
         expect(sentSink).toHaveLength(1)
@@ -247,7 +247,7 @@ describe('BridgeTransport.make — queue lifecycle', () => {
         fc.array(fc.string(), { maxLength: 20 }),
         async (lateMessages: ReadonlyArray<string>) => {
           const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
-          let capturedEnqueue: ((raw: string) => void) | null = null
+          let capturedEnqueue: ((raw: string) => Effect.Effect<void>) | null = null
           await Effect.runPromise(
             Effect.gen(function* () {
               const transport = yield* BridgeTransport.make({

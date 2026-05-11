@@ -61,12 +61,12 @@ function TransportProvider({
     )
   })
 
-  const [drained, setDrained] = useState(false)
+  const [initialTransportMessagesFlushed, setInitialTransportMessagesFlushed] = useState(false)
 
   useEffect(() => {
     Effect.runFork(
       transport.flushed.pipe(
-        Effect.tap(() => Effect.sync(() => setDrained(true))),
+        Effect.tap(() => Effect.sync(() => setInitialTransportMessagesFlushed(true))),
         Effect.zipRight(transport.signalReady)
       )
     )
@@ -75,14 +75,18 @@ function TransportProvider({
     }
   }, [transport, scope])
 
-  if (!drained) return <>{loader}</>
-
-  return (
-    <TransportContext.Provider value={transport}>
-      <NavigationBridgeHandler sender={transport.sendMessage} />
-      {children}
-    </TransportContext.Provider>
-  )
+  // Only display the body once the transport has been flushed and
+  // any initial navigations have completed, to prevent a flashing ui
+  if (initialTransportMessagesFlushed) {
+    return (
+      <TransportContext.Provider value={transport}>
+        <NavigationBridgeHandler sender={transport.sendMessage} />
+        {children}
+      </TransportContext.Provider>
+    )
+  } else {
+    return <>{loader}</>
+  }
 }
 
 export { TransportProvider }

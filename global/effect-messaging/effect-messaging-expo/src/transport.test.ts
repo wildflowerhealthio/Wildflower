@@ -1,5 +1,5 @@
 import { Effect, Exit, Schema, Scope } from 'effect'
-import { Bridge, UrlCodec } from 'effect-messaging-core'
+import { Bridge, UrlParamMessage } from 'effect-messaging-core'
 import { makeExpoTransport, type WebViewHandle } from './transport.ts'
 
 const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.String }))
@@ -10,7 +10,7 @@ const HostBridge = Bridge.make({
   hostToWeb: [['Ping', Ping]] as const,
   webToHost: [['Pong', Pong]] as const,
   urlParams: {
-    Ping: UrlCodec.tagAndField('Ping', 'value'),
+    Ping: UrlParamMessage.singleStringMessageSchema('Ping', 'value'),
   },
 })
 
@@ -83,8 +83,10 @@ describe('makeExpoTransport — bareSender (with __Ready handshake)', () => {
         )
       )
       // Simulate the page-side handshake.
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-      transport.onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } } as never)
+      await Effect.runPromise(
+        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+        transport.onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } } as never)
+      )
       await Effect.runPromise(transport.sendMessage({ _tag: 'Ping', value: 'x' }))
       await Effect.runPromise(Scope.close(scope, Exit.void))
     } finally {
@@ -111,8 +113,10 @@ describe('makeExpoTransport — bareSender (with __Ready handshake)', () => {
         scope
       )
     )
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-    transport.onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } } as never)
+    await Effect.runPromise(
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+      transport.onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } } as never)
+    )
     await Effect.runPromise(transport.sendMessage({ _tag: 'Ping', value: 'ok' }))
     expect(calls).toHaveLength(1)
     expect(JSON.parse(calls[0] ?? '')).toEqual({ _tag: 'Ping', value: 'ok' })
@@ -125,7 +129,10 @@ describe('makeExpoTransport — onMessage', () => {
     const ref: { current: WebViewHandle | null } = { current: null }
     const seen: string[] = []
     const layer = HostBridge.Host.ReceiverLayer({
-      Pong: ({ reply }) => Effect.sync(() => seen.push(reply)),
+      Pong: ({ reply }) =>
+        Effect.sync(() => {
+          seen.push(reply)
+        }),
     })
     await runScoped(
       Effect.gen(function* () {
@@ -138,7 +145,7 @@ describe('makeExpoTransport — onMessage', () => {
         })
         const encoded = Schema.encodeSync(Pong)({ _tag: 'Pong', reply: 'hi' })
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-        t.onMessage({ nativeEvent: { data: encoded } } as never)
+        yield* t.onMessage({ nativeEvent: { data: encoded } } as never)
         // Tick once so the dispatch fiber processes the queued message.
         yield* Effect.sleep(0)
         return t
