@@ -33,6 +33,7 @@
     "effect": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   }

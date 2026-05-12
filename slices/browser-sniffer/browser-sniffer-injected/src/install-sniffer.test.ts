@@ -11,8 +11,11 @@ import {
 } from 'browser-sniffer-core'
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
+import { utilityExpectations } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import { installSniffer, SNIFFER_STATE_KEY, snifferScript, type SnifferState } from './index.ts'
+
+const { expectDistinct, expectToMultisetEqual } = utilityExpectations(expect)
 
 declare global {
   interface Window {
@@ -60,16 +63,6 @@ const setupEnv = (): (() => Message[]) => {
 }
 
 const withTag = (msgs: Message[], tag: string): Message[] => msgs.filter((m) => m._tag === tag)
-
-/** Asserts every value in `values` is distinct. Used in id-uniqueness checks. */
-const expectDistinct = (values: readonly unknown[]): void => {
-  expect(new Set(values).size).toBe(values.length)
-}
-
-/** Asserts `actual` and `expected` have the same elements (multiset, order-insensitive). */
-const expectSameMultiset = (actual: readonly string[], expected: readonly string[]): void => {
-  expect([...actual].toSorted()).toEqual([...expected].toSorted())
-}
 
 const cancelRequest = (id: string): void => {
   // Bridge-format Host→Web cancel. The injected sniffer's
@@ -367,7 +360,7 @@ describe('fetch shim', () => {
 
     const ids = starts.map((s) => s.id as string)
     expectDistinct(ids)
-    expectSameMultiset(
+    expectToMultisetEqual(
       withTag(getMessages(), 'ResponseFinished').map((f) => f.id as string),
       ids
     )
@@ -411,14 +404,14 @@ describe('fetch shim', () => {
 
           const starts = withTag(getMs(), 'ResponseStart')
           expect(starts).toHaveLength(requests.length)
-          expectSameMultiset(
+          expectToMultisetEqual(
             starts.map((s_) => s_.url as string),
             requests.map(([url]) => url)
           )
 
           const ids = starts.map((s_) => s_.id as string)
           expectDistinct(ids)
-          expectSameMultiset(
+          expectToMultisetEqual(
             withTag(getMs(), 'ResponseFinished').map((f) => f.id as string),
             ids
           )
