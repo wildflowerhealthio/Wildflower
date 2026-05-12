@@ -7,7 +7,15 @@ import {
   type MessageHandler,
   TransportAdapter,
 } from 'effect-messaging-core'
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, type JSX } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type JSX,
+} from 'react'
 import { StyleSheet, View } from 'react-native'
 import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 
@@ -20,7 +28,9 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview'
  * The call goes over the same `BridgeTransport` the inbound events use:
  * the host sends `CancelSnifferRequest` as a typed Host→Web bridge
  * message, the injected sniffer's `message`-event listener decodes it
- * and removes the id from its active-request set.
+ * and removes the id from its active-request set. The page then posts
+ * a `Cancelled` terminal event back so downstream handlers can release
+ * per-id state.
  */
 interface BrowserSnifferWebViewHandle {
   cancelRequest(id: string): void
@@ -30,6 +40,12 @@ interface BrowserSnifferWebViewHandle {
 type BrowserSnifferWebViewSource = { uri: string } | { html: string; baseUrl?: string }
 
 type SnifferHandlers = MessageHandler.HandlersFor<typeof BrowserSnifferBridge.Host.InboundSchemas>
+
+type TransportType = Effect.Effect.Success<
+  ReturnType<
+    typeof BridgeTransport.make<readonly [typeof BrowserSnifferBridge], readonly [Layer.Layer<never>]>
+  >
+>
 
 interface BrowserSnifferWebViewProps {
   /** Page to sniff — either a remote URL or inline HTML. */
@@ -52,28 +68,38 @@ interface BrowserSnifferWebViewProps {
  *   `BridgeTransport`'s dispatch fiber — same machinery the rest of the
  *   slice cluster uses, so handler defects log without taking the page
  *   down and the scope tears down cleanly on unmount.
+ * - The transport is built inside `useEffect`, so React's lifecycle
+ *   owns the scope: on `handlers` identity change, the prior scope is
+ *   `Scope.close`d before the next build runs (the `useMemo`-with-no-
+ *   cleanup approach leaked a Scope + dispatch fiber per render).
  * - Host→Web (`CancelSnifferRequest`) sends go through
  *   `webviewRef.current.postMessage(encoded)` — the bridge wires this
- *   in via the {@link TransportAdapter}'s `bareSender`. The injected
- *   sniffer's `message`-event listener handles the wire payload.
+ *   in via the {@link TransportAdapter}'s `bareSender`. Sends that
+ *   arrive before the WebView ref attaches are buffered and drained
+ *   the moment the ref appears (rare; the bridge's own `__Ready` gate
+ *   normally covers this window, but StrictMode double-mounts and
+ *   post-unmount stragglers can race).
+ * - Inbound `transport.enqueue` failures are logged rather than
+ *   surfacing as unhandled promise rejections — useful when a torn-
+ *   down transport sees a late inbound message.
  */
 const BrowserSnifferWebView = forwardRef<BrowserSnifferWebViewHandle, BrowserSnifferWebViewProps>(
-  function BrowserSnifferWebView({ source, handlers }, ref): JSX.Element {
-    const webviewRef = useRef<WebView>(null)
+  function BrowserSnifferWebView({ source, handlers, loader }, ref): JSX.Element {
+    const webviewRef = useRef<WebView | null>(null)
+    const transportRef = useRef<TransportType | undefined>(undefined)
+    const outboundBuffer = useRef<string[]>([])
+    const [loaded, setLoaded] = useState(false)
 
-    // Build the host-side BridgeTransport once per `handlers` identity.
-    // Scoped so the dispatch fiber + queue tear down on unmount.
-    const [transport, scope] = useMemo(() => {
-      const builtScope = Effect.runSync(Scope.make())
+    useEffect(() => {
+      const scope = Effect.runSync(Scope.make())
+
       const bareSender: BareSender = (encoded) =>
         Effect.sync(() => {
-          // Pre-mount sends warn and drop; once the WebView is mounted
-          // its imperative `postMessage(string)` dispatches a `message`
-          // event on the page that the sniffer's listener decodes.
           const wv = webviewRef.current
-          if (wv === null) return
-          // RN-WebView's `postMessage(string)` is not the `window.postMessage`
-          // API and does not take a `targetOrigin`.
+          if (wv === null) {
+            outboundBuffer.current.push(encoded)
+            return
+          }
           // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin
           wv.postMessage(encoded)
         })
@@ -89,45 +115,81 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferWebViewHandle, BrowserSni
             layers: [layer] as const,
             side: 'Host',
           }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter))),
-          builtScope
+          scope
         )
       )
-      return [built, builtScope] as const
+      transportRef.current = built
+
+      return (): void => {
+        transportRef.current = undefined
+        Effect.runFork(Scope.close(scope, Exit.void))
+      }
     }, [handlers])
+
+    // Callback ref: attach to WebView and drain any outbound messages
+    // that piled up before the ref was wired (the bridge's own
+    // `__Ready` Deferred normally prevents this, but StrictMode
+    // double-mounts and React 18 concurrent rendering can race).
+    const setWebviewRef = useCallback((wv: WebView | null): void => {
+      webviewRef.current = wv
+      if (wv === null || outboundBuffer.current.length === 0) return
+      const buffered = outboundBuffer.current.splice(0)
+      for (const enc of buffered) {
+        // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin
+        wv.postMessage(enc)
+      }
+    }, [])
 
     useImperativeHandle(
       ref,
       () => ({
         cancelRequest(id: string): void {
+          const transport = transportRef.current
+          // Pre-build / post-unmount: silently drop. The cancel has
+          // no meaning without an attached transport, and the page
+          // either hasn't received the corresponding id yet or has
+          // already torn down its state.
+          if (transport === undefined) return
           Effect.runFork(transport.sendMessage({ _tag: 'CancelSnifferRequest', id }))
         },
       }),
-      [transport]
-    )
-
-    useEffect(
-      () => (): void => {
-        Effect.runFork(Scope.close(scope, Exit.void))
-      },
-      [scope]
+      []
     )
 
     const onWebViewMessageEvent = (event: WebViewMessageEvent): void => {
-      void Effect.runPromise(transport.enqueue(event.nativeEvent.data))
+      const transport = transportRef.current
+      if (transport === undefined) return
+      void Effect.runPromise(
+        transport.enqueue(event.nativeEvent.data).pipe(
+          Effect.catchAllCause((cause) =>
+            Effect.logError('BrowserSnifferWebView.onMessage: transport.enqueue failed', cause)
+          )
+        )
+      )
     }
 
     return (
       <View style={styles.container}>
         <WebView
-          ref={webviewRef}
+          ref={setWebviewRef}
           source={source}
           onMessage={onWebViewMessageEvent}
+          onLoadEnd={(): void => setLoaded(true)}
           injectedJavaScriptBeforeContentLoaded={snifferScript}
           style={styles.webview}
+          // `originWhitelist={['*']}` is a v1 shortcut: the WebView may
+          // navigate to any origin (necessary because FHIR OAuth flows
+          // redirect cross-origin). Combined with
+          // `injectedJavaScriptBeforeContentLoaded`, the sniffer runs on
+          // every origin visited inside this WebView. Issue #17 tracks
+          // narrowing to a host-supplied whitelist prop.
           originWhitelist={['*']}
           javaScriptEnabled={true}
           domStorageEnabled={true}
         />
+        {loader !== undefined && !loaded ? (
+          <View style={styles.loaderOverlay}>{loader}</View>
+        ) : null}
       </View>
     )
   }
@@ -136,6 +198,15 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferWebViewHandle, BrowserSni
 const styles = StyleSheet.create({
   container: { flex: 1 },
   webview: { flex: 1 },
+  loaderOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 })
 
 export { BrowserSnifferWebView }

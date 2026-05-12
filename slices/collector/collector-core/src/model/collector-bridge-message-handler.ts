@@ -1,5 +1,5 @@
 import { type CancelSnifferRequestMessage } from 'browser-sniffer-core'
-import { Either, type ParseResult, Effect, Encoding, MutableHashMap, Option } from 'effect'
+import { Either, type ParseResult, Effect, Encoding, MutableHashMap, Option, Data } from 'effect'
 import { UnknownException } from 'effect/Cause'
 import type CollectorBridge from '../bridge.ts'
 import type * as EntityDefinition from './entity-definition.ts'
@@ -19,6 +19,15 @@ interface InProgressResponse<TResources> {
   readonly response: RemoteResponse
   readonly entity: EntityDefinition.EntityDefinition<TResources>
 }
+
+/**
+ * Terminal-error tag delivered to `onResult` when the page acknowledges
+ * a `CancelSnifferRequest` mid-stream with a `Cancelled` event. Carries
+ * the sniffer request id for downstream correlation.
+ */
+class SnifferCancelled extends Data.TaggedError('SnifferCancelled')<{
+  readonly id: string
+}> {}
 
 interface CollectorBridgeMessageHandler<TResources> extends Service {
   readonly inProgressResponses: MutableHashMap.MutableHashMap<
@@ -48,7 +57,7 @@ const make = <TResources>({
     readonly response: RemoteResponse
     readonly result: Either.Either<
       EntityDefinition.Parsed<TResources>,
-      ParseResult.ParseError | UnknownException
+      ParseResult.ParseError | UnknownException | SnifferCancelled
     >
   }) => void
 }): CollectorBridgeMessageHandler<TResources> => {
@@ -132,6 +141,26 @@ const make = <TResources>({
       handleResult({ response, result: Either.left(new UnknownException(event.message)) })
     })
 
+  const Cancelled: Service['Cancelled'] = (event) =>
+    Effect.gen(function* () {
+      const maybe = MutableHashMap.get(event.id)(inProgressResponses)
+      if (Option.isNone(maybe)) {
+        // `Cancelled` is sent by the page in response to a
+        // `CancelSnifferRequest` the host issued; an unsolicited
+        // `Cancelled` (or one for an id already finished) is harmless.
+        yield* Effect.logWarn(
+          `CollectorBridgeMessageHandler.Cancelled: no tracked response for id ${event.id}; ignoring`
+        )
+        return
+      }
+      const { response } = maybe.value
+      MutableHashMap.remove(inProgressResponses, event.id)
+      handleResult({
+        response,
+        result: Either.left(new SnifferCancelled({ id: event.id })),
+      })
+    })
+
   const clear = (): void => {
     for (const key of MutableHashMap.keys(inProgressResponses)) {
       MutableHashMap.remove(inProgressResponses, key)
@@ -145,8 +174,9 @@ const make = <TResources>({
     ResponseData,
     ResponseFinished,
     RequestError,
+    Cancelled,
   }
 }
 
 export type { CollectorBridgeMessageHandler, InProgressResponse }
-export { make }
+export { make, SnifferCancelled }

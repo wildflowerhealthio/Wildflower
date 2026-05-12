@@ -1,9 +1,10 @@
 import {
+  CancelSnifferRequestMessage,
+  CancelledMessage,
   RequestErrorMessage,
   ResponseDataMessage,
   ResponseFinishedMessage,
   ResponseStartMessage,
-  CancelSnifferRequestMessage,
 } from 'browser-sniffer-core'
 import { Schema } from 'effect'
 import { Bridge } from 'effect-messaging-core'
@@ -46,6 +47,7 @@ type CollectorBridge = Bridge.Bridge<
     ResponseData: typeof ResponseDataMessage
     ResponseFinished: typeof ResponseFinishedMessage
     RequestError: typeof RequestErrorMessage
+    Cancelled: typeof CancelledMessage
   },
   {
     RequestSniffableWebView: typeof RequestSniffableWebView
@@ -57,13 +59,16 @@ type CollectorBridge = Bridge.Bridge<
 /**
  * Slice-level bridge between the embedded collector SPA and the Expo
  * host. Web→Host carries control signals (`RequestSniffableWebView`,
- * `SniffingComplete`); Host→Web carries the sniffer-event subset
- * collector parses.
+ * `CancelSnifferRequest`, `SniffingComplete`); Host→Web carries the
+ * sniffer-event subset collector parses.
  *
- * The four sniffer events imported from `browser-sniffer-core` keep
+ * The five sniffer events imported from `browser-sniffer-core` keep
  * wire schemas in lockstep with `BrowserSnifferBridge` — the host can
  * forward a decoded message through this bridge's Host→Web sender
- * without re-encoding.
+ * without re-encoding. `Cancelled` is the terminal acknowledgement
+ * for a mid-stream `CancelSnifferRequest`; the handler uses it to
+ * release the in-progress slot and notify the consumer via
+ * `onResult` with a `Left(SnifferCancelled)`.
  */
 const CollectorBridge: CollectorBridge = Bridge.make({
   name: 'Collector',
@@ -72,6 +77,7 @@ const CollectorBridge: CollectorBridge = Bridge.make({
     ['ResponseData', ResponseDataMessage],
     ['ResponseFinished', ResponseFinishedMessage],
     ['RequestError', RequestErrorMessage],
+    ['Cancelled', CancelledMessage],
   ] as const,
   webToHost: [
     ['RequestSniffableWebView', RequestSniffableWebView],

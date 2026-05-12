@@ -1,6 +1,7 @@
 import { Bridge } from 'effect-messaging-core'
 import {
   CancelSnifferRequestMessage,
+  CancelledMessage,
   LogMessage,
   PageLoadedMessage,
   RequestErrorMessage,
@@ -20,6 +21,7 @@ type BrowserSnifferBridge = Bridge.Bridge<
     ResponseData: typeof ResponseDataMessage
     ResponseFinished: typeof ResponseFinishedMessage
     RequestError: typeof RequestErrorMessage
+    Cancelled: typeof CancelledMessage
     PageLoaded: typeof PageLoadedMessage
   }
 >
@@ -27,8 +29,15 @@ type BrowserSnifferBridge = Bridge.Bridge<
 /**
  * Cross-process contract for the injected `browser-sniffer-injected`
  * script. Web→Host: every shimmed `fetch` / XHR response, page-load
- * notifications, and ad-hoc log lines. Host→Web: `CancelSnifferRequest`
- * tells the page to stop pumping events for a given request id.
+ * notifications, mid-stream cancel acknowledgements, and ad-hoc log
+ * lines. Host→Web: `CancelSnifferRequest` tells the page to stop
+ * pumping events for a given request id (the page then posts
+ * `Cancelled` as the terminal observation).
+ *
+ * `PageLoaded` carries the page URL and a `pageContentId` that
+ * correlates with a `Response*` stream containing
+ * `documentElement.outerHTML`; subscribe to that stream if you need
+ * the DOM body.
  *
  * Consumers (e.g. `collector-react`) re-export this bridge's
  * `webToHost` schemas as their own `Host→Web` messages to forward
@@ -44,6 +53,7 @@ const BrowserSnifferBridge: BrowserSnifferBridge = Bridge.make({
     ['ResponseData', ResponseDataMessage],
     ['ResponseFinished', ResponseFinishedMessage],
     ['RequestError', RequestErrorMessage],
+    ['Cancelled', CancelledMessage],
     ['PageLoaded', PageLoadedMessage],
   ] as const,
 })

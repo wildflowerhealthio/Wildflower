@@ -43,12 +43,13 @@ type StartArg = Parameters<Handler['ResponseStart']>[0]
 type DataArg = Parameters<Handler['ResponseData']>[0]
 type FinishArg = Parameters<Handler['ResponseFinished']>[0]
 type ErrorArg = Parameters<Handler['RequestError']>[0]
+type CancelledArg = Parameters<Handler['Cancelled']>[0]
 
 const responseStart = (overrides: { id: string; url: string }): StartArg => ({
   _tag: 'ResponseStart',
   status: 200,
   statusText: 'OK',
-  headers: {},
+  headers: [],
   ...overrides,
 })
 
@@ -66,6 +67,8 @@ const requestError = (overrides: { id: string; url: string; message: string }): 
   _tag: 'RequestError',
   ...overrides,
 })
+
+const cancelled = (id: string): CancelledArg => ({ _tag: 'Cancelled', id })
 
 describe('CollectorBridgeMessageHandler.make', () => {
   describe('ResponseStart', () => {
@@ -287,6 +290,35 @@ describe('CollectorBridgeMessageHandler.make', () => {
         resources: [{ name: 'Alice', age: 30 }],
         links: [{ _tag: 'Open', href: '/people/Alice' }],
       })
+    })
+  })
+
+  describe('Cancelled', () => {
+    it('emits onResult Left(SnifferCancelled) and drops the entry for a tracked response', () => {
+      const onResult = vi.fn()
+      const handler = makeSimpleHandler({ onResult })
+
+      Effect.runSync(
+        handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
+      )
+      Effect.runSync(handler.Cancelled(cancelled('r1')))
+
+      expect(onResult).toHaveBeenCalledOnce()
+      const [{ response, result }] = onResult.mock.calls[0]
+      expect(response.url).toBe('https://example.com/people/1')
+      expectLeftToEqual(
+        result,
+        expect.objectContaining({ _tag: 'SnifferCancelled', id: 'r1' })
+      )
+      expect(MutableHashMap.keys(handler.inProgressResponses)).not.toContain('r1')
+    })
+
+    it('logs and no-ops for an unsolicited Cancelled (id not tracked)', () => {
+      const onResult = vi.fn()
+      const handler = makeSimpleHandler({ onResult })
+
+      expect(() => Effect.runSync(handler.Cancelled(cancelled('unknown')))).not.toThrow()
+      expect(onResult).not.toHaveBeenCalled()
     })
   })
 

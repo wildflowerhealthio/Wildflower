@@ -25,7 +25,7 @@ const responseStart = (overrides: { id: string; url: string }): StartArg => ({
   _tag: 'ResponseStart',
   status: 200,
   statusText: 'OK',
-  headers: { 'content-type': 'application/fhir+json' },
+  headers: [['content-type', 'application/fhir+json']],
   ...overrides,
 })
 
@@ -117,7 +117,7 @@ describe('makeFhirR4Remote', () => {
       const [{ response, result }] = onResult.mock.calls[0]
       expect(response.url).toBe('https://r4.smarthealthit.org/Patient/42')
       expect(response.text()).toBe(patientJson)
-      expect(response.headers['content-type']).toBe('application/fhir+json')
+      expect(response.headers).toContainEqual(['content-type', 'application/fhir+json'])
       expectRightToEqual(
         result,
         expect.objectContaining({

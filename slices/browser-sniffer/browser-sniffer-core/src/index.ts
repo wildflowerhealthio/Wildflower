@@ -2,6 +2,9 @@ export { default as BrowserSnifferBridge } from './bridge.ts'
 export {
   CancelSnifferRequestMessage,
   CancelSnifferRequestMessageBody,
+  CancelledMessage,
+  CancelledMessageBody,
+  HeadersWire,
   LogMessage,
   LogMessageBody,
   PageLoadedMessage,
@@ -14,4 +17,5 @@ export {
   ResponseFinishedMessageBody,
   ResponseStartMessage,
   ResponseStartMessageBody,
+  SnifferRequestId,
 } from './messages.ts'

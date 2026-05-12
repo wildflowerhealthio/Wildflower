@@ -14,9 +14,9 @@ const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 const encoder = new TextEncoder()
 
 const makeResponse = (body: string): Response.RemoteResponse => {
-  const r = new Response.RemoteResponse('https://example.com/Patient/1', 200, 'OK', {
-    'content-type': 'application/fhir+json',
-  })
+  const r = new Response.RemoteResponse('https://example.com/Patient/1', 200, 'OK', [
+    ['content-type', 'application/fhir+json'],
+  ])
   r.appendChunk(encoder.encode(body))
   return r
 }

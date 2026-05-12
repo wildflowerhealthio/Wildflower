@@ -1,4 +1,12 @@
-import type { ReadonlyRecord } from 'effect/Record'
+/**
+ * Ordered `(name, value)` header pairs as received on the wire. HTTP
+ * allows the same header name to appear repeatedly (`Set-Cookie` is
+ * the canonical case); preserving the array shape keeps the response
+ * lossless. Consumers that want lookup by name should use
+ * `headersGet(this.headers, 'set-cookie')` (case-insensitive) or
+ * fold into a `Map<string, string[]>`.
+ */
+type RemoteResponseHeaders = readonly (readonly [string, string])[]
 
 class RemoteResponse {
   #chunks: Uint8Array[] = []
@@ -7,7 +15,7 @@ class RemoteResponse {
     public readonly url: string,
     public readonly status: number,
     public readonly statusText: string,
-    public readonly headers: ReadonlyRecord<string, string>
+    public readonly headers: RemoteResponseHeaders
   ) {}
 
   appendChunk(chunk: Uint8Array): void {
@@ -27,3 +35,4 @@ class RemoteResponse {
 }
 
 export { RemoteResponse }
+export type { RemoteResponseHeaders }
