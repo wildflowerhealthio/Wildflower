@@ -19,11 +19,20 @@ import { Schema } from 'effect'
  *
  * The `*Body` schemas (the inner `TaggedStruct`s before the
  * `parseJson` wrap) are exported separately so the injected sniffer
- * can type-import the *encoded* shape — i.e. the JSON-stringifiable
- * form, with `data` as a base64 string rather than the decoded
- * `Uint8Array`. The injected file cannot import runtime schemas
- * (everything resolves to nothing inside the stringified function
- * body), but type-only imports survive the `toString()` path.
+ * can type-import the JSON-stringifiable shape. The injected file
+ * cannot import runtime schemas (everything resolves to nothing
+ * inside the stringified function body), but type-only imports
+ * survive the `toString()` path.
+ *
+ * Why `data` is a plain `Schema.String` (base64-encoded by convention)
+ * and not `Schema.Uint8ArrayFromBase64`: the `BridgeTransport` runs
+ * each inbound schema through `Schema.typeSchema`, which strips
+ * transforms. A `Uint8ArrayFromBase64` field would leave the bridge
+ * expecting an already-decoded `Uint8Array` after `JSON.parse`, which
+ * the wire (a base64 string) cannot satisfy. Keeping `data: string`
+ * lets the bridge decode round-trip cleanly; consumers that need
+ * bytes apply `Schema.decode(Schema.Uint8ArrayFromBase64)` (or
+ * `atob`) at their own boundary.
  */
 
 const LogMessageBody = Schema.TaggedStruct('Log', {
@@ -42,7 +51,8 @@ const ResponseStartMessage = Schema.parseJson(ResponseStartMessageBody)
 
 const ResponseDataMessageBody = Schema.TaggedStruct('ResponseData', {
   id: Schema.String,
-  data: Schema.Uint8ArrayFromBase64,
+  /** Base64-encoded response bytes. See file header for why this is `String` and not `Uint8ArrayFromBase64`. */
+  data: Schema.String,
 })
 const ResponseDataMessage = Schema.parseJson(ResponseDataMessageBody)
 
