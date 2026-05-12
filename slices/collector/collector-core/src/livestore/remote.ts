@@ -9,9 +9,9 @@
  */
 
 import { Events, queryDb, State } from '@livestore/livestore'
-import { pipe, Schema } from 'effect'
+import { Schema } from 'effect'
 
-const RemoteIdSchema = pipe(Schema.String, Schema.brand('Remote/id'))
+const RemoteIdSchema = Schema.String
 type RemoteId = typeof RemoteIdSchema.Type
 
 interface RemoteConfigType {

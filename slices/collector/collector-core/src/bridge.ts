@@ -5,7 +5,7 @@ import {
   ResponseStartMessage,
 } from 'browser-sniffer-core'
 import { Schema } from 'effect'
-import { Bridge, UrlParamMessage } from 'effect-messaging-core'
+import { Bridge } from 'effect-messaging-core'
 
 /**
  * Web → Host: the collector SPA asks the host to open a sniffer-enabled
@@ -38,18 +38,6 @@ const RequestSniffableWebView = Schema.parseJson(
  */
 const SniffingComplete = Schema.parseJson(Schema.TaggedStruct('SniffingComplete', {}))
 
-/**
- * Host → Web: the FHIR-R4 server URL the SPA should write upserts to.
- * Delivered as a URL-param initial message so the embedded bundle has
- * the value before it renders. The slice keeps an explicit Provider
- * (`<FhirR4ServerUrlProvider value={...}>` in collector-react) too — the
- * host-supplied bridge value is the default; the provider can override
- * it (e.g. for tests or externally-managed FHIR servers).
- */
-const FhirR4ServerUrlIssued = Schema.parseJson(
-  Schema.TaggedStruct('FhirR4ServerUrlIssued', { url: Schema.String })
-)
-
 type CollectorBridge = Bridge.Bridge<
   'Collector',
   {
@@ -57,7 +45,6 @@ type CollectorBridge = Bridge.Bridge<
     ResponseData: typeof ResponseDataMessage
     ResponseFinished: typeof ResponseFinishedMessage
     RequestError: typeof RequestErrorMessage
-    FhirR4ServerUrlIssued: typeof FhirR4ServerUrlIssued
   },
   {
     RequestSniffableWebView: typeof RequestSniffableWebView
@@ -69,12 +56,18 @@ type CollectorBridge = Bridge.Bridge<
  * Slice-level bridge between the embedded collector SPA and the Expo
  * host. Web→Host carries control signals (`RequestSniffableWebView`,
  * `SniffingComplete`); Host→Web carries the sniffer-event subset
- * collector parses, plus initial config.
+ * collector parses.
  *
  * The four sniffer events imported from `browser-sniffer-core` keep
  * wire schemas in lockstep with `BrowserSnifferBridge` — the host can
  * forward a decoded message through this bridge's Host→Web sender
  * without re-encoding.
+ *
+ * The FHIR-R4 server URL is *not* a bridge message: the collector
+ * slice owns it via `<FhirR4ServerUrlProvider value=…>` on the SPA
+ * side. Hosts that ship a custom FHIR server wrap the SPA in their
+ * own provider; the default returns `null` and `useSyncRunner`
+ * short-circuits until a value is provided.
  */
 const CollectorBridge: CollectorBridge = Bridge.make({
   name: 'Collector',
@@ -83,19 +76,12 @@ const CollectorBridge: CollectorBridge = Bridge.make({
     ['ResponseData', ResponseDataMessage],
     ['ResponseFinished', ResponseFinishedMessage],
     ['RequestError', RequestErrorMessage],
-    ['FhirR4ServerUrlIssued', FhirR4ServerUrlIssued],
   ] as const,
   webToHost: [
     ['RequestSniffableWebView', RequestSniffableWebView],
     ['SniffingComplete', SniffingComplete],
   ] as const,
-  urlParams: {
-    FhirR4ServerUrlIssued: UrlParamMessage.singleStringMessageSchema(
-      'FhirR4ServerUrlIssued',
-      'url'
-    ),
-  },
 })
 
 export default CollectorBridge
-export { FhirR4ServerUrlIssued, RequestSniffableWebView, SniffingComplete }
+export { RequestSniffableWebView, SniffingComplete }

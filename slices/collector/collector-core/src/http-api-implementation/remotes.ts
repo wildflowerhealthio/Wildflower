@@ -2,7 +2,7 @@ import { HttpApiBuilder } from '@effect/platform'
 import { DateTime, Effect } from 'effect'
 import { CollectorStore } from '../contexts/CollectorStore.ts'
 import { CollectorApi } from '../http-api-definition/index.ts'
-import { Remote, RemoteIdSchema } from '../livestore/index.ts'
+import { Remote } from '../livestore/index.ts'
 
 const layer = HttpApiBuilder.group(CollectorApi, 'collector-remotes', (handlers) =>
   handlers
@@ -51,7 +51,7 @@ const layer = HttpApiBuilder.group(CollectorApi, 'collector-remotes', (handlers)
         }
         store.commit(
           Remote.events.remoteUpdated({
-            id: RemoteIdSchema.make(id),
+            id,
             name: payload.name,
             config: payload.config,
           })
@@ -71,7 +71,7 @@ const layer = HttpApiBuilder.group(CollectorApi, 'collector-remotes', (handlers)
         if (existing === undefined) {
           return yield* Effect.fail({ error: 'RemoteNotFound' as const, id })
         }
-        store.commit(Remote.events.remoteDeleted({ id: RemoteIdSchema.make(id) }))
+        store.commit(Remote.events.remoteDeleted({ id }))
         return { deleted: true }
       })
     )

@@ -1,53 +1,39 @@
 import { Either, Schema } from 'effect'
-import type { ParseError } from 'effect/ParseResult'
-import { RemoteEntity } from './entity.ts'
-import type * as Link from './link.ts'
 
-const SimpleEntitySchema = Schema.Struct({
+import * as Entity from './entity.ts'
+
+/**
+ * Two reusable test entities for `entity.test.ts` and `remote.test.ts`.
+ * Mirror the shape a real entity (e.g. `PatientEntity`) takes — a
+ * value built via `Entity.make`, no inheritance.
+ */
+
+const SimpleSchema = Schema.Struct({
   name: Schema.String,
   age: Schema.Number,
 })
 
-class SimpleEntity extends RemoteEntity<{ name: string; age: number }> {
-  public static readonly name = 'SimpleEntity'
-  public static isFoundAt(url: string): boolean {
-    return /\/people\/\d+$/.test(url)
-  }
-  private readonly decode = Schema.decodeEither(Schema.parseJson(SimpleEntitySchema))
-
-  public override parse(): Either.Either<
-    { resources: { name: string; age: number }[]; links: Link.Any[] },
-    ParseError
-  > {
-    return this.decode(this.body).pipe(
+const SimpleEntity: Entity.Entity<typeof SimpleSchema.Type> = Entity.make({
+  name: 'SimpleEntity',
+  isFoundAt: (url) => /\/people\/\d+$/.test(url),
+  parse: (init) =>
+    Schema.decodeEither(Schema.parseJson(SimpleSchema))(init.body).pipe(
       Either.map((data) => ({
         resources: [data],
         links: [{ _tag: 'Open' as const, href: `/people/${data.name}` }],
       }))
-    )
-  }
-}
+    ),
+})
 
-class AnotherEntity extends RemoteEntity<{ id: string }> {
-  public static readonly name = 'AnotherEntity'
-  public static isFoundAt(url: string): boolean {
-    return /\/items\//.test(url)
-  }
-  private readonly decode = Schema.decodeEither(
-    Schema.parseJson(Schema.Struct({ id: Schema.String }))
-  )
+const AnotherSchema = Schema.Struct({ id: Schema.String })
 
-  public override parse(): Either.Either<
-    { resources: readonly { id: string }[]; links: readonly Link.Any[] },
-    ParseError
-  > {
-    return this.decode(this.body).pipe(
-      Either.map((data) => ({
-        resources: [data],
-        links: [],
-      }))
-    )
-  }
-}
+const AnotherEntity: Entity.Entity<typeof AnotherSchema.Type> = Entity.make({
+  name: 'AnotherEntity',
+  isFoundAt: (url) => /\/items\//.test(url),
+  parse: (init) =>
+    Schema.decodeEither(Schema.parseJson(AnotherSchema))(init.body).pipe(
+      Either.map((data) => ({ resources: [data], links: [] }))
+    ),
+})
 
-export { SimpleEntity, AnotherEntity }
+export { AnotherEntity, SimpleEntity }

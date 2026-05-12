@@ -2,7 +2,7 @@
   "name": "fhir-r4-client-collector",
   "version": "0.0.0",
   "private": true,
-  "description": "FHIR R4 concrete implementation of collector's Remote: patient + observation entities, the FhirR4Remote class, and same-origin upsert helpers.",
+  "description": "FHIR R4 concrete implementation of collector's Remote: Patient / Observation / Observation-list entities and a `makeFhirR4Remote` factory plus the inline bootstrap HTML page the WebView loads first.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -36,6 +36,8 @@
     "emr-core": "workspace:*",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
+    "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },

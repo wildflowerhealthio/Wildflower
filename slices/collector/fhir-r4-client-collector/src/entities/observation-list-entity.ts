@@ -1,39 +1,31 @@
-import { Entity, type Link } from 'collector-core'
+import * as Entity from 'collector-core/entity'
 import { Either, Schema } from 'effect'
-import type { ParseResult } from 'effect'
 import { Bundle } from 'fhir-r4/data-types'
 import { Observation } from 'fhir-r4/resources'
 
 type ObservationType = typeof Observation.Schema.Type
 
 const ObservationBundle = Bundle.Schema(Observation.Schema)
+const decode = Schema.decodeEither(Schema.parseJson(ObservationBundle))
+const isObservation = Schema.is(Observation.Schema)
 
-class ObservationListEntity extends Entity.RemoteEntity<ObservationType> {
-  public static readonly name = 'ObservationListEntity'
-
-  public static isFoundAt(url: string): boolean {
-    return /.*:\/\/[^/]*\/Observation.*$/.test(url)
-  }
-
-  private readonly decode = Schema.decodeEither(Schema.parseJson(ObservationBundle))
-
-  parse(): Either.Either<
-    {
-      resources: readonly ObservationType[]
-      links: readonly Link.Any[]
-    },
-    ParseResult.ParseError
-  > {
-    return this.decode(this.body).pipe(
-      Either.map((observation) => ({
+/**
+ * Entity for a FHIR R4 `Bundle` of `Observation` resources fetched at
+ * `…/Observation?…`. Extracts the entries whose `resource` decodes as a
+ * full `Observation` and drops the rest (the Bundle schema is
+ * permissive about `entry.resource` so we re-check here).
+ */
+const ObservationListEntity: Entity.Entity<ObservationType> = Entity.make({
+  name: 'ObservationListEntity',
+  isFoundAt: (url) => /.*:\/\/[^/]*\/Observation.*$/.test(url),
+  parse: (init) =>
+    decode(init.body).pipe(
+      Either.map((bundle) => ({
         resources:
-          observation.entry
-            ?.map(({ resource }) => resource)
-            .filter((o) => Schema.is(Observation.Schema)(o)) ?? [],
+          bundle.entry?.map(({ resource }) => resource).filter((o) => isObservation(o)) ?? [],
         links: [],
       }))
-    )
-  }
-}
+    ),
+})
 
 export { ObservationListEntity }

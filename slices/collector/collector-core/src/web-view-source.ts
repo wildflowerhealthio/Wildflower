@@ -1,3 +1,12 @@
+/**
+ * What a host `<WebView>` should load. Mirrors `react-native-webview`'s
+ * `source` prop shape (and `EffectMessagingWebViewSource`) so a host
+ * component can pass values of these types straight through.
+ *
+ * The slice's `Remote.firstPage` is typed as {@link Any}; concrete
+ * remotes choose whether to point at an external URL ({@link Uri}) or
+ * to ship an inline page ({@link Html}).
+ */
 interface Uri {
   /**
    * The URI to load in the `WebView`. Can be a local or remote file.

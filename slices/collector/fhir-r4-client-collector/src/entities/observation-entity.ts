@@ -1,33 +1,23 @@
-import { Entity, type Link } from 'collector-core'
+import * as Entity from 'collector-core/entity'
 import { Either, Schema } from 'effect'
-import type { ParseResult } from 'effect'
-import { Observation } from 'emr-core/livestore'
+import { Observation } from 'fhir-r4/resources'
 
-type ObservationWithId = typeof Observation.RowSchema.Type
+type ObservationType = typeof Observation.Schema.Type
 
-class ObservationEntity extends Entity.RemoteEntity<ObservationWithId> {
-  public static readonly name = 'ObservationEntity'
+const decode = Schema.decodeEither(Schema.parseJson(Observation.Schema))
 
-  public static isFoundAt(url: string): boolean {
-    return /.*:\/\/[^/]*\/Observation\/[^/]+$/.test(url)
-  }
-
-  private readonly decode = Schema.decodeEither(Schema.parseJson(Observation.RowSchema))
-
-  parse(): Either.Either<
-    {
-      resources: readonly ObservationWithId[]
-      links: readonly Link.Any[]
-    },
-    ParseResult.ParseError
-  > {
-    return this.decode(this.body).pipe(
-      Either.map((observation) => ({
-        resources: [observation],
-        links: [],
-      }))
-    )
-  }
-}
+/**
+ * Entity for a single FHIR R4 `Observation` resource fetched at
+ * `…/Observation/:id`. The wire schema lives in `fhir-r4/resources` —
+ * its `Encoded` is the FHIR R4 wire JSON, its `Type` is the
+ * emr-core-shaped row, so the decoded `resources` entry is ready to
+ * persist without further mapping.
+ */
+const ObservationEntity: Entity.Entity<ObservationType> = Entity.make({
+  name: 'ObservationEntity',
+  isFoundAt: (url) => /.*:\/\/[^/]*\/Observation\/[^/]+$/.test(url),
+  parse: (init) =>
+    decode(init.body).pipe(Either.map((observation) => ({ resources: [observation], links: [] }))),
+})
 
 export { ObservationEntity }

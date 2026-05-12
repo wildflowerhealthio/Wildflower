@@ -1,16 +1,18 @@
-import { Either, Schema } from 'effect'
+import { Schema } from 'effect'
 import fc from 'fast-check'
+import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { InstanceConfig, defaultConfig } from './config.ts'
 
+const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
+
 describe('InstanceConfig', () => {
-  it('should decode defaultConfig without error', () => {
-    const result = Schema.decodeUnknownEither(InstanceConfig)(defaultConfig)
-    expect(Either.isRight(result)).toBe(true)
+  it('decodes defaultConfig without error', () => {
+    expectRightToEqual(Schema.decodeUnknownEither(InstanceConfig)(defaultConfig), defaultConfig)
   })
 
-  it('should round-trip any rootUrl and patientId', () => {
+  it('round-trips any rootUrl and patientId', () => {
     fc.assert(
       fc.property(
         fc.string({ minLength: 1 }),
@@ -18,30 +20,35 @@ describe('InstanceConfig', () => {
         (rootUrl, patientId) => {
           const config = { _tag: 'fhir-r4', rootUrl, patientId } as const
           const encoded = Schema.encodeSync(InstanceConfig)(config)
-          const decoded = Schema.decodeSync(InstanceConfig)(encoded)
-          expect(decoded).toEqual(config)
+          expect(Schema.decodeSync(InstanceConfig)(encoded)).toEqual(config)
         }
       )
     )
   })
 
-  it('should reject missing rootUrl', () => {
-    const result = Schema.decodeUnknownEither(InstanceConfig)({ _tag: 'fhir-r4', patientId: '123' })
-    expect(Either.isLeft(result)).toBe(true)
+  it('rejects missing rootUrl', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(InstanceConfig)({ _tag: 'fhir-r4', patientId: '123' }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
   })
 
-  it('should reject missing patientId', () => {
-    const result = Schema.decodeUnknownEither(InstanceConfig)({
-      _tag: 'fhir-r4',
-      rootUrl: 'https://example.com',
-    })
-    expect(Either.isLeft(result)).toBe(true)
+  it('rejects missing patientId', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(InstanceConfig)({
+        _tag: 'fhir-r4',
+        rootUrl: 'https://example.com',
+      }),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
   })
 })
 
 describe('defaultConfig', () => {
-  it('should point to the SMART Health IT sandbox', () => {
-    expect(defaultConfig.rootUrl).toBe('https://r4.smarthealthit.org')
-    expect(defaultConfig.patientId).toBe('8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882')
+  it('points to the SMART Health IT sandbox', () => {
+    expect(defaultConfig).toMatchObject({
+      rootUrl: 'https://r4.smarthealthit.org',
+      patientId: '8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882',
+    })
   })
 })

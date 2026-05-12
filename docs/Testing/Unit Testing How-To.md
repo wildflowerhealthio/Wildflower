@@ -94,13 +94,14 @@ When the assertion is purely structural — "did this method run once, with what
 
 ### `utilityExpectations` from `kitchen-sink/test`
 
-Two patterns come up often enough that they live in the shared kitchen-sink:
+Four patterns come up often enough that they live in the shared kitchen-sink:
 
 ```typescript
 import { expect } from 'vite-plus/test'
 import { utilityExpectations } from 'kitchen-sink/test'
 
-const { expectDistinct, expectToMultisetEqual } = utilityExpectations(expect)
+const { expectDistinct, expectToMultisetEqual, expectRightToEqual, expectLeftToEqual } =
+  utilityExpectations(expect)
 
 test('every id is unique', () => {
   expectDistinct(events.map((e) => e.id))
@@ -112,9 +113,14 @@ test('shipped + arrived agree on which orders moved', () => {
     arrived.map((a) => a.id)
   )
 })
+
+test('decoded payload matches', () => {
+  expectRightToEqual(parse('{"name":"Alice","age":30}'), { name: 'Alice', age: 30 })
+  expectLeftToEqual(parse('{not json}'), expect.objectContaining({ _tag: 'ParseError' }))
+})
 ```
 
-`expectDistinct(values)` wraps `expect(new Set(values).size).toBe(values.length)`; `expectToMultisetEqual(a, b)` sorts both arrays before `toEqual` so order is incidental. The helpers exist because the underlying spellings show up in failure messages as `expect([…]).toBe([…])` rather than the actual intent. Use them whenever an array assertion is really "these elements, ignoring order" or "no duplicates."
+`expectDistinct(values)` wraps `expect(new Set(values).size).toBe(values.length)`; `expectToMultisetEqual(a, b)` sorts both arrays before `toEqual` so order is incidental. `expectRightToEqual` / `expectLeftToEqual` collapse the `Either.isRight(x) && expect(x.right).toEqual(…)` ladder into one expression; the `expected` argument is `unknown` so asymmetric matchers (`expect.objectContaining(…)`, `expect.any(Function)`, …) compose. Use these helpers whenever the array assertion is really "these elements, ignoring order" / "no duplicates", or when an `Either` side-and-value check would otherwise need two separate assertions.
 
 The factory takes any `expect`-shaped function — Vitest's `expect`, Jest's `expect`, or any structural fit. Build the helpers once at module scope per test file.
 
