@@ -120,7 +120,11 @@ test('decoded payload matches', () => {
 })
 ```
 
-`expectDistinct(values)` wraps `expect(new Set(values).size).toBe(values.length)`; `expectToMultisetEqual(a, b)` sorts both arrays before `toEqual` so order is incidental. `expectRightToEqual` / `expectLeftToEqual` collapse the `Either.isRight(x) && expect(x.right).toEqual(…)` ladder into one expression; the `expected` argument is `unknown` so asymmetric matchers (`expect.objectContaining(…)`, `expect.any(Function)`, …) compose. Use these helpers whenever the array assertion is really "these elements, ignoring order" / "no duplicates", or when an `Either` side-and-value check would otherwise need two separate assertions.
+What each helper collapses, and when to reach for it:
+
+- `expectDistinct(values)` — wraps `expect(new Set(values).size).toBe(values.length)`. Use when an array assertion is really "no duplicates".
+- `expectToMultisetEqual(a, b)` — sorts both arrays before `toEqual` so order is incidental. Use when the assertion is "these elements, ignoring order".
+- `expectRightToEqual(either, expected)` / `expectLeftToEqual(either, expected)` — collapse the `Either.isRight(x) && expect(x.right).toEqual(…)` ladder into one expression. The `expected` argument is `unknown` so asymmetric matchers (`expect.objectContaining(…)`, `expect.any(Function)`, …) compose.
 
 The factory takes any `expect`-shaped function — Vitest's `expect`, Jest's `expect`, or any structural fit. Build the helpers once at module scope per test file.
 
