@@ -1,3 +1,5 @@
+// oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers (`expect.stringContaining`, `expect.objectContaining`) are typed as `any`; composing them inside other matchers is the intended idiom
+
 import fc from 'fast-check'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -153,6 +155,7 @@ describe('buildFhirBootstrapHtml', () => {
         // URLs are JSON-stringified in the <script> with `<` further
         // replaced by `<`; mirror that transformation to find them
         // in the rendered HTML.
+        // oxlint-disable-next-line eslint-plugin-unicorn/consistent-function-scoping
         const safeEmbed = (s: string): string => JSON.stringify(s).replace(/</g, '\\u003c')
         expect(html).toContain(safeEmbed(patientUrl))
         expect(html).toContain(safeEmbed(observationUrl))

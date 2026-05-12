@@ -1,11 +1,18 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
-import { RemoteConfig } from '../livestore/remote.ts'
+
+import { CollectorConfig, CollectorTag } from '../registry.ts'
 
 const RemoteSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
-  config: RemoteConfig,
+  /**
+   * Mirrors the storage row's `tag` column — equal to `config._tag`.
+   * Surfaced on the wire so clients filtering by collector kind don't
+   * need to crack the config to discriminate.
+   */
+  tag: CollectorTag,
+  config: CollectorConfig,
   addedAt: Schema.DateTimeUtc,
 })
 
@@ -14,12 +21,12 @@ const RemotesSchema = Schema.Array(RemoteSchema)
 const CreateRemotePayloadSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
-  config: RemoteConfig,
+  config: CollectorConfig,
 })
 
 const UpdateRemotePayloadSchema = Schema.Struct({
   name: Schema.String,
-  config: RemoteConfig,
+  config: CollectorConfig,
 })
 
 const RemoteNotFoundSchema = Schema.Struct({

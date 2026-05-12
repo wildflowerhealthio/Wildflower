@@ -1,4 +1,4 @@
-import { EntityDefinition } from 'collector-core/model'
+import { EntityDefinition } from 'collector-fundamentals/model'
 import { Effect, Schema } from 'effect'
 import { Observation } from 'fhir-r4/resources'
 

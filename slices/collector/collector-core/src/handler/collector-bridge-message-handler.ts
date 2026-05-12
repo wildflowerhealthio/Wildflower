@@ -1,10 +1,8 @@
 import { type CancelSnifferRequestMessage } from 'browser-sniffer-core'
+import { type EntityDefinition, type Remote, Response } from 'collector-fundamentals/model'
 import { Either, type ParseResult, Effect, Encoding, MutableHashMap, Option, Data } from 'effect'
 import { UnknownException } from 'effect/Cause'
 import type CollectorBridge from '../bridge.ts'
-import type * as EntityDefinition from './entity-definition.ts'
-import type * as Remote from './remote.ts'
-import { RemoteResponse } from './response.ts'
 
 type Service = CollectorBridge['Web']['HandlerTag']['Service']
 
@@ -16,7 +14,7 @@ type Service = CollectorBridge['Web']['HandlerTag']['Service']
  * factory now deep-freezes anyway, but this nails the invariant).
  */
 interface InProgressResponse<TResources> {
-  readonly response: RemoteResponse
+  readonly response: Response.RemoteResponse
   readonly entity: EntityDefinition.EntityDefinition<TResources>
 }
 
@@ -54,7 +52,7 @@ const make = <TResources>({
     message: typeof CancelSnifferRequestMessage.Type
   ) => Effect.Effect<void, never, never>
   onResult: (args: {
-    readonly response: RemoteResponse
+    readonly response: Response.RemoteResponse
     readonly result: Either.Either<
       EntityDefinition.Parsed<TResources>,
       ParseResult.ParseError | UnknownException | SnifferCancelled
@@ -72,7 +70,12 @@ const make = <TResources>({
       } satisfies typeof CancelSnifferRequestMessage.Type)
     }
     MutableHashMap.set(event.id, {
-      response: new RemoteResponse(event.url, event.status, event.statusText, event.headers),
+      response: new Response.RemoteResponse(
+        event.url,
+        event.status,
+        event.statusText,
+        event.headers
+      ),
       entity,
     })(inProgressResponses)
     return Effect.void
@@ -82,7 +85,7 @@ const make = <TResources>({
     Effect.gen(function* () {
       const maybe = MutableHashMap.get(event.id)(inProgressResponses)
       if (Option.isNone(maybe)) {
-        yield* Effect.logWarn(
+        yield* Effect.logWarning(
           `CollectorBridgeMessageHandler.ResponseData: no tracked response for id ${event.id}; ignoring`
         )
         return
@@ -110,7 +113,7 @@ const make = <TResources>({
     Effect.gen(function* () {
       const maybe = MutableHashMap.get(event.id)(inProgressResponses)
       if (Option.isNone(maybe)) {
-        yield* Effect.logWarn(
+        yield* Effect.logWarning(
           `CollectorBridgeMessageHandler.ResponseFinished: no tracked response for id ${event.id}; ignoring`
         )
         return
@@ -125,7 +128,7 @@ const make = <TResources>({
     Effect.gen(function* () {
       const maybe = MutableHashMap.get(event.id)(inProgressResponses)
       if (Option.isNone(maybe)) {
-        yield* Effect.logWarn(
+        yield* Effect.logWarning(
           `CollectorBridgeMessageHandler.RequestError: no tracked response for id ${event.id}; ignoring`
         )
         return
@@ -148,7 +151,7 @@ const make = <TResources>({
         // `Cancelled` is sent by the page in response to a
         // `CancelSnifferRequest` the host issued; an unsolicited
         // `Cancelled` (or one for an id already finished) is harmless.
-        yield* Effect.logWarn(
+        yield* Effect.logWarning(
           `CollectorBridgeMessageHandler.Cancelled: no tracked response for id ${event.id}; ignoring`
         )
         return

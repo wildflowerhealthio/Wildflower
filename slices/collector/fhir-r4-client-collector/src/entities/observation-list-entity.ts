@@ -1,4 +1,4 @@
-import { EntityDefinition } from 'collector-core/model'
+import { EntityDefinition } from 'collector-fundamentals/model'
 import { Effect, Schema } from 'effect'
 import { Bundle } from 'fhir-r4/data-types'
 import { Observation } from 'fhir-r4/resources'
@@ -30,9 +30,7 @@ const ObservationListEntity: EntityDefinition.EntityDefinition<ObservationType> 
       Effect.gen(function* () {
         const bundle = yield* decode(response.text())
         const allEntries = bundle.entry ?? []
-        const resources = allEntries
-          .map(({ resource }) => resource)
-          .filter((o) => isObservation(o))
+        const resources = allEntries.map(({ resource }) => resource).filter((o) => isObservation(o))
         const droppedCount = allEntries.length - resources.length
         if (droppedCount > 0) {
           yield* Effect.logInfo(

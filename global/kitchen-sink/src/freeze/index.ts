@@ -32,8 +32,11 @@ const deepFreeze = <T>(value: T): DeepReadonly<T> => {
     return value as DeepReadonly<T>
   }
   Object.freeze(value)
-  for (const key of Object.getOwnPropertyNames(value)) {
-    const child = (value as Record<string, unknown>)[key]
+  // `Object.entries` only walks own enumerable string keys (Symbols
+  // and inherited props are skipped); good enough for the
+  // identity-factory use case and avoids casting to
+  // `Record<string, unknown>`.
+  for (const [, child] of Object.entries(value as object)) {
     if (child !== null && typeof child === 'object') {
       deepFreeze(child)
     }

@@ -19,11 +19,12 @@ type JsonValue =
   | readonly JsonValue[]
 
 const arbitraryJsonValue: LazyArbitrary<JsonValue> = (fc: typeof FastCheck) =>
-  // `fc.jsonValue()`'s element type is structurally compatible with our
-  // `JsonValue` — both are the same recursive union — but fast-check's
-  // returned shape is mutable; we narrow to the readonly form.
+  // `fc.jsonValue()` returns the same recursive union shape (mutable
+  // record/array) and is structurally a `JsonValue`. Re-typing via
+  // `unknown` keeps `LazyArbitrary`'s readonly variance honest at the
+  // call site.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  fc.jsonValue() as ReturnType<typeof fc.jsonValue> & { readonly [key: string]: JsonValue }
+  fc.jsonValue() as unknown as FastCheck.Arbitrary<JsonValue>
 
 /**
  * Schema matching any JSON-safe value. Uses `Schema.JsonNumber` for the

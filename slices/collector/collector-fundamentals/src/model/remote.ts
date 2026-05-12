@@ -20,7 +20,7 @@ import type * as WebViewSource from './web-view-source.ts'
  * definitions or fixtures.
  *
  * Import callers use the file as a namespace:
- * `import { Remote } from 'collector-core/model'` →
+ * `import { Remote } from 'collector-fundamentals/model'` →
  * `Remote.Remote<T>` for the type, `Remote.make({...})` for the
  * constructor.
  *

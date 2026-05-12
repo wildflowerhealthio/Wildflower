@@ -28,6 +28,7 @@ const events = {
 const queries = {
   remotes$: Remote.queries.all$,
   remoteById$: Remote.queries.byId$,
+  remotesByTag$: Remote.queries.byTag$,
 } as const
 
 const materializers = { ...Remote.materializers } as const
@@ -36,5 +37,4 @@ const state = State.SQLite.makeState({ tables, materializers })
 const schema = makeSchema({ events, state })
 
 export { events, materializers, queries, Remote, schema, state, tables }
-export { RemoteConfig } from './remote.ts'
-export type { RemoteConfigType, RemoteRow } from './remote.ts'
+export type { RemoteRow } from './remote.ts'

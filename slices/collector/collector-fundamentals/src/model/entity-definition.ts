@@ -30,7 +30,7 @@ interface Parsed<TResources> {
  * `RemoteEntityConstructor<T>` pair; the inheritance chain became a
  * manual function chain (each concrete entity calls {@link make} once
  * and exports the result). Import callers use the file as a
- * namespace: `import { EntityDefinition } from 'collector-core/model'`
+ * namespace: `import { EntityDefinition } from 'collector-fundamentals/model'`
  * → `EntityDefinition.EntityDefinition<T>` for the type,
  * `EntityDefinition.make({...})` for the constructor.
  *
@@ -63,9 +63,7 @@ interface EntityDefinition<TResources> {
  * three known fields (`name`, `isFoundAt`, `parse`) so an extra
  * unexpected property on the caller's object is silently dropped.
  */
-const make = <TResources>(
-  definition: EntityDefinition<TResources>
-): EntityDefinition<TResources> =>
+const make = <TResources>(definition: EntityDefinition<TResources>): EntityDefinition<TResources> =>
   deepFreeze({
     name: definition.name,
     isFoundAt: definition.isFoundAt,

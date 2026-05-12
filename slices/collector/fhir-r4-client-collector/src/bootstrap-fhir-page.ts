@@ -1,3 +1,5 @@
+// oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin -- RN-WebView's bridge `postMessage(string)` is not the window `postMessage` API; no `targetOrigin` argument exists (mirrors browser-sniffer-injected/install-sniffer).
+
 import type { LogMessageBody } from 'browser-sniffer-core'
 import type { Schema } from 'effect'
 
@@ -96,7 +98,9 @@ const bootstrapFhirPage = function (config: {
  * `JSON.stringify` is not enough on its own — it does not escape
  * `<`, so a URL containing `</script>` would close the script tag.
  * After `JSON.stringify` we replace `<` with its `<`
- * representation (and the two line separators ` ` / ` `,
+ * representation (and the two line separators `
+` / `
+`,
  * which are valid in JSON strings but illegal in JS source) to
  * preserve script-context boundary safety.
  */

@@ -31,6 +31,7 @@ describe('deepFreeze', () => {
   })
 
   it('does not recurse into function bodies but freezes the function value', () => {
+    // oxlint-disable-next-line eslint-plugin-unicorn/consistent-function-scoping
     const fn = (): number => 1
     deepFreeze(fn)
     expect(Object.isFrozen(fn)).toBe(true)
@@ -68,7 +69,7 @@ describe('deepFreeze', () => {
           if (Array.isArray(v)) {
             for (const child of v) walk(child)
           } else {
-            for (const k of Object.keys(v)) walk((v as Record<string, unknown>)[k])
+            for (const [, child] of Object.entries(v)) walk(child)
           }
         }
         walk(frozen)

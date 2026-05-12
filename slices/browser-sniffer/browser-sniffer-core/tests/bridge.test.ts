@@ -77,20 +77,18 @@ const makeCollectingHostLayer = (): {
   layer: ReturnType<typeof BrowserSnifferBridge.Host.ReceiverLayer>
 } => {
   const collected: WebToHostMessage[] = []
-  const push =
-    <T extends WebToHostMessage>() =>
-    (m: T): Effect.Effect<void> =>
-      Effect.sync(() => {
-        collected.push(m)
-      })
+  const push = (m: WebToHostMessage): Effect.Effect<void> =>
+    Effect.sync(() => {
+      collected.push(m)
+    })
   const layer = BrowserSnifferBridge.Host.ReceiverLayer({
-    Log: push(),
-    ResponseStart: push(),
-    ResponseData: push(),
-    ResponseFinished: push(),
-    RequestError: push(),
-    Cancelled: push(),
-    PageLoaded: push(),
+    Log: push,
+    ResponseStart: push,
+    ResponseData: push,
+    ResponseFinished: push,
+    RequestError: push,
+    Cancelled: push,
+    PageLoaded: push,
   })
   return { collected, layer }
 }

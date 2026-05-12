@@ -1,5 +1,5 @@
-import { type EntityDefinition, Remote } from 'collector-core/model'
-import { Binary, Observation, Patient } from 'fhir-r4/resources'
+import { type EntityDefinition, Remote } from 'collector-fundamentals/model'
+import type { Binary, Observation, Patient } from 'fhir-r4/resources'
 
 import { buildFhirBootstrapHtml } from './bootstrap-fhir-page.ts'
 import type { InstanceConfig } from './config.ts'

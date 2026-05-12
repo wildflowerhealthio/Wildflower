@@ -5,10 +5,9 @@ import { Effect, Encoding, MutableHashMap } from 'effect'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { AnotherEntity, SimpleEntity } from '../test-helpers.ts'
+import { EntityDefinition, Remote } from 'collector-fundamentals/model'
+import { AnotherEntity, SimpleEntity } from 'collector-fundamentals/test-helpers'
 import * as CollectorBridgeMessageHandler from './collector-bridge-message-handler.ts'
-import * as EntityDefinition from './entity-definition.ts'
-import * as Remote from './remote.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
@@ -306,10 +305,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
       expect(onResult).toHaveBeenCalledOnce()
       const [{ response, result }] = onResult.mock.calls[0]
       expect(response.url).toBe('https://example.com/people/1')
-      expectLeftToEqual(
-        result,
-        expect.objectContaining({ _tag: 'SnifferCancelled', id: 'r1' })
-      )
+      expectLeftToEqual(result, expect.objectContaining({ _tag: 'SnifferCancelled', id: 'r1' }))
       expect(MutableHashMap.keys(handler.inProgressResponses)).not.toContain('r1')
     })
 

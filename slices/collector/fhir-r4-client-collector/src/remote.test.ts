@@ -1,6 +1,6 @@
 // oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers (`expect.objectContaining`, `expect.stringContaining`, etc.) are typed as `any`; composing them inside `objectContaining` is the intended idiom
 
-import { CollectorBridgeMessageHandler } from 'collector-core/model'
+import * as CollectorBridgeMessageHandler from 'collector-core/handler'
 import { Arbitrary, Effect, Encoding, MutableHashMap } from 'effect'
 import fc from 'fast-check'
 import { utilityExpectations } from 'kitchen-sink/test'

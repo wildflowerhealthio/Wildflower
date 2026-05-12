@@ -1,7 +1,22 @@
-import { fireEvent, render } from '@testing-library/react-native'
+import { render } from '@testing-library/react-native'
+import { Effect } from 'effect'
+import type { Effect as EffectType, Layer as LayerType } from 'effect'
 import * as React from 'react'
-import { Text } from 'react-native'
 import type { ReactElement } from 'react'
+import { Text } from 'react-native'
+
+import type { SnifferHandlers } from './BrowserSnifferWebView.tsx'
+
+/** No-op handlers satisfying the full `HandlersFor<...>` shape so tests don't need to enumerate every tag. */
+const noopHandlers: SnifferHandlers = {
+  Log: () => Effect.void,
+  ResponseStart: () => Effect.void,
+  ResponseData: () => Effect.void,
+  ResponseFinished: () => Effect.void,
+  RequestError: () => Effect.void,
+  Cancelled: () => Effect.void,
+  PageLoaded: () => Effect.void,
+}
 
 // Capture WebView props on each render so assertions can inspect what
 // the component handed down (ref callback, source, onLoadEnd, the
@@ -56,8 +71,9 @@ jest.mock('browser-sniffer-injected', () => ({
 // will go through the real BridgeTransport (we don't mock that) but
 // the bridge's ReceiverLayer just needs to be callable.
 jest.mock('browser-sniffer-core/bridge', () => {
-  const Effect = jest.requireActual<typeof import('effect')>('effect').Effect
-  const Layer = jest.requireActual<typeof import('effect')>('effect').Layer
+  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
+    'effect'
+  )
   return {
     __esModule: true,
     default: {
@@ -68,8 +84,8 @@ jest.mock('browser-sniffer-core/bridge', () => {
         OutboundSchemas: { CancelSnifferRequest: { _tag: 'mock' } },
         // ReceiverLayer returns a Layer with no requirements; the
         // BridgeTransport composition expects one per bridge.
-        ReceiverLayer: (_handlers: unknown): Layer.Layer<never> =>
-          Layer.effectDiscard(Effect.void),
+        ReceiverLayer: (_handlers: unknown): LayerType.Layer<never> =>
+          effect.Layer.effectDiscard(effect.Effect.void),
       },
     },
   }
@@ -82,22 +98,22 @@ let mockSendMessageCalls: Array<{ readonly _tag: string; readonly id?: string }>
 let mockEnqueueCalls: string[] = []
 let mockEnqueueShouldFail = false
 jest.mock('effect-messaging-core', () => {
-  const Effect = jest.requireActual<typeof import('effect')>('effect').Effect
+  const effect = jest.requireActual<{ Effect: typeof EffectType }>('effect')
   return {
     BridgeTransport: {
       make: (_config: unknown) =>
-        Effect.succeed({
-          sendMessage: (msg: { _tag: string; id?: string }): Effect.Effect<void> =>
-            Effect.sync(() => {
+        effect.Effect.succeed({
+          sendMessage: (msg: { _tag: string; id?: string }): EffectType.Effect<void> =>
+            effect.Effect.sync(() => {
               mockSendMessageCalls.push(msg)
             }),
-          enqueue: (raw: string): Effect.Effect<void> => {
+          enqueue: (raw: string): EffectType.Effect<void, Error> => {
             mockEnqueueCalls.push(raw)
             return mockEnqueueShouldFail
-              ? Effect.fail(new Error('mock enqueue failure'))
-              : Effect.void
+              ? effect.Effect.fail(new Error('mock enqueue failure'))
+              : effect.Effect.void
           },
-          flushed: Effect.void,
+          flushed: effect.Effect.void,
         }),
     },
     TransportAdapter: { Type: undefined },
@@ -105,7 +121,10 @@ jest.mock('effect-messaging-core', () => {
   }
 })
 
-import { BrowserSnifferWebView, type BrowserSnifferWebViewHandle } from './BrowserSnifferWebView.tsx'
+import {
+  BrowserSnifferWebView,
+  type BrowserSnifferWebViewHandle,
+} from './BrowserSnifferWebView.tsx'
 
 beforeEach(() => {
   mockLastWebViewProps = null
@@ -118,7 +137,7 @@ beforeEach(() => {
 describe('BrowserSnifferWebView', () => {
   it('renders a WebView with the injected sniffer script', () => {
     render(
-      <BrowserSnifferWebView source={{ uri: 'https://example.test' }} handlers={{}} />
+      <BrowserSnifferWebView source={{ uri: 'https://example.test' }} handlers={noopHandlers} />
     )
     expect(mockLastWebViewProps?.injectedJavaScriptBeforeContentLoaded).toBe('/* mock sniffer */')
     expect(mockLastWebViewProps?.source).toEqual({ uri: 'https://example.test' })
@@ -130,7 +149,7 @@ describe('BrowserSnifferWebView', () => {
       const { queryByTestId } = render(
         <BrowserSnifferWebView
           source={{ uri: 'https://example.test' }}
-          handlers={{}}
+          handlers={noopHandlers}
           loader={loader}
         />
       )
@@ -144,7 +163,7 @@ describe('BrowserSnifferWebView', () => {
 
     it('omits the loader overlay when no `loader` prop is supplied', () => {
       const { queryByTestId } = render(
-        <BrowserSnifferWebView source={{ uri: 'https://example.test' }} handlers={{}} />
+        <BrowserSnifferWebView source={{ uri: 'https://example.test' }} handlers={noopHandlers} />
       )
       expect(queryByTestId('bsw-loader')).toBeNull()
     })
@@ -154,7 +173,11 @@ describe('BrowserSnifferWebView', () => {
     it('routes through transport.sendMessage once the transport is built', async () => {
       const ref = React.createRef<BrowserSnifferWebViewHandle>()
       render(
-        <BrowserSnifferWebView ref={ref} source={{ uri: 'https://example.test' }} handlers={{}} />
+        <BrowserSnifferWebView
+          ref={ref}
+          source={{ uri: 'https://example.test' }}
+          handlers={noopHandlers}
+        />
       )
       // Give the useEffect a tick to build the transport.
       await new Promise((resolve) => setTimeout(resolve, 0))
@@ -167,7 +190,11 @@ describe('BrowserSnifferWebView', () => {
     it('silently drops when called before the transport is built', () => {
       const ref = React.createRef<BrowserSnifferWebViewHandle>()
       render(
-        <BrowserSnifferWebView ref={ref} source={{ uri: 'https://example.test' }} handlers={{}} />
+        <BrowserSnifferWebView
+          ref={ref}
+          source={{ uri: 'https://example.test' }}
+          handlers={noopHandlers}
+        />
       )
       // Synchronously — useEffect hasn't fired yet.
       expect(() => ref.current?.cancelRequest('r-pre-effect')).not.toThrow()
@@ -179,7 +206,7 @@ describe('BrowserSnifferWebView', () => {
   describe('onMessage', () => {
     it('forwards WebView message data through transport.enqueue', async () => {
       render(
-        <BrowserSnifferWebView source={{ uri: 'https://example.test' }} handlers={{}} />
+        <BrowserSnifferWebView source={{ uri: 'https://example.test' }} handlers={noopHandlers} />
       )
       await new Promise((resolve) => setTimeout(resolve, 0))
       const onMessage = mockLastWebViewProps?.onMessage
@@ -191,7 +218,7 @@ describe('BrowserSnifferWebView', () => {
     it('does not throw when transport.enqueue fails (failure is logged via catchAllCause)', async () => {
       mockEnqueueShouldFail = true
       render(
-        <BrowserSnifferWebView source={{ uri: 'https://example.test' }} handlers={{}} />
+        <BrowserSnifferWebView source={{ uri: 'https://example.test' }} handlers={noopHandlers} />
       )
       await new Promise((resolve) => setTimeout(resolve, 0))
       const onMessage = mockLastWebViewProps?.onMessage
@@ -202,7 +229,7 @@ describe('BrowserSnifferWebView', () => {
 
     it('silently drops messages when the transport is not yet built', () => {
       render(
-        <BrowserSnifferWebView source={{ uri: 'https://example.test' }} handlers={{}} />
+        <BrowserSnifferWebView source={{ uri: 'https://example.test' }} handlers={noopHandlers} />
       )
       // Capture the initial onMessage from the synchronous render path,
       // before useEffect has fired.

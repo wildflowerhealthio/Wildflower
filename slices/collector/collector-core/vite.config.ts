@@ -9,12 +9,13 @@ export default defineConfig({
     entry: {
       index: 'src/index.ts',
       bridge: 'src/bridge.ts',
+      'handler/collector-bridge-message-handler': 'src/handler/collector-bridge-message-handler.ts',
+      registry: 'src/registry.ts',
       'clients/index': 'src/clients/index.ts',
       'contexts/index': 'src/contexts/index.ts',
       'http-api-definition/index': 'src/http-api-definition/index.ts',
       'http-api-implementation/index': 'src/http-api-implementation/index.ts',
       'livestore/index': 'src/livestore/index.ts',
-      'model/index': 'src/model/index.ts',
     },
   },
   lint: {

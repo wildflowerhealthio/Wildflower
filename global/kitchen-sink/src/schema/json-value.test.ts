@@ -52,7 +52,9 @@ describe('JsonValue', () => {
         // JSON-safe; the schema should accept all of it and the
         // serialized form should re-decode to the same value.
         const decoded = Schema.decodeUnknownSync(JsonValue)(value)
-        const roundTripped = Schema.decodeUnknownSync(JsonValue)(JSON.parse(JSON.stringify(decoded)))
+        const roundTripped = Schema.decodeUnknownSync(JsonValue)(
+          JSON.parse(JSON.stringify(decoded))
+        )
         expect(roundTripped).toEqual(decoded)
       })
     )

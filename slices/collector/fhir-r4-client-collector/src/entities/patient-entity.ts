@@ -1,4 +1,4 @@
-import { EntityDefinition } from 'collector-core/model'
+import { EntityDefinition } from 'collector-fundamentals/model'
 import { Effect, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
 

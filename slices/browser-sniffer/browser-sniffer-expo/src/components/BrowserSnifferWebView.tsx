@@ -42,9 +42,7 @@ type BrowserSnifferWebViewSource = { uri: string } | { html: string; baseUrl?: s
 type SnifferHandlers = MessageHandler.HandlersFor<typeof BrowserSnifferBridge.Host.InboundSchemas>
 
 type TransportType = Effect.Effect.Success<
-  ReturnType<
-    typeof BridgeTransport.make<readonly [typeof BrowserSnifferBridge], readonly [Layer.Layer<never>]>
-  >
+  ReturnType<typeof BridgeTransport.make<readonly [typeof BrowserSnifferBridge], 'Host'>>
 >
 
 interface BrowserSnifferWebViewProps {
@@ -160,11 +158,13 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferWebViewHandle, BrowserSni
       const transport = transportRef.current
       if (transport === undefined) return
       void Effect.runPromise(
-        transport.enqueue(event.nativeEvent.data).pipe(
-          Effect.catchAllCause((cause) =>
-            Effect.logError('BrowserSnifferWebView.onMessage: transport.enqueue failed', cause)
+        transport
+          .enqueue(event.nativeEvent.data)
+          .pipe(
+            Effect.catchAllCause((cause) =>
+              Effect.logError('BrowserSnifferWebView.onMessage: transport.enqueue failed', cause)
+            )
           )
-        )
       )
     }
 

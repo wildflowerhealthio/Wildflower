@@ -407,8 +407,8 @@ const installSniffer = function (): void {
         return
       }
       if (xhr.responseType === 'arraybuffer') {
-        const buf = xhr.response as ArrayBuffer | null
-        if (buf === null || buf.byteLength === 0) return
+        const buf: unknown = xhr.response
+        if (!(buf instanceof ArrayBuffer) || buf.byteLength === 0) return
         post({ _tag: 'ResponseData', id: requestId, data: toBase64(buf) })
         return
       }

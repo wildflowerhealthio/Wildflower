@@ -34,9 +34,14 @@ const layer = HttpApiBuilder.group(CollectorApi, 'collector-remotes', (handlers)
             addedAt,
           })
         )
+        // `tag` mirrors `config._tag` — derived here as well as in the
+        // materializer so the success response shape matches what the
+        // row will contain once the commit replays. Keeps the two
+        // derivations textually adjacent to their schemas.
         return {
           id: payload.id,
           name: payload.name,
+          tag: payload.config._tag,
           config: payload.config,
           addedAt,
         }
@@ -59,6 +64,7 @@ const layer = HttpApiBuilder.group(CollectorApi, 'collector-remotes', (handlers)
         return {
           id,
           name: payload.name,
+          tag: payload.config._tag,
           config: payload.config,
           addedAt: existing.addedAt,
         }

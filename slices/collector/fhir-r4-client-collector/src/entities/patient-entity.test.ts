@@ -1,11 +1,12 @@
 // oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers (`expect.objectContaining`, `expect.stringContaining`, etc.) are typed as `any`; composing them inside `objectContaining` is the intended idiom
 
-import { Effect } from 'effect'
+import { Effect, type Either, type ParseResult } from 'effect'
 import fc from 'fast-check'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { Response } from 'collector-core/model'
+import { type EntityDefinition, Response } from 'collector-fundamentals/model'
+import type { Patient } from 'fhir-r4/resources'
 
 import { PatientEntity } from './patient-entity.ts'
 
@@ -22,7 +23,9 @@ const makeResponse = (body: string): Response.RemoteResponse => {
 }
 
 /** Run `parse` (now Effect-returning) and convert to an Either for the `expectRight/LeftToEqual` helpers. */
-const runParse = (r: Response.RemoteResponse): unknown =>
+const runParse = (
+  r: Response.RemoteResponse
+): Either.Either<EntityDefinition.Parsed<typeof Patient.Schema.Type>, ParseResult.ParseError> =>
   Effect.runSync(Effect.either(PatientEntity.parse(r)))
 
 describe('PatientEntity', () => {

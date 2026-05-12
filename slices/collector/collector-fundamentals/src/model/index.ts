@@ -1,4 +1,3 @@
-export * as CollectorBridgeMessageHandler from './collector-bridge-message-handler.ts'
 export * as EntityDefinition from './entity-definition.ts'
 export * as Link from './link.ts'
 export * as Remote from './remote.ts'

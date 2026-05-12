@@ -1,13 +1,13 @@
 {
-  "name": "fhir-r4-client-collector",
+  "name": "collector-fundamentals",
   "version": "0.0.0",
   "private": true,
-  "description": "FHIR R4 concrete implementation of collector's Remote: Patient / Observation / Observation-list entities and a `makeFhirR4Remote` factory plus the inline bootstrap HTML page the WebView loads first.",
+  "description": "Pure-logic representations every collector implementation depends on: Remote / EntityDefinition / RemoteResponse / Link / WebViewSource. No bridge, no livestore, no HTTP. Concrete client packages (e.g. fhir-r4-client-collector) MUST depend only on this package; collector-core sits on top and registers them.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/collector/fhir-r4-client-collector"
+    "directory": "slices/collector/collector-fundamentals"
   },
   "files": [
     "dist"
@@ -17,6 +17,14 @@
     ".": {
       "source": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./model": {
+      "source": "./src/model/index.ts",
+      "default": "./dist/model/index.js"
+    },
+    "./test-helpers": {
+      "source": "./src/test-helpers.ts",
+      "default": "./dist/test-helpers.js"
     },
     "./package.json": "./package.json"
   },
@@ -31,21 +39,14 @@
     "@fast-check/vitest": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "browser-sniffer-core": "workspace:*",
-    "collector-core": "workspace:*",
-    "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "browser-sniffer-core": "workspace:*",
-    "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
-    "fhir-r4": "workspace:*"
+    "kitchen-sink": "workspace:*"
   }
 }

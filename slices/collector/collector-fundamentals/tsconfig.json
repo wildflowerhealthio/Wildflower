@@ -1,13 +1,13 @@
 {
   "compilerOptions": {
     "target": "esnext",
-    "lib": ["ES2023", "DOM"],
-    "jsx": "react-jsx",
+    "lib": ["es2024"],
     "moduleDetection": "force",
-    "module": "ES2020",
-    "moduleResolution": "Bundler",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "customConditions": ["source"],
     "resolveJsonModule": true,
+    "types": ["node"],
     "strict": true,
     "noUnusedLocals": true,
     "declaration": true,
@@ -16,8 +16,7 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "skipLibCheck": true,
-    "types": ["jest"]
+    "skipLibCheck": true
   },
   "include": ["src"]
 }
