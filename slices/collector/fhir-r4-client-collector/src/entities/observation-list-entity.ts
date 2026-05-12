@@ -18,8 +18,8 @@ const isObservation = Schema.is(Observation.Schema)
 const ObservationListEntity: Entity.Entity<ObservationType> = Entity.make({
   name: 'ObservationListEntity',
   isFoundAt: (url) => /.*:\/\/[^/]*\/Observation.*$/.test(url),
-  parse: (init) =>
-    decode(init.body).pipe(
+  parse: (response) =>
+    decode(response.text()).pipe(
       Either.map((bundle) => ({
         resources:
           bundle.entry?.map(({ resource }) => resource).filter((o) => isObservation(o)) ?? [],

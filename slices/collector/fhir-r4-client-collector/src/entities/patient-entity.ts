@@ -17,8 +17,8 @@ const decode = Schema.decodeEither(Schema.parseJson(Patient.Schema))
 const PatientEntity: Entity.Entity<PatientType> = Entity.make({
   name: 'PatientEntity',
   isFoundAt: (url) => /.*:\/\/[^/]*\/Patient\/[^/]+$/.test(url),
-  parse: (init) =>
-    decode(init.body).pipe(
+  parse: (response) =>
+    decode(response.text()).pipe(
       Either.map((patient) => {
         if (patient.id === null) return { resources: [], links: [] }
         const withId: PatientType = { ...patient, id: patient.id }

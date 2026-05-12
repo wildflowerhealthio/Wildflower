@@ -4,15 +4,21 @@ import fc from 'fast-check'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { RemoteResponse } from 'collector-core/response'
+
 import { PatientEntity } from './patient-entity.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
-const init = (body: string): { body: string; contentType: string; url: string } => ({
-  body,
-  contentType: 'application/fhir+json',
-  url: 'https://example.com/Patient/1',
-})
+const encoder = new TextEncoder()
+
+const makeResponse = (body: string): RemoteResponse => {
+  const r = new RemoteResponse('https://example.com/Patient/1', 200, 'OK', {
+    'content-type': 'application/fhir+json',
+  })
+  r.appendChunk(encoder.encode(body))
+  return r
+}
 
 describe('PatientEntity', () => {
   describe('isFoundAt', () => {
@@ -29,7 +35,7 @@ describe('PatientEntity', () => {
   describe('parse', () => {
     it('parses a minimal valid Patient JSON into one resource + one Observation link', () => {
       expectRightToEqual(
-        PatientEntity.parse(init(JSON.stringify({ resourceType: 'Patient', id: '42' }))),
+        PatientEntity.parse(makeResponse(JSON.stringify({ resourceType: 'Patient', id: '42' }))),
         expect.objectContaining({
           resources: [expect.objectContaining({ id: '42' })],
           links: [
@@ -45,7 +51,7 @@ describe('PatientEntity', () => {
     it('parses a Patient with name and gender', () => {
       expectRightToEqual(
         PatientEntity.parse(
-          init(
+          makeResponse(
             JSON.stringify({
               resourceType: 'Patient',
               id: '42',
@@ -62,7 +68,7 @@ describe('PatientEntity', () => {
 
     it('returns Left for malformed JSON', () => {
       expectLeftToEqual(
-        PatientEntity.parse(init('{ not valid json }')),
+        PatientEntity.parse(makeResponse('{ not valid json }')),
         expect.objectContaining({ _tag: 'ParseError' })
       )
     })
@@ -70,7 +76,7 @@ describe('PatientEntity', () => {
     it('never throws on arbitrary JSON strings', () => {
       fc.assert(
         fc.property(fc.json(), (json) => {
-          expect(['Right', 'Left']).toContain(PatientEntity.parse(init(json))._tag)
+          expect(['Right', 'Left']).toContain(PatientEntity.parse(makeResponse(json))._tag)
         })
       )
     })
@@ -78,7 +84,7 @@ describe('PatientEntity', () => {
     it('encodes special characters in the Observation query link', () => {
       const body = JSON.stringify({ resourceType: 'Patient', id: 'special&chars=yes' })
       expectRightToEqual(
-        PatientEntity.parse(init(body)),
+        PatientEntity.parse(makeResponse(body)),
         expect.objectContaining({
           links: [
             expect.objectContaining({

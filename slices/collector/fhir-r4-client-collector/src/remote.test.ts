@@ -92,12 +92,10 @@ describe('makeFhirR4Remote', () => {
       remote.handleResponseFinished({ id: 'lifecycle-1' })
 
       expect(onResult).toHaveBeenCalledOnce()
-      const [{ init, result }] = onResult.mock.calls[0]
-      expect(init).toMatchObject({
-        body: patientJson,
-        contentType: 'application/fhir+json',
-        url: 'https://r4.smarthealthit.org/Patient/42',
-      })
+      const [{ response, result }] = onResult.mock.calls[0]
+      expect(response.url).toBe('https://r4.smarthealthit.org/Patient/42')
+      expect(response.text()).toBe(patientJson)
+      expect(response.headers['content-type']).toBe('application/fhir+json')
       expectRightToEqual(
         result,
         expect.objectContaining({

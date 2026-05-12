@@ -16,8 +16,10 @@ const decode = Schema.decodeEither(Schema.parseJson(Observation.Schema))
 const ObservationEntity: Entity.Entity<ObservationType> = Entity.make({
   name: 'ObservationEntity',
   isFoundAt: (url) => /.*:\/\/[^/]*\/Observation\/[^/]+$/.test(url),
-  parse: (init) =>
-    decode(init.body).pipe(Either.map((observation) => ({ resources: [observation], links: [] }))),
+  parse: (response) =>
+    decode(response.text()).pipe(
+      Either.map((observation) => ({ resources: [observation], links: [] }))
+    ),
 })
 
 export { ObservationEntity }

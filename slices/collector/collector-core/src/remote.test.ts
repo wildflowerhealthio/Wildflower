@@ -99,7 +99,7 @@ describe('Remote.make', () => {
       )
     })
 
-    it('calls onResult with init + a Right of parsed resources on a matching response', () => {
+    it('calls onResult with the RemoteResponse + a Right of parsed resources on a match', () => {
       const onResult = vi.fn<Remote.Config<{ name: string; age: number }>['onResult']>()
       const remote = Remote.make({
         firstPage: { uri: 'https://example.com/people' },
@@ -114,8 +114,9 @@ describe('Remote.make', () => {
       remote.handleResponseFinished({ id: 'r1' })
 
       expect(onResult).toHaveBeenCalledOnce()
-      const [{ init, result }] = onResult.mock.calls[0]
-      expect(init).toEqual({ body, contentType: '', url: 'https://example.com/people/99' })
+      const [{ response, result }] = onResult.mock.calls[0]
+      expect(response.url).toBe('https://example.com/people/99')
+      expect(response.text()).toBe(body)
       expectRightToEqual(result, {
         resources: [{ name: 'Carol', age: 40 }],
         links: [{ _tag: 'Open', href: '/people/Carol' }],
