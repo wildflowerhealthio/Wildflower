@@ -1,8 +1,7 @@
 import { Effect, type Scope } from 'effect'
 import type { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { useMemo } from 'react'
-import { bearerTokenLayer, useAuthTokenSubscribable, useEffectTs } from 'react-kitchen-sink'
-import { webHttpClientLayer } from 'telemetry-react'
+import { useEffectTs } from 'react-kitchen-sink'
 
 import { useGatekeeperClientLayer } from './use-gatekeeper-client-layer.ts'
 
@@ -28,17 +27,8 @@ const useGatekeeperEffect = <A, E>(
   effect: Effect.Effect<A, E, GatekeeperHttpApiClient | Scope.Scope>
 ): Promise<A> => {
   const clientLayer = useGatekeeperClientLayer()
-  const tokenSubscribable = useAuthTokenSubscribable()
 
-  const provided = useMemo(
-    () =>
-      effect.pipe(
-        Effect.provide(clientLayer),
-        Effect.provide(bearerTokenLayer(tokenSubscribable)),
-        Effect.provide(webHttpClientLayer)
-      ),
-    [effect, clientLayer, tokenSubscribable]
-  )
+  const provided = useMemo(() => effect.pipe(Effect.provide(clientLayer)), [effect, clientLayer])
 
   return useEffectTs(provided)
 }

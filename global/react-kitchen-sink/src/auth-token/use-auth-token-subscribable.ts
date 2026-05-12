@@ -11,7 +11,7 @@ import { AuthTokenContext } from './auth-token-context.ts'
  * Use this when you need the Subscribable itself — e.g. inside a
  * per-slice runner hook that builds `bearerTokenLayer(subscribable)`
  * to feed into an Effect's layer composition. For plain "what's the
- * current token" reads, prefer {@link useAuthToken}.
+ * current token" reads,
  */
 const useAuthTokenSubscribable = (): Subscribable.Subscribable<string | null> => {
   const subscribable = useContext(AuthTokenContext)

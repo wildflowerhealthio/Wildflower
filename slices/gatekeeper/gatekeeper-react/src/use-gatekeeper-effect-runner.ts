@@ -1,8 +1,6 @@
 import { Effect, type Scope } from 'effect'
 import type { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { useCallback } from 'react'
-import { bearerTokenLayer, useAuthTokenSubscribable } from 'react-kitchen-sink'
-import { webHttpClientLayer } from 'telemetry-react'
 
 import { useGatekeeperClientLayer } from './use-gatekeeper-client-layer.ts'
 
@@ -31,22 +29,19 @@ type GatekeeperEffectRunner = <A, E>(
  */
 const useGatekeeperEffectRunner = (): GatekeeperEffectRunner => {
   const clientLayer = useGatekeeperClientLayer()
-  const tokenSubscribable = useAuthTokenSubscribable()
 
   return useCallback(
     (effect) =>
       Effect.runPromise(
         effect.pipe(
           Effect.provide(clientLayer),
-          Effect.provide(bearerTokenLayer(tokenSubscribable)),
-          Effect.provide(webHttpClientLayer),
           // The provided effect may still require a `Scope` (HttpApiClient
           // endpoints scope their request lifecycles). `Effect.scoped` opens
           // a transient scope that closes when the effect settles.
           Effect.scoped
         )
       ),
-    [clientLayer, tokenSubscribable]
+    [clientLayer]
   )
 }
 

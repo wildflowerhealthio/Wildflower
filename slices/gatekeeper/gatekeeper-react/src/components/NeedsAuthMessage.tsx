@@ -4,8 +4,7 @@ import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
 import { OAuth } from 'gatekeeper-core/http-api-definition'
 
 import { useEffect, useState, type JSX } from 'react'
-import { bearerTokenLayer, cn, useAuthTokenSubscribable } from 'react-kitchen-sink'
-import { webHttpClientLayer } from 'telemetry-react'
+import { cn } from 'react-kitchen-sink'
 
 import { writeToken } from '../client/token-storage.ts'
 import { useGatekeeperClientLayer } from '../use-gatekeeper-client-layer.ts'
@@ -75,7 +74,6 @@ const NeedsAuthMessage = (): JSX.Element => {
   // interrupt-on-unmount, which the promise-returning runner can't give.
   // Compose the slice's three layers manually here.
   const layer = useGatekeeperClientLayer()
-  const tokenSubscribable = useAuthTokenSubscribable()
 
   useEffect(() => {
     const flow = Effect.gen(function* () {
@@ -119,16 +117,14 @@ const NeedsAuthMessage = (): JSX.Element => {
           setState(toErrorState(err))
         })
       ),
-      Effect.provide(layer),
-      Effect.provide(bearerTokenLayer(tokenSubscribable)),
-      Effect.provide(webHttpClientLayer)
+      Effect.provide(layer)
     )
 
     const fiber = Effect.runFork(flow)
     return (): void => {
       void Effect.runPromise(Fiber.interrupt(fiber))
     }
-  }, [layer, tokenSubscribable])
+  }, [layer])
 
   if (state.tag === 'starting') {
     return (

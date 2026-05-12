@@ -15,8 +15,7 @@ interface AuthTokenProviderProps {
 
 /**
  * Provides the auth-token Subscribable to descendants. Slice screens
- * read via {@link useAuthToken} for value-style access, or
- * {@link useAuthTokenSubscribable} when they need the Subscribable
+ * read via {@link useAuthTokenSubscribable} when they need the Subscribable
  * itself (e.g. to feed into `bearerTokenLayer` inside a hook).
  */
 const AuthTokenProvider = ({ subscribable, children }: AuthTokenProviderProps): JSX.Element => (

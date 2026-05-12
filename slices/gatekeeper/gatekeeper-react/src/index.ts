@@ -3,7 +3,7 @@ export { gatekeeperPublicRoutesFragment, gatekeeperAuthorizedRoutesFragment } fr
 export {
   GatekeeperClientProvider,
   type GatekeeperClientProviderProps,
-} from './gatekeeper-client-context.tsx'
+} from './gatekeeper-client-provider.tsx'
 export { useGatekeeperClientLayer } from './use-gatekeeper-client-layer.ts'
 export { useGatekeeperEffect } from './use-gatekeeper-effect.ts'
 export { useGatekeeperStream } from './use-gatekeeper-stream.ts'
@@ -19,12 +19,7 @@ export {
   type GatekeeperClientRequirements,
 } from './client/gatekeeper-client.ts'
 
+export { GatekeeperClientLayerContext } from './gatekeeper-client-context.ts'
 export { NeedsAuthMessage } from './components/NeedsAuthMessage.tsx'
 
-export { TOKEN_STORAGE_KEY, authTokenRef, readToken, writeToken } from './client/token-storage.ts'
-
-// `useToken` is a gatekeeper-flavoured re-export of react-kitchen-sink's
-// generic `useAuthToken`. Kept for ergonomic call sites that read "the
-// gatekeeper token" semantically; new code can pull `useAuthToken`
-// directly from rks.
-export { useAuthToken as useToken } from 'react-kitchen-sink'
+export { TOKEN_STORAGE_KEY, authTokenRef, writeToken } from './client/token-storage.ts'

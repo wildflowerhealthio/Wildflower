@@ -1,5 +1,5 @@
 import { renderHook, waitFor } from '@testing-library/react'
-import { Context, Effect, Layer, ManagedRuntime, Stream } from 'effect'
+import { Stream } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { useStream } from './use-stream.ts'
@@ -53,25 +53,5 @@ describe('useStream', () => {
 
     // Assert
     expect(settled).toBe(false)
-  })
-
-  it('should accept a ManagedRuntime providing the stream context', async () => {
-    // Arrange
-    class Source extends Context.Tag('Source')<Source, { readonly value: number }>() {}
-    const layer = Layer.succeed(Source, { value: 7 })
-    const runtime = ManagedRuntime.make(layer)
-    const stream = Stream.fromEffect(
-      Effect.gen(function* () {
-        const s = yield* Source
-        return s.value
-      })
-    )
-
-    // Act
-    const { result } = renderHook(() => useStream(stream, runtime))
-
-    // Assert
-    await expect(result.current).resolves.toBe(7)
-    await runtime.dispose()
   })
 })

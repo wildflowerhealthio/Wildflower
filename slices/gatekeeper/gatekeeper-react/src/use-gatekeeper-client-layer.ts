@@ -1,9 +1,10 @@
 import type { HttpClient } from '@effect/platform'
-import type { Layer } from 'effect'
+import { Layer } from 'effect'
 import type { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-import { useContext } from 'react'
-import type { BearerToken } from 'react-kitchen-sink'
+import { useContext, useMemo } from 'react'
+import { bearerTokenLayer, useAuthTokenSubscribable, type BearerToken } from 'react-kitchen-sink'
 
+import { webHttpClientLayer } from 'telemetry-react'
 import { GatekeeperClientLayerContext } from './gatekeeper-client-context.ts'
 
 /**
@@ -19,15 +20,23 @@ import { GatekeeperClientLayerContext } from './gatekeeper-client-context.ts'
  * Throws when no `<GatekeeperClientProvider>` is in the tree.
  */
 const useGatekeeperClientLayer = (): Layer.Layer<
-  GatekeeperHttpApiClient,
+  GatekeeperHttpApiClient | HttpClient.HttpClient | BearerToken,
   never,
-  HttpClient.HttpClient | BearerToken
+  never
 > => {
-  const layer = useContext(GatekeeperClientLayerContext)
-  if (layer === null) {
+  const gatekeeperLayer = useContext(GatekeeperClientLayerContext)
+  if (gatekeeperLayer === null) {
     throw new Error('useGatekeeperClientLayer must be used inside <GatekeeperClientProvider>')
   }
-  return layer
+  const tokenSubscribable = useAuthTokenSubscribable()
+  return useMemo(
+    () =>
+      gatekeeperLayer.pipe(
+        Layer.provideMerge(bearerTokenLayer(tokenSubscribable)),
+        Layer.provideMerge(webHttpClientLayer)
+      ),
+    [gatekeeperLayer, tokenSubscribable]
+  )
 }
 
 export { useGatekeeperClientLayer }

@@ -73,14 +73,6 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * Synchronously read the current bearer token. Equivalent to
- * `Effect.runSync(SubscriptionRef.get(authTokenRef))` — kept as a thin
- * wrapper because plain-JS call sites (and tests) want a sync `string |
- * null` without involving Effect.
- */
-const readToken = (): string | null => Effect.runSync(SubscriptionRef.get(authTokenRef))
-
-/**
  * Write the bearer token. Mirrors the historical `writeToken(token:
  * string)` API but routes through {@link authTokenRef} so subscribers
  * (React components via `<AuthTokenProvider>` and Effect-side
@@ -93,4 +85,4 @@ const writeToken = (token: string | null): void => {
   Effect.runSync(SubscriptionRef.set(authTokenRef, token))
 }
 
-export { TOKEN_STORAGE_KEY, authTokenRef, readToken, writeToken }
+export { TOKEN_STORAGE_KEY, authTokenRef, writeToken }

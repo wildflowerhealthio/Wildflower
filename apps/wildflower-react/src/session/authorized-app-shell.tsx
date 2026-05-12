@@ -1,5 +1,6 @@
-import { NeedsAuthMessage, useToken } from 'gatekeeper-react'
+import { NeedsAuthMessage } from 'gatekeeper-react'
 import type { JSX } from 'react'
+import { useAuthTokenSubscribable, useStreamWithDefault } from 'react-kitchen-sink'
 import { Outlet } from 'react-router'
 
 /**
@@ -15,7 +16,8 @@ import { Outlet } from 'react-router'
  * provider re-mount is needed, so this component does pure UI gating.
  */
 const AuthorizedAppShell = (): JSX.Element => {
-  const token = useToken()
+  const { changes: tokenStream } = useAuthTokenSubscribable()
+  const token = useStreamWithDefault(tokenStream, null)
   if (token === null || token === '') return <NeedsAuthMessage />
   return <Outlet />
 }

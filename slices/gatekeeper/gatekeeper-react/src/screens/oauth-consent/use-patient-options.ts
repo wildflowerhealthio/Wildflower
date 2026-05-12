@@ -2,12 +2,7 @@ import { HttpApiClient, HttpClient, HttpClientRequest } from '@effect/platform'
 import { Effect } from 'effect'
 import { FhirResourcesApi } from 'fhir-r4/http-api-definition'
 import { useEffect, useState } from 'react'
-import {
-  BearerToken,
-  bearerTokenLayer,
-  useAuthToken,
-  useAuthTokenSubscribable,
-} from 'react-kitchen-sink'
+import { BearerToken, bearerTokenLayer, useAuthTokenSubscribable } from 'react-kitchen-sink'
 import { webHttpClientLayer } from 'telemetry-react'
 
 import type { PatientOption } from './types.ts'
@@ -74,36 +69,37 @@ interface PatientOptionsState {
  * meaningful for an authenticated owner consenting to a SMART app.
  */
 const usePatientOptions = (enabled: boolean): PatientOptionsState => {
-  const token = useAuthToken()
   const tokenSubscribable = useAuthTokenSubscribable()
   const [options, setOptions] = useState<readonly PatientOption[]>([])
-  const [loading, setLoading] = useState(enabled && token !== null)
+  const [loading, setLoading] = useState(enabled)
 
   useEffect(() => {
-    if (!enabled || token === null) {
+    if (!enabled) {
       setOptions([])
       setLoading(false)
       return () => undefined
     }
     setLoading(true)
     let cancelled = false
-    const fiber = Effect.runFork(
+    Effect.runFork(
       fetchPatientOptionsEffect.pipe(
         Effect.provide(bearerTokenLayer(tokenSubscribable)),
-        Effect.provide(webHttpClientLayer)
+        Effect.provide(webHttpClientLayer),
+        Effect.tap((loadedOptions) => {
+          setOptions(loadedOptions)
+        }),
+        Effect.onExit(() =>
+          Effect.sync(() => {
+            if (cancelled) return
+            setLoading(false)
+          })
+        )
       )
     )
-    fiber.addObserver((exit) => {
-      if (cancelled) return
-      if (exit._tag === 'Success') {
-        setOptions(exit.value)
-      }
-      setLoading(false)
-    })
     return () => {
       cancelled = true
     }
-  }, [token, tokenSubscribable, enabled])
+  }, [tokenSubscribable, enabled])
 
   return { options, loading }
 }
