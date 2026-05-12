@@ -1,6 +1,5 @@
 // oxlint-disable typescript-eslint/no-unsafe-type-assertion -- the sniffer message wire shape lives in core; tests cast through `Message` at decoded-payload boundaries
-// oxlint-disable typescript-eslint/require-array-sort-compare -- ID strings are non-empty and a default lexical sort is the intended ordering here
-// oxlint-disable eslint/no-unsafe-optional-chaining -- assertions guard length before chained dereference
+// oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest's `expect.any` / `expect.objectContaining` / `expect.stringMatching` matchers are typed as `any`; using them in object literals for `objectContaining` is the intended idiom
 
 import {
   LogMessage,
@@ -61,6 +60,16 @@ const setupEnv = (): (() => Message[]) => {
 }
 
 const withTag = (msgs: Message[], tag: string): Message[] => msgs.filter((m) => m._tag === tag)
+
+/** Asserts every value in `values` is distinct. Used in id-uniqueness checks. */
+const expectDistinct = (values: readonly unknown[]): void => {
+  expect(new Set(values).size).toBe(values.length)
+}
+
+/** Asserts `actual` and `expected` have the same elements (multiset, order-insensitive). */
+const expectSameMultiset = (actual: readonly string[], expected: readonly string[]): void => {
+  expect([...actual].toSorted()).toEqual([...expected].toSorted())
+}
 
 const cancelRequest = (id: string): void => {
   // Bridge-format Host→Web cancel. The injected sniffer's
@@ -154,21 +163,19 @@ describe('fetch shim', () => {
           const res = await window.fetch('https://test.example/status')
           await res.text()
 
-          const starts = withTag(getMs(), 'ResponseStart')
-          expect(starts).toHaveLength(1)
-          expect(starts[0]?.status).toBe(status)
-          expect(starts[0]?.statusText).toBe(statusText)
+          expect(withTag(getMs(), 'ResponseStart')).toEqual([
+            expect.objectContaining({ _tag: 'ResponseStart', status, statusText }),
+          ])
         }
       )
     )
   })
 
   test('should capture arbitrary header records on ResponseStart', async () => {
-    // Header names: a small pool of realistic lowercase identifiers
-    // (Fetch normalizes to lowercase, so the round-trip's expected
-    // keys are already lowercase). Values: printable strings with
-    // CR/LF stripped — those would break the underlying Headers
-    // serialization.
+    // Header names: a small pool of realistic lowercase identifiers (Fetch
+    // normalizes to lowercase, so expected keys are already lowercase).
+    // Values: printable strings with CR/LF stripped — those would break the
+    // underlying Headers serialization.
     const headerNameArb = fc.constantFrom(
       'content-type',
       'content-length',
@@ -190,12 +197,15 @@ describe('fetch shim', () => {
         const res = await window.fetch('https://test.example/headers')
         await res.text()
 
-        const starts = withTag(getMs(), 'ResponseStart')
-        expect(starts).toHaveLength(1)
-        const captured = starts[0]?.headers as Record<string, string>
-        for (const [k, v] of Object.entries(headersInput)) {
-          expect(captured[k.toLowerCase()]).toBe(v)
-        }
+        const expectedHeaders = Object.fromEntries(
+          Object.entries(headersInput).map(([k, v]) => [k.toLowerCase(), v])
+        )
+        expect(withTag(getMs(), 'ResponseStart')).toEqual([
+          expect.objectContaining({
+            _tag: 'ResponseStart',
+            headers: expect.objectContaining(expectedHeaders),
+          }),
+        ])
         validateMessages(getMs())
       })
     )
@@ -206,9 +216,11 @@ describe('fetch shim', () => {
     installSniffer()
     await window.fetch('https://test.example/empty')
 
-    expect(withTag(getMessages(), 'ResponseData')).toHaveLength(0)
-    expect(withTag(getMessages(), 'ResponseStart')).toHaveLength(1)
-    expect(withTag(getMessages(), 'ResponseFinished')).toHaveLength(1)
+    // No ResponseData emitted between start and finish for a null body.
+    const lifecycle = getMessages()
+      .filter((m) => m._tag !== 'Log' && m._tag !== '__Ready')
+      .map((m) => m._tag)
+    expect(lifecycle).toEqual(['ResponseStart', 'ResponseFinished'])
   })
 
   test('should post RequestError and re-throw on fetch network error', async () => {
@@ -216,10 +228,13 @@ describe('fetch shim', () => {
     installSniffer()
 
     await expect(window.fetch('https://test.example/fail')).rejects.toThrow('network down')
-    const errors = withTag(getMessages(), 'RequestError')
-    expect(errors).toHaveLength(1)
-    expect(errors[0]?.url).toBe('https://test.example/fail')
-    expect(errors[0]?.message).toBe('network down')
+    expect(withTag(getMessages(), 'RequestError')).toEqual([
+      expect.objectContaining({
+        _tag: 'RequestError',
+        url: 'https://test.example/fail',
+        message: 'network down',
+      }),
+    ])
     validateMessages(getMessages())
   })
 
@@ -228,8 +243,9 @@ describe('fetch shim', () => {
     installSniffer()
     await window.fetch(new Request('https://test.example/req-obj'))
 
-    const starts = withTag(getMessages(), 'ResponseStart')
-    expect(starts[0]?.url).toBe('https://test.example/req-obj')
+    expect(withTag(getMessages(), 'ResponseStart')).toEqual([
+      expect.objectContaining({ url: 'https://test.example/req-obj' }),
+    ])
   })
 
   test('should produce schema-valid messages for any body', async () => {
@@ -275,9 +291,7 @@ describe('fetch shim', () => {
         installSniffer()
         await window.fetch(url)
 
-        const starts = withTag(getMs(), 'ResponseStart')
-        expect(starts).toHaveLength(1)
-        expect(starts[0]?.url).toBe(url)
+        expect(withTag(getMs(), 'ResponseStart')).toEqual([expect.objectContaining({ url })])
       })
     )
   })
@@ -346,18 +360,21 @@ describe('fetch shim', () => {
     await resB.text()
 
     const starts = withTag(getMessages(), 'ResponseStart')
-    expect(starts).toHaveLength(2)
-    const idA = starts.find((s) => s.url === 'https://test.example/a')?.id as string
-    const idB = starts.find((s) => s.url === 'https://test.example/b')?.id as string
-    expect(idA).not.toBe(idB)
+    expect(starts).toEqual([
+      expect.objectContaining({ url: 'https://test.example/a' }),
+      expect.objectContaining({ url: 'https://test.example/b' }),
+    ])
 
-    const finishes = withTag(getMessages(), 'ResponseFinished')
-    expect(finishes).toHaveLength(2)
-    expect(finishes.map((f) => f.id).toSorted()).toEqual([idA, idB].toSorted())
+    const ids = starts.map((s) => s.id as string)
+    expectDistinct(ids)
+    expectSameMultiset(
+      withTag(getMessages(), 'ResponseFinished').map((f) => f.id as string),
+      ids
+    )
 
-    const dataMessages = withTag(getMessages(), 'ResponseData')
-    for (const d of dataMessages) {
-      expect([idA, idB]).toContain(d.id)
+    const idSet = new Set(ids)
+    for (const d of withTag(getMessages(), 'ResponseData')) {
+      expect(idSet.has(d.id as string)).toBe(true)
     }
     validateMessages(getMessages())
   })
@@ -394,19 +411,21 @@ describe('fetch shim', () => {
 
           const starts = withTag(getMs(), 'ResponseStart')
           expect(starts).toHaveLength(requests.length)
-
-          const startUrls = starts.map((s_) => s_.url as string).toSorted()
-          const expectedUrls = requests.map(([url]) => url).toSorted()
-          expect(startUrls).toEqual(expectedUrls)
+          expectSameMultiset(
+            starts.map((s_) => s_.url as string),
+            requests.map(([url]) => url)
+          )
 
           const ids = starts.map((s_) => s_.id as string)
-          expect(new Set(ids).size).toBe(ids.length)
+          expectDistinct(ids)
+          expectSameMultiset(
+            withTag(getMs(), 'ResponseFinished').map((f) => f.id as string),
+            ids
+          )
 
-          const finishes = withTag(getMs(), 'ResponseFinished')
-          expect(finishes.map((f) => f.id).toSorted()).toEqual(ids.toSorted())
-
+          const idSet = new Set(ids)
           for (const d of withTag(getMs(), 'ResponseData')) {
-            expect(ids).toContain(d.id)
+            expect(idSet.has(d.id as string)).toBe(true)
           }
           validateMessages(getMs())
         }
@@ -432,9 +451,12 @@ describe('XHR shim', () => {
 
   test('should preserve the original open/send in the sniffer state', () => {
     installSniffer()
-    const state = getState()
-    expect(state?.nativeXHROpen).toBeDefined()
-    expect(state?.nativeXHRSend).toBeDefined()
+    expect(getState()).toEqual(
+      expect.objectContaining({
+        nativeXHROpen: expect.any(Function),
+        nativeXHRSend: expect.any(Function),
+      })
+    )
   })
 
   test('should log shim installation', () => {
@@ -448,7 +470,7 @@ describe('XHR shim', () => {
     xhr.open('GET', 'https://test.example/xhr')
     xhr.send()
 
-    expect(withTag(getMessages(), 'ResponseStart')).toHaveLength(0)
+    expect(withTag(getMessages(), 'ResponseStart')).toEqual([])
 
     Object.defineProperty(xhr, 'status', { value: 200, configurable: true })
     Object.defineProperty(xhr, 'statusText', { value: 'OK', configurable: true })
@@ -456,11 +478,13 @@ describe('XHR shim', () => {
     Object.defineProperty(xhr, 'responseText', { value: 'data', configurable: true })
     xhr.dispatchEvent(new Event('progress'))
 
-    const starts = withTag(getMessages(), 'ResponseStart')
-    expect(starts).toHaveLength(1)
-    expect(starts[0]?.url).toBe('https://test.example/xhr')
-    expect(starts[0]?.status).toBe(200)
-    expect(starts[0]?.statusText).toBe('OK')
+    expect(withTag(getMessages(), 'ResponseStart')).toEqual([
+      expect.objectContaining({
+        url: 'https://test.example/xhr',
+        status: 200,
+        statusText: 'OK',
+      }),
+    ])
   })
 
   test('should post ResponseFinished on load with remaining text flushed as base64', () => {
@@ -475,9 +499,9 @@ describe('XHR shim', () => {
     Object.defineProperty(xhr, 'responseText', { value: 'final data', configurable: true })
     xhr.dispatchEvent(new Event('load'))
 
-    const datas = withTag(getMessages(), 'ResponseData')
-    expect(datas).toHaveLength(1)
-    expect(fromBase64(datas[0]?.data as string)).toBe('final data')
+    expect(withTag(getMessages(), 'ResponseData')).toEqual([
+      expect.objectContaining({ data: btoa('final data') }),
+    ])
     expect(withTag(getMessages(), 'ResponseFinished')).toHaveLength(1)
   })
 
@@ -489,10 +513,12 @@ describe('XHR shim', () => {
 
     xhr.dispatchEvent(new Event('error'))
 
-    const errors = withTag(getMessages(), 'RequestError')
-    expect(errors).toHaveLength(1)
-    expect(errors[0]?.url).toBe('https://test.example/xhr-err')
-    expect(errors[0]?.message).toBe('XMLHttpRequest error')
+    expect(withTag(getMessages(), 'RequestError')).toEqual([
+      expect.objectContaining({
+        url: 'https://test.example/xhr-err',
+        message: 'XMLHttpRequest error',
+      }),
+    ])
     validateMessages(getMessages())
   })
 
@@ -571,13 +597,13 @@ describe('XHR shim', () => {
     Object.defineProperty(xhr, 'responseText', { value: 'second', configurable: true })
     xhr.dispatchEvent(new Event('progress'))
 
-    const allData = withTag(getMessages(), 'ResponseData')
-    const newData = allData.slice(firstDataCount)
-    expect(newData).toHaveLength(1)
-
     const starts = withTag(getMessages(), 'ResponseStart')
     expect(starts).toHaveLength(2)
-    expect(newData[0]?.id).toBe(starts[1]?.id)
+    // The second `open()` rotates the id, so only the latest start's id
+    // should appear in any data emitted *after* that rotation.
+    expect(withTag(getMessages(), 'ResponseData').slice(firstDataCount)).toEqual([
+      expect.objectContaining({ id: starts[1]?.id }),
+    ])
   })
 })
 
@@ -617,21 +643,20 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
 
     enqueueChunk('first')
     await reader.read()
-    const dataBeforeCancel = withTag(getMessages(), 'ResponseData').length
-    expect(dataBeforeCancel).toBe(1)
+    expect(withTag(getMessages(), 'ResponseData')).toHaveLength(1)
 
-    const starts = withTag(getMessages(), 'ResponseStart')
-    const requestId = starts[0]?.id as string
-
+    const requestId = withTag(getMessages(), 'ResponseStart')[0]?.id as string
     cancelRequest(requestId)
 
     enqueueChunk('second')
     await reader.read()
-    expect(withTag(getMessages(), 'ResponseData').length).toBe(dataBeforeCancel)
+    // The post-cancel chunk does not produce a new ResponseData…
+    expect(withTag(getMessages(), 'ResponseData')).toHaveLength(1)
 
     closeStream()
     await reader.read()
-    expect(withTag(getMessages(), 'ResponseFinished')).toHaveLength(0)
+    // …and stream close after cancel does not fire ResponseFinished.
+    expect(withTag(getMessages(), 'ResponseFinished')).toEqual([])
   })
 
   test('should stop posting data after cancellation (XHR)', () => {
@@ -646,30 +671,28 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
     Object.defineProperty(xhr, 'responseText', { value: 'first', configurable: true })
     xhr.dispatchEvent(new Event('progress'))
 
-    const starts = withTag(getMessages(), 'ResponseStart')
-    const requestId = starts[0]?.id as string
-    const dataBeforeCancel = withTag(getMessages(), 'ResponseData').length
+    const requestId = withTag(getMessages(), 'ResponseStart')[0]?.id as string
+    expect(withTag(getMessages(), 'ResponseData')).toHaveLength(1)
 
     cancelRequest(requestId)
 
     Object.defineProperty(xhr, 'responseText', { value: 'first more', configurable: true })
     xhr.dispatchEvent(new Event('progress'))
-    expect(withTag(getMessages(), 'ResponseData').length).toBe(dataBeforeCancel)
+    expect(withTag(getMessages(), 'ResponseData')).toHaveLength(1)
 
     xhr.dispatchEvent(new Event('load'))
-    expect(withTag(getMessages(), 'ResponseFinished')).toHaveLength(0)
+    expect(withTag(getMessages(), 'ResponseFinished')).toEqual([])
   })
 
   test('should ignore non-CancelSnifferRequest message events', () => {
     installSniffer()
-    // Garbage payloads must not throw / not mutate state.
+    // Garbage payloads must not throw and must not mutate the active-set.
     window.dispatchEvent(new MessageEvent('message', { data: 'not json' }))
     window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ _tag: 'Other' }) }))
     window.dispatchEvent(
       new MessageEvent('message', { data: JSON.stringify({ _tag: 'CancelSnifferRequest' }) })
     )
-    // No assertion needed — the goal is to not throw and not cancel anything.
-    expect(getState()?.activeRequests.size).toBe(0)
+    expect(getState()?.activeRequests).toEqual(new Set())
   })
 })
 
@@ -693,18 +716,19 @@ describe('PageLoaded', () => {
     installSniffer()
     window.dispatchEvent(new Event('load'))
 
-    const loaded = withTag(getMessages(), 'PageLoaded')
-    expect(loaded).toHaveLength(1)
-    expect(loaded[0]?.url).toBe(window.location.href)
-    expect(typeof loaded[0]?.content).toBe('string')
-    expect((loaded[0]?.content as string).length).toBeGreaterThan(0)
+    expect(withTag(getMessages(), 'PageLoaded')).toEqual([
+      expect.objectContaining({
+        _tag: 'PageLoaded',
+        url: window.location.href,
+        content: expect.stringMatching(/.+/),
+      }),
+    ])
   })
 
   test('should produce a schema-valid PageLoaded message', () => {
     installSniffer()
     window.dispatchEvent(new Event('load'))
-    const loaded = withTag(getMessages(), 'PageLoaded')
-    validateMessages(loaded)
+    validateMessages(withTag(getMessages(), 'PageLoaded'))
   })
 
   test('should not register the load listener twice on double injection', () => {
@@ -712,8 +736,7 @@ describe('PageLoaded', () => {
     installSniffer()
     window.dispatchEvent(new Event('load'))
 
-    const loaded = withTag(getMessages(), 'PageLoaded')
-    expect(loaded).toHaveLength(1)
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
   })
 
   test('should serialize the entire <html>… subtree, including arbitrary body content', () => {
@@ -721,14 +744,16 @@ describe('PageLoaded', () => {
     installSniffer()
     window.dispatchEvent(new Event('load'))
 
-    const loaded = withTag(getMessages(), 'PageLoaded')
-    expect(loaded).toHaveLength(1)
-    const content = loaded[0]?.content as string
-    expect(content).toMatch(/^<html/)
-    expect(content).toMatch(/<\/html>$/)
     // `&amp;` survives the HTML-escaped round-trip — `Element.outerHTML`
-    // entity-encodes for HTML, no separate unescape pass needed by the host.
-    expect(content).toContain('<p id="x">hello &amp; goodbye</p>')
+    // entity-encodes for HTML, so the host parses the captured content as
+    // HTML without an extra unescape pass.
+    expect(withTag(getMessages(), 'PageLoaded')).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(
+          /^<html[^>]*>.*<p id="x">hello &amp; goodbye<\/p>.*<\/html>$/s
+        ),
+      }),
+    ])
   })
 
   test('should serialize XML-namespaced subtrees (SVG) via HTML rules', () => {
@@ -742,14 +767,61 @@ describe('PageLoaded', () => {
     installSniffer()
     window.dispatchEvent(new Event('load'))
 
+    // `<circle>` closes per HTML rules — either self-closing or paired —
+    // and jsdom emits one of those two forms; we accept both so a jsdom
+    // upgrade doesn't churn the test.
+    expect(withTag(getMessages(), 'PageLoaded')).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/<svg[^>]*>.*<circle[^>]*(?:\/>|><\/circle>).*<\/svg>/s),
+      }),
+    ])
+  })
+
+  test('should capture WebView-wrapped HTML for text/plain documents', () => {
+    // RN-WebView (and every other engine) renders `text/plain` by wrapping
+    // it in a `<pre>` inside `<html><body>`; the sniffer runs against
+    // *that* DOM, never the raw bytes, so our handler captures the wrapper.
+    // We simulate by populating the body — the captured payload is HTML.
+    const lines = 'Line 1\nLine 2 with <brackets>\nLine 3'
+    const pre = document.createElement('pre')
+    pre.textContent = lines
+    document.body.replaceChildren(pre)
+    installSniffer()
+    window.dispatchEvent(new Event('load'))
+
+    expect(withTag(getMessages(), 'PageLoaded')).toEqual([
+      expect.objectContaining({
+        // `<` and `>` come back HTML-entity-encoded inside the <pre>;
+        // line breaks survive as literal `\n` in the serialized HTML.
+        content: expect.stringContaining('Line 1\nLine 2 with &lt;brackets&gt;\nLine 3'),
+      }),
+    ])
+    validateMessages(withTag(getMessages(), 'PageLoaded'))
+  })
+
+  test('should round-trip binary-shaped DOM text via the JSON wire', () => {
+    // The injected sniffer never sees raw bytes — a `Content-Type:
+    // application/octet-stream` URL fails to load (no `load` event) or is
+    // wrapped by the WebView into an `<img>`/`<embed>` HTML representation.
+    // *If* something pathological put raw bytes into the DOM text (e.g.,
+    // `\x00\x01…\xff`), the bytes survive `outerHTML` → `JSON.stringify`
+    // round-trip as UTF-16 code units and the resulting `content` remains
+    // schema-valid (the schema is `Schema.String`, accepts any string).
+    const allBytes = Array.from({ length: 256 }, (_, i) => String.fromCharCode(i)).join('')
+    document.body.textContent = allBytes
+    installSniffer()
+    window.dispatchEvent(new Event('load'))
+
     const loaded = withTag(getMessages(), 'PageLoaded')
-    const content = loaded[0]?.content as string
-    expect(content).toContain('<svg')
-    expect(content).toContain('<circle')
-    // jsdom's HTML serializer closes `<circle>` per HTML rules — either
-    // self-closing or with an explicit `</circle>`; we accept both shapes
-    // so a future jsdom upgrade doesn't break the test.
-    expect(content).toMatch(/(?:<circle[^>]*\/>|<circle[^>]*><\/circle>)/)
+    expect(loaded).toEqual([
+      expect.objectContaining({
+        // Bytes that have HTML-significant meaning (`<`, `>`, `&`, `\xa0` →
+        // `&nbsp;`) get entity-encoded; everything else passes through.
+        // We assert one specific high-byte value survives — the `\xff`.
+        content: expect.stringContaining('\xff'),
+      }),
+    ])
+    validateMessages(loaded)
   })
 })
 
@@ -794,10 +866,16 @@ describe('snifferScript (string form)', () => {
     // (closure capture, top-level identifiers, etc).
     // oxlint-disable-next-line eslint/no-implied-eval -- intentional dynamic injection
     new Function(snifferScript)()
-    const msgs = getMessages()
-    expect(msgs[0]).toEqual({ _tag: '__Ready' })
-    expect(getState()?.nativeFetch).toBeDefined()
-    expect(getState()?.nativeXHROpen).toBeDefined()
-    expect(getState()?.hostMessageHandler).toBeDefined()
+
+    expect(getMessages()[0]).toEqual({ _tag: '__Ready' })
+    expect(getState()).toEqual(
+      expect.objectContaining({
+        nativeFetch: expect.any(Function),
+        nativeXHROpen: expect.any(Function),
+        nativeXHRSend: expect.any(Function),
+        hostMessageHandler: expect.any(Function),
+        pageLoadHandler: expect.any(Function),
+      })
+    )
   })
 })

@@ -355,9 +355,15 @@ const installSniffer = function (): void {
   // `Element` (not just `HTMLElement`), so XML-content documents (e.g.
   // RSS) also serialize, just with HTML rules (void-element handling,
   // attribute case). Out of scope: DOCTYPE / processing instructions /
-  // XML declarations — none of the consumers parse those today, and
-  // RN-WebView's typical payload is HTML. If a consumer needs strict
-  // XML serialization, switch to `XMLSerializer.serializeToString(document)`.
+  // XML declarations.
+  //
+  // For non-HTML payloads the WebView itself is the first responder —
+  // RN-WebView wraps `text/plain` in `<pre>`, embeds images via `<img>`,
+  // and refuses or synthesizes a host page for binary content. Our
+  // handler runs against that already-HTML DOM, never raw bytes; see
+  // `install-sniffer.test.ts` for the plain-text + binary-shaped cases.
+  // If a consumer ever needs strict XML serialization or the DOCTYPE,
+  // switch to `XMLSerializer.serializeToString(document)`.
   const pageLoadHandler = (): void => {
     post({
       _tag: 'PageLoaded',
