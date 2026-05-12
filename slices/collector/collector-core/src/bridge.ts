@@ -62,12 +62,6 @@ type CollectorBridge = Bridge.Bridge<
  * wire schemas in lockstep with `BrowserSnifferBridge` — the host can
  * forward a decoded message through this bridge's Host→Web sender
  * without re-encoding.
- *
- * The FHIR-R4 server URL is *not* a bridge message: the collector
- * slice owns it via `<FhirR4ServerUrlProvider value=…>` on the SPA
- * side. Hosts that ship a custom FHIR server wrap the SPA in their
- * own provider; the default returns `null` and `useSyncRunner`
- * short-circuits until a value is provided.
  */
 const CollectorBridge: CollectorBridge = Bridge.make({
   name: 'Collector',
