@@ -43,7 +43,11 @@ const LogMessage = Schema.parseJson(LogMessageBody)
 const ResponseStartMessageBody = Schema.TaggedStruct('ResponseStart', {
   id: Schema.String,
   url: Schema.String,
-  status: Schema.Number,
+  // HTTP status codes are integers in [100, 599]; tightening the schema
+  // here also keeps the bridge round-trip property test JSON-safe — bare
+  // `Schema.Number` would let `Arbitrary` produce `Infinity` / `NaN`,
+  // which `JSON.stringify` collapses to `null` and round-trips lose.
+  status: Schema.Int.pipe(Schema.between(0, 1000)),
   statusText: Schema.String,
   headers: Schema.Record({ key: Schema.String, value: Schema.String }),
 })

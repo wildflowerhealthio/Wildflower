@@ -2,8 +2,8 @@ import fc from 'fast-check'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { SimpleEntity } from '../test-helpers.ts'
 import { RemoteResponse } from './response.ts'
-import { SimpleEntity } from './test-helpers.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 

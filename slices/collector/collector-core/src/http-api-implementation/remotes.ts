@@ -1,6 +1,6 @@
 import { HttpApiBuilder } from '@effect/platform'
 import { DateTime, Effect } from 'effect'
-import { CollectorStore } from '../contexts/CollectorStore.ts'
+import { CollectorStore } from '../contexts/collector-store.ts'
 import { CollectorApi } from '../http-api-definition/index.ts'
 import { Remote } from '../livestore/index.ts'
 

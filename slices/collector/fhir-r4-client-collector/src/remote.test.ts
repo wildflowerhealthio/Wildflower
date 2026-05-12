@@ -1,18 +1,46 @@
 // oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers (`expect.objectContaining`, `expect.stringContaining`, etc.) are typed as `any`; composing them inside `objectContaining` is the intended idiom
 
+import { CollectorBridgeMessageHandler } from 'collector-core/model'
+import { Effect, Encoding, MutableHashMap } from 'effect'
 import fc from 'fast-check'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { defaultConfig } from './config.ts'
-import { makeFhirR4Remote } from './remote.ts'
+import { type AnyResource, makeFhirR4Remote } from './remote.ts'
 
 const { expectRightToEqual } = utilityExpectations(expect)
+
+const encoder = new TextEncoder()
+
+type FhirHandlerArgs = Parameters<typeof CollectorBridgeMessageHandler.make<AnyResource>>[0]
+type FhirHandler = ReturnType<typeof CollectorBridgeMessageHandler.make<AnyResource>>
+type StartArg = Parameters<FhirHandler['ResponseStart']>[0]
+type DataArg = Parameters<FhirHandler['ResponseData']>[0]
+type FinishArg = Parameters<FhirHandler['ResponseFinished']>[0]
+
+const noopSendMessage: FhirHandlerArgs['sendMessage'] = () => Effect.void
+
+const responseStart = (overrides: { id: string; url: string }): StartArg => ({
+  _tag: 'ResponseStart',
+  status: 200,
+  statusText: 'OK',
+  headers: { 'content-type': 'application/fhir+json' },
+  ...overrides,
+})
+
+const responseData = (id: string, body: string): DataArg => ({
+  _tag: 'ResponseData',
+  id,
+  data: Encoding.encodeBase64(encoder.encode(body)),
+})
+
+const responseFinished = (id: string): FinishArg => ({ _tag: 'ResponseFinished', id })
 
 describe('makeFhirR4Remote', () => {
   describe('firstPage', () => {
     it('returns an inline HTML bootstrap page that mentions the root URL', () => {
-      const remote = makeFhirR4Remote(defaultConfig, () => undefined)
+      const remote = makeFhirR4Remote(defaultConfig)
       expect(remote.firstPage).toMatchObject({
         html: expect.stringContaining('Patient'),
       })
@@ -24,7 +52,7 @@ describe('makeFhirR4Remote', () => {
     it('embeds the rootUrl in the bootstrap HTML for any URL + patient id pair', () => {
       fc.assert(
         fc.property(fc.webUrl(), fc.string({ minLength: 1 }), (rootUrl, patientId) => {
-          const remote = makeFhirR4Remote({ _tag: 'fhir-r4', rootUrl, patientId }, () => undefined)
+          const remote = makeFhirR4Remote({ _tag: 'fhir-r4', rootUrl, patientId })
           if ('html' in remote.firstPage) {
             expect(remote.firstPage.html).toContain(rootUrl)
           }
@@ -33,63 +61,57 @@ describe('makeFhirR4Remote', () => {
     })
   })
 
-  describe('shouldKeepResponse', () => {
-    it('keeps responses for Patient and Observation URLs and skips others', () => {
-      const remote = makeFhirR4Remote(defaultConfig, () => undefined)
-      const base = { status: 200, statusText: 'OK', headers: {} }
-      expect(
-        remote.shouldKeepResponse({
-          ...base,
-          id: 'r1',
-          url: 'https://r4.smarthealthit.org/Patient/123',
-        })
-      ).toBe(true)
-      expect(
-        remote.shouldKeepResponse({
-          ...base,
-          id: 'r2',
-          url: 'https://r4.smarthealthit.org/Observation/456',
-        })
-      ).toBe(true)
-      expect(
-        remote.shouldKeepResponse({
-          ...base,
-          id: 'r3',
-          url: 'https://r4.smarthealthit.org/Encounter/789',
-        })
-      ).toBe(false)
-    })
-  })
+  describe('when driven by a CollectorBridgeMessageHandler', () => {
+    it('tracks Patient + Observation URLs and cancels others via sendMessage', () => {
+      const sendMessage = vi.fn<FhirHandlerArgs['sendMessage']>(() => Effect.void)
+      const handler = CollectorBridgeMessageHandler.make<AnyResource>({
+        remote: makeFhirR4Remote(defaultConfig),
+        sendMessage,
+        onResult: () => undefined,
+      })
 
-  describe('lifecycle', () => {
+      Effect.runSync(
+        handler.ResponseStart(
+          responseStart({ id: 'r1', url: 'https://r4.smarthealthit.org/Patient/123' })
+        )
+      )
+      Effect.runSync(
+        handler.ResponseStart(
+          responseStart({ id: 'r2', url: 'https://r4.smarthealthit.org/Observation/456' })
+        )
+      )
+      Effect.runSync(
+        handler.ResponseStart(
+          responseStart({ id: 'r3', url: 'https://r4.smarthealthit.org/Encounter/789' })
+        )
+      )
+
+      // Encounter is not in the entity set → handler emits a CancelSnifferRequest.
+      expect(sendMessage).toHaveBeenCalledOnce()
+      expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'CancelSnifferRequest', id: 'r3' })
+      expect(MutableHashMap.keys(handler.inProgressResponses)).toContain('r1')
+      expect(MutableHashMap.keys(handler.inProgressResponses)).toContain('r2')
+      expect(MutableHashMap.keys(handler.inProgressResponses)).not.toContain('r3')
+    })
+
     it('routes a complete Patient response through onResult as Right with the decoded patient', () => {
-      const onResult =
-        vi.fn<
-          Parameters<Parameters<typeof makeFhirR4Remote>[1]>[0] extends infer T
-            ? (arg: T) => void
-            : never
-        >()
-      const remote = makeFhirR4Remote(defaultConfig, onResult)
-      const encoder = new TextEncoder()
+      const onResult = vi.fn<FhirHandlerArgs['onResult']>()
+      const handler = CollectorBridgeMessageHandler.make<AnyResource>({
+        remote: makeFhirR4Remote(defaultConfig),
+        sendMessage: noopSendMessage,
+        onResult,
+      })
       const patientJson = JSON.stringify({ resourceType: 'Patient', id: '42', gender: 'female' })
 
-      remote.shouldKeepResponse({
-        id: 'lifecycle-1',
-        url: 'https://r4.smarthealthit.org/Patient/42',
-        status: 200,
-        statusText: 'OK',
-        headers: { 'content-type': 'application/fhir+json' },
-      })
+      Effect.runSync(
+        handler.ResponseStart(
+          responseStart({ id: 'lifecycle-1', url: 'https://r4.smarthealthit.org/Patient/42' })
+        )
+      )
       const half = Math.floor(patientJson.length / 2)
-      remote.handleResponseData({
-        id: 'lifecycle-1',
-        data: encoder.encode(patientJson.slice(0, half)),
-      })
-      remote.handleResponseData({
-        id: 'lifecycle-1',
-        data: encoder.encode(patientJson.slice(half)),
-      })
-      remote.handleResponseFinished({ id: 'lifecycle-1' })
+      Effect.runSync(handler.ResponseData(responseData('lifecycle-1', patientJson.slice(0, half))))
+      Effect.runSync(handler.ResponseData(responseData('lifecycle-1', patientJson.slice(half))))
+      Effect.runSync(handler.ResponseFinished(responseFinished('lifecycle-1')))
 
       expect(onResult).toHaveBeenCalledOnce()
       const [{ response, result }] = onResult.mock.calls[0]
@@ -101,7 +123,10 @@ describe('makeFhirR4Remote', () => {
         expect.objectContaining({
           resources: expect.arrayContaining([expect.objectContaining({ id: '42' })]),
           links: expect.arrayContaining([
-            expect.objectContaining({ _tag: 'Open', href: expect.stringContaining('Observation') }),
+            expect.objectContaining({
+              _tag: 'Open',
+              href: expect.stringContaining('Observation'),
+            }),
           ]),
         })
       )

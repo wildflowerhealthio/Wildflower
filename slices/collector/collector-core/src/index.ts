@@ -1,5 +1,3 @@
-export * as EntityDefinition from './entity-definition.ts'
-export * as Link from './link.ts'
-export * as Remote from './remote.ts'
-export * as Response from './response.ts'
-export * as WebViewSource from './web-view-source.ts'
+// At present, nothing is exported from the root
+// oxlint-disable-next-line unicorn/require-module-specifiers
+export {}

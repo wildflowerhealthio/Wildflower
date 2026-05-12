@@ -3,6 +3,7 @@ import {
   ResponseDataMessage,
   ResponseFinishedMessage,
   ResponseStartMessage,
+  CancelSnifferRequestMessage,
 } from 'browser-sniffer-core'
 import { Schema } from 'effect'
 import { Bridge } from 'effect-messaging-core'
@@ -48,6 +49,7 @@ type CollectorBridge = Bridge.Bridge<
   },
   {
     RequestSniffableWebView: typeof RequestSniffableWebView
+    CancelSnifferRequest: typeof CancelSnifferRequestMessage
     SniffingComplete: typeof SniffingComplete
   }
 >
@@ -73,6 +75,7 @@ const CollectorBridge: CollectorBridge = Bridge.make({
   ] as const,
   webToHost: [
     ['RequestSniffableWebView', RequestSniffableWebView],
+    ['CancelSnifferRequest', CancelSnifferRequestMessage],
     ['SniffingComplete', SniffingComplete],
   ] as const,
 })

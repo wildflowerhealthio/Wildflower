@@ -43,14 +43,14 @@ const bootstrapFhirPage = function (config: {
 
   setTimeout(() => {
     const h2 = document.getElementById('h2')
-    if (h2 !== null) h2.innerText = 'Fetching'
+    if (h2 !== null) h2.textContent = 'Fetching'
     fetch(config.patientUrl)
       .then((res) => res.text())
       .then((text) => {
-        if (h2 !== null) h2.innerText = text
+        if (h2 !== null) h2.textContent = text
       })
       .catch((err: unknown) => {
-        if (h2 !== null) h2.innerText = String(err)
+        if (h2 !== null) h2.textContent = String(err)
       })
   }, 500)
 }

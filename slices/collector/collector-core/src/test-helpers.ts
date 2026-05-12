@@ -1,6 +1,6 @@
 import { Either, Schema } from 'effect'
 
-import * as EntityDefinition from './entity-definition.ts'
+import * as EntityDefinition from './model/entity-definition.ts'
 
 /**
  * Two reusable test entities for `entity-definition.test.ts` and

@@ -15,9 +15,9 @@ interface Parsed<TResources> {
 
 /**
  * Stateless, struct-shaped *definition* of an entity — not an entity
- * in and of itself, just a recipe the dispatcher uses to recognize
- * matching responses and decode them. A concrete entity (e.g.
- * `PatientEntity`) is a value built by {@link make}, not an
+ * in and of itself, just a recipe `CollectorBridgeMessageHandler` uses to
+ * recognize matching responses and decode them. A concrete entity
+ * (e.g. `PatientEntity`) is a value built by {@link make}, not an
  * instance; its `parse` closes over whatever schemas / decoders it
  * needs and takes the in-flight {@link RemoteResponse} each call.
  * Passing the full response (not a pre-extracted slice of fields)
@@ -29,12 +29,16 @@ interface Parsed<TResources> {
  * `RemoteEntityConstructor<T>` pair; the inheritance chain became a
  * manual function chain (each concrete entity calls {@link make} once
  * and exports the result). Import callers use the file as a
- * namespace: `import * as EntityDefinition from 'collector-core/entity-definition'`.
+ * namespace: `import { EntityDefinition } from 'collector-core/model'`
+ * → `EntityDefinition.EntityDefinition<T>` for the type,
+ * `EntityDefinition.make({...})` for the constructor.
  *
  * - `name`: stable identifier, useful for logging and the entity
  *   constructor's `static name` slot in the old shape.
- * - `isFoundAt`: URL-match predicate; `Remote.shouldKeepResponse`
- *   consults this to decide whether to track an in-flight response.
+ * - `isFoundAt`: URL-match predicate;
+ *   `CollectorBridgeMessageHandler.ResponseStart` consults this to
+ *   decide whether to track an in-flight response (and cancels the
+ *   sniffer-side request via `sendMessage` when no entity matches).
  * - `parse`: pure function from `RemoteResponse` to
  *   `Either<Parsed, ParseError>`. Errors are returned, not thrown;
  *   the host decides whether to log and continue or to abort the sync.

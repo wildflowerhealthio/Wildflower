@@ -1,1 +1,1 @@
-export { CollectorStore, makeCollectorStoreLayer } from './CollectorStore.ts'
+export { CollectorStore, makeCollectorStoreLayer } from './collector-store.ts'

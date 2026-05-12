@@ -1,6 +1,6 @@
 import { type HttpApiGroup, HttpApiBuilder } from '@effect/platform'
 import { Layer } from 'effect'
-import type { CollectorStore } from '../contexts/CollectorStore.ts'
+import type { CollectorStore } from '../contexts/collector-store.ts'
 import { CollectorApi } from '../http-api-definition/index.ts'
 import * as Remotes from './remotes.ts'
 

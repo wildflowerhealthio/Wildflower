@@ -1,4 +1,4 @@
-import * as EntityDefinition from 'collector-core/entity-definition'
+import { EntityDefinition } from 'collector-core/model'
 import { Either, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
 

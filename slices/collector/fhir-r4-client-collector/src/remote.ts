@@ -1,5 +1,4 @@
-import type * as EntityDefinition from 'collector-core/entity-definition'
-import * as Remote from 'collector-core/remote'
+import { type EntityDefinition, Remote } from 'collector-core/model'
 import type { Binary, Observation, Patient } from 'emr-core/livestore'
 
 import { buildFhirBootstrapHtml } from './bootstrap-fhir-page.ts'
@@ -25,22 +24,18 @@ type AnyResource =
  * concrete wiring (audit-log the raw body, route parsed resources
  * via `HttpApiClient(FhirResourcesApi)`).
  */
-const makeFhirR4Remote = (
-  config: InstanceConfig,
-  onResult: Remote.Config<AnyResource>['onResult']
-): Remote.Remote => {
+const makeFhirR4Remote = (config: InstanceConfig): Remote.Remote<AnyResource> => {
   const patientUrl = `${config.rootUrl}/Patient/${config.patientId}?_format=json`
   const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${config.patientId}&_count=250&_format=json`
 
   return Remote.make<AnyResource>({
-    firstPage: { html: buildFhirBootstrapHtml({ patientUrl, observationUrl }) },
     name: 'FHIR R4 Remote',
-    entities: [
+    firstPage: { html: buildFhirBootstrapHtml({ patientUrl, observationUrl }) },
+    entityDefinitions: [
       PatientEntity,
       ObservationEntity,
       ObservationListEntity,
     ] as readonly EntityDefinition.EntityDefinition<AnyResource>[],
-    onResult,
   })
 }
 

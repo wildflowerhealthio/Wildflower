@@ -35,13 +35,18 @@ describe('bootstrapFhirPage', () => {
       patientUrl: 'https://e.test/Patient/42',
       observationUrl: 'https://e.test/Observation',
     })
-    expect(h2.innerText).toBe('Loading...')
+    expect(h2.textContent).toBe('Loading...')
 
-    await vi.advanceTimersByTimeAsync(500)
-    expect(h2.innerText).toBe('Fetching')
-    // Drain the .then(text => …) microtasks
+    // Sync `advanceTimersByTime` fires the 500ms timer (the body writes
+    // 'Fetching' and kicks off the fetch) without also draining the
+    // microtask queue — that's `advanceTimersByTimeAsync`'s extra step,
+    // and it would resolve the mocked fetch before we can observe the
+    // intermediate state.
+    vi.advanceTimersByTime(500)
+    expect(h2.textContent).toBe('Fetching')
+    // Now drain the .then(text => …) microtasks to land the body.
     await vi.runAllTimersAsync()
-    expect(h2.innerText).toBe('{"resourceType":"Patient","id":"42"}')
+    expect(h2.textContent).toBe('{"resourceType":"Patient","id":"42"}')
   })
 
   it('writes the fetch error message into #h2 on failure', async () => {
@@ -55,7 +60,7 @@ describe('bootstrapFhirPage', () => {
 
     await vi.advanceTimersByTimeAsync(500)
     await vi.runAllTimersAsync()
-    expect(h2.innerText).toContain('network down')
+    expect(h2.textContent).toContain('network down')
   })
 
   it('wires the fetch-observations button to fire fetch on click', async () => {

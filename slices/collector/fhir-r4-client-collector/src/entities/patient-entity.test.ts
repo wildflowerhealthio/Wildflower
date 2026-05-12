@@ -4,7 +4,7 @@ import fc from 'fast-check'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { RemoteResponse } from 'collector-core/response'
+import { Response } from 'collector-core/model'
 
 import { PatientEntity } from './patient-entity.ts'
 
@@ -12,8 +12,8 @@ const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
 const encoder = new TextEncoder()
 
-const makeResponse = (body: string): RemoteResponse => {
-  const r = new RemoteResponse('https://example.com/Patient/1', 200, 'OK', {
+const makeResponse = (body: string): Response.RemoteResponse => {
+  const r = new Response.RemoteResponse('https://example.com/Patient/1', 200, 'OK', {
     'content-type': 'application/fhir+json',
   })
   r.appendChunk(encoder.encode(body))

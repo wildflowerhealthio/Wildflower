@@ -1,4 +1,4 @@
-import * as EntityDefinition from 'collector-core/entity-definition'
+import { EntityDefinition } from 'collector-core/model'
 import { Either, Schema } from 'effect'
 import { Bundle } from 'fhir-r4/data-types'
 import { Observation } from 'fhir-r4/resources'
