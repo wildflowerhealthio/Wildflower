@@ -37,14 +37,16 @@ interface UtilityExpectations {
   /**
    * Asserts `either` is a `Right` and its right value deep-equals `expected`.
    * `expected` is `unknown` so it accepts both literal values and asymmetric
-   * matchers (e.g. `expect.objectContaining(...)`). Fails with a clear
-   * "Expected Right, got Left" message on the wrong side.
+   * matchers (e.g. `expect.objectContaining(...)`). Implemented as a single
+   * `toEqual` against `{ _tag: 'Right', right: expected }` so a failure
+   * surfaces the whole `Either` in the diff — not just one branch of a
+   * two-step `isRight` + `.right.toEqual` ladder.
    */
   readonly expectRightToEqual: <A, E>(either: Either.Either<A, E>, expected: unknown) => void
   /**
    * Asserts `either` is a `Left` and its left value deep-equals `expected`.
    * Mirror of {@link UtilityExpectations.expectRightToEqual} for error-path
-   * assertions.
+   * assertions; same single-`toEqual` failure-diff property.
    */
   readonly expectLeftToEqual: <A, E>(either: Either.Either<A, E>, expected: unknown) => void
 }
@@ -98,16 +100,14 @@ const utilityExpectations = (expect: Expect): UtilityExpectations => ({
     expect([...actual].toSorted()).toEqual([...expected].toSorted())
   },
   expectRightToEqual: (either, expected) => {
-    expect(either._tag).toBe('Right')
-    if (either._tag === 'Right') {
-      expect(either.right).toEqual(expected)
-    }
+    // Single `toEqual` against the tagged-object shape. On a Left input,
+    // the failure diff is the whole `either` (tag + payload) against the
+    // expected `{ _tag: 'Right', right: <expected> }`, not just a stray
+    // `'Left' !== 'Right'` from a discarded preliminary check.
+    expect(either).toEqual({ _tag: 'Right', right: expected })
   },
   expectLeftToEqual: (either, expected) => {
-    expect(either._tag).toBe('Left')
-    if (either._tag === 'Left') {
-      expect(either.left).toEqual(expected)
-    }
+    expect(either).toEqual({ _tag: 'Left', left: expected })
   },
 })
 
