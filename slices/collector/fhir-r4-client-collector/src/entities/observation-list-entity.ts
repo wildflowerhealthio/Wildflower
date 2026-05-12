@@ -1,4 +1,4 @@
-import * as Entity from 'collector-core/entity'
+import * as EntityDefinition from 'collector-core/entity-definition'
 import { Either, Schema } from 'effect'
 import { Bundle } from 'fhir-r4/data-types'
 import { Observation } from 'fhir-r4/resources'
@@ -15,17 +15,18 @@ const isObservation = Schema.is(Observation.Schema)
  * full `Observation` and drops the rest (the Bundle schema is
  * permissive about `entry.resource` so we re-check here).
  */
-const ObservationListEntity: Entity.Entity<ObservationType> = Entity.make({
-  name: 'ObservationListEntity',
-  isFoundAt: (url) => /.*:\/\/[^/]*\/Observation.*$/.test(url),
-  parse: (response) =>
-    decode(response.text()).pipe(
-      Either.map((bundle) => ({
-        resources:
-          bundle.entry?.map(({ resource }) => resource).filter((o) => isObservation(o)) ?? [],
-        links: [],
-      }))
-    ),
-})
+const ObservationListEntity: EntityDefinition.EntityDefinition<ObservationType> =
+  EntityDefinition.make({
+    name: 'ObservationListEntity',
+    isFoundAt: (url) => /.*:\/\/[^/]*\/Observation.*$/.test(url),
+    parse: (response) =>
+      decode(response.text()).pipe(
+        Either.map((bundle) => ({
+          resources:
+            bundle.entry?.map(({ resource }) => resource).filter((o) => isObservation(o)) ?? [],
+          links: [],
+        }))
+      ),
+  })
 
 export { ObservationListEntity }

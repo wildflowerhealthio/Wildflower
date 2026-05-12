@@ -22,9 +22,9 @@
       "source": "./src/bridge.ts",
       "default": "./dist/bridge.js"
     },
-    "./entity": {
-      "source": "./src/entity.ts",
-      "default": "./dist/entity.js"
+    "./entity-definition": {
+      "source": "./src/entity-definition.ts",
+      "default": "./dist/entity-definition.js"
     },
     "./remote": {
       "source": "./src/remote.ts",

@@ -1,7 +1,7 @@
 import type { Either, ParseResult } from 'effect'
 import { MutableHashMap, Option } from 'effect'
 import type { ReadonlyRecord } from 'effect/Record'
-import type * as Entity from './entity.ts'
+import type * as EntityDefinition from './entity-definition.ts'
 import { RemoteResponse } from './response.ts'
 import type * as WebViewSource from './web-view-source.ts'
 
@@ -47,7 +47,7 @@ interface Remote {
 interface Config<TResources> {
   readonly firstPage: WebViewSource.Any
   readonly name: string
-  readonly entities: readonly Entity.Entity<TResources>[]
+  readonly entities: readonly EntityDefinition.EntityDefinition<TResources>[]
   /**
    * Fired once per matched, completed response. Carries the full
    * `RemoteResponse` (so callers can audit-log the raw body,
@@ -56,7 +56,7 @@ interface Config<TResources> {
    */
   readonly onResult: (args: {
     readonly response: RemoteResponse
-    readonly result: Either.Either<Entity.Parsed<TResources>, ParseResult.ParseError>
+    readonly result: Either.Either<EntityDefinition.Parsed<TResources>, ParseResult.ParseError>
   }) => void
 }
 

@@ -17,7 +17,7 @@ const makeResponse = (body: string): RemoteResponse => {
   return r
 }
 
-describe('Entity.make', () => {
+describe('EntityDefinition.make', () => {
   it('parses valid JSON into resources and links', () => {
     expectRightToEqual(
       SimpleEntity.parse(makeResponse(JSON.stringify({ name: 'Alice', age: 30 }))),

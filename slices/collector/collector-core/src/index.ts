@@ -1,4 +1,4 @@
-export * as Entity from './entity.ts'
+export * as EntityDefinition from './entity-definition.ts'
 export * as Link from './link.ts'
 export * as Remote from './remote.ts'
 export * as Response from './response.ts'

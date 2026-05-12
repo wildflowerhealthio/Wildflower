@@ -1,4 +1,4 @@
-import * as Entity from 'collector-core/entity'
+import * as EntityDefinition from 'collector-core/entity-definition'
 import { Either, Schema } from 'effect'
 import { Observation } from 'fhir-r4/resources'
 
@@ -13,13 +13,15 @@ const decode = Schema.decodeEither(Schema.parseJson(Observation.Schema))
  * emr-core-shaped row, so the decoded `resources` entry is ready to
  * persist without further mapping.
  */
-const ObservationEntity: Entity.Entity<ObservationType> = Entity.make({
-  name: 'ObservationEntity',
-  isFoundAt: (url) => /.*:\/\/[^/]*\/Observation\/[^/]+$/.test(url),
-  parse: (response) =>
-    decode(response.text()).pipe(
-      Either.map((observation) => ({ resources: [observation], links: [] }))
-    ),
-})
+const ObservationEntity: EntityDefinition.EntityDefinition<ObservationType> = EntityDefinition.make(
+  {
+    name: 'ObservationEntity',
+    isFoundAt: (url) => /.*:\/\/[^/]*\/Observation\/[^/]+$/.test(url),
+    parse: (response) =>
+      decode(response.text()).pipe(
+        Either.map((observation) => ({ resources: [observation], links: [] }))
+      ),
+  }
+)
 
 export { ObservationEntity }

@@ -1,4 +1,4 @@
-import type * as Entity from 'collector-core/entity'
+import type * as EntityDefinition from 'collector-core/entity-definition'
 import * as Remote from 'collector-core/remote'
 import type { Binary, Observation, Patient } from 'emr-core/livestore'
 
@@ -39,7 +39,7 @@ const makeFhirR4Remote = (
       PatientEntity,
       ObservationEntity,
       ObservationListEntity,
-    ] as readonly Entity.Entity<AnyResource>[],
+    ] as readonly EntityDefinition.EntityDefinition<AnyResource>[],
     onResult,
   })
 }

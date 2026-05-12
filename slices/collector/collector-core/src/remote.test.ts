@@ -2,7 +2,7 @@ import { Either } from 'effect'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import * as Entity from './entity.ts'
+import * as EntityDefinition from './entity-definition.ts'
 import * as Remote from './remote.ts'
 import { AnotherEntity, SimpleEntity } from './test-helpers.ts'
 
@@ -141,11 +141,12 @@ describe('Remote.make', () => {
     })
 
     it('routes to the first entity whose isFoundAt matches when multiple match', () => {
-      const OverlappingEntity: Entity.Entity<{ name: string; age: number }> = Entity.make({
-        name: 'OverlappingEntity',
-        isFoundAt: (url) => /\/people\//.test(url),
-        parse: () => Either.right({ resources: [], links: [] }),
-      })
+      const OverlappingEntity: EntityDefinition.EntityDefinition<{ name: string; age: number }> =
+        EntityDefinition.make({
+          name: 'OverlappingEntity',
+          isFoundAt: (url) => /\/people\//.test(url),
+          parse: () => Either.right({ resources: [], links: [] }),
+        })
 
       const onResult = vi.fn<Remote.Config<{ name: string; age: number }>['onResult']>()
       const remote = Remote.make({

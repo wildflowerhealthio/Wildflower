@@ -1,4 +1,4 @@
-import * as Entity from 'collector-core/entity'
+import * as EntityDefinition from 'collector-core/entity-definition'
 import { Either, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
 
@@ -14,7 +14,7 @@ const decode = Schema.decodeEither(Schema.parseJson(Patient.Schema))
  * weight, height, length, BMI). The link is empty when the parsed
  * `Patient.id` is null (no usable subject reference).
  */
-const PatientEntity: Entity.Entity<PatientType> = Entity.make({
+const PatientEntity: EntityDefinition.EntityDefinition<PatientType> = EntityDefinition.make({
   name: 'PatientEntity',
   isFoundAt: (url) => /.*:\/\/[^/]*\/Patient\/[^/]+$/.test(url),
   parse: (response) =>

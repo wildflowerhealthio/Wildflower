@@ -14,20 +14,22 @@ interface Parsed<TResources> {
 }
 
 /**
- * Stateless, struct-shaped entity definition. A concrete entity (e.g.
- * `PatientEntity`) is a value, not an instance — its `parse` closes
- * over whatever schemas / decoders it needs and takes the in-flight
- * {@link RemoteResponse} each call. Passing the full response (not a
- * pre-extracted slice of fields) keeps the data flow visible: an
- * entity can read `response.text()`, `response.headers`, and
- * `response.url` on demand without the dispatcher having to know in
- * advance which it'll need.
+ * Stateless, struct-shaped *definition* of an entity — not an entity
+ * in and of itself, just a recipe the dispatcher uses to recognize
+ * matching responses and decode them. A concrete entity (e.g.
+ * `PatientEntity`) is a value built by {@link make}, not an
+ * instance; its `parse` closes over whatever schemas / decoders it
+ * needs and takes the in-flight {@link RemoteResponse} each call.
+ * Passing the full response (not a pre-extracted slice of fields)
+ * keeps the data flow visible: an entity can read `response.text()`,
+ * `response.headers`, and `response.url` on demand without the
+ * dispatcher having to know in advance which it'll need.
  *
  * Replaces the previous `abstract class RemoteEntity<T>` /
  * `RemoteEntityConstructor<T>` pair; the inheritance chain became a
  * manual function chain (each concrete entity calls {@link make} once
  * and exports the result). Import callers use the file as a
- * namespace: `import * as Entity from 'collector-core/entity'`.
+ * namespace: `import * as EntityDefinition from 'collector-core/entity-definition'`.
  *
  * - `name`: stable identifier, useful for logging and the entity
  *   constructor's `static name` slot in the old shape.
@@ -37,7 +39,7 @@ interface Parsed<TResources> {
  *   `Either<Parsed, ParseError>`. Errors are returned, not thrown;
  *   the host decides whether to log and continue or to abort the sync.
  */
-interface Entity<TResources> {
+interface EntityDefinition<TResources> {
   readonly name: string
   readonly isFoundAt: (url: string) => boolean
   readonly parse: (
@@ -52,7 +54,8 @@ interface Entity<TResources> {
  * add behavior (validation, default fields, ...) if the shape ever
  * evolves.
  */
-const make = <TResources>(entity: Entity<TResources>): Entity<TResources> => entity
+const make = <TResources>(definition: EntityDefinition<TResources>): EntityDefinition<TResources> =>
+  definition
 
 export { make }
-export type { Entity, Parsed }
+export type { EntityDefinition, Parsed }
