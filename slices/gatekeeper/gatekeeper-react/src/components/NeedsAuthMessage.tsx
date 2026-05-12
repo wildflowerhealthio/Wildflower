@@ -4,7 +4,7 @@ import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
 import { OAuth } from 'gatekeeper-core/http-api-definition'
 
 import { useEffect, useState, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
+import { bearerTokenLayer, cn, useAuthTokenSubscribable } from 'react-kitchen-sink'
 import { webHttpClientLayer } from 'telemetry-react'
 
 import { writeToken } from '../client/token-storage.ts'
@@ -71,7 +71,11 @@ const toErrorState = (error: unknown): DeviceFlowState =>
  */
 const NeedsAuthMessage = (): JSX.Element => {
   const [state, setState] = useState<DeviceFlowState>({ tag: 'starting' })
+  // Long-running device flow with retry — needs a fiber handle for
+  // interrupt-on-unmount, which the promise-returning runner can't give.
+  // Compose the slice's three layers manually here.
   const layer = useGatekeeperClientLayer()
+  const tokenSubscribable = useAuthTokenSubscribable()
 
   useEffect(() => {
     const flow = Effect.gen(function* () {
@@ -116,6 +120,7 @@ const NeedsAuthMessage = (): JSX.Element => {
         })
       ),
       Effect.provide(layer),
+      Effect.provide(bearerTokenLayer(tokenSubscribable)),
       Effect.provide(webHttpClientLayer)
     )
 
@@ -123,7 +128,7 @@ const NeedsAuthMessage = (): JSX.Element => {
     return (): void => {
       void Effect.runPromise(Fiber.interrupt(fiber))
     }
-  }, [layer])
+  }, [layer, tokenSubscribable])
 
   if (state.tag === 'starting') {
     return (

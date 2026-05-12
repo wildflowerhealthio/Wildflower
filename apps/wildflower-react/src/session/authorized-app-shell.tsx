@@ -1,31 +1,23 @@
-import { GatekeeperClientProvider, NeedsAuthMessage, useToken } from 'gatekeeper-react'
+import { NeedsAuthMessage, useToken } from 'gatekeeper-react'
 import type { JSX } from 'react'
 import { Outlet } from 'react-router'
 
 /**
- * Outlet wrapper that gates owner-facing routes on a live bearer token.
+ * Outlet wrapper that gates owner-facing routes on a live bearer
+ * token. Renders `<NeedsAuthMessage>` (the RFC 8628 device flow) when
+ * no token is present; otherwise renders the matched child `<Route>`
+ * via `<Outlet>`.
  *
- * - No token: renders `<NeedsAuthMessage>` in-place (which kicks off the
- *   RFC 8628 device flow against the unauthenticated client layer
- *   provided higher up in the tree). On approval, the device-flow
- *   handler writes the token to storage; this component re-renders and
- *   flips into the authenticated branch with the new token attached.
- * - Token present: re-provides `<GatekeeperClientProvider token>` so
- *   descendants' `useGatekeeperClientLayer()` returns a bearer-attached
- *   layer, then renders the matched child `<Route>` via `<Outlet>`.
- *
- * Per-slice client providers (e.g. `<CollectorClientProvider token>`)
- * compose underneath this same `if (token)` branch as additional slices
- * land.
+ * Note: the gatekeeper client layer is the same on both sides of this
+ * gate — it reads the live token from `BearerToken` (a Subscribable
+ * provided by `<AuthTokenProvider>` higher up). Public routes get a
+ * `null` token; authenticated routes get the rotated value. No
+ * provider re-mount is needed, so this component does pure UI gating.
  */
 const AuthorizedAppShell = (): JSX.Element => {
   const token = useToken()
   if (token === null || token === '') return <NeedsAuthMessage />
-  return (
-    <GatekeeperClientProvider token={token}>
-      <Outlet />
-    </GatekeeperClientProvider>
-  )
+  return <Outlet />
 }
 
 export { AuthorizedAppShell }

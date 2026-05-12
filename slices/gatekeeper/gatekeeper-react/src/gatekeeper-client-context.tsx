@@ -1,41 +1,29 @@
-import { useMemo, type JSX, type PropsWithChildren } from 'react'
+import type { JSX, PropsWithChildren } from 'react'
 
 import { buildGatekeeperClientLayer } from './client/gatekeeper-client.ts'
 import { GatekeeperClientLayerContext } from './gatekeeper-client-context.ts'
 
-type GatekeeperClientProviderProps = PropsWithChildren<{
-  /**
-   * Bearer token attached to every gatekeeper API call. `null` produces
-   * an unauthenticated client suitable for public endpoints (OAuth device
-   * flow, polling). The provider memoises the layer on `token` so a
-   * rotation rebuilds it lazily; no `ManagedRuntime` is constructed here —
-   * apps compose layers and materialise their own runtime (or rely on
-   * `useEffectTs` from `telemetry-react` to run effects with the layer
-   * already provided).
-   */
-  readonly token: string | null
-}>
+// The slice's client layer no longer depends on a token directly —
+// `buildGatekeeperClientLayer()` reads from the `BearerToken` service at
+// request time, so a single layer instance suffices for the entire app.
+// Build it once at module load and re-use across every mount.
+const gatekeeperClientLayer = buildGatekeeperClientLayer()
+
+type GatekeeperClientProviderProps = PropsWithChildren
 
 /**
  * Provides the slice's client `Layer` to descendants via
- * {@link GatekeeperClientLayerContext}. The root app wraps the whole
- * tree with `token={null}` for public routes;
- * `<AuthorizedAppShell>` re-wraps inside with the live token so
- * authenticated screens see a bearer-attached layer through the same
- * hook.
+ * {@link GatekeeperClientLayerContext}. No token prop — the layer
+ * reads the live token from {@link BearerToken} (a Subscribable
+ * provided higher in the tree via `<AuthTokenProvider>` from
+ * react-kitchen-sink). Authenticated and unauthenticated routes share
+ * the same provider; only the rendered UI differs.
  */
-const GatekeeperClientProvider = ({
-  token,
-  children,
-}: GatekeeperClientProviderProps): JSX.Element => {
-  const layer = useMemo(() => buildGatekeeperClientLayer(token), [token])
-
-  return (
-    <GatekeeperClientLayerContext.Provider value={layer}>
-      {children}
-    </GatekeeperClientLayerContext.Provider>
-  )
-}
+const GatekeeperClientProvider = ({ children }: GatekeeperClientProviderProps): JSX.Element => (
+  <GatekeeperClientLayerContext.Provider value={gatekeeperClientLayer}>
+    {children}
+  </GatekeeperClientLayerContext.Provider>
+)
 
 export { GatekeeperClientProvider }
 export type { GatekeeperClientProviderProps }

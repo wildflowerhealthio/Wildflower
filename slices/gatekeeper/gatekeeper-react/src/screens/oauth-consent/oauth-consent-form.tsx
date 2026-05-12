@@ -1,27 +1,28 @@
-import type { HttpClient } from '@effect/platform'
-import { Effect, type Layer } from 'effect'
+import { Effect } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Checkbox, RadioGroup } from 'react-tundraish'
-import { webHttpClientLayer } from 'telemetry-react'
 
 import { Field, FieldDescription } from '../../components/Field.tsx'
+import type { GatekeeperEffectRunner } from '../../use-gatekeeper-effect-runner.ts'
 import type { Consent } from './types.ts'
 import { usePatientOptions } from './use-patient-options.ts'
 import pageLayout from '../../styles/page-layout.module.css'
 import scopeListStyles from '../../styles/scope-list.module.css'
 
-type ClientLayer = Layer.Layer<GatekeeperHttpApiClient, never, HttpClient.HttpClient>
-
 interface OAuthConsentFormProps {
-  readonly layer: ClientLayer
+  readonly runGatekeeper: GatekeeperEffectRunner
   readonly consent: Consent
   readonly onDone: () => void
 }
 
-const OAuthConsentForm = ({ layer, consent, onDone }: OAuthConsentFormProps): JSX.Element => {
+const OAuthConsentForm = ({
+  runGatekeeper,
+  consent,
+  onDone,
+}: OAuthConsentFormProps): JSX.Element => {
   const requestedScopes = consent.scopes
   const hasPatientScope = requestedScopes.some(
     (s) => s.startsWith('patient/') || s === 'launch/patient'
@@ -52,7 +53,7 @@ const OAuthConsentForm = ({ layer, consent, onDone }: OAuthConsentFormProps): JS
     setSubmitting(true)
     setError(null)
     try {
-      const result = await Effect.runPromise(
+      const result = await runGatekeeper(
         Effect.flatMap(GatekeeperHttpApiClient, (c) =>
           c['oauth-consent'].ApproveOAuthConsent({
             path: { id: consent.id },
@@ -61,7 +62,7 @@ const OAuthConsentForm = ({ layer, consent, onDone }: OAuthConsentFormProps): JS
               patient: selectedPatient === '' ? null : selectedPatient,
             },
           })
-        ).pipe(Effect.provide(layer), Effect.provide(webHttpClientLayer))
+        )
       )
       if (result.status === 'approved') {
         onDone()
@@ -81,12 +82,12 @@ const OAuthConsentForm = ({ layer, consent, onDone }: OAuthConsentFormProps): JS
     setSubmitting(true)
     setError(null)
     try {
-      const result = await Effect.runPromise(
+      const result = await runGatekeeper(
         Effect.flatMap(GatekeeperHttpApiClient, (c) =>
           c['oauth-consent'].DenyOAuthConsent({
             path: { id: consent.id },
           })
-        ).pipe(Effect.provide(layer), Effect.provide(webHttpClientLayer))
+        )
       )
       if (result.status === 'denied' || result.status === 'approved') {
         onDone()

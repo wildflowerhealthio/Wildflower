@@ -5,7 +5,7 @@ export default defineConfig({
   pack: {
     dts: { tsgo: true },
     exports: false,
-    platform: 'browser',
+    platform: 'neutral',
     entry: { index: 'src/index.ts' },
   },
   lint: {

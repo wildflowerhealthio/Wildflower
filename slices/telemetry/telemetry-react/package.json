@@ -2,7 +2,7 @@
   "name": "telemetry-react",
   "version": "0.0.0",
   "private": true,
-  "description": "React bindings for web-side telemetry: an HttpClient layer that combines FetchHttpClient with the telemetry layer, plus useEffectTs/useStream wrappers that auto-provide it.",
+  "description": "Web-side HttpClient layer that combines FetchHttpClient with the web telemetry layer. Slice-react packages import it as a default HTTP layer; their per-slice effect runners auto-provide it.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -29,11 +29,8 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
-    "@types/react": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
-    "react": "catalog:",
-    "react-kitchen-sink": "workspace:*",
     "telemetry-web": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
@@ -41,8 +38,6 @@
   "peerDependencies": {
     "@effect/platform": "catalog:",
     "effect": "catalog:",
-    "react": "catalog:",
-    "react-kitchen-sink": "workspace:*",
     "telemetry-web": "workspace:*"
   }
 }

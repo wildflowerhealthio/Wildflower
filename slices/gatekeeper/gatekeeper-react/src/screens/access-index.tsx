@@ -1,5 +1,4 @@
-import type { HttpClient } from '@effect/platform'
-import { Effect, type Layer, type Schema } from 'effect'
+import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 
@@ -7,40 +6,38 @@ import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Await, useNavigate } from 'react-router'
 import { ItemList, Menu, type MenuItem } from 'react-tundraish'
-import { useEffectTs, webHttpClientLayer } from 'telemetry-react'
 
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
 import { RevokeGrantDialog } from '../components/RevokeGrantDialog.tsx'
 import { formatInstant } from '../format-date.ts'
-import { useGatekeeperClientLayer } from '../use-gatekeeper-client-layer.ts'
+import {
+  useGatekeeperEffectRunner,
+  type GatekeeperEffectRunner,
+} from '../use-gatekeeper-effect-runner.ts'
+import { useGatekeeperEffect } from '../use-gatekeeper-effect.ts'
 import pageLayout from '../styles/page-layout.module.css'
 
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
 
-type ClientLayer = Layer.Layer<GatekeeperHttpApiClient, never, HttpClient.HttpClient>
-
 const AccessIndexScreen = (): JSX.Element => {
-  const layer = useGatekeeperClientLayer()
+  const runGatekeeper = useGatekeeperEffectRunner()
   const [refreshKey, setRefreshKey] = useState(0)
 
   const grantsEffect = useMemo(
-    () =>
-      Effect.flatMap(GatekeeperHttpApiClient, (c) => c['access-management'].ListGrants()).pipe(
-        Effect.provide(layer)
-      ),
+    () => Effect.flatMap(GatekeeperHttpApiClient, (c) => c['access-management'].ListGrants()),
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- refreshKey is the intentional re-fetch trigger
-    [layer, refreshKey]
+    [refreshKey]
   )
 
-  const grantsPromise = useEffectTs(grantsEffect)
+  const grantsPromise = useGatekeeperEffect(grantsEffect)
 
   return (
     <Suspense fallback={<PageLoading />}>
       <Await resolve={grantsPromise} errorElement={<AsyncErrorView />}>
         {(grants: readonly Grant[]) => (
           <AccessIndexBody
-            layer={layer}
+            runGatekeeper={runGatekeeper}
             grants={grants}
             onRevoked={() => {
               setRefreshKey((n) => n + 1)
@@ -53,22 +50,26 @@ const AccessIndexScreen = (): JSX.Element => {
 }
 
 interface AccessIndexBodyProps {
-  readonly layer: ClientLayer
+  readonly runGatekeeper: GatekeeperEffectRunner
   readonly grants: readonly Grant[]
   readonly onRevoked: () => void
 }
 
-const AccessIndexBody = ({ layer, grants, onRevoked }: AccessIndexBodyProps): JSX.Element => {
+const AccessIndexBody = ({
+  runGatekeeper,
+  grants,
+  onRevoked,
+}: AccessIndexBodyProps): JSX.Element => {
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null)
 
   const revoke = async (id: string): Promise<void> => {
     try {
-      await Effect.runPromise(
+      await runGatekeeper(
         Effect.flatMap(GatekeeperHttpApiClient, (c) =>
           c['access-management'].RevokeGrant({ path: { id } })
-        ).pipe(Effect.provide(layer), Effect.provide(webHttpClientLayer))
+        )
       )
       setConfirmRevokeId(null)
       onRevoked()

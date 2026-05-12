@@ -1,5 +1,4 @@
-import type { HttpClient } from '@effect/platform'
-import { Effect, type Layer, type Schema } from 'effect'
+import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { Devices } from 'gatekeeper-core/http-api-definition'
 
@@ -7,21 +6,22 @@ import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Await, useNavigate, useParams } from 'react-router'
 import { Checkbox } from 'react-tundraish'
-import { useEffectTs, webHttpClientLayer } from 'telemetry-react'
 
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { Field, FieldDescription } from '../components/Field.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
-import { useGatekeeperClientLayer } from '../use-gatekeeper-client-layer.ts'
+import {
+  useGatekeeperEffectRunner,
+  type GatekeeperEffectRunner,
+} from '../use-gatekeeper-effect-runner.ts'
+import { useGatekeeperEffect } from '../use-gatekeeper-effect.ts'
 import pageLayout from '../styles/page-layout.module.css'
 import scopeListStyles from '../styles/scope-list.module.css'
 
 type DeviceConsent = Schema.Schema.Type<typeof Devices.DeviceConsentSchema>
 
-type ClientLayer = Layer.Layer<GatekeeperHttpApiClient, never, HttpClient.HttpClient>
-
 const DeviceConsentScreen = (): JSX.Element => {
-  const layer = useGatekeeperClientLayer()
+  const runGatekeeper = useGatekeeperEffectRunner()
   const navigate = useNavigate()
   const { userCode = '' } = useParams<{ userCode: string }>()
 
@@ -29,11 +29,11 @@ const DeviceConsentScreen = (): JSX.Element => {
     () =>
       Effect.flatMap(GatekeeperHttpApiClient, (c) =>
         c.devices.GetDeviceConsent({ path: { userCode } })
-      ).pipe(Effect.provide(layer)),
-    [layer, userCode]
+      ),
+    [userCode]
   )
 
-  const consentPromise = useEffectTs(consentEffect)
+  const consentPromise = useGatekeeperEffect(consentEffect)
 
   return (
     <Suspense fallback={<PageLoading />}>
@@ -43,7 +43,7 @@ const DeviceConsentScreen = (): JSX.Element => {
       >
         {(consent: DeviceConsent) => (
           <DeviceConsentForm
-            layer={layer}
+            runGatekeeper={runGatekeeper}
             consent={consent}
             onDone={() => {
               void navigate('/gatekeeper', { replace: true })
@@ -56,12 +56,16 @@ const DeviceConsentScreen = (): JSX.Element => {
 }
 
 interface DeviceConsentFormProps {
-  readonly layer: ClientLayer
+  readonly runGatekeeper: GatekeeperEffectRunner
   readonly consent: DeviceConsent
   readonly onDone: () => void
 }
 
-const DeviceConsentForm = ({ layer, consent, onDone }: DeviceConsentFormProps): JSX.Element => {
+const DeviceConsentForm = ({
+  runGatekeeper,
+  consent,
+  onDone,
+}: DeviceConsentFormProps): JSX.Element => {
   const requestedScopes = consent.requestedScopes
   const [selectedScopes, setSelectedScopes] = useState<ReadonlySet<string>>(
     () => new Set(requestedScopes)
@@ -85,13 +89,13 @@ const DeviceConsentForm = ({ layer, consent, onDone }: DeviceConsentFormProps): 
     setSubmitting(true)
     setError(null)
     try {
-      const result = await Effect.runPromise(
+      const result = await runGatekeeper(
         Effect.flatMap(GatekeeperHttpApiClient, (c) =>
           c.devices.ApproveDeviceConsent({
             path: { userCode: consent.userCode },
             payload: { approvedScopes: [...selectedScopes] },
           })
-        ).pipe(Effect.provide(layer), Effect.provide(webHttpClientLayer))
+        )
       )
       if (result.status === 'approved') {
         onDone()
@@ -109,10 +113,10 @@ const DeviceConsentForm = ({ layer, consent, onDone }: DeviceConsentFormProps): 
     setSubmitting(true)
     setError(null)
     try {
-      const result = await Effect.runPromise(
+      const result = await runGatekeeper(
         Effect.flatMap(GatekeeperHttpApiClient, (c) =>
           c.devices.DenyDeviceConsent({ path: { userCode: consent.userCode } })
-        ).pipe(Effect.provide(layer), Effect.provide(webHttpClientLayer))
+        )
       )
       if (result.status === 'denied' || result.status === 'approved') {
         onDone()
