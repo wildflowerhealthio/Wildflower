@@ -1,7 +1,7 @@
 // oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers and `vi.fn()` call args are typed as `any`; the unsafe-assignment / unsafe-destructure lint fires on idiomatic `mock.calls[0]` access here
 
 import type { CancelSnifferRequestMessage } from 'browser-sniffer-core'
-import { Effect, Either, Encoding, MutableHashMap } from 'effect'
+import { Effect, Encoding, MutableHashMap } from 'effect'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
@@ -147,32 +147,48 @@ describe('CollectorBridgeMessageHandler.make', () => {
       })
     })
 
-    it('throws for an untracked response id', () => {
-      const handler = makeSimpleHandler()
-      expect(() => Effect.runSync(handler.ResponseData(responseData('unknown', 'data')))).toThrow(
-        'Received response data for response that is not being tracked'
-      )
+    it('logs and no-ops for an untracked response id (does not throw, does not call onResult)', () => {
+      const onResult = vi.fn()
+      const handler = makeSimpleHandler({ onResult })
+
+      expect(() =>
+        Effect.runSync(handler.ResponseData(responseData('unknown', 'data')))
+      ).not.toThrow()
+      expect(onResult).not.toHaveBeenCalled()
     })
 
-    it('throws for non-base64 data on a tracked response', () => {
-      const handler = makeSimpleHandler()
+    it('emits onResult Left(UnknownException) and drops the entry when base64 decode fails on a tracked response', () => {
+      const onResult = vi.fn()
+      const handler = makeSimpleHandler({ onResult })
+
       Effect.runSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      expect(() =>
-        Effect.runSync(
-          handler.ResponseData({ _tag: 'ResponseData', id: 'r1', data: '!!! not base64 !!!' })
-        )
-      ).toThrow(/Failed to decode base64/)
+      Effect.runSync(
+        handler.ResponseData({ _tag: 'ResponseData', id: 'r1', data: '!!! not base64 !!!' })
+      )
+
+      expect(onResult).toHaveBeenCalledOnce()
+      const [{ response, result }] = onResult.mock.calls[0]
+      expect(response.url).toBe('https://example.com/people/1')
+      expectLeftToEqual(result, expect.objectContaining({ _tag: 'UnknownException' }))
+      // The tracked entry is removed so a subsequent ResponseFinished
+      // becomes a no-op rather than a duplicate onResult.
+      expect(MutableHashMap.keys(handler.inProgressResponses)).not.toContain('r1')
+      Effect.runSync(handler.ResponseFinished(responseFinished('r1')))
+      expect(onResult).toHaveBeenCalledOnce()
     })
   })
 
   describe('ResponseFinished', () => {
-    it('throws for an untracked response id', () => {
-      const handler = makeSimpleHandler()
-      expect(() => Effect.runSync(handler.ResponseFinished(responseFinished('unknown')))).toThrow(
-        'getOrThrow called on a None'
-      )
+    it('logs and no-ops for an untracked response id (does not throw, does not call onResult)', () => {
+      const onResult = vi.fn()
+      const handler = makeSimpleHandler({ onResult })
+
+      expect(() =>
+        Effect.runSync(handler.ResponseFinished(responseFinished('unknown')))
+      ).not.toThrow()
+      expect(onResult).not.toHaveBeenCalled()
     })
 
     it('calls onResult with the RemoteResponse + a Right of parsed resources on a match', () => {
@@ -196,18 +212,19 @@ describe('CollectorBridgeMessageHandler.make', () => {
       })
     })
 
-    it('removes the response after finishing so it cannot be finished again', () => {
-      const handler = makeSimpleHandler()
+    it('removes the response after finishing so a second ResponseFinished is a no-op', () => {
+      const onResult = vi.fn()
+      const handler = makeSimpleHandler({ onResult })
 
       Effect.runSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
       Effect.runSync(handler.ResponseData(responseData('r1', '{}')))
       Effect.runSync(handler.ResponseFinished(responseFinished('r1')))
-
-      expect(() => Effect.runSync(handler.ResponseFinished(responseFinished('r1')))).toThrow(
-        'getOrThrow called on a None'
-      )
+      // Second finish: tracked entry is gone → log + no-op.
+      expect(() => Effect.runSync(handler.ResponseFinished(responseFinished('r1')))).not.toThrow()
+      // Only the first finish should have produced an onResult call.
+      expect(onResult).toHaveBeenCalledOnce()
     })
 
     it('routes to the first entity whose isFoundAt matches when multiple match', () => {
@@ -215,7 +232,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
         EntityDefinition.make({
           name: 'OverlappingEntity',
           isFoundAt: (url) => /\/people\//.test(url),
-          parse: () => Either.right({ resources: [], links: [] }),
+          parse: () => Effect.succeed({ resources: [], links: [] }),
         })
 
       const onResult = vi.fn()
@@ -273,6 +290,26 @@ describe('CollectorBridgeMessageHandler.make', () => {
     })
   })
 
+  describe('clear', () => {
+    it('drops every in-flight tracked response without emitting onResult', () => {
+      const onResult = vi.fn()
+      const handler = makeSimpleHandler({ onResult })
+
+      Effect.runSync(
+        handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
+      )
+      Effect.runSync(
+        handler.ResponseStart(responseStart({ id: 'r2', url: 'https://example.com/people/2' }))
+      )
+      expect(MutableHashMap.size(handler.inProgressResponses)).toBe(2)
+
+      handler.clear()
+
+      expect(MutableHashMap.size(handler.inProgressResponses)).toBe(0)
+      expect(onResult).not.toHaveBeenCalled()
+    })
+  })
+
   describe('RequestError', () => {
     it('calls onResult with a Left(UnknownException) carrying the error message', () => {
       const onResult = vi.fn()
@@ -307,15 +344,18 @@ describe('CollectorBridgeMessageHandler.make', () => {
       )
     })
 
-    it('throws for an untracked response id', () => {
-      const handler = makeSimpleHandler()
+    it('logs and no-ops for an untracked response id (does not throw, does not call onResult)', () => {
+      const onResult = vi.fn()
+      const handler = makeSimpleHandler({ onResult })
+
       expect(() =>
         Effect.runSync(
           handler.RequestError(
             requestError({ id: 'unknown', url: 'https://example.com', message: 'oops' })
           )
         )
-      ).toThrow('getOrThrow called on a None')
+      ).not.toThrow()
+      expect(onResult).not.toHaveBeenCalled()
     })
   })
 })

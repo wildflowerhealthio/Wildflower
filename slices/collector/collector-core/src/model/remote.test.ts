@@ -37,4 +37,16 @@ describe('Remote.make', () => {
       firstPage: { html: expect.stringContaining('boot') },
     })
   })
+
+  it('deep-freezes the returned value so callers cannot mutate it after construction', () => {
+    const remote = Remote.make<{ name: string; age: number }>({
+      name: 'FrozenRemote',
+      firstPage: { uri: 'https://example.com' },
+      entityDefinitions: [SimpleEntity],
+    })
+
+    expect(Object.isFrozen(remote)).toBe(true)
+    expect(Object.isFrozen(remote.firstPage)).toBe(true)
+    expect(Object.isFrozen(remote.entityDefinitions)).toBe(true)
+  })
 })

@@ -6,19 +6,26 @@
  * the core package stays decoupled from any specific remote implementation
  * — concrete client packages (e.g. `fhir-r4-client-collector`) supply the
  * real config schemas and refine/cast at their own boundaries.
+ *
+ * The value side of the index signature is `JsonValue` (from
+ * `kitchen-sink/schema`), not `Schema.Unknown`, so an HTTP caller that
+ * tries to POST a `Date`, `undefined`, `Infinity`, function, `bigint`,
+ * or `symbol` is rejected at the schema boundary instead of silently
+ * losing data when livestore JSON-serialises the row.
  */
 
 import { Events, queryDb, State } from '@livestore/livestore'
 import { Schema } from 'effect'
+import { JsonValue } from 'kitchen-sink/schema'
 
 interface RemoteConfigType {
   readonly _tag: string
-  readonly [key: string]: unknown
+  readonly [key: string]: typeof JsonValue.Type
 }
 
 const RemoteConfig: Schema.Schema<RemoteConfigType> = Schema.Struct(
   { _tag: Schema.String },
-  { key: Schema.String, value: Schema.Unknown }
+  { key: Schema.String, value: JsonValue }
 )
 
 const table = State.SQLite.table({

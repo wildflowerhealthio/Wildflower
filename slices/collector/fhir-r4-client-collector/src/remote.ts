@@ -1,5 +1,5 @@
 import { type EntityDefinition, Remote } from 'collector-core/model'
-import type { Binary, Observation, Patient } from 'emr-core/livestore'
+import { Binary, Observation, Patient } from 'fhir-r4/resources'
 
 import { buildFhirBootstrapHtml } from './bootstrap-fhir-page.ts'
 import type { InstanceConfig } from './config.ts'
@@ -8,9 +8,9 @@ import { ObservationListEntity } from './entities/observation-list-entity.ts'
 import { PatientEntity } from './entities/patient-entity.ts'
 
 type AnyResource =
-  | typeof Binary.RowSchemaNullableId.Type
-  | typeof Patient.RowSchemaNullableId.Type
-  | typeof Observation.RowSchemaNullableId.Type
+  | typeof Binary.Schema.Type
+  | typeof Patient.Schema.Type
+  | typeof Observation.Schema.Type
 
 /**
  * Build a FHIR R4 `Remote` for a configured patient on a configured
@@ -23,10 +23,17 @@ type AnyResource =
  * wider sync — see `collector-react`'s `useSyncRunner` for the
  * concrete wiring (audit-log the raw body, route parsed resources
  * via `HttpApiClient(FhirResourcesApi)`).
+ *
+ * `config.rootUrl` and `config.patientId` are pre-validated by the
+ * `InstanceConfig` schema (no trailing slashes; patientId is the FHIR
+ * R4 logical-id grammar) — `encodeURIComponent` on `patientId` is
+ * still applied defensively in case the value reaches this function
+ * through an untyped path.
  */
 const makeFhirR4Remote = (config: InstanceConfig): Remote.Remote<AnyResource> => {
-  const patientUrl = `${config.rootUrl}/Patient/${config.patientId}?_format=json`
-  const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${config.patientId}&_count=250&_format=json`
+  const safePatientId = encodeURIComponent(config.patientId)
+  const patientUrl = `${config.rootUrl}/Patient/${safePatientId}?_format=json`
+  const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
 
   return Remote.make<AnyResource>({
     name: 'FHIR R4 Remote',

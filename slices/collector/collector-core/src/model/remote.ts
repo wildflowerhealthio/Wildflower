@@ -1,3 +1,4 @@
+import { deepFreeze } from 'kitchen-sink/freeze'
 import type * as EntityDefinition from './entity-definition.ts'
 import type * as WebViewSource from './web-view-source.ts'
 
@@ -39,19 +40,19 @@ interface Remote<TResources> {
 }
 
 /**
- * Identity factory. The body is a config-shaped clone today, but
- * routing through `make` matches the convention used elsewhere
- * (`Bridge.make`, `EntityDefinition.make`, ...) and gives a single
- * place to add behavior (validation, frozen-readonly wrapping, ...)
- * if the shape ever evolves.
+ * Shallow-clone + deep-freeze the supplied config. Freezing matters
+ * because the dispatcher pins the matched entity per in-flight
+ * request at `ResponseStart` and assumes `entityDefinitions` doesn't
+ * shift under it; freezing also keeps the type-level `readonly` honest
+ * at runtime so a caller can't push into `entityDefinitions` after
+ * construction.
  */
-const make = <TResources>(config: Remote<TResources>): Remote<TResources> => {
-  return {
+const make = <TResources>(config: Remote<TResources>): Remote<TResources> =>
+  deepFreeze({
     name: config.name,
     firstPage: config.firstPage,
     entityDefinitions: config.entityDefinitions,
-  }
-}
+  })
 
 export { make }
 export type { Remote }

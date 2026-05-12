@@ -1,12 +1,12 @@
 // oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers (`expect.objectContaining`, `expect.stringContaining`, etc.) are typed as `any`; composing them inside `objectContaining` is the intended idiom
 
 import { CollectorBridgeMessageHandler } from 'collector-core/model'
-import { Effect, Encoding, MutableHashMap } from 'effect'
+import { Arbitrary, Effect, Encoding, MutableHashMap } from 'effect'
 import fc from 'fast-check'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { defaultConfig } from './config.ts'
+import { InstanceConfig, defaultConfig } from './config.ts'
 import { type AnyResource, makeFhirR4Remote } from './remote.ts'
 
 const { expectRightToEqual } = utilityExpectations(expect)
@@ -49,12 +49,12 @@ describe('makeFhirR4Remote', () => {
       }
     })
 
-    it('embeds the rootUrl in the bootstrap HTML for any URL + patient id pair', () => {
+    it('embeds the rootUrl in the bootstrap HTML for any schema-conformant config', () => {
       fc.assert(
-        fc.property(fc.webUrl(), fc.string({ minLength: 1 }), (rootUrl, patientId) => {
-          const remote = makeFhirR4Remote({ _tag: 'fhir-r4', rootUrl, patientId })
+        fc.property(Arbitrary.make(InstanceConfig), (config) => {
+          const remote = makeFhirR4Remote(config)
           if ('html' in remote.firstPage) {
-            expect(remote.firstPage.html).toContain(rootUrl)
+            expect(remote.firstPage.html).toContain(config.rootUrl)
           }
         })
       )

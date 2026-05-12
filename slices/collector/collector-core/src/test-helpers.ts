@@ -1,4 +1,4 @@
-import { Either, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import * as EntityDefinition from './model/entity-definition.ts'
 
@@ -18,12 +18,10 @@ const SimpleEntity: EntityDefinition.EntityDefinition<typeof SimpleSchema.Type> 
     name: 'SimpleEntity',
     isFoundAt: (url) => /\/people\/\d+$/.test(url),
     parse: (response) =>
-      Schema.decodeEither(Schema.parseJson(SimpleSchema))(response.text()).pipe(
-        Either.map((data) => ({
-          resources: [data],
-          links: [{ _tag: 'Open' as const, href: `/people/${data.name}` }],
-        }))
-      ),
+      Effect.map(Schema.decode(Schema.parseJson(SimpleSchema))(response.text()), (data) => ({
+        resources: [data],
+        links: [{ _tag: 'Open' as const, href: `/people/${data.name}` }],
+      })),
   })
 
 const AnotherSchema = Schema.Struct({ id: Schema.String })
@@ -33,9 +31,10 @@ const AnotherEntity: EntityDefinition.EntityDefinition<typeof AnotherSchema.Type
     name: 'AnotherEntity',
     isFoundAt: (url) => /\/items\//.test(url),
     parse: (response) =>
-      Schema.decodeEither(Schema.parseJson(AnotherSchema))(response.text()).pipe(
-        Either.map((data) => ({ resources: [data], links: [] }))
-      ),
+      Effect.map(Schema.decode(Schema.parseJson(AnotherSchema))(response.text()), (data) => ({
+        resources: [data],
+        links: [],
+      })),
   })
 
 export { AnotherEntity, SimpleEntity }

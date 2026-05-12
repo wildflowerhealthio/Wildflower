@@ -43,10 +43,19 @@ const LogMessage = Schema.parseJson(LogMessageBody)
 const ResponseStartMessageBody = Schema.TaggedStruct('ResponseStart', {
   id: Schema.String,
   url: Schema.String,
-  // HTTP status codes are integers in [100, 599]; tightening the schema
-  // here also keeps the bridge round-trip property test JSON-safe — bare
-  // `Schema.Number` would let `Arbitrary` produce `Infinity` / `NaN`,
-  // which `JSON.stringify` collapses to `null` and round-trips lose.
+  // Sniffer-observed status codes are integers; the schema is tightened
+  // from bare `Schema.Number` so the bridge round-trip property test
+  // stays JSON-safe — `Schema.Number` lets `Arbitrary` produce
+  // `Infinity` / `NaN`, which `JSON.stringify` collapses to `null` and
+  // round-trips lose.
+  //
+  // The accepted range `[0, 1000]` is wider than the standard HTTP
+  // `[100, 599]` on purpose: WebView fetch intercepts can yield
+  // `status: 0` for opaque CORS responses, aborted requests, and
+  // pre-flight failures (browsers expose `0` rather than the
+  // network-layer reason); the upper slack absorbs forward-compatible
+  // custom codes that intermediaries occasionally inject. Tightening
+  // further would drop real sniffer events on the floor.
   status: Schema.Int.pipe(Schema.between(0, 1000)),
   statusText: Schema.String,
   headers: Schema.Record({ key: Schema.String, value: Schema.String }),

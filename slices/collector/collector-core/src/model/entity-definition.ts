@@ -1,4 +1,5 @@
-import type { Either, ParseResult } from 'effect'
+import type { Effect, ParseResult } from 'effect'
+import { deepFreeze } from 'kitchen-sink/freeze'
 import type * as Link from './link.ts'
 import type { RemoteResponse } from './response.ts'
 
@@ -39,27 +40,37 @@ interface Parsed<TResources> {
  *   `CollectorBridgeMessageHandler.ResponseStart` consults this to
  *   decide whether to track an in-flight response (and cancels the
  *   sniffer-side request via `sendMessage` when no entity matches).
- * - `parse`: pure function from `RemoteResponse` to
- *   `Either<Parsed, ParseError>`. Errors are returned, not thrown;
- *   the host decides whether to log and continue or to abort the sync.
+ * - `parse`: `Effect`-returning decode from `RemoteResponse` to
+ *   `Parsed`, with `ParseError` in the error channel. Returning an
+ *   `Effect` (rather than an `Either`) lets entities log progress
+ *   (`Effect.logInfo` for dropped bundle entries, for example) and
+ *   stays compatible with future requirements that may need
+ *   Effect-typed dependencies (clock, randomness, …).
  */
 interface EntityDefinition<TResources> {
   readonly name: string
   readonly isFoundAt: (url: string) => boolean
   readonly parse: (
     response: RemoteResponse
-  ) => Either.Either<Parsed<TResources>, ParseResult.ParseError>
+  ) => Effect.Effect<Parsed<TResources>, ParseResult.ParseError>
 }
 
 /**
- * Identity factory — defining an entity is a struct literal, but
- * routing through `make` matches the convention used elsewhere
- * (`Bridge.make`, `Remote.make`, ...) and gives a single place to
- * add behavior (validation, default fields, ...) if the shape ever
- * evolves.
+ * Shallow-clone + deep-freeze the supplied definition so callers
+ * cannot mutate `entityDefinitions` (via `Remote.make`) after
+ * construction — the dispatcher pins the matched entity per request
+ * at `ResponseStart` and assumes it stays put. The clone copies the
+ * three known fields (`name`, `isFoundAt`, `parse`) so an extra
+ * unexpected property on the caller's object is silently dropped.
  */
-const make = <TResources>(definition: EntityDefinition<TResources>): EntityDefinition<TResources> =>
-  definition
+const make = <TResources>(
+  definition: EntityDefinition<TResources>
+): EntityDefinition<TResources> =>
+  deepFreeze({
+    name: definition.name,
+    isFoundAt: definition.isFoundAt,
+    parse: definition.parse,
+  })
 
 export { make }
 export type { EntityDefinition, Parsed }

@@ -1,3 +1,4 @@
+import { Effect } from 'effect'
 import fc from 'fast-check'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -17,10 +18,18 @@ const makeResponse = (body: string): RemoteResponse => {
   return r
 }
 
+/**
+ * `parse` now returns an `Effect<Parsed, ParseError>` (was `Either`).
+ * The tests run it via `Effect.runSync(Effect.either(...))` so the
+ * existing `expectRight/LeftToEqual` helpers — keyed on the
+ * `Either` tag — still apply.
+ */
 describe('EntityDefinition.make', () => {
   it('parses valid JSON into resources and links', () => {
     expectRightToEqual(
-      SimpleEntity.parse(makeResponse(JSON.stringify({ name: 'Alice', age: 30 }))),
+      Effect.runSync(
+        Effect.either(SimpleEntity.parse(makeResponse(JSON.stringify({ name: 'Alice', age: 30 }))))
+      ),
       {
         resources: [{ name: 'Alice', age: 30 }],
         links: [{ _tag: 'Open', href: '/people/Alice' }],
@@ -28,23 +37,29 @@ describe('EntityDefinition.make', () => {
     )
   })
 
-  it('returns Left for malformed JSON', () => {
+  it('fails with ParseError for malformed JSON', () => {
     expectLeftToEqual(
-      SimpleEntity.parse(makeResponse('{ not valid json }')),
+      Effect.runSync(Effect.either(SimpleEntity.parse(makeResponse('{ not valid json }')))),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })
 
-  it('returns Left when JSON does not match the schema', () => {
+  it('fails with ParseError when JSON does not match the schema', () => {
     expectLeftToEqual(
-      SimpleEntity.parse(makeResponse(JSON.stringify({ name: 'Alice', age: 'not-a-number' }))),
+      Effect.runSync(
+        Effect.either(
+          SimpleEntity.parse(makeResponse(JSON.stringify({ name: 'Alice', age: 'not-a-number' })))
+        )
+      ),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })
 
-  it('returns Left for JSON with missing required fields', () => {
+  it('fails with ParseError for JSON with missing required fields', () => {
     expectLeftToEqual(
-      SimpleEntity.parse(makeResponse(JSON.stringify({ name: 'Alice' }))),
+      Effect.runSync(
+        Effect.either(SimpleEntity.parse(makeResponse(JSON.stringify({ name: 'Alice' }))))
+      ),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })
@@ -52,7 +67,7 @@ describe('EntityDefinition.make', () => {
   it('never throws on arbitrary JSON strings', () => {
     fc.assert(
       fc.property(fc.json(), (json) => {
-        const result = SimpleEntity.parse(makeResponse(json))
+        const result = Effect.runSync(Effect.either(SimpleEntity.parse(makeResponse(json))))
         expect(['Right', 'Left']).toContain(result._tag)
       })
     )

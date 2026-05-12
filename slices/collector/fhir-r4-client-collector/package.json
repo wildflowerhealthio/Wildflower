@@ -31,9 +31,9 @@
     "@fast-check/vitest": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "browser-sniffer-core": "workspace:*",
     "collector-core": "workspace:*",
     "effect": "catalog:",
-    "emr-core": "workspace:*",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
     "jsdom": "catalog:",
@@ -42,9 +42,9 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "browser-sniffer-core": "workspace:*",
     "collector-core": "workspace:*",
     "effect": "catalog:",
-    "emr-core": "workspace:*",
     "fhir-r4": "workspace:*"
   }
 }

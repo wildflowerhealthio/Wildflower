@@ -1,8 +1,54 @@
-import { Schema } from 'effect'
+import { type FastCheck, Schema } from 'effect'
+import type { LazyArbitrary } from 'effect/Arbitrary'
+
+/**
+ * `rootUrl` must be an absolute `http(s)://` URL with at least a host
+ * and no trailing slash, no query string, and no fragment. The
+ * dispatcher concatenates `rootUrl` with `/Patient/…` etc. and the
+ * isFoundAt regexes assume a well-formed `…://host/Patient/…` shape;
+ * pinning the format here keeps both producers and consumers honest.
+ */
+const rootUrlPattern = /^https?:\/\/[^\s/?#]+(?:\/[^\s/?#]+)*$/
+
+/**
+ * FHIR R4 logical id grammar (R4 §2.27.1): one or more characters
+ * drawn from `[A-Za-z0-9\-.]`, max 64. A patientId is interpolated
+ * directly into URLs and used as the route segment — restricting it
+ * here means there's nothing surprising to `encodeURIComponent` at
+ * call sites.
+ */
+const patientIdPattern = /^[A-Za-z0-9\-.]{1,64}$/
+
+const arbitraryRootUrl: LazyArbitrary<string> = (fc: typeof FastCheck) =>
+  // `fc.webUrl()` can emit trailing slashes and may include a query
+  // string under non-default options; we strip the trailing slash so
+  // the pattern matches deterministically, and pin scheme/no-extras
+  // via options.
+  fc
+    .webUrl({ validSchemes: ['http', 'https'], withFragments: false, withQueryParameters: false })
+    .map((url) => url.replace(/\/+$/, ''))
+    // Filter out the rare case where stripping leaves only the
+    // scheme (`http://` → `http:`); regenerate via `.filter` instead
+    // of mapping to a fallback so the shrinker stays honest.
+    .filter((url) => rootUrlPattern.test(url))
+
+const arbitraryPatientId: LazyArbitrary<string> = (fc: typeof FastCheck) => fc.uuid()
+
+const RootUrlSchema = Schema.String.pipe(
+  Schema.pattern(rootUrlPattern, {
+    description: 'absolute http(s) URL with no trailing slash, query string, or fragment',
+  })
+).annotations({ arbitrary: () => arbitraryRootUrl })
+
+const PatientIdSchema = Schema.String.pipe(
+  Schema.pattern(patientIdPattern, {
+    description: 'FHIR R4 logical id: 1–64 chars of [A-Za-z0-9.-]',
+  })
+).annotations({ arbitrary: () => arbitraryPatientId })
 
 const InstanceConfig = Schema.TaggedStruct('fhir-r4', {
-  rootUrl: Schema.String,
-  patientId: Schema.String,
+  rootUrl: RootUrlSchema,
+  patientId: PatientIdSchema,
 })
 
 type InstanceConfig = typeof InstanceConfig.Type

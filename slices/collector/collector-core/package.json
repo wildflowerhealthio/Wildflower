@@ -80,6 +80,7 @@
     "@livestore/utils": "catalog:",
     "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*"
+    "effect-messaging-core": "workspace:*",
+    "kitchen-sink": "workspace:*"
   }
 }
