@@ -132,7 +132,11 @@ describe('fetch shim', () => {
   test('should preserve the original fetch in the sniffer state', () => {
     const original = window.fetch
     installSniffer()
-    expect(getState()?.nativeFetch).toBe(original)
+    // `win.fetch.bind(win)` returns a new function reference, so
+    // identity-equality with `original` won't hold. The behaviorally
+    // relevant assertions are that the slot is populated and that
+    // `window.fetch` was swapped for the shim.
+    expect(getState()).toEqual(expect.objectContaining({ nativeFetch: expect.any(Function) }))
     expect(window.fetch).not.toBe(original)
   })
 
@@ -142,8 +146,10 @@ describe('fetch shim', () => {
   })
 
   test('should forward arbitrary status + statusText to ResponseStart', async () => {
-    // `Response`'s constructor rejects status codes outside [200, 599]; the
-    // arbitrary respects that. `statusText` accepts any printable ASCII.
+    // `Response`'s constructor rejects status codes outside [200, 599] and
+    // requires a `null` body for 204/205/304; using `null` covers both
+    // constraints. `statusText` accepts any printable ASCII; CR/LF is
+    // stripped (it would corrupt the HTTP reason-phrase).
     await fc.assert(
       fc.asyncProperty(
         fc.integer({ min: 200, max: 599 }),
@@ -151,10 +157,9 @@ describe('fetch shim', () => {
         async (status, statusText) => {
           resetShims()
           const getMs = setupEnv()
-          window.fetch = vi.fn().mockResolvedValue(new Response('ok', { status, statusText }))
+          window.fetch = vi.fn().mockResolvedValue(new Response(null, { status, statusText }))
           installSniffer()
-          const res = await window.fetch('https://test.example/status')
-          await res.text()
+          await window.fetch('https://test.example/status')
 
           expect(withTag(getMs(), 'ResponseStart')).toEqual([
             expect.objectContaining({ _tag: 'ResponseStart', status, statusText }),
@@ -178,7 +183,10 @@ describe('fetch shim', () => {
       'x-custom',
       'x-trace-id'
     )
-    const headerValueArb = fc.string().map((s) => s.replace(/[\r\n]/g, ''))
+    // Strip CR/LF (would corrupt Headers serialization) AND leading/trailing
+    // whitespace (the Headers normalizer trims it, so the round-trip wouldn't
+    // preserve those bytes).
+    const headerValueArb = fc.string().map((s) => s.replace(/[\r\n]/g, '').trim())
     await fc.assert(
       fc.asyncProperty(fc.dictionary(headerNameArb, headerValueArb), async (headersInput) => {
         resetShims()
@@ -353,10 +361,13 @@ describe('fetch shim', () => {
     await resB.text()
 
     const starts = withTag(getMessages(), 'ResponseStart')
-    expect(starts).toEqual([
-      expect.objectContaining({ url: 'https://test.example/a' }),
-      expect.objectContaining({ url: 'https://test.example/b' }),
-    ])
+    // Resolution order — `resolveB` fires before `resolveA` — drives the
+    // order of `ResponseStart` events, so the URL list is unordered.
+    expect(starts).toHaveLength(2)
+    expectToMultisetEqual(
+      starts.map((s) => s.url as string),
+      ['https://test.example/a', 'https://test.example/b']
+    )
 
     const ids = starts.map((s) => s.id as string)
     expectDistinct(ids)
