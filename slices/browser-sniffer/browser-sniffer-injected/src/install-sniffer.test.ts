@@ -42,14 +42,13 @@ const getState = (): SnifferState | undefined =>
 const resetShims = (): void => {
   const state = getState()
   if (state !== undefined) {
-    window.fetch = state.nativeFetch
     window.removeEventListener('load', state.pageLoadHandler)
     window.removeEventListener('message', state.hostMessageHandler)
     delete (window as unknown as Record<symbol, unknown>)[SNIFFER_STATE_KEY]
   }
-  // Always restore the prototype — installSniffer overrode it whether or not
-  // the state slot survived a botched setup, and per-test mocks may have
-  // replaced it before install.
+  // Always restore originals — installSniffer overrode them whether or not
+  // the state slot survived, and per-test mocks may have replaced
+  // `XMLHttpRequest.prototype.{open,send}` / `window.fetch` *before* install.
   XMLHttpRequest.prototype.open = originalXHROpen
   XMLHttpRequest.prototype.send = originalXHRSend
   window.fetch = originalFetch
@@ -140,37 +139,66 @@ describe('fetch shim', () => {
     expect(getMessages()).toContainEqual({ _tag: 'Log', log: 'Shimming fetch' })
   })
 
-  test('should include status and statusText in ResponseStart', async () => {
-    window.fetch = vi
-      .fn()
-      .mockResolvedValue(new Response('ok', { status: 201, statusText: 'Created' }))
-    installSniffer()
-    const res = await window.fetch('https://test.example/created')
-    await res.text()
+  test('should forward arbitrary status + statusText to ResponseStart', async () => {
+    // `Response`'s constructor rejects status codes outside [200, 599]; the
+    // arbitrary respects that. `statusText` accepts any printable ASCII.
+    await fc.assert(
+      fc.asyncProperty(
+        fc.integer({ min: 200, max: 599 }),
+        fc.string().map((s) => s.replace(/[\r\n]/g, '')),
+        async (status, statusText) => {
+          resetShims()
+          const getMs = setupEnv()
+          window.fetch = vi.fn().mockResolvedValue(new Response('ok', { status, statusText }))
+          installSniffer()
+          const res = await window.fetch('https://test.example/status')
+          await res.text()
 
-    const starts = withTag(getMessages(), 'ResponseStart')
-    expect(starts).toHaveLength(1)
-    expect(starts[0]?.status).toBe(201)
-    expect(starts[0]?.statusText).toBe('Created')
+          const starts = withTag(getMs(), 'ResponseStart')
+          expect(starts).toHaveLength(1)
+          expect(starts[0]?.status).toBe(status)
+          expect(starts[0]?.statusText).toBe(statusText)
+        }
+      )
+    )
   })
 
-  test('should capture response headers in ResponseStart', async () => {
-    window.fetch = vi.fn().mockResolvedValue(
-      new Response('ok', {
-        status: 200,
-        headers: { 'content-type': 'application/json', 'x-custom': 'test-value' },
+  test('should capture arbitrary header records on ResponseStart', async () => {
+    // Header names: a small pool of realistic lowercase identifiers
+    // (Fetch normalizes to lowercase, so the round-trip's expected
+    // keys are already lowercase). Values: printable strings with
+    // CR/LF stripped — those would break the underlying Headers
+    // serialization.
+    const headerNameArb = fc.constantFrom(
+      'content-type',
+      'content-length',
+      'cache-control',
+      'accept',
+      'authorization',
+      'x-custom',
+      'x-trace-id'
+    )
+    const headerValueArb = fc.string().map((s) => s.replace(/[\r\n]/g, ''))
+    await fc.assert(
+      fc.asyncProperty(fc.dictionary(headerNameArb, headerValueArb), async (headersInput) => {
+        resetShims()
+        const getMs = setupEnv()
+        window.fetch = vi
+          .fn()
+          .mockResolvedValue(new Response('ok', { status: 200, headers: headersInput }))
+        installSniffer()
+        const res = await window.fetch('https://test.example/headers')
+        await res.text()
+
+        const starts = withTag(getMs(), 'ResponseStart')
+        expect(starts).toHaveLength(1)
+        const captured = starts[0]?.headers as Record<string, string>
+        for (const [k, v] of Object.entries(headersInput)) {
+          expect(captured[k.toLowerCase()]).toBe(v)
+        }
+        validateMessages(getMs())
       })
     )
-    installSniffer()
-    const res = await window.fetch('https://test.example/headers')
-    await res.text()
-
-    const starts = withTag(getMessages(), 'ResponseStart')
-    expect(starts).toHaveLength(1)
-    const headers = starts[0]?.headers as Record<string, string>
-    expect(headers['content-type']).toBe('application/json')
-    expect(headers['x-custom']).toBe('test-value')
-    validateMessages(getMessages())
   })
 
   test('should handle bodyless responses with immediate ResponseFinished', async () => {
@@ -332,6 +360,58 @@ describe('fetch shim', () => {
       expect([idA, idB]).toContain(d.id)
     }
     validateMessages(getMessages())
+  })
+
+  test('should correlate N concurrent fetches under arbitrary resolution order', async () => {
+    // `fc.scheduler()` controls the resolution order of the scheduled
+    // mock responses; each property run re-shuffles the order. Even
+    // with up to ~8 in-flight requests resolving in any interleaving,
+    // every request must surface a ResponseStart with its own URL,
+    // a distinct id, and matching ResponseFinished + ResponseData ids.
+    await fc.assert(
+      fc.asyncProperty(
+        fc.scheduler(),
+        fc.array(fc.tuple(fc.webUrl(), fc.string({ unit: 'grapheme' })), {
+          minLength: 2,
+          maxLength: 8,
+        }),
+        async (s, requests) => {
+          resetShims()
+          const getMs = setupEnv()
+          const scheduledResponses = requests.map(([, body]) =>
+            s.schedule(Promise.resolve(new Response(body)))
+          )
+          let callIdx = 0
+          window.fetch = vi.fn().mockImplementation(() => scheduledResponses[callIdx++])
+          installSniffer()
+
+          const fetched = requests.map(([url]) =>
+            window.fetch(url).then(async (r) => {
+              await r.text()
+            })
+          )
+          await s.waitFor(Promise.all(fetched))
+
+          const starts = withTag(getMs(), 'ResponseStart')
+          expect(starts).toHaveLength(requests.length)
+
+          const startUrls = starts.map((s_) => s_.url as string).toSorted()
+          const expectedUrls = requests.map(([url]) => url).toSorted()
+          expect(startUrls).toEqual(expectedUrls)
+
+          const ids = starts.map((s_) => s_.id as string)
+          expect(new Set(ids).size).toBe(ids.length)
+
+          const finishes = withTag(getMs(), 'ResponseFinished')
+          expect(finishes.map((f) => f.id).toSorted()).toEqual(ids.toSorted())
+
+          for (const d of withTag(getMs(), 'ResponseData')) {
+            expect(ids).toContain(d.id)
+          }
+          validateMessages(getMs())
+        }
+      )
+    )
   })
 })
 
@@ -595,11 +675,15 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
 
 describe('PageLoaded', () => {
   let getMessages: () => Message[]
+  // Remember the initial body so each test can scribble on it and the next
+  // one starts from a clean slate.
+  const initialBodyHtml = document.body.innerHTML
 
   beforeEach(() => {
     resetShims()
     XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
     XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
+    document.body.innerHTML = initialBodyHtml
     getMessages = setupEnv()
   })
 
@@ -630,6 +714,42 @@ describe('PageLoaded', () => {
 
     const loaded = withTag(getMessages(), 'PageLoaded')
     expect(loaded).toHaveLength(1)
+  })
+
+  test('should serialize the entire <html>… subtree, including arbitrary body content', () => {
+    document.body.innerHTML = '<p id="x">hello &amp; goodbye</p>'
+    installSniffer()
+    window.dispatchEvent(new Event('load'))
+
+    const loaded = withTag(getMessages(), 'PageLoaded')
+    expect(loaded).toHaveLength(1)
+    const content = loaded[0]?.content as string
+    expect(content).toMatch(/^<html/)
+    expect(content).toMatch(/<\/html>$/)
+    // `&amp;` survives the HTML-escaped round-trip — `Element.outerHTML`
+    // entity-encodes for HTML, no separate unescape pass needed by the host.
+    expect(content).toContain('<p id="x">hello &amp; goodbye</p>')
+  })
+
+  test('should serialize XML-namespaced subtrees (SVG) via HTML rules', () => {
+    // SVG inside an HTML document exercises non-HTML element serialization.
+    // `Element.outerHTML` is defined on every Element (incl. SVGElement),
+    // so the subtree round-trips with HTML serialization rules (tag close,
+    // attributes preserved, namespace declarations may drop). Documents
+    // the expectation for hosts that ingest the captured payload as HTML.
+    document.body.innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg"><circle cx="1" cy="2" r="3"/></svg>'
+    installSniffer()
+    window.dispatchEvent(new Event('load'))
+
+    const loaded = withTag(getMessages(), 'PageLoaded')
+    const content = loaded[0]?.content as string
+    expect(content).toContain('<svg')
+    expect(content).toContain('<circle')
+    // jsdom's HTML serializer closes `<circle>` per HTML rules — either
+    // self-closing or with an explicit `</circle>`; we accept both shapes
+    // so a future jsdom upgrade doesn't break the test.
+    expect(content).toMatch(/(?:<circle[^>]*\/>|<circle[^>]*><\/circle>)/)
   })
 })
 

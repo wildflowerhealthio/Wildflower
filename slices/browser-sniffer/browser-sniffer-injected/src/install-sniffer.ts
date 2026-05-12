@@ -91,11 +91,14 @@ const installSniffer = function (): void {
   const win = window as Window & SnifferWindowExtensions
   // Single state slot keyed by a registry symbol — eliminates name
   // collisions with arbitrary host-page globals and gives idempotency
-  // (re-injection finds the slot and returns early).
-  const stateKey = Symbol.for('browser-sniffer:state')
-  type WinWithState = typeof win & { [k: symbol]: SnifferState | undefined }
-  // Adding a symbol-keyed property type narrows `Window`; the cast is
-  // intentional and safe (no string-keyed properties change).
+  // (re-injection finds the slot and returns early). `unique symbol`
+  // on the `const` lets the computed-property type below name *this
+  // specific slot* (`[stateKey]: …`) rather than every possible symbol
+  // key (`[k: symbol]: …`).
+  const stateKey: unique symbol = Symbol.for('browser-sniffer:state')
+  type WinWithState = typeof win & { [stateKey]: SnifferState | undefined }
+  // The cast adds the (currently-absent) state slot to the window's
+  // type; runtime semantics are unchanged.
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
   const winWithState = win as WinWithState
 
@@ -115,6 +118,11 @@ const installSniffer = function (): void {
 
   if (winWithState[stateKey] !== undefined) return
 
+  // Per-request correlation key. `Math.random() + 1` keeps the value in
+  // `[1, 2)` so `.toString(36)` yields a string of the form
+  // `"1.xyz123…"`; `.slice(2)` drops the `"1."` leaving a non-empty
+  // base-36 alphanumeric suffix. Good enough for in-page request
+  // correlation — no cryptographic guarantees are needed.
   const makeRequestId = (): string => (Math.random() + 1).toString(36).slice(2)
 
   const toBase64 = (input: string | ArrayBuffer | ArrayBufferView): string => {
@@ -342,7 +350,14 @@ const installSniffer = function (): void {
     nativeXHRSend.call(this, body ?? null)
   } as XMLHttpRequest['send']
 
-  // Page content capture on window-level `load`.
+  // Page content capture on window-level `load`. We post the HTML-
+  // serialized root element — `Element.outerHTML` is defined on every
+  // `Element` (not just `HTMLElement`), so XML-content documents (e.g.
+  // RSS) also serialize, just with HTML rules (void-element handling,
+  // attribute case). Out of scope: DOCTYPE / processing instructions /
+  // XML declarations — none of the consumers parse those today, and
+  // RN-WebView's typical payload is HTML. If a consumer needs strict
+  // XML serialization, switch to `XMLSerializer.serializeToString(document)`.
   const pageLoadHandler = (): void => {
     post({
       _tag: 'PageLoaded',
