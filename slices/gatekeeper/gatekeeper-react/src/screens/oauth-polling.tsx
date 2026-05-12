@@ -1,24 +1,24 @@
 import { type AuthorizationStatus, pollAuthorizationStatus } from 'gatekeeper-core/clients'
 
 import { Suspense, useEffect, useMemo, type JSX } from 'react'
-import { cn, useStream } from 'react-kitchen-sink'
+import { cn } from 'react-kitchen-sink'
 import { Await, useParams } from 'react-router'
 
-import { makeUnauthenticatedSession } from '../client.ts'
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
+import { useGatekeeperStream } from '../use-gatekeeper-stream.ts'
 import pageLayout from '../styles/page-layout.module.css'
 import styles from './oauth-polling.module.css'
 
 /**
- * SPA route that subscribes to `pollAuthorizationStatus(id)` and renders the
- * latest emission. Mounted outside `<GatekeeperAuthorizedRoutes>` — builds its
- * own unauthenticated session because the page has no bearer token.
+ * SPA route that subscribes to `pollAuthorizationStatus(id)` and renders
+ * the latest emission. The polling endpoint is public — but the runner
+ * pipes through the same `BearerToken` plumbing as authed routes (which
+ * resolves to `null` here and adds no header).
  */
 const OAuthPollingScreen = (): JSX.Element => {
   const { id = '' } = useParams<{ id: string }>()
-  const session = useMemo(() => makeUnauthenticatedSession(), [])
   const stream = useMemo(() => pollAuthorizationStatus(id), [id])
-  const statusPromise = useStream(stream, session.runtime)
+  const statusPromise = useGatekeeperStream(stream)
 
   return (
     <Suspense fallback={<PollingSpinner />}>

@@ -17,7 +17,7 @@ interface StatePromiseCallbacks<A> {
    * Rejects similarly. Returns the new promise so callers can attach
    * a `.catch` if they need to swallow the rejection.
    */
-  readonly reject: (reason: unknown) => Promise<A>
+  readonly reject: (reason: unknown) => Promise<never>
   /**
    * Replaces a settled promise with a fresh pending one. No-op when
    * the current promise is still pending.
@@ -75,16 +75,18 @@ const useStatePromise = <A>(): readonly [Promise<A>, StatePromiseCallbacks<A>] =
           promiseWithResolversRef.current.resolve(mapped)
         }
       },
-      reject: (reason) => {
+      reject: (reason): Promise<never> => {
         if (resolvedRef.current) {
           promiseWithResolversRef.current = Promise.withResolvers<A>()
           promiseWithResolversRef.current.reject(reason)
           setPromise(promiseWithResolversRef.current.promise)
-          return promiseWithResolversRef.current.promise
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          return promiseWithResolversRef.current.promise as Promise<never>
         }
         resolvedRef.current = true
         promiseWithResolversRef.current.reject(reason)
-        return promiseWithResolversRef.current.promise
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        return promiseWithResolversRef.current.promise as Promise<never>
       },
       reset: () => {
         if (!resolvedRef.current) return

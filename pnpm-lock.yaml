@@ -642,12 +642,18 @@ importers:
       react-dom:
         specifier: 'catalog:'
         version: 19.2.0(react@19.2.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../global/react-kitchen-sink
       react-router:
         specifier: 'catalog:'
         version: 7.15.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       react-tundraish:
         specifier: workspace:*
         version: link:../../global/react-tundraish
+      telemetry-react:
+        specifier: workspace:*
+        version: link:../../slices/telemetry/telemetry-react
       telemetry-web:
         specifier: workspace:*
         version: link:../../slices/telemetry/telemetry-web
@@ -1466,9 +1472,9 @@ importers:
       react-tundraish:
         specifier: workspace:*
         version: link:../../../global/react-tundraish
-      telemetry-web:
+      telemetry-react:
         specifier: workspace:*
-        version: link:../../telemetry/telemetry-web
+        version: link:../../telemetry/telemetry-react
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -1637,6 +1643,27 @@ importers:
       telemetry-core:
         specifier: workspace:*
         version: link:../telemetry-core
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.1.20(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(sass@1.99.0)(terser@5.46.1)(typescript@5.9.3)(vite@7.2.4(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3))(yaml@2.8.3)
+
+  slices/telemetry/telemetry-react:
+    devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.96.1(effect@3.21.2)
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260429.1
+      effect:
+        specifier: 'catalog:'
+        version: 3.21.2
+      telemetry-web:
+        specifier: workspace:*
+        version: link:../telemetry-web
       typescript:
         specifier: 5.9.3
         version: 5.9.3

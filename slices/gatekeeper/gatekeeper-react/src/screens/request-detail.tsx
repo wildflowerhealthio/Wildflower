@@ -3,15 +3,18 @@ import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 
 import { Suspense, useMemo, useState, type JSX } from 'react'
-import { cn, useEffectTs } from 'react-kitchen-sink'
+import { cn } from 'react-kitchen-sink'
 import { Await, useParams } from 'react-router'
 import { StatusBadge, type StatusTone } from 'react-tundraish'
 
-import type { AuthenticatedSession } from '../client.ts'
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
 import { formatInstant } from '../format-date.ts'
-import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
+import {
+  useGatekeeperEffectRunner,
+  type GatekeeperEffectRunner,
+} from '../use-gatekeeper-effect-runner.ts'
+import { useGatekeeperEffect } from '../use-gatekeeper-effect.ts'
 import pageLayout from '../styles/page-layout.module.css'
 
 type HttpRequest = Schema.Schema.Type<typeof AccessManagement.HttpRequestSchema>
@@ -24,7 +27,7 @@ const statusTone = (status: string): StatusTone => {
 }
 
 const RequestDetailScreen = (): JSX.Element => {
-  const session = useGatekeeperClient()
+  const runGatekeeper = useGatekeeperEffectRunner()
   const { id = '' } = useParams<{ id: string }>()
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -37,14 +40,14 @@ const RequestDetailScreen = (): JSX.Element => {
     [id, refreshKey]
   )
 
-  const requestPromise = useEffectTs(requestEffect, session.runtime)
+  const requestPromise = useGatekeeperEffect(requestEffect)
 
   return (
     <Suspense fallback={<PageLoading />}>
       <Await resolve={requestPromise} errorElement={<AsyncErrorView title="Not Found" />}>
         {(request: HttpRequest) => (
           <RequestDetailBody
-            session={session}
+            runGatekeeper={runGatekeeper}
             request={request}
             id={id}
             onDecided={() => {
@@ -58,14 +61,14 @@ const RequestDetailScreen = (): JSX.Element => {
 }
 
 interface RequestDetailBodyProps {
-  readonly session: AuthenticatedSession
+  readonly runGatekeeper: GatekeeperEffectRunner
   readonly request: HttpRequest
   readonly id: string
   readonly onDecided: () => void
 }
 
 const RequestDetailBody = ({
-  session,
+  runGatekeeper,
   request,
   id,
   onDecided,
@@ -74,19 +77,15 @@ const RequestDetailBody = ({
 
   const decide = async (status: 'approved' | 'rejected'): Promise<void> => {
     try {
-      if (status === 'approved') {
-        await session.runPromise(
-          Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-            c['access-management'].ApproveRequest({ path: { id } })
-          )
-        )
-      } else {
-        await session.runPromise(
-          Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-            c['access-management'].DenyRequest({ path: { id } })
-          )
-        )
-      }
+      const operation =
+        status === 'approved'
+          ? Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+              c['access-management'].ApproveRequest({ path: { id } })
+            )
+          : Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+              c['access-management'].DenyRequest({ path: { id } })
+            )
+      await runGatekeeper(operation)
       onDecided()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))

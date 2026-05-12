@@ -2,19 +2,17 @@ import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 import { Suspense, useMemo, type JSX } from 'react'
-import { useEffectTs } from 'react-kitchen-sink'
 import { Await, useParams } from 'react-router'
 
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
-import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
+import { useGatekeeperEffect } from '../use-gatekeeper-effect.ts'
 import pageLayout from '../styles/page-layout.module.css'
 import styles from './approved-app-detail.module.css'
 
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
 
 const ApprovedAppDetailScreen = (): JSX.Element => {
-  const session = useGatekeeperClient()
   const { id = '' } = useParams<{ id: string }>()
 
   const grantEffect = useMemo(
@@ -25,7 +23,7 @@ const ApprovedAppDetailScreen = (): JSX.Element => {
     [id]
   )
 
-  const grantPromise = useEffectTs(grantEffect, session.runtime)
+  const grantPromise = useGatekeeperEffect(grantEffect)
 
   return (
     <Suspense fallback={<PageLoading />}>

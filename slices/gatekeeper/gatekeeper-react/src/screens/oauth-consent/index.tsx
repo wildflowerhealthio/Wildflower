@@ -1,17 +1,17 @@
 import { Effect } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { Suspense, useMemo, type JSX } from 'react'
-import { useEffectTs } from 'react-kitchen-sink'
 import { Await, useNavigate, useParams } from 'react-router'
 
 import { AsyncErrorView } from '../../components/AsyncErrorView.tsx'
 import { PageLoading } from '../../components/PageLoading.tsx'
-import { useGatekeeperClient } from '../../use-gatekeeper-client.ts'
+import { useGatekeeperEffectRunner } from '../../use-gatekeeper-effect-runner.ts'
+import { useGatekeeperEffect } from '../../use-gatekeeper-effect.ts'
 import { OAuthConsentForm } from './oauth-consent-form.tsx'
 import type { Consent } from './types.ts'
 
 const OAuthConsentScreen = (): JSX.Element => {
-  const session = useGatekeeperClient()
+  const runGatekeeper = useGatekeeperEffectRunner()
   const navigate = useNavigate()
   const { id = '' } = useParams<{ id: string }>()
 
@@ -23,7 +23,7 @@ const OAuthConsentScreen = (): JSX.Element => {
     [id]
   )
 
-  const consentPromise = useEffectTs(consentEffect, session.runtime)
+  const consentPromise = useGatekeeperEffect(consentEffect)
 
   return (
     <Suspense fallback={<PageLoading />}>
@@ -33,7 +33,7 @@ const OAuthConsentScreen = (): JSX.Element => {
       >
         {(consent: Consent) => (
           <OAuthConsentForm
-            session={session}
+            runGatekeeper={runGatekeeper}
             consent={consent}
             onDone={() => {
               void navigate('/gatekeeper', { replace: true })

@@ -1,50 +1,29 @@
-import { Cause, Chunk, Effect, Exit, Fiber, type ManagedRuntime, type Scope, Stream } from 'effect'
-import { useEffect } from 'react'
+import { Cause, Chunk, Effect, Exit, Fiber, type Scope, Stream } from 'effect'
+import { useEffect, useState } from 'react'
 
 import { useStatePromise } from './use-state-promise.ts'
 
-/**
- * Subscribes to a scoped Effect `Stream<A, E>` and returns a
- * `Promise<A>` that resolves with the latest emitted value. The
- * stream fiber is interrupted on unmount or when the stream
- * reference changes.
- *
- * Pass a `ManagedRuntime` when the stream's context requires
- * services beyond `Scope` (e.g. an HTTP client or app-specific
- * tags). Without it, `R` must extend only `Scope`.
- */
-function useStream<A, E>(stream: Stream.Stream<A, E, Scope.Scope>): Promise<A>
-function useStream<A, E, R>(
-  stream: Stream.Stream<A, E, R | Scope.Scope>,
-  runtime: ManagedRuntime.ManagedRuntime<R, never>
-): Promise<A>
-function useStream<A, E, R>(
-  stream: Stream.Stream<A, E, R | Scope.Scope>,
-  runtime?: ManagedRuntime.ManagedRuntime<R, never>
-): Promise<A> {
-  const [promise, { resolve, reject, reset }] = useStatePromise<A>()
-
+const useStreamWithCallbacks = <A, E>(
+  contextFreeStream: Stream.Stream<A, E, Scope.Scope>,
+  {
+    resolve,
+    reject,
+    reset,
+  }: {
+    resolve: (a: A) => void
+    reject: (e: E | AggregateError) => Promise<void>
+    reset: () => void
+  }
+): void => {
   useEffect(() => {
     reset()
 
-    let fiber: Fiber.RuntimeFiber<void, E>
-    if (runtime === undefined) {
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- This is safe thanks to the type definitions
-      const contextFreeStream = stream as Stream.Stream<A, E, Scope.Scope>
-      const s = Stream.runForEach(contextFreeStream, (e) =>
-        Effect.sync(() => {
-          resolve(e)
-        })
-      ).pipe(Effect.scoped)
-      fiber = Effect.runFork(s)
-    } else {
-      const s = Stream.runForEach(stream, (e) =>
-        Effect.sync(() => {
-          resolve(e)
-        })
-      ).pipe(Effect.scoped)
-      fiber = runtime.runFork(s)
-    }
+    const s = Stream.runForEach(contextFreeStream, (e) =>
+      Effect.sync(() => {
+        resolve(e)
+      })
+    ).pipe(Effect.scoped)
+    const fiber = Effect.runFork(s)
 
     fiber.addObserver(
       Exit.match({
@@ -83,9 +62,38 @@ function useStream<A, E, R>(
     return (): void => {
       void Effect.runPromise(Fiber.interrupt(fiber))
     }
-  }, [reject, reset, resolve, stream, runtime])
+  }, [reject, reset, resolve, contextFreeStream])
+}
+
+/**
+ * Subscribes to a scoped Effect `Stream<A, E>` and returns a
+ * `Promise<A>` that resolves with the latest emitted value. The
+ * stream fiber is interrupted on unmount or when the stream
+ * reference changes.
+ *
+ * Pass a `ManagedRuntime` when the stream's context requires
+ * services beyond `Scope` (e.g. an HTTP client or app-specific
+ * tags). Without it, `R` must extend only `Scope`.
+ */
+function useStream<A, E>(stream: Stream.Stream<A, E, Scope.Scope>): Promise<A> {
+  const [promise, { resolve, reject, reset }] = useStatePromise<A>()
+
+  useStreamWithCallbacks(stream, { reset, resolve, reject })
 
   return promise
 }
 
-export { useStream }
+const useStreamWithDefault = <A>(stream: Stream.Stream<A, never, Scope.Scope>, defaultA: A): A => {
+  const [lastValue, setLastValue] = useState<A>(defaultA)
+  useStreamWithCallbacks(stream, {
+    reset: () => setLastValue(defaultA),
+    resolve: (emitted) => setLastValue(emitted),
+    reject: (err) => {
+      setLastValue(defaultA)
+      return Promise.reject(err)
+    },
+  })
+  return lastValue
+}
+
+export { useStream, useStreamWithDefault }

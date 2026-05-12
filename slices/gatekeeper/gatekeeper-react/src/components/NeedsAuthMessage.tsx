@@ -6,7 +6,8 @@ import { OAuth } from 'gatekeeper-core/http-api-definition'
 import { useEffect, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 
-import { makeUnauthenticatedSession, writeToken } from '../client.ts'
+import { writeToken } from '../client/token-storage.ts'
+import { useGatekeeperClientLayer } from '../use-gatekeeper-client-layer.ts'
 import { Field, FieldDescription } from './Field.tsx'
 import deviceEntryStyles from '../screens/device-entry.module.css'
 import pageLayout from '../styles/page-layout.module.css'
@@ -69,10 +70,12 @@ const toErrorState = (error: unknown): DeviceFlowState =>
  */
 const NeedsAuthMessage = (): JSX.Element => {
   const [state, setState] = useState<DeviceFlowState>({ tag: 'starting' })
+  // Long-running device flow with retry — needs a fiber handle for
+  // interrupt-on-unmount, which the promise-returning runner can't give.
+  // Compose the slice's three layers manually here.
+  const layer = useGatekeeperClientLayer()
 
   useEffect(() => {
-    const session = makeUnauthenticatedSession()
-
     const flow = Effect.gen(function* () {
       const client = yield* GatekeeperHttpApiClient
 
@@ -113,14 +116,15 @@ const NeedsAuthMessage = (): JSX.Element => {
         Effect.sync(() => {
           setState(toErrorState(err))
         })
-      )
+      ),
+      Effect.provide(layer)
     )
 
-    const fiber = session.runtime.runFork(flow)
+    const fiber = Effect.runFork(flow)
     return (): void => {
       void Effect.runPromise(Fiber.interrupt(fiber))
     }
-  }, [])
+  }, [layer])
 
   if (state.tag === 'starting') {
     return (

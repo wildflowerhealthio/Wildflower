@@ -32,8 +32,10 @@
     "navigation-react": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "react-kitchen-sink": "workspace:*",
     "react-router": "catalog:",
     "react-tundraish": "workspace:*",
+    "telemetry-react": "workspace:*",
     "telemetry-web": "workspace:*",
     "tundra-css": "catalog:"
   },

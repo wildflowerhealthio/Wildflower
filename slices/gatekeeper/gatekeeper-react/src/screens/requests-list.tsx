@@ -2,21 +2,24 @@ import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 import { Suspense, useMemo, useState, type JSX } from 'react'
-import { useEffectTs, cn } from 'react-kitchen-sink'
+import { cn } from 'react-kitchen-sink'
 import { Await, useNavigate } from 'react-router'
 import { ItemList } from 'react-tundraish'
 
-import type { AuthenticatedSession } from '../client.ts'
 import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { PageLoading } from '../components/PageLoading.tsx'
 import { formatInstant } from '../format-date.ts'
-import { useGatekeeperClient } from '../use-gatekeeper-client.ts'
+import {
+  useGatekeeperEffectRunner,
+  type GatekeeperEffectRunner,
+} from '../use-gatekeeper-effect-runner.ts'
+import { useGatekeeperEffect } from '../use-gatekeeper-effect.ts'
 import pageLayout from '../styles/page-layout.module.css'
 
 type HttpRequest = Schema.Schema.Type<typeof AccessManagement.HttpRequestSchema>
 
 const RequestsListScreen = (): JSX.Element => {
-  const session = useGatekeeperClient()
+  const runGatekeeper = useGatekeeperEffectRunner()
   const [refreshKey, setRefreshKey] = useState(0)
 
   const requestsEffect = useMemo(
@@ -25,14 +28,14 @@ const RequestsListScreen = (): JSX.Element => {
     [refreshKey]
   )
 
-  const requestsPromise = useEffectTs(requestsEffect, session.runtime)
+  const requestsPromise = useGatekeeperEffect(requestsEffect)
 
   return (
     <Suspense fallback={<PageLoading />}>
       <Await resolve={requestsPromise} errorElement={<AsyncErrorView />}>
         {(requests: readonly HttpRequest[]) => (
           <RequestsListBody
-            session={session}
+            runGatekeeper={runGatekeeper}
             requests={requests}
             onDecided={() => {
               setRefreshKey((n) => n + 1)
@@ -45,30 +48,30 @@ const RequestsListScreen = (): JSX.Element => {
 }
 
 interface RequestsListBodyProps {
-  readonly session: AuthenticatedSession
+  readonly runGatekeeper: GatekeeperEffectRunner
   readonly requests: readonly HttpRequest[]
   readonly onDecided: () => void
 }
 
-const RequestsListBody = ({ session, requests, onDecided }: RequestsListBodyProps): JSX.Element => {
+const RequestsListBody = ({
+  runGatekeeper,
+  requests,
+  onDecided,
+}: RequestsListBodyProps): JSX.Element => {
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
 
   const decide = async (id: string, status: 'approved' | 'rejected'): Promise<void> => {
     try {
-      if (status === 'approved') {
-        await session.runPromise(
-          Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-            c['access-management'].ApproveRequest({ path: { id } })
-          )
-        )
-      } else {
-        await session.runPromise(
-          Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-            c['access-management'].DenyRequest({ path: { id } })
-          )
-        )
-      }
+      const operation =
+        status === 'approved'
+          ? Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+              c['access-management'].ApproveRequest({ path: { id } })
+            )
+          : Effect.flatMap(GatekeeperHttpApiClient, (c) =>
+              c['access-management'].DenyRequest({ path: { id } })
+            )
+      await runGatekeeper(operation)
       onDecided()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))

@@ -1,0 +1,43 @@
+{
+  "name": "telemetry-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Web-side HttpClient layer that combines FetchHttpClient with the web telemetry layer. Slice-react packages import it as a default HTTP layer; their per-slice effect runners auto-provide it.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/telemetry/telemetry-react"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "vp test --passWithNoTests"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
+    "telemetry-web": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "effect": "catalog:",
+    "telemetry-web": "workspace:*"
+  }
+}
