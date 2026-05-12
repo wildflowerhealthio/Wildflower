@@ -47,6 +47,77 @@ it.each([
 
 Use named object fields over positional tuples. Include the varying value in the test name with `$input` interpolation. When rows start needing different assertion logic, split into separate `describe` blocks.
 
+## Combining Assertions
+
+Prefer a single matcher that captures the whole expectation over a ladder of `.toBe`-per-field. Both the test code and the failure message get shorter and more pointed.
+
+**Don't** — drip-feed individual fields:
+
+```typescript
+const starts = withTag(messages, 'ResponseStart')
+expect(starts).toHaveLength(1)
+expect(starts[0]?.url).toBe('https://example.com/x')
+expect(starts[0]?.status).toBe(200)
+expect(starts[0]?.statusText).toBe('OK')
+```
+
+**Do** — assert the array shape in one matcher:
+
+```typescript
+expect(withTag(messages, 'ResponseStart')).toEqual([
+  expect.objectContaining({
+    url: 'https://example.com/x',
+    status: 200,
+    statusText: 'OK',
+  }),
+])
+```
+
+The `objectContaining` matcher composes inside `toEqual` (and `toMatchObject`) so you can express partial expectations declaratively. Reach for `expect.any(Function)`, `expect.stringMatching(/regex/)`, and `expect.stringContaining('substr')` to keep one-line matchers for nested or generated values:
+
+```typescript
+expect(state).toEqual(
+  expect.objectContaining({
+    nativeFetch: expect.any(Function),
+    pageLoadHandler: expect.any(Function),
+  })
+)
+
+expect(loaded).toEqual([
+  expect.objectContaining({
+    content: expect.stringMatching(/^<html.*<\/html>$/s),
+  }),
+])
+```
+
+When the assertion is purely structural — "did this method run once, with what arguments?" — `toMatchObject` reads better than chaining `toHaveBeenCalledWith` against specific fields.
+
+### `utilityExpectations` from `kitchen-sink/test`
+
+Two patterns come up often enough that they live in the shared kitchen-sink:
+
+```typescript
+import { expect } from 'vite-plus/test'
+import { utilityExpectations } from 'kitchen-sink/test'
+
+const { expectDistinct, expectToMultisetEqual } = utilityExpectations(expect)
+
+test('every id is unique', () => {
+  expectDistinct(events.map((e) => e.id))
+})
+
+test('shipped + arrived agree on which orders moved', () => {
+  expectToMultisetEqual(
+    shipped.map((s) => s.id),
+    arrived.map((a) => a.id)
+  )
+})
+```
+
+`expectDistinct(values)` wraps `expect(new Set(values).size).toBe(values.length)`; `expectToMultisetEqual(a, b)` sorts both arrays before `toEqual` so order is incidental. The helpers exist because the underlying spellings show up in failure messages as `expect([…]).toBe([…])` rather than the actual intent. Use them whenever an array assertion is really "these elements, ignoring order" or "no duplicates."
+
+The factory takes any `expect`-shaped function — Vitest's `expect`, Jest's `expect`, or any structural fit. Build the helpers once at module scope per test file.
+
 ## MECE Test Structure
 
 Structure test suites to be **Mutually Exclusive, Completely Exhaustive**:
