@@ -11,9 +11,6 @@
 import { Events, queryDb, State } from '@livestore/livestore'
 import { Schema } from 'effect'
 
-const RemoteIdSchema = Schema.String
-type RemoteId = typeof RemoteIdSchema.Type
-
 interface RemoteConfigType {
   readonly _tag: string
   readonly [key: string]: unknown
@@ -39,7 +36,7 @@ type RemoteRow = (typeof table)['Type']
 const remoteAdded = Events.synced({
   name: 'v1.RemoteAdded',
   schema: Schema.Struct({
-    id: RemoteIdSchema,
+    id: Schema.String,
     name: Schema.String,
     config: RemoteConfig,
     addedAt: Schema.DateTimeUtc,
@@ -49,7 +46,7 @@ const remoteAdded = Events.synced({
 const remoteUpdated = Events.synced({
   name: 'v1.RemoteUpdated',
   schema: Schema.Struct({
-    id: RemoteIdSchema,
+    id: Schema.String,
     name: Schema.String,
     config: RemoteConfig,
   }),
@@ -57,7 +54,7 @@ const remoteUpdated = Events.synced({
 
 const remoteDeleted = Events.synced({
   name: 'v1.RemoteDeleted',
-  schema: Schema.Struct({ id: RemoteIdSchema }),
+  schema: Schema.Struct({ id: Schema.String }),
 })
 
 const events = { remoteAdded, remoteUpdated, remoteDeleted } as const
@@ -76,5 +73,5 @@ const byId$ = (id: string) =>
 
 const queries = { all$, byId$ } as const
 
-export { RemoteIdSchema, RemoteConfig, table, events, materializers, queries }
-export type { RemoteId, RemoteConfigType, RemoteRow }
+export { RemoteConfig, events, materializers, queries, table }
+export type { RemoteConfigType, RemoteRow }

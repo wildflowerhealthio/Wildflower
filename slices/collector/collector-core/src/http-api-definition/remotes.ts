@@ -1,6 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
-import { RemoteConfig, RemoteIdSchema } from '../livestore/remote.ts'
+import { RemoteConfig } from '../livestore/remote.ts'
 
 const RemoteSchema = Schema.Struct({
   id: Schema.String,
@@ -12,7 +12,7 @@ const RemoteSchema = Schema.Struct({
 const RemotesSchema = Schema.Array(RemoteSchema)
 
 const CreateRemotePayloadSchema = Schema.Struct({
-  id: RemoteIdSchema,
+  id: Schema.String,
   name: Schema.String,
   config: RemoteConfig,
 })

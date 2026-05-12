@@ -35,6 +35,6 @@ const materializers = { ...Remote.materializers } as const
 const state = State.SQLite.makeState({ tables, materializers })
 const schema = makeSchema({ events, state })
 
-export { Remote, tables, events, queries, materializers, schema, state }
-export { RemoteIdSchema, RemoteConfig } from './remote.ts'
-export type { RemoteId, RemoteConfigType, RemoteRow } from './remote.ts'
+export { events, materializers, queries, Remote, schema, state, tables }
+export { RemoteConfig } from './remote.ts'
+export type { RemoteConfigType, RemoteRow } from './remote.ts'
