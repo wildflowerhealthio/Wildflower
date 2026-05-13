@@ -1,0 +1,83 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sectionTitle {
+  margin-bottom: 0.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.rowLabel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rowName {
+  font-weight: 500;
+}
+
+.rowSub {
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.formGrid {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.formGrid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.formGrid input {
+  padding: 0.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 0.375rem;
+  font: inherit;
+}
+
+.removeButton {
+  appearance: none;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.375rem;
+  background: #111;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.submitButton {
+  appearance: none;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.375rem;
+  background: #111;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+}

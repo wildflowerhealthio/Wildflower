@@ -24,6 +24,8 @@
   },
   "dependencies": {
     "@effect/platform": "catalog:",
+    "apps-core": "workspace:*",
+    "apps-react": "workspace:*",
     "collector-core": "workspace:*",
     "collector-fundamentals": "workspace:*",
     "collector-react": "workspace:*",

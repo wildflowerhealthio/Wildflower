@@ -7,6 +7,8 @@ import {
   HttpMiddleware,
   HttpServerResponse,
 } from '@effect/platform'
+import { AppsApi } from 'apps-core/http-api-definition'
+import { AppsApiHandlersFor } from 'apps-core/http-api-implementation'
 import { CollectorApi } from 'collector-core/http-api-definition'
 import { CollectorApiHandlersFor } from 'collector-core/http-api-implementation'
 import { Effect, Layer, pipe } from 'effect'
@@ -22,6 +24,8 @@ import {
   RequireAuthMiddleware,
   RequireAuthMiddlewareLive,
 } from 'gatekeeper-core/http-api-implementation'
+import { VendorAppsApi } from 'vendor-apps/http-api-definition'
+import { VendorAppsApiHandlersFor } from 'vendor-apps/http-api-implementation'
 import { StaticSpaLive } from './static-spa.ts'
 
 /**
@@ -82,30 +86,39 @@ const stripCookiesMiddleware = HttpMiddleware.make((app) =>
 
 const middleware = HttpMiddleware.make((app) => stripCookiesMiddleware(corsMiddleware(app)))
 
+// `AppsApi`'s `server` group declares `RequireAuthMiddleware` at the
+// group level (in apps-core); the `apps` group is unauthenticated so
+// `LaunchApp` and the rest can be reached by embedded webviews / iframes
+// that cannot easily carry a bearer token.
 const WildflowerHttpApi = HttpApi.make('WildflowerApi')
   .addHttpApi(GatekeeperApi)
   .addHttpApi(FhirResourcesApi.middleware(RequireAuthMiddleware))
   .addHttpApi(FhirPublicApi)
   .addHttpApi(CollectorApi.middleware(RequireAuthMiddleware))
+  .addHttpApi(AppsApi)
+  .addHttpApi(VendorAppsApi)
 
 const WildflowerHttpApiLive = HttpApiBuilder.api(WildflowerHttpApi).pipe(
   Layer.provide(GatekeeperApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(FhirResourcesApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(FhirPublicApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(CollectorApiHandlersFor<'WildflowerApi'>()),
+  Layer.provide(AppsApiHandlersFor<'WildflowerApi'>()),
+  Layer.provide(VendorAppsApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(RequireAuthMiddlewareLive),
   Layer.provide(SmartConfigurationLive)
 )
 
 /**
  * Cross-platform server Layer. Composes the HTTP API (Gatekeeper + FHIR
- * resources/public), the SPA static-file fallback, and Swagger docs.
+ * resources/public + Apps + VendorApps), the SPA static-file fallback,
+ * and Swagger docs.
  *
  * @remarks
  * Platform runner must supply: `HttpServer.HttpServer`,
  * `FileSystem.FileSystem`, `Path.Path`, `WebAssetsDir`, plus the
  * services the API handlers consume (`Origin`, `CryptoRandom`,
- * `LivestoreStore`, `GatekeeperStore`).
+ * `LivestoreStore`, `GatekeeperStore`, `AppsStore`, `TunnelControl`).
  */
 const WildflowerServerLive = HttpApiBuilder.serve(middleware).pipe(
   Layer.provide(HttpApiSwagger.layer()),

@@ -1,5 +1,5 @@
 {
-  "name": "wildflower-server",
+  "name": "apps-react",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,33 +13,29 @@
   "scripts": {
     "build": "vp pack",
     "check": "vp check",
-    "dev": "vp pack --watch",
-    "test": "vp test"
+    "dev": "vp pack --watch"
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
-    "@effect/platform-node": "catalog:",
-    "@types/node": "catalog:",
+    "@types/react": "catalog:",
     "apps-core": "workspace:*",
-    "collector-core": "workspace:*",
     "effect": "catalog:",
-    "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "gatekeeper-core": "workspace:*",
-    "kitchen-sink": "workspace:*",
+    "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-router": "catalog:",
+    "react-tundraish": "workspace:*",
+    "telemetry-react": "workspace:*",
     "typescript": "catalog:",
-    "vendor-apps": "workspace:*",
-    "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
     "apps-core": "workspace:*",
-    "collector-core": "workspace:*",
     "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "gatekeeper-core": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "vendor-apps": "workspace:*"
+    "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-router": "catalog:",
+    "react-tundraish": "workspace:*",
+    "telemetry-react": "workspace:*"
   }
 }
