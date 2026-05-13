@@ -1270,18 +1270,15 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 3.21.2
+      effect-messaging-core:
+        specifier: workspace:*
+        version: link:../../../global/effect-messaging/effect-messaging-core
       fast-check:
         specifier: 'catalog:'
         version: 3.23.1
-      gatekeeper-core:
-        specifier: workspace:*
-        version: link:../../gatekeeper/gatekeeper-core
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
-      navigation-core:
-        specifier: workspace:*
-        version: link:../../navigation/navigation-core
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -1303,6 +1300,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 3.21.2
+      effect-messaging-core:
+        specifier: workspace:*
+        version: link:../../../global/effect-messaging/effect-messaging-core
       react:
         specifier: 'catalog:'
         version: 19.2.0

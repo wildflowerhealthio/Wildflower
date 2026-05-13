@@ -1,1 +1,6 @@
-export { AppsHttpApiClient, type AppsHttpApiClientShape } from './apps-http-api-client.ts'
+export {
+  AppsHttpApiClient,
+  AppsAdminHttpApiClient,
+  type AppsHttpApiClientShape,
+  type AppsAdminHttpApiClientShape,
+} from './apps-http-api-client.ts'

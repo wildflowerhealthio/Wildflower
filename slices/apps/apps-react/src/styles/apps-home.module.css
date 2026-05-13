@@ -1,59 +1,36 @@
-.tierBadge {
-  font-size: 0.75rem;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.06);
+.apps-home__header-actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
 }
 
-.cardGrid {
+.apps-home__card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 0.75rem;
+  gap: var(--space-4);
 }
 
-.card {
+.apps-home__card {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.875rem 1rem;
-  border-radius: 0.5rem;
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-2);
+  background: var(--color-neutral-10, #fff);
+  border: 1px solid var(--color-neutral-8);
   text-decoration: none;
   color: inherit;
   cursor: pointer;
+  text-align: left;
 }
 
-.cardTitle {
-  font-weight: 600;
+.apps-home__card-subtitle {
+  color: var(--color-neutral-4);
 }
 
-.cardSubtitle {
-  font-size: 0.875rem;
-  color: rgba(0, 0, 0, 0.65);
-}
-
-.cardFooter {
+.apps-home__card-footer {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-3);
   align-items: center;
-  font-size: 0.75rem;
-  margin-top: 0.25rem;
-}
-
-.headerActions {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.manageButton {
-  appearance: none;
-  padding: 0.4rem 0.75rem;
-  border-radius: 0.375rem;
-  background: #111;
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  font-size: 0.875rem;
+  margin-top: var(--space-2);
 }

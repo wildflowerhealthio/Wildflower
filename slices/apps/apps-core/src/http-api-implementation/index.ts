@@ -1,37 +1,64 @@
 import { type HttpApiGroup, HttpApiBuilder } from '@effect/platform'
 import { Layer } from 'effect'
-import type { GatekeeperStore } from 'gatekeeper-core/contexts'
-import { RequireAuthMiddlewareLive } from 'gatekeeper-core/http-api-implementation'
-import type { Origin } from 'navigation-core'
 import type { AppsStore } from '../contexts/apps-store.ts'
 import type { TunnelControl } from '../contexts/tunnel-control.ts'
-import { AppsApi } from '../http-api-definition/index.ts'
+import { AppsAdminApi, AppsApi } from '../http-api-definition/index.ts'
+import * as AppsAdmin from './apps-admin.ts'
 import * as Apps from './apps.ts'
 import * as Server from './server.ts'
 
-const AppsApiHandlersLive = Layer.mergeAll(Server.layer, Apps.layer).pipe(
-  Layer.provide(RequireAuthMiddlewareLive)
-)
+// --- Public surface ---------------------------------------------------
+
+const AppsApiHandlersLive = Apps.layer
 
 const AppsApiLive = HttpApiBuilder.api(AppsApi).pipe(Layer.provide(AppsApiHandlersLive))
 
-type AppsGroupNames = 'server' | 'apps'
+type AppsGroupNames = 'apps'
 
 const AppsApiHandlersFor = <ParentId extends string>(): Layer.Layer<
   HttpApiGroup.ApiGroup<ParentId, AppsGroupNames>,
   never,
-  TunnelControl | AppsStore | GatekeeperStore | Origin
+  TunnelControl | AppsStore
 > =>
-  // The phantom-id bridge: `ApiGroup<ApiId, Name>` is a structural marker
-  // with no runtime presence (HttpApiBuilder.group only registers routes on
-  // the shared Router; nothing reads `apiId`), so a Layer built against
-  // AppsApi is sound to satisfy the same group requirement under any
-  // consumer's parent ApiId. This cast is the one place that bridge lives.
+  // See gatekeeper-core's AuthApiHandlersFor: the phantom-id bridge lets a
+  // Layer built against AppsApi satisfy a parent ApiId's group requirement.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   AppsApiHandlersLive as unknown as Layer.Layer<
     HttpApiGroup.ApiGroup<ParentId, AppsGroupNames>,
     never,
-    TunnelControl | AppsStore | GatekeeperStore | Origin
+    TunnelControl | AppsStore
   >
 
-export { AppsApi, AppsApiHandlersLive, AppsApiHandlersFor, AppsApiLive }
+// --- Admin (authed) surface ------------------------------------------
+
+const AppsAdminApiHandlersLive = Layer.mergeAll(AppsAdmin.layer, Server.layer)
+
+const AppsAdminApiLive = HttpApiBuilder.api(AppsAdminApi).pipe(
+  Layer.provide(AppsAdminApiHandlersLive)
+)
+
+type AppsAdminGroupNames = 'apps-admin' | 'server'
+
+const AppsAdminApiHandlersFor = <ParentId extends string>(): Layer.Layer<
+  HttpApiGroup.ApiGroup<ParentId, AppsAdminGroupNames>,
+  never,
+  TunnelControl | AppsStore
+> =>
+  // Same phantom-id bridge as AppsApiHandlersFor — see that comment.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  AppsAdminApiHandlersLive as unknown as Layer.Layer<
+    HttpApiGroup.ApiGroup<ParentId, AppsAdminGroupNames>,
+    never,
+    TunnelControl | AppsStore
+  >
+
+export {
+  AppsApi,
+  AppsApiHandlersLive,
+  AppsApiHandlersFor,
+  AppsApiLive,
+  AppsAdminApi,
+  AppsAdminApiHandlersLive,
+  AppsAdminApiHandlersFor,
+  AppsAdminApiLive,
+}

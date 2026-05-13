@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DIST = join(__dirname, '../vendor/patient-browser/dist')
 const OUT = join(__dirname, '../src/generated-patient-browser.ts')
-const MOUNT = '/apps/patient-browser'
+const MOUNT = '/installed-apps/patient-browser'
 const REBASE_EXTENSIONS = new Set(['.html'])
 const REBASE_PREFIXES = ['/assets/', '/img/', '/config/']
 

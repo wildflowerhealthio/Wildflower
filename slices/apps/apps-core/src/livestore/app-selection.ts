@@ -9,7 +9,6 @@
 
 import { Events, queryDb, State } from '@livestore/livestore'
 import { Schema } from 'effect'
-import { AppIdSchema } from '../registry/app-item.ts'
 
 const table = State.SQLite.table({
   name: 'appSelection',
@@ -28,7 +27,7 @@ type AppSelectionRow = (typeof table)['Type']
 const appEnabledChanged = Events.synced({
   name: 'v1.AppEnabledChanged',
   schema: Schema.Struct({
-    id: AppIdSchema,
+    id: Schema.String,
     kind: Schema.Literal('bundled', 'custom', 'action'),
     enabled: Schema.Boolean,
   }),
@@ -37,7 +36,7 @@ const appEnabledChanged = Events.synced({
 const customAppAdded = Events.synced({
   name: 'v1.CustomAppAdded',
   schema: Schema.Struct({
-    id: AppIdSchema,
+    id: Schema.String,
     name: Schema.String,
     url: Schema.String,
     requiresTunnel: Schema.Boolean,
@@ -47,7 +46,7 @@ const customAppAdded = Events.synced({
 const customAppUpdated = Events.synced({
   name: 'v1.CustomAppUpdated',
   schema: Schema.Struct({
-    id: AppIdSchema,
+    id: Schema.String,
     name: Schema.optional(Schema.String),
     url: Schema.optional(Schema.String),
     requiresTunnel: Schema.optional(Schema.Boolean),
@@ -56,7 +55,7 @@ const customAppUpdated = Events.synced({
 
 const customAppRemoved = Events.synced({
   name: 'v1.CustomAppRemoved',
-  schema: Schema.Struct({ id: AppIdSchema }),
+  schema: Schema.Struct({ id: Schema.String }),
 })
 
 const events = {
@@ -106,7 +105,13 @@ const all$ = queryDb(table, { label: 'appSelection' })
 
 // oxlint-disable-next-line typescript-eslint/explicit-function-return-type
 const byId$ = (id: string) =>
-  queryDb(table.where({ id }), { map: (rows) => rows[0], label: 'appSelectionById' })
+  queryDb(table.where({ id }), {
+    // Explicit `| undefined` so `awaitRow`'s
+    // `LiveQueryDef<A | null | undefined>` constraint matches; without
+    // it, `rows[0]` infers as `Row` (no narrowing for empty results).
+    map: (rows): AppSelectionRow | undefined => rows[0],
+    label: 'appSelectionById',
+  })
 
 const queries = { all$, byId$ } as const
 

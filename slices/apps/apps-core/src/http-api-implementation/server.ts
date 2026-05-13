@@ -1,9 +1,9 @@
 import { HttpApiBuilder } from '@effect/platform'
 import { Effect } from 'effect'
 import { TunnelControl } from '../contexts/tunnel-control.ts'
-import { AppsApi } from '../http-api-definition/index.ts'
+import { AppsAdminApi } from '../http-api-definition/index.ts'
 
-const layer = HttpApiBuilder.group(AppsApi, 'server', (handlers) =>
+const layer = HttpApiBuilder.group(AppsAdminApi, 'server', (handlers) =>
   handlers
     .handle('GetServer', () =>
       Effect.gen(function* () {

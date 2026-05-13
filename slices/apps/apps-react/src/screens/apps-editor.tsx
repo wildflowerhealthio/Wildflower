@@ -1,13 +1,14 @@
-import { AppsHttpApiClient } from 'apps-core/clients'
-import type { Apps } from 'apps-core/http-api-definition'
+import { AppsAdminHttpApiClient } from 'apps-core/clients'
+import type { Schemas } from 'apps-core/http-api-definition'
 import { Effect, type Schema } from 'effect'
 import { useState, type JSX } from 'react'
-import { Dialog } from 'react-tundraish'
+import { cn } from 'react-kitchen-sink'
+import { Checkbox, Dialog } from 'react-tundraish'
 
-import { useAppsEffectRunner } from '../use-apps-effect-runner.ts'
+import { useAppsAdminEffectRunner } from '../use-apps-effect-runner.ts'
 import editorStyles from '../styles/apps-editor.module.css'
 
-type AppEntry = Schema.Schema.Type<typeof Apps.AppEntrySchema>
+type AppEntry = Schema.Schema.Type<typeof Schemas.AppEntrySchema>
 
 interface AppsEditorProps {
   readonly open: boolean
@@ -19,11 +20,17 @@ interface AppsEditorProps {
 /**
  * Modal editor for the apps list. Bundled apps toggle on/off; custom
  * apps can be added or removed. Writes are issued through
- * `useAppsEffectRunner` (a one-off Effect runner that auto-provides the
- * slice client layer + bearer token).
+ * `useAppsAdminEffectRunner` (a one-off Effect runner that
+ * auto-provides the slice's *admin* client layer + bearer token —
+ * `AppsAdminApi` is owner-only).
+ *
+ * Every input lives inside a `<fieldset disabled={busy}>` so the entire
+ * form locks during an in-flight write, not just the submit button —
+ * stops the user from racing toggles or adding a duplicate custom row
+ * while a previous write is still pending.
  */
 const AppsEditor = ({ open, apps, onClose, onChanged }: AppsEditorProps): JSX.Element => {
-  const run = useAppsEffectRunner()
+  const run = useAppsAdminEffectRunner()
   const [newName, setNewName] = useState('')
   const [newUrl, setNewUrl] = useState('')
   const [newRequiresTunnel, setNewRequiresTunnel] = useState(false)
@@ -35,8 +42,8 @@ const AppsEditor = ({ open, apps, onClose, onChanged }: AppsEditorProps): JSX.El
     setError(null)
     try {
       await run(
-        Effect.flatMap(AppsHttpApiClient, (c) =>
-          c.apps.UpdateApp({ path: { id: app.id }, payload: { enabled: !app.enabled } })
+        Effect.flatMap(AppsAdminHttpApiClient, (c) =>
+          c['apps-admin'].UpdateApp({ path: { id: app.id }, payload: { enabled: !app.enabled } })
         )
       )
       onChanged()
@@ -52,7 +59,9 @@ const AppsEditor = ({ open, apps, onClose, onChanged }: AppsEditorProps): JSX.El
     setError(null)
     try {
       await run(
-        Effect.flatMap(AppsHttpApiClient, (c) => c.apps.DeleteApp({ path: { id: app.id } }))
+        Effect.flatMap(AppsAdminHttpApiClient, (c) =>
+          c['apps-admin'].DeleteApp({ path: { id: app.id } })
+        )
       )
       onChanged()
     } catch (e) {
@@ -72,8 +81,10 @@ const AppsEditor = ({ open, apps, onClose, onChanged }: AppsEditorProps): JSX.El
     setError(null)
     try {
       await run(
-        Effect.flatMap(AppsHttpApiClient, (c) =>
-          c.apps.CreateCustomApp({ payload: { name, url, requiresTunnel: newRequiresTunnel } })
+        Effect.flatMap(AppsAdminHttpApiClient, (c) =>
+          c['apps-admin'].CreateCustomApp({
+            payload: { name, url, requiresTunnel: newRequiresTunnel },
+          })
         )
       )
       setNewName('')
@@ -92,91 +103,102 @@ const AppsEditor = ({ open, apps, onClose, onChanged }: AppsEditorProps): JSX.El
 
   return (
     <Dialog open={open} onClose={onClose} title="Manage apps">
-      {error !== null ? <p role="alert">{error}</p> : null}
-      <section className={editorStyles['section']}>
-        <h3 className={editorStyles['sectionTitle']}>Bundled</h3>
-        {nonCustom.map((app) => (
-          <div key={app.id} className={editorStyles['row']}>
-            <div className={editorStyles['rowLabel']}>
-              <span className={editorStyles['rowName']}>{app.name}</span>
-              <span className={editorStyles['rowSub']}>{app.subtitle}</span>
-            </div>
-            <label>
-              <input
-                type="checkbox"
+      {error !== null ? (
+        <p className="text-body-3" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <fieldset className={editorStyles['apps-editor__fieldset']} disabled={busy}>
+        <section className={editorStyles['apps-editor__section']}>
+          <h3 className="text-label-3">Bundled</h3>
+          {nonCustom.map((app) => (
+            <div key={app.id} className={editorStyles['apps-editor__row']}>
+              <div className={editorStyles['apps-editor__row-label']}>
+                <span className="text-body-2">{app.name}</span>
+                {app.subtitle !== undefined ? (
+                  <span className={cn(editorStyles['apps-editor__row-sub'], 'text-body-3')}>
+                    {app.subtitle}
+                  </span>
+                ) : null}
+              </div>
+              <Checkbox
                 checked={app.enabled}
-                disabled={busy}
+                label=""
                 onChange={() => {
                   void toggle(app)
                 }}
               />
-            </label>
-          </div>
-        ))}
-      </section>
-
-      <section className={editorStyles['section']}>
-        <h3 className={editorStyles['sectionTitle']}>Custom</h3>
-        {custom.map((app) => (
-          <div key={app.id} className={editorStyles['row']}>
-            <div className={editorStyles['rowLabel']}>
-              <span className={editorStyles['rowName']}>{app.name}</span>
-              <span className={editorStyles['rowSub']}>{app.subtitle}</span>
             </div>
-            <button
-              type="button"
-              className={editorStyles['removeButton']}
-              disabled={busy}
-              onClick={() => {
-                void removeCustom(app)
-              }}
-            >
-              Remove
-            </button>
-          </div>
-        ))}
-        <form
-          className={editorStyles['formGrid']}
-          onSubmit={(event) => {
-            event.preventDefault()
-            void submitNewCustom()
-          }}
-        >
-          <label>
-            Name
-            <input
-              value={newName}
-              onChange={(event) => {
-                setNewName(event.target.value)
-              }}
-              required
-            />
-          </label>
-          <label>
-            URL (supports {'{origin}'} and {'{launch}'} tokens)
-            <input
-              value={newUrl}
-              onChange={(event) => {
-                setNewUrl(event.target.value)
-              }}
-              required
-            />
-          </label>
-          <label>
-            <input
-              type="checkbox"
+          ))}
+        </section>
+
+        <section className={editorStyles['apps-editor__section']}>
+          <h3 className="text-label-3">Custom</h3>
+          {custom.map((app) => (
+            <div key={app.id} className={editorStyles['apps-editor__row']}>
+              <div className={editorStyles['apps-editor__row-label']}>
+                <span className="text-body-2">{app.name}</span>
+                {app.subtitle !== undefined ? (
+                  <span className={cn(editorStyles['apps-editor__row-sub'], 'text-body-3')}>
+                    {app.subtitle}
+                  </span>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                className="button-3 outline accent-red"
+                onClick={() => {
+                  void removeCustom(app)
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          <form
+            className={editorStyles['apps-editor__form']}
+            onSubmit={(event) => {
+              event.preventDefault()
+              void submitNewCustom()
+            }}
+          >
+            <label className={editorStyles['apps-editor__form-field']}>
+              <span className="text-label-3">Name</span>
+              <input
+                className="input-2"
+                value={newName}
+                onChange={(event) => {
+                  setNewName(event.target.value)
+                }}
+                required
+              />
+            </label>
+            <label className={editorStyles['apps-editor__form-field']}>
+              <span className="text-label-3">
+                URL (supports {'{origin}'} and {'{launch}'} tokens)
+              </span>
+              <input
+                className="input-2"
+                value={newUrl}
+                onChange={(event) => {
+                  setNewUrl(event.target.value)
+                }}
+                required
+              />
+            </label>
+            <Checkbox
               checked={newRequiresTunnel}
-              onChange={(event) => {
-                setNewRequiresTunnel(event.target.checked)
+              label="Requires tunnel"
+              onChange={(checked) => {
+                setNewRequiresTunnel(checked)
               }}
             />
-            Requires tunnel
-          </label>
-          <button type="submit" className={editorStyles['submitButton']} disabled={busy}>
-            Add custom app
-          </button>
-        </form>
-      </section>
+            <button type="submit" className="button-2 filled">
+              Add custom app
+            </button>
+          </form>
+        </section>
+      </fieldset>
     </Dialog>
   )
 }

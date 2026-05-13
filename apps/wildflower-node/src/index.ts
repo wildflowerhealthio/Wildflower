@@ -1,3 +1,6 @@
+/* oxlint-disable import/max-dependencies -- this is the platform entry point that wires every slice's
+   node-side Layer + store + telemetry into `WildflowerServerLive`; consolidating into fewer files
+   would hide the wiring rather than tame it. */
 import './instrument.ts'
 import { createServer } from 'node:http'
 import { HttpServer } from '@effect/platform'

@@ -7,8 +7,8 @@ import {
   HttpMiddleware,
   HttpServerResponse,
 } from '@effect/platform'
-import { AppsApi } from 'apps-core/http-api-definition'
-import { AppsApiHandlersFor } from 'apps-core/http-api-implementation'
+import { AppsAdminApi, AppsApi } from 'apps-core/http-api-definition'
+import { AppsAdminApiHandlersFor, AppsApiHandlersFor } from 'apps-core/http-api-implementation'
 import { CollectorApi } from 'collector-core/http-api-definition'
 import { CollectorApiHandlersFor } from 'collector-core/http-api-implementation'
 import { Effect, Layer, pipe } from 'effect'
@@ -86,16 +86,18 @@ const stripCookiesMiddleware = HttpMiddleware.make((app) =>
 
 const middleware = HttpMiddleware.make((app) => stripCookiesMiddleware(corsMiddleware(app)))
 
-// `AppsApi`'s `server` group declares `RequireAuthMiddleware` at the
-// group level (in apps-core); the `apps` group is unauthenticated so
-// `LaunchApp` and the rest can be reached by embedded webviews / iframes
-// that cannot easily carry a bearer token.
+// The apps slice exposes two HttpApis: `AppsApi` (public — `ListApps`
+// + `LaunchApp`, reachable by embedded webviews / iframes without a
+// bearer) and `AppsAdminApi` (owner-only — custom-app writes + tunnel
+// config). Auth is applied here, in the composing app, not in the
+// slice itself.
 const WildflowerHttpApi = HttpApi.make('WildflowerApi')
   .addHttpApi(GatekeeperApi)
   .addHttpApi(FhirResourcesApi.middleware(RequireAuthMiddleware))
   .addHttpApi(FhirPublicApi)
   .addHttpApi(CollectorApi.middleware(RequireAuthMiddleware))
   .addHttpApi(AppsApi)
+  .addHttpApi(AppsAdminApi.middleware(RequireAuthMiddleware))
   .addHttpApi(VendorAppsApi)
 
 const WildflowerHttpApiLive = HttpApiBuilder.api(WildflowerHttpApi).pipe(
@@ -104,6 +106,7 @@ const WildflowerHttpApiLive = HttpApiBuilder.api(WildflowerHttpApi).pipe(
   Layer.provide(FhirPublicApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(CollectorApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(AppsApiHandlersFor<'WildflowerApi'>()),
+  Layer.provide(AppsAdminApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(VendorAppsApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(RequireAuthMiddlewareLive),
   Layer.provide(SmartConfigurationLive)

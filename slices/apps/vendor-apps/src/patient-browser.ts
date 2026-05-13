@@ -1,6 +1,6 @@
 import { assets, type AssetEntry } from './generated-patient-browser.ts'
 
-const PREFIX = '/apps/patient-browser/'
+const PREFIX = '/installed-apps/patient-browser/'
 
 const lookupAsset = (pathname: string): AssetEntry | undefined => {
   if (!pathname.startsWith(PREFIX)) return undefined

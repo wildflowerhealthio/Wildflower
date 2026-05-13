@@ -18,6 +18,10 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./bridge": {
+      "source": "./src/bridge.ts",
+      "default": "./dist/bridge.js"
+    },
     "./registry": {
       "source": "./src/registry/index.ts",
       "default": "./dist/registry/index.js"
@@ -62,10 +66,9 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
-    "gatekeeper-core": "workspace:*",
     "kitchen-sink": "workspace:*",
-    "navigation-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -76,8 +79,7 @@
     "@livestore/peer-deps": "catalog:",
     "@livestore/utils": "catalog:",
     "effect": "catalog:",
-    "gatekeeper-core": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "navigation-core": "workspace:*"
+    "effect-messaging-core": "workspace:*",
+    "kitchen-sink": "workspace:*"
   }
 }

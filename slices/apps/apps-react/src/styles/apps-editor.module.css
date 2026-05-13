@@ -1,83 +1,56 @@
-.section {
+.apps-editor__fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-5);
 }
 
-.sectionTitle {
-  margin-bottom: 0.25rem;
-  font-size: 1rem;
-  font-weight: 600;
+.apps-editor__fieldset:disabled {
+  opacity: 0.6;
 }
 
-.row {
+.apps-editor__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.apps-editor__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-neutral-8);
 }
 
-.row:last-child {
+.apps-editor__row:last-child {
   border-bottom: none;
 }
 
-.rowLabel {
+.apps-editor__row-label {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  gap: 2px;
 }
 
-.rowName {
-  font-weight: 500;
-}
-
-.rowSub {
-  font-size: 0.75rem;
-  color: rgba(0, 0, 0, 0.55);
+.apps-editor__row-sub {
+  color: var(--color-neutral-4);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.formGrid {
+.apps-editor__form {
   display: grid;
-  gap: 0.5rem;
+  gap: var(--space-3);
 }
 
-.formGrid label {
+.apps-editor__form-field {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.875rem;
-}
-
-.formGrid input {
-  padding: 0.5rem;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-  border-radius: 0.375rem;
-  font: inherit;
-}
-
-.removeButton {
-  appearance: none;
-  padding: 0.4rem 0.75rem;
-  border-radius: 0.375rem;
-  background: #111;
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  font-size: 0.875rem;
-}
-
-.submitButton {
-  appearance: none;
-  padding: 0.4rem 0.75rem;
-  border-radius: 0.375rem;
-  background: #111;
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  font-size: 0.875rem;
+  gap: var(--space-1);
 }

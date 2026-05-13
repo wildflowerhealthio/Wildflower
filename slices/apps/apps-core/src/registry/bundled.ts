@@ -1,7 +1,7 @@
-import { type BundledApp, makeAppId } from './app-item.ts'
+import type { BundledApp } from './app-item.ts'
 
-const FHIR_SHARING_ID = makeAppId('fhir-sharing')
-const PATIENT_BROWSER_ID = makeAppId('patient-browser')
+const FHIR_SHARING_ID = 'fhir-sharing'
+const PATIENT_BROWSER_ID = 'patient-browser'
 
 const BUNDLED_APPS: readonly BundledApp[] = [
   {
@@ -18,10 +18,10 @@ const BUNDLED_APPS: readonly BundledApp[] = [
     subtitle: 'Browse patient records served from this device.',
     kind: 'bundled',
     requiresTunnel: false,
-    url: (origin) => `${origin}/apps/patient-browser/index.html`,
+    url: (origin) => `${origin}/installed-apps/patient-browser/index.html`,
   },
   {
-    id: makeAppId('api-view'),
+    id: 'api-view',
     name: 'API View',
     subtitle: 'View patient records in your browser.',
     kind: 'bundled',
@@ -29,7 +29,7 @@ const BUNDLED_APPS: readonly BundledApp[] = [
     url: (origin) => `${origin}/fhir-r4/Patient/8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882`,
   },
   {
-    id: makeAppId('api-docs'),
+    id: 'api-docs',
     name: 'API Docs',
     subtitle: 'View API documentation in your browser.',
     kind: 'bundled',
@@ -37,7 +37,7 @@ const BUNDLED_APPS: readonly BundledApp[] = [
     url: (origin) => `${origin}/docs`,
   },
   {
-    id: makeAppId('growth-chart'),
+    id: 'growth-chart',
     name: 'Growth Chart',
     subtitle: 'Interactive growth chart app.',
     kind: 'bundled',
@@ -46,7 +46,7 @@ const BUNDLED_APPS: readonly BundledApp[] = [
       `https://examples.smarthealthit.org/growth-chart-app/launch.html?iss=${origin}/fhir-r4&launch=${launch}`,
   },
   {
-    id: makeAppId('medication-viewer'),
+    id: 'medication-viewer',
     name: 'Medication Viewer',
     subtitle: 'A bare medication viewer app.',
     kind: 'bundled',

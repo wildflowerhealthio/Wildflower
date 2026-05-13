@@ -5,13 +5,13 @@ import { AppsStore } from '../contexts/apps-store.ts'
 import { TunnelControl } from '../contexts/tunnel-control.ts'
 import { AppsApi } from '../http-api-definition/index.ts'
 import { AppSelection } from '../livestore/index.ts'
-import type { AppId, AppKind } from '../registry/app-item.ts'
-import { BUNDLED_APPS, FHIR_SHARING_ID, findBundled, makeAppId } from '../registry/index.ts'
+import type { AppKind } from '../registry/app-item.ts'
+import { BUNDLED_APPS, FHIR_SHARING_ID, findBundled } from '../registry/index.ts'
 
-type AppEntry = {
-  id: AppId
+interface AppEntry {
+  id: string
   name: string
-  subtitle: string
+  subtitle?: string
   requiresTunnel: boolean
   kind: AppKind
   enabled: boolean
@@ -34,16 +34,39 @@ const buildEntries = (selection: readonly AppSelection.AppSelectionRow[]): reado
 
   const custom: AppEntry[] = selection
     .filter((row) => row.kind === 'custom')
-    .map((row) => ({
-      id: makeAppId(row.id),
-      name: row.customName ?? 'Custom App',
-      subtitle: row.customUrl ?? '',
-      requiresTunnel: row.customRequiresTunnel ?? false,
-      kind: 'custom' as const,
-      enabled: row.enabled,
-    }))
+    .map((row) => {
+      const subtitleValue = row.customUrl ?? ''
+      const entry: AppEntry = {
+        id: row.id,
+        name: row.customName ?? 'Custom App',
+        requiresTunnel: row.customRequiresTunnel ?? false,
+        kind: 'custom',
+        enabled: row.enabled,
+      }
+      if (subtitleValue !== '') entry.subtitle = subtitleValue
+      return entry
+    })
 
   return [...bundled, ...custom]
+}
+
+/**
+ * Defense-in-depth at launch time. `CustomAppUrlSchema` rejects bad
+ * shapes on write, but `LaunchApp` re-validates the *resolved* URL —
+ * after `{origin}` interpolation — so a custom app whose template
+ * produced a weird URL can't 302 to it. Acceptable targets: any URL
+ * sharing the live origin (`originPrefix`) or any absolute `https://`
+ * URL. Anything else is treated as "not found" to avoid leaking a
+ * distinct rejection signal.
+ */
+const isLaunchableUrl = (target: string, originPrefix: string): boolean => {
+  if (target.startsWith(originPrefix)) return true
+  try {
+    const parsed = new URL(target)
+    return parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
 }
 
 const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
@@ -53,117 +76,6 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
         const store = yield* AppsStore
         const rows = store.query(AppSelection.queries.all$)
         return buildEntries(rows)
-      })
-    )
-    .handle('CreateCustomApp', ({ payload }) =>
-      Effect.gen(function* () {
-        const store = yield* AppsStore
-        const id = makeAppId(`custom-${nanoid()}`)
-        store.commit(
-          AppSelection.events.customAppAdded({
-            id,
-            name: payload.name,
-            url: payload.url,
-            requiresTunnel: payload.requiresTunnel,
-          })
-        )
-        return {
-          id,
-          name: payload.name,
-          subtitle: payload.url,
-          requiresTunnel: payload.requiresTunnel,
-          kind: 'custom' as const,
-          enabled: true,
-        }
-      })
-    )
-    .handle('UpdateApp', ({ path, payload }) =>
-      Effect.gen(function* () {
-        const store = yield* AppsStore
-        const bundled = findBundled(path.id)
-        const existing = store.query(AppSelection.queries.byId$(path.id))
-
-        if (bundled !== undefined) {
-          if (payload.name !== undefined || payload.url !== undefined) {
-            return yield* Effect.fail({
-              error: 'BundledAppImmutable' as const,
-              id: path.id,
-            })
-          }
-          const enabled = payload.enabled ?? existing?.enabled ?? true
-          store.commit(
-            AppSelection.events.appEnabledChanged({
-              id: makeAppId(path.id),
-              kind: bundled.kind,
-              enabled,
-            })
-          )
-          return {
-            id: makeAppId(path.id),
-            name: bundled.name,
-            subtitle: bundled.subtitle,
-            requiresTunnel: bundled.requiresTunnel,
-            kind: bundled.kind,
-            enabled,
-          }
-        }
-
-        if (existing === undefined || existing.kind !== 'custom') {
-          return yield* Effect.fail({ error: 'AppNotFound' as const, id: path.id })
-        }
-
-        if (
-          payload.name !== undefined ||
-          payload.url !== undefined ||
-          payload.requiresTunnel !== undefined
-        ) {
-          store.commit(
-            AppSelection.events.customAppUpdated({
-              id: makeAppId(path.id),
-              name: payload.name,
-              url: payload.url,
-              requiresTunnel: payload.requiresTunnel,
-            })
-          )
-        }
-
-        if (payload.enabled !== undefined) {
-          store.commit(
-            AppSelection.events.appEnabledChanged({
-              id: makeAppId(path.id),
-              kind: 'custom',
-              enabled: payload.enabled,
-            })
-          )
-        }
-
-        const updated = store.query(AppSelection.queries.byId$(path.id))
-        return {
-          id: makeAppId(path.id),
-          name: updated?.customName ?? existing.customName ?? 'Custom App',
-          subtitle: updated?.customUrl ?? existing.customUrl ?? '',
-          requiresTunnel: updated?.customRequiresTunnel ?? existing.customRequiresTunnel ?? false,
-          kind: 'custom' as const,
-          enabled: updated?.enabled ?? existing.enabled,
-        }
-      })
-    )
-    .handle('DeleteApp', ({ path }) =>
-      Effect.gen(function* () {
-        const store = yield* AppsStore
-        const bundled = findBundled(path.id)
-        if (bundled !== undefined) {
-          return yield* Effect.fail({
-            error: 'BundledAppImmutable' as const,
-            id: path.id,
-          })
-        }
-        const existing = store.query(AppSelection.queries.byId$(path.id))
-        if (existing === undefined) {
-          return yield* Effect.fail({ error: 'AppNotFound' as const, id: path.id })
-        }
-        store.commit(AppSelection.events.customAppRemoved({ id: makeAppId(path.id) }))
-        return { deleted: true }
       })
     )
     .handleRaw('LaunchApp', ({ path }) =>
@@ -223,12 +135,34 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
           )
         })()
 
+        // Re-check after tunnel state settles: the row may have been
+        // deleted or kind-changed mid-flight. Bundled apps have static
+        // shape so they don't need this round-trip.
+        if (bundled === undefined) {
+          const refreshed = store.query(AppSelection.queries.byId$(path.id))
+          if (refreshed === undefined || refreshed.kind !== 'custom') {
+            return HttpServerResponse.unsafeJson(
+              { error: 'AppNotFound', id: path.id },
+              { status: 404 }
+            )
+          }
+        }
+
         if (path.id === FHIR_SHARING_ID || launchContext.isAction) {
           return HttpServerResponse.redirect(afterState.origin, { status: 302 })
         }
 
         const launch = nanoid()
         const target = launchContext.url(afterState.origin, launch)
+        if (!isLaunchableUrl(target, afterState.origin)) {
+          yield* Effect.logWarning(
+            `[apps-core] LaunchApp rejected resolved URL for ${path.id}: ${target}`
+          )
+          return HttpServerResponse.unsafeJson(
+            { error: 'AppNotFound', id: path.id },
+            { status: 404 }
+          )
+        }
         return HttpServerResponse.redirect(target, { status: 302 })
       })
     )

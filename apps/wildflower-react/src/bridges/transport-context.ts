@@ -1,10 +1,16 @@
+import type AppsBridge from 'apps-core/bridge'
 import type CollectorBridge from 'collector-fundamentals/bridge'
 import type { BridgeTransport } from 'effect-messaging-core'
 import type GatekeeperBridge from 'gatekeeper-core/bridge'
 import type { NavigationBridge } from 'navigation-core'
 import { createContext, useContext } from 'react'
 
-type Bridges = readonly [typeof NavigationBridge, typeof GatekeeperBridge, typeof CollectorBridge]
+type Bridges = readonly [
+  typeof NavigationBridge,
+  typeof GatekeeperBridge,
+  typeof CollectorBridge,
+  typeof AppsBridge,
+]
 type Transport = BridgeTransport.BridgeTransport<Bridges, 'Web'>
 
 const TransportContext = createContext<Transport | null>(null)
