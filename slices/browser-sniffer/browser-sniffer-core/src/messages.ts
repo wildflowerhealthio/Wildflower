@@ -32,8 +32,38 @@ import { Schema } from 'effect'
  * the wire (a base64 string) cannot satisfy. Keeping `data: string`
  * lets the bridge decode round-trip cleanly; consumers that need
  * bytes apply `Schema.decode(Schema.Uint8ArrayFromBase64)` (or
- * `atob`) at their own boundary.
+ * `atob`) at their own boundary. See
+ * `effect-messaging-core/docs/Bridge Schemas Reference.md` for the
+ * project-wide write-up.
+ *
+ * `PageLoaded` is a notification only — it carries the page URL but
+ * no body. The page DOM is delivered via the standard
+ * `ResponseStart` / `ResponseData` / `ResponseFinished` triple with
+ * a synthetic id (the page-content stream uses the same chunking
+ * primitive as a real network response).
+ *
+ * `Cancelled` is the terminal acknowledgement the page posts in
+ * response to a `CancelSnifferRequest` that arrives mid-stream. It
+ * lets the host release per-id state without waiting for a Finished
+ * that will never come.
  */
+
+/** All correlation `id`s are non-empty — empty-string ids would
+ * silently merge unrelated in-flight requests in the host's hash map. */
+const SnifferRequestId = Schema.NonEmptyString.annotations({
+  identifier: 'SnifferRequestId',
+  description: 'Per-request correlation key used across the Response*/Cancelled triple.',
+})
+
+/**
+ * Response headers as ordered `(name, value)` pairs. The web HTTP
+ * spec allows the same header name to appear repeatedly (`Set-Cookie`
+ * is the canonical case); a `Record<string, string>` collapses
+ * repeats to a single value. The sniffer captures via
+ * `Headers.entries()` which iterates each pair, so the wire stays
+ * lossless if we use an array of tuples.
+ */
+const HeadersWire = Schema.Array(Schema.Tuple(Schema.String, Schema.String))
 
 const LogMessageBody = Schema.TaggedStruct('Log', {
   log: Schema.String,
@@ -41,41 +71,74 @@ const LogMessageBody = Schema.TaggedStruct('Log', {
 const LogMessage = Schema.parseJson(LogMessageBody)
 
 const ResponseStartMessageBody = Schema.TaggedStruct('ResponseStart', {
-  id: Schema.String,
+  id: SnifferRequestId,
   url: Schema.String,
-  status: Schema.Number,
+  // Sniffer-observed status codes are integers; the schema is tightened
+  // from bare `Schema.Number` so the bridge round-trip property test
+  // stays JSON-safe — `Schema.Number` lets `Arbitrary` produce
+  // `Infinity` / `NaN`, which `JSON.stringify` collapses to `null` and
+  // round-trips lose.
+  //
+  // The accepted range `[0, 1000]` is wider than the standard HTTP
+  // `[100, 599]` on purpose: WebView fetch intercepts can yield
+  // `status: 0` for opaque CORS responses, aborted requests, and
+  // pre-flight failures (browsers expose `0` rather than the
+  // network-layer reason); the upper slack absorbs forward-compatible
+  // custom codes that intermediaries occasionally inject. Tightening
+  // further would drop real sniffer events on the floor.
+  status: Schema.Int.pipe(Schema.between(0, 1000)),
   statusText: Schema.String,
-  headers: Schema.Record({ key: Schema.String, value: Schema.String }),
+  headers: HeadersWire,
 })
 const ResponseStartMessage = Schema.parseJson(ResponseStartMessageBody)
 
 const ResponseDataMessageBody = Schema.TaggedStruct('ResponseData', {
-  id: Schema.String,
+  id: SnifferRequestId,
   /** Base64-encoded response bytes. See file header for why this is `String` and not `Uint8ArrayFromBase64`. */
   data: Schema.String,
 })
 const ResponseDataMessage = Schema.parseJson(ResponseDataMessageBody)
 
 const ResponseFinishedMessageBody = Schema.TaggedStruct('ResponseFinished', {
-  id: Schema.String,
+  id: SnifferRequestId,
 })
 const ResponseFinishedMessage = Schema.parseJson(ResponseFinishedMessageBody)
 
 const RequestErrorMessageBody = Schema.TaggedStruct('RequestError', {
-  id: Schema.String,
+  id: SnifferRequestId,
   url: Schema.String,
   message: Schema.String,
 })
 const RequestErrorMessage = Schema.parseJson(RequestErrorMessageBody)
 
+/**
+ * Posted by the page in response to a `CancelSnifferRequest` that
+ * arrives while a tracked request is mid-stream. Acts as the
+ * terminal observation for that id — host state can be released
+ * without waiting for a `ResponseFinished` (which won't come). If
+ * the cancel arrives after the natural terminal, the page silently
+ * drops it.
+ */
+const CancelledMessageBody = Schema.TaggedStruct('Cancelled', {
+  id: SnifferRequestId,
+})
+const CancelledMessage = Schema.parseJson(CancelledMessageBody)
+
+/** Page-load notification — body intentionally absent; page content is
+ * delivered via the `ResponseStart` / `ResponseData` /
+ * `ResponseFinished` triple with the same id carried in
+ * `pageContentId`. */
 const PageLoadedMessageBody = Schema.TaggedStruct('PageLoaded', {
   url: Schema.String,
-  content: Schema.String,
+  /** Correlation id for the matching `Response*` stream that carries
+   * the page's `documentElement.outerHTML`. Consumers that don't care
+   * about the DOM body can ignore. */
+  pageContentId: SnifferRequestId,
 })
 const PageLoadedMessage = Schema.parseJson(PageLoadedMessageBody)
 
 const CancelSnifferRequestMessageBody = Schema.TaggedStruct('CancelSnifferRequest', {
-  id: Schema.String,
+  id: SnifferRequestId,
 })
 const CancelSnifferRequestMessage = Schema.parseJson(CancelSnifferRequestMessageBody)
 
@@ -90,8 +153,12 @@ export {
   ResponseFinishedMessageBody,
   RequestErrorMessage,
   RequestErrorMessageBody,
+  CancelledMessage,
+  CancelledMessageBody,
   PageLoadedMessage,
   PageLoadedMessageBody,
   CancelSnifferRequestMessage,
   CancelSnifferRequestMessageBody,
+  SnifferRequestId,
+  HeadersWire,
 }

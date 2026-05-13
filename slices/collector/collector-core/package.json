@@ -1,0 +1,86 @@
+{
+  "name": "collector-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Integration layer for the collector slice: CollectorBridge wire contract, CollectorBridgeMessageHandler dispatcher, livestore bindings for the remotes table, HTTP API definition + handlers, and the registry that statically imports each concrete `*-client-collector` and assembles their configs into a closed discriminated union. Pure-logic model primitives live in `collector-fundamentals`; concrete clients (e.g. `fhir-r4-client-collector`) depend on `collector-fundamentals` only.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/collector/collector-core"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./registry": {
+      "source": "./src/registry.ts",
+      "default": "./dist/registry.js"
+    },
+    "./clients": {
+      "source": "./src/clients/index.ts",
+      "default": "./dist/clients/index.js"
+    },
+    "./contexts": {
+      "source": "./src/contexts/index.ts",
+      "default": "./dist/contexts/index.js"
+    },
+    "./http-api-definition": {
+      "source": "./src/http-api-definition/index.ts",
+      "default": "./dist/http-api-definition/index.js"
+    },
+    "./http-api-implementation": {
+      "source": "./src/http-api-implementation/index.ts",
+      "default": "./dist/http-api-implementation/index.js"
+    },
+    "./livestore": {
+      "source": "./src/livestore/index.ts",
+      "default": "./dist/livestore/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@fast-check/vitest": "catalog:",
+    "@livestore/common": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "@livestore/utils": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "browser-sniffer-core": "workspace:*",
+    "collector-fundamentals": "workspace:*",
+    "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "fast-check": "catalog:",
+    "fhir-r4-client-collector": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "@livestore/common": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "@livestore/utils": "catalog:",
+    "browser-sniffer-core": "workspace:*",
+    "collector-fundamentals": "workspace:*",
+    "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "fhir-r4-client-collector": "workspace:*",
+    "kitchen-sink": "workspace:*"
+  }
+}

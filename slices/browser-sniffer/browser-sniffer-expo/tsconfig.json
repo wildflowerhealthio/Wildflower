@@ -17,7 +17,7 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "types": []
+    "types": ["jest"]
   },
   "include": ["src"]
 }

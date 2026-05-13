@@ -57,6 +57,9 @@ catalogs:
     '@effect/typeclass':
       specifier: 0.40.0
       version: 0.40.0
+    '@effect/vitest':
+      specifier: 0.29.0
+      version: 0.29.0
     '@expo/dom-webview':
       specifier: ~55.0.5
       version: 55.0.5
@@ -72,6 +75,9 @@ catalogs:
     '@fast-check/jest':
       specifier: ^2.2.0
       version: 2.2.0
+    '@fast-check/vitest':
+      specifier: ^0.3.0
+      version: 0.3.0
     '@livestore/adapter-expo':
       specifier: 0.4.0-dev.23
       version: 0.4.0-dev.23
@@ -1214,6 +1220,21 @@ importers:
 
   slices/browser-sniffer/browser-sniffer-expo:
     devDependencies:
+      '@babel/core':
+        specifier: 'catalog:'
+        version: 7.29.0
+      '@babel/plugin-syntax-import-attributes':
+        specifier: 'catalog:'
+        version: 7.28.6(@babel/core@7.29.0)
+      '@babel/runtime':
+        specifier: 'catalog:'
+        version: 7.29.2
+      '@testing-library/react-native':
+        specifier: 'catalog:'
+        version: 13.3.3(jest@29.7.0(@types/node@24.12.2))(react-native@0.83.6(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react-test-renderer@19.2.0(react@19.2.0))(react@19.2.0)
+      '@types/jest':
+        specifier: 'catalog:'
+        version: 29.5.14
       '@types/node':
         specifier: ^24
         version: 24.12.2
@@ -1223,6 +1244,9 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260429.1
+      babel-preset-expo:
+        specifier: 'catalog:'
+        version: 55.0.18(@babel/core@7.29.0)(@babel/runtime@7.29.2)(expo@55.0.18)(react-refresh@0.18.0)
       browser-sniffer-core:
         specifier: workspace:*
         version: link:../browser-sniffer-core
@@ -1238,6 +1262,12 @@ importers:
       expo:
         specifier: 'catalog:'
         version: 55.0.18(@babel/core@7.29.0)(@expo/dom-webview@55.0.5)(@expo/metro-runtime@55.0.10)(expo-router@55.0.13)(react-dom@19.2.4(react@19.2.0))(react-native-webview@13.16.0(react-native@0.83.6(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0))(react-native-worklets@0.7.4(@babel/core@7.29.0)(react-native@0.83.6(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0))(react-native@0.83.6(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
+      jest:
+        specifier: 'catalog:'
+        version: 29.7.0(@types/node@24.12.2)
+      jest-expo:
+        specifier: 'catalog:'
+        version: 55.0.16(@babel/core@7.29.0)(expo@55.0.18)(jest@29.7.0(@types/node@24.12.2))(react-native@0.83.6(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
       react:
         specifier: 'catalog:'
         version: 19.2.0
@@ -1271,6 +1301,141 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.1
+      jsdom:
+        specifier: 'catalog:'
+        version: 26.1.0
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.1.20(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(sass@1.99.0)(terser@5.46.1)(typescript@5.9.3)(vite@7.2.4(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3))(yaml@2.8.3)
+
+  slices/collector/collector-core:
+    devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.96.1(effect@3.21.2)
+      '@effect/vitest':
+        specifier: 'catalog:'
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3))
+      '@fast-check/vitest':
+        specifier: 'catalog:'
+        version: 0.3.0(vitest@3.2.4(@types/debug@4.1.13)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3))
+      '@livestore/common':
+        specifier: 'catalog:'
+        version: 0.4.0-dev.23(5afe90d33176503082dbe54cf7491504)
+      '@livestore/livestore':
+        specifier: 'catalog:'
+        version: 0.4.0-dev.23(5afe90d33176503082dbe54cf7491504)
+      '@livestore/peer-deps':
+        specifier: 'catalog:'
+        version: 0.4.0-dev.23(@effect/workflow@0.15.2(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(@opentelemetry/sdk-logs@0.214.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.6.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.7.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.7.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3))
+      '@livestore/utils':
+        specifier: 'catalog:'
+        version: 0.4.0-dev.23(5afe90d33176503082dbe54cf7491504)
+      '@types/node':
+        specifier: ^24
+        version: 24.12.2
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260429.1
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../browser-sniffer/browser-sniffer-core
+      collector-fundamentals:
+        specifier: workspace:*
+        version: link:../collector-fundamentals
+      effect:
+        specifier: 'catalog:'
+        version: 3.21.2
+      effect-messaging-core:
+        specifier: workspace:*
+        version: link:../../../global/effect-messaging/effect-messaging-core
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.1
+      fhir-r4-client-collector:
+        specifier: workspace:*
+        version: link:../fhir-r4-client-collector
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.1.20(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(sass@1.99.0)(terser@5.46.1)(typescript@5.9.3)(vite@7.2.4(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3))(yaml@2.8.3)
+
+  slices/collector/collector-fundamentals:
+    devDependencies:
+      '@effect/vitest':
+        specifier: 'catalog:'
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3))
+      '@fast-check/vitest':
+        specifier: 'catalog:'
+        version: 0.3.0(vitest@3.2.4(@types/debug@4.1.13)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3))
+      '@types/node':
+        specifier: ^24
+        version: 24.12.2
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260429.1
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../browser-sniffer/browser-sniffer-core
+      effect:
+        specifier: 'catalog:'
+        version: 3.21.2
+      effect-messaging-core:
+        specifier: workspace:*
+        version: link:../../../global/effect-messaging/effect-messaging-core
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.1.20(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(sass@1.99.0)(terser@5.46.1)(typescript@5.9.3)(vite@7.2.4(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3))(yaml@2.8.3)
+
+  slices/collector/fhir-r4-client-collector:
+    devDependencies:
+      '@effect/vitest':
+        specifier: 'catalog:'
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3))
+      '@fast-check/vitest':
+        specifier: 'catalog:'
+        version: 0.3.0(vitest@3.2.4(@types/debug@4.1.13)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3))
+      '@types/node':
+        specifier: ^24
+        version: 24.12.2
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260429.1
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../browser-sniffer/browser-sniffer-core
+      collector-fundamentals:
+        specifier: workspace:*
+        version: link:../collector-fundamentals
+      effect:
+        specifier: 'catalog:'
+        version: 3.21.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.1
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../emr/fhir-r4
       jsdom:
         specifier: 'catalog:'
         version: 26.1.0
@@ -3144,6 +3309,11 @@ packages:
         optional: true
       '@jest/expect':
         optional: true
+
+  '@fast-check/vitest@0.3.0':
+    resolution: {integrity: sha512-mXxAu7DJtzwSUeOMecZibq/403b8uX1/dWWXXCBgb+j9ERWuN9Hvr6usId+9ivdQ+tJl8H6o+CMv71BmjaENRQ==}
+    peerDependencies:
+      vitest: ^1 || ^2 || ^3 || ^4
 
   '@fastify/otel@0.18.0':
     resolution: {integrity: sha512-3TASCATfw+ctICSb4ymrv7iCm0qJ0N9CarB+CZ7zIJ7KqNbwI5JjyDL1/sxoC0ccTO1Zyd1iQ+oqncPg5FJXaA==}
@@ -11658,6 +11828,11 @@ snapshots:
       fast-check: 3.23.1
     optionalDependencies:
       '@jest/expect': 30.3.0
+
+  '@fast-check/vitest@0.3.0(vitest@3.2.4(@types/debug@4.1.13)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3))':
+    dependencies:
+      fast-check: 3.23.1
+      vitest: 3.2.4(@types/debug@4.1.13)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(less@4.6.4)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.46.1)(yaml@2.8.3)
 
   '@fastify/otel@0.18.0(@opentelemetry/api@1.9.0)':
     dependencies:

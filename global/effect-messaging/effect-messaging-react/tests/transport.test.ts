@@ -460,7 +460,17 @@ describe('BridgeTransport (Web) — type assertions (compile-only)', () => {
         })
         // @ts-expect-error — `Bogus` is not in NavigationBridge.Web outbound.
         yield* transport.sendMessage({ _tag: 'Bogus' })
-      }).pipe(Effect.scoped)
+      }).pipe(
+        LoggingLayerTest.expectToLog((logs) => {
+          expect(logs).toEqual([
+            {
+              level: 'WARN',
+              message: '[effect-messaging] sendMessage: no bridge owns tag "Bogus"; dropping',
+            },
+          ])
+        }),
+        Effect.scoped
+      )
     )
   })
 })
@@ -635,7 +645,12 @@ test('property: receive path survives arbitrary string inputs', async () => {
           })
           for (const raw of inputs) dispatchPostMessage(raw)
           yield* transport.flushed
-        }).pipe(Effect.scoped)
+        }).pipe(
+          LoggingLayerTest.expectToLog((_logs) => {
+            // consume the logs
+          }),
+          Effect.scoped
+        )
       )
     }),
     { numRuns: 25 }

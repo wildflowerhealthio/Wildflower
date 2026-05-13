@@ -1,0 +1,75 @@
+import { Effect } from 'effect'
+import fc from 'fast-check'
+import { utilityExpectations } from 'kitchen-sink/test'
+import { describe, expect, it } from 'vite-plus/test'
+
+import { SimpleEntity } from '../test-helpers.ts'
+import { RemoteResponse } from './response.ts'
+
+const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
+
+const encoder = new TextEncoder()
+
+const makeResponse = (body: string): RemoteResponse => {
+  const r = new RemoteResponse('https://example.com/resource/id', 200, 'OK', [
+    ['content-type', 'text'],
+  ])
+  r.appendChunk(encoder.encode(body))
+  return r
+}
+
+/**
+ * `parse` now returns an `Effect<Parsed, ParseError>` (was `Either`).
+ * The tests run it via `Effect.runSync(Effect.either(...))` so the
+ * existing `expectRight/LeftToEqual` helpers — keyed on the
+ * `Either` tag — still apply.
+ */
+describe('EntityDefinition.make', () => {
+  it('parses valid JSON into resources and links', () => {
+    expectRightToEqual(
+      Effect.runSync(
+        Effect.either(SimpleEntity.parse(makeResponse(JSON.stringify({ name: 'Alice', age: 30 }))))
+      ),
+      {
+        resources: [{ name: 'Alice', age: 30 }],
+        links: [{ _tag: 'Open', href: '/people/Alice' }],
+      }
+    )
+  })
+
+  it('fails with ParseError for malformed JSON', () => {
+    expectLeftToEqual(
+      Effect.runSync(Effect.either(SimpleEntity.parse(makeResponse('{ not valid json }')))),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+
+  it('fails with ParseError when JSON does not match the schema', () => {
+    expectLeftToEqual(
+      Effect.runSync(
+        Effect.either(
+          SimpleEntity.parse(makeResponse(JSON.stringify({ name: 'Alice', age: 'not-a-number' })))
+        )
+      ),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+
+  it('fails with ParseError for JSON with missing required fields', () => {
+    expectLeftToEqual(
+      Effect.runSync(
+        Effect.either(SimpleEntity.parse(makeResponse(JSON.stringify({ name: 'Alice' }))))
+      ),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+
+  it('never throws on arbitrary JSON strings', () => {
+    fc.assert(
+      fc.property(fc.json(), (json) => {
+        const result = Effect.runSync(Effect.either(SimpleEntity.parse(makeResponse(json))))
+        expect(['Right', 'Left']).toContain(result._tag)
+      })
+    )
+  })
+})

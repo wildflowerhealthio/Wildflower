@@ -3,6 +3,7 @@
 
 import type {
   CancelSnifferRequestMessageBody,
+  CancelledMessageBody,
   LogMessageBody,
   PageLoadedMessageBody,
   RequestErrorMessageBody,
@@ -29,18 +30,23 @@ import type { Schema } from 'effect'
  *     side's `BridgeTransport` (resolves the send-gating `Deferred` so
  *     Host→Web messages can flow).
  *   - Posts `Log`, `ResponseStart`, `ResponseData`, `ResponseFinished`,
- *     `RequestError`, `PageLoaded` — see `browser-sniffer-core/messages`
- *     for the schemas.
+ *     `RequestError`, `Cancelled`, `PageLoaded` — see
+ *     `browser-sniffer-core/messages` for the schemas.
  *   - Listens for `CancelSnifferRequest` Host→Web messages on
- *     `window`'s `message` event and removes the matching id from the
- *     active-request set. Decoded by hand because the bridge's runtime
- *     schema machinery cannot survive `installSniffer.toString()`; the
- *     {@link SnifferInboundMessage} type keeps the field names honest.
+ *     `window`'s `message` event. The handler tightens against confused
+ *     deputies by only accepting events whose `source` is `null`
+ *     (RN-WebView's injection path); page-side scripts dispatching
+ *     synthetic `message` events with a non-null `source` are ignored.
  *
  * Idempotent: a single `Symbol.for('browser-sniffer:state')` slot on
  * `window` stashes the captured native references and tracker state.
  * Re-injecting on the same page finds the slot and exits early after
- * the (harmless) repeat `__Ready`. Test coverage in
+ * the (harmless) repeat `__Ready`. **Caveat**: if a host re-injects a
+ * *newer version* of this script (host app upgraded mid-session, etc.)
+ * the early-return uses the stale state and the new logic never
+ * installs. The slot carries no version tag; v1 deliberately accepts
+ * this limitation. Tracking: re-injection-with-upgrade is out of scope
+ * for the collector-stack rollout. Test coverage in
  * `install-sniffer.test.ts`.
  */
 
@@ -51,6 +57,7 @@ type SnifferOutboundMessage =
   | Schema.Schema.Encoded<typeof ResponseDataMessageBody>
   | Schema.Schema.Encoded<typeof ResponseFinishedMessageBody>
   | Schema.Schema.Encoded<typeof RequestErrorMessageBody>
+  | Schema.Schema.Encoded<typeof CancelledMessageBody>
   | Schema.Schema.Encoded<typeof PageLoadedMessageBody>
   | { readonly _tag: '__Ready' }
 
@@ -125,6 +132,12 @@ const installSniffer = function (): void {
   // correlation — no cryptographic guarantees are needed.
   const makeRequestId = (): string => (Math.random() + 1).toString(36).slice(2)
 
+  /**
+   * Encode bytes from any input into a base64 string. The
+   * `ArrayBufferView` branch preserves `byteOffset` / `byteLength` so
+   * a sliced view (`u8.subarray(4, 12)`, a `DataView`, …) encodes
+   * exactly the view's range — not the entire backing buffer.
+   */
   const toBase64 = (input: string | ArrayBuffer | ArrayBufferView): string => {
     if (typeof input === 'string') {
       return btoa(
@@ -137,9 +150,33 @@ const installSniffer = function (): void {
     } else if (input instanceof ArrayBuffer) {
       view = new Uint8Array(input)
     } else {
-      view = new Uint8Array(input.buffer)
+      view = new Uint8Array(input.buffer, input.byteOffset, input.byteLength)
     }
     return btoa(Array.from(view, (b) => String.fromCharCode(b)).join(''))
+  }
+
+  /**
+   * Lossless extraction of headers as ordered `(name, value)` pairs.
+   * `Headers.entries()` may collapse repeated headers (notably
+   * `Set-Cookie`) under spec-legacy comma joining; when
+   * `Headers.getSetCookie()` is available we use it to recover the
+   * per-cookie set.
+   */
+  const headersToWire = (headers: Headers): [string, string][] => {
+    const entries = Array.from(headers.entries(), ([name, value]): [string, string] => [
+      name.toLowerCase(),
+      value,
+    ])
+    const getSetCookie = (headers as Headers & { getSetCookie?: () => string[] }).getSetCookie
+    if (typeof getSetCookie === 'function') {
+      const cookies = getSetCookie.call(headers)
+      if (cookies.length > 0) {
+        const withoutSetCookie = entries.filter(([name]) => name !== 'set-cookie')
+        for (const cookie of cookies) withoutSetCookie.push(['set-cookie', cookie])
+        return withoutSetCookie
+      }
+    }
+    return entries
   }
 
   // Track in-progress request IDs so they can be cancelled.
@@ -149,9 +186,22 @@ const installSniffer = function (): void {
   interface XhrState {
     id: string
     url: string
+    /** Number of UTF-8 bytes already posted as ResponseData chunks. */
     sentBytes: number
   }
   const xhrState = new WeakMap<XMLHttpRequest, XhrState>()
+
+  // Single shared encoder; the closure preserves it across calls.
+  const utf8 = new TextEncoder()
+
+  // One-shot Log emitter so we don't spam for repeated unsupported
+  // observations (e.g., XHR `blob` / `document` response types).
+  const onceLogged = new Set<string>()
+  const logOnce = (key: string, message: string): void => {
+    if (onceLogged.has(key)) return
+    onceLogged.add(key)
+    post({ _tag: 'Log', log: message })
+  }
 
   // Fetch shim — capture the native into a const so the closure has a
   // typed, definitely-defined reference (no `!` later).
@@ -179,6 +229,12 @@ const installSniffer = function (): void {
         response = await nativeFetch(request, init)
       }
     } catch (err) {
+      // Pre-response throw (DNS failure, TLS error, AbortSignal, …).
+      // Emit Log → synthetic ResponseStart → RequestError so the host
+      // sees the full Start→terminal pair (host-side `Cancelled` /
+      // `RequestError` handlers assume a prior `ResponseStart`).
+      // We re-throw so the caller's catch still fires; the synthetic
+      // pair is purely the wire-side observation.
       let errorUrl: string
       if (typeof request === 'string') {
         errorUrl = request
@@ -188,6 +244,17 @@ const installSniffer = function (): void {
         errorUrl = request.url
       }
       const message = err instanceof Error ? err.message : String(err)
+      post({ _tag: 'Log', log: `fetch threw before response: ${message}` })
+      activeRequests.add(requestId)
+      post({
+        _tag: 'ResponseStart',
+        id: requestId,
+        url: errorUrl,
+        status: 0,
+        statusText: '',
+        headers: [],
+      })
+      activeRequests.delete(requestId)
       post({ _tag: 'RequestError', id: requestId, url: errorUrl, message })
       throw err
     }
@@ -200,8 +267,16 @@ const installSniffer = function (): void {
       url,
       status: response.status,
       statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries()),
+      headers: headersToWire(response.headers),
     })
+
+    // Pin the response identity surface so re-wrapping (below) doesn't
+    // silently drop `type` / `url` / `redirected` — code that branches
+    // on `response.type === 'opaque'` or reads `response.url` would
+    // otherwise see the wrapping defaults.
+    const responseType = response.type
+    const responseUrl = response.url
+    const responseRedirected = response.redirected
 
     if (response.body !== null) {
       const ts = new TransformStream<Uint8Array, Uint8Array>({
@@ -219,11 +294,22 @@ const installSniffer = function (): void {
           post({ _tag: 'ResponseFinished', id: requestId })
         },
       })
-      response = new Response(response.body.pipeThrough(ts), {
+      const wrapped = new Response(response.body.pipeThrough(ts), {
         status: response.status,
         statusText: response.statusText,
         headers: response.headers,
       })
+      // Restore the lost-on-wrap properties via property descriptors —
+      // `new Response(...)` initialises these to `'default'`, `''`,
+      // `false`. Use `defineProperty` because they're read-only own
+      // properties on the spec-compliant Response.
+      Object.defineProperty(wrapped, 'type', { value: responseType, configurable: true })
+      Object.defineProperty(wrapped, 'url', { value: responseUrl, configurable: true })
+      Object.defineProperty(wrapped, 'redirected', {
+        value: responseRedirected,
+        configurable: true,
+      })
+      response = wrapped
     } else {
       activeRequests.delete(requestId)
       post({ _tag: 'ResponseFinished', id: requestId })
@@ -268,19 +354,17 @@ const installSniffer = function (): void {
     const ensureStartSent = (xhr: XMLHttpRequest): void => {
       if (startSent) return
       startSent = true
-      let headers: Record<string, string> = {}
+      let headers: [string, string][] = []
       if (typeof xhr.getAllResponseHeaders === 'function') {
         const rawHeaders = xhr.getAllResponseHeaders()
-        headers = Object.fromEntries(
-          rawHeaders
-            .trim()
-            .split(/\r?\n/)
-            .filter(Boolean)
-            .map((line) => {
-              const idx = line.indexOf(':')
-              return [line.slice(0, idx).trim().toLowerCase(), line.slice(idx + 1).trim()]
-            })
-        )
+        headers = rawHeaders
+          .trim()
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .map((line): [string, string] => {
+            const idx = line.indexOf(':')
+            return [line.slice(0, idx).trim().toLowerCase(), line.slice(idx + 1).trim()]
+          })
       }
       post({
         _tag: 'ResponseStart',
@@ -292,15 +376,56 @@ const installSniffer = function (): void {
       })
     }
 
-    // Flush any text-mode responseText not yet sent. Shared by progress + load
-    // handlers; without the load-side call, the tail of the response after the
-    // last `progress` event would be lost.
+    /**
+     * Flush any not-yet-sent text-mode payload. `sentBytes` is a UTF-8
+     * byte count (not a character index) so chunks across non-BMP code
+     * points (surrogate pairs) stay byte-correct on the host side.
+     */
     const flushTextChunk = (xhr: XMLHttpRequest): void => {
       if (xhr.responseType !== '' && xhr.responseType !== 'text') return
-      const chunk = xhr.responseText.slice(state.sentBytes)
-      if (chunk === '') return
-      post({ _tag: 'ResponseData', id: requestId, data: toBase64(chunk) })
-      state.sentBytes = xhr.responseText.length
+      const fullBytes = utf8.encode(xhr.responseText)
+      if (fullBytes.byteLength <= state.sentBytes) return
+      const chunkBytes = fullBytes.subarray(state.sentBytes)
+      post({ _tag: 'ResponseData', id: requestId, data: toBase64(chunkBytes) })
+      state.sentBytes = fullBytes.byteLength
+    }
+
+    /**
+     * Final-flush for non-text response types (`json`, `arraybuffer`).
+     * `xhr.response` is only well-defined after `load`, so this is
+     * called once from the `load` handler. `blob` and `document` are
+     * skipped with a one-shot Log (their bodies are async-only on
+     * `blob` and DOM-shaped on `document` — outside the v1 surface).
+     */
+    const flushFinalNonTextBody = (xhr: XMLHttpRequest): void => {
+      if (xhr.responseType === 'json') {
+        const json = JSON.stringify(xhr.response)
+        if (json === undefined) return
+        const bytes = utf8.encode(json)
+        if (bytes.byteLength === 0) return
+        post({ _tag: 'ResponseData', id: requestId, data: toBase64(bytes) })
+        return
+      }
+      if (xhr.responseType === 'arraybuffer') {
+        const buf: unknown = xhr.response
+        if (!(buf instanceof ArrayBuffer) || buf.byteLength === 0) return
+        post({ _tag: 'ResponseData', id: requestId, data: toBase64(buf) })
+        return
+      }
+      if (xhr.responseType === 'blob') {
+        logOnce(
+          'xhr-blob-unsupported',
+          'XHR responseType=blob captured but body is invisible to the sniffer (v1 limitation)'
+        )
+        return
+      }
+      if (xhr.responseType === 'document') {
+        logOnce(
+          'xhr-document-unsupported',
+          'XHR responseType=document captured but body is invisible to the sniffer (v1 limitation)'
+        )
+        return
+      }
     }
 
     this.addEventListener('progress', () => {
@@ -319,6 +444,7 @@ const installSniffer = function (): void {
         if (!activeRequests.has(requestId)) return
         ensureStartSent(this)
         flushTextChunk(this)
+        flushFinalNonTextBody(this)
         activeRequests.delete(requestId)
         post({ _tag: 'ResponseFinished', id: requestId })
       },
@@ -350,37 +476,64 @@ const installSniffer = function (): void {
     nativeXHRSend.call(this, body ?? null)
   } as XMLHttpRequest['send']
 
-  // Page content capture on window-level `load`. We post the HTML-
-  // serialized root element — `Element.outerHTML` is defined on every
-  // `Element` (not just `HTMLElement`), so XML-content documents (e.g.
-  // RSS) also serialize, just with HTML rules (void-element handling,
-  // attribute case). Out of scope: DOCTYPE / processing instructions /
-  // XML declarations.
+  // Page content capture on window-level `load`. `PageLoaded` is now
+  // just a notification (`url`, `pageContentId`); the DOM body streams
+  // through the standard `ResponseStart`/`ResponseData`/`ResponseFinished`
+  // triple. Chunking the body (vs. a single multi-MB `postMessage`) keeps
+  // us under RN-WebView's binder size limits on Android and the iOS
+  // truncation threshold.
   //
-  // For non-HTML payloads the WebView itself is the first responder —
-  // RN-WebView wraps `text/plain` in `<pre>`, embeds images via `<img>`,
-  // and refuses or synthesizes a host page for binary content. Our
-  // handler runs against that already-HTML DOM, never raw bytes; see
-  // `install-sniffer.test.ts` for the plain-text + binary-shaped cases.
-  // If a consumer ever needs strict XML serialization or the DOCTYPE,
-  // switch to `XMLSerializer.serializeToString(document)`.
+  // `Element.outerHTML` is defined on every `Element` (not just
+  // `HTMLElement`), so XML-content documents (e.g. RSS) also serialise,
+  // just with HTML rules. Out of scope: DOCTYPE / processing
+  // instructions / XML declarations.
+  const PAGE_CONTENT_CHUNK_BYTES = 65536
   const pageLoadHandler = (): void => {
+    const pageContentId = makeRequestId()
+    const content = document.documentElement.outerHTML
+    const bytes = utf8.encode(content)
+    post({ _tag: 'PageLoaded', url: win.location.href, pageContentId })
+    activeRequests.add(pageContentId)
     post({
-      _tag: 'PageLoaded',
+      _tag: 'ResponseStart',
+      id: pageContentId,
       url: win.location.href,
-      content: document.documentElement.outerHTML,
+      status: 200,
+      statusText: 'OK',
+      headers: [['content-type', 'text/html']],
     })
+    for (let offset = 0; offset < bytes.byteLength; offset += PAGE_CONTENT_CHUNK_BYTES) {
+      if (!activeRequests.has(pageContentId)) break
+      const slice = bytes.subarray(offset, offset + PAGE_CONTENT_CHUNK_BYTES)
+      post({ _tag: 'ResponseData', id: pageContentId, data: toBase64(slice) })
+    }
+    if (activeRequests.has(pageContentId)) {
+      activeRequests.delete(pageContentId)
+      post({ _tag: 'ResponseFinished', id: pageContentId })
+    }
   }
   win.addEventListener('load', pageLoadHandler)
 
   // Host→Web bridge messages arrive as `message` events on `window`
-  // (via `react-native-webview`'s `webViewRef.postMessage`). The
-  // bridge wire format is a JSON-stringified tagged struct; we parse
-  // by hand because the schema runtime can't survive
+  // (via `react-native-webview`'s `webViewRef.postMessage`). RN-WebView's
+  // host-side injection dispatches with `event.source === null`; any
+  // `message` event whose `source` is a `Window` or `MessagePort` is
+  // page-originated (iframe, opener, in-page script) and must be
+  // rejected — otherwise any third-party script on the page can
+  // `postMessage({_tag:'CancelSnifferRequest', id})` and silently
+  // suppress sniffer output for arbitrary ids.
+  //
+  // The bridge wire format is a JSON-stringified tagged struct; we
+  // parse by hand because the schema runtime can't survive
   // `installSniffer.toString()`. The `SnifferInboundMessage` type
-  // keeps the field names honest at compile time; we still reject
+  // keeps field names honest at compile time; we still reject
   // malformed payloads at runtime.
+  //
+  // On a mid-stream cancel we emit `Cancelled` as the terminal
+  // observation so the host can release per-id state without
+  // waiting for a `ResponseFinished` that won't come.
   const hostMessageHandler = (event: MessageEvent): void => {
+    if (event.source !== null) return
     if (typeof event.data !== 'string') return
     let parsed: unknown
     try {
@@ -392,7 +545,11 @@ const installSniffer = function (): void {
     const msg = parsed as Partial<SnifferInboundMessage>
     if (msg._tag !== 'CancelSnifferRequest') return
     if (typeof msg.id !== 'string') return
+    const wasActive = activeRequests.has(msg.id)
     activeRequests.delete(msg.id)
+    if (wasActive) {
+      post({ _tag: 'Cancelled', id: msg.id })
+    }
   }
   win.addEventListener('message', hostMessageHandler)
 

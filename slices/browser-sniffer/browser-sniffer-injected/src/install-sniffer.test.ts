@@ -101,6 +101,30 @@ const validateMessages = (msgs: Message[]): void => {
 const fromBase64 = (b64: string): string =>
   new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)))
 
+/**
+ * Reassemble the UTF-8 text streamed under a synthetic id (the
+ * `pageContentId` from a `PageLoaded` message, typically). Decodes
+ * each `ResponseData.data` base64 chunk and concatenates the bytes
+ * before decoding once — straddling non-BMP code points stays
+ * byte-correct.
+ */
+const reassembleStream = (msgs: Message[], id: string): string => {
+  const chunks = msgs
+    .filter(
+      (m): m is Message & { id: string; data: string } =>
+        m._tag === 'ResponseData' && (m as { id?: unknown }).id === id
+    )
+    .map((m) => Uint8Array.from(atob(m.data), (c) => c.charCodeAt(0)))
+  const totalLength = chunks.reduce((acc, c) => acc + c.length, 0)
+  const combined = new Uint8Array(totalLength)
+  let offset = 0
+  for (const chunk of chunks) {
+    combined.set(chunk, offset)
+    offset += chunk.length
+  }
+  return new TextDecoder().decode(combined)
+}
+
 describe('handshake', () => {
   let getMessages: () => Message[]
 
@@ -198,13 +222,16 @@ describe('fetch shim', () => {
         const res = await window.fetch('https://test.example/headers')
         await res.text()
 
-        const expectedHeaders = Object.fromEntries(
-          Object.entries(headersInput).map(([k, v]) => [k.toLowerCase(), v])
-        )
+        const expectedTuples = Object.entries(headersInput).map(([k, v]): [string, string] => [
+          k.toLowerCase(),
+          v,
+        ])
         expect(withTag(getMs(), 'ResponseStart')).toEqual([
           expect.objectContaining({
             _tag: 'ResponseStart',
-            headers: expect.objectContaining(expectedHeaders),
+            headers: expect.arrayContaining(
+              expectedTuples.map((pair) => expect.arrayContaining(pair))
+            ),
           }),
         ])
         validateMessages(getMs())
@@ -716,23 +743,57 @@ describe('PageLoaded', () => {
 
   afterEach(resetShims)
 
-  test('should post PageLoaded with document content on window load event', () => {
+  /** Extract the single PageLoaded message and the page-content stream it points to. */
+  const pageLoadedAndContent = (msgs: Message[]): { loaded: Message; content: string } => {
+    const [loaded] = withTag(msgs, 'PageLoaded')
+    if (loaded === undefined) throw new Error('expected one PageLoaded message')
+    const pageContentId = loaded.pageContentId as string
+    return { loaded, content: reassembleStream(msgs, pageContentId) }
+  }
+
+  test('should post PageLoaded (notification only) with a pageContentId on window load event', () => {
     installSniffer()
     window.dispatchEvent(new Event('load'))
 
-    expect(withTag(getMessages(), 'PageLoaded')).toEqual([
+    const loaded = withTag(getMessages(), 'PageLoaded')
+    expect(loaded).toEqual([
       expect.objectContaining({
         _tag: 'PageLoaded',
         url: window.location.href,
-        content: expect.stringMatching(/.+/),
+        pageContentId: expect.stringMatching(/.+/),
       }),
     ])
+    // Body moved off PageLoaded onto the streamed Response* triple
+    // correlated by pageContentId.
+    expect(loaded[0]).not.toHaveProperty('content')
   })
 
-  test('should produce a schema-valid PageLoaded message', () => {
+  test('should stream the DOM content through the standard Response* triple', () => {
     installSniffer()
     window.dispatchEvent(new Event('load'))
-    validateMessages(withTag(getMessages(), 'PageLoaded'))
+
+    const msgs = getMessages()
+    const [loaded] = withTag(msgs, 'PageLoaded')
+    const pageContentId = loaded?.pageContentId as string
+    expect(withTag(msgs, 'ResponseStart')).toEqual([
+      expect.objectContaining({
+        _tag: 'ResponseStart',
+        id: pageContentId,
+        url: window.location.href,
+        status: 200,
+        statusText: 'OK',
+      }),
+    ])
+    expect(withTag(msgs, 'ResponseFinished')).toEqual([
+      expect.objectContaining({ _tag: 'ResponseFinished', id: pageContentId }),
+    ])
+    expect(reassembleStream(msgs, pageContentId)).toMatch(/.+/)
+  })
+
+  test('should produce schema-valid PageLoaded + Response* messages', () => {
+    installSniffer()
+    window.dispatchEvent(new Event('load'))
+    validateMessages(getMessages())
   })
 
   test('should not register the load listener twice on double injection', () => {
@@ -751,13 +812,8 @@ describe('PageLoaded', () => {
     // `&amp;` survives the HTML-escaped round-trip — `Element.outerHTML`
     // entity-encodes for HTML, so the host parses the captured content as
     // HTML without an extra unescape pass.
-    expect(withTag(getMessages(), 'PageLoaded')).toEqual([
-      expect.objectContaining({
-        content: expect.stringMatching(
-          /^<html[^>]*>.*<p id="x">hello &amp; goodbye<\/p>.*<\/html>$/s
-        ),
-      }),
-    ])
+    const { content } = pageLoadedAndContent(getMessages())
+    expect(content).toMatch(/^<html[^>]*>.*<p id="x">hello &amp; goodbye<\/p>.*<\/html>$/s)
   })
 
   test('should serialize XML-namespaced subtrees (SVG) via HTML rules', () => {
@@ -774,11 +830,8 @@ describe('PageLoaded', () => {
     // `<circle>` closes per HTML rules — either self-closing or paired —
     // and jsdom emits one of those two forms; we accept both so a jsdom
     // upgrade doesn't churn the test.
-    expect(withTag(getMessages(), 'PageLoaded')).toEqual([
-      expect.objectContaining({
-        content: expect.stringMatching(/<svg[^>]*>.*<circle[^>]*(?:\/>|><\/circle>).*<\/svg>/s),
-      }),
-    ])
+    const { content } = pageLoadedAndContent(getMessages())
+    expect(content).toMatch(/<svg[^>]*>.*<circle[^>]*(?:\/>|><\/circle>).*<\/svg>/s)
   })
 
   test('should capture WebView-wrapped HTML for text/plain documents', () => {
@@ -793,39 +846,33 @@ describe('PageLoaded', () => {
     installSniffer()
     window.dispatchEvent(new Event('load'))
 
-    expect(withTag(getMessages(), 'PageLoaded')).toEqual([
-      expect.objectContaining({
-        // `<` and `>` come back HTML-entity-encoded inside the <pre>;
-        // line breaks survive as literal `\n` in the serialized HTML.
-        content: expect.stringContaining('Line 1\nLine 2 with &lt;brackets&gt;\nLine 3'),
-      }),
-    ])
-    validateMessages(withTag(getMessages(), 'PageLoaded'))
+    // `<` and `>` come back HTML-entity-encoded inside the <pre>;
+    // line breaks survive as literal `\n` in the serialized HTML.
+    const { content } = pageLoadedAndContent(getMessages())
+    expect(content).toContain('Line 1\nLine 2 with &lt;brackets&gt;\nLine 3')
+    validateMessages(getMessages())
   })
 
-  test('should round-trip binary-shaped DOM text via the JSON wire', () => {
+  test('should round-trip binary-shaped DOM text via the streamed wire', () => {
     // The injected sniffer never sees raw bytes — a `Content-Type:
     // application/octet-stream` URL fails to load (no `load` event) or is
     // wrapped by the WebView into an `<img>`/`<embed>` HTML representation.
     // *If* something pathological put raw bytes into the DOM text (e.g.,
-    // `\x00\x01…\xff`), the bytes survive `outerHTML` → `JSON.stringify`
-    // round-trip as UTF-16 code units and the resulting `content` remains
-    // schema-valid (the schema is `Schema.String`, accepts any string).
+    // `\x00\x01…\xff`), the bytes survive `outerHTML` → UTF-8 → base64 →
+    // host-side reassembly via `ResponseData` chunks. The reassembled
+    // text should preserve high-byte characters.
     const allBytes = Array.from({ length: 256 }, (_, i) => String.fromCharCode(i)).join('')
     document.body.textContent = allBytes
     installSniffer()
     window.dispatchEvent(new Event('load'))
 
-    const loaded = withTag(getMessages(), 'PageLoaded')
-    expect(loaded).toEqual([
-      expect.objectContaining({
-        // Bytes that have HTML-significant meaning (`<`, `>`, `&`, `\xa0` →
-        // `&nbsp;`) get entity-encoded; everything else passes through.
-        // We assert one specific high-byte value survives — the `\xff`.
-        content: expect.stringContaining('\xff'),
-      }),
-    ])
-    validateMessages(loaded)
+    const msgs = getMessages()
+    const { content } = pageLoadedAndContent(msgs)
+    // Bytes that have HTML-significant meaning (`<`, `>`, `&`, `\xa0` →
+    // `&nbsp;`) get entity-encoded; everything else passes through. Assert
+    // one specific high-byte value survives — the `\xff`.
+    expect(content).toContain('\xff')
+    validateMessages(msgs)
   })
 })
 
