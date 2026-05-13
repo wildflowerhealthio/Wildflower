@@ -43,6 +43,7 @@
     "expo-web-browser": "catalog:",
     "jest": "catalog:",
     "jest-expo": "catalog:",
+    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-webview": "catalog:",

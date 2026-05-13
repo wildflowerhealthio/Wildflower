@@ -5,7 +5,11 @@ import * as React from 'react'
 import type { ReactElement } from 'react'
 import { Text } from 'react-native'
 
-import type { SnifferHandlers } from './BrowserSnifferWebView.tsx'
+import {
+  BrowserSnifferWebView,
+  type BrowserSnifferWebViewHandle,
+  type SnifferHandlers,
+} from './BrowserSnifferWebView.tsx'
 
 /** No-op handlers satisfying the full `HandlersFor<...>` shape so tests don't need to enumerate every tag. */
 const noopHandlers: SnifferHandlers = {
@@ -120,11 +124,6 @@ jest.mock('effect-messaging-core', () => {
     MessageHandler: {},
   }
 })
-
-import {
-  BrowserSnifferWebView,
-  type BrowserSnifferWebViewHandle,
-} from './BrowserSnifferWebView.tsx'
 
 beforeEach(() => {
   mockLastWebViewProps = null

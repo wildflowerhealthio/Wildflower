@@ -1,3 +1,4 @@
+// oxlint-disable import/group-exports -- Exports are already namespaced
 import { Effect } from 'effect'
 import { Origin } from 'navigation-core'
 

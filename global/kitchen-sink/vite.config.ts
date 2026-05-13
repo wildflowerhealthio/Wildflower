@@ -16,6 +16,11 @@ export default defineConfig({
     // condition can sit alongside the default dist entry. Letting tsdown
     // regenerate it would overwrite that.
     exports: false,
+    // `platform: 'neutral'` makes vp pack emit `.js` (not `.mjs`), which matters
+    // for Expo consumers: jest-expo's babel transform regex matches `.js` but
+    // not `.mjs`, so `.mjs` dist files break Jest in expo packages that import
+    // from kitchen-sink.
+    platform: 'neutral',
     entry: {
       index: 'src/index.ts',
       'crypto-random': 'src/crypto-random/index.ts',

@@ -6,7 +6,7 @@ import { endsWithAlphanumericCharacter, endsWithDigit, isDigit } from './string-
 describe('isDigit', () => {
   it('returns true iff the input matches /^[0-9]$/', () => {
     fc.assert(
-      fc.property(fc.oneof(fc.string(), fc.char()), (s) => {
+      fc.property(fc.oneof(fc.string(), fc.string({ minLength: 1, maxLength: 1 })), (s) => {
         const expected = /^[0-9]$/.test(s)
         expect(isDigit(s)).toBe(expected)
       })
