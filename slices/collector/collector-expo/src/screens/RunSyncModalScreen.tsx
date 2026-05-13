@@ -5,22 +5,52 @@ import {
 } from 'browser-sniffer-expo'
 import type { WebViewSource } from 'collector-fundamentals/model'
 import { Effect } from 'effect'
-import type { ExpoTransport } from 'effect-messaging-expo'
 import { Spacing, ThemedView } from 'expo-tundraish'
-import { useImperativeHandle, useMemo, useRef, useState, type JSX, type Ref } from 'react'
+import {
+  useCallback,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type Ref,
+} from 'react'
 import { StyleSheet } from 'react-native'
 
-import type { Bridges } from '../components/CollectorWebView.tsx'
+/**
+ * Subset of sniffer webToHost tags that are pure passthroughs to the
+ * embedded SPA's `CollectorBridge`. Their schemas match verbatim
+ * (both bridges import the same definitions from `browser-sniffer-core`),
+ * so the host can forward the raw wire string straight through —
+ * no decode + re-encode round trip.
+ *
+ * Tags omitted from this set get typed handlers (e.g. `RequestError`
+ * still triggers the optional `onError` callback for app-side
+ * observability; `Log` is consumed locally).
+ */
+const PASSTHROUGH_TO_SPA: ReadonlySet<string> = new Set([
+  'ResponseStart',
+  'ResponseData',
+  'ResponseFinished',
+  'RequestError',
+  'Cancelled',
+  'PageLoaded',
+])
 
 /**
  * Imperative handle exposed via `ref`. The CollectorWebView's
  * `onOpen` / `onClick` callbacks are wired in the parent screen and
  * call into this handle so the active modal can advance its own
  * BrowserSnifferWebView in response to scripted navigation steps.
+ *
+ * `postRawSnifferMessage` is the host's bypass path for raw bridge
+ * payloads the SPA sends (`Click` / `CancelSnifferRequest`) — they
+ * forward to the sniffer page verbatim without re-encoding.
  */
 interface RunSyncModalScreenHandle {
   readonly navigate: (source: WebViewSource.Any) => void
   readonly click: (querySelector: string) => void
+  readonly postRawSnifferMessage: (rawWire: string) => void
 }
 
 interface RunSyncModalScreenProps {
@@ -33,18 +63,12 @@ interface RunSyncModalScreenProps {
    */
   readonly source: WebViewSource.Any
   /**
-   * The active CollectorWebView's `sendCollectorMessage`. Used to
-   * forward the six collector-relevant sniffer events
-   * (`ResponseStart` / `ResponseData` / `ResponseFinished` /
-   * `RequestError` / `Cancelled` / `PageLoaded`) back through
-   * CollectorBridge so the SPA's sync runner can parse them and close
-   * out in-flight slots.
-   *
-   * Wire-schema compatibility: both bridges import the same event
-   * schemas from `browser-sniffer-core`, so the forwarded message
-   * round-trips without re-encoding.
+   * Raw-forward sink into the embedded SPA's `CollectorBridge`. Every
+   * sniffer wire-message whose `_tag` is in {@link PASSTHROUGH_TO_SPA}
+   * is forwarded verbatim — no decode + re-encode in the host.
+   * Wire this to `CollectorWebViewHandle.postRawCollectorMessage`.
    */
-  readonly sendCollectorMessage: ExpoTransport<Bridges>['sendMessage']
+  readonly postRawCollectorMessage: (rawWire: string) => void
   /** Optional error sink for non-decode failures the bridge would otherwise log. */
   readonly onError?: (error: { id: string; url: string; message: string }) => void
   /** Imperative handle for the parent screen to drive scripted navigation. */
@@ -55,8 +79,9 @@ interface RunSyncModalScreenProps {
  * Native modal that hosts a `<BrowserSnifferWebView>` for an "Import
  * Now" flow. The CollectorWebView under the modal stays mounted; this
  * screen captures sniffer events from the page being scraped and
- * forwards them through the host's CollectorBridge transport so the
- * embedded SPA's sync runner sees them live.
+ * forwards them through `postRawCollectorMessage` into the embedded
+ * SPA's bridge — schemas match across bridges so the wire string
+ * goes through unchanged.
  *
  * The active `source` is held in component state so the SPA's
  * scripted navigation (an `Open` web→host message decoded by
@@ -65,10 +90,15 @@ interface RunSyncModalScreenProps {
  * on every navigation, so the browser-sniffer-injected script
  * re-installs idempotently on each new page (the state slot keyed by
  * `Symbol.for('browser-sniffer:state')` survives a fresh window).
+ *
+ * Typed `SnifferHandlers` are kept only for tags that need
+ * host-local observation — `RequestError` to fire the optional
+ * `onError` callback, `Log` to drop server-side log spam. The
+ * remaining tags ride the raw passthrough.
  */
 const RunSyncModalScreen = ({
   source: initialSource,
-  sendCollectorMessage,
+  postRawCollectorMessage,
   onError,
   handleRef,
 }: RunSyncModalScreenProps): JSX.Element => {
@@ -84,38 +114,54 @@ const RunSyncModalScreen = ({
       click: (querySelector: string): void => {
         snifferRef.current?.click(querySelector)
       },
+      postRawSnifferMessage: (rawWire: string): void => {
+        snifferRef.current?.postRaw(rawWire)
+      },
     }),
     []
   )
 
-  // Build the bridge handlers once per `sendCollectorMessage` identity.
-  // Each forward dispatches an Effect that the bridge transport drains.
+  // Typed handlers cover the host-local concerns only: `RequestError`
+  // surfaces to `onError`; `Log` is a deliberate drop; the rest are
+  // forwarded raw via `onRawMessage` below.
   const handlers = useMemo<SnifferHandlers>(
     () => ({
       Log: () => Effect.void,
-      ResponseStart: (event) => sendCollectorMessage(event),
-      ResponseData: (event) => sendCollectorMessage(event),
-      ResponseFinished: (event) => sendCollectorMessage(event),
+      ResponseStart: () => Effect.void,
+      ResponseData: () => Effect.void,
+      ResponseFinished: () => Effect.void,
       RequestError: (event) =>
-        // Forward the bridge message FIRST so a faulty `onError`
-        // callback never aborts the SPA-visible event. The callback
-        // runs after; its failures are logged through `Effect.logError`
-        // instead of bubbling up and tearing down the handler.
-        sendCollectorMessage(event).pipe(
-          Effect.andThen(
-            Effect.sync(() => {
-              onError?.(event)
-            }).pipe(
-              Effect.catchAllCause((cause) =>
-                Effect.logError('RunSyncModalScreen: onError callback failed', cause)
-              )
-            )
+        Effect.sync(() => {
+          onError?.(event)
+        }).pipe(
+          Effect.catchAllCause((cause) =>
+            Effect.logError('RunSyncModalScreen: onError callback failed', cause)
           )
         ),
-      Cancelled: (event) => sendCollectorMessage(event),
-      PageLoaded: (event) => sendCollectorMessage(event),
+      Cancelled: () => Effect.void,
+      PageLoaded: () => Effect.void,
     }),
-    [sendCollectorMessage, onError]
+    [onError]
+  )
+
+  // Raw forwarder: peek `_tag` from the JSON wire (cheap — single
+  // parse, no Schema decode), forward verbatim if it's a passthrough
+  // tag. Malformed payloads silently drop (the typed dispatch will
+  // also reject them).
+  const onRawMessage = useCallback(
+    (rawWire: string): void => {
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(rawWire)
+      } catch {
+        return
+      }
+      if (parsed === null || typeof parsed !== 'object') return
+      const tag = (parsed as { readonly _tag?: unknown })._tag
+      if (typeof tag !== 'string' || !PASSTHROUGH_TO_SPA.has(tag)) return
+      postRawCollectorMessage(rawWire)
+    },
+    [postRawCollectorMessage]
   )
 
   // `BrowserSnifferWebView`'s `source` prop mirrors the untagged
@@ -132,7 +178,12 @@ const RunSyncModalScreen = ({
 
   return (
     <ThemedView style={styles.container}>
-      <BrowserSnifferWebView ref={snifferRef} source={untaggedSource} handlers={handlers} />
+      <BrowserSnifferWebView
+        ref={snifferRef}
+        source={untaggedSource}
+        handlers={handlers}
+        onRawMessage={onRawMessage}
+      />
     </ThemedView>
   )
 }

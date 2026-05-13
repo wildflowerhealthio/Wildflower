@@ -54,6 +54,40 @@ type OutboundMessage =
   | typeof ClickMessage.Type
   | typeof SniffingCompleteMessage.Type
 
+/**
+ * Step-driver finite state machine. Each variant carries exactly the
+ * data needed for that state — no shared optional fields, no
+ * sentinels for "running but no timer yet".
+ *
+ * Transitions:
+ *   AwaitingPageLoaded(n)   ─PageLoaded→ TimerPending(n, fiber)
+ *   TimerPending(d, f)      ─PageLoaded→ TimerPending(d, fiber')   (f interrupted; fresh fiber)
+ *   TimerPending(d, _)      ─timer fires, d < N→ AwaitingPageLoaded(d + 1)
+ *   TimerPending(N, _)      ─timer fires, d ≡ N→ Done
+ *   Done                    ─PageLoaded→ Done (WARN-log)
+ *   any                     ─clear()→ AwaitingPageLoaded(0)
+ *   any                     ─cancelAllInFlight→ AwaitingPageLoaded(d) (d preserved)
+ *
+ * Atomicity is preserved by using `MutableRef.compareAndSet` /
+ * `MutableRef.getAndSet` / `MutableRef.getAndUpdate` everywhere a
+ * read-then-write would otherwise be torn by a concurrent
+ * transition. Identity is the `TimerPending` value's object
+ * reference: each `scheduleTimer` call mints a fresh frozen object
+ * that the timer's commit captures in closure, then `compareAndSet`s
+ * back. If any other transition (`PageLoaded` re-arm, `clear`,
+ * `cancelAllInFlight`) has swapped a different reference into the
+ * cell, the commit's CAS returns `false` and exits without
+ * overwriting the replacement.
+ */
+type StepState =
+  | { readonly _tag: 'AwaitingPageLoaded'; readonly nextIndex: number }
+  | {
+      readonly _tag: 'TimerPending'
+      readonly dispatchIndex: number
+      readonly fiber: Fiber.RuntimeFiber<void, never>
+    }
+  | { readonly _tag: 'Done' }
+
 interface CollectorBridgeMessageHandler<TResources> extends Service {
   readonly inProgressResponses: MutableHashMap.MutableHashMap<
     string,
@@ -100,59 +134,67 @@ const make = <TResources>({
   }) => void
 }): CollectorBridgeMessageHandler<TResources> => {
   const inProgressResponses = MutableHashMap.empty<string, InProgressResponse<TResources>>()
-
-  // Step-driver state. `stepFiber` holds the most-recent forked daemon
-  // so a re-arming PageLoaded can interrupt it; `currentLinkIndex` is
-  // the index of the *next* link to dispatch (sequence is exhausted
-  // when it equals `linkSequence.length`, at which point the next
-  // PageLoaded schedules `SniffingComplete`); `runState` flips to
-  // 'done' after `SniffingComplete` is sent so subsequent PageLoaded
-  // events are logged-and-dropped.
-  const stepFiber = MutableRef.make<Fiber.RuntimeFiber<void, never> | null>(null)
-  const currentLinkIndex = MutableRef.make(0)
-  const runState = MutableRef.make<'running' | 'done'>('running')
+  const stepState = MutableRef.make<StepState>({ _tag: 'AwaitingPageLoaded', nextIndex: 0 })
 
   /**
-   * Fire-and-forget interrupt of the pending step fiber, if any.
-   * Interrupting an already-completed fiber is a no-op. Used from
-   * synchronous teardown paths (`clear`) where we don't want to await
-   * the interrupt's completion.
+   * Schedule a fresh timer for `dispatchIndex`. The timer fiber:
+   *   1. Sleeps for `stepDelay`.
+   *   2. Inside an `Effect.uninterruptible` block: dispatches the
+   *      indexed message, then `compareAndSet`s `stepState` from its
+   *      own captured `TimerPending` reference to the post-dispatch
+   *      state.
+   *
+   * The CAS gives us optimistic atomicity for free: any other
+   * transition (`PageLoaded` re-arm, `clear`, `cancelAllInFlight`)
+   * writes a *different* reference into `stepState`, so the commit's
+   * `compareAndSet` returns `false` and exits without overwriting
+   * the replacement. The captured reference is the `TimerPending`
+   * object the same scheduling call publishes — bridged through a
+   * mutable closure cell because the fiber needs the reference of
+   * the state record it identifies, which can only be built after
+   * `forkDaemon` returns the fiber.
+   *
+   * Caller responsibility: interrupt any prior `TimerPending` fiber
+   * before invoking `scheduleTimer` — orphan fibers from skipped
+   * interrupts still die safely (their CAS fails) but waste a
+   * `stepDelay`-length sleep.
    */
-  const interruptStepFiber = (): void => {
-    const fiber = MutableRef.get(stepFiber)
-    if (fiber !== null) {
-      Effect.runFork(Fiber.interrupt(fiber))
-      MutableRef.set(stepFiber, null)
-    }
-  }
-
-  /**
-   * Compute the next step's payload from the current `currentLinkIndex`.
-   * Once the sequence is exhausted, the payload becomes
-   * `SniffingComplete` — the post-send transition flips `runState` to
-   * `'done'` so subsequent PageLoaded events warn-and-no-op.
-   */
-  const nextStepAction = (): Effect.Effect<void, never, never> => {
-    const i = MutableRef.get(currentLinkIndex)
-    if (i >= scrapingPlan.linkSequence.length) {
-      return Effect.gen(function* () {
-        yield* Effect.sleep(scrapingPlan.stepDelay)
-        yield* sendMessage({ _tag: 'SniffingComplete' })
-        MutableRef.set(runState, 'done')
-        MutableRef.set(stepFiber, null)
-      })
-    }
-    const link = scrapingPlan.linkSequence[i]
-    return Effect.gen(function* () {
-      yield* Effect.sleep(scrapingPlan.stepDelay)
-      // `Link.Open` / `Link.Click` are structurally identical to the
-      // `Open` / `Click` bridge messages (same `_tag`, same fields),
-      // so the link value is the wire payload — no translation step.
-      yield* sendMessage(link)
-      MutableRef.set(currentLinkIndex, i + 1)
-      MutableRef.set(stepFiber, null)
+  const scheduleTimer = (dispatchIndex: number): Effect.Effect<void, never, never> =>
+    Effect.gen(function* () {
+      // Closure cell: holds the `TimerPending` reference this fiber's
+      // commit will `compareAndSet` against. Filled in after fork.
+      const expectedRef: { value: StepState | null } = { value: null }
+      const fiber = yield* Effect.forkDaemon(
+        Effect.gen(function* () {
+          yield* Effect.sleep(scrapingPlan.stepDelay)
+          const expected = expectedRef.value
+          // Belt-and-braces: the cell is always set before sleep can
+          // resume (single-threaded JS — the post-fork lines run
+          // before the fiber's sleep yields again), but guard anyway.
+          if (expected === null) return
+          yield* Effect.uninterruptible(
+            Effect.gen(function* () {
+              if (dispatchIndex < scrapingPlan.linkSequence.length) {
+                // `Link.Open` / `Link.Click` are structurally identical
+                // to the `Open` / `Click` bridge messages — forward
+                // verbatim.
+                yield* sendMessage(scrapingPlan.linkSequence[dispatchIndex])
+                MutableRef.compareAndSet(stepState, expected, {
+                  _tag: 'AwaitingPageLoaded',
+                  nextIndex: dispatchIndex + 1,
+                })
+              } else {
+                yield* sendMessage({ _tag: 'SniffingComplete' })
+                MutableRef.compareAndSet(stepState, expected, { _tag: 'Done' })
+              }
+            })
+          )
+        })
+      )
+      const installed: StepState = { _tag: 'TimerPending', dispatchIndex, fiber }
+      expectedRef.value = installed
+      MutableRef.set(stepState, installed)
     })
-  }
 
   const ResponseStart: Service['ResponseStart'] = (event) => {
     const entity = scrapingPlan.entityDefinitions.find((e) => e.isFoundAt(event.url))
@@ -257,34 +299,68 @@ const make = <TResources>({
       })
     })
 
+  const warnAndDrop = (event: { readonly url: string }): Effect.Effect<void, never, never> =>
+    Effect.logWarning(
+      `CollectorBridgeMessageHandler.PageLoaded: handler is done; ignoring (url=${event.url})`
+    )
+
   const PageLoaded: Service['PageLoaded'] = (event) =>
     Effect.gen(function* () {
-      if (MutableRef.get(runState) === 'done') {
-        yield* Effect.logWarning(
-          `CollectorBridgeMessageHandler.PageLoaded: handler is done; ignoring (url=${event.url})`
-        )
+      // Atomic conditional swap: if a timer was pending, fold it back
+      // to `AwaitingPageLoaded(dispatchIndex)` so re-arm restarts the
+      // wait at the same index. `Done` / `AwaitingPageLoaded` stay
+      // as-is. Returns the *prior* state so we know whether there's a
+      // fiber to interrupt and what index to schedule.
+      const prior = MutableRef.getAndUpdate(
+        stepState,
+        (s): StepState =>
+          s._tag === 'TimerPending' ? { _tag: 'AwaitingPageLoaded', nextIndex: s.dispatchIndex } : s
+      )
+      if (prior._tag === 'Done') {
+        yield* warnAndDrop(event)
         return
       }
-      // Cancel any pending step timer — a fresh PageLoaded is the
-      // authoritative "page just settled" signal and resets the wait
-      // window for the *current* index (the daemon hasn't yet advanced
-      // `currentLinkIndex` if it was interrupted before sending).
-      const prior = MutableRef.get(stepFiber)
-      if (prior !== null) {
-        yield* Fiber.interrupt(prior)
-        MutableRef.set(stepFiber, null)
+      if (prior._tag === 'TimerPending') {
+        // Interrupt awaited. Effect.uninterruptible may defer the
+        // interrupt until the commit block exits, but the commit's
+        // `compareAndSet` against the now-stale `TimerPending`
+        // reference fails — the swap above replaced the cell — so
+        // no transition leaks past `clear`'s reset state.
+        yield* Fiber.interrupt(prior.fiber)
       }
-      // Daemon (not child) so the fiber survives this PageLoaded
-      // Effect's completion; the bridge dispatcher otherwise tears
-      // down child fibers on return.
-      const fiber = yield* Effect.forkDaemon(nextStepAction())
-      MutableRef.set(stepFiber, fiber)
+      // After the interrupt resolves, `stepState` is `AwaitingPageLoaded(d)`
+      // (set by the `getAndUpdate` above) unless a concurrent
+      // `PageLoaded` raced in between — in which case it's a new
+      // `TimerPending` we should interrupt before scheduling our own.
+      const current = MutableRef.get(stepState)
+      if (current._tag === 'Done') {
+        yield* warnAndDrop(event)
+        return
+      }
+      const dispatchIndex =
+        current._tag === 'AwaitingPageLoaded' ? current.nextIndex : current.dispatchIndex
+      if (current._tag === 'TimerPending') {
+        yield* Fiber.interrupt(current.fiber)
+      }
+      yield* scheduleTimer(dispatchIndex)
     })
 
   const clear = (): void => {
-    interruptStepFiber()
-    MutableRef.set(currentLinkIndex, 0)
-    MutableRef.set(runState, 'running')
+    // Atomic swap: pull the prior state, install the reset. Any
+    // in-flight timer commit's `compareAndSet` against its captured
+    // `TimerPending` reference fails because the cell now holds a
+    // different object — the reset state survives.
+    const prior = MutableRef.getAndSet(stepState, {
+      _tag: 'AwaitingPageLoaded',
+      nextIndex: 0,
+    } satisfies StepState)
+    if (prior._tag === 'TimerPending') {
+      // Fire-and-forget — `clear` is synchronous and we'd rather not
+      // hold a React unmount path waiting on fiber teardown. The
+      // dead fiber can't disturb the reset state thanks to the CAS
+      // guard inside its commit.
+      Effect.runFork(Fiber.interrupt(prior.fiber))
+    }
     for (const key of MutableHashMap.keys(inProgressResponses)) {
       MutableHashMap.remove(inProgressResponses, key)
     }
@@ -294,14 +370,19 @@ const make = <TResources>({
     send: (message: typeof CancelSnifferRequestMessage.Type) => Effect.Effect<void, never, never>
   ): Effect.Effect<void, never, never> =>
     Effect.gen(function* () {
-      // Interrupt the pending step timer first so a late `OpenLink`
-      // dispatch can't race the host's modal teardown. Then snapshot
-      // ids before iterating: `send` is effectful and we'd rather not
-      // iterate over a live mutation surface during sequential awaits.
-      const fiber = MutableRef.get(stepFiber)
-      if (fiber !== null) {
-        yield* Fiber.interrupt(fiber)
-        MutableRef.set(stepFiber, null)
+      // Atomic conditional swap: if `TimerPending`, fold to
+      // `AwaitingPageLoaded(d)` so a future `PageLoaded` would
+      // re-attempt the same step; if already `AwaitingPageLoaded` or
+      // `Done`, leave alone. Same CAS-friendly identity story as
+      // `clear` — any in-flight commit fails its `compareAndSet`
+      // against the now-stale reference.
+      const prior = MutableRef.getAndUpdate(
+        stepState,
+        (s): StepState =>
+          s._tag === 'TimerPending' ? { _tag: 'AwaitingPageLoaded', nextIndex: s.dispatchIndex } : s
+      )
+      if (prior._tag === 'TimerPending') {
+        yield* Fiber.interrupt(prior.fiber)
       }
       const ids = Array.from(MutableHashMap.keys(inProgressResponses))
       for (const id of ids) {

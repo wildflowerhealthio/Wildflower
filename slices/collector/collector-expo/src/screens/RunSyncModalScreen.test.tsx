@@ -1,33 +1,42 @@
-// oxlint-disable typescript-eslint/no-unsafe-type-assertion -- the
-// real `sendCollectorMessage` is `ExpoTransport<Bridges>['sendMessage']`,
-// a highly-generic structural function type; tests reduce it through an
-// `unknown` bridge cast so we don't have to reconstruct the full bridge
-// schema universe for every assertion.
 import { act, render } from '@testing-library/react-native'
 import { Effect } from 'effect'
-import type { Effect as EffectType } from 'effect'
 import * as React from 'react'
 import type { ReactElement } from 'react'
 
 import type { SnifferHandlers } from 'browser-sniffer-expo'
 
-// Capture the handlers and source `BrowserSnifferWebView` received so
-// the test can invoke handlers directly (no native runtime needed) and
-// assert the screen propagates `Open`-driven source changes.
+// Capture the props `BrowserSnifferWebView` received so the test can
+// invoke typed handlers directly (no native runtime needed), drive
+// `onRawMessage` to assert raw passthrough, and observe source
+// changes from scripted navigation.
 let mockLastSnifferHandlers: SnifferHandlers | null = null
 let mockLastSnifferSource: unknown = null
+let mockLastOnRawMessage: ((raw: string) => void) | null = null
+let mockSnifferPostRawCalls: string[] = []
 
 // Stub `browser-sniffer-expo` — the real module imports
-// `react-native-webview`, which fails outside a native runtime.
+// `react-native-webview`, which fails outside a native runtime. The
+// stubbed ref exposes a `postRaw` that pushes onto a shared array so
+// tests can assert the screen's handleRef-driven raw forwarder.
 jest.mock('browser-sniffer-expo', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
   return {
     BrowserSnifferWebView: ReactInner.forwardRef(function MockBrowserSnifferWebView(
-      props: { readonly handlers: SnifferHandlers; readonly source: unknown },
-      _ref: unknown
+      props: {
+        readonly handlers: SnifferHandlers
+        readonly source: unknown
+        readonly onRawMessage?: (raw: string) => void
+      },
+      ref: React.Ref<{ readonly postRaw: (raw: string) => void }>
     ): ReactElement {
       mockLastSnifferHandlers = props.handlers
       mockLastSnifferSource = props.source
+      mockLastOnRawMessage = props.onRawMessage ?? null
+      ReactInner.useImperativeHandle(ref, () => ({
+        postRaw: (raw: string): void => {
+          mockSnifferPostRawCalls.push(raw)
+        },
+      }))
       return ReactInner.createElement('MockBrowserSnifferWebView', props)
     }),
   }
@@ -44,141 +53,130 @@ jest.mock('expo-tundraish', () => {
   }
 })
 
-import {
-  RunSyncModalScreen,
-  type RunSyncModalScreenHandle,
-  type RunSyncModalScreenProps,
-} from './RunSyncModalScreen.tsx'
-
-/**
- * Mocked `sendCollectorMessage` shape. The real signature is the
- * structurally-rich `ExpoTransport<Bridges>['sendMessage']`; for the
- * purposes of these tests we just need a callable that records the
- * forwarded message and returns an Effect. The `unknown`-bridge cast
- * keeps `no-unsafe-type-assertion` quiet (the rule rejects `as never`
- * specifically, but tolerates `as unknown as T` for test scaffolding).
- */
-type SendCollectorMessage = RunSyncModalScreenProps['sendCollectorMessage']
-const buildSendCollectorMessage = (
-  push: (event: { readonly _tag: string }) => void
-): SendCollectorMessage => {
-  const send = (event: { readonly _tag: string }): EffectType.Effect<void> =>
-    Effect.sync(() => {
-      push(event)
-    })
-  return send as unknown as SendCollectorMessage
-}
+import { RunSyncModalScreen, type RunSyncModalScreenHandle } from './RunSyncModalScreen.tsx'
 
 beforeEach(() => {
   mockLastSnifferHandlers = null
   mockLastSnifferSource = null
+  mockLastOnRawMessage = null
+  mockSnifferPostRawCalls = []
 })
 
 describe('RunSyncModalScreen', () => {
-  describe('RequestError handler', () => {
-    it('forwards the event through sendCollectorMessage even if onError throws', async () => {
-      const sendCalls: Array<{ readonly _tag: string }> = []
-      const sendCollectorMessage = buildSendCollectorMessage((e) => sendCalls.push(e))
-      const onError = jest.fn((): void => {
-        throw new Error('boom from onError')
-      })
-
+  describe('raw passthrough to the SPA', () => {
+    it.each([
+      ['ResponseStart', { _tag: 'ResponseStart', id: 'r1', url: 'u', status: 200 }],
+      ['ResponseData', { _tag: 'ResponseData', id: 'r1', data: 'b64' }],
+      ['ResponseFinished', { _tag: 'ResponseFinished', id: 'r1' }],
+      ['RequestError', { _tag: 'RequestError', id: 'r1', url: 'u', message: 'm' }],
+      ['Cancelled', { _tag: 'Cancelled', id: 'r1' }],
+      ['PageLoaded', { _tag: 'PageLoaded', url: 'u', pageContentId: 'p' }],
+    ])('forwards %s raw wire strings verbatim into postRawCollectorMessage', (_tag, payload) => {
+      const rawCalls: string[] = []
       render(
         <RunSyncModalScreen
           source={{ _tag: 'Html', html: '<html></html>' }}
-          sendCollectorMessage={sendCollectorMessage}
+          postRawCollectorMessage={(raw) => rawCalls.push(raw)}
+        />
+      )
+      expect(mockLastOnRawMessage).not.toBeNull()
+      const raw = JSON.stringify(payload)
+      mockLastOnRawMessage?.(raw)
+      expect(rawCalls).toEqual([raw])
+    })
+
+    it('drops non-passthrough tags (Log) without forwarding', () => {
+      const rawCalls: string[] = []
+      render(
+        <RunSyncModalScreen
+          source={{ _tag: 'Html', html: '<html></html>' }}
+          postRawCollectorMessage={(raw) => rawCalls.push(raw)}
+        />
+      )
+      mockLastOnRawMessage?.(JSON.stringify({ _tag: 'Log', log: 'spam' }))
+      mockLastOnRawMessage?.(JSON.stringify({ _tag: '__Ready' }))
+      expect(rawCalls).toEqual([])
+    })
+
+    it('silently drops malformed JSON without forwarding', () => {
+      const rawCalls: string[] = []
+      render(
+        <RunSyncModalScreen
+          source={{ _tag: 'Html', html: '<html></html>' }}
+          postRawCollectorMessage={(raw) => rawCalls.push(raw)}
+        />
+      )
+      mockLastOnRawMessage?.('not json')
+      mockLastOnRawMessage?.('null')
+      mockLastOnRawMessage?.('"plain string"')
+      expect(rawCalls).toEqual([])
+    })
+  })
+
+  describe('RequestError typed handler', () => {
+    it('still fires onError even though the wire forward goes via raw', async () => {
+      const onError = jest.fn()
+      render(
+        <RunSyncModalScreen
+          source={{ _tag: 'Html', html: '<html></html>' }}
+          postRawCollectorMessage={() => undefined}
           onError={onError}
         />
       )
-
       const handlers = mockLastSnifferHandlers
       expect(handlers).not.toBeNull()
       if (handlers === null) return
-
       const fakeEvent = {
         _tag: 'RequestError' as const,
         id: 'r1',
         url: 'https://example.test',
         message: 'oh no',
       }
-
-      // Drive the RequestError handler — run the resulting Effect end
-      // to end. The improved ordering means the bridge message is
-      // forwarded first; the synchronous throw inside `onError` is
-      // caught by `Effect.catchAllCause` and logged, not propagated.
       await Effect.runPromise(handlers.RequestError(fakeEvent))
-
-      // Even though onError threw, the bridge message was forwarded.
-      expect(sendCalls).toEqual([fakeEvent])
       expect(onError).toHaveBeenCalledTimes(1)
       expect(onError).toHaveBeenCalledWith(fakeEvent)
     })
 
-    it('still forwards through sendCollectorMessage when onError is undefined', async () => {
-      const sendCalls: Array<{ readonly _tag: string }> = []
-      const sendCollectorMessage = buildSendCollectorMessage((e) => sendCalls.push(e))
-
+    it('swallows onError throws so the dispatch fiber keeps draining', async () => {
+      const onError = jest.fn((): void => {
+        throw new Error('boom')
+      })
       render(
         <RunSyncModalScreen
           source={{ _tag: 'Html', html: '<html></html>' }}
-          sendCollectorMessage={sendCollectorMessage}
+          postRawCollectorMessage={() => undefined}
+          onError={onError}
         />
       )
-
       const handlers = mockLastSnifferHandlers
       expect(handlers).not.toBeNull()
       if (handlers === null) return
-
-      const fakeEvent = {
-        _tag: 'RequestError' as const,
-        id: 'r2',
-        url: 'https://example.test',
-        message: 'oh no',
-      }
-      await Effect.runPromise(handlers.RequestError(fakeEvent))
-      expect(sendCalls).toEqual([fakeEvent])
-    })
-  })
-
-  describe('PageLoaded handler', () => {
-    it('forwards PageLoaded events through sendCollectorMessage', async () => {
-      const sendCalls: Array<{ readonly _tag: string }> = []
-      const sendCollectorMessage = buildSendCollectorMessage((e) => sendCalls.push(e))
-
-      render(
-        <RunSyncModalScreen
-          source={{ _tag: 'Html', html: '<html></html>' }}
-          sendCollectorMessage={sendCollectorMessage}
-        />
-      )
-
-      const handlers = mockLastSnifferHandlers
-      expect(handlers).not.toBeNull()
-      if (handlers === null) return
-
-      const fakeEvent = {
-        _tag: 'PageLoaded' as const,
-        url: 'https://example.test/page',
-        pageContentId: 'page-content-1',
-      }
-      await Effect.runPromise(handlers.PageLoaded(fakeEvent))
-      expect(sendCalls).toEqual([fakeEvent])
+      // `Effect.catchAllCause` inside the handler logs and recovers;
+      // `runPromise` resolves rather than rejecting.
+      await expect(
+        Effect.runPromise(
+          handlers.RequestError({
+            _tag: 'RequestError',
+            id: 'r1',
+            url: 'https://example.test',
+            message: 'boom',
+          })
+        )
+      ).resolves.toBeUndefined()
+      expect(onError).toHaveBeenCalledTimes(1)
     })
   })
 
   describe('navigate() handle', () => {
     it('mounts a fresh source when the parent screen calls navigate', () => {
-      const sendCollectorMessage = buildSendCollectorMessage(() => undefined)
       const handleRef = React.createRef<RunSyncModalScreenHandle>()
-
       render(
         <RunSyncModalScreen
           source={{ _tag: 'Uri', uri: 'https://example.test/a' }}
-          sendCollectorMessage={sendCollectorMessage}
+          postRawCollectorMessage={() => undefined}
           handleRef={handleRef}
         />
       )
-
       // The untagged source the mock receives mirrors react-native-webview's
       // shape (no `_tag`); strip it from the expected payload too.
       expect(mockLastSnifferSource).toEqual({ uri: 'https://example.test/a' })
@@ -191,8 +189,23 @@ describe('RunSyncModalScreen', () => {
       act(() => {
         handleRef.current?.navigate({ _tag: 'Uri', uri: 'https://example.test/b' })
       })
-
       expect(mockLastSnifferSource).toEqual({ uri: 'https://example.test/b' })
+    })
+  })
+
+  describe('postRawSnifferMessage handle', () => {
+    it('forwards raw wire strings into the sniffer ref verbatim', () => {
+      const handleRef = React.createRef<RunSyncModalScreenHandle>()
+      render(
+        <RunSyncModalScreen
+          source={{ _tag: 'Html', html: '<html></html>' }}
+          postRawCollectorMessage={() => undefined}
+          handleRef={handleRef}
+        />
+      )
+      const raw = JSON.stringify({ _tag: 'Click', querySelector: '#go' })
+      handleRef.current?.postRawSnifferMessage(raw)
+      expect(mockSnifferPostRawCalls).toEqual([raw])
     })
   })
 })

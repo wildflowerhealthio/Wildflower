@@ -29,9 +29,19 @@ type Bridges = readonly [typeof NavigationBridge, typeof GatekeeperBridge, typeo
  * Imperative handle exposed via `ref`. Lets the host forward sniffer
  * events from a sibling `<BrowserSnifferWebView>` back through
  * CollectorBridge so the embedded SPA's sync runner can parse them.
+ *
+ * `sendCollectorMessage` is the typed sender — encodes via the
+ * bridge's outbound schemas before posting. `postRawCollectorMessage`
+ * is the *bypass* path: it accepts an already-encoded
+ * `CollectorBridge.Host` wire string and injects it directly into the
+ * embedded SPA's WebView. Use the raw path when a paired transport
+ * (e.g. `<BrowserSnifferWebView>`) speaks the same wire format and
+ * the host is acting as a router — the round trip through
+ * `decode → typed handler → encode` is a no-op the raw path skips.
  */
 interface CollectorWebViewHandle {
   readonly sendCollectorMessage: ExpoTransport<Bridges>['sendMessage']
+  readonly postRawCollectorMessage: (rawWire: string) => void
 }
 
 interface CollectorWebViewProps {
@@ -73,6 +83,16 @@ interface CollectorWebViewProps {
    * `document.querySelector(querySelector)?.click()`.
    */
   readonly onClick?: (link: Link.Click) => void
+  /**
+   * Optional pre-decode hook fired with the raw wire string for every
+   * inbound bridge message *in addition to* the typed dispatch via the
+   * `on*` callbacks. Wire this when an outer transport speaks the
+   * same wire format (e.g. the host routing the SPA's `Click` /
+   * `CancelSnifferRequest` straight through to the active sniffer
+   * WebView via its `postRaw` handle) and you want to forward
+   * verbatim without paying for a decode + re-encode round trip.
+   */
+  readonly onRawMessage?: (rawWire: string) => void
 }
 
 /**
@@ -95,6 +115,7 @@ const CollectorWebView = forwardRef<CollectorWebViewHandle, CollectorWebViewProp
       onSniffingComplete,
       onOpen,
       onClick,
+      onRawMessage,
     },
     ref
   ): JSX.Element {
@@ -184,6 +205,14 @@ const CollectorWebView = forwardRef<CollectorWebViewHandle, CollectorWebViewProp
       ref,
       () => ({
         sendCollectorMessage: transport.sendMessage,
+        postRawCollectorMessage: (rawWire: string): void => {
+          // Skips the typed sender's encode step. Pre-mount sends are
+          // dropped here (no buffering) — the typed path provides a
+          // queued sender for the typed shape; the raw path is for
+          // mid-session router forwarding where buffering would just
+          // muddle ordering against in-flight typed sends.
+          webviewHandleRef.current?.postMessage(rawWire)
+        },
       }),
       [transport]
     )
@@ -209,11 +238,25 @@ const CollectorWebView = forwardRef<CollectorWebViewHandle, CollectorWebViewProp
       [onBackPress]
     )
 
+    // Splice `onRawMessage` in front of the typed `onMessage` so a
+    // consumer wiring raw passthrough sees every payload before the
+    // bridge's typed dispatch processes it. Both paths run for every
+    // message; consumers typically pair a raw forwarder for some tags
+    // with no-op typed handlers for those same tags (and keep typed
+    // handlers for tags that need native side effects).
+    const onMessage = useCallback(
+      (event: Parameters<typeof transport.onMessage>[0]) => {
+        if (onRawMessage !== undefined) onRawMessage(event.nativeEvent.data)
+        return transport.onMessage(event)
+      },
+      [transport, onRawMessage]
+    )
+
     return (
       <EffectMessagingWebView
         ref={webviewHandleRef}
         source={{ html, baseUrl: transport.embedUrl }}
-        onMessage={transport.onMessage}
+        onMessage={onMessage}
         loader={<Loader />}
       />
     )
