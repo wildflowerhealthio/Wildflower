@@ -1,5 +1,4 @@
 import { type CollectorSender, CollectorSenderProvider } from 'collector-react'
-import { type Effect } from 'effect'
 import { type JSX, type ReactNode, useMemo } from 'react'
 
 import { useBridgeTransport } from './transport-context.ts'
@@ -22,14 +21,7 @@ interface CollectorSenderForwarderProps {
  */
 const CollectorSenderForwarder = ({ children }: CollectorSenderForwarderProps): JSX.Element => {
   const transport = useBridgeTransport()
-  const send = useMemo<CollectorSender>(
-    () =>
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- runtime dispatch by _tag is the source of truth
-      transport.sendMessage as unknown as (message: {
-        readonly _tag: string
-      }) => Effect.Effect<void>,
-    [transport]
-  )
+  const send = useMemo<CollectorSender>(() => transport.sendMessage, [transport])
   return <CollectorSenderProvider send={send}>{children}</CollectorSenderProvider>
 }
 

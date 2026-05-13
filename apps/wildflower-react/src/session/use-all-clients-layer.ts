@@ -8,7 +8,7 @@ import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { GatekeeperClientLayerContext } from 'gatekeeper-react'
 import { useContext, useMemo } from 'react'
-import { BearerToken, bearerTokenLayer, useAuthTokenSubscribable } from 'react-kitchen-sink'
+import { type BearerToken, bearerTokenLayer, useAuthTokenSubscribable } from 'react-kitchen-sink'
 import { webHttpClientLayer } from 'telemetry-react'
 
 /**

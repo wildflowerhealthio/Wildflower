@@ -45,22 +45,13 @@ const isManagedRuntime = <R>(
 function useEffectTs<A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A>
 function useEffectTs<A, E, R>(
   effect: Effect.Effect<A, E, R | Scope.Scope>,
-  layer: Layer.Layer<R, never, never>
+  layer?: Layer.Layer<R, never, never>
 ): Promise<A>
 function useEffectTs<A, E, R>(
   effect: Effect.Effect<A, E, R | Scope.Scope>,
-  runtime: ManagedRuntime.ManagedRuntime<R, never>
-): Promise<A>
-function useEffectTs<A, E, R>(
-  effect: Effect.Effect<A, E, R | Scope.Scope>,
-  layerOrRuntime?: Layer.Layer<R, never, never> | ManagedRuntime.ManagedRuntime<R, never>
+  layer?: Layer.Layer<R, never, never>
 ): Promise<A> {
   const [promise, { resolve, reject, reset }] = useStatePromise<A>()
-
-  const layer =
-    layerOrRuntime !== undefined && !isManagedRuntime(layerOrRuntime) ? layerOrRuntime : undefined
-  const runtime =
-    layerOrRuntime !== undefined && isManagedRuntime(layerOrRuntime) ? layerOrRuntime : undefined
 
   const provided = useMemo(() => {
     if (layer === undefined) {
@@ -71,12 +62,7 @@ function useEffectTs<A, E, R>(
   }, [effect, layer])
 
   useEffect(() => {
-    let fiber: Fiber.RuntimeFiber<A, E>
-    if (runtime === undefined) {
-      fiber = Effect.runFork(provided.pipe(Effect.scoped))
-    } else {
-      fiber = runtime.runFork(effect.pipe(Effect.scoped))
-    }
+    const fiber: Fiber.RuntimeFiber<A, E> = Effect.runFork(provided.pipe(Effect.scoped))
 
     fiber.addObserver(
       Exit.match({
@@ -115,7 +101,7 @@ function useEffectTs<A, E, R>(
     return (): void => {
       Effect.runFork(pipe(Fiber.interrupt(fiber), Effect.andThen(Effect.sync(reset))))
     }
-  }, [effect, provided, runtime, resolve, reject, reset])
+  }, [effect, provided, resolve, reject, reset])
 
   return promise
 }
