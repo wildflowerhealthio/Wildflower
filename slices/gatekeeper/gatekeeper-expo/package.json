@@ -73,6 +73,7 @@
     "navigation-core": "workspace:*",
     "react": "catalog:",
     "react-native": "catalog:",
-    "react-native-webview": ">=13.0.0"
+    "react-native-webview": ">=13.0.0",
+    "wildflower-react": "workspace:*"
   }
 }

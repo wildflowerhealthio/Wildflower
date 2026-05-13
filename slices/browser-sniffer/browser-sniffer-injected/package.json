@@ -36,5 +36,10 @@
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "browser-sniffer-core": "workspace:*",
+    "effect": "catalog:",
+    "kitchen-sink": "workspace:*"
   }
 }

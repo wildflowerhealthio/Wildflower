@@ -45,6 +45,7 @@
   "peerDependencies": {
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
+    "kitchen-sink": "workspace:*",
     "react": "catalog:"
   }
 }

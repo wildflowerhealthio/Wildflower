@@ -624,6 +624,9 @@ importers:
 
   apps/wildflower-react:
     dependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.96.1(effect@3.21.2)
       collector-core:
         specifier: workspace:*
         version: link:../../slices/collector/collector-core
@@ -958,10 +961,6 @@ importers:
         version: 5.9.3
 
   global/expo-localtunnel:
-    dependencies:
-      eventemitter3:
-        specifier: ^5.0.4
-        version: 5.0.4
     devDependencies:
       '@babel/core':
         specifier: 'catalog:'
@@ -981,6 +980,9 @@ importers:
       babel-preset-expo:
         specifier: 'catalog:'
         version: 55.0.18(@babel/core@7.29.0)(@babel/runtime@7.29.2)(expo@55.0.18)(react-refresh@0.18.0)
+      eventemitter3:
+        specifier: ^5.0.4
+        version: 5.0.4
       expo:
         specifier: 'catalog:'
         version: 55.0.18(@babel/core@7.29.0)(@expo/dom-webview@55.0.5)(@expo/metro-runtime@55.0.10)(expo-router@55.0.13)(react-dom@19.2.4(react@19.2.0))(react-native-webview@13.16.0(react-native@0.83.6(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0))(react-native-worklets@0.7.4(@babel/core@7.29.0)(react-native@0.83.6(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0))(react-native@0.83.6(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)

@@ -23,6 +23,7 @@
     "test": "vp test --passWithNoTests"
   },
   "dependencies": {
+    "@effect/platform": "catalog:",
     "collector-core": "workspace:*",
     "collector-fundamentals": "workspace:*",
     "collector-react": "workspace:*",
@@ -45,6 +46,7 @@
     "tundra-css": "catalog:"
   },
   "devDependencies": {
+    "@effect/platform": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "^5.0.4",
