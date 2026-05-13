@@ -57,9 +57,21 @@ const RunSyncModalScreen = ({
       ResponseData: (event) => sendCollectorMessage(event),
       ResponseFinished: (event) => sendCollectorMessage(event),
       RequestError: (event) =>
-        Effect.sync(() => {
-          onError?.(event)
-        }).pipe(Effect.andThen(sendCollectorMessage(event))),
+        // Forward the bridge message FIRST so a faulty `onError`
+        // callback never aborts the SPA-visible event. The callback
+        // runs after; its failures are logged through `Effect.logError`
+        // instead of bubbling up and tearing down the handler.
+        sendCollectorMessage(event).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              onError?.(event)
+            }).pipe(
+              Effect.catchAllCause((cause) =>
+                Effect.logError('RunSyncModalScreen: onError callback failed', cause)
+              )
+            )
+          )
+        ),
       Cancelled: (event) => sendCollectorMessage(event),
       PageLoaded: () => Effect.void,
     }),

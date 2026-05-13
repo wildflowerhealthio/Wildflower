@@ -29,6 +29,9 @@ type FhirR4ResourcesEffectRunner = <A, E>(
  * ```
  */
 const useFhirR4ResourcesEffectRunner = (): FhirR4ResourcesEffectRunner =>
+  // Runner identity tracks the layer reference; `useFhirR4ResourcesClientLayer`
+  // must keep that reference stable across renders for downstream hook
+  // deps to be sound.
   useEffectAction(useFhirR4ResourcesClientLayer())
 
 export { useFhirR4ResourcesEffectRunner }

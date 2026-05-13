@@ -29,6 +29,9 @@ type CollectorEffectRunner = <A, E>(
  * ```
  */
 const useCollectorEffectRunner = (): CollectorEffectRunner =>
+  // Runner identity tracks the layer reference; `useCollectorClientLayer`
+  // must keep that reference stable across renders for downstream hook
+  // deps to be sound.
   useEffectAction(useCollectorClientLayer())
 
 export { useCollectorEffectRunner }

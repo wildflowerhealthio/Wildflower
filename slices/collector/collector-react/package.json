@@ -2,7 +2,7 @@
   "name": "collector-react",
   "version": "0.0.0",
   "private": true,
-  "description": "React surface for the collector slice — routes, account screens, client provider, runtime active-handler ref, and the sync runner that drives a CollectorBridgeMessageHandler from incoming sniffer events and routes parsed FHIR resources to FhirResourcesHttpApiClient.",
+  "description": "React surface for the collector slice — routes, account screens, client provider, runtime active-handler ref, and the sync runner that drives a CollectorBridgeMessageHandler from incoming sniffer events and routes parsed FHIR R4 resources to FhirR4ResourcesHttpApiClient. NOTE: this slice currently hard-couples to the FHIR R4 EMR slice (`fhir-r4`, `fhir-r4-react`, `fhir-r4-client-collector` workspace deps) because the sync runner POSTs parsed entities to FhirR4ResourcesHttpApiClient directly. Adding a second EMR target means abstracting the runner's resource-routing seam (most likely a runner-builder injected via a new context, similar to how the sender is forwarded). Documented as a deliberate slice-layering exception per slices/AGENTS.md.",
   "license": "MIT",
   "repository": {
     "type": "git",

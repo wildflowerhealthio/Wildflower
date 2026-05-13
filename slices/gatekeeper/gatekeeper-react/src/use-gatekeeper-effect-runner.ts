@@ -29,6 +29,9 @@ type GatekeeperEffectRunner = <A, E>(
  * ```
  */
 const useGatekeeperEffectRunner = (): GatekeeperEffectRunner =>
+  // Runner identity tracks the layer reference; `useGatekeeperClientLayer`
+  // must keep that reference stable across renders for downstream hook
+  // deps to be sound.
   useEffectAction(useGatekeeperClientLayer())
 
 export { useGatekeeperEffectRunner }

@@ -11,7 +11,15 @@ import { useNavigation } from 'expo-router'
 import { Colors, useColorScheme } from 'expo-tundraish'
 import GatekeeperBridge from 'gatekeeper-core/bridge'
 import { NavigationBridge } from 'navigation-core'
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, type JSX } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  type JSX,
+} from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { html } from 'wildflower-react/embeddable-html'
 
@@ -81,10 +89,14 @@ const CollectorWebView = forwardRef<CollectorWebViewHandle, CollectorWebViewProp
       [navigation]
     )
 
-    const initialMessages = [
-      { _tag: 'HostRequestedWebNavigation' as const, path: route },
-      ...(token === undefined ? [] : [{ _tag: 'AuthTokenIssued' as const, token }]),
-    ]
+    // Bearer tokens are deliberately NOT placed in `initialMessages` —
+    // `effect-messaging-expo`'s `useTransport` encodes initial messages
+    // into the WebView's URL as query params, which would leak the
+    // token into native WebView logs and Sentry breadcrumbs. We issue
+    // the `AuthTokenIssued` message through `transport.sendMessage`
+    // below instead; the bridge layer queues it until the WebView
+    // connects.
+    const initialMessages = [{ _tag: 'HostRequestedWebNavigation' as const, path: route }]
 
     const transport: ExpoTransport<Bridges> = useTransport({
       initialMessages,
@@ -103,7 +115,18 @@ const CollectorWebView = forwardRef<CollectorWebViewHandle, CollectorWebViewProp
         GatekeeperBridge.Host.ReceiverLayer({}),
         CollectorBridge.Host.ReceiverLayer({
           RequestSniffableWebView: ({ source }) =>
-            Effect.sync(() => {
+            Effect.gen(function* () {
+              // Defense-in-depth: the bridge's `WebViewSource` schema
+              // already pins `Uri` to `https://` only, so a malformed
+              // message would fail to decode at the transport boundary.
+              // This check exists for the case where the schema is
+              // loosened in the future — keep the host honest.
+              if (source._tag === 'Uri' && !source.uri.startsWith('https://')) {
+                yield* Effect.logWarning(
+                  `CollectorWebView: refusing non-https RequestSniffableWebView URI ${source.uri}`
+                )
+                return
+              }
               onRequestSniffableWebView?.(source)
             }),
           CancelSnifferRequest: ({ id }) =>
@@ -119,6 +142,16 @@ const CollectorWebView = forwardRef<CollectorWebViewHandle, CollectorWebViewProp
       baseUrl,
       webviewHandleRef,
     })
+
+    // Dispatch the bearer token as soon as the transport is constructed
+    // — the bridge layer queues outbound messages until the WebView
+    // side connects, so we don't need to wait for a "ready" signal.
+    // Kept out of `initialMessages` so the token never appears in the
+    // WebView's URL query string.
+    useEffect(() => {
+      if (token === undefined) return
+      Effect.runFork(transport.sendMessage({ _tag: 'AuthTokenIssued', token }))
+    }, [transport, token])
 
     useImperativeHandle(
       ref,

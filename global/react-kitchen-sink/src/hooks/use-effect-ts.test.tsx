@@ -76,6 +76,27 @@ describe('useEffectTs', () => {
     expect(rejected).toBeNull()
   })
 
+  it('should reject when the effect fails with an empty (non-actionable) cause', async () => {
+    // Arrange — `Cause.empty` has neither failures nor defects; the
+    // resulting exit lands in `useEffectTs`'s last-resort branch.
+    const effect = Effect.failCause(Cause.empty)
+
+    // Act
+    const { result } = renderHook(() => useEffectTs(effect))
+
+    // Assert
+    const rejection: unknown = await result.current.then(
+      () => {
+        throw new Error('expected rejection')
+      },
+      (e: unknown) => e
+    )
+    if (!(rejection instanceof Error)) {
+      throw new Error('expected an Error rejection')
+    }
+    expect(rejection.message).toMatch(/non-actionable cause/)
+  })
+
   it('should accept a Layer providing the effect context', async () => {
     // Arrange
     class Greeter extends Context.Tag('Greeter')<Greeter, { readonly hi: string }>() {}

@@ -40,6 +40,20 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
    * entries out on its own.
    */
   readonly clear: () => void
+  /**
+   * Build an Effect that dispatches a `CancelSnifferRequest` through
+   * the supplied `send` for every currently in-flight id. Pair with
+   * `clear()` from a screen-unmount path so the page stops streaming
+   * bytes that would otherwise be log-and-dropped by the runtime
+   * provider once the handler ref is null.
+   *
+   * The Effect runs each cancel sequentially; consumers typically
+   * `Effect.runFork` it during a synchronous React cleanup, then
+   * call `clear()` to drop the local tracking state.
+   */
+  readonly cancelAllInFlight: (
+    send: (message: typeof CancelSnifferRequestMessage.Type) => Effect.Effect<void, never, never>
+  ) => Effect.Effect<void, never, never>
 }
 
 const make = <TResources>({
@@ -170,9 +184,22 @@ const make = <TResources>({
     }
   }
 
+  const cancelAllInFlight = (
+    send: (message: typeof CancelSnifferRequestMessage.Type) => Effect.Effect<void, never, never>
+  ): Effect.Effect<void, never, never> =>
+    Effect.gen(function* () {
+      // Snapshot ids first — `send` is effectful and we'd rather not
+      // iterate over a live mutation surface during sequential awaits.
+      const ids = Array.from(MutableHashMap.keys(inProgressResponses))
+      for (const id of ids) {
+        yield* send({ _tag: 'CancelSnifferRequest', id })
+      }
+    })
+
   return {
     inProgressResponses,
     clear,
+    cancelAllInFlight,
     ResponseStart,
     ResponseData,
     ResponseFinished,

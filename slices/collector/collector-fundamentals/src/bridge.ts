@@ -9,25 +9,23 @@ import {
 import { Schema } from 'effect'
 import { Bridge } from 'effect-messaging-core'
 
+import { AnySchema as WebViewSourceSchema } from './model/web-view-source.ts'
+
 /**
  * Web → Host: the collector SPA asks the host to open a sniffer-enabled
  * WebView for the given `source`. The host opens a screen with
  * `<BrowserSnifferWebView>` and forwards the resulting sniffer events
  * back through this same bridge's Host→Web channel.
  *
- * The `source` shape mirrors `EffectMessagingWebViewSource` (and
- * `browser-sniffer-expo`'s `BrowserSnifferWebViewSource`) so the host
- * can pass it straight through.
+ * The `source` field reuses the slice's `WebViewSource.AnySchema` so
+ * the bridge wire-shape and the host-side `WebViewSource.Any` type
+ * share one definition. The schema's `Uri` variant is `https://`-only
+ * (see `web-view-source.ts`) — malformed messages fail to decode at
+ * the bridge boundary.
  */
 const RequestSniffableWebView = Schema.parseJson(
   Schema.TaggedStruct('RequestSniffableWebView', {
-    source: Schema.Union(
-      Schema.TaggedStruct('Uri', { uri: Schema.String }),
-      Schema.TaggedStruct('Html', {
-        html: Schema.String,
-        baseUrl: Schema.optional(Schema.String),
-      })
-    ),
+    source: WebViewSourceSchema,
   })
 )
 

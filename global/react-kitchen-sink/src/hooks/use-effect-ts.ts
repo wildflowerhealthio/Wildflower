@@ -1,22 +1,7 @@
-import {
-  Cause,
-  Chunk,
-  Effect,
-  Exit,
-  Fiber,
-  type Layer,
-  type ManagedRuntime,
-  type Scope,
-  pipe,
-} from 'effect'
+import { Cause, Chunk, Effect, Exit, Fiber, HashSet, type Layer, type Scope, pipe } from 'effect'
 import { useEffect, useMemo } from 'react'
 
 import { useStatePromise } from './use-state-promise.ts'
-
-const isManagedRuntime = <R>(
-  v: Layer.Layer<R, never, never> | ManagedRuntime.ManagedRuntime<R, never>
-): v is ManagedRuntime.ManagedRuntime<R, never> =>
-  'runFork' in v && typeof (v as { readonly runFork: unknown }).runFork === 'function'
 
 /**
  * Runs a scoped `Effect<A, E>` and returns a `Promise<A>` that
@@ -32,15 +17,16 @@ const isManagedRuntime = <R>(
  *   or the component unmounts.
  * - **Single failure** rejects with the error value directly.
  * - **Multiple failures or defects** reject with an `AggregateError`.
+ * - **Empty (non-actionable) cause** logs a diagnostic and rejects
+ *   with a generic `Error` so consumers `use()`-ing the promise don't
+ *   suspend forever.
  *
  * On cleanup the fiber is interrupted and the promise is reset to
  * pending, ready for the next effect.
  *
- * Pass a `Layer` (preferred) or a `ManagedRuntime` to run effects
- * whose context requires services beyond `Scope`. With a `Layer` the
- * hook applies `Effect.provide(layer)` internally; with a runtime it
- * delegates to `runtime.runFork`. Without either, `R` must extend
- * only `Scope`.
+ * Pass a `Layer` to run effects whose context requires services
+ * beyond `Scope`; the hook applies `Effect.provide(layer)` internally.
+ * Without a layer, `R` must extend only `Scope`.
  */
 function useEffectTs<A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A>
 function useEffectTs<A, E, R>(
@@ -70,7 +56,13 @@ function useEffectTs<A, E, R>(
           resolve(a)
         },
         onFailure(cause) {
-          if (Cause.isInterruptedOnly(cause)) return
+          // Pure interruption — the normal cleanup path when `effect`
+          // changes or the component unmounts. Silently ignore so a
+          // consumer awaiting the promise doesn't see a stray
+          // rejection. (`Cause.empty` also satisfies `isInterruptedOnly`
+          // but carries no interruptors; we let that case fall through
+          // to the last-resort branch below.)
+          if (Cause.isInterruptedOnly(cause) && HashSet.size(Cause.interruptors(cause)) > 0) return
 
           const failures = Chunk.toArray(Cause.failures(cause))
           if (failures.length === 1) {
@@ -94,6 +86,9 @@ function useEffectTs<A, E, R>(
           Effect.runFork(
             Effect.logError('useEffectTs: effect failed with non-actionable cause', cause)
           )
+          // Still settle the promise so a consumer `use()`-ing it isn't
+          // suspended forever — error boundaries get a chance to render.
+          void reject(new Error('useEffectTs: effect failed with non-actionable cause'))
         },
       })
     )
