@@ -31,3 +31,4 @@ dist-ssr
 *.sw?
 
 .claude/scheduled_tasks.lock
+.claude/worktrees/

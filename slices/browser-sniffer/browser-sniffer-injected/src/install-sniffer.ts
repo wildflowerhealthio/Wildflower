@@ -551,25 +551,32 @@ const installSniffer = function (): void {
     }
     if (parsed === null || typeof parsed !== 'object') return
     const msg = parsed as Partial<SnifferInboundMessage>
-    if (msg._tag === 'CancelSnifferRequest') {
-      if (typeof msg.id !== 'string') return
-      const wasActive = activeRequests.has(msg.id)
-      activeRequests.delete(msg.id)
-      if (wasActive) {
-        post({ _tag: 'Cancelled', id: msg.id })
+    switch (msg._tag) {
+      case 'CancelSnifferRequest': {
+        if (typeof msg.id !== 'string') return
+        const wasActive = activeRequests.has(msg.id)
+        activeRequests.delete(msg.id)
+        if (wasActive) {
+          post({ _tag: 'Cancelled', id: msg.id })
+        }
+        return
       }
-      return
-    }
-    if (msg._tag === 'Click') {
-      if (typeof msg.querySelector !== 'string' || msg.querySelector.length === 0) return
-      // `HTMLElement.click()` exists on the HTMLElement prototype; a
-      // generic `Element` (SVG, etc.) is unlikely as a click target
-      // but the cast keeps the call site honest.
-      const target = document.querySelector(msg.querySelector)
-      if (target !== null && 'click' in target && typeof target.click === 'function') {
-        target.click()
+      case 'Click': {
+        if (typeof msg.querySelector !== 'string' || msg.querySelector.length === 0) return
+        // `HTMLElement.click()` exists on the HTMLElement prototype; a
+        // generic `Element` (SVG, etc.) is unlikely as a click target
+        // but the cast keeps the call site honest.
+        const target = document.querySelector(msg.querySelector)
+        if (target !== null && 'click' in target && typeof target.click === 'function') {
+          target.click()
+        }
+        return
       }
-      return
+      case undefined:
+      default: {
+        post({ _tag: 'Log', log: `Unknown inbound message tag: ${String(msg._tag)}` })
+        return
+      }
     }
   }
   win.addEventListener('message', hostMessageHandler)

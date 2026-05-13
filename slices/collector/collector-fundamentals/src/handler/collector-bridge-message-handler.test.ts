@@ -28,23 +28,29 @@ const makeSimpleHandler = (
     readonly linkSequence?: readonly Link.Any[]
     readonly stepDelay?: Duration.Duration
   } = {}
-): ReturnType<typeof CollectorBridgeMessageHandler.make<SimpleResources>> => {
+): Effect.Effect.Success<
+  ReturnType<typeof CollectorBridgeMessageHandler.make<SimpleResources>>
+> => {
   const { linkSequence, stepDelay, ...rest } = overrides
-  return CollectorBridgeMessageHandler.make({
-    scrapingPlan: ScrapingPlan.make<SimpleResources>({
-      name: 'TestPlan',
-      entityDefinitions: [SimpleEntity],
-      firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
-      linkSequence: linkSequence ?? [],
-      stepDelay: stepDelay ?? Duration.seconds(5),
-    }),
-    sendMessage: noopSendMessage,
-    onResult: () => undefined,
-    ...rest,
-  })
+  return Effect.runSync(
+    CollectorBridgeMessageHandler.make({
+      scrapingPlan: ScrapingPlan.make<SimpleResources>({
+        name: 'TestPlan',
+        entityDefinitions: [SimpleEntity],
+        firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
+        linkSequence: linkSequence ?? [],
+        stepDelay: stepDelay ?? Duration.seconds(5),
+      }),
+      sendMessage: noopSendMessage,
+      onResult: () => undefined,
+      ...rest,
+    })
+  )
 }
 
-type Handler = ReturnType<typeof CollectorBridgeMessageHandler.make<SimpleResources>>
+type Handler = Effect.Effect.Success<
+  ReturnType<typeof CollectorBridgeMessageHandler.make<SimpleResources>>
+>
 type StartArg = Parameters<Handler['ResponseStart']>[0]
 type DataArg = Parameters<Handler['ResponseData']>[0]
 type FinishArg = Parameters<Handler['ResponseFinished']>[0]
@@ -116,22 +122,24 @@ describe('CollectorBridgeMessageHandler.make', () => {
     it('matches against any of the configured entities', () => {
       type MultiResources = SimpleResources | { id: string }
       const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
-      const handler = CollectorBridgeMessageHandler.make<MultiResources>({
-        scrapingPlan: ScrapingPlan.make<MultiResources>({
-          name: 'MultiPlan',
-          // Each entity is `EntityDefinition<X>` with `X ⊂ MultiResources`; widen
-          // the array to the union so the array literal typechecks.
-          entityDefinitions: [
-            SimpleEntity,
-            AnotherEntity,
-          ] as readonly EntityDefinition.EntityDefinition<MultiResources>[],
-          firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
-          linkSequence: [],
-          stepDelay: Duration.seconds(5),
-        }),
-        sendMessage,
-        onResult: () => undefined,
-      })
+      const handler = Effect.runSync(
+        CollectorBridgeMessageHandler.make<MultiResources>({
+          scrapingPlan: ScrapingPlan.make<MultiResources>({
+            name: 'MultiPlan',
+            // Each entity is `EntityDefinition<X>` with `X ⊂ MultiResources`; widen
+            // the array to the union so the array literal typechecks.
+            entityDefinitions: [
+              SimpleEntity,
+              AnotherEntity,
+            ] as readonly EntityDefinition.EntityDefinition<MultiResources>[],
+            firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
+            linkSequence: [],
+            stepDelay: Duration.seconds(5),
+          }),
+          sendMessage,
+          onResult: () => undefined,
+        })
+      )
 
       Effect.runSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
@@ -272,17 +280,19 @@ describe('CollectorBridgeMessageHandler.make', () => {
         })
 
       const onResult = vi.fn()
-      const handler = CollectorBridgeMessageHandler.make<SimpleResources>({
-        scrapingPlan: ScrapingPlan.make<SimpleResources>({
-          name: 'OverlappingPlan',
-          entityDefinitions: [OverlappingEntity, SimpleEntity],
-          firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
-          linkSequence: [],
-          stepDelay: Duration.seconds(5),
-        }),
-        sendMessage: noopSendMessage,
-        onResult,
-      })
+      const handler = Effect.runSync(
+        CollectorBridgeMessageHandler.make<SimpleResources>({
+          scrapingPlan: ScrapingPlan.make<SimpleResources>({
+            name: 'OverlappingPlan',
+            entityDefinitions: [OverlappingEntity, SimpleEntity],
+            firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
+            linkSequence: [],
+            stepDelay: Duration.seconds(5),
+          }),
+          sendMessage: noopSendMessage,
+          onResult,
+        })
+      )
 
       Effect.runSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
@@ -375,7 +385,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
       )
       expect(MutableHashMap.size(handler.inProgressResponses)).toBe(2)
 
-      handler.clear()
+      Effect.runSync(handler.clear())
 
       expect(MutableHashMap.size(handler.inProgressResponses)).toBe(0)
       expect(onResult).not.toHaveBeenCalled()
@@ -591,7 +601,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           })
 
           yield* handler.PageLoaded(pageLoaded())
-          handler.clear()
+          yield* handler.clear()
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).not.toHaveBeenCalled()
@@ -630,7 +640,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledTimes(1)
 
-          handler.clear()
+          yield* handler.clear()
 
           // Fresh sequence after clear: PageLoaded → linkA again, not linkB.
           yield* handler.PageLoaded(pageLoaded())

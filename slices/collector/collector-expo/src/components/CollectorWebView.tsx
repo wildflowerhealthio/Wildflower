@@ -1,5 +1,5 @@
 import CollectorBridge from 'collector-fundamentals/bridge'
-import type { Link, WebViewSource } from 'collector-fundamentals/model'
+import type { WebViewSource } from 'collector-fundamentals/model'
 import { Effect } from 'effect'
 import {
   EffectMessagingWebView,
@@ -76,14 +76,6 @@ interface CollectorWebViewProps {
    */
   readonly onOpen?: (source: WebViewSource.Any) => void
   /**
-   * Fires when the SPA's handler asks the host to synthesise a click
-   * in the sniffed page. The host forwards through
-   * `BrowserSnifferBridge.Host.sendMessage({ _tag: 'Click', querySelector })`,
-   * which the injected sniffer runs as
-   * `document.querySelector(querySelector)?.click()`.
-   */
-  readonly onClick?: (link: Link.Click) => void
-  /**
    * Optional pre-decode hook fired with the raw wire string for every
    * inbound bridge message *in addition to* the typed dispatch via the
    * `on*` callbacks. Wire this when an outer transport speaks the
@@ -91,6 +83,11 @@ interface CollectorWebViewProps {
    * `CancelSnifferRequest` straight through to the active sniffer
    * WebView via its `postRaw` handle) and you want to forward
    * verbatim without paying for a decode + re-encode round trip.
+   *
+   * `Click` has no typed callback — the injected sniffer runs the
+   * `querySelector(...)?.click()` itself, so the host's only job is
+   * to route the wire string through to the sniffer WebView. Use this
+   * hook for that.
    */
   readonly onRawMessage?: (rawWire: string) => void
 }
@@ -114,7 +111,6 @@ const CollectorWebView = forwardRef<CollectorWebViewHandle, CollectorWebViewProp
       onCancelSnifferRequest,
       onSniffingComplete,
       onOpen,
-      onClick,
       onRawMessage,
     },
     ref
@@ -181,10 +177,11 @@ const CollectorWebView = forwardRef<CollectorWebViewHandle, CollectorWebViewProp
             Effect.sync(() => {
               onOpen?.(source)
             }),
-          Click: ({ querySelector }) =>
-            Effect.sync(() => {
-              onClick?.({ _tag: 'Click', querySelector })
-            }),
+          // `Click` has no typed callback — the injected sniffer
+          // handles `document.querySelector(...)?.click()` itself, so
+          // the host's only job is to forward the wire to the sniffer
+          // WebView. Consumers wire that via `onRawMessage`.
+          Click: () => Effect.void,
         }),
       ] as const,
       baseUrl,

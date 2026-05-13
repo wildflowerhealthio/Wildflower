@@ -152,21 +152,22 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
       })
     }
 
-    const handler = CollectorBridgeMessageHandler.make<AnyCollectorResource>({
-      scrapingPlan,
-      sendMessage: sendCollectorMessage,
-      onResult: ({ result }) =>
-        Either.match(result, {
-          onLeft: (err) => {
-            setState({ _tag: 'errored', error: err })
-            onErrorRef.current?.(err)
-          },
-          onRight: (parsed) => {
-            for (const resource of parsed) handleParsedResource(resource)
-          },
-        }),
-    })
-
+    const handler = Effect.runSync(
+      CollectorBridgeMessageHandler.make<AnyCollectorResource>({
+        scrapingPlan,
+        sendMessage: sendCollectorMessage,
+        onResult: ({ result }) =>
+          Either.match(result, {
+            onLeft: (err) => {
+              setState({ _tag: 'errored', error: err })
+              onErrorRef.current?.(err)
+            },
+            onRight: (parsed) => {
+              for (const resource of parsed) handleParsedResource(resource)
+            },
+          }),
+      })
+    )
     setActiveHandler(handler)
     setState({ _tag: 'running' })
 
@@ -176,8 +177,10 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
       // keeps emitting `ResponseData` that the runtime provider would
       // log-and-drop. Cleanup is synchronous, so we `runFork` the
       // cancel-dispatch Effect and proceed to clear immediately.
-      Effect.runFork(handler.cancelAllInFlight(sendCollectorMessage))
-      handler.clear()
+      Effect.runFork(
+        handler.cancelAllInFlight(sendCollectorMessage).pipe(Effect.andThen(() => handler.clear()))
+      )
+
       setActiveHandler(null)
     }
   }, [remote.id, scrapingPlan, sendCollectorMessage, setActiveHandler, runFhir])

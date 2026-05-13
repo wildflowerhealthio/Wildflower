@@ -715,15 +715,26 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
     expect(withTag(getMessages(), 'ResponseFinished')).toEqual([])
   })
 
-  test('should ignore non-CancelSnifferRequest message events', () => {
+  test('should not mutate the active-set on malformed or unknown inbound payloads', () => {
     installSniffer()
-    // Garbage payloads must not throw and must not mutate the active-set.
     window.dispatchEvent(new MessageEvent('message', { data: 'not json' }))
     window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ _tag: 'Other' }) }))
     window.dispatchEvent(
       new MessageEvent('message', { data: JSON.stringify({ _tag: 'CancelSnifferRequest' }) })
     )
     expect(getState()?.activeRequests).toEqual(new Set())
+  })
+
+  test('should post a Log message when the inbound _tag is unrecognised', () => {
+    installSniffer()
+    const before = withTag(getMessages(), 'Log').length
+    window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ _tag: 'Other' }) }))
+    const after = withTag(getMessages(), 'Log')
+    expect(after.length).toBe(before + 1)
+    expect(after[after.length - 1]).toMatchObject({
+      _tag: 'Log',
+      log: expect.stringContaining('Other'),
+    })
   })
 })
 

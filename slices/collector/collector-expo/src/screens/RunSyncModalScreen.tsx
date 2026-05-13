@@ -38,14 +38,15 @@ const PASSTHROUGH_TO_SPA: ReadonlySet<string> = new Set([
 ])
 
 /**
- * Imperative handle exposed via `ref`. The CollectorWebView's
- * `onOpen` / `onClick` callbacks are wired in the parent screen and
- * call into this handle so the active modal can advance its own
- * BrowserSnifferWebView in response to scripted navigation steps.
+ * Imperative handle exposed via `ref`. The CollectorWebView's `onOpen`
+ * callback is wired in the parent screen and calls into this handle
+ * so the active modal can advance its own BrowserSnifferWebView in
+ * response to scripted navigation steps.
  *
  * `postRawSnifferMessage` is the host's bypass path for raw bridge
  * payloads the SPA sends (`Click` / `CancelSnifferRequest`) — they
- * forward to the sniffer page verbatim without re-encoding.
+ * forward to the sniffer page verbatim without re-encoding. The
+ * parent screen wires this to `CollectorWebView`'s `onRawMessage`.
  */
 interface RunSyncModalScreenHandle {
   readonly navigate: (source: WebViewSource.Any) => void
