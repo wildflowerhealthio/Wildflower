@@ -7,6 +7,8 @@ import {
   HttpMiddleware,
   HttpServerResponse,
 } from '@effect/platform'
+import { CollectorApi } from 'collector-core/http-api-definition'
+import { CollectorApiHandlersFor } from 'collector-core/http-api-implementation'
 import { Effect, Layer, pipe } from 'effect'
 import { FhirPublicApi, FhirResourcesApi } from 'fhir-r4/http-api-definition'
 import {
@@ -80,15 +82,22 @@ const stripCookiesMiddleware = HttpMiddleware.make((app) =>
 
 const middleware = HttpMiddleware.make((app) => stripCookiesMiddleware(corsMiddleware(app)))
 
+// Note: CollectorApi is added without `RequireAuthMiddleware` to match the
+// porting baseline (the slice was first authored without owner-only gating).
+// Locking it down to owner-only access should land as a follow-up that also
+// applies the middleware to `CollectorApi`'s group definition so the handler
+// Layer's requirement set picks it up correctly.
 const WildflowerHttpApi = HttpApi.make('WildflowerApi')
   .addHttpApi(GatekeeperApi)
   .addHttpApi(FhirResourcesApi.middleware(RequireAuthMiddleware))
   .addHttpApi(FhirPublicApi)
+  .addHttpApi(CollectorApi)
 
 const WildflowerHttpApiLive = HttpApiBuilder.api(WildflowerHttpApi).pipe(
   Layer.provide(GatekeeperApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(FhirResourcesApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(FhirPublicApiHandlersFor<'WildflowerApi'>()),
+  Layer.provide(CollectorApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(RequireAuthMiddlewareLive),
   Layer.provide(SmartConfigurationLive)
 )

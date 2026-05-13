@@ -2,6 +2,7 @@ import './instrument.ts'
 import { createServer } from 'node:http'
 import { HttpServer } from '@effect/platform'
 import { NodeFileSystem, NodeHttpServer, NodePath, NodeRuntime } from '@effect/platform-node'
+import { makeCollectorStoreLayer } from 'collector-core/contexts'
 import { Duration, Effect, Layer } from 'effect'
 import { makeLivestoreStoreLayer } from 'emr-core/contexts'
 import {
@@ -70,6 +71,7 @@ const run = Effect.gen(function* () {
     Layer.tap(() => afterStartupEffect),
     Layer.provide(makeLivestoreStoreLayer(store)),
     Layer.provide(gatekeeperStoreLayer),
+    Layer.provide(makeCollectorStoreLayer(store)),
     Layer.provide(CryptoRandomLive),
     Layer.provide(NodeHttpServer.layer(createServer, { port: PORT })),
     Layer.provide(NodeFileSystem.layer),

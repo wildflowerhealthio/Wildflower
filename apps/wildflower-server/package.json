@@ -20,6 +20,7 @@
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
     "@types/node": "catalog:",
+    "collector-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
@@ -31,6 +32,7 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
+    "collector-core": "workspace:*",
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "gatekeeper-core": "workspace:*",

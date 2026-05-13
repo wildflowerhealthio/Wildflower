@@ -43,26 +43,4 @@ const buildGatekeeperClientLayer = (): Layer.Layer<
     })
   )
 
-/**
- * Returns a function that maps an `HttpClient` to a new one that
- * attaches `Authorization: Bearer <token>` on every request, with
- * `token` fixed at the time of the call.
- *
- * @deprecated For clients that participate in the slice's auth flow,
- * use the {@link BearerToken} service + {@link buildGatekeeperClientLayer}
- * pattern — token rotation is then automatic. This static-token form is
- * kept for ad-hoc consumers (e.g. collector-react's PR-3 layer that
- * still takes a `token` parameter) until they migrate.
- */
-const makeBearerTokenClientTransformer =
-  (token: string) =>
-  (c: HttpClient.HttpClient): HttpClient.HttpClient =>
-    HttpClient.mapRequest(c, (request) =>
-      HttpClientRequest.setHeader(request, 'Authorization', `Bearer ${token}`)
-    )
-
-export {
-  buildGatekeeperClientLayer,
-  makeBearerTokenClientTransformer,
-  type GatekeeperClientRequirements,
-}
+export { buildGatekeeperClientLayer, type GatekeeperClientRequirements }
