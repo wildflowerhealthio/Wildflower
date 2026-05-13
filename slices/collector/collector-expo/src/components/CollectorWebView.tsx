@@ -1,5 +1,5 @@
 import CollectorBridge from 'collector-fundamentals/bridge'
-import type { WebViewSource } from 'collector-fundamentals/model'
+import type { Link, WebViewSource } from 'collector-fundamentals/model'
 import { Effect } from 'effect'
 import {
   EffectMessagingWebView,
@@ -56,6 +56,23 @@ interface CollectorWebViewProps {
   readonly onCancelSnifferRequest?: (id: string) => void
   /** Fires when the SPA's sync runner declares the active sync done. */
   readonly onSniffingComplete?: () => void
+  /**
+   * Fires when the SPA's handler asks the host to mount a fresh page
+   * in the active sniffer WebView (next step in the scripted
+   * navigation). The host updates the BrowserSnifferWebView's source
+   * to trigger the navigation; the sniffer's `injectedJavaScript`
+   * re-runs and the page eventually fires `PageLoaded` back through
+   * the bridge.
+   */
+  readonly onOpen?: (source: WebViewSource.Any) => void
+  /**
+   * Fires when the SPA's handler asks the host to synthesise a click
+   * in the sniffed page. The host forwards through
+   * `BrowserSnifferBridge.Host.sendMessage({ _tag: 'Click', querySelector })`,
+   * which the injected sniffer runs as
+   * `document.querySelector(querySelector)?.click()`.
+   */
+  readonly onClick?: (link: Link.Click) => void
 }
 
 /**
@@ -76,6 +93,8 @@ const CollectorWebView = forwardRef<CollectorWebViewHandle, CollectorWebViewProp
       onRequestSniffableWebView,
       onCancelSnifferRequest,
       onSniffingComplete,
+      onOpen,
+      onClick,
     },
     ref
   ): JSX.Element {
@@ -136,6 +155,14 @@ const CollectorWebView = forwardRef<CollectorWebViewHandle, CollectorWebViewProp
           SniffingComplete: () =>
             Effect.sync(() => {
               onSniffingComplete?.()
+            }),
+          Open: ({ source }) =>
+            Effect.sync(() => {
+              onOpen?.(source)
+            }),
+          Click: ({ querySelector }) =>
+            Effect.sync(() => {
+              onClick?.({ _tag: 'Click', querySelector })
             }),
         }),
       ] as const,

@@ -61,6 +61,10 @@ const CollectorRuntimeProvider = ({ children }: CollectorRuntimeProviderProps): 
           const h = activeHandlerRef.current
           return h === null ? droppedTagWarning('Cancelled') : h.Cancelled(event)
         },
+        PageLoaded: (event) => {
+          const h = activeHandlerRef.current
+          return h === null ? droppedTagWarning('PageLoaded') : h.PageLoaded(event)
+        },
       }),
     }),
     []

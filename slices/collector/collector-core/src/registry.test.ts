@@ -2,12 +2,12 @@ import { Arbitrary, Schema } from 'effect'
 import fc from 'fast-check'
 import {
   InstanceConfig as FhirR4InstanceConfig,
-  remoteKind as fhirR4ClientKind,
+  scrapingPlan as fhirR4ScrapingPlan,
 } from 'fhir-r4-client-collector'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { CollectorConfig, CollectorTag, makeRemoteForConfig } from './registry.ts'
+import { CollectorConfig, CollectorTag, makeScrapingPlanForConfig } from './registry.ts'
 
 const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
 
@@ -56,14 +56,17 @@ describe('CollectorConfig', () => {
   })
 })
 
-describe('makeRemoteForConfig', () => {
-  it('dispatches fhir-r4 configs to the fhir-r4 remote kind', () => {
+describe('makeScrapingPlanForConfig', () => {
+  it('dispatches fhir-r4 configs to the fhir-r4 scraping plan', () => {
     const config = Schema.decodeSync(CollectorConfig)({
       _tag: 'fhir-r4',
       rootUrl: 'https://example.com',
       patientId: '12345',
     })
 
-    expect(makeRemoteForConfig(config)).toBe(fhirR4ClientKind)
+    // The plan factory is per-config so structural equality stands in
+    // for identity. Same `name` + same `linkSequence` + a `firstPage`
+    // pointed at the configured patientUrl pin the dispatch.
+    expect(makeScrapingPlanForConfig(config)).toEqual(fhirR4ScrapingPlan(config))
   })
 })

@@ -1,11 +1,9 @@
-// oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers (`expect.objectContaining`, `expect.stringContaining`, etc.) are typed as `any`; composing them inside `objectContaining` is the intended idiom
-
 import { Effect, type Either, type ParseResult } from 'effect'
 import fc from 'fast-check'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { type EntityDefinition, Response } from 'collector-fundamentals/model'
+import { Response } from 'collector-fundamentals/model'
 import type { Patient } from 'fhir-r4/resources'
 
 import { PatientEntity } from './patient-entity.ts'
@@ -22,10 +20,22 @@ const makeResponse = (body: string): Response.RemoteResponse => {
   return r
 }
 
+/**
+ * Build the WebView JSON-viewer wrapper around a raw FHIR JSON
+ * payload. Mobile WebViews render `application/json` responses by
+ * dropping the bytes inside a `<pre>` element with HTML entities
+ * escaped (`<` → `&lt;`, `&` → `&amp;`); `PatientEntity.parse`
+ * (via `extractJson`) strips this wrapper before decoding.
+ */
+const wrappedHtml = (rawJson: string): string => {
+  const escaped = rawJson.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return `<html><body><pre style="word-wrap: break-word;">${escaped}</pre></body></html>`
+}
+
 /** Run `parse` (now Effect-returning) and convert to an Either for the `expectRight/LeftToEqual` helpers. */
 const runParse = (
   r: Response.RemoteResponse
-): Either.Either<EntityDefinition.Parsed<typeof Patient.Schema.Type>, ParseResult.ParseError> =>
+): Either.Either<readonly (typeof Patient.Schema.Type)[], ParseResult.ParseError> =>
   Effect.runSync(Effect.either(PatientEntity.parse(r)))
 
 describe('PatientEntity', () => {
@@ -47,18 +57,10 @@ describe('PatientEntity', () => {
   })
 
   describe('parse', () => {
-    it('parses a minimal valid Patient JSON into one resource + one Observation link', () => {
+    it('parses a minimal valid Patient JSON into a single-resource array', () => {
       expectRightToEqual(
         runParse(makeResponse(JSON.stringify({ resourceType: 'Patient', id: '42' }))),
-        expect.objectContaining({
-          resources: [expect.objectContaining({ id: '42' })],
-          links: [
-            expect.objectContaining({
-              _tag: 'Open',
-              href: expect.stringContaining('Observation'),
-            }),
-          ],
-        })
+        [expect.objectContaining({ id: '42' })]
       )
     })
 
@@ -74,10 +76,15 @@ describe('PatientEntity', () => {
             })
           )
         ),
-        expect.objectContaining({
-          resources: [expect.objectContaining({ id: '42', gender: 'male' })],
-        })
+        [expect.objectContaining({ id: '42', gender: 'male' })]
       )
+    })
+
+    it('parses a Patient JSON wrapped in the WebView JSON-viewer HTML envelope', () => {
+      const raw = JSON.stringify({ resourceType: 'Patient', id: '99' })
+      expectRightToEqual(runParse(makeResponse(wrappedHtml(raw))), [
+        expect.objectContaining({ id: '99' }),
+      ])
     })
 
     it('fails with ParseError for malformed JSON', () => {
@@ -92,20 +99,6 @@ describe('PatientEntity', () => {
         fc.property(fc.json(), (json) => {
           const result = Effect.runSync(Effect.either(PatientEntity.parse(makeResponse(json))))
           expect(['Right', 'Left']).toContain(result._tag)
-        })
-      )
-    })
-
-    it('URL-encodes the Observation query link parameter', () => {
-      const body = JSON.stringify({ resourceType: 'Patient', id: 'abc-123.def' })
-      expectRightToEqual(
-        runParse(makeResponse(body)),
-        expect.objectContaining({
-          links: [
-            expect.objectContaining({
-              href: expect.stringContaining(encodeURIComponent('abc-123.def')),
-            }),
-          ],
         })
       )
     })

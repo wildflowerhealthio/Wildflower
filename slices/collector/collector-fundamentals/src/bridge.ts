@@ -1,6 +1,8 @@
 import {
   CancelSnifferRequestMessage,
   CancelledMessage,
+  ClickMessage,
+  PageLoadedMessage,
   RequestErrorMessage,
   ResponseDataMessage,
   ResponseFinishedMessage,
@@ -38,6 +40,19 @@ const RequestSniffableWebView = Schema.parseJson(
  */
 const SniffingComplete = Schema.parseJson(Schema.TaggedStruct('SniffingComplete', {}))
 
+/**
+ * Web → Host: the collector SPA's handler decided the active sync's
+ * next step is to mount a fresh page in the BrowserSnifferWebView.
+ * `source` reuses the slice's `WebViewSource.AnySchema` so the same
+ * tagged union the host uses for the initial `firstPage` also covers
+ * subsequent navigations — `{ _tag: 'Uri', uri: 'https://…' }` for a
+ * remote page, `{ _tag: 'Html', html: '…' }` for an inline scaffold.
+ * The page reload re-injects the sniffer (idempotently keyed by
+ * `Symbol.for('browser-sniffer:state')`) and a new `PageLoaded`
+ * eventually flows back through Host→Web.
+ */
+const OpenMessage = Schema.parseJson(Schema.TaggedStruct('Open', { source: WebViewSourceSchema }))
+
 type CollectorBridge = Bridge.Bridge<
   'Collector',
   {
@@ -46,27 +61,34 @@ type CollectorBridge = Bridge.Bridge<
     ResponseFinished: typeof ResponseFinishedMessage
     RequestError: typeof RequestErrorMessage
     Cancelled: typeof CancelledMessage
+    PageLoaded: typeof PageLoadedMessage
   },
   {
     RequestSniffableWebView: typeof RequestSniffableWebView
     CancelSnifferRequest: typeof CancelSnifferRequestMessage
     SniffingComplete: typeof SniffingComplete
+    Open: typeof OpenMessage
+    Click: typeof ClickMessage
   }
 >
 
 /**
  * Slice-level bridge between the embedded collector SPA and the Expo
  * host. Web→Host carries control signals (`RequestSniffableWebView`,
- * `CancelSnifferRequest`, `SniffingComplete`); Host→Web carries the
- * sniffer-event subset collector parses.
+ * `CancelSnifferRequest`, `SniffingComplete`) and script-driven
+ * navigation steps (`Open`, `Click`); Host→Web carries the
+ * sniffer-event subset collector parses plus the `PageLoaded`
+ * notification that drives the step timer.
  *
- * The five sniffer events imported from `browser-sniffer-core` keep
- * wire schemas in lockstep with `BrowserSnifferBridge` — the host can
- * forward a decoded message through this bridge's Host→Web sender
- * without re-encoding. `Cancelled` is the terminal acknowledgement
- * for a mid-stream `CancelSnifferRequest`; the handler uses it to
- * release the in-progress slot and notify the consumer via
- * `onResult` with a `Left(SnifferCancelled)`.
+ * `Click` is the same `ClickMessage` schema `BrowserSnifferBridge`
+ * declares for its Host→Web side, so the collector-expo runtime
+ * forwards the decoded payload through both bridges without
+ * re-encoding. The six sniffer events imported from
+ * `browser-sniffer-core` keep wire schemas in lockstep with
+ * `BrowserSnifferBridge` for the same reason. `Cancelled` is the
+ * terminal acknowledgement for a mid-stream `CancelSnifferRequest`;
+ * the handler uses it to release the in-progress slot and notify the
+ * consumer via `onResult` with a `Left(SnifferCancelled)`.
  */
 const CollectorBridge: CollectorBridge = Bridge.make({
   name: 'Collector',
@@ -76,13 +98,16 @@ const CollectorBridge: CollectorBridge = Bridge.make({
     ['ResponseFinished', ResponseFinishedMessage],
     ['RequestError', RequestErrorMessage],
     ['Cancelled', CancelledMessage],
+    ['PageLoaded', PageLoadedMessage],
   ] as const,
   webToHost: [
     ['RequestSniffableWebView', RequestSniffableWebView],
     ['CancelSnifferRequest', CancelSnifferRequestMessage],
     ['SniffingComplete', SniffingComplete],
+    ['Open', OpenMessage],
+    ['Click', ClickMessage],
   ] as const,
 })
 
 export default CollectorBridge
-export { RequestSniffableWebView, SniffingComplete }
+export { OpenMessage, RequestSniffableWebView, SniffingComplete }

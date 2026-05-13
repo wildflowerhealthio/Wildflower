@@ -1,18 +1,6 @@
 import type { Effect, ParseResult } from 'effect'
 import { deepFreeze } from 'kitchen-sink'
-import type * as Link from './link.ts'
 import type { RemoteResponse } from './response.ts'
-
-/**
- * Outcome of a successful parse — the resources to commit downstream
- * plus any follow-up `Link`s the host should open next (for example,
- * a `Patient` parse may return a search-results link for related
- * `Observation`s).
- */
-interface Parsed<TResources> {
-  readonly resources: readonly TResources[]
-  readonly links: readonly Link.Any[]
-}
 
 /**
  * Stateless, struct-shaped *definition* of an entity — not an entity
@@ -40,24 +28,26 @@ interface Parsed<TResources> {
  *   `CollectorBridgeMessageHandler.ResponseStart` consults this to
  *   decide whether to track an in-flight response (and cancels the
  *   sniffer-side request via `sendMessage` when no entity matches).
- * - `parse`: `Effect`-returning decode from `RemoteResponse` to
- *   `Parsed`, with `ParseError` in the error channel. Returning an
- *   `Effect` (rather than an `Either`) lets entities log progress
+ * - `parse`: `Effect`-returning decode from `RemoteResponse` to the
+ *   resource array, with `ParseError` in the error channel. Returning
+ *   an `Effect` (rather than an `Either`) lets entities log progress
  *   (`Effect.logInfo` for dropped bundle entries, for example) and
  *   stays compatible with future requirements that may need
- *   Effect-typed dependencies (clock, randomness, …).
+ *   Effect-typed dependencies (clock, randomness, …). Follow-up
+ *   navigation is no longer emitted from `parse` — it is declared
+ *   statically on the slice's `ScrapingPlan.linkSequence`.
  */
 interface EntityDefinition<TResources> {
   readonly name: string
   readonly isFoundAt: (url: string) => boolean
   readonly parse: (
     response: RemoteResponse
-  ) => Effect.Effect<Parsed<TResources>, ParseResult.ParseError>
+  ) => Effect.Effect<readonly TResources[], ParseResult.ParseError>
 }
 
 /**
  * Shallow-clone + deep-freeze the supplied definition so callers
- * cannot mutate `entityDefinitions` (via `Remote.make`) after
+ * cannot mutate `entityDefinitions` (via `ScrapingPlan.make`) after
  * construction — the dispatcher pins the matched entity per request
  * at `ResponseStart` and assumes it stays put. The clone copies the
  * three known fields (`name`, `isFoundAt`, `parse`) so an extra
@@ -71,4 +61,4 @@ const make = <TResources>(definition: EntityDefinition<TResources>): EntityDefin
   })
 
 export { make }
-export type { EntityDefinition, Parsed }
+export type { EntityDefinition }

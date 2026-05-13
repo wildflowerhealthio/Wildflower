@@ -6,6 +6,7 @@ import BrowserSnifferBridge from '../src/bridge.ts'
 import {
   CancelSnifferRequestMessage,
   CancelledMessage,
+  ClickMessage,
   LogMessage,
   PageLoadedMessage,
   RequestErrorMessage,
@@ -23,7 +24,9 @@ type WebToHostMessage =
   | Schema.Schema.Type<typeof CancelledMessage>
   | Schema.Schema.Type<typeof PageLoadedMessage>
 
-type HostToWebMessage = Schema.Schema.Type<typeof CancelSnifferRequestMessage>
+type HostToWebMessage =
+  | Schema.Schema.Type<typeof CancelSnifferRequestMessage>
+  | Schema.Schema.Type<typeof ClickMessage>
 
 // Arbitrary instances of each decoded payload, derived from the schemas
 // themselves so the test stays in lockstep with the bridge wire format —
@@ -39,8 +42,9 @@ const webToHostArb: fc.Arbitrary<WebToHostMessage> = fc.oneof(
   Arbitrary.make(Schema.typeSchema(PageLoadedMessage))
 )
 
-const hostToWebArb: fc.Arbitrary<HostToWebMessage> = Arbitrary.make(
-  Schema.typeSchema(CancelSnifferRequestMessage)
+const hostToWebArb: fc.Arbitrary<HostToWebMessage> = fc.oneof(
+  Arbitrary.make(Schema.typeSchema(CancelSnifferRequestMessage)),
+  Arbitrary.make(Schema.typeSchema(ClickMessage))
 )
 
 const encodeWebToHost = (m: WebToHostMessage): string => {
@@ -113,7 +117,7 @@ const runHost = async (
 }
 
 describe('BrowserSnifferBridge — shape', () => {
-  test('declares the seven sniffer events on Web→Host and the cancel control on Host→Web', () => {
+  test('declares the seven sniffer events on Web→Host and the two control messages on Host→Web', () => {
     expect(Object.keys(BrowserSnifferBridge.Web.OutboundSchemas).toSorted()).toEqual([
       'Cancelled',
       'Log',
@@ -123,7 +127,10 @@ describe('BrowserSnifferBridge — shape', () => {
       'ResponseFinished',
       'ResponseStart',
     ])
-    expect(Object.keys(BrowserSnifferBridge.Host.OutboundSchemas)).toEqual(['CancelSnifferRequest'])
+    expect(Object.keys(BrowserSnifferBridge.Host.OutboundSchemas).toSorted()).toEqual([
+      'CancelSnifferRequest',
+      'Click',
+    ])
   })
 })
 
@@ -145,22 +152,29 @@ describe('BrowserSnifferBridge — Web→Host round-trip', () => {
 })
 
 describe('BrowserSnifferBridge — Host→Web round-trip', () => {
-  // Property: arbitrary CancelSnifferRequest payloads dispatched on the
-  // Web side reproduce on the handler verbatim. Mirrors the Web→Host
-  // property — guards against the cancellation contract drifting between
-  // host (typed sendMessage) and page (hand-decoded `message`-event).
-  test('every encoded CancelSnifferRequest round-trips through Web-side dispatch', async () => {
+  // Property: arbitrary CancelSnifferRequest / Click payloads dispatched
+  // on the Web side reproduce on the handler verbatim. Mirrors the
+  // Web→Host property — guards against the cancel / click contracts
+  // drifting between host (typed sendMessage) and page (hand-decoded
+  // `message`-event).
+  test('every encoded Host→Web payload round-trips through Web-side dispatch', async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(hostToWebArb), async (messages) => {
         const collected: HostToWebMessage[] = []
+        const push = (m: HostToWebMessage): Effect.Effect<void> =>
+          Effect.sync(() => {
+            collected.push(m)
+          })
         const layer = BrowserSnifferBridge.Web.ReceiverLayer({
-          CancelSnifferRequest: (m) =>
-            Effect.sync(() => {
-              collected.push(m)
-            }),
+          CancelSnifferRequest: push,
+          Click: push,
         })
 
-        const inputs = messages.map((m) => Schema.encodeSync(CancelSnifferRequestMessage)(m))
+        const inputs = messages.map((m) =>
+          m._tag === 'CancelSnifferRequest'
+            ? Schema.encodeSync(CancelSnifferRequestMessage)(m)
+            : Schema.encodeSync(ClickMessage)(m)
+        )
         const { layer: adapterLayer } = TestPlatformAdapterLayer.make({
           initialMessages: inputs,
         })

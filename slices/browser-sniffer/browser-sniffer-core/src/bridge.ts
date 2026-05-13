@@ -2,6 +2,7 @@ import { Bridge } from 'effect-messaging-core'
 import {
   CancelSnifferRequestMessage,
   CancelledMessage,
+  ClickMessage,
   LogMessage,
   PageLoadedMessage,
   RequestErrorMessage,
@@ -14,6 +15,7 @@ type BrowserSnifferBridge = Bridge.Bridge<
   'BrowserSniffer',
   {
     CancelSnifferRequest: typeof CancelSnifferRequestMessage
+    Click: typeof ClickMessage
   },
   {
     Log: typeof LogMessage
@@ -46,7 +48,10 @@ type BrowserSnifferBridge = Bridge.Bridge<
  */
 const BrowserSnifferBridge: BrowserSnifferBridge = Bridge.make({
   name: 'BrowserSniffer',
-  hostToWeb: [['CancelSnifferRequest', CancelSnifferRequestMessage]] as const,
+  hostToWeb: [
+    ['CancelSnifferRequest', CancelSnifferRequestMessage],
+    ['Click', ClickMessage],
+  ] as const,
   webToHost: [
     ['Log', LogMessage],
     ['ResponseStart', ResponseStartMessage],

@@ -46,6 +46,7 @@ export default defineConfig({
       newlinesBetween: false,
     },
     ignorePatterns: [
+      '.claude/**/*',
       '**/tapes/**/*',
       '**/dist/**',
       '**/dist-html/**',
@@ -59,6 +60,7 @@ export default defineConfig({
   },
   lint: {
     ignorePatterns: [
+      '.claude/**/*',
       '**/tapes/**/*',
       '**/dist/**',
       '**/dist-html/**',

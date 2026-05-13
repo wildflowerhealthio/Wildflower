@@ -20,20 +20,26 @@ import { StyleSheet, View } from 'react-native'
 import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 
 /**
- * Imperative handle exposed via `ref`. Hosts call `cancelRequest(id)` to
- * stop sniffer events for a specific in-flight request — useful when the
- * downstream parser decides the response is irrelevant and wants to
- * release the chunk-tracking state on the page.
+ * Imperative handle exposed via `ref`.
  *
- * The call goes over the same `BridgeTransport` the inbound events use:
- * the host sends `CancelSnifferRequest` as a typed Host→Web bridge
- * message, the injected sniffer's `message`-event listener decodes it
- * and removes the id from its active-request set. The page then posts
- * a `Cancelled` terminal event back so downstream handlers can release
- * per-id state.
+ * `cancelRequest(id)` stops sniffer events for a specific in-flight
+ * request — useful when the downstream parser decides the response is
+ * irrelevant and wants to release the chunk-tracking state on the
+ * page. The call goes over the same `BridgeTransport` the inbound
+ * events use: the host sends `CancelSnifferRequest` as a typed
+ * Host→Web bridge message, the injected sniffer's `message`-event
+ * listener decodes it and removes the id from its active-request set.
+ * The page then posts a `Cancelled` terminal event back so downstream
+ * handlers can release per-id state.
+ *
+ * `click(querySelector)` dispatches a synthetic click on the sniffed
+ * page. The host sends `Click` as a typed Host→Web bridge message,
+ * the injected sniffer runs `document.querySelector(qs)?.click()`
+ * inside the page (best-effort, no feedback on a missing element).
  */
 interface BrowserSnifferWebViewHandle {
   cancelRequest(id: string): void
+  click(querySelector: string): void
 }
 
 /** What the WebView should load. Mirrors `EffectMessagingWebViewSource`. */
@@ -149,6 +155,14 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferWebViewHandle, BrowserSni
           // already torn down its state.
           if (transport === undefined) return
           Effect.runFork(transport.sendMessage({ _tag: 'CancelSnifferRequest', id }))
+        },
+        click(querySelector: string): void {
+          const transport = transportRef.current
+          // Pre-build / post-unmount: silently drop. A click against a
+          // not-yet-attached or torn-down page is meaningless; the host
+          // will reissue on the next PageLoaded if needed.
+          if (transport === undefined) return
+          Effect.runFork(transport.sendMessage({ _tag: 'Click', querySelector }))
         },
       }),
       []

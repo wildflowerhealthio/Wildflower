@@ -2,6 +2,8 @@ import { EntityDefinition, UrlMatch } from 'collector-fundamentals/model'
 import { Effect, Schema } from 'effect'
 import { Observation } from 'fhir-r4/resources'
 
+import { extractJson } from '../extract-json.ts'
+
 type ObservationType = typeof Observation.Schema.Type
 
 const decode = Schema.decode(Schema.parseJson(Observation.Schema))
@@ -13,18 +15,17 @@ const observationUrl = UrlMatch.make({ segments: [UrlMatch.literal('Observation'
  * Entity for a single FHIR R4 `Observation` resource fetched at
  * `…/Observation/:id`. The wire schema lives in `fhir-r4/resources` —
  * its `Encoded` is the FHIR R4 wire JSON, its `Type` is the
- * emr-core-shaped row, so the decoded `resources` entry is ready to
- * persist without further mapping.
+ * emr-core-shaped row, so the decoded array entry is ready to persist
+ * without further mapping. {@link extractJson} normalizes the body
+ * across raw-JSON XHR intercepts and the mobile WebView's JSON viewer
+ * wrap.
  */
 const ObservationEntity: EntityDefinition.EntityDefinition<ObservationType> = EntityDefinition.make(
   {
     name: 'ObservationEntity',
     isFoundAt: (url) => observationUrl.test(url),
     parse: (response) =>
-      Effect.map(decode(response.text()), (observation) => ({
-        resources: [observation],
-        links: [],
-      })),
+      Effect.map(decode(extractJson(response.text())), (observation) => [observation]),
   }
 )
 

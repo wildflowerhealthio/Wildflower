@@ -727,6 +727,95 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
   })
 })
 
+describe('Click (host→web bridge message)', () => {
+  // Remember the initial body so each test can scribble on it and the next
+  // one starts from a clean slate.
+  const initialBodyHtml = document.body.innerHTML
+
+  beforeEach(() => {
+    resetShims()
+    XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
+    XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
+    document.body.innerHTML = initialBodyHtml
+    setupEnv()
+  })
+
+  afterEach(resetShims)
+
+  test('clicks the element matched by querySelector', () => {
+    const button = document.createElement('button')
+    button.id = 'go'
+    const clicked = vi.fn()
+    button.addEventListener('click', clicked)
+    document.body.replaceChildren(button)
+    installSniffer()
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: JSON.stringify({ _tag: 'Click', querySelector: '#go' }),
+      })
+    )
+    expect(clicked).toHaveBeenCalledTimes(1)
+  })
+
+  test('silently no-ops when the selector matches no element', () => {
+    installSniffer()
+    expect(() =>
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: JSON.stringify({ _tag: 'Click', querySelector: '#missing' }),
+        })
+      )
+    ).not.toThrow()
+  })
+
+  test('rejects an empty querySelector', () => {
+    const button = document.createElement('button')
+    const clicked = vi.fn()
+    button.addEventListener('click', clicked)
+    document.body.replaceChildren(button)
+    installSniffer()
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: JSON.stringify({ _tag: 'Click', querySelector: '' }),
+      })
+    )
+    expect(clicked).not.toHaveBeenCalled()
+  })
+})
+
+describe('idempotent re-injection (simulating post-navigation re-inject)', () => {
+  let getMessages: () => Message[]
+
+  beforeEach(() => {
+    resetShims()
+    XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
+    XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
+    getMessages = setupEnv()
+  })
+
+  afterEach(resetShims)
+
+  test('posts __Ready on every install but installs the fetch/XHR shim exactly once', () => {
+    installSniffer()
+    const shimmedFetchAfterFirst = window.fetch
+    const stateAfterFirst = getState()
+    expect(stateAfterFirst).toBeDefined()
+
+    installSniffer()
+    installSniffer()
+
+    // __Ready handshake fires on every install (a re-injection wakes a
+    // host that mounted after the original install).
+    expect(withTag(getMessages(), '__Ready')).toHaveLength(3)
+    // But the shim itself is captured once: the state slot survives and
+    // `window.fetch` is the same reference as after the first install.
+    expect(getState()).toBe(stateAfterFirst)
+    expect(window.fetch).toBe(shimmedFetchAfterFirst)
+  })
+})
+
 describe('PageLoaded', () => {
   let getMessages: () => Message[]
   // Remember the initial body so each test can scribble on it and the next

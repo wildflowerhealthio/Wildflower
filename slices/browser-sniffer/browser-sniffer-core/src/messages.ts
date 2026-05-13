@@ -142,6 +142,19 @@ const CancelSnifferRequestMessageBody = Schema.TaggedStruct('CancelSnifferReques
 })
 const CancelSnifferRequestMessage = Schema.parseJson(CancelSnifferRequestMessageBody)
 
+/**
+ * Host → Web: instruct the injected sniffer to synthesise a click on
+ * the page. The sniffer runs `document.querySelector(querySelector)?.click()`;
+ * a missing element silently no-ops (typically the host issued the click
+ * before the target rendered — retry by re-sending after the next
+ * `PageLoaded`). `querySelector` is `NonEmptyString` so a typo or
+ * accidental empty value fails at the bridge boundary.
+ */
+const ClickMessageBody = Schema.TaggedStruct('Click', {
+  querySelector: Schema.NonEmptyString,
+})
+const ClickMessage = Schema.parseJson(ClickMessageBody)
+
 export {
   LogMessage,
   LogMessageBody,
@@ -159,6 +172,8 @@ export {
   PageLoadedMessageBody,
   CancelSnifferRequestMessage,
   CancelSnifferRequestMessageBody,
+  ClickMessage,
+  ClickMessageBody,
   SnifferRequestId,
   HeadersWire,
 }

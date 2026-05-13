@@ -10,7 +10,7 @@
  * the `collector-react/package.json` description (per `slices/AGENTS.md`).
  */
 import type { Remote as CollectorRemote } from 'collector-core/livestore'
-import { makeRemoteForConfig, type AnyCollectorResource } from 'collector-core/registry'
+import { makeScrapingPlanForConfig, type AnyCollectorResource } from 'collector-core/registry'
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import { Effect, Either, Schedule } from 'effect'
 import { useFhirR4ResourcesEffectRunner } from 'fhir-r4-react'
@@ -88,10 +88,10 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
   // via the `partial` runner state.
   const failedRef = useRef<FailedResource[]>([])
 
-  // Memoise the remote kind so re-renders that don't change `config`
+  // Memoise the scraping plan so re-renders that don't change `config`
   // don't rebuild the handler. Keyed on `remote.config` identity, which
   // is stable across livestore reads of the same row.
-  const remoteKind = useMemo(() => makeRemoteForConfig(remote.config), [remote.config])
+  const scrapingPlan = useMemo(() => makeScrapingPlanForConfig(remote.config), [remote.config])
 
   useEffect(() => {
     const handleParsedResource = (resource: AnyCollectorResource): void => {
@@ -153,7 +153,7 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
     }
 
     const handler = CollectorBridgeMessageHandler.make<AnyCollectorResource>({
-      remote: remoteKind,
+      scrapingPlan,
       sendMessage: sendCollectorMessage,
       onResult: ({ result }) =>
         Either.match(result, {
@@ -162,7 +162,7 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
             onErrorRef.current?.(err)
           },
           onRight: (parsed) => {
-            for (const resource of parsed.resources) handleParsedResource(resource)
+            for (const resource of parsed) handleParsedResource(resource)
           },
         }),
     })
@@ -180,7 +180,7 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
       handler.clear()
       setActiveHandler(null)
     }
-  }, [remote.id, remoteKind, sendCollectorMessage, setActiveHandler, runFhir])
+  }, [remote.id, scrapingPlan, sendCollectorMessage, setActiveHandler, runFhir])
 
   return state
 }

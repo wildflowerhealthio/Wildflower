@@ -4,6 +4,7 @@
 import type {
   CancelSnifferRequestMessageBody,
   CancelledMessageBody,
+  ClickMessageBody,
   LogMessageBody,
   PageLoadedMessageBody,
   RequestErrorMessageBody,
@@ -62,7 +63,9 @@ type SnifferOutboundMessage =
   | { readonly _tag: '__Ready' }
 
 /** Wire form received Host→Web. */
-type SnifferInboundMessage = Schema.Schema.Encoded<typeof CancelSnifferRequestMessageBody>
+type SnifferInboundMessage =
+  | Schema.Schema.Encoded<typeof CancelSnifferRequestMessageBody>
+  | Schema.Schema.Encoded<typeof ClickMessageBody>
 
 interface SnifferState {
   readonly nativeFetch: typeof globalThis.fetch
@@ -532,6 +535,11 @@ const installSniffer = function (): void {
   // On a mid-stream cancel we emit `Cancelled` as the terminal
   // observation so the host can release per-id state without
   // waiting for a `ResponseFinished` that won't come.
+  //
+  // `Click` runs `document.querySelector(querySelector)?.click()` —
+  // best-effort, no feedback on a missing element (the host
+  // typically retries by waiting for the next `PageLoaded` to land
+  // before re-sending).
   const hostMessageHandler = (event: MessageEvent): void => {
     if (event.source !== null) return
     if (typeof event.data !== 'string') return
@@ -543,12 +551,25 @@ const installSniffer = function (): void {
     }
     if (parsed === null || typeof parsed !== 'object') return
     const msg = parsed as Partial<SnifferInboundMessage>
-    if (msg._tag !== 'CancelSnifferRequest') return
-    if (typeof msg.id !== 'string') return
-    const wasActive = activeRequests.has(msg.id)
-    activeRequests.delete(msg.id)
-    if (wasActive) {
-      post({ _tag: 'Cancelled', id: msg.id })
+    if (msg._tag === 'CancelSnifferRequest') {
+      if (typeof msg.id !== 'string') return
+      const wasActive = activeRequests.has(msg.id)
+      activeRequests.delete(msg.id)
+      if (wasActive) {
+        post({ _tag: 'Cancelled', id: msg.id })
+      }
+      return
+    }
+    if (msg._tag === 'Click') {
+      if (typeof msg.querySelector !== 'string' || msg.querySelector.length === 0) return
+      // `HTMLElement.click()` exists on the HTMLElement prototype; a
+      // generic `Element` (SVG, etc.) is unlikely as a click target
+      // but the cast keeps the call site honest.
+      const target = document.querySelector(msg.querySelector)
+      if (target !== null && 'click' in target && typeof target.click === 'function') {
+        target.click()
+      }
+      return
     }
   }
   win.addEventListener('message', hostMessageHandler)

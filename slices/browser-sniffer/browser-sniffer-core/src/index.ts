@@ -4,6 +4,8 @@ export {
   CancelSnifferRequestMessageBody,
   CancelledMessage,
   CancelledMessageBody,
+  ClickMessage,
+  ClickMessageBody,
   HeadersWire,
   LogMessage,
   LogMessageBody,
