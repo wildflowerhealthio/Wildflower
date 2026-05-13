@@ -65,7 +65,7 @@ const firstPage = (config: InstanceConfig): WebViewSource.Any => {
   const safePatientId = encodeURIComponent(config.patientId)
   const patientUrl = `${config.rootUrl}/Patient/${safePatientId}?_format=json`
   const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
-  return { html: buildFhirBootstrapHtml({ patientUrl, observationUrl }) }
+  return { _tag: 'Html', html: buildFhirBootstrapHtml({ patientUrl, observationUrl }) }
 }
 
 export { InstanceConfig, defaultConfig, firstPage }

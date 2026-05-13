@@ -1,4 +1,5 @@
 import CollectorBridge from 'collector-fundamentals/bridge'
+import type { WebViewSource } from 'collector-fundamentals/model'
 import { Effect } from 'effect'
 import {
   EffectMessagingWebView,
@@ -15,10 +16,6 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { html } from 'wildflower-react/embeddable-html'
 
 type Bridges = readonly [typeof NavigationBridge, typeof GatekeeperBridge, typeof CollectorBridge]
-
-type SniffableSource =
-  | { readonly _tag: 'Uri'; readonly uri: string }
-  | { readonly _tag: 'Html'; readonly html: string; readonly baseUrl?: string }
 
 /**
  * Imperative handle exposed via `ref`. Lets the host forward sniffer
@@ -41,7 +38,7 @@ interface CollectorWebViewProps {
    * equivalent) and forwards sniffer events back via
    * `ref.current.sendCollectorMessage(...)`.
    */
-  readonly onRequestSniffableWebView?: (source: SniffableSource) => void
+  readonly onRequestSniffableWebView?: (source: WebViewSource.Any) => void
   /**
    * Fires when the SPA's `CollectorBridgeMessageHandler` decides an
    * in-flight sniffer request should stop (no entity matches the URL,
@@ -190,4 +187,4 @@ const Loader = (): JSX.Element => {
 }
 
 export { CollectorWebView }
-export type { Bridges, CollectorWebViewHandle, CollectorWebViewProps, SniffableSource }
+export type { Bridges, CollectorWebViewHandle, CollectorWebViewProps }

@@ -1,35 +1,35 @@
 import { HttpApiClient, HttpClient, HttpClientRequest } from '@effect/platform'
 import { Effect, Layer } from 'effect'
-import { FhirResourcesHttpApiClient } from 'fhir-r4/clients'
+import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { FhirResourcesApi } from 'fhir-r4/http-api-definition'
 import { BearerToken } from 'react-kitchen-sink'
 
 /**
- * Union of services a `FhirResourcesHttpApiClient` consumer needs in
+ * Union of services a `FhirR4ResourcesHttpApiClient` consumer needs in
  * context. The slice's layer leaves `HttpClient` and `BearerToken`
  * unprovided so apps share one of each across every slice's client
  * layer.
  */
-type FhirResourcesClientRequirements =
+type FhirR4ResourcesClientRequirements =
   | HttpClient.HttpClient
-  | FhirResourcesHttpApiClient
+  | FhirR4ResourcesHttpApiClient
   | BearerToken
 
 /**
- * Build a `FhirResourcesHttpApiClient` layer that reads the bearer
+ * Build a `FhirR4ResourcesHttpApiClient` layer that reads the bearer
  * token from the {@link BearerToken} service on every request. The
  * `transformClient` closes over the Subscribable resolved at
  * layer-resolution time; `Subscribable.get` runs *per request*, so a
  * token rotation surfaces immediately — no layer rebuild, no client
  * rebuild. Mirrors `buildGatekeeperClientLayer` in `gatekeeper-react`.
  */
-const buildFhirResourcesClientLayer = (): Layer.Layer<
-  FhirResourcesHttpApiClient,
+const buildFhirR4ResourcesClientLayer = (): Layer.Layer<
+  FhirR4ResourcesHttpApiClient,
   never,
   HttpClient.HttpClient | BearerToken
 > =>
   Layer.effect(
-    FhirResourcesHttpApiClient,
+    FhirR4ResourcesHttpApiClient,
     Effect.gen(function* () {
       const tokenSubscribable = yield* BearerToken
       return yield* HttpApiClient.make(FhirResourcesApi, {
@@ -46,4 +46,4 @@ const buildFhirResourcesClientLayer = (): Layer.Layer<
     })
   )
 
-export { buildFhirResourcesClientLayer, type FhirResourcesClientRequirements }
+export { buildFhirR4ResourcesClientLayer, type FhirR4ResourcesClientRequirements }

@@ -1,32 +1,34 @@
 import type { HttpClient } from '@effect/platform'
 import { Layer } from 'effect'
-import type { FhirResourcesHttpApiClient } from 'fhir-r4/clients'
+import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { useContext, useMemo } from 'react'
 import { bearerTokenLayer, useAuthTokenSubscribable, type BearerToken } from 'react-kitchen-sink'
 import { webHttpClientLayer } from 'telemetry-react'
 
-import { FhirResourcesClientLayerContext } from './fhir-resources-client-context.ts'
+import { FhirR4ResourcesClientLayerContext } from './fhir-r4-resources-client-context.ts'
 
 /**
  * Returns the slice's client `Layer` —
- * `Layer<FhirResourcesHttpApiClient, never, HttpClient | BearerToken>`.
+ * `Layer<FhirR4ResourcesHttpApiClient, never, HttpClient | BearerToken>`.
  * Used by the app's `useAllClientsLayer()` for cross-slice composition.
  *
  * Most screen code shouldn't need this — reach for
- * `useFhirResourcesEffect` / `useFhirResourcesStream` /
- * `useFhirResourcesEffectRunner`, which auto-provide the slice layer,
+ * `useFhirR4ResourcesEffect` / `useFhirR4ResourcesStream` /
+ * `useFhirR4ResourcesEffectRunner`, which auto-provide the slice layer,
  * `BearerToken`, and `webHttpClientLayer`.
  *
- * Throws when no `<FhirResourcesClientProvider>` is in the tree.
+ * Throws when no `<FhirR4ResourcesClientProvider>` is in the tree.
  */
-const useFhirResourcesClientLayer = (): Layer.Layer<
-  FhirResourcesHttpApiClient | HttpClient.HttpClient | BearerToken,
+const useFhirR4ResourcesClientLayer = (): Layer.Layer<
+  FhirR4ResourcesHttpApiClient | HttpClient.HttpClient | BearerToken,
   never,
   never
 > => {
-  const fhirResourcesLayer = useContext(FhirResourcesClientLayerContext)
+  const fhirResourcesLayer = useContext(FhirR4ResourcesClientLayerContext)
   if (fhirResourcesLayer === null) {
-    throw new Error('useFhirResourcesClientLayer must be used inside <FhirResourcesClientProvider>')
+    throw new Error(
+      'useFhirR4ResourcesClientLayer must be used inside <FhirR4ResourcesClientProvider>'
+    )
   }
   const tokenSubscribable = useAuthTokenSubscribable()
   return useMemo(
@@ -39,4 +41,4 @@ const useFhirResourcesClientLayer = (): Layer.Layer<
   )
 }
 
-export { useFhirResourcesClientLayer }
+export { useFhirR4ResourcesClientLayer }

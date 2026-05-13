@@ -7,6 +7,7 @@ import { cn } from 'react-kitchen-sink'
 import { useNavigate, useSearchParams } from 'react-router'
 
 import { useCollectorEffectRunner } from '../use-collector-effect-runner.ts'
+import accountConfig from '../styles/account-config.module.css'
 import pageLayout from '../styles/page-layout.module.css'
 
 type RemoteRow = Schema.Schema.Type<typeof Remotes.RemoteSchema>
@@ -108,13 +109,13 @@ const AccountConfigScreen = (): JSX.Element => {
 
       {error !== null ? <p className={cn(pageLayout['error'], 'text-body-3')}>{error}</p> : null}
 
-      <div className={pageLayout['field']}>
-        <label className={cn(pageLayout['fieldLabel'], 'text-label-3')}>Type</label>
-        <span className={cn(pageLayout['typeBadge'], 'text-body-3')}>FHIR R4</span>
+      <div className={accountConfig['field']}>
+        <label className={cn(accountConfig['field__label'], 'text-label-3')}>Type</label>
+        <span className={cn(accountConfig['type-badge'], 'text-body-3')}>FHIR R4</span>
       </div>
 
-      <div className={pageLayout['field']}>
-        <label className={cn(pageLayout['fieldLabel'], 'text-label-3')} htmlFor="cl-name">
+      <div className={accountConfig['field']}>
+        <label className={cn(accountConfig['field__label'], 'text-label-3')} htmlFor="cl-name">
           Name
         </label>
         <input
@@ -128,8 +129,8 @@ const AccountConfigScreen = (): JSX.Element => {
         />
       </div>
 
-      <div className={pageLayout['field']}>
-        <label className={cn(pageLayout['fieldLabel'], 'text-label-3')} htmlFor="cl-rootUrl">
+      <div className={accountConfig['field']}>
+        <label className={cn(accountConfig['field__label'], 'text-label-3')} htmlFor="cl-rootUrl">
           Root URL
         </label>
         <input
@@ -145,8 +146,8 @@ const AccountConfigScreen = (): JSX.Element => {
         />
       </div>
 
-      <div className={pageLayout['field']}>
-        <label className={cn(pageLayout['fieldLabel'], 'text-label-3')} htmlFor="cl-patientId">
+      <div className={accountConfig['field']}>
+        <label className={cn(accountConfig['field__label'], 'text-label-3')} htmlFor="cl-patientId">
           Patient ID
         </label>
         <input
@@ -162,7 +163,7 @@ const AccountConfigScreen = (): JSX.Element => {
         />
       </div>
 
-      <div className={pageLayout['buttons']}>
+      <div className={pageLayout['button-row']}>
         <button type="button" className="button-2 filled" onClick={() => void handleSave()}>
           Save
         </button>

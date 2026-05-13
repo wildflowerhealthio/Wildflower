@@ -1,27 +1,28 @@
+import type CollectorBridge from 'collector-fundamentals/bridge'
 import type { Effect } from 'effect'
+import type { Message } from 'effect-messaging-core'
 import { createContext } from 'react'
 
-/** A `_tag` of the CollectorBridge's Web→Host messages collector-react can send. */
-type CollectorWebOutboundTag =
-  | 'RequestSniffableWebView'
-  | 'CancelSnifferRequest'
-  | 'SniffingComplete'
+/**
+ * Decoded union of every Web→Host CollectorBridge message — the
+ * universe of messages the collector SPA can send out. Derived from
+ * the bridge's own `Web.OutboundSchemas` so adding (or renaming) a
+ * web→host tag in `collector-fundamentals/bridge.ts` flows through to
+ * every sender call site without an intermediate restatement.
+ */
+type CollectorOutboundMessage = Message.Of<(typeof CollectorBridge)['Web']['OutboundSchemas']>
 
 /**
  * Send a CollectorBridge Web→Host message. Returns an Effect that the
- * caller runs via `Effect.runPromise` (or similar). Provided by the app
- * from its `BridgeTransport`'s `sendMessage`.
+ * caller runs via `Effect.runPromise` (or similar). Provided by the
+ * app from its `BridgeTransport`'s `sendMessage`.
  *
- * Typed loosely on the message shape so the slice doesn't have to
- * re-state every bridge message inline — call sites construct the
- * tagged message inline and the bridge's runtime dispatch checks `_tag`.
+ * Typed in terms of the bridge's outbound schemas so the slice and the
+ * bridge wire-contract can't drift.
  */
-type CollectorSender = (message: {
-  readonly _tag: CollectorWebOutboundTag
-  readonly [key: string]: unknown
-}) => Effect.Effect<void>
+type CollectorSender = (message: CollectorOutboundMessage) => Effect.Effect<void>
 
 const CollectorSenderContext = createContext<CollectorSender | null>(null)
 
 export { CollectorSenderContext }
-export type { CollectorSender, CollectorWebOutboundTag }
+export type { CollectorOutboundMessage, CollectorSender }

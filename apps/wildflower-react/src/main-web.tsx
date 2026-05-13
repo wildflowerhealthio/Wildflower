@@ -1,6 +1,6 @@
 import './instrument.ts'
 import { CollectorClientProvider, CollectorRuntimeProvider } from 'collector-react'
-import { FhirResourcesClientProvider } from 'fhir-r4-react'
+import { FhirR4ResourcesClientProvider } from 'fhir-r4-react'
 import { authTokenRef, GatekeeperClientProvider } from 'gatekeeper-react'
 import { AuthTokenProvider } from 'react-kitchen-sink'
 import { BrowserRouter, Routes } from 'react-router'
@@ -27,7 +27,7 @@ import './styles/global.css'
 //  4. `<CollectorSenderForwarder>` reads `transport.sendMessage` and
 //     surfaces it to collector-react screens via CollectorSenderProvider.
 //  5. `<GatekeeperClientProvider>` / `<CollectorClientProvider>` /
-//     `<FhirResourcesClientProvider>` are tokenless — each puts its
+//     `<FhirR4ResourcesClientProvider>` are tokenless — each puts its
 //     slice's client layer in context, and every layer reads the live
 //     token from `BearerToken` per request.
 AppRoot.render(
@@ -38,9 +38,9 @@ AppRoot.render(
           <CollectorSenderForwarder>
             <GatekeeperClientProvider>
               <CollectorClientProvider>
-                <FhirResourcesClientProvider>
+                <FhirR4ResourcesClientProvider>
                   <Routes>{appRoutesFragment}</Routes>
-                </FhirResourcesClientProvider>
+                </FhirR4ResourcesClientProvider>
               </CollectorClientProvider>
             </GatekeeperClientProvider>
           </CollectorSenderForwarder>

@@ -28,12 +28,9 @@ export {
 } from './runtime/collector-sender-provider.tsx'
 export { useCollectorSender } from './runtime/use-collector-sender.ts'
 export type {
+  CollectorOutboundMessage,
   CollectorSender,
-  CollectorWebOutboundTag,
 } from './runtime/collector-sender-context.ts'
-export {
-  useRequestSniffableWebView,
-  type RequestSniffableWebViewSource,
-} from './runtime/use-request-sniffable-web-view.ts'
+export { useRequestSniffableWebView } from './runtime/use-request-sniffable-web-view.ts'
 
 export { useSyncRunner, type RunnerState, type SyncRunnerInput } from './runtime/use-sync-runner.ts'

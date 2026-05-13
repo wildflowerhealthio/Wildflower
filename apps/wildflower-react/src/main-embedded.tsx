@@ -1,6 +1,6 @@
 import './instrument.ts'
 import { CollectorClientProvider, CollectorRuntimeProvider } from 'collector-react'
-import { FhirResourcesClientProvider } from 'fhir-r4-react'
+import { FhirR4ResourcesClientProvider } from 'fhir-r4-react'
 import { authTokenRef, GatekeeperClientProvider } from 'gatekeeper-react'
 import { AuthTokenProvider } from 'react-kitchen-sink'
 import { MemoryRouter, Routes } from 'react-router'
@@ -21,9 +21,9 @@ AppRoot.render(
           <CollectorSenderForwarder>
             <GatekeeperClientProvider>
               <CollectorClientProvider>
-                <FhirResourcesClientProvider>
+                <FhirR4ResourcesClientProvider>
                   <Routes>{appRoutesFragment}</Routes>
-                </FhirResourcesClientProvider>
+                </FhirR4ResourcesClientProvider>
               </CollectorClientProvider>
             </GatekeeperClientProvider>
           </CollectorSenderForwarder>

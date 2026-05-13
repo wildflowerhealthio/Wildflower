@@ -3,6 +3,7 @@ import {
   type BrowserSnifferWebViewHandle,
   type SnifferHandlers,
 } from 'browser-sniffer-expo'
+import type { WebViewSource } from 'collector-fundamentals/model'
 import { Effect } from 'effect'
 import type { ExpoTransport } from 'effect-messaging-expo'
 import { Spacing, ThemedView } from 'expo-tundraish'
@@ -13,10 +14,10 @@ import type { Bridges } from '../components/CollectorWebView.tsx'
 
 interface RunSyncModalScreenProps {
   /**
-   * Page the sniffer should load. Mirrors the `source` payload the SPA
-   * sends in `RequestSniffableWebView`.
+   * Page the sniffer should load — the bridge-tagged
+   * `WebViewSource.Any` the SPA emits in `RequestSniffableWebView`.
    */
-  readonly source: { uri: string } | { html: string; baseUrl?: string }
+  readonly source: WebViewSource.Any
   /**
    * The active CollectorWebView's `sendCollectorMessage`. Used to
    * forward the five collector-relevant sniffer events
@@ -58,17 +59,28 @@ const RunSyncModalScreen = ({
       RequestError: (event) =>
         Effect.sync(() => {
           onError?.(event)
-          void Effect.runPromise(sendCollectorMessage(event))
-        }),
+        }).pipe(Effect.andThen(sendCollectorMessage(event))),
       Cancelled: (event) => sendCollectorMessage(event),
       PageLoaded: () => Effect.void,
     }),
     [sendCollectorMessage, onError]
   )
 
+  // `BrowserSnifferWebView`'s `source` prop mirrors the untagged
+  // `react-native-webview` shape; strip our `_tag` before forwarding so
+  // the WebView's typings don't reject the extra field.
+  const untaggedSource = useMemo(() => {
+    if (source._tag === 'Uri') {
+      const { _tag: _, ...rest } = source
+      return rest
+    }
+    const { _tag: _, ...rest } = source
+    return rest
+  }, [source])
+
   return (
     <ThemedView style={styles.container}>
-      <BrowserSnifferWebView ref={snifferRef} source={source} handlers={handlers} />
+      <BrowserSnifferWebView ref={snifferRef} source={untaggedSource} handlers={handlers} />
     </ThemedView>
   )
 }

@@ -82,16 +82,11 @@ const stripCookiesMiddleware = HttpMiddleware.make((app) =>
 
 const middleware = HttpMiddleware.make((app) => stripCookiesMiddleware(corsMiddleware(app)))
 
-// Note: CollectorApi is added without `RequireAuthMiddleware` to match the
-// porting baseline (the slice was first authored without owner-only gating).
-// Locking it down to owner-only access should land as a follow-up that also
-// applies the middleware to `CollectorApi`'s group definition so the handler
-// Layer's requirement set picks it up correctly.
 const WildflowerHttpApi = HttpApi.make('WildflowerApi')
   .addHttpApi(GatekeeperApi)
   .addHttpApi(FhirResourcesApi.middleware(RequireAuthMiddleware))
   .addHttpApi(FhirPublicApi)
-  .addHttpApi(CollectorApi)
+  .addHttpApi(CollectorApi.middleware(RequireAuthMiddleware))
 
 const WildflowerHttpApiLive = HttpApiBuilder.api(WildflowerHttpApi).pipe(
   Layer.provide(GatekeeperApiHandlersFor<'WildflowerApi'>()),

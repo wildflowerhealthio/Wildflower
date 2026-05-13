@@ -2,8 +2,8 @@ import type { Remote as CollectorRemote } from 'collector-core/livestore'
 import { makeRemoteForConfig, type AnyCollectorResource } from 'collector-core/registry'
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import { Effect, Either } from 'effect'
-import { useFhirResourcesEffectRunner } from 'fhir-r4-react'
-import { FhirResourcesHttpApiClient } from 'fhir-r4/clients'
+import { useFhirR4ResourcesEffectRunner } from 'fhir-r4-react'
+import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { useCallback, useEffect, useState } from 'react'
 
 import { useCollectorRuntime } from './use-collector-runtime.ts'
@@ -33,7 +33,7 @@ type RunnerState =
  *     `makeRemoteForConfig(remote.config)`.
  *   - Constructs a `CollectorBridgeMessageHandler` whose `onResult`
  *     PUTs parsed resources to the local FHIR R4 server via
- *     `FhirResourcesHttpApiClient`.
+ *     `FhirR4ResourcesHttpApiClient`.
  *   - Installs the handler into the runtime ref on mount; clears the
  *     handler's in-flight entries and uninstalls it on unmount.
  *
@@ -44,7 +44,7 @@ type RunnerState =
 const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
   const { setActiveHandler } = useCollectorRuntime()
   const sendCollectorMessage = useCollectorSender()
-  const runFhir = useFhirResourcesEffectRunner()
+  const runFhir = useFhirR4ResourcesEffectRunner()
   const [state, setState] = useState<RunnerState>({ _tag: 'idle' })
 
   const handleParsedResource = useCallback(
@@ -54,7 +54,7 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
       if (resource.id === null) return
       const path = { id: resource.id }
       const upsert = Effect.gen(function* () {
-        const client = yield* FhirResourcesHttpApiClient
+        const client = yield* FhirR4ResourcesHttpApiClient
         switch (resource.resourceType) {
           case 'Patient': {
             return yield* client.Patient.Update({ path, payload: { ...resource, id: path.id } })

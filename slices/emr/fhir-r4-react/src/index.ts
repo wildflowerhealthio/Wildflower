@@ -1,17 +1,17 @@
 export {
-  FhirResourcesClientProvider,
-  type FhirResourcesClientProviderProps,
-} from './fhir-resources-client-provider.tsx'
-export { FhirResourcesClientLayerContext } from './fhir-resources-client-context.ts'
-export { useFhirResourcesClientLayer } from './use-fhir-resources-client-layer.ts'
-export { useFhirResourcesEffect } from './use-fhir-resources-effect.ts'
-export { useFhirResourcesStream } from './use-fhir-resources-stream.ts'
+  FhirR4ResourcesClientProvider,
+  type FhirR4ResourcesClientProviderProps,
+} from './fhir-r4-resources-client-provider.tsx'
+export { FhirR4ResourcesClientLayerContext } from './fhir-r4-resources-client-context.ts'
+export { useFhirR4ResourcesClientLayer } from './use-fhir-r4-resources-client-layer.ts'
+export { useFhirR4ResourcesEffect } from './use-fhir-r4-resources-effect.ts'
+export { useFhirR4ResourcesStream } from './use-fhir-r4-resources-stream.ts'
 export {
-  useFhirResourcesEffectRunner,
-  type FhirResourcesEffectRunner,
-} from './use-fhir-resources-effect-runner.ts'
+  useFhirR4ResourcesEffectRunner,
+  type FhirR4ResourcesEffectRunner,
+} from './use-fhir-r4-resources-effect-runner.ts'
 
 export {
-  buildFhirResourcesClientLayer,
-  type FhirResourcesClientRequirements,
-} from './client/fhir-resources-client.ts'
+  buildFhirR4ResourcesClientLayer,
+  type FhirR4ResourcesClientRequirements,
+} from './client/fhir-r4-resources-client.ts'

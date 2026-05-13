@@ -4,25 +4,25 @@ import { Context, type Effect } from 'effect'
 import { FhirResourcesApi } from '../http-api-definition/index.ts'
 
 const _bareFhirResourcesClient = HttpApiClient.make(FhirResourcesApi, { baseUrl: '/' })
-type FhirResourcesHttpApiClientShape = Effect.Effect.Success<typeof _bareFhirResourcesClient>
+type FhirR4ResourcesHttpApiClientShape = Effect.Effect.Success<typeof _bareFhirResourcesClient>
 
 /**
  * Effect Service providing the resolved `FhirResourcesApi` HttpApi
  * client. `fhir-r4-react` provides it via
- * `<FhirResourcesClientProvider>` (mirrors `GatekeeperHttpApiClient`
+ * `<FhirR4ResourcesClientProvider>` (mirrors `GatekeeperHttpApiClient`
  * from `gatekeeper-core/clients`); call sites consume it
  * Effect-natively.
  *
  * @example
  * ```ts
- * Effect.flatMap(FhirResourcesHttpApiClient, (c) =>
+ * Effect.flatMap(FhirR4ResourcesHttpApiClient, (c) =>
  *   c['patient'].CreatePatient({ payload })
  * )
  * ```
  */
-class FhirResourcesHttpApiClient extends Context.Tag('FhirResourcesHttpApiClient')<
-  FhirResourcesHttpApiClient,
-  FhirResourcesHttpApiClientShape
+class FhirR4ResourcesHttpApiClient extends Context.Tag('FhirR4ResourcesHttpApiClient')<
+  FhirR4ResourcesHttpApiClient,
+  FhirR4ResourcesHttpApiClientShape
 >() {}
 
-export { FhirResourcesHttpApiClient, type FhirResourcesHttpApiClientShape }
+export { FhirR4ResourcesHttpApiClient, type FhirR4ResourcesHttpApiClientShape }

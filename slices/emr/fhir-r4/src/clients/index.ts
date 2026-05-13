@@ -1,4 +1,4 @@
 export {
-  FhirResourcesHttpApiClient,
-  type FhirResourcesHttpApiClientShape,
-} from './fhir-resources-http-api-client.ts'
+  FhirR4ResourcesHttpApiClient,
+  type FhirR4ResourcesHttpApiClientShape,
+} from './fhir-r4-resources-http-api-client.ts'

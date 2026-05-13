@@ -7,38 +7,11 @@
   gap: var(--space-6);
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.fieldLabel {
-  color: var(--color-neutral-4);
-}
-
-.buttons {
+.button-row {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   margin-top: var(--space-3);
-}
-
-.typeBadge {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  border: 1px solid var(--color-neutral-7);
-  border-radius: var(--radius-2);
-  padding: var(--space-1) var(--space-3);
-  background: var(--color-background);
-}
-
-.empty {
-  color: var(--color-neutral-4);
-  font-style: italic;
-  text-align: center;
-  padding: var(--space-10);
 }
 
 .error {
@@ -48,16 +21,4 @@
   background: var(--color-red-9, rgba(192, 57, 43, 0.08));
   border: 1px solid var(--color-red-7, rgba(192, 57, 43, 0.25));
   border-radius: var(--radius-2);
-}
-
-.subtitleLines {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.subtitleLines > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }

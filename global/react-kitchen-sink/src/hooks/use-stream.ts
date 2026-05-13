@@ -1,5 +1,5 @@
-import { Cause, Chunk, Effect, Exit, Fiber, type Scope, Stream } from 'effect'
-import { useEffect, useState } from 'react'
+import { Cause, Chunk, Effect, Exit, Fiber, type Layer, type Scope, Stream } from 'effect'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useStatePromise } from './use-state-promise.ts'
 
@@ -71,14 +71,30 @@ const useStreamWithCallbacks = <A, E>(
  * stream fiber is interrupted on unmount or when the stream
  * reference changes.
  *
- * Pass a `ManagedRuntime` when the stream's context requires
- * services beyond `Scope` (e.g. an HTTP client or app-specific
- * tags). Without it, `R` must extend only `Scope`.
+ * Pass a `Layer` when the stream's context requires services beyond
+ * `Scope`. The hook applies `Stream.provideLayer(layer)` internally.
+ * Without one, `R` must extend only `Scope`.
  */
-function useStream<A, E>(stream: Stream.Stream<A, E, Scope.Scope>): Promise<A> {
+function useStream<A, E>(stream: Stream.Stream<A, E, Scope.Scope>): Promise<A>
+function useStream<A, E, R>(
+  stream: Stream.Stream<A, E, R | Scope.Scope>,
+  layer: Layer.Layer<R, never, never>
+): Promise<A>
+function useStream<A, E, R>(
+  stream: Stream.Stream<A, E, R | Scope.Scope>,
+  layer?: Layer.Layer<R, never, never>
+): Promise<A> {
   const [promise, { resolve, reject, reset }] = useStatePromise<A>()
 
-  useStreamWithCallbacks(stream, { reset, resolve, reject })
+  const provided = useMemo(() => {
+    if (layer === undefined) {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- caller without a layer promised R extends Scope only
+      return stream as Stream.Stream<A, E, Scope.Scope>
+    }
+    return stream.pipe(Stream.provideSomeLayer(layer))
+  }, [stream, layer])
+
+  useStreamWithCallbacks(provided, { reset, resolve, reject })
 
   return promise
 }

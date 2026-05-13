@@ -1,6 +1,6 @@
-import { Effect, type Scope } from 'effect'
+import type { Effect, Scope } from 'effect'
 import type { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-import { useCallback } from 'react'
+import { useEffectAction } from 'react-kitchen-sink'
 
 import { useGatekeeperClientLayer } from './use-gatekeeper-client-layer.ts'
 
@@ -9,10 +9,11 @@ type GatekeeperEffectRunner = <A, E>(
 ) => Promise<A>
 
 /**
- * Returns a runner — a `<A, E>(effect) => Promise<A>` — for one-off
- * effect executions outside the Suspense flow (button-click handlers
- * that await a write, for example). The runner auto-provides the
- * slice's client layer, `BearerToken`, and `webHttpClientLayer`.
+ * Thin wrapper around `useEffectAction` that supplies the slice's
+ * full client layer (`GatekeeperHttpApiClient` + `BearerToken` +
+ * `webHttpClientLayer`). Returns a `<A, E>(effect) => Promise<A>`
+ * runner for one-off effect executions outside the Suspense flow
+ * (button-click handlers that await a write, for example).
  *
  * @example
  * ```ts
@@ -27,23 +28,8 @@ type GatekeeperEffectRunner = <A, E>(
  * }
  * ```
  */
-const useGatekeeperEffectRunner = (): GatekeeperEffectRunner => {
-  const clientLayer = useGatekeeperClientLayer()
-
-  return useCallback(
-    (effect) =>
-      Effect.runPromise(
-        effect.pipe(
-          Effect.provide(clientLayer),
-          // The provided effect may still require a `Scope` (HttpApiClient
-          // endpoints scope their request lifecycles). `Effect.scoped` opens
-          // a transient scope that closes when the effect settles.
-          Effect.scoped
-        )
-      ),
-    [clientLayer]
-  )
-}
+const useGatekeeperEffectRunner = (): GatekeeperEffectRunner =>
+  useEffectAction(useGatekeeperClientLayer())
 
 export { useGatekeeperEffectRunner }
 export type { GatekeeperEffectRunner }

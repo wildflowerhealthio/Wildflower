@@ -7,23 +7,13 @@ import { cn } from 'react-kitchen-sink'
 import { useNavigate } from 'react-router'
 import { Dialog, ItemList, Menu, type MenuItem } from 'react-tundraish'
 
+import { formatInstant } from '../format-date.ts'
 import { useRequestSniffableWebView } from '../runtime/use-request-sniffable-web-view.ts'
 import { useCollectorEffectRunner } from '../use-collector-effect-runner.ts'
+import accountList from '../styles/account-list.module.css'
 import pageLayout from '../styles/page-layout.module.css'
 
 type Remote = Schema.Schema.Type<typeof Remotes.RemoteSchema>
-
-const formatDate = (value: { epochMillis: number } | Date | string): string => {
-  let ms: number
-  if (typeof value === 'string') {
-    ms = Date.parse(value)
-  } else if (value instanceof Date) {
-    ms = value.getTime()
-  } else {
-    ms = value.epochMillis
-  }
-  return new Date(ms).toLocaleString()
-}
 
 /**
  * Lists the remotes registered against `CollectorApi`. "Import Now"
@@ -96,9 +86,9 @@ const AccountListScreen = (): JSX.Element => {
               title: remote.name,
               badge: remote.config._tag.toUpperCase(),
               subtitle: (
-                <span className={pageLayout['subtitleLines']}>
+                <span className={accountList['account-list-item__subtitles']}>
                   <span>{rootUrl}</span>
-                  <span>Added {formatDate(remote.addedAt)}</span>
+                  <span>Added {formatInstant(remote.addedAt)}</span>
                 </span>
               ),
               onClick: () => {
@@ -167,7 +157,7 @@ const AccountListScreen = (): JSX.Element => {
       />
 
       {remotes.length === 0 ? (
-        <p className={cn(pageLayout['empty'], 'text-body-3')}>
+        <p className={cn(accountList['account-list__empty'], 'text-body-3')}>
           No accounts connected yet. Choose a source above to get started.
         </p>
       ) : null}
@@ -182,7 +172,7 @@ const AccountListScreen = (): JSX.Element => {
         <p className="text-body-2">
           Are you sure you want to delete &quot;{remoteToDelete?.name}&quot;?
         </p>
-        <div className={pageLayout['buttons']}>
+        <div className={pageLayout['button-row']}>
           <button
             type="button"
             className="button-2 filled accent-red"
