@@ -18,7 +18,7 @@ import { Schema } from 'effect'
 import { CollectorConfig, CollectorTag } from '../registry.ts'
 
 const table = State.SQLite.table({
-  name: 'remotes',
+  name: 'RemoteConfig',
   columns: {
     id: State.SQLite.text({ primaryKey: true }),
     name: State.SQLite.text(),
@@ -36,7 +36,7 @@ const table = State.SQLite.table({
 type RemoteRow = (typeof table)['Type']
 
 const remoteAdded = Events.synced({
-  name: 'v1.RemoteAdded',
+  name: 'v1.RemoteConfigAdded',
   schema: Schema.Struct({
     id: Schema.String,
     name: Schema.String,
@@ -46,7 +46,7 @@ const remoteAdded = Events.synced({
 })
 
 const remoteUpdated = Events.synced({
-  name: 'v1.RemoteUpdated',
+  name: 'v1.RemoteConfigUpdated',
   schema: Schema.Struct({
     id: Schema.String,
     name: Schema.String,
@@ -55,18 +55,18 @@ const remoteUpdated = Events.synced({
 })
 
 const remoteDeleted = Events.synced({
-  name: 'v1.RemoteDeleted',
+  name: 'v1.RemoteConfigDeleted',
   schema: Schema.Struct({ id: Schema.String }),
 })
 
 const events = { remoteAdded, remoteUpdated, remoteDeleted } as const
 
 const materializers = State.SQLite.materializers(events, {
-  'v1.RemoteAdded': ({ id, name, config, addedAt }) =>
+  'v1.RemoteConfigAdded': ({ id, name, config, addedAt }) =>
     table.insert({ id, name, tag: config._tag, config, addedAt }),
-  'v1.RemoteUpdated': ({ id, name, config }) =>
+  'v1.RemoteConfigUpdated': ({ id, name, config }) =>
     table.update({ name, tag: config._tag, config }).where({ id }),
-  'v1.RemoteDeleted': ({ id }) => table.delete().where({ id }),
+  'v1.RemoteConfigDeleted': ({ id }) => table.delete().where({ id }),
 })
 
 const all$ = queryDb(table, { label: 'remotes' })

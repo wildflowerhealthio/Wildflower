@@ -1,5 +1,7 @@
+import type { WebViewSource } from 'collector-fundamentals/model'
 import { type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
+import { buildFhirBootstrapHtml } from './index.ts'
 
 /**
  * `rootUrl` must be an absolute `http(s)://` URL with at least a host
@@ -59,4 +61,11 @@ const defaultConfig: InstanceConfig = {
   patientId: '8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882',
 }
 
-export { InstanceConfig, defaultConfig }
+const firstPage = (config: InstanceConfig): WebViewSource.Any => {
+  const safePatientId = encodeURIComponent(config.patientId)
+  const patientUrl = `${config.rootUrl}/Patient/${safePatientId}?_format=json`
+  const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
+  return { html: buildFhirBootstrapHtml({ patientUrl, observationUrl }) }
+}
+
+export { InstanceConfig, defaultConfig, firstPage }

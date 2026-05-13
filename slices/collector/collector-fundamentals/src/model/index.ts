@@ -1,5 +1,5 @@
 export * as EntityDefinition from './entity-definition.ts'
 export * as Link from './link.ts'
-export * as Remote from './remote.ts'
+export * as RemoteKind from './remote-kind.ts'
 export * as Response from './response.ts'
 export * as WebViewSource from './web-view-source.ts'

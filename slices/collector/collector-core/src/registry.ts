@@ -1,9 +1,9 @@
-import type { Remote } from 'collector-fundamentals/model'
+import type { RemoteKind } from 'collector-fundamentals/model'
 import { Schema } from 'effect'
 import {
   InstanceConfig as FhirR4InstanceConfig,
   type AnyResource as FhirR4AnyResource,
-  makeFhirR4Remote,
+  remoteKind as fhirR4ClientKind,
 } from 'fhir-r4-client-collector'
 
 /**
@@ -50,10 +50,12 @@ type AnyCollectorResource = FhirR4AnyResource
  * `default` branch turns a missing case into a compile-time error if
  * the union ever widens without a matching dispatch arm.
  */
-const makeRemoteForConfig = (config: CollectorConfig): Remote.Remote<AnyCollectorResource> => {
+const makeRemoteForConfig = (
+  config: CollectorConfig
+): RemoteKind.RemoteKind<AnyCollectorResource> => {
   switch (config._tag) {
     case 'fhir-r4':
-      return makeFhirR4Remote(config)
+      return fhirR4ClientKind
     default: {
       const exhaustive: never = config._tag
       throw new Error(`unknown collector config tag: ${String(exhaustive)}`)

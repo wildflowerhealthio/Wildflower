@@ -5,7 +5,7 @@ import { Effect, Encoding, MutableHashMap } from 'effect'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { EntityDefinition, Remote } from 'collector-fundamentals/model'
+import { EntityDefinition, RemoteKind } from 'collector-fundamentals/model'
 import { AnotherEntity, SimpleEntity } from 'collector-fundamentals/test-helpers'
 import * as CollectorBridgeMessageHandler from './collector-bridge-message-handler.ts'
 
@@ -27,9 +27,8 @@ const makeSimpleHandler = (
   overrides: Partial<SimpleHandlerArgs> = {}
 ): ReturnType<typeof CollectorBridgeMessageHandler.make<SimpleResources>> =>
   CollectorBridgeMessageHandler.make({
-    remote: Remote.make<SimpleResources>({
+    remote: RemoteKind.make<SimpleResources>({
       name: 'TestRemote',
-      firstPage: { uri: 'https://example.com/people' },
       entityDefinitions: [SimpleEntity],
     }),
     sendMessage: noopSendMessage,
@@ -103,9 +102,8 @@ describe('CollectorBridgeMessageHandler.make', () => {
       type MultiResources = SimpleResources | { id: string }
       const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
       const handler = CollectorBridgeMessageHandler.make<MultiResources>({
-        remote: Remote.make<MultiResources>({
+        remote: RemoteKind.make<MultiResources>({
           name: 'MultiRemote',
-          firstPage: { uri: 'https://example.com' },
           // Each entity is `EntityDefinition<X>` with `X ⊂ MultiResources`; widen
           // the array to the union so the array literal typechecks.
           entityDefinitions: [
@@ -239,9 +237,8 @@ describe('CollectorBridgeMessageHandler.make', () => {
 
       const onResult = vi.fn()
       const handler = CollectorBridgeMessageHandler.make<SimpleResources>({
-        remote: Remote.make<SimpleResources>({
+        remote: RemoteKind.make<SimpleResources>({
           name: 'OverlappingRemote',
-          firstPage: { uri: 'https://example.com' },
           entityDefinitions: [OverlappingEntity, SimpleEntity],
         }),
         sendMessage: noopSendMessage,

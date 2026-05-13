@@ -8,8 +8,6 @@ export default defineConfig({
     platform: 'neutral',
     entry: {
       index: 'src/index.ts',
-      bridge: 'src/bridge.ts',
-      'handler/collector-bridge-message-handler': 'src/handler/collector-bridge-message-handler.ts',
       registry: 'src/registry.ts',
       'clients/index': 'src/clients/index.ts',
       'contexts/index': 'src/contexts/index.ts',

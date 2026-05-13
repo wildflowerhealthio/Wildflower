@@ -1,8 +1,6 @@
-import { type EntityDefinition, Remote } from 'collector-fundamentals/model'
+import { type EntityDefinition, RemoteKind } from 'collector-fundamentals/model'
 import type { Binary, Observation, Patient } from 'fhir-r4/resources'
 
-import { buildFhirBootstrapHtml } from './bootstrap-fhir-page.ts'
-import type { InstanceConfig } from './config.ts'
 import { ObservationEntity } from './entities/observation-entity.ts'
 import { ObservationListEntity } from './entities/observation-list-entity.ts'
 import { PatientEntity } from './entities/patient-entity.ts'
@@ -30,21 +28,14 @@ type AnyResource =
  * still applied defensively in case the value reaches this function
  * through an untyped path.
  */
-const makeFhirR4Remote = (config: InstanceConfig): Remote.Remote<AnyResource> => {
-  const safePatientId = encodeURIComponent(config.patientId)
-  const patientUrl = `${config.rootUrl}/Patient/${safePatientId}?_format=json`
-  const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
+const remoteKind = RemoteKind.make<AnyResource>({
+  name: 'FHIR R4 Remote',
+  entityDefinitions: [
+    PatientEntity,
+    ObservationEntity,
+    ObservationListEntity,
+  ] as readonly EntityDefinition.EntityDefinition<AnyResource>[],
+})
 
-  return Remote.make<AnyResource>({
-    name: 'FHIR R4 Remote',
-    firstPage: { html: buildFhirBootstrapHtml({ patientUrl, observationUrl }) },
-    entityDefinitions: [
-      PatientEntity,
-      ObservationEntity,
-      ObservationListEntity,
-    ] as readonly EntityDefinition.EntityDefinition<AnyResource>[],
-  })
-}
-
-export { makeFhirR4Remote }
+export { remoteKind }
 export type { AnyResource }

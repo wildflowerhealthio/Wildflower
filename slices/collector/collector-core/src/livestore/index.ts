@@ -13,28 +13,28 @@
 
 import { makeSchema, State } from '@livestore/livestore'
 
-import * as Remote from './remote.ts'
+import * as RemoteConfig from './remote-config.ts'
 
 const tables = {
-  remotes: Remote.table,
+  remotes: RemoteConfig.table,
 } as const
 
 const events = {
-  remoteAdded: Remote.events.remoteAdded,
-  remoteUpdated: Remote.events.remoteUpdated,
-  remoteDeleted: Remote.events.remoteDeleted,
+  remoteAdded: RemoteConfig.events.remoteAdded,
+  remoteUpdated: RemoteConfig.events.remoteUpdated,
+  remoteDeleted: RemoteConfig.events.remoteDeleted,
 } as const
 
 const queries = {
-  remotes$: Remote.queries.all$,
-  remoteById$: Remote.queries.byId$,
-  remotesByTag$: Remote.queries.byTag$,
+  remotes$: RemoteConfig.queries.all$,
+  remoteById$: RemoteConfig.queries.byId$,
+  remotesByTag$: RemoteConfig.queries.byTag$,
 } as const
 
-const materializers = { ...Remote.materializers } as const
+const materializers = { ...RemoteConfig.materializers } as const
 
 const state = State.SQLite.makeState({ tables, materializers })
 const schema = makeSchema({ events, state })
 
-export { events, materializers, queries, Remote, schema, state, tables }
-export type { RemoteRow } from './remote.ts'
+export { events, materializers, queries, RemoteConfig as Remote, schema, state, tables }
+export type { RemoteRow } from './remote-config.ts'

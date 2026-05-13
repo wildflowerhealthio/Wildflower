@@ -1,5 +1,5 @@
 import { type CancelSnifferRequestMessage } from 'browser-sniffer-core'
-import { type EntityDefinition, type Remote, Response } from 'collector-fundamentals/model'
+import { type EntityDefinition, type RemoteKind, Response } from 'collector-fundamentals/model'
 import { Either, type ParseResult, Effect, Encoding, MutableHashMap, Option, Data } from 'effect'
 import { UnknownException } from 'effect/Cause'
 import type CollectorBridge from '../bridge.ts'
@@ -47,7 +47,7 @@ const make = <TResources>({
   sendMessage,
   onResult: handleResult,
 }: {
-  remote: Remote.Remote<TResources>
+  remote: RemoteKind.RemoteKind<TResources>
   sendMessage: (
     message: typeof CancelSnifferRequestMessage.Type
   ) => Effect.Effect<void, never, never>

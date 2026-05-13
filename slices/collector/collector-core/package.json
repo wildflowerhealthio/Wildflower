@@ -18,14 +18,6 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
-    "./bridge": {
-      "source": "./src/bridge.ts",
-      "default": "./dist/bridge.js"
-    },
-    "./handler": {
-      "source": "./src/handler/collector-bridge-message-handler.ts",
-      "default": "./dist/handler/collector-bridge-message-handler.js"
-    },
     "./registry": {
       "source": "./src/registry.ts",
       "default": "./dist/registry.js"

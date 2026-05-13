@@ -8,8 +8,10 @@ export default defineConfig({
     platform: 'neutral',
     entry: {
       index: 'src/index.ts',
+      bridge: 'src/bridge.ts',
       'model/index': 'src/model/index.ts',
       'test-helpers': 'src/test-helpers.ts',
+      'handler/index': 'src/handler/index.ts',
     },
   },
   lint: {

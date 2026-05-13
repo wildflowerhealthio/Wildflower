@@ -1385,9 +1385,15 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260429.1
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../browser-sniffer/browser-sniffer-core
       effect:
         specifier: 'catalog:'
         version: 3.21.2
+      effect-messaging-core:
+        specifier: workspace:*
+        version: link:../../../global/effect-messaging/effect-messaging-core
       fast-check:
         specifier: 'catalog:'
         version: 3.23.1
@@ -1418,9 +1424,6 @@ importers:
       browser-sniffer-core:
         specifier: workspace:*
         version: link:../../browser-sniffer/browser-sniffer-core
-      collector-core:
-        specifier: workspace:*
-        version: link:../collector-core
       collector-fundamentals:
         specifier: workspace:*
         version: link:../collector-fundamentals

@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native'
+import { act, render } from '@testing-library/react-native'
 import { Effect } from 'effect'
 import type { Effect as EffectType, Layer as LayerType } from 'effect'
 import * as React from 'react'
@@ -154,10 +154,15 @@ describe('BrowserSnifferWebView', () => {
         />
       )
       expect(queryByTestId('bsw-loader')).not.toBeNull()
-      // Simulate the WebView signalling first-load complete.
+      // Simulate the WebView signalling first-load complete. Wrap in
+      // `act` so the `setLoaded(true)` update commits before the next
+      // assertion reads the tree — without it, React batches the state
+      // update past the synchronous expect.
       const onLoadEnd = mockLastWebViewProps?.onLoadEnd
       expect(typeof onLoadEnd).toBe('function')
-      onLoadEnd?.({})
+      act(() => {
+        onLoadEnd?.({})
+      })
       expect(queryByTestId('bsw-loader')).toBeNull()
     })
 
@@ -187,18 +192,23 @@ describe('BrowserSnifferWebView', () => {
       expect(mockSendMessageCalls).toEqual([{ _tag: 'CancelSnifferRequest', id: 'r1' }])
     })
 
-    it('silently drops when called before the transport is built', () => {
+    it('silently drops when called after the transport has been torn down', () => {
+      // RTL's `render` commits effects synchronously, so there is no
+      // observable "pre-build" window from a test's perspective. The
+      // realistic defensive path is post-unmount: the cleanup nulls
+      // `transportRef.current`, and a late `cancelRequest` becomes a
+      // no-op rather than crashing the host. That's what this pins.
       const ref = React.createRef<BrowserSnifferWebViewHandle>()
-      render(
+      const { unmount } = render(
         <BrowserSnifferWebView
           ref={ref}
           source={{ uri: 'https://example.test' }}
           handlers={noopHandlers}
         />
       )
-      // Synchronously — useEffect hasn't fired yet.
-      expect(() => ref.current?.cancelRequest('r-pre-effect')).not.toThrow()
-      // No sendMessage call should have happened on the (not-yet-built) transport.
+      unmount()
+      mockSendMessageCalls = []
+      expect(() => ref.current?.cancelRequest('r-post-unmount')).not.toThrow()
       expect(mockSendMessageCalls).toEqual([])
     })
   })
@@ -227,15 +237,20 @@ describe('BrowserSnifferWebView', () => {
       ).not.toThrow()
     })
 
-    it('silently drops messages when the transport is not yet built', () => {
-      render(
+    it('silently drops messages received after the transport has been torn down', () => {
+      // RTL's `render` commits effects synchronously, so there is no
+      // observable "pre-build" window. The realistic defensive path
+      // is post-unmount: the cleanup nulls `transportRef.current`, and
+      // a late inbound `message` event becomes a no-op rather than a
+      // rejected promise.
+      const { unmount } = render(
         <BrowserSnifferWebView source={{ uri: 'https://example.test' }} handlers={noopHandlers} />
       )
-      // Capture the initial onMessage from the synchronous render path,
-      // before useEffect has fired.
       const onMessage = mockLastWebViewProps?.onMessage
+      unmount()
+      mockEnqueueCalls = []
       expect(() =>
-        onMessage?.({ nativeEvent: { data: '{"_tag":"Log","log":"early"}' } })
+        onMessage?.({ nativeEvent: { data: '{"_tag":"Log","log":"after-unmount"}' } })
       ).not.toThrow()
       expect(mockEnqueueCalls).toEqual([])
     })

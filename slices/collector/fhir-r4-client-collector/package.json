@@ -32,7 +32,6 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "browser-sniffer-core": "workspace:*",
-    "collector-core": "workspace:*",
     "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
