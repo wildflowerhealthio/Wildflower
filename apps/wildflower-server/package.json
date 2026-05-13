@@ -20,6 +20,7 @@
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
     "@types/node": "catalog:",
+    "apps-core": "workspace:*",
     "collector-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
@@ -27,15 +28,18 @@
     "gatekeeper-core": "workspace:*",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
+    "vendor-apps": "workspace:*",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
+    "apps-core": "workspace:*",
     "collector-core": "workspace:*",
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "gatekeeper-core": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "kitchen-sink": "workspace:*",
+    "vendor-apps": "workspace:*"
   }
 }

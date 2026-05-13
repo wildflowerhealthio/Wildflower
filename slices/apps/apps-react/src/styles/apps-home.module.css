@@ -1,0 +1,36 @@
+.apps-home__header-actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.apps-home__card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+}
+
+.apps-home__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-2);
+  background: var(--color-neutral-10, #fff);
+  border: 1px solid var(--color-neutral-8);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.apps-home__card-subtitle {
+  color: var(--color-neutral-4);
+}
+
+.apps-home__card-footer {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin-top: var(--space-2);
+}

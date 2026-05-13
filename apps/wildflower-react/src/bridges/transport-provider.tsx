@@ -1,3 +1,5 @@
+import AppsBridge from 'apps-core/bridge'
+import { useAppsWebReceiverLayer } from 'apps-react'
 import CollectorBridge from 'collector-fundamentals/bridge'
 import { useCollectorWebReceiverLayer } from 'collector-react'
 import { Effect, Exit, Layer, Scope } from 'effect'
@@ -47,6 +49,10 @@ function TransportProvider({
   // active-handler ref inside <CollectorRuntimeProvider>. The provider
   // mounts above this one in main-{web,embedded}.
   const collectorLayer = useCollectorWebReceiverLayer()
+  // Apps' receiver layer closes over the React-tree-bound
+  // pending-tunnel-resolver ref inside <AppsRuntimeProvider>. The
+  // provider mounts above this one in main-{web,embedded}.
+  const appsLayer = useAppsWebReceiverLayer()
 
   const [scope] = useState(() => Effect.runSync(Scope.make()))
   const [transport] = useState<Transport>(() => {
@@ -55,13 +61,13 @@ function TransportProvider({
       if (typeof to === 'number') void navigateRef.current(to)
       else void navigateRef.current(to)
     })
-    const bridges = [NavigationBridge, GatekeeperBridge, CollectorBridge] as const
+    const bridges = [NavigationBridge, GatekeeperBridge, CollectorBridge, AppsBridge] as const
     const adapter = WebPlatformAdapter.make(bridges)
     return Effect.runSync(
       Scope.extend(
         BridgeTransport.make({
           bridges,
-          layers: [navLayer, gatekeeperWebReceiverLayer, collectorLayer] as const,
+          layers: [navLayer, gatekeeperWebReceiverLayer, collectorLayer, appsLayer] as const,
           side: 'Web',
         }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter))),
         scope

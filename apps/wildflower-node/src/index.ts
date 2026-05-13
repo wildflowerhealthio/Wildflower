@@ -1,7 +1,12 @@
+/* oxlint-disable import/max-dependencies -- this is the platform entry point that wires every slice's
+   node-side Layer + store + telemetry into `WildflowerServerLive`; consolidating into fewer files
+   would hide the wiring rather than tame it. */
 import './instrument.ts'
 import { createServer } from 'node:http'
 import { HttpServer } from '@effect/platform'
 import { NodeFileSystem, NodeHttpServer, NodePath, NodeRuntime } from '@effect/platform-node'
+import { makeAppsStoreLayer } from 'apps-core/contexts'
+import type { ServerState } from 'apps-core/contexts'
 import { makeCollectorStoreLayer } from 'collector-core/contexts'
 import { Duration, Effect, Layer } from 'effect'
 import { makeLivestoreStoreLayer } from 'emr-core/contexts'
@@ -19,6 +24,7 @@ import { webAssetsDir } from 'wildflower-react/web-assets'
 import { WebAssetsDir, WildflowerServerLive } from 'wildflower-server'
 import { createStore } from './livestore-store.ts'
 import { SERVICE_NAME } from './service-name.ts'
+import { TunnelControlLive } from './tunnel-control.ts'
 
 // Config
 
@@ -66,10 +72,22 @@ const run = Effect.gen(function* () {
     )
   }
 
+  // `apps-core`'s `TunnelControl` returns a static `ServerState`; on the
+  // node host there is no tunnel, so `tunnelActive` is `false` at start
+  // and `setTunnelActive` fails. Mobile hosts swap in their own Live.
+  const serverState: ServerState = {
+    origin: ORIGIN,
+    localOrigin: ORIGIN,
+    port: PORT,
+    tunnelActive: false,
+  }
+
   const FullServerLive = WildflowerServerLive.pipe(
     HttpServer.withLogAddress,
     Layer.tap(() => afterStartupEffect),
     Layer.provide(makeLivestoreStoreLayer(store)),
+    Layer.provide(makeAppsStoreLayer(store)),
+    Layer.provide(TunnelControlLive(serverState)),
     Layer.provide(gatekeeperStoreLayer),
     Layer.provide(makeCollectorStoreLayer(store)),
     Layer.provide(CryptoRandomLive),

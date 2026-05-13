@@ -1,3 +1,4 @@
+import { appsAuthorizedRoutesFragment } from 'apps-react'
 import { collectorAuthorizedRoutesFragment } from 'collector-react'
 import {
   gatekeeperAuthorizedRoutesFragment,
@@ -23,6 +24,7 @@ const appRoutesFragment: JSX.Element = (
     <Route element={<AuthorizedAppShell />}>
       {gatekeeperAuthorizedRoutesFragment}
       {collectorAuthorizedRoutesFragment}
+      {appsAuthorizedRoutesFragment}
     </Route>
   </>
 )
