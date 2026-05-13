@@ -1,5 +1,5 @@
 import type { Effect, ParseResult } from 'effect'
-import { deepFreeze } from 'kitchen-sink/freeze'
+import { deepFreeze } from 'kitchen-sink'
 import type * as Link from './link.ts'
 import type { RemoteResponse } from './response.ts'
 

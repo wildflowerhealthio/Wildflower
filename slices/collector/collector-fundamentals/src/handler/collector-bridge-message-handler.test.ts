@@ -2,7 +2,7 @@
 
 import type { CancelSnifferRequestMessage } from 'browser-sniffer-core'
 import { Effect, Encoding, MutableHashMap } from 'effect'
-import { utilityExpectations } from 'kitchen-sink/test'
+import { LoggingLayerTest, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { EntityDefinition, RemoteKind } from 'collector-fundamentals/model'
@@ -147,13 +147,25 @@ describe('CollectorBridgeMessageHandler.make', () => {
       })
     })
 
-    it('logs and no-ops for an untracked response id (does not throw, does not call onResult)', () => {
+    it('emits a WARN log and no-ops for an untracked response id', async () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      expect(() =>
-        Effect.runSync(handler.ResponseData(responseData('unknown', 'data')))
-      ).not.toThrow()
+      await Effect.runPromise(
+        handler.ResponseData(responseData('unknown', 'data')).pipe(
+          LoggingLayerTest.expectToLog((logs) => {
+            expect(logs).toEqual([
+              expect.objectContaining({
+                level: 'WARN',
+                message: expect.stringContaining(
+                  'CollectorBridgeMessageHandler.ResponseData: no tracked response for id unknown'
+                ),
+              }),
+            ])
+          }),
+          Effect.scoped
+        )
+      )
       expect(onResult).not.toHaveBeenCalled()
     })
 
@@ -181,13 +193,25 @@ describe('CollectorBridgeMessageHandler.make', () => {
   })
 
   describe('ResponseFinished', () => {
-    it('logs and no-ops for an untracked response id (does not throw, does not call onResult)', () => {
+    it('emits a WARN log and no-ops for an untracked response id', async () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      expect(() =>
-        Effect.runSync(handler.ResponseFinished(responseFinished('unknown')))
-      ).not.toThrow()
+      await Effect.runPromise(
+        handler.ResponseFinished(responseFinished('unknown')).pipe(
+          LoggingLayerTest.expectToLog((logs) => {
+            expect(logs).toEqual([
+              expect.objectContaining({
+                level: 'WARN',
+                message: expect.stringContaining(
+                  'CollectorBridgeMessageHandler.ResponseFinished: no tracked response for id unknown'
+                ),
+              }),
+            ])
+          }),
+          Effect.scoped
+        )
+      )
       expect(onResult).not.toHaveBeenCalled()
     })
 
@@ -306,11 +330,25 @@ describe('CollectorBridgeMessageHandler.make', () => {
       expect(MutableHashMap.keys(handler.inProgressResponses)).not.toContain('r1')
     })
 
-    it('logs and no-ops for an unsolicited Cancelled (id not tracked)', () => {
+    it('emits a WARN log and no-ops for an unsolicited Cancelled (id not tracked)', async () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      expect(() => Effect.runSync(handler.Cancelled(cancelled('unknown')))).not.toThrow()
+      await Effect.runPromise(
+        handler.Cancelled(cancelled('unknown')).pipe(
+          LoggingLayerTest.expectToLog((logs) => {
+            expect(logs).toEqual([
+              expect.objectContaining({
+                level: 'WARN',
+                message: expect.stringContaining(
+                  'CollectorBridgeMessageHandler.Cancelled: no tracked response for id unknown'
+                ),
+              }),
+            ])
+          }),
+          Effect.scoped
+        )
+      )
       expect(onResult).not.toHaveBeenCalled()
     })
   })
@@ -369,17 +407,29 @@ describe('CollectorBridgeMessageHandler.make', () => {
       )
     })
 
-    it('logs and no-ops for an untracked response id (does not throw, does not call onResult)', () => {
+    it('emits a WARN log and no-ops for an untracked response id', async () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      expect(() =>
-        Effect.runSync(
-          handler.RequestError(
+      await Effect.runPromise(
+        handler
+          .RequestError(
             requestError({ id: 'unknown', url: 'https://example.com', message: 'oops' })
           )
-        )
-      ).not.toThrow()
+          .pipe(
+            LoggingLayerTest.expectToLog((logs) => {
+              expect(logs).toEqual([
+                expect.objectContaining({
+                  level: 'WARN',
+                  message: expect.stringContaining(
+                    'CollectorBridgeMessageHandler.RequestError: no tracked response for id unknown'
+                  ),
+                }),
+              ])
+            }),
+            Effect.scoped
+          )
+      )
       expect(onResult).not.toHaveBeenCalled()
     })
   })

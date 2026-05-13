@@ -1,4 +1,4 @@
-import { deepFreeze } from 'kitchen-sink/freeze'
+import { deepFreeze } from 'kitchen-sink'
 import type * as EntityDefinition from './entity-definition.ts'
 
 /**

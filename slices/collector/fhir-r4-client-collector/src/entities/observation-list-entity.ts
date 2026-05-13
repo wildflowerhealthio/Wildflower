@@ -1,4 +1,4 @@
-import { EntityDefinition } from 'collector-fundamentals/model'
+import { EntityDefinition, UrlMatch } from 'collector-fundamentals/model'
 import { Effect, Schema } from 'effect'
 import { Bundle } from 'fhir-r4/data-types'
 import { Observation } from 'fhir-r4/resources'
@@ -10,22 +10,28 @@ const decode = Schema.decode(Schema.parseJson(ObservationBundle))
 const isObservation = Schema.is(Observation.Schema)
 
 /**
+ * `…://host/Observation?…`. The `mustHaveQuery` boundary keeps the
+ * list pattern disjoint from `ObservationEntity` (`/Observation/<id>`),
+ * so order in `RemoteKind.entityDefinitions` is no longer
+ * load-bearing.
+ */
+const observationListUrl = UrlMatch.make({
+  segments: [UrlMatch.literal('Observation')],
+  end: 'mustHaveQuery',
+})
+
+/**
  * Entity for a FHIR R4 `Bundle` of `Observation` resources fetched at
  * `…/Observation?…`. Extracts the entries whose `resource` decodes as a
  * full `Observation` and drops the rest (the Bundle schema is
  * permissive about `entry.resource` so we re-check here). The dropped
  * count is surfaced via `Effect.logInfo` so partial-decode losses
  * aren't invisible at runtime.
- *
- * `isFoundAt` requires a `?` immediately after `/Observation` so the
- * list URL is disjoint from `ObservationEntity` (`/Observation/:id`).
- * Order in `Remote.entityDefinitions` is therefore no longer
- * load-bearing.
  */
 const ObservationListEntity: EntityDefinition.EntityDefinition<ObservationType> =
   EntityDefinition.make({
     name: 'ObservationListEntity',
-    isFoundAt: (url) => /:\/\/[^/]+\/Observation\?/.test(url),
+    isFoundAt: (url) => observationListUrl.test(url),
     parse: (response) =>
       Effect.gen(function* () {
         const bundle = yield* decode(response.text())

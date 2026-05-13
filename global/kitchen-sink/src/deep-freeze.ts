@@ -1,4 +1,4 @@
-import type { DeepReadonly } from '../types/deep-readonly.ts'
+import type { DeepReadonly } from './types/deep-readonly.ts'
 
 /**
  * Recursively `Object.freeze` `value` and every nested plain object /

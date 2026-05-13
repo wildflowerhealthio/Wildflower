@@ -21,10 +21,6 @@
       "source": "./src/crypto-random/index.ts",
       "default": "./dist/crypto-random.mjs"
     },
-    "./freeze": {
-      "source": "./src/freeze/index.ts",
-      "default": "./dist/freeze.mjs"
-    },
     "./polyfills/promise-with-resolvers": {
       "source": "./src/polyfills/promise-with-resolvers.ts",
       "default": "./dist/polyfills/promise-with-resolvers.mjs"

@@ -113,8 +113,21 @@ const ReferenceSchema: StructNoContext<
    * and Identifier at runtime AND prevents `JSON.stringify(schema.ast)` from
    * expanding the cycle into an exponential blob (livestore's per-event
    * schema-hash uses JSON.stringify and would otherwise OOM at boot).
+   *
+   * The `arbitrary` annotation caps `identifier` to `null` for property
+   * tests. Combined with `Identifier.assigner`'s same cap (below), this
+   * prevents `Arbitrary.make(ReferenceSchema)` from walking the
+   * Reference → Identifier → Reference cycle even shallowly — every
+   * column-round-trip test stays comfortably under the per-case
+   * timeout. The mutual cycle is exercised explicitly by
+   * `cycles.test.ts`; everywhere else, capping keeps generation flat.
    */
-  identifier: Schema.NullOr(suspendWithShallowJson(() => IdentifierSchema, 'Identifier')),
+  identifier: pipe(
+    Schema.NullOr(suspendWithShallowJson(() => IdentifierSchema, 'Identifier')),
+    Schema.annotations({
+      arbitrary: (): Arbitrary.LazyArbitrary<null> => (fc: typeof FastCheck) => fc.constant(null),
+    })
+  ),
 }).annotations({
   // Reference → Identifier → Reference is a mutual cycle. `Schema.suspend`
   // breaks it at schema-eval time, but the default arbitrary still walks
