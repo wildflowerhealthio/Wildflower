@@ -69,9 +69,12 @@ describe('useEffectAction', () => {
   })
 
   it('should produce a new runner when the layer reference changes', () => {
-    // Arrange
-    const layerA = Layer.empty
-    const layerB = Layer.empty
+    // Arrange — `Layer.empty` is a singleton, so two `Layer.empty`
+    // references compare identical and `useCallback` keeps the runner.
+    // Use two distinct `Layer.succeed` instances to get fresh refs.
+    class Tag extends Context.Tag('Probe')<Tag, number>() {}
+    const layerA = Layer.succeed(Tag, 1)
+    const layerB = Layer.succeed(Tag, 2)
     const { result, rerender } = renderHook(({ l }) => useEffectAction(l), {
       initialProps: { l: layerA },
     })
@@ -168,6 +171,11 @@ describe('useEffectAction', () => {
       // promise depending on timing, and the test only cares about the
       // finaliser running.
       void pending.catch(() => undefined)
+      // Yield once so the forked fiber gets past `acquireRelease`'s
+      // uninterruptible acquire before the cleanup interrupt fires;
+      // without this, the fiber can be interrupted at startup and the
+      // release never runs.
+      await new Promise((resolve) => setTimeout(resolve, 0))
       unmount()
 
       // Assert — wait for the finaliser to flip the sentinel.

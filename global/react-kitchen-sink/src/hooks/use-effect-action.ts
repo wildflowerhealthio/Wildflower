@@ -84,26 +84,23 @@ function useEffectAction<R>(
     }
   }, [interruptOnUnmount])
 
-  const fireAndForget = useCallback<EffectAction<R>>(
-    (effect) => Effect.runPromise(effect.pipe(Effect.provide(layer), Effect.scoped)),
-    [layer]
-  )
-
-  const tracked = useCallback<EffectAction<R>>(
+  return useCallback<EffectAction<R>>(
     <A, E>(effect: Effect.Effect<A, E, R | Scope.Scope>): Promise<A> => {
       const { promise, resolve, reject } = Promise.withResolvers<A>()
       const fiber: Fiber.RuntimeFiber<A, E> = Effect.runFork(
         effect.pipe(Effect.provide(layer), Effect.scoped)
       )
-      fibersRef.current.add(fiber)
+      if (interruptOnUnmount) {
+        fibersRef.current.add(fiber)
+      }
       fiber.addObserver(
         Exit.match({
           onSuccess(a) {
-            fibersRef.current.delete(fiber)
+            if (interruptOnUnmount) fibersRef.current.delete(fiber)
             resolve(a)
           },
           onFailure(cause) {
-            fibersRef.current.delete(fiber)
+            if (interruptOnUnmount) fibersRef.current.delete(fiber)
             if (Cause.isInterruptedOnly(cause)) {
               // Component unmounted (or the fiber was otherwise
               // interrupted). Leave the promise unsettled — there is
@@ -133,13 +130,8 @@ function useEffectAction<R>(
       )
       return promise
     },
-    [layer]
+    [layer, interruptOnUnmount]
   )
-
-  if (interruptOnUnmount) {
-    return tracked
-  }
-  return fireAndForget
 }
 
 export { useEffectAction }
