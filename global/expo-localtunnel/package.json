@@ -44,9 +44,6 @@
     "jest": "jest",
     "prepublishOnly": "vp run build"
   },
-  "dependencies": {
-    "eventemitter3": "^5.0.4"
-  },
   "devDependencies": {
     "@babel/core": "catalog:",
     "@fast-check/jest": "catalog:",
@@ -54,6 +51,7 @@
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "babel-preset-expo": "catalog:",
+    "eventemitter3": "^5.0.4",
     "expo": "catalog:",
     "expo-module-scripts": "catalog:",
     "fast-check": "catalog:",
@@ -65,6 +63,7 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "eventemitter3": "^5.0.4",
     "expo": ">=55.0.0",
     "react": ">=19.0.0",
     "react-native": ">=0.83.0"

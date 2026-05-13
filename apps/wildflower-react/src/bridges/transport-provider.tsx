@@ -1,3 +1,5 @@
+import CollectorBridge from 'collector-fundamentals/bridge'
+import { useCollectorWebReceiverLayer } from 'collector-react'
 import { Effect, Exit, Layer, Scope } from 'effect'
 import { BridgeTransport, TransportAdapter } from 'effect-messaging-core'
 import { WebPlatformAdapter } from 'effect-messaging-react'
@@ -11,11 +13,12 @@ import { TransportContext, type Transport } from './transport-context.ts'
 
 /**
  * Build the page-side `BridgeTransport` once at mount, with the
- * navigation receiver Layer closing over `useNavigate()`. Suspends
- * `children` rendering until the dispatch fiber drains every URL-encoded
- * initial message (`transport.flushed`); then posts `__Ready` to the
- * host so its outbound queue can flow. The dispatch fiber's scope tears
- * down on unmount.
+ * navigation receiver Layer closing over `useNavigate()` and the
+ * collector receiver Layer pulled from `<CollectorRuntimeProvider>`.
+ * Suspends `children` rendering until the dispatch fiber drains every
+ * URL-encoded initial message (`transport.flushed`); then posts
+ * `__Ready` to the host so its outbound queue can flow. The dispatch
+ * fiber's scope tears down on unmount.
  *
  * @remarks
  * `useNavigate()` is captured behind a ref so the receiver Layer's
@@ -40,6 +43,11 @@ function TransportProvider({
   const navigateRef = useRef(navigate)
   navigateRef.current = navigate
 
+  // Collector's receiver layer closes over the React-tree-bound
+  // active-handler ref inside <CollectorRuntimeProvider>. The provider
+  // mounts above this one in main-{web,embedded}.
+  const collectorLayer = useCollectorWebReceiverLayer()
+
   const [scope] = useState(() => Effect.runSync(Scope.make()))
   const [transport] = useState<Transport>(() => {
     const navLayer = makeNavigationWebReceiverLayer((to) => {
@@ -47,13 +55,13 @@ function TransportProvider({
       if (typeof to === 'number') void navigateRef.current(to)
       else void navigateRef.current(to)
     })
-    const bridges = [NavigationBridge, GatekeeperBridge] as const
+    const bridges = [NavigationBridge, GatekeeperBridge, CollectorBridge] as const
     const adapter = WebPlatformAdapter.make(bridges)
     return Effect.runSync(
       Scope.extend(
         BridgeTransport.make({
           bridges,
-          layers: [navLayer, gatekeeperWebReceiverLayer] as const,
+          layers: [navLayer, gatekeeperWebReceiverLayer, collectorLayer] as const,
           side: 'Web',
         }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter))),
         scope

@@ -18,13 +18,30 @@ type JsonValue =
   | { readonly [key: string]: JsonValue }
   | readonly JsonValue[]
 
+/**
+ * `JSON.stringify` collapses `-0` to `"0"`, so a `-0` anywhere in a
+ * generated value breaks any round-trip property test built on top of
+ * this schema (the decoded `-0` and the parsed `0` aren't structurally
+ * equal). Reject samples that contain one.
+ */
+const containsNegativeZero = (value: JsonValue): boolean => {
+  if (typeof value === 'number') return Object.is(value, -0)
+  if (Array.isArray(value)) return value.some(containsNegativeZero)
+  if (value !== null && typeof value === 'object') {
+    return Object.values(value).some(containsNegativeZero)
+  }
+  return false
+}
+
 const arbitraryJsonValue: LazyArbitrary<JsonValue> = (fc: typeof FastCheck) =>
   // `fc.jsonValue()` returns the same recursive union shape (mutable
   // record/array) and is structurally a `JsonValue`. Re-typing via
   // `unknown` keeps `LazyArbitrary`'s readonly variance honest at the
   // call site.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  fc.jsonValue() as unknown as FastCheck.Arbitrary<JsonValue>
+  (fc.jsonValue() as unknown as FastCheck.Arbitrary<JsonValue>).filter(
+    (v) => !containsNegativeZero(v)
+  )
 
 /**
  * Schema matching any JSON-safe value. Uses `Schema.JsonNumber` for the

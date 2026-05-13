@@ -1,6 +1,6 @@
 export * as EntityDefinition from './entity-definition.ts'
 export * as Link from './link.ts'
-export * as RemoteKind from './remote-kind.ts'
 export * as Response from './response.ts'
+export * as ScrapingPlan from './scraping-plan.ts'
 export * as UrlMatch from './url-match.ts'
 export * as WebViewSource from './web-view-source.ts'

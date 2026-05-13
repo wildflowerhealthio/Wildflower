@@ -15,27 +15,27 @@
   "exports": {
     ".": {
       "source": "./src/index.ts",
-      "default": "./dist/index.mjs"
+      "default": "./dist/index.js"
     },
     "./crypto-random": {
       "source": "./src/crypto-random/index.ts",
-      "default": "./dist/crypto-random.mjs"
+      "default": "./dist/crypto-random.js"
     },
     "./polyfills/promise-with-resolvers": {
       "source": "./src/polyfills/promise-with-resolvers.ts",
-      "default": "./dist/polyfills/promise-with-resolvers.mjs"
+      "default": "./dist/polyfills/promise-with-resolvers.js"
     },
     "./schema": {
       "source": "./src/schema/index.ts",
-      "default": "./dist/schema.mjs"
+      "default": "./dist/schema.js"
     },
     "./test": {
       "source": "./src/test/index.ts",
-      "default": "./dist/test.mjs"
+      "default": "./dist/test.js"
     },
     "./types": {
       "source": "./src/types/index.ts",
-      "default": "./dist/types.mjs"
+      "default": "./dist/types.js"
     },
     "./package.json": "./package.json"
   },

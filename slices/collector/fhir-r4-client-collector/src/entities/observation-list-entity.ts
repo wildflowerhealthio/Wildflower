@@ -3,6 +3,8 @@ import { Effect, Schema } from 'effect'
 import { Bundle } from 'fhir-r4/data-types'
 import { Observation } from 'fhir-r4/resources'
 
+import { extractJson } from '../extract-json.ts'
+
 type ObservationType = typeof Observation.Schema.Type
 
 const ObservationBundle = Bundle.Schema(Observation.Schema)
@@ -12,7 +14,7 @@ const isObservation = Schema.is(Observation.Schema)
 /**
  * `…://host/Observation?…`. The `mustHaveQuery` boundary keeps the
  * list pattern disjoint from `ObservationEntity` (`/Observation/<id>`),
- * so order in `RemoteKind.entityDefinitions` is no longer
+ * so order in `ScrapingPlan.entityDefinitions` is no longer
  * load-bearing.
  */
 const observationListUrl = UrlMatch.make({
@@ -26,7 +28,9 @@ const observationListUrl = UrlMatch.make({
  * full `Observation` and drops the rest (the Bundle schema is
  * permissive about `entry.resource` so we re-check here). The dropped
  * count is surfaced via `Effect.logInfo` so partial-decode losses
- * aren't invisible at runtime.
+ * aren't invisible at runtime. {@link extractJson} normalizes the body
+ * across raw-JSON XHR intercepts and the mobile WebView's JSON viewer
+ * wrap.
  */
 const ObservationListEntity: EntityDefinition.EntityDefinition<ObservationType> =
   EntityDefinition.make({
@@ -34,7 +38,7 @@ const ObservationListEntity: EntityDefinition.EntityDefinition<ObservationType> 
     isFoundAt: (url) => observationListUrl.test(url),
     parse: (response) =>
       Effect.gen(function* () {
-        const bundle = yield* decode(response.text())
+        const bundle = yield* decode(extractJson(response.text()))
         const allEntries = bundle.entry ?? []
         const resources = allEntries.map(({ resource }) => resource).filter((o) => isObservation(o))
         const droppedCount = allEntries.length - resources.length
@@ -43,7 +47,7 @@ const ObservationListEntity: EntityDefinition.EntityDefinition<ObservationType> 
             `ObservationListEntity: dropped ${droppedCount} of ${allEntries.length} Bundle entries that did not decode as Observation`
           )
         }
-        return { resources, links: [] }
+        return resources
       }),
   })
 

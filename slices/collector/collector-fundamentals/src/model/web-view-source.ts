@@ -1,46 +1,76 @@
+import { Schema } from 'effect'
+
 /**
- * What a host `<WebView>` should load. Mirrors `react-native-webview`'s
- * `source` prop shape (and `EffectMessagingWebViewSource`) so a host
- * component can pass values of these types straight through.
+ * What a host `<WebView>` should load. Tagged discriminated union — the
+ * `_tag` makes the variant explicit, so a single source value can flow
+ * through the `RequestSniffableWebView` bridge wire schema (which
+ * encodes `_tag` for serialization) and the host's native WebView prop
+ * (which ignores the extra property at runtime; consumers strip it via
+ * destructuring before forwarding to `react-native-webview` if their
+ * typings reject unknown fields).
  *
  * The slice's `Remote.firstPage` is typed as {@link Any}; concrete
  * remotes choose whether to point at an external URL ({@link Uri}) or
  * to ship an inline page ({@link Html}).
+ *
+ * The schemas are exported so the `RequestSniffableWebView` bridge wire
+ * schema in `bridge.ts` can reuse them — keeping a single source of
+ * truth for the host-side type and the wire shape.
  */
-interface Uri {
+
+/**
+ * Refined string schema accepting only `https://`-prefixed URIs. The
+ * collector deliberately refuses `http://`, `file://`, `javascript:`,
+ * etc., so a malformed `RequestSniffableWebView` message fails to
+ * decode at the bridge boundary rather than reaching the host's
+ * `<WebView>` props.
+ */
+const HttpsUriString = Schema.String.pipe(
+  Schema.filter((s) => s.startsWith('https://'), {
+    description: 'HTTPS URI only (https://…)',
+  })
+)
+
+const UriSchema = Schema.TaggedStruct('Uri', {
   /**
-   * The URI to load in the `WebView`. Can be a local or remote file.
+   * The URI to load in the `WebView`. Must be `https://`-prefixed.
    */
-  uri: string
+  uri: HttpsUriString,
   /**
    * The HTTP Method to use. Defaults to GET if not specified.
    * NOTE: On Android, only GET and POST are supported.
    */
-  method?: string
+  method: Schema.optional(Schema.String),
   /**
    * Additional HTTP headers to send with the request.
    * NOTE: On Android, this can only be used with GET requests.
    */
-  headers?: object
+  headers: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
   /**
    * The HTTP body to send with the request. This must be a valid
    * UTF-8 string, and will be sent exactly as specified, with no
    * additional encoding (e.g. URL-escaping or base64) applied.
    * NOTE: On Android, this can only be used with POST requests.
    */
-  body?: string
-}
-interface Html {
+  body: Schema.optional(Schema.String),
+})
+
+const HtmlSchema = Schema.TaggedStruct('Html', {
   /**
    * A static HTML page to display in the WebView.
    */
-  html: string
+  html: Schema.String,
   /**
    * The base URL to be used for any relative links in the HTML.
    */
-  baseUrl?: string
-}
+  baseUrl: Schema.optional(Schema.String),
+})
 
-type Any = Uri | Html
+const AnySchema = Schema.Union(UriSchema, HtmlSchema)
 
+type Uri = Schema.Schema.Type<typeof UriSchema>
+type Html = Schema.Schema.Type<typeof HtmlSchema>
+type Any = Schema.Schema.Type<typeof AnySchema>
+
+export { UriSchema, HtmlSchema, AnySchema }
 export type { Uri, Html, Any }

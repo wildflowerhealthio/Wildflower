@@ -29,7 +29,6 @@ describe('extendObjectSchemas', () => {
       {
         decode: (input) =>
           Effect.succeed({
-            // oxlint-disable-next-line eslint/no-ternary -- concise test fixture
             url: input.id ? `http://example.com/${input.id}` : undefined,
           }),
         encode: (input) => Effect.succeed({ id: input.url?.split('/').pop() }),

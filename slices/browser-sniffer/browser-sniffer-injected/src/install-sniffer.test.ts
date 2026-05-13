@@ -715,15 +715,115 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
     expect(withTag(getMessages(), 'ResponseFinished')).toEqual([])
   })
 
-  test('should ignore non-CancelSnifferRequest message events', () => {
+  test('should not mutate the active-set on malformed or unknown inbound payloads', () => {
     installSniffer()
-    // Garbage payloads must not throw and must not mutate the active-set.
     window.dispatchEvent(new MessageEvent('message', { data: 'not json' }))
     window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ _tag: 'Other' }) }))
     window.dispatchEvent(
       new MessageEvent('message', { data: JSON.stringify({ _tag: 'CancelSnifferRequest' }) })
     )
     expect(getState()?.activeRequests).toEqual(new Set())
+  })
+
+  test('should post a Log message when the inbound _tag is unrecognised', () => {
+    installSniffer()
+    const before = withTag(getMessages(), 'Log').length
+    window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ _tag: 'Other' }) }))
+    const after = withTag(getMessages(), 'Log')
+    expect(after.length).toBe(before + 1)
+    expect(after[after.length - 1]).toMatchObject({
+      _tag: 'Log',
+      log: expect.stringContaining('Other'),
+    })
+  })
+})
+
+describe('Click (host→web bridge message)', () => {
+  // Remember the initial body so each test can scribble on it and the next
+  // one starts from a clean slate.
+  const initialBodyHtml = document.body.innerHTML
+
+  beforeEach(() => {
+    resetShims()
+    XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
+    XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
+    document.body.innerHTML = initialBodyHtml
+    setupEnv()
+  })
+
+  afterEach(resetShims)
+
+  test('clicks the element matched by querySelector', () => {
+    const button = document.createElement('button')
+    button.id = 'go'
+    const clicked = vi.fn()
+    button.addEventListener('click', clicked)
+    document.body.replaceChildren(button)
+    installSniffer()
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: JSON.stringify({ _tag: 'Click', querySelector: '#go' }),
+      })
+    )
+    expect(clicked).toHaveBeenCalledTimes(1)
+  })
+
+  test('silently no-ops when the selector matches no element', () => {
+    installSniffer()
+    expect(() =>
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: JSON.stringify({ _tag: 'Click', querySelector: '#missing' }),
+        })
+      )
+    ).not.toThrow()
+  })
+
+  test('rejects an empty querySelector', () => {
+    const button = document.createElement('button')
+    const clicked = vi.fn()
+    button.addEventListener('click', clicked)
+    document.body.replaceChildren(button)
+    installSniffer()
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: JSON.stringify({ _tag: 'Click', querySelector: '' }),
+      })
+    )
+    expect(clicked).not.toHaveBeenCalled()
+  })
+})
+
+describe('idempotent re-injection (simulating post-navigation re-inject)', () => {
+  let getMessages: () => Message[]
+
+  beforeEach(() => {
+    resetShims()
+    XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
+    XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
+    getMessages = setupEnv()
+  })
+
+  afterEach(resetShims)
+
+  test('posts __Ready on every install but installs the fetch/XHR shim exactly once', () => {
+    installSniffer()
+    const shimmedFetchAfterFirst = window.fetch
+    const stateAfterFirst = getState()
+    expect(stateAfterFirst).toBeDefined()
+
+    installSniffer()
+    installSniffer()
+
+    // __Ready handshake fires on every install (a re-injection wakes a
+    // host that mounted after the original install).
+    expect(withTag(getMessages(), '__Ready')).toHaveLength(3)
+    // But the shim itself is captured once: the state slot survives and
+    // `window.fetch` is the same reference as after the first install.
+    expect(getState()).toBe(stateAfterFirst)
+    expect(window.fetch).toBe(shimmedFetchAfterFirst)
   })
 })
 

@@ -1,7 +1,15 @@
-import type { WebViewSource } from 'collector-fundamentals/model'
-import { type FastCheck, Schema } from 'effect'
+import {
+  type EntityDefinition,
+  ScrapingPlan,
+  type WebViewSource,
+} from 'collector-fundamentals/model'
+import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
-import { buildFhirBootstrapHtml } from './index.ts'
+import type { Binary, Observation, Patient } from 'fhir-r4/resources'
+
+import { ObservationEntity } from './entities/observation-entity.ts'
+import { ObservationListEntity } from './entities/observation-list-entity.ts'
+import { PatientEntity } from './entities/patient-entity.ts'
 
 /**
  * `rootUrl` must be an absolute `http(s)://` URL with at least a host
@@ -61,11 +69,52 @@ const defaultConfig: InstanceConfig = {
   patientId: '8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882',
 }
 
-const firstPage = (config: InstanceConfig): WebViewSource.Any => {
+type AnyResource =
+  | typeof Binary.Schema.Type
+  | typeof Patient.Schema.Type
+  | typeof Observation.Schema.Type
+
+/**
+ * Build the FHIR R4 scraping plan for a configured patient on a
+ * configured server. The plan's `firstPage` navigates the
+ * BrowserSnifferWebView straight to `/Patient/:id?_format=json`; the
+ * mobile WebView renders the JSON inside its built-in JSON viewer
+ * (`<pre>…JSON…</pre>`), the sniffer streams that DOM, and
+ * `PatientEntity.parse` extracts the JSON via `extractJson`. Once the
+ * Patient page is settled, `linkSequence[0]` navigates to the bundled
+ * `/Observation?subject:Patient=…&_count=250` URL; the same
+ * intercept-and-extract flow yields the Observation Bundle entries.
+ *
+ * `stepDelay` is a flat 5 seconds — enough for the FHIR server's
+ * round-trip plus the WebView's JSON-viewer paint on a slow tablet.
+ * `entityDefinitions` are listed Patient → Observation → Bundle so
+ * `isFoundAt` matches are evaluated in that order; `mustHaveQuery` on
+ * the Bundle pattern keeps the list disjoint from the single-resource
+ * Observation pattern.
+ *
+ * `config.rootUrl` and `config.patientId` are pre-validated by
+ * {@link InstanceConfig} (no trailing slashes; patientId is the FHIR
+ * R4 logical-id grammar) — `encodeURIComponent` on `patientId` is
+ * still applied defensively in case the value reaches this function
+ * through an untyped path.
+ */
+const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<AnyResource> => {
   const safePatientId = encodeURIComponent(config.patientId)
   const patientUrl = `${config.rootUrl}/Patient/${safePatientId}?_format=json`
   const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
-  return { html: buildFhirBootstrapHtml({ patientUrl, observationUrl }) }
+  const firstPage: WebViewSource.Any = { _tag: 'Uri', uri: patientUrl }
+  return ScrapingPlan.make<AnyResource>({
+    name: 'FHIR R4',
+    entityDefinitions: [
+      PatientEntity,
+      ObservationEntity,
+      ObservationListEntity,
+    ] as readonly EntityDefinition.EntityDefinition<AnyResource>[],
+    firstPage,
+    linkSequence: [{ _tag: 'Open', source: { _tag: 'Uri', uri: observationUrl } }],
+    stepDelay: Duration.seconds(5),
+  })
 }
 
-export { InstanceConfig, defaultConfig, firstPage }
+export { InstanceConfig, defaultConfig, scrapingPlan }
+export type { AnyResource }

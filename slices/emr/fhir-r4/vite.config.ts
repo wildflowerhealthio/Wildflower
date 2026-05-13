@@ -9,6 +9,12 @@ export default defineConfig({
       dts: { tsgo: true },
       exports: false,
       platform: 'neutral',
+      entry: { 'clients/index': 'src/clients/index.ts' },
+    },
+    {
+      dts: { tsgo: true },
+      exports: false,
+      platform: 'neutral',
       entry: { 'http-api-definition/index': 'src/http-api-definition/index.ts' },
     },
     {

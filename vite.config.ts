@@ -46,6 +46,7 @@ export default defineConfig({
       newlinesBetween: false,
     },
     ignorePatterns: [
+      '.claude/**/*',
       '**/tapes/**/*',
       '**/dist/**',
       '**/dist-html/**',
@@ -59,6 +60,7 @@ export default defineConfig({
   },
   lint: {
     ignorePatterns: [
+      '.claude/**/*',
       '**/tapes/**/*',
       '**/dist/**',
       '**/dist-html/**',
@@ -156,7 +158,7 @@ export default defineConfig({
       'react/jsx-curly-brace-presence': ['error', { propElementValues: 'always' }],
       'react/jsx-filename-extension': ['error', { extensions: ['.jsx', '.tsx'] }],
       'no-console': 'warn',
-      'no-ternary': 'warn',
+      'no-nested-ternary': 'warn',
     },
     overrides: [
       {

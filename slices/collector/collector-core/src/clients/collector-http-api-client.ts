@@ -10,7 +10,7 @@ type CollectorHttpApiClientShape = Effect.Effect.Success<typeof _bareCollectorCl
 
 /**
  * Effect Service providing the resolved `CollectorApi` HttpApi client.
- * `collector-react` provides it via `<CollectorClientProvider token>`
+ * `collector-react` provides it via `<CollectorClientProvider>`
  * (mirrors `GatekeeperHttpApiClient` from `gatekeeper-core/clients`);
  * call sites consume it Effect-natively.
  *

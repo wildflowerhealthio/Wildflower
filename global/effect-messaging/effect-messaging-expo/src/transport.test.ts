@@ -1,5 +1,6 @@
-import { Effect, Exit, Schema, Scope } from 'effect'
+import { Effect, Exit, pipe, Schema, Scope } from 'effect'
 import { Bridge, UrlParamMessage } from 'effect-messaging-core'
+import { LoggingLayerTest } from 'kitchen-sink/test'
 import { makeExpoTransport, type WebViewHandle } from './transport.ts'
 
 const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.String }))
@@ -63,15 +64,11 @@ describe('makeExpoTransport — bareSender (with __Ready handshake)', () => {
   it('warns and drops when the WebView ref is null', async () => {
     const ref: { current: WebViewHandle | null } = { current: null }
     const layer = HostBridge.Host.ReceiverLayer({ Pong: () => Effect.void })
-    const warnings: string[] = []
-    const originalLog = console.warn
-    console.warn = (msg: unknown): void => {
-      warnings.push(String(msg))
-    }
+
     try {
       const scope = Effect.runSync(Scope.make())
       const transport = await Effect.runPromise(
-        Scope.extend(
+        pipe(
           makeExpoTransport({
             bridges: [HostBridge] as const,
             layers: [layer] as const,
@@ -79,7 +76,18 @@ describe('makeExpoTransport — bareSender (with __Ready handshake)', () => {
             baseUrl: 'https://app.local/',
             webviewHandleRef: ref,
           }),
-          scope
+          LoggingLayerTest.expectToLog((logs) => {
+            // Schema.Union folds unknown-tag into the same ParseError variant
+            // as malformed payloads — both surface via the parse-error log.
+            expect(logs).toEqual([
+              // expect.objectContaining({
+              //   level: 'WARN',
+              //   // oxlint-disable-next-line typescript/no-unsafe-assignment
+              //   message: expect.stringContaining('[effect-messaging] failed to decode message:'),
+              // }),
+            ])
+          }),
+          Scope.extend(scope)
         )
       )
       // Simulate the page-side handshake.
@@ -90,7 +98,6 @@ describe('makeExpoTransport — bareSender (with __Ready handshake)', () => {
       await Effect.runPromise(transport.sendMessage({ _tag: 'Ping', value: 'x' }))
       await Effect.runPromise(Scope.close(scope, Exit.void))
     } finally {
-      console.warn = originalLog
     }
   })
 

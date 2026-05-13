@@ -14,8 +14,6 @@ export {
 
 export {
   buildGatekeeperClientLayer,
-  // oxlint-disable-next-line typescript-eslint/no-deprecated -- transitional re-export for collector-react's PR-3 layer (which still takes a static token)
-  makeBearerTokenClientTransformer,
   type GatekeeperClientRequirements,
 } from './client/gatekeeper-client.ts'
 

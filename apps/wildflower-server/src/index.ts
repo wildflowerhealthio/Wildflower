@@ -7,6 +7,8 @@ import {
   HttpMiddleware,
   HttpServerResponse,
 } from '@effect/platform'
+import { CollectorApi } from 'collector-core/http-api-definition'
+import { CollectorApiHandlersFor } from 'collector-core/http-api-implementation'
 import { Effect, Layer, pipe } from 'effect'
 import { FhirPublicApi, FhirResourcesApi } from 'fhir-r4/http-api-definition'
 import {
@@ -84,11 +86,13 @@ const WildflowerHttpApi = HttpApi.make('WildflowerApi')
   .addHttpApi(GatekeeperApi)
   .addHttpApi(FhirResourcesApi.middleware(RequireAuthMiddleware))
   .addHttpApi(FhirPublicApi)
+  .addHttpApi(CollectorApi.middleware(RequireAuthMiddleware))
 
 const WildflowerHttpApiLive = HttpApiBuilder.api(WildflowerHttpApi).pipe(
   Layer.provide(GatekeeperApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(FhirResourcesApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(FhirPublicApiHandlersFor<'WildflowerApi'>()),
+  Layer.provide(CollectorApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(RequireAuthMiddlewareLive),
   Layer.provide(SmartConfigurationLive)
 )

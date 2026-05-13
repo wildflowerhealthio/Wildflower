@@ -6,6 +6,10 @@
   "author": "Ruth Marks",
   "type": "module",
   "exports": {
+    "./clients": {
+      "source": "./src/clients/index.ts",
+      "default": "./dist/clients/index.js"
+    },
     "./data-types": {
       "source": "./src/data-types/index.ts",
       "default": "./dist/data-types/index.js"

@@ -1,0 +1,75 @@
+import type { Duration } from 'effect'
+import { deepFreeze } from 'kitchen-sink'
+import type * as EntityDefinition from './entity-definition.ts'
+import type * as Link from './link.ts'
+import type * as WebViewSource from './web-view-source.ts'
+
+/**
+ * Per-slice declaration of *what* to recognize on a sync run and *how*
+ * to walk through it. Wiring this up to a live network stream is the
+ * job of `CollectorBridgeMessageHandler.make({ scrapingPlan,
+ * sendMessage, onResult })`, which:
+ *
+ *   - Consults `entityDefinitions` for each `ResponseStart` to decide
+ *     whether to track the in-flight response (first `isFoundAt` match
+ *     wins; non-matching responses are cancelled via `sendMessage`).
+ *   - Drives the sniffer through `linkSequence` step-by-step,
+ *     dispatching each `Link.Any` `stepDelay` after each `PageLoaded`
+ *     event. When the sequence is exhausted, fires `SniffingComplete`
+ *     after a final `stepDelay`.
+ *
+ * `firstPage` is the host-side `WebViewSource` the BrowserSnifferWebView
+ * is initially mounted with; it is *not* read by the handler (the
+ * handler only sees PageLoaded events). It lives on the plan so each
+ * slice's configuration is a single export.
+ *
+ * Replaces the previous `RemoteKind<T>` shape (`name + entityDefinitions`),
+ * absorbing the slice's `firstPage(config)` factory and adding the new
+ * `linkSequence` / `stepDelay` fields. Splitting "what to recognize"
+ * from "how to navigate" was attempted and reverted: every consumer
+ * needed both, and a single per-config function is easier to reason
+ * about.
+ *
+ * - `name`: stable identifier for logs / UI.
+ * - `entityDefinitions`: ordered list of recognizer/parser pairs.
+ *   `CollectorBridgeMessageHandler` consults `isFoundAt` against each
+ *   response URL; the first match wins.
+ * - `firstPage`: the initial `WebViewSource` (inline HTML or absolute
+ *   `https://` URI) to mount the BrowserSnifferWebView with.
+ * - `linkSequence`: ordered list of navigation steps. Each `Link.Open`
+ *   is dispatched as an `OpenLink` web→host message; each `Link.Click`
+ *   as a `ClickLink`. An empty array fires `SniffingComplete` after
+ *   the first `PageLoaded`.
+ * - `stepDelay`: how long the handler waits between observing a
+ *   `PageLoaded` and dispatching the next step (or `SniffingComplete`).
+ *   The wait lets any post-load XHR fan-out finish before the next
+ *   navigation tears the page down. Per-slice so each scraper can
+ *   pick a cadence that matches the remote's loading characteristics.
+ */
+interface ScrapingPlan<TResources> {
+  readonly name: string
+  readonly entityDefinitions: readonly EntityDefinition.EntityDefinition<TResources>[]
+  readonly firstPage: WebViewSource.Any
+  readonly linkSequence: readonly Link.Any[]
+  readonly stepDelay: Duration.Duration
+}
+
+/**
+ * Shallow-clone + deep-freeze the supplied plan. Freezing matters
+ * because the handler pins the matched entity per in-flight request
+ * at `ResponseStart` and consumes `linkSequence` step-by-step;
+ * freezing also keeps the type-level `readonly` honest at runtime so
+ * a caller can't push into `entityDefinitions` or `linkSequence`
+ * after construction.
+ */
+const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResources> =>
+  deepFreeze({
+    name: plan.name,
+    entityDefinitions: plan.entityDefinitions,
+    firstPage: plan.firstPage,
+    linkSequence: plan.linkSequence,
+    stepDelay: plan.stepDelay,
+  })
+
+export { make }
+export type { ScrapingPlan }

@@ -1,5 +1,5 @@
-import { Cause, Chunk, Effect, Exit, Fiber, type ManagedRuntime, type Scope, pipe } from 'effect'
-import { useEffect } from 'react'
+import { Cause, Chunk, Effect, Exit, Fiber, HashSet, type Layer, type Scope, pipe } from 'effect'
+import { useEffect, useMemo } from 'react'
 
 import { useStatePromise } from './use-state-promise.ts'
 
@@ -17,37 +17,38 @@ import { useStatePromise } from './use-state-promise.ts'
  *   or the component unmounts.
  * - **Single failure** rejects with the error value directly.
  * - **Multiple failures or defects** reject with an `AggregateError`.
+ * - **Empty (non-actionable) cause** logs a diagnostic and rejects
+ *   with a generic `Error` so consumers `use()`-ing the promise don't
+ *   suspend forever.
  *
  * On cleanup the fiber is interrupted and the promise is reset to
  * pending, ready for the next effect.
  *
- * Pass a `ManagedRuntime` to run effects whose context requires
- * services beyond `Scope` (e.g. an HTTP client or app-specific
- * tags). Without it, `R` must extend only `Scope`.
+ * Pass a `Layer` to run effects whose context requires services
+ * beyond `Scope`; the hook applies `Effect.provide(layer)` internally.
+ * Without a layer, `R` must extend only `Scope`.
  */
 function useEffectTs<A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A>
 function useEffectTs<A, E, R>(
   effect: Effect.Effect<A, E, R | Scope.Scope>,
-  runtime: ManagedRuntime.ManagedRuntime<R, never>
+  layer?: Layer.Layer<R, never, never>
 ): Promise<A>
 function useEffectTs<A, E, R>(
   effect: Effect.Effect<A, E, R | Scope.Scope>,
-  runtime?: ManagedRuntime.ManagedRuntime<R, never>
+  layer?: Layer.Layer<R, never, never>
 ): Promise<A> {
   const [promise, { resolve, reject, reset }] = useStatePromise<A>()
 
-  useEffect(() => {
-    const scoped = effect.pipe(Effect.scoped)
-
-    let fiber: Fiber.RuntimeFiber<A, E>
-    if (runtime === undefined) {
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- This is safe thanks to the type definitions
-      const contextFreeEffect = scoped as Effect.Effect<A, E, never>
-
-      fiber = Effect.runFork(contextFreeEffect)
-    } else {
-      fiber = runtime.runFork(scoped)
+  const provided = useMemo(() => {
+    if (layer === undefined) {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- caller without a layer/runtime promised R extends Scope only
+      return effect as Effect.Effect<A, E, Scope.Scope>
     }
+    return Effect.provide(effect, layer)
+  }, [effect, layer])
+
+  useEffect(() => {
+    const fiber: Fiber.RuntimeFiber<A, E> = Effect.runFork(provided.pipe(Effect.scoped))
 
     fiber.addObserver(
       Exit.match({
@@ -55,7 +56,13 @@ function useEffectTs<A, E, R>(
           resolve(a)
         },
         onFailure(cause) {
-          if (Cause.isInterruptedOnly(cause)) return
+          // Pure interruption — the normal cleanup path when `effect`
+          // changes or the component unmounts. Silently ignore so a
+          // consumer awaiting the promise doesn't see a stray
+          // rejection. (`Cause.empty` also satisfies `isInterruptedOnly`
+          // but carries no interruptors; we let that case fall through
+          // to the last-resort branch below.)
+          if (Cause.isInterruptedOnly(cause) && HashSet.size(Cause.interruptors(cause)) > 0) return
 
           const failures = Chunk.toArray(Cause.failures(cause))
           if (failures.length === 1) {
@@ -79,6 +86,9 @@ function useEffectTs<A, E, R>(
           Effect.runFork(
             Effect.logError('useEffectTs: effect failed with non-actionable cause', cause)
           )
+          // Still settle the promise so a consumer `use()`-ing it isn't
+          // suspended forever — error boundaries get a chance to render.
+          void reject(new Error('useEffectTs: effect failed with non-actionable cause'))
         },
       })
     )
@@ -86,7 +96,7 @@ function useEffectTs<A, E, R>(
     return (): void => {
       Effect.runFork(pipe(Fiber.interrupt(fiber), Effect.andThen(Effect.sync(reset))))
     }
-  }, [effect, runtime, resolve, reject, reset])
+  }, [effect, provided, resolve, reject, reset])
 
   return promise
 }

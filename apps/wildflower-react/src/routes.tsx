@@ -1,3 +1,4 @@
+import { collectorAuthorizedRoutesFragment } from 'collector-react'
 import {
   gatekeeperAuthorizedRoutesFragment,
   gatekeeperPublicRoutesFragment,
@@ -11,13 +12,18 @@ import { AuthorizedAppShell } from './session/authorized-app-shell.tsx'
 // "[X] is not a <Route>".
 //
 // Public routes mount alongside the shell; owner-facing routes live as
-// children of a `<Route element={<AuthorizedAppShell />}>` so the shell
-// can re-provide the gatekeeper client with the live bearer token and
-// (in later PRs) layer in per-slice client providers.
+// children of a `<Route element={<AuthorizedAppShell />}>`. The shell
+// gates rendering on a live bearer token but does not re-provide the
+// slice client providers — each slice's layer reads the token from
+// `BearerToken` per request, so a single tokenless provider mounted at
+// the app root suffices.
 const appRoutesFragment: JSX.Element = (
   <>
     {gatekeeperPublicRoutesFragment}
-    <Route element={<AuthorizedAppShell />}>{gatekeeperAuthorizedRoutesFragment}</Route>
+    <Route element={<AuthorizedAppShell />}>
+      {gatekeeperAuthorizedRoutesFragment}
+      {collectorAuthorizedRoutesFragment}
+    </Route>
   </>
 )
 

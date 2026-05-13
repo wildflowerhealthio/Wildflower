@@ -1,9 +1,9 @@
-import type { RemoteKind } from 'collector-fundamentals/model'
+import type { ScrapingPlan } from 'collector-fundamentals/model'
 import { Schema } from 'effect'
 import {
   InstanceConfig as FhirR4InstanceConfig,
   type AnyResource as FhirR4AnyResource,
-  remoteKind as fhirR4ClientKind,
+  scrapingPlan as fhirR4ScrapingPlan,
 } from 'fhir-r4-client-collector'
 
 /**
@@ -14,7 +14,7 @@ import {
  * new collector is an edit to this file plus a new `package.json` dep
  * — there is intentionally no runtime registry. The livestore
  * `remotes.config` column, the `CollectorApi.{Create,Update}Remote`
- * payloads, and any host-side `makeRemoteForConfig` dispatch all
+ * payloads, and any host-side `makeScrapingPlanForConfig` dispatch all
  * derive from this single union.
  */
 const CollectorConfig = Schema.Union(FhirR4InstanceConfig)
@@ -35,27 +35,28 @@ const CollectorTag: Schema.Schema<CollectorTag> = Schema.Literal('fhir-r4')
 
 /**
  * Every resource shape any collector might produce. Used as the
- * generic argument of the per-config `Remote` returned by
- * {@link makeRemoteForConfig} — callers downstream of the dispatcher
- * accept the union and narrow as needed.
+ * generic argument of the per-config `ScrapingPlan` returned by
+ * {@link makeScrapingPlanForConfig} — callers downstream of the
+ * dispatcher accept the union and narrow as needed.
  */
 type AnyCollectorResource = FhirR4AnyResource
 
 /**
- * Build the concrete `Remote` for a stored `CollectorConfig`. Drives
- * the wire-level dispatch in `CollectorBridgeMessageHandler` (which
- * consumes the returned `Remote.entityDefinitions`).
+ * Build the concrete `ScrapingPlan` for a stored `CollectorConfig`.
+ * Drives the wire-level dispatch in `CollectorBridgeMessageHandler`
+ * (which consumes the returned plan's `entityDefinitions`,
+ * `linkSequence`, and `stepDelay`).
  *
  * The function is intentionally exhaustive — the `never`-typed
  * `default` branch turns a missing case into a compile-time error if
  * the union ever widens without a matching dispatch arm.
  */
-const makeRemoteForConfig = (
+const makeScrapingPlanForConfig = (
   config: CollectorConfig
-): RemoteKind.RemoteKind<AnyCollectorResource> => {
+): ScrapingPlan.ScrapingPlan<AnyCollectorResource> => {
   switch (config._tag) {
     case 'fhir-r4':
-      return fhirR4ClientKind
+      return fhirR4ScrapingPlan(config)
     default: {
       const exhaustive: never = config._tag
       throw new Error(`unknown collector config tag: ${String(exhaustive)}`)
@@ -63,5 +64,5 @@ const makeRemoteForConfig = (
   }
 }
 
-export { CollectorConfig, CollectorTag, makeRemoteForConfig }
+export { CollectorConfig, CollectorTag, makeScrapingPlanForConfig }
 export type { AnyCollectorResource }

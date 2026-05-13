@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react'
-import { Effect, ManagedRuntime, Layer, Context, Cause } from 'effect'
+import { Effect, Layer, Context, Cause } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { useEffectTs } from './use-effect-ts.ts'
@@ -76,21 +76,40 @@ describe('useEffectTs', () => {
     expect(rejected).toBeNull()
   })
 
-  it('should accept a ManagedRuntime providing the effect context', async () => {
+  it('should reject when the effect fails with an empty (non-actionable) cause', async () => {
+    // Arrange — `Cause.empty` has neither failures nor defects; the
+    // resulting exit lands in `useEffectTs`'s last-resort branch.
+    const effect = Effect.failCause(Cause.empty)
+
+    // Act
+    const { result } = renderHook(() => useEffectTs(effect))
+
+    // Assert
+    const rejection: unknown = await result.current.then(
+      () => {
+        throw new Error('expected rejection')
+      },
+      (e: unknown) => e
+    )
+    if (!(rejection instanceof Error)) {
+      throw new Error('expected an Error rejection')
+    }
+    expect(rejection.message).toMatch(/non-actionable cause/)
+  })
+
+  it('should accept a Layer providing the effect context', async () => {
     // Arrange
     class Greeter extends Context.Tag('Greeter')<Greeter, { readonly hi: string }>() {}
     const layer = Layer.succeed(Greeter, { hi: 'hello' })
-    const runtime = ManagedRuntime.make(layer)
     const effect = Effect.gen(function* () {
       const g = yield* Greeter
       return g.hi
     })
 
     // Act
-    const { result } = renderHook(() => useEffectTs(effect, runtime))
+    const { result } = renderHook(() => useEffectTs(effect, layer))
 
     // Assert
     await expect(result.current).resolves.toBe('hello')
-    await runtime.dispose()
   })
 })

@@ -19,21 +19,18 @@ const makeResponse = (body: string): RemoteResponse => {
 }
 
 /**
- * `parse` now returns an `Effect<Parsed, ParseError>` (was `Either`).
- * The tests run it via `Effect.runSync(Effect.either(...))` so the
+ * `parse` returns an `Effect<readonly TResources[], ParseError>`. The
+ * tests run it via `Effect.runSync(Effect.either(...))` so the
  * existing `expectRight/LeftToEqual` helpers — keyed on the
  * `Either` tag — still apply.
  */
 describe('EntityDefinition.make', () => {
-  it('parses valid JSON into resources and links', () => {
+  it('parses valid JSON into a resource array', () => {
     expectRightToEqual(
       Effect.runSync(
         Effect.either(SimpleEntity.parse(makeResponse(JSON.stringify({ name: 'Alice', age: 30 }))))
       ),
-      {
-        resources: [{ name: 'Alice', age: 30 }],
-        links: [{ _tag: 'Open', href: '/people/Alice' }],
-      }
+      [{ name: 'Alice', age: 30 }]
     )
   })
 

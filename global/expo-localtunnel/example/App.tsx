@@ -18,12 +18,11 @@ const LOCAL_PORT = 8765
 // needs `10.0.2.2` to reach the host loopback; iOS sim shares the host's `localhost`.
 const HOST_URI = Constants.expoConfig?.hostUri ?? Constants.expoGoConfig?.debuggerHost
 const HOST_FROM_URI = HOST_URI?.split(':')[0]
+const PLATFORM_FALLBACK_HOST = Platform.OS === 'android' ? '10.0.2.2' : 'localhost'
 const LOCAL_HOST =
   HOST_FROM_URI && HOST_FROM_URI !== 'localhost' && HOST_FROM_URI !== '127.0.0.1'
     ? HOST_FROM_URI
-    : Platform.OS === 'android'
-      ? '10.0.2.2'
-      : 'localhost'
+    : PLATFORM_FALLBACK_HOST
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
@@ -189,15 +188,7 @@ export default function App(): JSX.Element {
 
           {results.map((r) => (
             <View key={r.name} style={styles.result}>
-              <Text style={styles.resultIcon}>
-                {r.status === 'pass'
-                  ? 'PASS'
-                  : r.status === 'fail'
-                    ? 'FAIL'
-                    : r.status === 'running'
-                      ? '...'
-                      : '  '}
-              </Text>
+              <Text style={styles.resultIcon}>{statusLabel(r.status)}</Text>
               <View style={styles.resultText}>
                 <Text style={styles.resultName}>{r.name}</Text>
                 {r.detail ? <Text style={styles.resultDetail}>{r.detail}</Text> : null}
@@ -212,6 +203,17 @@ export default function App(): JSX.Element {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+const STATUS_LABELS: Record<TestResult['status'], string> = {
+  pass: 'PASS',
+  fail: 'FAIL',
+  running: '...',
+  pending: '  ',
+}
+
+function statusLabel(status: TestResult['status']): string {
+  return STATUS_LABELS[status]
 }
 
 const styles = {
