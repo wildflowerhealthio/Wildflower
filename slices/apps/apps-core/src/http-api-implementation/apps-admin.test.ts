@@ -1,9 +1,14 @@
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import type { Store } from '@livestore/livestore'
-import { Layer } from 'effect'
+import { Effect, Layer } from 'effect'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { makeAppsStoreLayer } from '../contexts/apps-store.ts'
+import {
+  type ServerState,
+  TunnelControl,
+  type TunnelControlService,
+} from '../contexts/tunnel-control.ts'
 import {
   type AppSelectionRow,
   queries as livestoreQueries,
@@ -174,10 +179,31 @@ const makeMockStore = (options: MockStoreOptions = {}): MockStoreHandle => {
   return { store, rows, committed, applyEvent }
 }
 
+// --- Tunnel mock ------------------------------------------------------
+
+const stubTunnel = (): TunnelControlService => ({
+  getState: Effect.succeed<ServerState>({
+    origin: 'https://tunnel.example.com',
+    localOrigin: 'http://localhost:8787',
+    port: 8787,
+    tunnelActive: false,
+  }),
+  setTunnelActive: (active) =>
+    Effect.succeed<ServerState>({
+      origin: 'https://tunnel.example.com',
+      localOrigin: 'http://localhost:8787',
+      port: 8787,
+      tunnelActive: active,
+    }),
+})
+
 // --- Wire up ----------------------------------------------------------
 
 const createHandler = (store: AppsStoreService): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
-  const apiLive = AppsAdminApiLive.pipe(Layer.provide(makeAppsStoreLayer(store)))
+  const apiLive = AppsAdminApiLive.pipe(
+    Layer.provide(makeAppsStoreLayer(store)),
+    Layer.provide(Layer.succeed(TunnelControl, stubTunnel()))
+  )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }
 
