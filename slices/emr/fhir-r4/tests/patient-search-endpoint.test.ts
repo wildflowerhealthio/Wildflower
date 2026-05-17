@@ -1,7 +1,7 @@
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { Layer } from 'effect'
-import type { LivestoreStore } from 'emr-core/contexts'
-import { makeLivestoreStoreLayer } from 'emr-core/contexts'
+import type { EmrStore } from 'emr-core/contexts'
+import { makeEmrStoreLayer } from 'emr-core/contexts'
 import type { Patient as StorePatient } from 'emr-core/livestore'
 import { Origin } from 'navigation-core'
 import { describe, expect, test } from 'vite-plus/test'
@@ -46,7 +46,7 @@ const patient = (
 
 // The mock store branches on the LiveQueryDef's `label` field — `search$` and
 // `count$` are factory functions, so we cannot match by reference identity.
-const makeStore = (rows: readonly PatientRow[], total: number): typeof LivestoreStore.Service =>
+const makeStore = (rows: readonly PatientRow[], total: number): typeof EmrStore.Service =>
   /* oxlint-disable-next-line typescript/no-unsafe-type-assertion */
   ({
     query: (q: { readonly label?: string }): unknown => {
@@ -60,14 +60,14 @@ const makeStore = (rows: readonly PatientRow[], total: number): typeof Livestore
       return rows
     },
     commit: () => undefined,
-  }) as unknown as typeof LivestoreStore.Service
+  }) as unknown as typeof EmrStore.Service
 
 const createHandler = (
   rows: readonly PatientRow[],
   total: number
 ): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = FhirResourcesApiLive.pipe(
-    Layer.provide(makeLivestoreStoreLayer(makeStore(rows, total))),
+    Layer.provide(makeEmrStoreLayer(makeStore(rows, total))),
     Layer.provide(Layer.succeed(Origin, 'http://localhost:8787'))
   )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))

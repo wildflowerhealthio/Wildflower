@@ -1,6 +1,6 @@
 import { HttpApiError } from '@effect/platform'
 import { Effect } from 'effect'
-import { LivestoreStore } from 'emr-core/contexts'
+import { EmrStore } from 'emr-core/contexts'
 import { domainResources, Binary as StoreBinary } from 'emr-core/livestore'
 
 import { makeDomainResourceHandlerLayer } from '../internal/domain-resource-http-api-implementation.ts'
@@ -17,7 +17,7 @@ const layer = makeDomainResourceHandlerLayer(
   { SearchParams: BinarySearchParams, buildWhere: buildBinaryWhere },
   {
     commitUpsert: (resource) =>
-      Effect.flatMap(LivestoreStore, (store) =>
+      Effect.flatMap(EmrStore, (store) =>
         Effect.try({
           try: () => store.commit(domainResources.Binary.events.upsert({ resource })),
           catch: () => new HttpApiError.ServiceUnavailable(),

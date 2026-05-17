@@ -182,7 +182,7 @@ describe('RunSyncModalScreen', () => {
       expect(mockLastSnifferSource).toEqual({ uri: 'https://example.test/a' })
 
       // Drive a scripted Open: the parent screen would normally call
-      // this in response to CollectorWebView's `onOpen` callback. Wrap
+      // this in response to the host shell's `onOpen` callback. Wrap
       // the setState dispatch in `act` so the re-render flushes before
       // we read the mock's captured source.
       expect(handleRef.current).not.toBeNull()

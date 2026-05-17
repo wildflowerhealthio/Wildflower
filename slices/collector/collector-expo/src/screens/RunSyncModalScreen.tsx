@@ -38,15 +38,16 @@ const PASSTHROUGH_TO_SPA: ReadonlySet<string> = new Set([
 ])
 
 /**
- * Imperative handle exposed via `ref`. The CollectorWebView's `onOpen`
- * callback is wired in the parent screen and calls into this handle
- * so the active modal can advance its own BrowserSnifferWebView in
- * response to scripted navigation steps.
+ * Imperative handle exposed via `ref`. The host shell's `onOpen`
+ * callback (forwarded from the SPA's `CollectorBridge`) is wired in
+ * the parent screen and calls into this handle so the active modal
+ * can advance its own BrowserSnifferWebView in response to scripted
+ * navigation steps.
  *
  * `postRawSnifferMessage` is the host's bypass path for raw bridge
  * payloads the SPA sends (`Click` / `CancelSnifferRequest`) — they
  * forward to the sniffer page verbatim without re-encoding. The
- * parent screen wires this to `CollectorWebView`'s `onRawMessage`.
+ * parent screen wires this to the host shell's `onRawMessage`.
  */
 interface RunSyncModalScreenHandle {
   readonly navigate: (source: WebViewSource.Any) => void
@@ -67,7 +68,8 @@ interface RunSyncModalScreenProps {
    * Raw-forward sink into the embedded SPA's `CollectorBridge`. Every
    * sniffer wire-message whose `_tag` is in {@link PASSTHROUGH_TO_SPA}
    * is forwarded verbatim — no decode + re-encode in the host.
-   * Wire this to `CollectorWebViewHandle.postRawCollectorMessage`.
+   * Wire this to the host shell's `postRawCollectorMessage` handle
+   * (e.g. wildflower-expo's `AppShellWebViewHandle.postRawCollectorMessage`).
    */
   readonly postRawCollectorMessage: (rawWire: string) => void
   /** Optional error sink for non-decode failures the bridge would otherwise log. */
@@ -78,18 +80,18 @@ interface RunSyncModalScreenProps {
 
 /**
  * Native modal that hosts a `<BrowserSnifferWebView>` for an "Import
- * Now" flow. The CollectorWebView under the modal stays mounted; this
- * screen captures sniffer events from the page being scraped and
- * forwards them through `postRawCollectorMessage` into the embedded
- * SPA's bridge — schemas match across bridges so the wire string
- * goes through unchanged.
+ * Now" flow. The host shell's persistent WebView stays mounted under
+ * the modal; this screen captures sniffer events from the page being
+ * scraped and forwards them through `postRawCollectorMessage` into
+ * the embedded SPA's bridge — schemas match across bridges so the
+ * wire string goes through unchanged.
  *
  * The active `source` is held in component state so the SPA's
- * scripted navigation (an `Open` web→host message decoded by
- * CollectorWebView) can mount a fresh page mid-flow without
- * remounting the screen. `injectedJavaScriptBeforeContentLoaded` runs
- * on every navigation, so the browser-sniffer-injected script
- * re-installs idempotently on each new page (the state slot keyed by
+ * scripted navigation (an `Open` web→host message decoded by the
+ * host shell) can mount a fresh page mid-flow without remounting
+ * the screen. `injectedJavaScriptBeforeContentLoaded` runs on every
+ * navigation, so the browser-sniffer-injected script re-installs
+ * idempotently on each new page (the state slot keyed by
  * `Symbol.for('browser-sniffer:state')` survives a fresh window).
  *
  * Typed `SnifferHandlers` are kept only for tags that need

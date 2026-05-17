@@ -7,7 +7,7 @@ import {
 } from '@effect/platform'
 import type { Queryable, State } from '@livestore/livestore'
 import { Effect, type Layer, Schema } from 'effect'
-import { LivestoreStore } from 'emr-core/contexts'
+import { EmrStore } from 'emr-core/contexts'
 import { Bundle as StoreBundle } from 'emr-core/schemas'
 import { Origin } from 'navigation-core'
 
@@ -21,7 +21,7 @@ import type { BaseSearchParams, SearchParamBindings } from './search-param-bindi
  * Build the per-resource handler `Layer` for the group produced by
  * {@link buildDomainResourceHttpApiGroup}. Handlers invoke the supplied
  * livestore `Queryable`s and `commitUpsert` callback against the
- * `LivestoreStore` context — no repository layer.
+ * `EmrStore` context — no repository layer.
  *
  *  - `SearchByGet` → GET /:resourceType/?...   livestore search$ + count$, Bundle
  *  - `Search`      → POST /:resourceType/_search (form body), same handler core
@@ -48,7 +48,7 @@ export function makeDomainResourceHandlerLayer<
   bindings: {
     commitUpsert: (
       resource: StoreType & { readonly id: string }
-    ) => Effect.Effect<void, HttpApiError.ServiceUnavailable, LivestoreStore>
+    ) => Effect.Effect<void, HttpApiError.ServiceUnavailable, EmrStore>
     queryGetById$: (id: string) => Queryable<(StoreType & { readonly id: string }) | undefined>
     querySearch$: (params: {
       readonly where?: ReturnType<SearchParamBindings<SearchParamsType, Table>['buildWhere']>
@@ -69,10 +69,10 @@ export function makeDomainResourceHandlerLayer<
     }) => Effect.Effect<
       ReadonlyArray<{ readonly resourceType: string; readonly id: string }>,
       HttpApiError.ServiceUnavailable,
-      LivestoreStore
+      EmrStore
     >
   }
-): Layer.Layer<HttpApiGroup.ApiGroup<'FhirResourcesApi', RT>, never, LivestoreStore | Origin> {
+): Layer.Layer<HttpApiGroup.ApiGroup<'FhirResourcesApi', RT>, never, EmrStore | Origin> {
   type ResourceWithId = StoreType & { readonly id: string }
 
   const storeSchemaWithId = withMandatoryId(rowSchema)
@@ -178,7 +178,7 @@ export function makeDomainResourceHandlerLayer<
   ): Effect.Effect<
     Schema.Schema.Type<typeof bundleSchema>,
     HttpApiError.ServiceUnavailable,
-    LivestoreStore | Origin | HttpServerRequest.HttpServerRequest
+    EmrStore | Origin | HttpServerRequest.HttpServerRequest
   > =>
     Effect.gen(function* () {
       const req = yield* HttpServerRequest.HttpServerRequest
@@ -192,7 +192,7 @@ export function makeDomainResourceHandlerLayer<
       }
       const offset = decoded?.offset ?? 0
       const limit = decoded?.count ?? requestedCount
-      const store = yield* LivestoreStore
+      const store = yield* EmrStore
       const { rows, total } = yield* Effect.try({
         try: () => ({
           rows: store.query(bindings.querySearch$({ where, limit, offset })),
@@ -210,10 +210,10 @@ export function makeDomainResourceHandlerLayer<
 
   const upsertAndFetch = (
     resource: ResourceWithId
-  ): Effect.Effect<ResourceWithId, HttpApiError.ServiceUnavailable, LivestoreStore> =>
+  ): Effect.Effect<ResourceWithId, HttpApiError.ServiceUnavailable, EmrStore> =>
     bindings.commitUpsert(resource).pipe(
       Effect.flatMap(() =>
-        Effect.flatMap(LivestoreStore, (store) =>
+        Effect.flatMap(EmrStore, (store) =>
           Effect.try({
             try: () => store.query(bindings.queryGetById$(resource.id)),
             catch: () => new HttpApiError.ServiceUnavailable(),
@@ -252,7 +252,7 @@ export function makeDomainResourceHandlerLayer<
         return runSearch(payload)
       })
       .handle('GetById', ({ path: { id } }) =>
-        Effect.flatMap(LivestoreStore, (store) =>
+        Effect.flatMap(EmrStore, (store) =>
           Effect.try({
             try: () => store.query(bindings.queryGetById$(id)),
             catch: () => new HttpApiError.ServiceUnavailable(),
@@ -290,7 +290,7 @@ export function makeDomainResourceHandlerLayer<
           const req = yield* HttpServerRequest.HttpServerRequest
           const origin = yield* Origin
           const requestUrl = new URL(req.url, origin)
-          const store = yield* LivestoreStore
+          const store = yield* EmrStore
           const primary = yield* Effect.try({
             try: () => store.query(bindings.queryGetById$(id)),
             catch: () => new HttpApiError.ServiceUnavailable(),

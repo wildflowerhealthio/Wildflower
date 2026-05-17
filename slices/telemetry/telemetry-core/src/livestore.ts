@@ -6,20 +6,13 @@ export interface LivestoreOtelOptions {
 }
 
 let providerRegistered = false
+let initAttempted = false
 let resolveReady: (() => void) | null = null
 const readyPromise: Promise<void> = new Promise<void>((resolve) => {
   resolveReady = resolve
 })
 
-/**
- * Called by telemetry adapters after they register a global OpenTelemetry
- * tracer provider. Until this is called, `getLivestoreOtelOptions` withholds
- * the tracer so Livestore uses its own internal noop tracer (whose spans
- * carry the `_duration` field Livestore reads directly).
- */
-const markOtelProviderRegistered = (): void => {
-  if (providerRegistered) return
-  providerRegistered = true
+const flushReady = (): void => {
   if (resolveReady !== null) {
     resolveReady()
     resolveReady = null
@@ -27,14 +20,44 @@ const markOtelProviderRegistered = (): void => {
 }
 
 /**
- * Resolves when `markOtelProviderRegistered` has been called. Use this to
- * defer Livestore store creation until the global OpenTelemetry provider is
- * registered — if the store options (including `otelOptions`) are evaluated
- * before the provider is ready, Livestore bakes in a noop tracer for the
+ * Called by telemetry adapters after they register a global OpenTelemetry
+ * tracer provider. Flips both the active-provider flag (so
+ * `getLivestoreOtelOptions` starts handing out a real tracer) and the
+ * init-attempted flag (so `whenOtelProviderReady` resolves).
+ */
+const markOtelProviderRegistered = (): void => {
+  if (providerRegistered) return
+  providerRegistered = true
+  initAttempted = true
+  flushReady()
+}
+
+/**
+ * Called by telemetry adapters when init has finished without registering a
+ * provider (no Sentry DSN, no OTLP endpoint, etc.). Unblocks
+ * `whenOtelProviderReady` without flipping the active-provider flag — so
+ * `getLivestoreOtelOptions` continues to return `{}` and Livestore falls back
+ * to its internal tracer.
+ *
+ * Hosts MUST call either this or `markOtelProviderRegistered` exactly once,
+ * otherwise any consumer awaiting `whenOtelProviderReady` will hang.
+ */
+const markOtelInitAttempted = (): void => {
+  if (initAttempted) return
+  initAttempted = true
+  flushReady()
+}
+
+/**
+ * Resolves once telemetry init has been attempted — either successfully
+ * (provider registered) or as a no-op (no telemetry configured). Use this to
+ * defer Livestore store creation until the provider decision is final: if
+ * store options (including `otelOptions`) are evaluated before init runs,
+ * Livestore bakes in whatever tracer was available at that moment for the
  * store's entire lifetime and per-call `otelContext` cannot recover it.
  */
 const whenOtelProviderReady = (): Promise<void> => {
-  if (providerRegistered) return Promise.resolve()
+  if (initAttempted) return Promise.resolve()
   return readyPromise
 }
 
@@ -157,6 +180,7 @@ export {
   getLivestoreOtelOptions,
   injectActiveOtelContext,
   injectActiveOtelContextWhenReady,
+  markOtelInitAttempted,
   markOtelProviderRegistered,
   whenOtelProviderReady,
 }

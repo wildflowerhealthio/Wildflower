@@ -49,9 +49,9 @@ const useAppsEffectRunner = (): AppsEffectRunner => {
 
 /**
  * Returns a runner — a `<A, E>(effect) => Promise<A>` — for one-off
- * effect executions against the *admin* apps client (custom-app writes
- * + tunnel state). The runner auto-provides the slice's admin client
- * layer, `BearerToken`, and `webHttpClientLayer`.
+ * effect executions against the *admin* apps client (custom-app writes).
+ * The runner auto-provides the slice's admin client layer, `BearerToken`,
+ * and `webHttpClientLayer`.
  *
  * @example
  * ```ts

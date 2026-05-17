@@ -1,5 +1,6 @@
 import type { Schema } from 'effect'
 import { Duration, Effect } from 'effect'
+import { UnknownException } from 'effect/Cause'
 import { Origin } from 'navigation-core'
 import { GatekeeperStore } from '../../contexts/gatekeeper-store.ts'
 import type { OAuthError400Schema, TokenResponseSchema } from '../../http-api-definition/oauth.ts'
@@ -25,9 +26,14 @@ const buildClientRedirectUrl = (redirectUri: string, code: string, clientState: 
 }
 
 const sha256Hex = (input: string): Effect.Effect<string, Error> =>
-  Effect.tryPromise(async () => {
-    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
-    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('')
+  Effect.tryPromise({
+    try: async () => {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
+      return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('')
+    },
+    catch(error) {
+      return new UnknownException(error, 'Error while computing SHA-256 hash')
+    },
   })
 
 const requireValidClientForToken = (

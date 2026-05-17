@@ -12,7 +12,7 @@ import { StackContextManager } from '@opentelemetry/sdk-trace-web'
 import { SentryPropagator, SentrySampler, SentrySpanProcessor } from '@sentry/opentelemetry'
 import { Layer } from 'effect'
 import { isOtlpEnabled, isTelemetryEnabled, type TelemetryConfig } from './config.ts'
-import { markOtelProviderRegistered } from './livestore.ts'
+import { markOtelInitAttempted, markOtelProviderRegistered } from './livestore.ts'
 
 type SentryClient = ConstructorParameters<typeof SentrySampler>[0]
 
@@ -22,6 +22,24 @@ interface SentryAdapter {
 }
 
 let registered: BasicTracerProvider | undefined
+let contextManagerInstalled = false
+
+/**
+ * Install a synchronous OTel `ContextManager` globally. Required even when
+ * no exporters are configured: `@effect/opentelemetry`'s per-fiber-step
+ * `otel.context.with(ctx, fn)` bridge depends on a real ContextManager to
+ * round-trip context around `fn()`. Without one (i.e. the default
+ * `NoopContextManager`) the bridge interaction with Effect's runtime
+ * surfaces as `Not a valid effect: {}` inside `createStore:makeAdapter`
+ * on Hermes/React Native. Idempotent — safe to call repeatedly.
+ */
+const installContextManager = (): void => {
+  if (contextManagerInstalled) return
+  const contextManager = new StackContextManager()
+  contextManager.enable()
+  context.setGlobalContextManager(contextManager)
+  contextManagerInstalled = true
+}
 
 const buildProcessors = (config: TelemetryConfig, sentryOn: boolean): SpanProcessor[] => {
   const processors: SpanProcessor[] = []
@@ -60,11 +78,24 @@ const initClientTelemetry = (
   sentry: SentryAdapter
 ): BasicTracerProvider | undefined => {
   if (registered !== undefined) return registered
-  if (!isTelemetryEnabled(config)) return undefined
+
+  // Install the synchronous ContextManager up-front so the
+  // `@effect/opentelemetry` bridge has a real context to bind into even
+  // when no exporters are configured. See `installContextManager` for
+  // the load-bearing reason.
+  installContextManager()
+
+  if (!isTelemetryEnabled(config)) {
+    markOtelInitAttempted()
+    return undefined
+  }
 
   const sentryOn = sentry.init(config)
   const processors = buildProcessors(config, sentryOn)
-  if (processors.length === 0) return undefined
+  if (processors.length === 0) {
+    markOtelInitAttempted()
+    return undefined
+  }
 
   const sampler = resolveSampler(sentryOn, sentry.getClient)
   const providerConfig: ConstructorParameters<typeof BasicTracerProvider>[0] = {
@@ -72,17 +103,6 @@ const initClientTelemetry = (
   }
   if (sampler !== undefined) providerConfig.sampler = sampler
   const provider = new BasicTracerProvider(providerConfig)
-
-  // Without a ContextManager, `otel.context.active()` always returns
-  // ROOT_CONTEXT and `context.with(ctx, fn)` does not store ctx. That breaks
-  // `@effect/opentelemetry`'s per-fiber-step `context.with(...)` bridge, and
-  // Livestore's per-call `otelContext` wrapper can never link DB spans to an
-  // HTTP handler's active span. StackContextManager is synchronous-only, but
-  // Effect re-establishes context at the start of every fiber step so that
-  // is sufficient here.
-  const contextManager = new StackContextManager()
-  contextManager.enable()
-  context.setGlobalContextManager(contextManager)
 
   trace.setGlobalTracerProvider(provider)
   if (sentryOn) propagation.setGlobalPropagator(new SentryPropagator())

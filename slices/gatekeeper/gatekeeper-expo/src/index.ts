@@ -1,5 +1,3 @@
-export { GatekeeperWebView, type GatekeeperWebViewProps } from './components/GatekeeperWebView.tsx'
-
 export {
   useNotificationTapHandler,
   type NotificationTap,

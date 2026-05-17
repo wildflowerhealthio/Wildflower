@@ -6,7 +6,7 @@ import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
 import { SentryPropagator, SentrySampler, SentrySpanProcessor } from '@sentry/opentelemetry'
 import { Layer } from 'effect'
 import { isOtlpEnabled, isTelemetryEnabled, type TelemetryConfig } from 'telemetry-core'
-import { markOtelProviderRegistered } from 'telemetry-core/livestore'
+import { markOtelInitAttempted, markOtelProviderRegistered } from 'telemetry-core/livestore'
 import { initSentryNode, Sentry } from './sentry.ts'
 
 let registered: NodeTracerProvider | undefined
@@ -55,11 +55,17 @@ const registerShutdownHandlers = (provider: NodeTracerProvider, sentryOn: boolea
  */
 const initNodeTelemetry = (config: TelemetryConfig): NodeTracerProvider | undefined => {
   if (registered !== undefined) return registered
-  if (!isTelemetryEnabled(config)) return undefined
+  if (!isTelemetryEnabled(config)) {
+    markOtelInitAttempted()
+    return undefined
+  }
 
   const sentryOn = initSentryNode(config)
   const processors = buildProcessors(config, sentryOn)
-  if (processors.length === 0) return undefined
+  if (processors.length === 0) {
+    markOtelInitAttempted()
+    return undefined
+  }
 
   const sampler = resolveSampler(sentryOn)
   const providerConfig: ConstructorParameters<typeof NodeTracerProvider>[0] = {

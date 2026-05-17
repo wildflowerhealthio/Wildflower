@@ -14,8 +14,8 @@ class EmrStore extends Context.Tag('EmrStore')<EmrStore, Store<typeof schema, ob
 // downstream consumers see the narrowed schema, not `any`.
 const makeEmrStoreLayer = <TSchema extends typeof schema>(
   store: Store<TSchema, object>
-): Layer.Layer<EmrStore> =>
+): Layer.Layer<EmrStore, never, never> =>
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   Layer.succeed(EmrStore, store as unknown as Store<typeof schema, object>)
 
-export { EmrStore as LivestoreStore, makeEmrStoreLayer as makeLivestoreStoreLayer }
+export { EmrStore, makeEmrStoreLayer }

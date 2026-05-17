@@ -6,7 +6,8 @@ class AppsStore extends Context.Tag('AppsStore')<AppsStore, Store<typeof schema,
 
 const makeAppsStoreLayer = <TSchema extends typeof schema>(
   store: Store<TSchema, object>
+): Layer.Layer<AppsStore, never, never> =>
   // oxlint-disable-next-line typescript/no-explicit-any typescript/no-unsafe-type-assertion
-): Layer.Layer<AppsStore> => Layer.succeed(AppsStore, store as Store<any, object>)
+  Layer.succeed(AppsStore, store as unknown as Store<typeof schema, object>)
 
 export { AppsStore, makeAppsStoreLayer }

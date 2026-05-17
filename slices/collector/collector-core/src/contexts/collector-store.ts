@@ -9,7 +9,8 @@ class CollectorStore extends Context.Tag('CollectorStore')<
 
 const makeCollectorStoreLayer = <TSchema extends typeof schema>(
   store: Store<TSchema, object>
+): Layer.Layer<CollectorStore, never, never> =>
   // oxlint-disable-next-line typescript/no-explicit-any typescript/no-unsafe-type-assertion
-): Layer.Layer<CollectorStore> => Layer.succeed(CollectorStore, store as Store<any, object>)
+  Layer.succeed(CollectorStore, store as unknown as Store<typeof schema, object>)
 
 export { CollectorStore, makeCollectorStoreLayer }

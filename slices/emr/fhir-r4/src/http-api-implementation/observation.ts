@@ -1,6 +1,6 @@
 import { HttpApiError } from '@effect/platform'
 import { Effect } from 'effect'
-import { LivestoreStore } from 'emr-core/contexts'
+import { EmrStore } from 'emr-core/contexts'
 import { domainResources, Observation as StoreObservation } from 'emr-core/livestore'
 
 import { makeDomainResourceHandlerLayer } from '../internal/domain-resource-http-api-implementation.ts'
@@ -17,7 +17,7 @@ const layer = makeDomainResourceHandlerLayer(
   { SearchParams: ObservationSearchParams, buildWhere: buildObservationWhere },
   {
     commitUpsert: (resource) =>
-      Effect.flatMap(LivestoreStore, (store) =>
+      Effect.flatMap(EmrStore, (store) =>
         Effect.try({
           try: () => store.commit(domainResources.Observation.events.upsert({ resource })),
           catch: () => new HttpApiError.ServiceUnavailable(),

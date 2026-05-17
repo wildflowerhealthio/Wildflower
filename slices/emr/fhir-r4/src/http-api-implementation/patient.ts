@@ -1,6 +1,6 @@
 import { HttpApiError } from '@effect/platform'
 import { Effect } from 'effect'
-import { LivestoreStore } from 'emr-core/contexts'
+import { EmrStore } from 'emr-core/contexts'
 import { domainResources, Patient as StorePatient } from 'emr-core/livestore'
 
 import { makeDomainResourceHandlerLayer } from '../internal/domain-resource-http-api-implementation.ts'
@@ -17,7 +17,7 @@ const layer = makeDomainResourceHandlerLayer(
   { SearchParams: PatientSearchParams, buildWhere: buildPatientWhere },
   {
     commitUpsert: (resource) =>
-      Effect.flatMap(LivestoreStore, (store) =>
+      Effect.flatMap(EmrStore, (store) =>
         Effect.try({
           try: () => store.commit(domainResources.Patient.events.upsert({ resource })),
           catch: () => new HttpApiError.ServiceUnavailable(),
@@ -30,7 +30,7 @@ const layer = makeDomainResourceHandlerLayer(
     // `Patient/{id}`. Filtering happens in memory because the `subject` JSON
     // column has no indexed sub-field; `_count` caps the returned slice.
     getRelated: ({ id, limit }) =>
-      Effect.flatMap(LivestoreStore, (store) =>
+      Effect.flatMap(EmrStore, (store) =>
         Effect.try({
           try: () => store.query(domainResources.Observation.queries.search$({})),
           catch: () => new HttpApiError.ServiceUnavailable(),
