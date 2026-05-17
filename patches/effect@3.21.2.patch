@@ -1,0 +1,86 @@
+diff --git a/dist/cjs/Effect.js b/dist/cjs/Effect.js
+index 65089579aa7e9fb92f3793212ba7f5ef93b8c75f..6553c45f18d19a885a80245398ce579f4316ad83 100644
+--- a/dist/cjs/Effect.js
++++ b/dist/cjs/Effect.js
+@@ -10622,6 +10622,16 @@ function fnApply(options) {
+   } else {
+     try {
+       effect = options.body.apply(options.self, options.args);
++      // WORKAROUND for Hermes/Babel: if body wasn't detected as a gen-fn
++      // but still returned a Generator at runtime, wrap it via fromIterator.
++      if (
++        effect != null &&
++        typeof effect === "object" &&
++        effect.constructor === (function* () {})().constructor
++      ) {
++        const __gen = effect;
++        effect = core.fromIterator(() => __gen);
++      }
+     } catch (error) {
+       fnError = error;
+       effect = die(error);
+diff --git a/dist/cjs/Utils.js b/dist/cjs/Utils.js
+index 9f15a919b17624c0688b71fd484feccfe08d20ab..d8904f80db895fb9ebd487391c6525e00fce4432 100644
+--- a/dist/cjs/Utils.js
++++ b/dist/cjs/Utils.js
+@@ -366,9 +366,16 @@ const isNotOptimizedAway = /*#__PURE__*/standard.effect_internal_function(() =>
+  */
+ const internalCall = exports.internalCall = isNotOptimizedAway ? standard.effect_internal_function : forced.effect_internal_function;
+ const genConstructor = function* () {}.constructor;
++// WORKAROUND for Hermes/Babel: accept generator functions whose
++// `.constructor` reference fails identity with the captured `genConstructor`
++// but whose constructor name is still `GeneratorFunction`.
+ /**
+  * @since 3.11.0
+  */
+-const isGeneratorFunction = u => (0, _Predicate.isObject)(u) && u.constructor === genConstructor;
++const isGeneratorFunction = u =>
++  (0, _Predicate.isObject)(u) && (
++    u.constructor === genConstructor ||
++    (u.constructor && u.constructor.name === "GeneratorFunction")
++  );
+ exports.isGeneratorFunction = isGeneratorFunction;
+ //# sourceMappingURL=Utils.js.map
+\ No newline at end of file
+diff --git a/dist/esm/Effect.js b/dist/esm/Effect.js
+index 89cf1381299d3fc99b9361e5927b4571fbfd9103..e6da63ee35b67acb06a6ed039ec44c58fa0baf36 100644
+--- a/dist/esm/Effect.js
++++ b/dist/esm/Effect.js
+@@ -10791,6 +10791,16 @@ function fnApply(options) {
+   } else {
+     try {
+       effect = options.body.apply(options.self, options.args);
++      // WORKAROUND for Hermes/Babel: if body wasn't detected as a gen-fn
++      // but still returned a Generator at runtime, wrap it via fromIterator.
++      if (
++        effect != null &&
++        typeof effect === "object" &&
++        effect.constructor === (function* () {})().constructor
++      ) {
++        const __gen = effect;
++        effect = core.fromIterator(() => __gen);
++      }
+     } catch (error) {
+       fnError = error;
+       effect = die(error);
+diff --git a/dist/esm/Utils.js b/dist/esm/Utils.js
+index abfc400d0e8c46dd79220dc1c5847dfd51ca2290..d291d5d428afae494b762b608bf0e15408c0c4bb 100644
+--- a/dist/esm/Utils.js
++++ b/dist/esm/Utils.js
+@@ -350,8 +350,15 @@ const isNotOptimizedAway = /*#__PURE__*/standard.effect_internal_function(() =>
+  */
+ export const internalCall = isNotOptimizedAway ? standard.effect_internal_function : forced.effect_internal_function;
+ const genConstructor = function* () {}.constructor;
++// WORKAROUND for Hermes/Babel: accept generator functions whose
++// `.constructor` reference fails identity with the captured `genConstructor`
++// but whose constructor name is still `GeneratorFunction`.
+ /**
+  * @since 3.11.0
+  */
+-export const isGeneratorFunction = u => isObject(u) && u.constructor === genConstructor;
++export const isGeneratorFunction = u =>
++  isObject(u) && (
++    u.constructor === genConstructor ||
++    (u.constructor && u.constructor.name === "GeneratorFunction")
++  );
+ //# sourceMappingURL=Utils.js.map

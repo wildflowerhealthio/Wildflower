@@ -150,7 +150,7 @@ For shared libraries (React, etc.), use peer dependencies:
 ```json
 {
   "peerDependencies": {
-    "react": "^19.2.0"
+    "react": "^19.1.0"
   }
 }
 ```

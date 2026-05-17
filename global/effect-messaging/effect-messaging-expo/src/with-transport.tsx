@@ -1,6 +1,7 @@
 import { Effect, Exit, Scope } from 'effect'
 import type { Bridge } from 'effect-messaging-core'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, type JSX, Suspense, use } from 'react'
+import { Text } from 'react-native'
 import { type ExpoTransport, type ExpoTransportLayers, makeExpoTransport } from './transport.ts'
 
 /**
@@ -14,6 +15,7 @@ interface UseTransportConfig<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   readonly initialMessages: ReadonlyArray<Bridge.UrlParamableMessage<Bridges>>
   readonly baseUrl: string
   readonly webviewHandleRef: { readonly current: { postMessage(message: string): void } | null }
+  readonly children: (transport: ExpoTransport<Bridges>) => JSX.Element
 }
 
 /**
@@ -46,12 +48,12 @@ interface UseTransportConfig<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  * const transport = useTransport(factory)
  * ```
  */
-const useTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(
+const WithTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(
   config: UseTransportConfig<Bridges>
-): ExpoTransport<Bridges> => {
+): JSX.Element => {
   const [transport, scope] = useMemo(() => {
     const builtScope = Effect.runSync(Scope.make())
-    const builtTransport = Effect.runSync(Scope.extend(makeExpoTransport(config), builtScope))
+    const builtTransport = Effect.runPromise(Scope.extend(makeExpoTransport(config), builtScope))
     return [builtTransport, builtScope] as const
   }, [config])
 
@@ -61,9 +63,23 @@ const useTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(
       Effect.runSync(Scope.close(currentScope, Exit.void))
     }
   }, [scope])
-
-  return transport
+  return (
+    <Suspense fallback={<Text>Loading transport...</Text>}>
+      <WithTransportInner transportPromise={transport}>{config.children}</WithTransportInner>
+    </Suspense>
+  )
 }
 
-export { useTransport }
+const WithTransportInner = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
+  transportPromise,
+  children,
+}: {
+  transportPromise: Promise<ExpoTransport<Bridges>>
+  children: (transport: ExpoTransport<Bridges>) => JSX.Element
+}): JSX.Element => {
+  const transport = use(transportPromise)
+  return <>{children(transport)}</>
+}
+
+export { WithTransport }
 export type { UseTransportConfig }

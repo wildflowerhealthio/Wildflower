@@ -143,7 +143,7 @@ describe('integration: response handling', () => {
   test('file response forwards path + start/end (defaulting to nulls)', async () => {
     const app = Effect.succeed(
       HttpServerResponse.raw(
-        { __expoFilePath: '/data/scan.dcm', start: 0, end: undefined },
+        { expoFilePath: '/data/scan.dcm', start: 0, end: undefined },
         { status: 200, contentType: 'application/dicom' }
       )
     )
@@ -162,7 +162,7 @@ describe('integration: response handling', () => {
   test('file response with byte range threads start/end to native', async () => {
     const app = Effect.succeed(
       HttpServerResponse.raw(
-        { __expoFilePath: '/data/scan.dcm', start: 1024, end: 1536 },
+        { expoFilePath: '/data/scan.dcm', start: 1024, end: 1536 },
         { status: 206 }
       )
     )
@@ -532,6 +532,7 @@ describe('integration: request properties', () => {
     )
 
     const body = JSON.parse(mockRespondToRequest.mock.calls[0][3])
+    // oxlint-disable-next-line no-underscore-dangle
     expect(body._id).toBe('@effect/platform/HttpServerRequest')
     expect(body.method).toBe('PUT')
     expect(body.url).toBe('/test')

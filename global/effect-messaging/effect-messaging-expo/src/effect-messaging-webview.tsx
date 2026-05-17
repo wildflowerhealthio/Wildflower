@@ -41,6 +41,8 @@ const EffectMessagingWebView = forwardRef<
   EffectMessagingWebViewHandle,
   EffectMessagingWebViewProps
 >(function EffectMessagingWebView({ source, onMessage, loader }, ref): JSX.Element {
+  console.log('EffectMessagingWebView: render')
+
   const webviewRef = useRef<WebView>(null)
   const [isReady, setIsReady] = useState(false)
   const initialUrlRef = useRef<string | null>(null)
@@ -49,6 +51,7 @@ const EffectMessagingWebView = forwardRef<
     ref,
     () => ({
       postMessage(message): void {
+        console.log('EffectMessagingWebView: postMessage', { message })
         webviewRef.current?.postMessage(message)
       },
     }),
@@ -56,6 +59,7 @@ const EffectMessagingWebView = forwardRef<
   )
 
   const onLoadEnd = useCallback(() => {
+    console.log('EffectMessagingWebView: onLoadEnd')
     setIsReady(true)
   }, [])
 
