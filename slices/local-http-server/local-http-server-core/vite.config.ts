@@ -8,7 +8,6 @@ export default defineConfig({
     platform: 'neutral',
     entry: {
       index: 'src/index.ts',
-      'contexts/index': 'src/contexts/index.ts',
       'livestore/index': 'src/livestore/index.ts',
     },
   },

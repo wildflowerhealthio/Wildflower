@@ -5,14 +5,14 @@ type Table = State.SQLite.ClientDocumentTableDef<
   {
     readonly requestedRunning: boolean
     readonly running: boolean
-    readonly localOrigin: string | null
-    readonly port: number | null
+    readonly localOrigin: string
+    readonly port: number
   },
   {
     readonly requestedRunning: boolean
     readonly running: boolean
-    readonly localOrigin: string | null
-    readonly port: number | null
+    readonly localOrigin: string
+    readonly port: number
   },
   {
     partialSet: true
@@ -21,8 +21,8 @@ type Table = State.SQLite.ClientDocumentTableDef<
       value: {
         readonly requestedRunning: false
         readonly running: false
-        readonly localOrigin: null
-        readonly port: null
+        readonly localOrigin: 'http://127.0.0.1:8080'
+        readonly port: 8080
       }
     }
   }
@@ -38,12 +38,17 @@ const table: Table = State.SQLite.clientDocument({
   schema: Schema.Struct({
     requestedRunning: Schema.Boolean,
     running: Schema.Boolean,
-    localOrigin: Schema.NullOr(Schema.String),
-    port: Schema.NullOr(Schema.Number),
+    localOrigin: Schema.String,
+    port: Schema.Number,
   }),
   default: {
     id: SessionIdSymbol,
-    value: { requestedRunning: false, running: false, localOrigin: null, port: null },
+    value: {
+      requestedRunning: false,
+      running: false,
+      localOrigin: 'http://127.0.0.1:8080',
+      port: 8080,
+    },
   },
 })
 
@@ -66,8 +71,8 @@ type Queries = {
     {
       readonly requestedRunning: boolean
       readonly running: boolean
-      readonly localOrigin: string | null
-      readonly port: number | null
+      readonly localOrigin: string
+      readonly port: number
     },
     'def'
   >
