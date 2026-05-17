@@ -1,7 +1,7 @@
 import { type HttpApiGroup, HttpApiBuilder } from '@effect/platform'
 import { Layer } from 'effect'
 
-import type { LivestoreStore } from 'emr-core/contexts'
+import type { EmrStore } from 'emr-core/contexts'
 import type { Origin } from 'navigation-core'
 import { FhirPublicApi, FhirResourcesApi } from '../http-api-definition/index.ts'
 import {
@@ -25,7 +25,7 @@ type FhirResourcesGroupNames = 'Patient' | 'Binary' | 'Observation'
 const FhirResourcesApiHandlersFor = <ParentId extends string>(): Layer.Layer<
   HttpApiGroup.ApiGroup<ParentId, FhirResourcesGroupNames>,
   never,
-  LivestoreStore | Origin
+  EmrStore | Origin
 > =>
   // The phantom-id bridge: `ApiGroup<ApiId, Name>` is a structural marker
   // with no runtime presence (HttpApiBuilder.group only registers routes on
@@ -43,11 +43,11 @@ const FhirResourcesApiHandlersFor = <ParentId extends string>(): Layer.Layer<
   FhirResourcesApiHandlersLive satisfies Layer.Layer<
     HttpApiGroup.ApiGroup<'FhirResourcesApi', FhirResourcesGroupNames>,
     never,
-    LivestoreStore | Origin
+    EmrStore | Origin
   > as unknown as Layer.Layer<
     HttpApiGroup.ApiGroup<ParentId, FhirResourcesGroupNames>,
     never,
-    LivestoreStore | Origin
+    EmrStore | Origin
   >
 
 const FhirPublicApiHandlersLive = Layer.mergeAll(SmartConfiguration.layer)

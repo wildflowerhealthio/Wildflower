@@ -9,8 +9,8 @@ import GatekeeperBridge from 'gatekeeper-core/bridge'
 import { gatekeeperWebReceiverLayer } from 'gatekeeper-react/web-bridge'
 import { NavigationBridge } from 'navigation-core'
 import { makeNavigationWebReceiverLayer, NavigationBridgeHandler } from 'navigation-react'
-import { type JSX, type ReactNode, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { type JSX, type ReactNode, Suspense, useEffect, useRef, useState } from 'react'
+import { Await, useNavigate } from 'react-router'
 import { TransportContext, type Transport } from './transport-context.ts'
 
 /**
@@ -55,7 +55,7 @@ function TransportProvider({
   const appsLayer = useAppsWebReceiverLayer()
 
   const [scope] = useState(() => Effect.runSync(Scope.make()))
-  const [transport] = useState<Transport>(() => {
+  const [transportPromise] = useState<Promise<Transport>>(() => {
     const navLayer = makeNavigationWebReceiverLayer((to) => {
       // Split branches so React Router's `navigate` overload picks the right signature.
       if (typeof to === 'number') void navigateRef.current(to)
@@ -63,7 +63,7 @@ function TransportProvider({
     })
     const bridges = [NavigationBridge, GatekeeperBridge, CollectorBridge, AppsBridge] as const
     const adapter = WebPlatformAdapter.make(bridges)
-    return Effect.runSync(
+    return Effect.runPromise(
       Scope.extend(
         BridgeTransport.make({
           bridges,
@@ -72,35 +72,60 @@ function TransportProvider({
         }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter))),
         scope
       )
-    )
+    ).then(async (transport) => {
+      await Effect.runPromise(Effect.andThen(transport.flushed, transport.signalReady))
+
+      console.log = (...args) => {
+        transport.sendMessage({
+          _tag: 'Log',
+          log: JSON.stringify(args),
+        })
+      }
+
+      console.error = (...args) => {
+        transport.sendMessage({
+          _tag: 'Log',
+          log: JSON.stringify(args),
+        })
+      }
+
+      console.warn = (...args) => {
+        transport.sendMessage({
+          _tag: 'Log',
+          log: JSON.stringify(args),
+        })
+      }
+      console.info = (...args) => {
+        transport.sendMessage({
+          _tag: 'Log',
+          log: JSON.stringify(args),
+        })
+      }
+
+      return transport
+    })
   })
 
-  const [initialTransportMessagesFlushed, setInitialTransportMessagesFlushed] = useState(false)
-
   useEffect(() => {
-    Effect.runFork(
-      transport.flushed.pipe(
-        Effect.tap(() => Effect.sync(() => setInitialTransportMessagesFlushed(true))),
-        Effect.zipRight(transport.signalReady)
-      )
-    )
     return (): void => {
       Effect.runFork(Scope.close(scope, Exit.void))
     }
-  }, [transport, scope])
+  }, [scope])
 
   // Only display the body once the transport has been flushed and
   // any initial navigations have completed, to prevent a flashing ui
-  if (initialTransportMessagesFlushed) {
-    return (
-      <TransportContext.Provider value={transport}>
-        <NavigationBridgeHandler sender={transport.sendMessage} />
-        {children}
-      </TransportContext.Provider>
-    )
-  } else {
-    return <>{loader}</>
-  }
+  return (
+    <Suspense fallback={loader}>
+      <Await resolve={transportPromise}>
+        {(transport) => (
+          <TransportContext.Provider value={transport}>
+            <NavigationBridgeHandler sender={transport.sendMessage} />
+            {children}
+          </TransportContext.Provider>
+        )}
+      </Await>
+    </Suspense>
+  )
 }
 
 export { TransportProvider }

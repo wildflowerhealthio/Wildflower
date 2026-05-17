@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vite-plus/test'
 import {
   getLivestoreOtelOptions,
   injectActiveOtelContext,
+  markOtelInitAttempted,
   markOtelProviderRegistered,
   whenOtelProviderReady,
 } from './livestore.ts'
@@ -204,6 +205,18 @@ describe('OTel provider lifecycle', () => {
       Promise.resolve<typeof sentinel>(sentinel),
     ])
     expect(winner).toBe(sentinel)
+  })
+
+  test('markOtelInitAttempted resolves whenOtelProviderReady without unlocking the tracer', async () => {
+    markOtelInitAttempted()
+    await expect(whenOtelProviderReady()).resolves.toBeUndefined()
+    expect(getLivestoreOtelOptions('svc')).toEqual({})
+  })
+
+  test('markOtelInitAttempted is idempotent', () => {
+    expect(() => {
+      markOtelInitAttempted()
+    }).not.toThrow()
   })
 
   test('markOtelProviderRegistered resolves the ready promise and unlocks the tracer', async () => {

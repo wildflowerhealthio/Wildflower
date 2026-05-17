@@ -5,6 +5,7 @@ import { CollectorApi } from '../http-api-definition/index.ts'
 
 // Type-only reference to extract the resolved client shape; tree-shaken
 // at call sites. Mirrors gatekeeper-core's GatekeeperHttpApiClient.
+// oxlint-disable-next-line no-underscore-dangle
 const _bareCollectorClient = HttpApiClient.make(CollectorApi, { baseUrl: '/' })
 type CollectorHttpApiClientShape = Effect.Effect.Success<typeof _bareCollectorClient>
 

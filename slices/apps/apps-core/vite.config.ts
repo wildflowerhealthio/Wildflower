@@ -8,6 +8,7 @@ export default defineConfig({
     platform: 'neutral',
     entry: {
       index: 'src/index.ts',
+      bridge: 'src/bridge.ts',
       'registry/index': 'src/registry/index.ts',
       'clients/index': 'src/clients/index.ts',
       'contexts/index': 'src/contexts/index.ts',

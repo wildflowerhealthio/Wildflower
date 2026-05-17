@@ -12,7 +12,7 @@ separate static-file server, we build its `dist/` once, base64-encode every
 asset into a generated TypeScript module (`src/generated-patient-browser.ts`),
 and serve it from our own `HttpApi` group mounted at:
 
-```
+```ts
 MOUNT = '/installed-apps/patient-browser'
 ```
 

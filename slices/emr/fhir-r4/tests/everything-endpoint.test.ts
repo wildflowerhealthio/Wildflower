@@ -1,7 +1,7 @@
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { Layer } from 'effect'
-import type { LivestoreStore } from 'emr-core/contexts'
-import { makeLivestoreStoreLayer } from 'emr-core/contexts'
+import type { EmrStore } from 'emr-core/contexts'
+import { makeEmrStoreLayer } from 'emr-core/contexts'
 import type { Observation as StoreObservation, Patient as StorePatient } from 'emr-core/livestore'
 import { Origin } from 'navigation-core'
 import { describe, expect, test } from 'vite-plus/test'
@@ -114,7 +114,7 @@ interface MockData {
 
 // Mock store that branches on the LiveQueryDef's `label` field. Labels are
 // produced by domain-resource-persistence as `${resourceType}.${operation}`.
-const makeStore = (data: MockData): typeof LivestoreStore.Service =>
+const makeStore = (data: MockData): typeof EmrStore.Service =>
   /* oxlint-disable-next-line typescript/no-unsafe-type-assertion */
   ({
     query: (q: { readonly label?: string }): unknown => {
@@ -137,11 +137,11 @@ const makeStore = (data: MockData): typeof LivestoreStore.Service =>
       return data.observations
     },
     commit: () => undefined,
-  }) as unknown as typeof LivestoreStore.Service
+  }) as unknown as typeof EmrStore.Service
 
 const createHandler = (data: MockData): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = FhirResourcesApiLive.pipe(
-    Layer.provide(makeLivestoreStoreLayer(makeStore(data))),
+    Layer.provide(makeEmrStoreLayer(makeStore(data))),
     Layer.provide(Layer.succeed(Origin, 'http://localhost:8787'))
   )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))

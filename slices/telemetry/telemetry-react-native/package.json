@@ -15,7 +15,7 @@
   "exports": {
     ".": {
       "source": "./src/index.ts",
-      "default": "./dist/index.js"
+      "default": "./dist/index.mjs"
     },
     "./package.json": "./package.json"
   },
@@ -26,18 +26,29 @@
     "build": "vp pack",
     "check": "vp check",
     "dev": "vp pack --watch",
+    "jest": "jest",
     "prepublishOnly": "vp run build",
     "test": "vp test --passWithNoTests"
   },
   "devDependencies": {
+    "@babel/core": "catalog:",
+    "@babel/runtime": "catalog:",
     "@effect/opentelemetry": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@sentry/opentelemetry": "catalog:",
     "@sentry/react-native": "catalog:",
+    "@types/jest": "catalog:",
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "babel-preset-expo": "catalog:",
     "bumpp": "^11.0.1",
     "effect": "catalog:",
+    "expo": "catalog:",
+    "jest": "catalog:",
+    "jest-expo": "catalog:",
+    "react": "catalog:",
+    "react-native": "catalog:",
     "telemetry-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"

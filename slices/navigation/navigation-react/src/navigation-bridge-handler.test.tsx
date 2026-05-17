@@ -7,12 +7,13 @@ import { describe, expect, test } from 'vite-plus/test'
 import { NavigationBridgeHandler } from './navigation-bridge-handler'
 
 type RouteChanged = NavigationBridge['MessageSchemas']['RouteChanged']['Type']
+type Log = NavigationBridge['MessageSchemas']['Log']['Type']
 
 const setupCalls = (): {
-  readonly calls: RouteChanged[]
+  readonly calls: (RouteChanged | Log)[]
   readonly send: typeof NavigationBridge.Web.send
 } => {
-  const calls: RouteChanged[] = []
+  const calls: (RouteChanged | Log)[] = []
   const send: typeof NavigationBridge.Web.send = (message) => {
     calls.push(message)
     return Effect.void
@@ -83,6 +84,7 @@ describe('NavigationBridgeHandler', () => {
 
     // Extra Pop past the initial entry: depth must clamp at 0, not go negative.
     act(() => void navigate(-1))
-    expect(calls.at(-1)?.canGoBack).toBe(false)
+    const lastCall = calls.at(-1)
+    expect(lastCall).toEqual({ _tag: 'RouteChanged', pathname: '/', canGoBack: false })
   })
 })

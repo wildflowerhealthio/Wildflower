@@ -29,6 +29,11 @@ const RouteChanged = Schema.parseJson(
   })
 )
 
+const LogMessageBody = Schema.TaggedStruct('Log', {
+  log: Schema.String,
+})
+const LogMessage = Schema.parseJson(LogMessageBody)
+
 type NavigationBridge = Bridge.Bridge<
   'Navigation',
   {
@@ -37,8 +42,10 @@ type NavigationBridge = Bridge.Bridge<
   },
   {
     RouteChanged: typeof RouteChanged
+    Log: typeof LogMessage
   }
 >
+
 /**
  * Slice-neutral cross-process navigation contract. Host emits
  * `HostBackRequested` and `HostRequestedWebNavigation`; web emits
@@ -50,7 +57,10 @@ const NavigationBridge: NavigationBridge = Bridge.make({
     ['HostBackRequested', HostBackRequested],
     ['HostRequestedWebNavigation', HostRequestedWebNavigation],
   ] as const,
-  webToHost: [['RouteChanged', RouteChanged]] as const,
+  webToHost: [
+    ['RouteChanged', RouteChanged],
+    ['Log', LogMessage],
+  ] as const,
   urlParams: {
     HostRequestedWebNavigation: UrlParamMessage.singleStringMessageSchema(
       'HostRequestedWebNavigation',

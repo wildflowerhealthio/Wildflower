@@ -245,15 +245,15 @@ export function makeDomainResourcePersistence<
       // oxlint-disable-next-line typescript/no-explicit-any -- see comment
       let qb: any = table
       if (where !== undefined) {
-        // oxlint-disable-next-line typescript/no-unsafe-assignment typescript/no-unsafe-call typescript/no-unsafe-member-access -- see qb declaration above
+        // oxlint-disable-next-line typescript/no-unsafe-assignment
         qb = qb.where(where)
       }
       if (typeof limit === 'number') {
-        // oxlint-disable-next-line typescript/no-unsafe-assignment typescript/no-unsafe-call typescript/no-unsafe-member-access -- see qb declaration above
+        // oxlint-disable-next-line typescript/no-unsafe-assignment
         qb = qb.limit(limit)
       }
       if (typeof offset === 'number') {
-        // oxlint-disable-next-line typescript/no-unsafe-assignment typescript/no-unsafe-call typescript/no-unsafe-member-access -- see qb declaration above
+        // oxlint-disable-next-line typescript/no-unsafe-assignment
         qb = qb.offset(offset)
       }
       return queryDb(qb, {

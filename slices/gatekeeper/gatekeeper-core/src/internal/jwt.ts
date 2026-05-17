@@ -30,9 +30,10 @@ const verifyAgainstAnyKey = (
 ): Effect.Effect<jose.JWTVerifyResult<jose.JWTPayload>, HttpApiError.Unauthorized> =>
   pipe(
     keys.map((jwk) =>
-      Effect.tryPromise(() => SigningKey.verifyJwt(jwk, token, options)).pipe(
-        Effect.mapError(unauthorized)
-      )
+      Effect.tryPromise({
+        try: () => SigningKey.verifyJwt(jwk, token, options),
+        catch: () => unauthorized(),
+      })
     ),
     Effect.firstSuccessOf,
     Effect.catchAll(() => Effect.fail(unauthorized()))

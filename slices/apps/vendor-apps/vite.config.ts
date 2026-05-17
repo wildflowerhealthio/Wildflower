@@ -26,4 +26,8 @@ export default defineConfig({
     // Same generated file: deliberately not formatted.
     ignorePatterns: ['**/generated-*.ts'],
   },
+  test: {
+    include: [],
+    passWithNoTests: true,
+  },
 })

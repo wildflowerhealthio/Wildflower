@@ -4,6 +4,7 @@ import { Context, type Effect } from 'effect'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
 
 // Type-only reference to extract the resolved client shape; tree-shaken at call sites.
+// oxlint-disable-next-line no-underscore-dangle
 const _bareGatekeeperClient = HttpApiClient.make(GatekeeperApi, { baseUrl: '/' })
 type GatekeeperHttpApiClientShape = Effect.Effect.Success<typeof _bareGatekeeperClient>
 

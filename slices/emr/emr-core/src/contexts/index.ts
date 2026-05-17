@@ -1,1 +1,1 @@
-export { LivestoreStore, makeLivestoreStoreLayer } from './emr-store.ts'
+export { EmrStore, makeEmrStoreLayer } from './emr-store.ts'

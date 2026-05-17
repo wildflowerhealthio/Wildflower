@@ -2,7 +2,7 @@
   "name": "collector-expo",
   "version": "0.0.0",
   "private": true,
-  "description": "Expo wrapper for the collector slice — CollectorWebView (embeds wildflower-react with NavigationBridge + CollectorBridge) and RunSyncModalScreen (mounts BrowserSnifferWebView and forwards sniffer events back through CollectorBridge).",
+  "description": "Expo wrapper for the collector slice — RunSyncModalScreen mounts a BrowserSnifferWebView and forwards sniffer events back to the host shell's CollectorBridge.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -41,34 +41,22 @@
     "browser-sniffer-expo": "workspace:*",
     "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
-    "effect-messaging-expo": "workspace:*",
     "expo": "catalog:",
-    "expo-router": "catalog:",
     "expo-tundraish": "workspace:*",
-    "gatekeeper-core": "workspace:*",
     "jest": "catalog:",
     "jest-expo": "catalog:",
-    "navigation-core": "workspace:*",
     "react": "catalog:",
     "react-native": "catalog:",
     "typescript": "catalog:",
-    "vite-plus": "catalog:",
-    "wildflower-react": "workspace:*"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "browser-sniffer-core": "workspace:*",
     "browser-sniffer-expo": "workspace:*",
     "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
-    "effect-messaging-expo": "workspace:*",
-    "expo-router": "*",
     "expo-tundraish": "workspace:*",
-    "gatekeeper-core": "workspace:*",
-    "navigation-core": "workspace:*",
     "react": "catalog:",
-    "react-native": "catalog:",
-    "wildflower-react": "workspace:*"
+    "react-native": "catalog:"
   }
 }

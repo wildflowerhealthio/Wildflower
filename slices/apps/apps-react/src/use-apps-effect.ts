@@ -33,18 +33,19 @@ const useAppsEffect = <A, E>(
 
 /**
  * React Suspense-friendly runner for an Effect that requires
- * `AppsAdminHttpApiClient` (the *admin* apps client — custom-app writes
- * + tunnel state). Auto-provides the slice's admin client layer, the
- * `BearerToken` (read from `<AuthTokenProvider>` higher up), and
- * `webHttpClientLayer`.
+ * `AppsAdminHttpApiClient` (the *admin* apps client — custom-app writes).
+ * Auto-provides the slice's admin client layer, the `BearerToken` (read
+ * from `<AuthTokenProvider>` higher up), and `webHttpClientLayer`.
  *
  * @example
  * ```ts
- * const serverEffect = useMemo(
- *   () => Effect.flatMap(AppsAdminHttpApiClient, (c) => c.server.GetServer()),
- *   [refreshKey]
+ * const editorEffect = useMemo(
+ *   () => Effect.flatMap(AppsAdminHttpApiClient, (c) =>
+ *     c['apps-admin'].UpdateApp({ path: { id }, payload: { enabled } })
+ *   ),
+ *   [id, enabled]
  * )
- * const serverPromise = useAppsAdminEffect(serverEffect)
+ * const editorPromise = useAppsAdminEffect(editorEffect)
  * ```
  */
 const useAppsAdminEffect = <A, E>(

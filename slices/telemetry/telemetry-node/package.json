@@ -15,7 +15,7 @@
   "exports": {
     ".": {
       "source": "./src/index.ts",
-      "default": "./dist/index.js"
+      "default": "./dist/index.mjs"
     },
     "./package.json": "./package.json"
   },

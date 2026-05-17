@@ -7,11 +7,13 @@ import { AppsAdminApi, AppsApi } from '../http-api-definition/index.ts'
 // at call sites. Mirrors `collector-core/clients` and
 // `gatekeeper-core/clients`.
 
+// oxlint-disable no-underscore-dangle
 const _barePublicClient = HttpApiClient.make(AppsApi, { baseUrl: '/' })
 type AppsHttpApiClientShape = Effect.Effect.Success<typeof _barePublicClient>
 
 const _bareAdminClient = HttpApiClient.make(AppsAdminApi, { baseUrl: '/' })
 type AppsAdminHttpApiClientShape = Effect.Effect.Success<typeof _bareAdminClient>
+// oxlint-enable no-underscore-dangle
 
 /**
  * Effect Service providing the resolved `AppsApi` (public) HttpApi
@@ -25,9 +27,9 @@ class AppsHttpApiClient extends Context.Tag('AppsHttpApiClient')<
 
 /**
  * Effect Service providing the resolved `AppsAdminApi` (owner-only)
- * HttpApi client — custom-app writes + server (tunnel) config. The
- * composing app wraps `AppsAdminApi` in `RequireAuthMiddleware`, so
- * the corresponding client layer must attach a bearer.
+ * HttpApi client — custom-app writes. The composing app wraps
+ * `AppsAdminApi` in `RequireAuthMiddleware`, so the corresponding
+ * client layer must attach a bearer.
  */
 class AppsAdminHttpApiClient extends Context.Tag('AppsAdminHttpApiClient')<
   AppsAdminHttpApiClient,

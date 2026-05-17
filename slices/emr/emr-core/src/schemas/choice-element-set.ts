@@ -143,6 +143,7 @@ const columnFor = (name: Datatype.Name): SqliteDsl.ColumnDefinition.Any => {
       })
     }
     default: {
+      // oxlint-disable-next-line no-underscore-dangle
       const _exhaustive: never = dbType
       throw new Error(`Unhandled column DbType: ${String(_exhaustive)}`)
     }

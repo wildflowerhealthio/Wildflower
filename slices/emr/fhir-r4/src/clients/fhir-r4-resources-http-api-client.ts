@@ -3,6 +3,7 @@ import { Context, type Effect } from 'effect'
 
 import { FhirResourcesApi } from '../http-api-definition/index.ts'
 
+// oxlint-disable-next-line no-underscore-dangle
 const _bareFhirResourcesClient = HttpApiClient.make(FhirResourcesApi, { baseUrl: '/' })
 type FhirR4ResourcesHttpApiClientShape = Effect.Effect.Success<typeof _bareFhirResourcesClient>
 
