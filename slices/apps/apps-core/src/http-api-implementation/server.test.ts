@@ -3,14 +3,13 @@ import type { Store } from '@livestore/livestore'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { makeAppsStoreLayer } from '../contexts/apps-store.ts'
 import {
   type ServerState,
   TunnelControl,
   TunnelUnavailable,
   type TunnelControlService,
 } from '../contexts/tunnel-control.ts'
-import type { schema } from '../livestore/index.ts'
+import { AppsStore, type schema } from '../livestore/index.ts'
 import { AppsAdminApiLive } from './index.ts'
 
 type AppsStoreService = Store<typeof schema, object>
@@ -31,7 +30,7 @@ const createHandler = (
   tunnel: TunnelControlService
 ): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = AppsAdminApiLive.pipe(
-    Layer.provide(makeAppsStoreLayer(makeStubStore())),
+    Layer.provide(AppsStore.layerFrom(makeStubStore())),
     Layer.provide(Layer.succeed(TunnelControl, tunnel))
   )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))

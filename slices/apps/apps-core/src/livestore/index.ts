@@ -6,12 +6,19 @@
  * the pattern of `collector-core/livestore`.
  */
 
-import { makeSchema, State } from '@livestore/livestore'
+import { defineSliceLivestore } from 'kitchen-sink/livestore'
+
 import * as AppSelection from './app-selection.ts'
 
-const tables = {
+// `AppSelection.Table` is the portable per-resource alias defined in
+// `app-selection.ts` (spelled as `State.SQLite.TableDef<…, …, Schema.Schema<…>>`
+// using only top-level livestore + effect types). Referencing it here keeps
+// the slice's emitted `.d.ts` self-contained without inferring `tables` from
+// the runtime value's narrow type, which would pull in `FieldColumnType` /
+// `ColumnDefaultValue` from livestore's internal `field-defs.js` subpath.
+const tables: { readonly appSelection: AppSelection.Table } = {
   appSelection: AppSelection.table,
-} as const
+}
 
 const events = {
   ...AppSelection.events,
@@ -24,8 +31,16 @@ const queries = {
 
 const materializers = { ...AppSelection.materializers } as const
 
-const state = State.SQLite.makeState({ tables, materializers })
-const schema = makeSchema({ events, state })
+const { schema, state, StoreTag, makeLayerFactory } = defineSliceLivestore({
+  name: 'AppsStore',
+  tables,
+  events,
+  materializers,
+})
 
-export { AppSelection, tables, events, queries, materializers, schema, state }
+class AppsStore extends StoreTag<AppsStore>() {
+  static readonly layerFrom = makeLayerFactory(AppsStore)
+}
+
+export { AppsStore, AppSelection, events, materializers, queries, schema, state, tables }
 export type { AppSelectionRow } from './app-selection.ts'

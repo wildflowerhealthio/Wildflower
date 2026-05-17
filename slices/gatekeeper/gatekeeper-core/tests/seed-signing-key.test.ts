@@ -2,10 +2,8 @@ import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise, type Store } from '@livestore/livestore'
 import { Effect } from 'effect'
 import { afterEach, beforeEach, expect, test } from 'vite-plus/test'
-import { makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { seedSigningKey } from '../src/contexts/seed-signing-key.ts'
-import { schema, SigningKey } from '../src/livestore/index.ts'
-
+import { GatekeeperStore, schema, SigningKey } from '../src/livestore/index.ts'
 let store: Store<typeof schema, object>
 
 beforeEach(async () => {
@@ -21,7 +19,7 @@ afterEach(async () => {
 })
 
 test('seedSigningKey commits both signingKeyAdded and signingKeyActivated on a fresh store', async () => {
-  await Effect.runPromise(seedSigningKey.pipe(Effect.provide(makeGatekeeperStoreLayer(store))))
+  await Effect.runPromise(seedSigningKey.pipe(Effect.provide(GatekeeperStore.layerFrom(store))))
   const keys = store.query(SigningKey.queries.all$)
   expect(keys).toHaveLength(1)
   // Activation makes the active query resolve to a value, not null.
@@ -31,10 +29,10 @@ test('seedSigningKey commits both signingKeyAdded and signingKeyActivated on a f
 })
 
 test('seedSigningKey is a no-op on a store that already has a key', async () => {
-  await Effect.runPromise(seedSigningKey.pipe(Effect.provide(makeGatekeeperStoreLayer(store))))
+  await Effect.runPromise(seedSigningKey.pipe(Effect.provide(GatekeeperStore.layerFrom(store))))
   const firstKey = store.query(SigningKey.queries.active$)
   expect(firstKey).not.toBeNull()
-  await Effect.runPromise(seedSigningKey.pipe(Effect.provide(makeGatekeeperStoreLayer(store))))
+  await Effect.runPromise(seedSigningKey.pipe(Effect.provide(GatekeeperStore.layerFrom(store))))
   const keys = store.query(SigningKey.queries.all$)
   expect(keys).toHaveLength(1)
   const active = store.query(SigningKey.queries.active$)

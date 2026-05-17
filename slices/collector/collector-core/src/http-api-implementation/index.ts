@@ -1,7 +1,7 @@
 import { type HttpApiGroup, HttpApiBuilder } from '@effect/platform'
 import { Layer } from 'effect'
-import type { CollectorStore } from '../contexts/collector-store.ts'
 import { CollectorApi } from '../http-api-definition/index.ts'
+import type { CollectorStore } from '../livestore/index.ts'
 import * as Remotes from './remotes.ts'
 
 const CollectorApiHandlersLive = Layer.mergeAll(Remotes.layer)

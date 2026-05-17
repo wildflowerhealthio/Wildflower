@@ -1,8 +1,7 @@
 import { HttpApiBuilder } from '@effect/platform'
 import { DateTime, Effect } from 'effect'
-import { CollectorStore } from '../contexts/collector-store.ts'
 import { CollectorApi } from '../http-api-definition/index.ts'
-import { Remote } from '../livestore/index.ts'
+import { CollectorStore, Remote } from '../livestore/index.ts'
 
 const layer = HttpApiBuilder.group(CollectorApi, 'collector-remotes', (handlers) =>
   handlers

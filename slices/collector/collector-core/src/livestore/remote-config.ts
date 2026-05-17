@@ -17,23 +17,35 @@ import { Schema } from 'effect'
 
 import { CollectorConfig, CollectorTag } from '../registry.ts'
 
-const table = State.SQLite.table({
+const columns = {
+  id: State.SQLite.text({ primaryKey: true }),
+  name: State.SQLite.text(),
+  /**
+   * Mirrors `config._tag` for indexed filtering. The materializer
+   * derives it on insert/update so callers can't get them out of
+   * sync.
+   */
+  tag: State.SQLite.text({ schema: CollectorTag }),
+  config: State.SQLite.json({ schema: CollectorConfig }),
+  addedAt: State.SQLite.json({ schema: Schema.DateTimeUtc }),
+} as const
+
+type Table = State.SQLite.TableDef<
+  State.SQLite.DefaultSqliteTableDef & { readonly name: 'RemoteConfig' },
+  State.SQLite.TableOptions,
+  Schema.Schema<
+    Schema.Struct.Type<{ [K in keyof typeof columns]: (typeof columns)[K]['schema'] }>,
+    Schema.Struct.Encoded<{ [K in keyof typeof columns]: (typeof columns)[K]['schema'] }>,
+    never
+  >
+>
+
+const table: Table = State.SQLite.table({
   name: 'RemoteConfig',
-  columns: {
-    id: State.SQLite.text({ primaryKey: true }),
-    name: State.SQLite.text(),
-    /**
-     * Mirrors `config._tag` for indexed filtering. The materializer
-     * derives it on insert/update so callers can't get them out of
-     * sync.
-     */
-    tag: State.SQLite.text({ schema: CollectorTag }),
-    config: State.SQLite.json({ schema: CollectorConfig }),
-    addedAt: State.SQLite.json({ schema: Schema.DateTimeUtc }),
-  },
+  columns,
 })
 
-type RemoteRow = (typeof table)['Type']
+type RemoteRow = Schema.Schema.Type<(typeof table)['rowSchema']>
 
 const remoteAdded = Events.synced({
   name: 'v1.RemoteConfigAdded',
@@ -82,4 +94,4 @@ const byTag$ = (tag: typeof CollectorTag.Type) =>
 const queries = { all$, byId$, byTag$ } as const
 
 export { events, materializers, queries, table }
-export type { RemoteRow }
+export type { RemoteRow, Table }

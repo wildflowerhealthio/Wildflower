@@ -11,7 +11,6 @@ test('contexts/index re-exports the published surface', () => {
       'cleanupExpiredAuthorizationCodes',
       'cleanupExpiredAuthorizationRequests',
       'denyAuthorizationRequest',
-      'makeGatekeeperStoreLayer',
       'mintHostOwnerToken',
       'seedFirstPartyClient',
       'seedSigningKey',

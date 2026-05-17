@@ -3,7 +3,6 @@ import type { Store } from '@livestore/livestore'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { makeAppsStoreLayer } from '../contexts/apps-store.ts'
 import {
   type ServerState,
   TunnelControl,
@@ -11,6 +10,7 @@ import {
 } from '../contexts/tunnel-control.ts'
 import {
   type AppSelectionRow,
+  AppsStore,
   queries as livestoreQueries,
   type schema,
 } from '../livestore/index.ts'
@@ -201,7 +201,7 @@ const stubTunnel = (): TunnelControlService => ({
 
 const createHandler = (store: AppsStoreService): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = AppsAdminApiLive.pipe(
-    Layer.provide(makeAppsStoreLayer(store)),
+    Layer.provide(AppsStore.layerFrom(store)),
     Layer.provide(Layer.succeed(TunnelControl, stubTunnel()))
   )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))

@@ -10,16 +10,28 @@
 import { Events, queryDb, State } from '@livestore/livestore'
 import { Schema } from 'effect'
 
-const table = State.SQLite.table({
-  name: 'appSelection',
-  columns: {
-    id: State.SQLite.text({ primaryKey: true }),
-    kind: State.SQLite.text(), // 'bundled' | 'custom' | 'action'
-    enabled: State.SQLite.boolean({ default: true }),
-    customName: State.SQLite.text({ nullable: true }),
-    customUrl: State.SQLite.text({ nullable: true }),
-    customRequiresTunnel: State.SQLite.boolean({ nullable: true }),
-  },
+const columns = {
+  id: State.SQLite.text({ primaryKey: true }),
+  kind: State.SQLite.text(), // 'bundled' | 'custom' | 'action'
+  enabled: State.SQLite.boolean({ default: true }),
+  customName: State.SQLite.text({ nullable: true }),
+  customUrl: State.SQLite.text({ nullable: true }),
+  customRequiresTunnel: State.SQLite.boolean({ nullable: true }),
+}
+
+type Table = State.SQLite.TableDef<
+  State.SQLite.DefaultSqliteTableDef & { readonly name: 'AppSelection' },
+  State.SQLite.TableOptions,
+  Schema.Schema<
+    Schema.Struct.Type<{ [K in keyof typeof columns]: (typeof columns)[K]['schema'] }>,
+    Schema.Struct.Encoded<{ [K in keyof typeof columns]: (typeof columns)[K]['schema'] }>,
+    never
+  >
+>
+
+const table: Table = State.SQLite.table({
+  name: 'AppSelection',
+  columns,
 })
 
 type AppSelectionRow = (typeof table)['Type']
@@ -116,4 +128,4 @@ const byId$ = (id: string) =>
 const queries = { all$, byId$ } as const
 
 export { table, events, materializers, queries }
-export type { AppSelectionRow }
+export type { AppSelectionRow, Table }

@@ -1,7 +1,5 @@
 import { Array, Effect } from 'effect'
-import { SigningKey } from '../livestore/index.ts'
-import { GatekeeperStore } from './gatekeeper-store.ts'
-
+import { GatekeeperStore, SigningKey } from '../livestore/index.ts'
 /**
  * Idempotently ensure the gatekeeper store has at least one active
  * signing key. No-op if a key already exists; fresh stores get a new

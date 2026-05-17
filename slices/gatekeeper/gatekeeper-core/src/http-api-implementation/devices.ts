@@ -1,11 +1,13 @@
 import { HttpApiBuilder } from '@effect/platform'
-import type { Schema } from 'effect'
-import { Effect, pipe } from 'effect'
-import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
+import { Effect, pipe, type Schema } from 'effect'
 import type { DeviceConsentNotFoundSchema } from '../http-api-definition/devices.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
-import { AuthorizationRequest, type AuthorizationRequestRow, Client } from '../livestore/index.ts'
-
+import {
+  AuthorizationRequest,
+  type AuthorizationRequestRow,
+  Client,
+  GatekeeperStore,
+} from '../livestore/index.ts'
 type DeviceConsentNotFound = Schema.Schema.Type<typeof DeviceConsentNotFoundSchema>
 
 const getPendingDeviceCodeRequest = (

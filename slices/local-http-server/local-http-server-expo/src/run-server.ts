@@ -1,6 +1,6 @@
 import { Deferred, Effect, Exit, Layer, Scope, Stream, SynchronizedRef } from 'effect'
-import { LocalHttpServerStore, Port } from 'local-http-server-core/contexts'
-import { ServerState } from 'local-http-server-core/livestore'
+import { Port } from 'local-http-server-core/contexts'
+import { ServerState, LocalHttpServerStore } from 'local-http-server-core/livestore'
 
 /**
  * Long-lived daemon Effect that drives the local HTTP server from

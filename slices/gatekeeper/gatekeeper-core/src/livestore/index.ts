@@ -1,4 +1,6 @@
-import { makeSchema, State } from '@livestore/livestore'
+import { State } from '@livestore/livestore'
+import { defineSliceLivestore } from 'kitchen-sink/livestore'
+
 import * as AuthorizationCode from './authorization-code.ts'
 import * as AuthorizationRequest from './authorization-request.ts'
 import * as Client from './client.ts'
@@ -33,21 +35,30 @@ const materializers = State.SQLite.materializers(events, {
   ...SigningKey.materializers,
 })
 
-const state = State.SQLite.makeState({ tables, materializers })
+const { schema, state, StoreTag, makeLayerFactory } = defineSliceLivestore({
+  name: 'GatekeeperStore',
+  tables,
+  events,
+  materializers,
+})
 
-const schema = makeSchema({ events, state })
+class GatekeeperStore extends StoreTag<GatekeeperStore>() {
+  static readonly layerFrom = makeLayerFactory(GatekeeperStore)
+}
 
 export {
   AuthorizationCode,
   AuthorizationRequest,
   Client,
+  GatekeeperStore,
   Grant,
   HttpRequest,
   SigningKey,
-  schema,
   events,
-  tables,
   materializers,
+  schema,
+  state,
+  tables,
 }
 export { ClientKindSchema } from './client.ts'
 export type { AuthorizationCodeRow } from './authorization-code.ts'

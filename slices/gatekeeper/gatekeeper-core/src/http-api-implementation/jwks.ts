@@ -1,10 +1,8 @@
 import { HttpApiBuilder } from '@effect/platform'
 import { Effect } from 'effect'
-import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
 import { httpApiGroup } from '../http-api-definition/jwks.ts'
-import { SigningKey } from '../livestore/index.ts'
-
+import { GatekeeperStore, SigningKey } from '../livestore/index.ts'
 const layer = HttpApiBuilder.group(GatekeeperApi, 'oauth-discovery', (handlers) =>
   handlers.handle('JwksJson', () =>
     Effect.gen(function* () {

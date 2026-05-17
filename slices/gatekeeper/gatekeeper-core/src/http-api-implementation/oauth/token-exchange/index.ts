@@ -1,14 +1,13 @@
 import type { Effect, Schema } from 'effect'
 import type { Origin } from 'navigation-core'
-import type { GatekeeperStore } from '../../../contexts/gatekeeper-store.ts'
 import type {
   AuthorizationCodePayload,
   DeviceCodePayload,
 } from '../../../http-api-definition/oauth.ts'
+import type { GatekeeperStore } from '../../../livestore/index.ts'
 import type { OAuthError400, OAuthError401, OAuthError500, TokenResponse } from '../shared.ts'
 import { handleAuthorizationCodeTokenExchange } from './authorization-code.ts'
 import { handleDeviceCodeTokenExchange } from './device-code.ts'
-
 type TokenExchangePayload = Schema.Schema.Type<
   typeof AuthorizationCodePayload | typeof DeviceCodePayload
 >

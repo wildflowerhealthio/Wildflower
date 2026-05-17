@@ -1,9 +1,15 @@
+import { State } from '@livestore/livestore'
 import { Arbitrary, type FastCheck, Schema } from 'effect'
 
 import { AnnotateArrayWithArbitrary } from 'kitchen-sink/schema'
 
-import { State } from '@livestore/livestore'
-import { makeDomainResourcePersistence } from '../internal/domain-resource-persistence.ts'
+import {
+  makeDomainResourcePersistence,
+  type Events as PersistenceEvents,
+  type Materializers as PersistenceMaterializers,
+  type PersistenceResult,
+  type Table as PersistenceTable,
+} from '../internal/domain-resource-persistence.ts'
 import { makeRowSchemas } from '../internal/make-row-schemas.ts'
 import * as ChoiceElementSet from '../schemas/choice-element-set.ts'
 import * as Annotation from '../schemas/datatypes/annotation.ts'
@@ -100,7 +106,39 @@ const columns = {
   ...ChoiceElementSet.Columns('value', ChoiceElementSet.FhirR4SetChoices['Observation.value[x]']),
 } as const
 
-const table = State.SQLite.table({ name: resourceType, columns })
+// ---------------------------------------------------------------------------
+// Portable derivation of the row-schema shape — see `binary.ts` for the
+// rationale. Each column's `.schema` property type is already portable;
+// only the surrounding `ColumnDefinition` pulls in livestore internals,
+// so a mapped type that projects every column down to its `.schema`
+// resolves to a portable field record.
+// ---------------------------------------------------------------------------
+
+type RowFields = {
+  readonly [K in keyof typeof columns]: (typeof columns)[K]['schema']
+}
+
+type RowSchema = Schema.Schema<
+  Schema.Simplify<Schema.Struct.Type<RowFields>>,
+  Schema.Simplify<Schema.Struct.Encoded<RowFields>>,
+  never
+>
+
+type NullableIdFields = Omit<RowFields, 'id'> & {
+  readonly id: Schema.NullOr<typeof Schema.String>
+}
+type RowSchemaNullableId = Schema.Schema<
+  Schema.Simplify<Schema.Struct.Type<NullableIdFields>>,
+  Schema.Simplify<Schema.Struct.Encoded<NullableIdFields>>,
+  never
+>
+
+type Table = PersistenceTable<typeof resourceType, RowSchema>
+type Events = PersistenceEvents<typeof resourceType, RowSchema>
+type Materializers = PersistenceMaterializers<typeof resourceType, RowSchema>
+type Queries = PersistenceResult<typeof resourceType, RowSchema, RowSchema>['queries']
+
+const table: Table = State.SQLite.table({ name: resourceType, columns })
 
 const { RowSchema: BaseRowSchema, RowSchemaNullableId } = makeRowSchemas(columns, {
   name: resourceType,
@@ -118,7 +156,15 @@ const RowSchema = BaseRowSchema.annotations({
     ),
 })
 
-const { events, materializers, queries } = makeDomainResourcePersistence({
+const {
+  events,
+  materializers,
+  queries,
+}: {
+  events: Events
+  materializers: Materializers
+  queries: Queries
+} = makeDomainResourcePersistence({
   table,
   rowSchema: RowSchema,
 })
@@ -133,6 +179,6 @@ export {
   StatusSchema,
   table,
 }
-export type { Status }
+export type { Events, Materializers, Queries, RowFields, Status, Table }
 export * as Component from './observation-component.ts'
 export * as ReferenceRange from './observation-reference-range.ts'

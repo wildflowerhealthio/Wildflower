@@ -1,16 +1,15 @@
-import { type HttpApiGroup, HttpApiBuilder } from '@effect/platform'
+import { HttpApiBuilder, type HttpApiGroup } from '@effect/platform'
 import { Layer } from 'effect'
 import type { CryptoRandom } from 'kitchen-sink/crypto-random'
 import type { Origin } from 'navigation-core'
-import type { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
+import type { GatekeeperStore } from '../livestore/index.ts'
 import * as AccessManagement from './access-management.ts'
 import * as Devices from './devices.ts'
 import * as Jwks from './jwks.ts'
 import * as OAuthConsent from './oauth-consent.ts'
 import * as OAuth from './oauth/index.ts'
 import { RequireAuthMiddlewareLive } from './require-auth.ts'
-
 const GatekeeperApiHandlersLive = Layer.mergeAll(
   Jwks.layer,
   OAuth.layer,

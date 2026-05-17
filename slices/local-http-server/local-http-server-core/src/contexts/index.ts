@@ -1,2 +1,2 @@
-export { LocalHttpServerStore, makeLocalHttpServerStoreLayer } from './local-http-server-store.ts'
+export { LocalHttpServerStore } from '../livestore/index.ts'
 export { Port } from './port.ts'

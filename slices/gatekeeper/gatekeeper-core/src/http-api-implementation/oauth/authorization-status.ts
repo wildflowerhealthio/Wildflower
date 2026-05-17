@@ -1,18 +1,16 @@
-import type { Schema } from 'effect'
-import { Effect, Match } from 'effect'
-import { GatekeeperStore } from '../../contexts/gatekeeper-store.ts'
-import type {
-  AuthorizationStatusNotFoundSchema,
-  AuthorizationStatusSchema,
+import { Effect, Match, type Schema } from 'effect'
+import {
+  type AuthorizationStatusNotFoundSchema,
+  type AuthorizationStatusSchema,
+  OAuthError500Schema,
 } from '../../http-api-definition/oauth.ts'
-import { OAuthError500Schema } from '../../http-api-definition/oauth.ts'
 import {
   AuthorizationCode,
   AuthorizationRequest,
   type AuthorizationRequestRow,
+  GatekeeperStore,
 } from '../../livestore/index.ts'
 import { buildClientRedirectUrl, type OAuthError500 } from './shared.ts'
-
 type AuthorizationStatus = Schema.Schema.Type<typeof AuthorizationStatusSchema>
 type AuthorizationStatusNotFound = Schema.Schema.Type<typeof AuthorizationStatusNotFoundSchema>
 

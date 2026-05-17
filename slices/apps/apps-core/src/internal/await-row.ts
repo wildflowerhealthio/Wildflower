@@ -1,6 +1,6 @@
 import type { LiveQueryDef } from '@livestore/livestore'
 import { Duration, Effect, Schema } from 'effect'
-import { AppsStore } from '../contexts/apps-store.ts'
+import { AppsStore } from '../livestore/index.ts'
 
 const DEFAULT_TIMEOUT: Duration.Duration = Duration.seconds(5)
 

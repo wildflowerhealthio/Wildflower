@@ -1,13 +1,10 @@
 import { DateTime, Effect } from 'effect'
 import { expect, test } from 'vite-plus/test'
-import type { GatekeeperStore } from '../src/contexts/gatekeeper-store.ts'
-import { makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import {
   FIRST_PARTY_CLIENT_ID,
   seedFirstPartyClient,
 } from '../src/contexts/seed-first-party-client.ts'
-import { Client, type ClientRow } from '../src/livestore/index.ts'
-
+import { Client, type ClientRow, GatekeeperStore } from '../src/livestore/index.ts'
 // Event factories pass args through in their decoded form (e.g.
 // `registeredAt` is `DateTime.Utc`, not the encoded ISO string).
 // Re-decoding with `Schema.decodeUnknownSync` would reject the value
@@ -82,7 +79,7 @@ test('Client.queries.byId$ has a stable hash that distinguishes by id', () => {
 test('seedFirstPartyClient commits clientRegistered when no client exists', async () => {
   const { store, committed } = makeFakeStore([])
   await Effect.runPromise(
-    seedFirstPartyClient.pipe(Effect.provide(makeGatekeeperStoreLayer(store)))
+    seedFirstPartyClient.pipe(Effect.provide(GatekeeperStore.layerFrom(store)))
   )
   expect(committed.map((e) => e.name)).toEqual(['v1.ClientRegistered'])
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -104,7 +101,7 @@ test('seedFirstPartyClient is a no-op when wildflower-host is already registered
   }
   const { store, committed } = makeFakeStore([existing])
   await Effect.runPromise(
-    seedFirstPartyClient.pipe(Effect.provide(makeGatekeeperStoreLayer(store)))
+    seedFirstPartyClient.pipe(Effect.provide(GatekeeperStore.layerFrom(store)))
   )
   expect(committed).toEqual([])
 })

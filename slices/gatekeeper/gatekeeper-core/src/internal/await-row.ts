@@ -1,7 +1,6 @@
 import type { LiveQueryDef } from '@livestore/livestore'
 import { Duration, Effect, Schema } from 'effect'
-import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
-
+import { GatekeeperStore } from '../livestore/index.ts'
 const GATE_TIMEOUT: Duration.Duration = Duration.minutes(5)
 
 class ApprovalTimedOut extends Schema.TaggedError<ApprovalTimedOut>()('ApprovalTimedOut', {

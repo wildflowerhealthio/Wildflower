@@ -2,10 +2,8 @@ import { type Duration, Effect } from 'effect'
 import { UnknownException } from 'effect/Cause'
 import { Origin } from 'navigation-core'
 import { mintAccessToken } from '../internal/jwt.ts'
-import { SigningKey } from '../livestore/index.ts'
-import { GatekeeperStore } from './gatekeeper-store.ts'
+import { GatekeeperStore, SigningKey } from '../livestore/index.ts'
 import { FIRST_PARTY_CLIENT_ID } from './seed-first-party-client.ts'
-
 /**
  * Mint an Owner-scoped access token for the first-party host client.
  *

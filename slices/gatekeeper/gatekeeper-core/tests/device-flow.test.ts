@@ -3,14 +3,12 @@ import { DateTime, Duration, Effect, Layer, Schema } from 'effect'
 import { cryptoRandomCounter } from 'kitchen-sink/crypto-random'
 import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
-
 const JsonObjectSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
 const decodeJsonObject = Schema.decodeUnknownSync(JsonObjectSchema)
 const readJsonObject = async (response: Response): Promise<Record<string, unknown>> => {
   const raw: unknown = await response.json()
   return decodeJsonObject(raw)
 }
-import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { GatekeeperApiLive } from '../src/http-api-implementation/index.ts'
 import { mintAccessToken } from '../src/internal/jwt.ts'
 import {
@@ -18,10 +16,10 @@ import {
   type AuthorizationRequestRow,
   Client,
   type ClientRow,
+  GatekeeperStore,
   SigningKey,
 } from '../src/livestore/index.ts'
 import { testingKey1 } from './fixtures/signing-keys.ts'
-
 const ORIGIN = 'http://localhost:8787'
 
 const labelOf = (q: unknown): string | undefined => {
@@ -191,7 +189,7 @@ const createHandler = (
   store: typeof GatekeeperStore.Service
 ): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = GatekeeperApiLive.pipe(
-    Layer.provide(makeGatekeeperStoreLayer(store)),
+    Layer.provide(GatekeeperStore.layerFrom(store)),
     Layer.provide(Layer.succeed(Origin, ORIGIN)),
     Layer.provide(cryptoRandomCounter({ uuidPrefix: 'device' }))
   )

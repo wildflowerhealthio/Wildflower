@@ -2,11 +2,9 @@ import { DateTime, Effect, Either, Layer } from 'effect'
 import * as jose from 'jose'
 import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
-import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { verifyJwt } from '../src/internal/jwt.ts'
-import { Client, type ClientRow, SigningKey } from '../src/livestore/index.ts'
+import { Client, type ClientRow, GatekeeperStore, SigningKey } from '../src/livestore/index.ts'
 import { testingKey1, testingKey2 } from './fixtures/signing-keys.ts'
-
 const labelOf = (q: unknown): string | undefined => {
   if (typeof q === 'object' && q !== null && 'label' in q && typeof q.label === 'string') {
     return q.label
@@ -83,7 +81,7 @@ const runVerify = (
 ): Promise<Either.Either<unknown, unknown>> =>
   Effect.runPromise(
     verifyJwt(token).pipe(
-      Effect.provide(makeGatekeeperStoreLayer(store)),
+      Effect.provide(GatekeeperStore.layerFrom(store)),
       Effect.provide(Layer.succeed(Origin, ORIGIN)),
       Effect.either
     )

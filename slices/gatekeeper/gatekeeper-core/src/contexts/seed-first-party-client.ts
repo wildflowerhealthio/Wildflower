@@ -1,7 +1,5 @@
 import { DateTime, Effect } from 'effect'
-import { Client } from '../livestore/index.ts'
-import { GatekeeperStore } from './gatekeeper-store.ts'
-
+import { Client, GatekeeperStore } from '../livestore/index.ts'
 const FIRST_PARTY_CLIENT_ID = 'wildflower-host'
 
 /**

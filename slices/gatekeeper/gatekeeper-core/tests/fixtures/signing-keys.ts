@@ -1,5 +1,4 @@
 import { SigningKey } from '../../src/livestore/index.ts'
-
 // Deterministic RSA-2048 fixtures with stable kids — RSA generation is ~200–400ms each.
 // DO NOT use in production: keys are committed in plain text.
 const testingKey1 = SigningKey.make({
