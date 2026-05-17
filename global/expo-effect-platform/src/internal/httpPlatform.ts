@@ -7,7 +7,7 @@ import type { ExpoFileBody } from './httpServer.ts'
 
 const make = HttpPlatform.make({
   fileResponse(path, status, statusText, headers, start, end, contentLength) {
-    const body: ExpoFileBody = { __expoFilePath: path, start, end }
+    const body: ExpoFileBody = { expoFilePath: path, start, end }
     return ServerResponse.raw(body, {
       status,
       statusText,

@@ -29,11 +29,11 @@
   "exports": {
     ".": {
       "source": "./src/index.ts",
-      "default": "./dist/index.mjs"
+      "default": "./dist/index.js"
     },
     "./ExpoEffectPlatformModule": {
       "source": "./src/ExpoEffectPlatformModule.ts",
-      "default": "./dist/ExpoEffectPlatformModule.mjs"
+      "default": "./dist/ExpoEffectPlatformModule.js"
     },
     "./package.json": "./package.json",
     "./expo-module.config.json": "./expo-module.config.json"
@@ -70,8 +70,8 @@
   "peerDependencies": {
     "@effect/platform": ">=0.93.0",
     "effect": ">=3.0.0",
-    "expo": ">=55.0.0",
+    "expo": ">=54.0.0",
     "react": ">=19.0.0",
-    "react-native": ">=0.83.0"
+    "react-native": ">=0.81.0"
   }
 }

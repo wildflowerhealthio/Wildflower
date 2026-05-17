@@ -100,6 +100,7 @@ export default defineConfig({
       'import/namespace': 'off',
 
       // Configured rules
+      'eslint/no-underscore-dangle': ['error', { allow: ['_tag', '_count', '_pageToken'] }],
       'no-shadow': ['error', { allow: ['fc'] }],
       'import/max-dependencies': ['warn', { max: 15 }],
       '@typescript-eslint/no-empty-object-type': ['error', { allowInterfaces: 'always' }],

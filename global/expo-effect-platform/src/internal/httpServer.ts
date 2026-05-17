@@ -286,7 +286,7 @@ class ServerRequestImpl extends Inspectable.Class implements ServerRequest.HttpS
 
 /** Sentinel marker for file-backed responses produced by ExpoHttpPlatform */
 interface ExpoFileBody {
-  readonly __expoFilePath: string
+  readonly expoFilePath: string
   readonly start?: number
   readonly end?: number
 }
@@ -294,8 +294,8 @@ interface ExpoFileBody {
 const isExpoFileBody = (body: unknown): body is ExpoFileBody =>
   typeof body === 'object' &&
   body !== null &&
-  '__expoFilePath' in body &&
-  typeof body.__expoFilePath === 'string'
+  'expoFilePath' in body &&
+  typeof body.expoFilePath === 'string'
 
 /**
  * True when a media type carries text content that round-trips losslessly as a
@@ -379,7 +379,7 @@ const handleResponse = (
               requestId,
               response.status,
               headers,
-              rawBody.__expoFilePath,
+              rawBody.expoFilePath,
               rawBody.start ?? null,
               rawBody.end ?? null
             )

@@ -14,7 +14,7 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "vp run website#dev",
+    "dev": "vp run -r --parallel dev",
     "integration": "vp run -r --concurrency-limit 1 integration",
     "jest": "vp run -r --concurrency-limit 1 jest",
     "lint:comments": "eslint ./apps ./global ./slices",
@@ -25,6 +25,7 @@
     "test-all": "vp test && vp run jest"
   },
   "devDependencies": {
+    "@effect/language-service": "catalog:",
     "@typescript/native-preview": "catalog:",
     "eslint": "^9.39.4",
     "eslint-plugin-expo": "^1.0.0",
@@ -45,8 +46,32 @@
   "pnpm": {
     "overrides": {
       "@types/node": "^24",
+      "typescript": "5.9.3",
+      "react-dom": "19.1.0",
+      "@react-navigation/native": "^7.2.4",
+      "@effect/ai": "0.35.0",
+      "@effect/cli": "0.75.1",
+      "@effect/cluster": "0.58.2",
+      "@effect/experimental": "0.60.0",
+      "@effect/opentelemetry": "0.63.0",
+      "@effect/platform": "0.96.1",
+      "@effect/platform-browser": "0.76.0",
+      "@effect/platform-bun": "0.89.0",
+      "@effect/platform-node": "0.106.0",
+      "@effect/printer": "0.49.0",
+      "@effect/printer-ansi": "0.49.0",
+      "@effect/rpc": "0.75.1",
+      "@effect/sql": "0.51.1",
+      "@effect/typeclass": "0.40.0",
+      "@effect/vitest": "0.29.0",
+      "@effect/workflow": "0.16.0",
       "@opentelemetry/api": "1.9.0",
-      "typescript": "5.9.3"
+      "@opentelemetry/resources": "2.2.0",
+      "@standard-schema/spec": "1.1.0",
+      "effect": "3.21.2"
+    },
+    "patchedDependencies": {
+      "effect@3.21.2": "patches/effect@3.21.2.patch"
     }
   }
 }

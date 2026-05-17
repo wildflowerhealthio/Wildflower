@@ -1,6 +1,10 @@
 import { render } from '@testing-library/react-native'
 
-jest.mock('react-native-worklets', () => require('react-native-worklets/src/mock'))
+// This is the proper way to mock react-native-worklets, but it causes the test
+// suite to fail with a "ReferenceError: regeneratorRuntime is not defined"
+// error. The workaround is to import the unmocked version
+// of react-native-worklets, which is what we do in the test file itself.
+// jest.mock('react-native-worklets', () => require('react-native-worklets/src/mock'))
 
 import { AnimatedHeaderBackground } from './animated-header-background'
 

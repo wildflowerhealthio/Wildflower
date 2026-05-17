@@ -284,15 +284,15 @@ describe('native module interaction', () => {
 
 describe('ExpoFileBody sentinel', () => {
   test('file body sentinel has correct shape', () => {
-    const body = { __expoFilePath: '/path/to/file.dcm', start: 0, end: undefined }
-    expect(body.__expoFilePath).toBe('/path/to/file.dcm')
-    expect(typeof body.__expoFilePath).toBe('string')
-    expect('__expoFilePath' in body).toBe(true)
+    const body = { expoFilePath: '/path/to/file.dcm', start: 0, end: undefined }
+    expect(body.expoFilePath).toBe('/path/to/file.dcm')
+    expect(typeof body.expoFilePath).toBe('string')
+    expect('expoFilePath' in body).toBe(true)
   })
 
   test('non-file body does not match sentinel', () => {
     const body = { data: 'hello' }
-    expect('__expoFilePath' in body).toBe(false)
+    expect('expoFilePath' in body).toBe(false)
   })
 })
 

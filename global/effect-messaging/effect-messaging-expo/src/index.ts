@@ -10,4 +10,4 @@ export {
   makeExpoTransport,
   type WebViewHandle,
 } from './transport.ts'
-export { useTransport, type UseTransportConfig } from './use-transport.ts'
+export { WithTransport, type UseTransportConfig } from './with-transport.tsx'

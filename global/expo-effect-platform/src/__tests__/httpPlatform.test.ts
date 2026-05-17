@@ -55,7 +55,7 @@ describe('ExpoHttpPlatform', () => {
       expect(response.status).toBe(200)
       const body = response.body as any
       expect(body._tag).toBe('Raw')
-      expect(body.body.__expoFilePath).toBe('/data/scan.dcm')
+      expect(body.body.expoFilePath).toBe('/data/scan.dcm')
       expect(body.body.start).toBe(0)
       expect(body.body.end).toBeUndefined()
     }).pipe(
