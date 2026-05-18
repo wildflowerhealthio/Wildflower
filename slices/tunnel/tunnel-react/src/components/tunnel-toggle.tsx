@@ -1,6 +1,5 @@
 import { Effect, type Schema } from 'effect'
 import { useState, type JSX } from 'react'
-import { canonicalPublicOrigin } from 'tunnel-core/canonical-url'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import type { Tunnel } from 'tunnel-core/http-api-definition'
 
@@ -14,22 +13,19 @@ interface TunnelToggleProps {
 }
 
 /**
- * Toggle button + status row. Disables itself while a `PatchTunnel`
- * write is in flight. The "active" surface state is derived from
- * `currentPublicOrigin !== undefined`; toggling on commits the
- * canonical public URL, toggling off commits `null` (clear).
+ * Toggle button. Flips `requestedEnabled` on the persistent
+ * `TunnelConfig` via `PatchTunnel`. The button surface state derives
+ * from `currentEnabled` (the daemon's view) with a "Requesting…"
+ * intermediate when the user has asked but the daemon hasn't brought
+ * the tunnel up yet.
  */
 const TunnelToggle = ({ state, onChanged }: TunnelToggleProps): JSX.Element => {
   const run = useTunnelAdminEffectRunner()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const active = state.currentPublicOrigin !== undefined
-  const requesting =
-    state.requestedPublicOrigin !== undefined && state.currentPublicOrigin === undefined
-  // The wire schema still uses `Schema.optional(...)` so the React layer
-  // sees `undefined` for absent fields — null is the on-device storage
-  // marker only.
+  const active = state.currentEnabled
+  const requesting = state.requestedEnabled && !state.currentEnabled
 
   const buttonLabel = ((): string => {
     if (active) return 'Stop tunnel'
@@ -44,7 +40,7 @@ const TunnelToggle = ({ state, onChanged }: TunnelToggleProps): JSX.Element => {
       const next = await run(
         Effect.flatMap(TunnelAdminHttpApiClient, (c) =>
           c.tunnel.PatchTunnel({
-            payload: { requestedPublicOrigin: active ? null : canonicalPublicOrigin() },
+            payload: { requestedEnabled: !state.requestedEnabled },
           })
         )
       )

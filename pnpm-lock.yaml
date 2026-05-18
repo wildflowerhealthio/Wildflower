@@ -571,6 +571,9 @@ importers:
       kitchen-sink:
         specifier: workspace:*
         version: link:../../global/kitchen-sink
+      local-http-server-core:
+        specifier: workspace:*
+        version: link:../../slices/local-http-server/local-http-server-core
       navigation-core:
         specifier: workspace:*
         version: link:../../slices/navigation/navigation-core
@@ -580,6 +583,9 @@ importers:
       telemetry-node:
         specifier: workspace:*
         version: link:../../slices/telemetry/telemetry-node
+      tunnel-core:
+        specifier: workspace:*
+        version: link:../../slices/tunnel/tunnel-core
       wildflower-react:
         specifier: workspace:*
         version: link:../wildflower-react
@@ -1184,6 +1190,9 @@ importers:
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
+      local-http-server-core:
+        specifier: workspace:*
+        version: link:../../local-http-server/local-http-server-core
       tunnel-core:
         specifier: workspace:*
         version: link:../../tunnel/tunnel-core

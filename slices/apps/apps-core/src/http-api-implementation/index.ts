@@ -1,6 +1,6 @@
 import { type HttpApiGroup, HttpApiBuilder } from '@effect/platform'
 import { Layer } from 'effect'
-import type { PublicOrigin } from 'tunnel-core/contexts'
+import type { LocalHttpServerStore } from 'local-http-server-core/livestore'
 import type { TunnelStore } from 'tunnel-core/livestore'
 import { AppsAdminApi, AppsApi } from '../http-api-definition/index.ts'
 import type { AppsStore } from '../livestore/index.ts'
@@ -18,7 +18,7 @@ type AppsGroupNames = 'apps'
 const AppsApiHandlersFor = <ParentId extends string>(): Layer.Layer<
   HttpApiGroup.ApiGroup<ParentId, AppsGroupNames>,
   never,
-  AppsStore | PublicOrigin | TunnelStore
+  AppsStore | LocalHttpServerStore | TunnelStore
 > =>
   // See gatekeeper-core's AuthApiHandlersFor: the phantom-id bridge lets a
   // Layer built against AppsApi satisfy a parent ApiId's group requirement.
@@ -26,7 +26,7 @@ const AppsApiHandlersFor = <ParentId extends string>(): Layer.Layer<
   AppsApiHandlersLive as unknown as Layer.Layer<
     HttpApiGroup.ApiGroup<ParentId, AppsGroupNames>,
     never,
-    AppsStore | PublicOrigin | TunnelStore
+    AppsStore | LocalHttpServerStore | TunnelStore
   >
 
 // --- Admin (authed) surface ------------------------------------------

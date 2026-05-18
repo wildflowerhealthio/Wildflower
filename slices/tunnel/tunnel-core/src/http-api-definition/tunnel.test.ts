@@ -17,45 +17,61 @@ describe('TunnelStateSchema', () => {
     )
   })
 
-  it('accepts a minimal state (just running)', () => {
-    expectRightToEqual(Schema.decodeUnknownEither(TunnelStateSchema)({ running: false }), {
-      running: false,
-    })
+  it('accepts a minimal state (just the required booleans)', () => {
+    expectRightToEqual(
+      Schema.decodeUnknownEither(TunnelStateSchema)({
+        requestedEnabled: false,
+        currentEnabled: false,
+      }),
+      { requestedEnabled: false, currentEnabled: false }
+    )
   })
 
-  it('rejects state missing the required running flag', () => {
+  it('rejects state missing the required requestedEnabled flag', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(TunnelStateSchema)({
-        currentPublicOrigin: 'https://tunnel.example.com',
-      }),
+      Schema.decodeUnknownEither(TunnelStateSchema)({ currentEnabled: false }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })
 })
 
 describe('SetTunnelRequestBodySchema', () => {
-  it('accepts a string requestedPublicOrigin', () => {
+  it('accepts a full config patch', () => {
     expectRightToEqual(
       Schema.decodeUnknownEither(SetTunnelRequestBodySchema)({
-        requestedPublicOrigin: 'https://tunnel.example.com',
+        subdomain: 'wildflower-expo-dev',
+        rootDomain: 'loca.lt',
+        localPort: 8080,
+        requestedEnabled: true,
       }),
-      { requestedPublicOrigin: 'https://tunnel.example.com' }
+      {
+        subdomain: 'wildflower-expo-dev',
+        rootDomain: 'loca.lt',
+        localPort: 8080,
+        requestedEnabled: true,
+      }
     )
   })
 
-  it('accepts null requestedPublicOrigin (clear)', () => {
+  it('accepts a single-field patch (toggle requestedEnabled)', () => {
     expectRightToEqual(
-      Schema.decodeUnknownEither(SetTunnelRequestBodySchema)({
-        requestedPublicOrigin: null,
-      }),
-      { requestedPublicOrigin: null }
+      Schema.decodeUnknownEither(SetTunnelRequestBodySchema)({ requestedEnabled: true }),
+      { requestedEnabled: true }
     )
   })
 
-  it('rejects a missing requestedPublicOrigin key', () => {
-    expectLeftToEqual(
-      Schema.decodeUnknownEither(SetTunnelRequestBodySchema)({}),
-      expect.objectContaining({ _tag: 'ParseError' })
+  it('accepts null config fields (explicit clear)', () => {
+    expectRightToEqual(
+      Schema.decodeUnknownEither(SetTunnelRequestBodySchema)({
+        subdomain: null,
+        rootDomain: null,
+        localPort: null,
+      }),
+      { subdomain: null, rootDomain: null, localPort: null }
     )
+  })
+
+  it('accepts an empty body (no-op)', () => {
+    expectRightToEqual(Schema.decodeUnknownEither(SetTunnelRequestBodySchema)({}), {})
   })
 })

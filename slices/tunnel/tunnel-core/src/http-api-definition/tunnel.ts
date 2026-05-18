@@ -2,28 +2,37 @@ import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
 
 /**
- * Public-facing tunnel API shape — surfaces the raw store fields rather
- * than a derived "active" flag. Consumers compose anything derived
- * (e.g. `active = currentPublicOrigin !== undefined`) themselves.
+ * Merged tunnel state on the wire: `TunnelConfig` (user/host intent —
+ * `subdomain`, `rootDomain`, `localPort`, `requestedEnabled`) plus
+ * `TunnelState` (daemon-owned — `currentEnabled`, `currentSubdomain`,
+ * `currentRootDomain`, `currentLocalPort`, `error`).
  *
- * `running`, `localOrigin`, and `port` are mirrored from the
- * `LocalHttpServerStore` so clients can render server status without a
- * second round-trip.
+ * Optional fields decay to `undefined` on the wire when the persistent
+ * `TunnelConfig` row hasn't been seeded yet — `requestedEnabled` always
+ * surfaces (defaults to `false`).
  */
 const TunnelStateSchema = Schema.Struct({
-  requestedPublicOrigin: Schema.optional(Schema.String),
-  currentPublicOrigin: Schema.optional(Schema.String),
-  localOrigin: Schema.optional(Schema.String),
-  port: Schema.optional(Schema.Number),
-  running: Schema.Boolean,
+  subdomain: Schema.optional(Schema.String),
+  rootDomain: Schema.optional(Schema.String),
+  localPort: Schema.optional(Schema.Number),
+  requestedEnabled: Schema.Boolean,
+  currentEnabled: Schema.Boolean,
+  currentSubdomain: Schema.optional(Schema.String),
+  currentRootDomain: Schema.optional(Schema.String),
+  currentLocalPort: Schema.optional(Schema.Number),
+  error: Schema.optional(Schema.String),
 })
 
 /**
- * PATCH body — `requestedPublicOrigin: null` clears the request (asks
- * the daemon to tear the tunnel down); a string commits a new request.
+ * PATCH body — config-side fields only. The daemon owns the `current*`
+ * and `error` fields; no API path writes them. `null` explicitly clears
+ * a field; `undefined` (key absent) preserves it.
  */
 const SetTunnelRequestBodySchema = Schema.Struct({
-  requestedPublicOrigin: Schema.NullOr(Schema.String),
+  subdomain: Schema.optional(Schema.NullOr(Schema.String)),
+  rootDomain: Schema.optional(Schema.NullOr(Schema.String)),
+  localPort: Schema.optional(Schema.NullOr(Schema.Number)),
+  requestedEnabled: Schema.optional(Schema.Boolean),
 })
 
 /**

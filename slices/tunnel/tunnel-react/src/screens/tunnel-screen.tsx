@@ -49,13 +49,24 @@ interface TunnelBodyProps {
 }
 
 const deriveStatus = (state: TunnelState): string => {
-  if (state.currentPublicOrigin !== undefined) return 'Active'
-  if (state.requestedPublicOrigin !== undefined) return 'Requested'
+  if (state.currentEnabled) return 'Active'
+  if (state.requestedEnabled) return 'Requested'
   return 'Inactive'
+}
+
+const composePublicOrigin = (state: TunnelState): string | null => {
+  if (state.currentSubdomain !== undefined && state.currentRootDomain !== undefined) {
+    return `https://${state.currentSubdomain}.${state.currentRootDomain}`
+  }
+  if (state.subdomain !== undefined && state.rootDomain !== undefined) {
+    return `https://${state.subdomain}.${state.rootDomain}`
+  }
+  return null
 }
 
 const TunnelBody = ({ state, onChanged }: TunnelBodyProps): JSX.Element => {
   const status = deriveStatus(state)
+  const publicOrigin = composePublicOrigin(state)
   return (
     <section>
       <h1 className={cn('text-heading-4')}>Tunnel</h1>
@@ -63,10 +74,15 @@ const TunnelBody = ({ state, onChanged }: TunnelBodyProps): JSX.Element => {
         <dt className="text-label-3">Status</dt>
         <dd className="text-body-2">{status}</dd>
         <dt className="text-label-3">Public origin</dt>
-        <dd className="text-body-3">{state.currentPublicOrigin ?? state.localOrigin ?? '—'}</dd>
-        <dt className="text-label-3">Local origin</dt>
-        <dd className="text-body-3">{state.localOrigin ?? '—'}</dd>
+        <dd className="text-body-3">{publicOrigin ?? '—'}</dd>
+        <dt className="text-label-3">Local port</dt>
+        <dd className="text-body-3">{state.localPort ?? '—'}</dd>
       </dl>
+      {state.error !== undefined ? (
+        <p className="text-body-3" role="alert">
+          {state.error}
+        </p>
+      ) : null}
       <TunnelToggle state={state} onChanged={onChanged} />
     </section>
   )

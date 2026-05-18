@@ -30,10 +30,6 @@
       "source": "./src/clients/index.ts",
       "default": "./dist/clients/index.js"
     },
-    "./contexts": {
-      "source": "./src/contexts/index.ts",
-      "default": "./dist/contexts/index.js"
-    },
     "./http-api-definition": {
       "source": "./src/http-api-definition/index.ts",
       "default": "./dist/http-api-definition/index.js"
@@ -69,6 +65,7 @@
     "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
+    "local-http-server-core": "workspace:*",
     "tunnel-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
@@ -82,6 +79,7 @@
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "local-http-server-core": "workspace:*",
     "tunnel-core": "workspace:*"
   }
 }

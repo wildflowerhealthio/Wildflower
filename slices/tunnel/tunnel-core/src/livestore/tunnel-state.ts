@@ -1,53 +1,69 @@
 import { queryDb, Schema, SessionIdSymbol, State, type LiveQueryDef } from '@livestore/livestore'
 
-/** Shape of the per-session tunnel state table. */
+/** Shape of the per-session, daemon-owned tunnel-state table. */
 type Table = State.SQLite.ClientDocumentTableDef<
   'TunnelState',
   {
-    readonly requestedPublicOrigin: string | null
-    readonly currentPublicOrigin: string | null
+    readonly currentEnabled: boolean
+    readonly currentSubdomain: string | null
+    readonly currentRootDomain: string | null
+    readonly currentLocalPort: number | null
+    readonly error: string | null
   },
   {
-    readonly requestedPublicOrigin: string | null
-    readonly currentPublicOrigin: string | null
+    readonly currentEnabled: boolean
+    readonly currentSubdomain: string | null
+    readonly currentRootDomain: string | null
+    readonly currentLocalPort: number | null
+    readonly error: string | null
   },
   {
     partialSet: true
     default: {
       id: typeof SessionIdSymbol
       value: {
-        readonly requestedPublicOrigin: null
-        readonly currentPublicOrigin: null
+        readonly currentEnabled: false
+        readonly currentSubdomain: null
+        readonly currentRootDomain: null
+        readonly currentLocalPort: null
+        readonly error: null
       }
     }
   }
 >
 
 /**
- * Per-session tunnel state.
+ * Per-session tunnel state — daemon-owned. The `current*` fields reflect
+ * what the upstream relay actually granted (may differ from
+ * `TunnelConfig` if the relay refuses the requested subdomain). `error`
+ * carries the last `startTunnel` failure with `requestedEnabled: true`
+ * preserved in `TunnelConfig` so the UI can surface it.
  *
- * `requestedPublicOrigin` is the literal target URL the host wants the
- * device's HTTP server reachable at (commit e.g.
- * `https://wildflower-expo-dev.loca.lt` to ask the tunnel daemon to
- * acquire it; commit `null` to tear down).
- *
- * `currentPublicOrigin` is what the daemon actually got. The daemon
- * only writes it when the upstream grants exactly the requested URL —
- * anything else stays `null`.
+ * Resets each session — the daemon re-derives `currentEnabled` etc. on
+ * boot from `TunnelConfig.requestedEnabled`.
  */
 const table: Table = State.SQLite.clientDocument({
   name: 'TunnelState',
   schema: Schema.Struct({
-    requestedPublicOrigin: Schema.NullOr(Schema.String),
-    currentPublicOrigin: Schema.NullOr(Schema.String),
+    currentEnabled: Schema.Boolean,
+    currentSubdomain: Schema.NullOr(Schema.String),
+    currentRootDomain: Schema.NullOr(Schema.String),
+    currentLocalPort: Schema.NullOr(Schema.Number),
+    error: Schema.NullOr(Schema.String),
   }),
   default: {
     id: SessionIdSymbol,
-    value: { requestedPublicOrigin: null, currentPublicOrigin: null },
+    value: {
+      currentEnabled: false,
+      currentSubdomain: null,
+      currentRootDomain: null,
+      currentLocalPort: null,
+      error: null,
+    },
   },
 })
 
-/** Shape of this slice's livestore events record. */
+/** Shape of this slice's session-state events record. */
 type Events = {
   tunnelStateSet: Table['set']
 }
@@ -56,7 +72,7 @@ const events: Events = {
   tunnelStateSet: table.set,
 } as const
 
-/** This slice has no materializers — the `clientDocument` writes its own row. */
+/** This table has no materializers — the `clientDocument` writes its own row. */
 type Materializers = object
 
 const materializers: Materializers = {} as const
@@ -64,12 +80,15 @@ const materializers: Materializers = {} as const
 /** Live query of the per-session tunnel-state row. */
 const current$ = queryDb(table.get(SessionIdSymbol), { label: 'tunnelState' })
 
-/** Shape of this slice's livestore queries record. */
+/** Shape of this table's queries record. */
 type Queries = {
   current$: LiveQueryDef<
     {
-      readonly requestedPublicOrigin: string | null
-      readonly currentPublicOrigin: string | null
+      readonly currentEnabled: boolean
+      readonly currentSubdomain: string | null
+      readonly currentRootDomain: string | null
+      readonly currentLocalPort: number | null
+      readonly error: string | null
     },
     'def'
   >

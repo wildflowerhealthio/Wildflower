@@ -8,9 +8,8 @@ export default defineConfig({
     platform: 'neutral',
     entry: {
       index: 'src/index.ts',
-      'canonical-url': 'src/canonical-url.ts',
       'clients/index': 'src/clients/index.ts',
-      'contexts/index': 'src/contexts/index.ts',
+      'daemon/index': 'src/daemon/index.ts',
       'http-api-definition/index': 'src/http-api-definition/index.ts',
       'http-api-implementation/index': 'src/http-api-implementation/index.ts',
       'livestore/index': 'src/livestore/index.ts',

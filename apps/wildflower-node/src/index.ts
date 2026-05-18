@@ -5,7 +5,6 @@ import './instrument.ts'
 import { createServer } from 'node:http'
 import { HttpServer } from '@effect/platform'
 import { NodeFileSystem, NodeHttpServer, NodePath, NodeRuntime } from '@effect/platform-node'
-import type { ServerState } from 'apps-core/contexts'
 import { AppsStore } from 'apps-core/livestore'
 import { CollectorStore } from 'collector-core/livestore'
 import { Duration, Effect, Layer } from 'effect'
@@ -14,13 +13,14 @@ import { mintHostOwnerToken, seedFirstPartyClient, seedSigningKey } from 'gateke
 import { GatekeeperStore } from 'gatekeeper-core/livestore'
 import { cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { StringLiteralTypes } from 'kitchen-sink/types'
+import { LocalHttpServerStore } from 'local-http-server-core/livestore'
 import { Origin } from 'navigation-core'
 import { nodeTelemetryLayerFromEnv } from 'telemetry-node'
+import { TunnelStore } from 'tunnel-core/livestore'
 import { webAssetsDir } from 'wildflower-react/web-assets'
 import { WebAssetsDir, WildflowerServerLive } from 'wildflower-server'
 import { createStore } from './livestore-store.ts'
 import { SERVICE_NAME } from './service-name.ts'
-import { TunnelControlLive } from './tunnel-control.ts'
 
 // Config
 
@@ -68,22 +68,13 @@ const run = Effect.gen(function* () {
     )
   }
 
-  // `apps-core`'s `TunnelControl` returns a static `ServerState`; on the
-  // node host there is no tunnel, so `tunnelActive` is `false` at start
-  // and `setTunnelActive` fails. Mobile hosts swap in their own Live.
-  const serverState: ServerState = {
-    origin: ORIGIN,
-    localOrigin: ORIGIN,
-    port: PORT,
-    tunnelActive: false,
-  }
-
   const FullServerLive = WildflowerServerLive.pipe(
     HttpServer.withLogAddress,
     Layer.tap(() => afterStartupEffect),
     Layer.provide(EmrStore.layerFrom(store)),
     Layer.provide(AppsStore.layerFrom(store)),
-    Layer.provide(TunnelControlLive(serverState)),
+    Layer.provide(LocalHttpServerStore.layerFrom(store)),
+    Layer.provide(TunnelStore.layerFrom(store)),
     Layer.provide(gatekeeperStoreLayer),
     Layer.provide(CollectorStore.layerFrom(store)),
     Layer.provide(CryptoRandomLive),

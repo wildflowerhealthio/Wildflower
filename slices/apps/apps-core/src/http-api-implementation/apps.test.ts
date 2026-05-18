@@ -1,178 +1,123 @@
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
-import type { Store } from '@livestore/livestore'
-import { Effect, Layer } from 'effect'
-import { PublicOrigin } from 'tunnel-core/contexts'
+import { makeAdapter } from '@livestore/adapter-node'
+import { createStorePromise, makeSchema, State, type Store } from '@livestore/livestore'
+import { Layer } from 'effect'
+import * as LocalHttpServerLivestore from 'local-http-server-core/livestore'
 import {
-  queries as tunnelQueries,
-  type schema as tunnelSchema,
+  TunnelConfig,
+  TunnelState,
   TunnelStore,
+  events as tunnelEvents,
+  materializers as tunnelMaterializers,
+  tables as tunnelTables,
 } from 'tunnel-core/livestore'
-import { describe, expect, it, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import {
   type AppSelectionRow,
+  AppSelection,
   AppsStore,
-  queries as livestoreQueries,
-  type schema,
+  events as appsEvents,
+  materializers as appsMaterializers,
 } from '../livestore/index.ts'
 import { AppsApiLive } from './index.ts'
 
-// `AppsStore.Service` is just a `Store<schema, object>`. The test only
-// hits `query`, so we type the helper through that surface.
-type AppsStoreService = Store<typeof schema, object>
-type TunnelStoreService = Store<typeof tunnelSchema, object>
+// Combined test schema — all three slices' tables/events/materializers
+// live in the same in-memory store so the handlers can read/write any.
+const tables = {
+  appSelection: AppSelection.table,
+  ...LocalHttpServerLivestore.tables,
+  ...tunnelTables,
+} as const
 
-interface TunnelStateView {
-  requestedPublicOrigin: string | null
-  currentPublicOrigin: string | null
-}
+const events = {
+  ...appsEvents,
+  ...LocalHttpServerLivestore.events,
+  ...tunnelEvents,
+} as const
 
-interface MockTunnelOptions {
-  initial?: Partial<TunnelStateView>
-  // When set, the next `commit` will populate `currentPublicOrigin` with
-  // this value and notify subscribers — simulating an immediate tunnel
-  // acquire. Leave undefined to never resolve (lets timeouts fire).
-  resolveTo?: string
-}
+const materializers = State.SQLite.materializers(events, {
+  ...appsMaterializers,
+  ...tunnelMaterializers,
+})
+const testState = State.SQLite.makeState({ tables, materializers })
+const testSchema = makeSchema({ events, state: testState })
 
-interface MockTunnelHandle {
-  store: TunnelStoreService
-  commit: ReturnType<typeof vi.fn>
-  state: TunnelStateView
-}
+let store: Store<typeof testSchema, object>
 
-const makeMockTunnel = (options: MockTunnelOptions = {}): MockTunnelHandle => {
-  const state: TunnelStateView = {
-    requestedPublicOrigin: options.initial?.requestedPublicOrigin ?? null,
-    currentPublicOrigin: options.initial?.currentPublicOrigin ?? null,
+beforeEach(async () => {
+  store = await createStorePromise({
+    adapter: makeAdapter({ storage: { type: 'in-memory' } }),
+    schema: testSchema,
+    storeId: `apps-it-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  })
+})
+
+afterEach(async () => {
+  await store.shutdownPromise().catch(() => undefined)
+})
+
+const seedRows = (rows: ReadonlyArray<AppSelectionRow>): void => {
+  for (const row of rows) {
+    if (row.kind === 'custom') {
+      store.commit(
+        appsEvents.customAppAdded({
+          id: row.id,
+          name: row.customName ?? 'Unnamed',
+          url: row.customUrl ?? '',
+          requiresTunnel: row.customRequiresTunnel ?? false,
+        })
+      )
+      if (!row.enabled) {
+        store.commit(appsEvents.appEnabledChanged({ id: row.id, kind: 'custom', enabled: false }))
+      }
+    } else {
+      // Test fixtures only construct `'bundled'` and `'action'` non-custom
+      // kinds; the row schema widens to `string`, so narrow at the boundary.
+      if (row.kind !== 'bundled' && row.kind !== 'action') continue
+      store.commit(
+        appsEvents.appEnabledChanged({
+          id: row.id,
+          kind: row.kind,
+          enabled: row.enabled,
+        })
+      )
+    }
   }
-  type Subscriber = (state: TunnelStateView) => void
-  const subscribers = new Set<Subscriber>()
-
-  const commit = vi.fn((event: unknown): void => {
-    const payload =
-      typeof event === 'object' && event !== null && 'args' in event
-        ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          (event as { args: { value: Partial<TunnelStateView> } }).args.value
-        : undefined
-    if (payload !== undefined) {
-      if ('requestedPublicOrigin' in payload) {
-        state.requestedPublicOrigin = payload.requestedPublicOrigin ?? null
-      }
-      if ('currentPublicOrigin' in payload) {
-        state.currentPublicOrigin = payload.currentPublicOrigin ?? null
-      }
-    }
-    if (options.resolveTo !== undefined && state.requestedPublicOrigin !== null) {
-      state.currentPublicOrigin = options.resolveTo
-    }
-    for (const sub of subscribers) sub({ ...state })
-  })
-
-  const query = vi.fn((q: unknown): unknown => {
-    if (q === tunnelQueries.current$) return { ...state }
-    return undefined
-  })
-
-  const subscribe = vi.fn((q: unknown, cb: (value: unknown) => void) => {
-    if (q !== tunnelQueries.current$) return () => undefined
-    const wrapped: Subscriber = (s) => cb({ ...s })
-    subscribers.add(wrapped)
-    // Fire initial snapshot synchronously — mirrors livestore's
-    // subscribe contract.
-    wrapped(state)
-    return () => {
-      subscribers.delete(wrapped)
-    }
-  })
-
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const store = { query, commit, subscribe } as unknown as TunnelStoreService
-  return { store, commit, state }
 }
 
-// Identify a LiveQueryDef by its stable `hash`.
-const queryHash = (q: unknown): string | undefined => {
-  if (typeof q === 'object' && q !== null && 'hash' in q && typeof q.hash === 'string') {
-    return q.hash
-  }
-  return undefined
+const seedTunnelUp = (subdomain = 'tunnel', rootDomain = 'example.com'): void => {
+  store.commit(
+    TunnelState.events.tunnelStateSet({
+      currentEnabled: true,
+      currentSubdomain: subdomain,
+      currentRootDomain: rootDomain,
+      currentLocalPort: 8080,
+    })
+  )
 }
 
-interface MockStoreOptions {
-  rows?: ReadonlyArray<AppSelectionRow>
-  byIdImpl?: (id: string) => AppSelectionRow | undefined
+const seedTunnelConfig = (
+  patch: Parameters<typeof TunnelConfig.events.tunnelConfigSet>[0]
+): void => {
+  store.commit(TunnelConfig.events.tunnelConfigSet(patch))
 }
 
-const makeMockStore = (options: MockStoreOptions = {}): AppsStoreService => {
-  const rowsArr: AppSelectionRow[] = [...(options.rows ?? [])]
-  const byIdImpl = options.byIdImpl ?? ((id: string) => rowsArr.find((r) => r.id === id))
-
-  const query = vi.fn((q: unknown): unknown => {
-    if (q === livestoreQueries.appSelection$) {
-      return rowsArr
-    }
-    const hash = queryHash(q)
-    if (hash !== undefined) {
-      for (const row of rowsArr) {
-        if (livestoreQueries.appSelectionById$(row.id).hash === hash) {
-          return byIdImpl(row.id)
-        }
-      }
-      return undefined
-    }
-    return undefined
-  })
-
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return {
-    query,
-    commit: vi.fn(),
-    subscribe: vi.fn(),
-  } as unknown as AppsStoreService
+const seedLocalServer = (localOrigin = 'http://127.0.0.1:8080'): void => {
+  store.commit(
+    LocalHttpServerLivestore.events.localHttpServerStateSet({
+      running: true,
+      port: 8080,
+      localOrigin,
+    })
+  )
 }
 
-const makeMockStoreWithDynamicById = (
-  byIdImpl: (id: string) => AppSelectionRow | undefined
-): AppsStoreService => {
-  const knownIds = ['custom-1', 'custom-mystery']
-  const query = vi.fn((q: unknown): unknown => {
-    if (q === livestoreQueries.appSelection$) return []
-    const hash = queryHash(q)
-    if (hash !== undefined) {
-      for (const id of knownIds) {
-        if (livestoreQueries.appSelectionById$(id).hash === hash) {
-          return byIdImpl(id)
-        }
-      }
-    }
-    return undefined
-  })
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return {
-    query,
-    commit: vi.fn(),
-    subscribe: vi.fn(),
-  } as unknown as AppsStoreService
-}
-
-interface CreateHandlerOptions {
-  publicOrigin?: string
-}
-
-const createHandler = (
-  store: AppsStoreService,
-  tunnel: MockTunnelHandle,
-  options: CreateHandlerOptions = {}
-): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
-  const publicOriginValue = options.publicOrigin ?? 'https://tunnel.example.com'
-  const publicOriginLayer = Layer.succeed(PublicOrigin, {
-    get: Effect.succeed(publicOriginValue),
-  })
+const buildHandler = (): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = AppsApiLive.pipe(
     Layer.provide(AppsStore.layerFrom(store)),
-    Layer.provide(Layer.succeed(TunnelStore, tunnel.store)),
-    Layer.provide(publicOriginLayer)
+    Layer.provide(TunnelStore.layerFrom(store)),
+    Layer.provide(LocalHttpServerLivestore.LocalHttpServerStore.layerFrom(store))
   )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }
@@ -181,7 +126,7 @@ const createHandler = (
 
 describe('ListApps handler', () => {
   it('returns every bundled app even when the selection table is empty', async () => {
-    const { handler, dispose } = createHandler(makeMockStore(), makeMockTunnel())
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps'))
       expect(response.status).toBe(200)
@@ -202,19 +147,17 @@ describe('ListApps handler', () => {
   })
 
   it('merges enabled flag overrides from selection rows', async () => {
-    const store = makeMockStore({
-      rows: [
-        {
-          id: 'patient-browser',
-          kind: 'bundled',
-          enabled: false,
-          customName: null,
-          customUrl: null,
-          customRequiresTunnel: null,
-        },
-      ],
-    })
-    const { handler, dispose } = createHandler(store, makeMockTunnel())
+    seedRows([
+      {
+        id: 'patient-browser',
+        kind: 'bundled',
+        enabled: false,
+        customName: null,
+        customUrl: null,
+        customRequiresTunnel: null,
+      },
+    ])
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps'))
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -227,19 +170,17 @@ describe('ListApps handler', () => {
   })
 
   it('appends custom rows after bundled entries', async () => {
-    const store = makeMockStore({
-      rows: [
-        {
-          id: 'custom-abc',
-          kind: 'custom',
-          enabled: true,
-          customName: 'My App',
-          customUrl: 'https://example.com/launch',
-          customRequiresTunnel: true,
-        },
-      ],
-    })
-    const { handler, dispose } = createHandler(store, makeMockTunnel())
+    seedRows([
+      {
+        id: 'custom-abc',
+        kind: 'custom',
+        enabled: true,
+        customName: 'My App',
+        customUrl: 'https://example.com/launch',
+        customRequiresTunnel: true,
+      },
+    ])
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps'))
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -266,40 +207,23 @@ describe('ListApps handler', () => {
 
 describe('LaunchApp handler', () => {
   it('redirects to the bundled url for a non-action app that does not require a tunnel', async () => {
-    const { handler, dispose } = createHandler(makeMockStore(), makeMockTunnel())
+    seedLocalServer('http://127.0.0.1:8080')
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps/patient-browser'))
-      if (response.status !== 302) {
-        // oxlint-disable-next-line no-console
-        console.error('DEBUG status:', response.status)
-        // oxlint-disable-next-line no-console
-        console.error(
-          'DEBUG headers:',
-          JSON.stringify(Object.fromEntries(response.headers.entries()))
-        )
-        // oxlint-disable-next-line no-console
-        console.error(
-          'DEBUG body bytes:',
-          await response
-            .clone()
-            .arrayBuffer()
-            .then((b) => b.byteLength)
-        )
-      }
       expect(response.status).toBe(302)
       expect(response.headers.get('location')).toBe(
-        'https://tunnel.example.com/installed-apps/patient-browser/index.html'
+        'http://127.0.0.1:8080/installed-apps/patient-browser/index.html'
       )
     } finally {
       await dispose()
     }
   })
 
-  it('redirects an action app (fhir-sharing) to the origin when tunnel is already up', async () => {
-    const { handler, dispose } = createHandler(
-      makeMockStore(),
-      makeMockTunnel({ initial: { currentPublicOrigin: 'https://tunnel.example.com' } })
-    )
+  it('redirects an action app (fhir-sharing) to the tunnel origin when tunnel is already up', async () => {
+    seedLocalServer()
+    seedTunnelUp('tunnel', 'example.com')
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps/fhir-sharing'))
       expect(response.status).toBe(302)
@@ -309,78 +233,83 @@ describe('LaunchApp handler', () => {
     }
   })
 
-  it('commits a request and waits for currentPublicOrigin before redirecting', async () => {
-    const tunnel = makeMockTunnel({ resolveTo: 'https://tunnel.example.com' })
-    const { handler, dispose } = createHandler(makeMockStore(), tunnel)
+  it('commits requestedEnabled and waits for currentEnabled before redirecting', async () => {
+    seedLocalServer()
+    seedTunnelConfig({ subdomain: 'tunnel', rootDomain: 'example.com', localPort: 8080 })
+
+    // After the handler commits requestedEnabled: true, simulate the
+    // daemon flipping currentEnabled. Subscribe-once helper races with
+    // the handler.
+    const settle = store.subscribe(TunnelConfig.queries.current$, (config) => {
+      if (config?.requestedEnabled === true) {
+        seedTunnelUp('tunnel', 'example.com')
+        settle()
+      }
+    })
+
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps/growth-chart'))
-      expect(tunnel.commit).toHaveBeenCalled()
       expect(response.status).toBe(302)
       const location = response.headers.get('location') ?? ''
       expect(location).toContain('https://examples.smarthealthit.org/growth-chart-app/launch.html')
       expect(location).toContain('iss=https://tunnel.example.com/fhir-r4')
     } finally {
+      settle()
       await dispose()
     }
   })
 
-  it('falls back to PublicOrigin when the await times out', async () => {
-    // `resolveTo` not set → mock never delivers currentPublicOrigin →
-    // handler's awaitCurrentPublicOrigin hits its 15s timeout. We set
-    // publicOrigin explicitly so we can assert the fallback path; the
-    // longer runtime is accepted via the test's 20s timeout.
-    const tunnel = makeMockTunnel()
-    const { handler, dispose } = createHandler(makeMockStore(), tunnel, {
-      publicOrigin: 'https://tunnel.example.com',
-    })
+  it('falls back to localOrigin when the tunnel await times out', async () => {
+    // No daemon, no tunnel-up commit — the handler's
+    // awaitCurrentEnabled hits its 15s timeout and falls back.
+    seedLocalServer('http://127.0.0.1:9090')
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps/medication-viewer'))
-      expect(tunnel.commit).toHaveBeenCalled()
       expect(response.status).toBe(302)
       const location = response.headers.get('location') ?? ''
-      expect(location).toContain('iss=https://tunnel.example.com/fhir-r4')
+      expect(location).toContain('iss=http://127.0.0.1:9090/fhir-r4')
     } finally {
       await dispose()
     }
   }, 20_000)
 
   it('redirects a custom app whose template resolves to a same-origin path', async () => {
-    const store = makeMockStore({
-      rows: [
-        {
-          id: 'custom-1',
-          kind: 'custom',
-          enabled: true,
-          customName: 'My App',
-          customUrl: '{origin}/some/path',
-          customRequiresTunnel: false,
-        },
-      ],
-    })
-    const { handler, dispose } = createHandler(store, makeMockTunnel())
+    seedLocalServer('http://127.0.0.1:8080')
+    seedRows([
+      {
+        id: 'custom-1',
+        kind: 'custom',
+        enabled: true,
+        customName: 'My App',
+        customUrl: '{origin}/some/path',
+        customRequiresTunnel: false,
+      },
+    ])
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps/custom-1'))
       expect(response.status).toBe(302)
-      expect(response.headers.get('location')).toBe('https://tunnel.example.com/some/path')
+      expect(response.headers.get('location')).toBe('http://127.0.0.1:8080/some/path')
     } finally {
       await dispose()
     }
   })
 
   it('rejects a custom app whose resolved url is neither same-origin nor https://', async () => {
-    const store = makeMockStore({
-      rows: [
-        {
-          id: 'custom-1',
-          kind: 'custom',
-          enabled: true,
-          customName: 'My App',
-          customUrl: 'http://insecure.example.com/x',
-          customRequiresTunnel: false,
-        },
-      ],
-    })
-    const { handler, dispose } = createHandler(store, makeMockTunnel())
+    seedLocalServer()
+    seedRows([
+      {
+        id: 'custom-1',
+        kind: 'custom',
+        enabled: true,
+        customName: 'My App',
+        customUrl: 'http://insecure.example.com/x',
+        customRequiresTunnel: false,
+      },
+    ])
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps/custom-1'))
       expect(response.status).toBe(404)
@@ -394,7 +323,8 @@ describe('LaunchApp handler', () => {
   })
 
   it('returns 404 for an unknown id', async () => {
-    const { handler, dispose } = createHandler(makeMockStore(), makeMockTunnel())
+    seedLocalServer()
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps/no-such-app'))
       expect(response.status).toBe(404)
@@ -402,39 +332,6 @@ describe('LaunchApp handler', () => {
       const body = (await response.json()) as { error: string; id: string }
       expect(body.error).toBe('AppNotFound')
       expect(body.id).toBe('no-such-app')
-    } finally {
-      await dispose()
-    }
-  })
-
-  it('returns 404 when a custom row exists before tunnel work but disappears mid-flight', async () => {
-    let calls = 0
-    const byIdImpl = (id: string): AppSelectionRow | undefined => {
-      calls += 1
-      if (id !== 'custom-1') return undefined
-      if (calls === 1) {
-        return {
-          id: 'custom-1',
-          kind: 'custom',
-          enabled: true,
-          customName: 'My App',
-          customUrl: '{origin}/path',
-          customRequiresTunnel: true,
-        }
-      }
-      return undefined
-    }
-    const store = makeMockStoreWithDynamicById(byIdImpl)
-    const { handler, dispose } = createHandler(
-      store,
-      makeMockTunnel({ resolveTo: 'https://tunnel.example.com' })
-    )
-    try {
-      const response = await handler(new Request('http://localhost/apps/custom-1'))
-      expect(response.status).toBe(404)
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const body = (await response.json()) as { error: string; id: string }
-      expect(body.error).toBe('AppNotFound')
     } finally {
       await dispose()
     }

@@ -75,7 +75,7 @@ const AppsHomeBody = ({ tunnel, apps, onChanged }: AppsHomeBodyProps): JSX.Eleme
 
   const visible = apps.filter((app) => app.enabled)
 
-  const tunnelActive = tunnel.currentPublicOrigin !== undefined
+  const tunnelActive = tunnel.currentEnabled
 
   const launch = async (app: AppEntry): Promise<void> => {
     setError(null)

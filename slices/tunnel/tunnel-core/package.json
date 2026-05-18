@@ -22,9 +22,9 @@
       "source": "./src/clients/index.ts",
       "default": "./dist/clients/index.js"
     },
-    "./contexts": {
-      "source": "./src/contexts/index.ts",
-      "default": "./dist/contexts/index.js"
+    "./daemon": {
+      "source": "./src/daemon/index.ts",
+      "default": "./dist/daemon/index.js"
     },
     "./http-api-definition": {
       "source": "./src/http-api-definition/index.ts",
@@ -37,10 +37,6 @@
     "./livestore": {
       "source": "./src/livestore/index.ts",
       "default": "./dist/livestore/index.js"
-    },
-    "./canonical-url": {
-      "source": "./src/canonical-url.ts",
-      "default": "./dist/canonical-url.js"
     },
     "./package.json": "./package.json"
   },

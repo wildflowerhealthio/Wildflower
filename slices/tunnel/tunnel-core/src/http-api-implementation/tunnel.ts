@@ -1,28 +1,31 @@
 import { HttpApiBuilder } from '@effect/platform'
 import { Effect } from 'effect'
-import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
-import { TunnelAdminApi } from '../http-api-definition/index.ts'
-import { TunnelState, TunnelStore } from '../livestore/index.ts'
 
-/** Strip nulls so the wire shape uses optional/absent keys. */
+import { TunnelAdminApi } from '../http-api-definition/index.ts'
+import { TunnelConfig, TunnelState, TunnelStore } from '../livestore/index.ts'
+
 const orUndefined = <T>(value: T | null): T | undefined => (value === null ? undefined : value)
 
 /**
- * Combine the per-session tunnel + server documents into the wire
- * shape. Either document may be at its default (just-booted, nothing
- * written yet), so optional fields decay to `undefined` naturally.
+ * Combine the persistent `TunnelConfig` row and per-session `TunnelState`
+ * into the wire shape. The config row may be absent (fresh install,
+ * never seeded) — surface defaults so clients can render before the
+ * host seeds.
  */
 const snapshot = Effect.gen(function* () {
-  const tunnelStore = yield* TunnelStore
-  const serverStore = yield* LocalHttpServerStore
-  const tunnel = tunnelStore.query(TunnelState.queries.current$)
-  const server = serverStore.query(ServerState.queries.current$)
+  const store = yield* TunnelStore
+  const config = store.query(TunnelConfig.queries.current$)
+  const state = store.query(TunnelState.queries.current$)
   return {
-    requestedPublicOrigin: orUndefined(tunnel.requestedPublicOrigin),
-    currentPublicOrigin: orUndefined(tunnel.currentPublicOrigin),
-    localOrigin: orUndefined(server.localOrigin),
-    port: orUndefined(server.port),
-    running: server.running,
+    subdomain: orUndefined(config?.subdomain ?? null),
+    rootDomain: orUndefined(config?.rootDomain ?? null),
+    localPort: orUndefined(config?.localPort ?? null),
+    requestedEnabled: config?.requestedEnabled ?? false,
+    currentEnabled: state.currentEnabled,
+    currentSubdomain: orUndefined(state.currentSubdomain),
+    currentRootDomain: orUndefined(state.currentRootDomain),
+    currentLocalPort: orUndefined(state.currentLocalPort),
+    error: orUndefined(state.error),
   }
 })
 
@@ -31,14 +34,8 @@ const layer = HttpApiBuilder.group(TunnelAdminApi, 'tunnel', (handlers) =>
     .handle('GetTunnel', () => snapshot)
     .handle('PatchTunnel', ({ payload }) =>
       Effect.gen(function* () {
-        const tunnelStore = yield* TunnelStore
-        yield* Effect.sync(() =>
-          tunnelStore.commit(
-            TunnelState.events.tunnelStateSet({
-              requestedPublicOrigin: payload.requestedPublicOrigin,
-            })
-          )
-        )
+        const store = yield* TunnelStore
+        yield* Effect.sync(() => store.commit(TunnelConfig.events.tunnelConfigSet(payload)))
         return yield* snapshot
       })
     )
