@@ -1,0 +1,71 @@
+{
+  "name": "tunnel-expo",
+  "version": "0.1.0",
+  "description": "Expo native localtunnel module: bindings + an effect-friendly `acquire` helper used by the wildflower-expo tunnel daemon.",
+  "keywords": [
+    "ExpoLocaltunnel",
+    "expo",
+    "react-native",
+    "tunnel-expo"
+  ],
+  "homepage": "https://github.com/Assessment-is/wildflower/tree/main/slices/tunnel/tunnel-expo#readme",
+  "bugs": {
+    "url": "https://github.com/Assessment-is/wildflower/issues"
+  },
+  "license": "MIT",
+  "author": "Ruth Marks <ruthmarks151@gmail.com> (https://github.com/ruthmarks151)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/tunnel/tunnel-expo"
+  },
+  "files": [
+    "android",
+    "ios",
+    "dist",
+    "expo-module.config.json"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./expo-module.config.json": "./expo-module.config.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "jest": "jest"
+  },
+  "devDependencies": {
+    "@babel/core": "catalog:",
+    "@fast-check/jest": "catalog:",
+    "@types/jest": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "babel-preset-expo": "catalog:",
+    "effect": "catalog:",
+    "eventemitter3": "^5.0.4",
+    "expo": "catalog:",
+    "expo-module-scripts": "catalog:",
+    "fast-check": "catalog:",
+    "jest": "catalog:",
+    "jest-expo": "catalog:",
+    "react": "catalog:",
+    "react-native": "catalog:",
+    "tunnel-core": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "eventemitter3": "^5.0.4",
+    "expo": ">=54.0.0",
+    "react": ">=19.0.0",
+    "react-native": ">=0.81.0",
+    "tunnel-core": "workspace:*"
+  }
+}

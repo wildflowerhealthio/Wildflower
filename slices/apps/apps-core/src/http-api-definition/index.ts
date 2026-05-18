@@ -2,7 +2,6 @@ import { HttpApi } from '@effect/platform'
 import * as AppsAdmin from './apps-admin.ts'
 import * as Apps from './apps.ts'
 import * as Schemas from './schemas.ts'
-import * as Server from './server.ts'
 
 /**
  * Public surface — `ListApps` + `LaunchApp`. No auth; reachable by
@@ -11,12 +10,11 @@ import * as Server from './server.ts'
 const AppsApi = HttpApi.make('AppsApi').add(Apps.httpApiGroup)
 
 /**
- * Owner-only surface — custom-app writes + tunnel state. The composing
- * app (e.g. `wildflower-server`) applies `RequireAuthMiddleware` to
- * this `HttpApi`; slice cores stay free of auth deps.
+ * Owner-only surface — custom-app writes. The composing app (e.g.
+ * `wildflower-server`) applies `RequireAuthMiddleware` to this `HttpApi`;
+ * slice cores stay free of auth deps. Tunnel state moved to the
+ * `tunnel-core` slice and is composed at the host level.
  */
-const AppsAdminApi = HttpApi.make('AppsAdminApi')
-  .add(AppsAdmin.httpApiGroup)
-  .add(Server.httpApiGroup)
+const AppsAdminApi = HttpApi.make('AppsAdminApi').add(AppsAdmin.httpApiGroup)
 
-export { AppsApi, AppsAdminApi, Apps, AppsAdmin, Schemas, Server }
+export { AppsAdmin, AppsAdminApi, Apps, AppsApi, Schemas }

@@ -1,7 +1,9 @@
 import { HttpApiBuilder, HttpServerResponse } from '@effect/platform'
-import { nanoid } from '@livestore/livestore'
-import { Effect } from 'effect'
-import { TunnelControl } from '../contexts/tunnel-control.ts'
+import { nanoid, type Store } from '@livestore/livestore'
+import { Duration, Effect } from 'effect'
+import { canonicalPublicOrigin } from 'tunnel-core/canonical-url'
+import { PublicOrigin } from 'tunnel-core/contexts'
+import { type schema as tunnelSchema, TunnelState, TunnelStore } from 'tunnel-core/livestore'
 import { AppsApi } from '../http-api-definition/index.ts'
 import { AppSelection, AppsStore } from '../livestore/index.ts'
 import type { AppKind } from '../registry/app-item.ts'
@@ -68,6 +70,43 @@ const isLaunchableUrl = (target: string, originPrefix: string): boolean => {
   }
 }
 
+const TUNNEL_WAIT_TIMEOUT: Duration.Duration = Duration.seconds(15)
+
+/**
+ * Suspend until `currentPublicOrigin` becomes defined, or the timeout
+ * elapses. On success returns the resolved origin; on timeout returns
+ * `null` so the caller can fall back to the local origin.
+ */
+const awaitCurrentPublicOrigin = (
+  tunnelStore: Store<typeof tunnelSchema, object>
+): Effect.Effect<string | null, never, never> =>
+  Effect.async<string | null, never>((resume) => {
+    let disposed = false
+    // Subscribe-pattern: livestore (and our test mocks) MAY fire an
+    // initial snapshot synchronously during `subscribe()` — guard
+    // against `dispose` not yet being bound when the callback first
+    // runs.
+    let dispose: (() => void) | null = null
+    const handle = (state: { readonly currentPublicOrigin: string | null }): void => {
+      if (disposed) return
+      if (state.currentPublicOrigin !== null) {
+        disposed = true
+        dispose?.()
+        resume(Effect.succeed(state.currentPublicOrigin))
+      }
+    }
+    dispose = tunnelStore.subscribe(TunnelState.queries.current$, handle)
+    return Effect.sync(() => {
+      if (!disposed) {
+        disposed = true
+        dispose?.()
+      }
+    })
+  }).pipe(
+    Effect.timeoutOption(TUNNEL_WAIT_TIMEOUT),
+    Effect.map((opt) => (opt._tag === 'Some' ? opt.value : null))
+  )
+
 const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
   handlers
     .handle('ListApps', () =>
@@ -79,7 +118,8 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
     )
     .handleRaw('LaunchApp', ({ path }) =>
       Effect.gen(function* () {
-        const tunnel = yield* TunnelControl
+        const tunnelStore = yield* TunnelStore
+        const publicOriginSvc = yield* PublicOrigin
         const store = yield* AppsStore
 
         const bundled = findBundled(path.id)
@@ -116,23 +156,30 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
           )
         }
 
-        const beforeState = yield* tunnel.getState
-
-        const afterState = yield* (() => {
-          if (!launchContext.requiresTunnel || beforeState.tunnelActive) {
-            return Effect.succeed(beforeState)
+        // Tunnel coordination: if the app requires a public origin and
+        // the tunnel daemon hasn't acquired one yet, commit the canonical
+        // request and await `currentPublicOrigin` (with timeout). On
+        // timeout, fall through to PublicOrigin's get — which on expo
+        // reads `currentPublicOrigin ?? localOrigin` live, and on node
+        // is the static ORIGIN.
+        if (launchContext.requiresTunnel) {
+          const current = tunnelStore.query(TunnelState.queries.current$)
+          if (current.currentPublicOrigin === null) {
+            yield* Effect.sync(() =>
+              tunnelStore.commit(
+                TunnelState.events.tunnelStateSet({
+                  requestedPublicOrigin: canonicalPublicOrigin(),
+                })
+              )
+            )
+            const resolved = yield* awaitCurrentPublicOrigin(tunnelStore)
+            if (resolved === null) {
+              yield* Effect.logWarning(
+                `[apps-core] LaunchApp ${path.id} timed out waiting for currentPublicOrigin`
+              )
+            }
           }
-          return Effect.either(tunnel.setTunnelActive(true)).pipe(
-            Effect.flatMap((result) => {
-              if (result._tag === 'Right') {
-                return Effect.succeed(result.right)
-              }
-              return Effect.logWarning(
-                `[apps-core] tunnel activation failed: ${result.left._tag}: ${result.left.reason}`
-              ).pipe(Effect.as(beforeState))
-            })
-          )
-        })()
+        }
 
         // Re-check after tunnel state settles: the row may have been
         // deleted or kind-changed mid-flight. Bundled apps have static
@@ -147,13 +194,15 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
           }
         }
 
+        const publicOrigin = yield* publicOriginSvc.get
+
         if (path.id === FHIR_SHARING_ID || launchContext.isAction) {
-          return HttpServerResponse.redirect(afterState.origin, { status: 302 })
+          return HttpServerResponse.redirect(publicOrigin, { status: 302 })
         }
 
         const launch = nanoid()
-        const target = launchContext.url(afterState.origin, launch)
-        if (!isLaunchableUrl(target, afterState.origin)) {
+        const target = launchContext.url(publicOrigin, launch)
+        if (!isLaunchableUrl(target, publicOrigin)) {
           yield* Effect.logWarning(
             `[apps-core] LaunchApp rejected resolved URL for ${path.id}: ${target}`
           )
