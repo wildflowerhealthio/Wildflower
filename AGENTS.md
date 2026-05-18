@@ -61,7 +61,7 @@ There do exist some, narrow exceptions to the rule:
 - When used in test files in such a way that it doesn't materially reduce confidence in the test
 - Deeply technical, foundation code, that can't reasonably typecheck that is meaningfully tested in other ways
 - The phantom-id `as unknown as Layer.Layer<...>` cast used by `*ApiHandlersFor<ParentId>()` helpers when composing `HttpApi` groups across packages — see [HttpApi Composition How-To](./docs/Effect/HttpApi%20Composition%20How-To.md)
-- When you are truly confident in an invariant and it can be verified by the robust tests.
+- When you are truly confident in an invariant that is independently verified by robust tests
 
 ## Branch Naming
 
