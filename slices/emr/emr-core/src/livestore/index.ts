@@ -25,7 +25,6 @@
  *    per-resource namespaces themselves narrowed to the binding shape.
  *  - `schema` / `state` / `SyncPayload` — the package-level livestore schema.
  *
- * @module
  */
 
 import { Schema } from 'effect'

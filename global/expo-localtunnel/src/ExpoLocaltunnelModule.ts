@@ -40,12 +40,12 @@ function createStubModule(): ExpoLocaltunnelModule {
   // adds no value on an already-error path. Falls under the "foundation /
   // bridge code that can't reasonably typecheck" exception in the project's
   // type-safety rules.
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return partial as unknown as ExpoLocaltunnelModule
 }
 
 if (!native) {
-  // eslint-disable-next-line no-console -- one-shot diagnostic at module load
+  // oxlint-disable-next-line no-console
   console.warn(`[expo-localtunnel] ${NOT_REGISTERED_MESSAGE}`)
 }
 

@@ -11,6 +11,7 @@ import {
   type Table as PersistenceTable,
 } from '../internal/domain-resource-persistence.ts'
 import { makeRowSchemas } from '../internal/make-row-schemas.ts'
+import type { RowSchemaFromFields } from '../internal/row-schema-types.ts'
 import * as ChoiceElementSet from '../schemas/choice-element-set.ts'
 import {
   Reference,
@@ -77,32 +78,11 @@ const columns = {
   }),
 } as const
 
-// ---------------------------------------------------------------------------
-// Portable derivation of the row-schema shape — see `binary.ts` for the
-// rationale. Each column's `.schema` property type is already portable;
-// only the surrounding `ColumnDefinition` pulls in livestore internals,
-// so a mapped type that projects every column down to its `.schema`
-// resolves to a portable field record.
-// ---------------------------------------------------------------------------
-
 type RowFields = {
   readonly [K in keyof typeof columns]: (typeof columns)[K]['schema']
 }
 
-type RowSchema = Schema.Schema<
-  Schema.Simplify<Schema.Struct.Type<RowFields>>,
-  Schema.Simplify<Schema.Struct.Encoded<RowFields>>,
-  never
->
-
-type NullableIdFields = Omit<RowFields, 'id'> & {
-  readonly id: Schema.NullOr<typeof Schema.String>
-}
-type RowSchemaNullableId = Schema.Schema<
-  Schema.Simplify<Schema.Struct.Type<NullableIdFields>>,
-  Schema.Simplify<Schema.Struct.Encoded<NullableIdFields>>,
-  never
->
+type RowSchema = RowSchemaFromFields<RowFields>
 
 type Table = PersistenceTable<typeof resourceType, RowSchema>
 type Events = PersistenceEvents<typeof resourceType, RowSchema>

@@ -11,8 +11,8 @@ const resolveRelease = (raw: string): string | undefined => {
 
 /**
  * Initialize the Sentry React Native SDK. We do not disable any OTel bits
- * here because @sentry/react-native does not register a TracerProvider — we
- * own that via `@opentelemetry/sdk-trace-base`. Safe to call repeatedly.
+ * here because `@sentry/react-native` does not register a TracerProvider —
+ * we own that via `@opentelemetry/sdk-trace-base`. Safe to call repeatedly.
  */
 const initSentryReactNative = (config: TelemetryConfig): boolean => {
   if (!isSentryEnabled(config)) return false

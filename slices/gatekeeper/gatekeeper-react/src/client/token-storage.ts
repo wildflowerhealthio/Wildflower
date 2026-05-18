@@ -73,11 +73,11 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * Write the bearer token. Mirrors the historical `writeToken(token:
- * string)` API but routes through {@link authTokenRef} so subscribers
- * (React components via `<AuthTokenProvider>` and Effect-side
- * `BearerToken` consumers) see the rotation, and localStorage is
- * updated via the changes-stream subscription.
+ * Write the bearer token. Mirrors the historical `writeToken(token: string)`
+ * API but routes through {@link authTokenRef} so subscribers (React
+ * components via `<AuthTokenProvider>` and Effect-side `BearerToken` consumers)
+ * see the rotation, and localStorage is updated via the changes-stream
+ * subscription.
  *
  * Passing `null` clears the token.
  */

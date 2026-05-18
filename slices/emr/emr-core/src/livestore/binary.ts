@@ -11,6 +11,7 @@ import {
   type Table as PersistenceTable,
 } from '../internal/domain-resource-persistence.ts'
 import { makeRowSchemas } from '../internal/make-row-schemas.ts'
+import type { RowSchemaFromFields } from '../internal/row-schema-types.ts'
 import { Code } from '../schemas/datatypes/code.ts'
 import * as Reference from '../schemas/datatypes/reference.ts'
 import * as DomainResource from './domain-resource.ts'
@@ -35,44 +36,11 @@ const columns = {
   }),
 } as const
 
-// ---------------------------------------------------------------------------
-// Portable derivation of the row-schema shape.
-//
-// Each livestore column's `.schema` property type — per `ColDefFn` /
-// `SpecializedColDefFn` in `@livestore/common/.../field-defs.d.ts` — is
-// already a portable `Schema.Schema<TDecoded, TEncoded>` (with `| null`
-// added for `nullable: true`, and `string` substituted for the encoded
-// side when the column is a `json` column). Only the surrounding
-// `ColumnDefinition` shape pulls in `FieldColumnType` /
-// `ColumnDefaultValue` from livestore's internal `field-defs.js` subpath
-// — so a mapped type that projects every column down to its `.schema`
-// resolves to a portable field record with no manual schema spelling.
-// ---------------------------------------------------------------------------
-
 type RowFields = {
   readonly [K in keyof typeof columns]: (typeof columns)[K]['schema']
 }
 
-// `RowSchema` is the portable shape `PersistenceTable` etc. parameterize
-// over. Using a plain `Schema.Schema<…, …, never>` here (rather than a
-// `Schema.Struct<RowFields>`) avoids both the variance gap against the
-// runtime `State.SQLite.table().rowSchema` (which isn't a `Schema.Struct`)
-// and the `Context = unknown` widening that would otherwise come from
-// `Schema.Struct`'s union-over-fields context computation.
-type RowSchema = Schema.Schema<
-  Schema.Simplify<Schema.Struct.Type<RowFields>>,
-  Schema.Simplify<Schema.Struct.Encoded<RowFields>>,
-  never
->
-
-type NullableIdFields = Omit<RowFields, 'id'> & {
-  readonly id: Schema.NullOr<typeof Schema.String>
-}
-type RowSchemaNullableId = Schema.Schema<
-  Schema.Simplify<Schema.Struct.Type<NullableIdFields>>,
-  Schema.Simplify<Schema.Struct.Encoded<NullableIdFields>>,
-  never
->
+type RowSchema = RowSchemaFromFields<RowFields>
 
 type Table = PersistenceTable<typeof resourceType, RowSchema>
 type Events = PersistenceEvents<typeof resourceType, RowSchema>

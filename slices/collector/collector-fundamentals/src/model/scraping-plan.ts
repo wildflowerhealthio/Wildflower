@@ -7,8 +7,15 @@ import type * as WebViewSource from './web-view-source.ts'
 /**
  * Per-slice declaration of *what* to recognize on a sync run and *how*
  * to walk through it. Wiring this up to a live network stream is the
- * job of `CollectorBridgeMessageHandler.make({ scrapingPlan,
- * sendMessage, onResult })`, which:
+ * job of
+ * ```
+ * CollectorBridgeMessageHandler.make({
+ *   scrapingPlan,
+ *   sendMessage,
+ *   onResult
+ * })
+ * ```
+ * which:
  *
  *   - Consults `entityDefinitions` for each `ResponseStart` to decide
  *     whether to track the in-flight response (first `isFoundAt` match

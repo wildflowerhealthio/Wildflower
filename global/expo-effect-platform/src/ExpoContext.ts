@@ -2,8 +2,6 @@
  * Combined context layer providing the Expo `HttpPlatform` together with the
  * default `FileSystem` (noop), `Etag.Generator`, and `Path` services from
  * `@effect/platform`'s `HttpServer.layerContext`.
- *
- * @since 0.1.0
  */
 import type * as Etag from '@effect/platform/Etag'
 import type * as FileSystem from '@effect/platform/FileSystem'
@@ -22,8 +20,6 @@ import * as ExpoHttpPlatform from './ExpoHttpPlatform.ts'
  * `ExpoFileBody` sentinel that the native bridge serves directly without
  * crossing the JS bridge as bytes.
  *
- * @since 0.1.0
- * @category layers
  */
 export const layer: Layer.Layer<
   HttpPlatform.HttpPlatform | FileSystem.FileSystem | Etag.Generator | Path.Path

@@ -25,9 +25,9 @@ import type { BaseSearchParams, SearchParamBindings } from './search-param-bindi
  *
  *  - `SearchByGet` → GET /:resourceType/?...   livestore search$ + count$, Bundle
  *  - `Search`      → POST /:resourceType/_search (form body), same handler core
- *  - `GetById`     → store.query(queryGetById$(id)), 404 on miss
- *  - `Create`      → commitUpsert(payload)
- *  - `Update`      → commitUpsert({ ...payload, id })
+ *  - `GetById`     → `store.query(queryGetById$(id))`, 404 on miss
+ *  - `Create`      → `commitUpsert(payload)`
+ *  - `Update`      → `commitUpsert({ ...payload, id })`
  *
  * Pagination is opaque-cursor based via `_pageToken` (encoded `{ offset, count }`).
  * Clients follow `Bundle.link[rel=next/previous].url`; they do not construct
