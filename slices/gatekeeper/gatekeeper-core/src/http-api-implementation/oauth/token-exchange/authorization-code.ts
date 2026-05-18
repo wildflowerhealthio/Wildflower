@@ -1,12 +1,17 @@
-import type { Schema } from 'effect'
-import { DateTime, Effect, pipe } from 'effect'
+import { DateTime, Effect, pipe, type Schema } from 'effect'
 import type { Origin } from 'navigation-core'
-import { GatekeeperStore } from '../../../contexts/gatekeeper-store.ts'
-import type { AuthorizationCodePayload } from '../../../http-api-definition/oauth.ts'
-import { OAuthError400Schema, OAuthError500Schema } from '../../../http-api-definition/oauth.ts'
+import {
+  type AuthorizationCodePayload,
+  OAuthError400Schema,
+  OAuthError500Schema,
+} from '../../../http-api-definition/oauth.ts'
 import { computeCodeChallenge } from '../../../internal/pkce.ts'
 import { timingSafeEqual } from '../../../internal/timing-safe-equal.ts'
-import { AuthorizationCode, type AuthorizationCodeRow } from '../../../livestore/index.ts'
+import {
+  AuthorizationCode,
+  type AuthorizationCodeRow,
+  GatekeeperStore,
+} from '../../../livestore/index.ts'
 import {
   issueTokenResponse,
   type OAuthError400,
@@ -15,7 +20,6 @@ import {
   requireValidClientForToken,
   type TokenResponse,
 } from '../shared.ts'
-
 type AuthorizationCodeExchange = Schema.Schema.Type<typeof AuthorizationCodePayload>
 
 const getIssuedAuthorizationCode = (

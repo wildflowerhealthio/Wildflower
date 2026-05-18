@@ -1,10 +1,9 @@
 import { HttpApiBuilder } from '@effect/platform'
 import { nanoid } from '@livestore/livestore'
 import { Effect } from 'effect'
-import { AppsStore } from '../contexts/apps-store.ts'
 import { AppsAdminApi } from '../http-api-definition/index.ts'
 import { awaitRow } from '../internal/await-row.ts'
-import { AppSelection } from '../livestore/index.ts'
+import { AppSelection, AppsStore } from '../livestore/index.ts'
 import { findBundled } from '../registry/index.ts'
 
 const layer = HttpApiBuilder.group(AppsAdminApi, 'apps-admin', (handlers) =>

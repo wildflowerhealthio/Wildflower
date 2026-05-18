@@ -2,7 +2,6 @@ import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
 import type { GrantRow, HttpRequestRow } from '../livestore/index.ts'
 import { RequireAuthMiddleware } from './require-auth.ts'
-
 /**
  * `Grant`: a record that the Owner approved a specific `(clientId,
  * redirectUri)` pair to receive tokens for a specific scope set, at a

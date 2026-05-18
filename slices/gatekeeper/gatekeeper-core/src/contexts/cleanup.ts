@@ -1,7 +1,5 @@
 import { DateTime, Effect } from 'effect'
-import { AuthorizationCode, AuthorizationRequest } from '../livestore/index.ts'
-import { GatekeeperStore } from './gatekeeper-store.ts'
-
+import { AuthorizationCode, AuthorizationRequest, GatekeeperStore } from '../livestore/index.ts'
 const cleanupExpiredAuthorizationRequests: Effect.Effect<void, never, GatekeeperStore> = Effect.gen(
   function* () {
     const store = yield* GatekeeperStore

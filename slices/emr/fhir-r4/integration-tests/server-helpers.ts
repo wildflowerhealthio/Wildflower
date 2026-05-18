@@ -4,8 +4,7 @@ import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise, type Store } from '@livestore/livestore'
 import { Effect, Layer } from 'effect'
 
-import { makeEmrStoreLayer } from 'emr-core/contexts'
-import { schema } from 'emr-core/livestore'
+import { EmrStore, schema } from 'emr-core/livestore'
 import { Origin } from 'navigation-core'
 
 import { FhirPublicApi, FhirResourcesApi } from '../src/http-api-definition/index.ts'
@@ -67,7 +66,7 @@ const wireServer = async (): Promise<Wired> => {
   })
   const originLayer = Layer.succeed(Origin, ORIGIN)
   const resourcesLive = FhirResourcesApiLive.pipe(
-    Layer.provide(makeEmrStoreLayer(store)),
+    Layer.provide(EmrStore.layerFrom(store)),
     Layer.provide(originLayer)
   )
   const publicLive = HttpApiBuilder.api(FhirPublicApi).pipe(

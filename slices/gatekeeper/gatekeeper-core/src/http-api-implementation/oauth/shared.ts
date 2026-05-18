@@ -1,14 +1,15 @@
-import type { Schema } from 'effect'
-import { Duration, Effect } from 'effect'
+import { Duration, Effect, type Schema } from 'effect'
 import { UnknownException } from 'effect/Cause'
 import { Origin } from 'navigation-core'
-import { GatekeeperStore } from '../../contexts/gatekeeper-store.ts'
-import type { OAuthError400Schema, TokenResponseSchema } from '../../http-api-definition/oauth.ts'
-import { OAuthError401Schema, OAuthError500Schema } from '../../http-api-definition/oauth.ts'
+import {
+  type OAuthError400Schema,
+  OAuthError401Schema,
+  OAuthError500Schema,
+  type TokenResponseSchema,
+} from '../../http-api-definition/oauth.ts'
 import { mintAccessToken } from '../../internal/jwt.ts'
 import { timingSafeEqual } from '../../internal/timing-safe-equal.ts'
-import { Client, type ClientRow, SigningKey } from '../../livestore/index.ts'
-
+import { Client, type ClientRow, GatekeeperStore, SigningKey } from '../../livestore/index.ts'
 const DEVICE_CODE_POLL_INTERVAL: Duration.Duration = Duration.seconds(5)
 const ACCESS_TOKEN_TTL: Duration.Duration = Duration.hours(1)
 

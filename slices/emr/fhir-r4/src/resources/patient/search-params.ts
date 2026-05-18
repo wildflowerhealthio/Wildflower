@@ -44,8 +44,7 @@ const buildWhere = (p: SearchParamsType): WhereType | undefined => {
     any = true
   }
   if (p.birthdate !== undefined) {
-    /* oxlint-disable-next-line typescript/no-unsafe-type-assertion -- branded TimelessDate string at runtime is a plain string */
-    where.birthDate = p.birthdate as typeof where.birthDate
+    where.birthDate = p.birthdate
     any = true
   }
   if (!any) {

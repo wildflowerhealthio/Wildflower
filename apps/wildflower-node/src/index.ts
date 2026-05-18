@@ -5,17 +5,13 @@ import './instrument.ts'
 import { createServer } from 'node:http'
 import { HttpServer } from '@effect/platform'
 import { NodeFileSystem, NodeHttpServer, NodePath, NodeRuntime } from '@effect/platform-node'
-import { makeAppsStoreLayer } from 'apps-core/contexts'
 import type { ServerState } from 'apps-core/contexts'
-import { makeCollectorStoreLayer } from 'collector-core/contexts'
+import { AppsStore } from 'apps-core/livestore'
+import { CollectorStore } from 'collector-core/livestore'
 import { Duration, Effect, Layer } from 'effect'
-import { makeLivestoreStoreLayer } from 'emr-core/contexts'
-import {
-  makeGatekeeperStoreLayer,
-  mintHostOwnerToken,
-  seedFirstPartyClient,
-  seedSigningKey,
-} from 'gatekeeper-core/contexts'
+import { EmrStore } from 'emr-core/livestore'
+import { mintHostOwnerToken, seedFirstPartyClient, seedSigningKey } from 'gatekeeper-core/contexts'
+import { GatekeeperStore } from 'gatekeeper-core/livestore'
 import { cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { StringLiteralTypes } from 'kitchen-sink/types'
 import { Origin } from 'navigation-core'
@@ -45,7 +41,7 @@ const TelemetryLive = nodeTelemetryLayerFromEnv({
 
 const run = Effect.gen(function* () {
   const store = yield* Effect.promise(() => createStore())
-  const gatekeeperStoreLayer = makeGatekeeperStoreLayer(store)
+  const gatekeeperStoreLayer = GatekeeperStore.layerFrom(store)
   const originLayer = Layer.succeed(Origin, ORIGIN)
 
   // Idempotent: signing key + first-party `wildflower-host` client identity.
@@ -85,11 +81,11 @@ const run = Effect.gen(function* () {
   const FullServerLive = WildflowerServerLive.pipe(
     HttpServer.withLogAddress,
     Layer.tap(() => afterStartupEffect),
-    Layer.provide(makeLivestoreStoreLayer(store)),
-    Layer.provide(makeAppsStoreLayer(store)),
+    Layer.provide(EmrStore.layerFrom(store)),
+    Layer.provide(AppsStore.layerFrom(store)),
     Layer.provide(TunnelControlLive(serverState)),
     Layer.provide(gatekeeperStoreLayer),
-    Layer.provide(makeCollectorStoreLayer(store)),
+    Layer.provide(CollectorStore.layerFrom(store)),
     Layer.provide(CryptoRandomLive),
     Layer.provide(NodeHttpServer.layer(createServer, { port: PORT })),
     Layer.provide(NodeFileSystem.layer),

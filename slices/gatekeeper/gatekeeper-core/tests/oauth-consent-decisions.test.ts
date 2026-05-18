@@ -1,13 +1,15 @@
 import { DateTime, Effect, Layer } from 'effect'
 import { type CryptoRandom, cryptoRandomCounter } from 'kitchen-sink/crypto-random'
 import { expect, test } from 'vite-plus/test'
-import { GatekeeperStore } from '../src/contexts/gatekeeper-store.ts'
 import {
   approveAuthorizationRequest,
   denyAuthorizationRequest,
 } from '../src/contexts/oauth-consent-decisions.ts'
-import { AuthorizationRequest, type AuthorizationRequestRow } from '../src/livestore/index.ts'
-
+import {
+  AuthorizationRequest,
+  type AuthorizationRequestRow,
+  GatekeeperStore,
+} from '../src/livestore/index.ts'
 type Committed = { name: string; args: Record<string, unknown> }
 
 const labelOf = (q: unknown): string | undefined => {

@@ -1,8 +1,6 @@
-import type { Schema } from 'effect'
-import { DateTime, Duration, Effect } from 'effect'
+import { DateTime, Duration, Effect, type Schema } from 'effect'
 import { CryptoRandom } from 'kitchen-sink/crypto-random'
 import type { Origin } from 'navigation-core'
-import { GatekeeperStore } from '../../contexts/gatekeeper-store.ts'
 import {
   type DeviceAuthorizationPayloadSchema,
   DeviceAuthorizationResponseSchema,
@@ -10,10 +8,14 @@ import {
   OAuthError401Schema,
 } from '../../http-api-definition/oauth.ts'
 import { generateUserCode } from '../../internal/user-code.ts'
-import { AuthorizationRequest, Client, type ClientRow } from '../../livestore/index.ts'
+import {
+  AuthorizationRequest,
+  Client,
+  type ClientRow,
+  GatekeeperStore,
+} from '../../livestore/index.ts'
 import { GatekeeperPaths } from '../../page-paths.ts'
 import { DEVICE_CODE_POLL_INTERVAL, type OAuthError400, type OAuthError401 } from './shared.ts'
-
 type DeviceAuthorizationPayload = Schema.Schema.Type<typeof DeviceAuthorizationPayloadSchema>
 type DeviceAuthorizationResponse = Schema.Schema.Type<typeof DeviceAuthorizationResponseSchema>
 

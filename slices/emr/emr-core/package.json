@@ -13,10 +13,6 @@
   ],
   "type": "module",
   "exports": {
-    "./contexts": {
-      "source": "./src/contexts/index.ts",
-      "default": "./dist/contexts/index.js"
-    },
     "./livestore": {
       "source": "./src/livestore/index.ts",
       "default": "./dist/livestore/index.js"

@@ -1,8 +1,6 @@
 import { DateTime, Effect } from 'effect'
 import { CryptoRandom } from 'kitchen-sink/crypto-random'
-import { AuthorizationCode, AuthorizationRequest } from '../livestore/index.ts'
-import { GatekeeperStore } from './gatekeeper-store.ts'
-
+import { AuthorizationCode, AuthorizationRequest, GatekeeperStore } from '../livestore/index.ts'
 /**
  * Mark an authorization request as approved, issue a single-use authorization
  * code, and return the redirect URL the OAuth client should be sent to.

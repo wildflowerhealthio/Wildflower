@@ -1,7 +1,6 @@
 import { HttpApiError } from '@effect/platform'
 import { Effect } from 'effect'
-import { EmrStore } from 'emr-core/contexts'
-import { domainResources, Patient as StorePatient } from 'emr-core/livestore'
+import { domainResources, EmrStore, Patient as StorePatient } from 'emr-core/livestore'
 
 import { makeDomainResourceHandlerLayer } from '../internal/domain-resource-http-api-implementation.ts'
 import { Patient } from '../resources/patient/index.ts'

@@ -1,10 +1,9 @@
 import { HttpApiBuilder, HttpServerResponse } from '@effect/platform'
 import { nanoid } from '@livestore/livestore'
 import { Effect } from 'effect'
-import { AppsStore } from '../contexts/apps-store.ts'
 import { TunnelControl } from '../contexts/tunnel-control.ts'
 import { AppsApi } from '../http-api-definition/index.ts'
-import { AppSelection } from '../livestore/index.ts'
+import { AppSelection, AppsStore } from '../livestore/index.ts'
 import type { AppKind } from '../registry/app-item.ts'
 import { BUNDLED_APPS, FHIR_SHARING_ID, findBundled } from '../registry/index.ts'
 

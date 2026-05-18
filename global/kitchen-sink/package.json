@@ -21,6 +21,10 @@
       "source": "./src/crypto-random/index.ts",
       "default": "./dist/crypto-random.js"
     },
+    "./livestore": {
+      "source": "./src/livestore/index.ts",
+      "default": "./dist/livestore.js"
+    },
     "./polyfills/promise-with-resolvers": {
       "source": "./src/polyfills/promise-with-resolvers.ts",
       "default": "./dist/polyfills/promise-with-resolvers.js"
@@ -50,6 +54,7 @@
     "test": "vp test"
   },
   "devDependencies": {
+    "@livestore/livestore": "catalog:",
     "@types/node": "catalog:",
     "bumpp": "^11.0.1",
     "effect": "catalog:",
@@ -58,6 +63,7 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@livestore/livestore": "catalog:",
     "effect": "catalog:",
     "vite-plus": "catalog:"
   },

@@ -11,13 +11,17 @@
  * useful as a type anchor for cross-package `Store<typeof schema>` tags.
  */
 
-import { makeSchema, State } from '@livestore/livestore'
+import { defineSliceLivestore } from 'kitchen-sink/livestore'
 
 import * as RemoteConfig from './remote-config.ts'
 
-const tables = {
+// `RemoteConfig.Table` is the portable per-resource alias defined in
+// `remote-config.ts`; referencing it here keeps the slice's emitted
+// `.d.ts` self-contained — see `apps-core/src/livestore/index.ts` for
+// the full rationale.
+const tables: { readonly remotes: RemoteConfig.Table } = {
   remotes: RemoteConfig.table,
-} as const
+}
 
 const events = {
   remoteAdded: RemoteConfig.events.remoteAdded,
@@ -33,8 +37,25 @@ const queries = {
 
 const materializers = { ...RemoteConfig.materializers } as const
 
-const state = State.SQLite.makeState({ tables, materializers })
-const schema = makeSchema({ events, state })
+const { schema, state, StoreTag, makeLayerFactory } = defineSliceLivestore({
+  name: 'CollectorStore',
+  tables,
+  events,
+  materializers,
+})
 
-export { events, materializers, queries, RemoteConfig as Remote, schema, state, tables }
+class CollectorStore extends StoreTag<CollectorStore>() {
+  static readonly layerFrom = makeLayerFactory(CollectorStore)
+}
+
+export {
+  CollectorStore,
+  events,
+  materializers,
+  queries,
+  RemoteConfig as Remote,
+  schema,
+  state,
+  tables,
+}
 export type { RemoteRow } from './remote-config.ts'

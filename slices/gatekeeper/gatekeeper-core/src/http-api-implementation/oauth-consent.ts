@@ -1,16 +1,18 @@
 import { HttpApiBuilder } from '@effect/platform'
 import { nanoid } from '@livestore/livestore'
-import type { Schema } from 'effect'
-import { DateTime, Effect, pipe } from 'effect'
-import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
+import { DateTime, Effect, pipe, type Schema } from 'effect'
 import {
   approveAuthorizationRequest,
   denyAuthorizationRequest,
 } from '../contexts/oauth-consent-decisions.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
 import type { OAuthConsentNotFoundSchema } from '../http-api-definition/oauth-consent.ts'
-import { AuthorizationRequest, type AuthorizationRequestRow, Grant } from '../livestore/index.ts'
-
+import {
+  AuthorizationRequest,
+  type AuthorizationRequestRow,
+  GatekeeperStore,
+  Grant,
+} from '../livestore/index.ts'
 type OAuthConsentNotFound = Schema.Schema.Type<typeof OAuthConsentNotFoundSchema>
 
 const oauthConsentNotFound = (id: string): OAuthConsentNotFound => ({

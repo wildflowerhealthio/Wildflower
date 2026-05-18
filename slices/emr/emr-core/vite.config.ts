@@ -9,12 +9,6 @@ export default defineConfig({
       dts: { tsgo: true },
       exports: false,
       platform: 'neutral',
-      entry: { 'contexts/index': 'src/contexts/index.ts' },
-    },
-    {
-      dts: { tsgo: true },
-      exports: false,
-      platform: 'neutral',
       entry: { 'livestore/index': 'src/livestore/index.ts' },
     },
     {

@@ -6,12 +6,10 @@ test('contexts/index re-exports the published surface', () => {
   expect(Object.keys(Gatekeeper).toSorted()).toEqual(
     [
       'FIRST_PARTY_CLIENT_ID',
-      'GatekeeperStore',
       'approveAuthorizationRequest',
       'cleanupExpiredAuthorizationCodes',
       'cleanupExpiredAuthorizationRequests',
       'denyAuthorizationRequest',
-      'makeGatekeeperStoreLayer',
       'mintHostOwnerToken',
       'seedFirstPartyClient',
       'seedSigningKey',

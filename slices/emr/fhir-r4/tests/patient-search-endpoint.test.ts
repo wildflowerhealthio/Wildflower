@@ -1,7 +1,6 @@
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { Layer } from 'effect'
-import type { EmrStore } from 'emr-core/contexts'
-import { makeEmrStoreLayer } from 'emr-core/contexts'
+import { EmrStore } from 'emr-core/livestore'
 import type { Patient as StorePatient } from 'emr-core/livestore'
 import { Origin } from 'navigation-core'
 import { describe, expect, test } from 'vite-plus/test'
@@ -67,7 +66,7 @@ const createHandler = (
   total: number
 ): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = FhirResourcesApiLive.pipe(
-    Layer.provide(makeEmrStoreLayer(makeStore(rows, total))),
+    Layer.provide(EmrStore.layerFrom(makeStore(rows, total))),
     Layer.provide(Layer.succeed(Origin, 'http://localhost:8787'))
   )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))

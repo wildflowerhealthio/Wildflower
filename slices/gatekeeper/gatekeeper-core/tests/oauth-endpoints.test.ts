@@ -4,7 +4,6 @@ import * as jose from 'jose'
 import { cryptoRandomCounter } from 'kitchen-sink/crypto-random'
 import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
-import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { GatekeeperApiLive } from '../src/http-api-implementation/index.ts'
 import { computeCodeChallenge } from '../src/internal/pkce.ts'
 import {
@@ -14,11 +13,11 @@ import {
   type AuthorizationRequestRow,
   Client,
   type ClientRow,
+  GatekeeperStore,
   Grant,
   SigningKey,
 } from '../src/livestore/index.ts'
 import { testingKey1 } from './fixtures/signing-keys.ts'
-
 const sharedSigningKey = testingKey1
 
 type MockGrant = {
@@ -268,7 +267,7 @@ const createOAuthHandler = (
   store: typeof GatekeeperStore.Service
 ): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = GatekeeperApiLive.pipe(
-    Layer.provide(makeGatekeeperStoreLayer(store)),
+    Layer.provide(GatekeeperStore.layerFrom(store)),
     Layer.provide(Layer.succeed(Origin, 'http://localhost:8787')),
     Layer.provide(cryptoRandomCounter({ uuidPrefix: 'oauth' }))
   )

@@ -1,9 +1,7 @@
 import { HttpServerResponse } from '@effect/platform'
-import type { Schema } from 'effect'
-import { Array, DateTime, Duration, Effect, pipe } from 'effect'
+import { Array, DateTime, Duration, Effect, pipe, type Schema } from 'effect'
 import { CryptoRandom } from 'kitchen-sink/crypto-random'
 import type { Origin } from 'navigation-core'
-import { GatekeeperStore } from '../../contexts/gatekeeper-store.ts'
 import type { AuthorizeUrlParamsSchema } from '../../http-api-definition/oauth.ts'
 import { oauthErrorHtml } from '../../internal/error-pages.ts'
 import {
@@ -11,12 +9,12 @@ import {
   AuthorizationRequest,
   Client,
   type ClientRow,
+  GatekeeperStore,
   Grant,
   SigningKey,
 } from '../../livestore/index.ts'
 import { GatekeeperPaths } from '../../page-paths.ts'
 import { buildClientRedirectUrl } from './shared.ts'
-
 type AuthorizeParams = Schema.Schema.Type<typeof AuthorizeUrlParamsSchema>
 
 const AUTHORIZATION_CODE_TTL: Duration.Duration = Duration.seconds(60)

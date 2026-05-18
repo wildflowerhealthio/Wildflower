@@ -1,9 +1,8 @@
 import type { LiveQueryDef } from '@livestore/livestore'
 import { Duration, Effect, Either, Exit, Fiber, TestClock, TestContext } from 'effect'
 import { expect, test } from 'vite-plus/test'
-import { type GatekeeperStore, makeGatekeeperStoreLayer } from '../src/contexts/gatekeeper-store.ts'
 import { ApprovalTimedOut, GATE_TIMEOUT, waitForRow } from '../src/internal/await-row.ts'
-
+import { GatekeeperStore } from '../src/livestore/index.ts'
 type Row = { id: string; status: 'pending' | 'approved' }
 type Subscriber = (row: Row | null | undefined) => void
 
@@ -37,7 +36,7 @@ test('resolves with the row when predicate matches', async () => {
 
   const fiber = Effect.runPromise(
     waitForRow(fakeQuery, (row: Row) => row.status === 'approved', 'req-1').pipe(
-      Effect.provide(makeGatekeeperStoreLayer(fakeStore)),
+      Effect.provide(GatekeeperStore.layerFrom(fakeStore)),
       Effect.either
     )
   )
@@ -66,7 +65,7 @@ test('disposes the subscription when the fiber is interrupted', async () => {
     Effect.gen(function* () {
       const fiber = yield* Effect.fork(
         waitForRow(fakeQuery, (row: Row) => row.status === 'approved', 'req-2').pipe(
-          Effect.provide(makeGatekeeperStoreLayer(fakeStore))
+          Effect.provide(GatekeeperStore.layerFrom(fakeStore))
         )
       )
       // Give the subscription a chance to install before interrupting.
@@ -88,7 +87,7 @@ test('fails with ApprovalTimedOut after GATE_TIMEOUT elapses', async () => {
     Effect.gen(function* () {
       const fiber = yield* Effect.fork(
         waitForRow(fakeQuery, (row: Row) => row.status === 'approved', 'req-3').pipe(
-          Effect.provide(makeGatekeeperStoreLayer(fakeStore))
+          Effect.provide(GatekeeperStore.layerFrom(fakeStore))
         )
       )
       yield* TestClock.adjust(Duration.sum(GATE_TIMEOUT, Duration.seconds(1)))

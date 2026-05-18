@@ -3,9 +3,7 @@ import { DateTime, type Duration, Effect, pipe } from 'effect'
 import type { UnknownException } from 'effect/Cause'
 import type * as jose from 'jose'
 import { Origin } from 'navigation-core'
-import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
-import { Client, SigningKey } from '../livestore/index.ts'
-
+import { Client, GatekeeperStore, SigningKey } from '../livestore/index.ts'
 type VerifiedPayload = {
   iss: string
   sub: string

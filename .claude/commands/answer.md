@@ -1,8 +1,19 @@
 # answer
 
-Address PR review comments marked with a rocket emoji reaction. Works locally, then acknowledges each addressed comment on GitHub.
+Address PR review comments that have been reacted to with one of the four action-item emojis. Works locally, then acknowledges each addressed comment on GitHub.
 
 **PR URL:** $ARGUMENTS
+
+## Action-item emojis
+
+Reviewers tag each suggested action with one of these GitHub reaction emojis. The set is shared with `/review`:
+
+- 🎉 `:tada:` — hooray/tada
+- 😄 `:smile:` — laugh/smile
+- 😕 `:confused:` — confused
+- 🚀 `:rocket:` — rocket
+
+A comment whose body contains multiple lines tagged with these emojis is offering several action items. A comment that's plain prose with no tags is offering a single implicit action item.
 
 ## Steps
 
@@ -14,25 +25,33 @@ Address PR review comments marked with a rocket emoji reaction. Works locally, t
    - **Review comments** (inline on code): `gh api repos/{owner}/{repo}/pulls/{pull_number}/comments --paginate`
    - **Issue comments** (top-level): `gh api repos/{owner}/{repo}/issues/{pull_number}/comments --paginate`
 
-4. **Filter for rocket-reacted comments.** Each comment's response includes a `reactions` summary with counts (e.g., `"rocket": 1`). Filter to comments where `reactions.rocket > 0`. No need to fetch the detailed reactions endpoint unless you need to know _who_ reacted.
+4. **Filter for reacted comments.** Each comment's response includes a `reactions` summary with counts. A comment is in scope when:
+   - It is plain prose (no emoji tags in body) **and** has `reactions.rocket > 0` — the 🚀 reaction is still the trigger for single-action comments, OR
+   - Its body contains one or more emoji-tagged action items (🎉/😄/😕/🚀 prefixing a line) **and** any of `reactions.hooray`, `reactions.laugh`, `reactions.confused`, or `reactions.rocket` is greater than 0.
 
-5. **Group and address rocket comments.** Group related comments into logical batches — by file, by concern, or by dependency. Launch one subagent (Agent tool) per group, not per comment. Each subagent receives:
-   - All comment bodies in the group
+   No need to fetch the detailed reactions endpoint unless you need to know _who_ reacted.
+
+5. **Determine the action items per comment.**
+   - Plain prose comment: one implicit action item — do what the comment asks.
+   - Multi-tag comment: address **every** emoji-tagged action item in the body, regardless of which specific emoji the reaction was on. The reaction is the "go" signal; the tags inside enumerate the work. If two tagged items genuinely conflict (e.g., one says "delete this", another says "rename it"), stop and ask the user via `AskUserQuestion` rather than guessing.
+
+6. **Group and address comments.** Group related comments into logical batches — by file, by concern, or by dependency. Launch one subagent (Agent tool) per group, not per comment. Each subagent receives:
+   - The comment bodies in the group, with each tagged action item enumerated
    - The file paths and line references
    - Instructions to make the fixes locally and return a summary
 
    This encourages the subagent to build context across related comments and avoids file edit collisions. Only run groups in parallel if they touch completely separate files.
 
-6. **Acknowledge each addressed comment on GitHub.** For each comment that was successfully addressed:
+7. **Acknowledge each addressed comment on GitHub.** For each comment that was successfully addressed:
    - Resolve the root comment.
    - Only add a follow-up reply comment if something non-obvious happened that the reviewer should know about (e.g., "Addressed this differently because X" or "This also required changing Y"). Don't reply just to say "done."
 
-7. **Summarize** what was addressed, listing each comment and what was changed.
+8. **Summarize** what was addressed, listing each comment and what was changed.
 
 ## Guidelines
 
 - **Local work only.** All fixes happen in the local working directory. Never push — the user's SSH key requires a password. Ask them to push when done.
-- **Rocket = do it.** The rocket emoji is the signal that a comment should be acted on. Ignore comments without rocket reactions.
+- **Reactions are the go signal.** 🚀 on a plain comment, or any of 🎉/😄/😕/🚀 on a multi-tag comment, means "address this." Comments without these reactions are ignored.
 - **Don't over-interpret.** If a comment is ambiguous about what change is needed, ask the user rather than guessing. Use `AskUserQuestion` with the comment text quoted.
 - **Respect the PR scope.** Only make changes relevant to the flagged comments. Don't refactor surrounding code or fix unrelated issues.
-- **If no rocket comments found**, tell the user and stop.
+- **If no in-scope comments are found**, tell the user and stop.

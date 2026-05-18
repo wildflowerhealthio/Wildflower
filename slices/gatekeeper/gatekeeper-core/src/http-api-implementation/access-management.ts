@@ -1,9 +1,7 @@
 import { HttpApiBuilder } from '@effect/platform'
 import { DateTime, Effect } from 'effect'
-import { GatekeeperStore } from '../contexts/gatekeeper-store.ts'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
-import { Grant, HttpRequest } from '../livestore/index.ts'
-
+import { GatekeeperStore, Grant, HttpRequest } from '../livestore/index.ts'
 const layer = HttpApiBuilder.group(GatekeeperApi, 'access-management', (handlers) =>
   handlers
     .handle('ListGrants', () =>

@@ -1,10 +1,11 @@
-import type { Schema } from 'effect'
-import { DateTime, Duration, Effect, Match } from 'effect'
+import { DateTime, Duration, Effect, Match, type Schema } from 'effect'
 import type { Origin } from 'navigation-core'
-import { GatekeeperStore } from '../../../contexts/gatekeeper-store.ts'
-import type { DeviceCodePayload } from '../../../http-api-definition/oauth.ts'
-import { OAuthError400Schema } from '../../../http-api-definition/oauth.ts'
-import { AuthorizationRequest, type AuthorizationRequestRow } from '../../../livestore/index.ts'
+import { type DeviceCodePayload, OAuthError400Schema } from '../../../http-api-definition/oauth.ts'
+import {
+  AuthorizationRequest,
+  type AuthorizationRequestRow,
+  GatekeeperStore,
+} from '../../../livestore/index.ts'
 import {
   DEVICE_CODE_POLL_INTERVAL,
   issueTokenResponse,
@@ -14,7 +15,6 @@ import {
   requireValidClientForToken,
   type TokenResponse,
 } from '../shared.ts'
-
 type DeviceCodeExchange = Schema.Schema.Type<typeof DeviceCodePayload>
 
 const getPendingDeviceCodeRequest = (

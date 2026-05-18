@@ -28,9 +28,9 @@
  * @module
  */
 
-import { State, makeSchema } from '@livestore/livestore'
-
 import { Schema } from 'effect'
+import { defineSliceLivestore } from 'kitchen-sink/livestore'
+
 import * as Binary from './binary.ts'
 import * as Observation from './observation.ts'
 import * as Patient from './patient.ts'
@@ -39,11 +39,15 @@ import * as Patient from './patient.ts'
 // Flat, spread-safe composed bindings
 // ---------------------------------------------------------------------------
 
-const tables = {
+const tables: {
+  readonly [Patient.resourceType]: Patient.Table
+  readonly [Binary.resourceType]: Binary.Table
+  readonly [Observation.resourceType]: Observation.Table
+} = {
   [Patient.resourceType]: Patient.table,
   [Binary.resourceType]: Binary.table,
   [Observation.resourceType]: Observation.table,
-} as const
+}
 
 const events = {
   patientUpsert: Patient.events.upsert,
@@ -107,9 +111,16 @@ const domainResources: DomainResources = {
   [Observation.resourceType]: Observation,
 } as const
 
-const state = State.SQLite.makeState({ tables, materializers })
+const { schema, state, StoreTag, makeLayerFactory } = defineSliceLivestore({
+  name: 'EmrStore',
+  tables,
+  events,
+  materializers,
+})
 
-const schema = makeSchema({ events, state })
+class EmrStore extends StoreTag<EmrStore>() {
+  static readonly layerFrom = makeLayerFactory(EmrStore)
+}
 
 const SyncPayload = Schema.Struct({ authToken: Schema.String })
 
@@ -118,4 +129,14 @@ export * as Binary from './binary.ts'
 export * as Observation from './observation.ts'
 
 export type { ExtensionType, ExtensionEncoded } from '../schemas/datatypes/extension.ts'
-export { schema, state, tables, events, queries, materializers, domainResources, SyncPayload }
+export {
+  schema,
+  state,
+  tables,
+  events,
+  queries,
+  materializers,
+  domainResources,
+  SyncPayload,
+  EmrStore,
+}
