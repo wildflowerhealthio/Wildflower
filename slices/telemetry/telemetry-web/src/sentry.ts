@@ -11,8 +11,8 @@ const resolveRelease = (raw: string): string | undefined => {
 
 /**
  * Initialize the Sentry Browser SDK. We do not disable any OTel bits here
- * because @sentry/react does not register a TracerProvider — we own that via
- * `@opentelemetry/sdk-trace-base`. Safe to call repeatedly.
+ * because `@sentry/react` does not register a TracerProvider — we own that
+ * via `@opentelemetry/sdk-trace-base`. Safe to call repeatedly.
  */
 const initSentryWeb = (config: TelemetryConfig): boolean => {
   if (!isSentryEnabled(config)) return false

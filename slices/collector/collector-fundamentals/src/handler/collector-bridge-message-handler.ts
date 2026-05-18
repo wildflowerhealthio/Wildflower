@@ -64,8 +64,8 @@ type OutboundMessage =
  * Transitions:
  *   AwaitingPageLoaded(n)   ─PageLoaded→ TimerPending(n, fiber)
  *   TimerPending(d, f)      ─PageLoaded→ TimerPending(d, fiber')   (f interrupted; fresh fiber)
- *   TimerPending(d, _)      ─timer fires, d < N→ AwaitingPageLoaded(d + 1)
- *   TimerPending(N, _)      ─timer fires, d ≡ N→ Done
+ *   TimerPending(d, _)      ─timer fires, `d < N` → AwaitingPageLoaded(d + 1)
+ *   TimerPending(N, _)      ─timer fires, `d ≡ N` → Done
  *   Done                    ─PageLoaded→ Done (WARN-log)
  *   any                     ─clear()→ AwaitingPageLoaded(0)
  *   any                     ─cancelAllInFlight→ AwaitingPageLoaded(d) (d preserved)

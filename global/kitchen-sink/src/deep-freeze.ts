@@ -18,9 +18,10 @@ import type { DeepReadonly } from './types/deep-readonly.ts'
  *   that want a snapshot independent of the original should clone
  *   before calling.
  *
- * Typical use: an identity factory (`Foo.make(config) =>
- *   deepFreeze({ ...config })`) that wants to hand its caller an
- * immutable value without paying for a clone on every read.
+ * Typical use: an identity factory:
+ * `Foo.make(config) => deepFreeze({ ...config })`
+ * that wants to hand its caller an immutable value without paying for
+ * a clone on every read.
  */
 const deepFreeze = <T>(value: T): DeepReadonly<T> => {
   if (value === null || (typeof value !== 'object' && typeof value !== 'function')) {

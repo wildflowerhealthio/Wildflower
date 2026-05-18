@@ -2,8 +2,6 @@
 import type { Schema } from 'effect'
 /**
  * Any schema, including `never`.
- *
- * @since 3.10.0
  */
 export type AllNoContext =
   | Schema.Schema.AnyNoContext

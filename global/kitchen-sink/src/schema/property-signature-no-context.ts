@@ -1,8 +1,6 @@
 // oxlint-disable typescript/no-explicit-any
 import type { PropertySignature } from 'effect/Schema'
-/**
- *
- */
+
 type Any<Key extends PropertyKey = PropertyKey> = PropertySignature<
   PropertySignature.Token,
   any,
@@ -13,9 +11,6 @@ type Any<Key extends PropertyKey = PropertyKey> = PropertySignature<
   never
 >
 
-/**
- * @since 3.10.0
- */
 type All<Key extends PropertyKey = PropertyKey> =
   | Any<Key>
   | PropertySignature<

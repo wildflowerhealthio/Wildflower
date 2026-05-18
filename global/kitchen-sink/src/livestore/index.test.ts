@@ -65,10 +65,27 @@ describe('defineSliceLivestore', () => {
     expect(isLiveStoreSchema(sliceLs.schema)).toBe(true)
   })
 
-  it('schema reflects the supplied tables and events', () => {
+  it('schema forwards the supplied tables and events by reference', () => {
     const sliceLs = makeSliceLs('FixtureStore')
-    expect(sliceLs.state.sqlite.tables.has('counter')).toBe(true)
-    expect(sliceLs.schema.eventsDefsMap.has('v1.CounterIncremented')).toBe(true)
+    // Reference identity (not just `.has(name)`): catches a regression
+    // that swaps the supplied table/event for a different definition
+    // with the same key.
+    expect(sliceLs.state.sqlite.tables.get('counter')).toBe(counterTable)
+    expect(sliceLs.schema.eventsDefsMap.get('v1.CounterIncremented')).toBe(counterIncremented)
+  })
+
+  it('accepts an empty schema (no tables, events, or materializers)', () => {
+    const empty = defineSliceLivestore({
+      name: 'Empty',
+      tables: {},
+      events: {},
+      materializers: {},
+    })
+    expect(isLiveStoreSchema(empty.schema)).toBe(true)
+    // Livestore injects internal tables of its own; the fixture
+    // contributes none, so `eventsDefsMap` is the cleanest signal that
+    // the supplied (empty) event set flowed through verbatim.
+    expect(empty.schema.eventsDefsMap.size).toBe(0)
   })
 
   it('layerFrom resolves the same store reference back through the tag', async () => {

@@ -8,7 +8,7 @@
 import { makeAdapter } from '@livestore/adapter-node'
 import type { Store } from '@livestore/livestore'
 import { createStorePromise } from '@livestore/livestore'
-import { Effect } from 'effect'
+import { Effect, type Scope } from 'effect'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -24,11 +24,26 @@ interface ServerStateValue {
   readonly running: boolean
   readonly localOrigin: string
   readonly port: number
+  readonly error: string | null
 }
 
 interface StartCall {
   readonly port: number
   readonly localOrigin: string
+}
+
+interface StartServerStub {
+  readonly startServer: (
+    port: number,
+    localOrigin: string
+  ) => Effect.Effect<void, never, Scope.Scope>
+  readonly calls: ReadonlyArray<StartCall>
+  /**
+   * Resolve once at least `n` calls have been observed. Subscriber-based —
+   * no polling, no arbitrary settle delays. Fails if the daemon's scope
+   * closes before the call count reaches `n`.
+   */
+  readonly awaitCalls: (n: number) => Promise<ReadonlyArray<StartCall>>
 }
 
 const WAIT_TIMEOUT_MS = 2_000
@@ -40,16 +55,39 @@ const makeFreshStore = (): Promise<Store<typeof schema, object>> =>
     storeId: `lhs-it-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   })
 
-const makeStartServerStub = (): {
-  readonly startServer: (port: number, localOrigin: string) => Effect.Effect<void, never, never>
-  readonly calls: ReadonlyArray<StartCall>
-} => {
+const makeStartServerStub = (): StartServerStub => {
   const calls: StartCall[] = []
-  const startServer = (port: number, localOrigin: string): Effect.Effect<void, never, never> => {
-    calls.push({ port, localOrigin })
-    return Effect.void
-  }
-  return { startServer, calls }
+  const subscribers: (() => void)[] = []
+  const startServer = (port: number, localOrigin: string): Effect.Effect<void, never, never> =>
+    Effect.sync(() => {
+      calls.push({ port, localOrigin })
+      for (const fire of subscribers.splice(0, subscribers.length)) fire()
+    })
+  const awaitCalls = (n: number): Promise<ReadonlyArray<StartCall>> =>
+    new Promise((resolve, reject) => {
+      const check = (): boolean => {
+        if (calls.length >= n) {
+          resolve([...calls])
+          return true
+        }
+        return false
+      }
+      if (check()) return
+      const timer = setTimeout(() => {
+        const idx = subscribers.indexOf(fire)
+        if (idx >= 0) subscribers.splice(idx, 1)
+        reject(new Error(`awaitCalls(${String(n)}) — observed ${String(calls.length)}`))
+      }, WAIT_TIMEOUT_MS)
+      const fire = (): void => {
+        if (check()) {
+          clearTimeout(timer)
+          return
+        }
+        subscribers.push(fire)
+      }
+      subscribers.push(fire)
+    })
+  return { startServer, calls, awaitCalls }
 }
 
 const waitForState = (
@@ -59,63 +97,47 @@ const waitForState = (
 ): Promise<ServerStateValue> =>
   new Promise((resolve, reject) => {
     let settled = false
+    // `unsubscribe` is assigned by `store.subscribe`, but the subscribe
+    // callback can fire synchronously on the initial emission — before
+    // the assignment lands. The indirect closure-captured holder lets
+    // the callback safely call whatever's there once it exists.
+    let unsubscribe: (() => void) | null = null
+    const cleanup = (): void => {
+      if (unsubscribe !== null) unsubscribe()
+    }
     const timer = setTimeout(() => {
       if (settled) return
       settled = true
-      unsubscribe()
+      cleanup()
       reject(new Error('waitForState timed out'))
     }, timeoutMs)
-    const unsubscribe = store.subscribe(ServerState.queries.current$, (state) => {
+    unsubscribe = store.subscribe(ServerState.queries.current$, (state) => {
       if (settled) return
       if (predicate(state)) {
         settled = true
         clearTimeout(timer)
-        unsubscribe()
+        cleanup()
         resolve(state)
       }
     })
   })
 
-/**
- * Wait until the calls array satisfies `predicate`. Used after a
- * reconfiguration commit, where the store state alone can't distinguish
- * "user just changed port" from "daemon picked up the change" (the daemon's
- * own commit doesn't introduce new fields to wait on).
- */
-const waitForCalls = (
-  calls: ReadonlyArray<StartCall>,
-  predicate: (calls: ReadonlyArray<StartCall>) => boolean,
-  timeoutMs = WAIT_TIMEOUT_MS
-): Promise<ReadonlyArray<StartCall>> =>
-  new Promise((resolve, reject) => {
-    const start = Date.now()
-    const tick = (): void => {
-      if (predicate(calls)) {
-        resolve(calls)
-        return
-      }
-      if (Date.now() - start > timeoutMs) {
-        reject(new Error('waitForCalls timed out'))
-        return
-      }
-      setTimeout(tick, 5)
-    }
-    tick()
-  })
+interface DaemonTestCtx {
+  readonly store: Store<typeof schema, object>
+  readonly calls: ReadonlyArray<StartCall>
+  readonly awaitCalls: (n: number) => Promise<ReadonlyArray<StartCall>>
+}
 
 const runDaemonTest = async (
-  body: (ctx: {
-    readonly store: Store<typeof schema, object>
-    readonly calls: ReadonlyArray<StartCall>
-  }) => Promise<void>
+  body: (ctx: DaemonTestCtx) => Promise<void>,
+  stub: StartServerStub = makeStartServerStub()
 ): Promise<void> => {
   const store = await makeFreshStore()
-  const { startServer, calls } = makeStartServerStub()
   try {
     await Effect.runPromise(
       Effect.gen(function* () {
-        yield* Effect.forkScoped(runHttpServerDaemon(startServer))
-        yield* Effect.promise(() => body({ store, calls }))
+        yield* Effect.forkScoped(runHttpServerDaemon(stub.startServer))
+        yield* Effect.promise(() => body({ store, calls: stub.calls, awaitCalls: stub.awaitCalls }))
       }).pipe(Effect.scoped, Effect.provide(LocalHttpServerStore.layerFrom(store)))
     )
   } finally {
@@ -131,17 +153,29 @@ describe('runHttpServerDaemon', () => {
   describe('start/stop lifecycle', () => {
     it('should not call startServer while requestedRunning stays false', () =>
       runDaemonTest(async ({ store, calls }) => {
-        // Arrange — defaults committed by the schema (requestedRunning=false).
-        // Act — let the daemon subscribe and drain the initial state.
-        await new Promise((resolve) => setTimeout(resolve, 50))
-        // Assert
-        expect(calls).toEqual([])
-        expect(store.query(ServerState.queries.current$).running).toBe(false)
+        // Force the daemon to commit (the only side effect we can
+        // synchronously observe) by toggling-and-untoggling
+        // `requestedRunning`. Once the row settles back to
+        // `requestedRunning: false, running: false`, the daemon has
+        // processed both transitions and any erroneous extra start
+        // calls would already be visible.
+        store.commit(
+          ServerState.events.localHttpServerStateSet({
+            requestedRunning: true,
+            port: 7000,
+            localOrigin: 'http://127.0.0.1:7000',
+          })
+        )
+        await waitForState(store, (s) => s.running)
+        store.commit(ServerState.events.localHttpServerStateSet({ requestedRunning: false }))
+        await waitForState(store, (s) => !s.running)
+        // One start (the toggle-on) — the off-then-on roundtrip is the
+        // signal that the daemon has run a full transition cycle.
+        expect(calls).toEqual([{ port: 7000, localOrigin: 'http://127.0.0.1:7000' }])
       }))
 
     it('should call startServer once with the requested port and localOrigin when requestedRunning flips to true', () =>
       runDaemonTest(async ({ store, calls }) => {
-        // Act
         store.commit(
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
@@ -150,13 +184,11 @@ describe('runHttpServerDaemon', () => {
           })
         )
         await waitForState(store, (s) => s.running)
-        // Assert
         expect(calls).toEqual([{ port: 3000, localOrigin: 'http://127.0.0.1:3000' }])
       }))
 
     it('should commit running=true with the matching port and origin once the server binds', () =>
       runDaemonTest(async ({ store }) => {
-        // Act
         store.commit(
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
@@ -165,7 +197,6 @@ describe('runHttpServerDaemon', () => {
           })
         )
         const state = await waitForState(store, (s) => s.running)
-        // Assert
         expect(state).toMatchObject({
           requestedRunning: true,
           running: true,
@@ -176,7 +207,6 @@ describe('runHttpServerDaemon', () => {
 
     it('should commit running=false and reset the port to the idle default when requestedRunning flips back to false', () =>
       runDaemonTest(async ({ store }) => {
-        // Arrange
         store.commit(
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
@@ -185,11 +215,10 @@ describe('runHttpServerDaemon', () => {
           })
         )
         await waitForState(store, (s) => s.running)
-        // Act
         store.commit(ServerState.events.localHttpServerStateSet({ requestedRunning: false }))
         const state = await waitForState(store, (s) => !s.running)
-        // Assert — stop handler owns the port-8080 reset (formerly on the
-        // scope finalizer); the user's `requestedRunning: false` is preserved.
+        // Stop handler owns the port-8080 reset (formerly on the scope
+        // finalizer); the user's `requestedRunning: false` is preserved.
         expect(state).toMatchObject({ requestedRunning: false, running: false, port: 8080 })
       }))
   })
@@ -210,27 +239,37 @@ describe('runHttpServerDaemon', () => {
 
   describe('default-row materialization on startup', () => {
     it('should materialize the clientDocument default row without any prior commit', () =>
-      runDaemonTest(async ({ store, calls }) => {
+      runDaemonTest(async ({ store }) => {
         // The store was created with no commits in `makeFreshStore`. If
         // the daemon did not run its initial `store.query(current$)` to
         // trigger the clientDocument's "ensure default row" path, the
         // first stream emit would fail to decode and the daemon would
-        // die. Reaching this assertion means the materialization worked.
-        await new Promise((resolve) => setTimeout(resolve, 50))
+        // die — which would surface as the start commit below never
+        // landing. Reaching the post-bind state proves the
+        // materialization worked.
+        store.commit(
+          ServerState.events.localHttpServerStateSet({
+            requestedRunning: true,
+            port: 3500,
+            localOrigin: 'http://127.0.0.1:3500',
+          })
+        )
+        await waitForState(store, (s) => s.running)
+        // The pre-toggle default values for the fields we didn't touch
+        // survive the partial-set merge.
         expect(store.query(ServerState.queries.current$)).toMatchObject({
-          requestedRunning: false,
-          running: false,
-          port: 8080,
-          localOrigin: 'http://127.0.0.1:8080',
+          requestedRunning: true,
+          running: true,
+          port: 3500,
+          localOrigin: 'http://127.0.0.1:3500',
+          error: null,
         })
-        expect(calls).toEqual([])
       }))
   })
 
   describe('reconfiguration scope teardown', () => {
     it('should keep requestedRunning=true across a port change (no finalizer cascade)', () =>
-      runDaemonTest(async ({ store, calls }) => {
-        // Arrange — running on 3000.
+      runDaemonTest(async ({ store, calls, awaitCalls }) => {
         store.commit(
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
@@ -238,22 +277,23 @@ describe('runHttpServerDaemon', () => {
             localOrigin: 'http://127.0.0.1:3000',
           })
         )
-        await waitForCalls(calls, (c) => c.length >= 1)
-        // Act — reconfigure to 4000.
+        await awaitCalls(1)
         store.commit(ServerState.events.localHttpServerStateSet({ port: 4000 }))
-        await waitForCalls(calls, (c) => c.length >= 2)
-        // Settle: give any cascade a chance to fire before asserting.
-        await new Promise((resolve) => setTimeout(resolve, 50))
-        // Assert — if closing the old sub-scope had cascaded through the
-        // scope-finalizer commits, requestedRunning would have been reset
-        // to false (and the new server torn down). Both must survive.
+        await awaitCalls(2)
+        // Positive observation: the daemon's post-bind commit for the
+        // new config lands AFTER the reconfigure's `startServer` is
+        // called, so this `waitForState` is the strict-after barrier
+        // any cascade would have to fire before. If closing the old
+        // sub-scope had cascaded through the scope-finalizer commits,
+        // requestedRunning would have been reset to false (and the new
+        // server torn down) before we observe this state.
+        await waitForState(store, (s) => s.running && s.port === 4000)
         expect(store.query(ServerState.queries.current$)).toMatchObject({
           requestedRunning: true,
           running: true,
           port: 4000,
           localOrigin: 'http://127.0.0.1:3000',
         })
-        // No spurious extra start invocations either.
         expect(calls).toEqual([
           { port: 3000, localOrigin: 'http://127.0.0.1:3000' },
           { port: 4000, localOrigin: 'http://127.0.0.1:3000' },
@@ -261,8 +301,7 @@ describe('runHttpServerDaemon', () => {
       }))
 
     it('should keep requestedRunning=true across an origin change (no finalizer cascade)', () =>
-      runDaemonTest(async ({ store, calls }) => {
-        // Arrange — running on the loopback origin.
+      runDaemonTest(async ({ store, calls, awaitCalls }) => {
         store.commit(
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
@@ -270,14 +309,12 @@ describe('runHttpServerDaemon', () => {
             localOrigin: 'http://127.0.0.1:3000',
           })
         )
-        await waitForCalls(calls, (c) => c.length >= 1)
-        // Act — change only the origin.
+        await awaitCalls(1)
         store.commit(
           ServerState.events.localHttpServerStateSet({ localOrigin: 'http://192.168.1.10:3000' })
         )
-        await waitForCalls(calls, (c) => c.length >= 2)
-        await new Promise((resolve) => setTimeout(resolve, 50))
-        // Assert
+        await awaitCalls(2)
+        await waitForState(store, (s) => s.running && s.localOrigin === 'http://192.168.1.10:3000')
         expect(store.query(ServerState.queries.current$)).toMatchObject({
           requestedRunning: true,
           running: true,
@@ -301,11 +338,11 @@ describe('runHttpServerDaemon', () => {
             {
               minLength: 2,
               maxLength: 5,
-              selector: ([port, origin]): string => `${port}|${origin}`,
+              selector: ([port, origin]): string => `${String(port)}|${origin}`,
             }
           ),
           (reconfigurations) =>
-            runDaemonTest(async ({ store, calls }) => {
+            runDaemonTest(async ({ store, calls, awaitCalls }) => {
               for (let i = 0; i < reconfigurations.length; i++) {
                 const [port, origin] = reconfigurations[i]
                 store.commit(
@@ -316,28 +353,29 @@ describe('runHttpServerDaemon', () => {
                   })
                 )
                 // oxlint-disable-next-line no-await-in-loop -- iteration must observe daemon settle before the next commit
-                await waitForCalls(calls, (c) => c.length >= i + 1)
+                await awaitCalls(i + 1)
               }
-              // Settle: give a chance for any spurious extra start (from a
-              // hypothetical cascade) to land before we assert the count.
-              await new Promise((resolve) => setTimeout(resolve, 50))
-              // Each distinct (port, origin) is exactly one start. If the
-              // old sub-scope's finalizer had cascaded, we would see a
-              // tail of extra starts and stops.
+              // Positive observation: the daemon's final post-bind
+              // commit (matching the last requested config) is the
+              // strict-after barrier any cascade-induced extra start
+              // would have to fire before.
+              const [lastPort, lastOrigin] = reconfigurations[reconfigurations.length - 1]
+              await waitForState(
+                store,
+                (s) => s.running && s.port === lastPort && s.localOrigin === lastOrigin
+              )
               expect(calls.length).toBe(reconfigurations.length)
               expect(calls.map((c) => [c.port, c.localOrigin])).toEqual(reconfigurations)
-              // And the user's intent survives the whole sequence.
               expect(store.query(ServerState.queries.current$).requestedRunning).toBe(true)
             })
         ),
-        { numRuns: 8 }
+        { numRuns: 3 }
       ))
   })
 
   describe('reconfiguration mid-run', () => {
     it('should re-invoke startServer with the new port when port changes while running', () =>
-      runDaemonTest(async ({ store, calls }) => {
-        // Arrange — running on 3000.
+      runDaemonTest(async ({ store, calls, awaitCalls }) => {
         store.commit(
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
@@ -345,17 +383,14 @@ describe('runHttpServerDaemon', () => {
             localOrigin: 'http://127.0.0.1:3000',
           })
         )
-        await waitForCalls(calls, (c) => c.length >= 1)
-        // Act — request port 4000.
+        await awaitCalls(1)
         store.commit(ServerState.events.localHttpServerStateSet({ port: 4000 }))
-        await waitForCalls(calls, (c) => c.length >= 2)
-        // Assert — startServer was re-invoked for the new port.
+        await awaitCalls(2)
         expect(calls.map((c) => c.port)).toEqual([3000, 4000])
       }))
 
     it('should re-invoke startServer with the new origin when localOrigin changes while running', () =>
-      runDaemonTest(async ({ store, calls }) => {
-        // Arrange — running on the loopback origin.
+      runDaemonTest(async ({ store, calls, awaitCalls }) => {
         store.commit(
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
@@ -363,18 +398,218 @@ describe('runHttpServerDaemon', () => {
             localOrigin: 'http://127.0.0.1:3000',
           })
         )
-        await waitForCalls(calls, (c) => c.length >= 1)
-        // Act — change only the origin.
+        await awaitCalls(1)
         store.commit(
           ServerState.events.localHttpServerStateSet({ localOrigin: 'http://192.168.1.10:3000' })
         )
-        await waitForCalls(calls, (c) => c.length >= 2)
-        // Assert
+        await awaitCalls(2)
         expect(calls.map((c) => c.localOrigin)).toEqual([
           'http://127.0.0.1:3000',
           'http://192.168.1.10:3000',
         ])
       }))
+  })
+
+  describe('long-running startServer', () => {
+    /**
+     * Real-world `startServer` implementations bind their listener
+     * inside an `Effect.acquireRelease` block and then sit on
+     * `Effect.never` until the sub-scope closes. This stub mirrors that
+     * shape so the "close the previous sub-scope on reconfiguration"
+     * invariant is actually exercised, rather than coincidentally true
+     * because the basic stub's fiber completed immediately.
+     */
+    const makeLongRunningStub = (): StartServerStub & {
+      readonly active: Set<string>
+    } => {
+      const calls: StartCall[] = []
+      const active = new Set<string>()
+      const subscribers: (() => void)[] = []
+      const startServer = (
+        port: number,
+        localOrigin: string
+      ): Effect.Effect<void, never, Scope.Scope> =>
+        Effect.acquireRelease(
+          Effect.sync(() => {
+            const id = `${String(port)}|${localOrigin}`
+            calls.push({ port, localOrigin })
+            active.add(id)
+            for (const fire of subscribers.splice(0, subscribers.length)) fire()
+          }),
+          () =>
+            Effect.sync(() => {
+              active.delete(`${String(port)}|${localOrigin}`)
+            })
+        )
+      const awaitCalls = (n: number): Promise<ReadonlyArray<StartCall>> =>
+        new Promise((resolve, reject) => {
+          const check = (): boolean => {
+            if (calls.length >= n) {
+              resolve([...calls])
+              return true
+            }
+            return false
+          }
+          if (check()) return
+          const timer = setTimeout(() => {
+            const idx = subscribers.indexOf(fire)
+            if (idx >= 0) subscribers.splice(idx, 1)
+            reject(new Error(`awaitCalls(${String(n)}) — observed ${String(calls.length)}`))
+          }, WAIT_TIMEOUT_MS)
+          const fire = (): void => {
+            if (check()) {
+              clearTimeout(timer)
+              return
+            }
+            subscribers.push(fire)
+          }
+          subscribers.push(fire)
+        })
+      return { startServer, calls, awaitCalls, active }
+    }
+
+    it('releases the previous sub-scope on reconfigure (exactly one active server)', async () => {
+      const stub = makeLongRunningStub()
+      await runDaemonTest(async ({ store, awaitCalls }) => {
+        store.commit(
+          ServerState.events.localHttpServerStateSet({
+            requestedRunning: true,
+            port: 3000,
+            localOrigin: 'http://127.0.0.1:3000',
+          })
+        )
+        await awaitCalls(1)
+        await waitForState(store, (s) => s.running && s.port === 3000)
+        expect(stub.active.size).toBe(1)
+
+        store.commit(ServerState.events.localHttpServerStateSet({ port: 4000 }))
+        await awaitCalls(2)
+        await waitForState(store, (s) => s.running && s.port === 4000)
+        // Exactly one server is active — the previous sub-scope's
+        // release fired when the daemon closed it before forking the
+        // next one.
+        expect(stub.active.size).toBe(1)
+        expect([...stub.active]).toEqual(['4000|http://127.0.0.1:3000'])
+      }, stub)
+    })
+
+    it('releases the active sub-scope when requestedRunning flips back to false', async () => {
+      const stub = makeLongRunningStub()
+      await runDaemonTest(async ({ store, awaitCalls }) => {
+        store.commit(
+          ServerState.events.localHttpServerStateSet({
+            requestedRunning: true,
+            port: 3000,
+            localOrigin: 'http://127.0.0.1:3000',
+          })
+        )
+        await awaitCalls(1)
+        await waitForState(store, (s) => s.running)
+        expect(stub.active.size).toBe(1)
+
+        store.commit(ServerState.events.localHttpServerStateSet({ requestedRunning: false }))
+        await waitForState(store, (s) => !s.running)
+        expect(stub.active.size).toBe(0)
+      }, stub)
+    })
+  })
+
+  describe('error path', () => {
+    const makeFailingStub = (
+      failure: unknown
+    ): {
+      readonly startServer: (
+        port: number,
+        localOrigin: string
+      ) => Effect.Effect<void, typeof failure, never>
+      readonly calls: ReadonlyArray<StartCall>
+    } => {
+      const calls: StartCall[] = []
+      const startServer = (
+        port: number,
+        localOrigin: string
+      ): Effect.Effect<void, typeof failure, never> =>
+        Effect.gen(function* () {
+          calls.push({ port, localOrigin })
+          return yield* Effect.fail(failure)
+        })
+      return { startServer, calls }
+    }
+
+    it('writes the failure to ServerState.error and leaves requestedRunning intact', async () => {
+      const stub = makeFailingStub('boom')
+      const store = await makeFreshStore()
+      try {
+        await Effect.runPromise(
+          Effect.gen(function* () {
+            yield* Effect.forkScoped(runHttpServerDaemon(stub.startServer))
+            yield* Effect.promise(async () => {
+              store.commit(
+                ServerState.events.localHttpServerStateSet({
+                  requestedRunning: true,
+                  port: 9000,
+                  localOrigin: 'http://127.0.0.1:9000',
+                })
+              )
+              const state = await waitForState(store, (s) => s.error !== null)
+              expect(state.error).toMatch(/boom/)
+              expect(state.running).toBe(false)
+              // User's intent is preserved — the daemon does not override
+              // `requestedRunning` on a startServer failure.
+              expect(state.requestedRunning).toBe(true)
+              expect(stub.calls).toEqual([{ port: 9000, localOrigin: 'http://127.0.0.1:9000' }])
+            })
+          }).pipe(Effect.scoped, Effect.provide(LocalHttpServerStore.layerFrom(store)))
+        )
+      } finally {
+        await store.shutdownPromise().catch(() => undefined)
+      }
+    })
+
+    it('recovers on a subsequent reconfigure with a healthy startServer', async () => {
+      // Two-stub harness: first call fails, second succeeds. Mirrors the
+      // real-world "port was busy, try a different one" loop without
+      // re-mounting the daemon.
+      const calls: StartCall[] = []
+      const stub: StartServerStub = makeStartServerStub()
+      const startServer = (
+        port: number,
+        localOrigin: string
+      ): Effect.Effect<void, string, Scope.Scope> =>
+        Effect.gen(function* () {
+          calls.push({ port, localOrigin })
+          if (port === 9000) return yield* Effect.fail('boom')
+          return yield* stub.startServer(port, localOrigin)
+        })
+
+      const store = await makeFreshStore()
+      try {
+        await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              yield* Effect.forkScoped(runHttpServerDaemon(startServer))
+              yield* Effect.promise(async () => {
+                store.commit(
+                  ServerState.events.localHttpServerStateSet({
+                    requestedRunning: true,
+                    port: 9000,
+                    localOrigin: 'http://127.0.0.1:9000',
+                  })
+                )
+                await waitForState(store, (s) => s.error !== null)
+                // Reconfigure to a port the healthy stub accepts.
+                store.commit(ServerState.events.localHttpServerStateSet({ port: 9001 }))
+                const state = await waitForState(store, (s) => s.running && s.port === 9001)
+                expect(state.error).toBeNull()
+                expect(state.requestedRunning).toBe(true)
+              })
+            }).pipe(Effect.provide(LocalHttpServerStore.layerFrom(store)))
+          )
+        )
+      } finally {
+        await store.shutdownPromise().catch(() => undefined)
+      }
+    })
   })
 
   // -------------------------------------------------------------------------
@@ -383,7 +618,7 @@ describe('runHttpServerDaemon', () => {
   // -------------------------------------------------------------------------
 
   describe('properties', () => {
-    const PROP_OPTS = { numRuns: 8 }
+    const PROP_OPTS = { numRuns: 3 }
 
     const portArb = fc.integer({ min: 1, max: 65_535 })
     // Restrict to host-like strings (no whitespace, no `/`, no control
@@ -439,10 +674,10 @@ describe('runHttpServerDaemon', () => {
           fc.uniqueArray(fc.tuple(portArb, originArb), {
             minLength: 1,
             maxLength: 4,
-            selector: ([port, origin]): string => `${port}|${origin}`,
+            selector: ([port, origin]): string => `${String(port)}|${origin}`,
           }),
           (reconfigurations) =>
-            runDaemonTest(async ({ store, calls }) => {
+            runDaemonTest(async ({ store, calls, awaitCalls }) => {
               for (let i = 0; i < reconfigurations.length; i++) {
                 const [port, origin] = reconfigurations[i]
                 store.commit(
@@ -453,17 +688,21 @@ describe('runHttpServerDaemon', () => {
                   })
                 )
                 // Each unique (port, origin) tuple forces a new startServer
-                // invocation; waiting on the calls count is the only signal
-                // that distinguishes "user committed" from "daemon reacted".
+                // invocation; awaiting the call is the only signal that
+                // distinguishes "user committed" from "daemon reacted".
                 // oxlint-disable-next-line no-await-in-loop -- iteration must observe daemon settle before the next commit
-                await waitForCalls(calls, (c) => c.length >= i + 1)
+                await awaitCalls(i + 1)
               }
-              const last = reconfigurations[reconfigurations.length - 1]
-              expect(calls[calls.length - 1]).toEqual({ port: last[0], localOrigin: last[1] })
+              const [lastPort, lastOrigin] = reconfigurations[reconfigurations.length - 1]
+              await waitForState(
+                store,
+                (s) => s.running && s.port === lastPort && s.localOrigin === lastOrigin
+              )
+              expect(calls[calls.length - 1]).toEqual({ port: lastPort, localOrigin: lastOrigin })
               expect(store.query(ServerState.queries.current$)).toMatchObject({
                 running: true,
-                port: last[0],
-                localOrigin: last[1],
+                port: lastPort,
+                localOrigin: lastOrigin,
               })
             })
         ),

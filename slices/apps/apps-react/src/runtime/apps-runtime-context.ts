@@ -6,9 +6,9 @@ import { createContext } from 'react'
 /**
  * The tunnel-response outcomes the apps runtime resolves a pending
  * `useRequestTunnel` call with. Mirrors the AppsBridge Host→Web
- * messages — `_tag: 'TunnelStarted'` carries the new origin, `_tag:
- * 'TunnelFailed'` carries a human-readable reason — flattened into the
- * shape callers actually observe (`{ origin } | { error }`).
+ * messages — `_tag: 'TunnelStarted'` carries the new origin,
+ * `_tag: 'TunnelFailed'` carries a human-readable reason — flattened
+ * into the shape callers actually observe (`{ origin } | { error }`).
  */
 type TunnelOutcome = { readonly origin: string } | { readonly error: string }
 

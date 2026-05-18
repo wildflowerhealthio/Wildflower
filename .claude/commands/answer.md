@@ -13,7 +13,7 @@ Reviewers tag each suggested action with one of these GitHub reaction emojis. Th
 - 😕 `:confused:` — confused
 - 🚀 `:rocket:` — rocket
 
-A comment whose body contains multiple lines tagged with these emojis is offering several action items. A comment that's plain prose with no tags is offering a single implicit action item.
+Comments authored by `/review` follow this structure: an **analysis** paragraph at the top (no emoji prefix), followed by one or more lines each prefixed with one of the four emojis. Each emoji-prefixed line is a distinct action item. A comment that's plain prose with no tags (typically authored by hand) is offering a single implicit action item.
 
 ## Steps
 
@@ -33,7 +33,9 @@ A comment whose body contains multiple lines tagged with these emojis is offerin
 
 5. **Determine the action items per comment.**
    - Plain prose comment: one implicit action item — do what the comment asks.
-   - Multi-tag comment: address **every** emoji-tagged action item in the body, regardless of which specific emoji the reaction was on. The reaction is the "go" signal; the tags inside enumerate the work. If two tagged items genuinely conflict (e.g., one says "delete this", another says "rename it"), stop and ask the user via `AskUserQuestion` rather than guessing.
+   - Tagged comment: read the analysis paragraph (if present) for context, then address **every** emoji-tagged action item in the body, regardless of which specific emoji the reaction was on. The reaction is the "go" signal; the tags inside enumerate the work. If two tagged items genuinely conflict (e.g., one says "delete this", another says "rename it"), stop and ask the user via `AskUserQuestion` rather than guessing.
+   - Multi-tag comment: address the action items from the body which have a corresponding reaction. If two reaction's items seem to conflict (e.g., one says "delete this", another says "rename it"), stop and ask the user via `AskUserQuestion` rather than guessing.
+
 
 6. **Group and address comments.** Group related comments into logical batches — by file, by concern, or by dependency. Launch one subagent (Agent tool) per group, not per comment. Each subagent receives:
    - The comment bodies in the group, with each tagged action item enumerated

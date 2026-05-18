@@ -18,13 +18,9 @@ import type * as SchemaNoContext from './schema-no-context.ts'
  * //      ▼
  * const result = f(Schema.Struct({ a: Schema.String, b: Schema.Number }))
  * ```
- * @since 3.13.11
  */
 type FieldNoContext = SchemaNoContext.AllNoContext | PropertySignatureNoContext.All
 
-/**
- * @since 3.10.0
- */
 type FieldsNoContext = { readonly [x: string]: FieldNoContext } & {
   readonly [x: number]: never
 } & { readonly [x: symbol]: never }
@@ -46,10 +42,6 @@ interface TypeLiteralNoContext<
   never
 > {}
 
-/**
- * @category api interface
- * @since 3.10.0
- */
 interface StructNoContext<Fields extends FieldsNoContext> extends Schema.AnnotableClass<
   StructNoContext<Fields>,
   Schema.Simplify<Schema.Struct.Type<Fields>>,
@@ -76,10 +68,6 @@ interface StructNoContext<Fields extends FieldsNoContext> extends Schema.Annotab
   ): Schema.Struct<Schema.Simplify<Omit<Fields, Keys[number]>>>
 }
 
-/**
- * @category constructors
- * @since 3.10.0
- */
 function StructNoContext<
   Fields extends FieldsNoContext,
   const Records extends IndexSignature.NonEmptyRecords,

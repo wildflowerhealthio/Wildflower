@@ -3,11 +3,10 @@ import { Schema } from 'effect'
 import type { GrantRow, HttpRequestRow } from '../livestore/index.ts'
 import { RequireAuthMiddleware } from './require-auth.ts'
 /**
- * `Grant`: a record that the Owner approved a specific `(clientId,
- * redirectUri)` pair to receive tokens for a specific scope set, at a
- * specific point in time. A Grant is the materialized consent decision —
- * it survives across requests so the OAuth client doesn't have to be
- * re-approved on every authorize call.
+ * `Grant`: a record that the Owner approved a specific `(clientId, redirectUri)`
+ * pair to receive tokens for a specific scope set, at a specific point in time.
+ * A Grant is the materialized consent decision — it survives across requests
+ * so the OAuth client doesn't have to be re-approved on every authorize call.
  *
  * The wire shape mirrors the `grants` table row 1:1; the
  * `_grantWireMirrorsRow` thunk below is a compile-time guard — it never

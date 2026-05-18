@@ -5,15 +5,9 @@ import type * as HttpPlatform from '@effect/platform/HttpPlatform'
  *
  * Handles `fileResponse` by passing file paths directly to the native layer
  * (no bytes cross the JS bridge for large files).
- *
- * @since 0.1.0
  */
 import type * as Layer from 'effect/Layer'
 import * as internal from './internal/httpPlatform.ts'
 
-/**
- * @since 0.1.0
- * @category layers
- */
 export const layer: Layer.Layer<HttpPlatform.HttpPlatform, never, FileSystem.FileSystem> =
   internal.layer
