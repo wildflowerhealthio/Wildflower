@@ -151,14 +151,14 @@ const runDaemonTest = async (
 
 describe('runHttpServerDaemon', () => {
   describe('start/stop lifecycle', () => {
-    it('should not call startServer while requestedRunning stays false', () =>
+    it('should produce exactly one start call across an off→on→off cycle', () =>
       runDaemonTest(async ({ store, calls }) => {
-        // Force the daemon to commit (the only side effect we can
-        // synchronously observe) by toggling-and-untoggling
-        // `requestedRunning`. Once the row settles back to
-        // `requestedRunning: false, running: false`, the daemon has
-        // processed both transitions and any erroneous extra start
-        // calls would already be visible.
+        // The row defaults to `requestedRunning: false`. Toggling on
+        // then off again forces the daemon through a full transition
+        // cycle; the only legitimate start call is the toggle-on, so
+        // any spurious extras from the off-transitions would already
+        // be visible by the time the row settles back to
+        // `requestedRunning: false, running: false`.
         store.commit(
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,

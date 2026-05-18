@@ -191,6 +191,7 @@ const runHttpServerDaemon = <E>(
           yield* Scope.close(serverScope, Exit.void)
           yield* commitState({
             running: false,
+            requestedRunning: true,
             error: Cause.pretty(Cause.fail(bindResult.left)),
           })
           // Remember the failed (port, origin) so the error-commit's own
@@ -207,7 +208,7 @@ const runHttpServerDaemon = <E>(
         // user update committed while the daemon was binding (the
         // overwrite then disappears from the stream queue and the
         // daemon never reconfigures).
-        yield* commitState({ running: true, error: null })
+        yield* commitState({ requestedRunning: true, running: true, error: null })
         return { _tag: 'Running', serverScope, port, localOrigin } as const
       })
 
