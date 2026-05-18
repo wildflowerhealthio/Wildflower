@@ -1,14 +1,14 @@
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import type { Store } from '@livestore/livestore'
 import { Effect, Layer } from 'effect'
+import { PublicOrigin } from 'tunnel-core/contexts'
+import {
+  queries as tunnelQueries,
+  type schema as tunnelSchema,
+  TunnelStore,
+} from 'tunnel-core/livestore'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import {
-  type ServerState,
-  TunnelControl,
-  TunnelUnavailable,
-  type TunnelControlService,
-} from '../contexts/tunnel-control.ts'
 import {
   type AppSelectionRow,
   AppsStore,
@@ -20,39 +20,78 @@ import { AppsApiLive } from './index.ts'
 // `AppsStore.Service` is just a `Store<schema, object>`. The test only
 // hits `query`, so we type the helper through that surface.
 type AppsStoreService = Store<typeof schema, object>
+type TunnelStoreService = Store<typeof tunnelSchema, object>
 
-// --- Test fixtures ----------------------------------------------------
-
-const baseServerState = (overrides: Partial<ServerState> = {}): ServerState => ({
-  origin: 'https://tunnel.example.com',
-  localOrigin: 'http://localhost:8787',
-  port: 8787,
-  tunnelActive: false,
-  ...overrides,
-})
+interface TunnelStateView {
+  requestedPublicOrigin: string | null
+  currentPublicOrigin: string | null
+}
 
 interface MockTunnelOptions {
-  state?: ServerState
-  // Pre-canned sequence of states `setTunnelActive` should resolve to.
-  // Defaults to flipping `tunnelActive` to the requested value.
-  setTunnelActiveResult?: (active: boolean) => Effect.Effect<ServerState, TunnelUnavailable>
+  initial?: Partial<TunnelStateView>
+  // When set, the next `commit` will populate `currentPublicOrigin` with
+  // this value and notify subscribers — simulating an immediate tunnel
+  // acquire. Leave undefined to never resolve (lets timeouts fire).
+  resolveTo?: string
 }
 
-const makeMockTunnel = (options: MockTunnelOptions = {}): TunnelControlService => {
-  let currentState = options.state ?? baseServerState()
-  return {
-    getState: Effect.sync(() => currentState),
-    setTunnelActive:
-      options.setTunnelActiveResult ??
-      ((active: boolean): Effect.Effect<ServerState, TunnelUnavailable> => {
-        currentState = { ...currentState, tunnelActive: active }
-        return Effect.succeed(currentState)
-      }),
+interface MockTunnelHandle {
+  store: TunnelStoreService
+  commit: ReturnType<typeof vi.fn>
+  state: TunnelStateView
+}
+
+const makeMockTunnel = (options: MockTunnelOptions = {}): MockTunnelHandle => {
+  const state: TunnelStateView = {
+    requestedPublicOrigin: options.initial?.requestedPublicOrigin ?? null,
+    currentPublicOrigin: options.initial?.currentPublicOrigin ?? null,
   }
+  type Subscriber = (state: TunnelStateView) => void
+  const subscribers = new Set<Subscriber>()
+
+  const commit = vi.fn((event: unknown): void => {
+    const payload =
+      typeof event === 'object' && event !== null && 'args' in event
+        ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          (event as { args: { value: Partial<TunnelStateView> } }).args.value
+        : undefined
+    if (payload !== undefined) {
+      if ('requestedPublicOrigin' in payload) {
+        state.requestedPublicOrigin = payload.requestedPublicOrigin ?? null
+      }
+      if ('currentPublicOrigin' in payload) {
+        state.currentPublicOrigin = payload.currentPublicOrigin ?? null
+      }
+    }
+    if (options.resolveTo !== undefined && state.requestedPublicOrigin !== null) {
+      state.currentPublicOrigin = options.resolveTo
+    }
+    for (const sub of subscribers) sub({ ...state })
+  })
+
+  const query = vi.fn((q: unknown): unknown => {
+    if (q === tunnelQueries.current$) return { ...state }
+    return undefined
+  })
+
+  const subscribe = vi.fn((q: unknown, cb: (value: unknown) => void) => {
+    if (q !== tunnelQueries.current$) return () => undefined
+    const wrapped: Subscriber = (s) => cb({ ...s })
+    subscribers.add(wrapped)
+    // Fire initial snapshot synchronously — mirrors livestore's
+    // subscribe contract.
+    wrapped(state)
+    return () => {
+      subscribers.delete(wrapped)
+    }
+  })
+
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const store = { query, commit, subscribe } as unknown as TunnelStoreService
+  return { store, commit, state }
 }
 
-// Identify a LiveQueryDef by its stable `hash` — same approach as
-// gatekeeper-core's oauth-endpoints.test.ts.
+// Identify a LiveQueryDef by its stable `hash`.
 const queryHash = (q: unknown): string | undefined => {
   if (typeof q === 'object' && q !== null && 'hash' in q && typeof q.hash === 'string') {
     return q.hash
@@ -62,8 +101,6 @@ const queryHash = (q: unknown): string | undefined => {
 
 interface MockStoreOptions {
   rows?: ReadonlyArray<AppSelectionRow>
-  // Override `byId$` lookup on a per-call basis (useful for the
-  // row-disappears-mid-flight test).
   byIdImpl?: (id: string) => AppSelectionRow | undefined
 }
 
@@ -77,23 +114,16 @@ const makeMockStore = (options: MockStoreOptions = {}): AppsStoreService => {
     }
     const hash = queryHash(q)
     if (hash !== undefined) {
-      // Cheap reverse lookup: try every known id against `byId$.hash`.
       for (const row of rowsArr) {
         if (livestoreQueries.appSelectionById$(row.id).hash === hash) {
           return byIdImpl(row.id)
         }
       }
-      // The row may not be in `rowsArr` (e.g. unknown id) — fall back to
-      // a fresh probe so `byIdImpl` can return something useful too.
-      // We don't know the id without the hash → call byIdImpl with each
-      // candidate from `rowsArr` already; the only remaining case is a
-      // miss, so return undefined.
       return undefined
     }
     return undefined
   })
 
-  // The handler only needs `query`. Keep the mock minimal.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return {
     query,
@@ -102,21 +132,12 @@ const makeMockStore = (options: MockStoreOptions = {}): AppsStoreService => {
   } as unknown as AppsStoreService
 }
 
-// Drop in a stub that lets us probe `byId$` lookups by id regardless of
-// the underlying `rows` array — used by the race-condition test where
-// the first call returns a row and the second returns undefined.
 const makeMockStoreWithDynamicById = (
   byIdImpl: (id: string) => AppSelectionRow | undefined
 ): AppsStoreService => {
-  // The handler asks for byId twice in the same request when the entry
-  // is custom + tunnel work happened. We pre-register every id we'll
-  // probe so the hash lookup can find them.
   const knownIds = ['custom-1', 'custom-mystery']
   const query = vi.fn((q: unknown): unknown => {
-    if (q === livestoreQueries.appSelection$) {
-      // Test only reaches this branch from LaunchApp; return empty.
-      return []
-    }
+    if (q === livestoreQueries.appSelection$) return []
     const hash = queryHash(q)
     if (hash !== undefined) {
       for (const id of knownIds) {
@@ -135,15 +156,23 @@ const makeMockStoreWithDynamicById = (
   } as unknown as AppsStoreService
 }
 
-// --- Wire up the handler via toWebHandler ----------------------------
+interface CreateHandlerOptions {
+  publicOrigin?: string
+}
 
 const createHandler = (
   store: AppsStoreService,
-  tunnel: TunnelControlService
+  tunnel: MockTunnelHandle,
+  options: CreateHandlerOptions = {}
 ): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
+  const publicOriginValue = options.publicOrigin ?? 'https://tunnel.example.com'
+  const publicOriginLayer = Layer.succeed(PublicOrigin, {
+    get: Effect.succeed(publicOriginValue),
+  })
   const apiLive = AppsApiLive.pipe(
     Layer.provide(AppsStore.layerFrom(store)),
-    Layer.provide(Layer.succeed(TunnelControl, tunnel))
+    Layer.provide(Layer.succeed(TunnelStore, tunnel.store)),
+    Layer.provide(publicOriginLayer)
   )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }
@@ -162,12 +191,10 @@ describe('ListApps handler', () => {
         kind: string
         enabled: boolean
       }>
-      // Bundled apps default to enabled.
       const fhirSharing = body.find((a) => a.id === 'fhir-sharing')
       expect(fhirSharing).toBeDefined()
       expect(fhirSharing?.kind).toBe('action')
       expect(fhirSharing?.enabled).toBe(true)
-      // No custom apps in the selection → none in the response.
       expect(body.every((a) => a.kind !== 'custom')).toBe(true)
     } finally {
       await dispose()
@@ -239,12 +266,26 @@ describe('ListApps handler', () => {
 
 describe('LaunchApp handler', () => {
   it('redirects to the bundled url for a non-action app that does not require a tunnel', async () => {
-    const { handler, dispose } = createHandler(
-      makeMockStore(),
-      makeMockTunnel({ state: baseServerState({ tunnelActive: false }) })
-    )
+    const { handler, dispose } = createHandler(makeMockStore(), makeMockTunnel())
     try {
       const response = await handler(new Request('http://localhost/apps/patient-browser'))
+      if (response.status !== 302) {
+        // oxlint-disable-next-line no-console
+        console.error('DEBUG status:', response.status)
+        // oxlint-disable-next-line no-console
+        console.error(
+          'DEBUG headers:',
+          JSON.stringify(Object.fromEntries(response.headers.entries()))
+        )
+        // oxlint-disable-next-line no-console
+        console.error(
+          'DEBUG body bytes:',
+          await response
+            .clone()
+            .arrayBuffer()
+            .then((b) => b.byteLength)
+        )
+      }
       expect(response.status).toBe(302)
       expect(response.headers.get('location')).toBe(
         'https://tunnel.example.com/installed-apps/patient-browser/index.html'
@@ -254,12 +295,10 @@ describe('LaunchApp handler', () => {
     }
   })
 
-  it('redirects an action app (fhir-sharing) to the origin', async () => {
-    // fhir-sharing requires the tunnel; start with it active so the
-    // handler doesn't try to flip it on.
+  it('redirects an action app (fhir-sharing) to the origin when tunnel is already up', async () => {
     const { handler, dispose } = createHandler(
       makeMockStore(),
-      makeMockTunnel({ state: baseServerState({ tunnelActive: true }) })
+      makeMockTunnel({ initial: { currentPublicOrigin: 'https://tunnel.example.com' } })
     )
     try {
       const response = await handler(new Request('http://localhost/apps/fhir-sharing'))
@@ -270,25 +309,14 @@ describe('LaunchApp handler', () => {
     }
   })
 
-  it('activates the tunnel before redirect when a bundled app requires one', async () => {
-    const setTunnelActive = vi.fn(
-      (active: boolean): Effect.Effect<ServerState, TunnelUnavailable> =>
-        Effect.succeed(baseServerState({ tunnelActive: active }))
-    )
-    const { handler, dispose } = createHandler(
-      makeMockStore(),
-      makeMockTunnel({
-        state: baseServerState({ tunnelActive: false }),
-        setTunnelActiveResult: setTunnelActive,
-      })
-    )
+  it('commits a request and waits for currentPublicOrigin before redirecting', async () => {
+    const tunnel = makeMockTunnel({ resolveTo: 'https://tunnel.example.com' })
+    const { handler, dispose } = createHandler(makeMockStore(), tunnel)
     try {
       const response = await handler(new Request('http://localhost/apps/growth-chart'))
-      expect(setTunnelActive).toHaveBeenCalledWith(true)
+      expect(tunnel.commit).toHaveBeenCalled()
       expect(response.status).toBe(302)
       const location = response.headers.get('location') ?? ''
-      // Growth-chart's URL pattern is an external host with the live
-      // origin as the `iss` query param. We only verify the host + iss.
       expect(location).toContain('https://examples.smarthealthit.org/growth-chart-app/launch.html')
       expect(location).toContain('iss=https://tunnel.example.com/fhir-r4')
     } finally {
@@ -296,37 +324,25 @@ describe('LaunchApp handler', () => {
     }
   })
 
-  it('logs a warning and falls back to the bundled url when tunnel activation fails', async () => {
-    const failedActivate = vi.fn(
-      (_active: boolean): Effect.Effect<ServerState, TunnelUnavailable> =>
-        Effect.fail(new TunnelUnavailable({ reason: 'no-credentials' }))
-    )
-    const { handler, dispose } = createHandler(
-      makeMockStore(),
-      makeMockTunnel({
-        state: baseServerState({ tunnelActive: false }),
-        setTunnelActiveResult: failedActivate,
-      })
-    )
+  it('falls back to PublicOrigin when the await times out', async () => {
+    // `resolveTo` not set → mock never delivers currentPublicOrigin →
+    // handler's awaitCurrentPublicOrigin hits its 15s timeout. We set
+    // publicOrigin explicitly so we can assert the fallback path; the
+    // longer runtime is accepted via the test's 20s timeout.
+    const tunnel = makeMockTunnel()
+    const { handler, dispose } = createHandler(makeMockStore(), tunnel, {
+      publicOrigin: 'https://tunnel.example.com',
+    })
     try {
-      // patient-browser is non-action and doesn't itself require a
-      // tunnel, but the *logging-warning* path can fire on any app that
-      // does require one. Use `medication-viewer` (requires tunnel,
-      // non-action) so we get the warning + still 302 to the bundled
-      // URL with `iss=` pointing at the *original* (non-tunneled)
-      // origin.
       const response = await handler(new Request('http://localhost/apps/medication-viewer'))
-      expect(failedActivate).toHaveBeenCalled()
+      expect(tunnel.commit).toHaveBeenCalled()
       expect(response.status).toBe(302)
       const location = response.headers.get('location') ?? ''
-      expect(location).toContain('https://mitre.github.io/smart-on-fhir-demo/launch.html')
-      // Origin still the un-activated origin (handler falls back to
-      // `beforeState`).
       expect(location).toContain('iss=https://tunnel.example.com/fhir-r4')
     } finally {
       await dispose()
     }
-  })
+  }, 20_000)
 
   it('redirects a custom app whose template resolves to a same-origin path', async () => {
     const store = makeMockStore({
@@ -341,10 +357,7 @@ describe('LaunchApp handler', () => {
         },
       ],
     })
-    const { handler, dispose } = createHandler(
-      store,
-      makeMockTunnel({ state: baseServerState({ tunnelActive: false }) })
-    )
+    const { handler, dispose } = createHandler(store, makeMockTunnel())
     try {
       const response = await handler(new Request('http://localhost/apps/custom-1'))
       expect(response.status).toBe(302)
@@ -355,9 +368,6 @@ describe('LaunchApp handler', () => {
   })
 
   it('rejects a custom app whose resolved url is neither same-origin nor https://', async () => {
-    // Set a customUrl that bypasses the schema (e.g. an absolute
-    // http:// URL — schema would reject, but we're testing the launch-
-    // time defense-in-depth check directly via a mocked row).
     const store = makeMockStore({
       rows: [
         {
@@ -397,7 +407,7 @@ describe('LaunchApp handler', () => {
     }
   })
 
-  it('returns 404 when a custom row exists before tunnel activation but disappears mid-flight', async () => {
+  it('returns 404 when a custom row exists before tunnel work but disappears mid-flight', async () => {
     let calls = 0
     const byIdImpl = (id: string): AppSelectionRow | undefined => {
       calls += 1
@@ -412,13 +422,12 @@ describe('LaunchApp handler', () => {
           customRequiresTunnel: true,
         }
       }
-      // Second call (after tunnel state settles) — row gone.
       return undefined
     }
     const store = makeMockStoreWithDynamicById(byIdImpl)
     const { handler, dispose } = createHandler(
       store,
-      makeMockTunnel({ state: baseServerState({ tunnelActive: false }) })
+      makeMockTunnel({ resolveTo: 'https://tunnel.example.com' })
     )
     try {
       const response = await handler(new Request('http://localhost/apps/custom-1'))

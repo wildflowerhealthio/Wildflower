@@ -1,5 +1,5 @@
 {
-  "name": "apps-react",
+  "name": "tunnel-react",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -18,30 +18,24 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/react": "catalog:",
-    "apps-core": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "react-router": "catalog:",
     "react-tundraish": "workspace:*",
     "telemetry-react": "workspace:*",
     "tunnel-core": "workspace:*",
-    "tunnel-react": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
-    "apps-core": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "react-router": "catalog:",
     "react-tundraish": "workspace:*",
     "telemetry-react": "workspace:*",
-    "tunnel-core": "workspace:*",
-    "tunnel-react": "workspace:*"
+    "tunnel-core": "workspace:*"
   }
 }

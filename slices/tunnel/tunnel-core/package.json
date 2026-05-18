@@ -1,13 +1,13 @@
 {
-  "name": "apps-core",
+  "name": "tunnel-core",
   "version": "0.0.0",
   "private": true,
-  "description": "App registry, hosting-tier escalation protocol, and HTTP API for launching FHIR apps.",
+  "description": "Tunnel-state context, HTTP API, and client. Host-agnostic Effect Tag + /tunnel endpoints.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/apps/apps-core"
+    "directory": "slices/tunnel/tunnel-core"
   },
   "files": [
     "dist"
@@ -17,14 +17,6 @@
     ".": {
       "source": "./src/index.ts",
       "default": "./dist/index.js"
-    },
-    "./bridge": {
-      "source": "./src/bridge.ts",
-      "default": "./dist/bridge.js"
-    },
-    "./registry": {
-      "source": "./src/registry/index.ts",
-      "default": "./dist/registry/index.js"
     },
     "./clients": {
       "source": "./src/clients/index.ts",
@@ -46,6 +38,10 @@
       "source": "./src/livestore/index.ts",
       "default": "./dist/livestore/index.js"
     },
+    "./canonical-url": {
+      "source": "./src/canonical-url.ts",
+      "default": "./dist/canonical-url.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -66,10 +62,9 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
-    "tunnel-core": "workspace:*",
+    "local-http-server-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -80,8 +75,7 @@
     "@livestore/peer-deps": "catalog:",
     "@livestore/utils": "catalog:",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "kitchen-sink": "workspace:*",
-    "tunnel-core": "workspace:*"
+    "local-http-server-core": "workspace:*"
   }
 }

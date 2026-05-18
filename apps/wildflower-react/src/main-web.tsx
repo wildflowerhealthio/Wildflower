@@ -5,6 +5,7 @@ import { FhirR4ResourcesClientProvider } from 'fhir-r4-react'
 import { authTokenRef, GatekeeperClientProvider } from 'gatekeeper-react'
 import { AuthTokenProvider } from 'react-kitchen-sink'
 import { BrowserRouter, Routes } from 'react-router'
+import { TunnelClientProvider } from 'tunnel-react'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
 import * as AppRoot from './app-root.tsx'
@@ -49,7 +50,9 @@ AppRoot.render(
                   <CollectorClientProvider>
                     <FhirR4ResourcesClientProvider>
                       <AppsClientProvider>
-                        <Routes>{appRoutesFragment}</Routes>
+                        <TunnelClientProvider>
+                          <Routes>{appRoutesFragment}</Routes>
+                        </TunnelClientProvider>
                       </AppsClientProvider>
                     </FhirR4ResourcesClientProvider>
                   </CollectorClientProvider>
