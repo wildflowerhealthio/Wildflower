@@ -571,6 +571,9 @@ importers:
       kitchen-sink:
         specifier: workspace:*
         version: link:../../global/kitchen-sink
+      local-http-server-core:
+        specifier: workspace:*
+        version: link:../../slices/local-http-server/local-http-server-core
       navigation-core:
         specifier: workspace:*
         version: link:../../slices/navigation/navigation-core
@@ -580,6 +583,9 @@ importers:
       telemetry-node:
         specifier: workspace:*
         version: link:../../slices/telemetry/telemetry-node
+      tunnel-core:
+        specifier: workspace:*
+        version: link:../../slices/tunnel/tunnel-core
       wildflower-react:
         specifier: workspace:*
         version: link:../wildflower-react
@@ -717,6 +723,9 @@ importers:
       effect:
         specifier: 3.21.2
         version: 3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      emr-core:
+        specifier: workspace:*
+        version: link:../../slices/emr/emr-core
       fast-check:
         specifier: 'catalog:'
         version: 3.23.1
@@ -729,6 +738,15 @@ importers:
       kitchen-sink:
         specifier: workspace:*
         version: link:../../global/kitchen-sink
+      local-http-server-core:
+        specifier: workspace:*
+        version: link:../../slices/local-http-server/local-http-server-core
+      navigation-core:
+        specifier: workspace:*
+        version: link:../../slices/navigation/navigation-core
+      tunnel-core:
+        specifier: workspace:*
+        version: link:../../slices/tunnel/tunnel-core
       typescript:
         specifier: 5.9.3
         version: 5.9.3

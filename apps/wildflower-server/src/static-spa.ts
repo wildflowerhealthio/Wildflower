@@ -33,7 +33,15 @@ const sanitizeRequestPath = (pathname: string): Option.Option<string> => {
   if (containsParentSegment(pathname)) return Option.none()
   // `new URL('//foo/bar', base)` treats `//foo` as a protocol-relative authority.
   const cleaned = pathname.replace(/^\/+/, '/')
-  const normalized = new URL(cleaned, 'http://placeholder/').pathname
+  // `new URL` throws "Invalid URL" on some inputs the property test
+  // explored (e.g. a lone backslash). Treat any unparseable pathname
+  // as "no safe path".
+  let normalized: string
+  try {
+    normalized = new URL(cleaned, 'http://placeholder/').pathname
+  } catch {
+    return Option.none()
+  }
   const stripped = normalized.replace(/^\/+/, '').replace(/\/+/g, '/')
   if (stripped === '.') return Option.some('')
   return Option.some(stripped)

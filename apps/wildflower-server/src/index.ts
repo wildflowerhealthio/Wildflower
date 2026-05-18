@@ -1,3 +1,6 @@
+/* oxlint-disable import/max-dependencies -- cross-platform server composition; one import per slice
+   makes the layer graph readable. */
+import type { HttpRouter } from '@effect/platform'
 import {
   Cookies,
   Headers,
@@ -7,11 +10,15 @@ import {
   HttpMiddleware,
   HttpServerResponse,
 } from '@effect/platform'
+import type { HttpServer } from '@effect/platform/HttpServer'
 import { AppsAdminApi, AppsApi } from 'apps-core/http-api-definition'
 import { AppsAdminApiHandlersFor, AppsApiHandlersFor } from 'apps-core/http-api-implementation'
+import type { AppsStore } from 'apps-core/livestore'
 import { CollectorApi } from 'collector-core/http-api-definition'
 import { CollectorApiHandlersFor } from 'collector-core/http-api-implementation'
+import type { CollectorStore } from 'collector-core/livestore'
 import { Effect, Layer, pipe } from 'effect'
+import type { EmrStore } from 'emr-core/livestore'
 import { FhirPublicApi, FhirResourcesApi } from 'fhir-r4/http-api-definition'
 import {
   FhirPublicApiHandlersFor,
@@ -24,9 +31,17 @@ import {
   RequireAuthMiddleware,
   RequireAuthMiddlewareLive,
 } from 'gatekeeper-core/http-api-implementation'
+import type { GatekeeperStore } from 'gatekeeper-core/livestore'
+import type { CryptoRandom } from 'kitchen-sink/crypto-random'
+import type { LocalHttpServerStore } from 'local-http-server-core/livestore'
+import type { Origin } from 'navigation-core'
+import type { PublicOrigin } from 'tunnel-core/contexts'
+import { TunnelAdminApi } from 'tunnel-core/http-api-definition'
+import { TunnelAdminApiHandlersFor } from 'tunnel-core/http-api-implementation'
+import type { TunnelStore } from 'tunnel-core/livestore'
 import { VendorAppsApi } from 'vendor-apps/http-api-definition'
 import { VendorAppsApiHandlersFor } from 'vendor-apps/http-api-implementation'
-import { StaticSpaLive } from './static-spa.ts'
+import { StaticSpaLive, type WebAssetsDir } from './static-spa.ts'
 
 /**
  * CORS allows any origin — this server is intended for broad consumption
@@ -86,11 +101,11 @@ const stripCookiesMiddleware = HttpMiddleware.make((app) =>
 
 const middleware = HttpMiddleware.make((app) => stripCookiesMiddleware(corsMiddleware(app)))
 
-// The apps slice exposes two HttpApis: `AppsApi` (public — `ListApps`
-// + `LaunchApp`, reachable by embedded webviews / iframes without a
-// bearer) and `AppsAdminApi` (owner-only — custom-app writes + tunnel
-// config). Auth is applied here, in the composing app, not in the
-// slice itself.
+// Slice surfaces: `AppsApi` (public — `ListApps` + `LaunchApp`,
+// reachable by embedded webviews / iframes without a bearer),
+// `AppsAdminApi` (owner-only — custom-app writes), and `TunnelAdminApi`
+// (owner-only — tunnel state read + toggle). Auth is applied here, in
+// the composing app, not in the slices themselves.
 const WildflowerHttpApi = HttpApi.make('WildflowerApi')
   .addHttpApi(GatekeeperApi)
   .addHttpApi(FhirResourcesApi.middleware(RequireAuthMiddleware))
@@ -98,6 +113,7 @@ const WildflowerHttpApi = HttpApi.make('WildflowerApi')
   .addHttpApi(CollectorApi.middleware(RequireAuthMiddleware))
   .addHttpApi(AppsApi)
   .addHttpApi(AppsAdminApi.middleware(RequireAuthMiddleware))
+  .addHttpApi(TunnelAdminApi.middleware(RequireAuthMiddleware))
   .addHttpApi(VendorAppsApi)
 
 const WildflowerHttpApiLive = HttpApiBuilder.api(WildflowerHttpApi).pipe(
@@ -107,23 +123,43 @@ const WildflowerHttpApiLive = HttpApiBuilder.api(WildflowerHttpApi).pipe(
   Layer.provide(CollectorApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(AppsApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(AppsAdminApiHandlersFor<'WildflowerApi'>()),
+  Layer.provide(TunnelAdminApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(VendorAppsApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(RequireAuthMiddlewareLive),
   Layer.provide(SmartConfigurationLive)
 )
 
 /**
- * Cross-platform server Layer. Composes the HTTP API (Gatekeeper + FHIR
- * resources/public + Apps + VendorApps), the SPA static-file fallback,
- * and Swagger docs.
+ * Cross-platform server Layer. Composes the HTTP API (Gatekeeper +
+ * FHIR resources/public + Apps + AppsAdmin + TunnelAdmin + VendorApps),
+ * the SPA static-file fallback, and Swagger docs.
  *
  * @remarks
  * Platform runner must supply: `HttpServer.HttpServer`,
  * `FileSystem.FileSystem`, `Path.Path`, `WebAssetsDir`, plus the
- * services the API handlers consume (`Origin`, `CryptoRandom`,
- * `LivestoreStore`, `GatekeeperStore`, `AppsStore`, `TunnelControl`).
+ * services the API handlers consume (`Origin`, `PublicOrigin`,
+ * `CryptoRandom`, `EmrStore`, `GatekeeperStore`, `CollectorStore`,
+ * `AppsStore`, `TunnelStore`, `LocalHttpServerStore`).
+ *
+ * See `docs/Composition Explanation.md` for the requirements table,
+ * the layer graph, and the boot-sequence rationale.
  */
-const WildflowerServerLive = HttpApiBuilder.serve(middleware).pipe(
+const WildflowerServerLive: Layer.Layer<
+  never,
+  never,
+  | AppsStore
+  | CollectorStore
+  | CryptoRandom
+  | EmrStore
+  | GatekeeperStore
+  | HttpRouter.HttpRouter.DefaultServices
+  | HttpServer
+  | LocalHttpServerStore
+  | Origin
+  | PublicOrigin
+  | TunnelStore
+  | WebAssetsDir
+> = HttpApiBuilder.serve(middleware).pipe(
   Layer.provide(HttpApiSwagger.layer()),
   Layer.provide(WildflowerHttpApiLive),
   Layer.provide(StaticSpaLive)

@@ -23,10 +23,14 @@
     "apps-core": "workspace:*",
     "collector-core": "workspace:*",
     "effect": "catalog:",
+    "emr-core": "workspace:*",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
     "gatekeeper-core": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "local-http-server-core": "workspace:*",
+    "navigation-core": "workspace:*",
+    "tunnel-core": "workspace:*",
     "typescript": "catalog:",
     "vendor-apps": "workspace:*",
     "vite": "catalog:",
@@ -40,6 +44,8 @@
     "fhir-r4": "workspace:*",
     "gatekeeper-core": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "local-http-server-core": "workspace:*",
+    "tunnel-core": "workspace:*",
     "vendor-apps": "workspace:*"
   }
 }
