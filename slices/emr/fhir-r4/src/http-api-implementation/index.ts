@@ -1,7 +1,7 @@
 import { type HttpApiGroup, HttpApiBuilder } from '@effect/platform'
 import { Layer } from 'effect'
 
-import type { EmrStore } from 'emr-core/contexts'
+import type { EmrStore } from 'emr-core/livestore'
 import type { Origin } from 'navigation-core'
 import { FhirPublicApi, FhirResourcesApi } from '../http-api-definition/index.ts'
 import {

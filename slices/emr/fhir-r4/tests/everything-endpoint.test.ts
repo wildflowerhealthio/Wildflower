@@ -1,6 +1,6 @@
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { Layer } from 'effect'
-import { EmrStore } from 'emr-core/contexts'
+import { EmrStore } from 'emr-core/livestore'
 import type { Observation as StoreObservation, Patient as StorePatient } from 'emr-core/livestore'
 import { Origin } from 'navigation-core'
 import { describe, expect, test } from 'vite-plus/test'

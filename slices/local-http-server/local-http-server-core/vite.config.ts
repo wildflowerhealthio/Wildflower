@@ -7,8 +7,8 @@ export default defineConfig({
     exports: false,
     platform: 'neutral',
     entry: {
-      index: 'src/index.ts',
       'livestore/index': 'src/livestore/index.ts',
+      'daemon/index': 'src/daemon/index.ts',
     },
   },
   lint: {

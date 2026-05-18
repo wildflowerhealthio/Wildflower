@@ -4,8 +4,7 @@ import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise, type Store } from '@livestore/livestore'
 import { Effect, Layer } from 'effect'
 
-import { EmrStore } from 'emr-core/contexts'
-import { schema } from 'emr-core/livestore'
+import { EmrStore, schema } from 'emr-core/livestore'
 import { Origin } from 'navigation-core'
 
 import { FhirPublicApi, FhirResourcesApi } from '../src/http-api-definition/index.ts'

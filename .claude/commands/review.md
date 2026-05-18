@@ -13,21 +13,59 @@ Every action item in every comment must be tagged with one of these GitHub react
 - 😕 `:confused:` — confused
 - 🚀 `:rocket:` — rocket
 
-Tags exist so the PR author can react with the matching emoji to signal "do this," and so `/answer` can find the action items. A comment with a single action item uses one tag. A comment with multiple suggestions tags each one on its own line (one emoji per line, prefix only). Comments with no actionable suggestion (pure observation or praise) carry no tag, but should be rare — reviews exist to drive change.
+Tags exist so the PR author can react with the matching emoji to signal "do this," and so `/answer` can find the action items. The four emojis are equivalent labels — pick whichever feels right. The PR author reacts with a matching emoji to greenlight that specific action item.
 
-Reviewers should:
+### Comment structure
 
-- Pick whichever emoji feels right for the suggestion; the four are interchangeable labels, not a severity scale.
-- Use multiple tags **only when there are genuinely multiple distinct action items** (alternatives, or a primary fix plus a follow-up). Don't manufacture options for a one-line fix.
-- Keep the action item itself terse and concrete — the tag is the contract with `/answer`.
-
-Example multi-option comment:
+**Analysis first, then emoji-tagged actions.** A comment body looks like:
 
 ```
-:tada: add a `ts-ignore` with a comment pointing to issue #123
-:rocket: write proper types for the call sites
-:smile: widen the input type so the cast isn't needed
+<one or two sentences explaining what's wrong and why it matters>
+
+🎉 <action item 1>
+
+🚀 <action item 2>
 ```
+
+The analysis sits at the top, unprefixed. Each action item gets its own line, prefixed with exactly one emoji. **Repeat the emoji+action pair for every distinct action** — including separate concerns that share an analysis, separate alternatives, and primary-plus-follow-up pairs. If a comment has only one action item, the body is just analysis followed by one tagged line.
+
+When a finding has two genuinely distinct sub-issues that share one analysis (e.g. "the log tag is wrong" plus "the term `serverLayer` is outdated"), split them into separate tagged lines rather than burying the second concern inside the first.
+
+### Examples
+
+Single-action comment:
+
+```
+The cast on line 42 bypasses the project's type-safety rule and the input isn't validated at this boundary.
+
+🚀 replace the `as any` with a `Predicate.isString` guard
+```
+
+Multi-action comment (two distinct, both necessary):
+
+```
+The log tag identifies this as the expo package, but the file lives in `-core`, and `serverLayer` is outdated since the daemon now takes a `startServer` Effect rather than a Layer.
+
+🚀 rename the tag to `[local-http-server-core]`
+
+😕 replace `serverLayer failed` with `startServer failed`
+```
+
+Multi-action comment with genuine alternatives the author should pick between:
+
+```
+This `as unknown as Service` cast isn't on `CLAUDE.md`'s allowed-exceptions list, but the helper centralises N per-slice copies so removing it would regress.
+
+🎉 add a paragraph to the JSDoc justifying the cast under the "deeply technical foundation" carve-out
+
+🚀 extend `CLAUDE.md`'s exception list to mention `defineSliceLivestore`
+```
+
+Even if the only "alternatives" you'd offer for a one-line fix are paraphrases of each other (e.g. "raise numRuns to 50 OR document why it's 8"), use **two** action items phrased as the outcome ("numRuns: 8 reflects a real wall-clock budget"). Multi-emoji is a contract with the author — every line is a separate "go" target — so don't pad it.
+
+### Concrete and terse
+
+Each action item should name a specific change, it may depend on the analysis above to be understood. The emoji tag is the contract with `/answer`; the line after it is what gets done.
 
 ## Steps
 
@@ -59,7 +97,7 @@ Example multi-option comment:
    - The structured return format below
    - Instruction to be read-only — no file edits, no git operations
 
-   Each subagent returns a JSON-shaped list of findings:
+   Each subagent returns a JSON-shaped list of findings. Each `body` follows the **analysis first, then emoji-tagged actions** structure described in the "Action-item emojis" section above:
 
    ```
    [
@@ -67,7 +105,7 @@ Example multi-option comment:
        "path": "slices/foo/foo-core/src/bar.ts",
        "line": 42,
        "side": "RIGHT",
-       "body": ":rocket: replace the `as any` with a `Predicate.isString` guard"
+       "body": "The cast bypasses the project's type-safety rule and the input isn't validated at this boundary.\n\n🚀 replace the `as any` with a `Predicate.isString` guard"
      },
      ...
    ]
@@ -100,7 +138,7 @@ Example multi-option comment:
 
 - **One review, not many.** Never call the reviews API more than once per invocation, and never post comments via the per-comment endpoint (`POST /pulls/{n}/comments`) — that creates loose comments outside any review.
 - **Tags are mandatory on action items.** A finding without an emoji tag is a finding the PR author can't react to and `/answer` will skip. Edit subagent output to add tags if missing.
-- **Don't manufacture multi-option comments.** Use multiple tags only when there are real alternatives or distinct work items. A single suggestion gets a single tag.
+- **Analysis first, then tagged actions.** Every body opens with the "what's wrong / why it matters" analysis, then one emoji-prefixed action item per line. Repeat the emoji+action pair for every distinct action — including separate concerns that share an analysis, and alternatives the author should pick between. See the "Action-item emojis" section for examples.
 - **Read-only.** Neither the orchestrator nor the subagents modify files, run builds, or push anything. This command produces a GitHub review and nothing else.
 - **Scope to the diff.** Comments must be on changed lines (or, for `side: "LEFT"`, deleted lines). Don't comment on untouched code, even if it's bad.
 - **Subagents run in parallel.** All Agent tool calls go in a single message. Sequential spawning negates the point of using multiple focuses.

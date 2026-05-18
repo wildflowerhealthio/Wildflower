@@ -6,11 +6,19 @@ import {
 } from '@livestore/livestore'
 import { Context, Layer } from 'effect'
 
-// Mirror the constraints `State.SQLite.makeState` already accepts. Using
-// the InputState lookups keeps the helper's input boundary in lockstep
-// with livestore's API and avoids re-deriving the `Materializer<any>`
-// shape locally (oxlint forbids explicit `any` in this codebase).
+/**
+ * Shape of the `tables` record accepted by `State.SQLite.makeState`.
+ * Re-exported so consumers that build the record outside the
+ * {@link defineSliceLivestore} call (e.g. via spreading) can annotate
+ * it without re-deriving livestore's internal `Materializer<any>` shape.
+ */
 type InputTables = State.SQLite.InputState['tables']
+
+/**
+ * Shape of the `materializers` record accepted by
+ * `State.SQLite.makeState`. Re-exported for the same reason as
+ * {@link InputTables}.
+ */
 type InputMaterializers = State.SQLite.InputState['materializers']
 
 /**
@@ -21,9 +29,13 @@ type InputMaterializers = State.SQLite.InputState['materializers']
  * returns the derived `schema` / `state` plus two factories the slice
  * uses to wire a `Context.Tag` into the rest of its Effect graph:
  *
- *  - `StoreTag<Self>()` returns a `Context.TagClass<Self, Name, Store<typeof schema, object>>`.
- *    The slice extends from this so its class name (`EmrStore`, etc.)
- *    remains both a value and a type alias, exactly like the standalone
+ *  - `StoreTag<Self>()` returns the result of
+ *    `Context.Tag(name)<Self, Store<typeof schema, object>>()` (its
+ *    return type is intentionally inferred, not the bare
+ *    `Context.TagClass<...>` interface, so callers can still reach for
+ *    `typeof MyStore.Service` / `MyStore.Identifier`). The slice extends
+ *    from this so its class name (`EmrStore`, etc.) remains both a
+ *    value and a type alias, exactly like the standalone
  *    `Context.Tag(name)<Self, Service>()` pattern.
  *  - `makeLayerFactory(Tag)` returns `(store) => Layer.Layer<Self>` for a
  *    `Store<TSchema, object>` whose schema is a *superset* of the

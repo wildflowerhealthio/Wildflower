@@ -296,7 +296,7 @@ describe('runHttpServerDaemon', () => {
           fc.uniqueArray(
             fc.tuple(
               fc.integer({ min: 1, max: 65_535 }),
-              fc.string({ minLength: 1, maxLength: 16 }).map((s) => `http://${s}`)
+              fc.stringMatching(/^[a-z0-9][a-z0-9.-]{0,15}$/).map((s) => `http://${s}`)
             ),
             {
               minLength: 2,
@@ -386,7 +386,10 @@ describe('runHttpServerDaemon', () => {
     const PROP_OPTS = { numRuns: 8 }
 
     const portArb = fc.integer({ min: 1, max: 65_535 })
-    const originArb = fc.string({ minLength: 1, maxLength: 32 }).map((s) => `http://${s}`)
+    // Restrict to host-like strings (no whitespace, no `/`, no control
+    // chars) so the property exercises the daemon's behavior across
+    // distinct origins rather than string-encoding edge cases.
+    const originArb = fc.stringMatching(/^[a-z0-9][a-z0-9.-]{0,31}$/).map((s) => `http://${s}`)
 
     it('should always forward the requested port and origin into startServer', () =>
       fc.assert(

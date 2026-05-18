@@ -26,10 +26,6 @@
       "source": "./src/clients/index.ts",
       "default": "./dist/clients/index.js"
     },
-    "./contexts": {
-      "source": "./src/contexts/index.ts",
-      "default": "./dist/contexts/index.js"
-    },
     "./http-api-definition": {
       "source": "./src/http-api-definition/index.ts",
       "default": "./dist/http-api-definition/index.js"

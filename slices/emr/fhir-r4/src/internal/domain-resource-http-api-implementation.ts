@@ -7,7 +7,7 @@ import {
 } from '@effect/platform'
 import type { Queryable, State } from '@livestore/livestore'
 import { Effect, type Layer, Schema } from 'effect'
-import { EmrStore } from 'emr-core/contexts'
+import { EmrStore } from 'emr-core/livestore'
 import { Bundle as StoreBundle } from 'emr-core/schemas'
 import { Origin } from 'navigation-core'
 

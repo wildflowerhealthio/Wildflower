@@ -37,8 +37,18 @@ const { schema, state, StoreTag, makeLayerFactory } = defineSliceLivestore({
   materializers,
 })
 
+/**
+ * Effect tag carrying the local-http-server slice's livestore Store.
+ *
+ * Wire it via `LocalHttpServerStore.layerFrom(store)` from the app-level
+ * host package; consumers (e.g. {@link runHttpServerDaemon}) request this
+ * tag rather than the bare livestore Store so app schemas can spread the
+ * slice's tables/events/materializers without leaking the underlying
+ * livestore type.
+ */
 class LocalHttpServerStore extends StoreTag<LocalHttpServerStore>() {
   static readonly layerFrom = makeLayerFactory(LocalHttpServerStore)
 }
 
+export { DEFAULT_IDLE_PORT, DEFAULT_LOCAL_ORIGIN } from './server-state.ts'
 export { events, LocalHttpServerStore, materializers, queries, schema, ServerState, state, tables }

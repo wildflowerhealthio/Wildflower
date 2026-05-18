@@ -1,4 +1,3 @@
-export { GatekeeperStore } from '../livestore/index.ts'
 export { approveAuthorizationRequest, denyAuthorizationRequest } from './oauth-consent-decisions.ts'
 export { cleanupExpiredAuthorizationRequests, cleanupExpiredAuthorizationCodes } from './cleanup.ts'
 export { mintHostOwnerToken } from './mint-host-owner-token.ts'
