@@ -38,8 +38,7 @@
     "build": "vp pack",
     "check": "vp check",
     "dev": "vp pack --watch",
-    "jest": "jest",
-    "prepublishOnly": "vp run build"
+    "jest": "jest"
   },
   "devDependencies": {
     "@babel/core": "catalog:",
@@ -48,6 +47,7 @@
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "babel-preset-expo": "catalog:",
+    "effect": "catalog:",
     "eventemitter3": "^5.0.4",
     "expo": "catalog:",
     "expo-module-scripts": "catalog:",
@@ -56,13 +56,16 @@
     "jest-expo": "catalog:",
     "react": "catalog:",
     "react-native": "catalog:",
+    "tunnel-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "effect": "catalog:",
     "eventemitter3": "^5.0.4",
     "expo": ">=54.0.0",
     "react": ">=19.0.0",
-    "react-native": ">=0.81.0"
+    "react-native": ">=0.81.0",
+    "tunnel-core": "workspace:*"
   }
 }
