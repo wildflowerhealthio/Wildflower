@@ -398,7 +398,7 @@ describe('runTunnelDaemon', () => {
   })
 
   describe('properties', () => {
-    const PROP_OPTS = { numRuns: 3 }
+    const PROP_OPTS = { numRuns: 50 }
 
     const subdomainArb = fc.stringMatching(/^[a-z][a-z0-9-]{0,15}$/)
     const portArb = fc.integer({ min: 1, max: 65_535 })

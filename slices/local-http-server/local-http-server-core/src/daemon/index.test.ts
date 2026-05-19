@@ -369,7 +369,7 @@ describe('runHttpServerDaemon', () => {
               expect(store.query(ServerState.queries.current$).requestedRunning).toBe(true)
             })
         ),
-        { numRuns: 3 }
+        { numRuns: 100 }
       ))
   })
 
@@ -618,7 +618,7 @@ describe('runHttpServerDaemon', () => {
   // -------------------------------------------------------------------------
 
   describe('properties', () => {
-    const PROP_OPTS = { numRuns: 3 }
+    const PROP_OPTS = { numRuns: 100 }
 
     const portArb = fc.integer({ min: 1, max: 65_535 })
     // Restrict to host-like strings (no whitespace, no `/`, no control
