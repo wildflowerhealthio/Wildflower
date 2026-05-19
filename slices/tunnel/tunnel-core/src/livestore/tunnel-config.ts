@@ -15,16 +15,6 @@ const columns = {
   requestedEnabled: State.SQLite.boolean({ default: false }),
 } as const
 
-type Table = State.SQLite.TableDef<
-  State.SQLite.DefaultSqliteTableDef & { readonly name: 'TunnelConfig' },
-  State.SQLite.TableOptions,
-  Schema.Schema<
-    Schema.Struct.Type<{ [K in keyof typeof columns]: (typeof columns)[K]['schema'] }>,
-    Schema.Struct.Encoded<{ [K in keyof typeof columns]: (typeof columns)[K]['schema'] }>,
-    never
-  >
->
-
 /**
  * User/host-owned tunnel config — persistent across sessions.
  *
@@ -35,10 +25,12 @@ type Table = State.SQLite.TableDef<
  * The daemon reads this table and writes only `TunnelState`; nothing
  * here is daemon-owned.
  */
-const table: Table = State.SQLite.table({
+const table = State.SQLite.table({
   name: 'TunnelConfig',
   columns,
 })
+
+type Table = typeof table
 
 type TunnelConfigRow = (typeof table)['Type']
 

@@ -14,10 +14,6 @@
   ],
   "type": "module",
   "exports": {
-    ".": {
-      "source": "./src/index.ts",
-      "default": "./dist/index.js"
-    },
     "./clients": {
       "source": "./src/clients/index.ts",
       "default": "./dist/clients/index.js"

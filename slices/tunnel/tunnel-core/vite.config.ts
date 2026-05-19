@@ -7,7 +7,6 @@ export default defineConfig({
     exports: false,
     platform: 'neutral',
     entry: {
-      index: 'src/index.ts',
       'clients/index': 'src/clients/index.ts',
       'daemon/index': 'src/daemon/index.ts',
       'http-api-definition/index': 'src/http-api-definition/index.ts',

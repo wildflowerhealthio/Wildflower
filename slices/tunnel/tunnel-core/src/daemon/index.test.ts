@@ -1,9 +1,9 @@
 /**
  * Tests for `runTunnelDaemon` — verifies the daemon's reaction to
  * `TunnelConfig` transitions against an in-memory livestore plus a stubbed
- * `startTunnel`. The stub succeeds with `void` to signal "tunnel up" (the
- * same signal the daemon's `Effect.tap` watches for) and is forked by the
- * daemon into a sub-scope per tunnel.
+ * `startTunnel`. The stub succeeds with the granted `{subdomain, rootDomain}`
+ * to signal "tunnel up" (the same signal the daemon's `Effect.tap` watches
+ * for) and is forked by the daemon into a sub-scope per tunnel.
  */
 import { makeAdapter } from '@livestore/adapter-node'
 import type { Store } from '@livestore/livestore'
@@ -13,7 +13,7 @@ import fc from 'fast-check'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import { schema, TunnelConfig, TunnelState, TunnelStore } from '../livestore/index.ts'
-import { type ResolvedConfig, runTunnelDaemon } from './index.ts'
+import { type GrantedConfig, type ResolvedConfig, runTunnelDaemon } from './index.ts'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -28,7 +28,7 @@ interface TunnelStateValue {
 }
 
 interface StartTunnelStub {
-  readonly startTunnel: (config: ResolvedConfig) => Effect.Effect<void, never, Scope.Scope>
+  readonly startTunnel: (config: ResolvedConfig) => Effect.Effect<GrantedConfig, never, Scope.Scope>
   readonly calls: ReadonlyArray<ResolvedConfig>
   readonly awaitCalls: (n: number) => Promise<ReadonlyArray<ResolvedConfig>>
 }
@@ -45,10 +45,12 @@ const makeFreshStore = (): Promise<Store<typeof schema, object>> =>
 const makeStartTunnelStub = (): StartTunnelStub => {
   const calls: ResolvedConfig[] = []
   const subscribers: (() => void)[] = []
-  const startTunnel = (config: ResolvedConfig): Effect.Effect<void, never, never> =>
+  const startTunnel = (config: ResolvedConfig): Effect.Effect<GrantedConfig, never, never> =>
     Effect.sync(() => {
       calls.push(config)
       for (const fire of subscribers.splice(0, subscribers.length)) fire()
+      // Happy-path stub: the relay "grants" the requested values exactly.
+      return { subdomain: config.subdomain, rootDomain: config.rootDomain }
     })
   const awaitCalls = (n: number): Promise<ReadonlyArray<ResolvedConfig>> =>
     new Promise((resolve, reject) => {
@@ -250,10 +252,11 @@ describe('runTunnelDaemon', () => {
   describe('reconfiguration scope teardown', () => {
     /**
      * Real-world `startTunnel` implementations bind their connection
-     * inside an `Effect.acquireRelease` block and then sit on
-     * `Effect.never` until the sub-scope closes. This stub mirrors that
-     * shape so the "close the previous sub-scope on reconfiguration"
-     * invariant is actually exercised.
+     * inside an `Effect.acquireRelease` block and succeed with the
+     * granted `{subdomain, rootDomain}`. The release fires when the
+     * daemon closes the sub-scope on reconfigure or stop. This stub
+     * mirrors that shape so the "close the previous sub-scope on
+     * reconfiguration" invariant is actually exercised.
      */
     const makeLongRunningStub = (): StartTunnelStub & {
       readonly active: Set<string>
@@ -261,12 +264,15 @@ describe('runTunnelDaemon', () => {
       const calls: ResolvedConfig[] = []
       const active = new Set<string>()
       const subscribers: (() => void)[] = []
-      const startTunnel = (config: ResolvedConfig): Effect.Effect<void, never, Scope.Scope> =>
+      const startTunnel = (
+        config: ResolvedConfig
+      ): Effect.Effect<GrantedConfig, never, Scope.Scope> =>
         Effect.acquireRelease(
-          Effect.sync(() => {
+          Effect.sync((): GrantedConfig => {
             calls.push(config)
             active.add(configId(config))
             for (const fire of subscribers.splice(0, subscribers.length)) fire()
+            return { subdomain: config.subdomain, rootDomain: config.rootDomain }
           }),
           () =>
             Effect.sync(() => {
@@ -344,7 +350,7 @@ describe('runTunnelDaemon', () => {
     it('writes the failure to TunnelState.error and leaves requestedEnabled intact', async () => {
       const failingStartTunnel = (
         _config: ResolvedConfig
-      ): Effect.Effect<void, string, Scope.Scope> => Effect.fail('boom')
+      ): Effect.Effect<GrantedConfig, string, Scope.Scope> => Effect.fail('boom')
 
       await Effect.runPromise(
         Effect.scoped(
@@ -365,7 +371,9 @@ describe('runTunnelDaemon', () => {
 
     it('recovers on a reconfigure with a healthy startTunnel', async () => {
       const stub = makeStartTunnelStub()
-      const startTunnel = (config: ResolvedConfig): Effect.Effect<void, string, Scope.Scope> =>
+      const startTunnel = (
+        config: ResolvedConfig
+      ): Effect.Effect<GrantedConfig, string, Scope.Scope> =>
         Effect.gen(function* () {
           if (config.localPort === 9000) return yield* Effect.fail('boom')
           return yield* stub.startTunnel(config)

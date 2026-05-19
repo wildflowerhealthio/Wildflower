@@ -19,6 +19,19 @@ interface ResolvedConfig {
   readonly localPort: number
 }
 
+/**
+ * What the upstream relay actually granted — written to
+ * `TunnelState.currentSubdomain` / `currentRootDomain` by the daemon
+ * once `startTunnel` succeeds. Mirrors the requested `ResolvedConfig`
+ * minus `localPort` (purely local; not negotiated with the relay), and
+ * can differ from the requested values if the relay falls back to a
+ * different subdomain.
+ */
+interface GrantedConfig {
+  readonly subdomain: string
+  readonly rootDomain: string
+}
+
 type RunningState =
   | { readonly _tag: 'Idle' }
   /**
@@ -96,8 +109,9 @@ const computeIntent = (
  *   surfaced to the UI via `TunnelState.error`; they do not propagate
  *   out of the daemon.
  * @param startTunnel - Effect that opens the tunnel. It must succeed
- *   with `void` once the upstream relay has confirmed the requested
- *   subdomain (the daemon uses that as the "tunnel is up" signal). The
+ *   with the actually-granted `{subdomain, rootDomain}` once the upstream
+ *   relay has confirmed the bind (the daemon uses that as the "tunnel is
+ *   up" signal and writes the granted values into `TunnelState`). The
  *   daemon forks it into a sub-scope and provides that `Scope.Scope` as
  *   a context — long-running implementations should
  *   `Effect.acquireRelease` to register their cleanup with the
@@ -123,7 +137,7 @@ const computeIntent = (
  * `requestedEnabled` intent must survive across daemon restarts.
  */
 const runTunnelDaemon = <E>(
-  startTunnel: (config: ResolvedConfig) => Effect.Effect<void, E, Scope.Scope>
+  startTunnel: (config: ResolvedConfig) => Effect.Effect<GrantedConfig, E, Scope.Scope>
 ): Effect.Effect<void, never, Scope.Scope | TunnelStore> =>
   Effect.gen(function* () {
     const store = yield* TunnelStore
@@ -158,20 +172,20 @@ const runTunnelDaemon = <E>(
     const newTunnel = (config: ResolvedConfig): Effect.Effect<RunningState, never, never> =>
       Effect.gen(function* () {
         const tunnelScope = yield* Scope.make()
-        const opened = yield* Deferred.make<void, E>()
+        const grantedDeferred = yield* Deferred.make<GrantedConfig, E>()
         yield* pipe(
           Scope.extend(startTunnel(config), tunnelScope),
-          Effect.tap(() => Deferred.succeed(opened, undefined)),
+          Effect.tap((granted) => Deferred.succeed(grantedDeferred, granted)),
           Effect.tapErrorCause((cause) =>
             pipe(
-              Deferred.failCause<void, E>(opened, cause),
+              Deferred.failCause<GrantedConfig, E>(grantedDeferred, cause),
               Effect.zipRight(Effect.logError('[tunnel-core] startTunnel failed', cause))
             )
           ),
           Effect.forkIn(tunnelScope)
         )
 
-        const openResult = yield* Effect.either(Deferred.await(opened))
+        const openResult = yield* Effect.either(Deferred.await(grantedDeferred))
         if (Either.isLeft(openResult)) {
           yield* Scope.close(tunnelScope, Exit.void)
           yield* commitState({
@@ -188,10 +202,15 @@ const runTunnelDaemon = <E>(
           return { _tag: 'Failed', config } as const
         }
 
+        // Use the *granted* subdomain / rootDomain — the relay may fall
+        // back to a different subdomain than requested, and `TunnelState`
+        // should reflect what's actually reachable. `localPort` is purely
+        // local so it carries through from the requested config.
+        const granted = openResult.right
         yield* commitState({
           currentEnabled: true,
-          currentSubdomain: config.subdomain,
-          currentRootDomain: config.rootDomain,
+          currentSubdomain: granted.subdomain,
+          currentRootDomain: granted.rootDomain,
           currentLocalPort: config.localPort,
           error: null,
         })
@@ -238,4 +257,4 @@ const runTunnelDaemon = <E>(
   })
 
 export { runTunnelDaemon }
-export type { ResolvedConfig }
+export type { GrantedConfig, ResolvedConfig }
