@@ -1,7 +1,14 @@
 import { HttpApiBuilder, HttpServerResponse } from '@effect/platform'
-import { nanoid } from '@livestore/livestore'
-import { Effect } from 'effect'
-import { TunnelControl } from '../contexts/tunnel-control.ts'
+import { nanoid, type Store } from '@livestore/livestore'
+import { Duration, Effect } from 'effect'
+import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
+import {
+  type schema as tunnelSchema,
+  TunnelConfig,
+  TunnelState,
+  TunnelStore,
+} from 'tunnel-core/livestore'
+
 import { AppsApi } from '../http-api-definition/index.ts'
 import { AppSelection, AppsStore } from '../livestore/index.ts'
 import type { AppKind } from '../registry/app-item.ts'
@@ -68,6 +75,48 @@ const isLaunchableUrl = (target: string, originPrefix: string): boolean => {
   }
 }
 
+const TUNNEL_WAIT_TIMEOUT: Duration.Duration = Duration.seconds(15)
+
+/**
+ * Suspend until `currentEnabled` becomes true (the daemon has brought
+ * the tunnel up), or the timeout elapses. On success returns the
+ * composed public origin; on timeout returns `null` so the caller can
+ * fall back to the local origin.
+ */
+const awaitCurrentEnabled = (
+  tunnelStore: Store<typeof tunnelSchema, object>
+): Effect.Effect<string | null, never, never> =>
+  Effect.async<string | null, never>((resume) => {
+    let disposed = false
+    let dispose: (() => void) | null = null
+    const handle = (state: {
+      readonly currentEnabled: boolean
+      readonly currentSubdomain: string | null
+      readonly currentRootDomain: string | null
+    }): void => {
+      if (disposed) return
+      if (
+        state.currentEnabled &&
+        state.currentSubdomain !== null &&
+        state.currentRootDomain !== null
+      ) {
+        disposed = true
+        dispose?.()
+        resume(Effect.succeed(`https://${state.currentSubdomain}.${state.currentRootDomain}`))
+      }
+    }
+    dispose = tunnelStore.subscribe(TunnelState.queries.current$, handle)
+    return Effect.sync(() => {
+      if (!disposed) {
+        disposed = true
+        dispose?.()
+      }
+    })
+  }).pipe(
+    Effect.timeoutOption(TUNNEL_WAIT_TIMEOUT),
+    Effect.map((opt) => (opt._tag === 'Some' ? opt.value : null))
+  )
+
 const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
   handlers
     .handle('ListApps', () =>
@@ -79,7 +128,8 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
     )
     .handleRaw('LaunchApp', ({ path }) =>
       Effect.gen(function* () {
-        const tunnel = yield* TunnelControl
+        const tunnelStore = yield* TunnelStore
+        const serverStore = yield* LocalHttpServerStore
         const store = yield* AppsStore
 
         const bundled = findBundled(path.id)
@@ -116,23 +166,38 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
           )
         }
 
-        const beforeState = yield* tunnel.getState
-
-        const afterState = yield* (() => {
-          if (!launchContext.requiresTunnel || beforeState.tunnelActive) {
-            return Effect.succeed(beforeState)
+        // Tunnel coordination: if the app requires a public origin and
+        // the daemon hasn't brought the tunnel up yet, commit
+        // `requestedEnabled: true` and await `currentEnabled` (with
+        // timeout). On timeout, fall through to the local origin —
+        // some launches still work without a tunnel.
+        //
+        // Skip the wait entirely if TunnelConfig hasn't been seeded
+        // (no row, or `subdomain` is null) — no daemon present, no
+        // point waiting. This is the node-host case where the slice's
+        // tables exist but nothing seeds config or runs a daemon.
+        let tunnelOrigin: string | null = null
+        if (launchContext.requiresTunnel) {
+          const config = tunnelStore.query(TunnelConfig.queries.current$)
+          const current = tunnelStore.query(TunnelState.queries.current$)
+          if (
+            current.currentEnabled &&
+            current.currentSubdomain !== null &&
+            current.currentRootDomain !== null
+          ) {
+            tunnelOrigin = `https://${current.currentSubdomain}.${current.currentRootDomain}`
+          } else if (config?.subdomain !== undefined && config.subdomain !== null) {
+            yield* Effect.sync(() =>
+              tunnelStore.commit(TunnelConfig.events.tunnelConfigSet({ requestedEnabled: true }))
+            )
+            tunnelOrigin = yield* awaitCurrentEnabled(tunnelStore)
+            if (tunnelOrigin === null) {
+              yield* Effect.logWarning(
+                `[apps-core] LaunchApp ${path.id} timed out waiting for currentEnabled`
+              )
+            }
           }
-          return Effect.either(tunnel.setTunnelActive(true)).pipe(
-            Effect.flatMap((result) => {
-              if (result._tag === 'Right') {
-                return Effect.succeed(result.right)
-              }
-              return Effect.logWarning(
-                `[apps-core] tunnel activation failed: ${result.left._tag}: ${result.left.reason}`
-              ).pipe(Effect.as(beforeState))
-            })
-          )
-        })()
+        }
 
         // Re-check after tunnel state settles: the row may have been
         // deleted or kind-changed mid-flight. Bundled apps have static
@@ -147,13 +212,16 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
           }
         }
 
+        const server = serverStore.query(ServerState.queries.current$)
+        const publicOrigin = tunnelOrigin ?? server.localOrigin
+
         if (path.id === FHIR_SHARING_ID || launchContext.isAction) {
-          return HttpServerResponse.redirect(afterState.origin, { status: 302 })
+          return HttpServerResponse.redirect(publicOrigin, { status: 302 })
         }
 
         const launch = nanoid()
-        const target = launchContext.url(afterState.origin, launch)
-        if (!isLaunchableUrl(target, afterState.origin)) {
+        const target = launchContext.url(publicOrigin, launch)
+        if (!isLaunchableUrl(target, publicOrigin)) {
           yield* Effect.logWarning(
             `[apps-core] LaunchApp rejected resolved URL for ${path.id}: ${target}`
           )

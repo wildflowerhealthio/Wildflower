@@ -45,7 +45,9 @@
     "react-tundraish": "workspace:*",
     "telemetry-react": "workspace:*",
     "telemetry-web": "workspace:*",
-    "tundra-css": "catalog:"
+    "tundra-css": "catalog:",
+    "tunnel-core": "workspace:*",
+    "tunnel-react": "workspace:*"
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
