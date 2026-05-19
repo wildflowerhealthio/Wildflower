@@ -34,10 +34,18 @@ import type { Layer } from 'effect'
  * for the broader pattern and why the cast is safe.
  */
 const apiHandlersFor =
-  <ChildId extends string, Names extends string, E, R>(
-    handlers: Layer.Layer<HttpApiGroup.ApiGroup<ChildId, Names>, E, R>
+  <ChildId extends string, const Names extends readonly string[], E, R>(
+    handlers: Layer.Layer<
+      { [K in Names[number]]: HttpApiGroup.ApiGroup<ChildId, K> }[Names[number]],
+      E,
+      R
+    >
   ) =>
-  <ParentId extends string>(): Layer.Layer<HttpApiGroup.ApiGroup<ParentId, Names>, E, R> =>
+  <ParentId extends string>(): Layer.Layer<
+    { [K in Names[number]]: HttpApiGroup.ApiGroup<ParentId, K> }[Names[number]],
+    E,
+    R
+  > =>
     // The phantom-id bridge: `ApiGroup<ApiId, Name>` is a structural marker
     // with no runtime presence (HttpApiBuilder.group only registers routes on
     // the shared Router; nothing reads `apiId`), so a Layer built against
@@ -45,6 +53,10 @@ const apiHandlersFor =
     // any consumer's parent ApiId. This cast is the one place that bridge
     // lives.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    handlers as unknown as Layer.Layer<HttpApiGroup.ApiGroup<ParentId, Names>, E, R>
+    handlers as unknown as Layer.Layer<
+      { [K in Names[number]]: HttpApiGroup.ApiGroup<ParentId, K> }[Names[number]],
+      E,
+      R
+    >
 
 export { apiHandlersFor }
