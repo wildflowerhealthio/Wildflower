@@ -5,10 +5,14 @@ import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Await, useParams } from 'react-router'
-import { StatusBadge, type StatusTone } from 'react-tundraish'
+import {
+  AsyncErrorView,
+  pageLayoutStyles,
+  PageLoading,
+  StatusBadge,
+  type StatusTone,
+} from 'react-tundraish'
 
-import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
-import { PageLoading } from '../components/PageLoading.tsx'
 import { formatInstant } from '../format-date.ts'
 import {
   useGatekeeperEffectRunner,
@@ -93,7 +97,7 @@ const RequestDetailBody = ({
   }
 
   return (
-    <div className={pageLayout['page']}>
+    <div className={pageLayoutStyles['page']}>
       <div className={pageLayout['section']}>
         <h2 className="text-label-3">{request.method}</h2>
         <h1 className="text-heading-4">{request.url}</h1>
@@ -145,7 +149,9 @@ const RequestDetailBody = ({
         </div>
       ) : null}
 
-      {error !== null ? <p className={cn(pageLayout['error'], 'text-body-3')}>{error}</p> : null}
+      {error !== null ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
+      ) : null}
     </div>
   )
 }

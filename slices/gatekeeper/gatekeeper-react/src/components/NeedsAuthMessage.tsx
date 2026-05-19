@@ -5,10 +5,10 @@ import { OAuth } from 'gatekeeper-core/http-api-definition'
 
 import { useEffect, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
+import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
 import { writeToken } from '../client/token-storage.ts'
 import { useGatekeeperClientLayer } from '../use-gatekeeper-client-layer.ts'
-import { Field, FieldDescription } from './Field.tsx'
 import deviceEntryStyles from '../screens/device-entry.module.css'
 import pageLayout from '../styles/page-layout.module.css'
 
@@ -128,14 +128,14 @@ const NeedsAuthMessage = (): JSX.Element => {
 
   if (state.tag === 'starting') {
     return (
-      <div className={pageLayout['page']}>
+      <div className={pageLayoutStyles['page']}>
         <p className="text-body-2">Starting sign-in…</p>
       </div>
     )
   }
   if (state.tag === 'pending') {
     return (
-      <div className={pageLayout['page']}>
+      <div className={pageLayoutStyles['page']}>
         <h1 className="text-heading-4">Sign in on another device</h1>
         <p className="text-body-2">
           Open <code>{state.verificationUri}</code> on a signed-in device and enter the code below.
@@ -155,7 +155,7 @@ const NeedsAuthMessage = (): JSX.Element => {
   }
   if (state.tag === 'denied') {
     return (
-      <div className={pageLayout['page']}>
+      <div className={pageLayoutStyles['page']}>
         <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Sign-in denied</h1>
         <p className="text-body-2">The sign-in request was denied. Refresh to try again.</p>
       </div>
@@ -163,7 +163,7 @@ const NeedsAuthMessage = (): JSX.Element => {
   }
   if (state.tag === 'expired') {
     return (
-      <div className={pageLayout['page']}>
+      <div className={pageLayoutStyles['page']}>
         <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Sign-in expired</h1>
         <p className="text-body-2">
           The code expired before sign-in completed. Refresh to try again.
@@ -172,9 +172,9 @@ const NeedsAuthMessage = (): JSX.Element => {
     )
   }
   return (
-    <div className={pageLayout['page']}>
+    <div className={pageLayoutStyles['page']}>
       <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Sign-in failed</h1>
-      <p className={cn(pageLayout['error'], 'text-body-3')}>{state.message}</p>
+      <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{state.message}</p>
     </div>
   )
 }

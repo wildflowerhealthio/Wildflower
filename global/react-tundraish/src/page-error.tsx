@@ -1,12 +1,12 @@
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 
-import pageLayout from '../styles/page-layout.module.css'
+import pageLayout from './page-layout.module.css'
 
 interface PageErrorProps {
   /** Heading shown above the error message; omit for a bare error panel. */
   readonly title?: string
-  /** The thrown / rejected value. Stringified safely. */
+  /** The thrown / rejected value. `Error` instances surface their `.message`; everything else is stringified. */
   readonly error: unknown
   readonly className?: string
   readonly titleClassName?: string

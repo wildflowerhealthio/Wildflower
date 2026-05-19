@@ -1,7 +1,7 @@
 import { useState, type JSX } from 'react'
 import { useNavigate } from 'react-router'
+import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
-import { Field, FieldDescription } from '../components/Field.tsx'
 import pageLayout from '../styles/page-layout.module.css'
 import styles from './device-entry.module.css'
 
@@ -26,7 +26,7 @@ const DeviceEntryScreen = (): JSX.Element => {
   }
 
   return (
-    <div className={pageLayout['page']}>
+    <div className={pageLayoutStyles['page']}>
       <h1 className="text-heading-4">Enter Device Code</h1>
       <FieldDescription>Enter the code shown on the device requesting access.</FieldDescription>
 
