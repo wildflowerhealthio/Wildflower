@@ -118,7 +118,7 @@ Both implementations buffer partial reads, parse the HTTP request line per reque
 
 ## Contributing
 
-See [CONTRIBUTING.md](../../CONTRIBUTING.md) at the repo root for dev setup, code style, and PR conventions. The package follows the monorepo's Vite+ toolchain — run `vp check` and `vp test` from this directory.
+See [CONTRIBUTING.md](../../../CONTRIBUTING.md) at the repo root for dev setup, code style, and PR conventions. The package follows the monorepo's Vite+ toolchain — run `vp check` and `vp test` from this directory.
 
 ## License
 

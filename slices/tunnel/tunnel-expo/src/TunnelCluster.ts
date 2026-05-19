@@ -30,18 +30,18 @@ export interface TunnelClusterOpts {
 export default class TunnelCluster extends EventEmitter {
   private opts: TunnelClusterOpts
   private connections = new Set<string>()
-  private _subscriptions: { remove(): void }[] = []
+  private subscriptions: { remove(): void }[] = []
 
   constructor(opts: TunnelClusterOpts) {
     super()
     this.opts = opts
     // Flush any orphaned native connections from a previous JS reload
     NativeModule.closeAllTunnelConnections().catch(() => {})
-    this._setupNativeListeners()
+    this.setupNativeListeners()
   }
 
-  private _setupNativeListeners(): void {
-    this._subscriptions.push(
+  private setupNativeListeners(): void {
+    this.subscriptions.push(
       NativeModule.addListener('onConnectionOpen', ({ connectionId }) => {
         if (!this.connections.has(connectionId)) return
         this.emit('open')
@@ -94,10 +94,10 @@ export default class TunnelCluster extends EventEmitter {
   }
 
   close(): void {
-    for (const sub of this._subscriptions) {
+    for (const sub of this.subscriptions) {
       sub.remove()
     }
-    this._subscriptions = []
+    this.subscriptions = []
     this.connections.clear()
     NativeModule.closeAllTunnelConnections().catch(() => {})
   }

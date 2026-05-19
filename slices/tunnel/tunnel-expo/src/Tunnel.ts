@@ -65,7 +65,7 @@ export default class Tunnel extends EventEmitter {
     }
   }
 
-  private _getInfo(body: AssignResponseBody): TunnelInfo {
+  private getInfo(body: AssignResponseBody): TunnelInfo {
     const { id, ip, port, url, cached_url, max_conn_count } = body
     const { host, port: localPort, localHost, localHttps } = this.opts
     return {
@@ -82,7 +82,7 @@ export default class Tunnel extends EventEmitter {
     }
   }
 
-  private _init(cb: (err: Error | null, info?: TunnelInfo) => void): void {
+  private init(cb: (err: Error | null, info?: TunnelInfo) => void): void {
     const opt = this.opts
     const baseUri = `${opt.host}/`
     const assignedDomain = opt.subdomain
@@ -122,7 +122,7 @@ export default class Tunnel extends EventEmitter {
           if (!isAssignResponseBody(body)) {
             throw new Error('localtunnel server returned an unexpected response shape')
           }
-          return this._getInfo(body)
+          return this.getInfo(body)
         })
 
     // Wait `delay` ms; resolve `true` if aborted before the delay elapses.
@@ -169,7 +169,7 @@ export default class Tunnel extends EventEmitter {
     attempt(0)
   }
 
-  private _establish(info: TunnelInfo): void {
+  private establish(info: TunnelInfo): void {
     this.tunnelCluster = new TunnelCluster(info)
 
     // only emit the url the first time
@@ -201,7 +201,7 @@ export default class Tunnel extends EventEmitter {
   }
 
   open(cb: (err?: Error | null) => void): void {
-    this._init((err, info) => {
+    this.init((err, info) => {
       if (err) {
         return cb(err)
       }
@@ -222,7 +222,7 @@ export default class Tunnel extends EventEmitter {
         this.cachedUrl = info!.cachedUrl
       }
 
-      this._establish(info!)
+      this.establish(info!)
       cb()
     })
   }

@@ -41,10 +41,7 @@ android/keystores/debug.keystore
 
 # Cocoapods
 #
-example/ios/Pods
-
-# Ruby
-example/vendor/
+ios/Pods
 
 # node.js
 #
@@ -58,3 +55,6 @@ yarn-error.log
 
 # TypeScript build artifacts (declarations are emitted to dist/ via tsgo)
 src/**/*.d.ts
+
+# vp pack output
+dist/

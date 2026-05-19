@@ -1,23 +1,23 @@
 {
-  "name": "expo-localtunnel",
+  "name": "tunnel-expo",
   "version": "0.1.0",
-  "description": "An Expo compatible version of localtunnel",
+  "description": "Expo native localtunnel module: bindings + an effect-friendly `acquire` helper used by the wildflower-expo tunnel daemon.",
   "keywords": [
     "ExpoLocaltunnel",
     "expo",
-    "expo-localtunnel",
-    "react-native"
+    "react-native",
+    "tunnel-expo"
   ],
-  "homepage": "https://github.com/Assessment-is/wildlflower/tree/main/global/expo-localtunnel#readme",
+  "homepage": "https://github.com/Assessment-is/wildflower/tree/main/slices/tunnel/tunnel-expo#readme",
   "bugs": {
-    "url": "https://github.com/Assessment-is/wildlflower/issues"
+    "url": "https://github.com/Assessment-is/wildflower/issues"
   },
   "license": "MIT",
   "author": "Ruth Marks <ruthmarks151@gmail.com> (https://github.com/ruthmarks151)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildlflower.git",
-    "directory": "global/expo-localtunnel"
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/tunnel/tunnel-expo"
   },
   "files": [
     "android",
@@ -29,13 +29,10 @@
   "exports": {
     ".": {
       "source": "./src/index.ts",
-      "default": "./dist/index.mjs"
+      "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
     "./expo-module.config.json": "./expo-module.config.json"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "scripts": {
     "build": "vp pack",
@@ -64,8 +61,8 @@
   },
   "peerDependencies": {
     "eventemitter3": "^5.0.4",
-    "expo": ">=55.0.0",
+    "expo": ">=54.0.0",
     "react": ">=19.0.0",
-    "react-native": ">=0.83.0"
+    "react-native": ">=0.81.0"
   }
 }
