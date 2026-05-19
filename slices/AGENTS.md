@@ -21,7 +21,6 @@ Current slices: `apps`, `browser-sniffer`, `collector`, `emr`, `gatekeeper`, `na
 
 - **`<name>-core` is the pure layer** — no DOM, no Node `fs`, no Expo APIs, no platform-specific imports
 - **Platform adapters depend on `-core`, never the reverse**
-- **Slices should not depend on other slices** unless the dependency is intrinsic to the feature (document why if you do)
 - **Compose `HttpApi` groups across slices via the phantom-id bridge pattern** — see [HttpApi Composition How-To](../docs/Effect/HttpApi%20Composition%20How-To.md)
 - **Don't use `topLevel: true` on multiple `HttpApiGroup`s under the same `HttpApi`** — name collision in the generated client. See [HttpApi Composition How-To](../docs/Effect/HttpApi%20Composition%20How-To.md).
 

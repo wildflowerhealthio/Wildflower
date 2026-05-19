@@ -34,8 +34,7 @@ Split large batches of questions over multiple asks
 
 While completing tasks may be inclined to
 
-- Stash code to check if an error is new
-- Create new branches or commits
+- Stash, branch, or commit for any reason
 - Search online for information
 - Writing code to verify the behaviour of other modules
 

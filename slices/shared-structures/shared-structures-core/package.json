@@ -1,26 +1,22 @@
 {
-  "name": "local-http-server-core",
+  "name": "shared-structures-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Host-agnostic local-HTTP-server slice: livestore-backed server state (requested/current, localOrigin, port) and the LocalHttpServerStore Effect tag.",
+  "description": "Cross-slice utilities. Currently: the long-running process-daemon plumbing (snapshot watch, intent diff, stream-driven execution) shared between tunnel-core and local-http-server-core.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/local-http-server/local-http-server-core"
+    "directory": "slices/shared-structures/shared-structures-core"
   },
   "files": [
     "dist"
   ],
   "type": "module",
   "exports": {
-    "./livestore": {
-      "source": "./src/livestore/index.ts",
-      "default": "./dist/livestore/index.js"
-    },
-    "./daemon": {
-      "source": "./src/daemon/index.ts",
-      "default": "./dist/daemon/index.js"
+    "./process-daemon": {
+      "source": "./src/process-daemon/index.ts",
+      "default": "./dist/process-daemon/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -31,7 +27,6 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "@effect/vitest": "catalog:",
     "@livestore/adapter-node": "catalog:",
     "@livestore/common": "catalog:",
     "@livestore/livestore": "catalog:",
@@ -42,7 +37,6 @@
     "effect": "catalog:",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
-    "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -51,8 +45,6 @@
     "@livestore/livestore": "catalog:",
     "@livestore/peer-deps": "catalog:",
     "@livestore/utils": "catalog:",
-    "effect": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "shared-structures-core": "workspace:*"
+    "effect": "catalog:"
   }
 }
