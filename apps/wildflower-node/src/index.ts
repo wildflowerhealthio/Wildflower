@@ -5,6 +5,7 @@ import './instrument.ts'
 import { createServer } from 'node:http'
 import { HttpServer } from '@effect/platform'
 import { NodeFileSystem, NodeHttpServer, NodePath, NodeRuntime } from '@effect/platform-node'
+import type { ServeError } from '@effect/platform/HttpServerError'
 import type { ServerState } from 'apps-core/contexts'
 import { AppsStore } from 'apps-core/livestore'
 import { CollectorStore } from 'collector-core/livestore'
@@ -14,8 +15,11 @@ import { mintHostOwnerToken, seedFirstPartyClient, seedSigningKey } from 'gateke
 import { GatekeeperStore } from 'gatekeeper-core/livestore'
 import { cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { StringLiteralTypes } from 'kitchen-sink/types'
+import { LocalHttpServerStore } from 'local-http-server-core/livestore'
 import { Origin } from 'navigation-core'
 import { nodeTelemetryLayerFromEnv } from 'telemetry-node'
+import { TunnelStore } from 'tunnel-core/livestore'
+import { TunnelDaemon as NodeTunnelDaemon } from 'tunnel-node'
 import { webAssetsDir } from 'wildflower-react/web-assets'
 import { WebAssetsDir, WildflowerServerLive } from 'wildflower-server'
 import { createStore } from './livestore-store.ts'
@@ -42,6 +46,7 @@ const TelemetryLive = nodeTelemetryLayerFromEnv({
 const run = Effect.gen(function* () {
   const store = yield* Effect.promise(() => createStore())
   const gatekeeperStoreLayer = GatekeeperStore.layerFrom(store)
+  const localHttpServerStoreLayer = LocalHttpServerStore.layerFrom(store)
   const originLayer = Layer.succeed(Origin, ORIGIN)
 
   // Idempotent: signing key + first-party `wildflower-host` client identity.
@@ -78,21 +83,39 @@ const run = Effect.gen(function* () {
     tunnelActive: false,
   }
 
-  const FullServerLive = WildflowerServerLive.pipe(
+  // `Layer.mergeAll` runs the HTTP server and the tunnel daemon side
+  // by side under the same scope — `Layer.launch` keeps both alive until
+  // the process is interrupted. The daemon is provided its own
+  // `TunnelStore` layer inline (closed over above); the rest of the
+  // platform deps shared with `WildflowerServerLive` are provided here.
+  // `LocalHttpServerStore` isn't consumed yet on the node host (PR C
+  // rewires `apps-core` to read tunnel/server state from livestore), but
+  // its layer is wired here so the materializers in `schema.ts` have a
+  // home and the daemon-on-Streams pattern is ready for the next PR.
+  const FullServerLive: Layer.Layer<never, ServeError, never> = Layer.mergeAll(
+    WildflowerServerLive,
+    NodeTunnelDaemon
+  ).pipe(
     HttpServer.withLogAddress,
     Layer.tap(() => afterStartupEffect),
-    Layer.provide(EmrStore.layerFrom(store)),
-    Layer.provide(AppsStore.layerFrom(store)),
-    Layer.provide(TunnelControlLive(serverState)),
-    Layer.provide(gatekeeperStoreLayer),
-    Layer.provide(CollectorStore.layerFrom(store)),
-    Layer.provide(CryptoRandomLive),
-    Layer.provide(NodeHttpServer.layer(createServer, { port: PORT })),
-    Layer.provide(NodeFileSystem.layer),
-    Layer.provide(NodePath.layer),
-    Layer.provide(Layer.succeed(WebAssetsDir, webAssetsDir)),
-    Layer.provide(originLayer),
-    Layer.provide(TelemetryLive)
+    Layer.provide(
+      Layer.mergeAll(
+        TunnelStore.layerFrom(store),
+        EmrStore.layerFrom(store),
+        AppsStore.layerFrom(store),
+        TunnelControlLive(serverState),
+        gatekeeperStoreLayer,
+        localHttpServerStoreLayer,
+        CollectorStore.layerFrom(store),
+        CryptoRandomLive,
+        NodeHttpServer.layer(createServer, { port: PORT }),
+        NodeFileSystem.layer,
+        NodePath.layer,
+        Layer.succeed(WebAssetsDir, webAssetsDir),
+        originLayer,
+        TelemetryLive
+      )
+    )
   )
 
   yield* Layer.launch(FullServerLive)

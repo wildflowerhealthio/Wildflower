@@ -10,7 +10,7 @@ import { Effect, Layer } from 'effect'
  * A future Expo / mobile host will install a different Live Layer that
  * actually controls a tunnel (e.g. via `expo-localtunnel`).
  */
-const TunnelControlLive = (state: ServerState): Layer.Layer<TunnelControl> =>
+const TunnelControlLive = (state: ServerState): Layer.Layer<TunnelControl, never, never> =>
   Layer.succeed(TunnelControl, {
     getState: Effect.succeed(state),
     setTunnelActive: () =>

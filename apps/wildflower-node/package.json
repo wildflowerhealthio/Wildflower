@@ -20,9 +20,12 @@
     "emr-core": "workspace:*",
     "gatekeeper-core": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "local-http-server-core": "workspace:*",
     "navigation-core": "workspace:*",
     "telemetry-core": "workspace:*",
     "telemetry-node": "workspace:*",
+    "tunnel-core": "workspace:*",
+    "tunnel-node": "workspace:*",
     "wildflower-react": "workspace:*",
     "wildflower-server": "workspace:*"
   },

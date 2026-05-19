@@ -23,5 +23,8 @@ jobs:
       - name: Build internal projects
         run: vp run pack
 
-      - name: Run tests across all packages
-        run: vp run -r test
+      - name: Run tests in Vitest packages
+        run: vp test
+
+      - name: Run tests in React Native + Jest packages
+        run: vp run jest
