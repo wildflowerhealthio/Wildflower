@@ -15,6 +15,5 @@ export {
 } from './client/tunnel-client.ts'
 
 export { TunnelToggle, type TunnelToggleProps } from './components/TunnelToggle.tsx'
-export { deriveTunnelStatus, type TunnelToggleStatus } from './components/derive-tunnel-status.ts'
 
 export { TunnelScreen } from './screens/tunnel-screen.tsx'

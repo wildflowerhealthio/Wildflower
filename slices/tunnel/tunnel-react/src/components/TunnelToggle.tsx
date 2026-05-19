@@ -1,8 +1,8 @@
+import { Match, Predicate } from 'effect'
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Checkbox, StatusBadge } from 'react-tundraish'
+import { Checkbox, StatusBadge, type StatusTone } from 'react-tundraish'
 
-import { deriveTunnelStatus } from './derive-tunnel-status.ts'
 import styles from './TunnelToggle.module.css'
 
 interface TunnelTogglePropsBase {
@@ -21,6 +21,47 @@ type TunnelToggleProps = TunnelTogglePropsBase &
     | { readonly disabled?: false; readonly onToggle: (requestedRunning: boolean) => void }
   )
 
+interface TunnelToggleStatus {
+  /** Surface tone for the status badge — drives accent color + SR prefix. */
+  readonly tone: StatusTone
+  /** Short, human-readable status label (e.g. "Online", "Starting…", "Stopped"). */
+  readonly label: string
+}
+
+/**
+ * Decision table over `(requestedRunning, running, error)`:
+ * - `(_,    _,    err)`    → `danger` "Error" — failure first, regardless of intent/reality
+ * - `(true, true, null)`   → `success` "Online"
+ * - `(true, false, null)`  → `info` "Starting…"
+ * - `(false, true, null)`  → `warning` "Stopping…"
+ * - `(false, false, null)` → `neutral` "Stopped"
+ */
+const deriveTunnelStatus: (input: {
+  readonly requestedRunning: boolean
+  readonly running: boolean
+  readonly error: string | null
+}) => TunnelToggleStatus = Match.type<{
+  readonly requestedRunning: boolean
+  readonly running: boolean
+  readonly error: string | null
+}>().pipe(
+  Match.withReturnType<TunnelToggleStatus>(),
+  Match.when({ error: Predicate.isString }, () => ({ tone: 'danger', label: 'Error' })),
+  Match.when({ requestedRunning: true, running: true }, () => ({
+    tone: 'success',
+    label: 'Online',
+  })),
+  Match.when({ requestedRunning: true, running: false }, () => ({
+    tone: 'info',
+    label: 'Starting…',
+  })),
+  Match.when({ requestedRunning: false, running: true }, () => ({
+    tone: 'warning',
+    label: 'Stopping…',
+  })),
+  Match.orElse(() => ({ tone: 'neutral', label: 'Stopped' }))
+)
+
 /**
  * Toggle that drives the tunnel's `requestedRunning` flag and surfaces
  * the daemon's actual `running` state alongside any current error.
@@ -37,7 +78,7 @@ type TunnelToggleProps = TunnelTogglePropsBase &
  */
 const TunnelToggle = (props: TunnelToggleProps): JSX.Element => {
   const { requestedRunning, running, error, className } = props
-  const status = deriveTunnelStatus(requestedRunning, running, error)
+  const status = deriveTunnelStatus({ requestedRunning, running, error })
 
   return (
     <div className={cn(styles['toggle'], className)}>

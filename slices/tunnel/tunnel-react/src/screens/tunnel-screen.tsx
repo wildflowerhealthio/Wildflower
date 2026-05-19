@@ -2,16 +2,19 @@ import { Effect, type Schema } from 'effect'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Await } from 'react-router'
+import {
+  AsyncErrorView,
+  Field,
+  FieldDescription,
+  pageLayoutStyles,
+  PageLoading,
+} from 'react-tundraish'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import type { Tunnel } from 'tunnel-core/http-api-definition'
 
-import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
-import { Field, FieldDescription } from '../components/Field.tsx'
-import { PageLoading } from '../components/PageLoading.tsx'
 import { TunnelToggle } from '../components/TunnelToggle.tsx'
 import { useTunnelAdminEffectRunner } from '../use-tunnel-admin-effect-runner.ts'
 import { useTunnelAdminEffect } from '../use-tunnel-admin-effect.ts'
-import pageLayout from '../styles/page-layout.module.css'
 import styles from './tunnel-screen.module.css'
 
 type TunnelState = Schema.Schema.Type<typeof Tunnel.TunnelStateSchema>
@@ -124,14 +127,14 @@ const TunnelScreenBody = ({ state, onChanged }: TunnelScreenBodyProps): JSX.Elem
   }
 
   return (
-    <div className={pageLayout['page']}>
+    <div className={pageLayoutStyles['page']}>
       <h1 className="text-heading-4">Tunnel</h1>
       <FieldDescription>
         Expose this device to the public Internet so apps installed on phones can reach it.
       </FieldDescription>
 
       {error !== null ? (
-        <p className={cn(pageLayout['error'], 'text-body-3')} role="alert">
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
           {error}
         </p>
       ) : null}

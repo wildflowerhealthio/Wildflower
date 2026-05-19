@@ -3,64 +3,7 @@ import fc from 'fast-check'
 import { type JSX } from 'react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
-import { deriveTunnelStatus } from '../src/components/derive-tunnel-status.ts'
 import { TunnelToggle } from '../src/components/TunnelToggle.tsx'
-
-describe('deriveTunnelStatus', () => {
-  // Exhaustive decision-table sweep — three booleans plus error-or-not.
-  // We test the *shape* of the decision (which tone, which label) rather
-  // than the exact strings, except where the spec calls for a specific
-  // label (`Online` / `Stopped`).
-
-  test('error always surfaces as danger regardless of running/requestedRunning', () => {
-    fc.assert(
-      fc.property(
-        fc.boolean(),
-        fc.boolean(),
-        fc.string({ minLength: 1, maxLength: 64 }).filter((s) => s.trim().length > 0),
-        (requestedRunning, running, error) => {
-          const status = deriveTunnelStatus(requestedRunning, running, error)
-          expect(status.tone).toBe('danger')
-          expect(status.label).toBe('Error')
-        }
-      )
-    )
-  })
-
-  test('(true, true, null) → success Online', () => {
-    expect(deriveTunnelStatus(true, true, null)).toEqual({ tone: 'success', label: 'Online' })
-  })
-
-  test('(true, false, null) → info Starting…', () => {
-    expect(deriveTunnelStatus(true, false, null)).toEqual({ tone: 'info', label: 'Starting…' })
-  })
-
-  test('(false, true, null) → warning Stopping…', () => {
-    expect(deriveTunnelStatus(false, true, null)).toEqual({
-      tone: 'warning',
-      label: 'Stopping…',
-    })
-  })
-
-  test('(false, false, null) → neutral Stopped', () => {
-    expect(deriveTunnelStatus(false, false, null)).toEqual({ tone: 'neutral', label: 'Stopped' })
-  })
-
-  test('tone is one of the documented StatusTone variants', () => {
-    const allowed = new Set(['neutral', 'info', 'success', 'warning', 'danger'])
-    fc.assert(
-      fc.property(
-        fc.boolean(),
-        fc.boolean(),
-        fc.option(fc.string(), { nil: null }),
-        (requestedRunning, running, error) => {
-          const status = deriveTunnelStatus(requestedRunning, running, error)
-          expect(allowed.has(status.tone)).toBe(true)
-        }
-      )
-    )
-  })
-})
 
 // Build the element via a tagged-union switch so the
 // `disabled` / `onToggle` permutation type-checks cleanly. The
@@ -99,10 +42,49 @@ const buildElement = (overrides: {
   )
 }
 
-describe('<TunnelToggle>', () => {
+describe('<TunnelToggle> status badge', () => {
   // Each `render()` mounts to the shared jsdom `body`; without cleanup
-  // the previous test's DOM lingers and `getByRole('checkbox')` finds
+  // the previous test's DOM lingers and `getByRole('status')` finds
   // multiple matches.
+  afterEach(() => {
+    cleanup()
+  })
+
+  // Decision table that the toggle renders for `(requestedRunning, running, error)`,
+  // mirrored from the comment on `deriveTunnelStatus` inside `TunnelToggle.tsx`.
+  test.each([
+    [true, true, 'Online'],
+    [true, false, 'Starting…'],
+    [false, true, 'Stopping…'],
+    [false, false, 'Stopped'],
+  ] as const)(
+    '(requestedRunning=%s, running=%s, error=null) renders the "%s" badge',
+    (requestedRunning, running, label) => {
+      const { getByRole } = render(buildElement({ requestedRunning, running, error: null }))
+      const badge = getByRole('status')
+      expect(badge.textContent).toContain(label)
+    }
+  )
+
+  test('any non-null error renders the "Error" badge regardless of running/requestedRunning', () => {
+    fc.assert(
+      fc.property(
+        fc.boolean(),
+        fc.boolean(),
+        fc.string({ minLength: 1, maxLength: 64 }).filter((s) => s.trim().length > 0),
+        (requestedRunning, running, error) => {
+          // fc.assert re-runs inside the same `test`; clear the DOM each pass.
+          cleanup()
+          const { getByRole } = render(buildElement({ requestedRunning, running, error }))
+          const badge = getByRole('status')
+          expect(badge.textContent).toContain('Error')
+        }
+      )
+    )
+  })
+})
+
+describe('<TunnelToggle> behavior', () => {
   afterEach(() => {
     cleanup()
   })
