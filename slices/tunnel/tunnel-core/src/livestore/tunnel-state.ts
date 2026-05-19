@@ -37,8 +37,9 @@ type Table = State.SQLite.ClientDocumentTableDef<
  * observed truth (mirrors `LocalHttpServerState.running`); the `current*`
  * fields reflect what the upstream relay actually granted (may differ
  * from `TunnelConfig` if the relay refuses the requested subdomain).
- * `error` carries the last `startTunnel` failure with `requestedRunning:
- * true` preserved in `TunnelConfig` so the UI can surface it.
+ * `error` carries the last `startTunnel` failure with
+ * `requestedRunning: true` preserved in `TunnelConfig` so the UI can
+ * surface it.
  *
  * Resets each session — the daemon re-derives `running` etc. on boot
  * from `TunnelConfig.requestedRunning`.

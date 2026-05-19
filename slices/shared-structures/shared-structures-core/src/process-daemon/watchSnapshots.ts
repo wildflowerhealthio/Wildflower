@@ -65,10 +65,10 @@ interface WatchSnapshotsOpts<TRaw, TConfig extends ShallowConfig> {
  *
  * @remarks
  * The library owns the `Data.struct` wrap on both layers — callers
- * return plain objects from `readSnapshot`. The `TConfig extends
- * ShallowConfig` constraint enforces the no-nested-objects rule at
- * compile time, so the structural-equality contract `Stream.changes`
- * relies on can't be silently violated by a deeply-nested projection.
+ * return plain objects from `readSnapshot`. The `TConfig extends ShallowConfig`
+ * constraint enforces the no-nested-objects rule at compile time, so the
+ * structural-equality contract `Stream.changes` relies on can't be silently
+ * violated by a deeply-nested projection.
  */
 const watchSnapshots = <TRaw, TConfig extends ShallowConfig>(
   opts: WatchSnapshotsOpts<TRaw, TConfig>

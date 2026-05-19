@@ -3,8 +3,8 @@ import type { EventEmitter } from 'node:events'
 import type { Scope } from 'effect'
 import { Effect, Layer, Stream } from 'effect'
 import localtunnel from 'localtunnel'
+import { type DomainResult, type ResolvedConfig, runTunnelDaemon } from 'tunnel-core/daemon'
 import type { TunnelStore } from 'tunnel-core/livestore'
-import { type DomainResult,type ResolvedConfig, runTunnelDaemon } from 'tunnel-core/daemon'
 
 /**
  * Minimal contract over the `localtunnel` npm package surface that
@@ -129,13 +129,15 @@ const parseGrantedDomain = (grantedUrl: string): Effect.Effect<DomainResult, Err
   })
 
 /**
- * long-lived fiber that drives `TunnelConfig` → `tunnel-node`'s `startTunnel` 
- * → `TunnelState`. `Layer.scopedDiscard` ties the daemon's lifetime to the 
- * `WildflowerServerLive` scope; the daemon's own error channel is `never` 
- * (failures are persisted into `TunnelState.error` rather than thrown), 
- * so the surrounding Layer.launch` doesn't see them.
+ * long-lived fiber that drives `TunnelConfig` → `tunnel-node`'s `startTunnel`
+ * → `TunnelState`. `Layer.scopedDiscard` ties the daemon's lifetime to the
+ * `WildflowerServerLive` scope; the daemon's own error channel is `never`
+ * (failures are persisted into `TunnelState.error` rather than thrown),
+ * so the surrounding `Layer.launch` doesn't see them.
  */
-const TunnelDaemon: Layer.Layer<never, never, TunnelStore> = Layer.scopedDiscard(Effect.forkScoped(runTunnelDaemon(startTunnel)))
+const TunnelDaemon: Layer.Layer<never, never, TunnelStore> = Layer.scopedDiscard(
+  Effect.forkScoped(runTunnelDaemon(startTunnel))
+)
 
 export { startTunnel, TunnelDaemon }
 export type { OpenTunnel, OpenTunnelHandle, OpenTunnelOpts }
