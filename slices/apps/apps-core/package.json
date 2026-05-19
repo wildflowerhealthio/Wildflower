@@ -69,6 +69,7 @@
     "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
+    "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -80,6 +81,7 @@
     "@livestore/utils": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "kitchen-sink": "workspace:*",
+    "shared-structures-core": "workspace:*"
   }
 }

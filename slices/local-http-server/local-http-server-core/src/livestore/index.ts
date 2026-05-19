@@ -8,7 +8,7 @@
  * remains a type anchor for cross-package `Store<typeof schema>` tags.
  */
 
-import { defineSliceLivestore, type InputMaterializers } from 'kitchen-sink/livestore'
+import { defineSliceLivestore, type InputMaterializers } from 'shared-structures-core/livestore'
 
 import * as ServerState from './server-state.ts'
 

@@ -11,7 +11,7 @@
  * useful as a type anchor for cross-package `Store<typeof schema>` tags.
  */
 
-import { defineSliceLivestore } from 'kitchen-sink/livestore'
+import { defineSliceLivestore } from 'shared-structures-core/livestore'
 
 import * as RemoteConfig from './remote-config.ts'
 

@@ -22,12 +22,27 @@ Comments authored by `/review` follow this structure: an **analysis** paragraph 
 2. **Safety check — verify local history includes the PR.** Get the PR's head commit SHA using `gh pr view`. Run `git cat-file -t <sha>` to confirm it exists locally. If it doesn't, **stop and tell the user** — they likely need to fetch or switch branches. Do not proceed.
 
 3. **Gather all comments.** Fetch both types:
-   - **Review comments** (inline on code): `gh api repos/{owner}/{repo}/pulls/{pull_number}/comments --paginate`
+   - **Review threads** (inline on code, grouped with resolution status): use the GraphQL `reviewThreads` connection so you get `isResolved` per thread alongside each comment's `reactionGroups`. Example:
+     ```
+     gh api graphql -f query='query($owner:String!,$repo:String!,$number:Int!){
+       repository(owner:$owner,name:$repo){pullRequest(number:$number){
+         reviewThreads(first:100){nodes{
+           id isResolved isOutdated
+           comments(first:50){nodes{
+             id databaseId author{login} path body url
+             reactionGroups{content reactors{totalCount}}
+           }}
+         }}
+       }}
+     }' -f owner=OWNER -f repo=REPO -F number=NUMBER
+     ```
    - **Issue comments** (top-level): `gh api repos/{owner}/{repo}/issues/{pull_number}/comments --paginate`
 
-4. **Filter for reacted comments.** Each comment's response includes a `reactions` summary with counts. A comment is in scope when:
-   - It is plain prose (no emoji tags in body) **and** has `reactions.rocket > 0` — the 🚀 reaction is still the trigger for single-action comments, OR
-   - Its body contains one or more emoji-tagged action items (🎉/😄/😕/🚀 prefixing a line) **and** any of `reactions.hooray`, `reactions.laugh`, `reactions.confused`, or `reactions.rocket` is greater than 0.
+4. **Filter for in-scope comments.** Apply both filters — resolution first, then reactions:
+   - **Skip any comment whose review thread has `isResolved: true`.** Resolved threads are done — the reviewer has accepted them as closed, even if old action-item reactions are still present. Never re-address a resolved thread. (Issue comments don't have thread resolution; the reaction filter alone applies.)
+   - Of the remaining (unresolved) comments, a comment is in scope when:
+     - It is plain prose (no emoji tags in body) **and** has a 🚀 reaction (`ROCKET` reactor count > 0) — the rocket is the trigger for single-action comments, OR
+     - Its body contains one or more emoji-tagged action items (🎉/😄/😕/🚀 prefixing a line) **and** any of `HOORAY`, `LAUGH`, `CONFUSED`, or `ROCKET` has a reactor count > 0.
 
    No need to fetch the detailed reactions endpoint unless you need to know _who_ reacted.
 
@@ -52,6 +67,7 @@ Comments authored by `/review` follow this structure: an **analysis** paragraph 
 ## Guidelines
 
 - **Local work only.** All fixes happen in the local working directory. Never push — the user's SSH key requires a password. Ask them to push when done.
+- **Resolved threads are out of scope.** Always check `isResolved` first — a resolved thread is closed work, regardless of the reactions on it.
 - **Reactions are the go signal.** 🚀 on a plain comment, or any of 🎉/😄/😕/🚀 on a multi-tag comment, means "address this." Comments without these reactions are ignored.
 - **Don't over-interpret.** If a comment is ambiguous about what change is needed, ask the user rather than guessing. Use `AskUserQuestion` with the comment text quoted.
 - **Respect the PR scope.** Only make changes relevant to the flagged comments. Don't refactor surrounding code or fix unrelated issues.

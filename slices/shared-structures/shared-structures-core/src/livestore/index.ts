@@ -49,7 +49,7 @@ type InputMaterializers = State.SQLite.InputState['materializers']
  *
  * @example
  * ```ts
- * import { defineSliceLivestore } from 'kitchen-sink/livestore'
+ * import { defineSliceLivestore } from 'shared-structures-core/livestore'
  *
  * const { schema, state, StoreTag, makeLayerFactory } = defineSliceLivestore({
  *   name: 'EmrStore',

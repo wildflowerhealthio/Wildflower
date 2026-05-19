@@ -13,7 +13,7 @@
 // Native module mock — register before importing anything that pulls it in.
 // ---------------------------------------------------------------------------
 
-import type localtunnelType from '../localtunnel.ts'
+import type { start as startLocaltunnel } from '../localtunnel.ts'
 import type TunnelType from '../Tunnel.ts'
 
 const mockCreateTunnelConnection = jest.fn().mockResolvedValue(undefined)
@@ -34,7 +34,7 @@ jest.mock('../ExpoLocaltunnelModule', () => ({
 // `require` (not `import`) for the unit under test — see the analogous note
 // in the sister package's tests. ES imports get hoisted above `jest.mock()`'s
 // captured factory variables and would race; `require` runs in source order.
-const localtunnel: typeof localtunnelType = require('../localtunnel.ts').default
+const start: typeof startLocaltunnel = require('../localtunnel.ts').start
 const Tunnel: typeof TunnelType = require('../Tunnel.ts').default
 
 // ---------------------------------------------------------------------------
@@ -81,7 +81,7 @@ describe('localtunnel() overloads', () => {
 
   test('options-only form returns a Promise that resolves to a Tunnel', async () => {
     mockFetchOnceWithBody(makeAssignBody())
-    const tunnel = await localtunnel({ port: 8000 })
+    const tunnel = await start({ port: 8000 })
     expect(tunnel).toBeInstanceOf(Tunnel)
     expect(tunnel.url).toBe('https://tunnel-id.localtunnel.me')
     expect(tunnel.clientId).toBe('tunnel-id')
@@ -91,7 +91,7 @@ describe('localtunnel() overloads', () => {
   test('options + callback form returns the Tunnel synchronously and invokes the callback after fetch', (done) => {
     mockFetchOnceWithBody(makeAssignBody({ id: 'cb-id', url: 'https://cb-id.localtunnel.me' }))
 
-    const sync = localtunnel({ port: 8000 }, (err, tunnel) => {
+    const sync = start({ port: 8000 }, (err, tunnel) => {
       try {
         expect(err).toBeNull()
         expect(tunnel).toBeInstanceOf(Tunnel)
@@ -111,7 +111,7 @@ describe('localtunnel() overloads', () => {
 
   test('port-first form (port + opts) returns a Promise resolving to a Tunnel', async () => {
     mockFetchOnceWithBody(makeAssignBody())
-    const tunnel = await localtunnel(8000, { localHost: 'foo' })
+    const tunnel = await start(8000, { localHost: 'foo' })
     expect(tunnel).toBeInstanceOf(Tunnel)
     expect(tunnel.opts.port).toBe(8000)
     expect(tunnel.opts.localHost).toBe('foo')
@@ -120,7 +120,7 @@ describe('localtunnel() overloads', () => {
 
   test('port-first form + callback returns Tunnel synchronously', (done) => {
     mockFetchOnceWithBody(makeAssignBody())
-    const sync = localtunnel(8000, undefined, (err, tunnel) => {
+    const sync = start(8000, undefined, (err, tunnel) => {
       try {
         expect(err).toBeNull()
         expect(tunnel).toBe(sync)
@@ -135,12 +135,12 @@ describe('localtunnel() overloads', () => {
 
   test('promise rejects when localHttps is set (unsupported in expo-localtunnel)', async () => {
     mockFetchOnceWithBody(makeAssignBody())
-    await expect(localtunnel({ port: 8000, localHttps: true })).rejects.toThrow(/localHttps/)
+    await expect(start({ port: 8000, localHttps: true })).rejects.toThrow(/localHttps/)
   })
 
   test('default host is https://localtunnel.me and the assignment URI uses ?new when no subdomain is given', async () => {
     const fn = mockFetchOnceWithBody(makeAssignBody())
-    const tunnel = await localtunnel({ port: 8000 })
+    const tunnel = await start({ port: 8000 })
     // First positional arg is the URL string.
     expect(fn.mock.calls[0]?.[0]).toBe('https://localtunnel.me/?new')
     tunnel.close()
@@ -148,7 +148,7 @@ describe('localtunnel() overloads', () => {
 
   test('explicit subdomain is appended to the assignment URI in place of ?new', async () => {
     const fn = mockFetchOnceWithBody(makeAssignBody())
-    const tunnel = await localtunnel({ port: 8000, subdomain: 'mysub' })
+    const tunnel = await start({ port: 8000, subdomain: 'mysub' })
     expect(fn.mock.calls[0]?.[0]).toBe('https://localtunnel.me/mysub')
     tunnel.close()
   })

@@ -1,4 +1,4 @@
-import { type Arbitrary, type FastCheck, Schema } from 'effect'
+import { type Arbitrary, type FastCheck, type Option, Schema } from 'effect'
 import { capitalize } from 'effect/String'
 
 import { suspendWithShallowJson } from 'kitchen-sink/schema'
@@ -88,10 +88,38 @@ function empty<const Prefix extends string, const DatatypeNames extends readonly
   ) as unknown as Empty<Prefix, DatatypeNames>
 }
 
-type ColumnFor<N extends Datatype.Name> = SqliteDsl.ColumnDefinition<
-  Datatype.EncodedForDbType<Datatype.DbTypeFor<N>> | null,
-  Schema.Schema.Type<Datatype.SchemaFor<N>> | null
->
+// Maps a datatype's `DbType` to livestore's `FieldColumnType` for the
+// generated column: boolean values are stored as integer (0/1) and json
+// values as text, both per `columnFor` below.
+type ColumnTypeFor<TDbType extends Datatype.DbType> = TDbType extends 'integer' | 'boolean'
+  ? 'integer'
+  : TDbType extends 'real'
+    ? 'real'
+    : 'text'
+
+// Structural expansion of `SqliteDsl.ColumnDefinition<E, D>` (a subtype of it).
+// The alias version triggers TS2883 in callers' d.ts emit: tsgo expands
+// `ColumnDefinition` and the expansion references `FieldColumnType` /
+// `ColumnDefaultValue` from `@livestore/common`'s private
+// `dsl/field-defs.d.ts`, which isn't a public export — so the only
+// importable path tsgo can write is a relative path through `node_modules`,
+// which it (correctly) flags as non-portable. Inlining the shape with
+// portable types (`Schema` / `Option` from `effect`, the literal `columnType`
+// derived from the datatype's `DbType`, and `Option.None<never>` for
+// `default` since `columnFor` never supplies one) keeps the emitted d.ts
+// self-contained while remaining assignable to
+// `SqliteDsl.ColumnDefinition<any, any>` for `State.SQLite.table({ columns })`.
+type ColumnFor<N extends Datatype.Name> = {
+  readonly columnType: ColumnTypeFor<Datatype.DbTypeFor<N>>
+  readonly schema: Schema.Schema<
+    Schema.Schema.Type<Datatype.SchemaFor<N>> | null,
+    Datatype.EncodedForDbType<Datatype.DbTypeFor<N>> | null
+  >
+  readonly default: Option.None<never>
+  readonly nullable: boolean
+  readonly primaryKey: boolean
+  readonly autoIncrement: boolean
+}
 
 // `Datatype.baseSchemas` and `Datatype.baseDbTypes` are keyed by strict
 // subsets of `Datatype.Name`. We index them with arbitrary names from a

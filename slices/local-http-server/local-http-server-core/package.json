@@ -42,6 +42,7 @@
     "effect": "catalog:",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
+    "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -51,6 +52,7 @@
     "@livestore/peer-deps": "catalog:",
     "@livestore/utils": "catalog:",
     "effect": "catalog:",
-    "kitchen-sink": "workspace:*"
+    "kitchen-sink": "workspace:*",
+    "shared-structures-core": "workspace:*"
   }
 }

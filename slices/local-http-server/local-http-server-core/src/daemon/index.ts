@@ -1,137 +1,63 @@
+import { Cause, Data, Effect, Match, type Scope, Stream, pipe } from 'effect'
 import {
-  Cause,
-  Deferred,
-  Effect,
-  Either,
-  Exit,
-  Match,
-  Scope,
-  Stream,
-  SynchronizedRef,
-  pipe,
-} from 'effect'
+  diffIntents,
+  ensureDefaultRowExists,
+  executeIntents,
+  watchSnapshots,
+} from 'shared-structures-core/process-daemon'
 
 import { DEFAULT_IDLE_PORT, LocalHttpServerStore, ServerState } from '../livestore/index.ts'
-
-type RunningState =
-  | { readonly _tag: 'Idle' }
-  /**
-   * A start attempt for `(port, localOrigin)` failed. The daemon
-   * remembers the failed config so it won't busy-retry on the
-   * error-commit's own stream tick — only a config change (different
-   * port/origin) or a `requestedRunning: false` toggle re-arms it.
-   */
-  | { readonly _tag: 'Failed'; readonly port: number; readonly localOrigin: string }
-  | {
-      readonly _tag: 'Running'
-      readonly serverScope: Scope.CloseableScope
-      readonly port: number
-      readonly localOrigin: string
-    }
-
-const IDLE_STATE: RunningState = { _tag: 'Idle' }
-
-/**
- * Intent derived from a stream tick: what does the daemon need to do
- * given the requested state and the current sub-scope? Lifting this out
- * of the `if`-chain makes the state-machine branches explicit and lets
- * `Match.exhaustive` catch a missed case at compile time.
- */
-type Intent =
-  | {
-      readonly _tag: 'StartOrReconfigure'
-      readonly prev: Scope.CloseableScope | null
-      readonly port: number
-      readonly localOrigin: string
-    }
-  | { readonly _tag: 'Stop'; readonly prev: Scope.CloseableScope | null }
-  | { readonly _tag: 'NoOp'; readonly runningState: RunningState }
-
-const sameConfig = (
-  runningState: RunningState,
-  requestedPort: number,
-  requestedOrigin: string
-): boolean =>
-  runningState._tag !== 'Idle' &&
-  runningState.port === requestedPort &&
-  runningState.localOrigin === requestedOrigin
-
-const computeIntent = (
-  runningState: RunningState,
-  requestedRunning: boolean,
-  requestedPort: number,
-  requestedOrigin: string
-): Intent => {
-  if (requestedRunning && !sameConfig(runningState, requestedPort, requestedOrigin)) {
-    return {
-      _tag: 'StartOrReconfigure',
-      prev: runningState._tag === 'Running' ? runningState.serverScope : null,
-      port: requestedPort,
-      localOrigin: requestedOrigin,
-    }
-  }
-  if (!requestedRunning && runningState._tag !== 'Idle') {
-    // Failed → Stop closes no scope (it was already closed at the
-    // failure site) but still needs to commit the running=false /
-    // idle-port reset so the UI clears the failed state and the
-    // daemon re-arms for a future start.
-    return {
-      _tag: 'Stop',
-      prev: runningState._tag === 'Running' ? runningState.serverScope : null,
-    }
-  }
-  return { _tag: 'NoOp', runningState }
-}
 
 /**
  * Long-lived daemon Effect that drives the local HTTP server from
  * `LocalHttpServerStore.requestedRunning`.
  *
- * @typeParam E - Error channel of the supplied `startServer`. Errors are
- *   logged and surfaced to the UI via the `error` field on
- *   `ServerState`; they do not propagate out of the daemon.
- * @param startServer - Effect that binds the listener. It must succeed
- *   with `void` once the port is bound (the daemon uses that success as
- *   the "ready" signal). The daemon forks it into a sub-scope and
- *   provides that `Scope.Scope` as a context — long-running listeners
- *   should `Effect.acquireRelease` to register their cleanup with the
- *   sub-scope so it fires when the daemon closes it (on reconfigure or
- *   when `requestedRunning` flips back to false).
+ * @typeParam E - Error channel of the supplied `startServer`. Errors
+ *   surface to the UI via the `error` field on `ServerState`; they do
+ *   not propagate out of the daemon.
+ * @param startServer - Stream that binds the listener and emits `void`
+ *   when the port is bound (the daemon uses the first emit as the
+ *   "ready" signal). The stream must keep running until either a
+ *   terminal failure (post-bind crash → fails the stream) or
+ *   interruption when the daemon swaps in a new config / stop intent.
+ *   The daemon provides a `Scope.Scope` so the implementation can
+ *   `Effect.acquireRelease` to tie its cleanup to the per-process scope.
  * @returns A scoped Effect that runs until its scope closes. The
- *   returned channel is `never` because all `startServer` failures are
- *   written to `ServerState.error` rather than thrown.
+ *   returned channel is `never` because all `startServer` failures
+ *   (pre- and post-bind) are written to `ServerState.error` rather than
+ *   thrown.
  *
  * @remarks
  *
- * Transitions:
- * - `requestedRunning: true` + no instance → fork `startServer(port, localOrigin)`
- *   into a sub-scope, await the bound signal, commit
- *   `{ requestedRunning: true, running: true, port, localOrigin, error: null }`.
- * - port/origin change while running → close the previous sub-scope and
- *   fork a fresh `startServer` for the new config.
- * - `requestedRunning: false` + instance → close the sub-scope and
- *   commit `{ running: false }`.
- * - `startServer` failure before bind → commit
- *   `{ running: false, error: <cause> }` with `requestedRunning` left at
- *   the user's intent.
+ * Implementation is a three-stage stream pipeline from
+ * `shared-structures-core/process-daemon`:
  *
- * Transitions are serialised through a `SynchronizedRef`. State-resetting
- * commits live at the daemon's transition sites rather than on the
- * sub-scope finalizer, so reconfiguration can close the old sub-scope
- * without those commits cascading into the stream watcher. The daemon
- * scope close tears down any live sub-scope but does not touch the row —
- * the user's `requestedRunning` intent must survive across daemon
- * restarts.
+ *  1. `watchSnapshots` subscribes to `ServerState.queries.current$`,
+ *     projects each row down to `{requestedRunning, config}` (the
+ *     user-controlled fields), and `Stream.changes`-dedupes consecutive
+ *     identical projections — so the daemon's own commits to
+ *     `running`/`error`/`port` don't re-trigger the pipeline.
+ *  2. `diffIntents` folds consecutive snapshots into `StartOrReconfigure`
+ *     / `Stop` transitions.
+ *  3. `executeIntents` opens a per-process scope per StartOrReconfigure,
+ *     peels the bind signal, and emits `LifecycleEvent`s. `{switch: true}`
+ *     interrupts the previous process's tail when the next intent
+ *     arrives — releasing the per-process scope via its
+ *     `acquireRelease` finalizer.
+ *
+ * This slice's `Stream.runForEach` attaches the per-event livestore
+ * commits. Pre- and post-bind failures share the same teardown patch
+ * (running/port/error reset); the user's `requestedRunning` intent is
+ * untouched here, so it survives across failures and daemon restarts.
  */
 const runHttpServerDaemon = <E>(
-  startServer: (port: number, localOrigin: string) => Effect.Effect<void, E, Scope.Scope>
-): Effect.Effect<void, never, Scope.Scope | LocalHttpServerStore> =>
+  startServer: (port: number, localOrigin: string) => Stream.Stream<void, E, Scope.Scope>
+): Effect.Effect<void, never, LocalHttpServerStore> =>
   Effect.gen(function* () {
     const store = yield* LocalHttpServerStore
 
-    const commitState = (
+    const commit = (
       patch: Partial<{
-        readonly requestedRunning: boolean
         readonly running: boolean
         readonly localOrigin: string
         readonly port: number
@@ -140,135 +66,33 @@ const runHttpServerDaemon = <E>(
     ): Effect.Effect<void, never, never> =>
       Effect.sync(() => store.commit(ServerState.events.localHttpServerStateSet(patch)))
 
-    // WORKAROUND(livestore): `subscribeStream` does not run the
-    // clientDocument's "ensure default row exists" path that a
-    // synchronous `store.query` triggers, so without this read the
-    // daemon's first stream emit returns an empty result and the schema
-    // decoder dies on it. The query value is discarded — the only
-    // purpose is the row-materialization side effect.
-    yield* Effect.sync(() => store.query(ServerState.queries.current$))
+    const commitTeardown = (error: string | null): Effect.Effect<void, never, never> =>
+      commit({ running: false, port: DEFAULT_IDLE_PORT, error })
 
-    const runningStateRef = yield* SynchronizedRef.make<RunningState>(IDLE_STATE)
+    yield* ensureDefaultRowExists(store, ServerState.queries.current$)
 
-    // On daemon scope close: tear down any live sub-scope. Leave the
-    // row alone — `requestedRunning` represents the user's intent and
-    // must survive across daemon restarts.
-    yield* Effect.addFinalizer(() =>
-      SynchronizedRef.updateEffect(runningStateRef, (state) => {
-        const closePrev =
-          state._tag === 'Running' ? Scope.close(state.serverScope, Exit.void) : Effect.void
-        return closePrev.pipe(Effect.as(IDLE_STATE))
-      })
-    )
-
-    const newHttpServer = (
-      port: number,
-      localOrigin: string
-    ): Effect.Effect<RunningState, never, never> =>
-      Effect.gen(function* () {
-        const serverScope = yield* Scope.make()
-        const portBound = yield* Deferred.make<void, E>()
-        yield* pipe(
-          // Extend the daemon's sub-scope into `startServer` (rather than
-          // letting `forkIn` strip its Scope requirement) so any
-          // `Effect.acquireRelease` inside `startServer` ties its release
-          // to `serverScope` — the release fires when the daemon closes
-          // the scope on reconfigure or stop, not when the bind-success
-          // signal lands.
-          Scope.extend(startServer(port, localOrigin), serverScope),
-          Effect.tap(() => Deferred.succeed(portBound, undefined)),
-          Effect.tapErrorCause((cause) =>
-            pipe(
-              Deferred.failCause<void, E>(portBound, cause),
-              Effect.zipRight(Effect.logError('[local-http-server-core] startServer failed', cause))
-            )
-          ),
-          Effect.forkIn(serverScope)
+    yield* pipe(
+      watchSnapshots({
+        store,
+        query: ServerState.queries.current$,
+        readSnapshot: (raw) => ({
+          requestedRunning: raw.requestedRunning,
+          config: Data.struct({ port: raw.port, localOrigin: raw.localOrigin }),
+        }),
+      }),
+      diffIntents,
+      executeIntents({
+        startProcess: (cfg) => startServer(cfg.port, cfg.localOrigin),
+      }),
+      Stream.runForEach((event) =>
+        Match.value(event).pipe(
+          Match.tag('Running', () => commit({ running: true, error: null })),
+          Match.tag('Idle', () => commitTeardown(null)),
+          Match.tag('Failed', ({ cause }) => commitTeardown(Cause.pretty(cause))),
+          Match.exhaustive
         )
-
-        const bindResult = yield* Effect.either(Deferred.await(portBound))
-        if (Either.isLeft(bindResult)) {
-          yield* Scope.close(serverScope, Exit.void)
-          yield* commitState({
-            running: false,
-            requestedRunning: true,
-            error: Cause.pretty(Cause.fail(bindResult.left)),
-          })
-          // Remember the failed (port, origin) so the error-commit's own
-          // stream tick lands as a `NoOp` rather than triggering a
-          // busy-retry — `requestedRunning: true` is still in the row
-          // after the failure, so without this guard `sameConfig` would
-          // return false and the daemon would loop forever.
-          return { _tag: 'Failed', port, localOrigin } as const
-        }
-
-        // The daemon owns `running` and `error`; `requestedRunning`,
-        // `port`, and `localOrigin` are user intent and must not be
-        // echoed back here — doing so would overwrite a concurrent
-        // user update committed while the daemon was binding (the
-        // overwrite then disappears from the stream queue and the
-        // daemon never reconfigures).
-        yield* commitState({ requestedRunning: true, running: true, error: null })
-        return { _tag: 'Running', serverScope, port, localOrigin } as const
-      })
-
-    const startStoreWatcher = store.subscribeStream(ServerState.queries.current$).pipe(
-      // The stream emits a snapshot per commit, but during a long
-      // `newHttpServer` (fork + await bind + commit) the next emissions
-      // queue up. Draining them in order would replay stale snapshots
-      // (including the daemon's own past commits) and chase configs
-      // that no longer match the row. Treat each emission only as a
-      // "something changed, go look" signal and read the latest state
-      // synchronously inside the serialized update.
-      Stream.runForEach(() =>
-        SynchronizedRef.updateEffect(runningStateRef, (runningState) => {
-          const {
-            requestedRunning,
-            port: requestedPort,
-            localOrigin: requestedOrigin,
-          } = store.query(ServerState.queries.current$)
-          const intent = computeIntent(
-            runningState,
-            requestedRunning,
-            requestedPort,
-            requestedOrigin
-          )
-          return Match.value(intent).pipe(
-            Match.tag('StartOrReconfigure', ({ prev, port, localOrigin }) => {
-              // Close any existing sub-scope first so the previous fork
-              // is released when reconfiguring port/origin. The
-              // sub-scope carries no state-resetting finalizer —
-              // `newHttpServer`'s subsequent commit reflects the new
-              // config in one pass and avoids cascading through the
-              // stream watcher.
-              const closePrev = prev === null ? Effect.void : Scope.close(prev, Exit.void)
-              return closePrev.pipe(Effect.flatMap(() => newHttpServer(port, localOrigin)))
-            }),
-            Match.tag('Stop', ({ prev }) => {
-              const closePrev = prev === null ? Effect.void : Scope.close(prev, Exit.void)
-              return closePrev.pipe(
-                Effect.tap(() =>
-                  commitState({
-                    running: false,
-                    // Reset to the idle default so the UI does not
-                    // surface the previously-bound port as "current".
-                    port: DEFAULT_IDLE_PORT,
-                    // Clear the previous failure so the UI is not
-                    // stuck on a stale error after the user toggles
-                    // requestedRunning back off.
-                    error: null,
-                  })
-                ),
-                Effect.as(IDLE_STATE)
-              )
-            }),
-            Match.tag('NoOp', ({ runningState: state }) => Effect.succeed(state)),
-            Match.exhaustive
-          )
-        })
       )
     )
-    yield* startStoreWatcher
   })
 
 export { runHttpServerDaemon }

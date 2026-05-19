@@ -44,7 +44,7 @@ const makeSliceLs = <Name extends string>(
     materializers: fixtureMaterializers,
   })
 
-// A stub livestore Store — only the structural surface kitchen-sink needs
+// A stub livestore Store — only the structural surface the helper needs
 // to assert reference identity through the Layer.
 interface StubStore {
   readonly __brand: 'fixture'

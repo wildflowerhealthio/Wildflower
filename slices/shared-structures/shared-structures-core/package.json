@@ -1,0 +1,59 @@
+{
+  "name": "shared-structures-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cross-slice utilities. The long-running process-daemon plumbing (snapshot watch, intent diff, stream-driven execution) shared between tunnel-core and local-http-server-core, plus the phantom-id bridge helper used by every slice that composes its HttpApi into a parent.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/shared-structures/shared-structures-core"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    "./http-api-implementation": {
+      "source": "./src/http-api-implementation/index.ts",
+      "default": "./dist/http-api-implementation/index.js"
+    },
+    "./livestore": {
+      "source": "./src/livestore/index.ts",
+      "default": "./dist/livestore/index.js"
+    },
+    "./process-daemon": {
+      "source": "./src/process-daemon/index.ts",
+      "default": "./dist/process-daemon/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@livestore/adapter-node": "catalog:",
+    "@livestore/common": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "@livestore/utils": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "@livestore/common": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@livestore/peer-deps": "catalog:",
+    "@livestore/utils": "catalog:",
+    "effect": "catalog:"
+  }
+}
