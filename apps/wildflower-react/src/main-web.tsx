@@ -7,6 +7,7 @@ import { AuthTokenProvider } from 'react-kitchen-sink'
 import { BrowserRouter, Routes } from 'react-router'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
+import { TunnelClientProvider } from 'tunnel-react'
 import * as AppRoot from './app-root.tsx'
 import { AppsSenderForwarder } from './bridges/apps-sender-forwarder.tsx'
 import { CollectorSenderForwarder } from './bridges/collector-sender-forwarder.tsx'
@@ -17,10 +18,10 @@ import './styles/global.css'
 // Mount order:
 //  1. `<AuthTokenProvider>` exposes the gatekeeper-react module-scoped
 //     `authTokenRef` (a `SubscriptionRef<string | null>` syncing with
-//     localStorage) to every slice's client layer below it. All four
-//     slice client providers (gatekeeper, collector, fhir-r4, apps)
-//     read the live token per-request via the `BearerToken` service,
-//     so rotation surfaces without remounting any provider.
+//     localStorage) to every slice's client layer below it. All five
+//     slice client providers (gatekeeper, collector, fhir-r4, apps,
+//     tunnel) read the live token per-request via the `BearerToken`
+//     service, so rotation surfaces without remounting any provider.
 //  2. `<CollectorRuntimeProvider>` exposes the CollectorBridge `Web`
 //     receiver layer + the active-handler ref the running sync installs
 //     into; mounted before the transport builds.
@@ -37,6 +38,10 @@ import './styles/global.css'
 //     context; the admin layers read the live token from `BearerToken`
 //     per request. `<AppsClientProvider>` provides BOTH the public and
 //     admin apps client layers.
+//  5b. `<TunnelClientProvider>` provides the tunnel slice's admin
+//     client layer. It takes no props — the layer reads the live token
+//     from `BearerToken` per request, like the other slice client
+//     providers. Tunnel has no public counterpart (owner-only API).
 AppRoot.render(
   <BrowserRouter>
     <AuthTokenProvider subscribable={authTokenRef}>
@@ -49,7 +54,9 @@ AppRoot.render(
                   <CollectorClientProvider>
                     <FhirR4ResourcesClientProvider>
                       <AppsClientProvider>
-                        <Routes>{appRoutesFragment}</Routes>
+                        <TunnelClientProvider>
+                          <Routes>{appRoutesFragment}</Routes>
+                        </TunnelClientProvider>
                       </AppsClientProvider>
                     </FhirR4ResourcesClientProvider>
                   </CollectorClientProvider>
