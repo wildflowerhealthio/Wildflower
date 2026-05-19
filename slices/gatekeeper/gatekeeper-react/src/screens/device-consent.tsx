@@ -15,10 +15,10 @@ import {
 } from 'react-tundraish'
 
 import {
+  useGatekeeperEffect,
   useGatekeeperEffectRunner,
   type GatekeeperEffectRunner,
-} from '../use-gatekeeper-effect-runner.ts'
-import { useGatekeeperEffect } from '../use-gatekeeper-effect.ts'
+} from '../gatekeeper-client.tsx'
 import pageLayout from '../styles/page-layout.module.css'
 import scopeListStyles from '../styles/scope-list.module.css'
 

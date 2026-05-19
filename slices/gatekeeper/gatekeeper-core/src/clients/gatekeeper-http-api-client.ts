@@ -1,12 +1,12 @@
-import { HttpApiClient } from '@effect/platform'
-import { Context, type Effect } from 'effect'
+import { defineSliceHttpClient } from 'shared-structures-core/http-api-definition'
 
 import { GatekeeperApi } from '../http-api-definition/index.ts'
 
-// Type-only reference to extract the resolved client shape; tree-shaken at call sites.
-// oxlint-disable-next-line no-underscore-dangle
-const _bareGatekeeperClient = HttpApiClient.make(GatekeeperApi, { baseUrl: '/' })
-type GatekeeperHttpApiClientShape = Effect.Effect.Success<typeof _bareGatekeeperClient>
+const sliceClient = defineSliceHttpClient({
+  name: 'GatekeeperHttpApiClient',
+  api: GatekeeperApi,
+  auth: 'bearer',
+})
 
 /**
  * Effect Service providing the resolved `GatekeeperApi` HttpApi client.
@@ -20,9 +20,16 @@ type GatekeeperHttpApiClientShape = Effect.Effect.Success<typeof _bareGatekeeper
  * )
  * ```
  */
-class GatekeeperHttpApiClient extends Context.Tag('GatekeeperHttpApiClient')<
-  GatekeeperHttpApiClient,
-  GatekeeperHttpApiClientShape
->() {}
+class GatekeeperHttpApiClient extends sliceClient.ClientTag<GatekeeperHttpApiClient>() {
+  static readonly layer = sliceClient.makeLayerFactory(GatekeeperHttpApiClient)()
+  static readonly auth = sliceClient.auth
+}
+
+/**
+ * Resolved client shape — keyed off the Tag's `Service` accessor so a
+ * change to the underlying HttpApi flows through to consumers (e.g.
+ * `pollAuthorizationStatus`) without re-deriving via `HttpApiClient.make`.
+ */
+type GatekeeperHttpApiClientShape = typeof GatekeeperHttpApiClient.Service
 
 export { GatekeeperHttpApiClient, type GatekeeperHttpApiClientShape }

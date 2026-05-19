@@ -14,6 +14,10 @@
   ],
   "type": "module",
   "exports": {
+    "./http-api-definition": {
+      "source": "./src/http-api-definition/index.ts",
+      "default": "./dist/http-api-definition/index.js"
+    },
     "./http-api-implementation": {
       "source": "./src/http-api-implementation/index.ts",
       "default": "./dist/http-api-implementation/index.js"
@@ -45,6 +49,8 @@
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
+    "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -54,6 +60,7 @@
     "@livestore/livestore": "catalog:",
     "@livestore/peer-deps": "catalog:",
     "@livestore/utils": "catalog:",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "kitchen-sink": "workspace:*"
   }
 }

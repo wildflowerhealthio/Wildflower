@@ -7,7 +7,7 @@ import { cn } from 'react-kitchen-sink'
 import { useNavigate, useSearchParams } from 'react-router'
 import { pageLayoutStyles } from 'react-tundraish'
 
-import { useCollectorEffectRunner } from '../use-collector-effect-runner.ts'
+import { useCollectorEffectRunner } from '../collector-client.tsx'
 import accountConfig from '../styles/account-config.module.css'
 import pageLayout from '../styles/page-layout.module.css'
 

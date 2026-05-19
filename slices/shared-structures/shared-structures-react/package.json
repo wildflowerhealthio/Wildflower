@@ -1,8 +1,17 @@
 {
-  "name": "fhir-r4-react",
+  "name": "shared-structures-react",
   "version": "0.0.0",
   "private": true,
-  "description": "React surface for the FHIR R4 slice — client provider, layer, and effect/stream/action hooks for FhirR4ResourcesHttpApiClient. Mirrors gatekeeper-react's BearerToken-driven client-layer pattern; names are FhirR4-specific so future FHIR-version slices can coexist.",
+  "description": "React-side helpers paired with shared-structures-core. `defineSliceReact` collapses each slice-react's per-client context + provider + 4 hooks (`useClientLayer`, `useEffect`, `useEffectRunner`, `useStream`) into a single declaration.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/shared-structures/shared-structures-react"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -14,21 +23,22 @@
   "scripts": {
     "build": "vp pack",
     "check": "vp check",
-    "dev": "vp pack --watch"
+    "dev": "vp pack --watch",
+    "test": "vp test"
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.0",
     "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
     "effect": "catalog:",
-    "fhir-r4": "workspace:*",
+    "fast-check": "catalog:",
     "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
-    "shared-structures-react": "workspace:*",
+    "shared-structures-core": "workspace:*",
     "telemetry-react": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
@@ -36,10 +46,9 @@
   "peerDependencies": {
     "@effect/platform": "catalog:",
     "effect": "catalog:",
-    "fhir-r4": "workspace:*",
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
-    "shared-structures-react": "workspace:*",
+    "shared-structures-core": "workspace:*",
     "telemetry-react": "workspace:*"
   }
 }

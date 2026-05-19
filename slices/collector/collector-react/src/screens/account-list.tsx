@@ -7,9 +7,9 @@ import { cn } from 'react-kitchen-sink'
 import { useNavigate } from 'react-router'
 import { Dialog, ItemList, Menu, pageLayoutStyles, type MenuItem } from 'react-tundraish'
 
+import { useCollectorEffectRunner } from '../collector-client.tsx'
 import { formatInstant } from '../format-date.ts'
 import { useRequestSniffableWebView } from '../runtime/use-request-sniffable-web-view.ts'
-import { useCollectorEffectRunner } from '../use-collector-effect-runner.ts'
 import accountList from '../styles/account-list.module.css'
 import pageLayout from '../styles/page-layout.module.css'
 

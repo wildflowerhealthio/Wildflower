@@ -5,7 +5,7 @@ import { Suspense, useMemo, type JSX } from 'react'
 import { Await, useParams } from 'react-router'
 import { AsyncErrorView, pageLayoutStyles, PageLoading } from 'react-tundraish'
 
-import { useGatekeeperEffect } from '../use-gatekeeper-effect.ts'
+import { useGatekeeperEffect } from '../gatekeeper-client.tsx'
 import styles from './approved-app-detail.module.css'
 
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>

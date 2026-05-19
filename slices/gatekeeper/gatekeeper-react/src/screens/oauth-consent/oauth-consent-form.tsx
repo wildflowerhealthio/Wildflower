@@ -5,7 +5,7 @@ import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Checkbox, Field, FieldDescription, pageLayoutStyles, RadioGroup } from 'react-tundraish'
 
-import type { GatekeeperEffectRunner } from '../../use-gatekeeper-effect-runner.ts'
+import type { GatekeeperEffectRunner } from '../../gatekeeper-client.tsx'
 import type { Consent } from './types.ts'
 import { usePatientOptions } from './use-patient-options.ts'
 import pageLayout from '../../styles/page-layout.module.css'

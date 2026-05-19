@@ -17,10 +17,10 @@ import {
 import { RevokeGrantDialog } from '../components/RevokeGrantDialog.tsx'
 import { formatInstant } from '../format-date.ts'
 import {
+  useGatekeeperEffect,
   useGatekeeperEffectRunner,
   type GatekeeperEffectRunner,
-} from '../use-gatekeeper-effect-runner.ts'
-import { useGatekeeperEffect } from '../use-gatekeeper-effect.ts'
+} from '../gatekeeper-client.tsx'
 
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
 

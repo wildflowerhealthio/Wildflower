@@ -5,7 +5,7 @@ import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Checkbox, Dialog } from 'react-tundraish'
 
-import { useAppsAdminEffectRunner } from '../use-apps-effect-runner.ts'
+import { useAppsAdminEffectRunner } from '../apps-client.tsx'
 import editorStyles from '../styles/apps-editor.module.css'
 
 type AppEntry = Schema.Schema.Type<typeof Schemas.AppEntrySchema>

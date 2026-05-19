@@ -1,13 +1,12 @@
-import { HttpApiClient } from '@effect/platform'
-import { Context, type Effect } from 'effect'
+import { defineSliceHttpClient } from 'shared-structures-core/http-api-definition'
 
 import { CollectorApi } from '../http-api-definition/index.ts'
 
-// Type-only reference to extract the resolved client shape; tree-shaken
-// at call sites. Mirrors gatekeeper-core's GatekeeperHttpApiClient.
-// oxlint-disable-next-line no-underscore-dangle
-const _bareCollectorClient = HttpApiClient.make(CollectorApi, { baseUrl: '/' })
-type CollectorHttpApiClientShape = Effect.Effect.Success<typeof _bareCollectorClient>
+const sliceClient = defineSliceHttpClient({
+  name: 'CollectorHttpApiClient',
+  api: CollectorApi,
+  auth: 'bearer',
+})
 
 /**
  * Effect Service providing the resolved `CollectorApi` HttpApi client.
@@ -22,9 +21,11 @@ type CollectorHttpApiClientShape = Effect.Effect.Success<typeof _bareCollectorCl
  * )
  * ```
  */
-class CollectorHttpApiClient extends Context.Tag('CollectorHttpApiClient')<
-  CollectorHttpApiClient,
-  CollectorHttpApiClientShape
->() {}
+class CollectorHttpApiClient extends sliceClient.ClientTag<CollectorHttpApiClient>() {
+  static readonly layer = sliceClient.makeLayerFactory(CollectorHttpApiClient)()
+  static readonly auth = sliceClient.auth
+}
+
+type CollectorHttpApiClientShape = typeof CollectorHttpApiClient.Service
 
 export { CollectorHttpApiClient, type CollectorHttpApiClientShape }

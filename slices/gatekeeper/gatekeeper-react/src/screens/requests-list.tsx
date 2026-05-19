@@ -8,10 +8,10 @@ import { AsyncErrorView, ItemList, pageLayoutStyles, PageLoading } from 'react-t
 
 import { formatInstant } from '../format-date.ts'
 import {
+  useGatekeeperEffect,
   useGatekeeperEffectRunner,
   type GatekeeperEffectRunner,
-} from '../use-gatekeeper-effect-runner.ts'
-import { useGatekeeperEffect } from '../use-gatekeeper-effect.ts'
+} from '../gatekeeper-client.tsx'
 import pageLayout from '../styles/page-layout.module.css'
 
 type HttpRequest = Schema.Schema.Type<typeof AccessManagement.HttpRequestSchema>

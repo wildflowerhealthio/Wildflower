@@ -17,6 +17,10 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./auth-token": {
+      "source": "./src/auth-token/index.ts",
+      "default": "./dist/auth-token.js"
+    },
     "./crypto-random": {
       "source": "./src/crypto-random/index.ts",
       "default": "./dist/crypto-random.js"
