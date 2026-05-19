@@ -14,6 +14,10 @@
   ],
   "type": "module",
   "exports": {
+    "./livestore": {
+      "source": "./src/livestore/index.ts",
+      "default": "./dist/livestore/index.js"
+    },
     "./process-daemon": {
       "source": "./src/process-daemon/index.ts",
       "default": "./dist/process-daemon/index.js"

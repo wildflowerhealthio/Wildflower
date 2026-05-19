@@ -6,7 +6,7 @@
  * the pattern of `collector-core/livestore`.
  */
 
-import { defineSliceLivestore } from 'kitchen-sink/livestore'
+import { defineSliceLivestore } from 'shared-structures-core/livestore'
 
 import * as AppSelection from './app-selection.ts'
 

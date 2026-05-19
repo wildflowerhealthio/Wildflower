@@ -28,7 +28,7 @@
  */
 
 import { Schema } from 'effect'
-import { defineSliceLivestore } from 'kitchen-sink/livestore'
+import { defineSliceLivestore } from 'shared-structures-core/livestore'
 
 import * as Binary from './binary.ts'
 import * as Observation from './observation.ts'

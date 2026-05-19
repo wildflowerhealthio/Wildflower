@@ -1,5 +1,5 @@
 import { State } from '@livestore/livestore'
-import { defineSliceLivestore } from 'kitchen-sink/livestore'
+import { defineSliceLivestore } from 'shared-structures-core/livestore'
 
 import * as AuthorizationCode from './authorization-code.ts'
 import * as AuthorizationRequest from './authorization-request.ts'

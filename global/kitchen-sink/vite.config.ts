@@ -24,7 +24,6 @@ export default defineConfig({
     entry: {
       index: 'src/index.ts',
       'crypto-random': 'src/crypto-random/index.ts',
-      livestore: 'src/livestore/index.ts',
       'polyfills/promise-with-resolvers': 'src/polyfills/promise-with-resolvers.ts',
       schema: 'src/schema/index.ts',
       test: 'src/test/index.ts',

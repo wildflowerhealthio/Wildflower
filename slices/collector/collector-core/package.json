@@ -63,6 +63,7 @@
     "fast-check": "catalog:",
     "fhir-r4-client-collector": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -77,6 +78,7 @@
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "fhir-r4-client-collector": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "kitchen-sink": "workspace:*",
+    "shared-structures-core": "workspace:*"
   }
 }

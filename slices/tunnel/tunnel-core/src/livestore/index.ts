@@ -15,7 +15,7 @@
  * own composition.
  */
 
-import { defineSliceLivestore, type InputMaterializers } from 'kitchen-sink/livestore'
+import { defineSliceLivestore, type InputMaterializers } from 'shared-structures-core/livestore'
 
 import * as TunnelConfig from './tunnel-config.ts'
 import * as TunnelState from './tunnel-state.ts'
