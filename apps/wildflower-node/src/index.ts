@@ -5,6 +5,7 @@ import './instrument.ts'
 import { createServer } from 'node:http'
 import { HttpServer } from '@effect/platform'
 import { NodeFileSystem, NodeHttpServer, NodePath, NodeRuntime } from '@effect/platform-node'
+import type { ServeError } from '@effect/platform/HttpServerError'
 import type { ServerState } from 'apps-core/contexts'
 import { AppsStore } from 'apps-core/livestore'
 import { CollectorStore } from 'collector-core/livestore'
@@ -17,9 +18,8 @@ import { StringLiteralTypes } from 'kitchen-sink/types'
 import { LocalHttpServerStore } from 'local-http-server-core/livestore'
 import { Origin } from 'navigation-core'
 import { nodeTelemetryLayerFromEnv } from 'telemetry-node'
-import { runTunnelDaemon } from 'tunnel-core/daemon'
 import { TunnelStore } from 'tunnel-core/livestore'
-import { startTunnel } from 'tunnel-node'
+import { TunnelDaemon as NodeTunnelDaemon } from 'tunnel-node'
 import { webAssetsDir } from 'wildflower-react/web-assets'
 import { WebAssetsDir, WildflowerServerLive } from 'wildflower-server'
 import { createStore } from './livestore-store.ts'
@@ -46,19 +46,8 @@ const TelemetryLive = nodeTelemetryLayerFromEnv({
 const run = Effect.gen(function* () {
   const store = yield* Effect.promise(() => createStore())
   const gatekeeperStoreLayer = GatekeeperStore.layerFrom(store)
-  const tunnelStoreLayer = TunnelStore.layerFrom(store)
   const localHttpServerStoreLayer = LocalHttpServerStore.layerFrom(store)
   const originLayer = Layer.succeed(Origin, ORIGIN)
-
-  // Tunnel daemon: long-lived fiber that drives `TunnelConfig` →
-  // `tunnel-node`'s `startTunnel` → `TunnelState`. `Layer.scopedDiscard`
-  // ties the daemon's lifetime to the `WildflowerServerLive` scope; the
-  // daemon's own error channel is `never` (failures are persisted into
-  // `TunnelState.error` rather than thrown), so the surrounding
-  // `Layer.launch` doesn't see them.
-  const TunnelDaemonLive = Layer.scopedDiscard(
-    Effect.forkScoped(runTunnelDaemon(startTunnel))
-  ).pipe(Layer.provide(tunnelStoreLayer))
 
   // Idempotent: signing key + first-party `wildflower-host` client identity.
   yield* seedSigningKey.pipe(Effect.provide(gatekeeperStoreLayer))
@@ -103,22 +92,30 @@ const run = Effect.gen(function* () {
   // rewires `apps-core` to read tunnel/server state from livestore), but
   // its layer is wired here so the materializers in `schema.ts` have a
   // home and the daemon-on-Streams pattern is ready for the next PR.
-  const FullServerLive = Layer.mergeAll(WildflowerServerLive, TunnelDaemonLive).pipe(
+  const FullServerLive: Layer.Layer<never, ServeError, never> = Layer.mergeAll(
+    WildflowerServerLive,
+    NodeTunnelDaemon
+  ).pipe(
     HttpServer.withLogAddress,
     Layer.tap(() => afterStartupEffect),
-    Layer.provide(EmrStore.layerFrom(store)),
-    Layer.provide(AppsStore.layerFrom(store)),
-    Layer.provide(TunnelControlLive(serverState)),
-    Layer.provide(gatekeeperStoreLayer),
-    Layer.provide(localHttpServerStoreLayer),
-    Layer.provide(CollectorStore.layerFrom(store)),
-    Layer.provide(CryptoRandomLive),
-    Layer.provide(NodeHttpServer.layer(createServer, { port: PORT })),
-    Layer.provide(NodeFileSystem.layer),
-    Layer.provide(NodePath.layer),
-    Layer.provide(Layer.succeed(WebAssetsDir, webAssetsDir)),
-    Layer.provide(originLayer),
-    Layer.provide(TelemetryLive)
+    Layer.provide(
+      Layer.mergeAll(
+        TunnelStore.layerFrom(store),
+        EmrStore.layerFrom(store),
+        AppsStore.layerFrom(store),
+        TunnelControlLive(serverState),
+        gatekeeperStoreLayer,
+        localHttpServerStoreLayer,
+        CollectorStore.layerFrom(store),
+        CryptoRandomLive,
+        NodeHttpServer.layer(createServer, { port: PORT }),
+        NodeFileSystem.layer,
+        NodePath.layer,
+        Layer.succeed(WebAssetsDir, webAssetsDir),
+        originLayer,
+        TelemetryLive
+      )
+    )
   )
 
   yield* Layer.launch(FullServerLive)
