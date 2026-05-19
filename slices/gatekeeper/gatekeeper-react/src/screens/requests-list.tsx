@@ -4,10 +4,8 @@ import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Await, useNavigate } from 'react-router'
-import { ItemList } from 'react-tundraish'
+import { AsyncErrorView, ItemList, pageLayoutStyles, PageLoading } from 'react-tundraish'
 
-import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
-import { PageLoading } from '../components/PageLoading.tsx'
 import { formatInstant } from '../format-date.ts'
 import {
   useGatekeeperEffectRunner,
@@ -128,8 +126,10 @@ const RequestsListBody = ({
   const rejected = requests.filter((r) => r.status === 'rejected')
 
   return (
-    <div className={pageLayout['page']}>
-      {error !== null ? <p className={cn(pageLayout['error'], 'text-body-3')}>{error}</p> : null}
+    <div className={pageLayoutStyles['page']}>
+      {error !== null ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
+      ) : null}
       <ItemList title="In-Flight" items={pending.map((r) => toItem(r))} />
       <ItemList title="Approved" items={approved.map((r) => toItem(r))} />
       <ItemList title="Rejected" items={rejected.map((r) => toItem(r))} />

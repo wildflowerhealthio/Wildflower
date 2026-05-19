@@ -1,7 +1,7 @@
-import type { JSX, ReactNode, PropsWithChildren } from 'react'
+import type { JSX, PropsWithChildren, ReactNode } from 'react'
 import { cn } from 'react-kitchen-sink'
 
-import styles from './Field.module.css'
+import styles from './field.module.css'
 
 type FieldProps = PropsWithChildren<{
   /** Label rendered above the field's content. Always typeset as `text-label-3`. */
@@ -9,8 +9,9 @@ type FieldProps = PropsWithChildren<{
 }>
 
 /**
- * Vertical label/value stack used across consent and detail screens.
- * Pair with `<FieldDescription>` for secondary explanatory text.
+ * Vertical label/value stack. Pair with `<FieldDescription>` for secondary
+ * explanatory text. The label is typeset as `text-label-3` and the optional
+ * description as `text-body-3`, both tinted with the muted neutral color.
  */
 const Field = ({ label, children }: FieldProps): JSX.Element => (
   <div className={styles['field']}>

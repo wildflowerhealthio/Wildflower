@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import pageLayout from '../styles/page-layout.module.css'
+import pageLayout from './page-layout.module.css'
 
 interface PageLoadingProps {
   /** Override the default "Loading…" copy. */

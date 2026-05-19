@@ -3,9 +3,8 @@ import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Checkbox, RadioGroup } from 'react-tundraish'
+import { Checkbox, Field, FieldDescription, pageLayoutStyles, RadioGroup } from 'react-tundraish'
 
-import { Field, FieldDescription } from '../../components/Field.tsx'
 import type { GatekeeperEffectRunner } from '../../use-gatekeeper-effect-runner.ts'
 import type { Consent } from './types.ts'
 import { usePatientOptions } from './use-patient-options.ts'
@@ -102,7 +101,7 @@ const OAuthConsentForm = ({
   }
 
   return (
-    <div className={pageLayout['page']}>
+    <div className={pageLayoutStyles['page']}>
       <h1 className="text-heading-4">Authorization Request</h1>
 
       <Field label="Application">
@@ -149,7 +148,9 @@ const OAuthConsentForm = ({
         </Field>
       ) : null}
 
-      {error !== null ? <p className={cn(pageLayout['error'], 'text-body-3')}>{error}</p> : null}
+      {error !== null ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
+      ) : null}
 
       <div className={pageLayout['buttons']}>
         <button

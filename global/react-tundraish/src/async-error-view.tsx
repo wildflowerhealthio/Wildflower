@@ -1,7 +1,7 @@
 import type { JSX } from 'react'
 import { useAsyncError } from 'react-router'
 
-import { PageError } from './PageError.tsx'
+import { PageError } from './page-error.tsx'
 
 interface AsyncErrorViewProps {
   /** Heading shown above the error message; passed straight through to `PageError`. */

@@ -3,8 +3,8 @@ import { type AuthorizationStatus, pollAuthorizationStatus } from 'gatekeeper-co
 import { Suspense, useEffect, useMemo, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Await, useParams } from 'react-router'
+import { AsyncErrorView, pageLayoutStyles } from 'react-tundraish'
 
-import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
 import { useGatekeeperStream } from '../use-gatekeeper-stream.ts'
 import pageLayout from '../styles/page-layout.module.css'
 import styles from './oauth-polling.module.css'
@@ -51,7 +51,7 @@ const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
 
   if (status.status === 'denied') {
     return (
-      <div className={cn(pageLayout['page'], styles['poll'])}>
+      <div className={cn(pageLayoutStyles['page'], styles['poll'])}>
         <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Request Declined</h1>
         <p className="text-body-2">The authorization request was declined.</p>
       </div>
@@ -59,7 +59,7 @@ const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
   }
   if (status.status === 'error') {
     return (
-      <div className={cn(pageLayout['page'], styles['poll'])}>
+      <div className={cn(pageLayoutStyles['page'], styles['poll'])}>
         <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Authorization Error</h1>
         <p className="text-body-2">{status.message}</p>
       </div>
@@ -70,7 +70,7 @@ const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
 }
 
 const PollingSpinner = (): JSX.Element => (
-  <div className={cn(pageLayout['page'], styles['poll'])}>
+  <div className={cn(pageLayoutStyles['page'], styles['poll'])}>
     <div className={styles['poll-spinner']} />
     <h1 className="text-heading-4">Waiting for Approval</h1>
     <p className="text-body-2">Please approve this request on your device.</p>

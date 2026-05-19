@@ -5,10 +5,15 @@ import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Await, useNavigate } from 'react-router'
-import { ItemList, Menu, type MenuItem } from 'react-tundraish'
+import {
+  AsyncErrorView,
+  ItemList,
+  Menu,
+  pageLayoutStyles,
+  PageLoading,
+  type MenuItem,
+} from 'react-tundraish'
 
-import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
-import { PageLoading } from '../components/PageLoading.tsx'
 import { RevokeGrantDialog } from '../components/RevokeGrantDialog.tsx'
 import { formatInstant } from '../format-date.ts'
 import {
@@ -16,7 +21,6 @@ import {
   type GatekeeperEffectRunner,
 } from '../use-gatekeeper-effect-runner.ts'
 import { useGatekeeperEffect } from '../use-gatekeeper-effect.ts'
-import pageLayout from '../styles/page-layout.module.css'
 
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
 
@@ -81,8 +85,10 @@ const AccessIndexBody = ({
   const grantToRevoke = grants.find((g) => g.id === confirmRevokeId) ?? null
 
   return (
-    <div className={pageLayout['page']}>
-      {error !== null ? <p className={cn(pageLayout['error'], 'text-body-3')}>{error}</p> : null}
+    <div className={pageLayoutStyles['page']}>
+      {error !== null ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
+      ) : null}
 
       <ItemList
         title="Requests"

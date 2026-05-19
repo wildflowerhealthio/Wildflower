@@ -5,7 +5,7 @@ import { defaultConfig } from 'fhir-r4-client-collector'
 import { useEffect, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { useNavigate } from 'react-router'
-import { Dialog, ItemList, Menu, type MenuItem } from 'react-tundraish'
+import { Dialog, ItemList, Menu, pageLayoutStyles, type MenuItem } from 'react-tundraish'
 
 import { formatInstant } from '../format-date.ts'
 import { useRequestSniffableWebView } from '../runtime/use-request-sniffable-web-view.ts'
@@ -72,8 +72,10 @@ const AccountListScreen = (): JSX.Element => {
   const remoteToDelete = remotes.find((r) => r.id === confirmDeleteId)
 
   return (
-    <div className={pageLayout['page']}>
-      {error !== null ? <p className={cn(pageLayout['error'], 'text-body-3')}>{error}</p> : null}
+    <div className={pageLayoutStyles['page']}>
+      {error !== null ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
+      ) : null}
 
       {remotes.length > 0 ? (
         <ItemList

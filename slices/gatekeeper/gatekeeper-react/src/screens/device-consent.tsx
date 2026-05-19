@@ -5,11 +5,15 @@ import type { Devices } from 'gatekeeper-core/http-api-definition'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Await, useNavigate, useParams } from 'react-router'
-import { Checkbox } from 'react-tundraish'
+import {
+  AsyncErrorView,
+  Checkbox,
+  Field,
+  FieldDescription,
+  pageLayoutStyles,
+  PageLoading,
+} from 'react-tundraish'
 
-import { AsyncErrorView } from '../components/AsyncErrorView.tsx'
-import { Field, FieldDescription } from '../components/Field.tsx'
-import { PageLoading } from '../components/PageLoading.tsx'
 import {
   useGatekeeperEffectRunner,
   type GatekeeperEffectRunner,
@@ -129,7 +133,7 @@ const DeviceConsentForm = ({
   }
 
   return (
-    <div className={pageLayout['page']}>
+    <div className={pageLayoutStyles['page']}>
       <h1 className="text-heading-4">Device Authorization</h1>
 
       <Field label="Code">
@@ -161,7 +165,9 @@ const DeviceConsentForm = ({
         </div>
       </Field>
 
-      {error !== null ? <p className={cn(pageLayout['error'], 'text-body-3')}>{error}</p> : null}
+      {error !== null ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
+      ) : null}
 
       <div className={pageLayout['buttons']}>
         <button

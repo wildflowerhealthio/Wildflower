@@ -5,6 +5,7 @@ import { defaultConfig } from 'fhir-r4-client-collector'
 import { useEffect, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { useNavigate, useSearchParams } from 'react-router'
+import { pageLayoutStyles } from 'react-tundraish'
 
 import { useCollectorEffectRunner } from '../use-collector-effect-runner.ts'
 import accountConfig from '../styles/account-config.module.css'
@@ -97,17 +98,19 @@ const AccountConfigScreen = (): JSX.Element => {
 
   if (loading) {
     return (
-      <div className={pageLayout['page']}>
+      <div className={pageLayoutStyles['page']}>
         <p className="text-body-2">Loading…</p>
       </div>
     )
   }
 
   return (
-    <div className={pageLayout['page']}>
+    <div className={pageLayoutStyles['page']}>
       <h2 className="text-heading-4">{existing !== null ? 'Edit Account' : 'Add Account'}</h2>
 
-      {error !== null ? <p className={cn(pageLayout['error'], 'text-body-3')}>{error}</p> : null}
+      {error !== null ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
+      ) : null}
 
       <div className={accountConfig['field']}>
         <label className={cn(accountConfig['field__label'], 'text-label-3')}>Type</label>
