@@ -36,12 +36,12 @@ describe('GetTunnel handler', () => {
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
         localPort: 8080,
-        requestedEnabled: true,
+        requestedRunning: true,
       })
     )
     store.commit(
       TunnelState.events.tunnelStateSet({
-        currentEnabled: true,
+        running: true,
         currentSubdomain: 'wildflower-expo-dev',
         currentRootDomain: 'loca.lt',
         currentLocalPort: 8080,
@@ -56,8 +56,8 @@ describe('GetTunnel handler', () => {
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
         localPort: 8080,
-        requestedEnabled: true,
-        currentEnabled: true,
+        requestedRunning: true,
+        running: true,
         currentSubdomain: 'wildflower-expo-dev',
         currentRootDomain: 'loca.lt',
         currentLocalPort: 8080,
@@ -78,8 +78,8 @@ describe('GetTunnel handler', () => {
         subdomain: null,
         rootDomain: null,
         localPort: null,
-        requestedEnabled: false,
-        currentEnabled: false,
+        requestedRunning: false,
+        running: false,
         currentSubdomain: null,
         currentRootDomain: null,
         currentLocalPort: null,
@@ -103,7 +103,7 @@ describe('PatchTunnel handler', () => {
             subdomain: 'wildflower-expo-dev',
             rootDomain: 'loca.lt',
             localPort: 8080,
-            requestedEnabled: true,
+            requestedRunning: true,
           }),
         })
       )
@@ -113,14 +113,14 @@ describe('PatchTunnel handler', () => {
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
         localPort: 8080,
-        requestedEnabled: true,
+        requestedRunning: true,
       })
     } finally {
       await dispose()
     }
   })
 
-  it('preserves omitted fields when patching just requestedEnabled', async () => {
+  it('preserves omitted fields when patching just requestedRunning', async () => {
     store.commit(
       TunnelConfig.events.tunnelConfigSet({
         subdomain: 'wildflower-expo-dev',
@@ -134,7 +134,7 @@ describe('PatchTunnel handler', () => {
         new Request('http://localhost/tunnel', {
           method: 'PATCH',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ requestedEnabled: true }),
+          body: JSON.stringify({ requestedRunning: true }),
         })
       )
       expect(response.status).toBe(200)
@@ -143,7 +143,7 @@ describe('PatchTunnel handler', () => {
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
         localPort: 8080,
-        requestedEnabled: true,
+        requestedRunning: true,
       })
     } finally {
       await dispose()
@@ -156,7 +156,7 @@ describe('PatchTunnel handler', () => {
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
         localPort: 8080,
-        requestedEnabled: true,
+        requestedRunning: true,
       })
     )
     const { handler, dispose } = buildHandler()
@@ -173,7 +173,7 @@ describe('PatchTunnel handler', () => {
       expect(stored?.subdomain).toBeNull()
       // Other fields preserved.
       expect(stored?.rootDomain).toBe('loca.lt')
-      expect(stored?.requestedEnabled).toBe(true)
+      expect(stored?.requestedRunning).toBe(true)
     } finally {
       await dispose()
     }

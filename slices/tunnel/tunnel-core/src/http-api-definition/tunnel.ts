@@ -3,21 +3,21 @@ import { Schema } from 'effect'
 
 /**
  * Merged tunnel state on the wire: `TunnelConfig` (user/host intent —
- * `subdomain`, `rootDomain`, `localPort`, `requestedEnabled`) plus
- * `TunnelState` (daemon-owned — `currentEnabled`, `currentSubdomain`,
+ * `subdomain`, `rootDomain`, `localPort`, `requestedRunning`) plus
+ * `TunnelState` (daemon-owned — `running`, `currentSubdomain`,
  * `currentRootDomain`, `currentLocalPort`, `error`).
  *
  * Optional fields surface as `null` on the wire — both when the
  * persistent `TunnelConfig` row hasn't been seeded yet and when the
  * daemon hasn't populated the corresponding `current*` field.
- * `requestedEnabled` / `currentEnabled` always surface (default `false`).
+ * `requestedRunning` / `running` always surface (default `false`).
  */
 const TunnelStateSchema = Schema.Struct({
   subdomain: Schema.NullOr(Schema.String),
   rootDomain: Schema.NullOr(Schema.String),
   localPort: Schema.NullOr(Schema.Number),
-  requestedEnabled: Schema.Boolean,
-  currentEnabled: Schema.Boolean,
+  requestedRunning: Schema.Boolean,
+  running: Schema.Boolean,
   currentSubdomain: Schema.NullOr(Schema.String),
   currentRootDomain: Schema.NullOr(Schema.String),
   currentLocalPort: Schema.NullOr(Schema.Number),
@@ -25,15 +25,15 @@ const TunnelStateSchema = Schema.Struct({
 })
 
 /**
- * PATCH body — config-side fields only. The daemon owns the `current*`
- * and `error` fields; no API path writes them. `null` explicitly clears
- * a field; `undefined` (key absent) preserves it.
+ * PATCH body — config-side fields only. The daemon owns the `running`,
+ * `current*`, and `error` fields; no API path writes them. `null`
+ * explicitly clears a field; `undefined` (key absent) preserves it.
  */
 const SetTunnelRequestBodySchema = Schema.Struct({
   subdomain: Schema.optional(Schema.NullOr(Schema.String)),
   rootDomain: Schema.optional(Schema.NullOr(Schema.String)),
   localPort: Schema.optional(Schema.NullOr(Schema.Number)),
-  requestedEnabled: Schema.optional(Schema.Boolean),
+  requestedRunning: Schema.optional(Schema.Boolean),
 })
 
 /**

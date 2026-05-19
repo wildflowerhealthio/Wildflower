@@ -2,7 +2,7 @@
   "name": "shared-structures-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Cross-slice utilities. Currently: the long-running process-daemon plumbing (snapshot watch, intent diff, stream-driven execution) shared between tunnel-core and local-http-server-core.",
+  "description": "Cross-slice utilities. The long-running process-daemon plumbing (snapshot watch, intent diff, stream-driven execution) shared between tunnel-core and local-http-server-core, plus the phantom-id bridge helper used by every slice that composes its HttpApi into a parent.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -14,6 +14,10 @@
   ],
   "type": "module",
   "exports": {
+    "./http-api-implementation": {
+      "source": "./src/http-api-implementation/index.ts",
+      "default": "./dist/http-api-implementation/index.js"
+    },
     "./livestore": {
       "source": "./src/livestore/index.ts",
       "default": "./dist/livestore/index.js"
@@ -31,6 +35,7 @@
     "test": "vp test"
   },
   "devDependencies": {
+    "@effect/platform": "catalog:",
     "@livestore/adapter-node": "catalog:",
     "@livestore/common": "catalog:",
     "@livestore/livestore": "catalog:",
@@ -40,11 +45,11 @@
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@effect/platform": "catalog:",
     "@livestore/common": "catalog:",
     "@livestore/livestore": "catalog:",
     "@livestore/peer-deps": "catalog:",

@@ -7,6 +7,7 @@ export default defineConfig({
     exports: false,
     platform: 'neutral',
     entry: {
+      'http-api-implementation/index': 'src/http-api-implementation/index.ts',
       'livestore/index': 'src/livestore/index.ts',
       'process-daemon/index': 'src/process-daemon/index.ts',
     },

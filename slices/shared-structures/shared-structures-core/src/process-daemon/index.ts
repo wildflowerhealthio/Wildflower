@@ -1,6 +1,5 @@
 export { diffIntents } from './diffIntents.ts'
 export { ensureDefaultRowExists } from './ensureDefaultRowExists.ts'
 export { executeIntents, type ExecuteIntentsOpts } from './executeIntents.ts'
-export { expectStreamStart } from './expect-stream-start.ts'
-export type { Intent, LifecycleEvent, StreamStartResult, ControlSnapshot } from './types.ts'
+export type { Intent, LifecycleEvent, ControlSnapshot } from './types.ts'
 export { watchSnapshots, type WatchSnapshotsOpts } from './watchSnapshots.ts'

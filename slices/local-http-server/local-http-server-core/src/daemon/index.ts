@@ -58,7 +58,6 @@ const runHttpServerDaemon = <E>(
 
     const commit = (
       patch: Partial<{
-        readonly requestedRunning: boolean
         readonly running: boolean
         readonly localOrigin: string
         readonly port: number
@@ -87,9 +86,7 @@ const runHttpServerDaemon = <E>(
       }),
       Stream.runForEach((event) =>
         Match.value(event).pipe(
-          Match.tag('Running', () =>
-            commit({ requestedRunning: true, running: true, error: null })
-          ),
+          Match.tag('Running', () => commit({ running: true, error: null })),
           Match.tag('Idle', () => commitTeardown(null)),
           Match.tag('Failed', ({ cause }) => commitTeardown(Cause.pretty(cause))),
           Match.exhaustive

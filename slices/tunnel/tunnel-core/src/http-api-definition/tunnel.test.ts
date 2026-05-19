@@ -23,8 +23,8 @@ describe('TunnelStateSchema', () => {
         subdomain: null,
         rootDomain: null,
         localPort: null,
-        requestedEnabled: false,
-        currentEnabled: false,
+        requestedRunning: false,
+        running: false,
         currentSubdomain: null,
         currentRootDomain: null,
         currentLocalPort: null,
@@ -34,8 +34,8 @@ describe('TunnelStateSchema', () => {
         subdomain: null,
         rootDomain: null,
         localPort: null,
-        requestedEnabled: false,
-        currentEnabled: false,
+        requestedRunning: false,
+        running: false,
         currentSubdomain: null,
         currentRootDomain: null,
         currentLocalPort: null,
@@ -44,9 +44,9 @@ describe('TunnelStateSchema', () => {
     )
   })
 
-  it('rejects state missing the required requestedEnabled flag', () => {
+  it('rejects state missing the required requestedRunning flag', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(TunnelStateSchema)({ currentEnabled: false }),
+      Schema.decodeUnknownEither(TunnelStateSchema)({ running: false }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })
@@ -59,21 +59,21 @@ describe('SetTunnelRequestBodySchema', () => {
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
         localPort: 8080,
-        requestedEnabled: true,
+        requestedRunning: true,
       }),
       {
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
         localPort: 8080,
-        requestedEnabled: true,
+        requestedRunning: true,
       }
     )
   })
 
-  it('accepts a single-field patch (toggle requestedEnabled)', () => {
+  it('accepts a single-field patch (toggle requestedRunning)', () => {
     expectRightToEqual(
-      Schema.decodeUnknownEither(SetTunnelRequestBodySchema)({ requestedEnabled: true }),
-      { requestedEnabled: true }
+      Schema.decodeUnknownEither(SetTunnelRequestBodySchema)({ requestedRunning: true }),
+      { requestedRunning: true }
     )
   })
 

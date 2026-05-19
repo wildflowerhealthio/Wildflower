@@ -139,4 +139,33 @@ describe('diffIntents', () => {
         expect(intents[0]._tag).toBe('StartOrReconfigure')
       })
     ))
+
+  it('every Stop is preceded by a StartOrReconfigure with no intervening Stop', () =>
+    fc.assert(
+      fc.asyncProperty(fc.array(arbSnapshot, { minLength: 0, maxLength: 8 }), async (snapshots) => {
+        const intents = await Effect.runPromise(collect(snapshots))
+        intents.forEach((intent, i) => {
+          if (intent._tag !== 'Stop') return
+          // Walk back from i-1 looking for the most recent
+          // StartOrReconfigure. The loop must find one before hitting
+          // another Stop or the start of the array.
+          let foundStart = false
+          for (let j = i - 1; j >= 0; j--) {
+            const prior = intents[j]
+            if (prior._tag === 'Stop') {
+              throw new Error(
+                `Stop at index ${String(i)} preceded by another Stop at ${String(j)} with no Start between`
+              )
+            }
+            if (prior._tag === 'StartOrReconfigure') {
+              foundStart = true
+              break
+            }
+          }
+          if (!foundStart) {
+            throw new Error(`Stop at index ${String(i)} has no preceding StartOrReconfigure`)
+          }
+        })
+      })
+    ))
 })

@@ -34,7 +34,7 @@ Split large batches of questions over multiple asks
 
 While completing tasks may be inclined to
 
-- Stash, branch, or commit for any reason
+- Stash, branch, or commit for any reason when not specifically indicated by a User
 - Search online for information
 - Writing code to verify the behaviour of other modules
 

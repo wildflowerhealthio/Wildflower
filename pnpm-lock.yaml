@@ -1792,6 +1792,9 @@ importers:
 
   slices/shared-structures/shared-structures-core:
     devDependencies:
+      '@effect/platform':
+        specifier: 0.96.1
+        version: 0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
       '@livestore/adapter-node':
         specifier: 'catalog:'
         version: 0.4.0-dev.26(3044d9b588ef2ab19243335a2ade1802)
@@ -1819,9 +1822,6 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.1
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
       typescript:
         specifier: 5.9.3
         version: 5.9.3

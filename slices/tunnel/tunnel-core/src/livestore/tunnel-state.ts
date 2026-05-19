@@ -1,17 +1,17 @@
-import { queryDb, Schema, SessionIdSymbol, State, type LiveQueryDef } from '@livestore/livestore'
+import { queryDb, Schema, SessionIdSymbol, State } from '@livestore/livestore'
 
 /** Shape of the per-session, daemon-owned tunnel-state table. */
 type Table = State.SQLite.ClientDocumentTableDef<
   'TunnelState',
   {
-    readonly currentEnabled: boolean
+    readonly running: boolean
     readonly currentSubdomain: string | null
     readonly currentRootDomain: string | null
     readonly currentLocalPort: number | null
     readonly error: string | null
   },
   {
-    readonly currentEnabled: boolean
+    readonly running: boolean
     readonly currentSubdomain: string | null
     readonly currentRootDomain: string | null
     readonly currentLocalPort: number | null
@@ -22,7 +22,7 @@ type Table = State.SQLite.ClientDocumentTableDef<
     default: {
       id: typeof SessionIdSymbol
       value: {
-        readonly currentEnabled: false
+        readonly running: false
         readonly currentSubdomain: null
         readonly currentRootDomain: null
         readonly currentLocalPort: null
@@ -33,19 +33,20 @@ type Table = State.SQLite.ClientDocumentTableDef<
 >
 
 /**
- * Per-session tunnel state — daemon-owned. The `current*` fields reflect
- * what the upstream relay actually granted (may differ from
- * `TunnelConfig` if the relay refuses the requested subdomain). `error`
- * carries the last `startTunnel` failure with `requestedEnabled: true`
- * preserved in `TunnelConfig` so the UI can surface it.
+ * Per-session tunnel state — daemon-owned. `running` is the daemon's
+ * observed truth (mirrors `LocalHttpServerState.running`); the `current*`
+ * fields reflect what the upstream relay actually granted (may differ
+ * from `TunnelConfig` if the relay refuses the requested subdomain).
+ * `error` carries the last `startTunnel` failure with `requestedRunning:
+ * true` preserved in `TunnelConfig` so the UI can surface it.
  *
- * Resets each session — the daemon re-derives `currentEnabled` etc. on
- * boot from `TunnelConfig.requestedEnabled`.
+ * Resets each session — the daemon re-derives `running` etc. on boot
+ * from `TunnelConfig.requestedRunning`.
  */
 const table: Table = State.SQLite.clientDocument({
   name: 'TunnelState',
   schema: Schema.Struct({
-    currentEnabled: Schema.Boolean,
+    running: Schema.Boolean,
     currentSubdomain: Schema.NullOr(Schema.String),
     currentRootDomain: Schema.NullOr(Schema.String),
     currentLocalPort: Schema.NullOr(Schema.Number),
@@ -54,7 +55,7 @@ const table: Table = State.SQLite.clientDocument({
   default: {
     id: SessionIdSymbol,
     value: {
-      currentEnabled: false,
+      running: false,
       currentSubdomain: null,
       currentRootDomain: null,
       currentLocalPort: null,
@@ -82,16 +83,7 @@ const current$ = queryDb(table.get(SessionIdSymbol), { label: 'tunnelState' })
 
 /** Shape of this table's queries record. */
 type Queries = {
-  current$: LiveQueryDef<
-    {
-      readonly currentEnabled: boolean
-      readonly currentSubdomain: string | null
-      readonly currentRootDomain: string | null
-      readonly currentLocalPort: number | null
-      readonly error: string | null
-    },
-    'def'
-  >
+  current$: typeof current$
 }
 
 const queries: Queries = { current$ } as const

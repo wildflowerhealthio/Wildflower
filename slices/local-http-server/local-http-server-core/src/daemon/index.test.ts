@@ -13,7 +13,7 @@
 import { makeAdapter } from '@livestore/adapter-node'
 import type { Store } from '@livestore/livestore'
 import { createStorePromise } from '@livestore/livestore'
-import { Deferred, Effect, Queue, Stream, type Scope } from 'effect'
+import { Deferred, Effect, Exit, Queue, Stream, type Scope } from 'effect'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -94,12 +94,7 @@ interface Emitter<E> {
   readonly fail: Deferred.Deferred<never, E>
 }
 
-interface StubOptions<E> {
-  /** Phantom param: lets the caller fix `E` without supplying a real value. */
-  readonly _phantomE?: E
-}
-
-const makeStartServerStub = <E = never>(_opts: StubOptions<E> = {}): StartServerStub<E> => {
+const makeStartServerStub = <E = never>(): StartServerStub<E> => {
   const calls: StartCall[] = []
   const active = new Set<string>()
   const subscribers: (() => void)[] = []
@@ -123,7 +118,7 @@ const makeStartServerStub = <E = never>(_opts: StubOptions<E> = {}): StartServer
             for (const fire of subscribers.splice(0, subscribers.length)) fire()
             // Push the bind signal so the daemon's `Stream.peel`
             // immediately observes it as the first emit.
-            Effect.runSync(Queue.offer(queue, undefined))
+            Queue.unsafeOffer(queue, undefined)
           }),
           () =>
             Effect.sync(() => {
@@ -132,14 +127,14 @@ const makeStartServerStub = <E = never>(_opts: StubOptions<E> = {}): StartServer
               if (idx >= 0) emitters.splice(idx, 1)
             })
         )
-        return Stream.fromQueue(queue).pipe(Stream.interruptWhen(Deferred.await(fail)))
+        return Stream.fromQueue(queue).pipe(Stream.interruptWhenDeferred(fail))
       })
     )
 
   const failPostBind = (cause: E): Effect.Effect<void, never, never> =>
     Effect.sync(() => {
       const latest = emitters.at(-1)
-      if (latest !== undefined) Effect.runSync(Deferred.fail(latest.fail, cause))
+      if (latest !== undefined) Deferred.unsafeDone(latest.fail, Exit.fail(cause))
     })
 
   return {

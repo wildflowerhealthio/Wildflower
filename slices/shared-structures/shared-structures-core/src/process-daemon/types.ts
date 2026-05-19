@@ -1,13 +1,13 @@
-import type { Cause, Stream } from 'effect'
+import type { Cause } from 'effect'
 
 /**
  * Projection of a livestore row down to the user-controlled fields that
  * drive the daemon: whether the user has requested the process to run,
  * and the (possibly null) config to run it with.
  *
- * `config` should be constructed by the caller as a `Data.struct`
- * (or any value implementing `Effect.Equal`) so the upstream
- * `Stream.changes` deduplication can compare it structurally.
+ * @typeParam TConfig - Slice-specific config payload. Should be a shallow
+ *   object (or `null`); `watchSnapshots` wraps it in `Data.struct` so
+ *   structural equality powers the upstream `Stream.changes` dedup.
  */
 interface ControlSnapshot<TConfig> {
   readonly requestedRunning: boolean
@@ -22,6 +22,9 @@ interface ControlSnapshot<TConfig> {
  * snapshot, or any pair of snapshots that both describe inactivity)
  * before exposing the intent stream, so `executeIntents` only sees
  * actionable transitions.
+ *
+ * @typeParam TConfig - Slice-specific config payload carried on
+ *   `StartOrReconfigure`.
  */
 type Intent<TConfig> =
   | { readonly _tag: 'StartOrReconfigure'; readonly config: TConfig }
@@ -53,28 +56,24 @@ type Idle = { readonly _tag: 'Idle' }
  * the snapshot projection — otherwise it would re-enter
  * `executeIntents` and busy-retry.
  */
-type Failed<TConfig, E> = {
+type Failed<TConfig, TError> = {
   readonly _tag: 'Failed'
   readonly config: TConfig
-  readonly cause: Cause.Cause<E>
+  readonly cause: Cause.Cause<TError>
 }
 
 /**
  * Events surfaced by the execute stage. The slice attaches its
  * livestore commits to these via `Stream.runForEach`.
+ *
+ * @typeParam TConfig - Slice-specific config payload.
+ * @typeParam TStatus - Status payload emitted by `startProcess` after the
+ *   initial bind signal.
+ * @typeParam TError - Error channel of `startProcess`.
  */
-type LifecycleEvent<TConfig, TStatus, E> = Running<TConfig, TStatus> | Idle | Failed<TConfig, E>
+type LifecycleEvent<TConfig, TStatus, TError> =
+  | Running<TConfig, TStatus>
+  | Idle
+  | Failed<TConfig, TError>
 
-/**
- * Result of `expectStreamStart` — the first emit from `startProcess`, plus
- * the rest of the stream; or a typed failure.
- */
-type StreamStartResult<TStatus, E> =
-  | {
-      readonly _tag: 'Started'
-      readonly status: TStatus
-      readonly statusStream: Stream.Stream<TStatus, E>
-    }
-  | { readonly _tag: 'Failed'; readonly cause: Cause.Cause<E> }
-
-export type { Intent, LifecycleEvent, StreamStartResult, ControlSnapshot }
+export type { Intent, LifecycleEvent, ControlSnapshot }

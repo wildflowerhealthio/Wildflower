@@ -29,7 +29,7 @@ interface DomainResult {
 
 /**
  * Long-lived daemon Effect that drives the tunnel from
- * `TunnelConfig.requestedEnabled` + `subdomain` + `rootDomain` +
+ * `TunnelConfig.requestedRunning` + `subdomain` + `rootDomain` +
  * `localPort`.
  *
  * @typeParam E - Error channel of the supplied `startTunnel`. Errors
@@ -37,9 +37,9 @@ interface DomainResult {
  *   out of the daemon.
  * @param startTunnel - Stream that opens the tunnel and emits
  *   `DomainResult` values over its lifetime. The first emit is the
- *   "tunnel up" signal (the daemon commits `currentEnabled: true` and
- *   writes the granted subdomain/rootDomain); subsequent emits update
- *   the granted values in place (e.g. relay reconnects to a new
+ *   "tunnel up" signal (the daemon commits `running: true` and writes
+ *   the granted subdomain/rootDomain); subsequent emits update the
+ *   granted values in place (e.g. relay reconnects to a new
  *   subdomain). The stream must keep running until either a terminal
  *   failure (post-bind cluster error → fails the stream) or
  *   interruption when the daemon swaps in a new config / stop intent.
@@ -55,9 +55,8 @@ interface DomainResult {
  * `shared-structures-core/process-daemon`:
  *
  *  1. `watchSnapshots` subscribes to `TunnelConfig.queries.current$`,
- *     projects each row down to `{requestedRunning, config}` (mapping
- *     `requestedEnabled` → `requestedRunning` and parking when any of
- *     `subdomain`/`rootDomain`/`localPort` is null), and
+ *     projects each row down to `{requestedRunning, config}` (parking
+ *     when any of `subdomain`/`rootDomain`/`localPort` is null), and
  *     `Stream.changes`-dedupes consecutive identical projections.
  *  2. `diffIntents` folds consecutive snapshots into `StartOrReconfigure`
  *     / `Stop` transitions.
@@ -79,7 +78,7 @@ const runTunnelDaemon = <E>(
 
     const commit = (
       patch: Partial<{
-        readonly currentEnabled: boolean
+        readonly running: boolean
         readonly currentSubdomain: string | null
         readonly currentRootDomain: string | null
         readonly currentLocalPort: number | null
@@ -93,7 +92,7 @@ const runTunnelDaemon = <E>(
       localPort: number
     ): Effect.Effect<void, never, never> =>
       commit({
-        currentEnabled: true,
+        running: true,
         currentSubdomain: result.subdomain,
         currentRootDomain: result.rootDomain,
         currentLocalPort: localPort,
@@ -102,7 +101,7 @@ const runTunnelDaemon = <E>(
 
     const commitTeardown = (error: string | null): Effect.Effect<void, never, never> =>
       commit({
-        currentEnabled: false,
+        running: false,
         currentSubdomain: null,
         currentRootDomain: null,
         currentLocalPort: null,
@@ -121,12 +120,12 @@ const runTunnelDaemon = <E>(
         query: TunnelConfig.queries.current$,
         readSnapshot: (raw: TunnelConfig.TunnelConfigRow | undefined) => {
           if (raw === undefined) return { requestedRunning: false, config: null }
-          const { requestedEnabled, subdomain, rootDomain, localPort } = raw
+          const { requestedRunning, subdomain, rootDomain, localPort } = raw
           if (subdomain === null || rootDomain === null || localPort === null) {
-            return { requestedRunning: requestedEnabled, config: null }
+            return { requestedRunning, config: null }
           }
           return {
-            requestedRunning: requestedEnabled,
+            requestedRunning,
             config: Data.struct({ subdomain, rootDomain, localPort }),
           }
         },

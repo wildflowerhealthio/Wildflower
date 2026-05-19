@@ -1,9 +1,7 @@
-import { HttpApiBuilder, type HttpApiGroup } from '@effect/platform'
+import { HttpApiBuilder } from '@effect/platform'
 import { Layer } from 'effect'
-import type { CryptoRandom } from 'kitchen-sink/crypto-random'
-import type { Origin } from 'navigation-core'
+import { apiHandlersFor } from 'shared-structures-core/http-api-implementation'
 import { GatekeeperApi } from '../http-api-definition/index.ts'
-import type { GatekeeperStore } from '../livestore/index.ts'
 import * as AccessManagement from './access-management.ts'
 import * as Devices from './devices.ts'
 import * as Jwks from './jwks.ts'
@@ -22,29 +20,7 @@ const GatekeeperApiLive = HttpApiBuilder.api(GatekeeperApi).pipe(
   Layer.provide(GatekeeperApiHandlersLive)
 )
 
-type GatekeeperGroupNames =
-  | 'oauth-discovery'
-  | 'oauth'
-  | 'oauth-consent'
-  | 'access-management'
-  | 'devices'
-
-const GatekeeperApiHandlersFor = <ParentId extends string>(): Layer.Layer<
-  HttpApiGroup.ApiGroup<ParentId, GatekeeperGroupNames>,
-  never,
-  GatekeeperStore | Origin | CryptoRandom
-> =>
-  // The phantom-id bridge: `ApiGroup<ApiId, Name>` is a structural marker
-  // with no runtime presence (HttpApiBuilder.group only registers routes on
-  // the shared Router; nothing reads `apiId`), so a Layer built against
-  // GatekeeperApi is sound to satisfy the same group requirement under any
-  // consumer's parent ApiId. This cast is the one place that bridge lives.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  GatekeeperApiHandlersLive as unknown as Layer.Layer<
-    HttpApiGroup.ApiGroup<ParentId, GatekeeperGroupNames>,
-    never,
-    GatekeeperStore | Origin | CryptoRandom
-  >
+const GatekeeperApiHandlersFor = apiHandlersFor(GatekeeperApiHandlersLive)
 
 export { GatekeeperApi, GatekeeperApiHandlersLive, GatekeeperApiHandlersFor, GatekeeperApiLive }
 export { RequireAuthMiddleware, RequireAuthMiddlewareLive } from './require-auth.ts'
