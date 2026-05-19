@@ -1,8 +1,15 @@
 import { HttpApiBuilder, HttpServerResponse } from '@effect/platform'
 import { nanoid } from '@livestore/livestore'
 import { Effect } from 'effect'
-import { TunnelControl } from '../contexts/tunnel-control.ts'
+import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
+import { TunnelConfig, TunnelState, TunnelStore } from 'tunnel-core/livestore'
+
 import { AppsApi } from '../http-api-definition/index.ts'
+import {
+  awaitCurrentRunning,
+  type RunningTunnel,
+  type TunnelLaunchOutcome,
+} from '../internal/await-current-running.ts'
 import { AppSelection, AppsStore } from '../livestore/index.ts'
 import type { AppKind } from '../registry/app-item.ts'
 import { BUNDLED_APPS, FHIR_SHARING_ID, findBundled } from '../registry/index.ts'
@@ -50,6 +57,19 @@ const buildEntries = (selection: readonly AppSelection.AppSelectionRow[]): reado
 }
 
 /**
+ * Compose the public tunnel origin from the daemon-owned
+ * `currentSubdomain` + `currentRootDomain`. The daemon won't surface
+ * those fields until it's bound, so the call site only invokes this
+ * once `awaitCurrentRunning` has returned `kind: 'running'`. Returns
+ * `null` if either field is missing — should be treated as "fall back
+ * to local origin" by the caller.
+ */
+const tunnelOrigin = (state: RunningTunnel): string | null => {
+  if (state.currentSubdomain === null || state.currentRootDomain === null) return null
+  return `https://${state.currentSubdomain}.${state.currentRootDomain}`
+}
+
+/**
  * Defense-in-depth at launch time. `CustomAppUrlSchema` rejects bad
  * shapes on write, but `LaunchApp` re-validates the *resolved* URL —
  * after `{origin}` interpolation — so a custom app whose template
@@ -79,11 +99,12 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
     )
     .handleRaw('LaunchApp', ({ path }) =>
       Effect.gen(function* () {
-        const tunnel = yield* TunnelControl
-        const store = yield* AppsStore
+        const appsStore = yield* AppsStore
+        const tunnelStore = yield* TunnelStore
+        const localStore = yield* LocalHttpServerStore
 
         const bundled = findBundled(path.id)
-        const row = store.query(AppSelection.queries.byId$(path.id))
+        const row = appsStore.query(AppSelection.queries.byId$(path.id))
 
         const launchContext = ((): {
           url: (origin: string, launch: string) => string
@@ -116,29 +137,42 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
           )
         }
 
-        const beforeState = yield* tunnel.getState
+        const localOrigin = localStore.query(ServerState.queries.current$).localOrigin
+        const beforeTunnel = tunnelStore.query(TunnelState.queries.current$)
 
-        const afterState = yield* (() => {
-          if (!launchContext.requiresTunnel || beforeState.tunnelActive) {
-            return Effect.succeed(beforeState)
+        // Compute the origin we'll redirect through. If the app doesn't
+        // require a tunnel, pin to the local origin so launches keep
+        // working even when the relay is offline. If it does require
+        // one and the tunnel isn't already running, commit
+        // `requestedRunning: true` and suspend on `awaitCurrentRunning`
+        // — the daemon flips `TunnelState.running` once bound, or the
+        // 15s timeout fires and we fall back.
+        const origin = yield* (() => {
+          if (!launchContext.requiresTunnel) return Effect.succeed(localOrigin)
+          if (beforeTunnel.running) {
+            const live = tunnelOrigin(beforeTunnel)
+            return Effect.succeed(live ?? localOrigin)
           }
-          return Effect.either(tunnel.setTunnelActive(true)).pipe(
-            Effect.flatMap((result) => {
-              if (result._tag === 'Right') {
-                return Effect.succeed(result.right)
-              }
-              return Effect.logWarning(
-                `[apps-core] tunnel activation failed: ${result.left._tag}: ${result.left.reason}`
-              ).pipe(Effect.as(beforeState))
-            })
-          )
+          return Effect.gen(function* () {
+            yield* Effect.sync(() =>
+              tunnelStore.commit(TunnelConfig.events.tunnelConfigSet({ requestedRunning: true }))
+            )
+            const outcome: TunnelLaunchOutcome = yield* awaitCurrentRunning()
+            if (outcome.kind === 'timed-out') {
+              yield* Effect.logWarning(
+                `[apps-core] tunnel did not start within deadline for ${path.id}; falling back to local origin`
+              )
+              return localOrigin
+            }
+            return tunnelOrigin(outcome.state) ?? localOrigin
+          })
         })()
 
         // Re-check after tunnel state settles: the row may have been
         // deleted or kind-changed mid-flight. Bundled apps have static
         // shape so they don't need this round-trip.
         if (bundled === undefined) {
-          const refreshed = store.query(AppSelection.queries.byId$(path.id))
+          const refreshed = appsStore.query(AppSelection.queries.byId$(path.id))
           if (refreshed === undefined || refreshed.kind !== 'custom') {
             return HttpServerResponse.unsafeJson(
               { error: 'AppNotFound', id: path.id },
@@ -148,12 +182,12 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
         }
 
         if (path.id === FHIR_SHARING_ID || launchContext.isAction) {
-          return HttpServerResponse.redirect(afterState.origin, { status: 302 })
+          return HttpServerResponse.redirect(origin, { status: 302 })
         }
 
         const launch = nanoid()
-        const target = launchContext.url(afterState.origin, launch)
-        if (!isLaunchableUrl(target, afterState.origin)) {
+        const target = launchContext.url(origin, launch)
+        if (!isLaunchableUrl(target, origin)) {
           yield* Effect.logWarning(
             `[apps-core] LaunchApp rejected resolved URL for ${path.id}: ${target}`
           )

@@ -452,6 +452,9 @@ importers:
       kitchen-sink:
         specifier: workspace:*
         version: link:../../global/kitchen-sink
+      tunnel-core:
+        specifier: workspace:*
+        version: link:../../slices/tunnel/tunnel-core
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -907,9 +910,15 @@ importers:
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
+      local-http-server-core:
+        specifier: workspace:*
+        version: link:../../local-http-server/local-http-server-core
       shared-structures-core:
         specifier: workspace:*
         version: link:../../shared-structures/shared-structures-core
+      tunnel-core:
+        specifier: workspace:*
+        version: link:../../tunnel/tunnel-core
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -949,6 +958,12 @@ importers:
       telemetry-react:
         specifier: workspace:*
         version: link:../../telemetry/telemetry-react
+      tunnel-core:
+        specifier: workspace:*
+        version: link:../../tunnel/tunnel-core
+      tunnel-react:
+        specifier: workspace:*
+        version: link:../../tunnel/tunnel-react
       typescript:
         specifier: 5.9.3
         version: 5.9.3

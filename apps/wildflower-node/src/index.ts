@@ -5,8 +5,6 @@ import './instrument.ts'
 import { createServer } from 'node:http'
 import { HttpServer } from '@effect/platform'
 import { NodeFileSystem, NodeHttpServer, NodePath, NodeRuntime } from '@effect/platform-node'
-import type { ServeError } from '@effect/platform/HttpServerError'
-import type { ServerState } from 'apps-core/contexts'
 import { AppsStore } from 'apps-core/livestore'
 import { CollectorStore } from 'collector-core/livestore'
 import { Duration, Effect, Layer } from 'effect'
@@ -24,7 +22,6 @@ import { webAssetsDir } from 'wildflower-react/web-assets'
 import { WebAssetsDir, WildflowerServerLive } from 'wildflower-server'
 import { createStore } from './livestore-store.ts'
 import { SERVICE_NAME } from './service-name.ts'
-import { TunnelControlLive } from './tunnel-control.ts'
 
 // Config
 
@@ -73,29 +70,12 @@ const run = Effect.gen(function* () {
     )
   }
 
-  // `apps-core`'s `TunnelControl` returns a static `ServerState`; on the
-  // node host there is no tunnel, so `tunnelActive` is `false` at start
-  // and `setTunnelActive` fails. Mobile hosts swap in their own Live.
-  const serverState: ServerState = {
-    origin: ORIGIN,
-    localOrigin: ORIGIN,
-    port: PORT,
-    tunnelActive: false,
-  }
-
   // `Layer.mergeAll` runs the HTTP server and the tunnel daemon side
   // by side under the same scope — `Layer.launch` keeps both alive until
-  // the process is interrupted. The daemon is provided its own
-  // `TunnelStore` layer inline (closed over above); the rest of the
-  // platform deps shared with `WildflowerServerLive` are provided here.
-  // `LocalHttpServerStore` isn't consumed yet on the node host (PR C
-  // rewires `apps-core` to read tunnel/server state from livestore), but
-  // its layer is wired here so the materializers in `schema.ts` have a
-  // home and the daemon-on-Streams pattern is ready for the next PR.
-  const FullServerLive: Layer.Layer<never, ServeError, never> = Layer.mergeAll(
-    WildflowerServerLive,
-    NodeTunnelDaemon
-  ).pipe(
+  // the process is interrupted. `apps-core`'s `LaunchApp` reads
+  // `TunnelStore` + `LocalHttpServerStore` directly to decide tunnel vs
+  // local-origin redirects; the old `TunnelControl` Tag is gone.
+  const FullServerLive = Layer.mergeAll(WildflowerServerLive, NodeTunnelDaemon).pipe(
     HttpServer.withLogAddress,
     Layer.tap(() => afterStartupEffect),
     Layer.provide(
@@ -103,7 +83,6 @@ const run = Effect.gen(function* () {
         TunnelStore.layerFrom(store),
         EmrStore.layerFrom(store),
         AppsStore.layerFrom(store),
-        TunnelControlLive(serverState),
         gatekeeperStoreLayer,
         localHttpServerStoreLayer,
         CollectorStore.layerFrom(store),

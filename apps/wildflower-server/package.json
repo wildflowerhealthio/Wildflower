@@ -27,6 +27,7 @@
     "fhir-r4": "workspace:*",
     "gatekeeper-core": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "tunnel-core": "workspace:*",
     "typescript": "catalog:",
     "vendor-apps": "workspace:*",
     "vite": "catalog:",
@@ -40,6 +41,7 @@
     "fhir-r4": "workspace:*",
     "gatekeeper-core": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "tunnel-core": "workspace:*",
     "vendor-apps": "workspace:*"
   }
 }

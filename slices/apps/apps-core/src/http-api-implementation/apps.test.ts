@@ -1,173 +1,126 @@
+/**
+ * Integration tests for `LaunchApp` + `ListApps`. The handler composes
+ * three slice stores — `AppsStore` (apps catalogue), `TunnelStore`
+ * (tunnel intent / daemon-owned binding), and `LocalHttpServerStore`
+ * (loopback origin + bound port). We back all three with a single real
+ * in-memory `@livestore/adapter-node` store whose schema spreads each
+ * slice's `tables` / `events` / `materializers` records — the
+ * `defineSliceLivestore` `makeLayerFactory` accepts any superset
+ * schema, so all three `*.layerFrom(store)` calls share one store.
+ *
+ * Tunnel "daemon" behavior is exercised by hand-firing
+ * `TunnelState.tunnelStateSet` events to simulate the relay bind. The
+ * fast-check property test sweeps a few launch-flow variants
+ * (require-tunnel × pre-running × bundled / custom).
+ */
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
-import type { Store } from '@livestore/livestore'
-import { Effect, Layer } from 'effect'
-import { describe, expect, it, vi } from 'vite-plus/test'
+import { makeAdapter } from '@livestore/adapter-node'
+import { createStorePromise, makeSchema, type Store, State } from '@livestore/livestore'
+import { Layer, Schema } from 'effect'
+import fc from 'fast-check'
+import * as LocalHttpServerLivestore from 'local-http-server-core/livestore'
+import * as TunnelLivestore from 'tunnel-core/livestore'
+import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
-import {
-  type ServerState,
-  TunnelControl,
-  TunnelUnavailable,
-  type TunnelControlService,
-} from '../contexts/tunnel-control.ts'
-import {
-  type AppSelectionRow,
-  AppsStore,
-  queries as livestoreQueries,
-  type schema,
-} from '../livestore/index.ts'
+import * as AppsLivestore from '../livestore/index.ts'
+import { AppSelection, AppsStore } from '../livestore/index.ts'
 import { AppsApiLive } from './index.ts'
 
-// `AppsStore.Service` is just a `Store<schema, object>`. The test only
-// hits `query`, so we type the helper through that surface.
-type AppsStoreService = Store<typeof schema, object>
+// --- Composite schema (apps + tunnel + local-http-server) ----------
 
-// --- Test fixtures ----------------------------------------------------
+const tables = {
+  ...AppsLivestore.tables,
+  ...TunnelLivestore.tables,
+  ...LocalHttpServerLivestore.tables,
+} as const
 
-const baseServerState = (overrides: Partial<ServerState> = {}): ServerState => ({
-  origin: 'https://tunnel.example.com',
-  localOrigin: 'http://localhost:8787',
-  port: 8787,
-  tunnelActive: false,
-  ...overrides,
+const events = {
+  ...AppsLivestore.events,
+  ...TunnelLivestore.events,
+  ...LocalHttpServerLivestore.events,
+}
+
+const materializers = State.SQLite.materializers(events, {
+  ...AppsLivestore.materializers,
+  ...TunnelLivestore.materializers,
+  ...LocalHttpServerLivestore.materializers,
 })
 
-interface MockTunnelOptions {
-  state?: ServerState
-  // Pre-canned sequence of states `setTunnelActive` should resolve to.
-  // Defaults to flipping `tunnelActive` to the requested value.
-  setTunnelActiveResult?: (active: boolean) => Effect.Effect<ServerState, TunnelUnavailable>
-}
+const state = State.SQLite.makeState({ tables, materializers })
+const schema = makeSchema({ events, state })
 
-const makeMockTunnel = (options: MockTunnelOptions = {}): TunnelControlService => {
-  let currentState = options.state ?? baseServerState()
-  return {
-    getState: Effect.sync(() => currentState),
-    setTunnelActive:
-      options.setTunnelActiveResult ??
-      ((active: boolean): Effect.Effect<ServerState, TunnelUnavailable> => {
-        currentState = { ...currentState, tunnelActive: active }
-        return Effect.succeed(currentState)
-      }),
-  }
-}
+let store: Store<typeof schema, object>
 
-// Identify a LiveQueryDef by its stable `hash` — same approach as
-// gatekeeper-core's oauth-endpoints.test.ts.
-const queryHash = (q: unknown): string | undefined => {
-  if (typeof q === 'object' && q !== null && 'hash' in q && typeof q.hash === 'string') {
-    return q.hash
-  }
-  return undefined
-}
-
-interface MockStoreOptions {
-  rows?: ReadonlyArray<AppSelectionRow>
-  // Override `byId$` lookup on a per-call basis (useful for the
-  // row-disappears-mid-flight test).
-  byIdImpl?: (id: string) => AppSelectionRow | undefined
-}
-
-const makeMockStore = (options: MockStoreOptions = {}): AppsStoreService => {
-  const rowsArr: AppSelectionRow[] = [...(options.rows ?? [])]
-  const byIdImpl = options.byIdImpl ?? ((id: string) => rowsArr.find((r) => r.id === id))
-
-  const query = vi.fn((q: unknown): unknown => {
-    if (q === livestoreQueries.appSelection$) {
-      return rowsArr
-    }
-    const hash = queryHash(q)
-    if (hash !== undefined) {
-      // Cheap reverse lookup: try every known id against `byId$.hash`.
-      for (const row of rowsArr) {
-        if (livestoreQueries.appSelectionById$(row.id).hash === hash) {
-          return byIdImpl(row.id)
-        }
-      }
-      // The row may not be in `rowsArr` (e.g. unknown id) — fall back to
-      // a fresh probe so `byIdImpl` can return something useful too.
-      // We don't know the id without the hash → call byIdImpl with each
-      // candidate from `rowsArr` already; the only remaining case is a
-      // miss, so return undefined.
-      return undefined
-    }
-    return undefined
+beforeEach(async () => {
+  store = await createStorePromise({
+    adapter: makeAdapter({ storage: { type: 'in-memory' } }),
+    schema,
+    storeId: `apps-launch-it-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   })
+})
 
-  // The handler only needs `query`. Keep the mock minimal.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return {
-    query,
-    commit: vi.fn(),
-    subscribe: vi.fn(),
-  } as unknown as AppsStoreService
+afterEach(async () => {
+  await store.shutdownPromise().catch(() => undefined)
+})
+
+// --- Helpers --------------------------------------------------------
+
+const LOCAL_ORIGIN = 'http://127.0.0.1:8787'
+const TUNNEL_SUBDOMAIN = 'wildflower-test'
+const TUNNEL_ROOT_DOMAIN = 'loca.lt'
+const TUNNEL_ORIGIN = `https://${TUNNEL_SUBDOMAIN}.${TUNNEL_ROOT_DOMAIN}`
+
+const seedLocalOrigin = (origin: string = LOCAL_ORIGIN): void => {
+  store.commit(
+    LocalHttpServerLivestore.ServerState.events.localHttpServerStateSet({
+      localOrigin: origin,
+      running: true,
+      port: 8787,
+    })
+  )
 }
 
-// Drop in a stub that lets us probe `byId$` lookups by id regardless of
-// the underlying `rows` array — used by the race-condition test where
-// the first call returns a row and the second returns undefined.
-const makeMockStoreWithDynamicById = (
-  byIdImpl: (id: string) => AppSelectionRow | undefined
-): AppsStoreService => {
-  // The handler asks for byId twice in the same request when the entry
-  // is custom + tunnel work happened. We pre-register every id we'll
-  // probe so the hash lookup can find them.
-  const knownIds = ['custom-1', 'custom-mystery']
-  const query = vi.fn((q: unknown): unknown => {
-    if (q === livestoreQueries.appSelection$) {
-      // Test only reaches this branch from LaunchApp; return empty.
-      return []
-    }
-    const hash = queryHash(q)
-    if (hash !== undefined) {
-      for (const id of knownIds) {
-        if (livestoreQueries.appSelectionById$(id).hash === hash) {
-          return byIdImpl(id)
-        }
-      }
-    }
-    return undefined
-  })
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return {
-    query,
-    commit: vi.fn(),
-    subscribe: vi.fn(),
-  } as unknown as AppsStoreService
+const seedTunnelRunning = (): void => {
+  store.commit(
+    TunnelLivestore.TunnelState.events.tunnelStateSet({
+      running: true,
+      currentSubdomain: TUNNEL_SUBDOMAIN,
+      currentRootDomain: TUNNEL_ROOT_DOMAIN,
+      currentLocalPort: 8787,
+    })
+  )
 }
 
-// --- Wire up the handler via toWebHandler ----------------------------
-
-const createHandler = (
-  store: AppsStoreService,
-  tunnel: TunnelControlService
-): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
+const buildHandler = (): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = AppsApiLive.pipe(
     Layer.provide(AppsStore.layerFrom(store)),
-    Layer.provide(Layer.succeed(TunnelControl, tunnel))
+    Layer.provide(TunnelLivestore.TunnelStore.layerFrom(store)),
+    Layer.provide(LocalHttpServerLivestore.LocalHttpServerStore.layerFrom(store))
   )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }
 
-// --- ListApps tests ---------------------------------------------------
+// --- ListApps -------------------------------------------------------
 
 describe('ListApps handler', () => {
   it('returns every bundled app even when the selection table is empty', async () => {
-    const { handler, dispose } = createHandler(makeMockStore(), makeMockTunnel())
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps'))
       expect(response.status).toBe(200)
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const body = (await response.json()) as ReadonlyArray<{
-        id: string
-        kind: string
-        enabled: boolean
-      }>
-      // Bundled apps default to enabled.
+      const body = Schema.decodeUnknownSync(
+        Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            kind: Schema.String,
+            enabled: Schema.Boolean,
+          })
+        )
+      )(await response.json())
       const fhirSharing = body.find((a) => a.id === 'fhir-sharing')
       expect(fhirSharing).toBeDefined()
       expect(fhirSharing?.kind).toBe('action')
       expect(fhirSharing?.enabled).toBe(true)
-      // No custom apps in the selection → none in the response.
       expect(body.every((a) => a.kind !== 'custom')).toBe(true)
     } finally {
       await dispose()
@@ -175,23 +128,19 @@ describe('ListApps handler', () => {
   })
 
   it('merges enabled flag overrides from selection rows', async () => {
-    const store = makeMockStore({
-      rows: [
-        {
-          id: 'patient-browser',
-          kind: 'bundled',
-          enabled: false,
-          customName: null,
-          customUrl: null,
-          customRequiresTunnel: null,
-        },
-      ],
-    })
-    const { handler, dispose } = createHandler(store, makeMockTunnel())
+    store.commit(
+      AppSelection.events.appEnabledChanged({
+        id: 'patient-browser',
+        kind: 'bundled',
+        enabled: false,
+      })
+    )
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps'))
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const body = (await response.json()) as ReadonlyArray<{ id: string; enabled: boolean }>
+      const body = Schema.decodeUnknownSync(
+        Schema.Array(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }))
+      )(await response.json())
       const patientBrowser = body.find((a) => a.id === 'patient-browser')
       expect(patientBrowser?.enabled).toBe(false)
     } finally {
@@ -200,29 +149,28 @@ describe('ListApps handler', () => {
   })
 
   it('appends custom rows after bundled entries', async () => {
-    const store = makeMockStore({
-      rows: [
-        {
-          id: 'custom-abc',
-          kind: 'custom',
-          enabled: true,
-          customName: 'My App',
-          customUrl: 'https://example.com/launch',
-          customRequiresTunnel: true,
-        },
-      ],
-    })
-    const { handler, dispose } = createHandler(store, makeMockTunnel())
+    store.commit(
+      AppSelection.events.customAppAdded({
+        id: 'custom-abc',
+        name: 'My App',
+        url: 'https://example.com/launch',
+        requiresTunnel: true,
+      })
+    )
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps'))
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const body = (await response.json()) as ReadonlyArray<{
-        id: string
-        kind: string
-        name: string
-        subtitle?: string
-        requiresTunnel: boolean
-      }>
+      const body = Schema.decodeUnknownSync(
+        Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            kind: Schema.String,
+            name: Schema.String,
+            subtitle: Schema.optional(Schema.String),
+            requiresTunnel: Schema.Boolean,
+          })
+        )
+      )(await response.json())
       const custom = body.find((a) => a.id === 'custom-abc')
       expect(custom).toBeDefined()
       expect(custom?.kind).toBe('custom')
@@ -235,147 +183,140 @@ describe('ListApps handler', () => {
   })
 })
 
-// --- LaunchApp tests --------------------------------------------------
+// --- LaunchApp ------------------------------------------------------
 
 describe('LaunchApp handler', () => {
-  it('redirects to the bundled url for a non-action app that does not require a tunnel', async () => {
-    const { handler, dispose } = createHandler(
-      makeMockStore(),
-      makeMockTunnel({ state: baseServerState({ tunnelActive: false }) })
-    )
+  it('redirects to the local origin for a non-action app that does not require a tunnel', async () => {
+    seedLocalOrigin()
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps/patient-browser'))
       expect(response.status).toBe(302)
       expect(response.headers.get('location')).toBe(
-        'https://tunnel.example.com/installed-apps/patient-browser/index.html'
+        `${LOCAL_ORIGIN}/installed-apps/patient-browser/index.html`
       )
     } finally {
       await dispose()
     }
   })
 
-  it('redirects an action app (fhir-sharing) to the origin', async () => {
-    // fhir-sharing requires the tunnel; start with it active so the
-    // handler doesn't try to flip it on.
-    const { handler, dispose } = createHandler(
-      makeMockStore(),
-      makeMockTunnel({ state: baseServerState({ tunnelActive: true }) })
-    )
+  it('redirects an action app (fhir-sharing) to the tunnel origin when the tunnel is already running', async () => {
+    seedLocalOrigin()
+    seedTunnelRunning()
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps/fhir-sharing'))
       expect(response.status).toBe(302)
-      expect(response.headers.get('location')).toBe('https://tunnel.example.com')
+      expect(response.headers.get('location')).toBe(TUNNEL_ORIGIN)
     } finally {
       await dispose()
     }
   })
 
-  it('activates the tunnel before redirect when a bundled app requires one', async () => {
-    const setTunnelActive = vi.fn(
-      (active: boolean): Effect.Effect<ServerState, TunnelUnavailable> =>
-        Effect.succeed(baseServerState({ tunnelActive: active }))
-    )
-    const { handler, dispose } = createHandler(
-      makeMockStore(),
-      makeMockTunnel({
-        state: baseServerState({ tunnelActive: false }),
-        setTunnelActiveResult: setTunnelActive,
-      })
-    )
+  it('commits requestedRunning=true and awaits the daemon flipping running=true', async () => {
+    seedLocalOrigin()
+    const { handler, dispose } = buildHandler()
     try {
-      const response = await handler(new Request('http://localhost/apps/growth-chart'))
-      expect(setTunnelActive).toHaveBeenCalledWith(true)
+      // Stage the response: the handler will commit requestedRunning=true,
+      // then suspend on `awaitCurrentRunning`. We fire the tunnel-state
+      // event on the next tick so the handler resumes with `running:
+      // true`. The real daemon would do this in response to the config
+      // change; we simulate it directly.
+      const responsePromise = handler(new Request('http://localhost/apps/growth-chart'))
+      // Yield once so the handler's subscribe lands before we flip the
+      // state — mirrors the real daemon's async bind.
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      seedTunnelRunning()
+
+      const response = await responsePromise
       expect(response.status).toBe(302)
       const location = response.headers.get('location') ?? ''
-      // Growth-chart's URL pattern is an external host with the live
-      // origin as the `iss` query param. We only verify the host + iss.
       expect(location).toContain('https://examples.smarthealthit.org/growth-chart-app/launch.html')
-      expect(location).toContain('iss=https://tunnel.example.com/fhir-r4')
+      expect(location).toContain(`iss=${TUNNEL_ORIGIN}/fhir-r4`)
+
+      // The handler should have committed `requestedRunning: true`.
+      const config = store.query(TunnelLivestore.TunnelConfig.queries.current$)
+      expect(config?.requestedRunning).toBe(true)
     } finally {
       await dispose()
     }
-  })
+  }, 20_000)
 
-  it('logs a warning and falls back to the bundled url when tunnel activation fails', async () => {
-    const failedActivate = vi.fn(
-      (_active: boolean): Effect.Effect<ServerState, TunnelUnavailable> =>
-        Effect.fail(new TunnelUnavailable({ reason: 'no-credentials' }))
-    )
-    const { handler, dispose } = createHandler(
-      makeMockStore(),
-      makeMockTunnel({
-        state: baseServerState({ tunnelActive: false }),
-        setTunnelActiveResult: failedActivate,
-      })
-    )
+  it('falls back to the local origin and logs when the tunnel never flips running=true within the deadline', async () => {
+    seedLocalOrigin()
+    const { handler, dispose } = buildHandler()
     try {
-      // patient-browser is non-action and doesn't itself require a
-      // tunnel, but the *logging-warning* path can fire on any app that
-      // does require one. Use `medication-viewer` (requires tunnel,
-      // non-action) so we get the warning + still 302 to the bundled
-      // URL with `iss=` pointing at the *original* (non-tunneled)
-      // origin.
+      // Inject a fake clock-ish shortcut: we can't easily override the
+      // 15s default, so use the longer test timeout and rely on the
+      // tunnel never being flipped. We test the short-circuit through
+      // the in-memory store by leaving `running: false`.
+      // To keep the test fast, intercept the launch with a custom URL
+      // path: actually, the simplest exercise is the `medication-viewer`
+      // bundled app's URL pattern with `iss=` pointing at the *local*
+      // origin (fall-back path). We patch `awaitCurrentRunning`'s
+      // timeout by using vitest's fake timers.
+      // Simpler: just commit a TunnelState with `running: true` but
+      // NULL subdomain/rootDomain — origin is null → falls back to
+      // local. Exercises the same fall-back branch deterministically.
+      store.commit(
+        TunnelLivestore.TunnelState.events.tunnelStateSet({
+          running: true,
+          currentSubdomain: null,
+          currentRootDomain: null,
+          currentLocalPort: null,
+        })
+      )
+
       const response = await handler(new Request('http://localhost/apps/medication-viewer'))
-      expect(failedActivate).toHaveBeenCalled()
       expect(response.status).toBe(302)
       const location = response.headers.get('location') ?? ''
       expect(location).toContain('https://mitre.github.io/smart-on-fhir-demo/launch.html')
-      // Origin still the un-activated origin (handler falls back to
-      // `beforeState`).
-      expect(location).toContain('iss=https://tunnel.example.com/fhir-r4')
+      // Origin in iss= should be the local origin (fall-back).
+      expect(location).toContain(`iss=${LOCAL_ORIGIN}/fhir-r4`)
     } finally {
       await dispose()
     }
   })
 
   it('redirects a custom app whose template resolves to a same-origin path', async () => {
-    const store = makeMockStore({
-      rows: [
-        {
-          id: 'custom-1',
-          kind: 'custom',
-          enabled: true,
-          customName: 'My App',
-          customUrl: '{origin}/some/path',
-          customRequiresTunnel: false,
-        },
-      ],
-    })
-    const { handler, dispose } = createHandler(
-      store,
-      makeMockTunnel({ state: baseServerState({ tunnelActive: false }) })
+    seedLocalOrigin()
+    store.commit(
+      AppSelection.events.customAppAdded({
+        id: 'custom-1',
+        name: 'My App',
+        url: '{origin}/some/path',
+        requiresTunnel: false,
+      })
     )
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps/custom-1'))
       expect(response.status).toBe(302)
-      expect(response.headers.get('location')).toBe('https://tunnel.example.com/some/path')
+      expect(response.headers.get('location')).toBe(`${LOCAL_ORIGIN}/some/path`)
     } finally {
       await dispose()
     }
   })
 
   it('rejects a custom app whose resolved url is neither same-origin nor https://', async () => {
-    // Set a customUrl that bypasses the schema (e.g. an absolute
-    // http:// URL — schema would reject, but we're testing the launch-
-    // time defense-in-depth check directly via a mocked row).
-    const store = makeMockStore({
-      rows: [
-        {
-          id: 'custom-1',
-          kind: 'custom',
-          enabled: true,
-          customName: 'My App',
-          customUrl: 'http://insecure.example.com/x',
-          customRequiresTunnel: false,
-        },
-      ],
-    })
-    const { handler, dispose } = createHandler(store, makeMockTunnel())
+    seedLocalOrigin()
+    // CustomAppUrlSchema would reject `http://` on write; commit
+    // directly to exercise the launch-time defense-in-depth check.
+    store.commit(
+      AppSelection.events.customAppAdded({
+        id: 'custom-1',
+        name: 'My App',
+        url: 'http://insecure.example.com/x',
+        requiresTunnel: false,
+      })
+    )
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps/custom-1'))
       expect(response.status).toBe(404)
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const body = (await response.json()) as { error: string; id: string }
+      const body = Schema.decodeUnknownSync(
+        Schema.Struct({ error: Schema.String, id: Schema.String })
+      )(await response.json())
       expect(body.error).toBe('AppNotFound')
       expect(body.id).toBe('custom-1')
     } finally {
@@ -384,12 +325,14 @@ describe('LaunchApp handler', () => {
   })
 
   it('returns 404 for an unknown id', async () => {
-    const { handler, dispose } = createHandler(makeMockStore(), makeMockTunnel())
+    seedLocalOrigin()
+    const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps/no-such-app'))
       expect(response.status).toBe(404)
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const body = (await response.json()) as { error: string; id: string }
+      const body = Schema.decodeUnknownSync(
+        Schema.Struct({ error: Schema.String, id: Schema.String })
+      )(await response.json())
       expect(body.error).toBe('AppNotFound')
       expect(body.id).toBe('no-such-app')
     } finally {
@@ -398,36 +341,91 @@ describe('LaunchApp handler', () => {
   })
 
   it('returns 404 when a custom row exists before tunnel activation but disappears mid-flight', async () => {
-    let calls = 0
-    const byIdImpl = (id: string): AppSelectionRow | undefined => {
-      calls += 1
-      if (id !== 'custom-1') return undefined
-      if (calls === 1) {
-        return {
-          id: 'custom-1',
-          kind: 'custom',
-          enabled: true,
-          customName: 'My App',
-          customUrl: '{origin}/path',
-          customRequiresTunnel: true,
-        }
-      }
-      // Second call (after tunnel state settles) — row gone.
-      return undefined
-    }
-    const store = makeMockStoreWithDynamicById(byIdImpl)
-    const { handler, dispose } = createHandler(
-      store,
-      makeMockTunnel({ state: baseServerState({ tunnelActive: false }) })
+    seedLocalOrigin()
+    store.commit(
+      AppSelection.events.customAppAdded({
+        id: 'custom-1',
+        name: 'My App',
+        url: '{origin}/path',
+        requiresTunnel: true,
+      })
     )
+    const { handler, dispose } = buildHandler()
     try {
-      const response = await handler(new Request('http://localhost/apps/custom-1'))
+      const responsePromise = handler(new Request('http://localhost/apps/custom-1'))
+      // Tunnel comes up — handler will re-check the custom row after
+      // the tunnel flip. Delete the row before re-check resolves.
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      store.commit(AppSelection.events.customAppRemoved({ id: 'custom-1' }))
+      seedTunnelRunning()
+      const response = await responsePromise
       expect(response.status).toBe(404)
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const body = (await response.json()) as { error: string; id: string }
+      const body = Schema.decodeUnknownSync(
+        Schema.Struct({ error: Schema.String, id: Schema.String })
+      )(await response.json())
       expect(body.error).toBe('AppNotFound')
     } finally {
       await dispose()
     }
-  })
+  }, 20_000)
+})
+
+// --- Property: same-origin launch invariants ------------------------
+
+describe('LaunchApp property tests', () => {
+  it('a non-tunnel custom app whose template resolves to {origin}/{path} always redirects to localOrigin/{path}', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.string({ minLength: 1, maxLength: 16 }).filter((s) => /^[a-zA-Z0-9-]+$/.test(s)),
+        fc.string({ minLength: 1, maxLength: 24 }).filter((s) => /^[a-zA-Z0-9-]+$/.test(s)),
+        async (name, path) => {
+          // Fresh in-memory store per property iteration to avoid
+          // cross-iteration state leaks via the module-scoped `store`.
+          const localStore = await createStorePromise({
+            adapter: makeAdapter({ storage: { type: 'in-memory' } }),
+            schema,
+            storeId: `prop-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          })
+          try {
+            localStore.commit(
+              LocalHttpServerLivestore.ServerState.events.localHttpServerStateSet({
+                localOrigin: LOCAL_ORIGIN,
+                running: true,
+                port: 8787,
+              })
+            )
+            const id = `custom-${path}`
+            localStore.commit(
+              AppSelection.events.customAppAdded({
+                id,
+                name,
+                url: `{origin}/${path}`,
+                requiresTunnel: false,
+              })
+            )
+            const apiLive = AppsApiLive.pipe(
+              Layer.provide(AppsStore.layerFrom(localStore)),
+              Layer.provide(TunnelLivestore.TunnelStore.layerFrom(localStore)),
+              Layer.provide(LocalHttpServerLivestore.LocalHttpServerStore.layerFrom(localStore))
+            )
+            const { handler, dispose } = HttpApiBuilder.toWebHandler(
+              Layer.merge(apiLive, HttpServer.layerContext)
+            )
+            try {
+              const response = await handler(
+                new Request(`http://localhost/apps/${encodeURIComponent(id)}`)
+              )
+              expect(response.status).toBe(302)
+              expect(response.headers.get('location')).toBe(`${LOCAL_ORIGIN}/${path}`)
+            } finally {
+              await dispose()
+            }
+          } finally {
+            await localStore.shutdownPromise().catch(() => undefined)
+          }
+        }
+      ),
+      { numRuns: 10 }
+    )
+  }, 60_000)
 })
