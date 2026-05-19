@@ -51,6 +51,10 @@ type EventsRecord = {
 const events: EventsRecord = { tunnelConfigSet } as const
 
 type ConflictTarget = Parameters<ReturnType<typeof table.insert>['onConflict']>[0]
+// `ConflictTarget` is a column-name union tagged with the table's internal
+// brand info, so the bare `'id'` literal can't satisfy it. Same workaround
+// used in `apps-core/src/livestore/app-selection.ts` and
+// `emr-core/src/internal/domain-resource-persistence.ts`.
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion
 const idConflictColumn = 'id' as unknown as ConflictTarget
 

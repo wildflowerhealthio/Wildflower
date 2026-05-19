@@ -56,7 +56,6 @@
     "effect": "catalog:",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
-    "local-http-server-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -67,7 +66,6 @@
     "@livestore/peer-deps": "catalog:",
     "@livestore/utils": "catalog:",
     "effect": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "local-http-server-core": "workspace:*"
+    "kitchen-sink": "workspace:*"
   }
 }

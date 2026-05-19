@@ -7,20 +7,21 @@ import { Schema } from 'effect'
  * `TunnelState` (daemon-owned — `currentEnabled`, `currentSubdomain`,
  * `currentRootDomain`, `currentLocalPort`, `error`).
  *
- * Optional fields decay to `undefined` on the wire when the persistent
- * `TunnelConfig` row hasn't been seeded yet — `requestedEnabled` always
- * surfaces (defaults to `false`).
+ * Optional fields surface as `null` on the wire — both when the
+ * persistent `TunnelConfig` row hasn't been seeded yet and when the
+ * daemon hasn't populated the corresponding `current*` field.
+ * `requestedEnabled` / `currentEnabled` always surface (default `false`).
  */
 const TunnelStateSchema = Schema.Struct({
-  subdomain: Schema.optional(Schema.String),
-  rootDomain: Schema.optional(Schema.String),
-  localPort: Schema.optional(Schema.Number),
+  subdomain: Schema.NullOr(Schema.String),
+  rootDomain: Schema.NullOr(Schema.String),
+  localPort: Schema.NullOr(Schema.Number),
   requestedEnabled: Schema.Boolean,
   currentEnabled: Schema.Boolean,
-  currentSubdomain: Schema.optional(Schema.String),
-  currentRootDomain: Schema.optional(Schema.String),
-  currentLocalPort: Schema.optional(Schema.Number),
-  error: Schema.optional(Schema.String),
+  currentSubdomain: Schema.NullOr(Schema.String),
+  currentRootDomain: Schema.NullOr(Schema.String),
+  currentLocalPort: Schema.NullOr(Schema.Number),
+  error: Schema.NullOr(Schema.String),
 })
 
 /**

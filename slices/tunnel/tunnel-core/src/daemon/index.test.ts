@@ -1,19 +1,24 @@
 /**
- * Tests for `runTunnelDaemon` — verifies the daemon's reaction to
- * `TunnelConfig` transitions against an in-memory livestore plus a stubbed
- * `startTunnel`. The stub succeeds with the granted `{subdomain, rootDomain}`
- * to signal "tunnel up" (the same signal the daemon's `Effect.tap` watches
- * for) and is forked by the daemon into a sub-scope per tunnel.
+ * Tests for `runTunnelDaemon` — drives the daemon against an in-memory
+ * livestore and a stubbed `startTunnel`. Stubs follow the new contract:
+ *
+ *  - `startTunnel(config, setBindResult)` parks until interrupted, calling
+ *    `setBindResult` to mark bind (the daemon awaits that callback's
+ *    Deferred to detect "tunnel up");
+ *  - the `acquireRelease` keeps an `active` set in sync so reconfigure /
+ *    stop invariants can be asserted;
+ *  - an optional `failPostBind` knob makes the stub fail *after* bind so
+ *    the post-bind error path can be exercised.
  */
 import { makeAdapter } from '@livestore/adapter-node'
 import type { Store } from '@livestore/livestore'
 import { createStorePromise } from '@livestore/livestore'
-import { Effect, type Scope } from 'effect'
+import { Deferred, Effect, type Scope } from 'effect'
 import fc from 'fast-check'
-import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
+import { describe, expect, it } from 'vite-plus/test'
 
 import { schema, TunnelConfig, TunnelState, TunnelStore } from '../livestore/index.ts'
-import { type GrantedConfig, type ResolvedConfig, runTunnelDaemon } from './index.ts'
+import { type DomainResult, type ResolvedConfig, runTunnelDaemon } from './index.ts'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -27,10 +32,17 @@ interface TunnelStateValue {
   readonly error: string | null
 }
 
-interface StartTunnelStub {
-  readonly startTunnel: (config: ResolvedConfig) => Effect.Effect<GrantedConfig, never, Scope.Scope>
+type StartTunnel<E> = (
+  config: ResolvedConfig,
+  setBindResult: (result: DomainResult) => Effect.Effect<void, never, never>
+) => Effect.Effect<never, E, Scope.Scope>
+
+interface StartTunnelStub<E = never> {
+  readonly startTunnel: StartTunnel<E>
   readonly calls: ReadonlyArray<ResolvedConfig>
+  readonly active: ReadonlySet<string>
   readonly awaitCalls: (n: number) => Promise<ReadonlyArray<ResolvedConfig>>
+  readonly failPostBind: (cause: E) => Effect.Effect<void, never, never>
 }
 
 const WAIT_TIMEOUT_MS = 2_000
@@ -42,17 +54,14 @@ const makeFreshStore = (): Promise<Store<typeof schema, object>> =>
     storeId: `tunnel-daemon-it-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   })
 
-const makeStartTunnelStub = (): StartTunnelStub => {
-  const calls: ResolvedConfig[] = []
-  const subscribers: (() => void)[] = []
-  const startTunnel = (config: ResolvedConfig): Effect.Effect<GrantedConfig, never, never> =>
-    Effect.sync(() => {
-      calls.push(config)
-      for (const fire of subscribers.splice(0, subscribers.length)) fire()
-      // Happy-path stub: the relay "grants" the requested values exactly.
-      return { subdomain: config.subdomain, rootDomain: config.rootDomain }
-    })
-  const awaitCalls = (n: number): Promise<ReadonlyArray<ResolvedConfig>> =>
+const configId = (c: ResolvedConfig): string =>
+  `${c.subdomain}|${c.rootDomain}|${String(c.localPort)}`
+
+const makeAwaitCalls = (
+  calls: ReadonlyArray<ResolvedConfig>,
+  subscribers: (() => void)[]
+): ((n: number) => Promise<ReadonlyArray<ResolvedConfig>>) => {
+  return (n) =>
     new Promise((resolve, reject) => {
       const check = (): boolean => {
         if (calls.length >= n) {
@@ -76,7 +85,66 @@ const makeStartTunnelStub = (): StartTunnelStub => {
       }
       subscribers.push(fire)
     })
-  return { startTunnel, calls, awaitCalls }
+}
+
+interface StubOptions<E> {
+  /** Map the requested config to the granted DomainResult. Default: identity. */
+  readonly mapToResult?: (config: ResolvedConfig) => DomainResult
+  /** Optional post-bind failure trigger; if omitted, the stub never fails post-bind. */
+  // included via failPostBind on the returned StartTunnelStub regardless
+  // (caller decides whether to fire it) — this field is just for type plumbing.
+  readonly _phantomE?: E
+}
+
+const makeStartTunnelStub = <E = never>(opts: StubOptions<E> = {}): StartTunnelStub<E> => {
+  const calls: ResolvedConfig[] = []
+  const active = new Set<string>()
+  const subscribers: (() => void)[] = []
+  const failures: Deferred.Deferred<never, E>[] = []
+  const mapToResult =
+    opts.mapToResult ??
+    ((c: ResolvedConfig) => ({ subdomain: c.subdomain, rootDomain: c.rootDomain }))
+
+  const startTunnel: StartTunnel<E> = (config, setBindResult) =>
+    Effect.acquireRelease(
+      // Acquire: register the tunnel, signal bind, allocate the
+      // post-bind failure Deferred so `failPostBind` can target this
+      // running instance.
+      Effect.gen(function* () {
+        calls.push(config)
+        active.add(configId(config))
+        for (const fire of subscribers.splice(0, subscribers.length)) fire()
+        yield* setBindResult(mapToResult(config))
+        const fail = yield* Deferred.make<never, E>()
+        failures.push(fail)
+        return fail
+      }),
+      (fail) =>
+        Effect.sync(() => {
+          active.delete(configId(config))
+          const idx = failures.indexOf(fail)
+          if (idx >= 0) failures.splice(idx, 1)
+        })
+    ).pipe(Effect.flatMap((fail) => Deferred.await(fail)))
+
+  const failPostBind = (cause: E): Effect.Effect<void, never, never> =>
+    Effect.sync(() => {
+      // Fail the most recently-bound live tunnel — there's only one
+      // live at a time given the daemon's invariants, but if the test
+      // changes that, we fail the newest.
+      const latest = failures.at(-1)
+      if (latest !== undefined) {
+        Effect.runSync(Deferred.fail(latest, cause))
+      }
+    })
+
+  return {
+    startTunnel,
+    calls,
+    active,
+    awaitCalls: makeAwaitCalls(calls, subscribers),
+    failPostBind,
+  }
 }
 
 const waitForState = (
@@ -107,25 +175,20 @@ const waitForState = (
     })
   })
 
-const configId = (c: ResolvedConfig): string =>
-  `${c.subdomain}|${c.rootDomain}|${String(c.localPort)}`
-
 interface DaemonTestCtx {
   readonly store: Store<typeof schema, object>
-  readonly calls: ReadonlyArray<ResolvedConfig>
-  readonly awaitCalls: (n: number) => Promise<ReadonlyArray<ResolvedConfig>>
 }
 
-const runDaemonTest = async (
+const runDaemonTest = async <E>(
   body: (ctx: DaemonTestCtx) => Promise<void>,
-  stub: StartTunnelStub = makeStartTunnelStub()
+  startTunnel: StartTunnel<E> = makeStartTunnelStub<E>().startTunnel
 ): Promise<void> => {
   const store = await makeFreshStore()
   try {
     await Effect.runPromise(
       Effect.gen(function* () {
-        yield* Effect.forkScoped(runTunnelDaemon(stub.startTunnel))
-        yield* Effect.promise(() => body({ store, calls: stub.calls, awaitCalls: stub.awaitCalls }))
+        yield* Effect.forkScoped(runTunnelDaemon(startTunnel))
+        yield* Effect.promise(() => body({ store }))
       }).pipe(Effect.scoped, Effect.provide(TunnelStore.layerFrom(store)))
     )
   } finally {
@@ -157,12 +220,14 @@ const commitConfig = (
 
 describe('runTunnelDaemon', () => {
   describe('start/stop lifecycle', () => {
-    it('calls startTunnel with the requested config when requestedEnabled flips to true', () =>
-      runDaemonTest(async ({ store, calls }) => {
+    it('calls startTunnel with the requested config when requestedEnabled flips to true', () => {
+      const stub = makeStartTunnelStub()
+      return runDaemonTest(async ({ store }) => {
         commitConfig(store, { ...FULL_CONFIG, requestedEnabled: true })
         await waitForState(store, (s) => s.currentEnabled)
-        expect(calls).toEqual([FULL_CONFIG])
-      }))
+        expect(stub.calls).toEqual([FULL_CONFIG])
+      }, stub.startTunnel)
+    })
 
     it('commits currentEnabled=true plus the granted config once the tunnel opens', () =>
       runDaemonTest(async ({ store }) => {
@@ -176,6 +241,25 @@ describe('runTunnelDaemon', () => {
           error: null,
         })
       }))
+
+    it('writes the granted (not requested) subdomain when the relay redirects', () => {
+      // The relay grants a different subdomain and rootDomain than
+      // requested. Asserting on the granted values pins the daemon to
+      // `DomainResult` rather than echoing the request.
+      const stub = makeStartTunnelStub({
+        mapToResult: () => ({ subdomain: 'fallback-sub', rootDomain: 'fallback.example.com' }),
+      })
+      return runDaemonTest(async ({ store }) => {
+        commitConfig(store, { ...FULL_CONFIG, requestedEnabled: true })
+        const state = await waitForState(store, (s) => s.currentEnabled)
+        expect(state).toMatchObject({
+          currentSubdomain: 'fallback-sub',
+          currentRootDomain: 'fallback.example.com',
+          // localPort is purely local, so it carries through from the request.
+          currentLocalPort: FULL_CONFIG.localPort,
+        })
+      }, stub.startTunnel)
+    })
 
     it('commits currentEnabled=false and clears current* fields when requestedEnabled flips back to false', () =>
       runDaemonTest(async ({ store }) => {
@@ -192,208 +276,149 @@ describe('runTunnelDaemon', () => {
         })
       }))
 
-    it('produces exactly one start call across an off→on→off cycle', () =>
-      runDaemonTest(async ({ store, calls }) => {
+    it('produces exactly one start call across an off→on→off cycle', () => {
+      const stub = makeStartTunnelStub()
+      return runDaemonTest(async ({ store }) => {
         commitConfig(store, { ...FULL_CONFIG, requestedEnabled: true })
         await waitForState(store, (s) => s.currentEnabled)
         commitConfig(store, { requestedEnabled: false })
         await waitForState(store, (s) => !s.currentEnabled)
-        expect(calls).toEqual([FULL_CONFIG])
-      }))
+        expect(stub.calls).toEqual([FULL_CONFIG])
+      }, stub.startTunnel)
+    })
   })
 
   describe('partial config', () => {
-    it('stays parked when requestedEnabled is true but subdomain is null', () =>
-      runDaemonTest(async ({ store, calls }) => {
-        // Set requestedEnabled before seeding subdomain/rootDomain. The
-        // daemon should NoOp until the config is complete.
+    it('stays parked until the missing fields land, then starts exactly once', () => {
+      // Deterministic happens-after: after committing the partial
+      // (incomplete) config, commit a *complete* config and assert
+      // exactly one call was observed. A spurious tick from the partial
+      // commit would surface as a second entry in `calls`.
+      const stub = makeStartTunnelStub()
+      return runDaemonTest(async ({ store }) => {
         commitConfig(store, { localPort: 8080, requestedEnabled: true })
-        // Wait long enough for any spurious tick to have fired.
-        await new Promise((resolve) => setTimeout(resolve, 100))
-        expect(calls).toEqual([])
-        const state = store.query(TunnelState.queries.current$)
-        expect(state.currentEnabled).toBe(false)
-      }))
-
-    it('starts once the missing fields are filled in', () =>
-      runDaemonTest(async ({ store, calls }) => {
-        commitConfig(store, { localPort: 8080, requestedEnabled: true })
-        await new Promise((resolve) => setTimeout(resolve, 50))
-        expect(calls).toEqual([])
         commitConfig(store, { subdomain: 'wildflower-expo-dev', rootDomain: 'loca.lt' })
         await waitForState(store, (s) => s.currentEnabled)
-        expect(calls).toEqual([FULL_CONFIG])
-      }))
+        expect(stub.calls).toEqual([FULL_CONFIG])
+      }, stub.startTunnel)
+    })
+
+    it('NoOps when all of subdomain/rootDomain/localPort are missing even with requestedEnabled true', () => {
+      // Marker-based happens-after: commit a partial config that should
+      // NoOp, then commit a complete config and wait for it to start.
+      // If the partial commit had spuriously started, `stub.calls`
+      // would carry two entries.
+      const stub = makeStartTunnelStub()
+      return runDaemonTest(async ({ store }) => {
+        commitConfig(store, { requestedEnabled: true })
+        commitConfig(store, { ...FULL_CONFIG })
+        await waitForState(store, (s) => s.currentEnabled)
+        expect(stub.calls).toEqual([FULL_CONFIG])
+      }, stub.startTunnel)
+    })
   })
 
   describe('reconfiguration mid-run', () => {
-    it('re-invokes startTunnel with the new subdomain', () =>
-      runDaemonTest(async ({ store, calls, awaitCalls }) => {
+    it('re-invokes startTunnel with the new subdomain', () => {
+      const stub = makeStartTunnelStub()
+      return runDaemonTest(async ({ store }) => {
         commitConfig(store, { ...FULL_CONFIG, requestedEnabled: true })
-        await awaitCalls(1)
+        await stub.awaitCalls(1)
         commitConfig(store, { subdomain: 'wildflower-expo-prod' })
-        await awaitCalls(2)
-        expect(calls.map((c) => c.subdomain)).toEqual([
+        await stub.awaitCalls(2)
+        expect(stub.calls.map((c) => c.subdomain)).toEqual([
           'wildflower-expo-dev',
           'wildflower-expo-prod',
         ])
-      }))
+      }, stub.startTunnel)
+    })
 
-    it('re-invokes startTunnel with the new local port', () =>
-      runDaemonTest(async ({ store, calls, awaitCalls }) => {
+    it('re-invokes startTunnel with the new local port', () => {
+      const stub = makeStartTunnelStub()
+      return runDaemonTest(async ({ store }) => {
         commitConfig(store, { ...FULL_CONFIG, requestedEnabled: true })
-        await awaitCalls(1)
+        await stub.awaitCalls(1)
         commitConfig(store, { localPort: 9090 })
-        await awaitCalls(2)
-        expect(calls.map((c) => c.localPort)).toEqual([8080, 9090])
-      }))
+        await stub.awaitCalls(2)
+        expect(stub.calls.map((c) => c.localPort)).toEqual([8080, 9090])
+      }, stub.startTunnel)
+    })
   })
 
   describe('reconfiguration scope teardown', () => {
-    /**
-     * Real-world `startTunnel` implementations bind their connection
-     * inside an `Effect.acquireRelease` block and succeed with the
-     * granted `{subdomain, rootDomain}`. The release fires when the
-     * daemon closes the sub-scope on reconfigure or stop. This stub
-     * mirrors that shape so the "close the previous sub-scope on
-     * reconfiguration" invariant is actually exercised.
-     */
-    const makeLongRunningStub = (): StartTunnelStub & {
-      readonly active: Set<string>
-    } => {
-      const calls: ResolvedConfig[] = []
-      const active = new Set<string>()
-      const subscribers: (() => void)[] = []
-      const startTunnel = (
-        config: ResolvedConfig
-      ): Effect.Effect<GrantedConfig, never, Scope.Scope> =>
-        Effect.acquireRelease(
-          Effect.sync((): GrantedConfig => {
-            calls.push(config)
-            active.add(configId(config))
-            for (const fire of subscribers.splice(0, subscribers.length)) fire()
-            return { subdomain: config.subdomain, rootDomain: config.rootDomain }
-          }),
-          () =>
-            Effect.sync(() => {
-              active.delete(configId(config))
-            })
-        )
-      const awaitCalls = (n: number): Promise<ReadonlyArray<ResolvedConfig>> =>
-        new Promise((resolve, reject) => {
-          const check = (): boolean => {
-            if (calls.length >= n) {
-              resolve([...calls])
-              return true
-            }
-            return false
-          }
-          if (check()) return
-          const timer = setTimeout(() => {
-            const idx = subscribers.indexOf(fire)
-            if (idx >= 0) subscribers.splice(idx, 1)
-            reject(new Error(`awaitCalls(${String(n)}) — observed ${String(calls.length)}`))
-          }, WAIT_TIMEOUT_MS)
-          const fire = (): void => {
-            if (check()) {
-              clearTimeout(timer)
-              return
-            }
-            subscribers.push(fire)
-          }
-          subscribers.push(fire)
-        })
-      return { startTunnel, calls, awaitCalls, active }
-    }
-
-    it('releases the previous sub-scope on reconfigure (exactly one active tunnel)', async () => {
-      const stub = makeLongRunningStub()
-      await runDaemonTest(async ({ store, awaitCalls }) => {
+    it('releases the previous sub-scope on reconfigure (exactly one active tunnel)', () => {
+      const stub = makeStartTunnelStub()
+      return runDaemonTest(async ({ store }) => {
         commitConfig(store, { ...FULL_CONFIG, requestedEnabled: true })
-        await awaitCalls(1)
+        await stub.awaitCalls(1)
         await waitForState(store, (s) => s.currentEnabled)
         expect(stub.active.size).toBe(1)
 
         commitConfig(store, { localPort: 9090 })
-        await awaitCalls(2)
+        await stub.awaitCalls(2)
         await waitForState(store, (s) => s.currentLocalPort === 9090)
         expect(stub.active.size).toBe(1)
-      }, stub)
+      }, stub.startTunnel)
     })
 
-    it('releases the active sub-scope when requestedEnabled flips back to false', async () => {
-      const stub = makeLongRunningStub()
-      await runDaemonTest(async ({ store, awaitCalls }) => {
+    it('releases the active sub-scope when requestedEnabled flips back to false', () => {
+      const stub = makeStartTunnelStub()
+      return runDaemonTest(async ({ store }) => {
         commitConfig(store, { ...FULL_CONFIG, requestedEnabled: true })
-        await awaitCalls(1)
+        await stub.awaitCalls(1)
         await waitForState(store, (s) => s.currentEnabled)
         expect(stub.active.size).toBe(1)
 
         commitConfig(store, { requestedEnabled: false })
         await waitForState(store, (s) => !s.currentEnabled)
         expect(stub.active.size).toBe(0)
-      }, stub)
+      }, stub.startTunnel)
     })
   })
 
   describe('error path', () => {
-    let store: Store<typeof schema, object>
-
-    beforeEach(async () => {
-      store = await makeFreshStore()
-    })
-
-    afterEach(async () => {
-      await store.shutdownPromise().catch(() => undefined)
-    })
-
-    it('writes the failure to TunnelState.error and leaves requestedEnabled intact', async () => {
-      const failingStartTunnel = (
-        _config: ResolvedConfig
-      ): Effect.Effect<GrantedConfig, string, Scope.Scope> => Effect.fail('boom')
-
-      await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            yield* Effect.forkScoped(runTunnelDaemon(failingStartTunnel))
-            yield* Effect.promise(async () => {
-              commitConfig(store, { ...FULL_CONFIG, requestedEnabled: true })
-              const state = await waitForState(store, (s) => s.error !== null)
-              expect(state.error).toMatch(/boom/)
-              expect(state.currentEnabled).toBe(false)
-              const config = store.query(TunnelConfig.queries.current$)
-              expect(config?.requestedEnabled).toBe(true)
-            })
-          }).pipe(Effect.provide(TunnelStore.layerFrom(store)))
-        )
-      )
+    it('writes a pre-bind failure to TunnelState.error and leaves requestedEnabled intact', async () => {
+      const failingStartTunnel: StartTunnel<string> = () => Effect.fail('boom')
+      let observedConfigRequested: boolean | undefined
+      await runDaemonTest(async ({ store }) => {
+        commitConfig(store, { ...FULL_CONFIG, requestedEnabled: true })
+        const state = await waitForState(store, (s) => s.error !== null)
+        expect(state.error).toMatch(/boom/)
+        expect(state.currentEnabled).toBe(false)
+        observedConfigRequested = store.query(TunnelConfig.queries.current$)?.requestedEnabled
+      }, failingStartTunnel)
+      expect(observedConfigRequested).toBe(true)
     })
 
     it('recovers on a reconfigure with a healthy startTunnel', async () => {
-      const stub = makeStartTunnelStub()
-      const startTunnel = (
-        config: ResolvedConfig
-      ): Effect.Effect<GrantedConfig, string, Scope.Scope> =>
-        Effect.gen(function* () {
-          if (config.localPort === 9000) return yield* Effect.fail('boom')
-          return yield* stub.startTunnel(config)
-        })
+      const happy = makeStartTunnelStub<string>()
+      const startTunnel: StartTunnel<string> = (config, setBindResult) =>
+        config.localPort === 9000 ? Effect.fail('boom') : happy.startTunnel(config, setBindResult)
+      await runDaemonTest(async ({ store }) => {
+        commitConfig(store, { ...FULL_CONFIG, localPort: 9000, requestedEnabled: true })
+        await waitForState(store, (s) => s.error !== null)
+        commitConfig(store, { localPort: 9001 })
+        const state = await waitForState(store, (s) => s.currentEnabled)
+        expect(state.error).toBeNull()
+        expect(state.currentLocalPort).toBe(9001)
+      }, startTunnel)
+    })
 
-      await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            yield* Effect.forkScoped(runTunnelDaemon(startTunnel))
-            yield* Effect.promise(async () => {
-              commitConfig(store, { ...FULL_CONFIG, localPort: 9000, requestedEnabled: true })
-              await waitForState(store, (s) => s.error !== null)
-              commitConfig(store, { localPort: 9001 })
-              const state = await waitForState(store, (s) => s.currentEnabled)
-              expect(state.error).toBeNull()
-              expect(state.currentLocalPort).toBe(9001)
-            })
-          }).pipe(Effect.provide(TunnelStore.layerFrom(store)))
-        )
-      )
+    it('writes a post-bind failure to TunnelState.error and tears the tunnel down', async () => {
+      const stub = makeStartTunnelStub<string>()
+      await runDaemonTest(async ({ store }) => {
+        commitConfig(store, { ...FULL_CONFIG, requestedEnabled: true })
+        await waitForState(store, (s) => s.currentEnabled)
+        expect(stub.active.size).toBe(1)
+
+        await Effect.runPromise(stub.failPostBind('relay-reset'))
+
+        const state = await waitForState(store, (s) => s.error !== null)
+        expect(state.error).toMatch(/relay-reset/)
+        expect(state.currentEnabled).toBe(false)
+        expect(state.currentSubdomain).toBeNull()
+        expect(stub.active.size).toBe(0)
+      }, stub.startTunnel)
     })
   })
 
@@ -405,8 +430,9 @@ describe('runTunnelDaemon', () => {
 
     it('always forwards the requested config into startTunnel', () =>
       fc.assert(
-        fc.asyncProperty(subdomainArb, portArb, (subdomain, localPort) =>
-          runDaemonTest(async ({ store, calls }) => {
+        fc.asyncProperty(subdomainArb, portArb, (subdomain, localPort) => {
+          const stub = makeStartTunnelStub()
+          return runDaemonTest(async ({ store }) => {
             commitConfig(store, {
               subdomain,
               rootDomain: 'loca.lt',
@@ -420,9 +446,9 @@ describe('runTunnelDaemon', () => {
                 s.currentSubdomain === subdomain &&
                 s.currentLocalPort === localPort
             )
-            expect(calls).toEqual([{ subdomain, rootDomain: 'loca.lt', localPort }])
-          })
-        ),
+            expect(stub.calls).toEqual([{ subdomain, rootDomain: 'loca.lt', localPort }])
+          }, stub.startTunnel)
+        }),
         PROP_OPTS
       ))
 
@@ -434,8 +460,9 @@ describe('runTunnelDaemon', () => {
             maxLength: 3,
             selector: ([subdomain, port]): string => `${subdomain}|${String(port)}`,
           }),
-          (reconfigurations) =>
-            runDaemonTest(async ({ store, calls, awaitCalls }) => {
+          (reconfigurations) => {
+            const stub = makeStartTunnelStub()
+            return runDaemonTest(async ({ store }) => {
               for (let i = 0; i < reconfigurations.length; i++) {
                 const [subdomain, localPort] = reconfigurations[i]
                 commitConfig(store, {
@@ -445,7 +472,7 @@ describe('runTunnelDaemon', () => {
                   requestedEnabled: true,
                 })
                 // oxlint-disable-next-line no-await-in-loop -- iteration must observe daemon settle before the next commit
-                await awaitCalls(i + 1)
+                await stub.awaitCalls(i + 1)
               }
               const [lastSubdomain, lastPort] = reconfigurations[reconfigurations.length - 1]
               await waitForState(
@@ -455,8 +482,9 @@ describe('runTunnelDaemon', () => {
                   s.currentSubdomain === lastSubdomain &&
                   s.currentLocalPort === lastPort
               )
-              expect(calls.length).toBe(reconfigurations.length)
-            })
+              expect(stub.calls.length).toBe(reconfigurations.length)
+            }, stub.startTunnel)
+          }
         ),
         PROP_OPTS
       ))

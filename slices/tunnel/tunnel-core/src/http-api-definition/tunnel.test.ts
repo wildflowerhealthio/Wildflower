@@ -17,13 +17,30 @@ describe('TunnelStateSchema', () => {
     )
   })
 
-  it('accepts a minimal state (just the required booleans)', () => {
+  it('accepts a fresh-install snapshot (booleans false, every nullable field null)', () => {
     expectRightToEqual(
       Schema.decodeUnknownEither(TunnelStateSchema)({
+        subdomain: null,
+        rootDomain: null,
+        localPort: null,
         requestedEnabled: false,
         currentEnabled: false,
+        currentSubdomain: null,
+        currentRootDomain: null,
+        currentLocalPort: null,
+        error: null,
       }),
-      { requestedEnabled: false, currentEnabled: false }
+      {
+        subdomain: null,
+        rootDomain: null,
+        localPort: null,
+        requestedEnabled: false,
+        currentEnabled: false,
+        currentSubdomain: null,
+        currentRootDomain: null,
+        currentLocalPort: null,
+        error: null,
+      }
     )
   })
 

@@ -4,8 +4,6 @@ import { Effect } from 'effect'
 import { TunnelAdminApi } from '../http-api-definition/index.ts'
 import { TunnelConfig, TunnelState, TunnelStore } from '../livestore/index.ts'
 
-const orUndefined = <T>(value: T | null): T | undefined => (value === null ? undefined : value)
-
 /**
  * Combine the persistent `TunnelConfig` row and per-session `TunnelState`
  * into the wire shape. The config row may be absent (fresh install,
@@ -17,15 +15,15 @@ const snapshot = Effect.gen(function* () {
   const config = store.query(TunnelConfig.queries.current$)
   const state = store.query(TunnelState.queries.current$)
   return {
-    subdomain: orUndefined(config?.subdomain ?? null),
-    rootDomain: orUndefined(config?.rootDomain ?? null),
-    localPort: orUndefined(config?.localPort ?? null),
+    subdomain: config?.subdomain ?? null,
+    rootDomain: config?.rootDomain ?? null,
+    localPort: config?.localPort ?? null,
     requestedEnabled: config?.requestedEnabled ?? false,
     currentEnabled: state.currentEnabled,
-    currentSubdomain: orUndefined(state.currentSubdomain),
-    currentRootDomain: orUndefined(state.currentRootDomain),
-    currentLocalPort: orUndefined(state.currentLocalPort),
-    error: orUndefined(state.error),
+    currentSubdomain: state.currentSubdomain,
+    currentRootDomain: state.currentRootDomain,
+    currentLocalPort: state.currentLocalPort,
+    error: state.error,
   }
 })
 

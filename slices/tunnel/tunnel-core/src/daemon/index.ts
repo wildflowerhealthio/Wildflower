@@ -2,8 +2,8 @@ import {
   Cause,
   Deferred,
   Effect,
-  Either,
   Exit,
+  Fiber,
   Match,
   Scope,
   Stream,
@@ -20,14 +20,14 @@ interface ResolvedConfig {
 }
 
 /**
- * What the upstream relay actually granted — written to
+ * What the tunnel actually resolved to — written to
  * `TunnelState.currentSubdomain` / `currentRootDomain` by the daemon
  * once `startTunnel` succeeds. Mirrors the requested `ResolvedConfig`
  * minus `localPort` (purely local; not negotiated with the relay), and
- * can differ from the requested values if the relay falls back to a
- * different subdomain.
+ * can differ from the requested values when the relay redirects to a
+ * different subdomain or rootDomain.
  */
-interface GrantedConfig {
+interface DomainResult {
   readonly subdomain: string
   readonly rootDomain: string
 }
@@ -108,17 +108,20 @@ const computeIntent = (
  * @typeParam E - Error channel of the supplied `startTunnel`. Errors are
  *   surfaced to the UI via `TunnelState.error`; they do not propagate
  *   out of the daemon.
- * @param startTunnel - Effect that opens the tunnel. It must succeed
- *   with the actually-granted `{subdomain, rootDomain}` once the upstream
- *   relay has confirmed the bind (the daemon uses that as the "tunnel is
- *   up" signal and writes the granted values into `TunnelState`). The
- *   daemon forks it into a sub-scope and provides that `Scope.Scope` as
- *   a context — long-running implementations should
- *   `Effect.acquireRelease` to register their cleanup with the
- *   sub-scope.
+ * @param startTunnel - Long-lived Effect that opens the tunnel and stays
+ *   alive until the upstream relay drops or the surrounding scope is
+ *   closed. It calls `setBindResult(result)` exactly once when the
+ *   relay confirms the bind (the daemon uses that callback as the
+ *   "tunnel is up" signal and writes the `DomainResult` into
+ *   `TunnelState`), then parks until either a post-bind cluster error
+ *   fires (in which case the Effect fails) or the surrounding scope is
+ *   closed (in which case it is interrupted). The daemon forks it into
+ *   a sub-scope and provides that `Scope.Scope` as a context — the
+ *   implementation should `Effect.acquireRelease` to tie its cleanup to
+ *   the sub-scope.
  * @returns A scoped Effect that runs until its scope closes. The error
- *   channel is `never` because all `startTunnel` failures are written to
- *   `TunnelState.error` rather than thrown.
+ *   channel is `never` because all `startTunnel` failures (pre- and
+ *   post-bind) are written to `TunnelState.error` rather than thrown.
  *
  * @remarks
  *
@@ -127,8 +130,15 @@ const computeIntent = (
  * user-intent surface. On each stream tick the daemon reads the latest
  * snapshot inside a `SynchronizedRef.updateEffect` and computes an
  * `Intent` — `StartOrReconfigure` forks `startTunnel` and commits
- * `currentEnabled: true` once it succeeds; `Stop` closes the live
+ * `currentEnabled: true` once it signals bind; `Stop` closes the live
  * sub-scope and commits `currentEnabled: false`; `NoOp` falls through.
+ *
+ * Post-bind cluster failures are caught by a per-tunnel watcher fiber
+ * forked into the daemon's outer scope: on a non-interrupt failure of
+ * the `startTunnel` fiber after bind, the watcher closes the sub-scope,
+ * commits the failure to `TunnelState.error`, and parks the daemon in
+ * `Failed`. Pure interruption (from a reconfigure or daemon shutdown)
+ * is ignored so the user's intent isn't clobbered by tear-down noise.
  *
  * State-reset commits live at transition sites rather than on the
  * sub-scope finalizer — so reconfiguration can close the old sub-scope
@@ -137,10 +147,14 @@ const computeIntent = (
  * `requestedEnabled` intent must survive across daemon restarts.
  */
 const runTunnelDaemon = <E>(
-  startTunnel: (config: ResolvedConfig) => Effect.Effect<GrantedConfig, E, Scope.Scope>
+  startTunnel: (
+    config: ResolvedConfig,
+    setBindResult: (result: DomainResult) => Effect.Effect<void, never, never>
+  ) => Effect.Effect<never, E, Scope.Scope>
 ): Effect.Effect<void, never, Scope.Scope | TunnelStore> =>
   Effect.gen(function* () {
     const store = yield* TunnelStore
+    const daemonScope = yield* Effect.scope
 
     const commitState = (
       patch: Partial<{
@@ -172,28 +186,29 @@ const runTunnelDaemon = <E>(
     const newTunnel = (config: ResolvedConfig): Effect.Effect<RunningState, never, never> =>
       Effect.gen(function* () {
         const tunnelScope = yield* Scope.make()
-        const grantedDeferred = yield* Deferred.make<GrantedConfig, E>()
-        yield* pipe(
-          Scope.extend(startTunnel(config), tunnelScope),
-          Effect.tap((granted) => Deferred.succeed(grantedDeferred, granted)),
+        const deferredDomainResult = yield* Deferred.make<DomainResult, E>()
+        const setBindResult = (result: DomainResult): Effect.Effect<void, never, never> =>
+          Deferred.succeed(deferredDomainResult, result).pipe(Effect.asVoid)
+        const startTunnelFiber = yield* pipe(
+          Scope.extend(startTunnel(config, setBindResult), tunnelScope),
           Effect.tapErrorCause((cause) =>
             pipe(
-              Deferred.failCause<GrantedConfig, E>(grantedDeferred, cause),
+              Deferred.failCause<DomainResult, E>(deferredDomainResult, cause),
               Effect.zipRight(Effect.logError('[tunnel-core] startTunnel failed', cause))
             )
           ),
           Effect.forkIn(tunnelScope)
         )
 
-        const openResult = yield* Effect.either(Deferred.await(grantedDeferred))
-        if (Either.isLeft(openResult)) {
+        const bindResult = yield* Effect.exit(Deferred.await(deferredDomainResult))
+        if (Exit.isFailure(bindResult)) {
           yield* Scope.close(tunnelScope, Exit.void)
           yield* commitState({
             currentEnabled: false,
             currentSubdomain: null,
             currentRootDomain: null,
             currentLocalPort: null,
-            error: Cause.pretty(Cause.fail(openResult.left)),
+            error: Cause.pretty(bindResult.cause),
           })
           // Failed config is remembered so the daemon's own error-commit
           // stream tick lands as a NoOp. `requestedEnabled: true` is
@@ -206,14 +221,52 @@ const runTunnelDaemon = <E>(
         // back to a different subdomain than requested, and `TunnelState`
         // should reflect what's actually reachable. `localPort` is purely
         // local so it carries through from the requested config.
-        const granted = openResult.right
+        const domainResult = bindResult.value
         yield* commitState({
           currentEnabled: true,
-          currentSubdomain: granted.subdomain,
-          currentRootDomain: granted.rootDomain,
+          currentSubdomain: domainResult.subdomain,
+          currentRootDomain: domainResult.rootDomain,
           currentLocalPort: config.localPort,
           error: null,
         })
+
+        // Post-bind watcher: if startTunnel fails *after* bind (e.g. the
+        // relay drops the connection), close the sub-scope, write the
+        // cause to `TunnelState.error`, and park in `Failed`. Forked
+        // into the daemon's outer scope so the watcher itself survives
+        // newTunnel returning, and stays alive across reconfigurations
+        // until the daemon shuts down. Pure interruption is ignored —
+        // a reconfigure or explicit Stop closes `tunnelScope` first,
+        // which interrupts this fiber, and we don't want that to
+        // clobber the user's intent with a fake error.
+        yield* pipe(
+          Fiber.await(startTunnelFiber),
+          Effect.flatMap((exit) => {
+            if (Exit.isSuccess(exit) || Cause.isInterruptedOnly(exit.cause)) {
+              return Effect.void
+            }
+            return SynchronizedRef.updateEffect(runningStateRef, (state) => {
+              if (state._tag !== 'Running' || state.tunnelScope !== tunnelScope) {
+                return Effect.succeed(state)
+              }
+              return pipe(
+                Scope.close(tunnelScope, Exit.void),
+                Effect.zipRight(
+                  commitState({
+                    currentEnabled: false,
+                    currentSubdomain: null,
+                    currentRootDomain: null,
+                    currentLocalPort: null,
+                    error: Cause.pretty(exit.cause),
+                  })
+                ),
+                Effect.as({ _tag: 'Failed', config } as const)
+              )
+            })
+          }),
+          Effect.forkIn(daemonScope)
+        )
+
         return { _tag: 'Running', tunnelScope, config } as const
       })
 
@@ -257,4 +310,4 @@ const runTunnelDaemon = <E>(
   })
 
 export { runTunnelDaemon }
-export type { GrantedConfig, ResolvedConfig }
+export type { DomainResult, ResolvedConfig }

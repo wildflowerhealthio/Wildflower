@@ -1,11 +1,14 @@
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise, type Store } from '@livestore/livestore'
-import { Layer } from 'effect'
+import { Layer, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
+import { TunnelStateSchema } from '../http-api-definition/tunnel.ts'
 import { schema, TunnelConfig, TunnelState, TunnelStore } from '../livestore/index.ts'
 import { TunnelAdminApiLive } from './index.ts'
+
+const decodeBody = Schema.decodeUnknownSync(TunnelStateSchema)
 
 let store: Store<typeof schema, object>
 
@@ -48,8 +51,7 @@ describe('GetTunnel handler', () => {
     try {
       const response = await handler(new Request('http://localhost/tunnel'))
       expect(response.status).toBe(200)
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const body = (await response.json()) as Record<string, unknown>
+      const body = decodeBody(await response.json())
       expect(body).toEqual({
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
@@ -59,6 +61,7 @@ describe('GetTunnel handler', () => {
         currentSubdomain: 'wildflower-expo-dev',
         currentRootDomain: 'loca.lt',
         currentLocalPort: 8080,
+        error: null,
       })
     } finally {
       await dispose()
@@ -70,10 +73,18 @@ describe('GetTunnel handler', () => {
     try {
       const response = await handler(new Request('http://localhost/tunnel'))
       expect(response.status).toBe(200)
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const body = (await response.json()) as { requestedEnabled: boolean; currentEnabled: boolean }
-      expect(body.requestedEnabled).toBe(false)
-      expect(body.currentEnabled).toBe(false)
+      const body = decodeBody(await response.json())
+      expect(body).toEqual({
+        subdomain: null,
+        rootDomain: null,
+        localPort: null,
+        requestedEnabled: false,
+        currentEnabled: false,
+        currentSubdomain: null,
+        currentRootDomain: null,
+        currentLocalPort: null,
+        error: null,
+      })
     } finally {
       await dispose()
     }
