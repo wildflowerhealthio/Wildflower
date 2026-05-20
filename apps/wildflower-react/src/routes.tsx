@@ -6,6 +6,7 @@ import {
 } from 'gatekeeper-react'
 import type { JSX } from 'react'
 import { Route } from 'react-router'
+import { tunnelAuthorizedRoutesFragment } from 'tunnel-react'
 import { AuthorizedAppShell } from './session/authorized-app-shell.tsx'
 
 // Exported as JSX.Element (not a component): React Router's <Routes>
@@ -25,6 +26,7 @@ const appRoutesFragment: JSX.Element = (
       {gatekeeperAuthorizedRoutesFragment}
       {collectorAuthorizedRoutesFragment}
       {appsAuthorizedRoutesFragment}
+      {tunnelAuthorizedRoutesFragment}
     </Route>
   </>
 )

@@ -7,6 +7,7 @@ import { AuthTokenProvider } from 'react-kitchen-sink'
 import { MemoryRouter, Routes } from 'react-router'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
+import { TunnelClientProvider } from 'tunnel-react'
 import * as AppRoot from './app-root.tsx'
 import { AppsSenderForwarder } from './bridges/apps-sender-forwarder.tsx'
 import { CollectorSenderForwarder } from './bridges/collector-sender-forwarder.tsx'
@@ -27,7 +28,9 @@ AppRoot.render(
                   <CollectorClientProvider>
                     <FhirR4ResourcesClientProvider>
                       <AppsClientProvider>
-                        <Routes>{appRoutesFragment}</Routes>
+                        <TunnelClientProvider>
+                          <Routes>{appRoutesFragment}</Routes>
+                        </TunnelClientProvider>
                       </AppsClientProvider>
                     </FhirR4ResourcesClientProvider>
                   </CollectorClientProvider>
