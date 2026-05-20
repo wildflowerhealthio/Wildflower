@@ -5,7 +5,7 @@ import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Checkbox, Dialog } from 'react-tundraish'
 
-import { useAppsAdminEffectRunner } from '../use-apps-effect-runner.ts'
+import { useAppsAdminEffectAction } from '../apps-client.tsx'
 import editorStyles from '../styles/apps-editor.module.css'
 
 type AppEntry = Schema.Schema.Type<typeof Schemas.AppEntrySchema>
@@ -20,7 +20,7 @@ interface AppsEditorProps {
 /**
  * Modal editor for the apps list. Bundled apps toggle on/off; custom
  * apps can be added or removed. Writes are issued through
- * `useAppsAdminEffectRunner` (a one-off Effect runner that
+ * `useAppsAdminEffectAction` (a one-off Effect runner that
  * auto-provides the slice's *admin* client layer + bearer token —
  * `AppsAdminApi` is owner-only).
  *
@@ -30,7 +30,7 @@ interface AppsEditorProps {
  * while a previous write is still pending.
  */
 const AppsEditor = ({ open, apps, onClose, onChanged }: AppsEditorProps): JSX.Element => {
-  const run = useAppsAdminEffectRunner()
+  const run = useAppsAdminEffectAction()
   const [newName, setNewName] = useState('')
   const [newUrl, setNewUrl] = useState('')
   const [newRequiresTunnel, setNewRequiresTunnel] = useState(false)

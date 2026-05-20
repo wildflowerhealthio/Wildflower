@@ -1,13 +1,13 @@
 {
-  "name": "tunnel-react",
+  "name": "shared-structures-react",
   "version": "0.0.0",
   "private": true,
-  "description": "React adapter for tunnel-core: client provider/context, useTunnel* hooks, TunnelToggle, TunnelScreen, and tunnelAuthorizedRoutesFragment.",
+  "description": "React-side helpers paired with shared-structures-core. `defineSliceReact` collapses each slice-react's per-client context + provider + 4 hooks (`useClientLayer`, `useEffect`, `useEffectRunner`, `useStream`) into a single declaration.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/tunnel/tunnel-react"
+    "directory": "slices/shared-structures/shared-structures-react"
   },
   "files": [
     "dist"
@@ -28,11 +28,9 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
-    "@fast-check/vitest": "catalog:",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.0",
     "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
@@ -40,10 +38,7 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
-    "react-router": "catalog:",
-    "react-tundraish": "workspace:*",
-    "telemetry-react": "workspace:*",
-    "tunnel-core": "workspace:*",
+    "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -53,9 +48,6 @@
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
-    "react-router": "catalog:",
-    "react-tundraish": "workspace:*",
-    "telemetry-react": "workspace:*",
-    "tunnel-core": "workspace:*"
+    "shared-structures-core": "workspace:*"
   }
 }

@@ -1,6 +1,6 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { Effect, Layer, SubscriptionRef } from 'effect'
-import { bearerTokenLayer } from 'react-kitchen-sink'
+import { BearerToken } from 'kitchen-sink/auth-token'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -53,7 +53,7 @@ describe('buildTunnelAdminClientLayer', () => {
     })
 
     const layer = buildTunnelAdminClientLayer().pipe(
-      Layer.provideMerge(bearerTokenLayer(tokenRef)),
+      Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
       Layer.provideMerge(capturingHttpClientLayer(captures))
     )
 
@@ -70,7 +70,7 @@ describe('buildTunnelAdminClientLayer', () => {
     })
 
     const layer = buildTunnelAdminClientLayer().pipe(
-      Layer.provideMerge(bearerTokenLayer(tokenRef)),
+      Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
       Layer.provideMerge(capturingHttpClientLayer(captures))
     )
 
@@ -91,7 +91,7 @@ describe('buildTunnelAdminClientLayer', () => {
     })
 
     const layer = buildTunnelAdminClientLayer().pipe(
-      Layer.provideMerge(bearerTokenLayer(tokenRef)),
+      Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
       Layer.provideMerge(capturingHttpClientLayer(captures))
     )
 
@@ -110,7 +110,7 @@ describe('buildTunnelAdminClientLayer', () => {
     })
 
     const layer = buildTunnelAdminClientLayer().pipe(
-      Layer.provideMerge(bearerTokenLayer(tokenRef)),
+      Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
       Layer.provideMerge(capturingHttpClientLayer(captures))
     )
 
@@ -170,7 +170,7 @@ describe('buildTunnelAdminClientLayer', () => {
     })
 
     const layer = buildTunnelAdminClientLayer().pipe(
-      Layer.provideMerge(bearerTokenLayer(tokenRef)),
+      Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
       Layer.provideMerge(httpClientLayer)
     )
 

@@ -370,6 +370,9 @@ importers:
       gatekeeper-react:
         specifier: workspace:*
         version: link:../../slices/gatekeeper/gatekeeper-react
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../global/kitchen-sink
       navigation-core:
         specifier: workspace:*
         version: link:../../slices/navigation/navigation-core
@@ -955,6 +958,9 @@ importers:
       react-tundraish:
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      shared-structures-react:
+        specifier: workspace:*
+        version: link:../../shared-structures/shared-structures-react
       telemetry-react:
         specifier: workspace:*
         version: link:../../telemetry/telemetry-react
@@ -1339,6 +1345,9 @@ importers:
       react-tundraish:
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      shared-structures-react:
+        specifier: workspace:*
+        version: link:../../shared-structures/shared-structures-react
       telemetry-react:
         specifier: workspace:*
         version: link:../../telemetry/telemetry-react
@@ -1489,6 +1498,9 @@ importers:
       navigation-core:
         specifier: workspace:*
         version: link:../../navigation/navigation-core
+      shared-structures-core:
+        specifier: workspace:*
+        version: link:../../shared-structures/shared-structures-core
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -1531,6 +1543,9 @@ importers:
       react-kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/react-kitchen-sink
+      shared-structures-react:
+        specifier: workspace:*
+        version: link:../../shared-structures/shared-structures-react
       telemetry-react:
         specifier: workspace:*
         version: link:../../telemetry/telemetry-react
@@ -1672,9 +1687,15 @@ importers:
       fhir-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-r4
+      fhir-r4-react:
+        specifier: workspace:*
+        version: link:../../emr/fhir-r4-react
       gatekeeper-core:
         specifier: workspace:*
         version: link:../gatekeeper-core
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
       react:
         specifier: 'catalog:'
         version: 19.1.0
@@ -1687,6 +1708,9 @@ importers:
       react-tundraish:
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      shared-structures-react:
+        specifier: workspace:*
+        version: link:../../shared-structures/shared-structures-react
       telemetry-react:
         specifier: workspace:*
         version: link:../../telemetry/telemetry-react
@@ -1849,6 +1873,57 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.1
+      jsdom:
+        specifier: 'catalog:'
+        version: 26.1.0
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+
+  slices/shared-structures/shared-structures-react:
+    devDependencies:
+      '@effect/platform':
+        specifier: 0.96.1
+        version: 0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@testing-library/dom':
+        specifier: ^10.4.0
+        version: 10.4.1
+      '@testing-library/react':
+        specifier: ^16.3.0
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.1.0))(@types/react@19.1.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.1.0
+      effect:
+        specifier: 3.21.2
+        version: 3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.1
+      jsdom:
+        specifier: 'catalog:'
+        version: 26.1.0
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      react:
+        specifier: 'catalog:'
+        version: 19.1.0
+      react-dom:
+        specifier: 19.1.0
+        version: 19.1.0(react@19.1.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/react-kitchen-sink
+      shared-structures-core:
+        specifier: workspace:*
+        version: link:../shared-structures-core
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -2243,6 +2318,9 @@ importers:
       jsdom:
         specifier: 'catalog:'
         version: 26.1.0
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
       react:
         specifier: 'catalog:'
         version: 19.1.0
@@ -14533,6 +14611,16 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.1.0
       '@types/react-dom': 19.1.0(@types/react@19.1.0)
+
+  '@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.1.0))(@types/react@19.1.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@babel/runtime': 7.29.2
+      '@testing-library/dom': 10.4.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+    optionalDependencies:
+      '@types/react': 19.1.0
+      '@types/react-dom': 19.2.3(@types/react@19.1.0)
 
   '@testing-library/user-event@14.6.1(@testing-library/dom@10.4.1)':
     dependencies:

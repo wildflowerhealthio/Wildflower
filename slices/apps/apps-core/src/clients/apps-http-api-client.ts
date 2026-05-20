@@ -1,29 +1,28 @@
-import { HttpApiClient } from '@effect/platform'
-import { Context, type Effect } from 'effect'
+import { defineSliceHttpClient } from 'shared-structures-core/http-api-definition'
 
 import { AppsAdminApi, AppsApi } from '../http-api-definition/index.ts'
 
-// Type-only references to extract the resolved client shape; tree-shaken
-// at call sites. Mirrors `collector-core/clients` and
-// `gatekeeper-core/clients`.
+const publicHc = defineSliceHttpClient({
+  name: 'AppsHttpApiClient',
+  api: AppsApi,
+  authType: 'none',
+})
 
-// oxlint-disable no-underscore-dangle
-const _barePublicClient = HttpApiClient.make(AppsApi, { baseUrl: '/' })
-type AppsHttpApiClientShape = Effect.Effect.Success<typeof _barePublicClient>
-
-const _bareAdminClient = HttpApiClient.make(AppsAdminApi, { baseUrl: '/' })
-type AppsAdminHttpApiClientShape = Effect.Effect.Success<typeof _bareAdminClient>
-// oxlint-enable no-underscore-dangle
+const adminHc = defineSliceHttpClient({
+  name: 'AppsAdminHttpApiClient',
+  api: AppsAdminApi,
+  authType: 'bearer',
+})
 
 /**
  * Effect Service providing the resolved `AppsApi` (public) HttpApi
  * client — `ListApps` + `LaunchApp`. No bearer token required;
  * consumers should *not* attach `Authorization` headers.
  */
-class AppsHttpApiClient extends Context.Tag('AppsHttpApiClient')<
-  AppsHttpApiClient,
-  AppsHttpApiClientShape
->() {}
+class AppsHttpApiClient extends publicHc.ClientTag<AppsHttpApiClient>() {
+  static readonly layer = publicHc.makeLayerFactory(AppsHttpApiClient)()
+  static readonly authType = publicHc.authType
+}
 
 /**
  * Effect Service providing the resolved `AppsAdminApi` (owner-only)
@@ -31,14 +30,17 @@ class AppsHttpApiClient extends Context.Tag('AppsHttpApiClient')<
  * `AppsAdminApi` in `RequireAuthMiddleware`, so the corresponding
  * client layer must attach a bearer.
  */
-class AppsAdminHttpApiClient extends Context.Tag('AppsAdminHttpApiClient')<
-  AppsAdminHttpApiClient,
-  AppsAdminHttpApiClientShape
->() {}
+class AppsAdminHttpApiClient extends adminHc.ClientTag<AppsAdminHttpApiClient>() {
+  static readonly layer = adminHc.makeLayerFactory(AppsAdminHttpApiClient)()
+  static readonly authType = adminHc.authType
+}
+
+type AppsHttpApiClientShape = typeof AppsHttpApiClient.Service
+type AppsAdminHttpApiClientShape = typeof AppsAdminHttpApiClient.Service
 
 export {
-  AppsHttpApiClient,
   AppsAdminHttpApiClient,
-  type AppsHttpApiClientShape,
+  AppsHttpApiClient,
   type AppsAdminHttpApiClientShape,
+  type AppsHttpApiClientShape,
 }

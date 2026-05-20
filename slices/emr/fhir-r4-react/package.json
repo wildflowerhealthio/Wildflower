@@ -28,6 +28,7 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
+    "shared-structures-react": "workspace:*",
     "telemetry-react": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
@@ -38,6 +39,7 @@
     "fhir-r4": "workspace:*",
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
+    "shared-structures-react": "workspace:*",
     "telemetry-react": "workspace:*"
   }
 }

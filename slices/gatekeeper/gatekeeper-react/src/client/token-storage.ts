@@ -19,8 +19,9 @@
  *     from `react-kitchen-sink`; descendants call `useAuthToken()` or
  *     `useAuthTokenSubscribable()`.
  *   - Effect side: provided as `BearerToken` via
- *     `bearerTokenLayer(authTokenRef)` so client layers can read the
- *     token from inside an `HttpClient.mapRequestEffect` transform.
+ *     `Layer.succeed(BearerToken, authTokenRef)` so client layers can
+ *     read the token from inside an `HttpClient.mapRequestEffect`
+ *     transform.
  *   - Writers (`NeedsAuthMessage`, `web-bridge`): call {@link writeToken}
  *     or `Effect.runSync(SubscriptionRef.set(authTokenRef, token))`.
  */

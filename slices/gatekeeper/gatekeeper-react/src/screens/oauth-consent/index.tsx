@@ -4,13 +4,12 @@ import { Suspense, useMemo, type JSX } from 'react'
 import { Await, useNavigate, useParams } from 'react-router'
 import { AsyncErrorView, PageLoading } from 'react-tundraish'
 
-import { useGatekeeperEffectRunner } from '../../use-gatekeeper-effect-runner.ts'
-import { useGatekeeperEffect } from '../../use-gatekeeper-effect.ts'
+import { useGatekeeperEffect, useGatekeeperEffectAction } from '../../gatekeeper-client.tsx'
 import { OAuthConsentForm } from './oauth-consent-form.tsx'
 import type { Consent } from './types.ts'
 
 const OAuthConsentScreen = (): JSX.Element => {
-  const runGatekeeper = useGatekeeperEffectRunner()
+  const runGatekeeper = useGatekeeperEffectAction()
   const navigate = useNavigate()
   const { id = '' } = useParams<{ id: string }>()
 

@@ -1,21 +1,14 @@
 export { collectorAuthorizedRoutesFragment } from './routes.tsx'
 
 export {
+  CollectorClientLayerContext,
   CollectorClientProvider,
-  type CollectorClientProviderProps,
-} from './collector-client-provider.tsx'
-export { CollectorClientLayerContext } from './collector-client-context.ts'
-export { useCollectorClientLayer } from './use-collector-client-layer.ts'
-export { useCollectorEffect } from './use-collector-effect.ts'
-export { useCollectorStream } from './use-collector-stream.ts'
-export {
-  useCollectorEffectRunner,
-  type CollectorEffectRunner,
-} from './use-collector-effect-runner.ts'
-export {
-  buildCollectorClientLayer,
-  type CollectorClientRequirements,
-} from './client/collector-client.ts'
+  useCollectorClientLayer,
+  useCollectorEffect,
+  useCollectorEffectAction,
+  useCollectorStream,
+  type CollectorEffectAction,
+} from './collector-client.tsx'
 
 export { CollectorRuntimeProvider } from './runtime/collector-runtime-provider.tsx'
 export {

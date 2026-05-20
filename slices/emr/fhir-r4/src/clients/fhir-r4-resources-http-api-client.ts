@@ -1,11 +1,12 @@
-import { HttpApiClient } from '@effect/platform'
-import { Context, type Effect } from 'effect'
+import { defineSliceHttpClient } from 'shared-structures-core/http-api-definition'
 
 import { FhirResourcesApi } from '../http-api-definition/index.ts'
 
-// oxlint-disable-next-line no-underscore-dangle
-const _bareFhirResourcesClient = HttpApiClient.make(FhirResourcesApi, { baseUrl: '/' })
-type FhirR4ResourcesHttpApiClientShape = Effect.Effect.Success<typeof _bareFhirResourcesClient>
+const sliceClient = defineSliceHttpClient({
+  name: 'FhirR4ResourcesHttpApiClient',
+  api: FhirResourcesApi,
+  authType: 'bearer',
+})
 
 /**
  * Effect Service providing the resolved `FhirResourcesApi` HttpApi
@@ -21,9 +22,11 @@ type FhirR4ResourcesHttpApiClientShape = Effect.Effect.Success<typeof _bareFhirR
  * )
  * ```
  */
-class FhirR4ResourcesHttpApiClient extends Context.Tag('FhirR4ResourcesHttpApiClient')<
-  FhirR4ResourcesHttpApiClient,
-  FhirR4ResourcesHttpApiClientShape
->() {}
+class FhirR4ResourcesHttpApiClient extends sliceClient.ClientTag<FhirR4ResourcesHttpApiClient>() {
+  static readonly layer = sliceClient.makeLayerFactory(FhirR4ResourcesHttpApiClient)()
+  static readonly authType = sliceClient.authType
+}
+
+type FhirR4ResourcesHttpApiClientShape = typeof FhirR4ResourcesHttpApiClient.Service
 
 export { FhirR4ResourcesHttpApiClient, type FhirR4ResourcesHttpApiClientShape }

@@ -8,7 +8,7 @@ import { cn } from 'react-kitchen-sink'
 import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
 import { writeToken } from '../client/token-storage.ts'
-import { useGatekeeperClientLayer } from '../use-gatekeeper-client-layer.ts'
+import { useGatekeeperClientLayer } from '../gatekeeper-client.tsx'
 import deviceEntryStyles from '../screens/device-entry.module.css'
 import pageLayout from '../styles/page-layout.module.css'
 

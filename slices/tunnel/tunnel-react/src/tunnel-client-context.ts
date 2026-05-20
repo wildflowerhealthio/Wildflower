@@ -1,7 +1,7 @@
 import type { HttpClient } from '@effect/platform'
 import type { Layer } from 'effect'
+import type { BearerToken } from 'kitchen-sink/auth-token'
 import { createContext } from 'react'
-import type { BearerToken } from 'react-kitchen-sink'
 import type { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 
 /**

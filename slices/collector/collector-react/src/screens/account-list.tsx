@@ -7,9 +7,9 @@ import { cn } from 'react-kitchen-sink'
 import { useNavigate } from 'react-router'
 import { Dialog, ItemList, Menu, pageLayoutStyles, type MenuItem } from 'react-tundraish'
 
+import { useCollectorEffectAction } from '../collector-client.tsx'
 import { formatInstant } from '../format-date.ts'
 import { useRequestSniffableWebView } from '../runtime/use-request-sniffable-web-view.ts'
-import { useCollectorEffectRunner } from '../use-collector-effect-runner.ts'
 import accountList from '../styles/account-list.module.css'
 import pageLayout from '../styles/page-layout.module.css'
 
@@ -25,7 +25,7 @@ type Remote = Schema.Schema.Type<typeof Remotes.RemoteSchema>
  */
 const AccountListScreen = (): JSX.Element => {
   const navigate = useNavigate()
-  const run = useCollectorEffectRunner()
+  const run = useCollectorEffectAction()
   const requestSniffableWebView = useRequestSniffableWebView()
   const [remotes, setRemotes] = useState<readonly Remote[]>([])
   const [error, setError] = useState<string | null>(null)

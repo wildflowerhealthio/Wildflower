@@ -5,7 +5,7 @@ import { cn } from 'react-kitchen-sink'
 import { Await, useParams } from 'react-router'
 import { AsyncErrorView, pageLayoutStyles } from 'react-tundraish'
 
-import { useGatekeeperStream } from '../use-gatekeeper-stream.ts'
+import { useGatekeeperStream } from '../gatekeeper-client.tsx'
 import pageLayout from '../styles/page-layout.module.css'
 import styles from './oauth-polling.module.css'
 
