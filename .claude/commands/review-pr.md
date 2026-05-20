@@ -27,9 +27,16 @@ Tags exist so the PR author can react with the matching emoji to signal "do this
 🚀 <action item 2>
 ```
 
-The analysis sits at the top, unprefixed. Each action item gets its own line, prefixed with exactly one emoji. **Repeat the emoji+action pair for every distinct action** — including separate concerns that share an analysis, separate alternatives, and primary-plus-follow-up pairs. If a comment has only one action item, the body is just analysis followed by one tagged line.
+The analysis sits at the top, unprefixed. Each action item gets its own line, prefixed with exactly one emoji.
 
-When a finding has two genuinely distinct sub-issues that share one analysis (e.g. "the log tag is wrong" plus "the term `serverLayer` is outdated"), split them into separate tagged lines rather than burying the second concern inside the first.
+**The core rule: one emoji per course of action.** Every distinct decision the author could greenlight independently is its own tagged line. The emoji is the reaction-target — if the author would want to say "yes do A but skip B," then A and B must be on separate lines with separate emojis. Never bundle two courses of action behind one emoji.
+
+This applies whenever any of these are true:
+
+- **Distinct concerns sharing one analysis** (e.g. "the log tag is wrong" *and* "the term `serverLayer` is outdated") — split.
+- **Alternative approaches** the author should pick between — split.
+- **Primary fix plus optional follow-up** (e.g. "rename the function" + "update the doc comment to match") — split.
+- **The word "Or" (or "or", "alternatively", "either … or") appears in a single action item** — split. Any sentence of the form "do X or do Y" is two action items by definition; rewrite as one tagged line per option, each phrased as a concrete outcome.
 
 ### Examples
 
@@ -61,11 +68,25 @@ This `as unknown as Service` cast isn't on `CLAUDE.md`'s allowed-exceptions list
 🚀 extend `CLAUDE.md`'s exception list to mention `defineSliceLivestore`
 ```
 
-Even if the only "alternatives" you'd offer for a one-line fix are paraphrases of each other (e.g. "raise numRuns to 50 OR document why it's 8"), use **two** action items phrased as the outcome ("numRuns: 8 reflects a real wall-clock budget"). Multi-emoji is a contract with the author — every line is a separate "go" target — so don't pad it.
+Splitting an "Or" — wrong, then right:
+
+```
+# WRONG — bundles two courses of action behind one emoji
+🚀 raise `numRuns` to 50, or document why 8 is the right ceiling
+```
+
+```
+# RIGHT — one emoji per course of action, each phrased as the outcome
+🎉 `numRuns` is 50, matching the rest of the suite
+
+🚀 a comment on the `numRuns: 8` line explains the wall-clock budget that caps it there
+```
+
+Don't pad with paraphrases. Multi-emoji is a contract with the author — every line is a separate "go" target — so each tagged line must be a course of action the author can independently greenlight. If you find yourself writing two lines that lead to the same diff, you have one action item, not two.
 
 ### Concrete and terse
 
-Each action item should name a specific change, it may depend on the analysis above to be understood. The emoji tag is the contract with `/answer`; the line after it is what gets done.
+Each action item names a single specific change. It may depend on the analysis above to be understood, but on its own it describes exactly one diff the author can produce. The emoji tag is the contract with `/answer`; the line after it is what gets done. If a tagged line describes more than one outcome — separated by "or," "and also," or buried in a sub-clause — it isn't one action item, and it must be split.
 
 ## Steps
 
@@ -117,7 +138,7 @@ Each action item should name a specific change, it may depend on the analysis ab
    - Concatenate the subagents' finding lists.
    - Dedupe: if two subagents flagged the same line for overlapping reasons, merge into one comment with both concerns (still tag each action item with an emoji).
    - Sort by file, then line, for readability.
-   - Edit any comment that violates the tag rules (missing emoji on an actionable line, multi-option without genuine alternatives, etc.) before submitting. Don't pass through subagent output uncritically — the orchestrator is the editor.
+   - Edit any comment that violates the tag rules before submitting — missing emoji on an actionable line, two courses of action behind one emoji, "or" / "alternatively" in a tagged line, or two tagged lines that resolve to the same diff. Don't pass through subagent output uncritically — the orchestrator is the editor.
 
 6. **Submit a single review.** Post all inline comments at once via the reviews API. There is no top-level summary body — inline comments only.
 
@@ -138,7 +159,8 @@ Each action item should name a specific change, it may depend on the analysis ab
 
 - **One review, not many.** Never call the reviews API more than once per invocation, and never post comments via the per-comment endpoint (`POST /pulls/{n}/comments`) — that creates loose comments outside any review.
 - **Tags are mandatory on action items.** A finding without an emoji tag is a finding the PR author can't react to and `/answer` will skip. Edit subagent output to add tags if missing.
-- **Analysis first, then tagged actions.** Every body opens with the "what's wrong / why it matters" analysis, then one emoji-prefixed action item per line. Repeat the emoji+action pair for every distinct action — including separate concerns that share an analysis, and alternatives the author should pick between. See the "Action-item emojis" section for examples.
+- **Analysis first, then tagged actions.** Every body opens with the "what's wrong / why it matters" analysis, then one emoji-prefixed action item per line.
+- **One emoji per course of action.** Every distinct decision the author could greenlight independently is its own tagged line. Split when any of these apply: separate concerns sharing one analysis, genuine alternatives, primary fix + optional follow-up, or any action item containing "or" / "alternatively" / "either … or". See the "Comment structure" section for examples.
 - **Read-only.** Neither the orchestrator nor the subagents modify files, run builds, or push anything. This command produces a GitHub review and nothing else.
 - **Scope to the diff.** Comments must be on changed lines (or, for `side: "LEFT"`, deleted lines). Don't comment on untouched code, even if it's bad.
 - **Subagents run in parallel.** All Agent tool calls go in a single message. Sequential spawning negates the point of using multiple focuses.
