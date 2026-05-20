@@ -216,7 +216,7 @@ describe('LaunchApp handler', () => {
     }
   }, 20_000)
 
-  it('falls back to the local origin when running=true but subdomain/rootDomain are unbound', async () => {
+  it('falls back to the local origin and signals tunnel=unavailable when running=true but subdomain/rootDomain are unbound', async () => {
     seedLocalOrigin()
     store.commit(
       TunnelLivestore.TunnelState.events.tunnelStateSet({
@@ -233,6 +233,7 @@ describe('LaunchApp handler', () => {
       const location = response.headers.get('location') ?? ''
       expect(location).toContain('https://mitre.github.io/smart-on-fhir-demo/launch.html')
       expect(location).toContain(`iss=${LOCAL_ORIGIN}/fhir-r4`)
+      expect(new URL(location).searchParams.get('tunnel')).toBe('unavailable')
     } finally {
       await dispose()
     }
@@ -323,59 +324,71 @@ describe('LaunchApp handler', () => {
 })
 
 describe('LaunchApp property tests', () => {
-  it('a non-tunnel custom app whose template resolves to {origin}/{path} always redirects to localOrigin/{path}', async () => {
+  // Path segments use the RFC 3986 path-segment alphabet (unreserved +
+  // sub-delims + `:` and `@`, minus `&` which collides with query
+  // parsing). Excluding the single-dot and double-dot segments since
+  // the URL parser removes those during `remove_dot_segments` —
+  // `pathname` of `/a/.` is `/a/`. Multi-segment paths exercise `/`.
+  const segmentArb = fc
+    .stringMatching(/^[a-zA-Z0-9\-_.~!$'()*+,;:@=]{1,8}$/)
+    .filter((s) => s !== '.' && s !== '..')
+  const pathArb = fc
+    .array(segmentArb, { minLength: 1, maxLength: 3 })
+    .map((segments) => segments.join('/'))
+  const idArb = fc.stringMatching(/^[a-zA-Z0-9-]{1,16}$/)
+
+  it('non-tunnel custom app launches resolve to a redirect whose origin is the local origin, whose pathname mirrors the template path, and which carries no `tunnel=unavailable` signal', async () => {
     await fc.assert(
-      fc.asyncProperty(
-        fc.stringMatching(/^[a-zA-Z0-9-]{1,16}$/),
-        fc.stringMatching(/^[a-zA-Z0-9-]{1,24}$/),
-        async (name, path) => {
-          // Fresh in-memory store per iteration to avoid cross-iteration
-          // leaks via the module-scoped `store`.
-          const localStore = await createStorePromise({
-            adapter: makeAdapter({ storage: { type: 'in-memory' } }),
-            schema,
-            storeId: `prop-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          })
+      fc.asyncProperty(idArb, pathArb, async (idSuffix, path) => {
+        const localStore = await createStorePromise({
+          adapter: makeAdapter({ storage: { type: 'in-memory' } }),
+          schema,
+          storeId: `prop-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        })
+        try {
+          localStore.commit(
+            LocalHttpServerLivestore.ServerState.events.localHttpServerStateSet({
+              localOrigin: LOCAL_ORIGIN,
+              running: true,
+              port: 8787,
+            })
+          )
+          const id = `custom-${idSuffix}`
+          localStore.commit(
+            AppSelection.events.customAppAdded({
+              id,
+              name: 'My App',
+              url: `{origin}/${path}`,
+              requiresTunnel: false,
+            })
+          )
+          const apiLive = AppsApiLive.pipe(
+            Layer.provide(AppsStore.layerFrom(localStore)),
+            Layer.provide(TunnelLivestore.TunnelStore.layerFrom(localStore)),
+            Layer.provide(LocalHttpServerLivestore.LocalHttpServerStore.layerFrom(localStore))
+          )
+          const { handler, dispose } = HttpApiBuilder.toWebHandler(
+            Layer.merge(apiLive, HttpServer.layerContext)
+          )
           try {
-            localStore.commit(
-              LocalHttpServerLivestore.ServerState.events.localHttpServerStateSet({
-                localOrigin: LOCAL_ORIGIN,
-                running: true,
-                port: 8787,
-              })
+            const response = await handler(
+              new Request(`http://localhost/apps/${encodeURIComponent(id)}`)
             )
-            const id = `custom-${path}`
-            localStore.commit(
-              AppSelection.events.customAppAdded({
-                id,
-                name,
-                url: `{origin}/${path}`,
-                requiresTunnel: false,
-              })
-            )
-            const apiLive = AppsApiLive.pipe(
-              Layer.provide(AppsStore.layerFrom(localStore)),
-              Layer.provide(TunnelLivestore.TunnelStore.layerFrom(localStore)),
-              Layer.provide(LocalHttpServerLivestore.LocalHttpServerStore.layerFrom(localStore))
-            )
-            const { handler, dispose } = HttpApiBuilder.toWebHandler(
-              Layer.merge(apiLive, HttpServer.layerContext)
-            )
-            try {
-              const response = await handler(
-                new Request(`http://localhost/apps/${encodeURIComponent(id)}`)
-              )
-              expect(response.status).toBe(302)
-              expect(response.headers.get('location')).toBe(`${LOCAL_ORIGIN}/${path}`)
-            } finally {
-              await dispose()
-            }
+            expect(response.status).toBe(302)
+            const location = response.headers.get('location') ?? ''
+            const url = new URL(location)
+            expect(url.origin).toBe(LOCAL_ORIGIN)
+            expect(url.pathname).toBe(`/${path}`)
+            expect(url.search).toBe('')
+            expect(url.hash).toBe('')
           } finally {
-            await localStore.shutdownPromise().catch(() => undefined)
+            await dispose()
           }
+        } finally {
+          await localStore.shutdownPromise().catch(() => undefined)
         }
-      ),
-      { numRuns: 10 }
+      }),
+      { numRuns: 25 }
     )
   }, 60_000)
 })

@@ -26,6 +26,14 @@ type TunnelLaunchOutcome =
  * tunnel daemon flips `running` once the relay has bound. On timeout
  * (or if the daemon never reports a bound origin) the caller should
  * fall back to its local origin.
+ *
+ * @remarks
+ * `requestedRunning` is a sticky request, not a per-call lease.
+ * Interrupting this Effect (the caller's HTTP handler is cancelled
+ * mid-wait, etc.) does NOT roll back the commit — the daemon is the
+ * single source of truth for the tunnel's lifecycle, and a concurrent
+ * caller may still need it up. The interrupted caller drops out; the
+ * daemon reconciles on its own schedule.
  */
 const awaitTunnelRunning = (
   timeout: Duration.Duration = DEFAULT_TUNNEL_LAUNCH_TIMEOUT

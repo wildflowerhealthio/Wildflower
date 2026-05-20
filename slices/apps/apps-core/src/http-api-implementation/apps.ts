@@ -84,6 +84,26 @@ const isLaunchableUrl = (target: string, originPrefix: string): boolean => {
   }
 }
 
+/**
+ * Append `?tunnel=unavailable` so the SPA loading the redirect can
+ * detect that the launch wanted a tunnel but had to settle for the
+ * local origin. The SPA may surface this as a non-blocking banner.
+ *
+ * @remarks
+ * Uses string manipulation rather than `new URL`: bundled launch URLs
+ * (e.g. growth-chart, medication-viewer) carry raw colons / slashes in
+ * their `iss=` query values that round-tripping through `URL` would
+ * percent-encode — downstream consumers expect the un-encoded form.
+ */
+const appendTunnelUnavailable = (target: string): string => {
+  const param = 'tunnel=unavailable'
+  const hashIdx = target.indexOf('#')
+  const base = hashIdx === -1 ? target : target.slice(0, hashIdx)
+  const hash = hashIdx === -1 ? '' : target.slice(hashIdx)
+  const sep = base.includes('?') ? '&' : '?'
+  return `${base}${sep}${param}${hash}`
+}
+
 const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
   handlers
     .handle('ListApps', () =>
@@ -139,11 +159,17 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
         // Pick the origin: local if no tunnel needed or already running
         // with a bound public name; otherwise commit `requestedRunning`
         // and wait for the daemon to flip `TunnelState.running`. Timeout
-        // and unbound-state both fall back to the local origin.
+        // and unbound-state both fall back to the local origin (and
+        // surface `?tunnel=unavailable` on the redirect). The
+        // `requestedRunning` commit is sticky: see `awaitTunnelRunning`
+        // — interrupt does not roll it back.
         let origin = localOrigin
+        let tunnelFellBack = false
         if (launchContext.requiresTunnel) {
           if (beforeTunnel.running) {
-            origin = tunnelOrigin(beforeTunnel) ?? localOrigin
+            const live = tunnelOrigin(beforeTunnel)
+            if (live === null) tunnelFellBack = true
+            else origin = live
           } else {
             tunnelStore.commit(TunnelConfig.events.tunnelConfigSet({ requestedRunning: true }))
             const outcome = yield* awaitTunnelRunning()
@@ -151,8 +177,11 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
               yield* Effect.logWarning(
                 `[apps-core] tunnel did not start within deadline for ${path.id}; falling back to local origin`
               )
+              tunnelFellBack = true
             } else {
-              origin = tunnelOrigin(outcome.state) ?? localOrigin
+              const live = tunnelOrigin(outcome.state)
+              if (live === null) tunnelFellBack = true
+              else origin = live
             }
           }
         }
@@ -171,20 +200,22 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
         }
 
         if (path.id === FHIR_SHARING_ID || launchContext.isAction) {
-          return HttpServerResponse.redirect(origin, { status: 302 })
+          const target = tunnelFellBack ? appendTunnelUnavailable(origin) : origin
+          return HttpServerResponse.redirect(target, { status: 302 })
         }
 
         const launch = nanoid()
-        const target = launchContext.url(origin, launch)
-        if (!isLaunchableUrl(target, origin)) {
+        const resolved = launchContext.url(origin, launch)
+        if (!isLaunchableUrl(resolved, origin)) {
           yield* Effect.logWarning(
-            `[apps-core] LaunchApp rejected resolved URL for ${path.id}: ${target}`
+            `[apps-core] LaunchApp rejected resolved URL for ${path.id}: ${resolved}`
           )
           return HttpServerResponse.unsafeJson(
             { error: 'AppNotFound', id: path.id },
             { status: 404 }
           )
         }
+        const target = tunnelFellBack ? appendTunnelUnavailable(resolved) : resolved
         return HttpServerResponse.redirect(target, { status: 302 })
       })
     )
