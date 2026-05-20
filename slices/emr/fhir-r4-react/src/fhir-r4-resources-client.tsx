@@ -13,11 +13,13 @@
  */
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { defineSliceReact } from 'shared-structures-react'
+import { webHttpClientLayer } from 'telemetry-react'
 
 const fhirR4ResourcesSlice = defineSliceReact({
   ClientTag: FhirR4ResourcesHttpApiClient,
   layer: FhirR4ResourcesHttpApiClient.layer,
   authType: FhirR4ResourcesHttpApiClient.authType,
+  httpClientLayer: webHttpClientLayer,
   contextName: 'FhirR4Resources',
 })
 

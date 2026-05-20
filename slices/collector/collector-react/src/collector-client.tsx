@@ -13,11 +13,13 @@
  */
 import { CollectorHttpApiClient } from 'collector-core/clients'
 import { defineSliceReact } from 'shared-structures-react'
+import { webHttpClientLayer } from 'telemetry-react'
 
 const collectorSlice = defineSliceReact({
   ClientTag: CollectorHttpApiClient,
   layer: CollectorHttpApiClient.layer,
   authType: CollectorHttpApiClient.authType,
+  httpClientLayer: webHttpClientLayer,
   contextName: 'Collector',
 })
 

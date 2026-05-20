@@ -12,6 +12,7 @@ import {
   HttpClientResponse,
 } from '@effect/platform'
 import { Effect, Layer, Schema, SubscriptionRef } from 'effect'
+import fc from 'fast-check'
 import { BearerToken } from 'kitchen-sink/auth-token'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -91,7 +92,7 @@ describe('defineSliceHttpClient (authType: bearer)', () => {
     expect(result).toEqual({ ok: true })
   })
 
-  test('attaches Authorization: Bearer <token> when token is set', async () => {
+  test('attaches `Bearer <token>` when token is a string; omits Authorization when null (property)', async () => {
     const sliceHc = defineSliceHttpClient({
       name: 'FixtureBearerClient',
       api: FixtureApi,
@@ -101,60 +102,31 @@ describe('defineSliceHttpClient (authType: bearer)', () => {
       static readonly layer = sliceHc.makeLayerFactory(FixtureBearerClient)()
     }
 
-    const captures: Array<string | undefined> = []
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('alpha'))
+    await fc.assert(
+      fc.asyncProperty(fc.option(fc.string(), { nil: null }), async (token) => {
+        const captures: Array<string | undefined> = []
+        const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(token))
 
-    const program = Effect.gen(function* () {
-      const client = yield* FixtureBearerClient
-      yield* client.fixture.GetFixture()
-    })
+        const program = Effect.gen(function* () {
+          const client = yield* FixtureBearerClient
+          yield* client.fixture.GetFixture()
+        })
 
-    await Effect.runPromise(
-      program.pipe(
-        Effect.provide(
-          FixtureBearerClient.layer.pipe(
-            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
-            Layer.provideMerge(capturingHttpClientLayer(captures))
+        await Effect.runPromise(
+          program.pipe(
+            Effect.provide(
+              FixtureBearerClient.layer.pipe(
+                Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
+                Layer.provideMerge(capturingHttpClientLayer(captures))
+              )
+            ),
+            Effect.scoped
           )
-        ),
-        Effect.scoped
-      )
+        )
+
+        expect(captures).toEqual([token === null ? undefined : `Bearer ${token}`])
+      })
     )
-
-    expect(captures).toEqual(['Bearer alpha'])
-  })
-
-  test('omits Authorization when token is null', async () => {
-    const sliceHc = defineSliceHttpClient({
-      name: 'FixtureBearerClient',
-      api: FixtureApi,
-      authType: 'bearer',
-    })
-    class FixtureBearerClient extends sliceHc.ClientTag<FixtureBearerClient>() {
-      static readonly layer = sliceHc.makeLayerFactory(FixtureBearerClient)()
-    }
-
-    const captures: Array<string | undefined> = []
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
-
-    const program = Effect.gen(function* () {
-      const client = yield* FixtureBearerClient
-      yield* client.fixture.GetFixture()
-    })
-
-    await Effect.runPromise(
-      program.pipe(
-        Effect.provide(
-          FixtureBearerClient.layer.pipe(
-            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
-            Layer.provideMerge(capturingHttpClientLayer(captures))
-          )
-        ),
-        Effect.scoped
-      )
-    )
-
-    expect(captures).toEqual([undefined])
   })
 
   test('token rotation surfaces per request without rebuilding the layer', async () => {

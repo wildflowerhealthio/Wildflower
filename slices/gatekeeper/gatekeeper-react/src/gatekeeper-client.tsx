@@ -13,11 +13,13 @@
  */
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { defineSliceReact } from 'shared-structures-react'
+import { webHttpClientLayer } from 'telemetry-react'
 
 const gatekeeperSlice = defineSliceReact({
   ClientTag: GatekeeperHttpApiClient,
   layer: GatekeeperHttpApiClient.layer,
   authType: GatekeeperHttpApiClient.authType,
+  httpClientLayer: webHttpClientLayer,
   contextName: 'Gatekeeper',
 })
 

@@ -12,11 +12,13 @@
 import { AppsAdminHttpApiClient, AppsHttpApiClient } from 'apps-core/clients'
 import type { JSX, PropsWithChildren } from 'react'
 import { defineSliceReact } from 'shared-structures-react'
+import { webHttpClientLayer } from 'telemetry-react'
 
 const publicSlice = defineSliceReact({
   ClientTag: AppsHttpApiClient,
   layer: AppsHttpApiClient.layer,
   authType: AppsHttpApiClient.authType,
+  httpClientLayer: webHttpClientLayer,
   contextName: 'Apps',
 })
 
@@ -24,6 +26,7 @@ const adminSlice = defineSliceReact({
   ClientTag: AppsAdminHttpApiClient,
   layer: AppsAdminHttpApiClient.layer,
   authType: AppsAdminHttpApiClient.authType,
+  httpClientLayer: webHttpClientLayer,
   contextName: 'AppsAdmin',
 })
 
@@ -41,8 +44,6 @@ const {
   useEffectAction: useAppsAdminEffectAction,
 } = adminSlice
 
-type AppsClientProviderProps = PropsWithChildren
-
 /**
  * Provides both apps client `Layer`s to descendants — the public layer
  * (`AppsApi`, tokenless) via {@link AppsClientLayerContext}, and the
@@ -51,7 +52,7 @@ type AppsClientProviderProps = PropsWithChildren
  * token from `BearerToken` (a Subscribable provided higher in the tree
  * via `<AuthTokenProvider>` from react-kitchen-sink).
  */
-const AppsClientProvider = ({ children }: AppsClientProviderProps): JSX.Element => (
+const AppsClientProvider = ({ children }: PropsWithChildren): JSX.Element => (
   <publicSlice.ClientProvider>
     <adminSlice.ClientProvider>{children}</adminSlice.ClientProvider>
   </publicSlice.ClientProvider>
@@ -80,4 +81,4 @@ export {
   useAppsEffect,
   useAppsEffectAction,
 }
-export type { AppsAdminEffectAction, AppsClientProviderProps, AppsEffectAction }
+export type { AppsAdminEffectAction, AppsEffectAction }

@@ -1687,6 +1687,9 @@ importers:
       fhir-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-r4
+      fhir-r4-react:
+        specifier: workspace:*
+        version: link:../../emr/fhir-r4-react
       gatekeeper-core:
         specifier: workspace:*
         version: link:../gatekeeper-core
@@ -1921,9 +1924,6 @@ importers:
       shared-structures-core:
         specifier: workspace:*
         version: link:../shared-structures-core
-      telemetry-react:
-        specifier: workspace:*
-        version: link:../../telemetry/telemetry-react
       typescript:
         specifier: 5.9.3
         version: 5.9.3

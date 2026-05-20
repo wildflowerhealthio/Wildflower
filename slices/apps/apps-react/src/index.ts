@@ -11,7 +11,6 @@ export {
   useAppsEffect,
   useAppsEffectAction,
   type AppsAdminEffectAction,
-  type AppsClientProviderProps,
   type AppsEffectAction,
 } from './apps-client.tsx'
 
