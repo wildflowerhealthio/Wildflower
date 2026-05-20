@@ -15,7 +15,7 @@ import { webTelemetryLayerFromEnv } from 'telemetry-web'
  * Built eagerly at module load — the layer description is a value, not
  * a running instance, so this is cheap.
  */
-const webHttpClientLayer: Layer.Layer<HttpClient.HttpClient> = Layer.mergeAll(
+const webHttpClientLayer: Layer.Layer<HttpClient.HttpClient, never, never> = Layer.mergeAll(
   FetchHttpClient.layer,
   webTelemetryLayerFromEnv()
 ).pipe(Layer.provideMerge(FetchHttpClient.layer))

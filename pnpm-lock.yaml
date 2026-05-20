@@ -2318,6 +2318,9 @@ importers:
       jsdom:
         specifier: 'catalog:'
         version: 26.1.0
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
       react:
         specifier: 'catalog:'
         version: 19.1.0

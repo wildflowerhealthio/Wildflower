@@ -1,7 +1,8 @@
 import type { HttpClient } from '@effect/platform'
 import { Layer } from 'effect'
+import { BearerToken } from 'kitchen-sink/auth-token'
 import { useContext, useMemo } from 'react'
-import { bearerTokenLayer, useAuthTokenSubscribable, type BearerToken } from 'react-kitchen-sink'
+import { useAuthTokenSubscribable } from 'react-kitchen-sink'
 import { webHttpClientLayer } from 'telemetry-react'
 import type { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 
@@ -29,9 +30,9 @@ const useTunnelAdminClientLayer = (): Layer.Layer<
   }
   const tokenSubscribable = useAuthTokenSubscribable()
   return useMemo(
-    () =>
+    (): Layer.Layer<TunnelAdminHttpApiClient | HttpClient.HttpClient | BearerToken, never, never> =>
       tunnelLayer.pipe(
-        Layer.provideMerge(bearerTokenLayer(tokenSubscribable)),
+        Layer.provideMerge(Layer.succeed(BearerToken, tokenSubscribable)),
         Layer.provideMerge(webHttpClientLayer)
       ),
     [tunnelLayer, tokenSubscribable]

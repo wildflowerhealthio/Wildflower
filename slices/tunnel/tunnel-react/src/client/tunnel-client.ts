@@ -1,6 +1,6 @@
 import { HttpApiClient, HttpClient, HttpClientRequest } from '@effect/platform'
 import { Effect, Layer } from 'effect'
-import { BearerToken } from 'react-kitchen-sink'
+import { BearerToken } from 'kitchen-sink/auth-token'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import { TunnelAdminApi } from 'tunnel-core/http-api-definition'
 

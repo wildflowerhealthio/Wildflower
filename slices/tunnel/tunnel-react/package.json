@@ -36,6 +36,7 @@
     "effect": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
@@ -49,6 +50,7 @@
   "peerDependencies": {
     "@effect/platform": "catalog:",
     "effect": "catalog:",
+    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "react-router": "catalog:",
