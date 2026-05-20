@@ -7,7 +7,7 @@ import { cn } from 'react-kitchen-sink'
 import { useNavigate, useSearchParams } from 'react-router'
 import { pageLayoutStyles } from 'react-tundraish'
 
-import { useCollectorEffectRunner } from '../collector-client.tsx'
+import { useCollectorEffectAction } from '../collector-client.tsx'
 import accountConfig from '../styles/account-config.module.css'
 import pageLayout from '../styles/page-layout.module.css'
 
@@ -20,7 +20,7 @@ type RemoteRow = Schema.Schema.Type<typeof Remotes.RemoteSchema>
  */
 const AccountConfigScreen = (): JSX.Element => {
   const navigate = useNavigate()
-  const run = useCollectorEffectRunner()
+  const run = useCollectorEffectAction()
   const [searchParams] = useSearchParams()
   const accountId = searchParams.get('accountId')
   const prefillName = searchParams.get('prefillName')

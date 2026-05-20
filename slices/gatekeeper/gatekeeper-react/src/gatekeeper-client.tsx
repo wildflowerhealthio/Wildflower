@@ -7,42 +7,41 @@
  * Slice-react boilerplate, generated via `defineSliceReact` from
  * `shared-structures-react`. Exposes the `GatekeeperClientLayerContext`
  * / `GatekeeperClientProvider` / `useGatekeeperClientLayer` /
- * `useGatekeeperEffect` / `useGatekeeperEffectRunner` /
+ * `useGatekeeperEffect` / `useGatekeeperEffectAction` /
  * `useGatekeeperStream` surface that screens and the app shell
  * consume.
  */
-import type { Effect, Scope } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { defineSliceReact } from 'shared-structures-react'
+
+const gatekeeperSlice = defineSliceReact({
+  ClientTag: GatekeeperHttpApiClient,
+  layer: GatekeeperHttpApiClient.layer,
+  authType: GatekeeperHttpApiClient.authType,
+  contextName: 'Gatekeeper',
+})
 
 const {
   ClientLayerContext: GatekeeperClientLayerContext,
   ClientProvider: GatekeeperClientProvider,
   useClientLayer: useGatekeeperClientLayer,
-  useEffect: useGatekeeperEffect,
-  useEffectRunner: useGatekeeperEffectRunner,
+  useEffectTs: useGatekeeperEffect,
+  useEffectAction: useGatekeeperEffectAction,
   useStream: useGatekeeperStream,
-} = defineSliceReact({
-  ClientTag: GatekeeperHttpApiClient,
-  layer: GatekeeperHttpApiClient.layer,
-  auth: GatekeeperHttpApiClient.auth,
-  contextName: 'Gatekeeper',
-})
+} = gatekeeperSlice
 
 /**
- * Type returned by {@link useGatekeeperEffectRunner}: an imperative
+ * Type returned by {@link useGatekeeperEffectAction}: an imperative
  * Effect runner pre-bound to the slice's client layer.
  */
-type GatekeeperEffectRunner = <A, E>(
-  effect: Effect.Effect<A, E, GatekeeperHttpApiClient | Scope.Scope>
-) => Promise<A>
+type GatekeeperEffectAction = ReturnType<typeof gatekeeperSlice.useEffectAction>
 
 export {
   GatekeeperClientLayerContext,
   GatekeeperClientProvider,
   useGatekeeperClientLayer,
   useGatekeeperEffect,
-  useGatekeeperEffectRunner,
+  useGatekeeperEffectAction,
   useGatekeeperStream,
 }
-export type { GatekeeperEffectRunner }
+export type { GatekeeperEffectAction }

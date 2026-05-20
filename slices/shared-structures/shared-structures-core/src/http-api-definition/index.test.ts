@@ -12,8 +12,7 @@ import {
   HttpClientResponse,
 } from '@effect/platform'
 import { Effect, Layer, Schema, SubscriptionRef } from 'effect'
-import type { BearerToken } from 'kitchen-sink/auth-token'
-import { bearerTokenLayer } from 'kitchen-sink/auth-token'
+import { BearerToken } from 'kitchen-sink/auth-token'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { defineSliceHttpClient } from './index.ts'
@@ -54,12 +53,12 @@ const capturingHttpClientLayer = (
     })
   )
 
-describe('defineSliceHttpClient (auth: bearer)', () => {
+describe('defineSliceHttpClient (authType: bearer)', () => {
   test('Tag.key matches the supplied name', () => {
     const sliceHc = defineSliceHttpClient({
       name: 'FixtureBearerClient',
       api: FixtureApi,
-      auth: 'bearer',
+      authType: 'bearer',
     })
     class FixtureBearerClient extends sliceHc.ClientTag<FixtureBearerClient>() {}
     expect(FixtureBearerClient.key).toBe('FixtureBearerClient')
@@ -69,7 +68,7 @@ describe('defineSliceHttpClient (auth: bearer)', () => {
     const sliceHc = defineSliceHttpClient({
       name: 'FixtureBearerClient',
       api: FixtureApi,
-      auth: 'bearer',
+      authType: 'bearer',
     })
     class FixtureBearerClient extends sliceHc.ClientTag<FixtureBearerClient>() {
       static readonly layer = sliceHc.makeLayerFactory(FixtureBearerClient)()
@@ -84,7 +83,7 @@ describe('defineSliceHttpClient (auth: bearer)', () => {
     })
 
     const layer = FixtureBearerClient.layer.pipe(
-      Layer.provideMerge(bearerTokenLayer(tokenRef)),
+      Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
       Layer.provideMerge(capturingHttpClientLayer(captures))
     )
 
@@ -96,7 +95,7 @@ describe('defineSliceHttpClient (auth: bearer)', () => {
     const sliceHc = defineSliceHttpClient({
       name: 'FixtureBearerClient',
       api: FixtureApi,
-      auth: 'bearer',
+      authType: 'bearer',
     })
     class FixtureBearerClient extends sliceHc.ClientTag<FixtureBearerClient>() {
       static readonly layer = sliceHc.makeLayerFactory(FixtureBearerClient)()
@@ -114,7 +113,7 @@ describe('defineSliceHttpClient (auth: bearer)', () => {
       program.pipe(
         Effect.provide(
           FixtureBearerClient.layer.pipe(
-            Layer.provideMerge(bearerTokenLayer(tokenRef)),
+            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
             Layer.provideMerge(capturingHttpClientLayer(captures))
           )
         ),
@@ -129,7 +128,7 @@ describe('defineSliceHttpClient (auth: bearer)', () => {
     const sliceHc = defineSliceHttpClient({
       name: 'FixtureBearerClient',
       api: FixtureApi,
-      auth: 'bearer',
+      authType: 'bearer',
     })
     class FixtureBearerClient extends sliceHc.ClientTag<FixtureBearerClient>() {
       static readonly layer = sliceHc.makeLayerFactory(FixtureBearerClient)()
@@ -147,7 +146,7 @@ describe('defineSliceHttpClient (auth: bearer)', () => {
       program.pipe(
         Effect.provide(
           FixtureBearerClient.layer.pipe(
-            Layer.provideMerge(bearerTokenLayer(tokenRef)),
+            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
             Layer.provideMerge(capturingHttpClientLayer(captures))
           )
         ),
@@ -162,7 +161,7 @@ describe('defineSliceHttpClient (auth: bearer)', () => {
     const sliceHc = defineSliceHttpClient({
       name: 'FixtureBearerClient',
       api: FixtureApi,
-      auth: 'bearer',
+      authType: 'bearer',
     })
     class FixtureBearerClient extends sliceHc.ClientTag<FixtureBearerClient>() {
       static readonly layer = sliceHc.makeLayerFactory(FixtureBearerClient)()
@@ -182,7 +181,7 @@ describe('defineSliceHttpClient (auth: bearer)', () => {
       program.pipe(
         Effect.provide(
           FixtureBearerClient.layer.pipe(
-            Layer.provideMerge(bearerTokenLayer(tokenRef)),
+            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
             Layer.provideMerge(capturingHttpClientLayer(captures))
           )
         ),
@@ -193,22 +192,22 @@ describe('defineSliceHttpClient (auth: bearer)', () => {
     expect(captures).toEqual(['Bearer alpha', 'Bearer beta'])
   })
 
-  test('records `auth: "bearer"` on the result for downstream wiring', () => {
+  test('records `authType: "bearer"` on the result for downstream wiring', () => {
     const sliceHc = defineSliceHttpClient({
       name: 'FixtureBearerClient',
       api: FixtureApi,
-      auth: 'bearer',
+      authType: 'bearer',
     })
-    expect(sliceHc.auth).toBe('bearer')
+    expect(sliceHc.authType).toBe('bearer')
   })
 })
 
-describe('defineSliceHttpClient (auth: none)', () => {
+describe('defineSliceHttpClient (authType: none)', () => {
   test('layer resolves to a usable client', async () => {
     const sliceHc = defineSliceHttpClient({
       name: 'FixturePublicClient',
       api: FixtureApi,
-      auth: 'none',
+      authType: 'none',
     })
     class FixturePublicClient extends sliceHc.ClientTag<FixturePublicClient>() {
       static readonly layer = sliceHc.makeLayerFactory(FixturePublicClient)()
@@ -236,7 +235,7 @@ describe('defineSliceHttpClient (auth: none)', () => {
     const sliceHc = defineSliceHttpClient({
       name: 'FixturePublicClient',
       api: FixtureApi,
-      auth: 'none',
+      authType: 'none',
     })
     class FixturePublicClient extends sliceHc.ClientTag<FixturePublicClient>() {
       static readonly layer = sliceHc.makeLayerFactory(FixturePublicClient)()
@@ -266,14 +265,14 @@ describe('defineSliceHttpClient (auth: none)', () => {
     const sliceHc = defineSliceHttpClient({
       name: 'FixturePublicClient',
       api: FixtureApi,
-      auth: 'none',
+      authType: 'none',
     })
     class FixturePublicClient extends sliceHc.ClientTag<FixturePublicClient>() {
       static readonly layer = sliceHc.makeLayerFactory(FixturePublicClient)()
     }
 
     // Providing only `HttpClient` (no `BearerToken`) must satisfy the
-    // public layer's requirements — if `auth: 'none'` accidentally
+    // public layer's requirements — if `authType: 'none'` accidentally
     // widened the layer to demand `BearerToken`, this would not compile.
     const provided: Layer.Layer<FixturePublicClient, never, never> = FixturePublicClient.layer.pipe(
       Layer.provideMerge(capturingHttpClientLayer([]))
@@ -288,13 +287,13 @@ describe('defineSliceHttpClient (auth: none)', () => {
     expect(Layer.isLayer(publicLayerSlot)).toBe(true)
   })
 
-  test('records `auth: "none"` on the result', () => {
+  test('records `authType: "none"` on the result', () => {
     const sliceHc = defineSliceHttpClient({
       name: 'FixturePublicClient',
       api: FixtureApi,
-      auth: 'none',
+      authType: 'none',
     })
-    expect(sliceHc.auth).toBe('none')
+    expect(sliceHc.authType).toBe('none')
   })
 })
 

@@ -20,7 +20,7 @@ type SliceHttpClientAuth = 'bearer' | 'none'
  * Layer requirements that the helper-produced layer leaves unprovided,
  * keyed on the {@link SliceHttpClientAuth} mode the slice declared.
  */
-type LayerRequirementsFor<Auth extends SliceHttpClientAuth> = Auth extends 'bearer'
+type LayerRequirementsFor<AuthType extends SliceHttpClientAuth> = AuthType extends 'bearer'
   ? HttpClient.HttpClient | BearerToken
   : HttpClient.HttpClient
 
@@ -51,15 +51,15 @@ type LayerRequirementsFor<Auth extends SliceHttpClientAuth> = Auth extends 'bear
  * ```ts
  * import { defineSliceHttpClient } from 'shared-structures-core/http-api-definition'
  *
- * const { ClientTag, makeLayerFactory, auth } = defineSliceHttpClient({
+ * const { ClientTag, makeLayerFactory, authType } = defineSliceHttpClient({
  *   name: 'TunnelAdminHttpApiClient',
  *   api: TunnelAdminApi,
- *   auth: 'bearer',
+ *   authType: 'bearer',
  * })
  *
  * class TunnelAdminHttpApiClient extends ClientTag<TunnelAdminHttpApiClient>() {
  *   static readonly layer = makeLayerFactory(TunnelAdminHttpApiClient)()
- *   static readonly auth = auth
+ *   static readonly authType = authType
  * }
  *
  * export { TunnelAdminHttpApiClient }
@@ -71,11 +71,11 @@ const defineSliceHttpClient = <
   Groups extends HttpApiGroup.HttpApiGroup.Any,
   ApiError,
   ApiR,
-  const Auth extends SliceHttpClientAuth,
+  const AuthType extends SliceHttpClientAuth,
 >(input: {
   readonly name: Name
   readonly api: HttpApi.HttpApi<ApiId, Groups, ApiError, ApiR>
-  readonly auth: Auth
+  readonly authType: AuthType
   // Explicit return type would have to re-express the derived Tag /
   // factory shapes; existing slice helpers (`defineSliceLivestore`,
   // `apps-core/src/livestore/app-selection.ts`) take the same
@@ -94,8 +94,8 @@ const defineSliceHttpClient = <
 
   const makeLayerFactory =
     <Self>(Tag: Context.Tag<Self, Shape>) =>
-    (): Layer.Layer<Self, never, LayerRequirementsFor<Auth>> => {
-      if (input.auth === 'bearer') {
+    (): Layer.Layer<Self, never, LayerRequirementsFor<AuthType>> => {
+      if (input.authType === 'bearer') {
         const built = Layer.effect(
           Tag,
           Effect.gen(function* () {
@@ -116,18 +116,18 @@ const defineSliceHttpClient = <
         // The runtime branch picks between two concrete layer shapes
         // (`Layer<Self, never, HttpClient | BearerToken>` and
         // `Layer<Self, never, HttpClient>`); TS can't narrow
-        // `LayerRequirementsFor<Auth>` from the `input.auth === 'bearer'`
+        // `LayerRequirementsFor<AuthType>` from the `input.authType === 'bearer'`
         // value check, so the single conditional cast lives here.
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        return built as unknown as Layer.Layer<Self, never, LayerRequirementsFor<Auth>>
+        return built as unknown as Layer.Layer<Self, never, LayerRequirementsFor<AuthType>>
       }
       const built = Layer.effect(Tag, HttpApiClient.make(input.api, { baseUrl: '/' }))
       // Paired with the bearer-branch cast above.
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      return built as unknown as Layer.Layer<Self, never, LayerRequirementsFor<Auth>>
+      return built as unknown as Layer.Layer<Self, never, LayerRequirementsFor<AuthType>>
     }
 
-  return { ClientTag, makeLayerFactory, auth: input.auth } as const
+  return { ClientTag, makeLayerFactory, authType: input.authType } as const
 }
 
 export { defineSliceHttpClient }

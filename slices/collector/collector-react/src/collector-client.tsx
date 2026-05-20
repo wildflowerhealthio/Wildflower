@@ -7,42 +7,41 @@
  * Slice-react boilerplate, generated via `defineSliceReact` from
  * `shared-structures-react`. Exposes the `CollectorClientLayerContext`
  * / `CollectorClientProvider` / `useCollectorClientLayer` /
- * `useCollectorEffect` / `useCollectorEffectRunner` /
+ * `useCollectorEffect` / `useCollectorEffectAction` /
  * `useCollectorStream` surface that screens and the app shell
  * consume.
  */
 import { CollectorHttpApiClient } from 'collector-core/clients'
-import type { Effect, Scope } from 'effect'
 import { defineSliceReact } from 'shared-structures-react'
+
+const collectorSlice = defineSliceReact({
+  ClientTag: CollectorHttpApiClient,
+  layer: CollectorHttpApiClient.layer,
+  authType: CollectorHttpApiClient.authType,
+  contextName: 'Collector',
+})
 
 const {
   ClientLayerContext: CollectorClientLayerContext,
   ClientProvider: CollectorClientProvider,
   useClientLayer: useCollectorClientLayer,
-  useEffect: useCollectorEffect,
-  useEffectRunner: useCollectorEffectRunner,
+  useEffectTs: useCollectorEffect,
+  useEffectAction: useCollectorEffectAction,
   useStream: useCollectorStream,
-} = defineSliceReact({
-  ClientTag: CollectorHttpApiClient,
-  layer: CollectorHttpApiClient.layer,
-  auth: CollectorHttpApiClient.auth,
-  contextName: 'Collector',
-})
+} = collectorSlice
 
 /**
- * Type returned by {@link useCollectorEffectRunner}: an imperative
+ * Type returned by {@link useCollectorEffectAction}: an imperative
  * Effect runner pre-bound to the slice's client layer.
  */
-type CollectorEffectRunner = <A, E>(
-  effect: Effect.Effect<A, E, CollectorHttpApiClient | Scope.Scope>
-) => Promise<A>
+type CollectorEffectAction = ReturnType<typeof collectorSlice.useEffectAction>
 
 export {
   CollectorClientLayerContext,
   CollectorClientProvider,
   useCollectorClientLayer,
   useCollectorEffect,
-  useCollectorEffectRunner,
+  useCollectorEffectAction,
   useCollectorStream,
 }
-export type { CollectorEffectRunner }
+export type { CollectorEffectAction }

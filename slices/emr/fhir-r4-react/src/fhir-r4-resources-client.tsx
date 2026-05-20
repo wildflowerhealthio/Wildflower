@@ -8,41 +8,40 @@
  * `shared-structures-react`. Exposes the
  * `FhirR4ResourcesClientLayerContext` / `FhirR4ResourcesClientProvider`
  * / `useFhirR4ResourcesClientLayer` / `useFhirR4ResourcesEffect` /
- * `useFhirR4ResourcesEffectRunner` / `useFhirR4ResourcesStream`
+ * `useFhirR4ResourcesEffectAction` / `useFhirR4ResourcesStream`
  * surface that screens and the app shell consume.
  */
-import type { Effect, Scope } from 'effect'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { defineSliceReact } from 'shared-structures-react'
+
+const fhirR4ResourcesSlice = defineSliceReact({
+  ClientTag: FhirR4ResourcesHttpApiClient,
+  layer: FhirR4ResourcesHttpApiClient.layer,
+  authType: FhirR4ResourcesHttpApiClient.authType,
+  contextName: 'FhirR4Resources',
+})
 
 const {
   ClientLayerContext: FhirR4ResourcesClientLayerContext,
   ClientProvider: FhirR4ResourcesClientProvider,
   useClientLayer: useFhirR4ResourcesClientLayer,
-  useEffect: useFhirR4ResourcesEffect,
-  useEffectRunner: useFhirR4ResourcesEffectRunner,
+  useEffectTs: useFhirR4ResourcesEffect,
+  useEffectAction: useFhirR4ResourcesEffectAction,
   useStream: useFhirR4ResourcesStream,
-} = defineSliceReact({
-  ClientTag: FhirR4ResourcesHttpApiClient,
-  layer: FhirR4ResourcesHttpApiClient.layer,
-  auth: FhirR4ResourcesHttpApiClient.auth,
-  contextName: 'FhirR4Resources',
-})
+} = fhirR4ResourcesSlice
 
 /**
- * Type returned by {@link useFhirR4ResourcesEffectRunner}: an
+ * Type returned by {@link useFhirR4ResourcesEffectAction}: an
  * imperative Effect runner pre-bound to the slice's client layer.
  */
-type FhirR4ResourcesEffectRunner = <A, E>(
-  effect: Effect.Effect<A, E, FhirR4ResourcesHttpApiClient | Scope.Scope>
-) => Promise<A>
+type FhirR4ResourcesEffectAction = ReturnType<typeof fhirR4ResourcesSlice.useEffectAction>
 
 export {
   FhirR4ResourcesClientLayerContext,
   FhirR4ResourcesClientProvider,
   useFhirR4ResourcesClientLayer,
   useFhirR4ResourcesEffect,
-  useFhirR4ResourcesEffectRunner,
+  useFhirR4ResourcesEffectAction,
   useFhirR4ResourcesStream,
 }
-export type { FhirR4ResourcesEffectRunner }
+export type { FhirR4ResourcesEffectAction }

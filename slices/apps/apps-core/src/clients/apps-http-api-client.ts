@@ -5,13 +5,13 @@ import { AppsAdminApi, AppsApi } from '../http-api-definition/index.ts'
 const publicHc = defineSliceHttpClient({
   name: 'AppsHttpApiClient',
   api: AppsApi,
-  auth: 'none',
+  authType: 'none',
 })
 
 const adminHc = defineSliceHttpClient({
   name: 'AppsAdminHttpApiClient',
   api: AppsAdminApi,
-  auth: 'bearer',
+  authType: 'bearer',
 })
 
 /**
@@ -21,7 +21,7 @@ const adminHc = defineSliceHttpClient({
  */
 class AppsHttpApiClient extends publicHc.ClientTag<AppsHttpApiClient>() {
   static readonly layer = publicHc.makeLayerFactory(AppsHttpApiClient)()
-  static readonly auth = publicHc.auth
+  static readonly authType = publicHc.authType
 }
 
 /**
@@ -32,7 +32,7 @@ class AppsHttpApiClient extends publicHc.ClientTag<AppsHttpApiClient>() {
  */
 class AppsAdminHttpApiClient extends adminHc.ClientTag<AppsAdminHttpApiClient>() {
   static readonly layer = adminHc.makeLayerFactory(AppsAdminHttpApiClient)()
-  static readonly auth = adminHc.auth
+  static readonly authType = adminHc.authType
 }
 
 type AppsHttpApiClientShape = typeof AppsHttpApiClient.Service

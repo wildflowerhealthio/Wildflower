@@ -16,8 +16,8 @@ import {
 import { formatInstant } from '../format-date.ts'
 import {
   useGatekeeperEffect,
-  useGatekeeperEffectRunner,
-  type GatekeeperEffectRunner,
+  useGatekeeperEffectAction,
+  type GatekeeperEffectAction,
 } from '../gatekeeper-client.tsx'
 import pageLayout from '../styles/page-layout.module.css'
 
@@ -31,7 +31,7 @@ const statusTone = (status: string): StatusTone => {
 }
 
 const RequestDetailScreen = (): JSX.Element => {
-  const runGatekeeper = useGatekeeperEffectRunner()
+  const runGatekeeper = useGatekeeperEffectAction()
   const { id = '' } = useParams<{ id: string }>()
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -65,7 +65,7 @@ const RequestDetailScreen = (): JSX.Element => {
 }
 
 interface RequestDetailBodyProps {
-  readonly runGatekeeper: GatekeeperEffectRunner
+  readonly runGatekeeper: GatekeeperEffectAction
   readonly request: HttpRequest
   readonly id: string
   readonly onDecided: () => void

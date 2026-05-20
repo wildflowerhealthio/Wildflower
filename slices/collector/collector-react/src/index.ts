@@ -5,9 +5,9 @@ export {
   CollectorClientProvider,
   useCollectorClientLayer,
   useCollectorEffect,
-  useCollectorEffectRunner,
+  useCollectorEffectAction,
   useCollectorStream,
-  type CollectorEffectRunner,
+  type CollectorEffectAction,
 } from './collector-client.tsx'
 
 export { CollectorRuntimeProvider } from './runtime/collector-runtime-provider.tsx'

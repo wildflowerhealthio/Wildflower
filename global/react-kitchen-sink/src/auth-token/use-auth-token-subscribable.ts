@@ -9,7 +9,7 @@ import { AuthTokenContext } from './auth-token-context.ts'
  * tree.
  *
  * Use this when you need the Subscribable itself — e.g. inside a
- * per-slice runner hook that builds `bearerTokenLayer(subscribable)`
+ * per-slice runner hook that builds `Layer.succeed(BearerToken, subscribable)`
  * to feed into an Effect's layer composition. For plain "what's the
  * current token" reads,
  */

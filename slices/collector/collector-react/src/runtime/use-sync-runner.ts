@@ -13,7 +13,7 @@ import type { Remote as CollectorRemote } from 'collector-core/livestore'
 import { makeScrapingPlanForConfig, type AnyCollectorResource } from 'collector-core/registry'
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import { Effect, Either, Schedule } from 'effect'
-import { useFhirR4ResourcesEffectRunner } from 'fhir-r4-react'
+import { useFhirR4ResourcesEffectAction } from 'fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -75,7 +75,7 @@ type RunnerState =
 const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
   const { setActiveHandler } = useCollectorRuntime()
   const sendCollectorMessage = useCollectorSender()
-  const runFhir = useFhirR4ResourcesEffectRunner()
+  const runFhir = useFhirR4ResourcesEffectAction()
   const [state, setState] = useState<RunnerState>({ _tag: 'idle' })
 
   // Stash `onError` in a ref so a parent passing a fresh lambda on

@@ -1,8 +1,9 @@
 import { HttpApiClient, HttpClient, HttpClientRequest } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, Layer } from 'effect'
 import { FhirResourcesApi } from 'fhir-r4/http-api-definition'
+import { BearerToken } from 'kitchen-sink/auth-token'
 import { useEffect, useState } from 'react'
-import { BearerToken, bearerTokenLayer, useAuthTokenSubscribable } from 'react-kitchen-sink'
+import { useAuthTokenSubscribable } from 'react-kitchen-sink'
 import { webHttpClientLayer } from 'telemetry-react'
 
 import type { PatientOption } from './types.ts'
@@ -83,7 +84,7 @@ const usePatientOptions = (enabled: boolean): PatientOptionsState => {
     let cancelled = false
     Effect.runFork(
       fetchPatientOptionsEffect.pipe(
-        Effect.provide(bearerTokenLayer(tokenSubscribable)),
+        Effect.provide(Layer.succeed(BearerToken, tokenSubscribable)),
         Effect.provide(webHttpClientLayer),
         Effect.tap((loadedOptions) => {
           setOptions(loadedOptions)

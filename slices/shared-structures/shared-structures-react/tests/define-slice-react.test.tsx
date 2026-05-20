@@ -23,27 +23,27 @@ const FixtureApi = HttpApi.make('FixtureApi').add(fixtureGroup)
 const bearerHc = defineSliceHttpClient({
   name: 'TestBearerClient',
   api: FixtureApi,
-  auth: 'bearer',
+  authType: 'bearer',
 })
 class TestBearerClient extends bearerHc.ClientTag<TestBearerClient>() {
   static readonly layer = bearerHc.makeLayerFactory(TestBearerClient)()
-  static readonly auth = bearerHc.auth
+  static readonly authType = bearerHc.authType
 }
 
 const publicHc = defineSliceHttpClient({
   name: 'TestPublicClient',
   api: FixtureApi,
-  auth: 'none',
+  authType: 'none',
 })
 class TestPublicClient extends publicHc.ClientTag<TestPublicClient>() {
   static readonly layer = publicHc.makeLayerFactory(TestPublicClient)()
-  static readonly auth = publicHc.auth
+  static readonly authType = publicHc.authType
 }
 
 const makeTokenRef = (initial: string | null): SubscriptionRef.SubscriptionRef<string | null> =>
   Effect.runSync(SubscriptionRef.make(initial))
 
-describe('defineSliceReact (auth: bearer)', () => {
+describe('defineSliceReact (authType: bearer)', () => {
   afterEach(() => {
     cleanup()
   })
@@ -52,7 +52,7 @@ describe('defineSliceReact (auth: bearer)', () => {
     const { useClientLayer } = defineSliceReact({
       ClientTag: TestBearerClient,
       layer: TestBearerClient.layer,
-      auth: TestBearerClient.auth,
+      authType: TestBearerClient.authType,
       contextName: 'TestBearer',
     })
     const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (
@@ -67,7 +67,7 @@ describe('defineSliceReact (auth: bearer)', () => {
     const { ClientProvider, useClientLayer } = defineSliceReact({
       ClientTag: TestBearerClient,
       layer: TestBearerClient.layer,
-      auth: TestBearerClient.auth,
+      authType: TestBearerClient.authType,
       contextName: 'TestBearer',
     })
     const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (
@@ -84,7 +84,7 @@ describe('defineSliceReact (auth: bearer)', () => {
     const { ClientProvider, useClientLayer } = defineSliceReact({
       ClientTag: TestBearerClient,
       layer: TestBearerClient.layer,
-      auth: TestBearerClient.auth,
+      authType: TestBearerClient.authType,
       contextName: 'TestBearer',
     })
     const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (
@@ -102,7 +102,7 @@ describe('defineSliceReact (auth: bearer)', () => {
     const { ClientProvider } = defineSliceReact({
       ClientTag: TestBearerClient,
       layer: TestBearerClient.layer,
-      auth: TestBearerClient.auth,
+      authType: TestBearerClient.authType,
       contextName: 'TestBearer',
     })
     const { container } = render(
@@ -119,14 +119,14 @@ describe('defineSliceReact (auth: bearer)', () => {
     const { ClientLayerContext } = defineSliceReact({
       ClientTag: TestBearerClient,
       layer: TestBearerClient.layer,
-      auth: TestBearerClient.auth,
+      authType: TestBearerClient.authType,
       contextName: 'TestBearer',
     })
     expect(ClientLayerContext.displayName).toBe('TestBearerClientLayerContext')
   })
 })
 
-describe('defineSliceReact (auth: none)', () => {
+describe('defineSliceReact (authType: none)', () => {
   afterEach(() => {
     cleanup()
   })
@@ -135,7 +135,7 @@ describe('defineSliceReact (auth: none)', () => {
     const { useClientLayer } = defineSliceReact({
       ClientTag: TestPublicClient,
       layer: TestPublicClient.layer,
-      auth: TestPublicClient.auth,
+      authType: TestPublicClient.authType,
       contextName: 'TestPublic',
     })
     const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (
@@ -150,7 +150,7 @@ describe('defineSliceReact (auth: none)', () => {
     const { ClientProvider, useClientLayer } = defineSliceReact({
       ClientTag: TestPublicClient,
       layer: TestPublicClient.layer,
-      auth: TestPublicClient.auth,
+      authType: TestPublicClient.authType,
       contextName: 'TestPublic',
     })
     const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (

@@ -7,14 +7,13 @@
 /* oxlint-disable react/only-export-components */
 import { type HttpClient } from '@effect/platform'
 import { type Context, type Effect, Layer, type Scope, type Stream } from 'effect'
-import { type BearerToken } from 'kitchen-sink/auth-token'
+import { BearerToken } from 'kitchen-sink/auth-token'
 import { createContext, type JSX, type PropsWithChildren, useContext, useMemo } from 'react'
 import {
-  bearerTokenLayer,
   type EffectAction,
   useAuthTokenSubscribable,
-  useEffectAction,
-  useEffectTs,
+  useEffectAction as useKitchenSinkEffectAction,
+  useEffectTs as useKitchenSinkEffectTs,
   useStream as useKitchenSinkStream,
 } from 'react-kitchen-sink'
 import type { SliceHttpClientAuth } from 'shared-structures-core/http-api-definition'
@@ -26,7 +25,7 @@ import { webHttpClientLayer } from 'telemetry-react'
  * `LayerRequirementsFor`. Re-declared so this package doesn't need to
  * re-export the type from the core helper.
  */
-type SliceClientLayerRequirements<Auth extends SliceHttpClientAuth> = Auth extends 'bearer'
+type SliceClientLayerRequirements<AuthType extends SliceHttpClientAuth> = AuthType extends 'bearer'
   ? HttpClient.HttpClient | BearerToken
   : HttpClient.HttpClient
 
@@ -35,7 +34,7 @@ type SliceClientLayerRequirements<Auth extends SliceHttpClientAuth> = Auth exten
  * (e.g. `useAllClientsLayer`) consumes this shape directly.
  *
  * Both auth modes surface `BearerToken` in the result's success
- * channel: the helper unconditionally pipes `bearerTokenLayer` so
+ * channel: the helper unconditionally pipes the `BearerToken` layer so
  * `useClientLayer` has the same hook signature for every slice. The
  * underlying public layer doesn't *require* `BearerToken`, so the
  * extra service is harmless — it's added to the provided set without
@@ -63,14 +62,14 @@ type FullyProvidedSliceLayer<Self> = Layer.Layer<
  *    `ClientLayerContext`. Singleton — built once at factory time and
  *    reused across every mount.
  *  - `useClientLayer`: returns the slice layer with `webHttpClientLayer`
- *    and `bearerTokenLayer(useAuthTokenSubscribable())` merged in.
- *    Always provides the bearer layer; for `auth: 'none'` slices the
- *    extra service is unused, and the unified shape lets app-level
+ *    and `Layer.succeed(BearerToken, useAuthTokenSubscribable())` merged
+ *    in. Always provides the bearer layer; for `authType: 'none'` slices
+ *    the extra service is unused, and the unified shape lets app-level
  *    composition treat every slice's hook the same way. Throws when
  *    used outside `<ClientProvider>`.
- *  - `useEffect` / `useEffectRunner` / `useStream`: thin wrappers around
- *    the kitchen-sink hooks, auto-providing the slice layer so screens
- *    can construct an Effect/Stream against the tag and run it.
+ *  - `useEffectTs` / `useEffectAction` / `useStream`: thin wrappers
+ *    around the kitchen-sink hooks, auto-providing the slice layer so
+ *    screens can construct an Effect/Stream against the tag and run it.
  *
  * @example
  * ```tsx
@@ -78,27 +77,28 @@ type FullyProvidedSliceLayer<Self> = Layer.Layer<
  *   ClientLayerContext: TunnelAdminClientLayerContext,
  *   ClientProvider: TunnelClientProvider,
  *   useClientLayer: useTunnelAdminClientLayer,
- *   useEffect: useTunnelAdminEffect,
- *   useEffectRunner: useTunnelAdminEffectRunner,
+ *   useEffectTs: useTunnelAdminEffect,
+ *   useEffectAction: useTunnelAdminEffectAction,
  *   useStream: useTunnelAdminStream,
  * } = defineSliceReact({
  *   ClientTag: TunnelAdminHttpApiClient,
  *   layer: TunnelAdminHttpApiClient.layer,
- *   auth: TunnelAdminHttpApiClient.auth,
+ *   authType: TunnelAdminHttpApiClient.authType,
  *   contextName: 'Tunnel',
  * })
  * ```
  */
-const defineSliceReact = <Self, Shape, Auth extends SliceHttpClientAuth>(input: {
+const defineSliceReact = <Self, Shape, AuthType extends SliceHttpClientAuth>(input: {
   readonly ClientTag: Context.Tag<Self, Shape>
-  readonly layer: Layer.Layer<Self, never, SliceClientLayerRequirements<Auth>>
-  // The `auth` field is recorded but not branched on at runtime — the
-  // hook always merges both `bearerTokenLayer` and `webHttpClientLayer`,
-  // and the underlying slice layer either uses `BearerToken` or
-  // ignores it. The field stays in the API so the helper can grow a
-  // narrower hook signature later (e.g. omitting `BearerToken` from
-  // public clients' return type) without changing call sites.
-  readonly auth: Auth
+  readonly layer: Layer.Layer<Self, never, SliceClientLayerRequirements<AuthType>>
+  // The `authType` field is recorded but not branched on at runtime —
+  // the hook always merges both the `BearerToken` layer and
+  // `webHttpClientLayer`, and the underlying slice layer either uses
+  // `BearerToken` or ignores it. The field stays in the API so the
+  // helper can grow a narrower hook signature later (e.g. omitting
+  // `BearerToken` from public clients' return type) without changing
+  // call sites.
+  readonly authType: AuthType
   readonly contextName: string
   // Explicit return type would have to re-express every derived hook
   // signature; `defineSliceLivestore` and `defineSliceHttpClient` take
@@ -126,17 +126,17 @@ const defineSliceReact = <Self, Shape, Auth extends SliceHttpClientAuth>(input: 
     const tokenSubscribable = useAuthTokenSubscribable()
     return useMemo(() => {
       // The slice layer may or may not require `BearerToken` (depends
-      // on `Auth`). `provideMerge` satisfies it when required and
+      // on `AuthType`). `provideMerge` satisfies it when required and
       // otherwise adds it harmlessly to the success channel — the
       // underlying layer ignores the unused service. The runtime
       // `pipe` returns a layer whose requirements channel is
       // unconditionally `Self | HttpClient | BearerToken`, but TS
-      // can't see through the `Auth`-conditional input type to that
-      // uniform result, so a single cast bridges the public-mode
+      // can't see through the `AuthType`-conditional input type to
+      // that uniform result, so a single cast bridges the public-mode
       // input back to the unified output shape.
       const provided = ctxLayer.pipe(
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        Layer.provideMerge(bearerTokenLayer(tokenSubscribable)) as never,
+        Layer.provideMerge(Layer.succeed(BearerToken, tokenSubscribable)) as never,
         Layer.provideMerge(webHttpClientLayer)
       )
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -144,10 +144,10 @@ const defineSliceReact = <Self, Shape, Auth extends SliceHttpClientAuth>(input: 
     }, [ctxLayer, tokenSubscribable])
   }
 
-  const useEffect = <A, E>(effect: Effect.Effect<A, E, Self | Scope.Scope>): Promise<A> =>
-    useEffectTs(effect, useClientLayer())
+  const useEffectTs = <A, E>(effect: Effect.Effect<A, E, Self | Scope.Scope>): Promise<A> =>
+    useKitchenSinkEffectTs(effect, useClientLayer())
 
-  const useEffectRunner = (): EffectAction<Self> => useEffectAction(useClientLayer())
+  const useEffectAction = (): EffectAction<Self> => useKitchenSinkEffectAction(useClientLayer())
 
   const useStream = <A, E>(stream: Stream.Stream<A, E, Self | Scope.Scope>): Promise<A> =>
     useKitchenSinkStream(stream, useClientLayer())
@@ -156,8 +156,8 @@ const defineSliceReact = <Self, Shape, Auth extends SliceHttpClientAuth>(input: 
     ClientLayerContext,
     ClientProvider,
     useClientLayer,
-    useEffect,
-    useEffectRunner,
+    useEffectTs,
+    useEffectAction,
     useStream,
   } as const
 }

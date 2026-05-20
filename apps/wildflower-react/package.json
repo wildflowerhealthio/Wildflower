@@ -36,6 +36,7 @@
     "fhir-r4-react": "workspace:*",
     "gatekeeper-core": "workspace:*",
     "gatekeeper-react": "workspace:*",
+    "kitchen-sink": "workspace:*",
     "navigation-core": "workspace:*",
     "navigation-react": "workspace:*",
     "react": "catalog:",

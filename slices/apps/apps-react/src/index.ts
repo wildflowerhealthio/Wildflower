@@ -6,13 +6,13 @@ export {
   AppsClientProvider,
   useAppsAdminClientLayer,
   useAppsAdminEffect,
-  useAppsAdminEffectRunner,
+  useAppsAdminEffectAction,
   useAppsClientLayer,
   useAppsEffect,
-  useAppsEffectRunner,
-  type AppsAdminEffectRunner,
+  useAppsEffectAction,
+  type AppsAdminEffectAction,
   type AppsClientProviderProps,
-  type AppsEffectRunner,
+  type AppsEffectAction,
 } from './apps-client.tsx'
 
 export {

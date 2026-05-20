@@ -5,9 +5,9 @@ export {
   GatekeeperClientProvider,
   useGatekeeperClientLayer,
   useGatekeeperEffect,
-  useGatekeeperEffectRunner,
+  useGatekeeperEffectAction,
   useGatekeeperStream,
-  type GatekeeperEffectRunner,
+  type GatekeeperEffectAction,
 } from './gatekeeper-client.tsx'
 
 export { NeedsAuthMessage } from './components/NeedsAuthMessage.tsx'

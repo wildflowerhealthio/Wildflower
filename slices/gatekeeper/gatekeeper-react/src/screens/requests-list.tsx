@@ -9,15 +9,15 @@ import { AsyncErrorView, ItemList, pageLayoutStyles, PageLoading } from 'react-t
 import { formatInstant } from '../format-date.ts'
 import {
   useGatekeeperEffect,
-  useGatekeeperEffectRunner,
-  type GatekeeperEffectRunner,
+  useGatekeeperEffectAction,
+  type GatekeeperEffectAction,
 } from '../gatekeeper-client.tsx'
 import pageLayout from '../styles/page-layout.module.css'
 
 type HttpRequest = Schema.Schema.Type<typeof AccessManagement.HttpRequestSchema>
 
 const RequestsListScreen = (): JSX.Element => {
-  const runGatekeeper = useGatekeeperEffectRunner()
+  const runGatekeeper = useGatekeeperEffectAction()
   const [refreshKey, setRefreshKey] = useState(0)
 
   const requestsEffect = useMemo(
@@ -46,7 +46,7 @@ const RequestsListScreen = (): JSX.Element => {
 }
 
 interface RequestsListBodyProps {
-  readonly runGatekeeper: GatekeeperEffectRunner
+  readonly runGatekeeper: GatekeeperEffectAction
   readonly requests: readonly HttpRequest[]
   readonly onDecided: () => void
 }

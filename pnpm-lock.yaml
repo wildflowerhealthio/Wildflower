@@ -370,6 +370,9 @@ importers:
       gatekeeper-react:
         specifier: workspace:*
         version: link:../../slices/gatekeeper/gatekeeper-react
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../global/kitchen-sink
       navigation-core:
         specifier: workspace:*
         version: link:../../slices/navigation/navigation-core
@@ -1687,6 +1690,9 @@ importers:
       gatekeeper-core:
         specifier: workspace:*
         version: link:../gatekeeper-core
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
       react:
         specifier: 'catalog:'
         version: 19.1.0

@@ -18,14 +18,14 @@ import { RevokeGrantDialog } from '../components/RevokeGrantDialog.tsx'
 import { formatInstant } from '../format-date.ts'
 import {
   useGatekeeperEffect,
-  useGatekeeperEffectRunner,
-  type GatekeeperEffectRunner,
+  useGatekeeperEffectAction,
+  type GatekeeperEffectAction,
 } from '../gatekeeper-client.tsx'
 
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
 
 const AccessIndexScreen = (): JSX.Element => {
-  const runGatekeeper = useGatekeeperEffectRunner()
+  const runGatekeeper = useGatekeeperEffectAction()
   const [refreshKey, setRefreshKey] = useState(0)
 
   const grantsEffect = useMemo(
@@ -54,7 +54,7 @@ const AccessIndexScreen = (): JSX.Element => {
 }
 
 interface AccessIndexBodyProps {
-  readonly runGatekeeper: GatekeeperEffectRunner
+  readonly runGatekeeper: GatekeeperEffectAction
   readonly grants: readonly Grant[]
   readonly onRevoked: () => void
 }

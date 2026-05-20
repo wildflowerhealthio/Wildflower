@@ -7,8 +7,9 @@ import { FhirR4ResourcesClientLayerContext } from 'fhir-r4-react'
 import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { GatekeeperClientLayerContext } from 'gatekeeper-react'
+import { BearerToken } from 'kitchen-sink/auth-token'
 import { useContext, useMemo } from 'react'
-import { type BearerToken, bearerTokenLayer, useAuthTokenSubscribable } from 'react-kitchen-sink'
+import { useAuthTokenSubscribable } from 'react-kitchen-sink'
 import { webHttpClientLayer } from 'telemetry-react'
 
 /**
@@ -51,7 +52,7 @@ const useAllClientsLayer = (): Layer.Layer<
   return useMemo(
     () =>
       Layer.mergeAll(gatekeeperLayer, collectorLayer, fhirResourcesLayer).pipe(
-        Layer.provideMerge(bearerTokenLayer(tokenSubscribable)),
+        Layer.provideMerge(Layer.succeed(BearerToken, tokenSubscribable)),
         Layer.provideMerge(webHttpClientLayer)
       ),
     [gatekeeperLayer, collectorLayer, fhirResourcesLayer, tokenSubscribable]

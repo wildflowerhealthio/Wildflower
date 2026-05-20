@@ -10,36 +10,35 @@
  * provider.
  */
 import { AppsAdminHttpApiClient, AppsHttpApiClient } from 'apps-core/clients'
-import type { Effect, Scope } from 'effect'
 import type { JSX, PropsWithChildren } from 'react'
 import { defineSliceReact } from 'shared-structures-react'
 
 const publicSlice = defineSliceReact({
   ClientTag: AppsHttpApiClient,
   layer: AppsHttpApiClient.layer,
-  auth: AppsHttpApiClient.auth,
+  authType: AppsHttpApiClient.authType,
   contextName: 'Apps',
 })
 
 const adminSlice = defineSliceReact({
   ClientTag: AppsAdminHttpApiClient,
   layer: AppsAdminHttpApiClient.layer,
-  auth: AppsAdminHttpApiClient.auth,
+  authType: AppsAdminHttpApiClient.authType,
   contextName: 'AppsAdmin',
 })
 
 const {
   ClientLayerContext: AppsClientLayerContext,
   useClientLayer: useAppsClientLayer,
-  useEffect: useAppsEffect,
-  useEffectRunner: useAppsEffectRunner,
+  useEffectTs: useAppsEffect,
+  useEffectAction: useAppsEffectAction,
 } = publicSlice
 
 const {
   ClientLayerContext: AppsAdminClientLayerContext,
   useClientLayer: useAppsAdminClientLayer,
-  useEffect: useAppsAdminEffect,
-  useEffectRunner: useAppsAdminEffectRunner,
+  useEffectTs: useAppsAdminEffect,
+  useEffectAction: useAppsAdminEffectAction,
 } = adminSlice
 
 type AppsClientProviderProps = PropsWithChildren
@@ -59,20 +58,16 @@ const AppsClientProvider = ({ children }: AppsClientProviderProps): JSX.Element 
 )
 
 /**
- * Type returned by {@link useAppsEffectRunner}: a public-client
+ * Type returned by {@link useAppsEffectAction}: a public-client
  * imperative Effect runner pre-bound to the slice layer.
  */
-type AppsEffectRunner = <A, E>(
-  effect: Effect.Effect<A, E, AppsHttpApiClient | Scope.Scope>
-) => Promise<A>
+type AppsEffectAction = ReturnType<typeof publicSlice.useEffectAction>
 
 /**
- * Type returned by {@link useAppsAdminEffectRunner}: an admin-client
+ * Type returned by {@link useAppsAdminEffectAction}: an admin-client
  * imperative Effect runner pre-bound to the slice layer.
  */
-type AppsAdminEffectRunner = <A, E>(
-  effect: Effect.Effect<A, E, AppsAdminHttpApiClient | Scope.Scope>
-) => Promise<A>
+type AppsAdminEffectAction = ReturnType<typeof adminSlice.useEffectAction>
 
 export {
   AppsAdminClientLayerContext,
@@ -80,9 +75,9 @@ export {
   AppsClientProvider,
   useAppsAdminClientLayer,
   useAppsAdminEffect,
-  useAppsAdminEffectRunner,
+  useAppsAdminEffectAction,
   useAppsClientLayer,
   useAppsEffect,
-  useAppsEffectRunner,
+  useAppsEffectAction,
 }
-export type { AppsAdminEffectRunner, AppsClientProviderProps, AppsEffectRunner }
+export type { AppsAdminEffectAction, AppsClientProviderProps, AppsEffectAction }

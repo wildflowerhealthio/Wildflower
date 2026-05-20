@@ -5,7 +5,7 @@ import { GatekeeperApi } from '../http-api-definition/index.ts'
 const sliceClient = defineSliceHttpClient({
   name: 'GatekeeperHttpApiClient',
   api: GatekeeperApi,
-  auth: 'bearer',
+  authType: 'bearer',
 })
 
 /**
@@ -22,7 +22,7 @@ const sliceClient = defineSliceHttpClient({
  */
 class GatekeeperHttpApiClient extends sliceClient.ClientTag<GatekeeperHttpApiClient>() {
   static readonly layer = sliceClient.makeLayerFactory(GatekeeperHttpApiClient)()
-  static readonly auth = sliceClient.auth
+  static readonly authType = sliceClient.authType
 }
 
 /**

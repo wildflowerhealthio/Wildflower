@@ -16,8 +16,8 @@ import {
 
 import {
   useGatekeeperEffect,
-  useGatekeeperEffectRunner,
-  type GatekeeperEffectRunner,
+  useGatekeeperEffectAction,
+  type GatekeeperEffectAction,
 } from '../gatekeeper-client.tsx'
 import pageLayout from '../styles/page-layout.module.css'
 import scopeListStyles from '../styles/scope-list.module.css'
@@ -25,7 +25,7 @@ import scopeListStyles from '../styles/scope-list.module.css'
 type DeviceConsent = Schema.Schema.Type<typeof Devices.DeviceConsentSchema>
 
 const DeviceConsentScreen = (): JSX.Element => {
-  const runGatekeeper = useGatekeeperEffectRunner()
+  const runGatekeeper = useGatekeeperEffectAction()
   const navigate = useNavigate()
   const { userCode = '' } = useParams<{ userCode: string }>()
 
@@ -60,7 +60,7 @@ const DeviceConsentScreen = (): JSX.Element => {
 }
 
 interface DeviceConsentFormProps {
-  readonly runGatekeeper: GatekeeperEffectRunner
+  readonly runGatekeeper: GatekeeperEffectAction
   readonly consent: DeviceConsent
   readonly onDone: () => void
 }
