@@ -17,7 +17,7 @@ config.resolver.assetExts.push('txt')
 // config.watchFolders = [workspaceRoot]
 
 addLiveStoreDevtoolsMiddleware(config, {
-  schemaPath: './src/schema.ts',
+  schemaPath: './src/livestore/schema.ts',
   viteConfig: (viteConfig) => {
     viteConfig.server.fs ??= {}
     viteConfig.server.fs.strict = false
