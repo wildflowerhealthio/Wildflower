@@ -11,7 +11,6 @@ export default defineConfig({
       bridge: 'src/bridge.ts',
       'registry/index': 'src/registry/index.ts',
       'clients/index': 'src/clients/index.ts',
-      'contexts/index': 'src/contexts/index.ts',
       'http-api-definition/index': 'src/http-api-definition/index.ts',
       'http-api-implementation/index': 'src/http-api-implementation/index.ts',
       'livestore/index': 'src/livestore/index.ts',

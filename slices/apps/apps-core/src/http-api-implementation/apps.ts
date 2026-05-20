@@ -1,8 +1,11 @@
 import { HttpApiBuilder, HttpServerResponse } from '@effect/platform'
 import { nanoid } from '@livestore/livestore'
 import { Effect } from 'effect'
-import { TunnelControl } from '../contexts/tunnel-control.ts'
+import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
+import { TunnelConfig, TunnelState, TunnelStore } from 'tunnel-core/livestore'
+
 import { AppsApi } from '../http-api-definition/index.ts'
+import { awaitTunnelRunning, type RunningTunnel } from '../internal/await-tunnel-running.ts'
 import { AppSelection, AppsStore } from '../livestore/index.ts'
 import type { AppKind } from '../registry/app-item.ts'
 import { BUNDLED_APPS, FHIR_SHARING_ID, findBundled } from '../registry/index.ts'
@@ -50,6 +53,19 @@ const buildEntries = (selection: readonly AppSelection.AppSelectionRow[]): reado
 }
 
 /**
+ * Public tunnel origin from `currentSubdomain` + `currentRootDomain`,
+ * or `null` if either is unbound. `rootDomain` is the empty string
+ * when the relay returns a single-label hostname (see
+ * `tunnel-expo/src/startTunnel.ts`'s `parseGrantedDomain`), so empty
+ * counts as unbound here too.
+ */
+const tunnelOrigin = (state: RunningTunnel): string | null => {
+  const { currentSubdomain: sub, currentRootDomain: root } = state
+  if (sub === null || sub === '' || root === null || root === '') return null
+  return `https://${sub}.${root}`
+}
+
+/**
  * Defense-in-depth at launch time. `CustomAppUrlSchema` rejects bad
  * shapes on write, but `LaunchApp` re-validates the *resolved* URL —
  * after `{origin}` interpolation — so a custom app whose template
@@ -68,6 +84,26 @@ const isLaunchableUrl = (target: string, originPrefix: string): boolean => {
   }
 }
 
+/**
+ * Append `?tunnel=unavailable` so the SPA loading the redirect can
+ * detect that the launch wanted a tunnel but had to settle for the
+ * local origin. The SPA may surface this as a non-blocking banner.
+ *
+ * @remarks
+ * Uses string manipulation rather than `new URL`: bundled launch URLs
+ * (e.g. growth-chart, medication-viewer) carry raw colons / slashes in
+ * their `iss=` query values that round-tripping through `URL` would
+ * percent-encode — downstream consumers expect the un-encoded form.
+ */
+const appendTunnelUnavailable = (target: string): string => {
+  const param = 'tunnel=unavailable'
+  const hashIdx = target.indexOf('#')
+  const base = hashIdx === -1 ? target : target.slice(0, hashIdx)
+  const hash = hashIdx === -1 ? '' : target.slice(hashIdx)
+  const sep = base.includes('?') ? '&' : '?'
+  return `${base}${sep}${param}${hash}`
+}
+
 const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
   handlers
     .handle('ListApps', () =>
@@ -79,11 +115,12 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
     )
     .handleRaw('LaunchApp', ({ path }) =>
       Effect.gen(function* () {
-        const tunnel = yield* TunnelControl
-        const store = yield* AppsStore
+        const appsStore = yield* AppsStore
+        const tunnelStore = yield* TunnelStore
+        const localStore = yield* LocalHttpServerStore
 
         const bundled = findBundled(path.id)
-        const row = store.query(AppSelection.queries.byId$(path.id))
+        const row = appsStore.query(AppSelection.queries.byId$(path.id))
 
         const launchContext = ((): {
           url: (origin: string, launch: string) => string
@@ -116,29 +153,44 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
           )
         }
 
-        const beforeState = yield* tunnel.getState
+        const localOrigin = localStore.query(ServerState.queries.current$).localOrigin
+        const beforeTunnel = tunnelStore.query(TunnelState.queries.current$)
 
-        const afterState = yield* (() => {
-          if (!launchContext.requiresTunnel || beforeState.tunnelActive) {
-            return Effect.succeed(beforeState)
+        // Pick the origin: local if no tunnel needed or already running
+        // with a bound public name; otherwise commit `requestedRunning`
+        // and wait for the daemon to flip `TunnelState.running`. Timeout
+        // and unbound-state both fall back to the local origin (and
+        // surface `?tunnel=unavailable` on the redirect). The
+        // `requestedRunning` commit is sticky: see `awaitTunnelRunning`
+        // — interrupt does not roll it back.
+        let origin = localOrigin
+        let tunnelFellBack = false
+        if (launchContext.requiresTunnel) {
+          if (beforeTunnel.running) {
+            const live = tunnelOrigin(beforeTunnel)
+            if (live === null) tunnelFellBack = true
+            else origin = live
+          } else {
+            tunnelStore.commit(TunnelConfig.events.tunnelConfigSet({ requestedRunning: true }))
+            const outcome = yield* awaitTunnelRunning()
+            if (outcome.kind === 'timed-out') {
+              yield* Effect.logWarning(
+                `[apps-core] tunnel did not start within deadline for ${path.id}; falling back to local origin`
+              )
+              tunnelFellBack = true
+            } else {
+              const live = tunnelOrigin(outcome.state)
+              if (live === null) tunnelFellBack = true
+              else origin = live
+            }
           }
-          return Effect.either(tunnel.setTunnelActive(true)).pipe(
-            Effect.flatMap((result) => {
-              if (result._tag === 'Right') {
-                return Effect.succeed(result.right)
-              }
-              return Effect.logWarning(
-                `[apps-core] tunnel activation failed: ${result.left._tag}: ${result.left.reason}`
-              ).pipe(Effect.as(beforeState))
-            })
-          )
-        })()
+        }
 
         // Re-check after tunnel state settles: the row may have been
         // deleted or kind-changed mid-flight. Bundled apps have static
         // shape so they don't need this round-trip.
         if (bundled === undefined) {
-          const refreshed = store.query(AppSelection.queries.byId$(path.id))
+          const refreshed = appsStore.query(AppSelection.queries.byId$(path.id))
           if (refreshed === undefined || refreshed.kind !== 'custom') {
             return HttpServerResponse.unsafeJson(
               { error: 'AppNotFound', id: path.id },
@@ -148,20 +200,22 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
         }
 
         if (path.id === FHIR_SHARING_ID || launchContext.isAction) {
-          return HttpServerResponse.redirect(afterState.origin, { status: 302 })
+          const target = tunnelFellBack ? appendTunnelUnavailable(origin) : origin
+          return HttpServerResponse.redirect(target, { status: 302 })
         }
 
         const launch = nanoid()
-        const target = launchContext.url(afterState.origin, launch)
-        if (!isLaunchableUrl(target, afterState.origin)) {
+        const resolved = launchContext.url(origin, launch)
+        if (!isLaunchableUrl(resolved, origin)) {
           yield* Effect.logWarning(
-            `[apps-core] LaunchApp rejected resolved URL for ${path.id}: ${target}`
+            `[apps-core] LaunchApp rejected resolved URL for ${path.id}: ${resolved}`
           )
           return HttpServerResponse.unsafeJson(
             { error: 'AppNotFound', id: path.id },
             { status: 404 }
           )
         }
+        const target = tunnelFellBack ? appendTunnelUnavailable(resolved) : resolved
         return HttpServerResponse.redirect(target, { status: 302 })
       })
     )

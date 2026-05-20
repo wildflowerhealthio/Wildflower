@@ -288,3 +288,21 @@ From the `defineBridge` + `makeWebTransport` refactor in `slices/interop/`. Patt
 **Discovered during**: ruthmarks/migrate-wildflower-expo — adding `kitchen-sink/livestore` and consuming it from slice `tests/`
 **Learning**: Slice `tsconfig.json` files only `include: ["src"]`. `vp check` still type-checks `tests/**/*.test.ts` (via the lint runner), but because tests sit outside the include they don't inherit `customConditions: ['source']`. That means imports like `import { defineSliceLivestore } from 'kitchen-sink/livestore'` are resolved against the `default` export path (`./dist/livestore.js`) rather than the `source` path (`./src/livestore/index.ts`). If kitchen-sink hasn't been built, the test sees `defineSliceLivestore` as `any`, every class extending its `StoreTag<Self>()` collapses, and `typeof MyStore.Service` errors with `Property 'Service' does not exist on type 'typeof MyStore'` — even though `src/` checks pass. Fix: run `vp run build` (or `vp run -F kitchen-sink build`) once after adding a new kitchen-sink subpath export, before re-running `vp check`. The same caveat applies to any new subpath added to a `global/` package consumed cross-package by tests.
 **Suggested destination**: docs/Testing/Testing Reference.md or a vp-pack reference.
+
+## Drop a squash-merged local commit via `git rebase --onto main <commit-to-drop> <branch>`
+
+**Discovered during**: ruthmarks/05-tunnel-node — rebasing after PR #41 (tunnel-react) was squash-merged into main
+**Learning**: When a feature branch's predecessor commit landed on main as a squash-merge, a plain `git rebase main branch` will try to re-apply that commit and conflict against the (often improved) merged version. Instead, use `git rebase --onto origin/main <commit-to-drop> <branch>` — replays only the commits _after_ `<commit-to-drop>` onto `origin/main`. In this case PR #41's merged version had been refactored to consume PR #45's lifted react-tundraish primitives, so replaying the local b019e18 (`feat: add tunnel-react slice`) would have created a thicket of conflicts against files that no longer existed in that location. Dropping it via `--onto` reduced the rebase to a single `pnpm-lock.yaml` conflict on the next commit.
+**Suggested destination**: Strategies
+
+## pnpm-lock conflicts during rebase: take one side, then `vp install` to regenerate
+
+**Discovered during**: ruthmarks/05-tunnel-node — rebase onto main with a new tunnel-node package.json
+**Learning**: When `pnpm-lock.yaml` conflicts during a rebase, don't hand-merge — the lockfile is a derived artifact. Run `git checkout --ours pnpm-lock.yaml && git add pnpm-lock.yaml` (in a rebase, "ours" = the new base / upstream side), then `vp install` from the repo root; pnpm reconciles the lockfile against the merged set of `package.json` files. `git status` will then show pnpm-lock.yaml as modified-but-staged-stale — re-`git add` it before `git rebase --continue`. Works the same whether you take ours or theirs; the install pass is what makes it correct.
+**Suggested destination**: Strategies
+
+## The harness's primary cwd may sit in a worktree on a different branch than the target
+
+**Discovered during**: ruthmarks/05-tunnel-node — operating from a different worktree
+**Learning**: An agent's "primary working directory" can be a worktree pointing at a branch other than the one the user is asking about. Check `git worktree list` before checking out, rebasing, or committing — the target branch is often already owned by a different worktree, and `git checkout` will fail with "already checked out at …". Run with `git -C <owning-path> <subcommand>` or `cd` to that worktree.
+**Suggested destination**: Strategies

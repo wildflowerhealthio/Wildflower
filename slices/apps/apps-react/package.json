@@ -26,6 +26,8 @@
     "react-router": "catalog:",
     "react-tundraish": "workspace:*",
     "telemetry-react": "workspace:*",
+    "tunnel-core": "workspace:*",
+    "tunnel-react": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -38,6 +40,8 @@
     "react-kitchen-sink": "workspace:*",
     "react-router": "catalog:",
     "react-tundraish": "workspace:*",
-    "telemetry-react": "workspace:*"
+    "telemetry-react": "workspace:*",
+    "tunnel-core": "workspace:*",
+    "tunnel-react": "workspace:*"
   }
 }

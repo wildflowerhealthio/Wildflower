@@ -24,6 +24,8 @@ import {
   RequireAuthMiddleware,
   RequireAuthMiddlewareLive,
 } from 'gatekeeper-core/http-api-implementation'
+import { TunnelAdminApi } from 'tunnel-core/http-api-definition'
+import { TunnelAdminApiHandlersFor } from 'tunnel-core/http-api-implementation'
 import { VendorAppsApi } from 'vendor-apps/http-api-definition'
 import { VendorAppsApiHandlersFor } from 'vendor-apps/http-api-implementation'
 import { StaticSpaLive } from './static-spa.ts'
@@ -88,9 +90,10 @@ const middleware = HttpMiddleware.make((app) => stripCookiesMiddleware(corsMiddl
 
 // The apps slice exposes two HttpApis: `AppsApi` (public — `ListApps`
 // + `LaunchApp`, reachable by embedded webviews / iframes without a
-// bearer) and `AppsAdminApi` (owner-only — custom-app writes + tunnel
-// config). Auth is applied here, in the composing app, not in the
-// slice itself.
+// bearer) and `AppsAdminApi` (owner-only — custom-app writes).
+// `TunnelAdminApi` carries the read/write tunnel-state endpoints
+// (formerly the apps-admin `Server` group, now its own slice). Auth
+// is applied here, in the composing app, not in the slice itself.
 const WildflowerHttpApi = HttpApi.make('WildflowerApi')
   .addHttpApi(GatekeeperApi)
   .addHttpApi(FhirResourcesApi.middleware(RequireAuthMiddleware))
@@ -98,6 +101,7 @@ const WildflowerHttpApi = HttpApi.make('WildflowerApi')
   .addHttpApi(CollectorApi.middleware(RequireAuthMiddleware))
   .addHttpApi(AppsApi)
   .addHttpApi(AppsAdminApi.middleware(RequireAuthMiddleware))
+  .addHttpApi(TunnelAdminApi.middleware(RequireAuthMiddleware))
   .addHttpApi(VendorAppsApi)
 
 const WildflowerHttpApiLive = HttpApiBuilder.api(WildflowerHttpApi).pipe(
@@ -107,6 +111,7 @@ const WildflowerHttpApiLive = HttpApiBuilder.api(WildflowerHttpApi).pipe(
   Layer.provide(CollectorApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(AppsApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(AppsAdminApiHandlersFor<'WildflowerApi'>()),
+  Layer.provide(TunnelAdminApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(VendorAppsApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(RequireAuthMiddlewareLive),
   Layer.provide(SmartConfigurationLive)
@@ -114,14 +119,15 @@ const WildflowerHttpApiLive = HttpApiBuilder.api(WildflowerHttpApi).pipe(
 
 /**
  * Cross-platform server Layer. Composes the HTTP API (Gatekeeper + FHIR
- * resources/public + Apps + VendorApps), the SPA static-file fallback,
- * and Swagger docs.
+ * resources/public + Apps + Tunnel + VendorApps), the SPA static-file
+ * fallback, and Swagger docs.
  *
  * @remarks
  * Platform runner must supply: `HttpServer.HttpServer`,
  * `FileSystem.FileSystem`, `Path.Path`, `WebAssetsDir`, plus the
  * services the API handlers consume (`Origin`, `CryptoRandom`,
- * `LivestoreStore`, `GatekeeperStore`, `AppsStore`, `TunnelControl`).
+ * `LivestoreStore`, `GatekeeperStore`, `AppsStore`, `TunnelStore`,
+ * `LocalHttpServerStore`).
  */
 const WildflowerServerLive = HttpApiBuilder.serve(middleware).pipe(
   Layer.provide(HttpApiSwagger.layer()),
