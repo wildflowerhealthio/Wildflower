@@ -84,10 +84,11 @@ interface AppShellWebViewProps {
   readonly onRawMessage?: (rawWire: string) => void
   /**
    * Fires when the SPA's `useRequestTunnel` posts `RequestTunnel`. The
-   * host should commit a `requestedPublicOrigin` to the `TunnelStore`
+   * host should commit `requestedRunning: true` to `TunnelConfig`
    * (which the tunnel daemon will pick up) and post `TunnelStarted
    * { origin }` or `TunnelFailed { reason }` back via the imperative
-   * handle's `sendMessage` once `currentPublicOrigin` materialises.
+   * handle's `sendMessage` once `TunnelState.running` flips and the
+   * granted `currentSubdomain`/`currentRootDomain` materialise.
    */
   readonly onRequestTunnel: () => void
 }
@@ -116,12 +117,10 @@ const AppShellWebView = forwardRef<AppShellWebViewHandle, AppShellWebViewProps>(
     // `effect-messaging-expo`'s `useTransport` encodes initial messages
     // into the WebView's URL as query params, which would leak the
     // token into native WebView logs and Sentry breadcrumbs. Issue
-    // `AuthTokenIssued` through `transport.sendMessage` below instead;
-    // the bridge layer queues it until the WebView connects.
-    const initialMessages = [
-      { _tag: 'HostRequestedWebNavigation' as const, path: route },
-      ...(token ? [{ _tag: 'AuthTokenIssued' as const, token } as const] : ([] as const)),
-    ] as const
+    // `AuthTokenIssued` through `transport.sendMessage` in
+    // `<InnerAppShellWebView>` below instead; the bridge layer queues
+    // it until the WebView connects.
+    const initialMessages = [{ _tag: 'HostRequestedWebNavigation' as const, path: route }] as const
 
     return (
       <WithTransport<Bridges>

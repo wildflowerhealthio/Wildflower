@@ -1,6 +1,7 @@
 import type { Scope } from 'effect'
-import { Effect, Stream } from 'effect'
-import type { DomainResult, ResolvedConfig } from 'tunnel-core/daemon'
+import { Effect, Layer, Stream } from 'effect'
+import { type DomainResult, type ResolvedConfig, runTunnelDaemon } from 'tunnel-core/daemon'
+import type { TunnelStore } from 'tunnel-core/livestore'
 
 import Tunnel from './Tunnel.ts'
 
@@ -104,4 +105,15 @@ const parseGrantedDomain = (grantedUrl: string): Effect.Effect<DomainResult, Err
         }
   })
 
-export { startTunnel }
+/**
+ * long-lived fiber that drives `TunnelConfig` → `tunnel-expo`'s `startTunnel`
+ * → `TunnelState`. `Layer.scopedDiscard` ties the daemon's lifetime to the
+ * surrounding scope; the daemon's own error channel is `never` (failures
+ * are persisted into `TunnelState.error` rather than thrown), so the
+ * composer doesn't see them.
+ */
+const TunnelDaemon: Layer.Layer<never, never, TunnelStore> = Layer.scopedDiscard(
+  Effect.forkScoped(runTunnelDaemon(startTunnel))
+)
+
+export { startTunnel, TunnelDaemon }

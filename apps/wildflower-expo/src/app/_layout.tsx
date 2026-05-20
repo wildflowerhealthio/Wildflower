@@ -4,10 +4,10 @@ import { StatusBar } from 'expo-status-bar'
 import 'react-native-reanimated'
 import { useRef, useState, type JSX } from 'react'
 // import { Sentry } from 'telemetry-react-native'
-import { WildflowerServerProvider } from '@/src/components/wildflower-server-provider.tsx'
 import AppLivestoreProvider from '../components/app-livestore-provider.tsx'
 import { AppShellContext } from '../components/app-shell-context.ts'
 import type { AppShellWebViewHandle } from '../components/app-shell-webview.tsx'
+import { WildflowerDaemons } from '../components/wildflower-daemons.tsx'
 
 /**
  * Root layout. Owns the shell ref + pending sniffer source so the
@@ -17,8 +17,10 @@ import type { AppShellWebViewHandle } from '../components/app-shell-webview.tsx'
  * the modal so the shell's WebView never tears down mid-scrape.
  *
  * `AppLivestoreProvider` wraps the stack so any descendant can call
- * `useWildflowerStore()` — the on-device Effect server reads the
- * same store via that hook from `WildflowerServerProvider`.
+ * `useWildflowerStore()`. `<WildflowerDaemons />` is rendered as a
+ * sibling (not a wrapper) — it spawns the on-device HTTP-server +
+ * tunnel daemons at first mount and renders nothing. Consumers read
+ * daemon state via `useQuery` against the livestore directly.
  */
 // const RootLayout = Sentry.wrap(
 function RootLayout(): JSX.Element {
@@ -27,19 +29,18 @@ function RootLayout(): JSX.Element {
 
   return (
     <AppLivestoreProvider>
-      <WildflowerServerProvider>
-        <AppShellContext.Provider value={{ shellRef, pendingSource, setPendingSource }}>
-          <Stack>
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="run-sync-modal"
-              options={{ presentation: 'modal', title: 'Run Sync' }}
-            />
-          </Stack>
-          {/* oxlint-disable-next-line react/style-prop-object -- expo-status-bar accepts a string `style` */}
-          <StatusBar style="auto" />
-        </AppShellContext.Provider>
-      </WildflowerServerProvider>
+      <WildflowerDaemons />
+      <AppShellContext.Provider value={{ shellRef, pendingSource, setPendingSource }}>
+        <Stack>
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="run-sync-modal"
+            options={{ presentation: 'modal', title: 'Run Sync' }}
+          />
+        </Stack>
+        {/* oxlint-disable-next-line react/style-prop-object -- expo-status-bar accepts a string `style` */}
+        <StatusBar style="auto" />
+      </AppShellContext.Provider>
     </AppLivestoreProvider>
   )
 }

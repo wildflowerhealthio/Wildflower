@@ -22,6 +22,26 @@ let mockLastTransport: {
 jest.mock('effect-messaging-expo', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
   const effect = jest.requireActual<{ Effect: typeof EffectType }>('effect')
+  const buildTransport = (config: {
+    readonly initialMessages: ReadonlyArray<unknown>
+    readonly baseUrl: string
+  }): {
+    readonly embedUrl: string
+    readonly onMessage: (event: unknown) => void
+    readonly sendMessage: (msg: { _tag: string; token?: string }) => EffectType.Effect<void>
+  } => {
+    mockLastUseTransportConfig = config
+    const transport = {
+      sendMessage: (msg: { _tag: string; token?: string }): EffectType.Effect<void> =>
+        effect.Effect.sync(() => {
+          mockSendMessageCalls.push(msg)
+        }),
+      embedUrl: `${config.baseUrl}?msg.MOCK=stub`,
+      onMessage: (): void => undefined,
+    }
+    mockLastTransport = transport
+    return transport
+  }
   return {
     EffectMessagingWebView: ReactInner.forwardRef(function MockEffectMessagingWebView(
       props: { readonly source?: { readonly html?: string; readonly baseUrl?: string } },
@@ -29,21 +49,20 @@ jest.mock('effect-messaging-expo', () => {
     ): ReactElement {
       return ReactInner.createElement('EffectMessagingWebView', props)
     }),
-    useTransport: (config: {
+    useTransport: buildTransport,
+    // The production file uses `<WithTransport>` (render-prop wrapper
+    // around `useTransport`), not `useTransport` directly. The mock
+    // mirrors that shape so the test exercises the real call site.
+    WithTransport: function MockWithTransport(props: {
       readonly initialMessages: ReadonlyArray<unknown>
       readonly baseUrl: string
-    }): unknown => {
-      mockLastUseTransportConfig = config
-      const transport = {
-        sendMessage: (msg: { _tag: string; token?: string }): EffectType.Effect<void> =>
-          effect.Effect.sync(() => {
-            mockSendMessageCalls.push(msg)
-          }),
-        embedUrl: `${config.baseUrl}?msg.MOCK=stub`,
-        onMessage: (): void => undefined,
-      }
-      mockLastTransport = transport
-      return transport
+      readonly children: (transport: ReturnType<typeof buildTransport>) => ReactElement | null
+    }): ReactElement | null {
+      const transport = buildTransport({
+        initialMessages: props.initialMessages,
+        baseUrl: props.baseUrl,
+      })
+      return props.children(transport)
     },
   }
 })

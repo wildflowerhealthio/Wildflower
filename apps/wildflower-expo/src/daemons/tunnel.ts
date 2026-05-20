@@ -1,129 +1,58 @@
-import { Effect, Exit, Scope, Stream, SynchronizedRef } from 'effect'
-import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
-import { TUNNEL_SUBDOMAIN } from 'tunnel-core/canonical-url'
-import { TunnelState, TunnelStore } from 'tunnel-core/livestore'
-import * as TunnelExpo from 'tunnel-expo'
+import type { Store } from '@livestore/livestore'
+import { TunnelConfig, TunnelState } from 'tunnel-core/livestore'
+import type { schema } from '../livestore/schema.ts'
 
-interface Instance {
-  readonly requestedFor: string
-  readonly scope: Scope.CloseableScope
-}
-
-interface Decision {
-  readonly requested: string | null
-  readonly serverReady: boolean
-  readonly port: number | null
-  readonly localOrigin: string | null
-}
+const TUNNEL_AWAIT_TIMEOUT_MS = 15_000
 
 /**
- * Tunnel daemon. Watches `TunnelStore.requestedPublicOrigin` together
- * with `LocalHttpServerStore.running` / `localOrigin` / `port` and:
+ * Flip `TunnelConfig.requestedRunning` and wait for the tunnel daemon
+ * to settle `TunnelState`.
  *
- *   - opens a scope and calls `TunnelExpo.acquire` once both
- *     "requested" and "server running" are true,
- *   - commits `currentPublicOrigin` if (and only if) the granted URL
- *     matches the requested URL exactly — anything else logs a warning
- *     and leaves `currentPublicOrigin` undefined,
- *   - tears the tunnel down + clears `currentPublicOrigin` when the
- *     request is cleared, the server stops, or the request URL changes.
+ * The host-level `TunnelDaemon` (forked once at app boot) is what
+ * actually opens / tears down the tunnel; this helper only writes the
+ * intent and observes the daemon's response.
  *
- * State transitions are serialised through a `SynchronizedRef`. On
- * daemon scope close, any live tunnel scope is torn down too.
+ *  - `active === true`: commit `requestedRunning: true`. Resolves with
+ *    `https://{currentSubdomain}.{currentRootDomain}` once
+ *    `TunnelState.running` flips true; falls back to `fallbackOrigin`
+ *    if either domain field is still null when running flips, or after
+ *    the 15s timeout.
+ *  - `active === false`: commit `requestedRunning: false` and resolve
+ *    `fallbackOrigin` immediately — the daemon will tear the tunnel
+ *    down on its own schedule, but callers don't wait for it.
+ *
+ * Canonical `subdomain` / `rootDomain` / `localPort` were seeded into
+ * `TunnelConfig` at first boot (see `livestore-store.ts`); we only
+ * write `requestedRunning` here so user-customised values persist.
  */
-const tunnelDaemon = (): Effect.Effect<
-  void,
-  never,
-  Scope.Scope | LocalHttpServerStore | TunnelStore
-> =>
-  Effect.gen(function* () {
-    const tunnelStore = yield* TunnelStore
-    const serverStore = yield* LocalHttpServerStore
-
-    const instanceRef = yield* SynchronizedRef.make<Instance | null>(null)
-
-    yield* Effect.addFinalizer(() =>
-      SynchronizedRef.updateEffect(instanceRef, (current) =>
-        current === null
-          ? Effect.succeed(null)
-          : Scope.close(current.scope, Exit.void).pipe(Effect.as(null))
-      )
-    )
-
-    const clearCurrent = Effect.sync(() =>
-      tunnelStore.commit(TunnelState.events.tunnelStateSet({ currentPublicOrigin: null }))
-    )
-
-    const tearDown = (current: Instance): Effect.Effect<null, never, never> =>
-      Scope.close(current.scope, Exit.void).pipe(Effect.zipRight(clearCurrent), Effect.as(null))
-
-    const startInstance = (
-      requested: string,
-      port: number,
-      localOrigin: string
-    ): Effect.Effect<Instance | null, never, never> =>
-      Effect.gen(function* () {
-        const newScope = yield* Scope.make()
-        const result = yield* TunnelExpo.acquire({
-          port,
-          subdomain: TUNNEL_SUBDOMAIN,
-          fallbackOrigin: localOrigin,
-        }).pipe(Scope.extend(newScope), Effect.either)
-        if (result._tag === 'Left') {
-          yield* Effect.logError(
-            `[wildflower-expo] tunnel acquire failed for ${requested}: ${result.left.message}`
-          )
-          yield* Scope.close(newScope, Exit.void)
-          return null
-        }
-        if (result.right !== requested) {
-          yield* Effect.logWarning(
-            `[wildflower-expo] tunnel granted ${result.right}, expected ${requested}; tearing down`
-          )
-          yield* Scope.close(newScope, Exit.void)
-          return null
-        }
-        yield* Effect.sync(() =>
-          tunnelStore.commit(
-            TunnelState.events.tunnelStateSet({ currentPublicOrigin: result.right })
-          )
-        )
-        return { requestedFor: requested, scope: newScope }
-      })
-
-    const decision$: Stream.Stream<Decision> = Stream.zipLatest(
-      tunnelStore.subscribeStream(TunnelState.queries.current$),
-      serverStore.subscribeStream(ServerState.queries.current$)
-    ).pipe(
-      Stream.map(
-        ([tunnel, server]): Decision => ({
-          requested: tunnel.requestedPublicOrigin,
-          serverReady: server.running,
-          port: server.port,
-          localOrigin: server.localOrigin,
-        })
-      )
-    )
-
-    return yield* decision$.pipe(
-      Stream.runForEach(({ requested, serverReady, port, localOrigin }) =>
-        SynchronizedRef.updateEffect(instanceRef, (current) => {
-          // Server down or no request: tear down any current instance.
-          if (requested === null || !serverReady || port === null || localOrigin === null) {
-            return current === null ? Effect.succeed(null) : tearDown(current)
-          }
-          // Request changed mid-flight: tear down so we can restart for
-          // the new URL on the next tick.
-          if (current !== null && current.requestedFor !== requested) {
-            return tearDown(current)
-          }
-          // Already running for this request: nothing to do.
-          if (current !== null) return Effect.succeed(current)
-          // Fresh start.
-          return startInstance(requested, port, localOrigin)
-        })
-      )
-    )
+const commitAndAwaitTunnel = (
+  store: Store<typeof schema, object>,
+  active: boolean,
+  fallbackOrigin: string,
+  timeoutMs: number = TUNNEL_AWAIT_TIMEOUT_MS
+): Promise<string> =>
+  new Promise<string>((resolve) => {
+    store.commit(TunnelConfig.events.tunnelConfigSet({ requestedRunning: active }))
+    if (!active) {
+      resolve(fallbackOrigin)
+      return
+    }
+    let settled = false
+    let unsubscribe: (() => void) | null = null
+    const finish = (origin: string): void => {
+      if (settled) return
+      settled = true
+      unsubscribe?.()
+      clearTimeout(timer)
+      resolve(origin)
+    }
+    unsubscribe = store.subscribe(TunnelState.queries.current$, (state) => {
+      if (!state.running) return
+      if (state.currentSubdomain !== null && state.currentRootDomain !== null) {
+        finish(`https://${state.currentSubdomain}.${state.currentRootDomain}`)
+      }
+    })
+    const timer = setTimeout(() => finish(fallbackOrigin), timeoutMs)
   })
 
-export { tunnelDaemon }
+export { commitAndAwaitTunnel }

@@ -2,12 +2,16 @@ import { Effect } from 'effect'
 import { useRouter } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
 import { Colors, Spacing, ThemedText, ThemedView, useColorScheme } from 'expo-tundraish'
+import { ServerState } from 'local-http-server-core/livestore'
 import { useCallback, useContext, useEffect, useState, type JSX } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
+import { TunnelState } from 'tunnel-core/livestore'
 import { AppShellContext } from '../components/app-shell-context.ts'
 import { AppShellWebView } from '../components/app-shell-webview.tsx'
 import { TABS, tabForPath, type TabKey } from '../components/tab-mapping.ts'
-import { useWildflowerServerHandle } from '../components/wildflower-server-provider.tsx'
+import { LOCAL_ORIGIN } from '../daemons/http-server.ts'
+import { commitAndAwaitTunnel } from '../daemons/tunnel.ts'
+import { useWildflowerStore } from '../livestore/livestore-store.ts'
 
 // Splash is suppressed by `splash-init.ts` (side-effect import in
 // `index.ts`, before `expo-router/entry`). Here we only own the
@@ -25,7 +29,16 @@ export default function HomeScreen(): JSX.Element {
   if (ctx === null) throw new Error('AppShellContext missing — render under <RootLayout>')
   const { shellRef, setPendingSource } = ctx
 
-  const { running, localOrigin, currentPublicOrigin, setTunnelActive } = useWildflowerServerHandle()
+  const store = useWildflowerStore()
+  const serverState = store.useQuery(ServerState.queries.current$)
+  const tunnelState = store.useQuery(TunnelState.queries.current$)
+  const running = serverState.running
+  const localOrigin = serverState.localOrigin ?? LOCAL_ORIGIN
+  const publicOrigin =
+    tunnelState.currentSubdomain !== null && tunnelState.currentRootDomain !== null
+      ? `https://${tunnelState.currentSubdomain}.${tunnelState.currentRootDomain}`
+      : null
+
   const router = useRouter()
   const colorScheme = useColorScheme()
   const palette = colorScheme === 'dark' ? Colors.dark : Colors.light
@@ -70,7 +83,7 @@ export default function HomeScreen(): JSX.Element {
 
   const onRequestTunnel = useCallback((): void => {
     const handle = shellRef.current
-    void setTunnelActive(true).then(
+    void commitAndAwaitTunnel(store, true, localOrigin).then(
       (grantedOrigin) => {
         if (handle === null) return
         Effect.runFork(handle.sendMessage({ _tag: 'TunnelStarted', origin: grantedOrigin }))
@@ -80,7 +93,7 @@ export default function HomeScreen(): JSX.Element {
         Effect.runFork(handle.sendMessage({ _tag: 'TunnelFailed', reason: String(cause) }))
       }
     )
-  }, [setTunnelActive, shellRef])
+  }, [localOrigin, shellRef, store])
 
   if (!running) {
     // Splash is still up; return an empty placeholder so the tree mounts.
@@ -92,7 +105,7 @@ export default function HomeScreen(): JSX.Element {
       <View style={styles.webViewWrap}>
         <AppShellWebView
           ref={shellRef}
-          baseUrl={currentPublicOrigin ?? localOrigin}
+          baseUrl={publicOrigin ?? localOrigin}
           route={TABS[0].path}
           onRouteChanged={onRouteChanged}
           onRequestSniffableWebView={onRequestSniffableWebView}
