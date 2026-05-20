@@ -90,7 +90,7 @@ const AccountConfigScreen = (): JSX.Element => {
               })
             )
       await run(operation)
-      void navigate('/collector')
+      void navigate('/settings/collector')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -173,7 +173,7 @@ const AccountConfigScreen = (): JSX.Element => {
         <button
           type="button"
           className="button-2 outline"
-          onClick={() => void navigate('/collector')}
+          onClick={() => void navigate('/settings/collector')}
         >
           Cancel
         </button>

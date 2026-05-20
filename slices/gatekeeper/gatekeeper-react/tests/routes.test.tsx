@@ -12,10 +12,11 @@ const routesSource = readFileSync(
 )
 
 // Captures each fragment's contents as `block`; iterate matches to split into
-// public/authorized buckets. The drift test below cares which bucket a path
-// lands in — public routes don't need a bearer; authorized ones do — so a
-// path migrating between fragments without a corresponding intent change is
-// a regression worth catching.
+// public/authorized/settings buckets. The drift test below cares which bucket a
+// path lands in — public routes don't need a bearer; authorized flow routes do
+// and are externally published; settings routes are owner-facing landings —
+// so a path migrating between fragments without a corresponding intent change
+// is a regression worth catching.
 const declareFragmentPaths = (fragmentName: string): readonly string[] => {
   const fragmentRegex = new RegExp(`const\\s+${fragmentName}[^=]*=\\s*\\(([\\s\\S]*?)^\\)`, 'm')
   const fragmentMatch = fragmentRegex.exec(routesSource)
@@ -34,7 +35,8 @@ const declareFragmentPaths = (fragmentName: string): readonly string[] => {
 
 const publicRoutePaths = declareFragmentPaths('gatekeeperPublicRoutesFragment')
 const authorizedRoutePaths = declareFragmentPaths('gatekeeperAuthorizedRoutesFragment')
-const allDeclaredRoutePaths = [...publicRoutePaths, ...authorizedRoutePaths]
+const settingsRoutePaths = declareFragmentPaths('gatekeeperSettingsRoutesFragment')
+const flowRoutePaths = [...publicRoutePaths, ...authorizedRoutePaths]
 
 describe('GatekeeperPaths ↔ <Route path> drift', () => {
   // One-direction drift only: owner-nav routes are intentionally absent from `GatekeeperPaths`.
@@ -48,7 +50,7 @@ describe('GatekeeperPaths ↔ <Route path> drift', () => {
     ]
 
     for (const expected of expectedPaths) {
-      expect(allDeclaredRoutePaths).toContain(expected)
+      expect(flowRoutePaths).toContain(expected)
     }
   })
 
@@ -68,5 +70,32 @@ describe('GatekeeperPaths ↔ <Route path> drift', () => {
     expect(authorizedRoutePaths).toContain(
       decodeURIComponent(GatekeeperPaths.deviceConsentPath(':userCode'))
     )
+  })
+
+  // GatekeeperPaths only models externally-published flow URLs. Owner-facing
+  // settings landings (`/settings/gatekeeper/*`) must not appear there — if a
+  // landing started being externally linked, this would catch it.
+  test('settings landings are NOT in the flow fragments', () => {
+    for (const settingsPath of settingsRoutePaths) {
+      expect(flowRoutePaths).not.toContain(settingsPath)
+    }
+  })
+})
+
+describe('gatekeeperSettingsRoutesFragment', () => {
+  test('declares the four owner-facing landing routes', () => {
+    expect(settingsRoutePaths).toContain('/settings/gatekeeper')
+    expect(settingsRoutePaths).toContain('/settings/gatekeeper/requests')
+    expect(settingsRoutePaths).toContain('/settings/gatekeeper/requests/:id')
+    expect(settingsRoutePaths).toContain('/settings/gatekeeper/approved/:id')
+  })
+
+  test('every settings path is under /settings/gatekeeper/', () => {
+    // The clean-rename decision means no `/gatekeeper/*` aliases survive
+    // inside the settings fragment; if one did, an unintentional duplicate
+    // would slip in alongside the externally-published flow path.
+    for (const path of settingsRoutePaths) {
+      expect(path === '/settings/gatekeeper' || path.startsWith('/settings/gatekeeper/')).toBe(true)
+    }
   })
 })

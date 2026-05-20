@@ -14,7 +14,7 @@ const routesSource = readFileSync(
 
 // Captures the fragment's contents as `block`; iterate matches to pull
 // out each declared <Route path="…">. The drift test asserts the
-// fragment contains the documented `/tunnel` mount point.
+// fragment contains the documented `/settings/tunnel` mount point.
 const declareFragmentPaths = (fragmentName: string): readonly string[] => {
   const fragmentRegex = new RegExp(`const\\s+${fragmentName}[^=]*=\\s*\\(([\\s\\S]*?)^\\)`, 'm')
   const fragmentMatch = fragmentRegex.exec(routesSource)
@@ -31,16 +31,16 @@ const declareFragmentPaths = (fragmentName: string): readonly string[] => {
   return paths
 }
 
-const authorizedRoutePaths = declareFragmentPaths('tunnelAuthorizedRoutesFragment')
+const settingsRoutePaths = declareFragmentPaths('tunnelSettingsRoutesFragment')
 
-describe('tunnelAuthorizedRoutesFragment', () => {
-  test('mounts /tunnel', () => {
-    expect(authorizedRoutePaths).toContain('/tunnel')
+describe('tunnelSettingsRoutesFragment', () => {
+  test('mounts /settings/tunnel', () => {
+    expect(settingsRoutePaths).toContain('/settings/tunnel')
   })
 
   test('declares exactly one route (the screen)', () => {
     // The slice's full surface is one settings page. If the count grows,
     // the test should be expanded deliberately rather than silently.
-    expect(authorizedRoutePaths.length).toBe(1)
+    expect(settingsRoutePaths.length).toBe(1)
   })
 })

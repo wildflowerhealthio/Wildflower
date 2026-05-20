@@ -28,17 +28,25 @@ const declareFragmentPaths = (fragmentName: string): readonly string[] => {
   return paths
 }
 
-describe('collectorAuthorizedRoutesFragment', () => {
-  const authorizedRoutePaths = declareFragmentPaths('collectorAuthorizedRoutesFragment')
+describe('collectorSettingsRoutesFragment', () => {
+  const settingsRoutePaths = declareFragmentPaths('collectorSettingsRoutesFragment')
 
-  test('declares the account list and account config routes', () => {
-    expect(authorizedRoutePaths).toContain('/collector')
-    expect(authorizedRoutePaths).toContain('/collector/account')
+  test('declares the account list and account config routes under /settings/collector', () => {
+    expect(settingsRoutePaths).toContain('/settings/collector')
+    expect(settingsRoutePaths).toContain('/settings/collector/account')
   })
 
   test('contains no public routes (all flows are owner-only)', () => {
     // If a `collectorPublicRoutesFragment` is ever introduced, this test
     // becomes the prompt to add a separate public-bucket assertion.
     expect(routesSource).not.toMatch(/collectorPublicRoutesFragment/)
+  })
+
+  test('no top-level /collector paths remain — moved under /settings/collector', () => {
+    // The clean-rename decision: no redirect from `/collector` is kept,
+    // so the slice should not declare any path that escapes /settings/.
+    for (const path of settingsRoutePaths) {
+      expect(path.startsWith('/settings/collector')).toBe(true)
+    }
   })
 })

@@ -1,4 +1,5 @@
-export { tunnelAuthorizedRoutesFragment } from './routes.tsx'
+export { tunnelSettingsRoutesFragment } from './routes.tsx'
+export { tunnelSettingsItemsFragment } from './settings-fragments.ts'
 
 export { TunnelClientProvider, type TunnelClientProviderProps } from './tunnel-client-provider.tsx'
 export { TunnelAdminClientLayerContext } from './tunnel-client-context.ts'
