@@ -17,7 +17,8 @@
   },
   "mounts": [
     "source=claude-config,target=/node/.claude,type=volume",
-    "source=node_modules,target=${containerWorkspaceFolder}/node_modules,type=volume"
+    "source=node_modules,target=${containerWorkspaceFolder}/node_modules,type=volume",
+    "source=wf-data,target=/data,type=volume"
   ],
   "runArgs": ["--env-file", ".devcontainer/devcontainer.env"],
   "forwardPorts": [5173],
