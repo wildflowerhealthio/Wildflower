@@ -12,7 +12,19 @@ sudo chown -R $(whoami) /workspaces/wildflower/node_modules
 # through `vp` per project CLAUDE.md.
 pnpm setup
 source /home/node/.bashrc
-# curl -fsSL https://claude.ai/install.sh | bash
+
+# Point pnpm at the shared /data volume for store + cache, and reserve a
+# Linux-native location for parallel-worktree node_modules. All three live on
+# the wf-data volume so they survive container rebuilds and so each worktree's
+# node_modules hardlinks from a single store. The worktrees themselves live in
+# .worktrees/ inside the main bind mount (host-visible); only their
+# node_modules is relocated here via symlink. See CLAUDE.md "Parallel
+# Worktrees" for the full layout.
+sudo mkdir -p /data/pnpm-store /data/pnpm-cache /data/worktree-node_modules
+sudo chown -R "$(whoami)" /data
+pnpm config set store-dir /data/pnpm-store
+pnpm config set cache-dir /data/pnpm-cache
+
 pnpm install -g vite-plus
 pnpm install -g @typescript/native-preview
 pnpm install -g @tsdown/css

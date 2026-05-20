@@ -32,3 +32,6 @@ dist-ssr
 
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+
+# In-container parallel worktrees (.devcontainer/wf-worktree.sh)
+.worktrees/
