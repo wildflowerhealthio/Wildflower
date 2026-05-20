@@ -3,7 +3,7 @@ import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import 'react-native-reanimated'
 import { useRef, useState, type JSX } from 'react'
-// import { Sentry } from 'telemetry-react-native'
+import { Sentry } from 'telemetry-react-native'
 import AppLivestoreProvider from '../components/app-livestore-provider.tsx'
 import { AppShellContext } from '../components/app-shell-context.ts'
 import type { AppShellWebViewHandle } from '../components/app-shell-webview.tsx'
@@ -22,8 +22,7 @@ import { WildflowerDaemons } from '../components/wildflower-daemons.tsx'
  * tunnel daemons at first mount and renders nothing. Consumers read
  * daemon state via `useQuery` against the livestore directly.
  */
-// const RootLayout = Sentry.wrap(
-function RootLayout(): JSX.Element {
+const RootLayout = Sentry.wrap(function RootLayout(): JSX.Element {
   const shellRef = useRef<AppShellWebViewHandle | null>(null)
   const [pendingSource, setPendingSource] = useState<WebViewSource.Any | null>(null)
 
@@ -43,7 +42,6 @@ function RootLayout(): JSX.Element {
       </AppShellContext.Provider>
     </AppLivestoreProvider>
   )
-}
-//)
+})
 
 export default RootLayout

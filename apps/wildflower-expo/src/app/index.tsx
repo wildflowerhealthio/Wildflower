@@ -1,17 +1,14 @@
 import { Effect } from 'effect'
 import { useRouter } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
-import { Colors, Spacing, ThemedText, ThemedView, useColorScheme } from 'expo-tundraish'
-import { ServerState } from 'local-http-server-core/livestore'
+import { Colors, Spacing, ThemedText, ThemedView, useThemeColors } from 'expo-tundraish'
 import { useCallback, useContext, useEffect, useState, type JSX } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
-import { TunnelState } from 'tunnel-core/livestore'
 import { AppShellContext } from '../components/app-shell-context.ts'
 import { AppShellWebView } from '../components/app-shell-webview.tsx'
 import { TABS, tabForPath, type TabKey } from '../components/tab-mapping.ts'
-import { LOCAL_ORIGIN } from '../daemons/http-server.ts'
 import { commitAndAwaitTunnel } from '../daemons/tunnel.ts'
-import { useWildflowerStore } from '../livestore/livestore-store.ts'
+import { useShellOrigins } from '../livestore/use-shell-origins.ts'
 
 // Splash is suppressed by `splash-init.ts` (side-effect import in
 // `index.ts`, before `expo-router/entry`). Here we only own the
@@ -29,19 +26,10 @@ export default function HomeScreen(): JSX.Element {
   if (ctx === null) throw new Error('AppShellContext missing — render under <RootLayout>')
   const { shellRef, setPendingSource } = ctx
 
-  const store = useWildflowerStore()
-  const serverState = store.useQuery(ServerState.queries.current$)
-  const tunnelState = store.useQuery(TunnelState.queries.current$)
-  const running = serverState.running
-  const localOrigin = serverState.localOrigin ?? LOCAL_ORIGIN
-  const publicOrigin =
-    tunnelState.currentSubdomain !== null && tunnelState.currentRootDomain !== null
-      ? `https://${tunnelState.currentSubdomain}.${tunnelState.currentRootDomain}`
-      : null
+  const { store, running, localOrigin, publicOrigin } = useShellOrigins()
 
   const router = useRouter()
-  const colorScheme = useColorScheme()
-  const palette = colorScheme === 'dark' ? Colors.dark : Colors.light
+  const palette = useThemeColors()
   const [activeTab, setActiveTab] = useState<TabKey>('apps')
   const [shellLive, setShellLive] = useState(false)
 
@@ -52,7 +40,7 @@ export default function HomeScreen(): JSX.Element {
     if (running) void SplashScreen.hideAsync()
   }, [running, shellLive])
 
-  const onRouteChanged = useCallback(
+  const handleRouteChanged = useCallback(
     ({ pathname }: { pathname: string; canGoBack: boolean }): void => {
       setActiveTab(tabForPath(pathname))
       setShellLive(true)
@@ -60,16 +48,22 @@ export default function HomeScreen(): JSX.Element {
     []
   )
 
-  const navigate = useCallback(
+  const navigateWebView = useCallback(
     (path: string): void => {
       const handle = shellRef.current
-      if (handle === null) return
+      if (handle === null) {
+        // Pressed before the WebView mounted — only happens if the tab
+        // bar somehow rendered before the shell, which the `!running`
+        // guard above should prevent. Log so we notice if it ever does.
+        console.warn('navigateWebView: shellRef is null, dropping navigation', { path })
+        return
+      }
       Effect.runFork(handle.sendMessage({ _tag: 'HostRequestedWebNavigation', path }))
     },
     [shellRef]
   )
 
-  const onRequestSniffableWebView = useCallback(
+  const handleRequestSniffableWebView = useCallback(
     (
       source: Parameters<
         NonNullable<React.ComponentProps<typeof AppShellWebView>['onRequestSniffableWebView']>
@@ -81,19 +75,23 @@ export default function HomeScreen(): JSX.Element {
     [router, setPendingSource]
   )
 
-  const onRequestTunnel = useCallback((): void => {
+  const handleRequestTunnel = useCallback((): void => {
     const handle = shellRef.current
-    void commitAndAwaitTunnel(store, true, localOrigin).then(
-      (grantedOrigin) => {
-        if (handle === null) return
-        Effect.runFork(handle.sendMessage({ _tag: 'TunnelStarted', origin: grantedOrigin }))
-      },
-      (cause: unknown) => {
-        if (handle === null) return
-        Effect.runFork(handle.sendMessage({ _tag: 'TunnelFailed', reason: String(cause) }))
-      }
+    Effect.runFork(
+      commitAndAwaitTunnel(store, true).pipe(
+        Effect.matchEffect({
+          onSuccess: (grantedOrigin) =>
+            handle === null || grantedOrigin === null
+              ? Effect.void
+              : handle.sendMessage({ _tag: 'TunnelStarted', origin: grantedOrigin }),
+          onFailure: (cause) =>
+            handle === null
+              ? Effect.void
+              : handle.sendMessage({ _tag: 'TunnelFailed', reason: String(cause) }),
+        })
+      )
     )
-  }, [localOrigin, shellRef, store])
+  }, [shellRef, store])
 
   if (!running) {
     // Splash is still up; return an empty placeholder so the tree mounts.
@@ -107,9 +105,9 @@ export default function HomeScreen(): JSX.Element {
           ref={shellRef}
           baseUrl={publicOrigin ?? localOrigin}
           route={TABS[0].path}
-          onRouteChanged={onRouteChanged}
-          onRequestSniffableWebView={onRequestSniffableWebView}
-          onRequestTunnel={onRequestTunnel}
+          onRouteChanged={handleRouteChanged}
+          onRequestSniffableWebView={handleRequestSniffableWebView}
+          onRequestTunnel={handleRequestTunnel}
         />
       </View>
       <View
@@ -125,7 +123,7 @@ export default function HomeScreen(): JSX.Element {
               key={tab.key}
               accessibilityRole="tab"
               accessibilityState={{ selected: isActive }}
-              onPress={() => navigate(tab.path)}
+              onPress={() => navigateWebView(tab.path)}
               style={styles.tabButton}
             >
               <ThemedText
@@ -145,13 +143,6 @@ export default function HomeScreen(): JSX.Element {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  fillCentered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.s5,
-    gap: Spacing.s3,
-  },
   webViewWrap: { flex: 1 },
   tabBar: {
     flexDirection: 'row',

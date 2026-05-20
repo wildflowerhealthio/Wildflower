@@ -8,11 +8,10 @@ import {
   type EffectMessagingWebViewHandle,
   type ExpoTransport,
 } from 'effect-messaging-expo'
-import { Colors, useColorScheme } from 'expo-tundraish'
+import { Loader } from 'expo-tundraish'
 import GatekeeperBridge from 'gatekeeper-core/bridge'
 import { NavigationBridge } from 'navigation-core'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, type JSX } from 'react'
-import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import { html } from 'wildflower-react/embeddable-html'
 
 type Bridges = readonly [
@@ -261,7 +260,7 @@ const InnerAppShellWebView = forwardRef<
   // bridge's typed dispatch processes it. Both paths run for every
   // message; consumers typically pair a raw forwarder for some tags
   // with no-op typed handlers for those same tags.
-  const onMessage = useCallback(
+  const handleMessage = useCallback(
     (event: Parameters<typeof transport.onMessage>[0]) => {
       if (onRawMessage !== undefined) onRawMessage(event.nativeEvent.data)
       return transport.onMessage(event)
@@ -273,36 +272,11 @@ const InnerAppShellWebView = forwardRef<
     <EffectMessagingWebView
       ref={webviewHandleRef}
       source={{ html, baseUrl: transport.embedUrl }}
-      onMessage={onMessage}
+      onMessage={handleMessage}
       loader={<Loader />}
     />
   )
 })
-
-const styles = StyleSheet.create({
-  loaderOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-})
-
-const Loader = (): JSX.Element => {
-  const colorScheme = useColorScheme()
-  const palette = colorScheme === 'dark' ? Colors.dark : Colors.light
-  return (
-    <View
-      style={[styles.loaderOverlay, { backgroundColor: palette.background }]}
-      pointerEvents="none"
-    >
-      <ActivityIndicator size="large" color={palette.icon} />
-    </View>
-  )
-}
 
 export { AppShellWebView }
 export type { AppShellWebViewHandle, AppShellWebViewProps, Bridges }

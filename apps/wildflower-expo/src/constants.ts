@@ -12,7 +12,7 @@ const PORT = 8080
  * `requestedRunning`, so a user who customizes the subdomain via the
  * settings UI keeps their override.
  */
-const TUNNEL_SUBDOMAIN = 'wildflower-expo-dev'
-const TUNNEL_ROOT_DOMAIN = 'loca.lt'
+const DEFAULT_TUNNEL_SUBDOMAIN = 'wildflower-expo-dev'
+const DEFAULT_TUNNEL_ROOT_DOMAIN = 'loca.lt'
 
-export { PORT, SERVICE_NAME, TUNNEL_ROOT_DOMAIN, TUNNEL_SUBDOMAIN }
+export { DEFAULT_TUNNEL_ROOT_DOMAIN, DEFAULT_TUNNEL_SUBDOMAIN, PORT, SERVICE_NAME }

@@ -36,12 +36,11 @@ describe('tabForPath', () => {
       const input = `${tab.path}${sibling}`
       // Either the input maps to a *different* tab (none of which
       // can match in this construction) or falls back to TABS[0].
-      // The invariant under test is just: NOT this tab — unless
-      // it's the fallback tab, in which case it'd be `TABS[0]`
-      // via the fallback path anyway.
+      // When `tab` IS the fallback tab, "not this tab" and "is the
+      // fallback" collapse to the same value — assert against the
+      // fallback directly so the case still exercises a property.
       if (tab.key === TABS[0].key) {
-        // Fallback collapses; can't distinguish "no match → TABS[0]"
-        // from "this tab → TABS[0]". Skip the assertion.
+        expect(tabForPath(input)).toBe(TABS[0].key)
         return
       }
       expect(tabForPath(input)).not.toBe(tab.key)

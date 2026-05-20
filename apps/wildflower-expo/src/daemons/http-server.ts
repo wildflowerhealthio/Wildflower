@@ -125,24 +125,29 @@ const httpServerDaemon = (): Effect.Effect<void, never, Scope.Scope | Wildflower
     ): Stream.Stream<void, never, Scope.Scope> =>
       Stream.unwrapScoped(
         Effect.gen(function* () {
+          // Mirror `apps/wildflower-node`: union all deps into a single
+          // `Layer.mergeAll` and provide it once. `ExpoContext.layer`
+          // bundles `FileSystem` + `Path` + `HttpPlatform` + `Etag.Generator`.
+          const ServerDeps = Layer.mergeAll(
+            // Slice store projections.
+            EmrStore.layerFrom(store),
+            AppsStore.layerFrom(store),
+            CollectorStore.layerFrom(store),
+            gatekeeperStoreLayer,
+            tunnelStoreLayer,
+            localHttpServerStoreLayer,
+            // Cross-cutting platform services.
+            CryptoRandomLive,
+            // HTTP transport + static-asset peers.
+            ExpoHttpServer.layer({ port }),
+            ExpoContext.layer,
+            Layer.succeed(WebAssetsDir, webAssetsDir),
+            Layer.succeed(Origin, LOCAL_ORIGIN),
+            TelemetryLive
+          )
           const FullServerLive = WildflowerServerLive.pipe(
             HttpServer.withLogAddress,
-            // Slice store projections.
-            Layer.provide(EmrStore.layerFrom(store)),
-            Layer.provide(AppsStore.layerFrom(store)),
-            Layer.provide(CollectorStore.layerFrom(store)),
-            Layer.provide(gatekeeperStoreLayer),
-            Layer.provide(tunnelStoreLayer),
-            Layer.provide(localHttpServerStoreLayer),
-            // Cross-cutting platform services.
-            Layer.provide(CryptoRandomLive),
-            // HTTP transport + static-asset peers. `ExpoContext.layer`
-            // bundles `FileSystem` + `Path` + `HttpPlatform` + `Etag.Generator`.
-            Layer.provide(ExpoHttpServer.layer({ port })),
-            Layer.provide(ExpoContext.layer),
-            Layer.provide(Layer.succeed(WebAssetsDir, webAssetsDir)),
-            Layer.provide(Layer.succeed(Origin, LOCAL_ORIGIN)),
-            Layer.provide(TelemetryLive),
+            Layer.provide(ServerDeps),
             Layer.tapErrorCause((cause) =>
               Effect.logError('[wildflower-expo] FullServerLive cause:\n' + Cause.pretty(cause))
             )

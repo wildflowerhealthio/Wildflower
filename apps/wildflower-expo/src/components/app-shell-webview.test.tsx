@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native'
+import { act, render } from '@testing-library/react-native'
 import type { Effect as EffectType, Layer as LayerType } from 'effect'
 import * as React from 'react'
 import type { ReactElement } from 'react'
@@ -133,23 +133,25 @@ describe('AppShellWebView', () => {
   })
 
   it('issues AuthTokenIssued through transport.sendMessage after mount', async () => {
-    render(
-      <AppShellWebView
-        baseUrl="https://example.test"
-        route="/apps"
-        token="bearer-xyz"
-        onRequestTunnel={() => {}}
-      />
-    )
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await act(async () => {
+      render(
+        <AppShellWebView
+          baseUrl="https://example.test"
+          route="/apps"
+          token="bearer-xyz"
+          onRequestTunnel={() => {}}
+        />
+      )
+    })
     expect(mockSendMessageCalls).toContainEqual({ _tag: 'AuthTokenIssued', token: 'bearer-xyz' })
   })
 
   it('does not call sendMessage with AuthTokenIssued when no token is provided', async () => {
-    render(
-      <AppShellWebView baseUrl="https://example.test" route="/apps" onRequestTunnel={() => {}} />
-    )
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await act(async () => {
+      render(
+        <AppShellWebView baseUrl="https://example.test" route="/apps" onRequestTunnel={() => {}} />
+      )
+    })
     const authCalls = mockSendMessageCalls.filter((m) => m._tag === 'AuthTokenIssued')
     expect(authCalls).toEqual([])
   })
