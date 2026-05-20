@@ -1,4 +1,4 @@
-export { collectorAuthorizedRoutesFragment } from './routes.tsx'
+export { collectorAuthenticatedRoutesFragment } from './routes.tsx'
 
 export {
   CollectorClientLayerContext,

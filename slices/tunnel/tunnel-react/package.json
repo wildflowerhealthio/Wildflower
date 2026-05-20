@@ -2,7 +2,7 @@
   "name": "tunnel-react",
   "version": "0.0.0",
   "private": true,
-  "description": "React adapter for tunnel-core: client provider/context, useTunnel* hooks, TunnelToggle, TunnelScreen, and tunnelAuthorizedRoutesFragment.",
+  "description": "React adapter for tunnel-core: client provider/context, useTunnel* hooks, TunnelToggle, TunnelScreen, and the tunnelSettings* fragments consumed by `apps/wildflower-react`.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -42,6 +42,7 @@
     "react-kitchen-sink": "workspace:*",
     "react-router": "catalog:",
     "react-tundraish": "workspace:*",
+    "shared-structures-react": "workspace:*",
     "telemetry-react": "workspace:*",
     "tunnel-core": "workspace:*",
     "typescript": "catalog:",
@@ -55,6 +56,7 @@
     "react-kitchen-sink": "workspace:*",
     "react-router": "catalog:",
     "react-tundraish": "workspace:*",
+    "shared-structures-react": "workspace:*",
     "telemetry-react": "workspace:*",
     "tunnel-core": "workspace:*"
   }

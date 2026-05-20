@@ -1,12 +1,14 @@
 import { appsAuthorizedRoutesFragment } from 'apps-react'
-import { collectorAuthorizedRoutesFragment } from 'collector-react'
+import { collectorAuthenticatedRoutesFragment } from 'collector-react'
 import {
-  gatekeeperAuthorizedRoutesFragment,
-  gatekeeperPublicRoutesFragment,
+  gatekeeperAuthenticatedRoutesFragment,
+  gatekeeperOpenRoutesFragment,
+  gatekeeperSettingsRoutesFragment,
 } from 'gatekeeper-react'
 import type { JSX } from 'react'
 import { Route } from 'react-router'
-import { tunnelAuthorizedRoutesFragment } from 'tunnel-react'
+import { tunnelSettingsRoutesFragment } from 'tunnel-react'
+import { SettingsScreen } from './screens/settings-screen.tsx'
 import { AuthorizedAppShell } from './session/authorized-app-shell.tsx'
 
 // Exported as JSX.Element (not a component): React Router's <Routes>
@@ -19,14 +21,22 @@ import { AuthorizedAppShell } from './session/authorized-app-shell.tsx'
 // slice client providers — each slice's layer reads the token from
 // `BearerToken` per request, so a single tokenless provider mounted at
 // the app root suffices.
+//
+// Settings surface (issue #47): each participating slice exports a
+// `*SettingsRoutesFragment` (paths under `/settings/<slice>/…`) and a
+// `*SettingsItemsFragment` (menu entries). This file mounts the route
+// fragments as siblings alongside `<SettingsScreen />` at `/settings`;
+// the screen itself concatenates the items fragments.
 const appRoutesFragment: JSX.Element = (
   <>
-    {gatekeeperPublicRoutesFragment}
+    {gatekeeperOpenRoutesFragment}
     <Route element={<AuthorizedAppShell />}>
-      {gatekeeperAuthorizedRoutesFragment}
-      {collectorAuthorizedRoutesFragment}
+      {gatekeeperAuthenticatedRoutesFragment}
       {appsAuthorizedRoutesFragment}
-      {tunnelAuthorizedRoutesFragment}
+      {collectorAuthenticatedRoutesFragment}
+      <Route path="/settings" element={<SettingsScreen />} />
+      {tunnelSettingsRoutesFragment}
+      {gatekeeperSettingsRoutesFragment}
     </Route>
   </>
 )

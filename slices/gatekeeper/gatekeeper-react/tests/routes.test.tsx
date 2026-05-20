@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { GatekeeperPaths } from 'gatekeeper-core/page-paths'
 import { describe, expect, test } from 'vite-plus/test'
-import { GatekeeperPaths } from '../../gatekeeper-core/src/page-paths.ts'
 
 // Read source as text rather than importing — importing pulls in every screen's
 // transitive deps which fail to resolve under vitest without a rebuilt workspace dist.
@@ -12,10 +12,11 @@ const routesSource = readFileSync(
 )
 
 // Captures each fragment's contents as `block`; iterate matches to split into
-// public/authorized buckets. The drift test below cares which bucket a path
-// lands in — public routes don't need a bearer; authorized ones do — so a
-// path migrating between fragments without a corresponding intent change is
-// a regression worth catching.
+// open/authenticated/settings buckets. The drift test below cares which bucket
+// a path lands in — open routes don't need a bearer; authenticated routes do
+// and are externally published; settings routes are owner-facing landings —
+// so a path migrating between fragments without a corresponding intent change
+// is a regression worth catching.
 const declareFragmentPaths = (fragmentName: string): readonly string[] => {
   const fragmentRegex = new RegExp(`const\\s+${fragmentName}[^=]*=\\s*\\(([\\s\\S]*?)^\\)`, 'm')
   const fragmentMatch = fragmentRegex.exec(routesSource)
@@ -32,9 +33,10 @@ const declareFragmentPaths = (fragmentName: string): readonly string[] => {
   return paths
 }
 
-const publicRoutePaths = declareFragmentPaths('gatekeeperPublicRoutesFragment')
-const authorizedRoutePaths = declareFragmentPaths('gatekeeperAuthorizedRoutesFragment')
-const allDeclaredRoutePaths = [...publicRoutePaths, ...authorizedRoutePaths]
+const openRoutePaths = declareFragmentPaths('gatekeeperOpenRoutesFragment')
+const authenticatedRoutePaths = declareFragmentPaths('gatekeeperAuthenticatedRoutesFragment')
+const settingsRoutePaths = declareFragmentPaths('gatekeeperSettingsRoutesFragment')
+const externalRoutePaths = [...openRoutePaths, ...authenticatedRoutePaths]
 
 describe('GatekeeperPaths ↔ <Route path> drift', () => {
   // One-direction drift only: owner-nav routes are intentionally absent from `GatekeeperPaths`.
@@ -48,7 +50,7 @@ describe('GatekeeperPaths ↔ <Route path> drift', () => {
     ]
 
     for (const expected of expectedPaths) {
-      expect(allDeclaredRoutePaths).toContain(expected)
+      expect(externalRoutePaths).toContain(expected)
     }
   })
 
@@ -56,17 +58,44 @@ describe('GatekeeperPaths ↔ <Route path> drift', () => {
   // a bearer (the polling endpoint is unauth; device-entry is the page where
   // an owner types a code from another device). oauth-consent and
   // device-consent require the owner to already be authenticated.
-  test('oauth-polling and device-entry are in the public fragment', () => {
-    expect(publicRoutePaths).toContain(decodeURIComponent(GatekeeperPaths.oauthPollingPath(':id')))
-    expect(publicRoutePaths).toContain(decodeURIComponent(GatekeeperPaths.deviceEntryPath()))
+  test('oauth-polling and device-entry are in the open fragment', () => {
+    expect(openRoutePaths).toContain(decodeURIComponent(GatekeeperPaths.oauthPollingPath(':id')))
+    expect(openRoutePaths).toContain(decodeURIComponent(GatekeeperPaths.deviceEntryPath()))
   })
 
-  test('oauth-consent and device-consent are in the authorized fragment', () => {
-    expect(authorizedRoutePaths).toContain(
+  test('oauth-consent and device-consent are in the authenticated fragment', () => {
+    expect(authenticatedRoutePaths).toContain(
       decodeURIComponent(GatekeeperPaths.oauthConsentPath(':id'))
     )
-    expect(authorizedRoutePaths).toContain(
+    expect(authenticatedRoutePaths).toContain(
       decodeURIComponent(GatekeeperPaths.deviceConsentPath(':userCode'))
     )
+  })
+
+  // GatekeeperPaths only models externally-published URLs. Owner-facing
+  // settings landings (`/settings/gatekeeper/*`) must not appear there — if a
+  // landing started being externally linked, this would catch it.
+  test('settings landings are NOT in the open or authenticated fragments', () => {
+    for (const settingsPath of settingsRoutePaths) {
+      expect(externalRoutePaths).not.toContain(settingsPath)
+    }
+  })
+})
+
+describe('gatekeeperSettingsRoutesFragment', () => {
+  test('declares the four owner-facing landing routes', () => {
+    expect(settingsRoutePaths).toContain('/settings/gatekeeper')
+    expect(settingsRoutePaths).toContain('/settings/gatekeeper/requests')
+    expect(settingsRoutePaths).toContain('/settings/gatekeeper/requests/:id')
+    expect(settingsRoutePaths).toContain('/settings/gatekeeper/approved/:id')
+  })
+
+  test('every settings path is under /settings/gatekeeper/', () => {
+    // The clean-rename decision means no `/gatekeeper/*` aliases survive
+    // inside the settings fragment; if one did, an unintentional duplicate
+    // would slip in alongside the externally-published path.
+    for (const path of settingsRoutePaths) {
+      expect(path === '/settings/gatekeeper' || path.startsWith('/settings/gatekeeper/')).toBe(true)
+    }
   })
 })

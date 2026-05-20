@@ -44,6 +44,7 @@
     "react-kitchen-sink": "workspace:*",
     "react-router": "catalog:",
     "react-tundraish": "workspace:*",
+    "shared-structures-react": "workspace:*",
     "telemetry-react": "workspace:*",
     "telemetry-web": "workspace:*",
     "tundra-css": "catalog:",
@@ -52,9 +53,12 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.3.0",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "^5.0.4",
+    "jsdom": "catalog:",
     "typescript": "catalog:",
     "vite-plugin-singlefile": "^2.3.3",
     "vite-plus": "catalog:"

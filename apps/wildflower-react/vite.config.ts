@@ -7,6 +7,7 @@ import baseConfig from './vite.config.base.ts'
 export default defineConfig({
   ...baseConfig,
   test: {
+    environment: 'jsdom',
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
     exclude: ['**/node_modules/**', '**/dist*/**'],
   },

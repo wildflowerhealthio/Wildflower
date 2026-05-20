@@ -94,7 +94,7 @@ const AccountListScreen = (): JSX.Element => {
                 </span>
               ),
               onClick: () => {
-                void navigate(`/collector/account?accountId=${encodeURIComponent(remote.id)}`)
+                void navigate(`/collector/account/${encodeURIComponent(remote.id)}`)
               },
               actions: (
                 <Menu
@@ -105,9 +105,7 @@ const AccountListScreen = (): JSX.Element => {
                         id: 'edit',
                         label: 'Edit',
                         onSelect: () => {
-                          void navigate(
-                            `/collector/account?accountId=${encodeURIComponent(remote.id)}`
-                          )
+                          void navigate(`/collector/account/${encodeURIComponent(remote.id)}`)
                         },
                       },
                       {
@@ -143,7 +141,7 @@ const AccountListScreen = (): JSX.Element => {
             subtitle: defaultConfig.rootUrl,
             onClick: () => {
               void navigate(
-                `/collector/account?prefillName=${encodeURIComponent('Demo FHIR Server')}&prefillRootUrl=${encodeURIComponent(defaultConfig.rootUrl)}&prefillPatientId=${encodeURIComponent(defaultConfig.patientId)}`
+                `/collector/account/new?prefillName=${encodeURIComponent('Demo FHIR Server')}&prefillRootUrl=${encodeURIComponent(defaultConfig.rootUrl)}&prefillPatientId=${encodeURIComponent(defaultConfig.patientId)}`
               )
             },
           },

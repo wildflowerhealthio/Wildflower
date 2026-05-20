@@ -34,7 +34,7 @@ const OAuthConsentScreen = (): JSX.Element => {
             runGatekeeper={runGatekeeper}
             consent={consent}
             onDone={() => {
-              void navigate('/gatekeeper', { replace: true })
+              void navigate('/settings/gatekeeper')
             }}
           />
         )}
