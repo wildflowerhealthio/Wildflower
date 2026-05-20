@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { GatekeeperPaths } from 'gatekeeper-core/page-paths'
 import { describe, expect, test } from 'vite-plus/test'
-import { GatekeeperPaths } from '../../gatekeeper-core/src/page-paths.ts'
 
 // Read source as text rather than importing — importing pulls in every screen's
 // transitive deps which fail to resolve under vitest without a rebuilt workspace dist.
