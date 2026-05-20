@@ -50,7 +50,7 @@ const DeviceConsentScreen = (): JSX.Element => {
             runGatekeeper={runGatekeeper}
             consent={consent}
             onDone={() => {
-              void navigate('/settings/gatekeeper', { replace: true })
+              void navigate('/settings/gatekeeper')
             }}
           />
         )}

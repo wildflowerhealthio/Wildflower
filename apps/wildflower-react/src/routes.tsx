@@ -1,8 +1,8 @@
 import { appsAuthorizedRoutesFragment } from 'apps-react'
-import { collectorSettingsRoutesFragment } from 'collector-react'
+import { collectorAuthenticatedRoutesFragment } from 'collector-react'
 import {
-  gatekeeperAuthorizedRoutesFragment,
-  gatekeeperPublicRoutesFragment,
+  gatekeeperAuthenticatedRoutesFragment,
+  gatekeeperOpenRoutesFragment,
   gatekeeperSettingsRoutesFragment,
 } from 'gatekeeper-react'
 import type { JSX } from 'react'
@@ -29,13 +29,13 @@ import { AuthorizedAppShell } from './session/authorized-app-shell.tsx'
 // the screen itself concatenates the items fragments.
 const appRoutesFragment: JSX.Element = (
   <>
-    {gatekeeperPublicRoutesFragment}
+    {gatekeeperOpenRoutesFragment}
     <Route element={<AuthorizedAppShell />}>
-      {gatekeeperAuthorizedRoutesFragment}
+      {gatekeeperAuthenticatedRoutesFragment}
       {appsAuthorizedRoutesFragment}
+      {collectorAuthenticatedRoutesFragment}
       <Route path="/settings" element={<SettingsScreen />} />
       {tunnelSettingsRoutesFragment}
-      {collectorSettingsRoutesFragment}
       {gatekeeperSettingsRoutesFragment}
     </Route>
   </>

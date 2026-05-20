@@ -1,4 +1,3 @@
-import { collectorSettingsItemsFragment } from 'collector-react'
 import { gatekeeperSettingsItemsFragment } from 'gatekeeper-react'
 import type { JSX } from 'react'
 import { ItemList, pageLayoutStyles } from 'react-tundraish'
@@ -12,7 +11,6 @@ import { tunnelSettingsItemsFragment } from 'tunnel-react'
  */
 const settingsItems: readonly SettingsItem[] = [
   ...tunnelSettingsItemsFragment,
-  ...collectorSettingsItemsFragment,
   ...gatekeeperSettingsItemsFragment,
 ]
 

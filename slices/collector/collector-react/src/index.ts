@@ -1,5 +1,4 @@
-export { collectorSettingsRoutesFragment } from './routes.tsx'
-export { collectorSettingsItemsFragment } from './settings-fragments.ts'
+export { collectorAuthenticatedRoutesFragment } from './routes.tsx'
 
 export {
   CollectorClientLayerContext,

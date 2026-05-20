@@ -17,7 +17,7 @@ const gatekeeperSettingsItemsFragment: readonly SettingsItem[] = [
   {
     id: 'gatekeeper',
     title: 'Access',
-    subtitle: 'Manage app grants and approved devices',
+    subtitle: 'Manage apps and devices access to your data',
     href: '/settings/gatekeeper',
   },
 ]

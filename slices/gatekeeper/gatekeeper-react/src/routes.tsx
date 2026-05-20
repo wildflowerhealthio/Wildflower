@@ -18,20 +18,20 @@ import { RequestsListScreen } from './screens/requests-list.tsx'
 // <Route>.
 //
 // Three fragments, three intents:
-//   - Public flow routes: no bearer (OAuth device-polling + the
+//   - Open routes: no bearer required (OAuth device-polling + the
 //     unauthed device-entry form). Paths are externally published via
 //     `GatekeeperPaths` and so MUST stay at `/gatekeeper/*`.
-//   - Authorized flow routes: require a bearer and are deep-linked from
+//   - Authenticated routes: require a bearer and are deep-linked from
 //     the OAuth / RFC 8628 device flow (`oauth-consent/:id`,
 //     `devices/:userCode`). Their paths are also externally published
 //     and MUST stay at `/gatekeeper/*`.
-//   - Authorized settings routes: owner-facing landings for managing
-//     access (index, request list/detail, approved-app detail). These
-//     live under `/settings/gatekeeper/*` alongside the other slices'
+//   - Settings routes: owner-facing landings for managing access
+//     (index, request list/detail, approved-app detail). These live
+//     under `/settings/gatekeeper/*` alongside the other slices'
 //     `*SettingsRoutesFragment`s.
 
-/** Public flow routes — no bearer token required. */
-const gatekeeperPublicRoutesFragment: JSX.Element = (
+/** Open routes — no bearer token required. */
+const gatekeeperOpenRoutesFragment: JSX.Element = (
   <>
     <Route path="/gatekeeper/oauth-polling/:id" element={<OAuthPollingScreen />} />
     <Route path="/gatekeeper/devices" element={<DeviceEntryScreen />} />
@@ -39,12 +39,12 @@ const gatekeeperPublicRoutesFragment: JSX.Element = (
 )
 
 /**
- * Authorized flow routes — require a bearer token. Deep-linked from
- * the OAuth + RFC 8628 device flows; the paths are published via
+ * Authenticated routes — require a bearer token. Deep-linked from the
+ * OAuth + RFC 8628 device flows; the paths are published via
  * `GatekeeperPaths` so external clients can target them and must not
  * move.
  */
-const gatekeeperAuthorizedRoutesFragment: JSX.Element = (
+const gatekeeperAuthenticatedRoutesFragment: JSX.Element = (
   <>
     <Route path="/gatekeeper/oauth-consent/:id" element={<OAuthConsentScreen />} />
     <Route path="/gatekeeper/devices/:userCode" element={<DeviceConsentScreen />} />
@@ -68,7 +68,7 @@ const gatekeeperSettingsRoutesFragment: JSX.Element = (
 )
 
 export {
-  gatekeeperPublicRoutesFragment,
-  gatekeeperAuthorizedRoutesFragment,
+  gatekeeperOpenRoutesFragment,
+  gatekeeperAuthenticatedRoutesFragment,
   gatekeeperSettingsRoutesFragment,
 }

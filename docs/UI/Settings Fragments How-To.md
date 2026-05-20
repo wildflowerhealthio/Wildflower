@@ -61,7 +61,7 @@ In `apps/wildflower-react/src/routes.tsx`:
 ```tsx
 import { exampleSettingsRoutesFragment } from 'example-react'
 // …
-<Route element={<AuthorizedAppShell />}>
+;<Route element={<AuthorizedAppShell />}>
   {/* … other fragments … */}
   <Route path="/settings" element={<SettingsScreen />} />
   {exampleSettingsRoutesFragment}
@@ -102,7 +102,7 @@ If the slice was at `/<slice>` before, the move is a **clean rename** — no red
 
 ## Variations
 
-- **Slice has externally-published URLs** (OAuth callbacks, redirect targets, RFC 8628 device flows): keep those routes at their original prefix. Only the owner-facing landings should move. Gatekeeper is the canonical example — it carries three fragments: `gatekeeperPublicRoutesFragment` (unauth flow), `gatekeeperAuthorizedRoutesFragment` (authed flow with externally-published URLs), and `gatekeeperSettingsRoutesFragment` (owner landings under `/settings/gatekeeper/`).
+- **Slice has externally-published URLs** (OAuth callbacks, redirect targets, RFC 8628 device flows): keep those routes at their original prefix. Only the owner-facing landings should move. Gatekeeper is the canonical example — it carries three fragments: `gatekeeperOpenRoutesFragment` (no auth required), `gatekeeperAuthenticatedRoutesFragment` (authed routes with externally-published URLs), and `gatekeeperSettingsRoutesFragment` (owner landings under `/settings/gatekeeper/`).
 - **Slice has multiple top-level items**: nothing forbids it. `<name>SettingsItemsFragment` is a `readonly SettingsItem[]`; declare as many entries as you need. Each should link into the slice's settings routes.
 - **Slice has no `*-react` package today**: the pattern is `-react`-scoped. Add a `-react` package first, then opt in.
 

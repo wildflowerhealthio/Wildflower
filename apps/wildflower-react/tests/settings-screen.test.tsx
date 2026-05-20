@@ -19,15 +19,16 @@ describe('SettingsScreen', () => {
     expect(headings.length).toBeGreaterThanOrEqual(1)
   })
 
-  test('aggregates one row per participating slice (tunnel, collector, gatekeeper)', () => {
+  test('aggregates one row per participating slice (tunnel, gatekeeper)', () => {
     renderSettingsScreen()
-    // Each slice contributes exactly one top-level menu item via its
-    // `*SettingsItemsFragment`. Use getAllByText because the test
+    // Each participating slice contributes exactly one top-level menu
+    // item via its `*SettingsItemsFragment`. Collector is intentionally
+    // not a settings item — it's top-level functionality at /collector,
+    // not a settings concern. Use getAllByText because the test
     // environment may render the tree more than once (React StrictMode
     // double-invocation under jsdom), which doesn't reflect a real
     // duplication in the screen output.
     expect(screen.getAllByText('Tunnel').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('Collector').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('Access').length).toBeGreaterThanOrEqual(1)
   })
 
@@ -37,7 +38,7 @@ describe('SettingsScreen', () => {
     // links per the `<ItemList>` contract for href-bearing items. The
     // app's invariant is that every settings URL lives under /settings.
     const links = screen.getAllByRole('link')
-    expect(links.length).toBeGreaterThanOrEqual(3)
+    expect(links.length).toBeGreaterThanOrEqual(2)
     for (const link of links) {
       const href = link.getAttribute('href') ?? ''
       expect(href.startsWith('/settings/')).toBe(true)
@@ -52,7 +53,6 @@ describe('SettingsScreen', () => {
     const links = screen.getAllByRole('link')
     const hrefs = new Set(links.map((l) => l.getAttribute('href') ?? ''))
     expect(hrefs.has('/settings/tunnel')).toBe(true)
-    expect(hrefs.has('/settings/collector')).toBe(true)
     expect(hrefs.has('/settings/gatekeeper')).toBe(true)
   })
 })

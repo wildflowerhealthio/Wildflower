@@ -12,8 +12,8 @@ const routesSource = readFileSync(
 )
 
 // Captures each fragment's contents as `block`; iterate matches to split into
-// public/authorized/settings buckets. The drift test below cares which bucket a
-// path lands in — public routes don't need a bearer; authorized flow routes do
+// open/authenticated/settings buckets. The drift test below cares which bucket
+// a path lands in — open routes don't need a bearer; authenticated routes do
 // and are externally published; settings routes are owner-facing landings —
 // so a path migrating between fragments without a corresponding intent change
 // is a regression worth catching.
@@ -33,10 +33,10 @@ const declareFragmentPaths = (fragmentName: string): readonly string[] => {
   return paths
 }
 
-const publicRoutePaths = declareFragmentPaths('gatekeeperPublicRoutesFragment')
-const authorizedRoutePaths = declareFragmentPaths('gatekeeperAuthorizedRoutesFragment')
+const openRoutePaths = declareFragmentPaths('gatekeeperOpenRoutesFragment')
+const authenticatedRoutePaths = declareFragmentPaths('gatekeeperAuthenticatedRoutesFragment')
 const settingsRoutePaths = declareFragmentPaths('gatekeeperSettingsRoutesFragment')
-const flowRoutePaths = [...publicRoutePaths, ...authorizedRoutePaths]
+const externalRoutePaths = [...openRoutePaths, ...authenticatedRoutePaths]
 
 describe('GatekeeperPaths ↔ <Route path> drift', () => {
   // One-direction drift only: owner-nav routes are intentionally absent from `GatekeeperPaths`.
@@ -50,7 +50,7 @@ describe('GatekeeperPaths ↔ <Route path> drift', () => {
     ]
 
     for (const expected of expectedPaths) {
-      expect(flowRoutePaths).toContain(expected)
+      expect(externalRoutePaths).toContain(expected)
     }
   })
 
@@ -58,26 +58,26 @@ describe('GatekeeperPaths ↔ <Route path> drift', () => {
   // a bearer (the polling endpoint is unauth; device-entry is the page where
   // an owner types a code from another device). oauth-consent and
   // device-consent require the owner to already be authenticated.
-  test('oauth-polling and device-entry are in the public fragment', () => {
-    expect(publicRoutePaths).toContain(decodeURIComponent(GatekeeperPaths.oauthPollingPath(':id')))
-    expect(publicRoutePaths).toContain(decodeURIComponent(GatekeeperPaths.deviceEntryPath()))
+  test('oauth-polling and device-entry are in the open fragment', () => {
+    expect(openRoutePaths).toContain(decodeURIComponent(GatekeeperPaths.oauthPollingPath(':id')))
+    expect(openRoutePaths).toContain(decodeURIComponent(GatekeeperPaths.deviceEntryPath()))
   })
 
-  test('oauth-consent and device-consent are in the authorized fragment', () => {
-    expect(authorizedRoutePaths).toContain(
+  test('oauth-consent and device-consent are in the authenticated fragment', () => {
+    expect(authenticatedRoutePaths).toContain(
       decodeURIComponent(GatekeeperPaths.oauthConsentPath(':id'))
     )
-    expect(authorizedRoutePaths).toContain(
+    expect(authenticatedRoutePaths).toContain(
       decodeURIComponent(GatekeeperPaths.deviceConsentPath(':userCode'))
     )
   })
 
-  // GatekeeperPaths only models externally-published flow URLs. Owner-facing
+  // GatekeeperPaths only models externally-published URLs. Owner-facing
   // settings landings (`/settings/gatekeeper/*`) must not appear there — if a
   // landing started being externally linked, this would catch it.
-  test('settings landings are NOT in the flow fragments', () => {
+  test('settings landings are NOT in the open or authenticated fragments', () => {
     for (const settingsPath of settingsRoutePaths) {
-      expect(flowRoutePaths).not.toContain(settingsPath)
+      expect(externalRoutePaths).not.toContain(settingsPath)
     }
   })
 })
@@ -93,7 +93,7 @@ describe('gatekeeperSettingsRoutesFragment', () => {
   test('every settings path is under /settings/gatekeeper/', () => {
     // The clean-rename decision means no `/gatekeeper/*` aliases survive
     // inside the settings fragment; if one did, an unintentional duplicate
-    // would slip in alongside the externally-published flow path.
+    // would slip in alongside the externally-published path.
     for (const path of settingsRoutePaths) {
       expect(path === '/settings/gatekeeper' || path.startsWith('/settings/gatekeeper/')).toBe(true)
     }
