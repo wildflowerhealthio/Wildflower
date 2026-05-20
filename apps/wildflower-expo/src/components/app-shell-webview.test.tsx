@@ -133,25 +133,27 @@ describe('AppShellWebView', () => {
   })
 
   it('issues AuthTokenIssued through transport.sendMessage after mount', async () => {
-    await act(async () => {
-      render(
-        <AppShellWebView
-          baseUrl="https://example.test"
-          route="/apps"
-          token="bearer-xyz"
-          onRequestTunnel={() => {}}
-        />
-      )
-    })
+    render(
+      <AppShellWebView
+        baseUrl="https://example.test"
+        route="/apps"
+        token="bearer-xyz"
+        onRequestTunnel={() => {}}
+      />
+    )
+    // `render` itself wraps the initial render in act, but the
+    // `useEffect` that dispatches `AuthTokenIssued` schedules its
+    // effect callback in the *next* microtask. Empty-bodied `act`
+    // flushes that pending update without re-entering rendering.
+    await act(async () => {})
     expect(mockSendMessageCalls).toContainEqual({ _tag: 'AuthTokenIssued', token: 'bearer-xyz' })
   })
 
   it('does not call sendMessage with AuthTokenIssued when no token is provided', async () => {
-    await act(async () => {
-      render(
-        <AppShellWebView baseUrl="https://example.test" route="/apps" onRequestTunnel={() => {}} />
-      )
-    })
+    render(
+      <AppShellWebView baseUrl="https://example.test" route="/apps" onRequestTunnel={() => {}} />
+    )
+    await act(async () => {})
     const authCalls = mockSendMessageCalls.filter((m) => m._tag === 'AuthTokenIssued')
     expect(authCalls).toEqual([])
   })

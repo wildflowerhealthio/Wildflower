@@ -10,7 +10,9 @@ import {
 } from 'effect-messaging-expo'
 import { Loader } from 'expo-tundraish'
 import GatekeeperBridge from 'gatekeeper-core/bridge'
+import { GatekeeperBridgeExpo } from 'gatekeeper-expo'
 import { NavigationBridge } from 'navigation-core'
+import { NavigationBridgeExpo } from 'navigation-expo'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, type JSX } from 'react'
 import { html } from 'wildflower-react/embeddable-html'
 
@@ -127,16 +129,8 @@ const AppShellWebView = forwardRef<AppShellWebViewHandle, AppShellWebViewProps>(
         bridges={[NavigationBridge, GatekeeperBridge, CollectorBridge, AppsBridge] as const}
         layers={
           [
-            NavigationBridge.Host.ReceiverLayer({
-              RouteChanged: ({ pathname, canGoBack }) =>
-                Effect.sync(() => {
-                  onRouteChanged?.({ pathname, canGoBack })
-                }),
-              Log(message) {
-                return Effect.log(message.log)
-              },
-            }),
-            GatekeeperBridge.Host.ReceiverLayer({}),
+            NavigationBridgeExpo.ReceiverLayer(onRouteChanged),
+            GatekeeperBridgeExpo.ReceiverLayer(),
             CollectorBridge.Host.ReceiverLayer({
               RequestSniffableWebView: ({ source }) =>
                 Effect.gen(function* () {

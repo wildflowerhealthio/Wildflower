@@ -1,13 +1,13 @@
 {
-  "name": "gatekeeper-expo",
+  "name": "navigation-expo",
   "version": "0.0.0",
   "private": true,
-  "description": "Expo hooks for gatekeeper integration — notification taps that route into the embedded SPA's consent flow.",
+  "description": "Expo host-side navigation helpers: builds the NavigationBridge host ReceiverLayer for a React Native app shell.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/gatekeeper/gatekeeper-expo"
+    "directory": "slices/navigation/navigation-expo"
   },
   "files": [
     "dist"
@@ -31,31 +31,22 @@
     "@babel/core": "catalog:",
     "@babel/plugin-syntax-import-attributes": "catalog:",
     "@babel/runtime": "catalog:",
-    "@testing-library/react-native": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
-    "@types/react": "catalog:",
     "@typescript/native-preview": "catalog:",
     "babel-preset-expo": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "expect-type": "catalog:",
-    "expo": "catalog:",
-    "expo-notifications": "catalog:",
-    "gatekeeper-core": "workspace:*",
     "jest": "catalog:",
     "jest-expo": "catalog:",
-    "react": "catalog:",
-    "react-native": "catalog:",
+    "navigation-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
-    "expo-notifications": ">=0.32.0",
-    "gatekeeper-core": "workspace:*",
-    "react": "catalog:",
-    "react-native": "catalog:"
+    "navigation-core": "workspace:*"
   }
 }
