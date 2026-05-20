@@ -5,11 +5,7 @@ import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livest
 import { TunnelConfig, TunnelState, TunnelStore } from 'tunnel-core/livestore'
 
 import { AppsApi } from '../http-api-definition/index.ts'
-import {
-  awaitCurrentRunning,
-  type RunningTunnel,
-  type TunnelLaunchOutcome,
-} from '../internal/await-current-running.ts'
+import { awaitTunnelRunning, type RunningTunnel } from '../internal/await-tunnel-running.ts'
 import { AppSelection, AppsStore } from '../livestore/index.ts'
 import type { AppKind } from '../registry/app-item.ts'
 import { BUNDLED_APPS, FHIR_SHARING_ID, findBundled } from '../registry/index.ts'
@@ -57,16 +53,16 @@ const buildEntries = (selection: readonly AppSelection.AppSelectionRow[]): reado
 }
 
 /**
- * Compose the public tunnel origin from the daemon-owned
- * `currentSubdomain` + `currentRootDomain`. The daemon won't surface
- * those fields until it's bound, so the call site only invokes this
- * once `awaitCurrentRunning` has returned `kind: 'running'`. Returns
- * `null` if either field is missing — should be treated as "fall back
- * to local origin" by the caller.
+ * Public tunnel origin from `currentSubdomain` + `currentRootDomain`,
+ * or `null` if either is unbound. `rootDomain` is the empty string
+ * when the relay returns a single-label hostname (see
+ * `tunnel-expo/src/startTunnel.ts`'s `parseGrantedDomain`), so empty
+ * counts as unbound here too.
  */
 const tunnelOrigin = (state: RunningTunnel): string | null => {
-  if (state.currentSubdomain === null || state.currentRootDomain === null) return null
-  return `https://${state.currentSubdomain}.${state.currentRootDomain}`
+  const { currentSubdomain: sub, currentRootDomain: root } = state
+  if (sub === null || sub === '' || root === null || root === '') return null
+  return `https://${sub}.${root}`
 }
 
 /**
@@ -140,33 +136,26 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
         const localOrigin = localStore.query(ServerState.queries.current$).localOrigin
         const beforeTunnel = tunnelStore.query(TunnelState.queries.current$)
 
-        // Compute the origin we'll redirect through. If the app doesn't
-        // require a tunnel, pin to the local origin so launches keep
-        // working even when the relay is offline. If it does require
-        // one and the tunnel isn't already running, commit
-        // `requestedRunning: true` and suspend on `awaitCurrentRunning`
-        // — the daemon flips `TunnelState.running` once bound, or the
-        // 15s timeout fires and we fall back.
-        const origin = yield* (() => {
-          if (!launchContext.requiresTunnel) return Effect.succeed(localOrigin)
+        // Pick the origin: local if no tunnel needed or already running
+        // with a bound public name; otherwise commit `requestedRunning`
+        // and wait for the daemon to flip `TunnelState.running`. Timeout
+        // and unbound-state both fall back to the local origin.
+        let origin = localOrigin
+        if (launchContext.requiresTunnel) {
           if (beforeTunnel.running) {
-            const live = tunnelOrigin(beforeTunnel)
-            return Effect.succeed(live ?? localOrigin)
-          }
-          return Effect.gen(function* () {
-            yield* Effect.sync(() =>
-              tunnelStore.commit(TunnelConfig.events.tunnelConfigSet({ requestedRunning: true }))
-            )
-            const outcome: TunnelLaunchOutcome = yield* awaitCurrentRunning()
+            origin = tunnelOrigin(beforeTunnel) ?? localOrigin
+          } else {
+            tunnelStore.commit(TunnelConfig.events.tunnelConfigSet({ requestedRunning: true }))
+            const outcome = yield* awaitTunnelRunning()
             if (outcome.kind === 'timed-out') {
               yield* Effect.logWarning(
                 `[apps-core] tunnel did not start within deadline for ${path.id}; falling back to local origin`
               )
-              return localOrigin
+            } else {
+              origin = tunnelOrigin(outcome.state) ?? localOrigin
             }
-            return tunnelOrigin(outcome.state) ?? localOrigin
-          })
-        })()
+          }
+        }
 
         // Re-check after tunnel state settles: the row may have been
         // deleted or kind-changed mid-flight. Bundled apps have static
