@@ -3,6 +3,7 @@ import { defineSliceLivestore } from 'shared-structures-core/livestore'
 
 import * as AuthorizationCode from './authorization-code.ts'
 import * as AuthorizationRequest from './authorization-request.ts'
+import * as BootstrapToken from './bootstrap-token.ts'
 import * as Client from './client.ts'
 import * as Grant from './grant.ts'
 import * as HttpRequest from './http-request.ts'
@@ -11,6 +12,7 @@ import * as SigningKey from './signing-key.ts'
 const tables = {
   authorizationCode: AuthorizationCode.table,
   authorizationRequest: AuthorizationRequest.table,
+  bootstrapToken: BootstrapToken.table,
   client: Client.table,
   grant: Grant.table,
   httpRequest: HttpRequest.table,
@@ -20,6 +22,7 @@ const tables = {
 const events = {
   ...AuthorizationCode.events,
   ...AuthorizationRequest.events,
+  ...BootstrapToken.events,
   ...Client.events,
   ...Grant.events,
   ...HttpRequest.events,
@@ -29,6 +32,7 @@ const events = {
 const materializers = State.SQLite.materializers(events, {
   ...AuthorizationCode.materializers,
   ...AuthorizationRequest.materializers,
+  ...BootstrapToken.materializers,
   ...Client.materializers,
   ...Grant.materializers,
   ...HttpRequest.materializers,
@@ -49,6 +53,7 @@ class GatekeeperStore extends StoreTag<GatekeeperStore>() {
 export {
   AuthorizationCode,
   AuthorizationRequest,
+  BootstrapToken,
   Client,
   GatekeeperStore,
   Grant,

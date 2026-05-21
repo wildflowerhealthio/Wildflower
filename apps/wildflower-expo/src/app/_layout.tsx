@@ -5,7 +5,6 @@ import 'react-native-reanimated'
 import { type JSX } from 'react'
 import { Sentry } from 'telemetry-react-native'
 import AppLivestoreProvider from '../components/app-livestore-provider.tsx'
-import { WildflowerDaemons } from '../components/wildflower-daemons.tsx'
 
 /**
  * Root layout. The `index` screen owns the shell WebView; the
@@ -16,9 +15,9 @@ import { WildflowerDaemons } from '../components/wildflower-daemons.tsx'
  * shell's WebView never tears down mid-scrape.
  *
  * `AppLivestoreProvider` wraps the stack so any descendant can call
- * `useWildflowerStore()`. `<WildflowerDaemons />` is rendered as a
- * sibling (not a wrapper) — it spawns the on-device HTTP-server +
- * tunnel daemons at first mount and renders nothing. Consumers read
+ * `useWildflowerStore()`. It also launches the on-device HTTP-server
+ * + tunnel daemons under a single `Layer.launch` keyed on the store
+ * handle, with `Fiber.interrupt` cleanup on unmount. Consumers read
  * daemon state via `useQuery` against the livestore directly.
  *
  * `<CollectorBridgeExpo.HostProvider>` owns the collector slice's
@@ -29,7 +28,6 @@ import { WildflowerDaemons } from '../components/wildflower-daemons.tsx'
 const RootLayout = Sentry.wrap(function RootLayout(): JSX.Element {
   return (
     <AppLivestoreProvider>
-      <WildflowerDaemons />
       <CollectorBridgeExpo.HostProvider>
         <Stack>
           <Stack.Screen name="index" options={{ headerShown: false }} />
