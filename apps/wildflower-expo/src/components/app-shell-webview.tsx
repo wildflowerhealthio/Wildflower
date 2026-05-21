@@ -1,18 +1,14 @@
 import { AppsBridgeExpo } from 'apps-expo'
 import { CollectorBridgeExpo } from 'collector-expo'
-import { Effect, Layer } from 'effect'
-import { BareSender, type BareSenderService } from 'effect-messaging-core'
-import { EffectMessagingWebView, WithTransport, type ExpoTransport } from 'effect-messaging-expo'
-import { HostMessagingProvider } from 'effect-messaging-react'
+import type { AnyHostBinding } from 'effect-messaging-core'
+import { BridgedWebView } from 'effect-messaging-expo'
 import { Loader } from 'expo-tundraish'
 import { GatekeeperBridgeExpo } from 'gatekeeper-expo'
-import { useGatekeeperHostMessaging } from 'gatekeeper-react'
 import { NavigationBridgeExpo } from 'navigation-expo'
-import { useEffect, useMemo, useRef, type JSX, type ReactNode, type RefObject } from 'react'
+import { useMemo, type JSX, type ReactNode } from 'react'
 import { TunnelStore } from 'tunnel-core/livestore'
 import { html } from 'wildflower-react/embeddable-html'
 import { useWildflowerStore } from '../livestore/livestore-store.ts'
-import { bridges, type Bridges } from './app-shell-bridges.ts'
 
 interface AppShellWebViewProps {
   readonly baseUrl: string
@@ -27,7 +23,7 @@ interface AppShellWebViewProps {
   readonly onRouteChanged?: (event: { pathname: string; canGoBack: boolean }) => void
   /**
    * Subtree rendered as siblings of the WebView and inside the
-   * `<HostMessagingProvider>` this component mounts. Use for any
+   * `<HostMessagingProvider>` `BridgedWebView` mounts. Use for any
    * controls (tab bar, overlays) that need to call slice messaging
    * hooks like `useNavigationHostMessaging`.
    */
@@ -35,19 +31,29 @@ interface AppShellWebViewProps {
 }
 
 /**
- * The persistent shell that hosts the wildflower-react SPA. Owns the
- * `ExpoTransport` lifecycle (Navigation + Gatekeeper + Collector +
- * Apps bridges, layers, initial messages, scope) and wraps its WebView
- * and `children` in a `<HostMessagingProvider>` so descendants can call
- * slice messaging hooks (`useNavigationHostMessaging`, etc.).
+ * The persistent shell that hosts the wildflower-react SPA. Composes
+ * each slice's host binding (navigation, gatekeeper, collector, apps)
+ * and hands the tuple to {@link BridgedWebView}, which owns the
+ * transport + `<HostMessagingProvider>` + `<EffectMessagingWebView>`
+ * + initial-message aggregation + `onTransportReady` effect run.
  *
- * Visually renders the WebView followed by `children`; a parent
- * supplies the surrounding layout (e.g. native tab bar below).
+ * Slice-specific policy lives in each binding hook:
  *
- * The native tab bar lives **inside** this component's `children`,
- * inside the provider, so its press handlers can dispatch typed
- * navigation messages via `useNavigationHostMessaging`. The WebView
- * stays mounted across tab switches.
+ *  - `useNavigationHostBinding` carries the initial route via the
+ *    URL-param channel and forwards `onRouteChanged` from the SPA.
+ *  - `useGatekeeperHostBinding` dispatches the bearer token via
+ *    `onTransportReady` (not URL params — token leakage hazard).
+ *  - `useCollectorHostBinding` consumes the surrounding
+ *    `<CollectorBridgeExpo.HostProvider>` so `RequestSniffableWebView`
+ *    can push the modal route.
+ *  - `useAppsHostBinding` discharges `TunnelStore.layerFrom(store)`
+ *    so the `RequestTunnel` handler can flip tunnel intent and reply
+ *    with the bound origin.
+ *
+ * The native tab bar lives in `children`, inside the provider, so its
+ * press handlers can dispatch typed navigation messages via
+ * `useNavigationHostMessaging`. The WebView stays mounted across tab
+ * switches.
  */
 const AppShellWebView = ({
   route,
@@ -56,107 +62,37 @@ const AppShellWebView = ({
   onRouteChanged,
   children,
 }: AppShellWebViewProps): JSX.Element => {
-  const webviewBareSenderRef = useRef<BareSenderService | null>(null)
-
-  const collectorBridgeReceiverLayer = CollectorBridgeExpo.useReceiverLayer()
-
-  // `AppsBridgeExpo.ReceiverLayer` requires `TunnelStore` (provided
-  // from the wildflower-expo livestore) and `BareSender` (delegates
-  // to the WebView's ref-exposed bare sender — the dispatcher pulls
-  // it at handler-fire time, by which point the WebView is mounted).
   const store = useWildflowerStore()
-  const appsBridgeReceiverLayer = useMemo(
-    () =>
-      AppsBridgeExpo.ReceiverLayer().pipe(
-        Layer.provide(
-          Layer.merge(
-            TunnelStore.layerFrom(store),
-            Layer.succeed(BareSender, {
-              bareSender: (msg) => {
-                if (webviewBareSenderRef.current === null) {
-                  return Effect.dieMessage(
-                    'AppShellWebView: BareSender invoked before the WebView mounted'
-                  )
-                }
-                return webviewBareSenderRef.current.bareSender(msg)
-              },
-            })
-          )
-        )
-      ),
-    [store, webviewBareSenderRef]
-  )
+  const tunnelStoreLayer = useMemo(() => TunnelStore.layerFrom(store), [store])
 
-  // Bearer tokens are deliberately NOT in `initialMessages` —
-  // `effect-messaging-expo`'s `useTransport` encodes initial messages
-  // into the WebView's URL as query params, which would leak the
-  // token into native WebView logs and Sentry breadcrumbs. Issue
-  // `AuthTokenIssued` through the gatekeeper host-messaging hook
-  // inside the provider's subtree instead; the bridge layer queues it
-  // until the WebView connects.
-  const initialMessages = [{ _tag: 'HostRequestedWebNavigation' as const, path: route }] as const
+  const navigationBinding = NavigationBridgeExpo.useHostBinding({
+    initialRoute: route,
+    onRouteChanged,
+  })
+  const gatekeeperBinding = GatekeeperBridgeExpo.useHostBinding({ token })
+  const collectorBinding = CollectorBridgeExpo.useHostBinding()
+  const appsBinding = AppsBridgeExpo.useHostBinding({ tunnelStoreLayer })
+
+  // The narrow tuple `[SliceHostBinding<Nav>, SliceHostBinding<Gk>, …]`
+  // doesn't structurally unify with `ReadonlyArray<AnyHostBinding>` —
+  // each `SliceHostBinding<B>` widens its bridge type through
+  // `bridge: B` and `Bridge.UrlParamableMessage<[B]>`, and TS doesn't
+  // walk the chain. The runtime shape is exactly the structural one;
+  // the `as unknown as` chain paves over the parameterised-to-structural
+  // difference so the binding tuple flows into `BridgedWebView` as a
+  // uniform array.
+  const bindings = useMemo(() => {
+    const tuple = [navigationBinding, gatekeeperBinding, collectorBinding, appsBinding]
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return tuple as unknown as ReadonlyArray<AnyHostBinding>
+  }, [navigationBinding, gatekeeperBinding, collectorBinding, appsBinding])
 
   return (
-    <WithTransport<Bridges>
-      initialMessages={initialMessages}
-      bridges={bridges}
-      layers={
-        [
-          NavigationBridgeExpo.ReceiverLayer(onRouteChanged),
-          GatekeeperBridgeExpo.ReceiverLayer(),
-          collectorBridgeReceiverLayer,
-          appsBridgeReceiverLayer,
-        ] as const
-      }
-      baseUrl={baseUrl}
-      webviewHandleRef={webviewBareSenderRef}
-    >
-      {(transport) => (
-        <HostMessagingProvider bridges={bridges} sendMessage={transport.sendMessage}>
-          <InnerAppShellWebView
-            transport={transport}
-            webviewBareSenderRef={webviewBareSenderRef}
-            token={token}
-          />
-          {children}
-        </HostMessagingProvider>
-      )}
-    </WithTransport>
-  )
-}
-
-interface InnerAppShellWebViewProps {
-  readonly transport: ExpoTransport<Bridges>
-  readonly token: AppShellWebViewProps['token']
-  readonly webviewBareSenderRef: RefObject<BareSenderService | null>
-}
-
-const InnerAppShellWebView = ({
-  transport,
-  token,
-  webviewBareSenderRef,
-}: InnerAppShellWebViewProps): JSX.Element => {
-  const { send: sendGatekeeper } = useGatekeeperHostMessaging()
-
-  // Dispatch the bearer token as soon as the transport is constructed
-  // — the bridge layer queues outbound messages until the WebView
-  // side connects, so we don't need to wait for a "ready" signal.
-  // Kept out of `initialMessages` so the token never appears in the
-  // WebView's URL query string.
-  useEffect(() => {
-    if (token === undefined) return
-    sendGatekeeper({ _tag: 'AuthTokenIssued', token })
-  }, [sendGatekeeper, token])
-
-  return (
-    <EffectMessagingWebView
-      ref={webviewBareSenderRef}
-      source={{ html, baseUrl: transport.embedUrl }}
-      onMessage={transport.onMessage}
-      loader={<Loader />}
-    />
+    <BridgedWebView html={html} baseUrl={baseUrl} bindings={bindings} loader={<Loader />}>
+      {children}
+    </BridgedWebView>
   )
 }
 
 export { AppShellWebView }
-export type { AppShellWebViewProps, Bridges }
+export type { AppShellWebViewProps }
