@@ -1,34 +1,22 @@
 import AppsBridge from 'apps-core/bridge'
 import { Layer } from 'effect'
-import type { SliceHostBinding } from 'effect-messaging-core'
+import type { HostBinding } from 'effect-messaging-core'
 import { useMemo } from 'react'
 import type { TunnelStore } from 'tunnel-core/livestore'
 import { ReceiverLayer } from './host-receiver-layer.ts'
 
 interface UseAppsHostBindingOptions {
   /**
-   * Discharges the `TunnelStore` Tag the underlying receiver layer
-   * needs. Hosts construct this via `TunnelStore.layerFrom(store)` —
-   * passing the wildflower-expo livestore — and memoize it so the
-   * binding identity stays stable.
+   * Discharges the `TunnelStore` Tag the receiver layer needs. Hosts
+   * construct this via `TunnelStore.layerFrom(store)` and memoize it.
    */
   readonly tunnelStoreLayer: Layer.Layer<TunnelStore>
 }
 
-/**
- * Build a {@link SliceHostBinding} for the apps bridge. Discharges the
- * receiver layer's `TunnelStore` requirement against the caller-
- * supplied store layer so the binding's `receiverLayer` requires no
- * external context.
- *
- * `BareSender` is *not* a layer-build dependency — the bridge
- * transport's dispatch fiber provides it per handler invocation, so
- * the `RequestTunnel` handler's `AppsBridge.Host.send(...)` reply
- * resolves automatically.
- */
+/** Host binding for the apps bridge; pre-discharges `TunnelStore`. */
 const useAppsHostBinding = ({
   tunnelStoreLayer,
-}: UseAppsHostBindingOptions): SliceHostBinding<typeof AppsBridge> =>
+}: UseAppsHostBindingOptions): HostBinding.HostBinding<typeof AppsBridge> =>
   useMemo(
     () => ({
       bridge: AppsBridge,

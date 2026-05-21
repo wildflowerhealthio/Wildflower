@@ -6,7 +6,7 @@
 import CollectorBridge from 'collector-fundamentals/bridge'
 import type { WebViewSource } from 'collector-fundamentals/model'
 import { Effect, type Layer } from 'effect'
-import type { MessageHandler, SliceHostBinding } from 'effect-messaging-core'
+import type { HostBinding, MessageHandler } from 'effect-messaging-core'
 import { useRouter } from 'expo-router'
 import {
   createContext,
@@ -184,13 +184,11 @@ const useReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collector', 'Host
 }
 
 /**
- * Build a {@link SliceHostBinding} for the collector bridge. Wraps
- * {@link useReceiverLayer} (which reads from the surrounding
- * {@link HostProvider} context) so the binding tuple a shell aggregates
- * stays uniform across slices that own React state and slices that
- * don't.
+ * Host binding for the collector bridge. Wraps {@link useReceiverLayer}
+ * (which reads from the surrounding {@link HostProvider} context) so
+ * the binding shape matches stateless slices.
  */
-const useHostBinding = (): SliceHostBinding<typeof CollectorBridge> => {
+const useHostBinding = (): HostBinding.HostBinding<typeof CollectorBridge> => {
   const receiverLayer = useReceiverLayer()
   return useMemo(() => ({ bridge: CollectorBridge, receiverLayer }), [receiverLayer])
 }

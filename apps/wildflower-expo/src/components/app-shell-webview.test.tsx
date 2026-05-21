@@ -17,7 +17,7 @@ let mockLastBridgedWebViewProps: {
       send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
     ) => EffectType.Effect<void>
   }>
-  readonly children?: ReactNode
+  readonly belowWebView?: ReactNode
 } | null = null
 
 // `BridgedWebView` is exercised in its own package's tests; capture
@@ -30,7 +30,7 @@ jest.mock('effect-messaging-expo', () => {
       props: NonNullable<typeof mockLastBridgedWebViewProps>
     ): ReactElement {
       mockLastBridgedWebViewProps = props
-      return ReactInner.createElement('BridgedWebView', null, props.children)
+      return ReactInner.createElement('BridgedWebView', null, props.belowWebView)
     },
   }
 })
@@ -188,7 +188,7 @@ describe('AppShellWebView', () => {
     ])
   })
 
-  it('renders without throwing with onRouteChanged and children attached (smoke)', () => {
+  it('renders without throwing with onRouteChanged and belowWebView attached (smoke)', () => {
     const onRouteChanged = jest.fn()
     expect(() =>
       render(
@@ -196,9 +196,8 @@ describe('AppShellWebView', () => {
           baseUrl="https://example.test"
           route="/apps"
           onRouteChanged={onRouteChanged}
-        >
-          <React.Fragment />
-        </AppShellWebView>
+          belowWebView={<React.Fragment />}
+        />
       )
     ).not.toThrow()
   })

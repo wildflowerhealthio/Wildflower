@@ -7,11 +7,9 @@ export {
 } from './hooks/use-notification-tap-handler.ts'
 
 /**
- * Gatekeeper slice's Expo host surface. {@link ReceiverLayer} is the
- * empty host-handler layer (gatekeeper has no inbound messages today);
- * {@link useHostBinding} wraps it with the auth-token dispatch policy.
- * Shells should reach for {@link useHostBinding}; the receiver layer
- * is kept exported for direct composition (e.g. legacy callers).
+ * Gatekeeper slice Expo host surface. `useHostBinding` carries the
+ * auth-token dispatch policy; `ReceiverLayer` is the empty host-handler
+ * factory exported for direct composition.
  */
 const GatekeeperBridgeExpo = {
   ReceiverLayer,

@@ -2,12 +2,8 @@ import { ReceiverLayer } from './host-receiver-layer.ts'
 import { useAppsHostBinding } from './use-host-binding.ts'
 
 /**
- * Apps slice's Expo host surface. `ReceiverLayer` is the raw
- * `Layer<…, never, TunnelStore>` factory; `useHostBinding` is the
- * React hook wrapping it in a `SliceHostBinding` that has
- * `TunnelStore` already discharged. Shells should reach for
- * `useHostBinding`; the receiver layer is kept exported for direct
- * composition (slice-internal tests, etc.).
+ * Apps slice Expo host surface. `useHostBinding` is the typical entry
+ * point; `ReceiverLayer` is exported for direct composition (e.g. tests).
  */
 const AppsBridgeExpo = {
   ReceiverLayer,

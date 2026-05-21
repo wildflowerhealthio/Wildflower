@@ -54,9 +54,8 @@ export default function HomeScreen(): JSX.Element {
           baseUrl={publicHostname ? `https://${publicHostname}` : `http://${localHostname}:${PORT}`}
           route={TABS[0].path}
           onRouteChanged={handleRouteChanged}
-        >
-          <TabBar activeTab={activeTab} />
-        </AppShellWebView>
+          belowWebView={<TabBar activeTab={activeTab} />}
+        />
       </View>
     </ThemedView>
   )

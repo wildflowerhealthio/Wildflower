@@ -21,21 +21,17 @@ const noopSendMessage: SimpleHandlerArgs['sendMessage'] = () => Effect.void
 
 /**
  * Bridge handlers carry a `BareSender` requirement so they can call
- * `bridge.send(...)` to reply; the bridge transport's dispatch fiber
- * discharges this at runtime. The collector handlers under test here
- * don't actually call `bareSender` (they push to `sendMessage` instead),
- * so a no-op stub is fine.
+ * `bridge.send(...)`; the dispatch fiber discharges this at runtime.
+ * Tests that invoke handlers directly thread a no-op via this pipe-
+ * style provider.
  */
-const noopBareSenderLayer = Layer.succeed(BareSender, {
-  bareSender: () => Effect.void,
-})
+const provideNoopBareSender = Effect.provide(
+  Layer.succeed(BareSender, { bareSender: () => Effect.void })
+)
 
-/**
- * Convenience wrapper — every direct handler invocation in this suite
- * needs `BareSender` discharged.
- */
+/** Run a handler effect synchronously with the no-op `BareSender`. */
 const runHandler = <A>(effect: Effect.Effect<A, never, BareSender>): A =>
-  Effect.runSync(Effect.provide(effect, noopBareSenderLayer))
+  Effect.runSync(effect.pipe(provideNoopBareSender))
 
 /**
  * Build a handler bound to a single-entity plan (`SimpleEntity` only).
@@ -207,7 +203,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           }),
           Effect.scoped,
 
-          Effect.provide(noopBareSenderLayer)
+          provideNoopBareSender
         )
       )
       expect(onResult).not.toHaveBeenCalled()
@@ -255,7 +251,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           }),
           Effect.scoped,
 
-          Effect.provide(noopBareSenderLayer)
+          provideNoopBareSender
         )
       )
       expect(onResult).not.toHaveBeenCalled()
@@ -388,7 +384,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           }),
           Effect.scoped,
 
-          Effect.provide(noopBareSenderLayer)
+          provideNoopBareSender
         )
       )
       expect(onResult).not.toHaveBeenCalled()
@@ -471,7 +467,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
             }),
             Effect.scoped,
 
-            Effect.provide(noopBareSenderLayer)
+            provideNoopBareSender
           )
       )
       expect(onResult).not.toHaveBeenCalled()
@@ -509,7 +505,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledOnce()
           expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SniffingComplete' })
-        }).pipe(Effect.provide(TestContext.TestContext), Effect.provide(noopBareSenderLayer))
+        }).pipe(Effect.provide(TestContext.TestContext), provideNoopBareSender)
       ))
 
     it('dispatches each link in order, separated by stepDelay, then SniffingComplete', () =>
@@ -547,7 +543,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledTimes(3)
           expect(sendMessage.mock.calls[2][0]).toEqual({ _tag: 'SniffingComplete' })
-        }).pipe(Effect.provide(TestContext.TestContext), Effect.provide(noopBareSenderLayer))
+        }).pipe(Effect.provide(TestContext.TestContext), provideNoopBareSender)
       ))
 
     it('a second PageLoaded during the wait interrupts the pending timer and re-arms for the same index', () =>
@@ -579,7 +575,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
             _tag: 'Open',
             source: linkA.source,
           })
-        }).pipe(Effect.provide(TestContext.TestContext), Effect.provide(noopBareSenderLayer))
+        }).pipe(Effect.provide(TestContext.TestContext), provideNoopBareSender)
       ))
 
     it('warns and no-ops on PageLoaded after SniffingComplete has fired', () =>
@@ -608,14 +604,14 @@ describe('CollectorBridgeMessageHandler.make', () => {
             }),
             Effect.scoped,
 
-            Effect.provide(noopBareSenderLayer)
+            provideNoopBareSender
           )
 
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           // Still only the one SniffingComplete from earlier.
           expect(sendMessage).toHaveBeenCalledOnce()
-        }).pipe(Effect.provide(TestContext.TestContext), Effect.provide(noopBareSenderLayer))
+        }).pipe(Effect.provide(TestContext.TestContext), provideNoopBareSender)
       ))
 
     it('clear() interrupts the pending step timer', () =>
@@ -632,7 +628,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).not.toHaveBeenCalled()
-        }).pipe(Effect.provide(TestContext.TestContext), Effect.provide(noopBareSenderLayer))
+        }).pipe(Effect.provide(TestContext.TestContext), provideNoopBareSender)
       ))
 
     it('cancelAllInFlight interrupts the pending step timer', () =>
@@ -649,7 +645,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).not.toHaveBeenCalled()
-        }).pipe(Effect.provide(TestContext.TestContext), Effect.provide(noopBareSenderLayer))
+        }).pipe(Effect.provide(TestContext.TestContext), provideNoopBareSender)
       ))
 
     it('clear() resets the index so subsequent PageLoadeds restart from linkSequence[0]', () =>
@@ -678,7 +674,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
             _tag: 'Open',
             source: linkA.source,
           })
-        }).pipe(Effect.provide(TestContext.TestContext), Effect.provide(noopBareSenderLayer))
+        }).pipe(Effect.provide(TestContext.TestContext), provideNoopBareSender)
       ))
   })
 })

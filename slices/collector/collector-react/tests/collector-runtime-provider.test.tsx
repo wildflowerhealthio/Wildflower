@@ -5,12 +5,7 @@ import { BareSender } from 'effect-messaging-core'
 import { useContext, type JSX, type ReactNode } from 'react'
 import { describe, expect, it } from 'vite-plus/test'
 
-/**
- * Bridge handlers now require `BareSender` so they can call
- * `bridge.send(...)` to reply through the same transport; the dispatch
- * fiber discharges this at runtime. This test invokes the receiver's
- * handlers directly via `Effect.gen`, so we stitch in a no-op layer.
- */
+/** Stub `BareSender` for direct handler invocation. */
 const noopBareSenderLayer = Layer.succeed(BareSender, { bareSender: () => Effect.void })
 
 import {

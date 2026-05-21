@@ -6,14 +6,8 @@ import type { ReactElement } from 'react'
 
 import type { SnifferHandlers } from 'browser-sniffer-expo'
 
-/**
- * Bridge handlers now require `BareSender` so they can call
- * `bridge.send(...)` to reply; the dispatch fiber provides it at
- * runtime. Here we invoke a handler directly (no transport), so
- * stub the service with a no-op — the sniffer handlers under test
- * don't actually call `bareSender`.
- */
-const noopBareSender = Effect.provideService(BareSender, {
+/** Stub `BareSender` for direct handler invocation. */
+const provideNoopBareSender = Effect.provideService(BareSender, {
   bareSender: () => Effect.void,
 })
 
@@ -149,7 +143,7 @@ describe('CollectorModalScreen', () => {
         const handler = handlersRecord[tag]
         expect(handler).toBeDefined()
         if (handler === undefined) return
-        await Effect.runPromise(handler(event).pipe(noopBareSender))
+        await Effect.runPromise(handler(event).pipe(provideNoopBareSender))
         expect(mockReEmittedMessages).toEqual([event])
       }
     )
@@ -170,7 +164,7 @@ describe('CollectorModalScreen', () => {
         url: 'https://example.test',
         message: 'oh no',
       }
-      await Effect.runPromise(handlers.RequestError(event).pipe(noopBareSender))
+      await Effect.runPromise(handlers.RequestError(event).pipe(provideNoopBareSender))
       expect(onError).toHaveBeenCalledTimes(1)
       expect(onError).toHaveBeenCalledWith(event)
       expect(mockReEmittedMessages).toEqual([event])
@@ -193,7 +187,7 @@ describe('CollectorModalScreen', () => {
         message: 'boom',
       }
       await expect(
-        Effect.runPromise(handlers.RequestError(event).pipe(noopBareSender))
+        Effect.runPromise(handlers.RequestError(event).pipe(provideNoopBareSender))
       ).resolves.toBeUndefined()
       expect(onError).toHaveBeenCalledTimes(1)
       expect(mockReEmittedMessages).toEqual([event])
