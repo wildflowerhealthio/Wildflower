@@ -7,14 +7,33 @@ fi
 gh auth setup-git
 sudo chown -R $(whoami) /workspaces/wildflower/node_modules
 
-# bootstrap-only — vp not yet installed, so pnpm is the only way to
-# bring the toolchain in. Once `vp` exists, everything else routes
-# through `vp` per project CLAUDE.md.
-pnpm setup
-echo 'alias danger-claude="claude --dangerously-skip-permissions"' >> ~/.bashrc
+# /data layout (persistent across rebuilds) — see CLAUDE.md "Parallel Worktrees".
+sudo mkdir -p /data/pnpm-store /data/pnpm-cache /data/pnpm-global /data/worktrees
+sudo chown -R "$(whoami)" /data
+pnpm config set store-dir /data/pnpm-store
+pnpm config set cache-dir /data/pnpm-cache
 
+# Set PNPM_HOME explicitly: `pnpm setup` does not reliably write to ~/.bashrc
+# when the file already has a custom prompt block, which left vp unreachable.
+export PNPM_HOME=/data/pnpm-global
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+if ! grep -q 'PNPM_HOME=/data/pnpm-global' ~/.bashrc; then
+  cat >> ~/.bashrc <<'BASHRC_EOF'
+
+export PNPM_HOME=/data/pnpm-global
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+BASHRC_EOF
+fi
+
+echo '\nalias danger-claude="claude --dangerously-skip-permissions"' >> ~/.bashrc
 source /home/node/.bashrc
-# curl -fsSL https://claude.ai/install.sh | bash
+
 pnpm install -g vite-plus
 pnpm install -g @typescript/native-preview
 pnpm install -g @tsdown/css

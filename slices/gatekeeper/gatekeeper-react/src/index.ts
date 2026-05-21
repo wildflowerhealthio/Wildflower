@@ -1,4 +1,9 @@
-export { gatekeeperPublicRoutesFragment, gatekeeperAuthorizedRoutesFragment } from './routes.tsx'
+export {
+  gatekeeperOpenRoutesFragment,
+  gatekeeperAuthenticatedRoutesFragment,
+  gatekeeperSettingsRoutesFragment,
+} from './routes.tsx'
+export { gatekeeperSettingsItemsFragment } from './settings-fragments.ts'
 
 export {
   GatekeeperClientLayerContext,

@@ -5,25 +5,26 @@ import { TunnelScreen } from './screens/tunnel-screen.tsx'
 
 // Exported as a JSX.Element (not a component): React Router's <Routes>
 // walks children syntactically and rejects custom components with
-// "[X] is not a <Route>". The path hardcodes the `/tunnel` prefix so it
+// "[X] is not a <Route>". The path hardcodes `/settings/tunnel` so it
 // matches without basename gymnastics under both MemoryRouter and
 // BrowserRouter; the drift test in tests/routes.test.tsx asserts it.
 //
-// The tunnel API is owner-only — there is no public counterpart — so a
-// single authorized fragment is the entire surface. The composing app
-// must mount this inside a `<Route element={<AuthorizedAppShell />}>`
-// (or whatever shell re-provides `<TunnelClientProvider>` with the live
-// bearer token).
+// The tunnel screen is a settings surface — there is no public
+// counterpart. `apps/wildflower-react` mounts this fragment alongside
+// the other slices' `*SettingsRoutesFragment`s as children of
+// `<Route element={<AuthorizedAppShell />}>`, which re-provides
+// `<TunnelClientProvider>` with the live bearer token.
 
 /**
- * Owner-facing tunnel routes — require a bearer token. The app mounts
- * these as children of its authenticated route element so the shell
- * can re-provide `<TunnelClientProvider>` with the live token.
+ * Owner-facing tunnel settings routes — require a bearer token. The
+ * app mounts these as children of its authenticated route element so
+ * the shell can re-provide `<TunnelClientProvider>` with the live
+ * token.
  */
-const tunnelAuthorizedRoutesFragment: JSX.Element = (
+const tunnelSettingsRoutesFragment: JSX.Element = (
   <>
-    <Route path="/tunnel" element={<TunnelScreen />} />
+    <Route path="/settings/tunnel" element={<TunnelScreen />} />
   </>
 )
 
-export { tunnelAuthorizedRoutesFragment }
+export { tunnelSettingsRoutesFragment }

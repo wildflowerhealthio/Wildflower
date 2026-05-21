@@ -98,7 +98,7 @@ const AccessIndexBody = ({
             title: 'HTTP Requests',
             subtitle: 'View incoming request history',
             onClick: () => {
-              void navigate('/gatekeeper/requests')
+              void navigate('/settings/gatekeeper/requests')
             },
           },
         ]}
@@ -112,7 +112,7 @@ const AccessIndexBody = ({
             title: grant.clientId,
             subtitle: `${grant.scopes.join(', ')} · Granted ${formatInstant(grant.grantedAt)}`,
             onClick: () => {
-              void navigate(`/gatekeeper/approved/${encodeURIComponent(grant.id)}`)
+              void navigate(`/settings/gatekeeper/approved/${encodeURIComponent(grant.id)}`)
             },
             actions: (
               <Menu

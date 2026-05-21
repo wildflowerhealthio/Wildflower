@@ -4,7 +4,7 @@ import { Effect, type Schema } from 'effect'
 import { defaultConfig } from 'fhir-r4-client-collector'
 import { useEffect, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { useNavigate, useSearchParams } from 'react-router'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { pageLayoutStyles } from 'react-tundraish'
 
 import { useCollectorEffectAction } from '../collector-client.tsx'
@@ -14,28 +14,29 @@ import pageLayout from '../styles/page-layout.module.css'
 type RemoteRow = Schema.Schema.Type<typeof Remotes.RemoteSchema>
 
 /**
- * Edit or create a FHIR R4 remote. Loaded by `accountId` query param
- * (edit mode) or prefilled from `prefill*` params (create mode from the
- * source list).
+ * Edit or create a FHIR R4 remote. Mounted at `/collector/account/:id`
+ * for edit mode (the row is loaded by the path param) and at
+ * `/collector/account/new` for create mode (optionally prefilled from
+ * `prefill*` query params handed off by the source list).
  */
 const AccountConfigScreen = (): JSX.Element => {
   const navigate = useNavigate()
   const run = useCollectorEffectAction()
+  const { id: accountId } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
-  const accountId = searchParams.get('accountId')
   const prefillName = searchParams.get('prefillName')
   const prefillRootUrl = searchParams.get('prefillRootUrl')
   const prefillPatientId = searchParams.get('prefillPatientId')
 
   const [existing, setExisting] = useState<RemoteRow | null>(null)
-  const [loading, setLoading] = useState(accountId !== null)
+  const [loading, setLoading] = useState(accountId !== undefined)
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState(prefillName ?? '')
   const [rootUrl, setRootUrl] = useState(prefillRootUrl ?? defaultConfig.rootUrl)
   const [patientId, setPatientId] = useState(prefillPatientId ?? defaultConfig.patientId)
 
   useEffect(() => {
-    if (accountId === null) return () => undefined
+    if (accountId === undefined) return () => undefined
     let cancelled = false
     const load = async (): Promise<void> => {
       try {
@@ -70,7 +71,7 @@ const AccountConfigScreen = (): JSX.Element => {
     const remoteName = name === '' ? `FHIR R4 ${new Date().toLocaleDateString()}` : name
     try {
       const operation =
-        existing !== null && accountId !== null
+        existing !== null && accountId !== undefined
           ? Effect.flatMap(CollectorHttpApiClient, (c) =>
               c['collector-remotes'].UpdateRemote({
                 path: { id: accountId },

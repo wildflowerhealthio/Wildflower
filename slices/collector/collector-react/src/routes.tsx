@@ -5,19 +5,22 @@ import { AccountConfigScreen } from './screens/account-config.tsx'
 import { AccountListScreen } from './screens/account-list.tsx'
 
 /**
- * Authorized routes contributed by the collector slice. Mounted by the
- * app under `<Route element={<AuthorizedAppShell />}>`. The collector
+ * Owner-facing collector routes contributed by the collector slice.
+ * Mounted by the app under `<Route element={<AuthorizedAppShell />}>`
+ * alongside other slices' authenticated-route fragments. The collector
  * client layer (provided once at the app's top level via
  * `<CollectorClientProvider>`) reads the live token from `BearerToken`
  * — no per-route token plumbing.
  *
- * No public collector routes today — all flows require an authed owner.
+ * Collector is top-level functionality (not a settings concern), so its
+ * routes live at `/collector/*` rather than under `/settings/`.
  */
-const collectorAuthorizedRoutesFragment: JSX.Element = (
+const collectorAuthenticatedRoutesFragment: JSX.Element = (
   <>
     <Route path="/collector" element={<AccountListScreen />} />
-    <Route path="/collector/account" element={<AccountConfigScreen />} />
+    <Route path="/collector/account/new" element={<AccountConfigScreen />} />
+    <Route path="/collector/account/:id" element={<AccountConfigScreen />} />
   </>
 )
 
-export { collectorAuthorizedRoutesFragment }
+export { collectorAuthenticatedRoutesFragment }
