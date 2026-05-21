@@ -36,21 +36,10 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview'
  * page. The host sends `Click` as a typed Host→Web bridge message,
  * the injected sniffer runs `document.querySelector(qs)?.click()`
  * inside the page (best-effort, no feedback on a missing element).
- *
- * `postRaw(rawWire)` injects a *pre-encoded* bridge wire string
- * directly into the page, bypassing the typed
- * `BridgeTransport.sendMessage` encode step. Use this to forward
- * messages that arrived already-encoded from a paired transport
- * (e.g. the collector SPA's outbound `Click` / `CancelSnifferRequest`)
- * without paying for a decode + re-encode round trip in the native
- * host. Caller is responsible for the wire format being a valid
- * `BrowserSnifferBridge` host→web payload — malformed strings are
- * silently dropped by the page's bridge dispatcher.
  */
 interface BrowserSnifferWebViewHandle {
   cancelRequest(id: string): void
   click(querySelector: string): void
-  postRaw(rawWire: string): void
 }
 
 /** What the WebView should load. Mirrors `EffectMessagingWebViewSource`. */
@@ -71,17 +60,6 @@ interface BrowserSnifferWebViewProps {
    * defects, so a throw from one handler doesn't tear down the rest.
    */
   readonly handlers: SnifferHandlers
-  /**
-   * Optional pre-decode hook fired with the raw wire string for every
-   * inbound bridge message *in addition to* the typed dispatch via
-   * `handlers`. Wire this when an outer transport speaks the same
-   * wire format (e.g. the collector SPA's `CollectorBridge` reuses
-   * `BrowserSnifferBridge`'s sniffer-event schemas) and you want to
-   * forward verbatim without paying for a decode + re-encode round
-   * trip in the host. Returns synchronously — slow consumers should
-   * fork their own fiber.
-   */
-  readonly onRawMessage?: (rawWire: string) => void
   /** Element rendered on top of the WebView until its first `onLoadEnd` fires. */
   readonly loader?: JSX.Element
 }
@@ -98,7 +76,7 @@ interface BrowserSnifferWebViewProps {
  *   owns the scope: on `handlers` identity change, the prior scope is
  *   `Scope.close`d before the next build runs (the `useMemo`-with-no-
  *   cleanup approach leaked a Scope + dispatch fiber per render).
- * - Host→Web (`CancelSnifferRequest`) sends go through
+ * - Host→Web (`CancelSnifferRequest` / `Click`) sends go through
  *   `webviewRef.current.postMessage(encoded)` — the bridge wires this
  *   in via the {@link TransportAdapter}'s `bareSender`. Sends that
  *   arrive before the WebView ref attaches are buffered and drained
@@ -110,7 +88,7 @@ interface BrowserSnifferWebViewProps {
  *   down transport sees a late inbound message.
  */
 const BrowserSnifferWebView = forwardRef<BrowserSnifferWebViewHandle, BrowserSnifferWebViewProps>(
-  function BrowserSnifferWebView({ source, handlers, onRawMessage, loader }, ref): JSX.Element {
+  function BrowserSnifferWebView({ source, handlers, loader }, ref): JSX.Element {
     const webviewRef = useRef<WebView | null>(null)
     const transportRef = useRef<TransportType | undefined>(undefined)
     const outboundBuffer = useRef<string[]>([])
@@ -186,33 +164,12 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferWebViewHandle, BrowserSni
           if (transport === undefined) return
           Effect.runFork(transport.sendMessage({ _tag: 'Click', querySelector }))
         },
-        postRaw(rawWire: string): void {
-          // Goes through the same `bareSender`-style buffer the typed
-          // path uses (so pre-attach sends queue and drain on ref
-          // arrival), but skips the Schema.encode step. Callers that
-          // received an already-encoded wire payload from a paired
-          // bridge use this to forward verbatim.
-          const wv = webviewRef.current
-          if (wv === null) {
-            outboundBuffer.current.push(rawWire)
-            return
-          }
-          // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin
-          wv.postMessage(rawWire)
-        },
       }),
       []
     )
 
     const onWebViewMessageEvent = (event: WebViewMessageEvent): void => {
       const raw = event.nativeEvent.data
-      // Fire the raw passthrough BEFORE the typed dispatch so a consumer
-      // forwarding to a paired transport sees messages in the same order
-      // the typed handlers would. Typed dispatch still runs — consumers
-      // typically supply no-op typed handlers for tags they forward via
-      // `onRawMessage`, but the wiring is independent so observation-only
-      // handlers (e.g. `RequestError` firing `onError`) keep working.
-      if (onRawMessage !== undefined) onRawMessage(raw)
       const transport = transportRef.current
       if (transport === undefined) return
       void Effect.runPromise(

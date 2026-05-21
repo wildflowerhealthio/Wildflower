@@ -6,12 +6,12 @@ import { useHost } from '../host-receiver-layer.tsx'
 import { CollectorModalScreen } from './CollectorModalScreen.tsx'
 
 /**
- * Default-export route component that hosts {@link CollectorModalScreen}
- * (a `BrowserSnifferWebView` wrapper) and threads the
- * `postRawMessage` handle from `<CollectorBridgeExpo.HostProvider>`
- * so sniffer events round-trip back into the embedded SPA's
- * `CollectorBridge`. The host shell underneath stays mounted (Stack
- * `presentation: 'modal'`); its WebView never tears down mid-scrape.
+ * Default-export route component that hosts {@link CollectorModalScreen}.
+ * Sniffer events are decoded and re-emitted through `CollectorBridge`
+ * inside the screen itself via `useCollectorHostMessaging`, so no
+ * extra wiring is needed at this layer. The host shell underneath
+ * stays mounted (Stack `presentation: 'modal'`); its WebView never
+ * tears down mid-scrape.
  *
  * Consumers register this in their expo-router file system by
  * re-exporting it as the default from a route file at the path
@@ -23,7 +23,7 @@ import { CollectorModalScreen } from './CollectorModalScreen.tsx'
  * ```
  */
 const CollectorModalRoute = (): JSX.Element => {
-  const { pendingSource, postRawMessage } = useHost()
+  const { pendingSource } = useHost()
   const router = useRouter()
 
   if (pendingSource === null) {
@@ -42,7 +42,7 @@ const CollectorModalRoute = (): JSX.Element => {
     )
   }
 
-  return <CollectorModalScreen source={pendingSource} postRawMessage={postRawMessage} />
+  return <CollectorModalScreen source={pendingSource} />
 }
 
 const styles = StyleSheet.create({

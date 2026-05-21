@@ -185,21 +185,6 @@ jest.mock('expo-tundraish', () => ({
 }))
 
 import { AppShellWebView } from './app-shell-webview.tsx'
-import { WebviewBareSenderRefContext } from './webview-bare-sender-ref-context.ts'
-
-const renderWithRefContext = (children: ReactElement): ReturnType<typeof render> => {
-  // The mocked EffectMessagingWebView never writes into the ref, so
-  // a permanently-null `current` is fine for these assertions.
-  const webviewBareSenderRef: React.RefObject<null> = { current: null }
-  return render(
-    React.createElement(
-      WebviewBareSenderRefContext.Provider,
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      { value: { webviewBareSenderRef } as never },
-      children
-    )
-  )
-}
 
 beforeEach(() => {
   mockLastUseTransportConfig = null
@@ -209,7 +194,7 @@ beforeEach(() => {
 
 describe('AppShellWebView', () => {
   it('passes a HostRequestedWebNavigation initialMessage for the route', () => {
-    renderWithRefContext(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
+    render(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
     expect(mockLastUseTransportConfig?.initialMessages).toEqual([
       { _tag: 'HostRequestedWebNavigation', path: '/apps' },
     ])
@@ -218,9 +203,7 @@ describe('AppShellWebView', () => {
   it('does NOT place AuthTokenIssued in initialMessages even when a token is provided', () => {
     // The token would otherwise be encoded into the WebView URL as a
     // query parameter and leaked into native logs / Sentry breadcrumbs.
-    renderWithRefContext(
-      <AppShellWebView baseUrl="https://example.test" route="/apps" token="bearer-xyz" />
-    )
+    render(<AppShellWebView baseUrl="https://example.test" route="/apps" token="bearer-xyz" />)
     expect(mockLastUseTransportConfig?.initialMessages).toEqual([
       { _tag: 'HostRequestedWebNavigation', path: '/apps' },
     ])
@@ -229,9 +212,7 @@ describe('AppShellWebView', () => {
   })
 
   it('issues AuthTokenIssued through the gatekeeper host-messaging hook after mount', async () => {
-    renderWithRefContext(
-      <AppShellWebView baseUrl="https://example.test" route="/apps" token="bearer-xyz" />
-    )
+    render(<AppShellWebView baseUrl="https://example.test" route="/apps" token="bearer-xyz" />)
     // `render` itself wraps the initial render in act, but the
     // `useEffect` that dispatches `AuthTokenIssued` schedules its
     // effect callback in the *next* microtask. Empty-bodied `act`
@@ -241,35 +222,26 @@ describe('AppShellWebView', () => {
   })
 
   it('does not call AuthTokenIssued when no token is provided', async () => {
-    renderWithRefContext(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
+    render(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
     await act(async () => {})
     const authCalls = mockSendMessageCalls.filter((m) => m._tag === 'AuthTokenIssued')
     expect(authCalls).toEqual([])
   })
 
   it('forwards baseUrl into useTransport', () => {
-    renderWithRefContext(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
+    render(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
     expect(mockLastUseTransportConfig?.baseUrl).toBe('https://example.test')
   })
 
   it('builds a transport whose embedUrl carries the supplied baseUrl', () => {
-    renderWithRefContext(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
+    render(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
     expect(mockLastTransport?.embedUrl).toContain('https://example.test')
-  })
-
-  it('throws when rendered outside <WebviewBareSenderRefContext>', () => {
-    // Silence the React error boundary log noise that accompanies the throw.
-    const consoleError = jest.spyOn(console, 'error').mockImplementation((): void => undefined)
-    expect(() => render(<AppShellWebView baseUrl="https://example.test" route="/apps" />)).toThrow(
-      /WebviewBareSenderRefContext/
-    )
-    consoleError.mockRestore()
   })
 
   it('renders without throwing with onRouteChanged and children attached (smoke)', () => {
     const onRouteChanged = jest.fn()
     expect(() =>
-      renderWithRefContext(
+      render(
         <AppShellWebView
           baseUrl="https://example.test"
           route="/apps"

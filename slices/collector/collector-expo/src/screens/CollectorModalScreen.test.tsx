@@ -6,18 +6,17 @@ import type { ReactElement } from 'react'
 import type { SnifferHandlers } from 'browser-sniffer-expo'
 
 // Capture the props `BrowserSnifferWebView` received so the test can
-// invoke typed handlers directly (no native runtime needed), drive
-// `onRawMessage` to assert raw passthrough, and observe source
-// changes from scripted navigation.
+// invoke typed handlers directly (no native runtime needed) and observe
+// source changes from scripted navigation.
 let mockLastSnifferHandlers: SnifferHandlers | null = null
 let mockLastSnifferSource: unknown = null
-let mockLastOnRawMessage: ((raw: string) => void) | null = null
-let mockSnifferPostRawCalls: string[] = []
+let mockSnifferClickCalls: string[] = []
+let mockSnifferCancelCalls: string[] = []
 
 // Stub `browser-sniffer-expo` — the real module imports
 // `react-native-webview`, which fails outside a native runtime. The
-// stubbed ref exposes a `postRaw` that pushes onto a shared array so
-// tests can assert the screen's handleRef-driven raw forwarder.
+// stubbed ref exposes `click` / `cancelRequest` methods so tests can
+// assert the screen's snifferControlRef wiring.
 jest.mock('browser-sniffer-expo', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
   return {
@@ -25,16 +24,20 @@ jest.mock('browser-sniffer-expo', () => {
       props: {
         readonly handlers: SnifferHandlers
         readonly source: unknown
-        readonly onRawMessage?: (raw: string) => void
       },
-      ref: React.Ref<{ readonly postRaw: (raw: string) => void }>
+      ref: React.Ref<{
+        readonly click: (qs: string) => void
+        readonly cancelRequest: (id: string) => void
+      }>
     ): ReactElement {
       mockLastSnifferHandlers = props.handlers
       mockLastSnifferSource = props.source
-      mockLastOnRawMessage = props.onRawMessage ?? null
       ReactInner.useImperativeHandle(ref, () => ({
-        postRaw: (raw: string): void => {
-          mockSnifferPostRawCalls.push(raw)
+        click: (qs: string): void => {
+          mockSnifferClickCalls.push(qs)
+        },
+        cancelRequest: (id: string): void => {
+          mockSnifferCancelCalls.push(id)
         },
       }))
       return ReactInner.createElement('MockBrowserSnifferWebView', props)
@@ -53,117 +56,153 @@ jest.mock('expo-tundraish', () => {
   }
 })
 
+// Capture sendEffect calls from the typed re-emit path. Returns an
+// Effect that records the message and resolves immediately. The factory
+// uses `jest.requireActual` for the Effect module — jest-hoist forbids
+// referencing outer-scope imports, so the real `effect` module is
+// resolved lazily inside the factory.
+let mockReEmittedMessages: Array<{ readonly _tag: string }> = []
+jest.mock('collector-react', () => {
+  const effect = jest.requireActual<{ Effect: typeof Effect }>('effect')
+  return {
+    useCollectorHostMessaging: (): {
+      readonly send: (msg: { readonly _tag: string }) => void
+      readonly sendEffect: (msg: { readonly _tag: string }) => Effect.Effect<void>
+    } => ({
+      send: (msg) => {
+        mockReEmittedMessages.push(msg)
+      },
+      sendEffect: (msg) =>
+        effect.Effect.sync(() => {
+          mockReEmittedMessages.push(msg)
+        }),
+    }),
+  }
+})
+
+// `CollectorModalScreen` reads `snifferControlRef` from the host
+// context. The `mock` prefix is required by babel-plugin-jest-hoist
+// to leave the binding alone when hoisting `jest.mock` calls. The
+// factory closes over `mockHostStub` to expose the same ref object the
+// suite asserts against post-mount.
+const mockHostStub = {
+  snifferControlRef: {
+    current: null as null | { click: (qs: string) => void; cancelRequest: (id: string) => void },
+  },
+}
+jest.mock('../host-receiver-layer.tsx', () => ({
+  useHost: (): typeof mockHostStub => mockHostStub,
+}))
+
 import { CollectorModalScreen, type CollectorModalScreenHandle } from './CollectorModalScreen.tsx'
 
 beforeEach(() => {
   mockLastSnifferHandlers = null
   mockLastSnifferSource = null
-  mockLastOnRawMessage = null
-  mockSnifferPostRawCalls = []
+  mockSnifferClickCalls = []
+  mockSnifferCancelCalls = []
+  mockReEmittedMessages = []
+  mockHostStub.snifferControlRef.current = null
 })
 
 describe('CollectorModalScreen', () => {
-  describe('raw passthrough to the SPA', () => {
-    it.each([
+  describe('typed re-emit through CollectorBridge', () => {
+    // The browser-sniffer bridge schemas are stubbed in this suite to an
+    // empty `InboundSchemas` record, so the SnifferHandlers type collapses
+    // to `Record<string, unknown>`. The runtime check is what matters:
+    // each handler key invoked with a tagged event must re-emit the same
+    // message through `useCollectorHostMessaging`.
+    type Case = readonly [string, { readonly _tag: string } & Readonly<Record<string, unknown>>]
+    const cases: ReadonlyArray<Case> = [
       ['ResponseStart', { _tag: 'ResponseStart', id: 'r1', url: 'u', status: 200 }],
       ['ResponseData', { _tag: 'ResponseData', id: 'r1', data: 'b64' }],
       ['ResponseFinished', { _tag: 'ResponseFinished', id: 'r1' }],
-      ['RequestError', { _tag: 'RequestError', id: 'r1', url: 'u', message: 'm' }],
       ['Cancelled', { _tag: 'Cancelled', id: 'r1' }],
       ['PageLoaded', { _tag: 'PageLoaded', url: 'u', pageContentId: 'p' }],
-    ])('forwards %s raw wire strings verbatim into postRawMessage', (_tag, payload) => {
-      const rawCalls: string[] = []
-      render(
-        <CollectorModalScreen
-          source={{ _tag: 'Html', html: '<html></html>' }}
-          postRawMessage={(raw) => rawCalls.push(raw)}
-        />
-      )
-      expect(mockLastOnRawMessage).not.toBeNull()
-      const raw = JSON.stringify(payload)
-      mockLastOnRawMessage?.(raw)
-      expect(rawCalls).toEqual([raw])
-    })
-
-    it('drops non-passthrough tags (Log) without forwarding', () => {
-      const rawCalls: string[] = []
-      render(
-        <CollectorModalScreen
-          source={{ _tag: 'Html', html: '<html></html>' }}
-          postRawMessage={(raw) => rawCalls.push(raw)}
-        />
-      )
-      mockLastOnRawMessage?.(JSON.stringify({ _tag: 'Log', log: 'spam' }))
-      mockLastOnRawMessage?.(JSON.stringify({ _tag: '__Ready' }))
-      expect(rawCalls).toEqual([])
-    })
-
-    it('silently drops malformed JSON without forwarding', () => {
-      const rawCalls: string[] = []
-      render(
-        <CollectorModalScreen
-          source={{ _tag: 'Html', html: '<html></html>' }}
-          postRawMessage={(raw) => rawCalls.push(raw)}
-        />
-      )
-      mockLastOnRawMessage?.('not json')
-      mockLastOnRawMessage?.('null')
-      mockLastOnRawMessage?.('"plain string"')
-      expect(rawCalls).toEqual([])
-    })
+    ]
+    it.each(cases)(
+      're-emits %s through useCollectorHostMessaging.sendEffect',
+      async (tag, event) => {
+        render(<CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />)
+        expect(mockLastSnifferHandlers).not.toBeNull()
+        // SnifferHandlers in this suite is stubbed to an empty record
+        // (see browser-sniffer-core/bridge mock above), so we read the
+        // captured handlers via an index lookup. The runtime check is
+        // what matters: each handler key invoked with a tagged event
+        // must re-emit the same message through useCollectorHostMessaging.
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        const handlersRecord = mockLastSnifferHandlers as unknown as Readonly<
+          Record<string, ((e: unknown) => Effect.Effect<void>) | undefined>
+        >
+        const handler = handlersRecord[tag]
+        expect(handler).toBeDefined()
+        if (handler === undefined) return
+        await Effect.runPromise(handler(event))
+        expect(mockReEmittedMessages).toEqual([event])
+      }
+    )
   })
 
   describe('RequestError typed handler', () => {
-    it('still fires onError even though the wire forward goes via raw', async () => {
+    it('re-emits RequestError AND fires the host-local onError callback', async () => {
       const onError = jest.fn()
       render(
-        <CollectorModalScreen
-          source={{ _tag: 'Html', html: '<html></html>' }}
-          postRawMessage={() => undefined}
-          onError={onError}
-        />
+        <CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} onError={onError} />
       )
       const handlers = mockLastSnifferHandlers
       expect(handlers).not.toBeNull()
       if (handlers === null) return
-      const fakeEvent = {
+      const event = {
         _tag: 'RequestError' as const,
         id: 'r1',
         url: 'https://example.test',
         message: 'oh no',
       }
-      await Effect.runPromise(handlers.RequestError(fakeEvent))
+      await Effect.runPromise(handlers.RequestError(event))
       expect(onError).toHaveBeenCalledTimes(1)
-      expect(onError).toHaveBeenCalledWith(fakeEvent)
+      expect(onError).toHaveBeenCalledWith(event)
+      expect(mockReEmittedMessages).toEqual([event])
     })
 
-    it('swallows onError throws so the dispatch fiber keeps draining', async () => {
+    it('swallows onError throws so the dispatch fiber keeps draining and still re-emits', async () => {
       const onError = jest.fn((): void => {
         throw new Error('boom')
       })
       render(
-        <CollectorModalScreen
-          source={{ _tag: 'Html', html: '<html></html>' }}
-          postRawMessage={() => undefined}
-          onError={onError}
-        />
+        <CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} onError={onError} />
       )
       const handlers = mockLastSnifferHandlers
       expect(handlers).not.toBeNull()
       if (handlers === null) return
-      // `Effect.catchAllCause` inside the handler logs and recovers;
-      // `runPromise` resolves rather than rejecting.
-      await expect(
-        Effect.runPromise(
-          handlers.RequestError({
-            _tag: 'RequestError',
-            id: 'r1',
-            url: 'https://example.test',
-            message: 'boom',
-          })
-        )
-      ).resolves.toBeUndefined()
+      const event = {
+        _tag: 'RequestError' as const,
+        id: 'r1',
+        url: 'https://example.test',
+        message: 'boom',
+      }
+      await expect(Effect.runPromise(handlers.RequestError(event))).resolves.toBeUndefined()
       expect(onError).toHaveBeenCalledTimes(1)
+      expect(mockReEmittedMessages).toEqual([event])
+    })
+  })
+
+  describe('snifferControlRef registration', () => {
+    it('registers click / cancelRequest into the host context on mount', () => {
+      render(<CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />)
+      expect(mockHostStub.snifferControlRef.current).not.toBeNull()
+      mockHostStub.snifferControlRef.current?.click('#submit')
+      mockHostStub.snifferControlRef.current?.cancelRequest('req-1')
+      expect(mockSnifferClickCalls).toEqual(['#submit'])
+      expect(mockSnifferCancelCalls).toEqual(['req-1'])
+    })
+
+    it('clears the ref on unmount', () => {
+      const { unmount } = render(
+        <CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />
+      )
+      expect(mockHostStub.snifferControlRef.current).not.toBeNull()
+      unmount()
+      expect(mockHostStub.snifferControlRef.current).toBeNull()
     })
   })
 
@@ -173,7 +212,6 @@ describe('CollectorModalScreen', () => {
       render(
         <CollectorModalScreen
           source={{ _tag: 'Uri', uri: 'https://example.test/a' }}
-          postRawMessage={() => undefined}
           handleRef={handleRef}
         />
       )
@@ -190,22 +228,6 @@ describe('CollectorModalScreen', () => {
         handleRef.current?.navigate({ _tag: 'Uri', uri: 'https://example.test/b' })
       })
       expect(mockLastSnifferSource).toEqual({ uri: 'https://example.test/b' })
-    })
-  })
-
-  describe('postRawSnifferMessage handle', () => {
-    it('forwards raw wire strings into the sniffer ref verbatim', () => {
-      const handleRef = React.createRef<CollectorModalScreenHandle>()
-      render(
-        <CollectorModalScreen
-          source={{ _tag: 'Html', html: '<html></html>' }}
-          postRawMessage={() => undefined}
-          handleRef={handleRef}
-        />
-      )
-      const raw = JSON.stringify({ _tag: 'Click', querySelector: '#go' })
-      handleRef.current?.postRawSnifferMessage(raw)
-      expect(mockSnifferPostRawCalls).toEqual([raw])
     })
   })
 })

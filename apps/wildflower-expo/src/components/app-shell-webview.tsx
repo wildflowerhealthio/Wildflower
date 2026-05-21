@@ -1,8 +1,3 @@
-/* oxlint-disable import/max-dependencies -- The shell is the
-   composition site for every host-side bridge wiring (Navigation,
-   Gatekeeper, Collector, Apps) plus its React surface; reducing
-   imports further would just push the wiring into a sibling file
-   that re-imports the same modules. */
 import { AppsBridgeExpo } from 'apps-expo'
 import { CollectorBridgeExpo } from 'collector-expo'
 import { Effect, Layer } from 'effect'
@@ -13,12 +8,11 @@ import { Loader } from 'expo-tundraish'
 import { GatekeeperBridgeExpo } from 'gatekeeper-expo'
 import { useGatekeeperHostMessaging } from 'gatekeeper-react'
 import { NavigationBridgeExpo } from 'navigation-expo'
-import { useContext, useEffect, useMemo, type JSX, type ReactNode, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, type JSX, type ReactNode, type RefObject } from 'react'
 import { TunnelStore } from 'tunnel-core/livestore'
 import { html } from 'wildflower-react/embeddable-html'
 import { useWildflowerStore } from '../livestore/livestore-store.ts'
 import { bridges, type Bridges } from './app-shell-bridges.ts'
-import { WebviewBareSenderRefContext } from './webview-bare-sender-ref-context.ts'
 
 interface AppShellWebViewProps {
   readonly baseUrl: string
@@ -62,11 +56,7 @@ const AppShellWebView = ({
   onRouteChanged,
   children,
 }: AppShellWebViewProps): JSX.Element => {
-  const refContext = useContext(WebviewBareSenderRefContext)
-  if (refContext === null) {
-    throw new Error('AppShellWebView: missing WebviewBareSenderRefContext provider')
-  }
-  const { webviewBareSenderRef } = refContext
+  const webviewBareSenderRef = useRef<BareSenderService | null>(null)
 
   const collectorBridgeReceiverLayer = CollectorBridgeExpo.useReceiverLayer()
 

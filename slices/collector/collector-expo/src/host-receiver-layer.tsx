@@ -13,24 +13,37 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type JSX,
   type ReactNode,
+  type RefObject,
 } from 'react'
+
+/**
+ * Imperative surface the live `<CollectorModalScreen>` registers when
+ * its underlying `<BrowserSnifferWebView>` mounts. The bridge's
+ * `Click` / `CancelSnifferRequest` handlers reach into the ref to
+ * drive the sniffer page. Null when no modal is mounted — handlers
+ * silently drop, mirroring the bridge's "no peer attached" semantics.
+ */
+interface SnifferControl {
+  readonly click: (querySelector: string) => void
+  readonly cancelRequest: (id: string) => void
+}
 
 /**
  * Private context exposing the host-side actions a
  * {@link useReceiverLayer}-built layer needs to call when the SPA fires
  * `RequestSniffableWebView` (and friends). Holds the `pendingSource`
- * state the modal route reads, plus the `postRawMessage` sink that
- * forwards raw sniffer-wire payloads from the modal back into the
- * SPA's `CollectorBridge` via the host shell.
+ * state the modal route reads, plus the `snifferControlRef` the active
+ * modal registers so inbound `Click` / `CancelSnifferRequest` messages
+ * from the SPA reach the sniffer page.
  */
 interface CollectorHostContextValue {
   readonly pendingSource: WebViewSource.Any | null
-  readonly postRawMessage: (rawWire: string) => void
+  readonly snifferControlRef: RefObject<SnifferControl | null>
   readonly requestSniffableWebView: (source: WebViewSource.Any) => void
-  readonly cancelSnifferRequest: (id: string) => void
   readonly sniffingComplete: () => void
   readonly open: (source: WebViewSource.Any) => void
 }
@@ -38,12 +51,6 @@ interface CollectorHostContextValue {
 const CollectorHostContext = createContext<CollectorHostContextValue | null>(null)
 
 interface HostProviderProps {
-  /**
-   * Raw-wire sink into the embedded SPA's `CollectorBridge`. The host
-   * shell typically reads its WebView handle here — e.g.
-   * `(rawWire) => shellRef.current?.postRawMessage(rawWire)`.
-   */
-  readonly postRawMessage: (rawWire: string) => void
   /**
    * Path of the file-system route that hosts {@link CollectorModalRoute}.
    * Defaults to `'/collector-modal'`.
@@ -55,27 +62,29 @@ interface HostProviderProps {
 const DEFAULT_MODAL_PATH = '/collector-modal' as const
 
 /**
- * Owns the collector-side host state (`pendingSource`) and exposes
- * stable action callbacks via a private context. Wrap the app's
- * router Stack with this provider; render `{@link CollectorModalRoute}`
- * at `modalPath` and use {@link useReceiverLayer} inside the bridge-
- * transport composition to wire `CollectorBridge.Host`'s handlers.
+ * Owns the collector-side host state (`pendingSource` + the modal's
+ * sniffer-control ref) and exposes stable action callbacks via a
+ * private context. Wrap the app's router Stack with this provider;
+ * render `{@link CollectorModalRoute}` at `modalPath` and use
+ * {@link useReceiverLayer} inside the bridge-transport composition to
+ * wire `CollectorBridge.Host`'s handlers.
  *
- * Each web→host tag has a corresponding action exposed through the
- * context. `requestSniffableWebView` advances the pending source +
- * pushes the modal route; the others are placeholder no-ops today,
- * mirroring the legacy inline behavior (host shell didn't wire
- * `onCancelSnifferRequest` / `onSniffingComplete` / `onOpen`).
- * Future consumers can read them from the context to drive the modal
- * imperatively.
+ * Web→host tags are dispatched via the context:
+ *
+ *  - `RequestSniffableWebView` advances the pending source + pushes the modal route.
+ *  - `Click` / `CancelSnifferRequest` call into `snifferControlRef.current` —
+ *    set by the live modal when its `<BrowserSnifferWebView>` mounts.
+ *    Null-ref calls (no modal mounted) drop silently.
+ *  - `SniffingComplete` / `Open` — placeholder no-ops; future
+ *    consumers can drive the modal imperatively through these.
  */
 const HostProvider = ({
-  postRawMessage,
   modalPath = DEFAULT_MODAL_PATH,
   children,
 }: HostProviderProps): JSX.Element => {
   const router = useRouter()
   const [pendingSource, setPendingSource] = useState<WebViewSource.Any | null>(null)
+  const snifferControlRef = useRef<SnifferControl | null>(null)
 
   const requestSniffableWebView = useCallback(
     (source: WebViewSource.Any): void => {
@@ -85,27 +94,18 @@ const HostProvider = ({
     [router, modalPath]
   )
 
-  const cancelSnifferRequest = useCallback((_id: string): void => undefined, [])
   const sniffingComplete = useCallback((): void => undefined, [])
   const open = useCallback((_source: WebViewSource.Any): void => undefined, [])
 
   const value = useMemo<CollectorHostContextValue>(
     () => ({
       pendingSource,
-      postRawMessage,
+      snifferControlRef,
       requestSniffableWebView,
-      cancelSnifferRequest,
       sniffingComplete,
       open,
     }),
-    [
-      pendingSource,
-      postRawMessage,
-      requestSniffableWebView,
-      cancelSnifferRequest,
-      sniffingComplete,
-      open,
-    ]
+    [pendingSource, requestSniffableWebView, sniffingComplete, open]
   )
 
   return <CollectorHostContext.Provider value={value}>{children}</CollectorHostContext.Provider>
@@ -113,8 +113,8 @@ const HostProvider = ({
 
 /**
  * Read the collector host context. Throws when called outside a
- * {@link HostProvider} — that's the same fail-fast policy the rest
- * of the slice contexts use.
+ * {@link HostProvider} — the same fail-fast policy the rest of the
+ * slice contexts use.
  */
 const useHost = (): CollectorHostContextValue => {
   const ctx = useContext(CollectorHostContext)
@@ -136,14 +136,15 @@ const useHost = (): CollectorHostContextValue => {
  *    only ever runs on a future schema relaxation; until then it's a
  *    belt-and-suspenders log. Otherwise dispatches to
  *    `requestSniffableWebView(source)`.
- *  - `CancelSnifferRequest` / `SniffingComplete` / `Open` — forward
- *    to the corresponding context callbacks (currently no-op).
- *  - `Click` — `Effect.void`. The injected sniffer handles
- *    `document.querySelector(...)?.click()` itself; the host's only
- *    job is the raw-wire forwarding consumers wire via `onRawMessage`.
+ *  - `CancelSnifferRequest` / `Click` — drive the active sniffer
+ *    page through `snifferControlRef`. Null-ref (no modal mounted)
+ *    drops silently — mirrors the bridge's "no peer attached"
+ *    behavior for outbound sends.
+ *  - `SniffingComplete` / `Open` — forward to the corresponding
+ *    context callbacks (currently no-op).
  */
 const useReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collector', 'Host'>> => {
-  const { requestSniffableWebView, cancelSnifferRequest, sniffingComplete, open } = useHost()
+  const { requestSniffableWebView, sniffingComplete, open, snifferControlRef } = useHost()
   return useMemo(
     () =>
       CollectorBridge.Host.ReceiverLayer({
@@ -163,7 +164,7 @@ const useReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collector', 'Host
           }),
         CancelSnifferRequest: ({ id }) =>
           Effect.sync(() => {
-            cancelSnifferRequest(id)
+            snifferControlRef.current?.cancelRequest(id)
           }),
         SniffingComplete: () =>
           Effect.sync(() => {
@@ -173,16 +174,15 @@ const useReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collector', 'Host
           Effect.sync(() => {
             open(source)
           }),
-        // `Click` has no typed callback — the injected sniffer
-        // handles `document.querySelector(...)?.click()` itself, so
-        // the host's only job is to forward the wire to the sniffer
-        // WebView. Consumers wire that via `onRawMessage`.
-        Click: () => Effect.void,
+        Click: ({ querySelector }) =>
+          Effect.sync(() => {
+            snifferControlRef.current?.click(querySelector)
+          }),
       }),
-    [requestSniffableWebView, cancelSnifferRequest, sniffingComplete, open]
+    [requestSniffableWebView, sniffingComplete, open, snifferControlRef]
   )
 }
 
 export { CollectorModalRoute } from './screens/CollectorModalRoute.tsx'
 export { HostProvider, useHost, useReceiverLayer }
-export type { HostProviderProps }
+export type { HostProviderProps, SnifferControl }

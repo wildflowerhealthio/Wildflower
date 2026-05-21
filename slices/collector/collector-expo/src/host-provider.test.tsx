@@ -36,6 +36,16 @@ jest.mock('expo-tundraish', () => {
   }
 })
 
+// `collector-react` exports the typed host-messaging hook the modal
+// screen uses to re-emit sniffer events. The probe here doesn't render
+// CollectorModalScreen, so the hook is never called — stub with a
+// throw to make accidental usage loud.
+jest.mock('collector-react', () => ({
+  useCollectorHostMessaging: (): never => {
+    throw new Error('useCollectorHostMessaging should not be called in this test')
+  },
+}))
+
 const mockRouterPush = jest.fn()
 const mockRouterBack = jest.fn()
 
@@ -58,7 +68,7 @@ let mockLastHandlers: {
   readonly CancelSnifferRequest: (msg: { id: string }) => Effect.Effect<void>
   readonly SniffingComplete: () => Effect.Effect<void>
   readonly Open: (msg: { source: unknown }) => Effect.Effect<void>
-  readonly Click: () => Effect.Effect<void>
+  readonly Click: (msg: { querySelector: string }) => Effect.Effect<void>
 } | null = null
 
 jest.mock('collector-fundamentals/bridge', () => {
@@ -100,7 +110,7 @@ describe('CollectorBridgeExpo.HostProvider + useReceiverLayer', () => {
   it('RequestSniffableWebView updates pendingSource and pushes the modal route', () => {
     const seenHosts: Array<ReturnType<typeof CollectorBridgeExpo.useHost>> = []
     render(
-      <CollectorBridgeExpo.HostProvider postRawMessage={() => undefined}>
+      <CollectorBridgeExpo.HostProvider>
         <TestProbe onReady={(h) => seenHosts.push(h)} />
       </CollectorBridgeExpo.HostProvider>
     )
@@ -123,7 +133,7 @@ describe('CollectorBridgeExpo.HostProvider + useReceiverLayer', () => {
 
   it('honors a custom modalPath on the provider', () => {
     render(
-      <CollectorBridgeExpo.HostProvider postRawMessage={() => undefined} modalPath="/custom-modal">
+      <CollectorBridgeExpo.HostProvider modalPath="/custom-modal">
         <TestProbe onReady={() => undefined} />
       </CollectorBridgeExpo.HostProvider>
     )
@@ -142,7 +152,7 @@ describe('CollectorBridgeExpo.HostProvider + useReceiverLayer', () => {
   it('drops a non-http(s) URI without touching the router (defense-in-depth)', () => {
     const seenHosts: Array<ReturnType<typeof CollectorBridgeExpo.useHost>> = []
     render(
-      <CollectorBridgeExpo.HostProvider postRawMessage={() => undefined}>
+      <CollectorBridgeExpo.HostProvider>
         <TestProbe onReady={(h) => seenHosts.push(h)} />
       </CollectorBridgeExpo.HostProvider>
     )
@@ -159,16 +169,63 @@ describe('CollectorBridgeExpo.HostProvider + useReceiverLayer', () => {
     expect(seenHosts[seenHosts.length - 1]?.pendingSource).toBeNull()
   })
 
-  it('exposes postRawMessage from the provider through the context', () => {
-    const sink: string[] = []
+  it('Click forwards to the registered snifferControlRef when a modal is mounted', () => {
     const seenHosts: Array<ReturnType<typeof CollectorBridgeExpo.useHost>> = []
+    const clicks: string[] = []
     render(
-      <CollectorBridgeExpo.HostProvider postRawMessage={(raw) => sink.push(raw)}>
+      <CollectorBridgeExpo.HostProvider>
         <TestProbe onReady={(h) => seenHosts.push(h)} />
       </CollectorBridgeExpo.HostProvider>
     )
 
-    seenHosts[0]?.postRawMessage('payload-A')
-    expect(sink).toEqual(['payload-A'])
+    // Modal registers a sniffer-control surface on mount.
+    act(() => {
+      seenHosts[0].snifferControlRef.current = {
+        click: (qs) => clicks.push(qs),
+        cancelRequest: () => undefined,
+      }
+    })
+
+    act(() => {
+      Effect.runSync(mockLastHandlers!.Click({ querySelector: '#submit' }))
+    })
+
+    expect(clicks).toEqual(['#submit'])
+  })
+
+  it('Click drops silently when no modal is mounted (null ref)', () => {
+    render(
+      <CollectorBridgeExpo.HostProvider>
+        <TestProbe onReady={() => undefined} />
+      </CollectorBridgeExpo.HostProvider>
+    )
+
+    // No registration — snifferControlRef.current stays null.
+    expect(() =>
+      Effect.runSync(mockLastHandlers!.Click({ querySelector: '#submit' }))
+    ).not.toThrow()
+  })
+
+  it('CancelSnifferRequest forwards to the registered snifferControlRef', () => {
+    const seenHosts: Array<ReturnType<typeof CollectorBridgeExpo.useHost>> = []
+    const cancels: string[] = []
+    render(
+      <CollectorBridgeExpo.HostProvider>
+        <TestProbe onReady={(h) => seenHosts.push(h)} />
+      </CollectorBridgeExpo.HostProvider>
+    )
+
+    act(() => {
+      seenHosts[0].snifferControlRef.current = {
+        click: () => undefined,
+        cancelRequest: (id) => cancels.push(id),
+      }
+    })
+
+    act(() => {
+      Effect.runSync(mockLastHandlers!.CancelSnifferRequest({ id: 'req-1' }))
+    })
+
+    expect(cancels).toEqual(['req-1'])
   })
 })
