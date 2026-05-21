@@ -115,7 +115,7 @@ const verifyJwt = (
       return yield* Effect.fail(unauthorized())
     }
     const store = yield* GatekeeperStore
-    const origin = yield* Origin
+    const origin = yield* Origin.get
     const signingKeys = store.query(SigningKey.queries.all$)
     if (signingKeys.length === 0) {
       // No keys configured is a server-side issue, not a client auth

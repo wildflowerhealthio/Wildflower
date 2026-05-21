@@ -29,7 +29,6 @@ jest.mock('../daemons/http-server.ts', () => {
           })
       )
     ),
-    LOCAL_HOSTNAME: '127.0.0.1',
   }
 })
 
@@ -51,6 +50,17 @@ jest.mock('tunnel-core/livestore', () => {
   )
   return {
     TunnelStore: {
+      layerFrom: (_store: unknown) => effect.Layer.effectDiscard(effect.Effect.void),
+    },
+  }
+})
+
+jest.mock('local-http-server-core/livestore', () => {
+  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
+    'effect'
+  )
+  return {
+    LocalHttpServerStore: {
       layerFrom: (_store: unknown) => effect.Layer.effectDiscard(effect.Effect.void),
     },
   }

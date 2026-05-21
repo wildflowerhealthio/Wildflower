@@ -1,5 +1,6 @@
 import { StoreRegistry, StoreRegistryProvider } from '@livestore/react'
 import { Effect, Fiber, Layer } from 'effect'
+import { LocalHttpServerStore } from 'local-http-server-core/livestore'
 import { type JSX, type PropsWithChildren, Suspense, useEffect, useState } from 'react'
 import { Text } from 'react-native'
 import { TunnelStore } from 'tunnel-core/livestore'
@@ -53,7 +54,11 @@ function DaemonRuntimeScope({ children }: PropsWithChildren): JSX.Element {
       Layer.launch(
         Layer.mergeAll(HttpServerDaemonLive, TunnelDaemon).pipe(
           Layer.provide(
-            Layer.mergeAll(Layer.succeed(WildflowerStore, store), TunnelStore.layerFrom(store))
+            Layer.mergeAll(
+              Layer.succeed(WildflowerStore, store),
+              TunnelStore.layerFrom(store),
+              LocalHttpServerStore.layerFrom(store)
+            )
           )
         )
       )

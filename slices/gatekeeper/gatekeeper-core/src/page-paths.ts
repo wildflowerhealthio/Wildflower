@@ -14,7 +14,7 @@ import { Origin } from 'navigation-core'
  */
 export namespace GatekeeperPaths {
   const withOrigin = (path: string): Effect.Effect<string, never, Origin> =>
-    Effect.map(Origin, (origin) => `${origin}${path}`)
+    Effect.map(Origin.get, (origin) => `${origin}${path}`)
 
   export const oauthPollingPath = (id: string): string =>
     `/gatekeeper/oauth-polling/${encodeURIComponent(id)}`
@@ -42,7 +42,7 @@ export namespace GatekeeperPaths {
    * form without re-typing.
    */
   export const deviceEntryUrlWithCode = (userCode: string): Effect.Effect<string, never, Origin> =>
-    Effect.map(Origin, (origin) => {
+    Effect.map(Origin.get, (origin) => {
       const query = new URLSearchParams({ user_code: userCode }).toString()
       return `${origin}${deviceEntryPath()}?${query}`
     })

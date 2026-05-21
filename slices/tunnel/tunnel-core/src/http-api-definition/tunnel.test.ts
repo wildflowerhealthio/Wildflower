@@ -22,24 +22,24 @@ describe('TunnelStateSchema', () => {
       Schema.decodeUnknownEither(TunnelStateSchema)({
         subdomain: null,
         rootDomain: null,
-        localPort: null,
         requestedRunning: false,
         running: false,
         currentSubdomain: null,
         currentRootDomain: null,
         currentLocalPort: null,
         error: null,
+        servedOrigin: 'http://127.0.0.1:8080',
       }),
       {
         subdomain: null,
         rootDomain: null,
-        localPort: null,
         requestedRunning: false,
         running: false,
         currentSubdomain: null,
         currentRootDomain: null,
         currentLocalPort: null,
         error: null,
+        servedOrigin: 'http://127.0.0.1:8080',
       }
     )
   })
@@ -58,13 +58,11 @@ describe('SetTunnelRequestBodySchema', () => {
       Schema.decodeUnknownEither(SetTunnelRequestBodySchema)({
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
-        localPort: 8080,
         requestedRunning: true,
       }),
       {
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
-        localPort: 8080,
         requestedRunning: true,
       }
     )
@@ -82,9 +80,8 @@ describe('SetTunnelRequestBodySchema', () => {
       Schema.decodeUnknownEither(SetTunnelRequestBodySchema)({
         subdomain: null,
         rootDomain: null,
-        localPort: null,
       }),
-      { subdomain: null, rootDomain: null, localPort: null }
+      { subdomain: null, rootDomain: null }
     )
   })
 

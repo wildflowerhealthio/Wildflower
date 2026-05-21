@@ -12,12 +12,12 @@ import { GatekeeperStore, LocalClientToken } from 'gatekeeper-core/livestore'
 import { cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { runHttpServerDaemon } from 'local-http-server-core/daemon'
 import { LocalHttpServerStore } from 'local-http-server-core/livestore'
-import { Origin } from 'navigation-core'
 import { injectActiveOtelContext, reactNativeTelemetryLayerFromEnv } from 'telemetry-react-native'
+import { OriginFromServedOrigin } from 'tunnel-core/contexts'
 import { TunnelStore } from 'tunnel-core/livestore'
 import { html as embeddableHtml } from 'wildflower-react/embeddable-html'
 import { WebAssetsDir, WildflowerServerLive } from 'wildflower-server'
-import { PORT, SERVICE_NAME } from '../constants.ts'
+import { SERVICE_NAME } from '../constants.ts'
 import { WildflowerStore } from '../livestore/livestore-store.ts'
 
 /**
@@ -37,8 +37,6 @@ const stageWebAssetsDir = (): string => {
   // `Path.Path` resolvers don't accept the `file://` URI scheme — strip it.
   return dir.uri.replace(/^file:\/\//, '')
 }
-
-const LOCAL_HOSTNAME = `127.0.0.1`
 
 const CryptoRandomLive = cryptoRandomLayerFromWebCrypto(globalThis.crypto)
 const TelemetryLive = reactNativeTelemetryLayerFromEnv({ otel: { serviceName: SERVICE_NAME } })
@@ -100,17 +98,12 @@ const HttpServerContextLive = Layer.mergeAll(
 
       // Mint the local-client bootstrap token. On Expo the device IS the
       // owner — there's no separate developer minting it via a dev log.
-      // The Origin bound here pins the JWT issuer / audience claim to the
-      // loopback URL; runtime port reassignment would invalidate the
-      // token (see Composition Explanation).
+      // `OriginFromServedOrigin` reads the live origin from
+      // `servedOrigin$` (tunnel URL when up, LHS-bound loopback otherwise);
+      // at boot the tunnel isn't running and LHS state is at clientDocument
+      // defaults so the JWT iss/aud is `http://127.0.0.1:8080`.
       const token = yield* mintHostOwnerToken({ ttl: Duration.hours(24) }).pipe(
-        Effect.provide(
-          Layer.succeed(
-            Origin,
-            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-            `http://${LOCAL_HOSTNAME}:${PORT}` as unknown as typeof Origin.Service
-          )
-        ),
+        Effect.provide(OriginFromServedOrigin),
         Effect.catchAll((cause) =>
           Effect.as(
             Effect.logError(
@@ -147,6 +140,11 @@ const HttpServerContextLive = Layer.mergeAll(
  * etc.) flow in from {@link HttpServerContextLive} on the daemon's
  * outer scope.
  *
+ * `OriginFromServedOrigin` reads the live origin from `servedOrigin$`
+ * (tunnel URL when running, LHS-bound loopback otherwise) — so the
+ * `Origin` consumers (gatekeeper JWT audience, FHIR bundle URLs)
+ * automatically follow tunnel toggles without rebuilding this Layer.
+ *
  * The return type is the TS-inferred Layer over `WildflowerServerLive`'s
  * remaining requirements (six slice stores + `WebAssetsDir` +
  * `CryptoRandom` + `Telemetry` + the four `ExpoContext` peers); pinning
@@ -156,16 +154,7 @@ const HttpServerContextLive = Layer.mergeAll(
 const makeBindLive = ({ port, hostname }: { port: number; hostname: string }) =>
   WildflowerServerLive.pipe(
     HttpServer.withLogAddress,
-    Layer.provide(
-      Layer.mergeAll(
-        ExpoHttpServer.layer({ port, hostname }),
-        Layer.succeed(
-          Origin,
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          `http://${LOCAL_HOSTNAME}:${port}` as unknown as typeof Origin.Service
-        )
-      )
-    ),
+    Layer.provide(Layer.mergeAll(ExpoHttpServer.layer({ port, hostname }), OriginFromServedOrigin)),
     Layer.tapErrorCause((cause) =>
       Effect.logError('[wildflower-expo] FullServerLive cause:\n' + Cause.pretty(cause))
     )
@@ -222,4 +211,4 @@ const HttpServerDaemonLive: Layer.Layer<never, never, WildflowerStore> = Layer.s
   })
 )
 
-export { HttpServerDaemonLive, LOCAL_HOSTNAME }
+export { HttpServerDaemonLive }

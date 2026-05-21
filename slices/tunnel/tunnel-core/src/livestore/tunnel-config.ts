@@ -11,18 +11,19 @@ const columns = {
   id: State.SQLite.text({ primaryKey: true }),
   subdomain: State.SQLite.text({ nullable: true }),
   rootDomain: State.SQLite.text({ nullable: true }),
-  localPort: State.SQLite.integer({ nullable: true }),
   requestedRunning: State.SQLite.boolean({ default: false }),
 } as const
 
 /**
  * User/host-owned tunnel config — persistent across sessions.
  *
- * `subdomain` / `rootDomain` / `localPort` define the tunnel target the
- * daemon should bring up. `requestedRunning` is the on/off intent —
- * persisted so leaving the tunnel enabled auto-resumes after a restart.
- * Mirrors `LocalHttpServerState.requestedRunning` so the two daemons
- * share vocabulary.
+ * `subdomain` / `rootDomain` define the tunnel target the daemon should
+ * bring up. The forward-target port is sourced from
+ * `LocalHttpServerState.port` (single source of truth) rather than
+ * duplicated here. `requestedRunning` is the on/off intent — persisted
+ * so leaving the tunnel enabled auto-resumes after a restart. Mirrors
+ * `LocalHttpServerState.requestedRunning` so the two daemons share
+ * vocabulary.
  *
  * The daemon reads this table and writes only `TunnelState`; nothing
  * here is daemon-owned.
@@ -41,7 +42,6 @@ const tunnelConfigSet = Events.clientOnly({
   schema: Schema.Struct({
     subdomain: Schema.optional(Schema.NullOr(Schema.String)),
     rootDomain: Schema.optional(Schema.NullOr(Schema.String)),
-    localPort: Schema.optional(Schema.NullOr(Schema.Number)),
     requestedRunning: Schema.optional(Schema.Boolean),
   }),
 })
@@ -64,14 +64,13 @@ const materializers = State.SQLite.materializers(events, {
   // Patch semantics: omitted fields preserve prior values. On a fresh
   // install (no row yet) the omitted fields fall back to the column
   // defaults — `requestedRunning: false`, everything else null.
-  'v1.TunnelConfigSet': ({ subdomain, rootDomain, localPort, requestedRunning }, { query }) => {
+  'v1.TunnelConfigSet': ({ subdomain, rootDomain, requestedRunning }, { query }) => {
     const existing = query(table.where({ id: TUNNEL_CONFIG_ID }))[0]
     return table
       .insert({
         id: TUNNEL_CONFIG_ID,
         subdomain: subdomain !== undefined ? subdomain : (existing?.subdomain ?? null),
         rootDomain: rootDomain !== undefined ? rootDomain : (existing?.rootDomain ?? null),
-        localPort: localPort !== undefined ? localPort : (existing?.localPort ?? null),
         requestedRunning:
           requestedRunning !== undefined ? requestedRunning : (existing?.requestedRunning ?? false),
       })

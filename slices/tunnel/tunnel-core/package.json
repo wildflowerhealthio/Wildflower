@@ -18,6 +18,10 @@
       "source": "./src/clients/index.ts",
       "default": "./dist/clients/index.js"
     },
+    "./contexts": {
+      "source": "./src/contexts/index.ts",
+      "default": "./dist/contexts/index.js"
+    },
     "./daemon": {
       "source": "./src/daemon/index.ts",
       "default": "./dist/daemon/index.js"
@@ -56,6 +60,8 @@
     "effect": "catalog:",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
+    "local-http-server-core": "workspace:*",
+    "navigation-core": "workspace:*",
     "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
@@ -68,6 +74,8 @@
     "@livestore/utils": "catalog:",
     "effect": "catalog:",
     "kitchen-sink": "workspace:*",
+    "local-http-server-core": "workspace:*",
+    "navigation-core": "workspace:*",
     "shared-structures-core": "workspace:*"
   }
 }
