@@ -13,3 +13,9 @@ export {
 export { NeedsAuthMessage } from './components/NeedsAuthMessage.tsx'
 
 export { TOKEN_STORAGE_KEY, authTokenRef, writeToken } from './client/token-storage.ts'
+
+export { useGatekeeperHostMessaging } from './use-gatekeeper-host-messaging.ts'
+export type {
+  GatekeeperHostMessaging,
+  GatekeeperHostToWebMessage,
+} from './use-gatekeeper-host-messaging.ts'

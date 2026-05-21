@@ -27,3 +27,9 @@ export type {
 export { useRequestSniffableWebView } from './runtime/use-request-sniffable-web-view.ts'
 
 export { useSyncRunner, type RunnerState, type SyncRunnerInput } from './runtime/use-sync-runner.ts'
+
+export { useCollectorHostMessaging } from './use-collector-host-messaging.ts'
+export type {
+  CollectorHostMessaging,
+  CollectorHostToWebMessage,
+} from './use-collector-host-messaging.ts'

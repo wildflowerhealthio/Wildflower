@@ -1367,6 +1367,9 @@ importers:
       effect-messaging-core:
         specifier: workspace:*
         version: link:../../../global/effect-messaging/effect-messaging-core
+      effect-messaging-react:
+        specifier: workspace:*
+        version: link:../../../global/effect-messaging/effect-messaging-react
       react:
         specifier: 'catalog:'
         version: 19.1.0
@@ -1748,6 +1751,9 @@ importers:
       effect-messaging-core:
         specifier: workspace:*
         version: link:../../../global/effect-messaging/effect-messaging-core
+      effect-messaging-react:
+        specifier: workspace:*
+        version: link:../../../global/effect-messaging/effect-messaging-react
       fhir-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-r4
@@ -2123,6 +2129,12 @@ importers:
       effect:
         specifier: 3.21.2
         version: 3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      effect-messaging-core:
+        specifier: workspace:*
+        version: link:../../../global/effect-messaging/effect-messaging-core
+      effect-messaging-react:
+        specifier: workspace:*
+        version: link:../../../global/effect-messaging/effect-messaging-react
       fhir-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-r4
