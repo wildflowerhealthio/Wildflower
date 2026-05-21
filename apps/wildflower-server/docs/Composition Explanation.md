@@ -130,10 +130,15 @@ the host's `Effect.gen` _before_ the Layer launch has a real ordering:
      for the local dev console.
 6. **Compose `FullServerLive`** by providing every peer above to
    `WildflowerServerLive` (and, for node, merging `TunnelDaemon` in).
-7. **Launch.** Node: `Layer.launch(FullServerLive)`. Expo: hand
-   `startServer` to `runHttpServerDaemon` (see "Notes for the Expo
-   mirror" below), which forks the build into a sub-scope each time
-   `LocalHttpServerState.requestedRunning` flips on.
+7. **Launch.** Node: `Layer.launch(FullServerLive)`. Expo:
+   `Layer.launch(Layer.mergeAll(HttpServerDaemonLive, TunnelDaemon))`
+   inside a React `useEffect`. The HTTP-server slot is itself a
+   `runHttpServerDaemon`-wrapped Layer that forks the build into a
+   sub-scope each time `LocalHttpServerState.requestedRunning` flips
+   on. Steps 1–5 (telemetry inject, seeds, mint, asset staging) run
+   once inside `HttpServerDaemonLive`'s scope opener, before the
+   watcher fiber is forked — so the daemon's internal respawn loop
+   doesn't re-seed or re-mint.
 
 ## Notes for the Expo mirror
 
@@ -150,16 +155,41 @@ after which the stream parks until the sub-scope closes. The host
 provides the `startServer` callback that builds `FullServerLive` under
 `Effect.scoped(Layer.build(...))`.
 
-**The tunnel daemon runs alongside, not inside, the HTTP server.** The
-HTTP server can come and go (user toggles `requestedRunning` off, port
-changes, etc.); the tunnel daemon's job is to keep reconciling
-`TunnelConfig` regardless. The two daemons fork in parallel inside the
-React provider
-([`wildflower-daemons.tsx`](../../wildflower-expo/src/components/wildflower-daemons.tsx)),
-sharing one outer `Scope`. This contrasts with node's
-`Layer.mergeAll(WildflowerServerLive, NodeTunnelDaemon)` (one
-`Layer.launch`, lifetimes locked together) — the Expo divergence is
-deliberate.
+**The tunnel daemon runs alongside the HTTP server, under one
+`Layer.launch`.** The Expo host mirrors node's
+`Layer.mergeAll(WildflowerServerLive, NodeTunnelDaemon)` shape: it
+composes `Layer.mergeAll(HttpServerDaemonLive, TunnelDaemon)` and
+launches that once. The user-toggle-driven start/stop machinery is
+inside `runHttpServerDaemon`, not in the outer Scope — so merging at
+the outer layer doesn't couple the HTTP server's per-bind lifetime to
+the tunnel daemon's. The only Expo-specific divergence is **where the
+launch is triggered**: a `useEffect` inside
+[`AppRuntimeProvider`](../../wildflower-expo/src/components/app-runtime-provider.tsx)'s
+inner `DaemonRuntimeScope` forks `Layer.launch(...)` once the store
+handle is available, with `Fiber.interrupt` cleanup so React's mount
+semantics drive scope lifetime cleanly (and StrictMode is handled by
+the standard cleanup contract).
+
+`HttpServerDaemonLive` further decomposes into:
+
+- **`SliceStoresLive`** — six slice-store projections of the singleton
+  `WildflowerStore`, exposed as a single `Layer<6 stores, never,
+WildflowerStore>`.
+- **`HttpServerContextLive`** — `Layer.mergeAll(Layer.effect(WebAssetsDir,
+bootstrap…), CryptoRandomLive, TelemetryLive, ExpoContext.layer).pipe(
+Layer.provideMerge(SliceStoresLive))`. The anonymous
+  `Layer.effect(WebAssetsDir, …)` body is the one-shot bootstrap
+  (telemetry inject, signing-key seed, first-party client seed,
+  host-owner token mint + commit into `LocalClientToken`); Layer caching
+  guarantees the body runs once per Layer build.
+- **`makeBindLive(cfg)`** — per-bind Layer constructor that composes
+  `WildflowerServerLive` against `ExpoHttpServer.layer(cfg)` + `Origin`.
+- **`HttpServerDaemonLive`** — `Layer.scopedDiscard` whose body builds
+  `HttpServerContextLive` once (via `Layer.build` + `Layer.succeedContext`
+  to freeze it), forks `runHttpServerDaemon(startServer)`, and provides
+  the frozen context both to the daemon and to each per-bind
+  `Layer.build(makeBindLive(cfg).pipe(Layer.provide(…)))`. The respawn
+  loop only rebuilds the per-bind layer; bootstrap is not re-entered.
 
 Other Expo-side substitutions:
 
@@ -172,9 +202,14 @@ Other Expo-side substitutions:
   `TunnelState.queries.current$` (`currentSubdomain` +
   `currentRootDomain`) and compose `https://{sub}.{root}` at the call
   site, or fall back to the local origin when the tunnel is down.
-- **Bootstrap token**: the Expo host mints one on every launch and
-  logs an 8-char prefix. Token persistence via `expo-secure-store` is
-  a planned follow-up.
+- **Local-client token**: the Expo host mints one on every launch and
+  commits it into `gatekeeper-core`'s session-scoped
+  `LocalClientToken` clientDocument (`{ value: string | null }`);
+  `HomeScreen` `useQuery`s the row and hands the value to
+  `<AppShellWebView>`, closing the auth loop on first load without a
+  device-code round trip. A fresh process always starts at `null` and
+  flips to the minted string once bootstrap completes — token
+  persistence via `expo-secure-store` remains a planned follow-up.
 
 ## When this doc is wrong
 
@@ -195,5 +230,5 @@ section is more stable but worth re-reading if seeds shift.
 - [Effect Patterns Reference](../../../docs/Effect/Patterns%20Reference.md)
 - [HttpApi Composition How-To](../../../docs/Effect/HttpApi%20Composition%20How-To.md) — phantom-id bridge pattern that makes the `*HandlersFor<'WildflowerApi'>()` calls possible
 - [`wildflower-node/src/index.ts`](../../wildflower-node/src/index.ts) — canonical node composition
-- [`wildflower-expo/src/daemons/http-server.ts`](../../wildflower-expo/src/daemons/http-server.ts) — Expo composition (paired with [`wildflower-daemons.tsx`](../../wildflower-expo/src/components/wildflower-daemons.tsx) for the daemon fork)
+- [`wildflower-expo/src/daemons/http-server.ts`](../../wildflower-expo/src/daemons/http-server.ts) — Expo composition (`HttpServerDaemonLive`, paired with [`app-runtime-provider.tsx`](../../wildflower-expo/src/components/app-runtime-provider.tsx) for the `Layer.launch` + `Fiber.interrupt` cleanup)
 - [`wildflower-server/src/index.ts`](../src/index.ts) — what's being composed
