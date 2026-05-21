@@ -2,7 +2,7 @@
   "name": "collector-expo",
   "version": "0.0.0",
   "private": true,
-  "description": "Expo wrapper for the collector slice — RunSyncModalScreen mounts a BrowserSnifferWebView and forwards sniffer events back to the host shell's CollectorBridge.",
+  "description": "Expo wrapper for the collector slice — CollectorModalScreen mounts a BrowserSnifferWebView and forwards sniffer events back to the host shell's CollectorBridge.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -41,7 +41,10 @@
     "browser-sniffer-expo": "workspace:*",
     "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "expect-type": "catalog:",
     "expo": "catalog:",
+    "expo-router": "catalog:",
     "expo-tundraish": "workspace:*",
     "jest": "catalog:",
     "jest-expo": "catalog:",
@@ -55,6 +58,8 @@
     "browser-sniffer-expo": "workspace:*",
     "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "expo-router": "*",
     "expo-tundraish": "workspace:*",
     "react": "catalog:",
     "react-native": "catalog:"

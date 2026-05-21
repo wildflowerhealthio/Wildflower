@@ -153,7 +153,7 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
           )
         }
 
-        const localHostname = localStore.query(ServerState.queries.current$).localHostname
+        const { localHostname, port } = localStore.query(ServerState.queries.current$)
         const beforeTunnel = tunnelStore.query(TunnelState.queries.current$)
 
         // Pick the origin: local if no tunnel needed or already running
@@ -163,13 +163,13 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
         // surface `?tunnel=unavailable` on the redirect). The
         // `requestedRunning` commit is sticky: see `awaitTunnelRunning`
         // — interrupt does not roll it back.
-        let hostname = localHostname
+        let origin = `http://${localHostname}:${port}`
         let tunnelFellBack = false
         if (launchContext.requiresTunnel) {
           if (beforeTunnel.running) {
             const live = tunnelOrigin(beforeTunnel)
             if (live === null) tunnelFellBack = true
-            else hostname = live
+            else origin = live
           } else {
             tunnelStore.commit(TunnelConfig.events.tunnelConfigSet({ requestedRunning: true }))
             const outcome = yield* awaitTunnelRunning()
@@ -181,7 +181,7 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
             } else {
               const live = tunnelOrigin(outcome.state)
               if (live === null) tunnelFellBack = true
-              else hostname = live
+              else origin = live
             }
           }
         }
@@ -200,13 +200,13 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
         }
 
         if (path.id === FHIR_SHARING_ID || launchContext.isAction) {
-          const target = tunnelFellBack ? appendTunnelUnavailable(hostname) : hostname
+          const target = tunnelFellBack ? appendTunnelUnavailable(origin) : origin
           return HttpServerResponse.redirect(target, { status: 302 })
         }
 
         const launch = nanoid()
-        const resolved = launchContext.url(hostname, launch)
-        if (!isLaunchableUrl(resolved, hostname)) {
+        const resolved = launchContext.url(origin, launch)
+        if (!isLaunchableUrl(resolved, origin)) {
           yield* Effect.logWarning(
             `[apps-core] LaunchApp rejected resolved URL for ${path.id}: ${resolved}`
           )

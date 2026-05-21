@@ -49,13 +49,13 @@ const PASSTHROUGH_TO_SPA: ReadonlySet<string> = new Set([
  * forward to the sniffer page verbatim without re-encoding. The
  * parent screen wires this to the host shell's `onRawMessage`.
  */
-interface RunSyncModalScreenHandle {
+interface CollectorModalScreenHandle {
   readonly navigate: (source: WebViewSource.Any) => void
   readonly click: (querySelector: string) => void
   readonly postRawSnifferMessage: (rawWire: string) => void
 }
 
-interface RunSyncModalScreenProps {
+interface CollectorModalScreenProps {
   /**
    * Initial page the sniffer should load — the bridge-tagged
    * `WebViewSource.Any` the SPA emits in `RequestSniffableWebView`.
@@ -75,7 +75,7 @@ interface RunSyncModalScreenProps {
   /** Optional error sink for non-decode failures the bridge would otherwise log. */
   readonly onError?: (error: { id: string; url: string; message: string }) => void
   /** Imperative handle for the parent screen to drive scripted navigation. */
-  readonly handleRef?: Ref<RunSyncModalScreenHandle>
+  readonly handleRef?: Ref<CollectorModalScreenHandle>
 }
 
 /**
@@ -99,12 +99,12 @@ interface RunSyncModalScreenProps {
  * `onError` callback, `Log` to drop server-side log spam. The
  * remaining tags ride the raw passthrough.
  */
-const RunSyncModalScreen = ({
+const CollectorModalScreen = ({
   source: initialSource,
   postRawMessage,
   onError,
   handleRef,
-}: RunSyncModalScreenProps): JSX.Element => {
+}: CollectorModalScreenProps): JSX.Element => {
   const snifferRef = useRef<BrowserSnifferWebViewHandle>(null)
   const [source, setSource] = useState<WebViewSource.Any>(initialSource)
 
@@ -138,7 +138,7 @@ const RunSyncModalScreen = ({
           onError?.(event)
         }).pipe(
           Effect.catchAllCause((cause) =>
-            Effect.logError('RunSyncModalScreen: onError callback failed', cause)
+            Effect.logError('CollectorModalScreen: onError callback failed', cause)
           )
         ),
       Cancelled: () => Effect.void,
@@ -198,5 +198,5 @@ const styles = StyleSheet.create({
   },
 })
 
-export { RunSyncModalScreen }
-export type { RunSyncModalScreenHandle, RunSyncModalScreenProps }
+export { CollectorModalScreen }
+export type { CollectorModalScreenHandle, CollectorModalScreenProps }

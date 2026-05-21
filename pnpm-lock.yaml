@@ -1640,9 +1640,18 @@ importers:
       effect:
         specifier: 3.21.2
         version: 3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      effect-messaging-core:
+        specifier: workspace:*
+        version: link:../../../global/effect-messaging/effect-messaging-core
+      expect-type:
+        specifier: 'catalog:'
+        version: 1.3.0
       expo:
         specifier: 'catalog:'
         version: 54.0.34(@babel/core@7.29.0)(@expo/dom-webview@0.2.8)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native-webview@13.15.0(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.1.0)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.1.0)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
+      expo-router:
+        specifier: 'catalog:'
+        version: 6.0.23(3a1ecd3dfe5459c332310830856796e5)
       expo-tundraish:
         specifier: workspace:*
         version: link:../../../global/expo-tundraish
@@ -17829,7 +17838,6 @@ snapshots:
       - '@types/react'
       - '@types/react-dom'
       - supports-color
-    optional: true
 
   expo-server@1.0.6: {}
 

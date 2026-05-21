@@ -53,7 +53,7 @@ jest.mock('expo-tundraish', () => {
   }
 })
 
-import { RunSyncModalScreen, type RunSyncModalScreenHandle } from './RunSyncModalScreen.tsx'
+import { CollectorModalScreen, type CollectorModalScreenHandle } from './CollectorModalScreen.tsx'
 
 beforeEach(() => {
   mockLastSnifferHandlers = null
@@ -62,7 +62,7 @@ beforeEach(() => {
   mockSnifferPostRawCalls = []
 })
 
-describe('RunSyncModalScreen', () => {
+describe('CollectorModalScreen', () => {
   describe('raw passthrough to the SPA', () => {
     it.each([
       ['ResponseStart', { _tag: 'ResponseStart', id: 'r1', url: 'u', status: 200 }],
@@ -74,7 +74,7 @@ describe('RunSyncModalScreen', () => {
     ])('forwards %s raw wire strings verbatim into postRawMessage', (_tag, payload) => {
       const rawCalls: string[] = []
       render(
-        <RunSyncModalScreen
+        <CollectorModalScreen
           source={{ _tag: 'Html', html: '<html></html>' }}
           postRawMessage={(raw) => rawCalls.push(raw)}
         />
@@ -88,7 +88,7 @@ describe('RunSyncModalScreen', () => {
     it('drops non-passthrough tags (Log) without forwarding', () => {
       const rawCalls: string[] = []
       render(
-        <RunSyncModalScreen
+        <CollectorModalScreen
           source={{ _tag: 'Html', html: '<html></html>' }}
           postRawMessage={(raw) => rawCalls.push(raw)}
         />
@@ -101,7 +101,7 @@ describe('RunSyncModalScreen', () => {
     it('silently drops malformed JSON without forwarding', () => {
       const rawCalls: string[] = []
       render(
-        <RunSyncModalScreen
+        <CollectorModalScreen
           source={{ _tag: 'Html', html: '<html></html>' }}
           postRawMessage={(raw) => rawCalls.push(raw)}
         />
@@ -117,7 +117,7 @@ describe('RunSyncModalScreen', () => {
     it('still fires onError even though the wire forward goes via raw', async () => {
       const onError = jest.fn()
       render(
-        <RunSyncModalScreen
+        <CollectorModalScreen
           source={{ _tag: 'Html', html: '<html></html>' }}
           postRawMessage={() => undefined}
           onError={onError}
@@ -142,7 +142,7 @@ describe('RunSyncModalScreen', () => {
         throw new Error('boom')
       })
       render(
-        <RunSyncModalScreen
+        <CollectorModalScreen
           source={{ _tag: 'Html', html: '<html></html>' }}
           postRawMessage={() => undefined}
           onError={onError}
@@ -169,9 +169,9 @@ describe('RunSyncModalScreen', () => {
 
   describe('navigate() handle', () => {
     it('mounts a fresh source when the parent screen calls navigate', () => {
-      const handleRef = React.createRef<RunSyncModalScreenHandle>()
+      const handleRef = React.createRef<CollectorModalScreenHandle>()
       render(
-        <RunSyncModalScreen
+        <CollectorModalScreen
           source={{ _tag: 'Uri', uri: 'https://example.test/a' }}
           postRawMessage={() => undefined}
           handleRef={handleRef}
@@ -195,9 +195,9 @@ describe('RunSyncModalScreen', () => {
 
   describe('postRawSnifferMessage handle', () => {
     it('forwards raw wire strings into the sniffer ref verbatim', () => {
-      const handleRef = React.createRef<RunSyncModalScreenHandle>()
+      const handleRef = React.createRef<CollectorModalScreenHandle>()
       render(
-        <RunSyncModalScreen
+        <CollectorModalScreen
           source={{ _tag: 'Html', html: '<html></html>' }}
           postRawMessage={() => undefined}
           handleRef={handleRef}

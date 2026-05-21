@@ -349,7 +349,7 @@ describe('LaunchApp property tests', () => {
         try {
           localStore.commit(
             LocalHttpServerLivestore.ServerState.events.localHttpServerStateSet({
-              localHostname: LOCAL_ORIGIN,
+              localHostname: LOCAL_HOSTNAME,
               running: true,
               port: 8787,
             })

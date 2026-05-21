@@ -100,6 +100,21 @@ jest.mock('apps-expo', () => {
   }
 })
 
+// `collector-expo.CollectorBridgeExpo.useReceiverLayer` is exercised
+// in its own package's tests; the stubbed hook returns a no-op layer
+// so the transport wiring is satisfied.
+jest.mock('collector-expo', () => {
+  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
+    'effect'
+  )
+  return {
+    CollectorBridgeExpo: {
+      useReceiverLayer: (): LayerType.Layer<never> =>
+        effect.Layer.effectDiscard(effect.Effect.void),
+    },
+  }
+})
+
 // `TunnelStore.layerFrom(store)` is provided to the AppsBridgeExpo
 // layer; the mock returns an empty layer so `Layer.provide` chains
 // without needing a real livestore.
@@ -188,10 +203,6 @@ describe('AppShellWebView', () => {
 
   it('renders with the full callback surface attached (smoke)', () => {
     const onRouteChanged = jest.fn()
-    const onRequestSniffableWebView = jest.fn()
-    const onCancelSnifferRequest = jest.fn()
-    const onSniffingComplete = jest.fn()
-    const onOpen = jest.fn()
     const onRawMessage = jest.fn()
     expect(() =>
       render(
@@ -199,10 +210,6 @@ describe('AppShellWebView', () => {
           baseUrl="https://example.test"
           route="/apps"
           onRouteChanged={onRouteChanged}
-          onRequestSniffableWebView={onRequestSniffableWebView}
-          onCancelSnifferRequest={onCancelSnifferRequest}
-          onSniffingComplete={onSniffingComplete}
-          onOpen={onOpen}
           onRawMessage={onRawMessage}
         />
       )

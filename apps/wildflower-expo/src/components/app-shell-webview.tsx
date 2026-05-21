@@ -1,7 +1,7 @@
 import AppsBridge from 'apps-core/bridge'
 import { AppsBridgeExpo } from 'apps-expo'
+import { CollectorBridgeExpo } from 'collector-expo'
 import CollectorBridge from 'collector-fundamentals/bridge'
-import type { WebViewSource } from 'collector-fundamentals/model'
 import { Effect, Layer } from 'effect'
 import { BareSender, type BareSenderService } from 'effect-messaging-core'
 import { EffectMessagingWebView, WithTransport, type ExpoTransport } from 'effect-messaging-expo'
@@ -32,10 +32,8 @@ type Bridges = readonly [
 
 /**
  * Imperative handle exposed via `ref`. Hosts forward sniffer events
- * from the modal `<RunSyncModalScreen>` back through `CollectorBridge`
- * so the embedded SPA's sync runner can parse them, and emit the
- * `TunnelStarted` / `TunnelFailed` AppsBridge replies the SPA's
- * `useRequestTunnel` is awaiting.
+ * from the modal `<CollectorModalScreen>` back through `CollectorBridge`
+ * so the embedded SPA's sync runner can parse them.
  *
  * `sendMessage` is the typed multi-bridge sender — encodes via each
  * bridge's outbound schemas. `postRawMessage` is the *bypass* path:
@@ -63,26 +61,6 @@ interface AppShellWebViewProps {
    */
   readonly onRouteChanged?: (event: { pathname: string; canGoBack: boolean }) => void
   /**
-   * Fires when the SPA asks the host to open a sniffer-enabled WebView
-   * ("Import Now"). The host pushes a `<RunSyncModalScreen>` and
-   * forwards sniffer events back via the imperative handle's
-   * `postRawMessage`.
-   */
-  readonly onRequestSniffableWebView?: (source: WebViewSource.Any) => void
-  /**
-   * Fires when the SPA's `CollectorBridgeMessageHandler` decides an
-   * in-flight sniffer request should stop. The host forwards the id
-   * to the active `<BrowserSnifferWebView>`'s `cancelRequest(id)` ref.
-   */
-  readonly onCancelSnifferRequest?: (id: string) => void
-  /** Fires when the SPA's sync runner declares the active sync done. */
-  readonly onSniffingComplete?: () => void
-  /**
-   * Fires when the SPA's handler asks the host to mount a fresh page
-   * in the active sniffer WebView (next scripted-navigation step).
-   */
-  readonly onOpen?: (source: WebViewSource.Any) => void
-  /**
    * Optional pre-decode hook fired with the raw wire string for every
    * inbound bridge message *in addition to* the typed dispatch. Wire
    * this when an outer transport speaks the same wire format and
@@ -94,22 +72,11 @@ interface AppShellWebViewProps {
 
 const AppShellWebView = forwardRef<AppShellWebViewHandle, AppShellWebViewProps>(
   function AppShellWebView(
-    {
-      route,
-
-      baseUrl,
-      onRouteChanged,
-      onRequestSniffableWebView,
-      onCancelSnifferRequest,
-      onSniffingComplete,
-      onOpen,
-      token,
-      onRawMessage,
-      ...props
-    }: AppShellWebViewProps,
+    { route, baseUrl, onRouteChanged, token, onRawMessage, ...props }: AppShellWebViewProps,
     ref
   ): JSX.Element {
     const webviewBareSenderRef = useRef<BareSenderService>(null)
+    const collectorBridgeReceiverLayer = CollectorBridgeExpo.useReceiverLayer()
 
     // `AppsBridgeExpo.ReceiverLayer` requires `TunnelStore` (provided
     // from the wildflower-expo livestore) and `BareSender` (delegates
@@ -155,42 +122,7 @@ const AppShellWebView = forwardRef<AppShellWebViewHandle, AppShellWebViewProps>(
           [
             NavigationBridgeExpo.ReceiverLayer(onRouteChanged),
             GatekeeperBridgeExpo.ReceiverLayer(),
-            CollectorBridge.Host.ReceiverLayer({
-              RequestSniffableWebView: ({ source }) =>
-                Effect.gen(function* () {
-                  // Defense-in-depth: the bridge's `WebViewSource` schema
-                  // already pins `Uri` to `https://` only, so a malformed
-                  // message would fail to decode at the transport boundary.
-                  if (
-                    source._tag === 'Uri' &&
-                    !source.uri.startsWith('https://') &&
-                    !source.uri.startsWith('http://')
-                  ) {
-                    yield* Effect.logWarning(
-                      `AppShellWebView: refusing non-http(s) RequestSniffableWebView URI ${source.uri}`
-                    )
-                    return
-                  }
-                  onRequestSniffableWebView?.(source)
-                }),
-              CancelSnifferRequest: ({ id }) =>
-                Effect.sync(() => {
-                  onCancelSnifferRequest?.(id)
-                }),
-              SniffingComplete: () =>
-                Effect.sync(() => {
-                  onSniffingComplete?.()
-                }),
-              Open: ({ source }) =>
-                Effect.sync(() => {
-                  onOpen?.(source)
-                }),
-              // `Click` has no typed callback — the injected sniffer
-              // handles `document.querySelector(...)?.click()` itself, so
-              // the host's only job is to forward the wire to the sniffer
-              // WebView. Consumers wire that via `onRawMessage`.
-              Click: () => Effect.void,
-            }),
+            collectorBridgeReceiverLayer,
             appsBridgeReceiverLayer,
           ] as const
         }

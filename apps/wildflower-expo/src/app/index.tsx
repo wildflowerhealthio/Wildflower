@@ -1,5 +1,4 @@
 import { Effect } from 'effect'
-import { useRouter } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
 import { Colors, Spacing, ThemedText, ThemedView, useThemeColors } from 'expo-tundraish'
 import { useCallback, useContext, useEffect, useState, type JSX } from 'react'
@@ -24,11 +23,10 @@ import { useShellOrigins } from '../livestore/use-shell-origins.ts'
 export default function HomeScreen(): JSX.Element {
   const ctx = useContext(AppShellContext)
   if (ctx === null) throw new Error('AppShellContext missing — render under <RootLayout>')
-  const { shellRef, setPendingSource } = ctx
+  const { shellRef } = ctx
 
   const { running, localHostname, publicHostname } = useShellOrigins()
 
-  const router = useRouter()
   const palette = useThemeColors()
   const [activeTab, setActiveTab] = useState<TabKey>('apps')
   const [shellLive, setShellLive] = useState(false)
@@ -63,18 +61,6 @@ export default function HomeScreen(): JSX.Element {
     [shellRef]
   )
 
-  const handleRequestSniffableWebView = useCallback(
-    (
-      source: Parameters<
-        NonNullable<React.ComponentProps<typeof AppShellWebView>['onRequestSniffableWebView']>
-      >[0]
-    ): void => {
-      setPendingSource(source)
-      router.push('/run-sync-modal')
-    },
-    [router, setPendingSource]
-  )
-
   if (!running) {
     // Splash is still up; return an empty placeholder so the tree mounts.
     return <ThemedView style={styles.fill} />
@@ -88,7 +74,6 @@ export default function HomeScreen(): JSX.Element {
           baseUrl={publicHostname ? `https://${publicHostname}` : `http://${localHostname}:${PORT}`}
           route={TABS[0].path}
           onRouteChanged={handleRouteChanged}
-          onRequestSniffableWebView={handleRequestSniffableWebView}
         />
       </View>
       <View
