@@ -32,6 +32,8 @@
     "@testing-library/react": "^16.3.0",
     "@types/react": "catalog:",
     "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "effect-messaging-react": "workspace:*",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
@@ -46,6 +48,8 @@
   "peerDependencies": {
     "@effect/platform": "catalog:",
     "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "effect-messaging-react": "workspace:*",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",

@@ -40,6 +40,7 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router": "catalog:",
+    "shared-structures-react": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -49,6 +50,7 @@
     "effect-messaging-react": "workspace:*",
     "navigation-core": "workspace:*",
     "react": "catalog:",
-    "react-router": "catalog:"
+    "react-router": "catalog:",
+    "shared-structures-react": "workspace:*"
   }
 }
