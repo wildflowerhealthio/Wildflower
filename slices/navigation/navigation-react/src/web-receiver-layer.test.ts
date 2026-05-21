@@ -1,7 +1,17 @@
-import { Effect } from 'effect'
+import { Effect, Layer } from 'effect'
+import { BareSender } from 'effect-messaging-core'
 import { NavigationBridge } from 'navigation-core'
 import { describe, expect, test } from 'vite-plus/test'
 import { makeNavigationWebReceiverLayer } from './web-receiver-layer.ts'
+
+/**
+ * Bridge handlers now require `BareSender` so they can call
+ * `bridge.send(...)` to reply through the same transport; the dispatch
+ * fiber discharges this at runtime. These tests invoke handlers
+ * directly via `Effect.gen`, so we stitch in a no-op BareSender layer
+ * alongside each test's receiver layer.
+ */
+const noopBareSenderLayer = Layer.succeed(BareSender, { bareSender: () => Effect.void })
 
 describe('makeNavigationWebReceiverLayer', () => {
   test('HostBackRequested handler calls navigate(-1)', () => {
@@ -11,7 +21,7 @@ describe('makeNavigationWebReceiverLayer', () => {
       Effect.gen(function* () {
         const handlers = yield* NavigationBridge.Web.HandlerTag
         yield* handlers.HostBackRequested({ _tag: 'HostBackRequested' })
-      }).pipe(Effect.provide(layer))
+      }).pipe(Effect.provide(Layer.merge(layer, noopBareSenderLayer)))
     )
     expect(calls).toEqual([-1])
   })
@@ -26,7 +36,7 @@ describe('makeNavigationWebReceiverLayer', () => {
           _tag: 'HostRequestedWebNavigation',
           path: '/visits/123',
         })
-      }).pipe(Effect.provide(layer))
+      }).pipe(Effect.provide(Layer.merge(layer, noopBareSenderLayer)))
     )
     expect(calls).toEqual(['/visits/123'])
   })
@@ -40,7 +50,7 @@ describe('makeNavigationWebReceiverLayer', () => {
       Effect.gen(function* () {
         const handlers = yield* NavigationBridge.Web.HandlerTag
         yield* handlers.HostBackRequested({ _tag: 'HostBackRequested' })
-      }).pipe(Effect.provide(layerA))
+      }).pipe(Effect.provide(Layer.merge(layerA, noopBareSenderLayer)))
     )
     Effect.runSync(
       Effect.gen(function* () {
@@ -49,7 +59,7 @@ describe('makeNavigationWebReceiverLayer', () => {
           _tag: 'HostRequestedWebNavigation',
           path: '/x',
         })
-      }).pipe(Effect.provide(layerB))
+      }).pipe(Effect.provide(Layer.merge(layerB, noopBareSenderLayer)))
     )
     expect(callsA).toEqual([-1])
     expect(callsB).toEqual(['/x'])

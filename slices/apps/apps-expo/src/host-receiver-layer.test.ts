@@ -1,5 +1,5 @@
 import type { Layer } from 'effect'
-import { type BareSender, type MessageHandler } from 'effect-messaging-core'
+import { type MessageHandler } from 'effect-messaging-core'
 import { expectTypeOf } from 'expect-type'
 import type { TunnelStore } from 'tunnel-core/livestore'
 import { AppsBridgeExpo } from './index.ts'
@@ -17,9 +17,11 @@ jest.mock('apps-core/bridge', () => ({
 }))
 
 describe('AppsBridgeExpo.ReceiverLayer', () => {
-  it('returns a Layer providing the Apps host handler tag and requiring TunnelStore + BareSender', () => {
+  it('returns a Layer providing the Apps host handler tag and requiring only TunnelStore', () => {
+    // `BareSender` is no longer a layer-build requirement — the bridge
+    // transport's dispatch fiber provides it per-handler-invocation.
     expectTypeOf(AppsBridgeExpo.ReceiverLayer).returns.toEqualTypeOf<
-      Layer.Layer<MessageHandler.TagId<'Apps', 'Host'>, never, TunnelStore | BareSender>
+      Layer.Layer<MessageHandler.TagId<'Apps', 'Host'>, never, TunnelStore>
     >()
   })
 

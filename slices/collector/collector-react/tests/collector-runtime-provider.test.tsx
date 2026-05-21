@@ -1,8 +1,17 @@
 import { render } from '@testing-library/react'
 import CollectorBridge from 'collector-fundamentals/bridge'
-import { Effect } from 'effect'
+import { Effect, Layer } from 'effect'
+import { BareSender } from 'effect-messaging-core'
 import { useContext, type JSX, type ReactNode } from 'react'
 import { describe, expect, it } from 'vite-plus/test'
+
+/**
+ * Bridge handlers now require `BareSender` so they can call
+ * `bridge.send(...)` to reply through the same transport; the dispatch
+ * fiber discharges this at runtime. This test invokes the receiver's
+ * handlers directly via `Effect.gen`, so we stitch in a no-op layer.
+ */
+const noopBareSenderLayer = Layer.succeed(BareSender, { bareSender: () => Effect.void })
 
 import {
   CollectorRuntimeContext,
@@ -77,6 +86,8 @@ describe('CollectorRuntimeProvider', () => {
       yield* service.Cancelled({ _tag: 'Cancelled', id: '1' })
     })
 
-    await Effect.runPromise(program.pipe(Effect.provide(value.receiverLayer)))
+    await Effect.runPromise(
+      program.pipe(Effect.provide(Layer.merge(value.receiverLayer, noopBareSenderLayer)))
+    )
   })
 })

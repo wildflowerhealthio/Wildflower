@@ -1,6 +1,6 @@
 import AppsBridge from 'apps-core/bridge'
 import { Effect, Layer } from 'effect'
-import { BareSender, type MessageHandler } from 'effect-messaging-core'
+import type { MessageHandler } from 'effect-messaging-core'
 import { TunnelStore } from 'tunnel-core/livestore'
 import { commitAndAwaitTunnel } from './commit-and-await-tunnel.ts'
 
@@ -14,31 +14,20 @@ import { commitAndAwaitTunnel } from './commit-and-await-tunnel.ts'
  *  3. Replying with `TunnelStarted { origin }` on success, or
  *     `TunnelFailed { reason }` on timeout.
  *
- * The returned layer requires {@link TunnelStore} and {@link BareSender}:
+ * The returned layer requires {@link TunnelStore}; discharge it with
+ * `Layer.provide(TunnelStore.layerFrom(store))` at the call site,
+ * passing the app-level livestore that includes tunnel-core's tables.
  *
- *  - `TunnelStore` is the slice-store Tag exposed by `tunnel-core` —
- *    discharge it with `Layer.provide(TunnelStore.layerFrom(store))`
- *    at the call site, passing the app-level livestore that includes
- *    tunnel-core's tables.
- *  - `BareSender` is supplied automatically by the bridge transport
- *    during dispatch (`bridge-transport.ts` provides it alongside the
- *    receiver layers) — call sites don't wire it explicitly.
- *
- * The handler resolves `BareSender` once at layer-build time and
- * re-provides it inside the `RequestTunnel` effect so the handler
- * still types as `Effect<void, never, never>` (the shape
- * `HandlersFor` requires), without forcing the call site to plumb a
- * sendback callback like the previous `getHandle` design did.
+ * `BareSender` is *not* a layer-build requirement — the bridge
+ * transport's dispatch fiber provides it inside each handler
+ * invocation, so `AppsBridge.Host.send(...)` inside the `RequestTunnel`
+ * handler resolves naturally without the host having to plumb a
+ * ref-resolved sender into the layer.
  */
-const ReceiverLayer = (): Layer.Layer<
-  MessageHandler.TagId<'Apps', 'Host'>,
-  never,
-  TunnelStore | BareSender
-> =>
+const ReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Apps', 'Host'>, never, TunnelStore> =>
   Layer.unwrapEffect(
     Effect.gen(function* () {
       const tunnelStore = yield* TunnelStore
-      const bareSender = yield* BareSender
 
       return AppsBridge.Host.ReceiverLayer({
         RequestTunnel: () =>
@@ -50,8 +39,7 @@ const ReceiverLayer = (): Layer.Layer<
                   : AppsBridge.Host.send({ _tag: 'TunnelStarted', origin }),
               onFailure: (cause) =>
                 AppsBridge.Host.send({ _tag: 'TunnelFailed', reason: String(cause) }),
-            }),
-            Effect.provide(Layer.succeed(BareSender, bareSender))
+            })
           ),
       })
     })
