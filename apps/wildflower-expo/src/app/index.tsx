@@ -1,6 +1,6 @@
 import * as SplashScreen from 'expo-splash-screen'
 import { Colors, Spacing, ThemedText, ThemedView, useThemeColors } from 'expo-tundraish'
-import { BootstrapToken } from 'gatekeeper-core/livestore'
+import { LocalClientToken } from 'gatekeeper-core/livestore'
 import { useNavigationHostMessaging } from 'navigation-react'
 import { useCallback, useEffect, useState, type JSX } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
@@ -25,15 +25,15 @@ import { useShellOrigins } from '../livestore/use-shell-origins.ts'
  */
 export default function HomeScreen(): JSX.Element {
   const { running, localHostname, publicHostname } = useShellOrigins()
-  // Bootstrap token is minted once by `HttpServerDaemonLive`'s
+  // `LocalClientToken` is minted by `HttpServerDaemonLive`'s
   // bootstrap step and committed into the gatekeeper slice store; we
   // pass it to `<AppShellWebView>` so the embedded SPA is authenticated
   // on first load without going through the device-code flow. `null`
-  // while bootstrap is still in flight; converted to `undefined` so the
-  // optional prop's `token === undefined` guard inside the inner shell
-  // matches the never-issued case.
+  // while bootstrap is still in flight or the mint failed; converted
+  // to `undefined` so the optional prop's `token === undefined` guard
+  // inside the inner shell matches the never-issued case.
   const store = useWildflowerStore()
-  const { token: bootstrapToken } = store.useQuery(BootstrapToken.queries.current$)
+  const { value: localClientToken } = store.useQuery(LocalClientToken.queries.current$)
 
   const [activeTab, setActiveTab] = useState<TabKey>('apps')
   const [shellLive, setShellLive] = useState(false)
@@ -64,7 +64,7 @@ export default function HomeScreen(): JSX.Element {
         <AppShellWebView
           baseUrl={publicHostname ? `https://${publicHostname}` : `http://${localHostname}:${PORT}`}
           route={TABS[0].path}
-          token={bootstrapToken ?? undefined}
+          token={localClientToken ?? undefined}
           onRouteChanged={handleRouteChanged}
         >
           <TabBar activeTab={activeTab} />

@@ -1,7 +1,6 @@
 /* oxlint-disable import/max-dependencies -- on-device platform entry; mirrors wildflower-node by
    wiring every slice's expo-side Layer + store + telemetry into WildflowerServerLive. */
 import { HttpServer } from '@effect/platform'
-import type { Store } from '@livestore/livestore'
 import { AppsStore } from 'apps-core/livestore'
 import { CollectorStore } from 'collector-core/livestore'
 import { Cause, Duration, Effect, Layer, type Scope, Stream } from 'effect'
@@ -9,7 +8,7 @@ import { EmrStore } from 'emr-core/livestore'
 import { ExpoContext, ExpoHttpServer } from 'expo-effect-platform'
 import { Directory, File, Paths } from 'expo-file-system'
 import { mintHostOwnerToken, seedFirstPartyClient, seedSigningKey } from 'gatekeeper-core/contexts'
-import { BootstrapToken, GatekeeperStore } from 'gatekeeper-core/livestore'
+import { GatekeeperStore, LocalClientToken } from 'gatekeeper-core/livestore'
 import { cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { runHttpServerDaemon } from 'local-http-server-core/daemon'
 import { LocalHttpServerStore } from 'local-http-server-core/livestore'
@@ -20,7 +19,6 @@ import { html as embeddableHtml } from 'wildflower-react/embeddable-html'
 import { WebAssetsDir, WildflowerServerLive } from 'wildflower-server'
 import { PORT, SERVICE_NAME } from '../constants.ts'
 import { WildflowerStore } from '../livestore/livestore-store.ts'
-import type { schema } from '../livestore/schema.ts'
 
 /**
  * Stage the SPA's inlined HTML on disk so `StaticSpaLive` can serve it
@@ -42,191 +40,180 @@ const stageWebAssetsDir = (): string => {
 
 const LOCAL_HOSTNAME = `127.0.0.1`
 
-type BootstrapOutput = {
-  readonly store: Store<typeof schema, object>
-  readonly webAssetsDir: string
-  readonly gatekeeperStoreLayer: ReturnType<typeof GatekeeperStore.layerFrom>
-  readonly tunnelStoreLayer: ReturnType<typeof TunnelStore.layerFrom>
-  readonly localHttpServerStoreLayer: ReturnType<typeof LocalHttpServerStore.layerFrom>
-}
+const CryptoRandomLive = cryptoRandomLayerFromWebCrypto(globalThis.crypto)
+const TelemetryLive = reactNativeTelemetryLayerFromEnv({ otel: { serviceName: SERVICE_NAME } })
 
 /**
- * One-shot bootstrap: telemetry injection, signing-key seed,
- * first-party client seed, asset staging, host-owner token mint.
- *
- * Runs exactly once when {@link HttpServerDaemonLive} is built, before
- * the watcher forks. Everything it produces (store-layer factories,
- * the staged asset path) is closed over by the watcher's `startServer`
- * closure, so a daemon respawn (port change, requestedRunning toggle)
- * does not re-run the seeds or re-mint the token.
- *
- * If `mintHostOwnerToken` fails the bootstrap continues — the device
- * falls back to the device-code flow on next launch — but no token row
- * is written.
+ * Six slice-store projections of the singleton wildflower {@link
+ * WildflowerStore}. Each slice's `Tag` resolves to the same underlying
+ * `Store` handle — building these from separate stores would split the
+ * database into six.
  */
-const bootstrapOnce: Effect.Effect<BootstrapOutput, never, WildflowerStore> = Effect.gen(
-  function* () {
-    const store = yield* WildflowerStore
-    // 1. Wrap the store's `query`/`commit`/`subscribe` so Livestore spans
-    // attach to the currently-active OTel context (e.g. the per-request
-    // HTTP-server span). Idempotent on repeat calls.
-    injectActiveOtelContext(store)
-
-    // 2. Build the gatekeeper / slice store layers (all projections of `store`).
-    const gatekeeperStoreLayer = GatekeeperStore.layerFrom(store)
-    const tunnelStoreLayer = TunnelStore.layerFrom(store)
-    const localHttpServerStoreLayer = LocalHttpServerStore.layerFrom(store)
-
-    // Stage the inlined SPA so StaticSpaLive has a real on-disk index.
-    const webAssetsDir = yield* Effect.sync(stageWebAssetsDir)
-
-    // 3. + 4. Seed signing key + first-party `wildflower-host` client.
-    yield* seedSigningKey.pipe(Effect.provide(gatekeeperStoreLayer))
-    yield* seedFirstPartyClient.pipe(Effect.provide(gatekeeperStoreLayer))
-
-    // 5. Mint a host-owner bootstrap token. On Expo the device IS the
-    // owner — there's no separate developer minting it via a dev log.
-    // The Origin bound here pins the JWT issuer / audience claim to the
-    // loopback URL; runtime port reassignment would invalidate the
-    // token (see Composition Explanation).
-    const bootstrapToken = yield* mintHostOwnerToken({ ttl: Duration.hours(24) }).pipe(
-      Effect.provide(gatekeeperStoreLayer),
-      Effect.provide(
-        Layer.succeed(
-          Origin,
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          `http://${LOCAL_HOSTNAME}:${PORT}` as unknown as typeof Origin.Service
-        )
-      ),
-      Effect.catchAll((cause) =>
-        Effect.as(
-          Effect.logError(
-            'Bootstrap token unavailable.',
-            cause,
-            cause.cause,
-            typeof cause.cause === 'object' && cause.cause !== null && 'stack' in cause.cause
-              ? cause.cause.stack
-              : undefined
-          ),
-          null
-        )
-      )
+const SliceStoresLive: Layer.Layer<
+  AppsStore | CollectorStore | EmrStore | GatekeeperStore | LocalHttpServerStore | TunnelStore,
+  never,
+  WildflowerStore
+> = Layer.unwrapEffect(
+  Effect.map(WildflowerStore, (store) =>
+    Layer.mergeAll(
+      EmrStore.layerFrom(store),
+      AppsStore.layerFrom(store),
+      CollectorStore.layerFrom(store),
+      GatekeeperStore.layerFrom(store),
+      TunnelStore.layerFrom(store),
+      LocalHttpServerStore.layerFrom(store)
     )
-
-    if (bootstrapToken !== null) {
-      yield* Effect.sync(() =>
-        store.commit(BootstrapToken.events.bootstrapTokenSet({ token: bootstrapToken }))
-      )
-      yield* Effect.logInfo(`Bootstrap token minted (prefix: ${bootstrapToken.slice(0, 8)}…)`)
-    }
-
-    return {
-      store,
-      webAssetsDir,
-      gatekeeperStoreLayer,
-      tunnelStoreLayer,
-      localHttpServerStoreLayer,
-    }
-  }
+  )
 )
 
 /**
- * Build the per-bind `startServer` closure handed to
- * `runHttpServerDaemon`. Each invocation is the daemon's response to a
- * `StartOrReconfigure` intent — port / hostname are the live values
- * from `ServerState`.
+ * Static peer context the HTTP-server daemon hands to each per-bind
+ * {@link makeBindLive} build:
+ *
+ *  - The six {@link SliceStoresLive} projections.
+ *  - Cross-cutting platform layers (crypto, telemetry, `ExpoContext`).
+ *  - `WebAssetsDir`, produced by the anonymous `Layer.effect(...)` body
+ *    below — which also runs the one-shot bootstrap: telemetry-OTel
+ *    inject, signing-key seed, first-party client seed, and host-owner
+ *    token mint. The minted token is committed into the queryable
+ *    `LocalClientToken` row so `HomeScreen` can pick it up via
+ *    `useQuery` and hand it to `<AppShellWebView>`.
+ *
+ * Layer-cached: the bootstrap effect runs exactly once when this Layer
+ * is built (memoized by Effect), regardless of how many times the
+ * daemon's inner watcher loop respawns a sub-server.
  */
-const makeStartServer =
-  ({
-    store,
-    gatekeeperStoreLayer,
-    tunnelStoreLayer,
-    localHttpServerStoreLayer,
-    webAssetsDir,
-  }: BootstrapOutput) =>
-  ({
-    port,
-    hostname,
-  }: {
-    port: number
-    hostname: string
-  }): Stream.Stream<void, never, Scope.Scope> =>
-    Stream.unwrapScoped(
-      Effect.gen(function* () {
-        const CryptoRandomLive = cryptoRandomLayerFromWebCrypto(globalThis.crypto)
-        const TelemetryLive = reactNativeTelemetryLayerFromEnv({
-          otel: { serviceName: SERVICE_NAME },
-        })
+const HttpServerContextLive = Layer.mergeAll(
+  Layer.effect(
+    WebAssetsDir,
+    Effect.gen(function* () {
+      const store = yield* WildflowerStore
+      // Wrap the store's `query`/`commit`/`subscribe` so Livestore spans
+      // attach to the currently-active OTel context (e.g. the per-request
+      // HTTP-server span). Idempotent on repeat calls.
+      injectActiveOtelContext(store)
 
-        // Mirror `apps/wildflower-node`: union all deps into a single
-        // `Layer.mergeAll` and provide it once. `ExpoContext.layer`
-        // bundles `FileSystem` + `Path` + `HttpPlatform` + `Etag.Generator`.
-        const ServerDeps = Layer.mergeAll(
-          // Slice store projections.
-          EmrStore.layerFrom(store),
-          AppsStore.layerFrom(store),
-          CollectorStore.layerFrom(store),
-          gatekeeperStoreLayer,
-          tunnelStoreLayer,
-          localHttpServerStoreLayer,
-          // Cross-cutting platform services.
-          CryptoRandomLive,
-          // HTTP transport + static-asset peers.
-          ExpoHttpServer.layer({ port, hostname }),
-          ExpoContext.layer,
-          Layer.succeed(WebAssetsDir, webAssetsDir),
+      // Seed signing key + first-party `wildflower-host` client (both
+      // idempotent; the gatekeeper-core contexts no-op on repeat).
+      yield* seedSigningKey
+      yield* seedFirstPartyClient
+
+      // Mint the local-client bootstrap token. On Expo the device IS the
+      // owner — there's no separate developer minting it via a dev log.
+      // The Origin bound here pins the JWT issuer / audience claim to the
+      // loopback URL; runtime port reassignment would invalidate the
+      // token (see Composition Explanation).
+      const token = yield* mintHostOwnerToken({ ttl: Duration.hours(24) }).pipe(
+        Effect.provide(
           Layer.succeed(
             Origin,
             // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-            `http://${LOCAL_HOSTNAME}:${port}` as unknown as typeof Origin.Service
-          ),
-          TelemetryLive
-        )
-        const FullServerLive = WildflowerServerLive.pipe(
-          HttpServer.withLogAddress,
-          Layer.provide(ServerDeps),
-          Layer.tapErrorCause((cause) =>
-            Effect.logError('[wildflower-expo] FullServerLive cause:\n' + Cause.pretty(cause))
+            `http://${LOCAL_HOSTNAME}:${PORT}` as unknown as typeof Origin.Service
+          )
+        ),
+        Effect.catchAll((cause) =>
+          Effect.as(
+            Effect.logError(
+              'Local client token unavailable.',
+              cause,
+              cause.cause,
+              typeof cause.cause === 'object' && cause.cause !== null && 'stack' in cause.cause
+                ? cause.cause.stack
+                : undefined
+            ),
+            null
           )
         )
-        yield* Layer.build(FullServerLive)
-        // First emit = bind signal. `Stream.never` parks the stream
-        // until the daemon closes the sub-scope, releasing `Layer.build`'s
-        // scoped finalizers (which tears down the HTTP listener).
-        return Stream.concat(Stream.succeed(undefined as void), Stream.never)
-      }).pipe(Effect.orDie)
+      )
+      if (token !== null) {
+        yield* Effect.sync(() =>
+          store.commit(LocalClientToken.events.localClientTokenSet({ value: token }))
+        )
+        yield* Effect.logInfo(`Local client token minted (prefix: ${token.slice(0, 8)}…)`)
+      }
+
+      return stageWebAssetsDir()
+    })
+  ),
+  CryptoRandomLive,
+  TelemetryLive,
+  ExpoContext.layer
+).pipe(Layer.provideMerge(SliceStoresLive))
+
+/**
+ * Per-bind Layer constructor consumed by {@link startServer}: composes
+ * `WildflowerServerLive` against the bind-specific `ExpoHttpServer`
+ * binding + `Origin`. Static peers (slice stores, telemetry, crypto,
+ * etc.) flow in from {@link HttpServerContextLive} on the daemon's
+ * outer scope.
+ */
+const makeBindLive = ({ port, hostname }: { port: number; hostname: string }) =>
+  WildflowerServerLive.pipe(
+    HttpServer.withLogAddress,
+    Layer.provide(
+      Layer.mergeAll(
+        ExpoHttpServer.layer({ port, hostname }),
+        Layer.succeed(
+          Origin,
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          `http://${LOCAL_HOSTNAME}:${port}` as unknown as typeof Origin.Service
+        )
+      )
+    ),
+    Layer.tapErrorCause((cause) =>
+      Effect.logError('[wildflower-expo] FullServerLive cause:\n' + Cause.pretty(cause))
     )
+  )
 
 /**
  * On-device HTTP-server daemon Layer.
  *
- * Layer shape mirrors `tunnel-expo`'s `TunnelDaemon` so the two can be
+ * Shape mirrors `tunnel-expo`'s `TunnelDaemon` so the two can be
  * `Layer.mergeAll`'d and launched once — the same composition node
  * uses in [`apps/wildflower-node/src/index.ts`](../../../wildflower-node/src/index.ts).
  *
  * `Layer.scopedDiscard` runs the inner Effect once when the Layer is
- * built. {@link bootstrapOnce} runs in that opening, before the
- * watcher fiber is forked — so seeds + token mint happen exactly once
- * per Layer build, even as the daemon's internal respawn loop tears
- * down and rebuilds the HTTP listener.
+ * built. `Layer.memoize` builds {@link HttpServerContextLive} into a
+ * cached Layer at that point — the bootstrap (seeds + mint) runs
+ * exactly once, before the watcher fiber is forked. The daemon's
+ * respawn loop (`runHttpServerDaemon`'s `executeIntents`) only rebuilds
+ * the per-bind layer; bootstrap is not re-entered.
  *
- * `Effect.forkScoped` ties the watcher fiber to the Layer's scope. When
- * the launcher (the `useEffect` in `app-livestore-provider.tsx`) calls
- * `Fiber.interrupt` on the launch fiber, the scope closes and the
- * watcher — together with whatever sub-scope it's currently holding —
- * is torn down cleanly. See
+ * `Effect.forkScoped` ties the watcher fiber to the Layer's scope.
+ * When the launcher (the `useEffect` in `app-runtime-provider.tsx`)
+ * calls `Fiber.interrupt` on the launch fiber, the scope closes and
+ * the watcher — together with whatever sub-scope it's currently
+ * holding — is torn down cleanly. See
  * [`Composition Explanation`](../../../wildflower-server/docs/Composition%20Explanation.md)
  * for the full layer graph.
  */
 const HttpServerDaemonLive: Layer.Layer<never, never, WildflowerStore> = Layer.scopedDiscard(
   Effect.gen(function* () {
-    const deps = yield* bootstrapOnce
-    yield* Effect.forkScoped(
-      runHttpServerDaemon(makeStartServer(deps)).pipe(
-        Effect.provide(deps.localHttpServerStoreLayer)
+    // Build the static peer context once and freeze it as a
+    // requirement-less Layer for downstream `Layer.provide`s.
+    // `Layer.build` runs the bootstrap (seeds + mint) here, before
+    // the watcher fiber forks; `Layer.succeedContext` re-wraps the
+    // built Context so the daemon's respawn loop reuses the same
+    // built tags without re-entering bootstrap.
+    const httpServerContext = Layer.succeedContext(yield* Layer.build(HttpServerContextLive))
+    const startServer = (cfg: {
+      port: number
+      hostname: string
+    }): Stream.Stream<void, never, Scope.Scope> =>
+      Stream.unwrapScoped(
+        Effect.gen(function* () {
+          yield* Layer.build(makeBindLive(cfg).pipe(Layer.provide(httpServerContext)))
+          // First emit = bind signal. `Stream.never` parks the stream
+          // until the daemon closes the sub-scope, releasing
+          // `Layer.build`'s scoped finalizers (which tears down the
+          // HTTP listener).
+          return Stream.concat(Stream.succeed(undefined as void), Stream.never)
+        }).pipe(Effect.orDie)
       )
+    yield* Effect.forkScoped(
+      runHttpServerDaemon(startServer).pipe(Effect.provide(httpServerContext))
     )
   })
 )
 
-export { bootstrapOnce, HttpServerDaemonLive, LOCAL_HOSTNAME }
+export { HttpServerDaemonLive, LOCAL_HOSTNAME }

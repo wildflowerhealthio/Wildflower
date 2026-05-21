@@ -90,7 +90,7 @@ jest.mock('@livestore/react', () => {
   }
 })
 
-import AppLivestoreProvider from './app-livestore-provider.tsx'
+import AppRuntimeProvider from './app-runtime-provider.tsx'
 
 beforeEach(() => {
   mockActiveCount = 0
@@ -105,15 +105,15 @@ const flushFibers = async (): Promise<void> => {
   await act(async () => {})
 }
 
-describe('AppLivestoreProvider lifecycle', () => {
+describe('AppRuntimeProvider lifecycle', () => {
   it('mounts the merged daemon Layer exactly once on initial render', async () => {
-    render(<AppLivestoreProvider>{null}</AppLivestoreProvider>)
+    render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
     await flushFibers()
     expect(mockActiveCount).toBe(1)
   })
 
   it('tears the merged daemon Layer down on unmount', async () => {
-    const { unmount } = render(<AppLivestoreProvider>{null}</AppLivestoreProvider>)
+    const { unmount } = render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
     await flushFibers()
     expect(mockActiveCount).toBe(1)
     unmount()
@@ -126,13 +126,13 @@ describe('AppLivestoreProvider lifecycle', () => {
     // production `useEffect` is designed to absorb. The first effect's
     // cleanup must release the first Layer before the second mount's
     // effect fires, so the active-daemon count never exceeds 1.
-    const { unmount } = render(<AppLivestoreProvider>{null}</AppLivestoreProvider>)
+    const { unmount } = render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
     await flushFibers()
     expect(mockActiveCount).toBe(1)
     unmount()
     await flushFibers()
     expect(mockActiveCount).toBe(0)
-    render(<AppLivestoreProvider>{null}</AppLivestoreProvider>)
+    render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
     await flushFibers()
     expect(mockActiveCount).toBe(1)
   })

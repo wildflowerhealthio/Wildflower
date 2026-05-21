@@ -8,38 +8,44 @@ import { HttpServerDaemonLive } from '../daemons/http-server.ts'
 import { useWildflowerStore, WildflowerStore } from '../livestore/livestore-store.ts'
 
 /**
- * Wrap the Expo Router stack with the LiveStore registry context so
- * `useWildflowerStore()` downstream resolves to the shared
- * module-singleton store, and launch the on-device daemons (HTTP
- * server + tunnel) under React's mount lifecycle.
+ * Root runtime context for the on-device app shell: wires the
+ * `@livestore/react` registry context (so `useWildflowerStore()`
+ * downstream resolves to the shared module-singleton store) and
+ * launches the on-device daemons (HTTP server + tunnel) under React's
+ * mount lifecycle inside that registry context.
  */
-export default function AppLivestoreProvider({ children }: PropsWithChildren): JSX.Element {
+export default function AppRuntimeProvider({ children }: PropsWithChildren): JSX.Element {
   const [storeRegistry] = useState(() => new StoreRegistry())
 
   return (
     <Suspense fallback={<Text>Loading…</Text>}>
       <StoreRegistryProvider storeRegistry={storeRegistry}>
-        <DaemonLauncher>{children}</DaemonLauncher>
+        <DaemonRuntimeScope>{children}</DaemonRuntimeScope>
       </StoreRegistryProvider>
     </Suspense>
   )
 }
 
 /**
- * Launch the merged HTTP-server + tunnel daemon Layer once the store
- * handle is available, and interrupt it cleanly on unmount.
+ * Ties the daemon launch's Effect Scope to this component's React
+ * mount: `useEffect` `Effect.runFork`s `Layer.launch` on mount and
+ * `Fiber.interrupt`s on cleanup.
  *
  * Lifecycle parity with `apps/wildflower-node/src/index.ts`: one
  * `Layer.launch` over `Layer.mergeAll(HttpServerDaemonLive, TunnelDaemon)`,
  * one scope, one fiber. The wildflower store is provided once at the
  * outer layer; the tunnel slice gets its own projection.
  *
- * `useEffect` keyed on `store` gives StrictMode the standard cleanup
- * contract — the dev-only double-invoke tears down the first fiber
- * before the second starts, so we don't end up with two HTTP servers
+ * Implemented as a component (rather than a hook) because
+ * `useWildflowerStore()` consumes the registry context provided one
+ * level up by `<StoreRegistryProvider>` and suspends on the store
+ * load — both have to be ancestors of the call site. The React
+ * cleanup contract handles StrictMode's dev-only double-mount: the
+ * first effect's cleanup interrupts the first fiber before the second
+ * mount's effect runs, so we don't end up with two HTTP servers
  * racing the same port.
  */
-function DaemonLauncher({ children }: PropsWithChildren): JSX.Element {
+function DaemonRuntimeScope({ children }: PropsWithChildren): JSX.Element {
   const store = useWildflowerStore()
 
   useEffect(() => {
