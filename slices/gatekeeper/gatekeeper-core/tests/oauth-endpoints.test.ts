@@ -268,7 +268,7 @@ const createOAuthHandler = (
 ): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = GatekeeperApiLive.pipe(
     Layer.provide(GatekeeperStore.layerFrom(store)),
-    Layer.provide(Layer.succeed(Origin, 'http://localhost:8787')),
+    Layer.provide(Origin.layerFromLiteral('http://localhost:8787')),
     Layer.provide(cryptoRandomCounter({ uuidPrefix: 'oauth' }))
   )
 

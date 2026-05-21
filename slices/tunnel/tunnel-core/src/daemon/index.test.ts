@@ -24,13 +24,42 @@
  */
 import { makeAdapter } from '@livestore/adapter-node'
 import type { Store } from '@livestore/livestore'
-import { createStorePromise } from '@livestore/livestore'
-import { Deferred, Effect, Queue, type Scope, Stream } from 'effect'
+import { createStorePromise, makeSchema, State } from '@livestore/livestore'
+import { Deferred, Effect, Layer, Queue, type Scope, Stream } from 'effect'
 import fc from 'fast-check'
+import * as LocalHttpServerLivestore from 'local-http-server-core/livestore'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { schema, TunnelConfig, TunnelState, TunnelStore } from '../livestore/index.ts'
+import * as TunnelLivestore from '../livestore/index.ts'
 import { type DomainResult, type ResolvedConfig, runTunnelDaemon } from './index.ts'
+
+const { TunnelConfig, TunnelState, TunnelStore } = TunnelLivestore
+const { LocalHttpServerStore, ServerState } = LocalHttpServerLivestore
+
+/**
+ * The daemon joins `TunnelConfig` (intent) with `LocalHttpServerState.port`
+ * (forward target), so the test store needs both slices' tables in its
+ * schema. Apps compose these the same way at the top level.
+ */
+const composedSchema = (() => {
+  const tables = {
+    ...TunnelLivestore.tables,
+    ...LocalHttpServerLivestore.tables,
+  }
+  const events = {
+    ...TunnelLivestore.events,
+    ...LocalHttpServerLivestore.events,
+  }
+  const materializers = State.SQLite.materializers(events, {
+    ...TunnelLivestore.materializers,
+    ...LocalHttpServerLivestore.materializers,
+  })
+  return makeSchema({
+    events,
+    state: State.SQLite.makeState({ tables, materializers }),
+  })
+})()
+type Schema = typeof composedSchema
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -69,10 +98,10 @@ interface DeferredBindStartTunnelStub<E = never> extends StartTunnelStub<E> {
 
 const WAIT_TIMEOUT_MS = 2_000
 
-const makeFreshStore = (): Promise<Store<typeof schema, object>> =>
+const makeFreshStore = (): Promise<Store<Schema, object>> =>
   createStorePromise({
     adapter: makeAdapter({ storage: { type: 'in-memory' } }),
-    schema,
+    schema: composedSchema,
     storeId: `tunnel-daemon-it-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   })
 
@@ -277,7 +306,7 @@ const makeDeferredBindStartTunnelStub = <E = never>(
 }
 
 const waitForState = (
-  store: Store<typeof schema, object>,
+  store: Store<Schema, object>,
   predicate: (state: TunnelStateValue) => boolean,
   timeoutMs = WAIT_TIMEOUT_MS
 ): Promise<TunnelStateValue> =>
@@ -305,7 +334,7 @@ const waitForState = (
   })
 
 interface DaemonTestCtx {
-  readonly store: Store<typeof schema, object>
+  readonly store: Store<Schema, object>
 }
 
 const runDaemonTest = async <E>(
@@ -318,7 +347,12 @@ const runDaemonTest = async <E>(
       Effect.gen(function* () {
         yield* Effect.forkScoped(runTunnelDaemon(startTunnel))
         yield* Effect.promise(() => body({ store }))
-      }).pipe(Effect.scoped, Effect.provide(TunnelStore.layerFrom(store)))
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(TunnelStore.layerFrom(store), LocalHttpServerStore.layerFrom(store))
+        )
+      )
     )
   } finally {
     await store.shutdownPromise().catch(() => undefined)
@@ -332,7 +366,7 @@ const FULL_CONFIG: ResolvedConfig = {
 }
 
 const commitConfig = (
-  store: Store<typeof schema, object>,
+  store: Store<Schema, object>,
   patch: Partial<{
     readonly subdomain: string | null
     readonly rootDomain: string | null
@@ -341,6 +375,15 @@ const commitConfig = (
   }>
 ): void => {
   store.commit(TunnelConfig.events.tunnelConfigSet(patch))
+}
+
+/**
+ * Set the LHS-owned port that the tunnel daemon forwards to. Replaces
+ * the legacy `TunnelConfig.localPort` knob — the daemon now joins from
+ * `ServerState.port` via `resolvedConfig$`.
+ */
+const commitServerPort = (store: Store<Schema, object>, port: number): void => {
+  store.commit(ServerState.events.localHttpServerStateSet({ port }))
 }
 
 // ---------------------------------------------------------------------------
@@ -555,12 +598,12 @@ describe('runTunnelDaemon', () => {
       }, stub.startTunnel)
     })
 
-    it('re-invokes startTunnel with the new local port', () => {
+    it('re-invokes startTunnel when LHS state changes the forward-target port', () => {
       const stub = makeStartTunnelStub()
       return runDaemonTest(async ({ store }) => {
         commitConfig(store, { ...FULL_CONFIG, requestedRunning: true })
         await stub.awaitCalls(1)
-        commitConfig(store, { localPort: 9090 })
+        commitServerPort(store, 9090)
         await stub.awaitCalls(2)
         expect(stub.calls.map((c) => c.localPort)).toEqual([8080, 9090])
       }, stub.startTunnel)
@@ -576,7 +619,7 @@ describe('runTunnelDaemon', () => {
         await waitForState(store, (s) => s.running)
         expect(stub.active.size).toBe(1)
 
-        commitConfig(store, { localPort: 9090 })
+        commitServerPort(store, 9090)
         await stub.awaitCalls(2)
         await waitForState(store, (s) => s.currentLocalPort === 9090)
         expect(stub.active.size).toBe(1)
@@ -617,9 +660,10 @@ describe('runTunnelDaemon', () => {
       const startTunnel: StartTunnel<string> = (config) =>
         config.localPort === 9000 ? Stream.fail('boom') : happy.startTunnel(config)
       await runDaemonTest(async ({ store }) => {
-        commitConfig(store, { ...FULL_CONFIG, localPort: 9000, requestedRunning: true })
+        commitServerPort(store, 9000)
+        commitConfig(store, { ...FULL_CONFIG, requestedRunning: true })
         await waitForState(store, (s) => s.error !== null)
-        commitConfig(store, { localPort: 9001 })
+        commitServerPort(store, 9001)
         const state = await waitForState(store, (s) => s.running)
         expect(state.error).toBeNull()
         expect(state.currentLocalPort).toBe(9001)
@@ -670,10 +714,10 @@ describe('runTunnelDaemon', () => {
           fc.asyncProperty(subdomainArb, portArb, (subdomain, localPort) => {
             const stub = makeStartTunnelStub()
             return runDaemonTest(async ({ store }) => {
+              commitServerPort(store, localPort)
               commitConfig(store, {
                 subdomain,
                 rootDomain: 'loca.lt',
-                localPort,
                 requestedRunning: true,
               })
               await waitForState(
@@ -694,34 +738,22 @@ describe('runTunnelDaemon', () => {
       () =>
         fc.assert(
           fc.asyncProperty(
-            fc.uniqueArray(fc.tuple(subdomainArb, portArb), {
-              minLength: 1,
-              maxLength: 3,
-              selector: ([subdomain, port]): string => `${subdomain}|${String(port)}`,
-            }),
-            (reconfigurations) => {
+            fc.uniqueArray(subdomainArb, { minLength: 1, maxLength: 3 }),
+            (subdomains) => {
               const stub = makeStartTunnelStub()
               return runDaemonTest(async ({ store }) => {
-                for (let i = 0; i < reconfigurations.length; i++) {
-                  const [subdomain, localPort] = reconfigurations[i]
+                for (let i = 0; i < subdomains.length; i++) {
                   commitConfig(store, {
-                    subdomain,
+                    subdomain: subdomains[i],
                     rootDomain: 'loca.lt',
-                    localPort,
                     requestedRunning: true,
                   })
                   // oxlint-disable-next-line no-await-in-loop -- iteration must observe daemon settle before the next commit
                   await stub.awaitCalls(i + 1)
                 }
-                const [lastSubdomain, lastPort] = reconfigurations[reconfigurations.length - 1]
-                await waitForState(
-                  store,
-                  (s) =>
-                    s.running &&
-                    s.currentSubdomain === lastSubdomain &&
-                    s.currentLocalPort === lastPort
-                )
-                expect(stub.calls.length).toBe(reconfigurations.length)
+                const lastSubdomain = subdomains[subdomains.length - 1]
+                await waitForState(store, (s) => s.running && s.currentSubdomain === lastSubdomain)
+                expect(stub.calls.length).toBe(subdomains.length)
               }, stub.startTunnel)
             }
           ),

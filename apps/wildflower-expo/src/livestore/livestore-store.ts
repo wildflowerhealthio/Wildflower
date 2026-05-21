@@ -6,12 +6,7 @@ import { ServerState } from 'local-http-server-core/livestore'
 import { unstable_batchedUpdates as batchUpdates } from 'react-native'
 import { getLivestoreOtelOptions } from 'telemetry-react-native'
 import { TunnelConfig } from 'tunnel-core/livestore'
-import {
-  DEFAULT_TUNNEL_ROOT_DOMAIN,
-  DEFAULT_TUNNEL_SUBDOMAIN,
-  PORT,
-  SERVICE_NAME,
-} from '../constants.ts'
+import { DEFAULT_TUNNEL_ROOT_DOMAIN, DEFAULT_TUNNEL_SUBDOMAIN, SERVICE_NAME } from '../constants.ts'
 import { events as schemaEvents, schema } from './schema.ts'
 
 const adapter = makePersistedAdapter({
@@ -56,7 +51,6 @@ const useWildflowerStore = (): Store<typeof schema, object> & ReactApi =>
           schemaEvents.tunnelConfigSet({
             subdomain: DEFAULT_TUNNEL_SUBDOMAIN,
             rootDomain: DEFAULT_TUNNEL_ROOT_DOMAIN,
-            localPort: PORT,
           })
         )
       }

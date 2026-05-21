@@ -1,11 +1,11 @@
-import { Effect, Layer } from 'effect'
+import { Effect } from 'effect'
 import * as fc from 'fast-check'
 import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
 import { GatekeeperPaths } from '../src/page-paths.ts'
 
 const ORIGIN = 'https://example.test'
-const OriginLive = Layer.succeed(Origin, ORIGIN)
+const OriginLive = Origin.layerFromLiteral(ORIGIN)
 
 const runUrl = (effect: Effect.Effect<string, never, Origin>): string =>
   Effect.runSync(Effect.provide(effect, OriginLive))

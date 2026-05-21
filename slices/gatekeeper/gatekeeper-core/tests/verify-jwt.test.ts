@@ -1,4 +1,4 @@
-import { DateTime, Effect, Either, Layer } from 'effect'
+import { DateTime, Effect, Either } from 'effect'
 import * as jose from 'jose'
 import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
@@ -82,7 +82,7 @@ const runVerify = (
   Effect.runPromise(
     verifyJwt(token).pipe(
       Effect.provide(GatekeeperStore.layerFrom(store)),
-      Effect.provide(Layer.succeed(Origin, ORIGIN)),
+      Effect.provide(Origin.layerFromLiteral(ORIGIN)),
       Effect.either
     )
   )

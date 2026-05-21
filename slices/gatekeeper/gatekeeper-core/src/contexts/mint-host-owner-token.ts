@@ -22,7 +22,7 @@ const mintHostOwnerToken = (options: {
 }): Effect.Effect<string, UnknownException, GatekeeperStore | Origin> =>
   Effect.gen(function* () {
     const store = yield* GatekeeperStore
-    const origin = yield* Origin
+    const origin = yield* Origin.get
     const active = store.query(SigningKey.queries.active$)
     const all = store.query(SigningKey.queries.all$)
     const signingKey = active ?? all[0]

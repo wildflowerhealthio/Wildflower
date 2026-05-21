@@ -141,7 +141,7 @@ const makeStore = (data: MockData): typeof EmrStore.Service =>
 const createHandler = (data: MockData): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = FhirResourcesApiLive.pipe(
     Layer.provide(EmrStore.layerFrom(makeStore(data))),
-    Layer.provide(Layer.succeed(Origin, 'http://localhost:8787'))
+    Layer.provide(Origin.layerFromLiteral('http://localhost:8787'))
   )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }

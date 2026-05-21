@@ -74,7 +74,7 @@ const makeSmartConfiguration = (origin: string): typeof SmartConfigurationSchema
 const SmartConfigurationLive = Layer.effect(
   SmartConfiguration,
   Effect.gen(function* () {
-    const origin = yield* Origin
+    const origin = yield* Origin.get
     return makeSmartConfiguration(origin)
   })
 )

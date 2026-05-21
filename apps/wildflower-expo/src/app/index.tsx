@@ -1,14 +1,15 @@
 import * as SplashScreen from 'expo-splash-screen'
 import { Colors, Spacing, ThemedText, ThemedView, useThemeColors } from 'expo-tundraish'
 import { LocalClientToken } from 'gatekeeper-core/livestore'
+import { ServerState } from 'local-http-server-core/livestore'
 import { useNavigationHostMessaging } from 'navigation-react'
 import { useCallback, useEffect, useState, type JSX } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
-import { PORT } from '@/src/constants.ts'
+import { servedOrigin$ } from 'tunnel-core/livestore'
+
 import { AppShellWebView } from '../components/app-shell-webview.tsx'
 import { TABS, tabForPath, type TabKey } from '../components/tab-mapping.ts'
 import { useWildflowerStore } from '../livestore/livestore-store.ts'
-import { useShellOrigins } from '../livestore/use-shell-origins.ts'
 
 // Splash is suppressed by `splash-init.ts` (side-effect import in
 // `index.ts`, before `expo-router/entry`). Here we only own the
@@ -24,7 +25,9 @@ import { useShellOrigins } from '../livestore/use-shell-origins.ts'
  * The WebView never unmounts on tab switch.
  */
 export default function HomeScreen(): JSX.Element {
-  const { running, localHostname, publicHostname } = useShellOrigins()
+  const store = useWildflowerStore()
+  const { running } = store.useQuery(ServerState.queries.current$)
+  const servedOrigin = store.useQuery(servedOrigin$)
   // `LocalClientToken` is minted by `HttpServerDaemonLive`'s
   // bootstrap step and committed into the gatekeeper slice store; we
   // pass it to `<AppShellWebView>` so the embedded SPA is authenticated
@@ -32,7 +35,6 @@ export default function HomeScreen(): JSX.Element {
   // while bootstrap is still in flight or the mint failed; converted
   // to `undefined` so the optional prop's `token === undefined` guard
   // inside the inner shell matches the never-issued case.
-  const store = useWildflowerStore()
   const { value: localClientToken } = store.useQuery(LocalClientToken.queries.current$)
 
   const [activeTab, setActiveTab] = useState<TabKey>('apps')
@@ -62,7 +64,7 @@ export default function HomeScreen(): JSX.Element {
     <ThemedView style={styles.fill}>
       <View style={styles.webViewWrap}>
         <AppShellWebView
-          baseUrl={publicHostname ? `https://${publicHostname}` : `http://${localHostname}:${PORT}`}
+          baseUrl={servedOrigin}
           route={TABS[0].path}
           token={localClientToken ?? undefined}
           onRouteChanged={handleRouteChanged}
