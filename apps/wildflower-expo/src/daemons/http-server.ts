@@ -38,7 +38,7 @@ const stageWebAssetsDir = (): string => {
   return dir.uri.replace(/^file:\/\//, '')
 }
 
-const LOCAL_ORIGIN = `http://127.0.0.1:${PORT}`
+const LOCAL_HOSTNAME = `127.0.0.1`
 
 /**
  * On-device server daemon. Composes the same `WildflowerServerLive`
@@ -86,7 +86,7 @@ const httpServerDaemon = (): Effect.Effect<void, never, Scope.Scope | Wildflower
     // owner — there's no separate developer minting it via a dev log.
     const bootstrapToken = yield* mintHostOwnerToken({ ttl: Duration.hours(24) }).pipe(
       Effect.provide(gatekeeperStoreLayer),
-      Effect.provide(Layer.succeed(Origin, LOCAL_ORIGIN)),
+      Effect.provide(Layer.succeed(Origin, `http://${LOCAL_HOSTNAME}:${PORT}`)),
       Effect.catchAll((cause) =>
         Effect.as(
           Effect.logError(
@@ -119,10 +119,13 @@ const httpServerDaemon = (): Effect.Effect<void, never, Scope.Scope | Wildflower
     // are all acquired; the daemon uses the first Stream emit as the
     // "ready" signal, then parks on `Stream.never` until the sub-scope
     // is closed.
-    const startServer = (
-      port: number,
-      _localOrigin: string
-    ): Stream.Stream<void, never, Scope.Scope> =>
+    const startServer = ({
+      port,
+      hostname,
+    }: {
+      port: number
+      hostname: string
+    }): Stream.Stream<void, never, Scope.Scope> =>
       Stream.unwrapScoped(
         Effect.gen(function* () {
           // Mirror `apps/wildflower-node`: union all deps into a single
@@ -139,10 +142,14 @@ const httpServerDaemon = (): Effect.Effect<void, never, Scope.Scope | Wildflower
             // Cross-cutting platform services.
             CryptoRandomLive,
             // HTTP transport + static-asset peers.
-            ExpoHttpServer.layer({ port }),
+            ExpoHttpServer.layer({ port, hostname }),
             ExpoContext.layer,
             Layer.succeed(WebAssetsDir, webAssetsDir),
-            Layer.succeed(Origin, LOCAL_ORIGIN),
+            Layer.succeed(
+              Origin,
+              // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+              `http://${LOCAL_HOSTNAME}:${port}` as unknown as typeof Origin.Service
+            ),
             TelemetryLive
           )
           const FullServerLive = WildflowerServerLive.pipe(
@@ -166,4 +173,4 @@ const httpServerDaemon = (): Effect.Effect<void, never, Scope.Scope | Wildflower
     yield* runHttpServerDaemon(startServer).pipe(Effect.provide(localHttpServerStoreLayer))
   })
 
-export { httpServerDaemon, LOCAL_ORIGIN }
+export { httpServerDaemon, LOCAL_HOSTNAME }

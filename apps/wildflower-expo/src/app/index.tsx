@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen'
 import { Colors, Spacing, ThemedText, ThemedView, useThemeColors } from 'expo-tundraish'
 import { useCallback, useContext, useEffect, useState, type JSX } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
+import { PORT } from '@/src/constants.ts'
 import { AppShellContext } from '../components/app-shell-context.ts'
 import { AppShellWebView } from '../components/app-shell-webview.tsx'
 import { TABS, tabForPath, type TabKey } from '../components/tab-mapping.ts'
@@ -25,7 +26,7 @@ export default function HomeScreen(): JSX.Element {
   if (ctx === null) throw new Error('AppShellContext missing — render under <RootLayout>')
   const { shellRef, setPendingSource } = ctx
 
-  const { running, localOrigin, publicOrigin } = useShellOrigins()
+  const { running, localHostname, publicHostname } = useShellOrigins()
 
   const router = useRouter()
   const palette = useThemeColors()
@@ -84,7 +85,7 @@ export default function HomeScreen(): JSX.Element {
       <View style={styles.webViewWrap}>
         <AppShellWebView
           ref={shellRef}
-          baseUrl={publicOrigin ?? localOrigin}
+          baseUrl={publicHostname ? `https://${publicHostname}` : `http://${localHostname}:${PORT}`}
           route={TABS[0].path}
           onRouteChanged={handleRouteChanged}
           onRequestSniffableWebView={handleRequestSniffableWebView}
