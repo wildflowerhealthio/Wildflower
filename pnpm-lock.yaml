@@ -411,6 +411,9 @@ importers:
       effect-messaging-expo:
         specifier: workspace:*
         version: link:../../global/effect-messaging/effect-messaging-expo
+      effect-messaging-react:
+        specifier: workspace:*
+        version: link:../../global/effect-messaging/effect-messaging-react
       emr-core:
         specifier: workspace:*
         version: link:../../slices/emr/emr-core
@@ -489,6 +492,9 @@ importers:
       gatekeeper-expo:
         specifier: workspace:*
         version: link:../../slices/gatekeeper/gatekeeper-expo
+      gatekeeper-react:
+        specifier: workspace:*
+        version: link:../../slices/gatekeeper/gatekeeper-react
       jose:
         specifier: 'catalog:'
         version: 6.2.3
@@ -507,6 +513,9 @@ importers:
       navigation-expo:
         specifier: workspace:*
         version: link:../../slices/navigation/navigation-expo
+      navigation-react:
+        specifier: workspace:*
+        version: link:../../slices/navigation/navigation-react
       react:
         specifier: 'catalog:'
         version: 19.1.0

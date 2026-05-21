@@ -1,7 +1,7 @@
 import { act, render } from '@testing-library/react-native'
 import type { Effect as EffectType, Layer as LayerType } from 'effect'
 import * as React from 'react'
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 
 // Hoisted module-scoped captures the mocked `effect-messaging-expo`
 // populates on each render — `mock` prefix is required for
@@ -67,6 +67,21 @@ jest.mock('effect-messaging-expo', () => {
   }
 })
 
+// `effect-messaging-react`'s HostMessagingProvider is just a passthrough
+// in tests — we exercise the messaging hook directly via the mocked
+// gatekeeper-react export below. Provider keeps the wrapping consistent
+// with production but adds no behavior the tests check.
+jest.mock('effect-messaging-react', () => {
+  const ReactInner = jest.requireActual<typeof React>('react')
+  return {
+    HostMessagingProvider: function MockHostMessagingProvider(props: {
+      readonly children: ReactNode
+    }): ReactElement {
+      return ReactInner.createElement(ReactInner.Fragment, null, props.children)
+    },
+  }
+})
+
 // Stub workspace bridge modules so the receiver-layer composition is
 // satisfied without actually building real bridges.
 const makeBridgeStub = (): { Host: { ReceiverLayer: (h: unknown) => LayerType.Layer<never> } } => {
@@ -85,6 +100,27 @@ jest.mock('navigation-core', () => ({ NavigationBridge: makeBridgeStub() }))
 jest.mock('gatekeeper-core/bridge', () => ({ __esModule: true, default: makeBridgeStub() }))
 jest.mock('collector-fundamentals/bridge', () => ({ __esModule: true, default: makeBridgeStub() }))
 jest.mock('apps-core/bridge', () => ({ __esModule: true, default: makeBridgeStub() }))
+
+// `gatekeeper-react.useGatekeeperHostMessaging` would normally read
+// from the HostMessagingContext; here we stub it with a direct call
+// into the mocked transport's sendMessage so the AuthTokenIssued path
+// is observable via mockSendMessageCalls.
+jest.mock('gatekeeper-react', () => ({
+  useGatekeeperHostMessaging: (): {
+    readonly send: (msg: { _tag: string; token?: string }) => void
+    readonly sendEffect: (msg: { _tag: string; token?: string }) => EffectType.Effect<void>
+  } => {
+    const effect = jest.requireActual<{ Effect: typeof EffectType }>('effect')
+    const sendEffect = (msg: { _tag: string; token?: string }): EffectType.Effect<void> =>
+      effect.Effect.sync(() => {
+        mockSendMessageCalls.push(msg)
+      })
+    return {
+      send: (msg) => effect.Effect.runFork(sendEffect(msg)),
+      sendEffect,
+    }
+  },
+}))
 
 // `apps-expo.AppsBridgeExpo.ReceiverLayer` is exercised in its own
 // package's tests; here we only need the layer to be constructable,
@@ -145,9 +181,25 @@ jest.mock('expo-tundraish', () => ({
     light: { background: '#fff', icon: '#000' },
     dark: { background: '#000', icon: '#fff' },
   },
+  Loader: (): null => null,
 }))
 
 import { AppShellWebView } from './app-shell-webview.tsx'
+import { WebviewBareSenderRefContext } from './webview-bare-sender-ref-context.ts'
+
+const renderWithRefContext = (children: ReactElement): ReturnType<typeof render> => {
+  // The mocked EffectMessagingWebView never writes into the ref, so
+  // a permanently-null `current` is fine for these assertions.
+  const webviewBareSenderRef: React.RefObject<null> = { current: null }
+  return render(
+    React.createElement(
+      WebviewBareSenderRefContext.Provider,
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      { value: { webviewBareSenderRef } as never },
+      children
+    )
+  )
+}
 
 beforeEach(() => {
   mockLastUseTransportConfig = null
@@ -157,7 +209,7 @@ beforeEach(() => {
 
 describe('AppShellWebView', () => {
   it('passes a HostRequestedWebNavigation initialMessage for the route', () => {
-    render(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
+    renderWithRefContext(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
     expect(mockLastUseTransportConfig?.initialMessages).toEqual([
       { _tag: 'HostRequestedWebNavigation', path: '/apps' },
     ])
@@ -166,7 +218,9 @@ describe('AppShellWebView', () => {
   it('does NOT place AuthTokenIssued in initialMessages even when a token is provided', () => {
     // The token would otherwise be encoded into the WebView URL as a
     // query parameter and leaked into native logs / Sentry breadcrumbs.
-    render(<AppShellWebView baseUrl="https://example.test" route="/apps" token="bearer-xyz" />)
+    renderWithRefContext(
+      <AppShellWebView baseUrl="https://example.test" route="/apps" token="bearer-xyz" />
+    )
     expect(mockLastUseTransportConfig?.initialMessages).toEqual([
       { _tag: 'HostRequestedWebNavigation', path: '/apps' },
     ])
@@ -174,8 +228,10 @@ describe('AppShellWebView', () => {
     expect(serialised).not.toContain('bearer-xyz')
   })
 
-  it('issues AuthTokenIssued through transport.sendMessage after mount', async () => {
-    render(<AppShellWebView baseUrl="https://example.test" route="/apps" token="bearer-xyz" />)
+  it('issues AuthTokenIssued through the gatekeeper host-messaging hook after mount', async () => {
+    renderWithRefContext(
+      <AppShellWebView baseUrl="https://example.test" route="/apps" token="bearer-xyz" />
+    )
     // `render` itself wraps the initial render in act, but the
     // `useEffect` that dispatches `AuthTokenIssued` schedules its
     // effect callback in the *next* microtask. Empty-bodied `act`
@@ -184,34 +240,43 @@ describe('AppShellWebView', () => {
     expect(mockSendMessageCalls).toContainEqual({ _tag: 'AuthTokenIssued', token: 'bearer-xyz' })
   })
 
-  it('does not call sendMessage with AuthTokenIssued when no token is provided', async () => {
-    render(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
+  it('does not call AuthTokenIssued when no token is provided', async () => {
+    renderWithRefContext(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
     await act(async () => {})
     const authCalls = mockSendMessageCalls.filter((m) => m._tag === 'AuthTokenIssued')
     expect(authCalls).toEqual([])
   })
 
   it('forwards baseUrl into useTransport', () => {
-    render(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
+    renderWithRefContext(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
     expect(mockLastUseTransportConfig?.baseUrl).toBe('https://example.test')
   })
 
   it('builds a transport whose embedUrl carries the supplied baseUrl', () => {
-    render(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
+    renderWithRefContext(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
     expect(mockLastTransport?.embedUrl).toContain('https://example.test')
   })
 
-  it('renders with the full callback surface attached (smoke)', () => {
+  it('throws when rendered outside <WebviewBareSenderRefContext>', () => {
+    // Silence the React error boundary log noise that accompanies the throw.
+    const consoleError = jest.spyOn(console, 'error').mockImplementation((): void => undefined)
+    expect(() => render(<AppShellWebView baseUrl="https://example.test" route="/apps" />)).toThrow(
+      /WebviewBareSenderRefContext/
+    )
+    consoleError.mockRestore()
+  })
+
+  it('renders without throwing with onRouteChanged and children attached (smoke)', () => {
     const onRouteChanged = jest.fn()
-    const onRawMessage = jest.fn()
     expect(() =>
-      render(
+      renderWithRefContext(
         <AppShellWebView
           baseUrl="https://example.test"
           route="/apps"
           onRouteChanged={onRouteChanged}
-          onRawMessage={onRawMessage}
-        />
+        >
+          <React.Fragment />
+        </AppShellWebView>
       )
     ).not.toThrow()
   })

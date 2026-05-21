@@ -1,20 +1,21 @@
 import { CollectorBridgeExpo } from 'collector-expo'
+import { Effect } from 'effect'
+import type { BareSenderService } from 'effect-messaging-core'
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import 'react-native-reanimated'
 import { useCallback, useMemo, useRef, type JSX } from 'react'
 import { Sentry } from 'telemetry-react-native'
 import AppLivestoreProvider from '../components/app-livestore-provider.tsx'
-import { AppShellContext } from '../components/app-shell-context.ts'
-import type { AppShellWebViewHandle } from '../components/app-shell-webview.tsx'
+import { WebviewBareSenderRefContext } from '../components/webview-bare-sender-ref-context.ts'
 import { WildflowerDaemons } from '../components/wildflower-daemons.tsx'
 
 /**
- * Root layout. Owns the shell ref so the `index` screen (where the
- * shell mounts) and the `collector-modal` screen (where the sniffer
- * mounts) share one source of truth. The Stack's modal presentation
- * keeps `index` mounted underneath the modal so the shell's WebView
- * never tears down mid-scrape.
+ * Root layout. Owns the WebView's bare-sender ref so the `index`
+ * screen (where the shell mounts) and the `collector-modal` screen
+ * (where the sniffer mounts) share one source of truth. The Stack's
+ * modal presentation keeps `index` mounted underneath the modal so
+ * the shell's WebView never tears down mid-scrape.
  *
  * `AppLivestoreProvider` wraps the stack so any descendant can call
  * `useWildflowerStore()`. `<WildflowerDaemons />` is rendered as a
@@ -24,21 +25,23 @@ import { WildflowerDaemons } from '../components/wildflower-daemons.tsx'
  *
  * `<CollectorBridgeExpo.HostProvider>` owns the collector slice's
  * `pendingSource` state and the routing-to-modal action; the
- * `postRawMessage` callback we hand it dereferences `shellRef` so
- * sniffer events forward back into the SPA via the host shell's
- * imperative handle.
+ * `postRawMessage` callback we hand it dereferences the bare-sender
+ * ref so sniffer events forward back into the SPA without a
+ * decode/re-encode round trip. Commit 4 replaces this raw passthrough
+ * with typed `CollectorBridge.hostToWeb` re-emission.
  */
 const RootLayout = Sentry.wrap(function RootLayout(): JSX.Element {
-  const shellRef = useRef<AppShellWebViewHandle | null>(null)
+  const webviewBareSenderRef = useRef<BareSenderService | null>(null)
   const postRawMessage = useCallback((rawWire: string): void => {
-    shellRef.current?.postRawMessage(rawWire)
+    const sender = webviewBareSenderRef.current
+    if (sender !== null) Effect.runFork(sender.bareSender(rawWire))
   }, [])
-  const appShellContextValue = useMemo(() => ({ shellRef }), [])
+  const refContextValue = useMemo(() => ({ webviewBareSenderRef }), [])
 
   return (
     <AppLivestoreProvider>
       <WildflowerDaemons />
-      <AppShellContext.Provider value={appShellContextValue}>
+      <WebviewBareSenderRefContext.Provider value={refContextValue}>
         <CollectorBridgeExpo.HostProvider postRawMessage={postRawMessage}>
           <Stack>
             <Stack.Screen name="index" options={{ headerShown: false }} />
@@ -50,7 +53,7 @@ const RootLayout = Sentry.wrap(function RootLayout(): JSX.Element {
           {/* oxlint-disable-next-line react/style-prop-object -- expo-status-bar accepts a string `style` */}
           <StatusBar style="auto" />
         </CollectorBridgeExpo.HostProvider>
-      </AppShellContext.Provider>
+      </WebviewBareSenderRefContext.Provider>
     </AppLivestoreProvider>
   )
 })
