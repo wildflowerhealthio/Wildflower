@@ -62,12 +62,19 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return context.resolveRequest(context, moduleName, platform)
 }
 
+config.transformer.getTransformOptions = async () => ({
+  transform: {
+    experimentalImportSupport: false,
+    inlineRequires: false,
+  },
+})
+config.resolver.sourceExts = ['jsx', 'js', 'ts', 'tsx', 'cjs', 'json', 'module.css', 'css']
+
 // Resolve workspace packages through their "source" export condition so edits
 // to their .ts sources hot-reload without running `vp pack` first.
-// config.resolver.unstable_enablePackageExports = false
-// config.resolver.unstable_conditionNames = [
-//   'source',
-//   ...(config.resolver.unstable_conditionNames ?? ['require', 'import', 'browser']),
-// ]
+config.resolver.unstable_conditionNames = [
+  'source',
+  ...(config.resolver.unstable_conditionNames ?? ['react-native', 'require', 'import', 'browser']),
+]
 
 module.exports = config

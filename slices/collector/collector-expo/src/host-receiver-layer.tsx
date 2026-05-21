@@ -183,6 +183,5 @@ const useReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collector', 'Host
   )
 }
 
-export { CollectorModalRoute } from './screens/CollectorModalRoute.tsx'
 export { HostProvider, useHost, useReceiverLayer }
 export type { HostProviderProps, SnifferControl }

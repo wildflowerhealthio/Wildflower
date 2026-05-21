@@ -1,4 +1,4 @@
-import 'kitchen-sink/polyfills/promise-with-resolvers'
+import { installed as _wasInstalled } from 'kitchen-sink/polyfills/promise-with-resolvers'
 
 globalThis.performance.mark =
   globalThis.performance.mark?.bind(globalThis.performance) ?? ((): void => {})
