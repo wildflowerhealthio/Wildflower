@@ -2,7 +2,7 @@ import { type BareSenderService, HostBinding } from 'effect-messaging-core'
 import { HostMessagingProvider } from 'effect-messaging-react'
 import { useEffect, useMemo, useRef, type JSX, type ReactNode } from 'react'
 import { EffectMessagingWebView } from './effect-messaging-webview.tsx'
-import type { ExpoTransport, ExpoTransportLayers } from './transport.ts'
+import type { ExpoTransport } from './transport.ts'
 import { WithTransport } from './with-transport.tsx'
 
 /**
@@ -54,17 +54,10 @@ const BridgedWebView = <const Bindings extends ReadonlyArray<HostBinding.Any>>({
     [bindings]
   )
 
-  // `HostBinding.LayersOf<Bindings>` and `ExpoTransportLayers<...>` are
-  // structurally the same tuple-of-layers but TypeScript treats the two
-  // aliases as distinct types. One cast at the boundary; aggregate
-  // proves the parallel-tuple shape.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const expoLayers = layers as ExpoTransportLayers<HostBinding.BridgesOf<Bindings>>
-
   return (
     <WithTransport<HostBinding.BridgesOf<Bindings>>
       bridges={bridges}
-      layers={expoLayers}
+      layers={layers}
       initialMessages={initialMessages}
       baseUrl={baseUrl}
       webviewHandleRef={webviewBareSenderRef}

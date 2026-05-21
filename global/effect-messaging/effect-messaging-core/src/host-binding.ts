@@ -60,11 +60,6 @@ type BridgesOf<Bindings extends ReadonlyArray<Any>> = {
   readonly [I in keyof Bindings]: Bindings[I]['bridge']
 }
 
-/** Tuple-mapped host receiver layers extracted from a tuple of bindings. */
-type LayersOf<Bindings extends ReadonlyArray<Any>> = {
-  readonly [I in keyof Bindings]: Bindings[I]['receiverLayer']
-}
-
 /** Union of decoded initial messages a binding tuple contributes. */
 type InitialMessageOf<Bindings extends ReadonlyArray<Any>> = Bridge.UrlParamableMessage<
   BridgesOf<Bindings>
@@ -73,21 +68,27 @@ type InitialMessageOf<Bindings extends ReadonlyArray<Any>> = Bridge.UrlParamable
 /**
  * Aggregate a binding tuple into the positional tuples
  * `BridgeTransport.make` requires plus the flattened initial-message
- * stream. The two narrow `as unknown as` casts here are the parallel-
- * tuple proof point — `Array.prototype.map` widens tuple positions to
- * `T[]`, so we re-narrow against the tuple-mapped type aliases.
+ * stream. The `layers` return type is `Bridge.TransportLayers<…, 'Host'>`
+ * — the same alias `BridgeTransport.make` and `WithTransport` expect —
+ * so consumers don't need to re-cast. The three `as unknown as` casts
+ * here are the parallel-tuple proof point: `Array.prototype.map`
+ * widens tuple positions to `T[]`, and we re-narrow against the
+ * tuple-mapped type aliases.
  */
 const aggregate = <const Bindings extends ReadonlyArray<Any>>(
   bindings: Bindings
 ): {
   readonly bridges: BridgesOf<Bindings>
-  readonly layers: LayersOf<Bindings>
+  readonly layers: Bridge.TransportLayers<BridgesOf<Bindings>, 'Host'>
   readonly initialMessages: ReadonlyArray<InitialMessageOf<Bindings>>
 } => ({
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   bridges: bindings.map((b) => b.bridge) as unknown as BridgesOf<Bindings>,
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  layers: bindings.map((b) => b.receiverLayer) as unknown as LayersOf<Bindings>,
+  layers: bindings.map((b) => b.receiverLayer) as unknown as Bridge.TransportLayers<
+    BridgesOf<Bindings>,
+    'Host'
+  >,
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   initialMessages: bindings.flatMap((b) => b.initialMessages ?? []) as unknown as ReadonlyArray<
     InitialMessageOf<Bindings>
@@ -109,12 +110,4 @@ const callTransportReady = (bindings: ReadonlyArray<Any>, send: BindingSend): vo
 }
 
 export { aggregate, callTransportReady }
-export type {
-  Any,
-  BindingSend,
-  BridgesOf,
-  HostBinding,
-  HostHandlerTagId,
-  InitialMessageOf,
-  LayersOf,
-}
+export type { Any, BindingSend, BridgesOf, HostBinding, HostHandlerTagId, InitialMessageOf }

@@ -57,14 +57,15 @@ The wider `HandlersFor<R>` type (`Effect<void, never, BareSender>`) is upward-co
 
 ## Where the Casts Live
 
-Two `as unknown as` casts remain, both inside `HostBinding.aggregate`:
+Three `as unknown as` casts remain, all inside `HostBinding.aggregate`. Each one re-narrows an `Array.prototype.map` / `.flatMap` result to the tuple-mapped shape the consumer expects:
 
-1. `bindings.map(b => b.bridge) as unknown as BridgesOf<Bs>` — Array.prototype.map widens tuple positions to `T[]`; the runtime mapping is provably parallel.
-2. `bindings.map(b => b.receiverLayer) as unknown as LayersOf<Bs>` — same.
+1. `bindings.map(b => b.bridge)` → `BridgesOf<Bs>`
+2. `bindings.map(b => b.receiverLayer)` → `Bridge.TransportLayers<BridgesOf<Bs>, 'Host'>` (the same alias `BridgeTransport.make` and `WithTransport` consume — no re-cast at the boundary).
+3. `bindings.flatMap(b => b.initialMessages ?? [])` → `ReadonlyArray<InitialMessageOf<Bs>>`
 
-Plus one cast in `TransportReadyCaller`: `transport.sendMessage as unknown as BindingSend` — covered by the function-intersection-to-widened-signature gap above.
+Plus one cast in `BridgedWebView`'s `TransportReadyCaller`: `transport.sendMessage as unknown as BindingSend` — the function-intersection-to-widened-signature gap above.
 
-All three live in one file (`host-binding.ts`) where the parallel-tuple invariant and the sender-shape correspondence are local. The consumer (`BridgedWebView`) sees a clean Bindings-shaped API with no casts.
+All four live in one file each — `host-binding.ts` for the parallel-tuple invariant, `bridged-webview.tsx` for the sender-shape correspondence. The consumer (`BridgedWebView` for layers, `AppShellWebView` further up) sees a clean Bindings-shaped API.
 
 ## See Also
 
