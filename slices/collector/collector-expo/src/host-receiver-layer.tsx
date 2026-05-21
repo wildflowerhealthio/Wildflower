@@ -1,12 +1,12 @@
 /* oxlint-disable react/only-export-components -- HostProvider is the only
-   React component in this file; `useHost` and `useReceiverLayer` are hooks
-   that share its private context. Splitting them out would force a
-   cross-file import of the otherwise-private context just to satisfy
-   fast-refresh's "only components" rule. */
+   React component in this file; `useHost`, `useReceiverLayer`, and
+   `useHostBinding` are hooks that share its private context. Splitting
+   them out would force a cross-file import of the otherwise-private
+   context just to satisfy fast-refresh's "only components" rule. */
 import CollectorBridge from 'collector-fundamentals/bridge'
 import type { WebViewSource } from 'collector-fundamentals/model'
 import { Effect, type Layer } from 'effect'
-import type { MessageHandler } from 'effect-messaging-core'
+import type { HostBinding, MessageHandler } from 'effect-messaging-core'
 import { useRouter } from 'expo-router'
 import {
   createContext,
@@ -183,5 +183,15 @@ const useReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collector', 'Host
   )
 }
 
-export { HostProvider, useHost, useReceiverLayer }
+/**
+ * Host binding for the collector bridge. Wraps {@link useReceiverLayer}
+ * (which reads from the surrounding {@link HostProvider} context) so
+ * the binding shape matches stateless slices.
+ */
+const useHostBinding = (): HostBinding.HostBinding<typeof CollectorBridge> => {
+  const receiverLayer = useReceiverLayer()
+  return useMemo(() => ({ bridge: CollectorBridge, receiverLayer }), [receiverLayer])
+}
+
+export { HostProvider, useHost, useHostBinding, useReceiverLayer }
 export type { HostProviderProps, SnifferControl }

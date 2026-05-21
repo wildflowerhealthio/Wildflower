@@ -1,0 +1,39 @@
+import type { Effect } from 'effect'
+import type { HostBinding } from 'effect-messaging-core'
+import GatekeeperBridge from 'gatekeeper-core/bridge'
+import { useMemo } from 'react'
+import { ReceiverLayer } from './host-receiver-layer.ts'
+
+interface UseGatekeeperHostBindingOptions {
+  /**
+   * Bearer token issued to the embedded SPA on boot. Routed through
+   * `onTransportReady` — *not* the URL-param channel — so the token
+   * never appears in native WebView URL logs.
+   */
+  readonly token?: string
+}
+
+/**
+ * Host binding for the gatekeeper bridge. The token-dispatch policy
+ * ("never via URL params") lives here instead of as a comment in the
+ * host shell — `AuthTokenIssued` does carry a URL-param schema but the
+ * binding deliberately ignores it.
+ */
+const useGatekeeperHostBinding = ({
+  token,
+}: UseGatekeeperHostBindingOptions = {}): HostBinding.HostBinding<typeof GatekeeperBridge> =>
+  useMemo(
+    () => ({
+      bridge: GatekeeperBridge,
+      receiverLayer: ReceiverLayer(),
+      onTransportReady:
+        token === undefined
+          ? undefined
+          : (send: HostBinding.BindingSend): Effect.Effect<void> =>
+              send({ _tag: 'AuthTokenIssued', token }),
+    }),
+    [token]
+  )
+
+export { useGatekeeperHostBinding }
+export type { UseGatekeeperHostBindingOptions }

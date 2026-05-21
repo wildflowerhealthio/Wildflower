@@ -1,3 +1,4 @@
+export { BridgedWebView, type BridgedWebViewProps } from './bridged-webview.tsx'
 export {
   EffectMessagingWebView,
   type EffectMessagingWebViewProps,

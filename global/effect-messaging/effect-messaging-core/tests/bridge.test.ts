@@ -2,8 +2,12 @@ import type { Context } from 'effect'
 import { Effect, Layer, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { assertType, describe, expect, test } from 'vite-plus/test'
+import { BareSender } from '../src/bare-sender.ts'
 import * as Bridge from '../src/bridge.ts'
 import * as TestPlatformAdapterLayer from '../src/test-platform-adapter-layer.ts'
+
+/** Stub `BareSender` for direct handler invocation. */
+const noopBareSenderLayer = Layer.succeed(BareSender, { bareSender: () => Effect.void })
 
 const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.Number }))
 const Pong = Schema.parseJson(Schema.TaggedStruct('Pong', { reply: Schema.String }))
@@ -78,7 +82,7 @@ describe('Bridge.make — ReceiverLayer', () => {
       yield* handlers.Buzz({ _tag: 'Buzz' })
     })
 
-    Effect.runSync(Effect.provide(program, layer))
+    Effect.runSync(Effect.provide(program, Layer.merge(layer, noopBareSenderLayer)))
     expect(seen).toEqual([7, -1])
   })
 
@@ -225,7 +229,7 @@ describe('Bridge.make — Layer integration', () => {
       yield* bHandlers.Ping({ _tag: 'Ping', value: 11 })
     })
 
-    Effect.runSync(Effect.provide(program, Layer.mergeAll(aLayer, bLayer)))
+    Effect.runSync(Effect.provide(program, Layer.mergeAll(aLayer, bLayer, noopBareSenderLayer)))
     expect(seen).toEqual(['Buzz', 'Ping(11)'])
   })
 })

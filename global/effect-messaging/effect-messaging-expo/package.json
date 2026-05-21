@@ -39,6 +39,7 @@
     "babel-preset-expo": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
+    "effect-messaging-react": "workspace:*",
     "expo": "catalog:",
     "expo-web-browser": "catalog:",
     "jest": "catalog:",
@@ -53,6 +54,7 @@
   "peerDependencies": {
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
+    "effect-messaging-react": "workspace:*",
     "expo-web-browser": ">=15.0.0",
     "react": "catalog:",
     "react-native": "catalog:",

@@ -1,7 +1,8 @@
 // oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers and `vi.fn()` call args are typed as `any`; the unsafe-assignment / unsafe-destructure lint fires on idiomatic `mock.calls[0]` access here
 
 import type { CancelSnifferRequestMessage } from 'browser-sniffer-core'
-import { Duration, Effect, Encoding, MutableHashMap, TestClock, TestContext } from 'effect'
+import { Duration, Effect, Encoding, Layer, MutableHashMap, TestClock, TestContext } from 'effect'
+import { BareSender } from 'effect-messaging-core'
 import { LoggingLayerTest, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
@@ -17,6 +18,20 @@ type SimpleResources = { name: string; age: number }
 type SimpleHandlerArgs = Parameters<typeof CollectorBridgeMessageHandler.make<SimpleResources>>[0]
 
 const noopSendMessage: SimpleHandlerArgs['sendMessage'] = () => Effect.void
+
+/**
+ * Bridge handlers carry a `BareSender` requirement so they can call
+ * `bridge.send(...)`; the dispatch fiber discharges this at runtime.
+ * Tests that invoke handlers directly thread a no-op via this pipe-
+ * style provider.
+ */
+const provideNoopBareSender = Effect.provide(
+  Layer.succeed(BareSender, { bareSender: () => Effect.void })
+)
+
+/** Run a handler effect synchronously with the no-op `BareSender`. */
+const runHandler = <A>(effect: Effect.Effect<A, never, BareSender>): A =>
+  Effect.runSync(effect.pipe(provideNoopBareSender))
 
 /**
  * Build a handler bound to a single-entity plan (`SimpleEntity` only).
@@ -95,7 +110,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const sendMessage = vi.fn(noopSendMessage)
       const handler = makeSimpleHandler({ sendMessage })
 
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/42' }))
       )
 
@@ -107,7 +122,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
       const handler = makeSimpleHandler({ sendMessage })
 
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r2', url: 'https://example.com/unknown' }))
       )
 
@@ -141,10 +156,10 @@ describe('CollectorBridgeMessageHandler.make', () => {
         })
       )
 
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r2', url: 'https://example.com/items/abc' }))
       )
 
@@ -159,12 +174,12 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(handler.ResponseData(responseData('r1', '{"name":"Bob"')))
-      Effect.runSync(handler.ResponseData(responseData('r1', ',"age":25}')))
-      Effect.runSync(handler.ResponseFinished(responseFinished('r1')))
+      runHandler(handler.ResponseData(responseData('r1', '{"name":"Bob"')))
+      runHandler(handler.ResponseData(responseData('r1', ',"age":25}')))
+      runHandler(handler.ResponseFinished(responseFinished('r1')))
 
       expect(onResult).toHaveBeenCalledOnce()
       expectRightToEqual(onResult.mock.calls[0][0].result, [{ name: 'Bob', age: 25 }])
@@ -186,7 +201,9 @@ describe('CollectorBridgeMessageHandler.make', () => {
               }),
             ])
           }),
-          Effect.scoped
+          Effect.scoped,
+
+          provideNoopBareSender
         )
       )
       expect(onResult).not.toHaveBeenCalled()
@@ -196,10 +213,10 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(
+      runHandler(
         handler.ResponseData({ _tag: 'ResponseData', id: 'r1', data: '!!! not base64 !!!' })
       )
 
@@ -210,7 +227,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
       // The tracked entry is removed so a subsequent ResponseFinished
       // becomes a no-op rather than a duplicate onResult.
       expect(MutableHashMap.keys(handler.inProgressResponses)).not.toContain('r1')
-      Effect.runSync(handler.ResponseFinished(responseFinished('r1')))
+      runHandler(handler.ResponseFinished(responseFinished('r1')))
       expect(onResult).toHaveBeenCalledOnce()
     })
   })
@@ -232,7 +249,9 @@ describe('CollectorBridgeMessageHandler.make', () => {
               }),
             ])
           }),
-          Effect.scoped
+          Effect.scoped,
+
+          provideNoopBareSender
         )
       )
       expect(onResult).not.toHaveBeenCalled()
@@ -243,11 +262,11 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const handler = makeSimpleHandler({ onResult })
 
       const body = JSON.stringify({ name: 'Carol', age: 40 })
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/99' }))
       )
-      Effect.runSync(handler.ResponseData(responseData('r1', body)))
-      Effect.runSync(handler.ResponseFinished(responseFinished('r1')))
+      runHandler(handler.ResponseData(responseData('r1', body)))
+      runHandler(handler.ResponseFinished(responseFinished('r1')))
 
       expect(onResult).toHaveBeenCalledOnce()
       const [{ response, result }] = onResult.mock.calls[0]
@@ -260,13 +279,13 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(handler.ResponseData(responseData('r1', '{}')))
-      Effect.runSync(handler.ResponseFinished(responseFinished('r1')))
+      runHandler(handler.ResponseData(responseData('r1', '{}')))
+      runHandler(handler.ResponseFinished(responseFinished('r1')))
       // Second finish: tracked entry is gone → log + no-op.
-      expect(() => Effect.runSync(handler.ResponseFinished(responseFinished('r1')))).not.toThrow()
+      expect(() => runHandler(handler.ResponseFinished(responseFinished('r1')))).not.toThrow()
       // Only the first finish should have produced an onResult call.
       expect(onResult).toHaveBeenCalledOnce()
     })
@@ -294,11 +313,11 @@ describe('CollectorBridgeMessageHandler.make', () => {
         })
       )
 
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(handler.ResponseData(responseData('r1', '{}')))
-      Effect.runSync(handler.ResponseFinished(responseFinished('r1')))
+      runHandler(handler.ResponseData(responseData('r1', '{}')))
+      runHandler(handler.ResponseFinished(responseFinished('r1')))
 
       expect(onResult).toHaveBeenCalledOnce()
       // Overlapping wins because it's first in `entityDefinitions`; its parse
@@ -310,21 +329,19 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r2', url: 'https://example.com/people/2' }))
       )
-      Effect.runSync(
+      runHandler(
         handler.ResponseData(responseData('r1', JSON.stringify({ name: 'Alice', age: 30 })))
       )
-      Effect.runSync(
-        handler.ResponseData(responseData('r2', JSON.stringify({ name: 'Bob', age: 25 })))
-      )
+      runHandler(handler.ResponseData(responseData('r2', JSON.stringify({ name: 'Bob', age: 25 }))))
 
-      Effect.runSync(handler.ResponseFinished(responseFinished('r2')))
-      Effect.runSync(handler.ResponseFinished(responseFinished('r1')))
+      runHandler(handler.ResponseFinished(responseFinished('r2')))
+      runHandler(handler.ResponseFinished(responseFinished('r1')))
 
       expect(onResult).toHaveBeenCalledTimes(2)
       expectRightToEqual(onResult.mock.calls[0][0].result, [{ name: 'Bob', age: 25 }])
@@ -337,10 +354,10 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(handler.Cancelled(cancelled('r1')))
+      runHandler(handler.Cancelled(cancelled('r1')))
 
       expect(onResult).toHaveBeenCalledOnce()
       const [{ response, result }] = onResult.mock.calls[0]
@@ -365,7 +382,9 @@ describe('CollectorBridgeMessageHandler.make', () => {
               }),
             ])
           }),
-          Effect.scoped
+          Effect.scoped,
+
+          provideNoopBareSender
         )
       )
       expect(onResult).not.toHaveBeenCalled()
@@ -377,10 +396,10 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r2', url: 'https://example.com/people/2' }))
       )
       expect(MutableHashMap.size(handler.inProgressResponses)).toBe(2)
@@ -397,10 +416,10 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      Effect.runSync(
+      runHandler(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/99' }))
       )
-      Effect.runSync(
+      runHandler(
         handler.RequestError(
           requestError({
             id: 'r1',
@@ -446,7 +465,9 @@ describe('CollectorBridgeMessageHandler.make', () => {
                 }),
               ])
             }),
-            Effect.scoped
+            Effect.scoped,
+
+            provideNoopBareSender
           )
       )
       expect(onResult).not.toHaveBeenCalled()
@@ -484,7 +505,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledOnce()
           expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SniffingComplete' })
-        }).pipe(Effect.provide(TestContext.TestContext))
+        }).pipe(Effect.provide(TestContext.TestContext), provideNoopBareSender)
       ))
 
     it('dispatches each link in order, separated by stepDelay, then SniffingComplete', () =>
@@ -522,7 +543,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledTimes(3)
           expect(sendMessage.mock.calls[2][0]).toEqual({ _tag: 'SniffingComplete' })
-        }).pipe(Effect.provide(TestContext.TestContext))
+        }).pipe(Effect.provide(TestContext.TestContext), provideNoopBareSender)
       ))
 
     it('a second PageLoaded during the wait interrupts the pending timer and re-arms for the same index', () =>
@@ -554,7 +575,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
             _tag: 'Open',
             source: linkA.source,
           })
-        }).pipe(Effect.provide(TestContext.TestContext))
+        }).pipe(Effect.provide(TestContext.TestContext), provideNoopBareSender)
       ))
 
     it('warns and no-ops on PageLoaded after SniffingComplete has fired', () =>
@@ -581,14 +602,16 @@ describe('CollectorBridgeMessageHandler.make', () => {
                 }),
               ])
             }),
-            Effect.scoped
+            Effect.scoped,
+
+            provideNoopBareSender
           )
 
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           // Still only the one SniffingComplete from earlier.
           expect(sendMessage).toHaveBeenCalledOnce()
-        }).pipe(Effect.provide(TestContext.TestContext))
+        }).pipe(Effect.provide(TestContext.TestContext), provideNoopBareSender)
       ))
 
     it('clear() interrupts the pending step timer', () =>
@@ -605,7 +628,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).not.toHaveBeenCalled()
-        }).pipe(Effect.provide(TestContext.TestContext))
+        }).pipe(Effect.provide(TestContext.TestContext), provideNoopBareSender)
       ))
 
     it('cancelAllInFlight interrupts the pending step timer', () =>
@@ -622,7 +645,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).not.toHaveBeenCalled()
-        }).pipe(Effect.provide(TestContext.TestContext))
+        }).pipe(Effect.provide(TestContext.TestContext), provideNoopBareSender)
       ))
 
     it('clear() resets the index so subsequent PageLoadeds restart from linkSequence[0]', () =>
@@ -651,7 +674,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
             _tag: 'Open',
             source: linkA.source,
           })
-        }).pipe(Effect.provide(TestContext.TestContext))
+        }).pipe(Effect.provide(TestContext.TestContext), provideNoopBareSender)
       ))
   })
 })

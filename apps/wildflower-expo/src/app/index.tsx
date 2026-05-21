@@ -68,9 +68,8 @@ export default function HomeScreen(): JSX.Element {
           route={TABS[0].path}
           token={localClientToken ?? undefined}
           onRouteChanged={handleRouteChanged}
-        >
-          <TabBar activeTab={activeTab} />
-        </AppShellWebView>
+          belowWebView={<TabBar activeTab={activeTab} />}
+        />
       </View>
     </ThemedView>
   )

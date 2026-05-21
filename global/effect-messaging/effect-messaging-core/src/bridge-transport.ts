@@ -84,8 +84,17 @@ interface BridgeTransport<
 // oxlint-disable-next-line typescript/no-explicit-any
 type AnyTaggedSchema = Schema.Schema<any, any, never>
 
-/** Handler invoked by the dispatch fiber when a tag's message arrives. */
-type Handler = (message: { readonly _tag: string }) => Effect.Effect<void>
+/**
+ * Handler invoked by the dispatch fiber when a tag's message arrives.
+ *
+ * @remarks
+ * Handlers may require {@link BareSender} so they can call
+ * `bridge.send(...)` to post a reply through the same transport. The
+ * dispatch fiber wraps each handler call with the transport's adapter
+ * as `BareSender`, so the requirement is always discharged at the
+ * dispatch site — receiver layers don't have to bake it in.
+ */
+type Handler = (message: { readonly _tag: string }) => Effect.Effect<void, never, BareSender>
 
 const make = <
   const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
@@ -204,6 +213,10 @@ const make = <
      * with `innerSchemas`); a missing handler entry surfaces as
      * `Internal` so a deliberate `handlers: { Tag: undefined }` cast
      * doesn't crash the dispatch fiber.
+     *
+     * `BareSender` is provided here so handlers can call
+     * `bridge.send(...)` to post a reply through the same transport —
+     * receiver layers don't have to capture and re-provide it.
      */
     const decodeAndDispatch = (
       raw: string,
@@ -225,7 +238,7 @@ const make = <
                 reason: 'handler is undefined for a dispatched tag',
               })
             ),
-          onSome: (handler) => handler(decoded),
+          onSome: (handler) => handler(decoded).pipe(Effect.provideService(BareSender, adapter)),
         })
       })
 

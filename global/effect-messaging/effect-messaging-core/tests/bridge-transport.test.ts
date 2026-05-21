@@ -238,6 +238,58 @@ describe('BridgeTransport.make — __Ready handshake', () => {
   })
 })
 
+describe('BridgeTransport.make — handler-side BareSender', () => {
+  test('web handler can call bridge.send to reply via the same transport', async () => {
+    const { NavigationLike } = makeBridges()
+    const layer = NavigationLike.Web.ReceiverLayer({
+      Ping: ({ value }) => NavigationLike.Web.send({ _tag: 'Pong', reply: `got ${value}` }),
+    })
+    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make()
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const transport = yield* BridgeTransport.make({
+          bridges: [NavigationLike] as const,
+          layers: [layer] as const,
+          side: 'Web',
+        }).pipe(Effect.provide(adapterLayer))
+        yield* transport.enqueue(Schema.encodeSync(Ping)({ _tag: 'Ping', value: 42 }))
+        yield* transport.flushed
+        expect(sentSink).toHaveLength(1)
+        expect(JSON.parse(sentSink[0] ?? '')).toEqual({ _tag: 'Pong', reply: 'got 42' })
+      }).pipe(Effect.scoped)
+    )
+  })
+
+  test('host handler can call bridge.send to reply through the transport', async () => {
+    const { NavigationLike } = makeBridges()
+    const layer = NavigationLike.Host.ReceiverLayer({
+      Pong: ({ reply }) => NavigationLike.Host.send({ _tag: 'Ping', value: reply.length }),
+    })
+    const {
+      layer: adapterLayer,
+      sentSink,
+      liveEnqueueRef,
+    } = TestPlatformAdapterLayer.make({ captureAttachLive: true })
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const transport = yield* BridgeTransport.make({
+          bridges: [NavigationLike] as const,
+          layers: [layer] as const,
+          side: 'Host',
+        }).pipe(Effect.provide(adapterLayer))
+        if (liveEnqueueRef.current === null) throw new Error('liveEnqueueRef not captured')
+        // `bridge.send` (the handler-side call) bypasses the ready-gate;
+        // any inbound message implies the peer is alive enough to
+        // receive a reply. So no `__Ready` is required here.
+        yield* liveEnqueueRef.current(Schema.encodeSync(Pong)({ _tag: 'Pong', reply: 'hello' }))
+        yield* transport.flushed
+        expect(sentSink).toHaveLength(1)
+        expect(JSON.parse(sentSink[0] ?? '')).toEqual({ _tag: 'Ping', value: 5 })
+      }).pipe(Effect.scoped)
+    )
+  })
+})
+
 describe('BridgeTransport.make — queue lifecycle', () => {
   test('property: late enqueues after scope close drop without throwing', async () => {
     const { NavigationLike } = makeBridges()

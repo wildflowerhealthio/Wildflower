@@ -1,9 +1,15 @@
 import { act, render } from '@testing-library/react-native'
 import { Effect } from 'effect'
+import { BareSender } from 'effect-messaging-core'
 import * as React from 'react'
 import type { ReactElement } from 'react'
 
 import type { SnifferHandlers } from 'browser-sniffer-expo'
+
+/** Stub `BareSender` for direct handler invocation. */
+const provideNoopBareSender = Effect.provideService(BareSender, {
+  bareSender: () => Effect.void,
+})
 
 // Capture the props `BrowserSnifferWebView` received so the test can
 // invoke typed handlers directly (no native runtime needed) and observe
@@ -137,7 +143,7 @@ describe('CollectorModalScreen', () => {
         const handler = handlersRecord[tag]
         expect(handler).toBeDefined()
         if (handler === undefined) return
-        await Effect.runPromise(handler(event))
+        await Effect.runPromise(handler(event).pipe(provideNoopBareSender))
         expect(mockReEmittedMessages).toEqual([event])
       }
     )
@@ -158,7 +164,7 @@ describe('CollectorModalScreen', () => {
         url: 'https://example.test',
         message: 'oh no',
       }
-      await Effect.runPromise(handlers.RequestError(event))
+      await Effect.runPromise(handlers.RequestError(event).pipe(provideNoopBareSender))
       expect(onError).toHaveBeenCalledTimes(1)
       expect(onError).toHaveBeenCalledWith(event)
       expect(mockReEmittedMessages).toEqual([event])
@@ -180,7 +186,9 @@ describe('CollectorModalScreen', () => {
         url: 'https://example.test',
         message: 'boom',
       }
-      await expect(Effect.runPromise(handlers.RequestError(event))).resolves.toBeUndefined()
+      await expect(
+        Effect.runPromise(handlers.RequestError(event).pipe(provideNoopBareSender))
+      ).resolves.toBeUndefined()
       expect(onError).toHaveBeenCalledTimes(1)
       expect(mockReEmittedMessages).toEqual([event])
     })
