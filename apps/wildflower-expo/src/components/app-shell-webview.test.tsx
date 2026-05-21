@@ -86,6 +86,42 @@ jest.mock('gatekeeper-core/bridge', () => ({ __esModule: true, default: makeBrid
 jest.mock('collector-fundamentals/bridge', () => ({ __esModule: true, default: makeBridgeStub() }))
 jest.mock('apps-core/bridge', () => ({ __esModule: true, default: makeBridgeStub() }))
 
+// `apps-expo.AppsBridgeExpo.ReceiverLayer` is exercised in its own
+// package's tests; here we only need the layer to be constructable,
+// so a no-op stub keeps the transport wiring satisfied.
+jest.mock('apps-expo', () => {
+  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
+    'effect'
+  )
+  return {
+    AppsBridgeExpo: {
+      ReceiverLayer: (): LayerType.Layer<never> => effect.Layer.effectDiscard(effect.Effect.void),
+    },
+  }
+})
+
+// `TunnelStore.layerFrom(store)` is provided to the AppsBridgeExpo
+// layer; the mock returns an empty layer so `Layer.provide` chains
+// without needing a real livestore.
+jest.mock('tunnel-core/livestore', () => {
+  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
+    'effect'
+  )
+  return {
+    TunnelStore: {
+      layerFrom: (_store: unknown): LayerType.Layer<never> =>
+        effect.Layer.effectDiscard(effect.Effect.void),
+    },
+  }
+})
+
+// `useWildflowerStore` returns the singleton wildflower livestore; the
+// stub here just needs to be a stable reference passed into
+// `TunnelStore.layerFrom`'s mock above.
+jest.mock('../livestore/livestore-store.ts', () => ({
+  useWildflowerStore: (): object => ({}),
+}))
+
 jest.mock('wildflower-react/embeddable-html', () => ({ html: '<!doctype html><html></html>' }))
 
 jest.mock('expo-tundraish', () => ({
@@ -106,9 +142,7 @@ beforeEach(() => {
 
 describe('AppShellWebView', () => {
   it('passes a HostRequestedWebNavigation initialMessage for the route', () => {
-    render(
-      <AppShellWebView baseUrl="https://example.test" route="/apps" onRequestTunnel={() => {}} />
-    )
+    render(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
     expect(mockLastUseTransportConfig?.initialMessages).toEqual([
       { _tag: 'HostRequestedWebNavigation', path: '/apps' },
     ])
@@ -117,14 +151,7 @@ describe('AppShellWebView', () => {
   it('does NOT place AuthTokenIssued in initialMessages even when a token is provided', () => {
     // The token would otherwise be encoded into the WebView URL as a
     // query parameter and leaked into native logs / Sentry breadcrumbs.
-    render(
-      <AppShellWebView
-        baseUrl="https://example.test"
-        route="/apps"
-        token="bearer-xyz"
-        onRequestTunnel={() => {}}
-      />
-    )
+    render(<AppShellWebView baseUrl="https://example.test" route="/apps" token="bearer-xyz" />)
     expect(mockLastUseTransportConfig?.initialMessages).toEqual([
       { _tag: 'HostRequestedWebNavigation', path: '/apps' },
     ])
@@ -133,14 +160,7 @@ describe('AppShellWebView', () => {
   })
 
   it('issues AuthTokenIssued through transport.sendMessage after mount', async () => {
-    render(
-      <AppShellWebView
-        baseUrl="https://example.test"
-        route="/apps"
-        token="bearer-xyz"
-        onRequestTunnel={() => {}}
-      />
-    )
+    render(<AppShellWebView baseUrl="https://example.test" route="/apps" token="bearer-xyz" />)
     // `render` itself wraps the initial render in act, but the
     // `useEffect` that dispatches `AuthTokenIssued` schedules its
     // effect callback in the *next* microtask. Empty-bodied `act`
@@ -150,25 +170,19 @@ describe('AppShellWebView', () => {
   })
 
   it('does not call sendMessage with AuthTokenIssued when no token is provided', async () => {
-    render(
-      <AppShellWebView baseUrl="https://example.test" route="/apps" onRequestTunnel={() => {}} />
-    )
+    render(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
     await act(async () => {})
     const authCalls = mockSendMessageCalls.filter((m) => m._tag === 'AuthTokenIssued')
     expect(authCalls).toEqual([])
   })
 
   it('forwards baseUrl into useTransport', () => {
-    render(
-      <AppShellWebView baseUrl="https://example.test" route="/apps" onRequestTunnel={() => {}} />
-    )
+    render(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
     expect(mockLastUseTransportConfig?.baseUrl).toBe('https://example.test')
   })
 
   it('builds a transport whose embedUrl carries the supplied baseUrl', () => {
-    render(
-      <AppShellWebView baseUrl="https://example.test" route="/apps" onRequestTunnel={() => {}} />
-    )
+    render(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
     expect(mockLastTransport?.embedUrl).toContain('https://example.test')
   })
 
@@ -179,7 +193,6 @@ describe('AppShellWebView', () => {
     const onSniffingComplete = jest.fn()
     const onOpen = jest.fn()
     const onRawMessage = jest.fn()
-    const onRequestTunnel = jest.fn()
     expect(() =>
       render(
         <AppShellWebView
@@ -191,7 +204,6 @@ describe('AppShellWebView', () => {
           onSniffingComplete={onSniffingComplete}
           onOpen={onOpen}
           onRawMessage={onRawMessage}
-          onRequestTunnel={onRequestTunnel}
         />
       )
     ).not.toThrow()

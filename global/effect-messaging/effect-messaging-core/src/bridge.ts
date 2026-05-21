@@ -1,13 +1,14 @@
 import { Array, Context, Effect, Layer, Option, Schema } from 'effect'
 import type { UnionToIntersection } from 'kitchen-sink/types'
+import { BareSender } from './bare-sender.ts'
 import type * as MessageHandler from './message-handler.ts'
 import * as Message from './message.ts'
-import { TransportAdapter } from './transport-adapter.ts'
+import { type TransportAdapter } from './transport-adapter.ts'
 
-/** Typed sender for one side. Each call returns an Effect that requires {@link TransportAdapter}. */
+/** Typed sender for one side. Each call returns an Effect that requires {@link BareSender}. */
 type SenderFn<R extends Message.SchemaRecord> = (
   message: Message.Of<R>
-) => Effect.Effect<void, never, TransportAdapter>
+) => Effect.Effect<void, never, BareSender>
 
 /** One side of a bridge. `Outbound` is what this side sends; `Inbound` is what it receives. */
 interface Half<
@@ -70,7 +71,7 @@ type AnyHalf = {
   readonly OutboundSchemas: Message.SchemaRecord
   // oxlint-disable-next-line typescript/no-explicit-any
   readonly HandlerTag: Context.Tag<any, any>
-  readonly send: (m: never) => Effect.Effect<void, never, TransportAdapter>
+  readonly send: (m: never) => Effect.Effect<void, never, BareSender>
 }
 
 /** Structural bound for "any wired bridge". */
@@ -96,7 +97,7 @@ type MessageSender<
         readonly [K in Side]: {
           readonly send: (
             m: infer M extends { readonly _tag: string }
-          ) => Effect.Effect<void, never, TransportAdapter>
+          ) => Effect.Effect<void, never, BareSender>
         }
       }
       ? (message: M) => Effect.Effect<void>
@@ -246,7 +247,7 @@ const make = <
 const sendThrough = (
   record: Record<string, Message.AnyStringEncodedSchema>,
   message: { readonly _tag: string }
-): Effect.Effect<void, never, TransportAdapter> =>
+): Effect.Effect<void, never, BareSender> =>
   Effect.gen(function* () {
     const schema = record[message._tag]
     if (schema === undefined) {
@@ -255,14 +256,14 @@ const sendThrough = (
       )
       return undefined
     }
-    const adapter = yield* TransportAdapter
+    const adapter = yield* BareSender
     yield* adapter.bareSender(Schema.encodeSync(schema)(message))
     return undefined
   })
 
 type AnyTaggedMessageSender = (message: {
   readonly _tag: string
-}) => Effect.Effect<void, never, TransportAdapter>
+}) => Effect.Effect<void, never, BareSender>
 
 /**
  * Build a `{[tag]: bridgeSenderForTag}` map across a list of bridges for one

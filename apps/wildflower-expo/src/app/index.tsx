@@ -7,7 +7,6 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { AppShellContext } from '../components/app-shell-context.ts'
 import { AppShellWebView } from '../components/app-shell-webview.tsx'
 import { TABS, tabForPath, type TabKey } from '../components/tab-mapping.ts'
-import { commitAndAwaitTunnel } from '../daemons/tunnel.ts'
 import { useShellOrigins } from '../livestore/use-shell-origins.ts'
 
 // Splash is suppressed by `splash-init.ts` (side-effect import in
@@ -26,7 +25,7 @@ export default function HomeScreen(): JSX.Element {
   if (ctx === null) throw new Error('AppShellContext missing — render under <RootLayout>')
   const { shellRef, setPendingSource } = ctx
 
-  const { store, running, localOrigin, publicOrigin } = useShellOrigins()
+  const { running, localOrigin, publicOrigin } = useShellOrigins()
 
   const router = useRouter()
   const palette = useThemeColors()
@@ -75,24 +74,6 @@ export default function HomeScreen(): JSX.Element {
     [router, setPendingSource]
   )
 
-  const handleRequestTunnel = useCallback((): void => {
-    const handle = shellRef.current
-    Effect.runFork(
-      commitAndAwaitTunnel(store, true).pipe(
-        Effect.matchEffect({
-          onSuccess: (grantedOrigin) =>
-            handle === null || grantedOrigin === null
-              ? Effect.void
-              : handle.sendMessage({ _tag: 'TunnelStarted', origin: grantedOrigin }),
-          onFailure: (cause) =>
-            handle === null
-              ? Effect.void
-              : handle.sendMessage({ _tag: 'TunnelFailed', reason: String(cause) }),
-        })
-      )
-    )
-  }, [shellRef, store])
-
   if (!running) {
     // Splash is still up; return an empty placeholder so the tree mounts.
     return <ThemedView style={styles.fill} />
@@ -107,7 +88,6 @@ export default function HomeScreen(): JSX.Element {
           route={TABS[0].path}
           onRouteChanged={handleRouteChanged}
           onRequestSniffableWebView={handleRequestSniffableWebView}
-          onRequestTunnel={handleRequestTunnel}
         />
       </View>
       <View

@@ -1,9 +1,15 @@
 import type { Scope } from 'effect'
 import { Effect, Layer } from 'effect'
+import { BareSender } from './bare-sender.ts'
 import { TransportAdapter } from './transport-adapter.ts'
 
 /**
- * Capturing-stub `Layer<TransportAdapter>` for tests.
+ * Capturing-stub `Layer` for tests — provides both
+ * {@link TransportAdapter} (the broader platform shape used by
+ * `BridgeTransport.make`) and {@link BareSender} (the narrower send
+ * shape consumed by `Bridge.Host.send` / `Bridge.Web.send`). Both
+ * resolve to the same backing object so a single `sentSink` captures
+ * everything pushed through either path.
  *
  * @example
  * ```ts
@@ -25,7 +31,7 @@ const make = (config?: {
   readonly initialMessages?: ReadonlyArray<string>
   readonly captureAttachLive?: boolean
 }): {
-  readonly layer: Layer.Layer<TransportAdapter>
+  readonly layer: Layer.Layer<TransportAdapter | BareSender>
   readonly sentSink: string[]
   readonly liveEnqueueRef: { current: ((raw: string) => Effect.Effect<void>) | null }
 } => {
@@ -56,7 +62,11 @@ const make = (config?: {
     drainInitial: Effect.succeed(initialMessages),
     ...(config?.captureAttachLive === true ? { attachLive } : {}),
   }
-  return { layer: Layer.succeed(TransportAdapter, adapter), sentSink, liveEnqueueRef }
+  const layer = Layer.merge(
+    Layer.succeed(TransportAdapter, adapter),
+    Layer.succeed(BareSender, adapter)
+  )
+  return { layer, sentSink, liveEnqueueRef }
 }
 
 export { make }

@@ -1,20 +1,27 @@
 import AppsBridge from 'apps-core/bridge'
+import { AppsBridgeExpo } from 'apps-expo'
 import CollectorBridge from 'collector-fundamentals/bridge'
 import type { WebViewSource } from 'collector-fundamentals/model'
-import { Effect } from 'effect'
-import {
-  EffectMessagingWebView,
-  WithTransport,
-  type EffectMessagingWebViewHandle,
-  type ExpoTransport,
-} from 'effect-messaging-expo'
+import { Effect, Layer } from 'effect'
+import { BareSender, type BareSenderService } from 'effect-messaging-core'
+import { EffectMessagingWebView, WithTransport, type ExpoTransport } from 'effect-messaging-expo'
 import { Loader } from 'expo-tundraish'
 import GatekeeperBridge from 'gatekeeper-core/bridge'
 import { GatekeeperBridgeExpo } from 'gatekeeper-expo'
 import { NavigationBridge } from 'navigation-core'
 import { NavigationBridgeExpo } from 'navigation-expo'
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, type JSX } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  type JSX,
+} from 'react'
+import { TunnelStore } from 'tunnel-core/livestore'
 import { html } from 'wildflower-react/embeddable-html'
+import { useWildflowerStore } from '../livestore/livestore-store.ts'
 
 type Bridges = readonly [
   typeof NavigationBridge,
@@ -31,17 +38,17 @@ type Bridges = readonly [
  * `useRequestTunnel` is awaiting.
  *
  * `sendMessage` is the typed multi-bridge sender — encodes via each
- * bridge's outbound schemas. `postRawCollectorMessage` is the *bypass*
- * path: it accepts an already-encoded `CollectorBridge.Host` wire
- * string and injects it directly into the WebView. Use the raw path
- * when a paired transport (the modal's `<BrowserSnifferWebView>`)
- * speaks the same wire format and the host is acting as a router —
- * the round trip through `decode → typed handler → encode` is a
- * no-op the raw path skips.
+ * bridge's outbound schemas. `postRawMessage` is the *bypass* path:
+ * it accepts an already-encoded bridge wire string and injects it
+ * directly into the WebView. Use the raw path when a paired transport
+ * (today: the modal's `<BrowserSnifferWebView>` forwarding sniffer
+ * events through `CollectorBridge.Host`) speaks the same wire format
+ * and the host is acting as a router — the round trip through
+ * `decode → typed handler → encode` is a no-op the raw path skips.
  */
 interface AppShellWebViewHandle {
   readonly sendMessage: ExpoTransport<Bridges>['sendMessage']
-  readonly postRawCollectorMessage: (rawWire: string) => void
+  readonly postRawMessage: (rawWire: string) => void
 }
 
 interface AppShellWebViewProps {
@@ -59,7 +66,7 @@ interface AppShellWebViewProps {
    * Fires when the SPA asks the host to open a sniffer-enabled WebView
    * ("Import Now"). The host pushes a `<RunSyncModalScreen>` and
    * forwards sniffer events back via the imperative handle's
-   * `postRawCollectorMessage`.
+   * `postRawMessage`.
    */
   readonly onRequestSniffableWebView?: (source: WebViewSource.Any) => void
   /**
@@ -83,15 +90,6 @@ interface AppShellWebViewProps {
    * trip (`Click` / `CancelSnifferRequest`).
    */
   readonly onRawMessage?: (rawWire: string) => void
-  /**
-   * Fires when the SPA's `useRequestTunnel` posts `RequestTunnel`. The
-   * host should commit `requestedRunning: true` to `TunnelConfig`
-   * (which the tunnel daemon will pick up) and post `TunnelStarted
-   * { origin }` or `TunnelFailed { reason }` back via the imperative
-   * handle's `sendMessage` once `TunnelState.running` flips and the
-   * granted `currentSubdomain`/`currentRootDomain` materialise.
-   */
-  readonly onRequestTunnel: () => void
 }
 
 const AppShellWebView = forwardRef<AppShellWebViewHandle, AppShellWebViewProps>(
@@ -105,14 +103,40 @@ const AppShellWebView = forwardRef<AppShellWebViewHandle, AppShellWebViewProps>(
       onCancelSnifferRequest,
       onSniffingComplete,
       onOpen,
-      onRequestTunnel,
       token,
       onRawMessage,
       ...props
     }: AppShellWebViewProps,
     ref
   ): JSX.Element {
-    const webviewHandleRef = useRef<EffectMessagingWebViewHandle>(null)
+    const webviewBareSenderRef = useRef<BareSenderService>(null)
+
+    // `AppsBridgeExpo.ReceiverLayer` requires `TunnelStore` (provided
+    // from the wildflower-expo livestore) and `BareSender` (delegates
+    // to the WebView's ref-exposed bare sender — the dispatcher pulls
+    // it at handler-fire time, by which point the WebView is mounted).
+    const store = useWildflowerStore()
+    const appsBridgeReceiverLayer = useMemo(
+      () =>
+        AppsBridgeExpo.ReceiverLayer().pipe(
+          Layer.provide(
+            Layer.merge(
+              TunnelStore.layerFrom(store),
+              Layer.succeed(BareSender, {
+                bareSender: (msg) => {
+                  if (webviewBareSenderRef.current === null) {
+                    return Effect.dieMessage(
+                      'AppShellWebView: BareSender invoked before the WebView mounted'
+                    )
+                  }
+                  return webviewBareSenderRef.current.bareSender(msg)
+                },
+              })
+            )
+          )
+        ),
+      [store]
+    )
 
     // Bearer tokens are deliberately NOT in `initialMessages` —
     // `effect-messaging-expo`'s `useTransport` encodes initial messages
@@ -167,22 +191,17 @@ const AppShellWebView = forwardRef<AppShellWebViewHandle, AppShellWebViewProps>(
               // WebView. Consumers wire that via `onRawMessage`.
               Click: () => Effect.void,
             }),
-            AppsBridge.Host.ReceiverLayer({
-              RequestTunnel: () =>
-                Effect.sync(() => {
-                  onRequestTunnel()
-                }),
-            }),
+            appsBridgeReceiverLayer,
           ] as const
         }
         baseUrl={baseUrl}
-        webviewHandleRef={webviewHandleRef}
+        webviewHandleRef={webviewBareSenderRef}
       >
         {(transport) => (
           <InnerAppShellWebView
             ref={ref}
             transport={transport}
-            webviewHandleRef={webviewHandleRef}
+            webviewBareSenderRef={webviewBareSenderRef}
             token={token}
             onRawMessage={onRawMessage}
             {...props}
@@ -210,17 +229,10 @@ const InnerAppShellWebView = forwardRef<
     transport: ExpoTransport<Bridges>
     token: AppShellWebViewProps['token']
     onRawMessage: AppShellWebViewProps['onRawMessage']
-    webviewHandleRef: React.RefObject<EffectMessagingWebViewHandle | null>
+    webviewBareSenderRef: React.RefObject<BareSenderService | null>
   }
 >(function InnerAppShellWebView(
-  {
-    transport,
-
-    token,
-
-    onRawMessage,
-    webviewHandleRef,
-  },
+  { transport, token, onRawMessage, webviewBareSenderRef },
   ref
 ): JSX.Element {
   // Dispatch the bearer token as soon as the transport is constructed
@@ -233,20 +245,21 @@ const InnerAppShellWebView = forwardRef<
     Effect.runFork(transport.sendMessage({ _tag: 'AuthTokenIssued', token }))
   }, [transport, token])
 
-  useImperativeHandle(
+  useImperativeHandle<AppShellWebViewHandle, AppShellWebViewHandle>(
     ref,
     () => ({
       sendMessage: transport.sendMessage,
-      postRawCollectorMessage: (rawWire: string): void => {
+      postRawMessage: (rawWire: string): void => {
         // Skips the typed sender's encode step. Pre-mount sends are
         // dropped here (no buffering) — the typed path provides a
         // queued sender for the typed shape; the raw path is for
         // mid-session router forwarding where buffering would just
         // muddle ordering against in-flight typed sends.
-        webviewHandleRef.current?.postMessage(rawWire)
+        const sender = webviewBareSenderRef.current
+        if (sender !== null) Effect.runFork(sender.bareSender(rawWire))
       },
     }),
-    [transport, webviewHandleRef]
+    [transport, webviewBareSenderRef]
   )
 
   // Splice `onRawMessage` in front of the typed `onMessage` so a
@@ -264,7 +277,7 @@ const InnerAppShellWebView = forwardRef<
 
   return (
     <EffectMessagingWebView
-      ref={webviewHandleRef}
+      ref={webviewBareSenderRef}
       source={{ html, baseUrl: transport.embedUrl }}
       onMessage={handleMessage}
       loader={<Loader />}

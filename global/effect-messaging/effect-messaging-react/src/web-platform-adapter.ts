@@ -1,7 +1,7 @@
 import type { Scope } from 'effect'
 import { Effect } from 'effect'
 import {
-  type BareSender,
+  type BareSenderFunction,
   type Bridge,
   type TransportAdapter,
   REACT_NATIVE_WEBVIEW_GLOBAL,
@@ -36,7 +36,7 @@ const make = (bridges: ReadonlyArray<Bridge.AnyBridge>): TransportAdapter['Type'
   const winGlobals = (): Window & MessagingWindowGlobals =>
     window as Window & MessagingWindowGlobals
 
-  const bareSender: BareSender = (encoded) =>
+  const bareSender: BareSenderFunction = (encoded) =>
     Effect.gen(function* () {
       const w = winGlobals()
       const rnBridge = w[REACT_NATIVE_WEBVIEW_GLOBAL]

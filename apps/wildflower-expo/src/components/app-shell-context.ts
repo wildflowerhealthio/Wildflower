@@ -5,7 +5,7 @@ import type { AppShellWebViewHandle } from './app-shell-webview.tsx'
 interface AppShellContextValue {
   /**
    * Ref to the host shell's imperative handle. Modal screens use
-   * `current.postRawCollectorMessage` to forward sniffer events back
+   * `current.postRawMessage` to forward sniffer events back
    * into the SPA's `CollectorBridge`.
    */
   readonly shellRef: RefObject<AppShellWebViewHandle | null>

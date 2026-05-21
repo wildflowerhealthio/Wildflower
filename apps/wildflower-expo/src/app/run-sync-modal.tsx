@@ -8,7 +8,7 @@ import { AppShellContext } from '../components/app-shell-context.ts'
 /**
  * Modal route. Hosts the `<RunSyncModalScreen>` from `collector-expo`
  * (a `BrowserSnifferWebView` wrapper) and threads the host shell's
- * `postRawCollectorMessage` handle through so sniffer events round-
+ * `postRawMessage` handle through so sniffer events round-
  * trip back into the SPA's `CollectorBridge`. The shell underneath
  * stays mounted (Stack `presentation: 'modal'`); its WebView never
  * tears down mid-scrape.
@@ -19,9 +19,9 @@ export default function RunSyncModalRoute(): JSX.Element {
   const { shellRef, pendingSource } = ctx
   const router = useRouter()
 
-  const postRawCollectorMessage = useCallback(
+  const postRawMessage = useCallback(
     (rawWire: string): void => {
-      shellRef.current?.postRawCollectorMessage(rawWire)
+      shellRef.current?.postRawMessage(rawWire)
     },
     [shellRef]
   )
@@ -41,9 +41,7 @@ export default function RunSyncModalRoute(): JSX.Element {
     )
   }
 
-  return (
-    <RunSyncModalScreen source={pendingSource} postRawCollectorMessage={postRawCollectorMessage} />
-  )
+  return <RunSyncModalScreen source={pendingSource} postRawMessage={postRawMessage} />
 }
 
 const styles = StyleSheet.create({

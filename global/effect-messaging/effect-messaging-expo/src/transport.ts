@@ -2,10 +2,11 @@ import type { Scope } from 'effect'
 import { Effect, Layer } from 'effect'
 import {
   type Bridge,
-  type BareSender,
+  type BareSenderFunction,
   BridgeTransport,
   TransportAdapter,
   UrlParamMessage,
+  type BareSenderService,
 } from 'effect-messaging-core'
 import type { WebViewMessageEvent } from 'react-native-webview'
 
@@ -99,12 +100,12 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
   readonly layers: ExpoTransportLayers<Bridges>
   readonly initialMessages: ReadonlyArray<Bridge.UrlParamableMessage<Bridges>>
   readonly baseUrl: string
-  readonly webviewHandleRef: { current: WebViewHandle | null }
+  readonly webviewHandleRef: { current: BareSenderService | null }
 }): Effect.Effect<ExpoTransport<Bridges>, never, Scope.Scope> =>
   Effect.gen(function* () {
     const { webviewHandleRef } = config
 
-    const bareSender: BareSender = (encoded) =>
+    const bareSender: BareSenderFunction = (encoded) =>
       Effect.gen(function* () {
         const handle = webviewHandleRef.current
         if (handle === null) {
@@ -114,9 +115,7 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
           return undefined
         }
         // RN-WebView's imperative `postMessage(string)` doesn't take a `targetOrigin`.
-        // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin
-        handle.postMessage(encoded)
-        return undefined
+        return yield* handle.bareSender(encoded)
       })
 
     // The page reads `window.location.search` synchronously at boot;

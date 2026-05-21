@@ -3,7 +3,7 @@ import { snifferScript } from 'browser-sniffer-injected'
 import { Effect, Exit, Layer, Scope } from 'effect'
 import {
   BridgeTransport,
-  type BareSender,
+  type BareSenderFunction,
   type MessageHandler,
   TransportAdapter,
 } from 'effect-messaging-core'
@@ -119,7 +119,7 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferWebViewHandle, BrowserSni
     useEffect(() => {
       const scope = Effect.runSync(Scope.make())
 
-      const bareSender: BareSender = (encoded) =>
+      const bareSender: BareSenderFunction = (encoded) =>
         Effect.sync(() => {
           const wv = webviewRef.current
           if (wv === null) {

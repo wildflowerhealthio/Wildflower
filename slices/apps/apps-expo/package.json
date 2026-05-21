@@ -1,0 +1,56 @@
+{
+  "name": "apps-expo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Expo host-side apps helpers: builds the AppsBridge host ReceiverLayer that runs the SPA's RequestTunnel flow end-to-end (commit, await, reply).",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/apps/apps-expo"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "jest": "jest",
+    "prepublishOnly": "vp run build"
+  },
+  "devDependencies": {
+    "@babel/core": "catalog:",
+    "@babel/plugin-syntax-import-attributes": "catalog:",
+    "@babel/runtime": "catalog:",
+    "@livestore/livestore": "catalog:",
+    "@types/jest": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "apps-core": "workspace:*",
+    "babel-preset-expo": "catalog:",
+    "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "expect-type": "catalog:",
+    "jest": "catalog:",
+    "jest-expo": "catalog:",
+    "tunnel-core": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@livestore/livestore": "catalog:",
+    "apps-core": "workspace:*",
+    "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "tunnel-core": "workspace:*"
+  }
+}

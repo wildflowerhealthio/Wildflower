@@ -68,10 +68,10 @@ interface RunSyncModalScreenProps {
    * Raw-forward sink into the embedded SPA's `CollectorBridge`. Every
    * sniffer wire-message whose `_tag` is in {@link PASSTHROUGH_TO_SPA}
    * is forwarded verbatim — no decode + re-encode in the host.
-   * Wire this to the host shell's `postRawCollectorMessage` handle
-   * (e.g. wildflower-expo's `AppShellWebViewHandle.postRawCollectorMessage`).
+   * Wire this to the host shell's `postRawMessage` handle
+   * (e.g. wildflower-expo's `AppShellWebViewHandle.postRawMessage`).
    */
-  readonly postRawCollectorMessage: (rawWire: string) => void
+  readonly postRawMessage: (rawWire: string) => void
   /** Optional error sink for non-decode failures the bridge would otherwise log. */
   readonly onError?: (error: { id: string; url: string; message: string }) => void
   /** Imperative handle for the parent screen to drive scripted navigation. */
@@ -82,7 +82,7 @@ interface RunSyncModalScreenProps {
  * Native modal that hosts a `<BrowserSnifferWebView>` for an "Import
  * Now" flow. The host shell's persistent WebView stays mounted under
  * the modal; this screen captures sniffer events from the page being
- * scraped and forwards them through `postRawCollectorMessage` into
+ * scraped and forwards them through `postRawMessage` into
  * the embedded SPA's bridge — schemas match across bridges so the
  * wire string goes through unchanged.
  *
@@ -101,7 +101,7 @@ interface RunSyncModalScreenProps {
  */
 const RunSyncModalScreen = ({
   source: initialSource,
-  postRawCollectorMessage,
+  postRawMessage,
   onError,
   handleRef,
 }: RunSyncModalScreenProps): JSX.Element => {
@@ -162,9 +162,9 @@ const RunSyncModalScreen = ({
       if (parsed === null || typeof parsed !== 'object') return
       const tag = (parsed as { readonly _tag?: unknown })._tag
       if (typeof tag !== 'string' || !PASSTHROUGH_TO_SPA.has(tag)) return
-      postRawCollectorMessage(rawWire)
+      postRawMessage(rawWire)
     },
-    [postRawCollectorMessage]
+    [postRawMessage]
   )
 
   // `BrowserSnifferWebView`'s `source` prop mirrors the untagged

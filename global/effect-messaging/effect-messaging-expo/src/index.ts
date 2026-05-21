@@ -1,6 +1,5 @@
 export {
   EffectMessagingWebView,
-  type EffectMessagingWebViewHandle,
   type EffectMessagingWebViewProps,
   type EffectMessagingWebViewSource,
 } from './effect-messaging-webview.tsx'

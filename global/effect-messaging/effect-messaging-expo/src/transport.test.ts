@@ -1,7 +1,7 @@
 import { Effect, Exit, pipe, Schema, Scope } from 'effect'
-import { Bridge, UrlParamMessage } from 'effect-messaging-core'
+import { type BareSenderService, Bridge, UrlParamMessage } from 'effect-messaging-core'
 import { LoggingLayerTest } from 'kitchen-sink/test'
-import { makeExpoTransport, type WebViewHandle } from './transport.ts'
+import { makeExpoTransport } from './transport.ts'
 
 const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.String }))
 const Pong = Schema.parseJson(Schema.TaggedStruct('Pong', { reply: Schema.String }))
@@ -26,7 +26,7 @@ const runScoped = async <A>(eff: Effect.Effect<A, never, Scope.Scope>): Promise<
 
 describe('makeExpoTransport — embedUrl', () => {
   it('appends each initial message as a ?<Tag>=<value> query param', async () => {
-    const ref: { current: WebViewHandle | null } = { current: null }
+    const ref: { current: BareSenderService | null } = { current: null }
     const layer = HostBridge.Host.ReceiverLayer({ Pong: () => Effect.void })
     const transport = await runScoped(
       makeExpoTransport({
@@ -43,7 +43,7 @@ describe('makeExpoTransport — embedUrl', () => {
   })
 
   it('returns the unmodified base URL when no initial messages are supplied', async () => {
-    const ref: { current: WebViewHandle | null } = { current: null }
+    const ref: { current: BareSenderService | null } = { current: null }
     const layer = HostBridge.Host.ReceiverLayer({ Pong: () => Effect.void })
     const transport = await runScoped(
       makeExpoTransport({
@@ -62,7 +62,7 @@ describe('makeExpoTransport — embedUrl', () => {
 
 describe('makeExpoTransport — bareSender (with __Ready handshake)', () => {
   it('warns and drops when the WebView ref is null', async () => {
-    const ref: { current: WebViewHandle | null } = { current: null }
+    const ref: { current: BareSenderService | null } = { current: null }
     const layer = HostBridge.Host.ReceiverLayer({ Pong: () => Effect.void })
 
     try {
@@ -103,8 +103,13 @@ describe('makeExpoTransport — bareSender (with __Ready handshake)', () => {
 
   it('forwards encoded payloads to the ref-supplied handle once Ready arrives', async () => {
     const calls: string[] = []
-    const ref: { current: WebViewHandle | null } = {
-      current: { postMessage: (data) => calls.push(data) },
+    const ref: { current: BareSenderService | null } = {
+      current: {
+        bareSender: (data) =>
+          Effect.sync(() => {
+            calls.push(data)
+          }),
+      },
     }
     const layer = HostBridge.Host.ReceiverLayer({ Pong: () => Effect.void })
     const scope = Effect.runSync(Scope.make())
@@ -133,7 +138,7 @@ describe('makeExpoTransport — bareSender (with __Ready handshake)', () => {
 
 describe('makeExpoTransport — onMessage', () => {
   it('routes inbound payloads through the dispatch fiber to the handler', async () => {
-    const ref: { current: WebViewHandle | null } = { current: null }
+    const ref: { current: BareSenderService | null } = { current: null }
     const seen: string[] = []
     const layer = HostBridge.Host.ReceiverLayer({
       Pong: ({ reply }) =>

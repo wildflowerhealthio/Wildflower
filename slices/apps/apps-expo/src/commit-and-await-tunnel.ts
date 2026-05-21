@@ -1,7 +1,5 @@
-import type { Store } from '@livestore/livestore'
-import { Duration, Effect, Schema } from 'effect'
-import { TunnelConfig, TunnelState } from 'tunnel-core/livestore'
-import type { schema } from '../livestore/schema.ts'
+import { type Context, Duration, Effect, Schema } from 'effect'
+import { TunnelConfig, TunnelState, type TunnelStore } from 'tunnel-core/livestore'
 
 const TUNNEL_AWAIT_TIMEOUT: Duration.Duration = Duration.seconds(15)
 
@@ -10,13 +8,15 @@ class TunnelTimedOut extends Schema.TaggedError<TunnelTimedOut>()('TunnelTimedOu
   timeoutMs: Schema.Number,
 }) {}
 
+type TunnelStoreService = Context.Tag.Service<typeof TunnelStore>
+
 /**
  * Flip `TunnelConfig.requestedRunning` and (when `active` is true) wait
  * for the tunnel daemon to settle `TunnelState`.
  *
- * The host-level `TunnelDaemon` (forked once at app boot) is what
- * actually opens / tears down the tunnel; this Effect only writes the
- * intent and observes the daemon's response.
+ * The host-level tunnel daemon is what actually opens / tears down the
+ * tunnel; this Effect only writes the intent and observes the daemon's
+ * response.
  *
  *  - `active === true`: commit `requestedRunning: true`, then succeed
  *    with `https://{currentSubdomain}.{currentRootDomain}` once
@@ -27,25 +27,25 @@ class TunnelTimedOut extends Schema.TaggedError<TunnelTimedOut>()('TunnelTimedOu
  *    with `null` immediately — the daemon will tear the tunnel down on
  *    its own schedule, but callers don't wait for it.
  *
- * Canonical `subdomain` / `rootDomain` / `localPort` were seeded into
- * `TunnelConfig` at first boot (see `livestore-store.ts`); we only
- * write `requestedRunning` here so user-customised values persist.
+ * Takes the resolved `TunnelStore` service directly rather than
+ * yielding it from context so the helper composes inside bridge
+ * handlers, whose declared signature is `Effect<void, never, never>`.
  */
 const commitAndAwaitTunnel = (
-  store: Store<typeof schema, object>,
+  tunnelStore: TunnelStoreService,
   active: boolean,
   timeout: Duration.Duration = TUNNEL_AWAIT_TIMEOUT
 ): Effect.Effect<string | null, TunnelTimedOut> =>
   Effect.gen(function* () {
     yield* Effect.sync(() =>
-      store.commit(TunnelConfig.events.tunnelConfigSet({ requestedRunning: active }))
+      tunnelStore.commit(TunnelConfig.events.tunnelConfigSet({ requestedRunning: active }))
     )
     if (!active) return null
 
     // Snapshot first — livestore's `subscribe` fires synchronously with
     // the current value, so an already-bound tunnel resolves without
     // sitting in the async waiter.
-    const current = store.query(TunnelState.queries.current$)
+    const current = tunnelStore.query(TunnelState.queries.current$)
     if (
       current.running &&
       current.currentSubdomain !== null &&
@@ -56,7 +56,7 @@ const commitAndAwaitTunnel = (
 
     return yield* Effect.async<string>((resume) => {
       let resumed = false
-      const unsubscribe = store.subscribe(TunnelState.queries.current$, (state) => {
+      const unsubscribe = tunnelStore.subscribe(TunnelState.queries.current$, (state) => {
         if (resumed || !state.running) return
         if (state.currentSubdomain === null || state.currentRootDomain === null) return
         resumed = true
@@ -78,3 +78,4 @@ const commitAndAwaitTunnel = (
   })
 
 export { commitAndAwaitTunnel, TUNNEL_AWAIT_TIMEOUT, TunnelTimedOut }
+export type { TunnelStoreService }

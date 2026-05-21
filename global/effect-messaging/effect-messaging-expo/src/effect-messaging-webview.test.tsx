@@ -1,4 +1,6 @@
 import { act, render } from '@testing-library/react-native'
+import { Effect } from 'effect'
+import type { BareSenderService } from 'effect-messaging-core'
 import * as React from 'react'
 import { View } from 'react-native'
 import type * as RNType from 'react-native'
@@ -45,10 +47,7 @@ jest.mock('expo-web-browser', () => ({
   }),
 }))
 
-import {
-  EffectMessagingWebView,
-  type EffectMessagingWebViewHandle,
-} from './effect-messaging-webview.tsx'
+import { EffectMessagingWebView } from './effect-messaging-webview.tsx'
 
 beforeEach(() => {
   mockWebViewProps = null
@@ -74,11 +73,13 @@ describe('EffectMessagingWebView (transport surface)', () => {
     expect(mockExternalUrls).toEqual(['https://example.com'])
   })
 
-  it('hands postMessage strings through to the underlying WebView ref', () => {
-    const ref = React.createRef<EffectMessagingWebViewHandle>()
+  it('hands bareSender strings through to the underlying WebView ref', () => {
+    const ref = React.createRef<BareSenderService>()
     render(<EffectMessagingWebView ref={ref} source={{ html: '' }} onMessage={jest.fn()} />)
-    ref.current?.postMessage('payload-A')
-    ref.current?.postMessage('payload-B')
+    const sender = ref.current
+    if (sender === null) throw new Error('ref.current not populated')
+    Effect.runSync(sender.bareSender('payload-A'))
+    Effect.runSync(sender.bareSender('payload-B'))
     expect(mockWebViewPostMessageCalls).toEqual(['payload-A', 'payload-B'])
   })
 

@@ -12,6 +12,7 @@ import {
   Option,
   HashMap,
 } from 'effect'
+import { BareSender } from './bare-sender.ts'
 import * as Bridge from './bridge.ts'
 import * as DispatchError from './dispatch-error.ts'
 import { TransportAdapter } from './transport-adapter.ts'
@@ -300,7 +301,7 @@ const make = <
         }
         yield* sender(message)
         return undefined
-      }).pipe(Effect.provideService(TransportAdapter, adapter))
+      }).pipe(Effect.provideService(BareSender, adapter))
 
     const signalReady = {
       Web: adapter.bareSender(READY_RAW),

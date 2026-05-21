@@ -71,12 +71,12 @@ describe('RunSyncModalScreen', () => {
       ['RequestError', { _tag: 'RequestError', id: 'r1', url: 'u', message: 'm' }],
       ['Cancelled', { _tag: 'Cancelled', id: 'r1' }],
       ['PageLoaded', { _tag: 'PageLoaded', url: 'u', pageContentId: 'p' }],
-    ])('forwards %s raw wire strings verbatim into postRawCollectorMessage', (_tag, payload) => {
+    ])('forwards %s raw wire strings verbatim into postRawMessage', (_tag, payload) => {
       const rawCalls: string[] = []
       render(
         <RunSyncModalScreen
           source={{ _tag: 'Html', html: '<html></html>' }}
-          postRawCollectorMessage={(raw) => rawCalls.push(raw)}
+          postRawMessage={(raw) => rawCalls.push(raw)}
         />
       )
       expect(mockLastOnRawMessage).not.toBeNull()
@@ -90,7 +90,7 @@ describe('RunSyncModalScreen', () => {
       render(
         <RunSyncModalScreen
           source={{ _tag: 'Html', html: '<html></html>' }}
-          postRawCollectorMessage={(raw) => rawCalls.push(raw)}
+          postRawMessage={(raw) => rawCalls.push(raw)}
         />
       )
       mockLastOnRawMessage?.(JSON.stringify({ _tag: 'Log', log: 'spam' }))
@@ -103,7 +103,7 @@ describe('RunSyncModalScreen', () => {
       render(
         <RunSyncModalScreen
           source={{ _tag: 'Html', html: '<html></html>' }}
-          postRawCollectorMessage={(raw) => rawCalls.push(raw)}
+          postRawMessage={(raw) => rawCalls.push(raw)}
         />
       )
       mockLastOnRawMessage?.('not json')
@@ -119,7 +119,7 @@ describe('RunSyncModalScreen', () => {
       render(
         <RunSyncModalScreen
           source={{ _tag: 'Html', html: '<html></html>' }}
-          postRawCollectorMessage={() => undefined}
+          postRawMessage={() => undefined}
           onError={onError}
         />
       )
@@ -144,7 +144,7 @@ describe('RunSyncModalScreen', () => {
       render(
         <RunSyncModalScreen
           source={{ _tag: 'Html', html: '<html></html>' }}
-          postRawCollectorMessage={() => undefined}
+          postRawMessage={() => undefined}
           onError={onError}
         />
       )
@@ -173,7 +173,7 @@ describe('RunSyncModalScreen', () => {
       render(
         <RunSyncModalScreen
           source={{ _tag: 'Uri', uri: 'https://example.test/a' }}
-          postRawCollectorMessage={() => undefined}
+          postRawMessage={() => undefined}
           handleRef={handleRef}
         />
       )
@@ -199,7 +199,7 @@ describe('RunSyncModalScreen', () => {
       render(
         <RunSyncModalScreen
           source={{ _tag: 'Html', html: '<html></html>' }}
-          postRawCollectorMessage={() => undefined}
+          postRawMessage={() => undefined}
           handleRef={handleRef}
         />
       )
