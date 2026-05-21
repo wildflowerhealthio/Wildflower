@@ -146,7 +146,13 @@ const HttpServerContextLive = Layer.mergeAll(
  * binding + `Origin`. Static peers (slice stores, telemetry, crypto,
  * etc.) flow in from {@link HttpServerContextLive} on the daemon's
  * outer scope.
+ *
+ * The return type is the TS-inferred Layer over `WildflowerServerLive`'s
+ * remaining requirements (six slice stores + `WebAssetsDir` +
+ * `CryptoRandom` + `Telemetry` + the four `ExpoContext` peers); pinning
+ * it explicitly would just duplicate inference across a 13-tag union.
  */
+// oxlint-disable-next-line typescript/explicit-function-return-type
 const makeBindLive = ({ port, hostname }: { port: number; hostname: string }) =>
   WildflowerServerLive.pipe(
     HttpServer.withLogAddress,
