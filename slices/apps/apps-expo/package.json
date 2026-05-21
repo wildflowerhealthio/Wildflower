@@ -34,6 +34,7 @@
     "@livestore/livestore": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
     "@typescript/native-preview": "catalog:",
     "apps-core": "workspace:*",
     "babel-preset-expo": "catalog:",
@@ -42,6 +43,7 @@
     "expect-type": "catalog:",
     "jest": "catalog:",
     "jest-expo": "catalog:",
+    "react": "catalog:",
     "tunnel-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
@@ -51,6 +53,7 @@
     "apps-core": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
+    "react": "catalog:",
     "tunnel-core": "workspace:*"
   }
 }
