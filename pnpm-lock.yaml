@@ -1355,6 +1355,9 @@ importers:
       '@babel/runtime':
         specifier: 'catalog:'
         version: 7.29.2
+      '@fast-check/jest':
+        specifier: 'catalog:'
+        version: 2.2.0(@jest/expect@29.7.0)(@jest/globals@29.7.0)
       '@livestore/livestore':
         specifier: 'catalog:'
         version: 0.4.0-dev.26(3044d9b588ef2ab19243335a2ade1802)
@@ -1385,6 +1388,9 @@ importers:
       expect-type:
         specifier: 'catalog:'
         version: 1.3.0
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.1
       jest:
         specifier: 'catalog:'
         version: 29.7.0(@types/node@24.12.4)
@@ -1394,6 +1400,9 @@ importers:
       react:
         specifier: 'catalog:'
         version: 19.1.0
+      shared-structures-core:
+        specifier: workspace:*
+        version: link:../../shared-structures/shared-structures-core
       tunnel-core:
         specifier: workspace:*
         version: link:../../tunnel/tunnel-core
@@ -2312,6 +2321,9 @@ importers:
       '@babel/runtime':
         specifier: 'catalog:'
         version: 7.29.2
+      '@fast-check/jest':
+        specifier: 'catalog:'
+        version: 2.2.0(@jest/expect@29.7.0)(@jest/globals@29.7.0)
       '@types/jest':
         specifier: 'catalog:'
         version: 29.5.14
@@ -2336,6 +2348,9 @@ importers:
       expect-type:
         specifier: 'catalog:'
         version: 1.3.0
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.1
       jest:
         specifier: 'catalog:'
         version: 29.7.0(@types/node@24.12.4)

@@ -1,90 +1,39 @@
+/**
+ * Routing-side tests for {@link CollectorBridgeExpo.HostProvider} +
+ * {@link CollectorBridgeExpo.useReceiverLayer} — every test in this
+ * file exercises `RequestSniffableWebView`'s `router.push` /
+ * `pendingSource` plumbing or its source-scheme guard.
+ *
+ * Sister file: `host-provider-control.test.tsx` covers the
+ * sniffer-control-ref forwarders (`Click`, `CancelSnifferRequest`) and
+ * the no-op pinners (`Open`, `SniffingComplete`). Shared mocks +
+ * handler-capture harness live in
+ * `__test-support__/host-provider-test-mocks.ts`.
+ */
 import { act, render } from '@testing-library/react-native'
-import type { Layer } from 'effect'
 import { Effect } from 'effect'
-import * as React from 'react'
 import type { ReactElement } from 'react'
 
-// `collector-expo`'s `./index.ts` transitively pulls in
-// `browser-sniffer-expo` → `react-native-webview`, which fails to
-// initialize outside a native runtime. Stubbed at the slice's source
-// import so the dispatch path for `CollectorModalScreen` (unused here)
-// doesn't take the suite down.
-jest.mock('browser-sniffer-expo', () => {
-  const ReactInner = jest.requireActual<typeof React>('react')
-  return {
-    BrowserSnifferWebView: ReactInner.forwardRef(function MockBrowserSnifferWebView(
-      props: unknown,
-      _ref: unknown
-    ): ReactElement {
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      return ReactInner.createElement('MockBrowserSnifferWebView', props as object)
-    }),
-  }
-})
+import {
+  harness,
+  mockBuildBrowserSnifferExpoFactory,
+  mockBuildCollectorBridgeFactory,
+  mockBuildCollectorReactFactory,
+  mockBuildExpoRouterFactory,
+  mockBuildExpoTundraishFactory,
+  requireLastHandlers,
+  resetHarness,
+} from './__test-support__/host-provider-test-mocks.ts'
 
-// `expo-tundraish` indirectly imports `react-native-reanimated`, which
-// trips TurboModules under Jest. The `CollectorModalRoute` re-exported
-// via the slice index uses ThemedText/ThemedView for the empty state.
-jest.mock('expo-tundraish', () => {
-  const ReactInner = jest.requireActual<typeof React>('react')
-  return {
-    Spacing: { s5: 16 },
-    ThemedView: (props: { readonly children?: React.ReactNode }): ReactElement =>
-      ReactInner.createElement('ThemedView', props),
-    ThemedText: (props: { readonly children?: React.ReactNode }): ReactElement =>
-      ReactInner.createElement('ThemedText', props),
-  }
-})
-
-// `collector-react` exports the typed host-messaging hook the modal
-// screen uses to re-emit sniffer events. The probe here doesn't render
-// CollectorModalScreen, so the hook is never called — stub with a
-// throw to make accidental usage loud.
-jest.mock('collector-react', () => ({
-  useCollectorHostMessaging: (): never => {
-    throw new Error('useCollectorHostMessaging should not be called in this test')
-  },
-}))
-
-const mockRouterPush = jest.fn()
-const mockRouterBack = jest.fn()
-
-// `useRouter` is consumed by `<HostProvider>` to push the modal
-// route. The stub exposes spies so tests can assert push/back calls.
-jest.mock('expo-router', () => ({
-  useRouter: (): { push: typeof mockRouterPush; back: typeof mockRouterBack } => ({
-    push: mockRouterPush,
-    back: mockRouterBack,
-  }),
-}))
-
-// Capture the inbound handlers `CollectorBridge.Host.ReceiverLayer`
-// receives so the test can fire them directly without standing up a
-// transport. The mock returns a no-op Layer for the receiver tag.
-let mockLastHandlers: {
-  readonly RequestSniffableWebView: (msg: {
-    source: { _tag: string; uri?: string }
-  }) => Effect.Effect<void>
-  readonly CancelSnifferRequest: (msg: { id: string }) => Effect.Effect<void>
-  readonly SniffingComplete: () => Effect.Effect<void>
-  readonly Open: (msg: { source: unknown }) => Effect.Effect<void>
-  readonly Click: (msg: { querySelector: string }) => Effect.Effect<void>
-} | null = null
-
-jest.mock('collector-fundamentals/bridge', () => {
-  const effect = jest.requireActual<{ Effect: typeof Effect; Layer: typeof Layer }>('effect')
-  return {
-    __esModule: true,
-    default: {
-      Host: {
-        ReceiverLayer: (handlers: NonNullable<typeof mockLastHandlers>): Layer.Layer<never> => {
-          mockLastHandlers = handlers
-          return effect.Layer.effectDiscard(effect.Effect.void)
-        },
-      },
-    },
-  }
-})
+// `jest.mock` calls are hoisted above imports — Jest's babel-plugin
+// allows referencing imported bindings inside the factory only when
+// the binding name starts with `mock`. The harness factories follow
+// that convention.
+jest.mock('browser-sniffer-expo', mockBuildBrowserSnifferExpoFactory)
+jest.mock('expo-tundraish', mockBuildExpoTundraishFactory)
+jest.mock('collector-react', mockBuildCollectorReactFactory)
+jest.mock('expo-router', mockBuildExpoRouterFactory)
+jest.mock('collector-fundamentals/bridge', mockBuildCollectorBridgeFactory)
 
 import { CollectorBridgeExpo } from './index.ts'
 
@@ -101,12 +50,10 @@ const TestProbe = ({
 }
 
 beforeEach(() => {
-  mockRouterPush.mockClear()
-  mockRouterBack.mockClear()
-  mockLastHandlers = null
+  resetHarness()
 })
 
-describe('CollectorBridgeExpo.HostProvider + useReceiverLayer', () => {
+describe('CollectorBridgeExpo.HostProvider + useReceiverLayer (routing)', () => {
   it('RequestSniffableWebView updates pendingSource and pushes the modal route', () => {
     const seenHosts: Array<ReturnType<typeof CollectorBridgeExpo.useHost>> = []
     render(
@@ -114,19 +61,18 @@ describe('CollectorBridgeExpo.HostProvider + useReceiverLayer', () => {
         <TestProbe onReady={(h) => seenHosts.push(h)} />
       </CollectorBridgeExpo.HostProvider>
     )
-
-    expect(mockLastHandlers).not.toBeNull()
+    const handlers = requireLastHandlers()
     expect(seenHosts[0]?.pendingSource).toBeNull()
 
     act(() => {
       Effect.runSync(
-        mockLastHandlers!.RequestSniffableWebView({
+        handlers.RequestSniffableWebView({
           source: { _tag: 'Uri', uri: 'https://example.com' },
         })
       )
     })
 
-    expect(mockRouterPush).toHaveBeenCalledWith('/collector-modal')
+    expect(harness.routerPush).toHaveBeenCalledWith('/collector-modal')
     const lastHost = seenHosts[seenHosts.length - 1]
     expect(lastHost?.pendingSource).toEqual({ _tag: 'Uri', uri: 'https://example.com' })
   })
@@ -137,95 +83,75 @@ describe('CollectorBridgeExpo.HostProvider + useReceiverLayer', () => {
         <TestProbe onReady={() => undefined} />
       </CollectorBridgeExpo.HostProvider>
     )
+    const handlers = requireLastHandlers()
 
     act(() => {
       Effect.runSync(
-        mockLastHandlers!.RequestSniffableWebView({
+        handlers.RequestSniffableWebView({
           source: { _tag: 'Uri', uri: 'https://example.com' },
         })
       )
     })
 
-    expect(mockRouterPush).toHaveBeenCalledWith('/custom-modal')
+    expect(harness.routerPush).toHaveBeenCalledWith('/custom-modal')
   })
 
-  it('drops a non-http(s) URI without touching the router (defense-in-depth)', () => {
+  // The host-side defense-in-depth check in `useReceiverLayer` refuses
+  // any `{_tag: 'Uri'}` URI that doesn't start with `http(s)://`. The
+  // bridge schema already pins `Uri` to `https://` only, so this branch
+  // is belt-and-suspenders — pin it explicitly against a denylist of
+  // suspicious schemes so a regression in the predicate (e.g.
+  // accidentally allowing `data:` or `vbscript:`) fails loudly.
+  it.each([
+    ['javascript:alert(1)'],
+    ['file:///etc/passwd'],
+    ['data:text/html,<script>alert(1)</script>'],
+    ['blob:https://example.com/abc-def'],
+    ['ftp://example.com/file'],
+    ['vbscript:msgbox(1)'],
+  ])('drops a non-http(s) URI (%s) without touching the router (defense-in-depth)', (uri) => {
     const seenHosts: Array<ReturnType<typeof CollectorBridgeExpo.useHost>> = []
     render(
       <CollectorBridgeExpo.HostProvider>
         <TestProbe onReady={(h) => seenHosts.push(h)} />
       </CollectorBridgeExpo.HostProvider>
     )
+    const handlers = requireLastHandlers()
 
     act(() => {
       Effect.runSync(
-        mockLastHandlers!.RequestSniffableWebView({
-          source: { _tag: 'Uri', uri: 'javascript:alert(1)' },
+        handlers.RequestSniffableWebView({
+          source: { _tag: 'Uri', uri },
         })
       )
     })
 
-    expect(mockRouterPush).not.toHaveBeenCalled()
+    expect(harness.routerPush).not.toHaveBeenCalled()
     expect(seenHosts[seenHosts.length - 1]?.pendingSource).toBeNull()
   })
 
-  it('Click forwards to the registered snifferControlRef when a modal is mounted', () => {
+  it('Html source bypasses the http(s) predicate and pushes the modal route', () => {
+    // The `{_tag: 'Html'}` branch isn't subject to the URI scheme
+    // check — only `{_tag: 'Uri'}` is. Pin that the predicate is
+    // tag-keyed and doesn't accidentally swallow Html sources.
     const seenHosts: Array<ReturnType<typeof CollectorBridgeExpo.useHost>> = []
-    const clicks: string[] = []
     render(
       <CollectorBridgeExpo.HostProvider>
         <TestProbe onReady={(h) => seenHosts.push(h)} />
       </CollectorBridgeExpo.HostProvider>
     )
+    const handlers = requireLastHandlers()
 
-    // Modal registers a sniffer-control surface on mount.
+    const htmlSource = { _tag: 'Html' as const, html: '<html><body>ok</body></html>' }
     act(() => {
-      seenHosts[0].snifferControlRef.current = {
-        click: (qs) => clicks.push(qs),
-        cancelRequest: () => undefined,
-      }
+      Effect.runSync(
+        handlers.RequestSniffableWebView({
+          source: htmlSource,
+        })
+      )
     })
 
-    act(() => {
-      Effect.runSync(mockLastHandlers!.Click({ querySelector: '#submit' }))
-    })
-
-    expect(clicks).toEqual(['#submit'])
-  })
-
-  it('Click drops silently when no modal is mounted (null ref)', () => {
-    render(
-      <CollectorBridgeExpo.HostProvider>
-        <TestProbe onReady={() => undefined} />
-      </CollectorBridgeExpo.HostProvider>
-    )
-
-    // No registration — snifferControlRef.current stays null.
-    expect(() =>
-      Effect.runSync(mockLastHandlers!.Click({ querySelector: '#submit' }))
-    ).not.toThrow()
-  })
-
-  it('CancelSnifferRequest forwards to the registered snifferControlRef', () => {
-    const seenHosts: Array<ReturnType<typeof CollectorBridgeExpo.useHost>> = []
-    const cancels: string[] = []
-    render(
-      <CollectorBridgeExpo.HostProvider>
-        <TestProbe onReady={(h) => seenHosts.push(h)} />
-      </CollectorBridgeExpo.HostProvider>
-    )
-
-    act(() => {
-      seenHosts[0].snifferControlRef.current = {
-        click: () => undefined,
-        cancelRequest: (id) => cancels.push(id),
-      }
-    })
-
-    act(() => {
-      Effect.runSync(mockLastHandlers!.CancelSnifferRequest({ id: 'req-1' }))
-    })
-
-    expect(cancels).toEqual(['req-1'])
+    expect(harness.routerPush).toHaveBeenCalledWith('/collector-modal')
+    expect(seenHosts[seenHosts.length - 1]?.pendingSource).toEqual(htmlSource)
   })
 })

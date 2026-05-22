@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite-plus'
+import base from '../../vite.config.base.ts'
 
 export default defineConfig({
-  resolve: { conditions: ['source'] },
+  ...base,
   test: {
     // This project tests are run in jest and the test files are not compatible with vitest, so we exclude them here
     include: [],
@@ -18,11 +19,4 @@ export default defineConfig({
       ExpoEffectPlatformModule: 'src/ExpoEffectPlatformModule.ts',
     },
   },
-  lint: {
-    options: {
-      typeAware: true,
-      typeCheck: true,
-    },
-  },
-  fmt: {},
 })

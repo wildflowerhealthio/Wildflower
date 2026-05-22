@@ -1,4 +1,5 @@
-import { Duration, Effect } from 'effect'
+import { Duration, Effect, Schema } from 'effect'
+import { subscribeUntil } from 'shared-structures-core/livestore'
 import { TunnelState, TunnelStore } from 'tunnel-core/livestore'
 
 /**
@@ -15,9 +16,17 @@ interface RunningTunnel {
   readonly currentLocalPort: number | null
 }
 
-type TunnelLaunchOutcome =
-  | { readonly kind: 'running'; readonly state: RunningTunnel }
-  | { readonly kind: 'timed-out' }
+/**
+ * Failure raised by {@link awaitTunnelRunning} when the daemon never
+ * reports `running: true` within the caller-supplied deadline. Modelled
+ * as a tagged error rather than a tagged success branch so callers can
+ * recover with `Effect.catchTag('TunnelLaunchTimedOut', …)` or
+ * `Effect.either` and keep their happy-path types narrow.
+ */
+class TunnelLaunchTimedOut extends Schema.TaggedError<TunnelLaunchTimedOut>()(
+  'TunnelLaunchTimedOut',
+  { timeoutMs: Schema.Number }
+) {}
 
 /**
  * Suspend until `TunnelState.queries.current$` reports `running: true`,
@@ -25,7 +34,8 @@ type TunnelLaunchOutcome =
  * `TunnelConfig.tunnelConfigSet({ requestedRunning: true })` first; the
  * tunnel daemon flips `running` once the relay has bound. On timeout
  * (or if the daemon never reports a bound origin) the caller should
- * fall back to its local origin.
+ * recover (e.g. fall back to its local origin) via the tagged
+ * {@link TunnelLaunchTimedOut} error.
  *
  * @remarks
  * `requestedRunning` is a sticky request, not a per-call lease.
@@ -34,59 +44,33 @@ type TunnelLaunchOutcome =
  * single source of truth for the tunnel's lifecycle, and a concurrent
  * caller may still need it up. The interrupted caller drops out; the
  * daemon reconciles on its own schedule.
+ *
+ * The snapshot-then-subscribe-then-unsubscribe inner loop lives in
+ * `shared-structures-core/livestore`'s {@link subscribeUntil}. This
+ * helper picks the predicate (`running: true`), the projection from
+ * the full state row to the {@link RunningTunnel} subset the caller
+ * needs, and the {@link TunnelLaunchTimedOut} error the timeout
+ * surfaces.
  */
 const awaitTunnelRunning = (
   timeout: Duration.Duration = DEFAULT_TUNNEL_LAUNCH_TIMEOUT
-): Effect.Effect<TunnelLaunchOutcome, never, TunnelStore> =>
+): Effect.Effect<RunningTunnel, TunnelLaunchTimedOut, TunnelStore> =>
   Effect.gen(function* () {
     const store = yield* TunnelStore
-
-    // Snapshot first — livestore's `subscribe` fires its callback
-    // synchronously with the current value, which would otherwise reach
-    // `unsubscribe()` while that binding is in its temporal dead zone.
-    const current = store.query(TunnelState.queries.current$)
-    if (current.running) {
-      return {
-        kind: 'running',
-        state: {
-          currentSubdomain: current.currentSubdomain,
-          currentRootDomain: current.currentRootDomain,
-          currentLocalPort: current.currentLocalPort,
-        },
-      } satisfies TunnelLaunchOutcome
-    }
-
-    return yield* Effect.async<TunnelLaunchOutcome>((resume) => {
-      let resumed = false
-      const unsubscribe = store.subscribe(TunnelState.queries.current$, (state) => {
-        if (resumed || !state.running) return
-        resumed = true
-        unsubscribe()
-        resume(
-          Effect.succeed<TunnelLaunchOutcome>({
-            kind: 'running',
-            state: {
-              currentSubdomain: state.currentSubdomain,
-              currentRootDomain: state.currentRootDomain,
-              currentLocalPort: state.currentLocalPort,
-            },
-          })
-        )
-      })
-      return Effect.sync(() => {
-        if (!resumed) {
-          resumed = true
-          unsubscribe()
-        }
-      })
-    }).pipe(
-      Effect.timeoutTo({
+    return yield* subscribeUntil(store, TunnelState.queries.current$, (s) => s.running).pipe(
+      Effect.timeoutFail({
         duration: timeout,
-        onTimeout: (): TunnelLaunchOutcome => ({ kind: 'timed-out' }),
-        onSuccess: (outcome): TunnelLaunchOutcome => outcome,
-      })
+        onTimeout: () => new TunnelLaunchTimedOut({ timeoutMs: Duration.toMillis(timeout) }),
+      }),
+      Effect.map(
+        (state): RunningTunnel => ({
+          currentSubdomain: state.currentSubdomain,
+          currentRootDomain: state.currentRootDomain,
+          currentLocalPort: state.currentLocalPort,
+        })
+      )
     )
   })
 
-export { awaitTunnelRunning, DEFAULT_TUNNEL_LAUNCH_TIMEOUT }
-export type { RunningTunnel, TunnelLaunchOutcome }
+export { awaitTunnelRunning, DEFAULT_TUNNEL_LAUNCH_TIMEOUT, TunnelLaunchTimedOut }
+export type { RunningTunnel }

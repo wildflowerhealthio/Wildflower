@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite-plus'
+import base from '../../../vite.config.base.ts'
 
 export default defineConfig({
-  resolve: { conditions: ['source'] },
+  ...base,
   pack: {
     dts: { tsgo: true },
     platform: 'neutral',
@@ -11,8 +12,6 @@ export default defineConfig({
       'web-bridge': 'src/web-bridge.ts',
     },
   },
-  lint: { options: { typeAware: true, typeCheck: true } },
-  fmt: {},
   test: {
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
     exclude: ['**/node_modules/**', '**/dist/**'],

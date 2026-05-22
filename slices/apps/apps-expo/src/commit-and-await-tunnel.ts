@@ -1,4 +1,6 @@
+import type { Queryable } from '@livestore/livestore'
 import { type Context, Duration, Effect, Schema } from 'effect'
+import { subscribeUntil } from 'shared-structures-core/livestore'
 import { TunnelConfig, TunnelState, type TunnelStore } from 'tunnel-core/livestore'
 
 const TUNNEL_AWAIT_TIMEOUT: Duration.Duration = Duration.seconds(15)
@@ -9,6 +11,25 @@ class TunnelTimedOut extends Schema.TaggedError<TunnelTimedOut>()('TunnelTimedOu
 }) {}
 
 type TunnelStoreService = Context.Tag.Service<typeof TunnelStore>
+
+/** Shape of `TunnelState.queries.current$`'s emitted snapshot. */
+type TunnelStateRow = Queryable.Result<typeof TunnelState.queries.current$>
+
+/**
+ * Narrowed `TunnelState` row that the host's reply can build an origin
+ * from: `running` is true and both domain fields are non-null. Produced
+ * by {@link isReadyTunnelState} and consumed by the format-as-URL step
+ * below — `currentSubdomain` and `currentRootDomain` are `string` here,
+ * not `string | null`, so the URL composition needs no extra guard.
+ */
+type ReadyTunnelStateRow = TunnelStateRow & {
+  readonly running: true
+  readonly currentSubdomain: string
+  readonly currentRootDomain: string
+}
+
+const isReadyTunnelState = (s: TunnelStateRow): s is ReadyTunnelStateRow =>
+  s.running && s.currentSubdomain !== null && s.currentRootDomain !== null
 
 /**
  * Flip `TunnelConfig.requestedRunning` and (when `active` is true) wait
@@ -30,6 +51,14 @@ type TunnelStoreService = Context.Tag.Service<typeof TunnelStore>
  * Takes the resolved `TunnelStore` service directly rather than
  * yielding it from context so the helper composes inside bridge
  * handlers, whose declared signature is `Effect<void, never, never>`.
+ *
+ * The snapshot-then-subscribe-then-unsubscribe inner loop lives in
+ * `shared-structures-core/livestore`'s {@link subscribeUntil}; this
+ * helper diverges from `apps-core/internal/await-tunnel-running.ts` in
+ * two intentional places: the predicate is stricter (both
+ * `currentSubdomain` and `currentRootDomain` must be non-null, since
+ * the host's reply needs a usable origin) and the timeout surfaces a
+ * tagged error instead of a tagged outcome.
  */
 const commitAndAwaitTunnel = (
   tunnelStore: TunnelStoreService,
@@ -42,40 +71,23 @@ const commitAndAwaitTunnel = (
     )
     if (!active) return null
 
-    // Snapshot first — livestore's `subscribe` fires synchronously with
-    // the current value, so an already-bound tunnel resolves without
-    // sitting in the async waiter.
-    const current = tunnelStore.query(TunnelState.queries.current$)
-    if (
-      current.running &&
-      current.currentSubdomain !== null &&
-      current.currentRootDomain !== null
-    ) {
-      return `https://${current.currentSubdomain}.${current.currentRootDomain}`
-    }
-
-    return yield* Effect.async<string>((resume) => {
-      let resumed = false
-      const unsubscribe = tunnelStore.subscribe(TunnelState.queries.current$, (state) => {
-        if (resumed || !state.running) return
-        if (state.currentSubdomain === null || state.currentRootDomain === null) return
-        resumed = true
-        unsubscribe()
-        resume(Effect.succeed(`https://${state.currentSubdomain}.${state.currentRootDomain}`))
-      })
-      return Effect.sync(() => {
-        if (!resumed) {
-          resumed = true
-          unsubscribe()
-        }
-      })
-    }).pipe(
+    // `subscribeUntil`'s refinement overload narrows the result to
+    // `ReadyTunnelStateRow`, so the URL composition below needs no
+    // null check or runtime guard. Dropping a `!== null` clause from
+    // `isReadyTunnelState` would change the return type and break the
+    // template literal at compile time.
+    const state = yield* subscribeUntil(
+      tunnelStore,
+      TunnelState.queries.current$,
+      isReadyTunnelState
+    ).pipe(
       Effect.timeoutFail({
         duration: timeout,
         onTimeout: () => new TunnelTimedOut({ timeoutMs: Duration.toMillis(timeout) }),
       })
     )
+    return `https://${state.currentSubdomain}.${state.currentRootDomain}`
   })
 
 export { commitAndAwaitTunnel, TUNNEL_AWAIT_TIMEOUT, TunnelTimedOut }
-export type { TunnelStoreService }
+export type { ReadyTunnelStateRow, TunnelStateRow, TunnelStoreService }

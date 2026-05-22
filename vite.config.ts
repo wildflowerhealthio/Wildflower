@@ -11,8 +11,20 @@ export default defineConfig({
   // pick up source edits directly. Vitest projects mode loads each
   // per-package vite.config.ts independently, so the same `resolve.conditions`
   // is duplicated there — without it, tests would still pull from `dist`.
+  //
+  // Vitest runs test modules through Vite's SSR pipeline, which has its
+  // own resolver — `ssr.resolve.conditions`. If only `resolve.conditions`
+  // is set, the SSR resolver still picks `default` (the built `dist`),
+  // turning every newly-added cross-package export into a runtime
+  // `is not a function` error until somebody re-runs `vp pack`. Per-
+  // package vite configs that test against workspace deps need BOTH —
+  // see `slices/apps/apps-core/vite.config.ts` and
+  // `slices/shared-structures/shared-structures-core/vite.config.ts`.
   resolve: {
     conditions: ['source'],
+  },
+  ssr: {
+    resolve: { conditions: ['source'] },
   },
   test: {
     // Each Vitest package owns its own vite.config.ts; listing them as

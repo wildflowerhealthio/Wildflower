@@ -237,5 +237,29 @@ describe('CollectorModalScreen', () => {
       })
       expect(mockLastSnifferSource).toEqual({ uri: 'https://example.test/b' })
     })
+
+    it('mounts a fresh Html source when navigate is called with an Html WebViewSource', () => {
+      // Parallel to the `Uri` test above: the `Html` branch in
+      // `untaggedSource` also strips `_tag` and forwards the rest of
+      // the source verbatim (currently `{ html }`). Pins that the
+      // handle-driven re-mount works for both source shapes.
+      const handleRef = React.createRef<CollectorModalScreenHandle>()
+      render(
+        <CollectorModalScreen
+          source={{ _tag: 'Html', html: '<html><body>initial</body></html>' }}
+          handleRef={handleRef}
+        />
+      )
+      expect(mockLastSnifferSource).toEqual({ html: '<html><body>initial</body></html>' })
+
+      expect(handleRef.current).not.toBeNull()
+      act(() => {
+        handleRef.current?.navigate({
+          _tag: 'Html',
+          html: '<html><body>navigated</body></html>',
+        })
+      })
+      expect(mockLastSnifferSource).toEqual({ html: '<html><body>navigated</body></html>' })
+    })
   })
 })

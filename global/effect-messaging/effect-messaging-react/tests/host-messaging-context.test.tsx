@@ -120,20 +120,30 @@ describe('HostMessagingProvider.sendHostEffect', () => {
   })
 })
 
-describe('HostMessagingProvider.sendHost', () => {
-  test('fire-and-forget: runs the underlying Effect without the caller awaiting', async () => {
+describe('HostMessagingProvider.sendHost / sendHostEffect', () => {
+  test('sendHostEffect resolves only after the underlying sendMessage runs', async () => {
     const calls: Array<{ readonly _tag: string }> = []
     const { result } = renderWithProvider<TestBridges>({
       bridges: testBridges,
       sendMessage: recordingSendMessage(calls),
     })
 
-    result.current.sendHost({ _tag: 'HostBackRequested' })
-    // Effect.runFork schedules synchronously; the Effect body (an Effect.sync)
-    // runs on the same microtask tick. One queueMicrotask resolves it.
-    await new Promise<void>((resolve) => {
-      queueMicrotask(resolve)
-    })
+    // `sendHost` is fire-and-forget (returns void via `Effect.runFork`).
+    // Asserting it ran by waiting for a microtask flush would be
+    // brittle — Effect's runtime is free to defer past the current
+    // microtask. Asserting through `sendHostEffect` is the structural
+    // guarantee: it's the same Effect `sendHost` forks, so awaiting
+    // its `runPromise` proves the dispatch settled.
+    await Effect.runPromise(result.current.sendHostEffect({ _tag: 'HostBackRequested' }))
     expect(calls).toEqual([{ _tag: 'HostBackRequested' }])
+  })
+
+  test('sendHost returns void synchronously (does not require a microtask flush)', () => {
+    const { result } = renderWithProvider<TestBridges>({
+      bridges: testBridges,
+      sendMessage: () => Effect.void,
+    })
+    const ret = result.current.sendHost({ _tag: 'HostBackRequested' })
+    expect(ret).toBeUndefined()
   })
 })

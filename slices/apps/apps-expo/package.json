@@ -31,6 +31,7 @@
     "@babel/core": "catalog:",
     "@babel/plugin-syntax-import-attributes": "catalog:",
     "@babel/runtime": "catalog:",
+    "@fast-check/jest": "catalog:",
     "@livestore/livestore": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
@@ -41,9 +42,11 @@
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "expect-type": "catalog:",
+    "fast-check": "catalog:",
     "jest": "catalog:",
     "jest-expo": "catalog:",
     "react": "catalog:",
+    "shared-structures-core": "workspace:*",
     "tunnel-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
@@ -54,6 +57,7 @@
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "react": "catalog:",
+    "shared-structures-core": "workspace:*",
     "tunnel-core": "workspace:*"
   }
 }

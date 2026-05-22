@@ -1,9 +1,10 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite-plus'
+import base from '../../../vite.config.base.ts'
 
 export default defineConfig({
-  resolve: { conditions: ['source'] },
+  ...base,
   pack: [
     {
       dts: { tsgo: true },

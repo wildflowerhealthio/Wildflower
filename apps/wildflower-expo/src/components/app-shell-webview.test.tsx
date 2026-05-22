@@ -2,6 +2,7 @@ import { render } from '@testing-library/react-native'
 import { Effect as EffectType, type Layer as LayerType } from 'effect'
 import * as React from 'react'
 import type { ReactElement, ReactNode } from 'react'
+import { View } from 'react-native'
 
 // Hoisted module-scoped captures the mocked `effect-messaging-expo`
 // populates on each render — `mock` prefix is required for
@@ -54,7 +55,33 @@ const makeBridgeStub = (
   }
 }
 
-jest.mock('navigation-core', () => ({ NavigationBridge: makeBridgeStub('Navigation') }))
+// Capture the handlers the navigation receiver-layer is built with so
+// tests can verify `onRouteChanged` is plumbed through the binding.
+// The `navigation-expo` `ReceiverLayer` wraps the host callback into
+// the `RouteChanged` handler and passes the object here.
+let mockNavigationReceiverHandlers: {
+  readonly RouteChanged: (msg: { pathname: string; canGoBack: boolean }) => EffectType.Effect<void>
+  readonly Log: (msg: { log: string }) => EffectType.Effect<void>
+} | null = null
+
+jest.mock('navigation-core', () => {
+  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
+    'effect'
+  )
+  return {
+    NavigationBridge: {
+      name: 'Navigation',
+      Host: {
+        ReceiverLayer: (
+          handlers: NonNullable<typeof mockNavigationReceiverHandlers>
+        ): LayerType.Layer<never> => {
+          mockNavigationReceiverHandlers = handlers
+          return effect.Layer.effectDiscard(effect.Effect.void)
+        },
+      },
+    },
+  }
+})
 jest.mock('gatekeeper-core/bridge', () => ({
   __esModule: true,
   default: makeBridgeStub('Gatekeeper'),
@@ -117,6 +144,7 @@ import { AppShellWebView } from './app-shell-webview.tsx'
 
 beforeEach(() => {
   mockLastBridgedWebViewProps = null
+  mockNavigationReceiverHandlers = null
 })
 
 /**
@@ -188,17 +216,30 @@ describe('AppShellWebView', () => {
     ])
   })
 
-  it('renders without throwing with onRouteChanged and belowWebView attached (smoke)', () => {
+  it('renders belowWebView in the tree and forwards onRouteChanged into the navigation receiver layer', () => {
     const onRouteChanged = jest.fn()
-    expect(() =>
-      render(
-        <AppShellWebView
-          baseUrl="https://example.test"
-          route="/apps"
-          onRouteChanged={onRouteChanged}
-          belowWebView={<React.Fragment />}
-        />
-      )
-    ).not.toThrow()
+    const { queryByTestId } = render(
+      <AppShellWebView
+        baseUrl="https://example.test"
+        route="/apps"
+        onRouteChanged={onRouteChanged}
+        belowWebView={<View testID="sentinel" />}
+      />
+    )
+
+    // (1) The sentinel child appears in the rendered tree — `belowWebView`
+    //     is what `BridgedWebView` renders inside its provider; the mock
+    //     forwards it as children of the mock element.
+    expect(queryByTestId('sentinel')).not.toBeNull()
+
+    // (2) The navigation binding's `ReceiverLayer` was built with handlers
+    //     that close over the host's `onRouteChanged`. Invoking the captured
+    //     `RouteChanged` handler must reach the callback — proving plumbing.
+    expect(mockNavigationReceiverHandlers).not.toBeNull()
+    if (mockNavigationReceiverHandlers === null) return
+    EffectType.runSync(
+      mockNavigationReceiverHandlers.RouteChanged({ pathname: '/apps/new', canGoBack: true })
+    )
+    expect(onRouteChanged).toHaveBeenCalledWith({ pathname: '/apps/new', canGoBack: true })
   })
 })

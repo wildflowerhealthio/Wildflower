@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite-plus'
+import base from '../../../vite.config.base.ts'
 
 export default defineConfig({
-  resolve: { conditions: ['source'] },
+  ...base,
   test: {
     // Tests in this package run on Jest (jest-expo preset) so that
     // `react-native` + `expo-*` resolve correctly. Vitest is excluded
@@ -19,11 +20,4 @@ export default defineConfig({
       index: 'src/index.ts',
     },
   },
-  lint: {
-    options: {
-      typeAware: true,
-      typeCheck: true,
-    },
-  },
-  fmt: {},
 })
