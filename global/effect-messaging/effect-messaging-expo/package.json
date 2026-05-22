@@ -47,6 +47,7 @@
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-native": "catalog:",
+    "react-native-safe-area-context": "catalog:",
     "react-native-webview": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"

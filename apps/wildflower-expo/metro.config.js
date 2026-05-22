@@ -2,6 +2,7 @@
 const { getDefaultConfig } = require('expo/metro-config')
 const { addLiveStoreDevtoolsMiddleware } = require('@livestore/devtools-expo')
 const { DuplicateDependencies } = require('@rnx-kit/metro-plugin-duplicates-checker')
+const fs = require('node:fs')
 const path = require('node:path')
 
 const projectRoot = __dirname
@@ -53,10 +54,24 @@ config.serializer.customSerializer = (entryPoint, preModules, graph, options) =>
   return expoSerializer(entryPoint, preModules, graph, options)
 }
 
+// When `wildflower-react/embeddable-html` resolves under the `source`
+// condition it lands on the stub at `apps/wildflower-react/src/embeddable-html-stub.ts`,
+// which has no way to read the built bundle at runtime on-device. If
+// a fresh `dist-embedded/html.js` exists, prefer it directly so the
+// Expo app sees the real bundled HTML; otherwise fall through to the
+// stub (which renders the "not built" placeholder).
+const embeddableHtmlBuiltPath = path.resolve(
+  workspaceRoot,
+  'apps/wildflower-react/dist-embedded/html.js'
+)
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (moduleName === 'crypto') {
     // when importing crypto, resolve to react-native-quick-crypto
     return context.resolveRequest(context, 'react-native-quick-crypto', platform)
+  }
+  if (moduleName === 'wildflower-react/embeddable-html' && fs.existsSync(embeddableHtmlBuiltPath)) {
+    // Route around the `source`-condition stub when a real build exists.
+    return { type: 'sourceFile', filePath: embeddableHtmlBuiltPath }
   }
   // otherwise chain to the standard Metro resolver.
   return context.resolveRequest(context, moduleName, platform)

@@ -2,6 +2,7 @@ import { Effect, Fiber } from 'effect'
 import { type BareSenderService, HostBinding } from 'effect-messaging-core'
 import { HostMessagingProvider } from 'effect-messaging-react'
 import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { EffectMessagingWebView } from './effect-messaging-webview.tsx'
 import { type ExpoTransport, makeExpoTransport } from './transport.ts'
 
@@ -95,13 +96,18 @@ const BridgedWebView = <const Bindings extends ReadonlyArray<HostBinding.Any>>({
   return (
     <HostMessagingProvider bridges={bridges} sendMessage={transport.sendMessage}>
       <TransportReadyCaller bindings={bindings} transport={transport} />
-      <EffectMessagingWebView
-        ref={webviewBareSenderRef}
-        source={{ html, baseUrl: transport.embedUrl }}
-        onMessage={transport.onMessage}
-        loader={loader}
-      />
-      {belowWebView}
+      <SafeAreaView
+        edges={{ bottom: 'off', top: 'additive', left: 'additive', right: 'additive' }}
+        style={{ flex: 1 }}
+      >
+        <EffectMessagingWebView
+          ref={webviewBareSenderRef}
+          source={{ html, baseUrl: transport.embedUrl }}
+          onMessage={transport.onMessage}
+          loader={loader}
+        />
+        {belowWebView}
+      </SafeAreaView>
     </HostMessagingProvider>
   )
 }

@@ -45,7 +45,7 @@ export default function HomeScreen(): JSX.Element {
   // wildflower-react has mounted + the transport has flushed).
   useEffect(() => {
     if (running) void SplashScreen.hideAsync()
-  }, [running, shellLive])
+  }, [running])
 
   const handleRouteChanged = useCallback(
     ({ pathname }: { pathname: string; canGoBack: boolean }): void => {
@@ -54,11 +54,6 @@ export default function HomeScreen(): JSX.Element {
     },
     []
   )
-
-  if (!running) {
-    // Splash is still up; return an empty placeholder so the tree mounts.
-    return <ThemedView style={styles.fill} />
-  }
 
   return (
     <ThemedView style={styles.fill}>
