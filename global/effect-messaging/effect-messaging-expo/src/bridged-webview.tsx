@@ -1,14 +1,14 @@
+import { Effect, Fiber } from 'effect'
 import { type BareSenderService, HostBinding } from 'effect-messaging-core'
 import { HostMessagingProvider } from 'effect-messaging-react'
-import { useEffect, useMemo, useRef, type JSX, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react'
 import { EffectMessagingWebView } from './effect-messaging-webview.tsx'
-import type { ExpoTransport } from './transport.ts'
-import { WithTransport } from './with-transport.tsx'
+import { type ExpoTransport, makeExpoTransport } from './transport.ts'
 
 /**
  * Props for {@link BridgedWebView}. `bindings` is generic over its
  * tuple shape so `HostBinding.aggregate` can preserve positional
- * typing into `WithTransport`.
+ * typing into the transport.
  *
  * See [Host Bindings Explanation](../../../../docs/Effect/Host%20Bindings%20Explanation.md).
  */
@@ -35,10 +35,20 @@ interface BridgedWebViewProps<Bindings extends ReadonlyArray<HostBinding.Any>> {
 
 /**
  * The generic host shell. Owns the WebView ref, aggregates `bindings`
- * via {@link HostBinding.aggregate}, mounts the transport, provides
+ * via {@link HostBinding.aggregate}, runs the transport's scope on a
+ * mount-bound fiber (mirroring `AppRuntimeProvider`'s
+ * `useEffect`/`runFork`/`Fiber.interrupt` pattern), provides
  * `<HostMessagingProvider>`, renders the WebView followed by
  * `belowWebView`, and runs each binding's `onTransportReady` via
  * {@link TransportReadyCaller}.
+ *
+ * @remarks
+ * `transport` is held in local state and starts `null`; while the
+ * fiber is still building the transport we render `loader ?? null`
+ * (single render flash — `makeExpoTransport` performs no real I/O
+ * during construction). Once the transport is set, the WebView and
+ * provider mount and `loader` overlays the WebView until its first
+ * `onLoadEnd` per `EffectMessagingWebView`'s contract.
  */
 const BridgedWebView = <const Bindings extends ReadonlyArray<HostBinding.Any>>({
   html,
@@ -54,27 +64,45 @@ const BridgedWebView = <const Bindings extends ReadonlyArray<HostBinding.Any>>({
     [bindings]
   )
 
+  const [transport, setTransport] = useState<ExpoTransport<HostBinding.BridgesOf<Bindings>> | null>(
+    null
+  )
+
+  useEffect(() => {
+    const fiber = Effect.runFork(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const built = yield* makeExpoTransport({
+            bridges,
+            layers,
+            initialMessages,
+            baseUrl,
+            webviewHandleRef: webviewBareSenderRef,
+          })
+          yield* Effect.sync(() => setTransport(built))
+          yield* Effect.never
+        })
+      )
+    )
+    return (): void => {
+      setTransport(null)
+      Effect.runFork(Fiber.interrupt(fiber))
+    }
+  }, [bridges, layers, initialMessages, baseUrl])
+
+  if (transport === null) return loader ?? <></>
+
   return (
-    <WithTransport<HostBinding.BridgesOf<Bindings>>
-      bridges={bridges}
-      layers={layers}
-      initialMessages={initialMessages}
-      baseUrl={baseUrl}
-      webviewHandleRef={webviewBareSenderRef}
-    >
-      {(transport) => (
-        <HostMessagingProvider bridges={bridges} sendMessage={transport.sendMessage}>
-          <TransportReadyCaller bindings={bindings} transport={transport} />
-          <EffectMessagingWebView
-            ref={webviewBareSenderRef}
-            source={{ html, baseUrl: transport.embedUrl }}
-            onMessage={transport.onMessage}
-            loader={loader}
-          />
-          {belowWebView}
-        </HostMessagingProvider>
-      )}
-    </WithTransport>
+    <HostMessagingProvider bridges={bridges} sendMessage={transport.sendMessage}>
+      <TransportReadyCaller bindings={bindings} transport={transport} />
+      <EffectMessagingWebView
+        ref={webviewBareSenderRef}
+        source={{ html, baseUrl: transport.embedUrl }}
+        onMessage={transport.onMessage}
+        loader={loader}
+      />
+      {belowWebView}
+    </HostMessagingProvider>
   )
 }
 

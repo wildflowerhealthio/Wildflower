@@ -112,6 +112,28 @@ jest.mock('collector-expo', () => {
   }
 })
 
+// `apps-expo`'s built `dist/index.js` imports `subscribeUntil` from
+// `shared-structures-core/livestore`, which loads `@livestore/livestore`
+// — an ESM module jest-expo's `transformIgnorePatterns` doesn't whitelist,
+// causing a "Unexpected token 'export'" at require time. Mock the slice
+// boundary like `collector-expo` above so the import chain stops here.
+jest.mock('apps-expo', () => {
+  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
+    'effect'
+  )
+  return {
+    AppsBridgeExpo: {
+      useHostBinding: (): {
+        readonly bridge: { name: string }
+        readonly receiverLayer: LayerType.Layer<never>
+      } => ({
+        bridge: { name: 'Apps' },
+        receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
+      }),
+    },
+  }
+})
+
 // `TunnelStore.layerFrom(store)` is what apps-expo's `useHostBinding`
 // uses to discharge `TunnelStore`. The mock returns an empty layer so
 // `Layer.provide` chains without needing a real livestore.
