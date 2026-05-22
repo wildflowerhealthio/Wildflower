@@ -68,7 +68,8 @@ config.transformer.getTransformOptions = async () => ({
     inlineRequires: false,
   },
 })
-config.resolver.sourceExts = ['jsx', 'js', 'ts', 'tsx', 'cjs', 'json', 'module.css', 'css']
+
+config.resolver.sourceExts = ['jsx', 'js', 'ts', 'tsx', 'mjs', 'cjs', 'json', 'module.css', 'css']
 
 // Resolve workspace packages through their "source" export condition so edits
 // to their .ts sources hot-reload without running `vp pack` first.
