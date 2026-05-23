@@ -2,6 +2,7 @@ import type { EventEmitter } from 'node:events'
 
 import type { Scope } from 'effect'
 import { Effect, Layer, Stream } from 'effect'
+import type { LocalHttpServerStore } from 'local-http-server-core/livestore'
 import localtunnel from 'localtunnel'
 import { type DomainResult, type ResolvedConfig, runTunnelDaemon } from 'tunnel-core/daemon'
 import type { TunnelStore } from 'tunnel-core/livestore'
@@ -135,9 +136,8 @@ const parseGrantedDomain = (grantedUrl: string): Effect.Effect<DomainResult, Err
  * (failures are persisted into `TunnelState.error` rather than thrown),
  * so the surrounding `Layer.launch` doesn't see them.
  */
-const TunnelDaemon: Layer.Layer<never, never, TunnelStore> = Layer.scopedDiscard(
-  Effect.forkScoped(runTunnelDaemon(startTunnel))
-)
+const TunnelDaemon: Layer.Layer<never, never, TunnelStore | LocalHttpServerStore> =
+  Layer.scopedDiscard(Effect.forkScoped(runTunnelDaemon(startTunnel)))
 
 export { startTunnel, TunnelDaemon }
 export type { OpenTunnel, OpenTunnelHandle, OpenTunnelOpts }

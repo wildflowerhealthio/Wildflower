@@ -1,1 +1,1 @@
-export { startTunnel } from './startTunnel.ts'
+export { startTunnel, TunnelDaemon } from './startTunnel.ts'

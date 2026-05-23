@@ -112,3 +112,5 @@ const defineSliceLivestore = <
 
 export { defineSliceLivestore }
 export type { InputTables, InputMaterializers }
+export { subscribeUntil } from './subscribeUntil.ts'
+export type { QueryableSubscribableStore } from './subscribeUntil.ts'

@@ -67,7 +67,7 @@ const createHandler = (
 ): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = FhirResourcesApiLive.pipe(
     Layer.provide(EmrStore.layerFrom(makeStore(rows, total))),
-    Layer.provide(Layer.succeed(Origin, 'http://localhost:8787'))
+    Layer.provide(Origin.layerFromLiteral('http://localhost:8787'))
   )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }

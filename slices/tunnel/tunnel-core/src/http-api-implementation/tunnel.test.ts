@@ -2,11 +2,14 @@ import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise, type Store } from '@livestore/livestore'
 import { Layer, Schema } from 'effect'
+import { Origin } from 'navigation-core'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import { TunnelStateSchema } from '../http-api-definition/tunnel.ts'
 import { schema, TunnelConfig, TunnelState, TunnelStore } from '../livestore/index.ts'
 import { TunnelAdminApiLive } from './index.ts'
+
+const STUB_ORIGIN = 'http://localhost:8787'
 
 const decodeBody = Schema.decodeUnknownSync(TunnelStateSchema)
 
@@ -25,7 +28,10 @@ afterEach(async () => {
 })
 
 const buildHandler = (): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
-  const apiLive = TunnelAdminApiLive.pipe(Layer.provide(TunnelStore.layerFrom(store)))
+  const apiLive = TunnelAdminApiLive.pipe(
+    Layer.provide(TunnelStore.layerFrom(store)),
+    Layer.provide(Origin.layerFromLiteral(STUB_ORIGIN))
+  )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }
 
@@ -35,7 +41,6 @@ describe('GetTunnel handler', () => {
       TunnelConfig.events.tunnelConfigSet({
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
-        localPort: 8080,
         requestedRunning: true,
       })
     )
@@ -55,13 +60,13 @@ describe('GetTunnel handler', () => {
       expect(body).toEqual({
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
-        localPort: 8080,
         requestedRunning: true,
         running: true,
         currentSubdomain: 'wildflower-expo-dev',
         currentRootDomain: 'loca.lt',
         currentLocalPort: 8080,
         error: null,
+        servedOrigin: STUB_ORIGIN,
       })
     } finally {
       await dispose()
@@ -77,13 +82,13 @@ describe('GetTunnel handler', () => {
       expect(body).toEqual({
         subdomain: null,
         rootDomain: null,
-        localPort: null,
         requestedRunning: false,
         running: false,
         currentSubdomain: null,
         currentRootDomain: null,
         currentLocalPort: null,
         error: null,
+        servedOrigin: STUB_ORIGIN,
       })
     } finally {
       await dispose()
@@ -102,7 +107,6 @@ describe('PatchTunnel handler', () => {
           body: JSON.stringify({
             subdomain: 'wildflower-expo-dev',
             rootDomain: 'loca.lt',
-            localPort: 8080,
             requestedRunning: true,
           }),
         })
@@ -112,7 +116,6 @@ describe('PatchTunnel handler', () => {
       expect(stored).toMatchObject({
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
-        localPort: 8080,
         requestedRunning: true,
       })
     } finally {
@@ -125,7 +128,6 @@ describe('PatchTunnel handler', () => {
       TunnelConfig.events.tunnelConfigSet({
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
-        localPort: 8080,
       })
     )
     const { handler, dispose } = buildHandler()
@@ -142,7 +144,6 @@ describe('PatchTunnel handler', () => {
       expect(stored).toMatchObject({
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
-        localPort: 8080,
         requestedRunning: true,
       })
     } finally {
@@ -155,7 +156,6 @@ describe('PatchTunnel handler', () => {
       TunnelConfig.events.tunnelConfigSet({
         subdomain: 'wildflower-expo-dev',
         rootDomain: 'loca.lt',
-        localPort: 8080,
         requestedRunning: true,
       })
     )

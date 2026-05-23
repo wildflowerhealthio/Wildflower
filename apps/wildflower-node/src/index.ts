@@ -12,10 +12,10 @@ import { EmrStore } from 'emr-core/livestore'
 import { mintHostOwnerToken, seedFirstPartyClient, seedSigningKey } from 'gatekeeper-core/contexts'
 import { GatekeeperStore } from 'gatekeeper-core/livestore'
 import { cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
-import { StringLiteralTypes } from 'kitchen-sink/types'
-import { LocalHttpServerStore } from 'local-http-server-core/livestore'
+import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
 import { Origin } from 'navigation-core'
 import { nodeTelemetryLayerFromEnv } from 'telemetry-node'
+import { OriginFromServedOrigin } from 'tunnel-core/contexts'
 import { TunnelStore } from 'tunnel-core/livestore'
 import { TunnelDaemon as NodeTunnelDaemon } from 'tunnel-node'
 import { webAssetsDir } from 'wildflower-react/web-assets'
@@ -26,10 +26,7 @@ import { SERVICE_NAME } from './service-name.ts'
 // Config
 
 const PORT = Number(process.env['PORT'] ?? 3000)
-const ORIGIN = process.env['ORIGIN'] ?? `http://localhost:${PORT}`
-if (!StringLiteralTypes.endsWithAlphanumericCharacter(ORIGIN)) {
-  throw new Error(`Invalid origin: ${ORIGIN}`)
-}
+const LOCAL_HOSTNAME = '127.0.0.1'
 const IS_DEV = process.env['NODE_ENV'] !== 'production'
 
 // Platform dependent layer setup
@@ -44,7 +41,23 @@ const run = Effect.gen(function* () {
   const store = yield* Effect.promise(() => createStore())
   const gatekeeperStoreLayer = GatekeeperStore.layerFrom(store)
   const localHttpServerStoreLayer = LocalHttpServerStore.layerFrom(store)
-  const originLayer = Layer.succeed(Origin, ORIGIN)
+  const tunnelStoreLayer = TunnelStore.layerFrom(store)
+  const originLayer = OriginFromServedOrigin.pipe(
+    Layer.provide(Layer.mergeAll(tunnelStoreLayer, localHttpServerStoreLayer))
+  )
+
+  // Seed `LocalHttpServerState` with the actual bind target. Node uses
+  // `NodeHttpServer.layer` directly (no LHS daemon), so the state's
+  // clientDocument default would otherwise stay at `127.0.0.1:8080` and
+  // `servedOrigin` (which `Origin` wraps) would lie. A one-shot commit
+  // fixes it.
+  store.commit(
+    ServerState.events.localHttpServerStateSet({
+      localHostname: LOCAL_HOSTNAME,
+      port: PORT,
+      running: true,
+    })
+  )
 
   // Idempotent: signing key + first-party `wildflower-host` client identity.
   yield* seedSigningKey.pipe(Effect.provide(gatekeeperStoreLayer))
@@ -65,8 +78,9 @@ const run = Effect.gen(function* () {
   // `Layer.tap` after `afterStartupEffect` emits this once the port is bound.
   let afterStartupEffect = Effect.void
   if (bootstrapToken != null) {
+    const bootOrigin = yield* Origin.get.pipe(Effect.provide(originLayer))
     afterStartupEffect = Effect.logInfo(
-      `Bootstrap: ${ORIGIN}/gatekeeper?token=${encodeURIComponent(bootstrapToken)}`
+      `Bootstrap: ${bootOrigin}/gatekeeper?token=${encodeURIComponent(bootstrapToken)}`
     )
   }
 
@@ -80,7 +94,7 @@ const run = Effect.gen(function* () {
     Layer.tap(() => afterStartupEffect),
     Layer.provide(
       Layer.mergeAll(
-        TunnelStore.layerFrom(store),
+        tunnelStoreLayer,
         EmrStore.layerFrom(store),
         AppsStore.layerFrom(store),
         gatekeeperStoreLayer,

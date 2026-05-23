@@ -1,11 +1,11 @@
 import { HttpApiBuilder, HttpServerResponse } from '@effect/platform'
 import { nanoid } from '@livestore/livestore'
-import { Effect } from 'effect'
+import { Effect, Either } from 'effect'
 import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
-import { TunnelConfig, TunnelState, TunnelStore } from 'tunnel-core/livestore'
+import { servedOrigin$, TunnelConfig, TunnelStore } from 'tunnel-core/livestore'
 
 import { AppsApi } from '../http-api-definition/index.ts'
-import { awaitTunnelRunning, type RunningTunnel } from '../internal/await-tunnel-running.ts'
+import { awaitTunnelRunning } from '../internal/await-tunnel-running.ts'
 import { AppSelection, AppsStore } from '../livestore/index.ts'
 import type { AppKind } from '../registry/app-item.ts'
 import { BUNDLED_APPS, FHIR_SHARING_ID, findBundled } from '../registry/index.ts'
@@ -50,19 +50,6 @@ const buildEntries = (selection: readonly AppSelection.AppSelectionRow[]): reado
     })
 
   return [...bundled, ...custom]
-}
-
-/**
- * Public tunnel origin from `currentSubdomain` + `currentRootDomain`,
- * or `null` if either is unbound. `rootDomain` is the empty string
- * when the relay returns a single-label hostname (see
- * `tunnel-expo/src/startTunnel.ts`'s `parseGrantedDomain`), so empty
- * counts as unbound here too.
- */
-const tunnelOrigin = (state: RunningTunnel): string | null => {
-  const { currentSubdomain: sub, currentRootDomain: root } = state
-  if (sub === null || sub === '' || root === null || root === '') return null
-  return `https://${sub}.${root}`
 }
 
 /**
@@ -153,35 +140,47 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
           )
         }
 
-        const localOrigin = localStore.query(ServerState.queries.current$).localOrigin
-        const beforeTunnel = tunnelStore.query(TunnelState.queries.current$)
-
-        // Pick the origin: local if no tunnel needed or already running
-        // with a bound public name; otherwise commit `requestedRunning`
-        // and wait for the daemon to flip `TunnelState.running`. Timeout
-        // and unbound-state both fall back to the local origin (and
-        // surface `?tunnel=unavailable` on the redirect). The
-        // `requestedRunning` commit is sticky: see `awaitTunnelRunning`
-        // — interrupt does not roll it back.
-        let origin = localOrigin
+        // Non-tunnel apps always redirect to the loopback origin — even
+        // if the tunnel is up, device-served bundles (`api-view`,
+        // `patient-browser`, …) shouldn't round-trip through the relay.
+        const { localHostname, port } = localStore.query(ServerState.queries.current$)
+        const localOrigin = `http://${localHostname}:${port}`
         let tunnelFellBack = false
+        let origin = localOrigin
         if (launchContext.requiresTunnel) {
-          if (beforeTunnel.running) {
-            const live = tunnelOrigin(beforeTunnel)
-            if (live === null) tunnelFellBack = true
-            else origin = live
+          // `servedOrigin$` is `https://sub.root` when the tunnel is up
+          // AND the relay has granted a bound origin, else the loopback
+          // URL. The `https://` prefix is the unified "tunnel is usable"
+          // signal — `tunnel-expo`'s `parseGrantedDomain` is what tags an
+          // unbound rootDomain as the empty string, and `servedOrigin$`
+          // folds that case back into loopback.
+          const live = tunnelStore.query(servedOrigin$)
+          if (live.startsWith('https://')) {
+            origin = live // fast path: tunnel up & bound
           } else {
-            tunnelStore.commit(TunnelConfig.events.tunnelConfigSet({ requestedRunning: true }))
-            const outcome = yield* awaitTunnelRunning()
-            if (outcome.kind === 'timed-out') {
-              yield* Effect.logWarning(
-                `[apps-core] tunnel did not start within deadline for ${path.id}; falling back to local origin`
-              )
+            // Cold path: commit intent, wait for the daemon to flip
+            // running, then re-read `servedOrigin$`. `awaitTunnelRunning`
+            // resolving with running=true but `servedOrigin$` still
+            // loopback (relay refused / single-label hostname) folds into
+            // the same fallback as the timeout. The `requestedRunning`
+            // commit is sticky — see `awaitTunnelRunning` — interrupt does
+            // not roll it back.
+            const resolved = yield* Effect.gen(function* () {
+              tunnelStore.commit(TunnelConfig.events.tunnelConfigSet({ requestedRunning: true }))
+              yield* awaitTunnelRunning()
+              return tunnelStore.query(servedOrigin$)
+            }).pipe(
+              Effect.tapError(() =>
+                Effect.logWarning(
+                  `[apps-core] tunnel did not start within deadline for ${path.id}; falling back to local origin`
+                )
+              ),
+              Effect.either
+            )
+            if (Either.isLeft(resolved) || !resolved.right.startsWith('https://')) {
               tunnelFellBack = true
             } else {
-              const live = tunnelOrigin(outcome.state)
-              if (live === null) tunnelFellBack = true
-              else origin = live
+              origin = resolved.right
             }
           }
         }

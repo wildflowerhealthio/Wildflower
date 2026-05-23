@@ -64,7 +64,7 @@ const wireServer = async (): Promise<Wired> => {
     schema,
     storeId: `it-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   })
-  const originLayer = Layer.succeed(Origin, ORIGIN)
+  const originLayer = Origin.layerFromLiteral(ORIGIN)
   const resourcesLive = FhirResourcesApiLive.pipe(
     Layer.provide(EmrStore.layerFrom(store)),
     Layer.provide(originLayer)

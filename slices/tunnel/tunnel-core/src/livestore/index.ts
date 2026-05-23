@@ -4,11 +4,18 @@
  * Two tables:
  *
  *  - `TunnelConfig` — persistent singleton holding user/host intent
- *    (`subdomain`, `rootDomain`, `localPort`, `requestedEnabled`). Carries
- *    across restarts; the daemon reads it but never writes to it.
+ *    (`subdomain`, `rootDomain`, `requestedRunning`). Carries across
+ *    restarts; the daemon reads it but never writes to it. The
+ *    forward-target port is sourced from `LocalHttpServerState.port`
+ *    (joined in via `daemon/resolved-config.ts`), not duplicated here.
  *  - `TunnelState` — per-session, daemon-owned. Tracks what the daemon
- *    actually achieved (`currentEnabled`, `currentSubdomain`, ...) and
- *    surfaces `error`. Resets each session.
+ *    actually achieved (`running`, `currentSubdomain`, `currentRootDomain`,
+ *    `currentLocalPort`) and surfaces `error`. Resets each session.
+ *
+ * Also exports `servedOrigin$`: a computed query joining `TunnelState`
+ * and `LocalHttpServerState` into "where is the server reachable right
+ * now" — `https://sub.root` when the tunnel is up, else
+ * `http://localHostname:port`.
  *
  * Exports flat, spread-safe `tables` / `events` / `queries` /
  * `materializers` records that an app-level schema can merge into its
@@ -17,6 +24,7 @@
 
 import { defineSliceLivestore, type InputMaterializers } from 'shared-structures-core/livestore'
 
+import { servedOrigin$ } from './served-origin.ts'
 import * as TunnelConfig from './tunnel-config.ts'
 import * as TunnelState from './tunnel-state.ts'
 
@@ -74,6 +82,7 @@ export {
   materializers,
   queries,
   schema,
+  servedOrigin$,
   state,
   tables,
   TunnelConfig,

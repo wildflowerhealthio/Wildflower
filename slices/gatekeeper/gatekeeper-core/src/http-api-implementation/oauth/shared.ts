@@ -120,7 +120,7 @@ const issueTokenResponse = (input: {
 }): Effect.Effect<TokenResponse, OAuthError500, GatekeeperStore | Origin> =>
   Effect.gen(function* () {
     const signingKey = yield* pickSigningKeyForMint()
-    const origin = yield* Origin
+    const origin = yield* Origin.get
     const signed = yield* mintAccessToken(signingKey, origin, {
       clientId: input.clientId,
       scope: input.grantedScopes,

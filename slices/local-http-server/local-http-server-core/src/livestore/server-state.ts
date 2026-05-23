@@ -7,10 +7,10 @@ import { queryDb, Schema, SessionIdSymbol, State, type LiveQueryDef } from '@liv
 const DEFAULT_IDLE_PORT = 8080
 
 /**
- * Loopback origin paired with {@link DEFAULT_IDLE_PORT} as the idle
- * default for the `localOrigin` field.
+ * Loopback hostname paired with {@link DEFAULT_IDLE_PORT} as the idle
+ * default for the `localHostname` field.
  */
-const DEFAULT_LOCAL_ORIGIN = `http://127.0.0.1:${DEFAULT_IDLE_PORT}` as const
+const DEFAULT_LOCAL_HOSTNAME = `127.0.0.1` as const
 
 /** Shape of the per-session local-HTTP-server state table. */
 type Table = State.SQLite.ClientDocumentTableDef<
@@ -18,14 +18,14 @@ type Table = State.SQLite.ClientDocumentTableDef<
   {
     readonly requestedRunning: boolean
     readonly running: boolean
-    readonly localOrigin: string
+    readonly localHostname: string
     readonly port: number
     readonly error: string | null
   },
   {
     readonly requestedRunning: boolean
     readonly running: boolean
-    readonly localOrigin: string
+    readonly localHostname: string
     readonly port: number
     readonly error: string | null
   },
@@ -36,7 +36,7 @@ type Table = State.SQLite.ClientDocumentTableDef<
       value: {
         readonly requestedRunning: false
         readonly running: false
-        readonly localOrigin: typeof DEFAULT_LOCAL_ORIGIN
+        readonly localHostname: typeof DEFAULT_LOCAL_HOSTNAME
         readonly port: typeof DEFAULT_IDLE_PORT
         readonly error: null
       }
@@ -56,7 +56,7 @@ const table: Table = State.SQLite.clientDocument({
   schema: Schema.Struct({
     requestedRunning: Schema.Boolean,
     running: Schema.Boolean,
-    localOrigin: Schema.String,
+    localHostname: Schema.String,
     port: Schema.Number,
     error: Schema.NullOr(Schema.String),
   }),
@@ -65,7 +65,7 @@ const table: Table = State.SQLite.clientDocument({
     value: {
       requestedRunning: false,
       running: false,
-      localOrigin: DEFAULT_LOCAL_ORIGIN,
+      localHostname: DEFAULT_LOCAL_HOSTNAME,
       port: DEFAULT_IDLE_PORT,
       error: null,
     },
@@ -95,7 +95,7 @@ type Queries = {
     {
       readonly requestedRunning: boolean
       readonly running: boolean
-      readonly localOrigin: string
+      readonly localHostname: string
       readonly port: number
       readonly error: string | null
     },
@@ -105,5 +105,5 @@ type Queries = {
 
 const queries: Queries = { current$ } as const
 
-export { DEFAULT_IDLE_PORT, DEFAULT_LOCAL_ORIGIN, events, materializers, queries, table }
+export { DEFAULT_IDLE_PORT, DEFAULT_LOCAL_HOSTNAME, events, materializers, queries, table }
 export type { Events, Materializers, Queries, Table }

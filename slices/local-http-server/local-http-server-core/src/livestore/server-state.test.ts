@@ -21,7 +21,7 @@ describe('ServerState.queries.current$', () => {
         requestedRunning: false,
         running: false,
         port: 8080,
-        localOrigin: 'http://127.0.0.1:8080',
+        localHostname: '127.0.0.1',
       })
     } finally {
       await store.shutdownPromise().catch(() => undefined)
