@@ -4,6 +4,7 @@ export {
 } from './components/animated-header-background.tsx'
 export { IconSymbol } from './components/icon-symbol.tsx'
 export { type IconSymbolName } from './components/icon-symbol-mapping.ts'
+export { Loader, type LoaderProps } from './components/loader.tsx'
 export { ThemedButton, type ThemedButtonProps } from './components/themed-button.tsx'
 export { ThemedText, type ThemedTextProps } from './components/themed-text.tsx'
 export { ThemedView, type ThemedViewProps } from './components/themed-view.tsx'
