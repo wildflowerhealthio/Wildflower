@@ -52,19 +52,6 @@ interface TunnelScreenBodyProps {
 }
 
 /**
- * Convert the `<input type="number">` raw string into the PATCH body
- * shape. Empty string → `null` (explicit clear). Anything else parses
- * as a base-10 integer; the input's `min`/`step` keep this lenient
- * (the schema rejects NaN, and the daemon validates port ranges).
- */
-const parseLocalPortInput = (raw: string): number | null => {
-  const trimmed = raw.trim()
-  if (trimmed === '') return null
-  const parsed = Number.parseInt(trimmed, 10)
-  return Number.isFinite(parsed) ? parsed : null
-}
-
-/**
  * Compare the `subdomain` / `rootDomain` strings — empty input maps to
  * `null` so the user clearing a field becomes an explicit `null` write
  * (matching the `SetTunnelRequestBody` schema's "`null` clears,
@@ -79,25 +66,17 @@ const TunnelScreenBody = ({ state, onChanged }: TunnelScreenBodyProps): JSX.Elem
   const runTunnel = useTunnelAdminEffectRunner()
   const [subdomainInput, setSubdomainInput] = useState(state.subdomain ?? '')
   const [rootDomainInput, setRootDomainInput] = useState(state.rootDomain ?? '')
-  const [localPortInput, setLocalPortInput] = useState(
-    state.localPort === null ? '' : String(state.localPort)
-  )
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
   const nextSubdomain = normalizeOptionalString(subdomainInput)
   const nextRootDomain = normalizeOptionalString(rootDomainInput)
-  const nextLocalPort = parseLocalPortInput(localPortInput)
 
-  const dirty =
-    nextSubdomain !== state.subdomain ||
-    nextRootDomain !== state.rootDomain ||
-    nextLocalPort !== state.localPort
+  const dirty = nextSubdomain !== state.subdomain || nextRootDomain !== state.rootDomain
 
   const patch = async (payload: {
     readonly subdomain?: string | null
     readonly rootDomain?: string | null
-    readonly localPort?: number | null
     readonly requestedRunning?: boolean
   }): Promise<void> => {
     setError(null)
@@ -122,7 +101,6 @@ const TunnelScreenBody = ({ state, onChanged }: TunnelScreenBodyProps): JSX.Elem
     void patch({
       subdomain: nextSubdomain,
       rootDomain: nextRootDomain,
-      localPort: nextLocalPort,
     })
   }
 
@@ -187,29 +165,19 @@ const TunnelScreenBody = ({ state, onChanged }: TunnelScreenBodyProps): JSX.Elem
             </FieldDescription>
           ) : null}
         </Field>
-
-        <Field label="Local port">
-          <input
-            type="number"
-            inputMode="numeric"
-            autoComplete="off"
-            className={styles['input']}
-            value={localPortInput}
-            placeholder="3000"
-            min={1}
-            max={65535}
-            step={1}
-            onChange={(e) => {
-              setLocalPortInput(e.target.value)
-            }}
-          />
-          {state.currentLocalPort !== null && state.currentLocalPort !== state.localPort ? (
-            <FieldDescription>
-              <span className={styles['current']}>Running on: {state.currentLocalPort}</span>
-            </FieldDescription>
-          ) : null}
-        </Field>
       </div>
+
+      <FieldDescription>
+        <span className={styles['current']}>Bound to local server at: {state.servedOrigin}</span>
+        {state.currentLocalPort !== null ? (
+          <>
+            <br />
+            <span className={styles['current']}>
+              Tunnel forwarding to port {state.currentLocalPort}
+            </span>
+          </>
+        ) : null}
+      </FieldDescription>
 
       <div className={styles['actions']}>
         <button

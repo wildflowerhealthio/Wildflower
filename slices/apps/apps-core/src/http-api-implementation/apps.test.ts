@@ -54,15 +54,16 @@ afterEach(async () => {
   await store.shutdownPromise().catch(() => undefined)
 })
 
+const LOCAL_HOSTNAME = '127.0.0.1'
 const LOCAL_ORIGIN = 'http://127.0.0.1:8787'
 const TUNNEL_SUBDOMAIN = 'wildflower-test'
 const TUNNEL_ROOT_DOMAIN = 'loca.lt'
 const TUNNEL_ORIGIN = `https://${TUNNEL_SUBDOMAIN}.${TUNNEL_ROOT_DOMAIN}`
 
-const seedLocalOrigin = (origin: string = LOCAL_ORIGIN): void => {
+const seedLocalHostname = (hostname: string = LOCAL_HOSTNAME): void => {
   store.commit(
     LocalHttpServerLivestore.ServerState.events.localHttpServerStateSet({
-      localOrigin: origin,
+      localHostname: hostname,
       running: true,
       port: 8787,
     })
@@ -169,7 +170,7 @@ describe('ListApps handler', () => {
 
 describe('LaunchApp handler', () => {
   it('redirects to the local origin for a non-action app that does not require a tunnel', async () => {
-    seedLocalOrigin()
+    seedLocalHostname()
     const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps/patient-browser'))
@@ -183,7 +184,7 @@ describe('LaunchApp handler', () => {
   })
 
   it('redirects an action app (fhir-sharing) to the tunnel origin when the tunnel is already running', async () => {
-    seedLocalOrigin()
+    seedLocalHostname()
     seedTunnelRunning()
     const { handler, dispose } = buildHandler()
     try {
@@ -196,7 +197,7 @@ describe('LaunchApp handler', () => {
   })
 
   it('commits requestedRunning=true and awaits the daemon flipping running=true', async () => {
-    seedLocalOrigin()
+    seedLocalHostname()
     const { handler, dispose } = buildHandler()
     try {
       const responsePromise = handler(new Request('http://localhost/apps/growth-chart'))
@@ -217,7 +218,7 @@ describe('LaunchApp handler', () => {
   }, 20_000)
 
   it('falls back to the local origin and signals tunnel=unavailable when running=true but subdomain/rootDomain are unbound', async () => {
-    seedLocalOrigin()
+    seedLocalHostname()
     store.commit(
       TunnelLivestore.TunnelState.events.tunnelStateSet({
         running: true,
@@ -240,7 +241,7 @@ describe('LaunchApp handler', () => {
   })
 
   it('redirects a custom app whose template resolves to a same-origin path', async () => {
-    seedLocalOrigin()
+    seedLocalHostname()
     store.commit(
       AppSelection.events.customAppAdded({
         id: 'custom-1',
@@ -260,7 +261,7 @@ describe('LaunchApp handler', () => {
   })
 
   it('rejects a custom app whose resolved url is neither same-origin nor https://', async () => {
-    seedLocalOrigin()
+    seedLocalHostname()
     // CustomAppUrlSchema would reject `http://` on write; commit
     // directly to exercise the launch-time defense-in-depth check.
     store.commit(
@@ -284,7 +285,7 @@ describe('LaunchApp handler', () => {
   })
 
   it('returns 404 for an unknown id', async () => {
-    seedLocalOrigin()
+    seedLocalHostname()
     const { handler, dispose } = buildHandler()
     try {
       const response = await handler(new Request('http://localhost/apps/no-such-app'))
@@ -298,7 +299,7 @@ describe('LaunchApp handler', () => {
   })
 
   it('returns 404 when a custom row exists before tunnel activation but disappears mid-flight', async () => {
-    seedLocalOrigin()
+    seedLocalHostname()
     store.commit(
       AppSelection.events.customAppAdded({
         id: 'custom-1',
@@ -348,7 +349,7 @@ describe('LaunchApp property tests', () => {
         try {
           localStore.commit(
             LocalHttpServerLivestore.ServerState.events.localHttpServerStateSet({
-              localOrigin: LOCAL_ORIGIN,
+              localHostname: LOCAL_HOSTNAME,
               running: true,
               port: 8787,
             })

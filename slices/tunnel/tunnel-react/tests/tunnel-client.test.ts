@@ -26,13 +26,13 @@ const capturingHttpClientLayer = (
             JSON.stringify({
               subdomain: null,
               rootDomain: null,
-              localPort: null,
               requestedRunning: false,
               running: false,
               currentSubdomain: null,
               currentRootDomain: null,
               currentLocalPort: null,
               error: null,
+              servedOrigin: 'http://127.0.0.1:8080',
             }),
             { status: 200, headers: { 'content-type': 'application/json' } }
           )
@@ -145,13 +145,13 @@ describe('buildTunnelAdminClientLayer', () => {
               JSON.stringify({
                 subdomain: 'demo',
                 rootDomain: null,
-                localPort: null,
                 requestedRunning: true,
                 running: false,
                 currentSubdomain: null,
                 currentRootDomain: null,
                 currentLocalPort: null,
                 error: null,
+                servedOrigin: 'http://127.0.0.1:8080',
               }),
               { status: 200, headers: { 'content-type': 'application/json' } }
             )

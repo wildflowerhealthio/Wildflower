@@ -190,7 +190,7 @@ const createHandler = (
 ): ReturnType<typeof HttpApiBuilder.toWebHandler> => {
   const apiLive = GatekeeperApiLive.pipe(
     Layer.provide(GatekeeperStore.layerFrom(store)),
-    Layer.provide(Layer.succeed(Origin, ORIGIN)),
+    Layer.provide(Origin.layerFromLiteral(ORIGIN)),
     Layer.provide(cryptoRandomCounter({ uuidPrefix: 'device' }))
   )
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))

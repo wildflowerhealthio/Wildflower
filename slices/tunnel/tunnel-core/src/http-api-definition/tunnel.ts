@@ -3,9 +3,16 @@ import { Schema } from 'effect'
 
 /**
  * Merged tunnel state on the wire: `TunnelConfig` (user/host intent —
- * `subdomain`, `rootDomain`, `localPort`, `requestedRunning`) plus
- * `TunnelState` (daemon-owned — `running`, `currentSubdomain`,
- * `currentRootDomain`, `currentLocalPort`, `error`).
+ * `subdomain`, `rootDomain`, `requestedRunning`) plus `TunnelState`
+ * (daemon-owned — `running`, `currentSubdomain`, `currentRootDomain`,
+ * `currentLocalPort`, `error`), plus `servedOrigin` (computed: the live
+ * origin clients should reach the server at — `https://sub.root` when
+ * the tunnel is up, else `http://localHostname:port` from LHS state).
+ *
+ * The forward-target port has a single source of truth in
+ * `LocalHttpServerState.port`; it isn't carried on the tunnel wire
+ * format. `currentLocalPort` reflects what port the tunnel daemon last
+ * successfully bound to.
  *
  * Optional fields surface as `null` on the wire — both when the
  * persistent `TunnelConfig` row hasn't been seeded yet and when the
@@ -15,13 +22,13 @@ import { Schema } from 'effect'
 const TunnelStateSchema = Schema.Struct({
   subdomain: Schema.NullOr(Schema.String),
   rootDomain: Schema.NullOr(Schema.String),
-  localPort: Schema.NullOr(Schema.Number),
   requestedRunning: Schema.Boolean,
   running: Schema.Boolean,
   currentSubdomain: Schema.NullOr(Schema.String),
   currentRootDomain: Schema.NullOr(Schema.String),
   currentLocalPort: Schema.NullOr(Schema.Number),
   error: Schema.NullOr(Schema.String),
+  servedOrigin: Schema.String,
 })
 
 /**
@@ -32,7 +39,6 @@ const TunnelStateSchema = Schema.Struct({
 const SetTunnelRequestBodySchema = Schema.Struct({
   subdomain: Schema.optional(Schema.NullOr(Schema.String)),
   rootDomain: Schema.optional(Schema.NullOr(Schema.String)),
-  localPort: Schema.optional(Schema.NullOr(Schema.Number)),
   requestedRunning: Schema.optional(Schema.Boolean),
 })
 

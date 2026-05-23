@@ -51,7 +51,7 @@ import { DEFAULT_IDLE_PORT, LocalHttpServerStore, ServerState } from '../livesto
  * untouched here, so it survives across failures and daemon restarts.
  */
 const runHttpServerDaemon = <E>(
-  startServer: (port: number, localOrigin: string) => Stream.Stream<void, E, Scope.Scope>
+  startServer: (config: { port: number; hostname: string }) => Stream.Stream<void, E, Scope.Scope>
 ): Effect.Effect<void, never, LocalHttpServerStore> =>
   Effect.gen(function* () {
     const store = yield* LocalHttpServerStore
@@ -77,12 +77,12 @@ const runHttpServerDaemon = <E>(
         query: ServerState.queries.current$,
         readSnapshot: (raw) => ({
           requestedRunning: raw.requestedRunning,
-          config: Data.struct({ port: raw.port, localOrigin: raw.localOrigin }),
+          config: Data.struct({ port: raw.port, localHostname: raw.localHostname }),
         }),
       }),
       diffIntents,
       executeIntents({
-        startProcess: (cfg) => startServer(cfg.port, cfg.localOrigin),
+        startProcess: (cfg) => startServer({ port: cfg.port, hostname: cfg.localHostname }),
       }),
       Stream.runForEach((event) =>
         Match.value(event).pipe(

@@ -2,13 +2,40 @@ import { HttpApiBuilder, HttpServerResponse } from '@effect/platform'
 import { nanoid } from '@livestore/livestore'
 import { Effect } from 'effect'
 import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
-import { TunnelConfig, TunnelState, TunnelStore } from 'tunnel-core/livestore'
+import { servedOrigin$, TunnelConfig, TunnelStore, type ServedOrigin } from 'tunnel-core/livestore'
 
 import { AppsApi } from '../http-api-definition/index.ts'
-import { awaitTunnelRunning, type RunningTunnel } from '../internal/await-tunnel-running.ts'
+import { awaitTunnelRunning } from '../internal/await-tunnel-running.ts'
 import { AppSelection, AppsStore } from '../livestore/index.ts'
 import type { AppKind } from '../registry/app-item.ts'
 import { BUNDLED_APPS, FHIR_SHARING_ID, findBundled } from '../registry/index.ts'
+
+/**
+ * Drive the tunnel toward `running` if it isn't already there, then return
+ * whatever {@link servedOrigin$} reports. Fast path: tunnel is already up,
+ * return immediately. Cold path: commit `requestedRunning` (sticky — see
+ * {@link awaitTunnelRunning}), wait for the daemon, re-read. Timeout or
+ * still-unavailable resolution both surface as `tunnelUnavailable` via
+ * the LiveQuery's own taxonomy.
+ */
+const resolveLaunchOrigin = (appId: string): Effect.Effect<ServedOrigin, never, TunnelStore> =>
+  Effect.gen(function* () {
+    const tunnelStore = yield* TunnelStore
+    const live = tunnelStore.query(servedOrigin$)
+    if (live.kind === 'tunnel') return live
+    tunnelStore.commit(TunnelConfig.events.tunnelConfigSet({ requestedRunning: true }))
+    return yield* awaitTunnelRunning().pipe(
+      Effect.map(() => tunnelStore.query(servedOrigin$)),
+      Effect.catchTag('TunnelLaunchTimedOut', () =>
+        Effect.zipRight(
+          Effect.logWarning(
+            `[apps-core] tunnel did not start within deadline for ${appId}; falling back to local origin`
+          ),
+          Effect.sync(() => tunnelStore.query(servedOrigin$))
+        )
+      )
+    )
+  })
 
 interface AppEntry {
   id: string
@@ -50,19 +77,6 @@ const buildEntries = (selection: readonly AppSelection.AppSelectionRow[]): reado
     })
 
   return [...bundled, ...custom]
-}
-
-/**
- * Public tunnel origin from `currentSubdomain` + `currentRootDomain`,
- * or `null` if either is unbound. `rootDomain` is the empty string
- * when the relay returns a single-label hostname (see
- * `tunnel-expo/src/startTunnel.ts`'s `parseGrantedDomain`), so empty
- * counts as unbound here too.
- */
-const tunnelOrigin = (state: RunningTunnel): string | null => {
-  const { currentSubdomain: sub, currentRootDomain: root } = state
-  if (sub === null || sub === '' || root === null || root === '') return null
-  return `https://${sub}.${root}`
 }
 
 /**
@@ -116,7 +130,6 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
     .handleRaw('LaunchApp', ({ path }) =>
       Effect.gen(function* () {
         const appsStore = yield* AppsStore
-        const tunnelStore = yield* TunnelStore
         const localStore = yield* LocalHttpServerStore
 
         const bundled = findBundled(path.id)
@@ -153,38 +166,16 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
           )
         }
 
-        const localOrigin = localStore.query(ServerState.queries.current$).localOrigin
-        const beforeTunnel = tunnelStore.query(TunnelState.queries.current$)
-
-        // Pick the origin: local if no tunnel needed or already running
-        // with a bound public name; otherwise commit `requestedRunning`
-        // and wait for the daemon to flip `TunnelState.running`. Timeout
-        // and unbound-state both fall back to the local origin (and
-        // surface `?tunnel=unavailable` on the redirect). The
-        // `requestedRunning` commit is sticky: see `awaitTunnelRunning`
-        // — interrupt does not roll it back.
-        let origin = localOrigin
-        let tunnelFellBack = false
-        if (launchContext.requiresTunnel) {
-          if (beforeTunnel.running) {
-            const live = tunnelOrigin(beforeTunnel)
-            if (live === null) tunnelFellBack = true
-            else origin = live
-          } else {
-            tunnelStore.commit(TunnelConfig.events.tunnelConfigSet({ requestedRunning: true }))
-            const outcome = yield* awaitTunnelRunning()
-            if (outcome.kind === 'timed-out') {
-              yield* Effect.logWarning(
-                `[apps-core] tunnel did not start within deadline for ${path.id}; falling back to local origin`
-              )
-              tunnelFellBack = true
-            } else {
-              const live = tunnelOrigin(outcome.state)
-              if (live === null) tunnelFellBack = true
-              else origin = live
-            }
-          }
-        }
+        // Non-tunnel apps always redirect to the loopback origin — device-served
+        // bundles shouldn't round-trip through the relay even when the tunnel is up.
+        const { localHostname, port } = localStore.query(ServerState.queries.current$)
+        const localOrigin = `http://${localHostname}:${port}`
+        const resolvedOrigin: ServedOrigin = launchContext.requiresTunnel
+          ? yield* resolveLaunchOrigin(path.id)
+          : { kind: 'loopback', origin: localOrigin }
+        const { origin } = resolvedOrigin
+        const finalize = (target: string): string =>
+          resolvedOrigin.kind === 'tunnelUnavailable' ? appendTunnelUnavailable(target) : target
 
         // Re-check after tunnel state settles: the row may have been
         // deleted or kind-changed mid-flight. Bundled apps have static
@@ -200,8 +191,7 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
         }
 
         if (path.id === FHIR_SHARING_ID || launchContext.isAction) {
-          const target = tunnelFellBack ? appendTunnelUnavailable(origin) : origin
-          return HttpServerResponse.redirect(target, { status: 302 })
+          return HttpServerResponse.redirect(finalize(origin), { status: 302 })
         }
 
         const launch = nanoid()
@@ -215,8 +205,7 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
             { status: 404 }
           )
         }
-        const target = tunnelFellBack ? appendTunnelUnavailable(resolved) : resolved
-        return HttpServerResponse.redirect(target, { status: 302 })
+        return HttpServerResponse.redirect(finalize(resolved), { status: 302 })
       })
     )
 )

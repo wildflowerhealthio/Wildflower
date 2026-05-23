@@ -1,4 +1,5 @@
 import { Cause, Data, Effect, Match, type Scope, Stream, pipe } from 'effect'
+import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
 import {
   diffIntents,
   ensureDefaultRowExists,
@@ -6,7 +7,8 @@ import {
   watchSnapshots,
 } from 'shared-structures-core/process-daemon'
 
-import { TunnelConfig, TunnelState, TunnelStore } from '../livestore/index.ts'
+import { TunnelState, TunnelStore } from '../livestore/index.ts'
+import { resolvedConfig$ } from './resolved-config.ts'
 
 interface ResolvedConfig {
   readonly subdomain: string
@@ -54,9 +56,10 @@ interface DomainResult {
  * Implementation is a three-stage stream pipeline from
  * `shared-structures-core/process-daemon`:
  *
- *  1. `watchSnapshots` subscribes to `TunnelConfig.queries.current$`,
+ *  1. `watchSnapshots` subscribes to `resolvedConfig$` (a `computed` query
+ *     joining `TunnelConfig` intent with `LocalHttpServerState.port`),
  *     projects each row down to `{requestedRunning, config}` (parking
- *     when any of `subdomain`/`rootDomain`/`localPort` is null), and
+ *     when any of `subdomain`/`rootDomain` is null), and
  *     `Stream.changes`-dedupes consecutive identical projections.
  *  2. `diffIntents` folds consecutive snapshots into `StartOrReconfigure`
  *     / `Stop` transitions.
@@ -65,16 +68,24 @@ interface DomainResult {
  *     interrupts the previous tunnel's tail when the next intent
  *     arrives.
  *
+ * The forward-target `localPort` is sourced from `ServerState.port` (LHS),
+ * not from `TunnelConfig`, so LHS port changes propagate as reconfigures.
+ *
  * This slice's `Stream.runForEach` attaches the per-event livestore
- * commits. `Running` commits the granted `DomainResult` plus the requested
+ * commits. `Running` commits the granted `DomainResult` plus the resolved
  * `localPort` into `TunnelState`; tunnel re-binds (relay reconnects to a
  * different subdomain) surface as `Running`s.
  */
 const runTunnelDaemon = <E>(
   startTunnel: (config: ResolvedConfig) => Stream.Stream<DomainResult, E, Scope.Scope>
-): Effect.Effect<void, never, TunnelStore> =>
+): Effect.Effect<void, never, TunnelStore | LocalHttpServerStore> =>
   Effect.gen(function* () {
     const store = yield* TunnelStore
+    // Surface LHS as a Layer requirement so app composers must provide it;
+    // `resolvedConfig$` joins from `ServerState.queries.current$` via the
+    // underlying livestore and would throw at query time if the schema were
+    // missing the table.
+    yield* LocalHttpServerStore
 
     const commit = (
       patch: Partial<{
@@ -108,25 +119,25 @@ const runTunnelDaemon = <E>(
         error,
       })
 
-    // Materialize the session-state default row up front — same workaround
+    // Materialize the session-state default rows up front — same workaround
     // local-http-server-core uses. The persistent `TunnelConfig` table
-    // doesn't need it (no default row; daemon treats "absent" as "nothing
-    // to do" via the readSnapshot projection below).
+    // doesn't need it (no default row; `resolvedConfig$` treats "absent"
+    // as `requestedRunning: false` via the `cfg?.* ?? null` projection).
+    // `ServerState` is a clientDocument like `TunnelState`, so it does.
     yield* ensureDefaultRowExists(store, TunnelState.queries.current$)
+    yield* ensureDefaultRowExists(store, ServerState.queries.current$)
 
     yield* pipe(
       watchSnapshots({
         store,
-        query: TunnelConfig.queries.current$,
-        readSnapshot: (raw: TunnelConfig.TunnelConfigRow | undefined) => {
-          if (raw === undefined) return { requestedRunning: false, config: null }
-          const { requestedRunning, subdomain, rootDomain, localPort } = raw
-          if (subdomain === null || rootDomain === null || localPort === null) {
+        query: resolvedConfig$,
+        readSnapshot: ({ requestedRunning, subdomain, rootDomain, port }) => {
+          if (subdomain === null || rootDomain === null) {
             return { requestedRunning, config: null }
           }
           return {
             requestedRunning,
-            config: Data.struct({ subdomain, rootDomain, localPort }),
+            config: Data.struct({ subdomain, rootDomain, localPort: port }),
           }
         },
       }),

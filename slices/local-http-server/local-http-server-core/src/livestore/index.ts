@@ -50,5 +50,6 @@ class LocalHttpServerStore extends StoreTag<LocalHttpServerStore>() {
   static readonly layerFrom = makeLayerFactory(LocalHttpServerStore)
 }
 
-export { DEFAULT_IDLE_PORT, DEFAULT_LOCAL_ORIGIN } from './server-state.ts'
+export { DEFAULT_IDLE_PORT, DEFAULT_LOCAL_HOSTNAME } from './server-state.ts'
+export { localOrigin$ } from './local-origin.ts'
 export { events, LocalHttpServerStore, materializers, queries, schema, ServerState, state, tables }

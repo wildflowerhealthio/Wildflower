@@ -1,10 +1,10 @@
 import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise, type Store } from '@livestore/livestore'
-import { Duration, Effect } from 'effect'
+import { Cause, Duration, Effect, Exit } from 'effect'
 import { schema, TunnelState, TunnelStore } from 'tunnel-core/livestore'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { awaitTunnelRunning } from './await-tunnel-running.ts'
+import { awaitTunnelRunning, TunnelLaunchTimedOut } from './await-tunnel-running.ts'
 
 const makeStore = (): Promise<Store<typeof schema, object>> =>
   createStorePromise({
@@ -14,19 +14,28 @@ const makeStore = (): Promise<Store<typeof schema, object>> =>
   })
 
 describe('awaitTunnelRunning', () => {
-  it('returns timed-out when the daemon never flips running=true within the deadline', async () => {
+  it('fails with TunnelLaunchTimedOut when the daemon never flips running=true within the deadline', async () => {
     const store = await makeStore()
     try {
-      const outcome = await Effect.runPromise(
-        awaitTunnelRunning(Duration.millis(50)).pipe(Effect.provide(TunnelStore.layerFrom(store)))
+      const timeout = Duration.millis(50)
+      const exit = await Effect.runPromiseExit(
+        awaitTunnelRunning(timeout).pipe(Effect.provide(TunnelStore.layerFrom(store)))
       )
-      expect(outcome.kind).toBe('timed-out')
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause)
+        expect(failure._tag).toBe('Some')
+        if (failure._tag === 'Some') {
+          expect(failure.value).toBeInstanceOf(TunnelLaunchTimedOut)
+          expect(failure.value.timeoutMs).toBe(Duration.toMillis(timeout))
+        }
+      }
     } finally {
       await store.shutdownPromise().catch(() => undefined)
     }
   })
 
-  it('returns running immediately when the current snapshot already has running=true', async () => {
+  it('returns the RunningTunnel snapshot immediately when running=true is already set', async () => {
     const store = await makeStore()
     try {
       store.commit(
@@ -37,15 +46,12 @@ describe('awaitTunnelRunning', () => {
           currentLocalPort: 8787,
         })
       )
-      const outcome = await Effect.runPromise(
+      const tunnel = await Effect.runPromise(
         awaitTunnelRunning(Duration.seconds(5)).pipe(Effect.provide(TunnelStore.layerFrom(store)))
       )
-      expect(outcome.kind).toBe('running')
-      if (outcome.kind === 'running') {
-        expect(outcome.state.currentSubdomain).toBe('sub')
-        expect(outcome.state.currentRootDomain).toBe('example.com')
-        expect(outcome.state.currentLocalPort).toBe(8787)
-      }
+      expect(tunnel.currentSubdomain).toBe('sub')
+      expect(tunnel.currentRootDomain).toBe('example.com')
+      expect(tunnel.currentLocalPort).toBe(8787)
     } finally {
       await store.shutdownPromise().catch(() => undefined)
     }

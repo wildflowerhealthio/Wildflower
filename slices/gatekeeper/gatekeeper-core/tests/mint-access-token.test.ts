@@ -1,4 +1,4 @@
-import { DateTime, Duration, Effect, Either, Layer } from 'effect'
+import { DateTime, Duration, Effect, Either } from 'effect'
 import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
 import { mintAccessToken, verifyJwt } from '../src/internal/jwt.ts'
@@ -74,7 +74,7 @@ test('mintAccessToken round-trips through verifyJwt', async () => {
   const result = await Effect.runPromise(
     verifyJwt(token).pipe(
       Effect.provide(GatekeeperStore.layerFrom(store)),
-      Effect.provide(Layer.succeed(Origin, ORIGIN)),
+      Effect.provide(Origin.layerFromLiteral(ORIGIN)),
       Effect.either
     )
   )
@@ -105,7 +105,7 @@ test('mintAccessToken issues a token whose verification fails when client is not
   const result = await Effect.runPromise(
     verifyJwt(token).pipe(
       Effect.provide(GatekeeperStore.layerFrom(store)),
-      Effect.provide(Layer.succeed(Origin, ORIGIN)),
+      Effect.provide(Origin.layerFromLiteral(ORIGIN)),
       Effect.either
     )
   )
@@ -131,7 +131,7 @@ test('mintAccessToken issues a token that fails verification once expired', asyn
   const result = await Effect.runPromise(
     verifyJwt(token).pipe(
       Effect.provide(GatekeeperStore.layerFrom(store)),
-      Effect.provide(Layer.succeed(Origin, ORIGIN)),
+      Effect.provide(Origin.layerFromLiteral(ORIGIN)),
       Effect.either
     )
   )
@@ -159,7 +159,7 @@ test('mintAccessToken includes patient claim when supplied', async () => {
   const result = await Effect.runPromise(
     verifyJwt(token).pipe(
       Effect.provide(GatekeeperStore.layerFrom(store)),
-      Effect.provide(Layer.succeed(Origin, ORIGIN)),
+      Effect.provide(Origin.layerFromLiteral(ORIGIN)),
       Effect.either
     )
   )

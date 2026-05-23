@@ -3,7 +3,7 @@
  * in-memory livestore and a stubbed `startServer`. Stubs follow the
  * Stream contract:
  *
- *  - `startServer(port, localOrigin)` returns a `Stream<void, E, Scope.Scope>`
+ *  - `startServer(port, localHostname)` returns a `Stream<void, E, Scope.Scope>`
  *    whose first emit is the bind signal;
  *  - the underlying `acquireRelease` keeps an `active` set in sync so
  *    reconfigure / stop invariants can be asserted;
@@ -27,17 +27,20 @@ import { runHttpServerDaemon } from './index.ts'
 interface ServerStateValue {
   readonly requestedRunning: boolean
   readonly running: boolean
-  readonly localOrigin: string
+  readonly localHostname: string
   readonly port: number
   readonly error: string | null
 }
 
 interface StartCall {
   readonly port: number
-  readonly localOrigin: string
+  readonly localHostname: string
 }
 
-type StartServer<E> = (port: number, localOrigin: string) => Stream.Stream<void, E, Scope.Scope>
+type StartServer<E> = (config: {
+  port: number
+  hostname: string
+}) => Stream.Stream<void, E, Scope.Scope>
 
 interface StartServerStub<E = never> {
   readonly startServer: StartServer<E>
@@ -57,7 +60,7 @@ const makeFreshStore = (): Promise<Store<typeof schema, object>> =>
     storeId: `lhs-it-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   })
 
-const callId = (c: StartCall): string => `${String(c.port)}|${c.localOrigin}`
+const callId = (c: StartCall): string => `${String(c.port)}|${c.localHostname}`
 
 const makeAwaitCalls = (
   calls: ReadonlyArray<StartCall>,
@@ -100,13 +103,13 @@ const makeStartServerStub = <E = never>(): StartServerStub<E> => {
   const subscribers: (() => void)[] = []
   const emitters: Emitter<E>[] = []
 
-  const startServer: StartServer<E> = (port, localOrigin) =>
+  const startServer: StartServer<E> = ({ port, hostname }) =>
     Stream.unwrapScoped(
       Effect.gen(function* () {
         const queue = yield* Queue.unbounded<void>()
         const fail = yield* Deferred.make<never, E>()
         const emitter: Emitter<E> = { queue, fail }
-        const call: StartCall = { port, localOrigin }
+        const call: StartCall = { port, localHostname: hostname }
         // acquireRelease registers cleanup with whichever scope is
         // consuming the stream — for the daemon, that's `serverScope`,
         // so reconfigure / stop releases this server's bookkeeping.
@@ -212,38 +215,38 @@ describe('runHttpServerDaemon', () => {
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 7000,
-            localOrigin: 'http://127.0.0.1:7000',
+            localHostname: '127.0.0.1',
           })
         )
         await waitForState(store, (s) => s.running)
         store.commit(ServerState.events.localHttpServerStateSet({ requestedRunning: false }))
         await waitForState(store, (s) => !s.running)
-        expect(stub.calls).toEqual([{ port: 7000, localOrigin: 'http://127.0.0.1:7000' }])
+        expect(stub.calls).toEqual([{ port: 7000, localHostname: '127.0.0.1' }])
       }, stub.startServer)
     })
 
-    it('should call startServer once with the requested port and localOrigin when requestedRunning flips to true', () => {
+    it('should call startServer once with the requested port and localHostname when requestedRunning flips to true', () => {
       const stub = makeStartServerStub()
       return runDaemonTest(async ({ store }) => {
         store.commit(
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 3000,
-            localOrigin: 'http://127.0.0.1:3000',
+            localHostname: '127.0.0.1',
           })
         )
         await waitForState(store, (s) => s.running)
-        expect(stub.calls).toEqual([{ port: 3000, localOrigin: 'http://127.0.0.1:3000' }])
+        expect(stub.calls).toEqual([{ port: 3000, localHostname: '127.0.0.1' }])
       }, stub.startServer)
     })
 
-    it('should commit running=true with the matching port and origin once the server binds', () =>
+    it('should commit running=true with the matching port and hostname once the server binds', () =>
       runDaemonTest(async ({ store }) => {
         store.commit(
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 4242,
-            localOrigin: 'http://127.0.0.1:4242',
+            localHostname: '127.0.0.1',
           })
         )
         const state = await waitForState(store, (s) => s.running)
@@ -251,7 +254,7 @@ describe('runHttpServerDaemon', () => {
           requestedRunning: true,
           running: true,
           port: 4242,
-          localOrigin: 'http://127.0.0.1:4242',
+          localHostname: '127.0.0.1',
         })
       }))
 
@@ -261,7 +264,7 @@ describe('runHttpServerDaemon', () => {
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 5000,
-            localOrigin: 'http://127.0.0.1:5000',
+            localHostname: '127.0.0.1',
           })
         )
         await waitForState(store, (s) => s.running)
@@ -287,7 +290,7 @@ describe('runHttpServerDaemon', () => {
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 3500,
-            localOrigin: 'http://127.0.0.1:3500',
+            localHostname: '127.0.0.1',
           })
         )
         await waitForState(store, (s) => s.running)
@@ -295,7 +298,7 @@ describe('runHttpServerDaemon', () => {
           requestedRunning: true,
           running: true,
           port: 3500,
-          localOrigin: 'http://127.0.0.1:3500',
+          localHostname: '127.0.0.1',
           error: null,
         })
       }))
@@ -309,7 +312,7 @@ describe('runHttpServerDaemon', () => {
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 3000,
-            localOrigin: 'http://127.0.0.1:3000',
+            localHostname: '127.0.0.1',
           })
         )
         await stub.awaitCalls(1)
@@ -324,40 +327,38 @@ describe('runHttpServerDaemon', () => {
           requestedRunning: true,
           running: true,
           port: 4000,
-          localOrigin: 'http://127.0.0.1:3000',
+          localHostname: '127.0.0.1',
         })
         expect(stub.calls).toEqual([
-          { port: 3000, localOrigin: 'http://127.0.0.1:3000' },
-          { port: 4000, localOrigin: 'http://127.0.0.1:3000' },
+          { port: 3000, localHostname: '127.0.0.1' },
+          { port: 4000, localHostname: '127.0.0.1' },
         ])
       }, stub.startServer)
     })
 
-    it('should keep requestedRunning=true across an origin change (no finalizer cascade)', () => {
+    it('should keep requestedRunning=true across an hostname change (no finalizer cascade)', () => {
       const stub = makeStartServerStub()
       return runDaemonTest(async ({ store }) => {
         store.commit(
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 3000,
-            localOrigin: 'http://127.0.0.1:3000',
+            localHostname: '127.0.0.1',
           })
         )
         await stub.awaitCalls(1)
-        store.commit(
-          ServerState.events.localHttpServerStateSet({ localOrigin: 'http://192.168.1.10:3000' })
-        )
+        store.commit(ServerState.events.localHttpServerStateSet({ localHostname: '192.168.1.10' }))
         await stub.awaitCalls(2)
-        await waitForState(store, (s) => s.running && s.localOrigin === 'http://192.168.1.10:3000')
+        await waitForState(store, (s) => s.running && s.localHostname === '192.168.1.10')
         expect(store.query(ServerState.queries.current$)).toMatchObject({
           requestedRunning: true,
           running: true,
           port: 3000,
-          localOrigin: 'http://192.168.1.10:3000',
+          localHostname: '192.168.1.10',
         })
         expect(stub.calls).toEqual([
-          { port: 3000, localOrigin: 'http://127.0.0.1:3000' },
-          { port: 3000, localOrigin: 'http://192.168.1.10:3000' },
+          { port: 3000, localHostname: '127.0.0.1' },
+          { port: 3000, localHostname: '192.168.1.10' },
         ])
       }, stub.startServer)
     })
@@ -369,7 +370,7 @@ describe('runHttpServerDaemon', () => {
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 3000,
-            localOrigin: 'http://127.0.0.1:3000',
+            localHostname: '127.0.0.1',
           })
         )
         await stub.awaitCalls(1)
@@ -380,7 +381,7 @@ describe('runHttpServerDaemon', () => {
         await stub.awaitCalls(2)
         await waitForState(store, (s) => s.running && s.port === 4000)
         expect(stub.active.size).toBe(1)
-        expect([...stub.active]).toEqual(['4000|http://127.0.0.1:3000'])
+        expect([...stub.active]).toEqual(['4000|127.0.0.1'])
       }, stub.startServer)
     })
 
@@ -391,7 +392,7 @@ describe('runHttpServerDaemon', () => {
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 3000,
-            localOrigin: 'http://127.0.0.1:3000',
+            localHostname: '127.0.0.1',
           })
         )
         await stub.awaitCalls(1)
@@ -413,7 +414,7 @@ describe('runHttpServerDaemon', () => {
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 3000,
-            localOrigin: 'http://127.0.0.1:3000',
+            localHostname: '127.0.0.1',
           })
         )
         await stub.awaitCalls(1)
@@ -423,25 +424,20 @@ describe('runHttpServerDaemon', () => {
       }, stub.startServer)
     })
 
-    it('should re-invoke startServer with the new origin when localOrigin changes while running', () => {
+    it('should re-invoke startServer with the new hostname when localHostname changes while running', () => {
       const stub = makeStartServerStub()
       return runDaemonTest(async ({ store }) => {
         store.commit(
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 3000,
-            localOrigin: 'http://127.0.0.1:3000',
+            localHostname: '127.0.0.1',
           })
         )
         await stub.awaitCalls(1)
-        store.commit(
-          ServerState.events.localHttpServerStateSet({ localOrigin: 'http://192.168.1.10:3000' })
-        )
+        store.commit(ServerState.events.localHttpServerStateSet({ localHostname: '192.168.1.10' }))
         await stub.awaitCalls(2)
-        expect(stub.calls.map((c) => c.localOrigin)).toEqual([
-          'http://127.0.0.1:3000',
-          'http://192.168.1.10:3000',
-        ])
+        expect(stub.calls.map((c) => c.localHostname)).toEqual(['127.0.0.1', '192.168.1.10'])
       }, stub.startServer)
     })
   })
@@ -455,7 +451,7 @@ describe('runHttpServerDaemon', () => {
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 9000,
-            localOrigin: 'http://127.0.0.1:9000',
+            localHostname: '127.0.0.1',
           })
         )
         const state = await waitForState(store, (s) => s.error !== null)
@@ -468,14 +464,14 @@ describe('runHttpServerDaemon', () => {
 
     it('recovers on a subsequent reconfigure with a healthy startServer', async () => {
       const happy = makeStartServerStub<string>()
-      const startServer: StartServer<string> = (port, localOrigin) =>
-        port === 9000 ? Stream.fail('boom') : happy.startServer(port, localOrigin)
+      const startServer: StartServer<string> = ({ port, hostname }) =>
+        port === 9000 ? Stream.fail('boom') : happy.startServer({ port, hostname })
       await runDaemonTest(async ({ store }) => {
         store.commit(
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 9000,
-            localOrigin: 'http://127.0.0.1:9000',
+            localHostname: '127.0.0.1',
           })
         )
         await waitForState(store, (s) => s.error !== null)
@@ -493,7 +489,7 @@ describe('runHttpServerDaemon', () => {
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 3000,
-            localOrigin: 'http://127.0.0.1:3000',
+            localHostname: '127.0.0.1',
           })
         )
         await waitForState(store, (s) => s.running)
@@ -517,7 +513,7 @@ describe('runHttpServerDaemon', () => {
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 9000,
-            localOrigin: 'http://127.0.0.1:9000',
+            localHostname: '127.0.0.1',
           })
         )
         const state = await waitForState(store, (s) => s.error !== null)
@@ -541,28 +537,28 @@ describe('runHttpServerDaemon', () => {
     const portArb = fc.integer({ min: 1, max: 65_535 })
     // Restrict to host-like strings (no whitespace, no `/`, no control
     // chars) so the property exercises the daemon's behavior across
-    // distinct origins rather than string-encoding edge cases.
-    const originArb = fc.stringMatching(/^[a-z0-9][a-z0-9.-]{0,31}$/).map((s) => `http://${s}`)
+    // distinct hostnames rather than string-encoding edge cases.
+    const hostnameArb = fc.stringMatching(/^[a-z0-9][a-z0-9.-]{0,31}$/)
 
     it(
-      'should always forward the requested port and origin into startServer',
+      'should always forward the requested port and hostname into startServer',
       () =>
         fc.assert(
-          fc.asyncProperty(portArb, originArb, (port, origin) => {
+          fc.asyncProperty(portArb, hostnameArb, (port, hostname) => {
             const stub = makeStartServerStub()
             return runDaemonTest(async ({ store }) => {
               store.commit(
                 ServerState.events.localHttpServerStateSet({
                   requestedRunning: true,
                   port,
-                  localOrigin: origin,
+                  localHostname: hostname,
                 })
               )
               await waitForState(
                 store,
-                (s) => s.running && s.port === port && s.localOrigin === origin
+                (s) => s.running && s.port === port && s.localHostname === hostname
               )
-              expect(stub.calls).toEqual([{ port, localOrigin: origin }])
+              expect(stub.calls).toEqual([{ port, localHostname: hostname }])
             }, stub.startServer)
           }),
           PROP_OPTS
@@ -574,13 +570,13 @@ describe('runHttpServerDaemon', () => {
       'should always end with running=false after requestedRunning is flipped back to false',
       () =>
         fc.assert(
-          fc.asyncProperty(portArb, originArb, (port, origin) =>
+          fc.asyncProperty(portArb, hostnameArb, (port, hostname) =>
             runDaemonTest(async ({ store }) => {
               store.commit(
                 ServerState.events.localHttpServerStateSet({
                   requestedRunning: true,
                   port,
-                  localOrigin: origin,
+                  localHostname: hostname,
                 })
               )
               await waitForState(store, (s) => s.running)
@@ -596,43 +592,43 @@ describe('runHttpServerDaemon', () => {
     )
 
     it(
-      'should always settle on the most recent (port, origin) after a sequence of reconfigurations',
+      'should always settle on the most recent (port, hostname) after a sequence of reconfigurations',
       () =>
         fc.assert(
           fc.asyncProperty(
-            fc.uniqueArray(fc.tuple(portArb, originArb), {
+            fc.uniqueArray(fc.tuple(portArb, hostnameArb), {
               minLength: 1,
               maxLength: 4,
-              selector: ([port, origin]): string => `${String(port)}|${origin}`,
+              selector: ([port, hostname]): string => `${String(port)}|${hostname}`,
             }),
             (reconfigurations) => {
               const stub = makeStartServerStub()
               return runDaemonTest(async ({ store }) => {
                 for (let i = 0; i < reconfigurations.length; i++) {
-                  const [port, origin] = reconfigurations[i]
+                  const [port, hostname] = reconfigurations[i]
                   store.commit(
                     ServerState.events.localHttpServerStateSet({
                       requestedRunning: true,
                       port,
-                      localOrigin: origin,
+                      localHostname: hostname,
                     })
                   )
                   // oxlint-disable-next-line no-await-in-loop -- iteration must observe daemon settle before the next commit
                   await stub.awaitCalls(i + 1)
                 }
-                const [lastPort, lastOrigin] = reconfigurations[reconfigurations.length - 1]
+                const [lastPort, lastHostname] = reconfigurations[reconfigurations.length - 1]
                 await waitForState(
                   store,
-                  (s) => s.running && s.port === lastPort && s.localOrigin === lastOrigin
+                  (s) => s.running && s.port === lastPort && s.localHostname === lastHostname
                 )
                 expect(stub.calls[stub.calls.length - 1]).toEqual({
                   port: lastPort,
-                  localOrigin: lastOrigin,
+                  localHostname: lastHostname,
                 })
                 expect(store.query(ServerState.queries.current$)).toMatchObject({
                   running: true,
                   port: lastPort,
-                  localOrigin: lastOrigin,
+                  localHostname: lastHostname,
                 })
               }, stub.startServer)
             }
