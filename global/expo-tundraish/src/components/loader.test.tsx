@@ -10,25 +10,19 @@ describe('Loader', () => {
     expect(UNSAFE_getByType(ActivityIndicator)).toBeTruthy()
   })
 
-  it('passes the size prop through to ActivityIndicator', () => {
-    const { UNSAFE_getByType } = render(<Loader size="small" />)
-    expect(UNSAFE_getByType(ActivityIndicator).props.size).toBe('small')
+  it.each([
+    ['small', 'small'],
+    [undefined, 'large'],
+  ] as const)('renders ActivityIndicator at size %s', (input, expected) => {
+    const { UNSAFE_getByType } = render(<Loader size={input} />)
+    expect(UNSAFE_getByType(ActivityIndicator).props.size).toBe(expected)
   })
 
-  it('defaults to size="large"', () => {
-    const { UNSAFE_getByType } = render(<Loader />)
-    expect(UNSAFE_getByType(ActivityIndicator).props.size).toBe('large')
-  })
-
-  // The overlay sits absolutely positioned over a relative parent
-  // (e.g. the `loader` slot of `<WebView>`). `pointerEvents="none"`
-  // is load-bearing: without it, touches that reach the loader while
-  // it fades out would be swallowed instead of passing through to the
-  // underlying view. The full-bleed `position: 'absolute'` is what
-  // makes "sit on top of the parent" work at all.
+  // pointerEvents='none' rationale lives on Loader @remarks
   it('overlay does not intercept touches (pointerEvents="none")', () => {
     const { UNSAFE_getByType } = render(<Loader />)
-    expect(UNSAFE_getByType(View).props.pointerEvents).toBe('none')
+    const flat = StyleSheet.flatten<ViewStyle>(UNSAFE_getByType(View).props.style)
+    expect(flat.pointerEvents).toBe('none')
   })
 
   it('overlay covers its parent (position: "absolute")', () => {
@@ -37,11 +31,6 @@ describe('Loader', () => {
     expect(flat).toMatchObject({ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 })
   })
 
-  // Theme colours forward into both the backdrop and the spinner.
-  // `useThemeColors` is not mocked: testing-library/react-native
-  // resolves a real palette (defaults to `light`), so these assertions
-  // catch a regression where either token was swapped, dropped, or
-  // had its consumer rewired.
   it('forwards the palette icon colour to the ActivityIndicator', () => {
     const { UNSAFE_getByType } = render(<Loader />)
     expect(UNSAFE_getByType(ActivityIndicator).props.color).toBe(Colors.light.icon)

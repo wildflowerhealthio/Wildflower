@@ -14,9 +14,6 @@ afterEach(() => {
 })
 
 beforeEach(() => {
-  // React logs caught errors to the console; silence the noise so the
-  // test output stays clean (and so spies on `console.error` still work
-  // — the boundary itself also logs).
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -38,7 +35,7 @@ describe('ErrorBoundary', () => {
     )
     expect(screen.getByRole('heading', { name: 'Something went wrong' })).toBeTruthy()
     // The stack panel also contains the message; scope to the alert summary line.
-    expect(screen.getByRole('alert').textContent).toContain('Error: network unreachable')
+    expect(screen.getByRole('alertdialog').textContent).toContain('Error: network unreachable')
   })
 
   it('uses a custom title when provided', () => {
@@ -50,18 +47,18 @@ describe('ErrorBoundary', () => {
     expect(screen.getByRole('heading', { name: 'App crashed' })).toBeTruthy()
   })
 
-  it('invokes onCatch with the error and a componentStack', () => {
-    const onCatch = vi.fn<(error: unknown, info: ErrorInfo) => void>()
+  it('invokes onError with the error and a componentStack', () => {
+    const onError = vi.fn<(error: unknown, info: ErrorInfo) => void>()
     render(
-      <ErrorBoundary onCatch={onCatch}>
+      <ErrorBoundary onError={onError}>
         <Boom message="reportable" />
       </ErrorBoundary>
     )
-    expect(onCatch).toHaveBeenCalledTimes(1)
-    const [error, info] = onCatch.mock.calls[0]
+    expect(onError).toHaveBeenCalledTimes(1)
+    const [error, info] = onError.mock.calls[0]
     if (!(error instanceof Error)) throw new Error('expected an Error instance')
     expect(error.message).toBe('reportable')
-    expect(info.componentStack).toBeTruthy()
+    expect(info.componentStack).toMatch(/Boom/)
   })
 
   it('renders the Reload and Copy buttons', () => {
@@ -83,5 +80,6 @@ describe('ErrorBoundary', () => {
     const contextPre = screen.getByText(/buildCommit/)
     expect(contextPre.textContent).toContain('abc1234')
     expect(contextPre.textContent).toContain('production')
+    expect(contextPre.textContent).toMatch(/capturedAt/)
   })
 })

@@ -6,15 +6,15 @@
 
 .summary {
   cursor: pointer;
-  font-weight: var(--font-weight-3, 600);
+  font-weight: var(--font-weight-3);
   padding: var(--space-2) 0;
 }
 
 .pre {
   margin: 0;
   padding: var(--space-3) var(--space-4);
-  background: var(--color-neutral-9, rgba(0, 0, 0, 0.04));
-  border: 1px solid var(--color-neutral-8, rgba(0, 0, 0, 0.08));
+  background: var(--color-neutral-9);
+  border: 1px solid var(--color-neutral-8);
   border-radius: var(--radius-2);
   overflow-x: auto;
   white-space: pre-wrap;

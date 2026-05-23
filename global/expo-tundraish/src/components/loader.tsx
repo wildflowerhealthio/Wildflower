@@ -9,15 +9,22 @@ type LoaderProps = {
 
 /**
  * Full-bleed loader overlay: an `ActivityIndicator` centered over a
- * palette-coloured backdrop. Designed to sit absolutely positioned
- * inside a relative parent (e.g. the `loader` slot of
- * `react-native-webview`'s `<WebView>`), filling that parent until
- * the underlying view is ready to take over.
+ * palette-coloured backdrop, sized to fill its parent until the
+ * underlying view is ready to take over.
+ *
+ * @remarks
+ * The overlay is absolutely positioned to fill its relative parent.
+ * `pointerEvents: 'none'` lets touches pass through during fade-out,
+ * so screen readers and gesture handlers behind the loader still work
+ * as the underlying view takes over.
  */
 function Loader({ size = 'large' }: LoaderProps = {}): JSX.Element {
   const { background, icon } = useThemeColors()
   return (
-    <View style={[styles.overlay, { backgroundColor: background }]} pointerEvents="none">
+    <View
+      style={[styles.overlay, { backgroundColor: background }, { pointerEvents: 'none' }]}
+      accessibilityLabel="Loading"
+    >
       <ActivityIndicator size={size} color={icon} />
     </View>
   )
