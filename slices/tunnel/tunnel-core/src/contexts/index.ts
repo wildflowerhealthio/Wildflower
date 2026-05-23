@@ -1,1 +1,1 @@
-export { OriginFromServedOrigin } from './origin.ts'
+export { OriginFromTunnelStore } from './origin.ts'

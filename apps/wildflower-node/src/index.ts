@@ -15,7 +15,7 @@ import { cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
 import { Origin } from 'navigation-core'
 import { nodeTelemetryLayerFromEnv } from 'telemetry-node'
-import { OriginFromServedOrigin } from 'tunnel-core/contexts'
+import { OriginFromTunnelStore } from 'tunnel-core/contexts'
 import { TunnelStore } from 'tunnel-core/livestore'
 import { TunnelDaemon as NodeTunnelDaemon } from 'tunnel-node'
 import { webAssetsDir } from 'wildflower-react/web-assets'
@@ -42,7 +42,7 @@ const run = Effect.gen(function* () {
   const gatekeeperStoreLayer = GatekeeperStore.layerFrom(store)
   const localHttpServerStoreLayer = LocalHttpServerStore.layerFrom(store)
   const tunnelStoreLayer = TunnelStore.layerFrom(store)
-  const originLayer = OriginFromServedOrigin.pipe(
+  const originLayer = OriginFromTunnelStore.pipe(
     Layer.provide(Layer.mergeAll(tunnelStoreLayer, localHttpServerStoreLayer))
   )
 

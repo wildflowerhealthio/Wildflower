@@ -10,7 +10,7 @@ import { servedOrigin$ } from '../livestore/served-origin.ts'
  * loopback otherwise. Extracts the `.origin` URL from the tagged
  * `ServedOrigin` so the `Subscribable<string>` surface stays flat.
  */
-const OriginFromServedOrigin: Layer.Layer<Origin, never, TunnelStore | LocalHttpServerStore> =
+const OriginFromTunnelStore: Layer.Layer<Origin, never, TunnelStore | LocalHttpServerStore> =
   Layer.effect(
     Origin,
     Effect.gen(function* () {
@@ -26,4 +26,4 @@ const OriginFromServedOrigin: Layer.Layer<Origin, never, TunnelStore | LocalHttp
     })
   )
 
-export { OriginFromServedOrigin }
+export { OriginFromTunnelStore }

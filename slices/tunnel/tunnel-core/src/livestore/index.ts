@@ -24,7 +24,7 @@
 
 import { defineSliceLivestore, type InputMaterializers } from 'shared-structures-core/livestore'
 
-import { servedOrigin$ } from './served-origin.ts'
+import { servedOrigin$, type ServedOrigin } from './served-origin.ts'
 import * as TunnelConfig from './tunnel-config.ts'
 import * as TunnelState from './tunnel-state.ts'
 
@@ -89,3 +89,4 @@ export {
   TunnelState,
   TunnelStore,
 }
+export type { ServedOrigin }

@@ -130,4 +130,59 @@ describe('servedOrigin$', () => {
       await store.shutdownPromise().catch(() => undefined)
     }
   })
+
+  it('reports tunnelUnavailable with a null error while the tunnel is still starting up', async () => {
+    const store = await makeStore()
+    try {
+      store.commit(TunnelLivestore.TunnelConfig.events.tunnelConfigSet({ requestedRunning: true }))
+      expect(store.query(servedOrigin$)).toEqual({
+        kind: 'tunnelUnavailable',
+        origin: 'http://127.0.0.1:8080',
+        error: null,
+      })
+    } finally {
+      await store.shutdownPromise().catch(() => undefined)
+    }
+  })
+
+  it('reports tunnelUnavailable with the daemon error when the relay refuses', async () => {
+    const store = await makeStore()
+    try {
+      store.commit(TunnelLivestore.TunnelConfig.events.tunnelConfigSet({ requestedRunning: true }))
+      store.commit(
+        TunnelLivestore.TunnelState.events.tunnelStateSet({
+          running: false,
+          error: 'relay refused',
+        })
+      )
+      expect(store.query(servedOrigin$)).toEqual({
+        kind: 'tunnelUnavailable',
+        origin: 'http://127.0.0.1:8080',
+        error: 'relay refused',
+      })
+    } finally {
+      await store.shutdownPromise().catch(() => undefined)
+    }
+  })
+
+  it('prefers tunnel over tunnelUnavailable when both requestedRunning and bound names are present', async () => {
+    const store = await makeStore()
+    try {
+      store.commit(TunnelLivestore.TunnelConfig.events.tunnelConfigSet({ requestedRunning: true }))
+      store.commit(
+        TunnelLivestore.TunnelState.events.tunnelStateSet({
+          running: true,
+          currentSubdomain: 'feather',
+          currentRootDomain: 'loca.lt',
+          currentLocalPort: 8080,
+        })
+      )
+      expect(store.query(servedOrigin$)).toEqual({
+        kind: 'tunnel',
+        origin: 'https://feather.loca.lt',
+      })
+    } finally {
+      await store.shutdownPromise().catch(() => undefined)
+    }
+  })
 })
