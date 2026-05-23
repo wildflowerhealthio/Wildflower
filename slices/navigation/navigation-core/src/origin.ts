@@ -32,16 +32,22 @@ class Origin extends Context.Tag('Origin')<Origin, Subscribable.Subscribable<str
   )
 
   /**
-   * Build a constant `Origin` Layer from a string literal — for tests
-   * and other static-origin contexts. The `changes` stream emits the
-   * value once and then completes, so consumers that observe changes
-   * don't dead-lock waiting for an emit that will never come.
+   * Build a constant `Origin` Layer from a literal. Validates the input
+   * has no trailing slash / punctuation so downstream concatenations
+   * (`${origin}/path`) produce well-formed URLs — the invariant the
+   * previous template-literal `Origin` type encoded statically.
    */
-  static readonly layerFromLiteral = (origin: string): Layer.Layer<Origin> =>
-    Layer.succeed(
+  static readonly layerFromLiteral = (origin: string): Layer.Layer<Origin> => {
+    if (!/[A-Za-z0-9]$/.test(origin)) {
+      throw new Error(
+        `Origin.layerFromLiteral: origin must end with an alphanumeric character (got: ${JSON.stringify(origin)})`
+      )
+    }
+    return Layer.succeed(
       Origin,
       Subscribable.make({ get: Effect.succeed(origin), changes: Stream.succeed(origin) })
     )
+  }
 }
 
 export { Origin }

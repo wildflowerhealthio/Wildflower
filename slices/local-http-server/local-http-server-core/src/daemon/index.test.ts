@@ -370,7 +370,7 @@ describe('runHttpServerDaemon', () => {
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 3000,
-            localHostname: 'http://127.0.0.1:3000',
+            localHostname: '127.0.0.1',
           })
         )
         await stub.awaitCalls(1)
@@ -381,7 +381,7 @@ describe('runHttpServerDaemon', () => {
         await stub.awaitCalls(2)
         await waitForState(store, (s) => s.running && s.port === 4000)
         expect(stub.active.size).toBe(1)
-        expect([...stub.active]).toEqual(['4000|http://127.0.0.1:3000'])
+        expect([...stub.active]).toEqual(['4000|127.0.0.1'])
       }, stub.startServer)
     })
 
@@ -392,7 +392,7 @@ describe('runHttpServerDaemon', () => {
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 3000,
-            localHostname: 'http://127.0.0.1:3000',
+            localHostname: '127.0.0.1',
           })
         )
         await stub.awaitCalls(1)
@@ -414,7 +414,7 @@ describe('runHttpServerDaemon', () => {
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 3000,
-            localHostname: 'http://127.0.0.1:3000',
+            localHostname: '127.0.0.1',
           })
         )
         await stub.awaitCalls(1)
@@ -489,7 +489,7 @@ describe('runHttpServerDaemon', () => {
           ServerState.events.localHttpServerStateSet({
             requestedRunning: true,
             port: 3000,
-            localHostname: 'http://127.0.0.1:3000',
+            localHostname: '127.0.0.1',
           })
         )
         await waitForState(store, (s) => s.running)
@@ -537,7 +537,7 @@ describe('runHttpServerDaemon', () => {
     const portArb = fc.integer({ min: 1, max: 65_535 })
     // Restrict to host-like strings (no whitespace, no `/`, no control
     // chars) so the property exercises the daemon's behavior across
-    // distinct origins rather than string-encoding edge cases.
+    // distinct hostnames rather than string-encoding edge cases.
     const hostnameArb = fc.stringMatching(/^[a-z0-9][a-z0-9.-]{0,31}$/)
 
     it(

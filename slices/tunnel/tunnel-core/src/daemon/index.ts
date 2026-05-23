@@ -81,8 +81,10 @@ const runTunnelDaemon = <E>(
 ): Effect.Effect<void, never, TunnelStore | LocalHttpServerStore> =>
   Effect.gen(function* () {
     const store = yield* TunnelStore
-    // Type-only assertion that the LHS table is in the composed schema —
-    // `resolvedConfig$` joins from `ServerState.queries.current$`.
+    // Surface LHS as a Layer requirement so app composers must provide it;
+    // `resolvedConfig$` joins from `ServerState.queries.current$` via the
+    // underlying livestore and would throw at query time if the schema were
+    // missing the table.
     yield* LocalHttpServerStore
 
     const commit = (

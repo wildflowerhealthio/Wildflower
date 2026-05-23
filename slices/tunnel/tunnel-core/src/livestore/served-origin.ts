@@ -4,33 +4,31 @@ import { ServerState } from 'local-http-server-core/livestore'
 import * as TunnelState from './tunnel-state.ts'
 
 /**
- * Public-facing origin the server is reachable at.
- *
- *  - When the tunnel is `running` and the relay has granted a full
- *    `currentSubdomain` + `currentRootDomain`, returns `https://sub.root`.
- *    An empty `currentRootDomain` (relay returned a single-label
- *    hostname — see `parseGrantedDomain` in `tunnel-expo/src/startTunnel.ts`)
- *    counts as unbound and falls through to the loopback case.
- *  - Otherwise, returns `http://${ServerState.localHostname}:${ServerState.port}`
- *    — the local HTTP server's actual bound location.
- *
- * Single source of truth for "where can clients reach this server right now."
- * Replaces ad-hoc `http://${host}:${port}` constructions across `apps-core`,
- * `wildflower-expo`, etc. The fallback reads from `LocalHttpServerState`
- * directly so the local port has exactly one source of truth.
+ * Tagged view of where the server is reachable: `tunnel` when the relay
+ * is up and has granted a full `currentSubdomain` + `currentRootDomain`,
+ * `loopback` otherwise. The tag lets consumers branch on liveness
+ * without string-matching the URL scheme.
  */
-const servedOrigin$: LiveQueryDef<string> = computed(
-  (get) => {
+type ServedOrigin =
+  | { readonly kind: 'tunnel'; readonly origin: string }
+  | { readonly kind: 'loopback'; readonly origin: string }
+
+const isBound = (value: string | null): value is string => value !== null && value !== ''
+
+const servedOrigin$: LiveQueryDef<ServedOrigin> = computed(
+  (get): ServedOrigin => {
     const tunnel = get(TunnelState.queries.current$)
     const server = get(ServerState.queries.current$)
-    const sub = tunnel.currentSubdomain
-    const root = tunnel.currentRootDomain
-    if (tunnel.running && sub !== null && sub !== '' && root !== null && root !== '') {
-      return `https://${sub}.${root}`
+    if (tunnel.running && isBound(tunnel.currentSubdomain) && isBound(tunnel.currentRootDomain)) {
+      return {
+        kind: 'tunnel',
+        origin: `https://${tunnel.currentSubdomain}.${tunnel.currentRootDomain}`,
+      }
     }
-    return `http://${server.localHostname}:${server.port}`
+    return { kind: 'loopback', origin: `http://${server.localHostname}:${server.port}` }
   },
   { label: 'servedOrigin', deps: 'tunnel.servedOrigin@v1' }
 )
 
 export { servedOrigin$ }
+export type { ServedOrigin }

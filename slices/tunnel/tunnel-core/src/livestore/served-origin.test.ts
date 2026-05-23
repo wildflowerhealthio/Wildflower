@@ -41,7 +41,10 @@ describe('servedOrigin$', () => {
   it('falls back to the loopback origin when the tunnel is not running', async () => {
     const store = await makeStore()
     try {
-      expect(store.query(servedOrigin$)).toBe('http://127.0.0.1:8080')
+      expect(store.query(servedOrigin$)).toEqual({
+        kind: 'loopback',
+        origin: 'http://127.0.0.1:8080',
+      })
     } finally {
       await store.shutdownPromise().catch(() => undefined)
     }
@@ -56,7 +59,10 @@ describe('servedOrigin$', () => {
           port: 4242,
         })
       )
-      expect(store.query(servedOrigin$)).toBe('http://0.0.0.0:4242')
+      expect(store.query(servedOrigin$)).toEqual({
+        kind: 'loopback',
+        origin: 'http://0.0.0.0:4242',
+      })
     } finally {
       await store.shutdownPromise().catch(() => undefined)
     }
@@ -73,7 +79,10 @@ describe('servedOrigin$', () => {
           currentLocalPort: 8080,
         })
       )
-      expect(store.query(servedOrigin$)).toBe('https://feather.loca.lt')
+      expect(store.query(servedOrigin$)).toEqual({
+        kind: 'tunnel',
+        origin: 'https://feather.loca.lt',
+      })
     } finally {
       await store.shutdownPromise().catch(() => undefined)
     }
@@ -93,7 +102,10 @@ describe('servedOrigin$', () => {
           currentLocalPort: 8080,
         })
       )
-      expect(store.query(servedOrigin$)).toBe('http://127.0.0.1:8080')
+      expect(store.query(servedOrigin$)).toEqual({
+        kind: 'loopback',
+        origin: 'http://127.0.0.1:8080',
+      })
     } finally {
       await store.shutdownPromise().catch(() => undefined)
     }
@@ -110,7 +122,10 @@ describe('servedOrigin$', () => {
           currentLocalPort: 8080,
         })
       )
-      expect(store.query(servedOrigin$)).toBe('http://127.0.0.1:8080')
+      expect(store.query(servedOrigin$)).toEqual({
+        kind: 'loopback',
+        origin: 'http://127.0.0.1:8080',
+      })
     } finally {
       await store.shutdownPromise().catch(() => undefined)
     }

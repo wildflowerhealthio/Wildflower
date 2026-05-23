@@ -27,6 +27,10 @@ import { SERVICE_NAME } from './service-name.ts'
 
 const PORT = Number(process.env['PORT'] ?? 3000)
 const LOCAL_HOSTNAME = '127.0.0.1'
+// Reverse-proxy deployments override the served origin so JWT iss/aud,
+// SMART config, OAuth redirects, and the dev bootstrap link mint
+// proxy-public URLs rather than the loopback we actually bind to.
+const ORIGIN_OVERRIDE = process.env['ORIGIN']
 const IS_DEV = process.env['NODE_ENV'] !== 'production'
 
 // Platform dependent layer setup
@@ -42,21 +46,28 @@ const run = Effect.gen(function* () {
   const gatekeeperStoreLayer = GatekeeperStore.layerFrom(store)
   const localHttpServerStoreLayer = LocalHttpServerStore.layerFrom(store)
   const tunnelStoreLayer = TunnelStore.layerFrom(store)
-  const originLayer = OriginFromServedOrigin.pipe(
-    Layer.provide(Layer.mergeAll(tunnelStoreLayer, localHttpServerStoreLayer))
-  )
+  // Static override wins so reverse-proxy deployments mint URLs that
+  // resolve from outside the container; otherwise the origin tracks
+  // `servedOrigin$` (tunnel URL when up, loopback otherwise).
+  const originLayer =
+    ORIGIN_OVERRIDE !== undefined
+      ? Origin.layerFromLiteral(ORIGIN_OVERRIDE)
+      : OriginFromServedOrigin.pipe(
+          Layer.provide(Layer.mergeAll(tunnelStoreLayer, localHttpServerStoreLayer))
+        )
 
-  // Seed `LocalHttpServerState` with the actual bind target. Node uses
-  // `NodeHttpServer.layer` directly (no LHS daemon), so the state's
-  // clientDocument default would otherwise stay at `127.0.0.1:8080` and
-  // `servedOrigin` (which `Origin` wraps) would lie. A one-shot commit
-  // fixes it.
-  store.commit(
-    ServerState.events.localHttpServerStateSet({
-      localHostname: LOCAL_HOSTNAME,
-      port: PORT,
-      running: true,
-    })
+  // Seed the bind target up front. Node has no LHS daemon (uses
+  // NodeHttpServer.layer directly), so without this commit the
+  // clientDocument default would stay at 127.0.0.1:8080 and
+  // servedOrigin$ would lie. `running: true` waits for the actual bind
+  // — see `afterStartupEffect` below.
+  yield* Effect.sync(() =>
+    store.commit(
+      ServerState.events.localHttpServerStateSet({
+        localHostname: LOCAL_HOSTNAME,
+        port: PORT,
+      })
+    )
   )
 
   // Idempotent: signing key + first-party `wildflower-host` client identity.
@@ -64,25 +75,31 @@ const run = Effect.gen(function* () {
   yield* seedFirstPartyClient.pipe(Effect.provide(gatekeeperStoreLayer))
 
   // Dev only: mint a bootstrap token; prod uses the device flow.
-  let bootstrapToken: string | null = null
-  if (IS_DEV) {
-    bootstrapToken = yield* mintHostOwnerToken({ ttl: Duration.hours(1) }).pipe(
-      Effect.provide(gatekeeperStoreLayer),
-      Effect.provide(originLayer),
-      Effect.catchAll((err) =>
-        Effect.as(Effect.logError('Bootstrap token unavailable.', err), null)
+  const bootstrapToken: string | null = IS_DEV
+    ? yield* mintHostOwnerToken({ ttl: Duration.hours(1) }).pipe(
+        Effect.provide(gatekeeperStoreLayer),
+        Effect.provide(originLayer),
+        Effect.catchAll((err) =>
+          Effect.as(Effect.logError('Bootstrap token unavailable.', err), null)
+        )
       )
-    )
-  }
+    : null
 
-  // `Layer.tap` after `afterStartupEffect` emits this once the port is bound.
-  let afterStartupEffect = Effect.void
-  if (bootstrapToken != null) {
-    const bootOrigin = yield* Origin.get.pipe(Effect.provide(originLayer))
-    afterStartupEffect = Effect.logInfo(
-      `Bootstrap: ${bootOrigin}/gatekeeper?token=${encodeURIComponent(bootstrapToken)}`
+  // Runs once `Layer.tap` fires after the HTTP server actually binds.
+  // Flips `ServerState.running = true` (so `servedOrigin$` stops
+  // reporting the idle default for any concurrent reader), then —
+  // in dev — prints the bootstrap link with the now-live origin.
+  const afterStartupEffect: Effect.Effect<void, never, Origin> = Effect.gen(function* () {
+    yield* Effect.sync(() =>
+      store.commit(ServerState.events.localHttpServerStateSet({ running: true }))
     )
-  }
+    if (bootstrapToken !== null) {
+      const bootOrigin = yield* Origin.get
+      yield* Effect.logInfo(
+        `Bootstrap: ${bootOrigin}/gatekeeper?token=${encodeURIComponent(bootstrapToken)}`
+      )
+    }
+  })
 
   // `Layer.mergeAll` runs the HTTP server and the tunnel daemon side
   // by side under the same scope — `Layer.launch` keeps both alive until
