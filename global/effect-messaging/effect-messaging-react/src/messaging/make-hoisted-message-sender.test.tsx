@@ -1,17 +1,21 @@
 import { renderHook } from '@testing-library/react'
 import { Effect } from 'effect'
+import * as fc from 'fast-check'
 import { NoContextException } from 'react-kitchen-sink'
-import { describe, expect, test } from 'vite-plus/test'
+import { describe, expect, test, vi } from 'vite-plus/test'
 
-import { makeHoistedMessageSender } from '../../src/messaging/make-hoisted-message-sender.tsx'
-import { makeMessageSender } from '../../src/messaging/make-message-sender.tsx'
-import {
-  NavigationBridge,
-  makeRecordingSender,
-  silenceReactErrorBoundary,
-  testBridges,
-  type TestBridges,
-} from '../fixtures/index.ts'
+import { makeHoistedMessageSender } from './make-hoisted-message-sender.tsx'
+import { makeMessageSender } from './make-message-sender.tsx'
+import { lifecycleSequenceArb, type LifecycleEvent } from './test-arbitraries.ts'
+import { NavigationBridge, testBridges, type TestBridges } from './test-bridges.ts'
+import { makeRecordingSender } from './test-recording-sender.ts'
+
+const silenceReactErrorBoundary = (): (() => void) => {
+  const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  return (): void => {
+    spy.mockRestore()
+  }
+}
 
 const buildPair = (): ReturnType<typeof makeMessageSender<TestBridges, 'Host'>> &
   ReturnType<typeof makeHoistedMessageSender<TestBridges, 'Host'>> => {
@@ -20,7 +24,19 @@ const buildPair = (): ReturnType<typeof makeMessageSender<TestBridges, 'Host'>> 
   return { ...sender, ...hoisted }
 }
 
-describe('makeHoistedMessageSender', () => {
+// Reduce a lifecycle event sequence to the active id under the React
+// semantics: each `register` overwrites the slot; each `unregister` clears
+// the slot only if the id matches.
+const reduceLifecycle = (es: ReadonlyArray<LifecycleEvent>): number | null => {
+  let active: number | null = null
+  for (const e of es) {
+    if (e._tag === 'register') active = e.id
+    else if (e._tag === 'unregister' && active === e.id) active = null
+  }
+  return active
+}
+
+describe('makeHoistedMessageSender — examples', () => {
   test('sends before any sender is registered log-warn and drop (no throw)', async () => {
     const { HoistedMessageSenderProvider, useMessageSender } = buildPair()
 
@@ -58,41 +74,11 @@ describe('makeHoistedMessageSender', () => {
     expect(received).toEqual([{ _tag: 'HostRequestedWebNavigation', path: '/x' }])
   })
 
-  test('re-register replaces the active sender', async () => {
-    const { HoistedMessageSenderProvider, useRegisterMessageSender, useMessageSender } = buildPair()
-    const first = makeRecordingSender<TestBridges, 'Host'>()
-    const second = makeRecordingSender<TestBridges, 'Host'>()
-
-    const { result, rerender } = renderHook(
-      ({ which }: { which: 'first' | 'second' }) => {
-        useRegisterMessageSender(which === 'first' ? first.sender : second.sender)
-        return useMessageSender(NavigationBridge)
-      },
-      {
-        wrapper: ({ children }) => (
-          <HoistedMessageSenderProvider>{children}</HoistedMessageSenderProvider>
-        ),
-        initialProps: { which: 'first' },
-      }
-    )
-    await Effect.runPromise(result.current.sendEffect({ _tag: 'HostBackRequested' }))
-    rerender({ which: 'second' })
-    await Effect.runPromise(result.current.sendEffect({ _tag: 'HostBackRequested' }))
-
-    expect(first.received).toEqual([{ _tag: 'HostBackRequested' }])
-    expect(second.received).toEqual([{ _tag: 'HostBackRequested' }])
-  })
-
   test('cleanup-only-if-ours: re-register, then unmount the OLD registrant — slot keeps the new one', async () => {
     const { HoistedMessageSenderProvider, useRegisterMessageSender, useMessageSender } = buildPair()
     const first = makeRecordingSender<TestBridges, 'Host'>()
     const second = makeRecordingSender<TestBridges, 'Host'>()
 
-    // Single component swaps which sender it registers across re-renders. The
-    // cleanup runs against the PREVIOUS sender on each rerender — but the
-    // guard `if (ref.current === sender) ref.current = null` means the
-    // cleanup for `first` (which no longer matches the slot's current value)
-    // doesn't clobber `second`.
     const { result, rerender } = renderHook(
       ({ which }: { which: 'first' | 'second' }) => {
         useRegisterMessageSender(which === 'first' ? first.sender : second.sender)
@@ -107,8 +93,6 @@ describe('makeHoistedMessageSender', () => {
     )
 
     rerender({ which: 'second' })
-    // After the swap, sends must reach `second` — not be dropped because
-    // `first`'s cleanup raced and nulled the slot.
     await Effect.runPromise(result.current.sendEffect({ _tag: 'HostBackRequested' }))
     expect(second.received).toEqual([{ _tag: 'HostBackRequested' }])
     expect(first.received).toEqual([])
@@ -120,7 +104,8 @@ describe('makeHoistedMessageSender', () => {
 
     const { result, rerender } = renderHook(
       ({ mounted }: { mounted: boolean }) => {
-        if (mounted) useRegisterMessageSender(sender)
+        // Toggle by passing null when unmounted — keeps the hook order stable.
+        useRegisterMessageSender(mounted ? sender : null)
         return useMessageSender(NavigationBridge)
       },
       {
@@ -149,5 +134,63 @@ describe('makeHoistedMessageSender', () => {
     } finally {
       restore()
     }
+  })
+})
+
+describe('makeHoistedMessageSender — properties', () => {
+  test('latest-wins: after any register/unregister sequence, the next send routes to the most recently registered, still-active sender (or drops if none)', async () => {
+    await fc.assert(
+      fc.asyncProperty(lifecycleSequenceArb, async (events) => {
+        const expectedActive = reduceLifecycle(events)
+        const { HoistedMessageSenderProvider, useRegisterMessageSender, useMessageSender } =
+          buildPair()
+        type Recording = ReturnType<typeof makeRecordingSender<TestBridges, 'Host'>>
+        const senders = new Map<number, Recording>()
+        const senderFor = (id: number): Recording => {
+          const existing = senders.get(id)
+          if (existing !== undefined) return existing
+          const next = makeRecordingSender<TestBridges, 'Host'>()
+          senders.set(id, next)
+          return next
+        }
+
+        const { result, rerender } = renderHook(
+          ({ activeId }: { activeId: number | null }) => {
+            useRegisterMessageSender(activeId === null ? null : senderFor(activeId).sender)
+            return useMessageSender(NavigationBridge)
+          },
+          {
+            wrapper: ({ children }) => (
+              <HoistedMessageSenderProvider>{children}</HoistedMessageSenderProvider>
+            ),
+            initialProps: { activeId: null as number | null },
+          }
+        )
+
+        // Step through events so each intermediate state mounts in the
+        // production register/unregister order.
+        let activeId: number | null = null
+        for (const e of events) {
+          if (e._tag === 'register') activeId = e.id
+          else if (e._tag === 'unregister' && activeId === e.id) activeId = null
+          rerender({ activeId })
+        }
+        expect(activeId).toBe(expectedActive)
+
+        await Effect.runPromise(result.current.sendEffect({ _tag: 'HostBackRequested' }))
+        if (expectedActive === null) {
+          for (const { received } of senders.values()) {
+            expect(received).toEqual([])
+          }
+        } else {
+          const active = senderFor(expectedActive)
+          expect(active.received).toEqual([{ _tag: 'HostBackRequested' }])
+          for (const [id, { received }] of senders) {
+            if (id !== expectedActive) expect(received).toEqual([])
+          }
+        }
+      }),
+      { numRuns: 30 }
+    )
   })
 })

@@ -10,7 +10,7 @@ import {
   useMemo,
   useRef,
   type Context,
-  type JSX,
+  type FC,
   type ReactNode,
   type RefObject,
 } from 'react'
@@ -27,7 +27,7 @@ interface MadeHoistedMessageSender<
   TBridges extends ReadonlyArray<Bridge.AnyBridge>,
   TSide extends 'Host' | 'Web',
 > {
-  readonly HoistedMessageSenderProvider: (props: HoistedMessageSenderProviderProps) => JSX.Element
+  readonly HoistedMessageSenderProvider: FC<HoistedMessageSenderProviderProps>
   readonly useRegisterMessageSender: (sender: Bridge.MessageSender<TBridges, TSide> | null) => void
 }
 
@@ -59,9 +59,7 @@ const makeHoistedMessageSender = <
   )
   RefContext.displayName = 'HoistedMessageSenderRefContext'
 
-  const HoistedMessageSenderProvider = ({
-    children,
-  }: HoistedMessageSenderProviderProps): JSX.Element => {
+  const HoistedMessageSenderProvider: FC<HoistedMessageSenderProviderProps> = ({ children }) => {
     const senderRef = useRef<Bridge.MessageSender<TBridges, TSide> | null>(null)
     const sendMessage = useCallback(
       (message: Outbound<TBridges, TSide>): Effect.Effect<void> =>

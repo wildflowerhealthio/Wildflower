@@ -8,7 +8,7 @@ import {
   useCallback,
   useEffect,
   useRef,
-  type JSX,
+  type FC,
   type ReactNode,
   type RefObject,
 } from 'react'
@@ -24,7 +24,7 @@ interface MadeMessageReceiver<
   TBridges extends ReadonlyArray<Bridge.AnyBridge>,
   TSide extends 'Host' | 'Web',
 > {
-  readonly MessageReceiverProvider: (props: MessageReceiverProviderProps) => JSX.Element
+  readonly MessageReceiverProvider: FC<MessageReceiverProviderProps>
   readonly useMessageReceiver: <B extends TBridges[number]>(
     bridge: B,
     handlers: ReceiverHandlers<B, TSide>
@@ -66,7 +66,7 @@ const makeMessageReceiver = <
   const RegistryContext = createContext<RefObject<Registry> | null>(null)
   RegistryContext.displayName = 'MessageReceiverRegistryContext'
 
-  const MessageReceiverProvider = ({ children }: MessageReceiverProviderProps): JSX.Element => {
+  const MessageReceiverProvider: FC<MessageReceiverProviderProps> = ({ children }) => {
     const registryRef = useRef<Registry>(new Map())
     return <RegistryContext.Provider value={registryRef}>{children}</RegistryContext.Provider>
   }

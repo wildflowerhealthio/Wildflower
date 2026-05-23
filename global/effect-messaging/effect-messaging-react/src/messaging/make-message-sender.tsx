@@ -3,7 +3,7 @@ import { Effect } from 'effect'
    share an in-file context; splitting them would force a cross-file import
    of an otherwise-private context just to satisfy fast-refresh's rule. */
 import type { Bridge } from 'effect-messaging-core'
-import { createContext, useMemo, type Context, type JSX, type ReactNode } from 'react'
+import { createContext, useMemo, type Context, type FC, type ReactNode } from 'react'
 import { useContextOrThrow } from 'react-kitchen-sink'
 
 import type { MessageSender, SenderContextValue } from './types.ts'
@@ -23,9 +23,7 @@ interface MadeMessageSender<
 > {
   /** Internal context — also consumed by {@link makeHoistedMessageSender}. */
   readonly Context: Context<SenderContextValue<TBridges, TSide> | null>
-  readonly MessageSenderProvider: (
-    props: MessageSenderProviderProps<TBridges, TSide>
-  ) => JSX.Element
+  readonly MessageSenderProvider: FC<MessageSenderProviderProps<TBridges, TSide>>
   readonly useMessageSender: <B extends TBridges[number]>(
     bridge: B
   ) => MessageSender<Bridge.SendableMessage<readonly [B], TSide>>
@@ -51,10 +49,10 @@ const makeMessageSender = <
   const Context = createContext<SenderContextValue<TBridges, TSide> | null>(null)
   Context.displayName = 'MessageSenderContext'
 
-  const MessageSenderProvider = ({
+  const MessageSenderProvider: FC<MessageSenderProviderProps<TBridges, TSide>> = ({
     sendMessage,
     children,
-  }: MessageSenderProviderProps<TBridges, TSide>): JSX.Element => {
+  }) => {
     const value = useMemo<SenderContextValue<TBridges, TSide>>(
       () => ({ sendEffect: widen<TBridges, TSide>(sendMessage) }),
       [sendMessage]

@@ -1,5 +1,10 @@
 import { Schema } from 'effect'
-import { Bridge } from 'effect-messaging-core'
+import { Bridge, type Message } from 'effect-messaging-core'
+
+// `Message` is imported so tsgo can resolve `RecordFromPairs` through the
+// public namespace when emitting declaration files (TS2883 otherwise).
+type _PortableRecordFromPairs<P extends ReadonlyArray<readonly [string, never]>> =
+  Message.RecordFromPairs<P>
 
 const HostBackRequested = Schema.parseJson(Schema.TaggedStruct('HostBackRequested', {}))
 const HostRequestedWebNavigation = Schema.parseJson(
@@ -53,5 +58,13 @@ const testBridgesWithSibling: TestBridgesWithSibling = [
   SiblingBridge,
 ] as const
 
-export { GatekeeperBridge, NavigationBridge, SiblingBridge, testBridges, testBridgesWithSibling }
-export type { TestBridges, TestBridgesWithSibling }
+export {
+  GatekeeperBridge,
+  NavigationBridge,
+  SiblingBridge,
+  testBridges,
+  testBridgesWithSibling,
+  type TestBridges,
+  type TestBridgesWithSibling,
+  type _PortableRecordFromPairs,
+}
