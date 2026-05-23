@@ -6,6 +6,7 @@ import { mutableEncoded, OrNullAsOptional } from 'kitchen-sink/schema'
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as Coding from '../complex/coding.ts'
+import { registerDatatypeSchema } from './datatype-registry.ts'
 
 const MetaSchema: Schema.Schema<typeof StoreMeta.Schema.Type, FhirR4.Meta, never> = Schema.Struct({
   lastUpdated: OrNullAsOptional(Schema.DateTimeUtc),
@@ -27,5 +28,7 @@ const MetaSchema: Schema.Schema<typeof StoreMeta.Schema.Type, FhirR4.Meta, never
   ),
   versionId: OrNullAsOptional(Schema.String),
 }).pipe(mutableEncoded)
+
+registerDatatypeSchema('Meta', MetaSchema)
 
 export { MetaSchema as Schema }

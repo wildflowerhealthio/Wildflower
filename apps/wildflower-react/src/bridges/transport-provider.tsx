@@ -75,33 +75,28 @@ function TransportProvider({
     ).then(async (transport) => {
       await Effect.runPromise(Effect.andThen(transport.flushed, transport.signalReady))
 
-      console.log = (...args) => {
-        transport.sendMessage({
-          _tag: 'Log',
-          log: JSON.stringify(args),
-        })
+      // `transport.sendMessage` returns an `Effect`; the overrides must
+      // run it (the same trap as NavigationBridgeHandler had pre-Fix C).
+      const logOverBridge = (...args: unknown[]): void => {
+        Effect.runFork(
+          transport.sendMessage({
+            _tag: 'Log',
+            log: JSON.stringify(args),
+          })
+        )
       }
 
-      console.error = (...args) => {
-        transport.sendMessage({
-          _tag: 'Log',
-          log: JSON.stringify(args),
-        })
-      }
+      // oxlint-disable-next-line no-var -- var used deliberately to override the global console
+      var console = Object.assign(globalThis.console, {
+        error: logOverBridge,
+        warn: logOverBridge,
+        log: logOverBridge,
+        info: logOverBridge,
+        debug: logOverBridge,
+      })
 
-      console.warn = (...args) => {
-        transport.sendMessage({
-          _tag: 'Log',
-          log: JSON.stringify(args),
-        })
-      }
-      console.info = (...args) => {
-        transport.sendMessage({
-          _tag: 'Log',
-          log: JSON.stringify(args),
-        })
-      }
-
+      globalThis.console = console
+      window.console = console
       return transport
     })
   })

@@ -9,7 +9,7 @@ import { Dialog, ItemList, Menu, pageLayoutStyles, type MenuItem } from 'react-t
 
 import { useCollectorEffectAction } from '../collector-client.tsx'
 import { formatInstant } from '../format-date.ts'
-import { useRequestSniffableWebView } from '../runtime/use-request-sniffable-web-view.ts'
+import { useSyncRunner } from '../runtime/use-sync-runner.ts'
 import accountList from '../styles/account-list.module.css'
 import pageLayout from '../styles/page-layout.module.css'
 
@@ -26,11 +26,21 @@ type Remote = Schema.Schema.Type<typeof Remotes.RemoteSchema>
 const AccountListScreen = (): JSX.Element => {
   const navigate = useNavigate()
   const run = useCollectorEffectAction()
-  const requestSniffableWebView = useRequestSniffableWebView()
   const [remotes, setRemotes] = useState<readonly Remote[]>([])
   const [error, setError] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-
+  const [activeImportRemote, setActiveImportRemote] = useState<Remote | null>(null)
+  useSyncRunner({
+    remote: activeImportRemote,
+    onError: (e) => {
+      console.error(
+        'Error during import:',
+        typeof e === 'object' && e !== null && 'cause' in e ? e.cause : e
+      )
+      setError(e instanceof Error ? e.message : String(e))
+      setActiveImportRemote(null)
+    },
+  })
   const refresh = async (): Promise<void> => {
     try {
       const list = await run(
@@ -66,7 +76,8 @@ const AccountListScreen = (): JSX.Element => {
   const importNow = (remote: Remote): void => {
     const rootUrl = typeof remote.config['rootUrl'] === 'string' ? remote.config['rootUrl'] : ''
     if (rootUrl === '') return
-    void requestSniffableWebView({ _tag: 'Uri', uri: rootUrl })
+
+    setActiveImportRemote(remote)
   }
 
   const remoteToDelete = remotes.find((r) => r.id === confirmDeleteId)

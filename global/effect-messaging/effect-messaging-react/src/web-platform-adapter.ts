@@ -63,13 +63,17 @@ const make = (bridges: ReadonlyArray<Bridge.AnyBridge>): TransportAdapter['Type'
   })
 
   // Origin filter accepts `''` for sandboxed/file:/data: documents — see issue #24.
+  // Source filter accepts `null` because RN-WebView's iOS native dispatch
+  // (`RNCWebViewImpl.m`: `new MessageEvent('message', {data})`) sets neither
+  // `source` nor `origin`; rejecting null-source would drop every host→web
+  // message on iOS.
   const attachLive = (
     enqueue: (raw: string) => Effect.Effect<void>
   ): Effect.Effect<void, never, Scope.Scope> =>
     Effect.acquireRelease(
       Effect.sync(() => {
         const onMessageEffect = (event: MessageEvent<unknown>): Effect.Effect<void> => {
-          if (event.source !== window) return Effect.void
+          if (event.source !== null && event.source !== window) return Effect.void
           if (event.origin !== window.location.origin && event.origin !== '') return Effect.void
           if (typeof event.data !== 'string') return Effect.void
           return enqueue(event.data)

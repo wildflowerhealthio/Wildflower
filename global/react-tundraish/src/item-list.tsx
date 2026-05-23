@@ -1,6 +1,7 @@
 import type { JSX, ReactNode } from 'react'
 import { cn } from 'react-kitchen-sink'
 
+import { Link } from 'react-router'
 import styles from './item-list.module.css'
 
 type ItemListItemBase = {
@@ -49,9 +50,24 @@ const ItemListRow = ({ item }: { item: ItemListItem }): JSX.Element => {
     item.subtitle !== undefined ? (
       <span className={cn(styles['item-list__subtitle'], 'text-body-3')}>{item.subtitle}</span>
     ) : null
+  // The row body is wrapped in a `<button>` (or `<Link>`) whose click
+  // navigates; the actions slot sits inside that wrapper. Without
+  // stopping propagation here, a click on a Menu trigger / interactive
+  // action would bubble up and also fire the row navigation, so the
+  // consumer's primary action always wins over the secondary one.
   const actionsJsx =
     item.actions !== undefined ? (
-      <span className={styles['item-list__actions']}>{item.actions}</span>
+      <span
+        className={styles['item-list__actions']}
+        onClick={(event) => {
+          event.stopPropagation()
+        }}
+        onKeyDown={(event) => {
+          event.stopPropagation()
+        }}
+      >
+        {item.actions}
+      </span>
     ) : null
   const body = (
     <>
@@ -83,6 +99,17 @@ const ItemListRow = ({ item }: { item: ItemListItem }): JSX.Element => {
         </li>
       )
     }
+
+    if (item.href.startsWith('/')) {
+      return (
+        <li className={rowClass}>
+          <Link className={styles['item-list__link']} to={item.href}>
+            {body}
+          </Link>
+        </li>
+      )
+    }
+
     return (
       <li className={rowClass}>
         <a className={styles['item-list__link']} href={item.href}>

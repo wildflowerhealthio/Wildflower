@@ -18,9 +18,9 @@ interface AuthTokenProviderProps {
  * read via {@link useAuthTokenSubscribable} when they need the Subscribable
  * itself (e.g. to feed into `Layer.succeed(BearerToken, _)` inside a hook).
  */
-const AuthTokenProvider = ({ subscribable, children }: AuthTokenProviderProps): JSX.Element => (
-  <AuthTokenContext.Provider value={subscribable}>{children}</AuthTokenContext.Provider>
-)
+const AuthTokenProvider = ({ subscribable, children }: AuthTokenProviderProps): JSX.Element => {
+  return <AuthTokenContext.Provider value={subscribable}>{children}</AuthTokenContext.Provider>
+}
 
 export { AuthTokenProvider }
 export type { AuthTokenProviderProps }

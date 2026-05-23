@@ -1,7 +1,15 @@
 import { Effect } from 'effect'
 import type { BareSenderService } from 'effect-messaging-core'
 import * as WebBrowser from 'expo-web-browser'
-import { forwardRef, type JSX, useCallback, useImperativeHandle, useRef, useState } from 'react'
+import {
+  forwardRef,
+  type JSX,
+  useCallback,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { StyleSheet, View } from 'react-native'
 import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 
@@ -13,9 +21,10 @@ type EffectMessagingWebViewSource = { uri: string } | { html: string; baseUrl?: 
 
 interface EffectMessagingWebViewProps {
   /**
-   * Page contents to load. The first navigation is treated as
-   * "internal"; subsequent navigations open in the system browser
-   * so the embedded bundle stays mounted.
+   * Page contents to load. Same-origin navigations are kept inside the
+   * embedded bundle; cross-origin ones open in the system browser.
+   * The "expected origin" is derived from `source.uri` (for remote
+   * pages) or `source.baseUrl` (for inline HTML).
    */
   readonly source: EffectMessagingWebViewSource
   /** Receives every message the page posts via `window.ReactNativeWebView.postMessage`. */
@@ -24,18 +33,36 @@ interface EffectMessagingWebViewProps {
   readonly loader?: JSX.Element
 }
 
+const parseOrigin = (url: string): string | null => {
+  try {
+    return new URL(url).origin
+  } catch {
+    return null
+  }
+}
+
 /**
  * WebView wrapper that hosts a single bundle's page. Pure transport
  * surface — holds the WebView ref, dismisses its loader overlay on
  * `onLoadEnd`, keeps the user inside the embedded bundle for
- * navigations to its source, and redirects external-link clicks to
+ * same-origin navigations, and redirects cross-origin link clicks to
  * the system browser.
  */
 const EffectMessagingWebView = forwardRef<BareSenderService, EffectMessagingWebViewProps>(
   function EffectMessagingWebView({ source, onMessage, loader }, ref): JSX.Element {
     const webviewRef = useRef<WebView>(null)
     const [isReady, setIsReady] = useState(false)
-    const initialUrlRef = useRef<string | null>(null)
+
+    // Same-origin gate: derived from the configured source so a
+    // `window.location.href = `${origin}/...`` from inside the SPA
+    // stays in-WebView even when the URL differs from the boot URL
+    // (e.g. extra path segments, dropped query params). When the
+    // source has no resolvable origin (inline HTML with no baseUrl)
+    // every non-bootstrap navigation goes to the system browser.
+    const expectedOrigin = useMemo(
+      () => parseOrigin('uri' in source ? source.uri : (source.baseUrl ?? '')),
+      [source]
+    )
 
     useImperativeHandle(
       ref,
@@ -63,15 +90,17 @@ const EffectMessagingWebView = forwardRef<BareSenderService, EffectMessagingWebV
           onMessage={onMessage}
           onLoadEnd={onLoadEnd}
           onShouldStartLoadWithRequest={(request) => {
-            // Allow the very first load (the bundle's source) and any
-            // reload of that same URL. Anything else opens in the system
-            // browser so the user gets native chrome and back gesture
-            // without tearing the embedded bundle down.
-            if (initialUrlRef.current === null) {
-              initialUrlRef.current = request.url
+            // `about:blank` and `data:` URIs are bootstrap navigations
+            // the WebView fires while rendering inline HTML — always
+            // allow them or the page never loads.
+            if (request.url === 'about:blank' || request.url.startsWith('data:')) return true
+            const requestOrigin = parseOrigin(request.url)
+            if (
+              requestOrigin !== null &&
+              requestOrigin === expectedOrigin &&
+              !request.url.includes('/installed-apps/')
+            )
               return true
-            }
-            if (request.url === initialUrlRef.current) return true
             void WebBrowser.openBrowserAsync(request.url)
             return false
           }}

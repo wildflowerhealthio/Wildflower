@@ -118,14 +118,29 @@ const CollectorModalScreen = ({
   // both bridge sides, so the decoded value passes through without
   // conversion. `RequestError` additionally fires the optional
   // host-local `onError` callback; `Log` is a deliberate drop.
+  // DIAGNOSTIC: log every sniffer event arriving at the modal so we can
+  // see whether the sniffer JS is firing and which events are reaching
+  // the host-side handler chain. Pair with the log inside
+  // `<HoistedHostMessagingProvider>`'s sendMessage thunk to track each
+  // event through to its forward attempt.
   const handlers = useMemo<SnifferHandlers>(
     () => ({
       Log: () => Effect.void,
-      ResponseStart: (event) => sendCollectorHost(event),
-      ResponseData: (event) => sendCollectorHost(event),
-      ResponseFinished: (event) => sendCollectorHost(event),
+      ResponseStart: (event) =>
+        Effect.sync(() =>
+          console.debug('[CollectorModalScreen] ResponseStart', event.id, event.url)
+        ).pipe(Effect.zipRight(sendCollectorHost(event))),
+      ResponseData: (event) =>
+        Effect.sync(() =>
+          console.debug('[CollectorModalScreen] ResponseData', event.id, `${event.data.length}b`)
+        ).pipe(Effect.zipRight(sendCollectorHost(event))),
+      ResponseFinished: (event) =>
+        Effect.sync(() => console.debug('[CollectorModalScreen] ResponseFinished', event.id)).pipe(
+          Effect.zipRight(sendCollectorHost(event))
+        ),
       RequestError: (event) =>
         Effect.sync(() => {
+          console.debug('[CollectorModalScreen] RequestError', event.id, event.message)
           onError?.(event)
         }).pipe(
           Effect.catchAllCause((cause) =>
@@ -133,8 +148,14 @@ const CollectorModalScreen = ({
           ),
           Effect.zipRight(sendCollectorHost(event))
         ),
-      Cancelled: (event) => sendCollectorHost(event),
-      PageLoaded: (event) => sendCollectorHost(event),
+      Cancelled: (event) =>
+        Effect.sync(() => console.debug('[CollectorModalScreen] Cancelled', event.id)).pipe(
+          Effect.zipRight(sendCollectorHost(event))
+        ),
+      PageLoaded: (event) =>
+        Effect.sync(() => console.debug('[CollectorModalScreen] PageLoaded', event.url)).pipe(
+          Effect.zipRight(sendCollectorHost(event))
+        ),
     }),
     [onError, sendCollectorHost]
   )

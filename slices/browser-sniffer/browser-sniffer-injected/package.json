@@ -21,10 +21,11 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "vp pack",
+    "build": "node scripts/build-sniffer-script.mjs && vp pack",
     "check": "vp check",
     "dev": "vp pack --watch",
-    "test": "vp test"
+    "generate-sniffer-script": "node scripts/build-sniffer-script.mjs",
+    "test": "node scripts/build-sniffer-script.mjs && vp test"
   },
   "devDependencies": {
     "@types/node": "catalog:",

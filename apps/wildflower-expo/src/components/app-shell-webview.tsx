@@ -45,6 +45,11 @@ const AppShellWebView = ({
   const store = useWildflowerStore()
   const tunnelStoreLayer = useMemo(() => TunnelStore.layerFrom(store), [store])
 
+  const loadFrom = useMemo(() => {
+    const SHOULD_USE_CACHED_HTML = true
+    return SHOULD_USE_CACHED_HTML ? ({ _tag: 'html', html } as const) : ({ _tag: 'uri' } as const)
+  }, [])
+
   const navigationBinding = NavigationBridgeExpo.useHostBinding({
     initialRoute: route,
     onRouteChanged,
@@ -65,7 +70,7 @@ const AppShellWebView = ({
 
   return (
     <BridgedWebView
-      html={html}
+      loadFrom={loadFrom}
       baseUrl={baseUrl}
       bindings={bindings}
       loader={<Loader />}

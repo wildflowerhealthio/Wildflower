@@ -25,15 +25,15 @@ import {
   resetHarness,
 } from './__test-support__/host-provider-test-mocks.ts'
 
-// `jest.mock` calls are hoisted above imports — Jest's babel-plugin
-// allows referencing imported bindings inside the factory only when
-// the binding name starts with `mock`. The harness factories follow
-// that convention.
-jest.mock('browser-sniffer-expo', mockBuildBrowserSnifferExpoFactory)
-jest.mock('expo-tundraish', mockBuildExpoTundraishFactory)
-jest.mock('collector-react', mockBuildCollectorReactFactory)
-jest.mock('expo-router', mockBuildExpoRouterFactory)
-jest.mock('collector-fundamentals/bridge', mockBuildCollectorBridgeFactory)
+// babel-plugin-jest-hoist requires the factory to be an inline
+// function literal even when delegating to a `mock*`-prefixed import.
+// Wrapping each call lets the shared harness module still own the
+// actual mock-construction logic.
+jest.mock('browser-sniffer-expo', () => mockBuildBrowserSnifferExpoFactory())
+jest.mock('expo-tundraish', () => mockBuildExpoTundraishFactory())
+jest.mock('collector-react', () => mockBuildCollectorReactFactory())
+jest.mock('expo-router', () => mockBuildExpoRouterFactory())
+jest.mock('collector-fundamentals/bridge', () => mockBuildCollectorBridgeFactory())
 
 import { CollectorBridgeExpo } from './index.ts'
 

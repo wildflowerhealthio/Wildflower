@@ -27,11 +27,16 @@ import {
   resetHarness,
 } from './__test-support__/host-provider-test-mocks.ts'
 
-jest.mock('browser-sniffer-expo', mockBuildBrowserSnifferExpoFactory)
-jest.mock('expo-tundraish', mockBuildExpoTundraishFactory)
-jest.mock('collector-react', mockBuildCollectorReactFactory)
-jest.mock('expo-router', mockBuildExpoRouterFactory)
-jest.mock('collector-fundamentals/bridge', mockBuildCollectorBridgeFactory)
+// babel-plugin-jest-hoist requires the factory to be an inline
+// function literal; the imported `mockBuild*Factory` helpers are
+// invoked from inside that literal so the shared harness module
+// (see `__test-support__/host-provider-test-mocks.ts`) still owns
+// the actual mock-construction logic.
+jest.mock('browser-sniffer-expo', () => mockBuildBrowserSnifferExpoFactory())
+jest.mock('expo-tundraish', () => mockBuildExpoTundraishFactory())
+jest.mock('collector-react', () => mockBuildCollectorReactFactory())
+jest.mock('expo-router', () => mockBuildExpoRouterFactory())
+jest.mock('collector-fundamentals/bridge', () => mockBuildCollectorBridgeFactory())
 
 import { CollectorBridgeExpo } from './index.ts'
 

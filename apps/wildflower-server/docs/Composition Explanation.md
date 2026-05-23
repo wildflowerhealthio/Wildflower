@@ -27,7 +27,7 @@ the Lives and the launch mechanic differ.
 ### Transport + filesystem
 
 - `HttpServer.HttpServer` — the TCP/HTTP binding the API runs on. Node: `NodeHttpServer.layer`. Expo: `ExpoHttpServer.layer({ port })` (from `expo-effect-platform`, bound to `127.0.0.1`).
-- `FileSystem.FileSystem` + `Path.Path` — read static SPA assets, join paths. Node: `NodeFileSystem.layer` + `NodePath.layer`. Expo: both bundled in `ExpoContext.layer`.
+- `FileSystem.FileSystem` + `Path.Path` — used by `StaticSpaLive` to resolve real asset files under `WebAssetsDir`. Node: `NodeFileSystem.layer` + `NodePath.layer`. Expo: `ExpoContext.layer` bundles `Path.Path` and the noop `FileSystem` from `HttpServer.layerContext` — `tryFindAssetFileForPath` therefore always falls back to `index.html`, which suffices because the Expo host stages only the inlined SPA. File-response bytes themselves bypass Effect's `FileSystem`: `ExpoHttpPlatform.fileResponse` reads size + mtime via `expo-file-system` and the native bridge serves the file directly.
 - `WebAssetsDir` — absolute path to the SPA bundle directory. Node: `webAssetsDir` from `wildflower-react/web-assets`. Expo: a runtime-staged cache directory holding the inlined SPA HTML.
 - `Origin` — the server's local origin (alphanumeric-terminated). Node: from the `ORIGIN` env var. Expo: hardcoded `http://127.0.0.1:<PORT>` — the public origin is owned separately by `TunnelStore`, not bound to this Tag.
 

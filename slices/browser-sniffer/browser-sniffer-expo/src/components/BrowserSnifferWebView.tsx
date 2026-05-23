@@ -12,6 +12,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   type JSX,
@@ -87,12 +88,50 @@ interface BrowserSnifferWebViewProps {
  *   surfacing as unhandled promise rejections — useful when a torn-
  *   down transport sees a late inbound message.
  */
+/**
+ * For HTML sources, embed the sniffer script directly into the document
+ * (right after `<head>`, or prepended when no `<head>` tag is present)
+ * instead of relying solely on `injectedJavaScriptBeforeContentLoaded`.
+ * RN-WebView's injection prop is unreliable on some Android builds and
+ * on responses the WebView doesn't parse as HTML; embedding into the
+ * document guarantees the script runs before any user `<script>` in
+ * `<body>`, on every platform. Idempotent: if the prop ALSO fires, the
+ * sniffer's `Symbol.for('browser-sniffer:state')` slot makes the second
+ * install a no-op.
+ *
+ * For Uri sources we can't embed (the remote page is whatever it is),
+ * so those still rely on the WebView's injection prop. That's the
+ * original use case the prop was reliable for.
+ */
+const embedSnifferIntoHtml = (html: string): string => {
+  const scriptTag = `<script>${snifferScript}</script>`
+  // Insert right after `<head…>` so the sniffer runs before any other
+  // `<script>` in `<head>` or `<body>`. Fall back to prepend (which may
+  // trigger quirks mode if a doctype follows, but functional for our
+  // injection purpose).
+  const headMatch = /<head[^>]*>/i.exec(html)
+  if (headMatch !== null) {
+    const insertAt = headMatch.index + headMatch[0].length
+    return html.slice(0, insertAt) + scriptTag + html.slice(insertAt)
+  }
+  return scriptTag + html
+}
+
 const BrowserSnifferWebView = forwardRef<BrowserSnifferWebViewHandle, BrowserSnifferWebViewProps>(
   function BrowserSnifferWebView({ source, handlers, loader }, ref): JSX.Element {
     const webviewRef = useRef<WebView | null>(null)
     const transportRef = useRef<TransportType | undefined>(undefined)
     const outboundBuffer = useRef<string[]>([])
     const [loaded, setLoaded] = useState(false)
+
+    // Pre-process HTML sources to embed the sniffer. Uri sources flow
+    // through unchanged and depend on `injectedJavaScriptBeforeContentLoaded`.
+    const sniffableSource = useMemo<BrowserSnifferWebViewSource>(() => {
+      if ('html' in source) {
+        return { ...source, html: embedSnifferIntoHtml(source.html) }
+      }
+      return source
+    }, [source])
 
     useEffect(() => {
       const scope = Effect.runSync(Scope.make())
@@ -187,9 +226,11 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferWebViewHandle, BrowserSni
       <View style={styles.container}>
         <WebView
           ref={setWebviewRef}
-          source={source}
+          source={sniffableSource}
           onMessage={onWebViewMessageEvent}
-          onLoadEnd={(): void => setLoaded(true)}
+          onLoadEnd={(): void => {
+            setLoaded(true)
+          }}
           injectedJavaScriptBeforeContentLoaded={snifferScript}
           style={styles.webview}
           // `originWhitelist={['*']}` is a v1 shortcut: the WebView may

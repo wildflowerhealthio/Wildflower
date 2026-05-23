@@ -6,6 +6,7 @@ import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
+import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
 
 const AttachmentSchema: Schema.Schema<
@@ -25,5 +26,7 @@ const AttachmentSchema: Schema.Schema<
     title: OrNullAsOptional(Schema.String),
   })
 )
+
+registerDatatypeSchema('Attachment', AttachmentSchema)
 
 export { AttachmentSchema as Schema }

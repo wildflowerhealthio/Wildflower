@@ -69,8 +69,12 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     // when importing crypto, resolve to react-native-quick-crypto
     return context.resolveRequest(context, 'react-native-quick-crypto', platform)
   }
-  if (moduleName === 'wildflower-react/embeddable-html' && fs.existsSync(embeddableHtmlBuiltPath)) {
-    // Route around the `source`-condition stub when a real build exists.
+  if (moduleName === 'wildflower-react/embeddable-html') {
+    if (!fs.existsSync(embeddableHtmlBuiltPath)) {
+      console.error(
+        `No compiled react app at ${embeddableHtmlBuiltPath}, please run "vp build:embedded" to generate it.`
+      )
+    }
     return { type: 'sourceFile', filePath: embeddableHtmlBuiltPath }
   }
   // otherwise chain to the standard Metro resolver.

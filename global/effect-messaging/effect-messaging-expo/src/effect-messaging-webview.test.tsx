@@ -63,7 +63,26 @@ describe('EffectMessagingWebView (transport surface)', () => {
     expect(mockWebViewProps?.onMessage).toBe(onMessage)
   })
 
-  it('opens external links in the system browser, not in-page', () => {
+  it('keeps same-origin navigations in-WebView and routes cross-origin to the system browser', () => {
+    render(
+      <EffectMessagingWebView
+        source={{ html: '', baseUrl: 'https://app.local/?boot=1' }}
+        onMessage={jest.fn()}
+      />
+    )
+    const onShouldStartLoadWithRequest = mockWebViewProps?.onShouldStartLoadWithRequest
+    if (onShouldStartLoadWithRequest === undefined)
+      throw new Error('onShouldStartLoadWithRequest not captured')
+    // Bootstrap navigations the WebView issues for inline HTML.
+    expect(onShouldStartLoadWithRequest({ url: 'about:blank' })).toBe(true)
+    // Same origin but different path/query (e.g. `window.location.href = '${origin}/apps/x'`).
+    expect(onShouldStartLoadWithRequest({ url: 'https://app.local/apps/x' })).toBe(true)
+    // Cross-origin link → external browser.
+    expect(onShouldStartLoadWithRequest({ url: 'https://example.com' })).toBe(false)
+    expect(mockExternalUrls).toEqual(['https://example.com'])
+  })
+
+  it('routes every non-bootstrap navigation externally when source has no resolvable origin', () => {
     render(<EffectMessagingWebView source={{ html: '' }} onMessage={jest.fn()} />)
     const onShouldStartLoadWithRequest = mockWebViewProps?.onShouldStartLoadWithRequest
     if (onShouldStartLoadWithRequest === undefined)

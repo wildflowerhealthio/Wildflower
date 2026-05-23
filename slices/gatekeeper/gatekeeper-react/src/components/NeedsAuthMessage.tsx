@@ -63,10 +63,22 @@ const toErrorState = (error: unknown): DeviceFlowState =>
     ),
   })
 
+/** Grace period before any real OAuth I/O fires — see {@link NeedsAuthMessage}. */
+const MOUNT_DEBOUNCE = Duration.millis(250)
+
 /**
  * Starts the RFC 8628 device-authorization flow, surfaces the `user_code`,
- * and polls `/oauth/token` until approval. On success writes the token to
- * `localStorage`, where the auth gate's `useSyncExternalStore` picks it up.
+ * and polls `/oauth/token` until approval. On success writes the token via
+ * `writeToken`, which routes through `authTokenRef` so the auth gate's
+ * stream subscriber picks it up.
+ *
+ * @remarks
+ * The boot side effects are gated by a {@link MOUNT_DEBOUNCE} sleep so
+ * a transient mount during a token-race (e.g. an `AuthTokenIssued` is
+ * about to arrive over the gatekeeper bridge) does not start a real
+ * device authorization. Unmount within the window interrupts the fiber
+ * before any network I/O — no orphan device-code is left on the
+ * gatekeeper server.
  */
 const NeedsAuthMessage = (): JSX.Element => {
   const [state, setState] = useState<DeviceFlowState>({ tag: 'starting' })
@@ -77,6 +89,7 @@ const NeedsAuthMessage = (): JSX.Element => {
 
   useEffect(() => {
     const flow = Effect.gen(function* () {
+      yield* Effect.sleep(MOUNT_DEBOUNCE)
       const client = yield* GatekeeperHttpApiClient
 
       const auth = yield* client.oauth.DeviceAuthorization({

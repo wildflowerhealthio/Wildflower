@@ -51,4 +51,5 @@ class LocalHttpServerStore extends StoreTag<LocalHttpServerStore>() {
 }
 
 export { DEFAULT_IDLE_PORT, DEFAULT_LOCAL_HOSTNAME } from './server-state.ts'
+export { localOrigin$ } from './local-origin.ts'
 export { events, LocalHttpServerStore, materializers, queries, schema, ServerState, state, tables }

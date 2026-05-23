@@ -1,11 +1,10 @@
 import * as SplashScreen from 'expo-splash-screen'
 import { Colors, Spacing, ThemedText, ThemedView, useThemeColors } from 'expo-tundraish'
 import { LocalClientToken } from 'gatekeeper-core/livestore'
-import { ServerState } from 'local-http-server-core/livestore'
+import { localOrigin$, ServerState } from 'local-http-server-core/livestore'
 import { useNavigationHostMessaging } from 'navigation-react'
 import { useCallback, useEffect, useState, type JSX } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
-import { servedOrigin$ } from 'tunnel-core/livestore'
 
 import { AppShellWebView } from '../components/app-shell-webview.tsx'
 import { TABS, tabForPath, type TabKey } from '../components/tab-mapping.ts'
@@ -27,7 +26,12 @@ import { useWildflowerStore } from '../livestore/livestore-store.ts'
 export default function HomeScreen(): JSX.Element {
   const store = useWildflowerStore()
   const { running } = store.useQuery(ServerState.queries.current$)
-  const servedOrigin = store.useQuery(servedOrigin$)
+  // The embedded SPA always loads against the loopback origin so its
+  // API calls hit `127.0.0.1` directly — never the public tunnel relay
+  // (whose captive-portal interstitial returns 511 to non-browser
+  // requests). Tunneled-app launches use the tunnel origin separately,
+  // wired in `apps-home-screen`'s `launch()`.
+  const baseUrl = store.useQuery(localOrigin$)
   // `LocalClientToken` is minted by `HttpServerDaemonLive`'s
   // bootstrap step and committed into the gatekeeper slice store; we
   // pass it to `<AppShellWebView>` so the embedded SPA is authenticated
@@ -45,7 +49,7 @@ export default function HomeScreen(): JSX.Element {
   // wildflower-react has mounted + the transport has flushed).
   useEffect(() => {
     if (running) void SplashScreen.hideAsync()
-  }, [running])
+  }, [running, shellLive])
 
   const handleRouteChanged = useCallback(
     ({ pathname }: { pathname: string; canGoBack: boolean }): void => {
@@ -58,7 +62,7 @@ export default function HomeScreen(): JSX.Element {
   return (
     <ThemedView style={styles.fill}>
       <AppShellWebView
-        baseUrl={servedOrigin}
+        baseUrl={baseUrl}
         route={TABS[0].path}
         token={localClientToken ?? undefined}
         onRouteChanged={handleRouteChanged}
@@ -88,7 +92,10 @@ const TabBar = ({ activeTab }: { activeTab: TabKey }): JSX.Element => {
             key={tab.key}
             accessibilityRole="tab"
             accessibilityState={{ selected: isActive }}
-            onPress={() => sendNavigation({ _tag: 'HostRequestedWebNavigation', path: tab.path })}
+            onPress={() => {
+              console.debug(`[TabBar] onPress: ${tab.path}`)
+              sendNavigation({ _tag: 'HostRequestedWebNavigation', path: tab.path })
+            }}
             style={styles.tabButton}
           >
             <ThemedText

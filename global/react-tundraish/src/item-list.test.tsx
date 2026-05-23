@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { ItemList, type ItemListItem } from './item-list.tsx'
@@ -25,8 +26,14 @@ describe('ItemList', () => {
     // Arrange
     const items: ItemListItem[] = [{ id: '1', title: 'Settings', href: '/settings' }]
 
-    // Act
-    render(<ItemList items={items} />)
+    // Act — `/`-prefixed hrefs render through react-router's `<Link>`, which
+    // requires a router context; mount under `<MemoryRouter>` so the test
+    // exercises the same code path real consumers do.
+    render(
+      <MemoryRouter>
+        <ItemList items={items} />
+      </MemoryRouter>
+    )
 
     // Assert
     expect(screen.getByRole('link', { name: /Settings/ }).getAttribute('href')).toBe('/settings')
@@ -73,5 +80,36 @@ describe('ItemList', () => {
 
     // Assert
     expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it('does not fire the row onClick when an interactive element inside actions is clicked', async () => {
+    // Arrange — interactive `actions` (e.g. a kebab menu trigger) sit
+    // inside the row's wrapping `<button>`. Without click-bubble
+    // suppression, hitting the action ALSO fires the row's primary
+    // navigation — exactly the bug that broke collector's "open menu"
+    // (it kept jumping to the edit page instead).
+    const onRowClick = vi.fn()
+    const onActionClick = vi.fn()
+    const items: ItemListItem[] = [
+      {
+        id: '1',
+        title: 'Account A',
+        onClick: onRowClick,
+        actions: (
+          <button type="button" onClick={onActionClick}>
+            ⋮
+          </button>
+        ),
+      },
+    ]
+    const user = userEvent.setup()
+    render(<ItemList items={items} />)
+
+    // Act — click the inner kebab button, NOT the row text.
+    await user.click(screen.getByRole('button', { name: '⋮' }))
+
+    // Assert — only the action handler ran; the row's onClick was suppressed.
+    expect(onActionClick).toHaveBeenCalledTimes(1)
+    expect(onRowClick).not.toHaveBeenCalled()
   })
 })

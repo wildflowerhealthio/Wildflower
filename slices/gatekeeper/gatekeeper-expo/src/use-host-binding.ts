@@ -26,6 +26,13 @@ const useGatekeeperHostBinding = ({
     () => ({
       bridge: GatekeeperBridge,
       receiverLayer: ReceiverLayer(),
+      // Always announce `WaitForToken` at boot via URL params — the
+      // Expo host commits to delivering an `AuthTokenIssued` once
+      // `LocalClientToken` is minted, so the embedded SPA's auth gate
+      // must hold (loader) rather than fall through to the device-flow
+      // UI while it waits. The flag is processed during transport drain,
+      // before the React tree mounts.
+      initialMessages: [{ _tag: 'WaitForToken' as const }],
       onTransportReady:
         token === undefined
           ? undefined

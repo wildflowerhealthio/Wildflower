@@ -68,6 +68,7 @@ export default defineConfig({
       '**/vendor/**',
       '**/test/snapshots/**',
       'slices/apps/vendor-apps/src/generated-*.ts',
+      '**/*.generated.ts',
     ],
   },
   lint: {
@@ -82,6 +83,7 @@ export default defineConfig({
       '**/vendor/**',
       '**/test/snapshots/**',
       'slices/apps/vendor-apps/src/generated-*.ts',
+      '**/*.generated.ts',
     ],
     plugins: ['typescript', 'react', 'unicorn', 'import'],
     categories: {
