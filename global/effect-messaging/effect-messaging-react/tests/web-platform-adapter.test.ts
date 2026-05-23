@@ -172,6 +172,32 @@ describe('WebPlatformAdapter.make — attachLive', () => {
     await Effect.runPromise(Scope.close(scope, Exit.void))
   })
 
+  test('admits source-less native dispatches (RN-WebView iOS injection sets neither source nor origin)', async () => {
+    // iOS RN-WebView's `RNCWebViewImpl.m` postMessage path injects
+    // `window.dispatchEvent(new MessageEvent('message', {data: '<msg>'}))`
+    // into the page. The init dict carries only `data`; `event.source`
+    // defaults to `null` and `event.origin` to `''`. A strict
+    // `event.source !== window` check would silently drop every host→web
+    // message on iOS.
+    const adapter = WebPlatformAdapter.make([])
+    const attachLive = requireAttachLive(adapter)
+    const seen: string[] = []
+    const scope = Effect.runSync(Scope.make())
+    await Effect.runPromise(
+      Scope.extend(
+        attachLive((raw) =>
+          Effect.sync(() => {
+            seen.push(raw)
+          })
+        ),
+        scope
+      )
+    )
+    window.dispatchEvent(new MessageEvent('message', { data: 'native-injected' }))
+    expect(seen).toEqual(['native-injected'])
+    await Effect.runPromise(Scope.close(scope, Exit.void))
+  })
+
   test('ignores foreign-origin events', async () => {
     const adapter = WebPlatformAdapter.make([])
     const attachLive = requireAttachLive(adapter)
