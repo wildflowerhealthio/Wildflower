@@ -26,11 +26,7 @@ import { SERVICE_NAME } from './service-name.ts'
 // Config
 
 const PORT = Number(process.env['PORT'] ?? 3000)
-const LOCAL_HOSTNAME = '127.0.0.1'
-// Reverse-proxy deployments override the served origin so JWT iss/aud,
-// SMART config, OAuth redirects, and the dev bootstrap link mint
-// proxy-public URLs rather than the loopback we actually bind to.
-const ORIGIN_OVERRIDE = process.env['ORIGIN']
+const HOSTNAME = process.env['HOSTNAME'] ?? '127.0.0.1'
 const IS_DEV = process.env['NODE_ENV'] !== 'production'
 
 // Platform dependent layer setup
@@ -46,15 +42,9 @@ const run = Effect.gen(function* () {
   const gatekeeperStoreLayer = GatekeeperStore.layerFrom(store)
   const localHttpServerStoreLayer = LocalHttpServerStore.layerFrom(store)
   const tunnelStoreLayer = TunnelStore.layerFrom(store)
-  // Static override wins so reverse-proxy deployments mint URLs that
-  // resolve from outside the container; otherwise the origin tracks
-  // `servedOrigin$` (tunnel URL when up, loopback otherwise).
-  const originLayer =
-    ORIGIN_OVERRIDE !== undefined
-      ? Origin.layerFromLiteral(ORIGIN_OVERRIDE)
-      : OriginFromServedOrigin.pipe(
-          Layer.provide(Layer.mergeAll(tunnelStoreLayer, localHttpServerStoreLayer))
-        )
+  const originLayer = OriginFromServedOrigin.pipe(
+    Layer.provide(Layer.mergeAll(tunnelStoreLayer, localHttpServerStoreLayer))
+  )
 
   // Seed the bind target up front. Node has no LHS daemon (uses
   // NodeHttpServer.layer directly), so without this commit the
@@ -64,7 +54,7 @@ const run = Effect.gen(function* () {
   yield* Effect.sync(() =>
     store.commit(
       ServerState.events.localHttpServerStateSet({
-        localHostname: LOCAL_HOSTNAME,
+        localHostname: HOSTNAME,
         port: PORT,
       })
     )
@@ -118,7 +108,7 @@ const run = Effect.gen(function* () {
         localHttpServerStoreLayer,
         CollectorStore.layerFrom(store),
         CryptoRandomLive,
-        NodeHttpServer.layer(createServer, { port: PORT }),
+        NodeHttpServer.layer(createServer, { port: PORT, host: HOSTNAME }),
         NodeFileSystem.layer,
         NodePath.layer,
         Layer.succeed(WebAssetsDir, webAssetsDir),
