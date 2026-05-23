@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite-plus'
+import base from '../../../vite.config.base.ts'
 
 export default defineConfig({
-  resolve: { conditions: ['source'] },
+  ...base,
   pack: [
     {
       dts: { tsgo: true },
@@ -10,12 +11,5 @@ export default defineConfig({
       entry: { index: 'src/index.ts' },
     },
   ],
-  lint: {
-    options: {
-      typeAware: true,
-      typeCheck: true,
-    },
-  },
-  fmt: {},
   test: {},
 })

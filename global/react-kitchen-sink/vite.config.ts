@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite-plus'
+import base from '../../vite.config.base.ts'
 
 export default defineConfig({
-  resolve: { conditions: ['source'] },
+  ...base,
   test: {
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     environment: 'jsdom',
@@ -16,11 +17,4 @@ export default defineConfig({
       index: 'src/index.ts',
     },
   },
-  lint: {
-    options: {
-      typeAware: true,
-      typeCheck: true,
-    },
-  },
-  fmt: {},
 })
