@@ -36,12 +36,14 @@
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
+    "local-http-server-core": "workspace:*",
     "tunnel-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "effect": "catalog:",
+    "local-http-server-core": "workspace:*",
     "tunnel-core": "workspace:*"
   }
 }

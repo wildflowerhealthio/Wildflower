@@ -38,8 +38,11 @@
     "@typescript/native-preview": "catalog:",
     "babel-preset-expo": "catalog:",
     "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "expect-type": "catalog:",
     "expo": "catalog:",
     "expo-notifications": "catalog:",
+    "gatekeeper-core": "workspace:*",
     "jest": "catalog:",
     "jest-expo": "catalog:",
     "react": "catalog:",
@@ -49,7 +52,9 @@
   },
   "peerDependencies": {
     "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
     "expo-notifications": ">=0.32.0",
+    "gatekeeper-core": "workspace:*",
     "react": "catalog:",
     "react-native": "catalog:"
   }
