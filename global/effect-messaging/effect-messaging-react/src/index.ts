@@ -1,8 +1,7 @@
 export * as WebPlatformAdapter from './web-platform-adapter.ts'
-export { HostMessagingProvider, useHostMessagingContext } from './host-messaging-context.tsx'
+export { makeHostMessaging, NoContextException } from './make-host-messaging.tsx'
 export type {
-  HostMessagingContextValue,
+  HostMessageSender,
   HostMessagingProviderProps,
-} from './host-messaging-context.tsx'
-export { HoistedHostMessagingProvider, useRegisterHostSender } from './host-sender-ref-context.tsx'
-export type { HostSenderFn, HostSenderRef } from './host-sender-ref-context.tsx'
+  HoistedHostMessagingProviderProps,
+} from './make-host-messaging.tsx'
