@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite-plus'
+import base from '../../../vite.config.base.ts'
 
 export default defineConfig({
-  resolve: { conditions: ['source'] },
+  ...base,
   pack: {
     dts: {
       tsgo: true,
@@ -18,7 +19,6 @@ export default defineConfig({
       'page-paths': 'src/page-paths.ts',
     },
   },
-  fmt: {},
   test: {
     include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
     // Integration suites live under `integration-tests/` and run only via

@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite-plus'
+import base from '../../../vite.config.base.ts'
 
 export default defineConfig({
-  resolve: { conditions: ['source'] },
+  ...base,
   pack: {
     dts: { tsgo: true },
     exports: false,
@@ -13,16 +14,14 @@ export default defineConfig({
     },
   },
   lint: {
+    ...base.lint,
     // The generated patient-browser asset bundle is auto-produced by
     // `scripts/generate-patient-browser.mjs` and ships a permissive
     // `eslint-disable` banner; lint passes don't apply to it.
     ignorePatterns: ['**/generated-*.ts'],
-    options: {
-      typeAware: true,
-      typeCheck: true,
-    },
   },
   fmt: {
+    ...base.fmt,
     // Same generated file: deliberately not formatted.
     ignorePatterns: ['**/generated-*.ts'],
   },

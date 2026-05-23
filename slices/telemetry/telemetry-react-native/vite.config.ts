@@ -1,7 +1,16 @@
 import { defineConfig } from 'vite-plus'
+import base from '../../../vite.config.base.ts'
 
 export default defineConfig({
-  resolve: { conditions: ['source'] },
+  ...base,
+  pack: [
+    {
+      dts: { tsgo: true },
+      exports: false,
+      platform: 'neutral',
+      entry: { index: 'src/index.ts' },
+    },
+  ],
   test: {
     // This project tests are run in jest and the test files are not compatible with vitest, so we exclude them here
     include: [],

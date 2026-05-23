@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite-plus'
+import base from '../../../vite.config.base.ts'
 
 // Integration-only Vitest config. Runs only files under `integration-tests/`
 // (which the default `vite.config.ts` excludes from `vp test`). Invoke via
@@ -9,7 +10,7 @@ import { defineConfig } from 'vite-plus'
 // `vite.config.ts` so the root `test.projects` glob doesn't pick it up
 // alongside the unit config.
 export default defineConfig({
-  resolve: { conditions: ['source'] },
+  ...base,
   test: {
     include: ['integration-tests/**/*.test.ts'],
     setupFiles: [

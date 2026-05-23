@@ -1,12 +1,14 @@
 import { defineConfig } from 'vite-plus'
+import base from '../../vite.config.base.ts'
 
 export default defineConfig({
+  ...base,
   test: {
     include: ['src/**/*.test.ts'],
   },
   resolve: {
+    ...base.resolve,
     alias: [{ find: /^@\/(.*)$/, replacement: './src/$1' }],
-    conditions: ['source'],
   },
   pack: {
     dts: {
@@ -31,11 +33,4 @@ export default defineConfig({
       types: 'src/types/index.ts',
     },
   },
-  lint: {
-    options: {
-      typeAware: true,
-      typeCheck: true,
-    },
-  },
-  fmt: {},
 })
