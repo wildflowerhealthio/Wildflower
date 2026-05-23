@@ -2,7 +2,7 @@
    share an in-file context; splitting them would force a cross-file import
    of an otherwise-private context just to satisfy fast-refresh's rule. */
 import { Effect } from 'effect'
-import type { Bridge } from 'effect-messaging-core'
+import type { Bridge, BridgeTransport } from 'effect-messaging-core'
 import {
   createContext,
   useCallback,
@@ -15,7 +15,6 @@ import {
   type RefObject,
 } from 'react'
 import { useContextOrThrow } from 'react-kitchen-sink'
-
 import type { SenderContextValue } from './types.ts'
 import { widen, type Outbound } from './widen.ts'
 
@@ -28,7 +27,9 @@ interface MadeHoistedMessageSender<
   TSide extends 'Host' | 'Web',
 > {
   readonly HoistedMessageSenderProvider: FC<HoistedMessageSenderProviderProps>
-  readonly useRegisterMessageSender: (sender: Bridge.MessageSender<TBridges, TSide> | null) => void
+  readonly useRegisterMessageSender: (
+    sender: BridgeTransport.MessageSender<TBridges, TSide> | null
+  ) => void
 }
 
 /**
@@ -54,13 +55,14 @@ const makeHoistedMessageSender = <
   _side: TSide,
   senderContext: Context<SenderContextValue<TBridges, TSide> | null>
 ): MadeHoistedMessageSender<TBridges, TSide> => {
-  const RefContext = createContext<RefObject<Bridge.MessageSender<TBridges, TSide> | null> | null>(
-    null
-  )
+  const RefContext = createContext<RefObject<BridgeTransport.MessageSender<
+    TBridges,
+    TSide
+  > | null> | null>(null)
   RefContext.displayName = 'HoistedMessageSenderRefContext'
 
   const HoistedMessageSenderProvider: FC<HoistedMessageSenderProviderProps> = ({ children }) => {
-    const senderRef = useRef<Bridge.MessageSender<TBridges, TSide> | null>(null)
+    const senderRef = useRef<BridgeTransport.MessageSender<TBridges, TSide> | null>(null)
     const sendMessage = useCallback(
       (message: Outbound<TBridges, TSide>): Effect.Effect<void> =>
         Effect.suspend(() => {
@@ -86,7 +88,9 @@ const makeHoistedMessageSender = <
     )
   }
 
-  const useRegisterMessageSender = (sender: Bridge.MessageSender<TBridges, TSide> | null): void => {
+  const useRegisterMessageSender = (
+    sender: BridgeTransport.MessageSender<TBridges, TSide> | null
+  ): void => {
     const ref = useContextOrThrow(RefContext)
     useEffect((): (() => void) => {
       ref.current = sender

@@ -14,4 +14,9 @@ export {
   type MadeMessageReceiver,
   type MessageReceiverProviderProps,
 } from './make-message-receiver.tsx'
-export type { MessageSender, OppositeSide, ReceiverHandlers, SenderContextValue } from './types.ts'
+export type {
+  TransportMessageSender,
+  OppositeSide,
+  ReceiverHandlers,
+  SenderContextValue,
+} from './types.ts'

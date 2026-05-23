@@ -22,9 +22,7 @@ interface Service {
    * scope close. Optional — the Expo host adapter omits this and the
    * consumer wires the WebView's `onMessage` prop manually.
    */
-  readonly attachLive?: (
-    enqueue: (raw: string) => Effect.Effect<void>
-  ) => Effect.Effect<void, never, Scope.Scope>
+  readonly attachBareSender?: (bareSender: BareSender) => Effect.Effect<void, never, Scope.Scope>
 }
 
 /**

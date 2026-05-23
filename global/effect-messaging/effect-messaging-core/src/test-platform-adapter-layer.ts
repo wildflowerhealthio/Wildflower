@@ -1,6 +1,6 @@
 import type { Scope } from 'effect'
 import { Effect, Layer } from 'effect'
-import { TransportAdapter } from './transport-adapter.ts'
+import { TransportAdapter, type BareSender } from './transport-adapter.ts'
 
 /**
  * Capturing-stub `Layer<TransportAdapter>` for tests.
@@ -17,34 +17,34 @@ import { TransportAdapter } from './transport-adapter.ts'
  * @remarks
  * `bareSender` pushes every encoded outbound string into `sentSink`;
  * `drainInitial` returns `initialMessages` (default `[]`); the
- * optional `attachLive` capture exposes the supplied `enqueue`
- * callback through `liveEnqueueRef` so core-level transport tests can
+ * optional `attachBareSender` capture exposes the supplied `bareSender`
+ * callback through `liveBareSenderRef` so core-level transport tests can
  * exercise the live-attachment path without standing up jsdom.
  */
 const make = (config?: {
   readonly initialMessages?: ReadonlyArray<string>
-  readonly captureAttachLive?: boolean
+  readonly captureBareSenderLive?: boolean
 }): {
   readonly layer: Layer.Layer<TransportAdapter>
   readonly sentSink: string[]
-  readonly liveEnqueueRef: { current: ((raw: string) => Effect.Effect<void>) | null }
+  readonly liveBareSenderRef: { current: BareSender | null }
 } => {
   const sentSink: string[] = []
   const initialMessages = config?.initialMessages ?? []
-  const liveEnqueueRef: { current: ((raw: string) => Effect.Effect<void>) | null } = {
+  const liveBareSenderRef: { current: BareSender | null } = {
     current: null,
   }
-  const attachLive: (
-    enqueue: (raw: string) => Effect.Effect<void>
-  ) => Effect.Effect<void, never, Scope.Scope> = (enqueue) =>
+  const attachBareSender: (bareSender: BareSender) => Effect.Effect<void, never, Scope.Scope> = (
+    bareSender
+  ) =>
     Effect.acquireRelease(
       Effect.sync(() => {
-        liveEnqueueRef.current = enqueue
-        return enqueue
+        liveBareSenderRef.current = bareSender
+        return bareSender
       }),
       () =>
         Effect.sync(() => {
-          if (liveEnqueueRef.current === enqueue) liveEnqueueRef.current = null
+          if (liveBareSenderRef.current === bareSender) liveBareSenderRef.current = null
         })
     ).pipe(Effect.asVoid)
 
@@ -54,9 +54,13 @@ const make = (config?: {
         sentSink.push(encoded)
       }),
     drainInitial: Effect.succeed(initialMessages),
-    ...(config?.captureAttachLive === true ? { attachLive } : {}),
+    ...(config?.captureBareSenderLive === true ? { attachBareSender: attachBareSender } : {}),
   }
-  return { layer: Layer.succeed(TransportAdapter, adapter), sentSink, liveEnqueueRef }
+  return {
+    layer: Layer.succeed(TransportAdapter, adapter),
+    sentSink,
+    liveBareSenderRef,
+  }
 }
 
 export { make }

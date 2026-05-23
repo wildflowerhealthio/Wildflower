@@ -11,7 +11,7 @@ export type {
   MadeMessageSender,
   MadeHoistedMessageSender,
   MadeMessageReceiver,
-  MessageSender,
+  TransportMessageSender,
   MessageSenderProviderProps,
   HoistedMessageSenderProviderProps,
   MessageReceiverProviderProps,

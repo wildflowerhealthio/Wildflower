@@ -2,18 +2,18 @@ import { Effect } from 'effect'
 /* oxlint-disable react/only-export-components -- the provider and the hook
    share an in-file context; splitting them would force a cross-file import
    of an otherwise-private context just to satisfy fast-refresh's rule. */
-import type { Bridge } from 'effect-messaging-core'
-import { createContext, useMemo, type Context, type FC, type ReactNode } from 'react'
+import type { Bridge, BridgeTransport } from 'effect-messaging-core'
+import { useMemo, type Context, type FC, type ReactNode } from 'react'
 import { useContextOrThrow } from 'react-kitchen-sink'
 
-import type { MessageSender, SenderContextValue } from './types.ts'
+import type { TransportMessageSender, SenderContextValue } from './types.ts'
 import { widen } from './widen.ts'
 
 interface MessageSenderProviderProps<
   TBridges extends ReadonlyArray<Bridge.AnyBridge>,
   TSide extends 'Host' | 'Web',
 > {
-  readonly sendMessage: Bridge.MessageSender<TBridges, TSide>
+  readonly sendMessage: BridgeTransport.MessageSender<TBridges, TSide>
   readonly children: ReactNode
 }
 
@@ -26,7 +26,7 @@ interface MadeMessageSender<
   readonly MessageSenderProvider: FC<MessageSenderProviderProps<TBridges, TSide>>
   readonly useMessageSender: <B extends TBridges[number]>(
     bridge: B
-  ) => MessageSender<Bridge.SendableMessage<readonly [B], TSide>>
+  ) => TransportMessageSender<Bridge.SendableMessage<readonly [B], TSide>>
 }
 
 /**
@@ -41,14 +41,9 @@ const makeMessageSender = <
   const TSide extends 'Host' | 'Web',
 >(
   _bridges: TBridges,
-  _side: TSide
+  _side: TSide,
+  Context: Context<SenderContextValue<TBridges, TSide> | null>
 ): MadeMessageSender<TBridges, TSide> => {
-  // `_bridges` and `_side` are type witnesses — they bind TBridges/TSide into
-  // the returned closure so downstream types flow without runtime generics.
-
-  const Context = createContext<SenderContextValue<TBridges, TSide> | null>(null)
-  Context.displayName = 'MessageSenderContext'
-
   const MessageSenderProvider: FC<MessageSenderProviderProps<TBridges, TSide>> = ({
     sendMessage,
     children,
@@ -65,7 +60,7 @@ const makeMessageSender = <
   // runtime dispatches by `_tag`; bridge identity is not consulted.
   const useMessageSender = <B extends TBridges[number]>(
     _bridge: B
-  ): MessageSender<Bridge.SendableMessage<readonly [B], TSide>> => {
+  ): TransportMessageSender<Bridge.SendableMessage<readonly [B], TSide>> => {
     const ctx = useContextOrThrow(Context)
     return useMemo(() => {
       type Narrow = Bridge.SendableMessage<readonly [B], TSide>

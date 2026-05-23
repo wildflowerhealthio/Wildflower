@@ -12,7 +12,7 @@ type OppositeSide<S extends 'Host' | 'Web'> = S extends 'Host' ? 'Web' : 'Host'
  * - `sendEffect` — returns the Effect for callers composing inside other
  *   Effect programs.
  */
-interface MessageSender<M extends { readonly _tag: string }> {
+interface TransportMessageSender<M extends { readonly _tag: string }> {
   readonly send: (message: M) => void
   readonly sendEffect: (message: M) => Effect.Effect<void>
 }
@@ -41,4 +41,4 @@ type ReceiverHandlers<B extends Bridge.AnyBridge, TSide extends 'Host' | 'Web'> 
   ) => Effect.Effect<void>
 }>
 
-export type { MessageSender, OppositeSide, ReceiverHandlers, SenderContextValue }
+export type { TransportMessageSender, OppositeSide, ReceiverHandlers, SenderContextValue }

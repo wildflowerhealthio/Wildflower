@@ -20,11 +20,11 @@ const TestBridge = Bridge.make({
 })
 const testBridges = [TestBridge] as const
 
-const requireAttachLive = (
+const requireAttachBareSender = (
   adapter: ReturnType<typeof WebPlatformAdapter.make>
-): NonNullable<typeof adapter.attachLive> => {
-  if (adapter.attachLive === undefined) throw new Error('attachLive missing')
-  return adapter.attachLive
+): NonNullable<typeof adapter.attachBareSender> => {
+  if (adapter.attachBareSender === undefined) throw new Error('attachBareSender missing')
+  return adapter.attachBareSender
 }
 
 const setHelloUrlParam = (msg: string): void => {
@@ -117,15 +117,15 @@ describe('WebPlatformAdapter.make — bareSender', () => {
   })
 })
 
-describe('WebPlatformAdapter.make — attachLive', () => {
+describe('WebPlatformAdapter.make — attachBareSender', () => {
   test('detaches the window listener on scope close', async () => {
     const adapter = WebPlatformAdapter.make([])
-    const attachLive = requireAttachLive(adapter)
+    const attachBareSender = requireAttachBareSender(adapter)
     const seen: string[] = []
     const scope = Effect.runSync(Scope.make())
     await Effect.runPromise(
       Scope.extend(
-        attachLive((raw) =>
+        attachBareSender((raw) =>
           Effect.sync(() => {
             seen.push(raw)
           })
@@ -148,12 +148,12 @@ describe('WebPlatformAdapter.make — attachLive', () => {
 
   test('ignores non-string event data', async () => {
     const adapter = WebPlatformAdapter.make([])
-    const attachLive = requireAttachLive(adapter)
+    const attachBareSender = requireAttachBareSender(adapter)
     const seen: string[] = []
     const scope = Effect.runSync(Scope.make())
     await Effect.runPromise(
       Scope.extend(
-        attachLive((raw) =>
+        attachBareSender((raw) =>
           Effect.sync(() => {
             seen.push(raw)
           })
@@ -175,12 +175,12 @@ describe('WebPlatformAdapter.make — attachLive', () => {
   test('admits source-less native dispatches when ReactNativeWebView is present', async () => {
     ;(window as WindowWithBridge).ReactNativeWebView = { postMessage: () => undefined }
     const adapter = WebPlatformAdapter.make([])
-    const attachLive = requireAttachLive(adapter)
+    const attachBareSender = requireAttachBareSender(adapter)
     const seen: string[] = []
     const scope = Effect.runSync(Scope.make())
     await Effect.runPromise(
       Scope.extend(
-        attachLive((raw) =>
+        attachBareSender((raw) =>
           Effect.sync(() => {
             seen.push(raw)
           })
@@ -198,12 +198,12 @@ describe('WebPlatformAdapter.make — attachLive', () => {
     // (from a sandboxed iframe or a foreign script) must be dropped — otherwise
     // any sandboxed document could spoof host→web messages.
     const adapter = WebPlatformAdapter.make([])
-    const attachLive = requireAttachLive(adapter)
+    const attachBareSender = requireAttachBareSender(adapter)
     const seen: string[] = []
     const scope = Effect.runSync(Scope.make())
     await Effect.runPromise(
       Scope.extend(
-        attachLive((raw) =>
+        attachBareSender((raw) =>
           Effect.sync(() => {
             seen.push(raw)
           })
@@ -218,12 +218,12 @@ describe('WebPlatformAdapter.make — attachLive', () => {
 
   test('ignores foreign-origin events', async () => {
     const adapter = WebPlatformAdapter.make([])
-    const attachLive = requireAttachLive(adapter)
+    const attachBareSender = requireAttachBareSender(adapter)
     const seen: string[] = []
     const scope = Effect.runSync(Scope.make())
     await Effect.runPromise(
       Scope.extend(
-        attachLive((raw) =>
+        attachBareSender((raw) =>
           Effect.sync(() => {
             seen.push(raw)
           })

@@ -1,4 +1,5 @@
 import type { Bridge } from 'effect-messaging-core'
+import { createContext } from 'react'
 
 import {
   makeHoistedMessageSender,
@@ -6,6 +7,7 @@ import {
 } from './make-hoisted-message-sender.tsx'
 import { makeMessageReceiver, type MadeMessageReceiver } from './make-message-receiver.tsx'
 import { makeMessageSender, type MadeMessageSender } from './make-message-sender.tsx'
+import { type SenderContextValue } from './types.ts'
 
 interface MakeMessaging<
   TBridges extends ReadonlyArray<Bridge.AnyBridge>,
@@ -61,8 +63,14 @@ const makeMessaging = <
   bridges: TBridges,
   side: TSide
 ): MakeMessaging<TBridges, TSide> => {
-  const sender = makeMessageSender(bridges, side)
-  const hoisted = makeHoistedMessageSender(bridges, side, sender.Context)
+  // `_bridges` and `_side` are type witnesses — they bind TBridges/TSide into
+  // the returned closure so downstream types flow without runtime generics.
+
+  const Context = createContext<SenderContextValue<TBridges, TSide> | null>(null)
+  Context.displayName = 'MessageSenderContext'
+
+  const sender = makeMessageSender(bridges, side, Context)
+  const hoisted = makeHoistedMessageSender(bridges, side, Context)
   const receiver = makeMessageReceiver(bridges, side)
   return {
     MessageSenderProvider: sender.MessageSenderProvider,

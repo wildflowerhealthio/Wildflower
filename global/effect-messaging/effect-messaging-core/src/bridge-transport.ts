@@ -36,6 +36,15 @@ const ReadyMessageWireSchema = Schema.parseJson(ReadyMessageSchema)
 const READY_RAW = Schema.encodeSync(ReadyMessageWireSchema)({ _tag: READY_TAG })
 
 /**
+ * Function-intersection of every wired bridge's typed sender for the
+ * specified side. The transport's public `sendMessage` strips the
+ * {@link TransportAdapter} requirement.
+ */
+type MessageSender<Bridges extends ReadonlyArray<Bridge.AnyBridge>, Side extends 'Host' | 'Web'> = (
+  message: Bridge.SendableMessage<Bridges, Side>
+) => Effect.Effect<void>
+
+/**
  * Cross-platform bridge transport composing one or more
  * {@link Bridge.Bridge} declarations into a single Effect program.
  *
@@ -57,7 +66,7 @@ interface BridgeTransport<
    * is up before the web bundle even loads, so the web doesn't need
    * to wait on anyone.
    */
-  readonly sendMessage: Bridge.MessageSender<Bridges, Side>
+  readonly sendMessage: MessageSender<Bridges, Side>
   /**
    * Push one raw inbound string into the dispatch fiber. After scope
    * close the call is a no-op (the queue is shut down).
@@ -277,8 +286,8 @@ const make = <
     const enqueue = (raw: string): Effect.Effect<void> =>
       Queue.offer(queue, { raw, source: 'live' }).pipe(Effect.ignore)
 
-    if (adapter.attachLive !== undefined) {
-      yield* adapter.attachLive(enqueue)
+    if (adapter.attachBareSender !== undefined) {
+      yield* adapter.attachBareSender(enqueue)
     }
 
     /** Sentinel-marker drain: the dispatch fiber processes the marker after every prior message. */
@@ -288,7 +297,9 @@ const make = <
       Effect.flatMap((marker) => Deferred.await(marker))
     )
 
-    const sendMessage = (message: { readonly _tag: string }): Effect.Effect<void> =>
+    const sendMessage: MessageSender<Bridges, Side> = (
+      message: Bridge.SendableMessage<Bridges, Side>
+    ): Effect.Effect<void> =>
       Effect.gen(function* () {
         yield* Deferred.await(peerReady)
         const sender = taggedSenders.get(message._tag)
@@ -308,9 +319,7 @@ const make = <
     }[side]
 
     return {
-      // Runtime is `(m: {_tag: string}) => Effect<void>`; public type is the function-intersection.
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-      sendMessage: sendMessage as Bridge.MessageSender<Bridges, Side>,
+      sendMessage,
       enqueue,
       flushed,
       signalReady,
@@ -318,4 +327,4 @@ const make = <
   })
 
 export { make, READY_TAG }
-export type { BridgeTransport }
+export type { BridgeTransport, MessageSender }
