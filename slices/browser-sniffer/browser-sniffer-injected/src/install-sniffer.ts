@@ -128,6 +128,38 @@ const installSniffer = function (): void {
 
   if (winWithState[stateKey] !== undefined) return
 
+  // Per-level Log emitters. The host re-emits each `Log` message via
+  // `console[level](...payload)` on its side, so each page-side
+  // `console.<level>(...args)` flows verbatim to the host's matching
+  // native sink. Mirrors the `makeLogForLevel` factory in
+  // `apps/wildflower-react/src/bridges/transport-provider.tsx`; the
+  // injected script can't import the Effect runtime, so this is the
+  // plain-JS analogue.
+  type LogLevel = 'debug' | 'info' | 'log' | 'warn' | 'error'
+  const makeLogForLevel =
+    (level: LogLevel) =>
+    (...args: unknown[]): void => {
+      post({ _tag: 'Log', level, payload: args })
+    }
+  const logDebug = makeLogForLevel('debug')
+  const logInfo = makeLogForLevel('info')
+  const logLog = makeLogForLevel('log')
+  const logWarning = makeLogForLevel('warn')
+  const logError = makeLogForLevel('error')
+
+  // Override the page's console methods so any page-side `console.<level>`
+  // call is forwarded to the host as a structured Log. We assign onto the
+  // global `console` object directly — its identity is preserved (we only
+  // swap the methods, not the object), so any page code that captured a
+  // bound reference to `console` still sees the new methods.
+  Object.assign(globalThis.console, {
+    debug: logDebug,
+    info: logInfo,
+    log: logLog,
+    warn: logWarning,
+    error: logError,
+  })
+
   // Per-request correlation key. `Math.random() + 1` keeps the value in
   // `[1, 2)` so `.toString(36)` yields a string of the form
   // `"1.xyz123…"`; `.slice(2)` drops the `"1."` leaving a non-empty
@@ -203,12 +235,12 @@ const installSniffer = function (): void {
   const logOnce = (key: string, message: string): void => {
     if (onceLogged.has(key)) return
     onceLogged.add(key)
-    post({ _tag: 'Log', log: message })
+    logInfo(message)
   }
 
   // Fetch shim — capture the native into a const so the closure has a
   // typed, definitely-defined reference (no `!` later).
-  post({ _tag: 'Log', log: 'Shimming fetch' })
+  logInfo('Shimming fetch')
   const nativeFetch = win.fetch.bind(win)
 
   win.fetch = async function (
@@ -247,7 +279,7 @@ const installSniffer = function (): void {
         errorUrl = request.url
       }
       const message = err instanceof Error ? err.message : String(err)
-      post({ _tag: 'Log', log: `fetch threw before response: ${message}` })
+      logWarning(`fetch threw before response: ${message}`)
       activeRequests.add(requestId)
       post({
         _tag: 'ResponseStart',
@@ -322,7 +354,7 @@ const installSniffer = function (): void {
   }
 
   // XHR shim — same capture pattern; per-XHR state lives in a WeakMap.
-  post({ _tag: 'Log', log: 'Shimming XMLHttpRequest' })
+  logInfo('Shimming XMLHttpRequest')
   // The captured prototype methods are always invoked via `.call(this, …)`
   // below, so the `unbound-method` rule's concern (lost `this`) doesn't
   // apply — we re-supply `this` at every call site.
@@ -574,7 +606,7 @@ const installSniffer = function (): void {
       }
       case undefined:
       default: {
-        post({ _tag: 'Log', log: `Unknown inbound message tag: ${String(msg._tag)}` })
+        logWarning(`Unknown inbound message tag: ${String(msg._tag)}`)
         return
       }
     }

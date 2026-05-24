@@ -166,7 +166,11 @@ describe('fetch shim', () => {
 
   test('should log shim installation', () => {
     installSniffer()
-    expect(getMessages()).toContainEqual({ _tag: 'Log', log: 'Shimming fetch' })
+    expect(getMessages()).toContainEqual({
+      _tag: 'Log',
+      level: 'info',
+      payload: ['Shimming fetch'],
+    })
   })
 
   test('should forward arbitrary status + statusText to ResponseStart', async () => {
@@ -492,7 +496,11 @@ describe('XHR shim', () => {
 
   test('should log shim installation', () => {
     installSniffer()
-    expect(getMessages()).toContainEqual({ _tag: 'Log', log: 'Shimming XMLHttpRequest' })
+    expect(getMessages()).toContainEqual({
+      _tag: 'Log',
+      level: 'info',
+      payload: ['Shimming XMLHttpRequest'],
+    })
   })
 
   test('should defer ResponseStart until response headers are available', () => {
@@ -731,10 +739,14 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
     window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ _tag: 'Other' }) }))
     const after = withTag(getMessages(), 'Log')
     expect(after.length).toBe(before + 1)
-    expect(after[after.length - 1]).toMatchObject({
-      _tag: 'Log',
-      log: expect.stringContaining('Other'),
-    })
+    const last = after[after.length - 1] as Message & {
+      level?: unknown
+      payload?: readonly unknown[]
+    }
+    expect(last._tag).toBe('Log')
+    expect(last.level).toBe('warn')
+    expect(last.payload).toHaveLength(1)
+    expect(String(last.payload?.[0])).toContain('Other')
   })
 })
 

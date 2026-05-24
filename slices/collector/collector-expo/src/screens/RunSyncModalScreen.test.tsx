@@ -1,5 +1,6 @@
 import { act, render } from '@testing-library/react-native'
-import { Effect } from 'effect'
+import { Effect, Logger, LogLevel } from 'effect'
+import { LoggingLayerTest } from 'kitchen-sink/test'
 import * as React from 'react'
 import type { ReactElement } from 'react'
 
@@ -93,7 +94,7 @@ describe('RunSyncModalScreen', () => {
           postRawCollectorMessage={(raw) => rawCalls.push(raw)}
         />
       )
-      mockLastOnRawMessage?.(JSON.stringify({ _tag: 'Log', log: 'spam' }))
+      mockLastOnRawMessage?.(JSON.stringify({ _tag: 'Log', level: 'info', payload: ['spam'] }))
       mockLastOnRawMessage?.(JSON.stringify({ _tag: '__Ready' }))
       expect(rawCalls).toEqual([])
     })
@@ -165,6 +166,38 @@ describe('RunSyncModalScreen', () => {
       ).resolves.toBeUndefined()
       expect(onError).toHaveBeenCalledTimes(1)
     })
+  })
+
+  describe('Log typed handler', () => {
+    it.each([
+      ['debug', 'DEBUG'],
+      ['info', 'INFO'],
+      ['log', 'INFO'],
+      ['warn', 'WARN'],
+      ['error', 'ERROR'],
+    ] as const)(
+      'emits the page-side console.%s payload through the Effect Logger at %s',
+      async (level, expectedLevel) => {
+        render(
+          <RunSyncModalScreen
+            source={{ _tag: 'Html', html: '<html></html>' }}
+            postRawCollectorMessage={() => undefined}
+          />
+        )
+        const handlers = mockLastSnifferHandlers
+        expect(handlers).not.toBeNull()
+        if (handlers === null) return
+        await Effect.runPromise(
+          handlers.Log({ _tag: 'Log', level, payload: ['hello', { extra: 1 }] }).pipe(
+            Logger.withMinimumLogLevel(LogLevel.All),
+            LoggingLayerTest.expectToLog((logs) => {
+              expect(logs).toEqual([expect.objectContaining({ level: expectedLevel })])
+            }),
+            Effect.scoped
+          )
+        )
+      }
+    )
   })
 
   describe('navigate() handle', () => {

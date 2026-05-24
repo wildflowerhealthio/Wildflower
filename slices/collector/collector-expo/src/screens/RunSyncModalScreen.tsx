@@ -37,6 +37,16 @@ const PASSTHROUGH_TO_SPA: ReadonlySet<string> = new Set([
   'PageLoaded',
 ])
 
+// `console.log` maps to Info — Effect's logger has no distinct "log" rung;
+// Info is the conventional default and matches the navigation publisher.
+const logEffectForLevel = {
+  debug: Effect.logDebug,
+  info: Effect.logInfo,
+  log: Effect.logInfo,
+  warn: Effect.logWarning,
+  error: Effect.logError,
+} as const
+
 /**
  * Imperative handle exposed via `ref`. The host shell's `onOpen`
  * callback (forwarded from the SPA's `CollectorBridge`) is wired in
@@ -96,7 +106,8 @@ interface RunSyncModalScreenProps {
  *
  * Typed `SnifferHandlers` are kept only for tags that need
  * host-local observation — `RequestError` to fire the optional
- * `onError` callback, `Log` to drop server-side log spam. The
+ * `onError` callback, `Log` to re-emit page-side console calls
+ * through the host's Effect Logger at the matching level. The
  * remaining tags ride the raw passthrough.
  */
 const RunSyncModalScreen = ({
@@ -125,11 +136,13 @@ const RunSyncModalScreen = ({
   )
 
   // Typed handlers cover the host-local concerns only: `RequestError`
-  // surfaces to `onError`; `Log` is a deliberate drop; the rest are
-  // forwarded raw via `onRawMessage` below.
+  // surfaces to `onError`; `Log` maps the page's `console.<level>`
+  // call onto the host's Effect Logger at the matching level so
+  // output flows through whatever sink the Effect runtime has
+  // installed; the rest are forwarded raw via `onRawMessage` below.
   const handlers = useMemo<SnifferHandlers>(
     () => ({
-      Log: () => Effect.void,
+      Log: ({ level, payload }) => logEffectForLevel[level](...payload),
       ResponseStart: () => Effect.void,
       ResponseData: () => Effect.void,
       ResponseFinished: () => Effect.void,

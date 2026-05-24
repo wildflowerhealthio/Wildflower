@@ -220,8 +220,8 @@ describe('BrowserSnifferWebView', () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
       const onMessage = mockLastWebViewProps?.onMessage
       expect(typeof onMessage).toBe('function')
-      onMessage?.({ nativeEvent: { data: '{"_tag":"Log","log":"hi"}' } })
-      expect(mockEnqueueCalls).toEqual(['{"_tag":"Log","log":"hi"}'])
+      onMessage?.({ nativeEvent: { data: '{"_tag":"Log","level":"info","payload":["hi"]}' } })
+      expect(mockEnqueueCalls).toEqual(['{"_tag":"Log","level":"info","payload":["hi"]}'])
     })
 
     it('does not throw when transport.enqueue fails (failure is logged via catchAllCause)', async () => {
@@ -232,7 +232,7 @@ describe('BrowserSnifferWebView', () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
       const onMessage = mockLastWebViewProps?.onMessage
       expect(() =>
-        onMessage?.({ nativeEvent: { data: '{"_tag":"Log","log":"hi"}' } })
+        onMessage?.({ nativeEvent: { data: '{"_tag":"Log","level":"info","payload":["hi"]}' } })
       ).not.toThrow()
     })
 
@@ -249,7 +249,9 @@ describe('BrowserSnifferWebView', () => {
       unmount()
       mockEnqueueCalls = []
       expect(() =>
-        onMessage?.({ nativeEvent: { data: '{"_tag":"Log","log":"after-unmount"}' } })
+        onMessage?.({
+          nativeEvent: { data: '{"_tag":"Log","level":"info","payload":["after-unmount"]}' },
+        })
       ).not.toThrow()
       expect(mockEnqueueCalls).toEqual([])
     })

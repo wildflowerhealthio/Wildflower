@@ -49,6 +49,7 @@
     "expo-tundraish": "workspace:*",
     "jest": "catalog:",
     "jest-expo": "catalog:",
+    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-native": "catalog:",
     "typescript": "catalog:",
