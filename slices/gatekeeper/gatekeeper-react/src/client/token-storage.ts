@@ -31,7 +31,7 @@ import { Effect, Stream, SubscriptionRef } from 'effect'
 const TOKEN_STORAGE_KEY = 'gatekeeper:token'
 
 const readInitialToken = (): string | null => {
-  if (typeof window === 'undefined') return null
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return null
   return window.localStorage.getItem(TOKEN_STORAGE_KEY)
 }
 
@@ -42,7 +42,7 @@ const authTokenRef: SubscriptionRef.SubscriptionRef<string | null> = Effect.runS
 // Persist subsequent ref updates back to localStorage. `Stream.drop(1)`
 // skips the initial emission (which is the value we just read from
 // localStorage — re-writing it would be redundant I/O).
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
   Effect.runFork(
     Stream.runForEach(Stream.drop(authTokenRef.changes, 1), (token) =>
       Effect.sync(() => {

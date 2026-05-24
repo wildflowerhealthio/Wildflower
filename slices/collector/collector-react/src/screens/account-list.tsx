@@ -3,7 +3,7 @@ import type { Remotes } from 'collector-core/http-api-definition'
 import { Effect, type Schema } from 'effect'
 import { defaultConfig } from 'fhir-r4-client-collector'
 import { useEffect, useState, type JSX } from 'react'
-import { cn, unwrapCause } from 'react-kitchen-sink'
+import { cn } from 'react-kitchen-sink'
 import { useNavigate } from 'react-router'
 import { Dialog, ItemList, Menu, pageLayoutStyles, type MenuItem } from 'react-tundraish'
 
@@ -33,7 +33,10 @@ const AccountListScreen = (): JSX.Element => {
   useSyncRunner({
     remote: activeImportRemote,
     onError: (e) => {
-      console.error('Error during import:', unwrapCause(e))
+      console.error(
+        'Error during import:',
+        typeof e === 'object' && e !== null && 'cause' in e ? e.cause : e
+      )
       setError(e instanceof Error ? e.message : String(e))
       setActiveImportRemote(null)
     },
