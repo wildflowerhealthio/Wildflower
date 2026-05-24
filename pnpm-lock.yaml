@@ -629,6 +629,9 @@ importers:
       react-dom:
         specifier: 19.1.0
         version: 19.1.0(react@19.1.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../react-kitchen-sink
       typescript:
         specifier: 5.9.3
         version: 5.9.3

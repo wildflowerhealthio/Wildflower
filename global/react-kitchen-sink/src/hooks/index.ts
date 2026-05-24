@@ -1,3 +1,4 @@
+export { NoContextException, useContextOrThrow } from './use-context-or-throw.ts'
 export { useEffectAction, type EffectAction } from './use-effect-action.ts'
 export { useEffectTs } from './use-effect-ts.ts'
 export { useLoadingPromise, type LoadingPromiseState } from './use-loading-promise.ts'

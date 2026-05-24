@@ -1,8 +1,10 @@
 import { Array, Context, Effect, Layer, Option, Schema } from 'effect'
-import type { UnionToIntersection } from 'kitchen-sink/types'
 import type * as MessageHandler from './message-handler.ts'
 import * as Message from './message.ts'
 import { TransportAdapter } from './transport-adapter.ts'
+
+/** The opposite side of a bridge: messages we receive came from this side. */
+type OppositeSide<S extends 'Host' | 'Web'> = S extends 'Host' ? 'Web' : 'Host'
 
 /** Typed sender for one side. Each call returns an Effect that requires {@link TransportAdapter}. */
 type SenderFn<R extends Message.SchemaRecord> = (
@@ -83,32 +85,10 @@ type AnyBridge = {
 }
 
 /**
- * Function-intersection of every wired bridge's typed sender for the
- * specified side. The transport's public `sendMessage` strips the
- * {@link TransportAdapter} requirement.
- */
-type MessageSender<
-  Bridges extends ReadonlyArray<AnyBridge>,
-  Side extends 'Host' | 'Web',
-> = UnionToIntersection<
-  Bridges[number] extends infer B
-    ? B extends {
-        readonly [K in Side]: {
-          readonly send: (
-            m: infer M extends { readonly _tag: string }
-          ) => Effect.Effect<void, never, TransportAdapter>
-        }
-      }
-      ? (message: M) => Effect.Effect<void>
-      : never
-    : never
->
-
-/**
  * Union of every decoded message a wired bridge's `Side` can send.
  *
  * @remarks
- * Used where {@link MessageSender}'s function-intersection shape
+ * Used where {@link TransportMessageSender}'s function-intersection shape
  * is the wrong tool — `Parameters` doesn't yield a parameter union
  * over intersected functions because TS treats them as overloads.
  */
@@ -326,11 +306,11 @@ const findWireSchema = (
 
 export { make, senderByTag, findUrlParamSchema, findWireSchema }
 export type {
+  OppositeSide,
   AnyBridge,
   AnyHalf,
   Bridge,
   Half,
-  MessageSender,
   SendableMessage,
   SenderFn,
   TransportLayers,

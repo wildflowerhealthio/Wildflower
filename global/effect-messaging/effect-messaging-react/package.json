@@ -39,6 +39,7 @@
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "react-kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -46,6 +47,7 @@
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "kitchen-sink": "workspace:*",
-    "react": "catalog:"
+    "react": "catalog:",
+    "react-kitchen-sink": "workspace:*"
   }
 }

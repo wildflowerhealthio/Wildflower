@@ -53,7 +53,7 @@ interface WebViewHandle {
  * `webviewHandleRef`) and the WebView's `ref` prop.
  */
 interface ExpoTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
-  readonly sendMessage: Bridge.MessageSender<Bridges, 'Host'>
+  readonly sendMessage: BridgeTransport.MessageSender<Bridges, 'Host'>
   /**
    * The configured `baseUrl` with one `?<Tag>=<value>` param per
    * typed initial message. Empty values render as bare flags.

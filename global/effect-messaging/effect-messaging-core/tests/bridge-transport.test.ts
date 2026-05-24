@@ -80,14 +80,14 @@ describe('BridgeTransport.make — internal-error variant', () => {
 })
 
 describe('BridgeTransport.make — live-attachment path', () => {
-  test('attachLive callback receives enqueue and routes through the dispatch fiber', async () => {
+  test('attachBareSender callback receives enqueue and routes through the dispatch fiber', async () => {
     const { NavigationLike } = makeBridges()
     let pingCalls = 0
     const layer = NavigationLike.Web.ReceiverLayer({
       Ping: () => Effect.sync(() => (pingCalls += 1)),
     })
-    const { layer: adapterLayer, liveEnqueueRef } = TestPlatformAdapterLayer.make({
-      captureAttachLive: true,
+    const { layer: adapterLayer, liveBareSenderRef } = TestPlatformAdapterLayer.make({
+      captureBareSenderLive: true,
     })
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -96,8 +96,8 @@ describe('BridgeTransport.make — live-attachment path', () => {
           layers: [layer] as const,
           side: 'Web',
         }).pipe(Effect.provide(adapterLayer))
-        if (liveEnqueueRef.current === null) throw new Error('liveEnqueueRef not captured')
-        yield* liveEnqueueRef.current(Schema.encodeSync(Ping)({ _tag: 'Ping', value: 99 }))
+        if (liveBareSenderRef.current === null) throw new Error('liveBareSenderRef not captured')
+        yield* liveBareSenderRef.current(Schema.encodeSync(Ping)({ _tag: 'Ping', value: 99 }))
         yield* transport.flushed
         expect(pingCalls).toBe(1)
       }).pipe(Effect.scoped)
@@ -107,8 +107,8 @@ describe('BridgeTransport.make — live-attachment path', () => {
   test('scope close detaches the live enqueue', async () => {
     const { NavigationLike } = makeBridges()
     const layer = NavigationLike.Web.ReceiverLayer({ Ping: () => Effect.void })
-    const { layer: adapterLayer, liveEnqueueRef } = TestPlatformAdapterLayer.make({
-      captureAttachLive: true,
+    const { layer: adapterLayer, liveBareSenderRef } = TestPlatformAdapterLayer.make({
+      captureBareSenderLive: true,
     })
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -117,10 +117,10 @@ describe('BridgeTransport.make — live-attachment path', () => {
           layers: [layer] as const,
           side: 'Web',
         }).pipe(Effect.provide(adapterLayer))
-        expect(liveEnqueueRef.current).not.toBeNull()
+        expect(liveBareSenderRef.current).not.toBeNull()
       }).pipe(Effect.scoped)
     )
-    expect(liveEnqueueRef.current).toBeNull()
+    expect(liveBareSenderRef.current).toBeNull()
   })
 })
 
@@ -156,9 +156,9 @@ describe('BridgeTransport.make — __Ready handshake', () => {
     const {
       layer: adapterLayer,
       sentSink,
-      liveEnqueueRef,
+      liveBareSenderRef,
     } = TestPlatformAdapterLayer.make({
-      captureAttachLive: true,
+      captureBareSenderLive: true,
     })
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -173,8 +173,8 @@ describe('BridgeTransport.make — __Ready handshake', () => {
         yield* Effect.sleep(20)
         expect(sentSink).toHaveLength(0)
         // Post __Ready into the dispatch fiber.
-        if (liveEnqueueRef.current === null) throw new Error('liveEnqueueRef not captured')
-        yield* liveEnqueueRef.current('{"_tag":"__Ready"}')
+        if (liveBareSenderRef.current === null) throw new Error('liveBareSenderRef not captured')
+        yield* liveBareSenderRef.current('{"_tag":"__Ready"}')
         // Now the send completes.
         yield* sendFiber.await
         expect(sentSink).toHaveLength(1)
