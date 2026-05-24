@@ -45,3 +45,4 @@ if ((Promise as MaybePolyfilled).withResolvers === undefined) {
 const installed = (Promise as MaybePolyfilled).withResolvers !== undefined
 
 export { installed }
+export default installed

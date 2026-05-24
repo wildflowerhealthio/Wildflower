@@ -85,12 +85,15 @@ const initClientTelemetry = (
   // the load-bearing reason.
   installContextManager()
 
+  // Always invoke the Sentry adapter so unconditional `Sentry.wrap`
+  // calls in app entry points don't trigger "wrap before init" warnings.
+  // Adapters no-op (or initialize in disabled mode) when no DSN is set.
+  const sentryOn = sentry.init(config)
+
   if (!isTelemetryEnabled(config)) {
     markOtelInitAttempted()
     return undefined
   }
-
-  const sentryOn = sentry.init(config)
   const processors = buildProcessors(config, sentryOn)
   if (processors.length === 0) {
     markOtelInitAttempted()
