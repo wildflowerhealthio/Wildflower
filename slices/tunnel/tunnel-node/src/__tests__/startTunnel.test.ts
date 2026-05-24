@@ -276,9 +276,14 @@ describe('startTunnel — post-bind phase', () => {
 // `i` flag, so we lowercase the alphabet directly. The shrinker prefers
 // shorter strings, which surfaces boundary cases (single-char labels)
 // early.
+//
+// Also exclude IDN A-label syntax (labels starting with `xn--`): the
+// WHATWG URL parser runs ToASCII on the host and rejects labels whose
+// Punycode payload is syntactically invalid (e.g. `xn--0`). That's URL
+// grammar too — not what this property is exercising.
 const hostnameLabel = fc
   .stringMatching(/^[a-z][a-z0-9-]{0,15}$/)
-  .filter((s) => !s.endsWith('-') && s.length > 0)
+  .filter((s) => !s.endsWith('-') && s.length > 0 && !s.startsWith('xn--'))
 
 describe('startTunnel — granted-domain parsing (property)', () => {
   it('splits the granted hostname at the first dot', () =>
