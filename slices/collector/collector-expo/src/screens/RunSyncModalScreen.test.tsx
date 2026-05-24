@@ -93,7 +93,7 @@ describe('RunSyncModalScreen', () => {
           postRawCollectorMessage={(raw) => rawCalls.push(raw)}
         />
       )
-      mockLastOnRawMessage?.(JSON.stringify({ _tag: 'Log', log: 'spam' }))
+      mockLastOnRawMessage?.(JSON.stringify({ _tag: 'Log', level: 'info', payload: ['spam'] }))
       mockLastOnRawMessage?.(JSON.stringify({ _tag: '__Ready' }))
       expect(rawCalls).toEqual([])
     })

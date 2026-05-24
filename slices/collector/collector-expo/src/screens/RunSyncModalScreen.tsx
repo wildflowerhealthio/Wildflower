@@ -125,11 +125,15 @@ const RunSyncModalScreen = ({
   )
 
   // Typed handlers cover the host-local concerns only: `RequestError`
-  // surfaces to `onError`; `Log` is a deliberate drop; the rest are
-  // forwarded raw via `onRawMessage` below.
+  // surfaces to `onError`; `Log` re-emits the page's `console.<level>`
+  // call on the host's own console so it shows up in the native
+  // logger sink; the rest are forwarded raw via `onRawMessage` below.
   const handlers = useMemo<SnifferHandlers>(
     () => ({
-      Log: () => Effect.void,
+      Log: ({ level, payload }) =>
+        Effect.sync(() => {
+          console[level](...payload)
+        }),
       ResponseStart: () => Effect.void,
       ResponseData: () => Effect.void,
       ResponseFinished: () => Effect.void,

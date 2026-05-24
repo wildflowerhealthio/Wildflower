@@ -7,6 +7,7 @@ export {
   ClickMessage,
   ClickMessageBody,
   HeadersWire,
+  LogLevel,
   LogMessage,
   LogMessageBody,
   PageLoadedMessage,

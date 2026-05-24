@@ -28,12 +28,45 @@ type HostToWebMessage =
   | Schema.Schema.Type<typeof CancelSnifferRequestMessage>
   | Schema.Schema.Type<typeof ClickMessage>
 
+// `Log.payload` is `Schema.Array(Schema.Unknown)`; the default Arbitrary
+// for `Schema.Unknown` includes values JSON drops/rewrites (`undefined`,
+// `NaN`, `Infinity`, functions, symbols), so the wire round-trip can't
+// reproduce them. Constrain the property test to a JSON-safe payload
+// arbitrary instead — strings, finite numbers, booleans, nulls, and
+// small recursive arrays/objects of the same.
+const jsonSafeValueArb: fc.Arbitrary<unknown> = fc.letrec((tie) => ({
+  value: fc.oneof(
+    { maxDepth: 2 },
+    fc.string(),
+    fc.double({ noNaN: true, noDefaultInfinity: true }),
+    fc.integer(),
+    fc.boolean(),
+    fc.constant(null),
+    fc.array(tie('value'), { maxLength: 3 }),
+    fc.dictionary(fc.string(), tie('value'), { maxKeys: 3 })
+  ),
+})).value
+
+const logArb: fc.Arbitrary<Schema.Schema.Type<typeof LogMessage>> = fc.record({
+  _tag: fc.constant('Log' as const),
+  level: fc.constantFrom(
+    'debug' as const,
+    'info' as const,
+    'log' as const,
+    'warn' as const,
+    'error' as const
+  ),
+  payload: fc.array(jsonSafeValueArb, { maxLength: 4 }),
+})
+
 // Arbitrary instances of each decoded payload, derived from the schemas
 // themselves so the test stays in lockstep with the bridge wire format —
 // adding a new field on a message immediately widens the arbitrary, no
-// hand-maintained fixtures.
+// hand-maintained fixtures. `Log` uses a hand-rolled arbitrary because
+// its `payload: Schema.Array(Schema.Unknown)` field admits values that
+// can't survive `JSON.stringify` / `JSON.parse`.
 const webToHostArb: fc.Arbitrary<WebToHostMessage> = fc.oneof(
-  Arbitrary.make(Schema.typeSchema(LogMessage)),
+  logArb,
   Arbitrary.make(Schema.typeSchema(ResponseStartMessage)),
   Arbitrary.make(Schema.typeSchema(ResponseDataMessage)),
   Arbitrary.make(Schema.typeSchema(ResponseFinishedMessage)),
@@ -149,6 +182,27 @@ describe('BrowserSnifferBridge — Web→Host round-trip', () => {
       })
     )
   })
+
+  test('Web send encodes a Log with level + mixed-type payload array and Host decodes it', () => {
+    // Mirror of NavigationBridge's Log roundtrip case — guards the
+    // structured `{ level, payload }` shape across the JSON wire. Mixed
+    // payload entries (string, number, object) pin the `Schema.Unknown`
+    // → `JSON.stringify` round-trip per-entry.
+    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make({})
+    Effect.runSync(
+      BrowserSnifferBridge.Web.send({
+        _tag: 'Log',
+        level: 'warn',
+        payload: ['count', 3, { ctx: 'browser-sniffer' }],
+      }).pipe(Effect.provide(adapterLayer))
+    )
+    const decoded = Schema.decodeSync(BrowserSnifferBridge.Host.InboundSchemas.Log)(sentSink[0])
+    expect(decoded).toEqual({
+      _tag: 'Log',
+      level: 'warn',
+      payload: ['count', 3, { ctx: 'browser-sniffer' }],
+    })
+  })
 })
 
 describe('BrowserSnifferBridge — Host→Web round-trip', () => {
@@ -210,11 +264,11 @@ describe('BrowserSnifferBridge — Web→Host negative paths', () => {
     await runHost(
       [
         JSON.stringify({ _tag: 'NotARealMessage', id: 'r1' }),
-        JSON.stringify({ _tag: 'Log', log: 'kept' }),
+        JSON.stringify({ _tag: 'Log', level: 'info', payload: ['kept'] }),
       ],
       layer
     )
-    expect(collected).toEqual([{ _tag: 'Log', log: 'kept' }])
+    expect(collected).toEqual([{ _tag: 'Log', level: 'info', payload: ['kept'] }])
   })
 
   test('drops payloads that match a known _tag but fail field validation', async () => {
