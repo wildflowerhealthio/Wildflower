@@ -1,19 +1,4 @@
 export * as WebPlatformAdapter from './web-platform-adapter.ts'
-export {
-  makeMessaging,
-  makeMessageSender,
-  makeHoistedMessageSender,
-  makeMessageReceiver,
-} from './messaging/index.ts'
 export { NoContextException } from 'react-kitchen-sink'
-export type {
-  MakeMessaging,
-  MadeMessageSender,
-  MadeHoistedMessageSender,
-  MadeMessageReceiver,
-  TransportMessageSender,
-  MessageSenderProviderProps,
-  HoistedMessageSenderProviderProps,
-  MessageReceiverProviderProps,
-  ReceiverHandlers,
-} from './messaging/index.ts'
+export { makeBridgeDispatcher, type MadeBridgeDispatcher } from './make-bridge-dispatcher.tsx'
+export { makeMessageSenderPipe, type MadeMessageSenderPipe } from './make-message-sender-pipe.tsx'

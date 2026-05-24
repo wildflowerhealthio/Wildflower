@@ -1,0 +1,78 @@
+import { Effect } from 'effect'
+import type { Bridge, BridgeTransport } from 'effect-messaging-core'
+import {
+  createContext,
+  useRef,
+  type RefObject,
+  type FC as ReactFC,
+  useEffect,
+  type JSX,
+} from 'react'
+import { useContextOrThrow } from 'react-kitchen-sink'
+
+interface MadeMessageSenderPipe<
+  TName extends string,
+  TBridges extends ReadonlyArray<Bridge.AnyBridge>,
+  TSide extends 'Host' | 'Web',
+> {
+  Provider: React.FC<{ children: React.ReactNode }> & {
+    displayName: `${TName}MessageSenderPipeContext`
+  }
+  usePipeMessageSender: () => BridgeTransport.MessageSender<TBridges, TSide>
+  useAsPipeMessageSender: (sender: BridgeTransport.MessageSender<TBridges, TSide>) => void
+}
+
+const makeMessageSenderPipe = <
+  const TName extends string,
+  const TBridges extends ReadonlyArray<Bridge.AnyBridge>,
+  const TSide extends 'Host' | 'Web',
+>(
+  name: TName,
+  _bridges: TBridges,
+  _side: TSide
+): MadeMessageSenderPipe<TName, TBridges, TSide> => {
+  // `_bridges` and `_side` are type witnesses — they bind TBridges/TSide into
+  // the returned closure so downstream types flow without runtime generics.
+
+  const defaultHandler: BridgeTransport.MessageSender<TBridges, TSide> = (msg) =>
+    Effect.logWarning(
+      `[effect-messaging] no ${name}MessageSenderPipe handler registered; dropping message "${JSON.stringify(msg)}"`
+    )
+
+  const Context = createContext<RefObject<BridgeTransport.MessageSender<TBridges, TSide>> | null>(
+    null
+  )
+  Context.displayName = `${name}MessageSenderPipeContext`
+
+  // oxlint-disable-next-line react-refresh/only-export-components
+  const Provider = ({ children }: { children: React.ReactNode }): JSX.Element => {
+    const handlerRef = useRef<BridgeTransport.MessageSender<TBridges, TSide>>(defaultHandler)
+
+    return <Context.Provider value={handlerRef}>{children}</Context.Provider>
+  }
+  Provider.displayName = `${name}MessageSenderPipeContext`
+
+  const usePipeMessageSender = (): BridgeTransport.MessageSender<TBridges, TSide> => {
+    const handlerRef = useContextOrThrow(Context)
+    return handlerRef.current
+  }
+
+  const useAsPipeMessageSender = (sender: BridgeTransport.MessageSender<TBridges, TSide>): void => {
+    const handlerRef = useContextOrThrow(Context)
+    useEffect(() => {
+      handlerRef.current = sender
+    }, [sender, handlerRef])
+  }
+
+  return {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    Provider: Provider as ReactFC<{ children: React.ReactNode }> & {
+      displayName: `${TName}MessageSenderPipeContext`
+    },
+    usePipeMessageSender,
+    useAsPipeMessageSender,
+  }
+}
+
+export { makeMessageSenderPipe }
+export type { MadeMessageSenderPipe }

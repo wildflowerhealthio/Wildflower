@@ -3,6 +3,9 @@ import type * as MessageHandler from './message-handler.ts'
 import * as Message from './message.ts'
 import { TransportAdapter } from './transport-adapter.ts'
 
+/** The opposite side of a bridge: messages we receive came from this side. */
+type OppositeSide<S extends 'Host' | 'Web'> = S extends 'Host' ? 'Web' : 'Host'
+
 /** Typed sender for one side. Each call returns an Effect that requires {@link TransportAdapter}. */
 type SenderFn<R extends Message.SchemaRecord> = (
   message: Message.Of<R>
@@ -303,6 +306,7 @@ const findWireSchema = (
 
 export { make, senderByTag, findUrlParamSchema, findWireSchema }
 export type {
+  OppositeSide,
   AnyBridge,
   AnyHalf,
   Bridge,

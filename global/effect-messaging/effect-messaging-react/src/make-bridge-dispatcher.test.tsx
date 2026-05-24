@@ -4,9 +4,9 @@ import * as fc from 'fast-check'
 import { NoContextException } from 'react-kitchen-sink'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
-import { makeMessageReceiver } from './make-message-receiver.tsx'
-import { inboundSequenceArb } from './test-arbitraries.ts'
-import { GatekeeperBridge, NavigationBridge, testBridges } from './test-bridges.ts'
+import { makeBridgeDispatcher } from './make-bridge-dispatcher.tsx'
+import { inboundSequenceArb } from './test-utils/test-arbitraries.ts'
+import { NavigationBridge, testBridges } from './test-utils/test-bridges.ts'
 
 const silenceReactErrorBoundary = (): (() => void) => {
   const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -15,14 +15,17 @@ const silenceReactErrorBoundary = (): (() => void) => {
   }
 }
 
-describe('makeMessageReceiver — examples', () => {
+describe('makeBridgeDispatcher — examples', () => {
   test('dispatch with no registered handler resolves without throwing', async () => {
-    const { MessageReceiverProvider, useMessageDispatcher } = makeMessageReceiver(
+    const { BridgeDispatchRegistryProvider, useMessageSender } = makeBridgeDispatcher(
+      'Test',
       testBridges,
       'Host'
     )
-    const { result } = renderHook(() => useMessageDispatcher(), {
-      wrapper: ({ children }) => <MessageReceiverProvider>{children}</MessageReceiverProvider>,
+    const { result } = renderHook(() => useMessageSender(), {
+      wrapper: ({ children }) => (
+        <BridgeDispatchRegistryProvider>{children}</BridgeDispatchRegistryProvider>
+      ),
     })
     const exit = await Effect.runPromise(
       Effect.exit(result.current({ _tag: 'RouteChanged', pathname: '/x', canGoBack: false }))
@@ -31,8 +34,8 @@ describe('makeMessageReceiver — examples', () => {
   })
 
   test('undefined handlers in the partial record are skipped', async () => {
-    const { MessageReceiverProvider, useMessageReceiver, useMessageDispatcher } =
-      makeMessageReceiver(testBridges, 'Host')
+    const { BridgeDispatchRegistryProvider, useAsMessageHandlers, useMessageSender } =
+      makeBridgeDispatcher('Test', testBridges, 'Host')
     const received: Array<string> = []
     const handlers = {
       RouteChanged: (m: { readonly pathname: string }) =>
@@ -44,11 +47,13 @@ describe('makeMessageReceiver — examples', () => {
 
     const { result } = renderHook(
       () => {
-        useMessageReceiver(NavigationBridge, handlers)
-        return useMessageDispatcher()
+        useAsMessageHandlers(handlers)
+        return useMessageSender()
       },
       {
-        wrapper: ({ children }) => <MessageReceiverProvider>{children}</MessageReceiverProvider>,
+        wrapper: ({ children }) => (
+          <BridgeDispatchRegistryProvider>{children}</BridgeDispatchRegistryProvider>
+        ),
       }
     )
 
@@ -58,9 +63,9 @@ describe('makeMessageReceiver — examples', () => {
     expect(received).toEqual(['/x'])
   })
 
-  test('multi-bridge registry: handlers for different bridges share the same provider without interference', async () => {
-    const { MessageReceiverProvider, useMessageReceiver, useMessageDispatcher } =
-      makeMessageReceiver(testBridges, 'Host')
+  test('multi-call: handlers from two separate `useAsMessageHandlers` calls share the same provider without interference', async () => {
+    const { BridgeDispatchRegistryProvider, useAsMessageHandlers, useMessageSender } =
+      makeBridgeDispatcher('Test', testBridges, 'Host')
     const received: Array<string> = []
     const handlers = {
       RouteChanged: (m: { readonly pathname: string }) =>
@@ -71,14 +76,16 @@ describe('makeMessageReceiver — examples', () => {
 
     const { result } = renderHook(
       () => {
-        useMessageReceiver(NavigationBridge, handlers)
-        // Gatekeeper has no webToHost messages, so the partial record is
-        // necessarily empty. The hook must be a no-op rather than an error.
-        useMessageReceiver(GatekeeperBridge, {})
-        return useMessageDispatcher()
+        useAsMessageHandlers(handlers)
+        // A second registration with no handlers must be a no-op rather than
+        // an error — the empty partial record exercises the loop's skip path.
+        useAsMessageHandlers({})
+        return useMessageSender()
       },
       {
-        wrapper: ({ children }) => <MessageReceiverProvider>{children}</MessageReceiverProvider>,
+        wrapper: ({ children }) => (
+          <BridgeDispatchRegistryProvider>{children}</BridgeDispatchRegistryProvider>
+        ),
       }
     )
 
@@ -89,39 +96,37 @@ describe('makeMessageReceiver — examples', () => {
   })
 })
 
-describe('makeMessageReceiver — context errors', () => {
-  test('useMessageReceiver throws NoContextException outside MessageReceiverProvider', () => {
-    const { useMessageReceiver } = makeMessageReceiver(testBridges, 'Host')
+describe('makeBridgeDispatcher — context errors', () => {
+  test('useAsMessageHandlers throws NoContextException outside BridgeDispatchRegistryProvider', () => {
+    const { useAsMessageHandlers } = makeBridgeDispatcher('Test', testBridges, 'Host')
     const restore = silenceReactErrorBoundary()
     try {
-      expect(() => renderHook(() => useMessageReceiver(NavigationBridge, {}))).toThrow(
-        NoContextException
-      )
+      expect(() => renderHook(() => useAsMessageHandlers({}))).toThrow(NoContextException)
     } finally {
       restore()
     }
   })
 
-  test('useMessageDispatcher throws NoContextException outside MessageReceiverProvider', () => {
-    const { useMessageDispatcher } = makeMessageReceiver(testBridges, 'Host')
+  test('useMessageSender throws NoContextException outside BridgeDispatchRegistryProvider', () => {
+    const { useMessageSender } = makeBridgeDispatcher('Test', testBridges, 'Host')
     const restore = silenceReactErrorBoundary()
     try {
-      expect(() => renderHook(() => useMessageDispatcher())).toThrow(NoContextException)
+      expect(() => renderHook(() => useMessageSender())).toThrow(NoContextException)
     } finally {
       restore()
     }
   })
 })
 
-describe('makeMessageReceiver — properties', () => {
+describe('makeBridgeDispatcher — properties', () => {
   test('fanout exactness: dispatching N messages calls every registered handler exactly once per matching message', async () => {
     await fc.assert(
       fc.asyncProperty(
         inboundSequenceArb,
         fc.integer({ min: 1, max: 4 }),
         async (messages, handlerCount) => {
-          const { MessageReceiverProvider, useMessageReceiver, useMessageDispatcher } =
-            makeMessageReceiver(testBridges, 'Host')
+          const { BridgeDispatchRegistryProvider, useAsMessageHandlers, useMessageSender } =
+            makeBridgeDispatcher('Test', testBridges, 'Host')
 
           const sinks: Array<Array<string>> = Array.from({ length: handlerCount }, () => [])
           const handlers = sinks.map((sink) => ({
@@ -134,13 +139,13 @@ describe('makeMessageReceiver — properties', () => {
           const { result } = renderHook(
             () => {
               for (const h of handlers) {
-                useMessageReceiver(NavigationBridge, h)
+                useAsMessageHandlers(h)
               }
-              return useMessageDispatcher()
+              return useMessageSender()
             },
             {
               wrapper: ({ children }) => (
-                <MessageReceiverProvider>{children}</MessageReceiverProvider>
+                <BridgeDispatchRegistryProvider>{children}</BridgeDispatchRegistryProvider>
               ),
             }
           )
@@ -152,6 +157,9 @@ describe('makeMessageReceiver — properties', () => {
           for (const sink of sinks) {
             expect(sink).toEqual(expected)
           }
+          // Reference the bridge so the static narrowing remains exercised
+          // even though the handler shape doesn't depend on it at runtime.
+          expect(NavigationBridge.name).toBe('Navigation')
         }
       ),
       { numRuns: 50 }
@@ -164,8 +172,8 @@ describe('makeMessageReceiver — properties', () => {
         inboundSequenceArb,
         inboundSequenceArb,
         async (beforeMessages, afterMessages) => {
-          const { MessageReceiverProvider, useMessageReceiver, useMessageDispatcher } =
-            makeMessageReceiver(testBridges, 'Host')
+          const { BridgeDispatchRegistryProvider, useAsMessageHandlers, useMessageSender } =
+            makeBridgeDispatcher('Test', testBridges, 'Host')
           const received: Array<string> = []
           const handlers = {
             RouteChanged: (m: { readonly pathname: string }) =>
@@ -179,12 +187,12 @@ describe('makeMessageReceiver — properties', () => {
               // Toggle by passing an empty handlers record when unmounted —
               // keeps the hook order stable; the empty record triggers
               // useEffect's cleanup to deregister all previous handlers.
-              useMessageReceiver(NavigationBridge, mounted ? handlers : {})
-              return useMessageDispatcher()
+              useAsMessageHandlers(mounted ? handlers : {})
+              return useMessageSender()
             },
             {
               wrapper: ({ children }) => (
-                <MessageReceiverProvider>{children}</MessageReceiverProvider>
+                <BridgeDispatchRegistryProvider>{children}</BridgeDispatchRegistryProvider>
               ),
               initialProps: { mounted: true },
             }
@@ -198,7 +206,7 @@ describe('makeMessageReceiver — properties', () => {
             Effect.forEach(afterMessages, (m) => result.current(m), { discard: true })
           )
 
-          // Only the `before` batch reaches the handler; after-unmount messages drop.
+          // Only the `before` batch reaches the handler; after-unmount drops.
           expect(received).toEqual(beforeMessages.map((m) => m.pathname))
         }
       ),

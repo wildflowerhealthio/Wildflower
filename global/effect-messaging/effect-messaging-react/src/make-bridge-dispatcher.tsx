@@ -2,39 +2,35 @@
    share an in-file registry context; splitting them would force a cross-file
    import of an otherwise-private context just to satisfy fast-refresh's rule. */
 import { Effect } from 'effect'
-import type { Bridge } from 'effect-messaging-core'
-import {
-  createContext,
-  useCallback,
-  useEffect,
-  useRef,
-  type FC,
-  type ReactNode,
-  type RefObject,
-} from 'react'
+import type { Bridge, BridgeTransport } from 'effect-messaging-core'
+import { createContext, useCallback, useEffect, useRef, type FC, type RefObject } from 'react'
 import { useContextOrThrow } from 'react-kitchen-sink'
 
-import type { OppositeSide, ReceiverHandlers } from './types.ts'
+/** Per-bridge handler record for `useMessageReceiver`. */
+type ReceiverHandlers<B extends Bridge.AnyBridge, TSide extends 'Host' | 'Web'> = Partial<{
+  readonly [Tag in Bridge.SendableMessage<readonly [B], Bridge.OppositeSide<TSide>>['_tag']]: (
+    message: Extract<
+      Bridge.SendableMessage<readonly [B], Bridge.OppositeSide<TSide>>,
+      { readonly _tag: Tag }
+    >
+  ) => Effect.Effect<void>
+}>
 
-interface MessageReceiverProviderProps {
-  readonly children: ReactNode
-}
-
-interface MadeMessageReceiver<
+interface MadeBridgeDispatcher<
+  TName extends string,
   TBridges extends ReadonlyArray<Bridge.AnyBridge>,
   TSide extends 'Host' | 'Web',
 > {
-  readonly MessageReceiverProvider: FC<MessageReceiverProviderProps>
-  readonly useMessageReceiver: <B extends TBridges[number]>(
-    bridge: B,
+  readonly BridgeDispatchRegistryProvider: FC<React.PropsWithChildren> & {
+    displayName: `${TName}BridgeDispatchRegistryProvider`
+  }
+  readonly useAsMessageHandlers: <B extends TBridges[number]>(
     handlers: ReceiverHandlers<B, TSide>
   ) => void
-  readonly useMessageDispatcher: () => (
-    message: Extract<
-      Bridge.SendableMessage<TBridges, OppositeSide<TSide>>,
-      { readonly _tag: string }
-    >
-  ) => Effect.Effect<void>
+  readonly useMessageSender: () => BridgeTransport.MessageSender<
+    TBridges,
+    Bridge.OppositeSide<TSide>
+  >
 }
 
 /**
@@ -46,36 +42,38 @@ interface MadeMessageReceiver<
  * deregister on unmount. Pass stable callbacks (`useCallback`) or memoize the
  * `handlers` object to avoid re-register cycles on every render.
  *
- * The transport-mounting code calls `useMessageDispatcher` and feeds inbound
- * messages into the returned function.
+ * The transport-mounting code calls `useAsMessageHandlers` and feeds inbound
+ * messages into the registered handlers.
  */
-const makeMessageReceiver = <
+const makeBridgeDispatcher = <
+  const TName extends string,
   const TBridges extends ReadonlyArray<Bridge.AnyBridge>,
   const TSide extends 'Host' | 'Web',
 >(
+  name: TName,
   _bridges: TBridges,
   _side: TSide
-): MadeMessageReceiver<TBridges, TSide> => {
+): MadeBridgeDispatcher<TName, TBridges, TSide> => {
   type Inbound = Extract<
-    Bridge.SendableMessage<TBridges, OppositeSide<TSide>>,
+    Bridge.SendableMessage<TBridges, Bridge.OppositeSide<TSide>>,
     { readonly _tag: string }
   >
   type AnyHandler = (message: Inbound) => Effect.Effect<void>
   type Registry = Map<string, Set<AnyHandler>>
 
   const RegistryContext = createContext<RefObject<Registry> | null>(null)
-  RegistryContext.displayName = 'MessageReceiverRegistryContext'
+  RegistryContext.displayName = `${name}BridgeDispatchRegistryContext`
 
-  const MessageReceiverProvider: FC<MessageReceiverProviderProps> = ({ children }) => {
+  const BridgeDispatchRegistryProvider: FC<React.PropsWithChildren> = ({ children }) => {
     const registryRef = useRef<Registry>(new Map())
     return <RegistryContext.Provider value={registryRef}>{children}</RegistryContext.Provider>
   }
+  BridgeDispatchRegistryProvider.displayName = `${name}BridgeDispatchRegistryProvider`
 
   // `bridge` is a type witness — its `OppositeSide` outbound schema set is what
   // narrows the handler signatures. The hook only touches tags present in
   // `handlers`.
-  const useMessageReceiver = <B extends TBridges[number]>(
-    _bridge: B,
+  const useAsMessageHandlers = <B extends TBridges[number]>(
     handlers: ReceiverHandlers<B, TSide>
   ): void => {
     const ref = useContextOrThrow(RegistryContext)
@@ -99,7 +97,7 @@ const makeMessageReceiver = <
     }, [ref, handlers])
   }
 
-  const useMessageDispatcher = (): ((message: Inbound) => Effect.Effect<void>) => {
+  const useMessageSender = (): ((message: Inbound) => Effect.Effect<void>) => {
     const ref = useContextOrThrow(RegistryContext)
     return useCallback(
       (message: Inbound): Effect.Effect<void> =>
@@ -117,8 +115,16 @@ const makeMessageReceiver = <
     )
   }
 
-  return { MessageReceiverProvider, useMessageReceiver, useMessageDispatcher }
+  return {
+    BridgeDispatchRegistryProvider:
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      BridgeDispatchRegistryProvider as FC<React.PropsWithChildren> & {
+        displayName: `${TName}BridgeDispatchRegistryProvider`
+      },
+    useAsMessageHandlers,
+    useMessageSender,
+  }
 }
 
-export { makeMessageReceiver }
-export type { MadeMessageReceiver, MessageReceiverProviderProps }
+export { makeBridgeDispatcher }
+export type { MadeBridgeDispatcher }
