@@ -1,20 +1,40 @@
-import { installSniffer } from './install-sniffer.ts'
+import { snifferScriptSource } from './sniffer-script.generated.ts'
 
 /**
- * JS-source string of {@link installSniffer}'s body, self-invoking.
+ * Self-invoking JS source string of the sniffer, injected into sniffed
+ * pages via `react-native-webview`'s
+ * `injectedJavaScriptBeforeContentLoaded` (or `injectJavaScript` for live
+ * re-injection), or embedded into inline HTML sources before the WebView
+ * renders them.
  *
- * Produced via `Function.prototype.toString()` at module-load time —
- * works identically in source-condition (tsdown/swc-stripped TS) and
- * built-condition (tsdown-emitted JS) because both yield runtime JS the
- * engine parses and stringifies. Consumers inject this string into a
- * WebView via `react-native-webview`'s `injectedJavaScriptBeforeContentLoaded`
- * (or `injectJavaScript` for live re-injection).
+ * Produced at build time by `scripts/build-sniffer-script.mjs`, which
+ * bundles `sniffer-entry.ts` (which imports and invokes
+ * {@link installSniffer}) into a self-contained IIFE. The bundled
+ * string is committed to source as `sniffer-script.generated.ts` so
+ * Metro — which resolves this package via the `source` export
+ * condition — sees the script without running a build step in the
+ * consuming app.
  *
- * Constraint that makes this work: {@link installSniffer} declares no
- * module-scope value dependencies — every helper is nested inside the
- * function body. See `install-sniffer.ts` for the reasoning.
+ * Why not `Function.prototype.toString()` at runtime: Hermes (RN/Expo)
+ * strips function source after bytecode compilation, so the previous
+ * `\`(${installSniffer.toString()})()\`` approach returned a syntactically
+ * valid no-op (`(function () { [bytecode] })()`) on-device. Build-time
+ * generation sidesteps that entirely.
+ *
+ * The length guard below trips if the generated file is empty or
+ * mistakenly checked in stale — a louder failure than a silent no-op.
  */
-const snifferScript: string = `(${installSniffer.toString()})()`
+const SNIFFER_SCRIPT_MIN_LENGTH = 1000
+const snifferScript: string = snifferScriptSource
+if (snifferScript.length < SNIFFER_SCRIPT_MIN_LENGTH) {
+  throw new Error(
+    `browser-sniffer-injected: snifferScript is ${snifferScript.length} chars, ` +
+      `expected at least ${SNIFFER_SCRIPT_MIN_LENGTH}. ` +
+      `The generated file 'sniffer-script.generated.ts' looks empty or stale — ` +
+      `run \`vp run generate-sniffer-script\` to regenerate it. ` +
+      `Script preview: ${snifferScript.slice(0, 200)}`
+  )
+}
 
 export { installSniffer, SNIFFER_STATE_KEY } from './install-sniffer.ts'
 export { snifferScript }
