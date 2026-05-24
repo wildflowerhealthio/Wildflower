@@ -5,6 +5,7 @@ import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
+import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
 
 const PeriodSchema: Schema.Schema<typeof StorePeriod.Schema.Type, FhirR4.Period, never> =
@@ -15,5 +16,7 @@ const PeriodSchema: Schema.Schema<typeof StorePeriod.Schema.Type, FhirR4.Period,
       start: OrNullAsOptional(Schema.DateTimeUtc),
     })
   )
+
+registerDatatypeSchema('Period', PeriodSchema)
 
 export { PeriodSchema as Schema }

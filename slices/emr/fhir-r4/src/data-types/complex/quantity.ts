@@ -6,6 +6,7 @@ import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
+import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
 
 const QuantitySchema: Schema.Schema<typeof StoreQuantity.Schema.Type, FhirR4.Quantity, never> =
@@ -26,5 +27,7 @@ const QuantitySchema: Schema.Schema<typeof StoreQuantity.Schema.Type, FhirR4.Qua
       value: OrNullAsOptional(Schema.Finite),
     })
   )
+
+registerDatatypeSchema('Quantity', QuantitySchema)
 
 export { QuantitySchema as Schema }
