@@ -4,20 +4,23 @@ import type { NavigationBridge } from 'navigation-core'
 import { type JSX, useEffect } from 'react'
 import { MemoryRouter, type NavigateFunction, useNavigate } from 'react-router'
 import { describe, expect, test } from 'vite-plus/test'
-import { NavigationBridgeHandler } from './navigation-bridge-handler'
+import { NavigationBridgeHandler, type RouteChangeSender } from './navigation-bridge-handler'
 
 type RouteChanged = NavigationBridge['MessageSchemas']['RouteChanged']['Type']
 type Log = NavigationBridge['MessageSchemas']['Log']['Type']
 
 const setupCalls = (): {
   readonly calls: (RouteChanged | Log)[]
-  readonly send: typeof NavigationBridge.Web.send
+  readonly send: RouteChangeSender
 } => {
   const calls: (RouteChanged | Log)[] = []
-  const send: typeof NavigationBridge.Web.send = (message) => {
-    calls.push(message)
-    return Effect.void
-  }
+  // Record on Effect *run*, not on construction. A push-on-call mock
+  // would pass even when production code discards the returned Effect —
+  // exactly the regression `NavigationBridgeHandler` had until Fix C.
+  const send: RouteChangeSender = (message) =>
+    Effect.sync(() => {
+      calls.push(message)
+    })
   return { calls, send }
 }
 
