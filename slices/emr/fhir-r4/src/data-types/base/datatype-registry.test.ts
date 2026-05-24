@@ -1,61 +1,53 @@
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
-import type { Address as StoreAddress } from 'emr-core/schemas'
-import { Extension as StoreExtension } from 'emr-core/schemas'
+import { Datatype, Extension as StoreExtension } from 'emr-core/schemas'
 
-import * as Address from '../complex/address.ts'
-// Importing Extension also imports the rest of the datatype barrel through
-// element.ts → extension.ts → choice-element-passthrough-fields.ts; the
-// complex datatype modules import-order in `../index.ts` guarantees Address
-// (and friends) are registered before any `value[x]` decode/encode runs.
+// side-effect: the data-types barrel re-exports every complex datatype
+// module, triggering their `registerDatatypeSchema(...)` self-registrations.
+import '../index.ts'
 import * as Extension from '../special-purpose/extension.ts'
-import { baseDatatypes, resolveDatatypeSchema } from './datatype-registry.ts'
+import { baseDatatypes, registeredNames, resolveDatatypeSchema } from './datatype-registry.ts'
 
 describe('fhir-r4 datatype registry', () => {
-  test('Address self-registers a fhir-r4 wire-format schema', () => {
-    expect(baseDatatypes.Address).toBeDefined()
-    expect(resolveDatatypeSchema('Address')).toBe(Address.Schema)
+  test.each(registeredNames)('%s is registered after barrel load', (name) => {
+    expect(baseDatatypes[name]).toBeDefined()
+    expect(Effect.runSyncExit(resolveDatatypeSchema(name))._tag).toBe('Success')
   })
 
-  test('value[x] choice resolves valueAddress through the fhir-r4 wire schema', () => {
-    const storeAddress: typeof StoreAddress.Schema.Type = {
-      id: null,
-      extension: [],
-      use: 'home',
-      type: null,
-      text: null,
-      line: ['1 Main St'],
-      city: 'Springfield',
-      district: null,
-      state: 'IL',
-      postalCode: null,
-      country: null,
-      period: null,
-    }
+  describe('value[x] unregistered slot behavior', () => {
+    const unregisteredNames = Datatype.names.filter((n) => !(n in baseDatatypes))
 
-    const storeExtension: typeof StoreExtension.Schema.Type = {
-      ...StoreExtension.emptyValueChoice,
-      id: null,
-      extension: [],
-      url: 'http://example.org/ext/home-address',
-      valueAddress: storeAddress,
-    }
+    test('there are unregistered names to exercise', () => {
+      expect(unregisteredNames.length).toBeGreaterThan(0)
+    })
 
-    const encoded = Schema.encodeSync(Extension.Schema)(storeExtension)
+    test.each(unregisteredNames)('value%s decodes wire content to null', (name) => {
+      const key = `value${name.charAt(0).toUpperCase()}${name.slice(1)}`
+      const wire = {
+        url: 'http://example.org/ext/unregistered',
+        [key]: { arbitrary: 'wire content' },
+      }
+      const decoded = Schema.decodeSync(Extension.Schema)(wire)
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- key is a value[x] slot constructed from `name` at runtime
+      expect((decoded as unknown as Record<string, unknown>)[key]).toBeNull()
+    })
 
-    // fhir-r4 wire format: null in memory → undefined on the wire (via
-    // `OrNullAsOptional`). That's the distinguishing behavior vs. emr-core's
-    // store-format `Schema.NullOr` that the bug was leaking through — store
-    // would emit literal `null` for these.
-    expect(encoded.valueAddress).toBeDefined()
-    expect(encoded.valueAddress?.use).toBe('home')
-    expect(encoded.valueAddress?.city).toBe('Springfield')
-    expect(encoded.valueAddress?.type).toBeUndefined()
-    expect(encoded.valueAddress?.text).toBeUndefined()
-    expect(encoded.valueAddress?.country).toBeUndefined()
-
-    const decoded = Schema.decodeSync(Extension.Schema)(encoded)
-    expect(decoded.valueAddress).toEqual(storeAddress)
+    test.each(unregisteredNames)('value%s rejects non-null in-memory input on encode', (name) => {
+      const key = `value${name.charAt(0).toUpperCase()}${name.slice(1)}`
+      const storeExtension = {
+        ...StoreExtension.emptyValueChoice,
+        id: null,
+        extension: [],
+        url: 'http://example.org/ext/unregistered',
+        [key]: { anything: 'non-null' },
+      }
+      expect(() =>
+        Schema.encodeSync(Extension.Schema)(
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- intentionally construct an unregistered-slot extension to exercise the encode failure path
+          storeExtension as unknown as typeof StoreExtension.Schema.Type
+        )
+      ).toThrow()
+    })
   })
 })

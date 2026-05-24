@@ -48,6 +48,17 @@ These are now serialized as "absent or non-empty array" matching every other `0.
 
 Per FHIR R4 § Binary, the resource explicitly _does not_ extend `DomainResource` — it has no extensions, contained, or narrative. Today we extend `DomainResource.fields`, so a payload with a `text` (Narrative) on Binary will validate. Tracked separately; see GitHub issues.
 
+## Unregistered choice-element datatypes (`value[x]` / `effective[x]`)
+
+The fhir-r4 datatype registry (`slices/emr/fhir-r4/src/data-types/base/datatype-registry.ts`) ships wire schemas for a 24-entry subset of FHIR R4 `Datatype.Name` (the primitives we use plus `Address`, `Annotation`, `Attachment`, `CodeableConcept`, `Coding`, `ContactPoint`, `HumanName`, `Identifier`, `Meta`, `Period`, `Quantity`, `Range`, `Reference`). Any `value[x]` or `effective[x]` slot whose datatype is **not** registered (e.g. `effectiveTiming`, `effectiveInstant`, `valueRatio`, `valueSampledData`, `valueMoney`, `valueAge`, …) behaves as follows on the wire:
+
+- **Decode**: any wire content for an unregistered slot decodes to `null` (the slot exists at the type level so the in-memory shape still matches `StoreExtension.Type` / resource RowSchema).
+- **Encode**: a non-null in-memory value at an unregistered slot **fails encoding** with a `ParseResult.Type` issue naming the unregistered datatype (`UnregisteredDatatype` tagged error in `datatype-registry.ts`). This is intentional — silent drops were the previous (pre-PR-#61) behavior and masked data loss.
+
+To register a new datatype: add an entry to `baseDatatypes` in `datatype-registry.ts` and a `registerDatatypeSchema('Name', NameSchema)` line at the bottom of its datatype module file. `Timing`, `instant`, and the other complex/primitive datatypes outside the current set are tracked as follow-up work.
+
+Note: a single collation block (e.g. inside `choice-element-passthrough-fields.ts` or `datatype-registry.ts` importing every `complex/*.ts` and calling `registerDatatypeSchema` for each) would be tidier, but is not viable today — it re-enters a partially-loaded `base/element.ts` through the Element ⇄ Extension cycle, spreading `undefined` for `Element.fields` into every complex datatype's struct at construction time. The per-module registration pattern avoids that hazard.
+
 ## Post-merge audit (TODO)
 
 A handful of finer-grained spec audits — the `topLevel: true` collision on domain-resource groups, choice element XOR enforcement, Reference target-type enforcement, etc. — are tracked under the **Post Merge Audit** epic on GitHub.

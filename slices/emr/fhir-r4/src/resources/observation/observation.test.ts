@@ -197,11 +197,6 @@ describe('FhirR4Observation', () => {
     fc.assert(fc.property(shellArb, (override) => roundTrip({ ...sampleObservation, ...override })))
   })
 
-  // Only datatypes with a registered fhir-r4 wire schema can round-trip
-  // through this resource. Unregistered choices (`effectiveTiming`,
-  // `effectiveInstant`, `valueRatio`, `valueSampledData`) are intentionally
-  // dropped from the wire format and decode back as `null`, so they don't
-  // round-trip and are excluded from the picked field set here.
   test('property: effective[x] choice field round-trips', () => {
     const effectiveArb = Arbitrary.make(
       StoreObservation.RowSchema.pick('effectiveDateTime', 'effectivePeriod')
