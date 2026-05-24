@@ -6,6 +6,7 @@ import * as AuthorizationRequest from './authorization-request.ts'
 import * as Client from './client.ts'
 import * as Grant from './grant.ts'
 import * as HttpRequest from './http-request.ts'
+import * as LocalClientToken from './local-client-token.ts'
 import * as SigningKey from './signing-key.ts'
 
 const tables = {
@@ -14,6 +15,7 @@ const tables = {
   client: Client.table,
   grant: Grant.table,
   httpRequest: HttpRequest.table,
+  localClientToken: LocalClientToken.table,
   signingKey: SigningKey.table,
 } as const
 
@@ -23,6 +25,7 @@ const events = {
   ...Client.events,
   ...Grant.events,
   ...HttpRequest.events,
+  ...LocalClientToken.events,
   ...SigningKey.events,
 } as const
 
@@ -32,6 +35,7 @@ const materializers = State.SQLite.materializers(events, {
   ...Client.materializers,
   ...Grant.materializers,
   ...HttpRequest.materializers,
+  ...LocalClientToken.materializers,
   ...SigningKey.materializers,
 })
 
@@ -53,6 +57,7 @@ export {
   GatekeeperStore,
   Grant,
   HttpRequest,
+  LocalClientToken,
   SigningKey,
   events,
   materializers,
