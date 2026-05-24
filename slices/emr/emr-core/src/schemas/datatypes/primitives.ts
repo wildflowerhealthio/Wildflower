@@ -57,4 +57,9 @@ const IdSchema = Schema.String.pipe(
   })
 )
 
-export { IdSchema, TimeSchema, UriSchema }
+/** FHIR R4 `instant`: precise UTC datetime, always with timezone, at least
+ * seconds precision. Decoded shape is `DateTime.Utc` so it shares the
+ * Effect-side representation of `dateTime`. */
+const InstantSchema = Schema.DateTimeUtc
+
+export { IdSchema, InstantSchema, TimeSchema, UriSchema }

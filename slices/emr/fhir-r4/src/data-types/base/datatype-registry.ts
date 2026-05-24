@@ -31,6 +31,7 @@ const baseDatatypes: {
   dateTime: Datatype.SchemaFor<'dateTime'> | undefined
   decimal: Datatype.SchemaFor<'decimal'> | undefined
   id: Datatype.SchemaFor<'id'> | undefined
+  instant: Datatype.SchemaFor<'instant'> | undefined
   integer: Datatype.SchemaFor<'integer'> | undefined
   string: Datatype.SchemaFor<'string'> | undefined
   time: Datatype.SchemaFor<'time'> | undefined
@@ -48,7 +49,10 @@ const baseDatatypes: {
   Period: Datatype.SchemaFor<'Period'> | undefined
   Quantity: Datatype.SchemaFor<'Quantity'> | undefined
   Range: Datatype.SchemaFor<'Range'> | undefined
+  Ratio: Datatype.SchemaFor<'Ratio'> | undefined
   Reference: Datatype.SchemaFor<'Reference'> | undefined
+  SampledData: Datatype.SchemaFor<'SampledData'> | undefined
+  Timing: Datatype.SchemaFor<'Timing'> | undefined
 } = {
   boolean: Datatype.baseSchemas.boolean,
   canonical: Datatype.baseSchemas.canonical,
@@ -56,6 +60,7 @@ const baseDatatypes: {
   dateTime: Datatype.baseSchemas.dateTime,
   decimal: Datatype.baseSchemas.decimal,
   id: Datatype.baseSchemas.id,
+  instant: Datatype.baseSchemas.instant,
   integer: Datatype.baseSchemas.integer,
   string: Datatype.baseSchemas.string,
   time: Datatype.baseSchemas.time,
@@ -73,7 +78,10 @@ const baseDatatypes: {
   Period: undefined,
   Quantity: undefined,
   Range: undefined,
+  Ratio: undefined,
   Reference: undefined,
+  SampledData: undefined,
+  Timing: undefined,
 }
 
 type Name = keyof typeof baseDatatypes

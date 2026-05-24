@@ -199,7 +199,12 @@ describe('FhirR4Observation', () => {
 
   test('property: effective[x] choice field round-trips', () => {
     const effectiveArb = Arbitrary.make(
-      StoreObservation.RowSchema.pick('effectiveDateTime', 'effectivePeriod')
+      StoreObservation.RowSchema.pick(
+        'effectiveDateTime',
+        'effectivePeriod',
+        'effectiveTiming',
+        'effectiveInstant'
+      )
     )
     fc.assert(
       fc.property(effectiveArb, (override) => roundTrip({ ...sampleObservation, ...override }))
@@ -215,6 +220,8 @@ describe('FhirR4Observation', () => {
         'valueBoolean',
         'valueInteger',
         'valueRange',
+        'valueRatio',
+        'valueSampledData',
         'valueTime',
         'valueDateTime',
         'valuePeriod'

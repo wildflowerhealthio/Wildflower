@@ -11,6 +11,11 @@ import * as DomainResource from '../../data-types/base/domain-resource.ts'
 import * as Annotation from '../../data-types/complex/annotation.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 import * as IdentifierAndReference from '../../data-types/complex/identifier-and-reference.ts'
+// side-effect: register Ratio / SampledData / Timing wire schemas so
+// value[x] / effective[x] decode/encode through them resolves at runtime.
+import '../../data-types/complex/ratio.ts'
+import '../../data-types/complex/sampled-data.ts'
+import '../../data-types/complex/timing.ts'
 import * as ObservationComponent from './observation-component.ts'
 import * as ObservationReferenceRange from './observation-reference-range.ts'
 
