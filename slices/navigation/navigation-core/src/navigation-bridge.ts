@@ -29,8 +29,24 @@ const RouteChanged = Schema.parseJson(
   })
 )
 
+/**
+ * Console method names mirrored over the bridge. The producer uses these
+ * to dispatch per-level (web's `console.warn` → `level: 'warn'`); the host
+ * uses them to route into the matching native logger sink.
+ */
+const LogLevel = Schema.Literal('debug', 'info', 'log', 'warn', 'error')
+
+/**
+ * Variadic console payload: the original `console.<level>(...args)` array
+ * preserved as an array of arbitrary JSON-serializable values. `Schema.Unknown`
+ * keeps producer call sites typed against `unknown[]` (matching the console
+ * surface) and lets `Schema.parseJson` serialize each entry through
+ * `JSON.stringify` on the wire — strings, numbers, plain objects, and arrays
+ * all round-trip without first being flattened into a single string.
+ */
 const LogMessageBody = Schema.TaggedStruct('Log', {
-  log: Schema.String,
+  level: LogLevel,
+  payload: Schema.Array(Schema.Unknown),
 })
 const LogMessage = Schema.parseJson(LogMessageBody)
 

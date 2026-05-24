@@ -75,33 +75,40 @@ function TransportProvider({
     ).then(async (transport) => {
       await Effect.runPromise(Effect.andThen(transport.flushed, transport.signalReady))
 
-      console.log = (...args) => {
-        transport.sendMessage({
-          _tag: 'Log',
-          log: JSON.stringify(args),
-        })
-      }
+      // `transport.sendMessage` returns an `Effect`; the overrides must
+      // run it (the same trap as NavigationBridgeHandler had pre-Fix C).
+      // Higher-order factory: each console method binds to a specific
+      // level so the host can route into the matching native sink, and
+      // each call ships the original `...args` array unflattened so
+      // structured objects survive the round trip.
+      const makeLogForLevel =
+        (level: 'debug' | 'info' | 'log' | 'warn' | 'error') =>
+        (...args: unknown[]): void => {
+          Effect.runFork(
+            transport.sendMessage({
+              _tag: 'Log',
+              level,
+              payload: args,
+            })
+          )
+        }
+      const logDebug = makeLogForLevel('debug')
+      const logInfo = makeLogForLevel('info')
+      const logLog = makeLogForLevel('log')
+      const logWarning = makeLogForLevel('warn')
+      const logError = makeLogForLevel('error')
 
-      console.error = (...args) => {
-        transport.sendMessage({
-          _tag: 'Log',
-          log: JSON.stringify(args),
-        })
-      }
+      // oxlint-disable-next-line no-var -- var used deliberately to override the global console
+      var console = Object.assign(globalThis.console, {
+        error: logError,
+        warn: logWarning,
+        log: logLog,
+        info: logInfo,
+        debug: logDebug,
+      })
 
-      console.warn = (...args) => {
-        transport.sendMessage({
-          _tag: 'Log',
-          log: JSON.stringify(args),
-        })
-      }
-      console.info = (...args) => {
-        transport.sendMessage({
-          _tag: 'Log',
-          log: JSON.stringify(args),
-        })
-      }
-
+      globalThis.console = console
+      window.console = console
       return transport
     })
   })

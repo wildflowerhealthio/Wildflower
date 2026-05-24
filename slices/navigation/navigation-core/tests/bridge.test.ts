@@ -32,4 +32,21 @@ describe('NavigationBridge', () => {
     )
     expect(decoded).toEqual({ _tag: 'RouteChanged', pathname: '/x', canGoBack: true })
   })
+
+  test('Web send encodes a Log with level + payload array and Host decodes it', () => {
+    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make({})
+    Effect.runSync(
+      NavigationBridge.Web.send({
+        _tag: 'Log',
+        level: 'warn',
+        payload: ['count', 3, { ctx: 'navigation' }],
+      }).pipe(Effect.provide(adapterLayer))
+    )
+    const decoded = Schema.decodeSync(NavigationBridge.Host.InboundSchemas.Log)(sentSink[0])
+    expect(decoded).toEqual({
+      _tag: 'Log',
+      level: 'warn',
+      payload: ['count', 3, { ctx: 'navigation' }],
+    })
+  })
 })
