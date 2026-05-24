@@ -1,14 +1,12 @@
-import type * as HttpPlatform from '@effect/platform/HttpPlatform'
 /**
- * Expo-specific HttpPlatform implementation.
+ * Expo-specific `HttpPlatform` implementation. Reads file size + mtime via
+ * `expo-file-system` so it does not require an Effect `FileSystem` service.
  *
- * Handles `fileResponse` by passing file paths directly to the native layer
- * (no bytes cross the JS bridge for large files). Reads file size + mtime
- * via `expo-file-system` so it does not depend on Effect's `FileSystem`
- * service (the only one wired in scope on Expo is `layerNoop`, whose `stat`
- * unconditionally fails).
+ * @packageDocumentation
  */
+import type * as HttpPlatform from '@effect/platform/HttpPlatform'
 import type * as Layer from 'effect/Layer'
 import * as internal from './internal/httpPlatform.ts'
 
+/** `Layer` providing the Expo `HttpPlatform` — no service requirements. */
 export const layer: Layer.Layer<HttpPlatform.HttpPlatform> = internal.layer
