@@ -36,7 +36,7 @@ interface FailedResource {
  * already (livestore decoded it on read), so no extra decode here.
  */
 interface SyncRunnerInput {
-  readonly remote: CollectorRemote.RemoteRow
+  readonly remote: CollectorRemote.RemoteRow | null
   readonly onError?: (error: unknown) => void
 }
 
@@ -50,20 +50,22 @@ type RunnerState =
  * Hook that wires a single sync run to the active-handler ref on
  * `<CollectorRuntimeProvider>`:
  *
- *   - Builds the per-config `RemoteKind` via
- *     `makeRemoteForConfig(remote.config)`.
+ *   - Builds the per-config `ScrapingPlan` via
+ *     `makeScrapingPlanForConfig(remote.config)`.
  *   - Constructs a `CollectorBridgeMessageHandler` whose `onResult`
  *     PUTs parsed resources to the local FHIR R4 server via
  *     `FhirR4ResourcesHttpApiClient`. Each PUT is retried with a
  *     bounded exponential schedule (3 attempts, 250ms → 1s); the
  *     `onError` callback fires only after retries are exhausted.
- *   - Installs the handler into the runtime ref on mount; dispatches
- *     `CancelSnifferRequest` for every in-flight id, then clears the
- *     handler's state and uninstalls it on unmount.
- *
- * The hook does *not* fire `RequestSniffableWebView` — that's the
- * screen's job via `useRequestSniffableWebView`. The runner just
- * receives events and routes the parsed output.
+ *   - Installs the handler into the runtime ref on mount, *then*
+ *     dispatches `RequestSniffableWebView` with `scrapingPlan.firstPage`
+ *     so the host opens the sniffer modal. Install-before-dispatch
+ *     ordering guarantees any sniffer events the host emits land on a
+ *     live receiver (events that arrive on `activeHandlerRef.current === null`
+ *     would otherwise be log-and-dropped by `<CollectorRuntimeProvider>`).
+ *   - On unmount or remote change: dispatches `CancelSnifferRequest`
+ *     for every in-flight id, clears the handler's state, and
+ *     uninstalls it.
  *
  * Callback identity (`onError`) is stored in a ref so a fresh lambda
  * from a parent re-render doesn't tear down the handler and lose
@@ -91,9 +93,14 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
   // Memoise the scraping plan so re-renders that don't change `config`
   // don't rebuild the handler. Keyed on `remote.config` identity, which
   // is stable across livestore reads of the same row.
-  const scrapingPlan = useMemo(() => makeScrapingPlanForConfig(remote.config), [remote.config])
+  const scrapingPlan = useMemo(
+    () => (remote ? makeScrapingPlanForConfig(remote.config) : null),
+    [remote]
+  )
 
-  useEffect(() => {
+  useEffect((): undefined | (() => void) => {
+    if (remote === null || scrapingPlan === null) return undefined
+
     const handleParsedResource = (resource: AnyCollectorResource): void => {
       // Entities filter out null-id resources before emitting (see
       // `PatientEntity` etc.); narrow defensively for the typed `path`.
@@ -171,6 +178,23 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
     setActiveHandler(handler)
     setState({ _tag: 'running' })
 
+    // Install-before-dispatch: the ref is set synchronously above, so
+    // by the time the host gets `RequestSniffableWebView` and starts
+    // emitting sniffer events, `activeHandlerRef.current` already
+    // points at the live handler. Defects in the send Effect are
+    // logged rather than re-thrown so a transport failure surfaces in
+    // the log instead of crashing the React render.
+    Effect.runFork(
+      sendCollectorMessage({
+        _tag: 'RequestSniffableWebView',
+        source: scrapingPlan.firstPage,
+      }).pipe(
+        Effect.catchAllCause((cause) =>
+          Effect.logError('useSyncRunner: failed to dispatch RequestSniffableWebView', cause)
+        )
+      )
+    )
+
     return (): void => {
       // Tell the page to stop streaming bytes for any in-flight ids
       // before we drop the local tracking state — otherwise the host
@@ -183,7 +207,7 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
 
       setActiveHandler(null)
     }
-  }, [remote.id, scrapingPlan, sendCollectorMessage, setActiveHandler, runFhir])
+  }, [remote, scrapingPlan, sendCollectorMessage, setActiveHandler, runFhir])
 
   return state
 }
