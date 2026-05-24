@@ -6,6 +6,7 @@ import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
+import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
 
 const CodingSchema: Schema.Schema<typeof StoreCoding.Schema.Type, FhirR4.Coding, never> =
@@ -19,5 +20,7 @@ const CodingSchema: Schema.Schema<typeof StoreCoding.Schema.Type, FhirR4.Coding,
       version: OrNullAsOptional(Schema.String),
     })
   )
+
+registerDatatypeSchema('Coding', CodingSchema)
 
 export { CodingSchema as Schema }

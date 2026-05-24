@@ -5,6 +5,7 @@ import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
+import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
 import * as Period from './period.ts'
 
@@ -40,5 +41,7 @@ const ContactPointSchema: Schema.Schema<
     value: OrNullAsOptional(Schema.String),
   })
 )
+
+registerDatatypeSchema('ContactPoint', ContactPointSchema)
 
 export { ContactPointSchema as Schema }
