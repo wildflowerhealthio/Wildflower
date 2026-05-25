@@ -68,6 +68,7 @@ main. Don't rewrite them.
 | `apps-expo`       | TBD               | not started                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `collector-expo`  | TBD               | not started                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
+
 ## Cumulative findings (read before starting the next slice)
 
 - **Build before jest in fresh worktrees.** The first-time miss above is the biggest time-sink.
@@ -77,3 +78,4 @@ main. Don't rewrite them.
 - **Diff main vs source first** (recipe step 2). As the wave progresses, more of each branch's content has already been merged in pieces. For gatekeeper-expo the whole `gatekeeper-react/` directory was already ahead of `70479f8`; only the `-expo` adapter files were truly new. Skipping the diff would have regressed `wait-for-host-token-ref.ts` and `use-gatekeeper-host-messaging.ts`.
 - **`HostBinding.BindingSend` doesn't exist on main.** Drop the type annotation on the `send` callback inside `useMemo` — contextual typing from the returned `HostBinding.HostBinding<typeof Bridge>` gives `send` the correct shape (see fix-up table).
 - **Source commits diverge per slice.** `navigation-expo` came from `ruthmarks/add-wildflower-expo`; `gatekeeper-expo` from `70479f8` (an ad-hoc tip on a different lineage). Confirm the source commit with the user before assuming the recipe's default.
+
