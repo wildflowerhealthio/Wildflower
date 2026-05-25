@@ -25,6 +25,10 @@ export * as IdentifierAndReference from './complex/identifier-and-reference.ts'
 export * as Period from './complex/period.ts'
 export * as Quantity from './complex/quantity.ts'
 export * as Range from './complex/range.ts'
+export * as Ratio from './complex/ratio.ts'
+export * as SampledData from './complex/sampled-data.ts'
+export * as SimpleQuantity from './complex/simple-quantity.ts'
+export * as Timing from './complex/timing.ts'
 
 // Special purpose
 export * as Extension from './special-purpose/extension.ts'

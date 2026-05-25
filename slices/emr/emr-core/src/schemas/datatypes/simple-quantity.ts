@@ -1,6 +1,8 @@
 import { Schema } from 'effect'
 
+import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
 import { registerDatatypeSchema } from '../datatype-registry.ts'
+import { Schema as ElementSchema } from './element.ts'
 
 const ResourceType = 'SimpleQuantity' as const
 type ResourceType = typeof ResourceType
@@ -22,7 +24,7 @@ const fields = {
    * A computer processable form of the unit in some unit representation system.
    */
   code: Schema.NullOr(Schema.String),
-} as const satisfies Schema.Struct.Fields
+} as const satisfies FieldsNoContext
 
 /**
  * A fixed quantity (no comparator).
@@ -33,8 +35,15 @@ const fields = {
  *
  * The context of use may frequently define what kind of quantity this is and therefore what kind
  * of units can be used. The context of use may also restrict the values for the comparator.
+ *
+ * `SimpleQuantity` extends `Element` like every other FHIR datatype, so the
+ * struct spreads `Element.fields` (`id`, `extension`) so wire payloads
+ * carrying those slots round-trip without silent drops.
  */
-const SimpleQuantitySchema = Schema.Struct(fields)
+const SimpleQuantitySchema = StructNoContext({
+  ...ElementSchema.fields,
+  ...fields,
+})
 
 registerDatatypeSchema(ResourceType, SimpleQuantitySchema)
 
