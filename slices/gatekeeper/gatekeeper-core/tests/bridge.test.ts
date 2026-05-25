@@ -1,6 +1,7 @@
-import { Schema } from 'effect'
+import { strict as assert } from 'node:assert'
+import { Predicate, Schema } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
-import GatekeeperBridge from '../src/bridge.ts'
+import { GatekeeperBridge } from '../src/bridge.ts'
 
 describe('GatekeeperBridge', () => {
   test('exposes both host→web tags', () => {
@@ -10,21 +11,16 @@ describe('GatekeeperBridge', () => {
     ])
   })
 
-  test('AuthTokenIssued and WaitForToken both ride URL params', () => {
-    expect(GatekeeperBridge.UrlParamSchemas.AuthTokenIssued).toBeDefined()
-    expect(GatekeeperBridge.UrlParamSchemas.WaitForToken).toBeDefined()
-  })
-
   test('WaitForToken URL schema encodes to a bare flag', () => {
     const schema = GatekeeperBridge.UrlParamSchemas.WaitForToken
-    if (schema === undefined) throw new Error('WaitForToken URL schema missing')
+    assert(Predicate.isNotUndefined(schema), 'WaitForToken URL schema missing')
     expect(Schema.encodeSync(schema)({ _tag: 'WaitForToken' })).toBe('')
     expect(Schema.decodeSync(schema)('')).toEqual({ _tag: 'WaitForToken' })
   })
 
   test('AuthTokenIssued URL schema round-trips the token', () => {
     const schema = GatekeeperBridge.UrlParamSchemas.AuthTokenIssued
-    if (schema === undefined) throw new Error('AuthTokenIssued URL schema missing')
+    assert(Predicate.isNotUndefined(schema), 'AuthTokenIssued URL schema missing')
     expect(Schema.encodeSync(schema)({ _tag: 'AuthTokenIssued', token: 'abc.def' })).toBe('abc.def')
     expect(Schema.decodeSync(schema)('abc.def')).toEqual({
       _tag: 'AuthTokenIssued',

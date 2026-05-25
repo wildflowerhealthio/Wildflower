@@ -1,5 +1,5 @@
 import { Effect, SubscriptionRef } from 'effect'
-import GatekeeperBridge from 'gatekeeper-core/bridge'
+import { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { authTokenRef, waitForHostTokenRef } from './client/token-storage.ts'
 
 /**
