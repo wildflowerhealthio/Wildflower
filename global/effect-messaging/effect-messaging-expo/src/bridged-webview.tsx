@@ -92,8 +92,8 @@ const BridgedWebView = <const TBindings extends ReadonlyArray<HostBinding.Any>>(
     [loadFrom, transport]
   )
 
-  useEffect(() => {
-    if (transport === null) return
+  useEffect((): undefined | (() => void) => {
+    if (transport === null) return undefined
     const fiber = Effect.runFork(HostBinding.callTransportReady(bindings, transport.sendMessage))
     return (): void => {
       Effect.runFork(Fiber.interrupt(fiber))
