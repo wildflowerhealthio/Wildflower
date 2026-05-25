@@ -52,6 +52,7 @@ const baseDatatypes: {
   Ratio: Datatype.SchemaFor<'Ratio'> | undefined
   Reference: Datatype.SchemaFor<'Reference'> | undefined
   SampledData: Datatype.SchemaFor<'SampledData'> | undefined
+  SimpleQuantity: Datatype.SchemaFor<'SimpleQuantity'> | undefined
   Timing: Datatype.SchemaFor<'Timing'> | undefined
 } = {
   boolean: Datatype.baseSchemas.boolean,
@@ -81,6 +82,7 @@ const baseDatatypes: {
   Ratio: undefined,
   Reference: undefined,
   SampledData: undefined,
+  SimpleQuantity: undefined,
   Timing: undefined,
 }
 

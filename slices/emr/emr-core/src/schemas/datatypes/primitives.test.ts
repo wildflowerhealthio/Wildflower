@@ -1,8 +1,8 @@
-import { Arbitrary, Schema } from 'effect'
+import { Arbitrary, DateTime, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { IdSchema, TimeSchema, UriSchema } from './primitives.ts'
+import { IdSchema, InstantSchema, TimeSchema, UriSchema } from './primitives.ts'
 
 // ---------------------------------------------------------------------------
 // time — hh:mm:ss with optional fractional seconds
@@ -170,5 +170,64 @@ describe('IdSchema', () => {
         expect(decodeSync(encode(value))).toBe(value)
       })
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// instant — FHIR R4 `instant`, an ISO 8601 UTC timestamp with mandatory tz
+// offset and at-least-second precision. Today the schema is the unconstrained
+// `Schema.DateTimeUtc`; the spec-derived regex below guards the public
+// contract so a future tightening (or laxening) of `InstantSchema` shows up
+// as a test diff rather than a silent behavior change downstream.
+// ---------------------------------------------------------------------------
+
+// From https://build.fhir.org/datatypes.html#instant — the spec regex,
+// transcribed verbatim and anchored. Note `[1-9]000` is the lower-bound
+// year, so years < 1000 are rejected by the spec.
+const FHIR_INSTANT_REGEX =
+  /^([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]{1,9})?(Z|(\+|-)((0[0-9]|1[0-3]):[0-5][0-9]|14:00))$/
+
+describe('InstantSchema', () => {
+  const decode = Schema.decodeUnknownEither(InstantSchema)
+  const encode = Schema.encodeSync(InstantSchema)
+  const decodeSync = Schema.decodeSync(InstantSchema)
+
+  test('round-trip of a canonical UTC string', () => {
+    const canonical = '2015-02-07T13:28:17.239Z'
+    const decoded = decodeSync(canonical)
+    expect(DateTime.formatIso(decoded)).toBe(canonical)
+    // Encoded form is always normalised to UTC `Z`.
+    expect(encode(decoded)).toBe(canonical)
+  })
+
+  test('property: arbitrary encoded values match the FHIR instant regex', () => {
+    const arb = Arbitrary.make(InstantSchema)
+    fc.assert(
+      fc.property(arb, (value) => {
+        expect(encode(value)).toMatch(FHIR_INSTANT_REGEX)
+      })
+    )
+  })
+
+  test('property: encode/decode round-trip preserves value', () => {
+    const arb = Arbitrary.make(InstantSchema)
+    fc.assert(
+      fc.property(arb, (value) => {
+        expect(DateTime.toEpochMillis(decodeSync(encode(value)))).toBe(
+          DateTime.toEpochMillis(value)
+        )
+      })
+    )
+  })
+
+  describe('accepts FHIR-spec instant strings', () => {
+    test.each([
+      ['2015-02-07T13:28:17.239+02:00', 'spec example with positive offset'],
+      ['2017-01-01T00:00:00Z', 'spec example, UTC Z, no fraction'],
+      ['1970-01-01T00:00:00.000Z', 'unix epoch with millis'],
+      ['2026-12-31T23:59:59-14:00', 'maximum negative offset'],
+    ])('%s — %s', (value) => {
+      expect(decode(value)._tag).toBe('Right')
+    })
   })
 })

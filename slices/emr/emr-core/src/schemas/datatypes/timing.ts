@@ -1,6 +1,11 @@
 import { Schema } from 'effect'
 
-import { StructNoContext, type FieldsNoContext } from 'kitchen-sink/schema'
+import {
+  AnnotateArrayWithArbitrary,
+  StructNoContext,
+  type FieldsNoContext,
+} from 'kitchen-sink/schema'
+import { Schema as BackboneElementSchema } from '../base/backbone-element.ts'
 import { registerDatatypeSchema } from '../datatype-registry.ts'
 import { Schema as CodeableConceptSchema } from './codeable-concept.ts'
 import { Schema as ElementSchema } from './element.ts'
@@ -12,26 +17,10 @@ const ResourceType = 'Timing' as const
 type ResourceType = typeof ResourceType
 
 /** FHIR R4 `Timing.repeat.periodUnit` / `Timing.repeat.durationUnit`. */
-const UnitOfTimeSchema = Schema.Union(
-  Schema.Literal('s'),
-  Schema.Literal('min'),
-  Schema.Literal('h'),
-  Schema.Literal('d'),
-  Schema.Literal('wk'),
-  Schema.Literal('mo'),
-  Schema.Literal('a')
-)
+const UnitOfTimeSchema = Schema.Literal('s', 'min', 'h', 'd', 'wk', 'mo', 'a')
 
 /** FHIR R4 `Timing.repeat.dayOfWeek`. */
-const DayOfWeekSchema = Schema.Union(
-  Schema.Literal('mon'),
-  Schema.Literal('tue'),
-  Schema.Literal('wed'),
-  Schema.Literal('thu'),
-  Schema.Literal('fri'),
-  Schema.Literal('sat'),
-  Schema.Literal('sun')
-)
+const DayOfWeekSchema = Schema.Literal('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun')
 
 /** FHIR R4 `TimingRepeat` — the per-period scheduling spec inside `Timing`.
  *
@@ -63,7 +52,12 @@ const TimingRepeatSchema = StructNoContext({
 })
 
 const fields = {
-  event: Schema.Array(InstantSchema),
+  // `effectiveTiming` round-trip tests blow the per-test budget when `event`
+  // grows unbounded (each entry is an `InstantSchema` and the parent struct
+  // nests through every choice slot). Cap arbitrary array length here on the
+  // store-side schema so `Arbitrary.make(StoreTiming.Schema)` — what both
+  // emr-core and the fhir-r4 adapter tests pull from — stays tractable.
+  event: Schema.Array(InstantSchema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 })),
   repeat: Schema.NullOr(TimingRepeatSchema),
   code: Schema.NullOr(CodeableConceptSchema),
 } as const satisfies FieldsNoContext
@@ -71,9 +65,13 @@ const fields = {
 /**
  * A scheduled or scheduled-with-repeats event. Used for medication
  * administration timing, observation cycles, recurring appointments, etc.
+ *
+ * `Timing` extends FHIR R4 `BackboneElement` (not `Element`), so the struct
+ * spreads `BackboneElement.fields` to carry `modifierExtension` through
+ * encode/decode alongside `Element`'s `id` / `extension`.
  */
 const TimingSchema = StructNoContext({
-  ...ElementSchema.fields,
+  ...BackboneElementSchema.fields,
   ...fields,
 })
 

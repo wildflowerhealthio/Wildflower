@@ -1,5 +1,5 @@
 import type { Arbitrary, FastCheck } from 'effect'
-import { Schema } from 'effect'
+import { DateTime, Schema, pipe } from 'effect'
 
 // ---------------------------------------------------------------------------
 // Strict primitive schemas
@@ -59,7 +59,29 @@ const IdSchema = Schema.String.pipe(
 
 /** FHIR R4 `instant`: precise UTC datetime, always with timezone, at least
  * seconds precision. Decoded shape is `DateTime.Utc` so it shares the
- * Effect-side representation of `dateTime`. */
-const InstantSchema = Schema.DateTimeUtc
+ * Effect-side representation of `dateTime`.
+ *
+ * Note: the schema itself is `Schema.DateTimeUtc`, which accepts any ISO 8601
+ * UTC datetime. A future tightening would add a refinement on the encoded
+ * side enforcing the FHIR `instant` regex (year 1000–9999, mandatory tz
+ * offset, at-least-second precision). The arbitrary annotation below already
+ * stays inside the FHIR-valid range so property tests over schemas that
+ * embed `InstantSchema` exercise spec-conformant values. */
+const InstantSchema = pipe(
+  Schema.DateTimeUtc,
+  Schema.annotations({
+    arbitrary:
+      (): Arbitrary.LazyArbitrary<DateTime.Utc> =>
+      (fc: typeof FastCheck): FastCheck.Arbitrary<DateTime.Utc> =>
+        // FHIR `instant` regex bounds years to [1000, 9999]. Sample epoch-ms
+        // within that window so `DateTime.formatIso` always emits a
+        // FHIR-valid string. 0001-01-01T00:00:00Z → -62135596800000;
+        // 9999-12-31T23:59:59.999Z → 253402300799999; clamp to
+        // [1000-01-01, 9999-12-31].
+        fc
+          .integer({ min: -30610224000000, max: 253402300799999 })
+          .map((ms) => DateTime.unsafeMake(ms)),
+  })
+)
 
 export { IdSchema, InstantSchema, TimeSchema, UriSchema }
