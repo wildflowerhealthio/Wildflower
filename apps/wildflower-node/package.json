@@ -22,6 +22,7 @@
     "kitchen-sink": "workspace:*",
     "local-http-server-core": "workspace:*",
     "navigation-core": "workspace:*",
+    "shared-structures-core": "workspace:*",
     "telemetry-core": "workspace:*",
     "telemetry-node": "workspace:*",
     "tunnel-core": "workspace:*",

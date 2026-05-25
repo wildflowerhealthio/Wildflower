@@ -8,7 +8,7 @@ import { Effect, Schema } from 'effect'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { defineSliceLivestore } from './index.ts'
+import { composeLivestoreModules, defineSliceLivestore } from './index.ts'
 
 // ---------------------------------------------------------------------------
 // Minimal fixture: one table, one event, one materializer.
@@ -136,5 +136,125 @@ describe('defineSliceLivestore', () => {
         }
       )
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Second fixture: a disjoint slice contribution, used to verify that
+// `composeLivestoreModules` merges multiple slices' records.
+// ---------------------------------------------------------------------------
+
+const flagTable = State.SQLite.table({
+  name: 'flag',
+  columns: {
+    id: State.SQLite.text({ primaryKey: true }),
+    enabled: State.SQLite.integer({ default: 0 }),
+  },
+})
+
+const flagToggled = Events.synced({
+  name: 'v1.FlagToggled',
+  schema: Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }),
+})
+
+const flagTables = { flag: flagTable }
+const flagEvents = { flagToggled }
+const flagMaterializers = State.SQLite.materializers(flagEvents, {
+  'v1.FlagToggled': ({ id, enabled }) => flagTable.insert({ id, enabled: enabled ? 1 : 0 }),
+})
+
+describe('composeLivestoreModules', () => {
+  it('merges tables, events, and materializers from every slice', () => {
+    const composed = composeLivestoreModules([
+      {
+        tables: fixtureTables,
+        events: fixtureEvents,
+        materializers: fixtureMaterializers,
+      },
+      {
+        tables: flagTables,
+        events: flagEvents,
+        materializers: flagMaterializers,
+      },
+    ] as const)
+
+    // Reference identity (not just key membership) catches a regression
+    // where the helper accidentally rebuilds a slice's table/event.
+    expect(composed.tables['counter']).toBe(counterTable)
+    expect(composed.tables['flag']).toBe(flagTable)
+    expect(composed.events.counterIncremented).toBe(counterIncremented)
+    expect(composed.events.flagToggled).toBe(flagToggled)
+    expect(composed.materializers['v1.CounterIncremented']).toBe(
+      fixtureMaterializers['v1.CounterIncremented']
+    )
+    expect(composed.materializers['v1.FlagToggled']).toBe(flagMaterializers['v1.FlagToggled'])
+  })
+
+  it('produces a LiveStoreSchema whose event map carries every slice event', () => {
+    const composed = composeLivestoreModules([
+      {
+        tables: fixtureTables,
+        events: fixtureEvents,
+        materializers: fixtureMaterializers,
+      },
+      {
+        tables: flagTables,
+        events: flagEvents,
+        materializers: flagMaterializers,
+      },
+    ] as const)
+
+    expect(isLiveStoreSchema(composed.schema)).toBe(true)
+    expect(composed.schema.eventsDefsMap.get('v1.CounterIncremented')).toBe(counterIncremented)
+    expect(composed.schema.eventsDefsMap.get('v1.FlagToggled')).toBe(flagToggled)
+  })
+
+  it('accepts an empty list of slices', () => {
+    const composed = composeLivestoreModules([] as const)
+    expect(isLiveStoreSchema(composed.schema)).toBe(true)
+    expect(composed.schema.eventsDefsMap.size).toBe(0)
+  })
+
+  it('preserves a single slice unchanged', () => {
+    const composed = composeLivestoreModules([
+      {
+        tables: fixtureTables,
+        events: fixtureEvents,
+        materializers: fixtureMaterializers,
+      },
+    ] as const)
+    expect(composed.tables['counter']).toBe(counterTable)
+    expect(composed.events.counterIncremented).toBe(counterIncremented)
+    expect(composed.schema.eventsDefsMap.get('v1.CounterIncremented')).toBe(counterIncremented)
+  })
+
+  it('threads literal table/event/materializer keys through to the result type', () => {
+    const composed = composeLivestoreModules([
+      {
+        tables: fixtureTables,
+        events: fixtureEvents,
+        materializers: fixtureMaterializers,
+      },
+      {
+        tables: flagTables,
+        events: flagEvents,
+        materializers: flagMaterializers,
+      },
+    ] as const)
+
+    // Type-level assertions via `satisfies`: if the helper widened
+    // tables/events to `Record<string, TableDefBase>` / `Record<string, EventDef.AnyWithoutFn>`,
+    // dotted access would still compile but the value type would be the
+    // base type — `satisfies` against the concrete literal type would
+    // then fail.
+    expect(composed.tables.counter satisfies typeof counterTable).toBe(counterTable)
+    expect(composed.events.counterIncremented satisfies typeof counterIncremented).toBe(
+      counterIncremented
+    )
+    expect(composed.tables.flag satisfies typeof flagTable).toBe(flagTable)
+    expect(composed.events.flagToggled satisfies typeof flagToggled).toBe(flagToggled)
+
+    // @ts-expect-error — key 'missing' is not part of any composed slice
+    void composed.tables.missing
   })
 })
