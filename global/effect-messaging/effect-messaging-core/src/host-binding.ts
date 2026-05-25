@@ -1,0 +1,110 @@
+import { type Context, Effect, type Layer } from 'effect'
+import type * as BridgeTransport from './bridge-transport.ts'
+import type * as Bridge from './bridge.ts'
+
+/**
+ * Host-side tag identifier for a bridge — `${B['name']}.Host.HandlerTag`,
+ * extracted via `Context.Tag`'s structural slot so it resolves even when
+ * `B['name']` widens to `string` under {@link Bridge.AnyBridge}.
+ */
+type HostHandlerTagId<B extends Bridge.AnyBridge> = Context.Tag.Identifier<B['Host']['HandlerTag']>
+
+/**
+ * Uniform host-side wiring contract for one bridge. Each slice's
+ * `use<Slice>HostBinding` hook returns one of these; a host shell
+ * aggregates a tuple via {@link aggregate}.
+ *
+ * See [Host Bindings Explanation](../docs/Host%20Bindings%20Explanation.md).
+ */
+interface HostBinding<B extends Bridge.AnyBridge> {
+  readonly bridge: B
+  readonly receiverLayer: Layer.Layer<HostHandlerTagId<B>>
+  readonly initialMessages?: ReadonlyArray<Bridge.UrlParamableMessage<readonly [B]>>
+  readonly onTransportReady?: (
+    send: BridgeTransport.MessageSender<[B], 'Host'>
+  ) => Effect.Effect<void>
+}
+
+/**
+ * Structural bound for "any binding a shell can aggregate". Declared
+ * structurally (not as `HostBinding<Bridge.AnyBridge>`) so a tuple of
+ * narrowly-typed `HostBinding<X_i>` unifies — the parameterised form's
+ * `bridge: B` position blocks the assignment otherwise.
+ */
+type Any = {
+  readonly bridge: Bridge.AnyBridge
+  // oxlint-disable-next-line typescript/no-explicit-any
+  readonly receiverLayer: Layer.Layer<any>
+  readonly initialMessages?: ReadonlyArray<{
+    readonly _tag: string
+    readonly [key: string]: unknown
+  }>
+  // oxlint-disable-next-line typescript/no-explicit-any
+  readonly onTransportReady?: (send: (message: any) => Effect.Effect<void>) => Effect.Effect<void>
+}
+
+/** Tuple-mapped bridges extracted from a tuple of bindings. */
+type BridgesOf<Bindings extends ReadonlyArray<Any>> = {
+  readonly [I in keyof Bindings]: Bindings[I]['bridge']
+}
+
+/** Union of decoded initial messages a binding tuple contributes. */
+type InitialMessageOf<Bindings extends ReadonlyArray<Any>> = Bridge.UrlParamableMessage<
+  BridgesOf<Bindings>
+>
+
+/**
+ * Aggregate a binding tuple into the positional tuples
+ * `BridgeTransport.make` requires plus the flattened initial-message
+ * stream. The `layers` return type is `Bridge.TransportLayers<…, 'Host'>`
+ * — the same alias `BridgeTransport.make` and `WithTransport` expect —
+ * so consumers don't need to re-cast. The three `as unknown as` casts
+ * here are the parallel-tuple proof point: `Array.prototype.map`
+ * widens tuple positions to `T[]`, and we re-narrow against the
+ * tuple-mapped type aliases.
+ *
+ * @deprecated I'm not sure, if it is, but I'd like to remove this
+ */
+const aggregate = <const Bindings extends ReadonlyArray<Any>>(
+  bindings: Bindings
+): {
+  readonly bridges: BridgesOf<Bindings>
+  readonly layers: Bridge.TransportLayers<BridgesOf<Bindings>, 'Host'>
+  readonly initialMessages: ReadonlyArray<InitialMessageOf<Bindings>>
+} => ({
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  bridges: bindings.map((b) => b.bridge) as unknown as BridgesOf<Bindings>,
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  layers: bindings.map((b) => b.receiverLayer) as unknown as Bridge.TransportLayers<
+    BridgesOf<Bindings>,
+    'Host'
+  >,
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  initialMessages: bindings.flatMap((b) => b.initialMessages ?? []) as unknown as ReadonlyArray<
+    InitialMessageOf<Bindings>
+  >,
+})
+
+/**
+ * Build the Effect that runs every binding's `onTransportReady` (with
+ * the tuple-typed sender) — concurrently, fault-isolated via
+ * `catchAllCause`/`logError` so one binding's defect doesn't block the
+ * others. Bindings without an `onTransportReady` are skipped. Returns
+ * an Effect; the React caller `runFork`s it once and interrupts the
+ * fiber on unmount for proper teardown.
+ */
+const callTransportReady = <TBindings extends ReadonlyArray<Any>>(
+  bindings: TBindings,
+  send: BridgeTransport.MessageSender<BridgesOf<TBindings>, 'Host'>
+): Effect.Effect<void> =>
+  Effect.forEach(
+    bindings,
+    (binding) =>
+      binding.onTransportReady === undefined
+        ? Effect.void
+        : binding.onTransportReady(send).pipe(Effect.catchAllCause(Effect.logError)),
+    { discard: true, concurrency: 'unbounded' }
+  )
+
+export { aggregate, callTransportReady }
+export type { Any, BridgesOf, HostBinding, HostHandlerTagId, InitialMessageOf }

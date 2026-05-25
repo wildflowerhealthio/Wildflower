@@ -1,7 +1,7 @@
 import type { Scope } from 'effect'
 import { Effect } from 'effect'
 import {
-  type BareSender,
+  type BareSenderFunction,
   type Bridge,
   type TransportAdapter,
   REACT_NATIVE_WEBVIEW_GLOBAL,
@@ -36,7 +36,7 @@ const make = (bridges: ReadonlyArray<Bridge.AnyBridge>): TransportAdapter['Type'
   const winGlobals = (): Window & MessagingWindowGlobals =>
     window as Window & MessagingWindowGlobals
 
-  const bareSender: BareSender = (encoded) =>
+  const bareSender: BareSenderFunction = (encoded) =>
     Effect.gen(function* () {
       const w = winGlobals()
       const rnBridge = w[REACT_NATIVE_WEBVIEW_GLOBAL]
@@ -68,7 +68,9 @@ const make = (bridges: ReadonlyArray<Bridge.AnyBridge>): TransportAdapter['Type'
   // so a strict `source !== window` check would drop every host→web message
   // on iOS. The `ReactNativeWebView` presence check is the co-signing condition
   // so synthesized null-source events from foreign sandboxed pages stay rejected.
-  const attachBareSender = (otherBareSender: BareSender): Effect.Effect<void, never, Scope.Scope> =>
+  const attachBareSender = (
+    otherBareSender: BareSenderFunction
+  ): Effect.Effect<void, never, Scope.Scope> =>
     Effect.acquireRelease(
       Effect.sync(() => {
         const onMessageEffect = (event: MessageEvent<unknown>): Effect.Effect<void> => {

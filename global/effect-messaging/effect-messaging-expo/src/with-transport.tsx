@@ -1,5 +1,5 @@
 import { Effect, Exit, Scope } from 'effect'
-import type { Bridge } from 'effect-messaging-core'
+import type { BareSenderService, Bridge } from 'effect-messaging-core'
 import { useEffect, useMemo, type JSX, Suspense, use } from 'react'
 import { Text } from 'react-native'
 import { type ExpoTransport, type ExpoTransportLayers, makeExpoTransport } from './transport.ts'
@@ -8,13 +8,15 @@ import { type ExpoTransport, type ExpoTransportLayers, makeExpoTransport } from 
  * Inputs the hook hands to {@link makeExpoTransport}. Identical to
  * the underlying config; re-exported here so callers don't have to
  * cross-import from `./transport.ts` to type their factory.
+ *
+ * @deprecated likely removable
  */
 interface UseTransportConfig<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   readonly bridges: Bridges
   readonly layers: ExpoTransportLayers<Bridges>
   readonly initialMessages: ReadonlyArray<Bridge.UrlParamableMessage<Bridges>>
   readonly baseUrl: string
-  readonly webviewHandleRef: { readonly current: { postMessage(message: string): void } | null }
+  readonly webviewHandleRef: { readonly current: BareSenderService | null }
   readonly children: (transport: ExpoTransport<Bridges>) => JSX.Element
 }
 
@@ -30,7 +32,7 @@ interface UseTransportConfig<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  *
  * @example
  * ```tsx
- * const webviewHandleRef = useRef<WebViewHandle | null>(null)
+ * const webviewHandleRef = useRef<BareSenderService | null>(null)
  * const [canGoBack, setCanGoBack] = useState(false)
  * const factory = useCallback(
  *   () => ({
@@ -47,6 +49,8 @@ interface UseTransportConfig<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  * )
  * const transport = useTransport(factory)
  * ```
+ *
+ * @deprecated likely removable
  */
 const WithTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(
   config: UseTransportConfig<Bridges>
@@ -70,6 +74,10 @@ const WithTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(
   )
 }
 
+/**
+ *
+ * @deprecated likely removable
+ */
 const WithTransportInner = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   transportPromise,
   children,

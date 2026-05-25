@@ -1,7 +1,7 @@
 import { Effect, Exit, pipe, Schema, Scope } from 'effect'
-import { Bridge, UrlParamMessage } from 'effect-messaging-core'
+import { type BareSenderService, Bridge, UrlParamMessage } from 'effect-messaging-core'
 import { LoggingLayerTest } from 'kitchen-sink/test'
-import { makeExpoTransport, type WebViewHandle } from './transport.ts'
+import { makeExpoTransport } from './transport.ts'
 
 const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.String }))
 const Pong = Schema.parseJson(Schema.TaggedStruct('Pong', { reply: Schema.String }))
@@ -26,7 +26,7 @@ const runScoped = async <A>(eff: Effect.Effect<A, never, Scope.Scope>): Promise<
 
 describe('makeExpoTransport — embedUrl', () => {
   it('appends each initial message as a ?<Tag>=<value> query param', async () => {
-    const ref: { current: WebViewHandle | null } = { current: null }
+    const ref: { current: BareSenderService | null } = { current: null }
     const layer = HostBridge.Host.ReceiverLayer({ Pong: () => Effect.void })
     const transport = await runScoped(
       makeExpoTransport({
@@ -43,7 +43,7 @@ describe('makeExpoTransport — embedUrl', () => {
   })
 
   it('returns the unmodified base URL when no initial messages are supplied', async () => {
-    const ref: { current: WebViewHandle | null } = { current: null }
+    const ref: { current: BareSenderService | null } = { current: null }
     const layer = HostBridge.Host.ReceiverLayer({ Pong: () => Effect.void })
     const transport = await runScoped(
       makeExpoTransport({
@@ -62,49 +62,58 @@ describe('makeExpoTransport — embedUrl', () => {
 
 describe('makeExpoTransport — bareSender (with __Ready handshake)', () => {
   it('warns and drops when the WebView ref is null', async () => {
-    const ref: { current: WebViewHandle | null } = { current: null }
+    const ref: { current: BareSenderService | null } = { current: null }
     const layer = HostBridge.Host.ReceiverLayer({ Pong: () => Effect.void })
 
-    try {
-      const scope = Effect.runSync(Scope.make())
-      const transport = await Effect.runPromise(
-        pipe(
-          makeExpoTransport({
+    const scope = Effect.runSync(Scope.make())
+    // Wrap build + handshake + sendMessage in a single Effect so
+    // `expectToLog`'s capturing logger sees every log the path emits
+    // — particularly the pre-mount drop warning fired inside
+    // `sendMessage` when `webviewHandleRef.current` is null.
+    await Effect.runPromise(
+      pipe(
+        Effect.gen(function* () {
+          const transport = yield* makeExpoTransport({
             bridges: [HostBridge] as const,
             layers: [layer] as const,
             initialMessages: [],
             baseUrl: 'https://app.local/',
             webviewHandleRef: ref,
-          }),
-          LoggingLayerTest.expectToLog((logs) => {
-            // Schema.Union folds unknown-tag into the same ParseError variant
-            // as malformed payloads — both surface via the parse-error log.
-            expect(logs).toEqual([
-              // expect.objectContaining({
-              //   level: 'WARN',
-              //   // oxlint-disable-next-line typescript/no-unsafe-assignment
-              //   message: expect.stringContaining('[effect-messaging] failed to decode message:'),
-              // }),
-            ])
-          }),
-          Scope.extend(scope)
-        )
+          })
+          // Simulate the page-side handshake so `sendMessage`'s
+          // `peerReady` gate releases and the bare sender actually runs.
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          yield* transport.onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } } as never)
+          yield* transport.sendMessage({ _tag: 'Ping', value: 'x' })
+        }),
+        LoggingLayerTest.expectToLog((logs) => {
+          // The pre-mount drop path (transport.ts: bareSender → null
+          // handle) emits a single WARN. The substring match is
+          // intentional — it pins the user-visible advice without
+          // brittling on the surrounding fiber/timestamp framing.
+          expect(logs).toEqual([
+            expect.objectContaining({
+              level: 'WARN',
+              // oxlint-disable-next-line typescript/no-unsafe-assignment
+              message: expect.stringContaining('no WebView handle yet'),
+            }),
+          ])
+        }),
+        Scope.extend(scope)
       )
-      // Simulate the page-side handshake.
-      await Effect.runPromise(
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-        transport.onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } } as never)
-      )
-      await Effect.runPromise(transport.sendMessage({ _tag: 'Ping', value: 'x' }))
-      await Effect.runPromise(Scope.close(scope, Exit.void))
-    } finally {
-    }
+    )
+    await Effect.runPromise(Scope.close(scope, Exit.void))
   })
 
   it('forwards encoded payloads to the ref-supplied handle once Ready arrives', async () => {
     const calls: string[] = []
-    const ref: { current: WebViewHandle | null } = {
-      current: { postMessage: (data) => calls.push(data) },
+    const ref: { current: BareSenderService | null } = {
+      current: {
+        bareSender: (data) =>
+          Effect.sync(() => {
+            calls.push(data)
+          }),
+      },
     }
     const layer = HostBridge.Host.ReceiverLayer({ Pong: () => Effect.void })
     const scope = Effect.runSync(Scope.make())
@@ -133,7 +142,7 @@ describe('makeExpoTransport — bareSender (with __Ready handshake)', () => {
 
 describe('makeExpoTransport — onMessage', () => {
   it('routes inbound payloads through the dispatch fiber to the handler', async () => {
-    const ref: { current: WebViewHandle | null } = { current: null }
+    const ref: { current: BareSenderService | null } = { current: null }
     const seen: string[] = []
     const layer = HostBridge.Host.ReceiverLayer({
       Pong: ({ reply }) =>
