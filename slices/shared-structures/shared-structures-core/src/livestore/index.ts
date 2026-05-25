@@ -127,12 +127,14 @@ type SliceTables = Extract<InputTables, Record<string, unknown>>
  * blindly spread the records together without knowing the concrete
  * source. Generic in all three records so an inferred module preserves
  * the slice's exact table / event / materializer keys — the composed
- * `events` / `schema` / `tables` are typed by intersecting these.
+ * `events` / `schema` / `tables` are typed by intersecting these. No
+ * defaults: callers either pass concrete types or let inference fill
+ * them in from a value (e.g. an `as const` array of slice records).
  */
 type LivestoreModule<
-  TTables extends SliceTables = SliceTables,
-  TEvents extends Record<string, EventDef.AnyWithoutFn> = Record<string, EventDef.AnyWithoutFn>,
-  TMaterializers extends InputMaterializers = InputMaterializers,
+  TTables extends SliceTables,
+  TEvents extends Record<string, EventDef.AnyWithoutFn>,
+  TMaterializers extends InputMaterializers,
 > = {
   readonly tables: TTables
   readonly events: TEvents
@@ -148,12 +150,27 @@ type LivestoreModule<
  * `Map<string, TableDef.Any>`); the `schema` type still threads the
  * intersected events through `FromInputSchema.DeriveSchema`.
  */
-type ComposedLivestoreModule<TSlices extends ReadonlyArray<LivestoreModule>> = {
+type ComposedLivestoreModule<
+  TSlices extends ReadonlyArray<
+    LivestoreModule<SliceTables, Record<string, EventDef.AnyWithoutFn>, InputMaterializers>
+  >,
+> = {
   readonly tables: UnionToIntersection<TSlices[number]['tables']>
-  readonly events: UnionToIntersection<TSlices[number]['events']> &
-    Record<string, EventDef.AnyWithoutFn>
+  readonly events: UnionToIntersection<TSlices[number]['events']>
   readonly materializers: UnionToIntersection<TSlices[number]['materializers']>
   readonly state: InternalState
+  // `FromInputSchema.DeriveSchema` requires `events extends Record<string,
+  // EventDef.AnyWithoutFn>`. `UnionToIntersection<...>` alone doesn't
+  // satisfy that, so we intersect with the constraint. The downside:
+  // LiveStore's `EventDefRecordFromInputSchemaEvents` is a homomorphic
+  // mapped type, and the added index signature widens `keyof events`
+  // to `string`, collapsing the derived `_EventDefMapType` to broad
+  // `string` keys. Per-event literal types stay reachable through
+  // `composed.events` (which has no index sig), and the resulting
+  // `LiveStoreSchema` stays structurally compatible with the schemas
+  // `defineSliceLivestore` produces — required so each slice's
+  // `<TSchema extends typeof sliceSchema>` constraint in `layerFrom`
+  // accepts the composed store.
   readonly schema: FromInputSchema.DeriveSchema<{
     readonly events: UnionToIntersection<TSlices[number]['events']> &
       Record<string, EventDef.AnyWithoutFn>
@@ -191,7 +208,11 @@ type ComposedLivestoreModule<TSlices extends ReadonlyArray<LivestoreModule>> = {
  * ] as const)
  * ```
  */
-const composeLivestoreModules = <const TSlices extends ReadonlyArray<LivestoreModule>>(
+const composeLivestoreModules = <
+  const TSlices extends ReadonlyArray<
+    LivestoreModule<SliceTables, Record<string, EventDef.AnyWithoutFn>, InputMaterializers>
+  >,
+>(
   slices: TSlices
 ): ComposedLivestoreModule<TSlices> => {
   // Compose at broad types inside the body — TS can't track that

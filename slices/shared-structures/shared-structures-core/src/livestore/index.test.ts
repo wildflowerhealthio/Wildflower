@@ -6,7 +6,7 @@ import {
 } from '@livestore/livestore'
 import { Effect, Schema } from 'effect'
 import fc from 'fast-check'
-import { describe, expect, it } from 'vite-plus/test'
+import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
 
 import { composeLivestoreModules, defineSliceLivestore } from './index.ts'
 
@@ -228,7 +228,7 @@ describe('composeLivestoreModules', () => {
     expect(composed.schema.eventsDefsMap.get('v1.CounterIncremented')).toBe(counterIncremented)
   })
 
-  it('threads literal table/event/materializer keys through to the result type', () => {
+  it('composes the input types as an intersection of slice records', () => {
     const composed = composeLivestoreModules([
       {
         tables: fixtureTables,
@@ -242,19 +242,37 @@ describe('composeLivestoreModules', () => {
       },
     ] as const)
 
-    // Type-level assertions via `satisfies`: if the helper widened
-    // tables/events to `Record<string, TableDefBase>` / `Record<string, EventDef.AnyWithoutFn>`,
-    // dotted access would still compile but the value type would be the
-    // base type — `satisfies` against the concrete literal type would
-    // then fail.
-    expect(composed.tables.counter satisfies typeof counterTable).toBe(counterTable)
-    expect(composed.events.counterIncremented satisfies typeof counterIncremented).toBe(
-      counterIncremented
-    )
-    expect(composed.tables.flag satisfies typeof flagTable).toBe(flagTable)
-    expect(composed.events.flagToggled satisfies typeof flagToggled).toBe(flagToggled)
+    // The composed records are the intersection of every input slice's
+    // records — proves the helper threaded the input types through
+    // rather than widening to `Record<string, TableDefBase>` etc.
+    expectTypeOf(composed.tables).toEqualTypeOf<typeof fixtureTables & typeof flagTables>()
+    expectTypeOf(composed.events).toEqualTypeOf<typeof fixtureEvents & typeof flagEvents>()
+    expectTypeOf(composed.materializers).toEqualTypeOf<
+      typeof fixtureMaterializers & typeof flagMaterializers
+    >()
 
-    // @ts-expect-error — key 'missing' is not part of any composed slice
-    void composed.tables.missing
+    // Spot-checks on individual keys — these would also catch a
+    // regression that widens, but read more obviously in test output.
+    expectTypeOf(composed.tables.counter).toEqualTypeOf<typeof counterTable>()
+    expectTypeOf(composed.events.counterIncremented).toEqualTypeOf<typeof counterIncremented>()
+    expectTypeOf(composed.tables.flag).toEqualTypeOf<typeof flagTable>()
+    expectTypeOf(composed.events.flagToggled).toEqualTypeOf<typeof flagToggled>()
+
+    expectTypeOf(composed.tables).not.toHaveProperty('missing')
+    expectTypeOf(composed.events).not.toHaveProperty('missing')
+  })
+
+  it('a single-slice compose produces the slice records unchanged at the type level', () => {
+    const composed = composeLivestoreModules([
+      {
+        tables: fixtureTables,
+        events: fixtureEvents,
+        materializers: fixtureMaterializers,
+      },
+    ] as const)
+
+    expectTypeOf(composed.tables).toEqualTypeOf<typeof fixtureTables>()
+    expectTypeOf(composed.events).toEqualTypeOf<typeof fixtureEvents>()
+    expectTypeOf(composed.materializers).toEqualTypeOf<typeof fixtureMaterializers>()
   })
 })
