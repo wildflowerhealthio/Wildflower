@@ -1,9 +1,20 @@
 /**
- * Source-condition fallback for `wildflower-react/embeddable-html`. The
- * real artifact at `dist-embedded/html.{js,d.ts}` is built by
- * `vp run build:embedded`; until then, consumers resolving with
- * `--conditions=source` (e.g. Expo dev) get this stub instead of a
- * silent blank screen.
+ * Source-condition placeholder for `wildflower-react/embeddable-html`.
+ * The real artifact at `dist-embedded/html.{js,d.ts}` is built by
+ * `vp run build:embedded`. Consumers (e.g. `apps/wildflower-expo`)
+ * resolve the import via two paths:
+ *
+ * 1. Node tooling (`vp test`, `vp build`) resolves through the package's
+ *    `exports.source` condition and lands on this file.
+ * 2. The Expo app's Metro config has a `resolveRequest` override (see
+ *    `apps/wildflower-expo/metro.config.js`) that short-circuits
+ *    `wildflower-react/embeddable-html` directly to `dist-embedded/html.js`
+ *    whenever that file exists, sidestepping the `source` condition.
+ *
+ * Either way, this stub is only ever served when `dist-embedded/html.js`
+ * is absent — i.e. the build hasn't been run. Running `vp run -r build`
+ * (or `vp run build:embedded` inside `apps/wildflower-react`) produces
+ * the real artifact and the Metro override picks it up automatically.
  */
 export const html: string = `<!doctype html>
 <html lang="en">
@@ -11,7 +22,7 @@ export const html: string = `<!doctype html>
   <meta charset="utf-8" />
   <title>wildflower-react: not built</title>
   <style>
-    body { font-family: system-ui, sans-serif; padding: 2rem; line-height: 1.5; }
+    body { font-family: system-ui, sans-serif; padding: 2rem; line-height: 1.5; font-size: 2.5rem; }
     code { background: #f3f3f3; padding: 0.1rem 0.3rem; border-radius: 4px; }
   </style>
 </head>
@@ -21,12 +32,14 @@ export const html: string = `<!doctype html>
     The embedded HTML bundle is missing. Run
     <code>vp run -r build</code>
     (or <code>vp run build:embedded</code> in <code>apps/wildflower-react</code>)
-    to produce <code>dist-embedded/html.js</code>.
+    to produce <code>dist-embedded/html.js</code>, then restart Metro so its
+    <code>resolveRequest</code> override picks the built file over this stub.
   </p>
   <p>
-    This stub is served when a consumer resolves
-    <code>wildflower-react/embeddable-html</code>
-    with <code>--conditions=source</code> before a build has run.
+    This stub is served when no built artifact exists — either a Node consumer
+    resolved <code>wildflower-react/embeddable-html</code> through the
+    <code>source</code> export condition, or the Expo Metro override fell
+    through because <code>dist-embedded/html.js</code> wasn't on disk.
   </p>
 </body>
 </html>
