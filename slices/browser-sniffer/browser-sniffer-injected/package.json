@@ -32,6 +32,7 @@
     "@typescript/native-preview": "catalog:",
     "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
@@ -41,6 +42,7 @@
   "peerDependencies": {
     "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
     "kitchen-sink": "workspace:*"
   }
 }

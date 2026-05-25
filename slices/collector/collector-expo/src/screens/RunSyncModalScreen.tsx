@@ -26,7 +26,11 @@ import { StyleSheet } from 'react-native'
  *
  * Tags omitted from this set get typed handlers (e.g. `RequestError`
  * still triggers the optional `onError` callback for app-side
- * observability; `Log` is consumed locally).
+ * observability). Cross-process `console.<level>(...)` mirroring rides
+ * the shared `LogBridge` (composed into `BrowserSnifferWebView`'s
+ * transport tuple) and is intentionally not in this set — Log
+ * messages are consumed by the host's Effect logger, not forwarded to
+ * the SPA.
  */
 const PASSTHROUGH_TO_SPA: ReadonlySet<string> = new Set([
   'ResponseStart',
@@ -36,16 +40,6 @@ const PASSTHROUGH_TO_SPA: ReadonlySet<string> = new Set([
   'Cancelled',
   'PageLoaded',
 ])
-
-// `console.log` maps to Info — Effect's logger has no distinct "log" rung;
-// Info is the conventional default and matches the navigation publisher.
-const logEffectForLevel = {
-  debug: Effect.logDebug,
-  info: Effect.logInfo,
-  log: Effect.logInfo,
-  warn: Effect.logWarning,
-  error: Effect.logError,
-} as const
 
 /**
  * Imperative handle exposed via `ref`. The host shell's `onOpen`
@@ -106,9 +100,10 @@ interface RunSyncModalScreenProps {
  *
  * Typed `SnifferHandlers` are kept only for tags that need
  * host-local observation — `RequestError` to fire the optional
- * `onError` callback, `Log` to re-emit page-side console calls
- * through the host's Effect Logger at the matching level. The
- * remaining tags ride the raw passthrough.
+ * `onError` callback. Cross-process `Log` mirroring is wired through
+ * the shared `LogBridge` inside `BrowserSnifferWebView`'s transport;
+ * the screen doesn't see Log events at all. The remaining tags ride
+ * the raw passthrough.
  */
 const RunSyncModalScreen = ({
   source: initialSource,
@@ -136,13 +131,12 @@ const RunSyncModalScreen = ({
   )
 
   // Typed handlers cover the host-local concerns only: `RequestError`
-  // surfaces to `onError`; `Log` maps the page's `console.<level>`
-  // call onto the host's Effect Logger at the matching level so
-  // output flows through whatever sink the Effect runtime has
-  // installed; the rest are forwarded raw via `onRawMessage` below.
+  // surfaces to `onError`; the rest are forwarded raw via
+  // `onRawMessage` below. Cross-process `console.<level>(...)` mirroring
+  // is consumed by the LogBridge wired into
+  // `BrowserSnifferWebView`'s transport — the screen never sees it.
   const handlers = useMemo<SnifferHandlers>(
     () => ({
-      Log: ({ level, payload }) => logEffectForLevel[level](...payload),
       ResponseStart: () => Effect.void,
       ResponseData: () => Effect.void,
       ResponseFinished: () => Effect.void,

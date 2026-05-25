@@ -13,7 +13,6 @@ import {
 
 /** No-op handlers satisfying the full `HandlersFor<...>` shape so tests don't need to enumerate every tag. */
 const noopHandlers: SnifferHandlers = {
-  Log: () => Effect.void,
   ResponseStart: () => Effect.void,
   ResponseData: () => Effect.void,
   ResponseFinished: () => Effect.void,
@@ -98,11 +97,27 @@ jest.mock('browser-sniffer-core/bridge', () => {
 // Stub effect-messaging-core's BridgeTransport.make so the component
 // can complete construction synchronously. The real transport is
 // covered by browser-sniffer-core/tests/bridge.test.ts.
+//
+// **Partial mock — load-bearing.** This stub only works because
+// `BridgeTransport.make` is *also* mocked: that mock ignores its
+// `bridges` / `layers` arguments, so the production call site's
+// `[LogBridge.LogBridge, …]` tuple is never actually consumed and the
+// LogBridge stub only needs the one field the call site dereferences
+// at construction time (`LogBridge.defaultHostReceiverLayer`). If
+// either mock is loosened to use the real `BridgeTransport.make` or
+// to feed the bridges into a real transport, this stub must grow:
+// at minimum, `LogBridge.LogBridge.Host.ReceiverLayer`,
+// `LogBridge.LogBridge.Web.ReceiverLayer`, `LogBridge.LogBridge.name`,
+// and the four `OutboundSchemas` / `InboundSchemas` / `HandlerTag`
+// fields per side that `Bridge.Bridge` carries. Easier: drop the
+// effect-messaging-core mock entirely and let the real package run.
 let mockSendMessageCalls: Array<{ readonly _tag: string; readonly id?: string }> = []
 let mockEnqueueCalls: string[] = []
 let mockEnqueueShouldFail = false
 jest.mock('effect-messaging-core', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType }>('effect')
+  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
+    'effect'
+  )
   return {
     BridgeTransport: {
       make: (_config: unknown) =>
@@ -119,6 +134,9 @@ jest.mock('effect-messaging-core', () => {
           },
           flushed: effect.Effect.void,
         }),
+    },
+    LogBridge: {
+      defaultHostReceiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
     },
     TransportAdapter: { Type: undefined },
     MessageHandler: {},

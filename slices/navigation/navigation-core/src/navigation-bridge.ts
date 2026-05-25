@@ -29,27 +29,6 @@ const RouteChanged = Schema.parseJson(
   })
 )
 
-/**
- * Console method names mirrored over the bridge. The producer uses these
- * to dispatch per-level (web's `console.warn` → `level: 'warn'`); the host
- * uses them to route into the matching native logger sink.
- */
-const LogLevel = Schema.Literal('debug', 'info', 'log', 'warn', 'error')
-
-/**
- * Variadic console payload: the original `console.<level>(...args)` array
- * preserved as an array of arbitrary JSON-serializable values. `Schema.Unknown`
- * keeps producer call sites typed against `unknown[]` (matching the console
- * surface) and lets `Schema.parseJson` serialize each entry through
- * `JSON.stringify` on the wire — strings, numbers, plain objects, and arrays
- * all round-trip without first being flattened into a single string.
- */
-const LogMessageBody = Schema.TaggedStruct('Log', {
-  level: LogLevel,
-  payload: Schema.Array(Schema.Unknown),
-})
-const LogMessage = Schema.parseJson(LogMessageBody)
-
 type NavigationBridge = Bridge.Bridge<
   'Navigation',
   {
@@ -58,7 +37,6 @@ type NavigationBridge = Bridge.Bridge<
   },
   {
     RouteChanged: typeof RouteChanged
-    Log: typeof LogMessage
   }
 >
 
@@ -66,6 +44,12 @@ type NavigationBridge = Bridge.Bridge<
  * Slice-neutral cross-process navigation contract. Host emits
  * `HostBackRequested` and `HostRequestedWebNavigation`; web emits
  * `RouteChanged`. Aggregators wire this bridge into every embedded WebView.
+ *
+ * @remarks
+ * Cross-process `console.<level>(...)` mirroring is handled by the
+ * shared `LogBridge` in `effect-messaging-core`; consumers compose it
+ * alongside this bridge via `useLogHostBinding()` from
+ * `effect-messaging-expo`.
  */
 const NavigationBridge: NavigationBridge = Bridge.make({
   name: 'Navigation',
@@ -73,10 +57,7 @@ const NavigationBridge: NavigationBridge = Bridge.make({
     ['HostBackRequested', HostBackRequested],
     ['HostRequestedWebNavigation', HostRequestedWebNavigation],
   ] as const,
-  webToHost: [
-    ['RouteChanged', RouteChanged],
-    ['Log', LogMessage],
-  ] as const,
+  webToHost: [['RouteChanged', RouteChanged]] as const,
   urlParams: {
     HostRequestedWebNavigation: UrlParamMessage.singleStringMessageSchema(
       'HostRequestedWebNavigation',

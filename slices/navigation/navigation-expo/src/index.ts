@@ -12,5 +12,4 @@ const NavigationBridgeExpo = {
 }
 
 export { NavigationBridgeExpo }
-export type { LogLevel, LogMessage } from './host-receiver-layer.ts'
 export type { UseNavigationHostBindingOptions } from './use-host-binding.ts'

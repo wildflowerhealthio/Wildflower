@@ -65,32 +65,6 @@ const SnifferRequestId = Schema.NonEmptyString.annotations({
  */
 const HeadersWire = Schema.Array(Schema.Tuple(Schema.String, Schema.String))
 
-/**
- * Console method names mirrored over the bridge. The producer uses
- * these to dispatch per-level (page's `console.warn` → `level: 'warn'`);
- * the host uses them to route into the matching native console method
- * via `console[level](...payload)`. Mirrors the same literal set used
- * by `NavigationBridge`'s `Log` schema — kept as a sibling definition
- * (rather than an import from navigation-core) so the two slice cores
- * stay independent.
- */
-const LogLevel = Schema.Literal('debug', 'info', 'log', 'warn', 'error')
-
-/**
- * Variadic console payload: the original `console.<level>(...args)`
- * array preserved as an array of arbitrary JSON-serializable values.
- * `Schema.Unknown` keeps producer call sites typed against `unknown[]`
- * (matching the console surface) and lets `Schema.parseJson` serialize
- * each entry through `JSON.stringify` on the wire — strings, numbers,
- * plain objects, and arrays all round-trip without first being
- * flattened into a single string.
- */
-const LogMessageBody = Schema.TaggedStruct('Log', {
-  level: LogLevel,
-  payload: Schema.Array(Schema.Unknown),
-})
-const LogMessage = Schema.parseJson(LogMessageBody)
-
 const ResponseStartMessageBody = Schema.TaggedStruct('ResponseStart', {
   id: SnifferRequestId,
   url: Schema.String,
@@ -177,9 +151,6 @@ const ClickMessageBody = Schema.TaggedStruct('Click', {
 const ClickMessage = Schema.parseJson(ClickMessageBody)
 
 export {
-  LogLevel,
-  LogMessage,
-  LogMessageBody,
   ResponseStartMessage,
   ResponseStartMessageBody,
   ResponseDataMessage,

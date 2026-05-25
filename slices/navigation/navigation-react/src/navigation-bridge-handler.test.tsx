@@ -7,13 +7,12 @@ import { describe, expect, test } from 'vite-plus/test'
 import { NavigationBridgeHandler, type RouteChangeSender } from './navigation-bridge-handler'
 
 type RouteChanged = NavigationBridge['MessageSchemas']['RouteChanged']['Type']
-type Log = NavigationBridge['MessageSchemas']['Log']['Type']
 
 const setupCalls = (): {
-  readonly calls: (RouteChanged | Log)[]
+  readonly calls: RouteChanged[]
   readonly send: RouteChangeSender
 } => {
-  const calls: (RouteChanged | Log)[] = []
+  const calls: RouteChanged[] = []
   // Record on Effect *run*, not on construction. A push-on-call mock
   // would pass even when production code discards the returned Effect —
   // exactly the regression `NavigationBridgeHandler` had until Fix C.
