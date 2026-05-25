@@ -98,11 +98,19 @@ jest.mock('browser-sniffer-core/bridge', () => {
 // can complete construction synchronously. The real transport is
 // covered by browser-sniffer-core/tests/bridge.test.ts.
 //
-// LogBridge is mocked just enough for the component's static field
-// access (`LogBridge.defaultHostReceiverLayer`) to resolve to a
-// no-requirements Layer — the mock BridgeTransport.make doesn't
-// actually consume the layer, but the call site dereferences the
-// field at construction time.
+// **Partial mock — load-bearing.** This stub only works because
+// `BridgeTransport.make` is *also* mocked: that mock ignores its
+// `bridges` / `layers` arguments, so the production call site's
+// `[LogBridge.LogBridge, …]` tuple is never actually consumed and the
+// LogBridge stub only needs the one field the call site dereferences
+// at construction time (`LogBridge.defaultHostReceiverLayer`). If
+// either mock is loosened to use the real `BridgeTransport.make` or
+// to feed the bridges into a real transport, this stub must grow:
+// at minimum, `LogBridge.LogBridge.Host.ReceiverLayer`,
+// `LogBridge.LogBridge.Web.ReceiverLayer`, `LogBridge.LogBridge.name`,
+// and the four `OutboundSchemas` / `InboundSchemas` / `HandlerTag`
+// fields per side that `Bridge.Bridge` carries. Easier: drop the
+// effect-messaging-core mock entirely and let the real package run.
 let mockSendMessageCalls: Array<{ readonly _tag: string; readonly id?: string }> = []
 let mockEnqueueCalls: string[] = []
 let mockEnqueueShouldFail = false

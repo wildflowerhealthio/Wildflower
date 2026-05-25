@@ -10,7 +10,7 @@ type Bridges = readonly [
   typeof GatekeeperBridge,
   typeof CollectorBridge,
   typeof AppsBridge,
-  typeof LogBridge,
+  typeof LogBridge.LogBridge,
 ]
 type Transport = BridgeTransport.BridgeTransport<Bridges, 'Web'>
 

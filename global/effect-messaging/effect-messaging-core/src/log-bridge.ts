@@ -39,18 +39,23 @@ const LogMessageBody = Schema.TaggedStruct('Log', {
  */
 const LogMessage = Schema.parseJson(LogMessageBody)
 
-/** Decoded payload the host receives for each web-side console emission. */
-interface LogPayload {
-  readonly level: LogLevel
-  readonly payload: readonly unknown[]
-}
+/**
+ * Decoded payload the host receives for each web-side console emission.
+ * Derived from {@link LogMessageBody} so the type stays in lockstep
+ * with the wire schema — adding a field to the schema surfaces here
+ * automatically.
+ */
+type LogPayload = Schema.Schema.Type<typeof LogMessageBody>
 
 /**
  * Map a wire log level to its matching Effect logger entry point. `'log'`
  * mirrors the browser console's INFO-level alias — Effect has no
  * distinct "log" rung, so it lands at INFO alongside `'info'`.
  */
-const effectLogFor: Record<LogLevel, (...args: ReadonlyArray<unknown>) => Effect.Effect<void>> = {
+const effectLogForLevel: Record<
+  LogLevel,
+  (...args: ReadonlyArray<unknown>) => Effect.Effect<void>
+> = {
   debug: Effect.logDebug,
   info: Effect.logInfo,
   log: Effect.logInfo,
@@ -58,35 +63,42 @@ const effectLogFor: Record<LogLevel, (...args: ReadonlyArray<unknown>) => Effect
   error: Effect.logError,
 }
 
-/** Concrete bridge type for the LogBridge — one-way Web → Host. */
-type LogBridgeBridge = Bridge.Bridge<
-  'Log',
-  Record<never, never>,
-  { readonly Log: typeof LogMessage }
->
+/**
+ * Default `Log` handler: spread the wire payload through the matching
+ * `Effect.log<Level>` so SPA-side `console.<level>(...args)` surfaces
+ * through the host's Effect logger at the original level. Exported so
+ * callers wiring their own `onLog` override can fall back to it.
+ */
+const defaultOnLog = ({ level, payload }: LogPayload): Effect.Effect<void> =>
+  effectLogForLevel[level](...payload)
 
-/** Internal Bridge.Bridge instance — wrapped in the {@link LogBridge} surface below. */
-const baseBridge: LogBridgeBridge = Bridge.make({
+/** Concrete bridge type for the LogBridge — one-way Web → Host. */
+type LogBridge = Bridge.Bridge<'Log', Record<never, never>, { readonly Log: typeof LogMessage }>
+
+/**
+ * Singleton {@link Bridge.Bridge} for cross-process `console.<level>(...)`
+ * mirroring. `webToHost`-only — the host never asks the web page to log
+ * on its behalf.
+ *
+ * @remarks
+ * Compose into a transport tuple like any slice bridge. The default
+ * host receiver lives in {@link defaultHostReceiverLayer}; the
+ * canonical web-side wiring is {@link installConsoleInterceptor}.
+ */
+const LogBridge: LogBridge = Bridge.make({
   name: 'Log',
   hostToWeb: [] as const,
   webToHost: [['Log', LogMessage]] as const,
 })
 
 /**
- * Default host-side receiver: maps each `Log` message's wire `level`
- * onto the matching `Effect.log<Level>` and spreads the message's
- * `payload` as variadic args, so SPA-side `console.<level>(...args)`
- * surfaces through the host's Effect logger at the original level.
- *
+ * Default host-side receiver: dispatches each `Log` via {@link defaultOnLog}.
  * Compose into the host shell via `useLogHostBinding()` from
- * `effect-messaging-expo` (or directly as
- * `LogBridge.Host.ReceiverLayer({ Log: ... })` if the consumer wants
- * to override).
+ * `effect-messaging-expo` (or directly here if the consumer wants a
+ * non-React host).
  */
 const defaultHostReceiverLayer: Layer.Layer<MessageHandler.TagId<'Log', 'Host'>> =
-  baseBridge.Host.ReceiverLayer({
-    Log: ({ level, payload }) => effectLogFor[level](...payload),
-  })
+  LogBridge.Host.ReceiverLayer({ Log: defaultOnLog })
 
 /**
  * Subset of `Console` we patch. Each method is the spread-args shape
@@ -101,6 +113,13 @@ const defaultHostReceiverLayer: Layer.Layer<MessageHandler.TagId<'Log', 'Host'>>
 type LogBridgeConsole = Readonly<Record<LogLevel, (...args: unknown[]) => void>>
 
 /**
+ * Module-level guard pairing each successful {@link installConsoleInterceptor}
+ * call with its restore. While non-null, a second install is short-circuited
+ * to a no-op teardown so the truly-original console methods aren't lost.
+ */
+let activeRestore: (() => void) | null = null
+
+/**
  * Web-side helper: patch `globalThis.console.<level>` for the five
  * `LogLevel` methods so each call ships `{ _tag: 'Log', level, payload: args }`
  * through the supplied LogBridge sender. The original `console` object
@@ -108,7 +127,18 @@ type LogBridgeConsole = Readonly<Record<LogLevel, (...args: unknown[]) => void>>
  * that captured a bound reference still observes the new behaviour.
  *
  * Returns a teardown function that restores the original methods.
- * Calling it twice without an intervening install is a no-op.
+ *
+ * **Lifecycle:**
+ *
+ * - **Teardown idempotency** — calling it twice without an intervening
+ *   install is a no-op.
+ * - **Install-twice protection** — a second `installConsoleInterceptor`
+ *   call while a prior install is still active short-circuits and
+ *   returns a no-op teardown. Without this guard, the second install
+ *   would capture the already-patched methods as "originals" and the
+ *   eventual teardown would restore to the patched versions, losing
+ *   the truly-original references forever. Callers that want to swap
+ *   the sender must teardown the first install before re-installing.
  *
  * @remarks
  * Touching `globalThis.console` is universally available (Node, web,
@@ -117,7 +147,7 @@ type LogBridgeConsole = Readonly<Record<LogLevel, (...args: unknown[]) => void>>
  *
  * ```ts
  * const transport = await Effect.runPromise(makeTransport(...))
- * const teardown = LogBridge.installConsoleInterceptor((msg) =>
+ * const teardown = installConsoleInterceptor((msg) =>
  *   Effect.runFork(transport.sendMessage(msg))
  * )
  * ```
@@ -131,6 +161,14 @@ type LogBridgeConsole = Readonly<Record<LogLevel, (...args: unknown[]) => void>>
 const installConsoleInterceptor = (
   send: (message: Schema.Schema.Type<typeof LogMessage>) => void
 ): (() => void) => {
+  if (activeRestore !== null) {
+    // A prior install is still active. Re-installing now would
+    // re-capture the already-patched methods as `originals` and lose
+    // the real ones on teardown. Short-circuit to a no-op teardown
+    // and let the caller observe the JSDoc'd contract.
+    return (): void => undefined
+  }
+
   // Capture originals so teardown can restore them. `globalThis.console`
   // is the same object identity across web / node / RN — patching its
   // methods in place is the universal pattern.
@@ -165,47 +203,24 @@ const installConsoleInterceptor = (
   Object.assign(globalThis.console, patched)
 
   let restored = false
-  return (): void => {
+  const restore = (): void => {
     if (restored) return
     restored = true
     Object.assign(globalThis.console, originals)
+    if (activeRestore === restore) activeRestore = null
   }
+  activeRestore = restore
+  return restore
 }
 
-/**
- * Singleton {@link Bridge.Bridge} for cross-process `console.<level>(...)`
- * mirroring, plus the default host receiver and the web-side console
- * interceptor as fields on the same value.
- *
- * @remarks
- * The shape is `Bridge.Bridge` (so it composes into a transport tuple
- * exactly like any slice bridge) with two extra fields tacked on:
- *
- *  - `defaultHostReceiverLayer` — preferred via `useLogHostBinding()`
- *    in apps that aggregate via `HostBinding.aggregate`, but exported
- *    here so non-React hosts can wire it directly.
- *  - `installConsoleInterceptor` — the canonical Web-side wiring; patches
- *    the page's `console.<level>` to ride this bridge.
- *
- * Co-locating the bridge value and these helpers gives the same
- * single-import ergonomics slice bridges have (`NavigationBridgeExpo`
- * etc. bundle a bridge + slice helpers under one namespace) while
- * keeping the `Bridge.Bridge` surface verbatim — composition under
- * `Bridge.AnyBridge` still works through the inherited fields.
- *
- * `webToHost`-only; `hostToWeb` is empty (the host never asks the web
- * page to log on its behalf).
- */
-const LogBridge: LogBridgeBridge & {
-  readonly defaultHostReceiverLayer: typeof defaultHostReceiverLayer
-  readonly installConsoleInterceptor: typeof installConsoleInterceptor
-} = Object.assign(baseBridge, {
+export {
   defaultHostReceiverLayer,
+  defaultOnLog,
+  effectLogForLevel,
   installConsoleInterceptor,
-})
-
-/** Static type alias for {@link LogBridge}, useful for `typeof LogBridge` constraints. */
-type LogBridge = typeof LogBridge
-
-export { LogBridge, LogLevel, LogMessage, LogMessageBody }
+  LogBridge,
+  LogLevel,
+  LogMessage,
+  LogMessageBody,
+}
 export type { LogPayload }

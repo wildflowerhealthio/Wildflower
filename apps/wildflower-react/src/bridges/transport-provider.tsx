@@ -55,6 +55,13 @@ function TransportProvider({
   const appsLayer = useAppsWebReceiverLayer()
 
   const [scope] = useState(() => Effect.runSync(Scope.make()))
+  // Captured here so the useEffect cleanup pairs console restoration
+  // with transport teardown (before Scope.close runs the transport's
+  // own cleanup). Without this pairing, post-unmount console.<level>
+  // calls would still fan into Effect.runFork against the closed
+  // transport's sendMessage and we'd lean on the StrictMode-fragile
+  // "harmless no-op against the detached sender" assumption.
+  const teardownConsoleRef = useRef<(() => void) | null>(null)
   const [transportPromise] = useState<Promise<Transport>>(() => {
     const navLayer = makeNavigationWebReceiverLayer((to) => {
       // Split branches so React Router's `navigate` overload picks the right signature.
@@ -70,7 +77,7 @@ function TransportProvider({
       GatekeeperBridge,
       CollectorBridge,
       AppsBridge,
-      LogBridge,
+      LogBridge.LogBridge,
     ] as const
     const adapter = WebPlatformAdapter.make(bridges)
     return Effect.runPromise(
@@ -84,7 +91,7 @@ function TransportProvider({
             appsLayer,
             // LogBridge is Web→Host only on the page side; the Web
             // ReceiverLayer is the empty `{}` handlers record.
-            LogBridge.Web.ReceiverLayer({}),
+            LogBridge.LogBridge.Web.ReceiverLayer({}),
           ] as const,
           side: 'Web',
         }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter))),
@@ -97,20 +104,28 @@ function TransportProvider({
       // LogBridge. `transport.sendMessage` returns an `Effect`; the
       // interceptor takes a plain `(msg) => void` and we hand it a
       // fiber-running closure here (the canonical fire-and-forget
-      // wiring). Teardown intentionally not captured: the page-side
-      // transport lives for the page's lifetime; on unmount the
-      // enclosing `Scope.close` tears the transport down and any
-      // post-unmount console calls become harmless no-ops against the
-      // detached sender.
-      LogBridge.installConsoleInterceptor((msg) => {
-        Effect.runFork(transport.sendMessage(msg))
-      })
+      // wiring). Teardown is captured into `teardownConsoleRef` so the
+      // useEffect cleanup can restore the originals BEFORE Scope.close
+      // closes the transport.
+      teardownConsoleRef.current = LogBridge.installConsoleInterceptor(
+        (msg: LogBridge.LogPayload) => {
+          Effect.runFork(transport.sendMessage(msg))
+        }
+      )
       return transport
     })
   })
 
   useEffect(() => {
     return (): void => {
+      // Restore console BEFORE the transport scope closes. After
+      // restore, any further console.<level>(...) calls hit the real
+      // methods rather than queuing fire-and-forget sends against a
+      // closed transport. Matters in StrictMode double-mount where the
+      // first mount's transport is torn down while the second mount is
+      // still wiring up.
+      teardownConsoleRef.current?.()
+      teardownConsoleRef.current = null
       Effect.runFork(Scope.close(scope, Exit.void))
     }
   }, [scope])

@@ -1,22 +1,22 @@
 import { Context, Effect, Layer, Logger, LogLevel as EffectLogLevel, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
-import { LogBridge, LogLevel, LogMessage } from '../src/log-bridge.ts'
+import * as LogBridge from '../src/log-bridge.ts'
 import type * as MessageHandler from '../src/message-handler.ts'
 
-const decodeLog = Schema.decodeUnknownSync(Schema.typeSchema(LogMessage))
+const decodeLog = Schema.decodeUnknownSync(Schema.typeSchema(LogBridge.LogMessage))
 
 describe('LogBridge — shape', () => {
   test('exposes one webToHost Log entry and an empty hostToWeb side', () => {
-    expect(Object.keys(LogBridge.Host.OutboundSchemas)).toEqual([])
-    expect(Object.keys(LogBridge.Host.InboundSchemas)).toEqual(['Log'])
-    expect(Object.keys(LogBridge.Web.OutboundSchemas)).toEqual(['Log'])
-    expect(Object.keys(LogBridge.Web.InboundSchemas)).toEqual([])
+    expect(Object.keys(LogBridge.LogBridge.Host.OutboundSchemas)).toEqual([])
+    expect(Object.keys(LogBridge.LogBridge.Host.InboundSchemas)).toEqual(['Log'])
+    expect(Object.keys(LogBridge.LogBridge.Web.OutboundSchemas)).toEqual(['Log'])
+    expect(Object.keys(LogBridge.LogBridge.Web.InboundSchemas)).toEqual([])
   })
 
   test('the HandlerTag keys reflect the bridge name and side', () => {
-    expect(LogBridge.Host.HandlerTag.key).toBe('Log.Host.HandlerTag')
-    expect(LogBridge.Web.HandlerTag.key).toBe('Log.Web.HandlerTag')
+    expect(LogBridge.LogBridge.Host.HandlerTag.key).toBe('Log.Host.HandlerTag')
+    expect(LogBridge.LogBridge.Web.HandlerTag.key).toBe('Log.Web.HandlerTag')
   })
 })
 
@@ -46,8 +46,8 @@ describe('LogBridge — wire round-trip', () => {
         ),
         fc.array(jsonSafeArb, { maxLength: 4 }),
         (level, payload) => {
-          const encoded = Schema.encodeSync(LogMessage)({ _tag: 'Log', level, payload })
-          const decoded = Schema.decodeSync(LogMessage)(encoded)
+          const encoded = Schema.encodeSync(LogBridge.LogMessage)({ _tag: 'Log', level, payload })
+          const decoded = Schema.decodeSync(LogBridge.LogMessage)(encoded)
           expect(decoded).toEqual({ _tag: 'Log', level, payload })
         }
       )
@@ -55,11 +55,11 @@ describe('LogBridge — wire round-trip', () => {
   })
 
   test('LogLevel rejects strings outside the five literals', () => {
-    expect(() => Schema.decodeUnknownSync(LogLevel)('trace')).toThrow()
-    expect(() => Schema.decodeUnknownSync(LogLevel)('')).toThrow()
+    expect(() => Schema.decodeUnknownSync(LogBridge.LogLevel)('trace')).toThrow()
+    expect(() => Schema.decodeUnknownSync(LogBridge.LogLevel)('')).toThrow()
     // Each declared literal decodes cleanly.
     for (const level of ['debug', 'info', 'log', 'warn', 'error'] as const) {
-      expect(Schema.decodeUnknownSync(LogLevel)(level)).toBe(level)
+      expect(Schema.decodeUnknownSync(LogBridge.LogLevel)(level)).toBe(level)
     }
   })
 })
@@ -87,31 +87,21 @@ describe('LogBridge.defaultHostReceiverLayer', () => {
 
   /**
    * Look up the `Log.Host.HandlerTag` from a built receiver layer.
-   * Returns the inbound handlers record (which the production
-   * `LogBridge.Host.ReceiverLayer` stores via `Layer.succeed`).
+   * `LogBridge.Host.HandlerTag` is the same `Context.Tag` the production
+   * `ReceiverLayer` stores into, so we read from it directly — the
+   * handler-record type comes back narrowed without a local re-declaration.
    */
-  interface LogHostHandlers {
-    readonly Log: (msg: {
-      readonly level: LogLevel
-      readonly payload: readonly unknown[]
-    }) => Effect.Effect<void>
-  }
-
   const resolveHandlers = async (
     layer: Layer.Layer<MessageHandler.TagId<'Log', 'Host'>>
-  ): Promise<LogHostHandlers> => {
-    const tag = Context.GenericTag<MessageHandler.TagId<'Log', 'Host'>, LogHostHandlers>(
-      'Log.Host.HandlerTag'
-    )
-    return await Effect.runPromise(
+  ): Promise<Context.Tag.Service<typeof LogBridge.LogBridge.Host.HandlerTag>> =>
+    Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           const ctx = yield* Layer.build(layer)
-          return Context.get(ctx, tag)
+          return Context.get(ctx, LogBridge.LogBridge.Host.HandlerTag)
         })
       )
     )
-  }
 
   test.each([
     ['debug', 'DEBUG'],
@@ -123,7 +113,7 @@ describe('LogBridge.defaultHostReceiverLayer', () => {
     const handlers = await resolveHandlers(LogBridge.defaultHostReceiverLayer)
     const sink: CapturedLog[] = []
     await Effect.runPromise(
-      handlers.Log({ level, payload: ['hello from the web', { extra: 1 }] }).pipe(
+      handlers.Log({ _tag: 'Log', level, payload: ['hello from the web', { extra: 1 }] }).pipe(
         Effect.provide(captureLogs(sink)),
         // Default runtime minimum is INFO; lift it so DEBUG surfaces too.
         Logger.withMinimumLogLevel(EffectLogLevel.All)
@@ -142,7 +132,7 @@ describe('LogBridge.installConsoleInterceptor field', () => {
 })
 
 describe('LogBridge.installConsoleInterceptor', () => {
-  type ConsoleMethod = LogLevel
+  type ConsoleMethod = LogBridge.LogLevel
   let originals: Record<ConsoleMethod, (...args: unknown[]) => void>
 
   beforeEach(() => {
@@ -170,7 +160,7 @@ describe('LogBridge.installConsoleInterceptor', () => {
   test.each(['debug', 'info', 'log', 'warn', 'error'] as const)(
     'console.%s posts a Log message with level + spread args',
     (method) => {
-      const sent: Schema.Schema.Type<typeof LogMessage>[] = []
+      const sent: Schema.Schema.Type<typeof LogBridge.LogMessage>[] = []
       const teardown = LogBridge.installConsoleInterceptor((msg) => {
         sent.push(msg)
       })
@@ -185,7 +175,7 @@ describe('LogBridge.installConsoleInterceptor', () => {
   test('the encoded wire form decodes via LogMessage', () => {
     const sent: string[] = []
     const teardown = LogBridge.installConsoleInterceptor((msg) => {
-      sent.push(Schema.encodeSync(LogMessage)(msg))
+      sent.push(Schema.encodeSync(LogBridge.LogMessage)(msg))
     })
     globalThis.console.warn('round trip', 7)
     teardown()
@@ -198,7 +188,7 @@ describe('LogBridge.installConsoleInterceptor', () => {
   })
 
   test('teardown restores the original methods', () => {
-    const sent: Schema.Schema.Type<typeof LogMessage>[] = []
+    const sent: Schema.Schema.Type<typeof LogBridge.LogMessage>[] = []
     const teardown = LogBridge.installConsoleInterceptor((msg) => {
       sent.push(msg)
     })
@@ -224,6 +214,46 @@ describe('LogBridge.installConsoleInterceptor', () => {
     const teardown = LogBridge.installConsoleInterceptor(() => undefined)
     teardown()
     expect(() => teardown()).not.toThrow()
+    // oxlint-disable-next-line typescript-eslint/unbound-method
+    expect(globalThis.console.info).toBe(originals.info)
+  })
+
+  test('re-installing while a prior install is active short-circuits to a no-op teardown — the truly-original methods survive', () => {
+    const firstSent: Schema.Schema.Type<typeof LogBridge.LogMessage>[] = []
+    const secondSent: Schema.Schema.Type<typeof LogBridge.LogMessage>[] = []
+    const firstTeardown = LogBridge.installConsoleInterceptor((msg) => {
+      firstSent.push(msg)
+    })
+    // Second install without a teardown in between: short-circuited so
+    // the patched methods (NOT the originals) aren't recaptured as
+    // baseline. The returned teardown must be a no-op.
+    const secondTeardown = LogBridge.installConsoleInterceptor((msg) => {
+      secondSent.push(msg)
+    })
+    globalThis.console.info('routed-by-first')
+    expect(firstSent).toHaveLength(1)
+    expect(secondSent).toHaveLength(0)
+    // The no-op second teardown must NOT touch console — the originals
+    // would be lost if it ran a restore from the patched-as-baseline.
+    secondTeardown()
+    globalThis.console.info('still-routed-by-first')
+    expect(firstSent).toHaveLength(2)
+    // The first teardown restores to the truly-original methods.
+    firstTeardown()
+    // oxlint-disable-next-line typescript-eslint/unbound-method
+    expect(globalThis.console.info).toBe(originals.info)
+  })
+
+  test('after teardown, a new install is allowed (the guard releases on restore)', () => {
+    const firstTeardown = LogBridge.installConsoleInterceptor(() => undefined)
+    firstTeardown()
+    const secondSent: Schema.Schema.Type<typeof LogBridge.LogMessage>[] = []
+    const secondTeardown = LogBridge.installConsoleInterceptor((msg) => {
+      secondSent.push(msg)
+    })
+    globalThis.console.info('post-restore-install')
+    expect(secondSent).toHaveLength(1)
+    secondTeardown()
     // oxlint-disable-next-line typescript-eslint/unbound-method
     expect(globalThis.console.info).toBe(originals.info)
   })

@@ -61,7 +61,10 @@ type SnifferHandlers = MessageHandler.HandlersFor<typeof BrowserSnifferBridge.Ho
 
 type TransportType = Effect.Effect.Success<
   ReturnType<
-    typeof BridgeTransport.make<readonly [typeof BrowserSnifferBridge, typeof LogBridge], 'Host'>
+    typeof BridgeTransport.make<
+      readonly [typeof BrowserSnifferBridge, typeof LogBridge.LogBridge],
+      'Host'
+    >
   >
 >
 
@@ -147,7 +150,7 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferWebViewHandle, BrowserSni
       const built = Effect.runSync(
         Scope.extend(
           BridgeTransport.make({
-            bridges: [BrowserSnifferBridge, LogBridge] as const,
+            bridges: [BrowserSnifferBridge, LogBridge.LogBridge] as const,
             layers: [snifferLayer, LogBridge.defaultHostReceiverLayer] as const,
             side: 'Host',
           }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter))),
