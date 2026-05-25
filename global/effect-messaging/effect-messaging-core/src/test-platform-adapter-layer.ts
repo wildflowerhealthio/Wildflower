@@ -1,6 +1,7 @@
 import type { Scope } from 'effect'
 import { Effect, Layer } from 'effect'
-import { TransportAdapter, type BareSender } from './transport-adapter.ts'
+import type { BareSenderFunction } from './bare-sender.ts'
+import { TransportAdapter } from './transport-adapter.ts'
 
 /**
  * Capturing-stub `Layer<TransportAdapter>` for tests.
@@ -27,16 +28,16 @@ const make = (config?: {
 }): {
   readonly layer: Layer.Layer<TransportAdapter>
   readonly sentSink: string[]
-  readonly liveBareSenderRef: { current: BareSender | null }
+  readonly liveBareSenderRef: { current: BareSenderFunction | null }
 } => {
   const sentSink: string[] = []
   const initialMessages = config?.initialMessages ?? []
-  const liveBareSenderRef: { current: BareSender | null } = {
+  const liveBareSenderRef: { current: BareSenderFunction | null } = {
     current: null,
   }
-  const attachBareSender: (bareSender: BareSender) => Effect.Effect<void, never, Scope.Scope> = (
-    bareSender
-  ) =>
+  const attachBareSender: (
+    bareSender: BareSenderFunction
+  ) => Effect.Effect<void, never, Scope.Scope> = (bareSender) =>
     Effect.acquireRelease(
       Effect.sync(() => {
         liveBareSenderRef.current = bareSender

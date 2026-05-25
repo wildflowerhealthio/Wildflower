@@ -1,5 +1,5 @@
 import { Effect, Exit, Scope } from 'effect'
-import type { Bridge } from 'effect-messaging-core'
+import type { BareSenderService, Bridge } from 'effect-messaging-core'
 import { useEffect, useMemo, type JSX, Suspense, use } from 'react'
 import { Text } from 'react-native'
 import { type ExpoTransport, type ExpoTransportLayers, makeExpoTransport } from './transport.ts'
@@ -14,7 +14,7 @@ interface UseTransportConfig<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   readonly layers: ExpoTransportLayers<Bridges>
   readonly initialMessages: ReadonlyArray<Bridge.UrlParamableMessage<Bridges>>
   readonly baseUrl: string
-  readonly webviewHandleRef: { readonly current: { postMessage(message: string): void } | null }
+  readonly webviewHandleRef: { readonly current: BareSenderService | null }
   readonly children: (transport: ExpoTransport<Bridges>) => JSX.Element
 }
 

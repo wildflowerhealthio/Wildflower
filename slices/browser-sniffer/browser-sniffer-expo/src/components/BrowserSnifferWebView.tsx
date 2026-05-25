@@ -3,9 +3,9 @@ import { snifferScript } from 'browser-sniffer-injected'
 import { Effect, Exit, Layer, Scope } from 'effect'
 import {
   BridgeTransport,
-  type BareSender,
   type MessageHandler,
   TransportAdapter,
+  type BareSenderFunction,
 } from 'effect-messaging-core'
 import {
   forwardRef,
@@ -53,7 +53,7 @@ interface BrowserSnifferWebViewHandle {
   postRaw(rawWire: string): void
 }
 
-/** What the WebView should load. Mirrors `EffectMessagingWebViewSource`. */
+/** What the WebView should load. Mirrors `TransportWebViewSource`. */
 type BrowserSnifferWebViewSource = { uri: string } | { html: string; baseUrl?: string }
 
 type SnifferHandlers = MessageHandler.HandlersFor<typeof BrowserSnifferBridge.Host.InboundSchemas>
@@ -119,7 +119,7 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferWebViewHandle, BrowserSni
     useEffect(() => {
       const scope = Effect.runSync(Scope.make())
 
-      const bareSender: BareSender = (encoded) =>
+      const bareSender: BareSenderFunction = (encoded) =>
         Effect.sync(() => {
           const wv = webviewRef.current
           if (wv === null) {

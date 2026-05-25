@@ -40,9 +40,10 @@ const READY_RAW = Schema.encodeSync(ReadyMessageWireSchema)({ _tag: READY_TAG })
  * specified side. The transport's public `sendMessage` strips the
  * {@link TransportAdapter} requirement.
  */
-type MessageSender<Bridges extends ReadonlyArray<Bridge.AnyBridge>, Side extends 'Host' | 'Web'> = (
-  message: Bridge.SendableMessage<Bridges, Side>
-) => Effect.Effect<void>
+type MessageSender<
+  out Bridges extends ReadonlyArray<Bridge.AnyBridge>,
+  Side extends 'Host' | 'Web',
+> = (message: Bridge.SendableMessage<Bridges, Side>) => Effect.Effect<void>
 
 /**
  * Cross-platform bridge transport composing one or more

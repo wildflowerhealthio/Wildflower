@@ -1,4 +1,6 @@
 import { act, render } from '@testing-library/react-native'
+import { Effect } from 'effect'
+import type { BareSenderService } from 'effect-messaging-core'
 import * as React from 'react'
 import { View } from 'react-native'
 import type * as RNType from 'react-native'
@@ -45,10 +47,7 @@ jest.mock('expo-web-browser', () => ({
   }),
 }))
 
-import {
-  EffectMessagingWebView,
-  type EffectMessagingWebViewHandle,
-} from './effect-messaging-webview.tsx'
+import { TransportWebView } from './transport-webview.tsx'
 
 beforeEach(() => {
   mockWebViewProps = null
@@ -56,16 +55,35 @@ beforeEach(() => {
   mockWebViewPostMessageCalls = []
 })
 
-describe('EffectMessagingWebView (transport surface)', () => {
+describe('TransportWebView (transport surface)', () => {
   it('forwards source and onMessage to the underlying WebView', () => {
     const onMessage = jest.fn()
-    render(<EffectMessagingWebView source={{ html: '<!doctype html>' }} onMessage={onMessage} />)
+    render(<TransportWebView source={{ html: '<!doctype html>' }} onMessage={onMessage} />)
     expect(mockWebViewProps?.source).toEqual({ html: '<!doctype html>' })
     expect(mockWebViewProps?.onMessage).toBe(onMessage)
   })
 
-  it('opens external links in the system browser, not in-page', () => {
-    render(<EffectMessagingWebView source={{ html: '' }} onMessage={jest.fn()} />)
+  it('keeps same-origin navigations in-WebView and routes cross-origin to the system browser', () => {
+    render(
+      <TransportWebView
+        source={{ html: '', baseUrl: 'https://app.local/?boot=1' }}
+        onMessage={jest.fn()}
+      />
+    )
+    const onShouldStartLoadWithRequest = mockWebViewProps?.onShouldStartLoadWithRequest
+    if (onShouldStartLoadWithRequest === undefined)
+      throw new Error('onShouldStartLoadWithRequest not captured')
+    // Bootstrap navigations the WebView issues for inline HTML.
+    expect(onShouldStartLoadWithRequest({ url: 'about:blank' })).toBe(true)
+    // Same origin but different path/query (e.g. `window.location.href = '${origin}/apps/x'`).
+    expect(onShouldStartLoadWithRequest({ url: 'https://app.local/apps/x' })).toBe(true)
+    // Cross-origin link → external browser.
+    expect(onShouldStartLoadWithRequest({ url: 'https://example.com' })).toBe(false)
+    expect(mockExternalUrls).toEqual(['https://example.com'])
+  })
+
+  it('routes every non-bootstrap navigation externally when source has no resolvable origin', () => {
+    render(<TransportWebView source={{ html: '' }} onMessage={jest.fn()} />)
     const onShouldStartLoadWithRequest = mockWebViewProps?.onShouldStartLoadWithRequest
     if (onShouldStartLoadWithRequest === undefined)
       throw new Error('onShouldStartLoadWithRequest not captured')
@@ -74,17 +92,19 @@ describe('EffectMessagingWebView (transport surface)', () => {
     expect(mockExternalUrls).toEqual(['https://example.com'])
   })
 
-  it('hands postMessage strings through to the underlying WebView ref', () => {
-    const ref = React.createRef<EffectMessagingWebViewHandle>()
-    render(<EffectMessagingWebView ref={ref} source={{ html: '' }} onMessage={jest.fn()} />)
-    ref.current?.postMessage('payload-A')
-    ref.current?.postMessage('payload-B')
+  it('hands bareSender strings through to the underlying WebView ref', () => {
+    const ref = React.createRef<BareSenderService>()
+    render(<TransportWebView ref={ref} source={{ html: '' }} onMessage={jest.fn()} />)
+    const sender = ref.current
+    if (sender === null) throw new Error('ref.current not populated')
+    Effect.runSync(sender.bareSender('payload-A'))
+    Effect.runSync(sender.bareSender('payload-B'))
     expect(mockWebViewPostMessageCalls).toEqual(['payload-A', 'payload-B'])
   })
 
   it('hides the loader once onLoadEnd fires', () => {
     const { queryByTestId } = render(
-      <EffectMessagingWebView
+      <TransportWebView
         source={{ html: '' }}
         onMessage={jest.fn()}
         loader={<View testID="loader-overlay" />}
