@@ -320,7 +320,7 @@ importers:
         version: 8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
       vite-plus:
         specifier: ^0.1.20
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
       why-is-node-running:
         specifier: 'catalog:'
         version: 3.2.2
@@ -335,7 +335,7 @@ importers:
         version: '@voidzero-dev/vite-plus-core@0.1.21(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
       vitest:
         specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-test@0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)'
+        version: '@voidzero-dev/vite-plus-test@0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)'
 
   apps/wildflower-expo:
     dependencies:
@@ -513,6 +513,9 @@ importers:
       navigation-core:
         specifier: workspace:*
         version: link:../../slices/navigation/navigation-core
+      navigation-expo:
+        specifier: workspace:*
+        version: link:../../slices/navigation/navigation-expo
       navigation-react:
         specifier: workspace:*
         version: link:../../slices/navigation/navigation-react
@@ -639,7 +642,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   apps/wildflower-node:
     dependencies:
@@ -718,7 +721,7 @@ importers:
         version: '@voidzero-dev/vite-plus-core@0.1.21(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   apps/wildflower-react:
     dependencies:
@@ -830,7 +833,7 @@ importers:
         version: 2.3.3(rollup@4.60.4)(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   apps/wildflower-server:
     devDependencies:
@@ -878,7 +881,7 @@ importers:
         version: '@voidzero-dev/vite-plus-core@0.1.21(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   global/effect-messaging/effect-messaging-core:
     devDependencies:
@@ -902,7 +905,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   global/effect-messaging/effect-messaging-expo:
     devDependencies:
@@ -974,7 +977,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   global/effect-messaging/effect-messaging-react:
     devDependencies:
@@ -1022,7 +1025,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   global/expo-effect-platform:
     devDependencies:
@@ -1076,7 +1079,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   global/expo-effect-platform/example:
     dependencies:
@@ -1173,7 +1176,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   global/kitchen-sink:
     devDependencies:
@@ -1194,7 +1197,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   global/react-kitchen-sink:
     dependencies:
@@ -1237,7 +1240,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   global/react-tundraish:
     devDependencies:
@@ -1345,7 +1348,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/apps/apps-react:
     devDependencies:
@@ -1396,7 +1399,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/apps/vendor-apps:
     devDependencies:
@@ -1417,7 +1420,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/browser-sniffer/browser-sniffer-core:
     devDependencies:
@@ -1441,7 +1444,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/browser-sniffer/browser-sniffer-expo:
     devDependencies:
@@ -1507,7 +1510,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/browser-sniffer/browser-sniffer-injected:
     devDependencies:
@@ -1537,7 +1540,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/collector/collector-core:
     devDependencies:
@@ -1597,7 +1600,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/collector/collector-expo:
     devDependencies:
@@ -1678,7 +1681,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/collector/collector-fundamentals:
     devDependencies:
@@ -1714,7 +1717,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/collector/collector-react:
     devDependencies:
@@ -1795,7 +1798,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/collector/fhir-r4-client-collector:
     devDependencies:
@@ -1837,7 +1840,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/emr/emr-core:
     devDependencies:
@@ -1888,7 +1891,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/emr/fhir-r4:
     devDependencies:
@@ -1945,7 +1948,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/emr/fhir-r4-react:
     devDependencies:
@@ -1993,7 +1996,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/gatekeeper/gatekeeper-core:
     devDependencies:
@@ -2050,7 +2053,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
       why-is-node-running:
         specifier: 'catalog:'
         version: 3.2.2
@@ -2119,7 +2122,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/gatekeeper/gatekeeper-react:
     devDependencies:
@@ -2173,7 +2176,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/local-http-server/local-http-server-core:
     devDependencies:
@@ -2218,7 +2221,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/navigation/navigation-core:
     devDependencies:
@@ -2245,7 +2248,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/navigation/navigation-expo:
     devDependencies:
@@ -2305,7 +2308,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/navigation/navigation-react:
     devDependencies:
@@ -2356,7 +2359,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/shared-structures/shared-structures-core:
     devDependencies:
@@ -2401,7 +2404,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/shared-structures/shared-structures-react:
     devDependencies:
@@ -2455,7 +2458,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/telemetry/telemetry-core:
     devDependencies:
@@ -2497,7 +2500,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/telemetry/telemetry-node:
     devDependencies:
@@ -2548,7 +2551,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/telemetry/telemetry-react:
     devDependencies:
@@ -2569,7 +2572,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/telemetry/telemetry-react-native:
     devDependencies:
@@ -2635,7 +2638,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/telemetry/telemetry-web:
     devDependencies:
@@ -2671,7 +2674,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/tunnel/tunnel-core:
     devDependencies:
@@ -2728,7 +2731,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/tunnel/tunnel-expo:
     devDependencies:
@@ -2788,7 +2791,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/tunnel/tunnel-node:
     dependencies:
@@ -2825,7 +2828,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/tunnel/tunnel-react:
     devDependencies:
@@ -2888,7 +2891,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 'catalog:'
-        version: 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
 
 packages:
 
@@ -16513,48 +16516,6 @@ snapshots:
       - utf-8-validate
       - yaml
 
-  '@voidzero-dev/vite-plus-test@0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)':
-    dependencies:
-      '@standard-schema/spec': 1.1.0
-      '@types/chai': 5.2.3
-      '@voidzero-dev/vite-plus-core': 0.1.21(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
-      es-module-lexer: 1.7.0
-      obug: 2.1.1
-      pixelmatch: 7.2.0
-      pngjs: 7.0.0
-      sirv: 3.0.2
-      std-env: 4.1.0
-      tinybench: 2.9.0
-      tinyexec: 1.1.2
-      tinyglobby: 0.2.16
-      vite: 8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0)
-      ws: 8.20.1
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.0
-      '@types/node': 24.12.4
-      jsdom: 26.1.0
-    transitivePeerDependencies:
-      - '@arethetypeswrong/core'
-      - '@tsdown/css'
-      - '@tsdown/exe'
-      - '@vitejs/devtools'
-      - bufferutil
-      - esbuild
-      - jiti
-      - less
-      - publint
-      - sass
-      - sass-embedded
-      - stylus
-      - sugarss
-      - terser
-      - tsx
-      - typescript
-      - unplugin-unused
-      - unrun
-      - utf-8-validate
-      - yaml
-
   '@voidzero-dev/vite-plus-win32-arm64-msvc@0.1.21':
     optional: true
 
@@ -22183,54 +22144,6 @@ snapshots:
       '@oxc-project/types': 0.129.0
       '@voidzero-dev/vite-plus-core': 0.1.21(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
       '@voidzero-dev/vite-plus-test': 0.1.21(@opentelemetry/api@1.9.0)(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
-      oxfmt: 0.48.0
-      oxlint: 1.63.0(oxlint-tsgolint@0.22.1)
-      oxlint-tsgolint: 0.22.1
-    optionalDependencies:
-      '@voidzero-dev/vite-plus-darwin-arm64': 0.1.21
-      '@voidzero-dev/vite-plus-darwin-x64': 0.1.21
-      '@voidzero-dev/vite-plus-linux-arm64-gnu': 0.1.21
-      '@voidzero-dev/vite-plus-linux-arm64-musl': 0.1.21
-      '@voidzero-dev/vite-plus-linux-x64-gnu': 0.1.21
-      '@voidzero-dev/vite-plus-linux-x64-musl': 0.1.21
-      '@voidzero-dev/vite-plus-win32-arm64-msvc': 0.1.21
-      '@voidzero-dev/vite-plus-win32-x64-msvc': 0.1.21
-    transitivePeerDependencies:
-      - '@arethetypeswrong/core'
-      - '@edge-runtime/vm'
-      - '@opentelemetry/api'
-      - '@tsdown/css'
-      - '@tsdown/exe'
-      - '@types/node'
-      - '@vitejs/devtools'
-      - '@vitest/coverage-istanbul'
-      - '@vitest/coverage-v8'
-      - '@vitest/ui'
-      - bufferutil
-      - esbuild
-      - happy-dom
-      - jiti
-      - jsdom
-      - less
-      - publint
-      - sass
-      - sass-embedded
-      - stylus
-      - sugarss
-      - terser
-      - tsx
-      - typescript
-      - unplugin-unused
-      - unrun
-      - utf-8-validate
-      - vite
-      - yaml
-
-  vite-plus@0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0):
-    dependencies:
-      '@oxc-project/types': 0.129.0
-      '@voidzero-dev/vite-plus-core': 0.1.21(@tsdown/css@0.21.10)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
-      '@voidzero-dev/vite-plus-test': 0.1.21(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(jsdom@26.1.0)(terser@5.47.1)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.0.13(@types/node@24.12.4)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.47.1)(yaml@2.9.0))(yaml@2.9.0)
       oxfmt: 0.48.0
       oxlint: 1.63.0(oxlint-tsgolint@0.22.1)
       oxlint-tsgolint: 0.22.1
