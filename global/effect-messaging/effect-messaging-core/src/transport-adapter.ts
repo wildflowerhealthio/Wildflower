@@ -1,5 +1,5 @@
 import { Context, type Effect, type Scope } from 'effect'
-import type { BareSender, BareSenderFunction, BareSenderService } from './bare-sender.ts'
+import type { BareSenderFunction, BareSenderService } from './bare-sender.ts'
 
 /** Wire-format constant — the RN-WebView bridge object name on `window`. */
 const REACT_NATIVE_WEBVIEW_GLOBAL = 'ReactNativeWebView' as const
@@ -33,4 +33,3 @@ class TransportAdapter extends Context.Tag('@effect-messaging/TransportAdapter')
 >() {}
 
 export { TransportAdapter, REACT_NATIVE_WEBVIEW_GLOBAL }
-export type { BareSender }

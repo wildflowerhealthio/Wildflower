@@ -14,7 +14,7 @@ type HostHandlerTagId<B extends Bridge.AnyBridge> = Context.Tag.Identifier<B['Ho
  * `use<Slice>HostBinding` hook returns one of these; a host shell
  * aggregates a tuple via {@link aggregate}.
  *
- * See [Host Bindings Explanation](../../../../docs/Effect/Host%20Bindings%20Explanation.md).
+ * See [Host Bindings Explanation](../docs/Host%20Bindings%20Explanation.md).
  */
 interface HostBinding<B extends Bridge.AnyBridge> {
   readonly bridge: B
@@ -86,21 +86,25 @@ const aggregate = <const Bindings extends ReadonlyArray<Any>>(
 })
 
 /**
- * Fire every binding's `onTransportReady` with the (widened) transport
- * sender. Forks each effect — callers wrap this in a `useEffect` that
- * re-runs when the transport rebuilds. The caller widens
- * `transport.sendMessage` to {@link BindingSend} since the
- * function-intersection form doesn't cross the API boundary cleanly.
+ * Build the Effect that runs every binding's `onTransportReady` (with
+ * the tuple-typed sender) — concurrently, fault-isolated via
+ * `catchAllCause`/`logError` so one binding's defect doesn't block the
+ * others. Bindings without an `onTransportReady` are skipped. Returns
+ * an Effect; the React caller `runFork`s it once and interrupts the
+ * fiber on unmount for proper teardown.
  */
 const callTransportReady = <TBindings extends ReadonlyArray<Any>>(
   bindings: TBindings,
   send: BridgeTransport.MessageSender<BridgesOf<TBindings>, 'Host'>
-): void => {
-  for (const binding of bindings) {
-    if (binding.onTransportReady === undefined) continue
-    Effect.runFork(binding.onTransportReady(send))
-  }
-}
+): Effect.Effect<void> =>
+  Effect.forEach(
+    bindings,
+    (binding) =>
+      binding.onTransportReady === undefined
+        ? Effect.void
+        : binding.onTransportReady(send).pipe(Effect.catchAllCause(Effect.logError)),
+    { discard: true, concurrency: 'unbounded' }
+  )
 
 export { aggregate, callTransportReady }
 export type { Any, BridgesOf, HostBinding, HostHandlerTagId, InitialMessageOf }

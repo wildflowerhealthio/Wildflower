@@ -39,11 +39,6 @@ type ExpoTransportLayers<Bridges extends ReadonlyArray<Bridge.AnyBridge>> = Brid
   'Host'
 >
 
-/** Imperative handle the WebView component populates via `forwardRef`. */
-interface WebViewHandle {
-  postMessage(data: string): void
-}
-
 /**
  * Public Expo transport surface. The consumer wires `embedUrl` into
  * the WebView's `source` (as `{ uri }` for remote pages, or as the
@@ -70,7 +65,7 @@ interface ExpoTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  *
  * @example
  * ```ts
- * const webviewHandleRef: { current: WebViewHandle | null } = { current: null }
+ * const webviewHandleRef: { current: BareSenderService | null } = { current: null }
  * const program = Effect.scoped(
  *   Effect.gen(function*() {
  *     const transport = yield* makeExpoTransport({
@@ -152,4 +147,4 @@ const makeExpoTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
   })
 
 export { makeExpoTransport }
-export type { ExpoTransport, ExpoTransportLayers, WebViewHandle }
+export type { ExpoTransport, ExpoTransportLayers }

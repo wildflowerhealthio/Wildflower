@@ -31,6 +31,16 @@ interface TransportWebViewProps {
   readonly onMessage: (event: WebViewMessageEvent) => void
   /** Element rendered on top of the WebView until its first `onLoadEnd` fires. */
   readonly loader?: JSX.Element
+  /**
+   * Additional gate applied AFTER the same-origin check. Return `false`
+   * to force a same-origin URL to the system browser instead of keeping
+   * it in-WebView. Defaults to `() => true` (every same-origin
+   * navigation stays in-WebView). Use this hook to carve out
+   * app-specific exceptions (e.g. a sub-path that should always open
+   * externally) without polluting this generic transport with
+   * project-specific routing knowledge.
+   */
+  readonly shouldHandleInWebView?: (url: string) => boolean
 }
 
 const tryExtractOrigin = (url: string): string | null => {
@@ -47,9 +57,18 @@ const tryExtractOrigin = (url: string): string | null => {
  * `onLoadEnd`, keeps the user inside the embedded bundle for
  * same-origin navigations, and redirects cross-origin link clicks to
  * the system browser.
+ *
+ * @remarks
+ * Callers can pass `shouldHandleInWebView` to gate same-origin
+ * navigations with app-specific exceptions — useful for forcing a
+ * particular sub-path to open in the system browser without baking
+ * project-specific routing into this generic transport.
  */
 const TransportWebView = forwardRef<BareSenderService, TransportWebViewProps>(
-  function TransportWebView({ source, onMessage, loader }, bareSenderServiceRef): JSX.Element {
+  function TransportWebView(
+    { source, onMessage, loader, shouldHandleInWebView },
+    bareSenderServiceRef
+  ): JSX.Element {
     const webviewRef = useRef<WebView>(null)
     const [loadEnded, setLoadEnded] = useState(false)
 
@@ -76,10 +95,13 @@ const TransportWebView = forwardRef<BareSenderService, TransportWebViewProps>(
       bareSenderServiceRef,
       (): BareSenderService => ({
         bareSender(message): Effect.Effect<void> {
-          return Effect.sync(() => {
-            Effect.logDebug('TransportWebView: postMessage', { message })
-            webviewRef.current?.postMessage(message)
-          })
+          return Effect.logDebug('TransportWebView: postMessage', { message }).pipe(
+            Effect.andThen(
+              Effect.sync(() => {
+                webviewRef.current?.postMessage(message)
+              })
+            )
+          )
         },
       }),
       []
@@ -105,10 +127,15 @@ const TransportWebView = forwardRef<BareSenderService, TransportWebViewProps>(
             if (
               requestOrigin !== null &&
               requestOrigin === maybeExpectedOrigin &&
-              !request.url.includes('/installed-apps/')
+              (shouldHandleInWebView?.(request.url) ?? true)
             )
               return true
-            void WebBrowser.openBrowserAsync(request.url)
+            Effect.runFork(
+              Effect.tryPromise({
+                try: () => WebBrowser.openBrowserAsync(request.url),
+                catch: (e) => e,
+              }).pipe(Effect.catchAllCause(Effect.logError))
+            )
             return false
           }}
           style={styles.webview}

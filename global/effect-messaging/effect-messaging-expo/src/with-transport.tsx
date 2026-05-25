@@ -32,7 +32,7 @@ interface UseTransportConfig<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  *
  * @example
  * ```tsx
- * const webviewHandleRef = useRef<WebViewHandle | null>(null)
+ * const webviewHandleRef = useRef<BareSenderService | null>(null)
  * const [canGoBack, setCanGoBack] = useState(false)
  * const factory = useCallback(
  *   () => ({
