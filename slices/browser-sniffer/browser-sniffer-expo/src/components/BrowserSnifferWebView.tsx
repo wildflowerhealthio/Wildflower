@@ -193,6 +193,20 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferMessageSender, BrowserSni
       [loadFrom]
     )
 
+    // `sniffableLoadFrom` (the embedded `<script>` for html sources)
+    // and `injectedJavaScriptBeforeContentLoaded` cover *different*
+    // cases, not the same case twice:
+    //   • Uri sources: `embedSnifferIntoHtml` is a no-op (nothing to
+    //     rewrite), so the injection prop is the only install path.
+    //   • Html sources: the embedded `<script>` is the reliable path
+    //     (RN-WebView's injection prop is flaky on some Android
+    //     builds, and silently no-ops on responses it doesn't parse
+    //     as HTML); the injection prop comes along for the ride as
+    //     a belt-and-braces fallback for the platforms where it does
+    //     fire.
+    // A double-install on html is harmless because `installSniffer`'s
+    // `Symbol.for('browser-sniffer:state')` slot short-circuits the
+    // second call (`install-sniffer.ts` line 129).
     return (
       <BridgedWebView
         bindings={bindings}
