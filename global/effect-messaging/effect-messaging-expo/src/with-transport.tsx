@@ -8,6 +8,8 @@ import { type ExpoTransport, type ExpoTransportLayers, makeExpoTransport } from 
  * Inputs the hook hands to {@link makeExpoTransport}. Identical to
  * the underlying config; re-exported here so callers don't have to
  * cross-import from `./transport.ts` to type their factory.
+ *
+ * @deprecated likely removable
  */
 interface UseTransportConfig<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   readonly bridges: Bridges
@@ -47,6 +49,8 @@ interface UseTransportConfig<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  * )
  * const transport = useTransport(factory)
  * ```
+ *
+ * @deprecated likely removable
  */
 const WithTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(
   config: UseTransportConfig<Bridges>
@@ -70,6 +74,10 @@ const WithTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(
   )
 }
 
+/**
+ *
+ * @deprecated likely removable
+ */
 const WithTransportInner = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   transportPromise,
   children,
