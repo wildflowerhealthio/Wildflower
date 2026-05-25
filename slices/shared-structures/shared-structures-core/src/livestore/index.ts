@@ -5,6 +5,7 @@ import {
   makeSchema,
 } from '@livestore/livestore'
 import { Context, Layer } from 'effect'
+import type { UnionToIntersection } from 'kitchen-sink/types'
 
 /**
  * Shape of the `tables` record accepted by `State.SQLite.makeState`.
@@ -110,7 +111,101 @@ const defineSliceLivestore = <
   return { schema, state, StoreTag, makeLayerFactory } as const
 }
 
-export { defineSliceLivestore }
-export type { InputTables, InputMaterializers }
+/**
+ * Record arm of `State.SQLite.InputState['tables']` — exclude the
+ * `ReadonlyArray<TableDefBase>` alternative so consumers can spread the
+ * slice's tables map safely. Slices always supply a keyed record, never
+ * a positional array.
+ */
+type SliceTables = Extract<InputTables, Record<string, unknown>>
+
+/**
+ * Slice-shaped record accepted by {@link composeLivestoreSchema}. Each
+ * slice's `livestore/index.ts` exports exactly this surface, so the
+ * helper can blindly spread the records together without knowing the
+ * concrete slice.
+ */
+type LivestoreSliceContribution<TEvents extends Record<string, EventDef.AnyWithoutFn>> = {
+  readonly tables: SliceTables
+  readonly events: TEvents
+  readonly materializers: InputMaterializers
+}
+
+/**
+ * Compose an app-level livestore schema from a list of slice
+ * contributions. Each slice exposes `{ tables, events, materializers }`
+ * via its `<name>-core/livestore` entry, and this helper threads them
+ * into the `State.SQLite.makeState` / `makeSchema` pair that the app
+ * needs.
+ *
+ * Enforces a single composition path so two apps cannot independently
+ * drift in spread order — slice-ordering drift between
+ * `wildflower-node`'s and `wildflower-expo`'s schema files would break
+ * cross-host LiveStore syncs.
+ *
+ * The helper takes a tuple of slices (rather than a single varargs
+ * spread) so the inferred `events` type is the intersection of every
+ * slice's events — callers keep strongly-typed event-name autocomplete
+ * on the returned `events` / `schema` instead of collapsing to a
+ * `Record<string, EventDef.AnyWithoutFn>` union.
+ *
+ * @example
+ * ```ts
+ * import * as AppsLivestore from 'apps-core/livestore'
+ * import * as EmrLivestore from 'emr-core/livestore'
+ * import { composeLivestoreSchema } from 'shared-structures-core/livestore'
+ *
+ * const { events, schema, tables } = composeLivestoreSchema([
+ *   EmrLivestore,
+ *   AppsLivestore,
+ * ] as const)
+ * ```
+ */
+// Explicit return type would have to re-express the derived schema's
+// shape (`FromInputSchema.DeriveSchema<{events, state: InternalState}>`)
+// — see the note on {@link defineSliceLivestore}, same trade-off.
+const composeLivestoreSchema = <
+  const TSlices extends ReadonlyArray<
+    LivestoreSliceContribution<Record<string, EventDef.AnyWithoutFn>>
+  >,
+>(
+  slices: TSlices
+  // oxlint-disable-next-line typescript/explicit-function-return-type
+) => {
+  type ComposedEvents = UnionToIntersection<TSlices[number]['events']> &
+    Record<string, EventDef.AnyWithoutFn>
+
+  const tables: SliceTables = slices.reduce<SliceTables>(
+    (acc, slice) => ({ ...acc, ...slice.tables }),
+    {}
+  )
+
+  // TS can't track that the spread-merge of every slice's events is the
+  // intersection of their static shapes — `reduce` keeps the broad
+  // `Record<string, EventDef.AnyWithoutFn>` accumulator type. The
+  // runtime operation has identical semantics to
+  // `{ ...slices[0].events, ...slices[1].events, ... }`, so the cast is
+  // the same class of structural narrowing the test file uses to stub
+  // stores; the `composeLivestoreSchema → merges …` cases in
+  // `index.test.ts` exercise it.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const events = slices.reduce<Record<string, EventDef.AnyWithoutFn>>(
+    (acc, slice) => ({ ...acc, ...slice.events }),
+    {}
+  ) as ComposedEvents
+
+  const materializers: InputMaterializers = slices.reduce<InputMaterializers>(
+    (acc, slice) => ({ ...acc, ...slice.materializers }),
+    {}
+  )
+
+  const state = State.SQLite.makeState({ tables, materializers })
+  const schema = makeSchema({ events, state })
+
+  return { tables, events, materializers, state, schema } as const
+}
+
+export { composeLivestoreSchema, defineSliceLivestore }
+export type { InputTables, InputMaterializers, LivestoreSliceContribution }
 export { subscribeUntil } from './subscribeUntil.ts'
 export type { QueryableSubscribableStore } from './subscribeUntil.ts'

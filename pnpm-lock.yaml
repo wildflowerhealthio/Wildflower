@@ -685,6 +685,9 @@ importers:
       navigation-core:
         specifier: workspace:*
         version: link:../../slices/navigation/navigation-core
+      shared-structures-core:
+        specifier: workspace:*
+        version: link:../../slices/shared-structures/shared-structures-core
       telemetry-core:
         specifier: workspace:*
         version: link:../../slices/telemetry/telemetry-core

@@ -23,10 +23,11 @@ const adapter = makePersistedAdapter({
  *
  * The `boot` callback fires once per store creation; we use it to:
  *
- *  - **Force** `LocalHttpServerState.requestedRunning: true` on every
- *    boot, overwriting any prior user state. The app is non-functional
- *    without the LHS daemon (the WebView has nothing to load), so we
- *    treat it as a required runtime invariant rather than a preference.
+ *  - Seed `LocalHttpServerState.requestedRunning: true` *only when it
+ *    is currently false* — the app is non-functional without the LHS
+ *    daemon (the WebView has nothing to load), so the on-boot nudge
+ *    flips a user who previously paused it back to running. A user
+ *    already in the running state is left alone.
  *  - Seed `TunnelConfig` with canonical defaults *only when the row
  *    is absent* — a user who customized the subdomain via the settings
  *    UI keeps their override across restarts. `requestedRunning`
@@ -57,7 +58,7 @@ const useWildflowerStore = (): Store<typeof schema, object> & ReactApi =>
     },
   })
 
-class WildflowerStore extends Context.Tag('WildflowerStore')<
+class WildflowerStore extends Context.Tag('wildflower-expo/WildflowerStore')<
   WildflowerStore,
   Store<typeof schema, object>
 >() {}
