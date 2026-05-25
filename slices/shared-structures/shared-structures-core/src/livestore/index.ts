@@ -120,12 +120,12 @@ const defineSliceLivestore = <
 type SliceTables = Extract<InputTables, Record<string, unknown>>
 
 /**
- * Slice-shaped record accepted by {@link composeLivestoreSchema}. Each
- * slice's `livestore/index.ts` exports exactly this surface, so the
- * helper can blindly spread the records together without knowing the
- * concrete slice.
+ * Module shape accepted by {@link composeLivestoreModules}. Each slice's
+ * `livestore/index.ts` exports exactly this surface, so the helper can
+ * blindly spread the records together without knowing the concrete
+ * source.
  */
-type LivestoreSliceContribution<TEvents extends Record<string, EventDef.AnyWithoutFn>> = {
+type LivestoreModule<TEvents extends Record<string, EventDef.AnyWithoutFn>> = {
   readonly tables: SliceTables
   readonly events: TEvents
   readonly materializers: InputMaterializers
@@ -153,9 +153,9 @@ type LivestoreSliceContribution<TEvents extends Record<string, EventDef.AnyWitho
  * ```ts
  * import * as AppsLivestore from 'apps-core/livestore'
  * import * as EmrLivestore from 'emr-core/livestore'
- * import { composeLivestoreSchema } from 'shared-structures-core/livestore'
+ * import { composeLivestoreModules } from 'shared-structures-core/livestore'
  *
- * const { events, schema, tables } = composeLivestoreSchema([
+ * const { events, schema, tables } = composeLivestoreModules([
  *   EmrLivestore,
  *   AppsLivestore,
  * ] as const)
@@ -164,10 +164,8 @@ type LivestoreSliceContribution<TEvents extends Record<string, EventDef.AnyWitho
 // Explicit return type would have to re-express the derived schema's
 // shape (`FromInputSchema.DeriveSchema<{events, state: InternalState}>`)
 // — see the note on {@link defineSliceLivestore}, same trade-off.
-const composeLivestoreSchema = <
-  const TSlices extends ReadonlyArray<
-    LivestoreSliceContribution<Record<string, EventDef.AnyWithoutFn>>
-  >,
+const composeLivestoreModules = <
+  const TSlices extends ReadonlyArray<LivestoreModule<Record<string, EventDef.AnyWithoutFn>>>,
 >(
   slices: TSlices
   // oxlint-disable-next-line typescript/explicit-function-return-type
@@ -186,7 +184,7 @@ const composeLivestoreSchema = <
   // runtime operation has identical semantics to
   // `{ ...slices[0].events, ...slices[1].events, ... }`, so the cast is
   // the same class of structural narrowing the test file uses to stub
-  // stores; the `composeLivestoreSchema → merges …` cases in
+  // stores; the `composeLivestoreModules → merges …` cases in
   // `index.test.ts` exercise it.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const events = slices.reduce<Record<string, EventDef.AnyWithoutFn>>(
@@ -205,7 +203,7 @@ const composeLivestoreSchema = <
   return { tables, events, materializers, state, schema } as const
 }
 
-export { composeLivestoreSchema, defineSliceLivestore }
-export type { InputTables, InputMaterializers, LivestoreSliceContribution }
+export { composeLivestoreModules, defineSliceLivestore }
+export type { InputTables, InputMaterializers, LivestoreModule }
 export { subscribeUntil } from './subscribeUntil.ts'
 export type { QueryableSubscribableStore } from './subscribeUntil.ts'

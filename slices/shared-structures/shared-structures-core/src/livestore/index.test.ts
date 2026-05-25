@@ -8,7 +8,7 @@ import { Effect, Schema } from 'effect'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { composeLivestoreSchema, defineSliceLivestore } from './index.ts'
+import { composeLivestoreModules, defineSliceLivestore } from './index.ts'
 
 // ---------------------------------------------------------------------------
 // Minimal fixture: one table, one event, one materializer.
@@ -141,7 +141,7 @@ describe('defineSliceLivestore', () => {
 
 // ---------------------------------------------------------------------------
 // Second fixture: a disjoint slice contribution, used to verify that
-// `composeLivestoreSchema` merges multiple slices' records.
+// `composeLivestoreModules` merges multiple slices' records.
 // ---------------------------------------------------------------------------
 
 const flagTable = State.SQLite.table({
@@ -163,9 +163,9 @@ const flagMaterializers = State.SQLite.materializers(flagEvents, {
   'v1.FlagToggled': ({ id, enabled }) => flagTable.insert({ id, enabled: enabled ? 1 : 0 }),
 })
 
-describe('composeLivestoreSchema', () => {
+describe('composeLivestoreModules', () => {
   it('merges tables, events, and materializers from every slice', () => {
-    const composed = composeLivestoreSchema([
+    const composed = composeLivestoreModules([
       {
         tables: fixtureTables,
         events: fixtureEvents,
@@ -191,7 +191,7 @@ describe('composeLivestoreSchema', () => {
   })
 
   it('produces a LiveStoreSchema whose event map carries every slice event', () => {
-    const composed = composeLivestoreSchema([
+    const composed = composeLivestoreModules([
       {
         tables: fixtureTables,
         events: fixtureEvents,
@@ -210,13 +210,13 @@ describe('composeLivestoreSchema', () => {
   })
 
   it('accepts an empty list of slices', () => {
-    const composed = composeLivestoreSchema([] as const)
+    const composed = composeLivestoreModules([] as const)
     expect(isLiveStoreSchema(composed.schema)).toBe(true)
     expect(composed.schema.eventsDefsMap.size).toBe(0)
   })
 
   it('preserves a single slice unchanged', () => {
-    const composed = composeLivestoreSchema([
+    const composed = composeLivestoreModules([
       {
         tables: fixtureTables,
         events: fixtureEvents,

@@ -34,33 +34,21 @@ const withDuplicatesDiagnostic = (config) => {
 }
 
 /**
- * Custom resolver: crypto -> react-native-quick-crypto; wildflower-react/embeddable-html -> built bundle (or stub).
+ * Override Metro's module resolution for a fixed set of module specifiers.
+ * Each entry maps a module name to a handler that returns a Metro
+ * `Resolution`, or `undefined` to fall through to the default resolver.
+ * Module names not present in `overrides` are resolved normally.
  * @param {import('expo/metro-config').MetroConfig} config
- * @param {{ embeddableHtmlBuiltPath: string }} opts
+ * @param {Record<string, (context: import('metro-resolver').ResolutionContext, platform: string | null) => import('metro-resolver').Resolution | undefined>} overrides
  * @returns {import('expo/metro-config').MetroConfig}
  */
-const withWildflowerResolveRequest = (config, opts) => {
+const withOverriddenModules = (config, overrides) => {
   config.resolver.resolveRequest = (context, moduleName, platform) => {
-    if (moduleName === 'crypto') {
-      // when importing crypto, resolve to react-native-quick-crypto
-      return context.resolveRequest(context, 'react-native-quick-crypto', platform)
+    const handler = overrides[moduleName]
+    if (handler !== undefined) {
+      const result = handler(context, platform)
+      if (result !== undefined) return result
     }
-    // When `wildflower-react/embeddable-html` resolves under the `source`
-    // condition it lands on the stub at `apps/wildflower-react/src/embeddable-html-stub.ts`,
-    // which has no way to read the built bundle at runtime on-device. If
-    // a fresh `dist-embedded/html.js` exists, prefer it directly so the
-    // Expo app sees the real bundled HTML; otherwise fall through to the
-    // stub (which renders the "not built" placeholder).
-    if (moduleName === 'wildflower-react/embeddable-html') {
-      if (fs.existsSync(opts.embeddableHtmlBuiltPath)) {
-        return { type: 'sourceFile', filePath: opts.embeddableHtmlBuiltPath }
-      }
-      // oxlint-disable-next-line no-console
-      console.error(
-        `No compiled react app at ${opts.embeddableHtmlBuiltPath}, please run "vp build:embedded" to generate it.`
-      )
-    }
-    // otherwise chain to the standard Metro resolver.
     return context.resolveRequest(context, moduleName, platform)
   }
   return config
@@ -94,7 +82,26 @@ config.resolver.nodeModulesPaths = [
 config.resolver.disableHierarchicalLookup = true
 
 config = withDuplicatesDiagnostic(config)
-config = withWildflowerResolveRequest(config, { embeddableHtmlBuiltPath })
+config = withOverriddenModules(config, {
+  crypto: (context, platform) =>
+    context.resolveRequest(context, 'react-native-quick-crypto', platform),
+  // When `wildflower-react/embeddable-html` resolves under the `source`
+  // condition it lands on the stub at `apps/wildflower-react/src/embeddable-html-stub.ts`,
+  // which has no way to read the built bundle at runtime on-device. If
+  // a fresh `dist-embedded/html.js` exists, prefer it directly so the
+  // Expo app sees the real bundled HTML; otherwise fall through to the
+  // stub (which renders the "not built" placeholder).
+  'wildflower-react/embeddable-html': () => {
+    if (fs.existsSync(embeddableHtmlBuiltPath)) {
+      return { type: 'sourceFile', filePath: embeddableHtmlBuiltPath }
+    }
+    // oxlint-disable-next-line no-console
+    console.error(
+      `No compiled react app at ${embeddableHtmlBuiltPath}, please run "vp build:embedded" to generate it.`
+    )
+    return undefined
+  },
+})
 
 config.transformer.getTransformOptions = async () => ({
   transform: {
