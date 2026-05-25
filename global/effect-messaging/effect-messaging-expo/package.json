@@ -40,7 +40,6 @@
     "babel-preset-expo": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
-    "effect-messaging-react": "workspace:*",
     "expect-type": "catalog:",
     "expo": "catalog:",
     "expo-web-browser": "catalog:",
@@ -50,7 +49,6 @@
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-native": "catalog:",
-    "react-native-safe-area-context": "catalog:",
     "react-native-webview": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
@@ -58,7 +56,6 @@
   "peerDependencies": {
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
-    "effect-messaging-react": "workspace:*",
     "expo-web-browser": ">=15.0.0",
     "react": "catalog:",
     "react-native": "catalog:",

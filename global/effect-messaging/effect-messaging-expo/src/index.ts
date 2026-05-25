@@ -1,4 +1,8 @@
-export { BridgedWebView, type BridgedWebViewProps } from './bridged-webview.tsx'
+export {
+  BridgedWebView,
+  type BridgedWebViewLoadFrom,
+  type BridgedWebViewProps,
+} from './bridged-webview.tsx'
 export {
   TransportWebView,
   type TransportWebViewProps,

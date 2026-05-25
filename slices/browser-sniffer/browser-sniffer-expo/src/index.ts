@@ -1,7 +1,6 @@
 export {
   BrowserSnifferWebView,
-  type BrowserSnifferWebViewHandle,
+  type BrowserSnifferMessageSender,
   type BrowserSnifferWebViewProps,
-  type BrowserSnifferWebViewSource,
   type SnifferHandlers,
 } from './components/BrowserSnifferWebView.tsx'

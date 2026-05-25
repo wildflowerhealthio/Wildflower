@@ -1,15 +1,7 @@
-import { Effect, Match, Predicate } from 'effect'
+import { Effect } from 'effect'
 import type { BareSenderService } from 'effect-messaging-core'
 import * as WebBrowser from 'expo-web-browser'
-import {
-  forwardRef,
-  type JSX,
-  useCallback,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { forwardRef, type JSX, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 
@@ -20,76 +12,57 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 type TransportWebViewSource = { uri: string } | { html: string; baseUrl?: string }
 
 interface TransportWebViewProps {
-  /**
-   * Page contents to load. Same-origin navigations are kept inside the
-   * embedded bundle; cross-origin ones open in the system browser.
-   * The "expected origin" is derived from `source.uri` (for remote
-   * pages) or `source.baseUrl` (for inline HTML).
-   */
+  /** Page contents to load. */
   readonly source: TransportWebViewSource
   /** Receives every message the page posts via `window.ReactNativeWebView.postMessage`. */
   readonly onMessage: (event: WebViewMessageEvent) => void
   /** Element rendered on top of the WebView until its first `onLoadEnd` fires. */
   readonly loader?: JSX.Element
   /**
-   * Additional gate applied AFTER the same-origin check. Return `false`
-   * to force a same-origin URL to the system browser instead of keeping
-   * it in-WebView. Defaults to `() => true` (every same-origin
-   * navigation stays in-WebView). Use this hook to carve out
-   * app-specific exceptions (e.g. a sub-path that should always open
-   * externally) without polluting this generic transport with
-   * project-specific routing knowledge.
+   * Opt-in routing predicate. Return `true` to open the URL in the
+   * system browser; return `false` (or omit the predicate entirely) to
+   * keep the navigation in-WebView.
+   *
+   * @remarks
+   * **Default is "always in-WebView."** This component does not enforce
+   * a same-origin policy on its own — every navigation stays in the
+   * WebView unless the caller opts in to a per-URL routing decision.
+   * Supply this prop when the host wants cross-origin or
+   * out-of-bundle URLs to escape to the system browser (e.g. a "Help"
+   * link the SPA shouldn't try to render). `about:blank` and `data:`
+   * bootstrap URIs are always allowed in-WebView regardless of this
+   * predicate.
    */
-  readonly shouldHandleInWebView?: (url: string) => boolean
-}
-
-const tryExtractOrigin = (url: string): string | null => {
-  try {
-    return new URL(url).origin
-  } catch {
-    return null
-  }
+  readonly shouldOpenInSystemBrowser?: (url: string) => boolean
+  /**
+   * Script injected into the WebView before the page's own scripts
+   * execute. Forwarded verbatim to react-native-webview's
+   * `injectedJavaScriptBeforeContentLoaded`. Use when the host needs
+   * to install a shim or instrumentation that must run before any
+   * page-level code (e.g. the browser-sniffer's fetch/XHR wrappers).
+   */
+  readonly injectedJavaScriptBeforeContentLoaded?: string
 }
 
 /**
  * WebView wrapper that hosts a single bundle's page. Pure transport
  * surface — holds the WebView ref, dismisses its loader overlay on
- * `onLoadEnd`, keeps the user inside the embedded bundle for
- * same-origin navigations, and redirects cross-origin link clicks to
- * the system browser.
+ * `onLoadEnd`, and keeps every navigation in-WebView by default.
  *
  * @remarks
- * Callers can pass `shouldHandleInWebView` to gate same-origin
- * navigations with app-specific exceptions — useful for forcing a
- * particular sub-path to open in the system browser without baking
- * project-specific routing into this generic transport.
+ * Callers that want cross-origin or out-of-bundle URLs to escape to
+ * the system browser supply `shouldOpenInSystemBrowser` (return `true`
+ * for the URLs they want routed out). Pre-content shims (e.g.
+ * fetch/XHR wrappers) install via
+ * `injectedJavaScriptBeforeContentLoaded`.
  */
 const TransportWebView = forwardRef<BareSenderService, TransportWebViewProps>(
   function TransportWebView(
-    { source, onMessage, loader, shouldHandleInWebView },
+    { source, onMessage, loader, shouldOpenInSystemBrowser, injectedJavaScriptBeforeContentLoaded },
     bareSenderServiceRef
   ): JSX.Element {
     const webviewRef = useRef<WebView>(null)
     const [loadEnded, setLoadEnded] = useState(false)
-
-    // Same-origin gate: derived from the configured source so a
-    // `window.location.href = `${origin}/...`` from inside the SPA
-    // stays in-WebView even when the URL differs from the boot URL
-    // (e.g. extra path segments, dropped query params). When the
-    // source has no resolvable origin (inline HTML with no baseUrl)
-    // every non-bootstrap navigation goes to the system browser.
-    const maybeExpectedOrigin = useMemo(
-      () =>
-        Match.value(source).pipe(
-          Match.withReturnType<string | null>(),
-          Match.when({ baseUrl: Predicate.isString }, ({ baseUrl }) => baseUrl),
-          Match.when({ uri: Predicate.isString }, ({ uri }) => uri),
-          Match.orElse(() => ''),
-          tryExtractOrigin
-        ),
-
-      [source]
-    )
 
     useImperativeHandle(
       bareSenderServiceRef,
@@ -123,13 +96,7 @@ const TransportWebView = forwardRef<BareSenderService, TransportWebViewProps>(
             // the WebView fires while rendering inline HTML — always
             // allow them or the page never loads.
             if (request.url === 'about:blank' || request.url.startsWith('data:')) return true
-            const requestOrigin = tryExtractOrigin(request.url)
-            if (
-              requestOrigin !== null &&
-              requestOrigin === maybeExpectedOrigin &&
-              (shouldHandleInWebView?.(request.url) ?? true)
-            )
-              return true
+            if (shouldOpenInSystemBrowser?.(request.url) !== true) return true
             Effect.runFork(
               Effect.tryPromise({
                 try: () => WebBrowser.openBrowserAsync(request.url),
@@ -138,6 +105,7 @@ const TransportWebView = forwardRef<BareSenderService, TransportWebViewProps>(
             )
             return false
           }}
+          injectedJavaScriptBeforeContentLoaded={injectedJavaScriptBeforeContentLoaded}
           style={styles.webview}
           originWhitelist={['*']}
           javaScriptEnabled={true}
