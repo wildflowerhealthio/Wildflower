@@ -43,6 +43,7 @@
     "fast-check": "catalog:",
     "jest": "catalog:",
     "jest-expo": "catalog:",
+    "kitchen-sink": "workspace:*",
     "navigation-core": "workspace:*",
     "react": "catalog:",
     "typescript": "catalog:",

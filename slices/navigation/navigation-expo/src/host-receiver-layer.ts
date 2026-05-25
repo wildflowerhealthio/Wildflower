@@ -24,22 +24,13 @@ const effectLogFor: Record<LogLevel, (...args: ReadonlyArray<unknown>) => Effect
 }
 
 /**
- * Build the host-side `ReceiverLayer` for {@link NavigationBridge},
- * closing handlers over caller-supplied callbacks for the two web→host
- * messages.
+ * Build the host-side `ReceiverLayer` for {@link NavigationBridge}.
  *
- * Designed for an Expo app shell that embeds the SPA in a WebView:
- * `onRouteChanged` drives native chrome (tab highlight, back chevron,
- * splash-reveal handshake) from the SPA's `RouteChanged` events, while
- * `onLog` is the host's escape hatch for SPA-side `Log` messages.
- *
- * Both callbacks are optional:
- *
- *  - `onRouteChanged` omitted: `RouteChanged` is acknowledged but no
- *    side effect runs.
- *  - `onLog` omitted: falls back to the matching `Effect.log<Level>`
- *    function spread over the message's `payload`, surfacing SPA logs
- *    through the host's Effect logger at the original console level.
+ * @param onRouteChanged - Invoked for each `RouteChanged`. Omitted: the
+ *   handler is a no-op (acknowledged, no side effect).
+ * @param onLog - Invoked for each `Log`. Omitted: falls back to
+ *   `Effect.log<Level>(...payload)` so SPA logs surface through the
+ *   host's Effect logger at the original console level.
  */
 const ReceiverLayer = (
   onRouteChanged?: (route: { pathname: string; canGoBack: boolean }) => void,

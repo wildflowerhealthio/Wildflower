@@ -16,6 +16,18 @@ interface UseNavigationHostBindingOptions {
 /**
  * Host binding for the navigation bridge. Combines the receiver layer
  * with an optional `HostRequestedWebNavigation` initial message.
+ *
+ * @remarks
+ * Callers must stabilise `onRouteChanged` / `onLog` themselves (e.g.
+ * with `useCallback`) — they're in the memo's dep list, and an unstable
+ * reference re-runs `BridgedWebView`'s `HostBinding.aggregate` and
+ * rebuilds the WebView transport on every host render.
+ *
+ * @example
+ * ```tsx
+ * const onRouteChanged = useCallback((r) => setRoute(r), [setRoute])
+ * const binding = NavigationBridgeExpo.useHostBinding({ initialRoute, onRouteChanged })
+ * ```
  */
 const useNavigationHostBinding = ({
   initialRoute,
