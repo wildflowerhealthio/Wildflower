@@ -68,7 +68,6 @@ main. Don't rewrite them.
 | `apps-expo`       | TBD               | not started                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `collector-expo`  | TBD               | not started                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
-
 ## Cumulative findings (read before starting the next slice)
 
 - **Build before jest in fresh worktrees.** The first-time miss above is the biggest time-sink.
