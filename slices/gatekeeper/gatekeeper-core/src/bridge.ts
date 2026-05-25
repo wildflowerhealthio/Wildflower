@@ -50,4 +50,5 @@ const GatekeeperBridge: GatekeeperBridge = Bridge.make({
   },
 })
 
+export { GatekeeperBridge }
 export default GatekeeperBridge
