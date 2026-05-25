@@ -5,7 +5,6 @@ import type {
   CancelSnifferRequestMessageBody,
   CancelledMessageBody,
   ClickMessageBody,
-  LogMessageBody,
   PageLoadedMessageBody,
   RequestErrorMessageBody,
   ResponseDataMessageBody,
@@ -13,6 +12,7 @@ import type {
   ResponseStartMessageBody,
 } from 'browser-sniffer-core'
 import type { Schema } from 'effect'
+import type { LogMessageBody } from 'effect-messaging-core'
 
 /**
  * Browser-side sniffer installed into an arbitrary third-party page.

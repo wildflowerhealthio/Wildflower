@@ -1,6 +1,5 @@
 import { act, render } from '@testing-library/react-native'
-import { Effect, Logger, LogLevel } from 'effect'
-import { LoggingLayerTest } from 'kitchen-sink/test'
+import { Effect } from 'effect'
 import * as React from 'react'
 import type { ReactElement } from 'react'
 
@@ -86,7 +85,11 @@ describe('RunSyncModalScreen', () => {
       expect(rawCalls).toEqual([raw])
     })
 
-    it('drops non-passthrough tags (Log) without forwarding', () => {
+    it('drops non-passthrough tags (Log, __Ready) without forwarding to the SPA', () => {
+      // `Log` is now handled by the LogBridge wired into
+      // `BrowserSnifferWebView`'s transport — it must NOT be raw-forwarded
+      // into the SPA's CollectorBridge. `__Ready` is the transport
+      // handshake and is also not a domain event.
       const rawCalls: string[] = []
       render(
         <RunSyncModalScreen
@@ -166,38 +169,6 @@ describe('RunSyncModalScreen', () => {
       ).resolves.toBeUndefined()
       expect(onError).toHaveBeenCalledTimes(1)
     })
-  })
-
-  describe('Log typed handler', () => {
-    it.each([
-      ['debug', 'DEBUG'],
-      ['info', 'INFO'],
-      ['log', 'INFO'],
-      ['warn', 'WARN'],
-      ['error', 'ERROR'],
-    ] as const)(
-      'emits the page-side console.%s payload through the Effect Logger at %s',
-      async (level, expectedLevel) => {
-        render(
-          <RunSyncModalScreen
-            source={{ _tag: 'Html', html: '<html></html>' }}
-            postRawCollectorMessage={() => undefined}
-          />
-        )
-        const handlers = mockLastSnifferHandlers
-        expect(handlers).not.toBeNull()
-        if (handlers === null) return
-        await Effect.runPromise(
-          handlers.Log({ _tag: 'Log', level, payload: ['hello', { extra: 1 }] }).pipe(
-            Logger.withMinimumLogLevel(LogLevel.All),
-            LoggingLayerTest.expectToLog((logs) => {
-              expect(logs).toEqual([expect.objectContaining({ level: expectedLevel })])
-            }),
-            Effect.scoped
-          )
-        )
-      }
-    )
   })
 
   describe('navigate() handle', () => {

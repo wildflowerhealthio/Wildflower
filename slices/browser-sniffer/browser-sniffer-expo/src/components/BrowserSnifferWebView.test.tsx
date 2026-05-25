@@ -13,7 +13,6 @@ import {
 
 /** No-op handlers satisfying the full `HandlersFor<...>` shape so tests don't need to enumerate every tag. */
 const noopHandlers: SnifferHandlers = {
-  Log: () => Effect.void,
   ResponseStart: () => Effect.void,
   ResponseData: () => Effect.void,
   ResponseFinished: () => Effect.void,
@@ -98,11 +97,19 @@ jest.mock('browser-sniffer-core/bridge', () => {
 // Stub effect-messaging-core's BridgeTransport.make so the component
 // can complete construction synchronously. The real transport is
 // covered by browser-sniffer-core/tests/bridge.test.ts.
+//
+// LogBridge is mocked just enough for the component's static field
+// access (`LogBridge.defaultHostReceiverLayer`) to resolve to a
+// no-requirements Layer — the mock BridgeTransport.make doesn't
+// actually consume the layer, but the call site dereferences the
+// field at construction time.
 let mockSendMessageCalls: Array<{ readonly _tag: string; readonly id?: string }> = []
 let mockEnqueueCalls: string[] = []
 let mockEnqueueShouldFail = false
 jest.mock('effect-messaging-core', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType }>('effect')
+  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
+    'effect'
+  )
   return {
     BridgeTransport: {
       make: (_config: unknown) =>
@@ -119,6 +126,9 @@ jest.mock('effect-messaging-core', () => {
           },
           flushed: effect.Effect.void,
         }),
+    },
+    LogBridge: {
+      defaultHostReceiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
     },
     TransportAdapter: { Type: undefined },
     MessageHandler: {},

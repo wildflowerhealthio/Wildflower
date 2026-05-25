@@ -3,7 +3,7 @@ import { useAppsWebReceiverLayer } from 'apps-react'
 import CollectorBridge from 'collector-fundamentals/bridge'
 import { useCollectorWebReceiverLayer } from 'collector-react'
 import { Effect, Exit, Layer, Scope } from 'effect'
-import { BridgeTransport, TransportAdapter } from 'effect-messaging-core'
+import { BridgeTransport, LogBridge, TransportAdapter } from 'effect-messaging-core'
 import { WebPlatformAdapter } from 'effect-messaging-react'
 import GatekeeperBridge from 'gatekeeper-core/bridge'
 import { gatekeeperWebReceiverLayer } from 'gatekeeper-react/web-bridge'
@@ -61,13 +61,31 @@ function TransportProvider({
       if (typeof to === 'number') void navigateRef.current(to)
       else void navigateRef.current(to)
     })
-    const bridges = [NavigationBridge, GatekeeperBridge, CollectorBridge, AppsBridge] as const
+    // LogBridge sits alongside the slice bridges so page-side
+    // `console.<level>(...)` rides its own bridge. The Web side here is
+    // outbound-only — `LogBridge.installConsoleInterceptor` does the
+    // `console` patching once the transport is built.
+    const bridges = [
+      NavigationBridge,
+      GatekeeperBridge,
+      CollectorBridge,
+      AppsBridge,
+      LogBridge,
+    ] as const
     const adapter = WebPlatformAdapter.make(bridges)
     return Effect.runPromise(
       Scope.extend(
         BridgeTransport.make({
           bridges,
-          layers: [navLayer, gatekeeperWebReceiverLayer, collectorLayer, appsLayer] as const,
+          layers: [
+            navLayer,
+            gatekeeperWebReceiverLayer,
+            collectorLayer,
+            appsLayer,
+            // LogBridge is Web→Host only on the page side; the Web
+            // ReceiverLayer is the empty `{}` handlers record.
+            LogBridge.Web.ReceiverLayer({}),
+          ] as const,
           side: 'Web',
         }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter))),
         scope
@@ -75,40 +93,18 @@ function TransportProvider({
     ).then(async (transport) => {
       await Effect.runPromise(Effect.andThen(transport.flushed, transport.signalReady))
 
-      // `transport.sendMessage` returns an `Effect`; the overrides must
-      // run it (the same trap as NavigationBridgeHandler had pre-Fix C).
-      // Higher-order factory: each console method binds to a specific
-      // level so the host can route into the matching native sink, and
-      // each call ships the original `...args` array unflattened so
-      // structured objects survive the round trip.
-      const makeLogForLevel =
-        (level: 'debug' | 'info' | 'log' | 'warn' | 'error') =>
-        (...args: unknown[]): void => {
-          Effect.runFork(
-            transport.sendMessage({
-              _tag: 'Log',
-              level,
-              payload: args,
-            })
-          )
-        }
-      const logDebug = makeLogForLevel('debug')
-      const logInfo = makeLogForLevel('info')
-      const logLog = makeLogForLevel('log')
-      const logWarning = makeLogForLevel('warn')
-      const logError = makeLogForLevel('error')
-
-      // oxlint-disable-next-line no-var -- var used deliberately to override the global console
-      var console = Object.assign(globalThis.console, {
-        error: logError,
-        warn: logWarning,
-        log: logLog,
-        info: logInfo,
-        debug: logDebug,
+      // Patch `globalThis.console.<level>` to forward through the
+      // LogBridge. `transport.sendMessage` returns an `Effect`; the
+      // interceptor takes a plain `(msg) => void` and we hand it a
+      // fiber-running closure here (the canonical fire-and-forget
+      // wiring). Teardown intentionally not captured: the page-side
+      // transport lives for the page's lifetime; on unmount the
+      // enclosing `Scope.close` tears the transport down and any
+      // post-unmount console calls become harmless no-ops against the
+      // detached sender.
+      LogBridge.installConsoleInterceptor((msg) => {
+        Effect.runFork(transport.sendMessage(msg))
       })
-
-      globalThis.console = console
-      window.console = console
       return transport
     })
   })

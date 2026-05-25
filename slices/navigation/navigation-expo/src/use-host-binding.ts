@@ -1,16 +1,13 @@
-import type { Effect } from 'effect'
 import type { HostBinding } from 'effect-messaging-core'
 import { NavigationBridge } from 'navigation-core'
 import { useMemo } from 'react'
-import { type LogMessage, ReceiverLayer } from './host-receiver-layer.ts'
+import { ReceiverLayer } from './host-receiver-layer.ts'
 
 interface UseNavigationHostBindingOptions {
   /** Initial SPA route; seeded via the URL-param channel. */
   readonly initialRoute?: string
   /** Fires when the SPA emits `RouteChanged`. */
   readonly onRouteChanged?: (route: { pathname: string; canGoBack: boolean }) => void
-  /** Escape hatch for SPA-side `Log` messages. Defaults to `Effect.log<Level>(...payload)`. */
-  readonly onLog?: (log: LogMessage) => Effect.Effect<void>
 }
 
 /**
@@ -18,10 +15,14 @@ interface UseNavigationHostBindingOptions {
  * with an optional `HostRequestedWebNavigation` initial message.
  *
  * @remarks
- * Callers must stabilise `onRouteChanged` / `onLog` themselves (e.g.
- * with `useCallback`) — they're in the memo's dep list, and an unstable
+ * Callers must stabilise `onRouteChanged` themselves (e.g. with
+ * `useCallback`) — it's in the memo's dep list, and an unstable
  * reference re-runs `BridgedWebView`'s `HostBinding.aggregate` and
  * rebuilds the WebView transport on every host render.
+ *
+ * Cross-process `Log` mirroring used to ride this binding via an
+ * `onLog` option; it's now on the shared `LogBridge` (compose
+ * `useLogHostBinding()` from `effect-messaging-expo` alongside).
  *
  * @example
  * ```tsx
@@ -32,18 +33,17 @@ interface UseNavigationHostBindingOptions {
 const useNavigationHostBinding = ({
   initialRoute,
   onRouteChanged,
-  onLog,
 }: UseNavigationHostBindingOptions = {}): HostBinding.HostBinding<typeof NavigationBridge> =>
   useMemo(
     () => ({
       bridge: NavigationBridge,
-      receiverLayer: ReceiverLayer(onRouteChanged, onLog),
+      receiverLayer: ReceiverLayer(onRouteChanged),
       initialMessages:
         initialRoute === undefined
           ? undefined
           : [{ _tag: 'HostRequestedWebNavigation' as const, path: initialRoute }],
     }),
-    [initialRoute, onRouteChanged, onLog]
+    [initialRoute, onRouteChanged]
   )
 
 export { useNavigationHostBinding }

@@ -3,6 +3,7 @@ import { snifferScript } from 'browser-sniffer-injected'
 import { Effect, Exit, Layer, Scope } from 'effect'
 import {
   BridgeTransport,
+  LogBridge,
   type MessageHandler,
   TransportAdapter,
   type BareSenderFunction,
@@ -59,7 +60,9 @@ type BrowserSnifferWebViewSource = { uri: string } | { html: string; baseUrl?: s
 type SnifferHandlers = MessageHandler.HandlersFor<typeof BrowserSnifferBridge.Host.InboundSchemas>
 
 type TransportType = Effect.Effect.Success<
-  ReturnType<typeof BridgeTransport.make<readonly [typeof BrowserSnifferBridge], 'Host'>>
+  ReturnType<
+    typeof BridgeTransport.make<readonly [typeof BrowserSnifferBridge, typeof LogBridge], 'Host'>
+  >
 >
 
 interface BrowserSnifferWebViewProps {
@@ -133,12 +136,19 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferWebViewHandle, BrowserSni
         bareSender,
         drainInitial: Effect.succeed([]),
       }
-      const layer = BrowserSnifferBridge.Host.ReceiverLayer(handlers)
+      const snifferLayer = BrowserSnifferBridge.Host.ReceiverLayer(handlers)
+      // LogBridge rides on the same transport as BrowserSnifferBridge —
+      // the injected sniffer's `{_tag:'Log',level,payload}` wire shape
+      // matches LogBridge's schema verbatim, so adding the bridge here
+      // is enough to route page-side console output through the host's
+      // Effect logger. Browser-sniffer-expo deliberately does not
+      // surface this bridge to its caller; the default receiver is
+      // always what callers want for an injected-sniffer setting.
       const built = Effect.runSync(
         Scope.extend(
           BridgeTransport.make({
-            bridges: [BrowserSnifferBridge] as const,
-            layers: [layer] as const,
+            bridges: [BrowserSnifferBridge, LogBridge] as const,
+            layers: [snifferLayer, LogBridge.defaultHostReceiverLayer] as const,
             side: 'Host',
           }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter))),
           scope
