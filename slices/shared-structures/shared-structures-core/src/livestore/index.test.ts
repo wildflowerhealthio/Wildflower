@@ -227,4 +227,34 @@ describe('composeLivestoreModules', () => {
     expect(composed.events.counterIncremented).toBe(counterIncremented)
     expect(composed.schema.eventsDefsMap.get('v1.CounterIncremented')).toBe(counterIncremented)
   })
+
+  it('threads literal table/event/materializer keys through to the result type', () => {
+    const composed = composeLivestoreModules([
+      {
+        tables: fixtureTables,
+        events: fixtureEvents,
+        materializers: fixtureMaterializers,
+      },
+      {
+        tables: flagTables,
+        events: flagEvents,
+        materializers: flagMaterializers,
+      },
+    ] as const)
+
+    // Type-level assertions via `satisfies`: if the helper widened
+    // tables/events to `Record<string, TableDefBase>` / `Record<string, EventDef.AnyWithoutFn>`,
+    // dotted access would still compile but the value type would be the
+    // base type — `satisfies` against the concrete literal type would
+    // then fail.
+    expect(composed.tables.counter satisfies typeof counterTable).toBe(counterTable)
+    expect(composed.events.counterIncremented satisfies typeof counterIncremented).toBe(
+      counterIncremented
+    )
+    expect(composed.tables.flag satisfies typeof flagTable).toBe(flagTable)
+    expect(composed.events.flagToggled satisfies typeof flagToggled).toBe(flagToggled)
+
+    // @ts-expect-error — key 'missing' is not part of any composed slice
+    void composed.tables.missing
+  })
 })

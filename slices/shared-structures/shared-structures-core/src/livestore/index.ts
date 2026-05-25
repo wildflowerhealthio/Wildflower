@@ -1,5 +1,7 @@
 import {
   type EventDef,
+  type FromInputSchema,
+  type InternalState,
   type Store as LivestoreStore,
   State,
   makeSchema,
@@ -123,12 +125,40 @@ type SliceTables = Extract<InputTables, Record<string, unknown>>
  * Module shape accepted by {@link composeLivestoreModules}. Each slice's
  * `livestore/index.ts` exports exactly this surface, so the helper can
  * blindly spread the records together without knowing the concrete
- * source.
+ * source. Generic in all three records so an inferred module preserves
+ * the slice's exact table / event / materializer keys — the composed
+ * `events` / `schema` / `tables` are typed by intersecting these.
  */
-type LivestoreModule<TEvents extends Record<string, EventDef.AnyWithoutFn>> = {
-  readonly tables: SliceTables
+type LivestoreModule<
+  TTables extends SliceTables = SliceTables,
+  TEvents extends Record<string, EventDef.AnyWithoutFn> = Record<string, EventDef.AnyWithoutFn>,
+  TMaterializers extends InputMaterializers = InputMaterializers,
+> = {
+  readonly tables: TTables
   readonly events: TEvents
-  readonly materializers: InputMaterializers
+  readonly materializers: TMaterializers
+}
+
+/**
+ * Output of {@link composeLivestoreModules}. Each composed record is the
+ * intersection of its per-slice contributions, so callers retain literal
+ * key types on `tables` / `events` / `materializers` and the
+ * `schema.eventsDefsMap` carries every slice event. `state` stays
+ * `InternalState` (LiveStore's `makeState` erases its concrete tables to
+ * `Map<string, TableDef.Any>`); the `schema` type still threads the
+ * intersected events through `FromInputSchema.DeriveSchema`.
+ */
+type ComposedLivestoreModule<TSlices extends ReadonlyArray<LivestoreModule>> = {
+  readonly tables: UnionToIntersection<TSlices[number]['tables']>
+  readonly events: UnionToIntersection<TSlices[number]['events']> &
+    Record<string, EventDef.AnyWithoutFn>
+  readonly materializers: UnionToIntersection<TSlices[number]['materializers']>
+  readonly state: InternalState
+  readonly schema: FromInputSchema.DeriveSchema<{
+    readonly events: UnionToIntersection<TSlices[number]['events']> &
+      Record<string, EventDef.AnyWithoutFn>
+    readonly state: InternalState
+  }>
 }
 
 /**
@@ -161,37 +191,23 @@ type LivestoreModule<TEvents extends Record<string, EventDef.AnyWithoutFn>> = {
  * ] as const)
  * ```
  */
-// Explicit return type would have to re-express the derived schema's
-// shape (`FromInputSchema.DeriveSchema<{events, state: InternalState}>`)
-// — see the note on {@link defineSliceLivestore}, same trade-off.
-const composeLivestoreModules = <
-  const TSlices extends ReadonlyArray<LivestoreModule<Record<string, EventDef.AnyWithoutFn>>>,
->(
+const composeLivestoreModules = <const TSlices extends ReadonlyArray<LivestoreModule>>(
   slices: TSlices
-  // oxlint-disable-next-line typescript/explicit-function-return-type
-) => {
-  type ComposedEvents = UnionToIntersection<TSlices[number]['events']> &
-    Record<string, EventDef.AnyWithoutFn>
-
+): ComposedLivestoreModule<TSlices> => {
+  // Compose at broad types inside the body — TS can't track that
+  // `reduce`-spread of every slice's record produces the intersection of
+  // their static shapes. The runtime is identical to
+  // `{ ...slices[0].field, ...slices[1].field, ... }`, so the structural
+  // invariant (the result carries every slice's keys) is the same one
+  // the `composeLivestoreModules → merges …` cases in `index.test.ts`
+  // exercise. Cast once at the return.
   const tables: SliceTables = slices.reduce<SliceTables>(
     (acc, slice) => ({ ...acc, ...slice.tables }),
     {}
   )
-
-  // TS can't track that the spread-merge of every slice's events is the
-  // intersection of their static shapes — `reduce` keeps the broad
-  // `Record<string, EventDef.AnyWithoutFn>` accumulator type. The
-  // runtime operation has identical semantics to
-  // `{ ...slices[0].events, ...slices[1].events, ... }`, so the cast is
-  // the same class of structural narrowing the test file uses to stub
-  // stores; the `composeLivestoreModules → merges …` cases in
-  // `index.test.ts` exercise it.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const events = slices.reduce<Record<string, EventDef.AnyWithoutFn>>(
-    (acc, slice) => ({ ...acc, ...slice.events }),
-    {}
-  ) as ComposedEvents
-
+  const events: Record<string, EventDef.AnyWithoutFn> = slices.reduce<
+    Record<string, EventDef.AnyWithoutFn>
+  >((acc, slice) => ({ ...acc, ...slice.events }), {})
   const materializers: InputMaterializers = slices.reduce<InputMaterializers>(
     (acc, slice) => ({ ...acc, ...slice.materializers }),
     {}
@@ -200,10 +216,17 @@ const composeLivestoreModules = <
   const state = State.SQLite.makeState({ tables, materializers })
   const schema = makeSchema({ events, state })
 
-  return { tables, events, materializers, state, schema } as const
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return {
+    tables,
+    events,
+    materializers,
+    state,
+    schema,
+  } as unknown as ComposedLivestoreModule<TSlices>
 }
 
 export { composeLivestoreModules, defineSliceLivestore }
-export type { InputTables, InputMaterializers, LivestoreModule }
+export type { ComposedLivestoreModule, InputTables, InputMaterializers, LivestoreModule }
 export { subscribeUntil } from './subscribeUntil.ts'
 export type { QueryableSubscribableStore } from './subscribeUntil.ts'
