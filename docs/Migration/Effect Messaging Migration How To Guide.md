@@ -1,0 +1,83 @@
+# Effect Messaging Migration How-To Guide
+
+Scratch doc for the wave of agents bringing `slices/*/<slice>-expo` packages
+from `ruthmarks/add-wildflower-expo` into `main`. **Delete after the
+migration wave lands.**
+
+## Premise
+
+The revert commit on the branch (`6f71f65`) claimed main "supersedes
+`HostBinding` with `makeBridgeDispatcher` / `makeMessageSenderPipe`."
+**That is wrong.** Main keeps `HostBinding` (in `effect-messaging-core`)
+and uses it from `effect-messaging-expo/BridgedWebView`. Both patterns
+coexist on main:
+
+| Layer                 | Pattern on main                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| Host shell wiring     | `HostBinding<B>` tuple → `BridgedWebView bindings={…}` (still the contract)           |
+| In-tree dispatch      | `makeBridgeDispatcher` (slice provider + `useAsMessageHandlers` + `useMessageSender`) |
+| Pipe across providers | `makeMessageSenderPipe` (registers a transport sender into a React context)           |
+
+So `use<Slice>HostBinding` hooks on the branch translate **almost 1:1** onto
+main. Don't rewrite them.
+
+## What the branch had vs. what main has
+
+| `effect-messaging-core` symbol  | Branch (post-revert)                     | Main                                                                            | Migration impact                                                                          |
+| ------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `HostBinding` namespace         | **deleted**                              | exported (`aggregate`, `callTransportReady`, `HostBinding<B>`, `Any`)           | None — branch's slice files already import the right symbol; the import resolves on main. |
+| `BareSender`                    | type alias inside `transport-adapter.ts` | `Context.Tag` class in its own `bare-sender.ts` + `BareSenderService` interface | None for slices; only matters if you mock the transport.                                  |
+| `Bridge.UrlParamableMessage`    | tag keys could be `undefined`            | `-?` modifier strips `undefined`                                                | Stricter — `initialMessages` literals still type-check.                                   |
+| `BridgeTransport.MessageSender` | `out` variance on `Bridges`              | invariant                                                                       | Cosmetic.                                                                                 |
+
+`fc.webPath()` already exists at `global/effect-messaging/effect-messaging-react/src/test-utils/test-arbitraries.ts` on main with no drift. Tests using it work as-is.
+
+## Migration recipe (per `-expo` slice)
+
+1. Create a new worktree via `.devcontainer/wf-worktree.sh new ruthmarks/migrate-<slice>-expo main`.
+2. **`git diff main <source-commit> -- slices/<slice>/`** _before_ copying. Main has already absorbed earlier PRs from this wave (e.g. #58 `HostMessagingProvider`, #60 `LocalClientToken`); reading the diff this way exposes the truly-new files instead of regressing main. Look for three buckets:
+   - **Pure additions** on the source commit → copy as-is (e.g. new test files, `host-receiver-layer.ts`, `use-host-binding.ts`).
+   - **Files where main is ahead** → keep main's version (it's the result of review). The source commit may pre-date a split/rename — don't reintroduce a merged file.
+   - **Files where main and the source disagree** → judgment call; prefer main unless the source has a real new behaviour main doesn't.
+3. Copy the pure-addition files from the source commit using `git show <source-commit>:<path>`. Source commits used so far: `ruthmarks/add-wildflower-expo` (navigation-expo), `70479f8` ad-hoc tip (gatekeeper-expo, browser-sniffer).
+4. Run `vp install` in the worktree (auto-runs from `wf-worktree.sh new`).
+5. **Run `vp run pack`.** Workspace packages declare `exports['.'].default = "./dist/index.js"`; jest's resolver follows `exports` first and can't find the dep until each package's `dist/` exists. The main checkout already has built `dist/`s — fresh worktrees don't, hence the extra step.
+6. Run `vp check` (workspace-wide) and `cd slices/<slice>/<slice>-expo && vp run jest`. Also run `vp test` on `<slice>-core` and `<slice>-react` if you added tests there.
+7. Patch only the things check/jest surfaces. Do **not** preemptively rewrite to `makeBridgeDispatcher` — `HostBinding` is fine.
+8. Commit, push, open a PR titled `feat(<slice>-expo): port from add-wildflower-expo`.
+
+## Likely fix-up spots when validation fails
+
+| Symptom                                                                                                            | Likely cause                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Import of `BareSender` from `effect-messaging-core` fails                                                          | Branch re-exported `type BareSender` from `transport-adapter.ts`; main exports the Context.Tag class. Use `BareSenderService` / `BareSenderFunction` from `'effect-messaging-core'` (re-exported via `./bare-sender.ts`).                                                                                                                              |
+| `OriginFromServedOrigin` missing                                                                                   | **Rename, not missing.** The branch's `apps/wildflower-expo/src/daemons/http-server.ts` references the pre-merge name; the symbol shipped to main as `OriginFromTunnelStore`, still exported from `tunnel-core/contexts`. `s/OriginFromServedOrigin/OriginFromTunnelStore/` when porting wildflower-expo. (The branch never type-checked this import.) |
+| `vp check` complains about missing slice-`expo` peer dep                                                           | Add `<slice>-expo` to the consuming package's `dependencies` and rerun `vp install`.                                                                                                                                                                                                                                                                   |
+| Jest can't resolve `effect-messaging-core`                                                                         | The slice's `jest.config.cjs` likely mirrors `effect-messaging-expo`'s — confirm `transformIgnorePatterns` excludes the workspace package and that `babel-preset-expo` is installed at the slice level.                                                                                                                                                |
+| Type error on `HostBinding.HostBinding<typeof X>` not assignable to `HostBinding.Any` in caller                    | Expected variance pinch — see the cast in `apps/wildflower-expo/src/components/app-shell-webview.tsx` on the branch (and the upcoming main caller). Cast site lives in the caller, not the slice.                                                                                                                                                      |
+| Handler destructures a key (`{ log }`, `{ token }`, etc.) that doesn't exist on the bridge's `Schema.TaggedStruct` | The branch-only `-expo` packages **never type-checked** (revert commit: "~64 type errors all isolated to these branch-only expo files"). Treat the destructure as wrong — re-check the `<bridge>-core` schema and align. For `navigation-core`'s `Log` the wire shape is `{ level, payload: readonly unknown[] }`, not `{ log: string }`.              |
+| Default-fallback log helpers seem silent at DEBUG / TRACE under jest                                               | Effect's default `minimumLogLevel` is INFO. Wrap the test's `Effect.runPromise` with `Logger.withMinimumLogLevel(LogLevel.All)` before asserting the captured sink.                                                                                                                                                                                    |
+| `HostBinding.BindingSend` import fails                                                                             | Not exported on main. Inside `useMemo(() => ({ ... }), [...])` returning `HostBinding.HostBinding<typeof Bridge>`, drop the annotation on the `send` parameter — contextual typing from the field declaration narrows it to the correct `BridgeTransport.MessageSender<[B], 'Host'>` shape. Only escalate if the inference doesn't kick in.            |
+
+## Open items (filled in as the wave progresses)
+
+| Slice             | Owner             | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `navigation-expo` | `ruthmarks` (PR1) | **Done** — see PR. `Log` handler signature changed from `(log: string)` to `({ level, payload })` to match `NavigationBridge`'s actual schema. New `LogLevel` / `LogMessage` types exported from `'navigation-expo'`. 12/12 jests pass.                                                                                                                                                                                                                                  |
+| `gatekeeper-expo` | `ruthmarks` (PR2) | **Done.** Source = `70479f8` (not `add-wildflower-expo`). Main already had `LocalClientToken` (PR #60), `use-gatekeeper-host-messaging` (PR #58), the split `wait-for-host-token-ref.ts`, and the `writeToken`-via-`Effect.sync` wrapper in `web-bridge.ts` — those were kept. New on main: `host-receiver-layer.{ts,test.ts}`, `use-host-binding.ts`, `tests/bridge.test.ts`, `GatekeeperBridgeExpo` namespace export. 6/6 jest + 95/95 vitest + 9/9 react vitest pass. |
+| `browser-sniffer` | `ruthmarks` (PR3) | **Done.** Source = `70479f8`. Almost everything on the source diff was already on main from earlier PRs (#56 shared vite config, #62 build-time sniffer bundle, #71 structured `Log {level, payload}`). Only genuinely new: `embedSnifferIntoHtml` + `useMemo` `sniffableSource` in `BrowserSnifferWebView.tsx` (Android reliability — embed `<script>` into HTML sources instead of relying solely on `injectedJavaScriptBeforeContentLoaded`). Also dropped `postRaw` / `onRawMessage` from the handle/props (superseded upstream by typed `CollectorBridge` re-emission in commit `5f04c44`) — required deleting main's `collector-expo/src/screens/RunSyncModalScreen.{tsx,test.tsx}` (the only consumer; the replacement screen lands in a follow-up PR). 8/8 jest + 9/9 core vitest + 43/43 injected vitest pass. |
+| `apps-expo`       | TBD               | not started                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `collector-expo`  | TBD               | **Partially regressed by PR3.** PR3 deleted `RunSyncModalScreen.{tsx,test.tsx}` so the package's only screen is gone. Index now exports a type-only placeholder; `jest.config.cjs` got `passWithNoTests: true`. The new screen built on typed `CollectorBridge` re-emission (per source commit `5f04c44`) is the real `collector-expo` migration.                                                                                                                          |
+
+## Cumulative findings (read before starting the next slice)
+
+- **Build before jest in fresh worktrees.** The first-time miss above is the biggest time-sink.
+- **Trust `<slice>-core` over branch handlers.** Whenever a `<slice>-expo` handler in the branch destructures a key the core schema doesn't have, the schema wins. The branch's `-expo` packages never type-checked, so they're not authoritative — they're _candidates_.
+- **Tests using `Effect.logDebug`** must lift `minimumLogLevel`. Worth adding a tiny helper if multiple slices need it; for now each slice can inline `Logger.withMinimumLogLevel(LogLevel.All)` per the recipe above.
+- **`vp check --fix`** is safe to run after copying — the branch's formatter settings drift slightly from main's.
+- **Diff main vs source first** (recipe step 2). As the wave progresses, more of each branch's content has already been merged in pieces. For gatekeeper-expo the whole `gatekeeper-react/` directory was already ahead of `70479f8`; only the `-expo` adapter files were truly new. Skipping the diff would have regressed `wait-for-host-token-ref.ts` and `use-gatekeeper-host-messaging.ts`.
+- **`HostBinding.BindingSend` doesn't exist on main.** Drop the type annotation on the `send` callback inside `useMemo` — contextual typing from the returned `HostBinding.HostBinding<typeof Bridge>` gives `send` the correct shape (see fix-up table).
+- **Source commits diverge per slice.** `navigation-expo` came from `ruthmarks/add-wildflower-expo`; `gatekeeper-expo` and `browser-sniffer` from `70479f8` (an ad-hoc tip on a different lineage). Confirm the source commit with the user before assuming the recipe's default.
+- **A source-commit removal may have a fresh consumer on main.** PR #74 (`b8dd1a8`) merged after the source commit branched and added new files like `collector-expo/src/screens/RunSyncModalScreen.tsx` that consume the very surface the source commit later deleted (`BrowserSnifferWebView.postRaw` / `onRawMessage`). **`grep -r` the whole repo for the to-be-removed symbol — don't trust a slice-local search.** When the consumer is itself slated for replacement, confirm with the user before deleting; on this wave the user authorised dropping `RunSyncModalScreen` outright because a typed-`CollectorBridge`-re-emission replacement is the actual `collector-expo` migration step.
+- **Empty packages need `passWithNoTests: true`** in `jest.config.cjs`, or the workspace-wide `vp run -r --concurrency-limit 1 jest` exits 1 on the package. Likewise oxlint rejects `export {}` as a placeholder — use `export type Placeholder = never` (or similar) so the lint passes and consumers still resolve the module.
+- **Pre-existing flaky property tests in `fhir-r4` (`bundle.test.ts`) and `store-core` (`observation.test.ts`)** time out at 20s in fresh worktrees on slow Docker. These are unrelated to the migration; if your slice's tests pass cleanly, surface the flake to the user rather than chasing it.
