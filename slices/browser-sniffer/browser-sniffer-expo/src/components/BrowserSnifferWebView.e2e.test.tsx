@@ -7,7 +7,7 @@
  *   `onTransportReady` (host-side `Click` reaches the WebView's
  *   `postMessage`),
  * - and an inbound `PageLoaded` wire message decodes through the real
- *   dispatch core and reaches the consumer's `browserSnifferHandler`.
+ *   dispatch core and reaches the consumer's `browserSnifferHandlers`.
  *
  * Sibling file `BrowserSnifferWebView.test.tsx` covers the
  * mocked-BridgedWebView unit cases. Splitting the e2e out keeps the
@@ -18,7 +18,7 @@
 import { act, render, waitFor } from '@testing-library/react-native'
 import { Effect } from 'effect'
 import type { LogBridge } from 'effect-messaging-core'
-import React from 'react'
+import * as React from 'react'
 import type * as RNType from 'react-native'
 
 // Per-suite capture of the mocked WebView's most recent props +
@@ -87,15 +87,12 @@ describe('BrowserSnifferWebView (e2e with real BridgedWebView)', () => {
       ResponseFinished: () => Effect.void,
       ResponseStart: () => Effect.void,
     } as const
-    const logHandler = { Log: (): Effect.Effect<void> => Effect.void } as const
-
     const ref = React.createRef<BrowserSnifferMessageSender>()
     render(
       <BrowserSnifferWebView
         ref={ref}
         loadFrom={{ _tag: 'uri', uri: 'https://patient.example.com/' }}
-        logHandler={logHandler}
-        browserSnifferHandler={snifferHandlers}
+        browserSnifferHandlers={snifferHandlers}
       />
     )
 
@@ -143,14 +140,12 @@ describe('BrowserSnifferWebView (e2e with real BridgedWebView)', () => {
     })
   })
 
-  it('routes a Log wire message through logHandler', async () => {
+  it('routes a Log wire message through onLog', async () => {
     const logEvents: Array<LogBridge.LogPayload> = []
-    const logHandler = {
-      Log: (msg: LogBridge.LogPayload): Effect.Effect<void> =>
-        Effect.sync(() => {
-          logEvents.push(msg)
-        }),
-    } as const
+    const onLog = (msg: LogBridge.LogPayload): Effect.Effect<void> =>
+      Effect.sync(() => {
+        logEvents.push(msg)
+      })
     const snifferHandlers = {
       Cancelled: () => Effect.void,
       PageLoaded: () => Effect.void,
@@ -163,8 +158,8 @@ describe('BrowserSnifferWebView (e2e with real BridgedWebView)', () => {
     render(
       <BrowserSnifferWebView
         loadFrom={{ _tag: 'uri', uri: 'https://x/' }}
-        logHandler={logHandler}
-        browserSnifferHandler={snifferHandlers}
+        onLog={onLog}
+        browserSnifferHandlers={snifferHandlers}
       />
     )
     await waitFor(() => {

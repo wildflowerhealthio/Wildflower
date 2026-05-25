@@ -238,4 +238,45 @@ describe('BridgedWebView (initial messages)', () => {
       expect(mockWebViewState.props?.source?.uri).toContain('Setup=%2Fwelcome')
     })
   })
+
+  it('merges initialMessages alongside an existing query string on loadFrom.uri', async () => {
+    // Pins the merge-vs-replace contract called out in the loadFrom
+    // TSDoc: an existing query string on `loadFrom.uri` is preserved
+    // alongside the binding's encoded initial messages, not replaced.
+    const SetupSchema = Schema.parseJson(Schema.TaggedStruct('Setup', { path: Schema.String }))
+    const BootBridge = Bridge.make({
+      name: 'Boot',
+      hostToWeb: [['Setup', SetupSchema]] as const,
+      webToHost: [] as const,
+      urlParams: {
+        Setup: Schema.transform(Schema.String, Schema.typeSchema(Schema.parseJson(SetupSchema)), {
+          decode: (path) => ({ _tag: 'Setup' as const, path }),
+          encode: ({ path }) => path,
+        }),
+      },
+    })
+
+    const binding: HostBinding.HostBinding<typeof BootBridge> = {
+      bridge: BootBridge,
+      receiverLayer: BootBridge.Host.ReceiverLayer({}),
+      initialMessages: [{ _tag: 'Setup', path: '/welcome' }],
+    }
+
+    const bindings = [binding] as const
+
+    render(
+      <BridgedWebView<typeof bindings>
+        bindings={bindings}
+        loadFrom={{ _tag: 'uri', uri: 'https://app.test/?session=abc' }}
+      />
+    )
+
+    await waitFor(() => {
+      const uri = mockWebViewState.props?.source?.uri
+      if (uri === undefined) throw new Error('WebView source uri not captured')
+      const params = new URL(uri).searchParams
+      expect(params.get('session')).toBe('abc')
+      expect(params.get('Setup')).toBe('/welcome')
+    })
+  })
 })

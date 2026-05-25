@@ -34,11 +34,8 @@ interface BridgedWebViewProps<TBindings extends ReadonlyArray<HostBinding.Any>> 
    * the `bindings` reference changes (so the dispatch fiber, the
    * outbound queue, and each binding's `onTransportReady` re-fire).
    * Pass a `useMemo`-ed tuple from the calling component (or a
-   * module-level constant) — a fresh literal on every render rebuilds
-   * the transport on every render, which is almost never what you
-   * want. Each binding's `receiverLayer` and any
-   * `onTransportReady` callback is captured at build time; later
-   * mutations to those fields are observed only by the next rebuild.
+   * module-level constant) — a fresh literal rebuilds the transport
+   * on every render, which is almost never what you want.
    */
   readonly bindings: TBindings
   /**
@@ -47,16 +44,23 @@ interface BridgedWebViewProps<TBindings extends ReadonlyArray<HostBinding.Any>> 
    * appends each binding's `initialMessages` as `?<Tag>=<value>`
    * onto `loadFrom.uri` / `loadFrom.baseUrl` — the page reads them
    * synchronously from `window.location.search` at boot.
+   *
+   * Existing query strings on `loadFrom.uri` are **merged, not
+   * replaced**: a caller passing `{ _tag: 'uri', uri:
+   * 'https://app/?session=x' }` together with a binding emitting
+   * `initialMessages: [{ _tag: 'Setup', path: '/' }]` ends up with
+   * `?session=x&Setup=%2F` on the WebView source. (Same-name keys
+   * coexist — `URLSearchParams` allows duplicates.)
    */
   readonly loadFrom: BridgedWebViewLoadFrom
   /** Loader rendered on top of the WebView until its first `onLoadEnd`. */
   readonly loader?: JSX.Element
   /**
-   * Override default navigation routing. See {@link TransportWebView}
-   * for full semantics — supplying a predicate replaces the
-   * same-origin gate entirely.
+   * Opt-in routing predicate forwarded to {@link TransportWebView}.
+   * Return `true` to escape a URL to the system browser; omit to keep
+   * every navigation in-WebView (the default).
    */
-  readonly shouldHandleInWebView?: (url: string) => boolean
+  readonly shouldOpenInSystemBrowser?: (url: string) => boolean
   /**
    * Script injected before page scripts execute. Forwarded to
    * {@link TransportWebView}. Use for pre-content shims (fetch/XHR
@@ -69,10 +73,9 @@ interface BridgedWebViewProps<TBindings extends ReadonlyArray<HostBinding.Any>> 
  * Generic host shell. Aggregates `bindings` via
  * {@link HostBinding.aggregate}, builds the transport via
  * {@link makeExpoTransport} on a mount-bound fiber
- * (`Effect.runFork`/`Fiber.interrupt`, matching `AppRuntimeProvider`'s
- * lifecycle pattern), stores it in local state, fires each binding's
- * `onTransportReady` from a separate effect keyed on transport
- * identity, and renders a {@link TransportWebView}.
+ * (`Effect.runFork`/`Fiber.interrupt`), stores it in local state,
+ * fires each binding's `onTransportReady` from a separate effect
+ * keyed on transport identity, and renders a {@link TransportWebView}.
  *
  * @remarks
  * `transport` starts `null`; while the fiber is still building it we
@@ -103,7 +106,7 @@ const BridgedWebView = <const TBindings extends ReadonlyArray<HostBinding.Any>>(
   loadFrom,
   loader,
   bindings,
-  shouldHandleInWebView,
+  shouldOpenInSystemBrowser,
   injectedJavaScriptBeforeContentLoaded,
 }: BridgedWebViewProps<TBindings>): JSX.Element => {
   const { bridges, layers, initialMessages } = useMemo(
@@ -117,11 +120,6 @@ const BridgedWebView = <const TBindings extends ReadonlyArray<HostBinding.Any>>(
     HostBinding.BridgesOf<TBindings>
   > | null>(null)
 
-  // The URL the transport rewrites with `initialMessages` query
-  // params. For `uri` sources the WebView loads the rewritten URL
-  // directly; for `html` sources the rewritten URL becomes the page's
-  // `baseUrl` (so `window.location.search` carries the params even
-  // though the page content is inline).
   const transportBaseUrl = loadFrom._tag === 'uri' ? loadFrom.uri : loadFrom.baseUrl
 
   const source = useMemo<TransportWebViewSource | null>(() => {
@@ -185,7 +183,7 @@ const BridgedWebView = <const TBindings extends ReadonlyArray<HostBinding.Any>>(
         Effect.runFork(transport.onMessage(event))
       }}
       loader={loader}
-      shouldHandleInWebView={shouldHandleInWebView}
+      shouldOpenInSystemBrowser={shouldOpenInSystemBrowser}
       injectedJavaScriptBeforeContentLoaded={injectedJavaScriptBeforeContentLoaded}
     />
   )

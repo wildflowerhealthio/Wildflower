@@ -40,7 +40,7 @@ describe('TransportWebView (transport surface)', () => {
     expect(mockWebViewState.props?.onMessage).toBe(onMessage)
   })
 
-  it('keeps same-origin navigations in-WebView and routes cross-origin to the system browser', () => {
+  it('keeps every navigation in-WebView by default (no shouldOpenInSystemBrowser)', () => {
     render(
       <TransportWebView
         source={{ html: '', baseUrl: 'https://app.local/?boot=1' }}
@@ -52,19 +52,28 @@ describe('TransportWebView (transport surface)', () => {
       throw new Error('onShouldStartLoadWithRequest not captured')
     // Bootstrap navigations the WebView issues for inline HTML.
     expect(onShouldStartLoadWithRequest({ url: 'about:blank' })).toBe(true)
-    // Same origin but different path/query (e.g. `window.location.href = '${origin}/apps/x'`).
+    // Same-origin and cross-origin both stay in-WebView when no
+    // routing predicate is supplied — there is no implicit
+    // same-origin gate.
     expect(onShouldStartLoadWithRequest({ url: 'https://app.local/apps/x' })).toBe(true)
-    // Cross-origin link → external browser.
-    expect(onShouldStartLoadWithRequest({ url: 'https://example.com' })).toBe(false)
-    expect(mockExternalUrls).toEqual(['https://example.com'])
+    expect(onShouldStartLoadWithRequest({ url: 'https://example.com' })).toBe(true)
+    expect(mockExternalUrls).toEqual([])
   })
 
-  it('routes every non-bootstrap navigation externally when source has no resolvable origin', () => {
-    render(<TransportWebView source={{ html: '' }} onMessage={jest.fn()} />)
+  it('routes URLs through the system browser when shouldOpenInSystemBrowser returns true', () => {
+    const externalHosts = new Set(['example.com'])
+    render(
+      <TransportWebView
+        source={{ html: '' }}
+        onMessage={jest.fn()}
+        shouldOpenInSystemBrowser={(url) => externalHosts.has(new URL(url).hostname)}
+      />
+    )
     const onShouldStartLoadWithRequest = mockWebViewState.props?.onShouldStartLoadWithRequest
     if (onShouldStartLoadWithRequest === undefined)
       throw new Error('onShouldStartLoadWithRequest not captured')
     expect(onShouldStartLoadWithRequest({ url: 'about:blank' })).toBe(true)
+    expect(onShouldStartLoadWithRequest({ url: 'https://app.local/x' })).toBe(true)
     expect(onShouldStartLoadWithRequest({ url: 'https://example.com' })).toBe(false)
     expect(mockExternalUrls).toEqual(['https://example.com'])
   })

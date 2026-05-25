@@ -4,15 +4,8 @@ import { snifferScript } from 'browser-sniffer-injected'
 import { Effect, LogLevel, Logger } from 'effect'
 import type { HostBinding, LogBridge } from 'effect-messaging-core'
 import type { BridgedWebViewLoadFrom, BridgedWebViewProps } from 'effect-messaging-expo'
-import React from 'react'
+import * as React from 'react'
 
-/**
- * `mockBridgedWebViewState` collects the props each render of the
- * stubbed `BridgedWebView` was called with. `useLogHostBinding`'s
- * mock returns a sentinel object so the test can spot it inside the
- * bindings tuple. `mock`-prefix everywhere so jest's hoist accepts
- * the references inside the factory below.
- */
 type MockBridgedWebViewProps = BridgedWebViewProps<ReadonlyArray<HostBinding.Any>>
 
 const mockBridgedWebViewState: {
@@ -21,45 +14,31 @@ const mockBridgedWebViewState: {
   lastProps: null,
 }
 
-const mockLogBindingMarker = Symbol.for(
-  'browser-sniffer-expo:BrowserSnifferWebView.test:logBindingMarker'
-)
-
-/** Shape `useLogHostBinding` returns under the mock. */
-interface MockLogBinding {
-  readonly mockLogBindingMarker: typeof mockLogBindingMarker
-  readonly onLog?: (log: LogBridge.LogPayload) => Effect.Effect<void>
-}
-
-/** Type guard so the test can interrogate a binding without unsafe casts. */
-const isMockLogBinding = (value: unknown): value is MockLogBinding =>
-  typeof value === 'object' && value !== null && 'mockLogBindingMarker' in value
-
-const mockResetBridgedWebView = (): void => {
-  mockBridgedWebViewState.lastProps = null
-}
+/**
+ * Side-channel capture of every `useLogHostBinding` call the wrapper
+ * makes. Lets the assertion compare the consumer's `onLog` against
+ * what got threaded through the hook without inspecting the
+ * `bindings` tuple (which `BridgedWebView`'s mock receives as
+ * `HostBinding.Any`, a structurally narrower type that doesn't
+ * carry our mock fields).
+ */
+const mockUseLogHostBindingCalls: Array<{
+  onLog?: (log: LogBridge.LogPayload) => Effect.Effect<void>
+}> = []
 
 jest.mock('effect-messaging-expo', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
   return {
-    BridgedWebView: <TBindings extends ReadonlyArray<HostBinding.Any>>(
-      props: BridgedWebViewProps<TBindings>
-    ): React.ReactElement | null => {
-      // Widen the captured generic to the widest shape so a single
-      // `lastProps` field types across renders. Runtime payload is
-      // the same — type-only widening, but the rule still flags it.
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      mockBridgedWebViewState.lastProps = props as unknown as MockBridgedWebViewProps
+    BridgedWebView: (props: MockBridgedWebViewProps): React.ReactElement | null => {
+      mockBridgedWebViewState.lastProps = props
       return ReactInner.createElement('MockBridgedWebView', null)
     },
-    useLogHostBinding: ({
-      onLog,
-    }: {
+    useLogHostBinding: (opts: {
       onLog?: (log: LogBridge.LogPayload) => Effect.Effect<void>
-    }): MockLogBinding => ({
-      mockLogBindingMarker,
-      onLog,
-    }),
+    }): { readonly _tag: 'mock-log-binding' } => {
+      mockUseLogHostBindingCalls.push(opts)
+      return { _tag: 'mock-log-binding' }
+    },
   }
 })
 
@@ -85,47 +64,46 @@ const SNIFFER_HANDLERS = {
   ResponseStart: () => Effect.void,
 } as const
 
-const LOG_HANDLERS = { Log: () => Effect.void } as const
+beforeEach(() => {
+  mockBridgedWebViewState.lastProps = null
+  mockUseLogHostBindingCalls.length = 0
+})
 
 describe('BrowserSnifferWebView (wrapper around BridgedWebView)', () => {
-  beforeEach(() => {
-    mockResetBridgedWebView()
-  })
-
-  it('mounts BridgedWebView with the sniffer binding first and the log binding second', () => {
+  it('wires the sniffer binding alongside the log binding from useLogHostBinding', () => {
     render(
       <BrowserSnifferWebView
         loadFrom={{ _tag: 'uri', uri: 'https://patient.example.com/' }}
-        logHandler={LOG_HANDLERS}
-        browserSnifferHandler={SNIFFER_HANDLERS}
+        browserSnifferHandlers={SNIFFER_HANDLERS}
       />
     )
     const props = mockBridgedWebViewState.lastProps
     if (props === null) throw new Error('BridgedWebView never mounted')
-    expect(props.bindings).toHaveLength(2)
-    const [snifferBinding, logBinding] = props.bindings
-    expect(snifferBinding?.bridge).toBe(BrowserSnifferBridge)
-    // Sentinel from the `useLogHostBinding` mock — confirms the
-    // wrapper went through the canonical hook rather than building
-    // the binding inline.
-    expect(isMockLogBinding(logBinding)).toBe(true)
+
+    const snifferBinding = props.bindings.find((b) => b.bridge.name === BrowserSnifferBridge.name)
+    if (snifferBinding === undefined) throw new Error('sniffer binding missing')
+    expect(snifferBinding.bridge).toBe(BrowserSnifferBridge)
+
+    // Side-channel confirms `useLogHostBinding` was invoked — proves
+    // the wrapper went through the canonical hook rather than
+    // inlining the binding construction.
+    expect(mockUseLogHostBindingCalls.length).toBe(1)
   })
 
-  it('passes the sniffer script and a cross-origin-permissive routing gate to BridgedWebView', () => {
+  it('passes the sniffer script to BridgedWebView', () => {
     render(
       <BrowserSnifferWebView
         loadFrom={{ _tag: 'uri', uri: 'https://patient.example.com/' }}
-        logHandler={LOG_HANDLERS}
-        browserSnifferHandler={SNIFFER_HANDLERS}
+        browserSnifferHandlers={SNIFFER_HANDLERS}
       />
     )
     const props = mockBridgedWebViewState.lastProps
     if (props === null) throw new Error('BridgedWebView never mounted')
     expect(props.injectedJavaScriptBeforeContentLoaded).toBe(snifferScript)
-    // The wrapper forces every navigation in-WebView so FHIR OAuth
-    // cross-origin redirects don't get shunted to the system browser.
-    expect(props.shouldHandleInWebView).toBeDefined()
-    expect(props.shouldHandleInWebView?.('https://elsewhere.example.com/oauth')).toBe(true)
+    // Sniffer relies on TransportWebView's "always in-WebView" default
+    // (no `shouldOpenInSystemBrowser` predicate is supplied) so FHIR
+    // OAuth cross-origin redirects stay in the WebView.
+    expect(props.shouldOpenInSystemBrowser).toBeUndefined()
   })
 
   it('passes a uri loadFrom through unchanged', () => {
@@ -133,13 +111,7 @@ describe('BrowserSnifferWebView (wrapper around BridgedWebView)', () => {
       _tag: 'uri',
       uri: 'https://patient.example.com/',
     }
-    render(
-      <BrowserSnifferWebView
-        loadFrom={loadFrom}
-        logHandler={LOG_HANDLERS}
-        browserSnifferHandler={SNIFFER_HANDLERS}
-      />
-    )
+    render(<BrowserSnifferWebView loadFrom={loadFrom} browserSnifferHandlers={SNIFFER_HANDLERS} />)
     const props = mockBridgedWebViewState.lastProps
     if (props === null) throw new Error('BridgedWebView never mounted')
     expect(props.loadFrom).toEqual(loadFrom)
@@ -153,8 +125,7 @@ describe('BrowserSnifferWebView (wrapper around BridgedWebView)', () => {
           html: '<!doctype html><html><head><title>x</title></head><body></body></html>',
           baseUrl: 'https://patient.example.com/',
         }}
-        logHandler={LOG_HANDLERS}
-        browserSnifferHandler={SNIFFER_HANDLERS}
+        browserSnifferHandlers={SNIFFER_HANDLERS}
       />
     )
     const props = mockBridgedWebViewState.lastProps
@@ -174,8 +145,7 @@ describe('BrowserSnifferWebView (wrapper around BridgedWebView)', () => {
     render(
       <BrowserSnifferWebView
         loadFrom={{ _tag: 'html', html: '<body>no head</body>', baseUrl: 'https://x/' }}
-        logHandler={LOG_HANDLERS}
-        browserSnifferHandler={SNIFFER_HANDLERS}
+        browserSnifferHandlers={SNIFFER_HANDLERS}
       />
     )
     const props = mockBridgedWebViewState.lastProps
@@ -186,18 +156,13 @@ describe('BrowserSnifferWebView (wrapper around BridgedWebView)', () => {
 })
 
 describe('BrowserSnifferWebView ref-exposed MessageSender', () => {
-  beforeEach(() => {
-    mockResetBridgedWebView()
-  })
-
   it('drops pre-mount messages and logs an error', async () => {
     const ref = React.createRef<BrowserSnifferMessageSender>()
     render(
       <BrowserSnifferWebView
         ref={ref}
         loadFrom={{ _tag: 'uri', uri: 'https://x/' }}
-        logHandler={LOG_HANDLERS}
-        browserSnifferHandler={SNIFFER_HANDLERS}
+        browserSnifferHandlers={SNIFFER_HANDLERS}
       />
     )
     // BridgedWebView is mocked — `onTransportReady` never fires, so
@@ -217,7 +182,9 @@ describe('BrowserSnifferWebView ref-exposed MessageSender', () => {
           Logger.withMinimumLogLevel(LogLevel.All)
         )
     )
-    expect(logs.some((m) => m.includes('dropped pre-mount message Click'))).toBe(true)
+    expect(logs.some((m) => m.includes('[browser-sniffer-expo] dropped pre-mount message'))).toBe(
+      true
+    )
   })
 
   it('delegates to the binding-captured sender once onTransportReady fires', async () => {
@@ -226,13 +193,12 @@ describe('BrowserSnifferWebView ref-exposed MessageSender', () => {
       <BrowserSnifferWebView
         ref={ref}
         loadFrom={{ _tag: 'uri', uri: 'https://x/' }}
-        logHandler={LOG_HANDLERS}
-        browserSnifferHandler={SNIFFER_HANDLERS}
+        browserSnifferHandlers={SNIFFER_HANDLERS}
       />
     )
     const props = mockBridgedWebViewState.lastProps
     if (props === null) throw new Error('BridgedWebView never mounted')
-    const snifferBinding = props.bindings[0]
+    const snifferBinding = props.bindings.find((b) => b.bridge.name === BrowserSnifferBridge.name)
     if (snifferBinding === undefined) throw new Error('sniffer binding missing')
 
     // Stand in for the per-binding sender the transport would supply
@@ -253,30 +219,48 @@ describe('BrowserSnifferWebView ref-exposed MessageSender', () => {
     expect(sends).toEqual([{ _tag: 'Click', querySelector: 'button.import' }])
   })
 
-  it('routes logHandler.Log into the log binding via useLogHostBinding', async () => {
+  it('threads onLog through to useLogHostBinding verbatim', async () => {
     const logCalls: Array<LogBridge.LogPayload> = []
-    const myLogHandler = {
-      Log: (msg: LogBridge.LogPayload): Effect.Effect<void> =>
-        Effect.sync(() => {
-          logCalls.push(msg)
-        }),
-    } as const
+    const myOnLog = (msg: LogBridge.LogPayload): Effect.Effect<void> =>
+      Effect.sync(() => {
+        logCalls.push(msg)
+      })
     render(
       <BrowserSnifferWebView
         loadFrom={{ _tag: 'uri', uri: 'https://x/' }}
-        logHandler={myLogHandler}
-        browserSnifferHandler={SNIFFER_HANDLERS}
+        onLog={myOnLog}
+        browserSnifferHandlers={SNIFFER_HANDLERS}
       />
     )
-    const props = mockBridgedWebViewState.lastProps
-    if (props === null) throw new Error('BridgedWebView never mounted')
-    const logBinding = props.bindings[1]
-    if (!isMockLogBinding(logBinding)) throw new Error('expected log binding sentinel at index 1')
-    if (logBinding.onLog === undefined) throw new Error('log binding did not capture onLog')
-    // Mock `useLogHostBinding` captured the `onLog` arg — invoke it
-    // directly to confirm the wrapper threaded the consumer's
-    // `logHandler.Log` through to the hook.
-    await Effect.runPromise(logBinding.onLog({ _tag: 'Log', level: 'info', payload: ['hi'] }))
+    expect(mockUseLogHostBindingCalls.length).toBe(1)
+    // Reference equality — the wrapper must pass through the supplied
+    // function without wrapping it, so the hook's `defaultOnLog`
+    // override semantics still work as documented.
+    expect(mockUseLogHostBindingCalls[0]?.onLog).toBe(myOnLog)
+    // Sanity: the captured function is the one we passed.
+    const captured = mockUseLogHostBindingCalls[0]?.onLog
+    if (captured === undefined) throw new Error('onLog not captured')
+    await Effect.runPromise(captured({ _tag: 'Log', level: 'info', payload: ['hi'] }))
     expect(logCalls).toEqual([{ _tag: 'Log', level: 'info', payload: ['hi'] }])
   })
+
+  it('forwards undefined onLog when omitted so the hook default kicks in', () => {
+    render(
+      <BrowserSnifferWebView
+        loadFrom={{ _tag: 'uri', uri: 'https://x/' }}
+        browserSnifferHandlers={SNIFFER_HANDLERS}
+      />
+    )
+    expect(mockUseLogHostBindingCalls.length).toBe(1)
+    // `useLogHostBinding` itself defaults `onLog` to
+    // `LogBridge.defaultOnLog` via parameter destructuring; passing
+    // `undefined` here lets that default activate.
+    expect(mockUseLogHostBindingCalls[0]?.onLog).toBeUndefined()
+  })
 })
+
+// End-to-end coverage (real `BridgedWebView`, mocked WebView) lives
+// in `BrowserSnifferWebView.e2e.test.tsx`. Keeping it in a separate
+// file because the global `jest.mock('effect-messaging-expo')` above
+// is file-wide-hoisted and can't be bypassed inside the same file
+// without --experimental-vm-modules.
