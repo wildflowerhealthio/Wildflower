@@ -21,10 +21,11 @@ type TransportWebViewSource = { uri: string } | { html: string; baseUrl?: string
 
 interface TransportWebViewProps {
   /**
-   * Page contents to load. Same-origin navigations are kept inside the
-   * embedded bundle; cross-origin ones open in the system browser.
-   * The "expected origin" is derived from `source.uri` (for remote
-   * pages) or `source.baseUrl` (for inline HTML).
+   * Page contents to load. Default routing keeps same-origin
+   * navigations in the WebView and opens cross-origin links in the
+   * system browser. The "expected origin" is derived from `source.uri`
+   * (for remote pages) or `source.baseUrl` (for inline HTML); this
+   * default is overridden when `shouldHandleInWebView` is supplied.
    */
   readonly source: TransportWebViewSource
   /** Receives every message the page posts via `window.ReactNativeWebView.postMessage`. */
@@ -32,15 +33,25 @@ interface TransportWebViewProps {
   /** Element rendered on top of the WebView until its first `onLoadEnd` fires. */
   readonly loader?: JSX.Element
   /**
-   * Additional gate applied AFTER the same-origin check. Return `false`
-   * to force a same-origin URL to the system browser instead of keeping
-   * it in-WebView. Defaults to `() => true` (every same-origin
-   * navigation stays in-WebView). Use this hook to carve out
-   * app-specific exceptions (e.g. a sub-path that should always open
-   * externally) without polluting this generic transport with
-   * project-specific routing knowledge.
+   * Sole gate on navigation routing when supplied. Return `true` to
+   * keep the URL in-WebView, `false` to open it in the system browser.
+   * **Replaces** the default same-origin enforcement entirely — pass
+   * `() => true` for "always in-WebView" (e.g. a sniffer hosting
+   * third-party pages whose OAuth flows redirect cross-origin), pass
+   * a per-URL predicate for finer control. When omitted, the default
+   * gate keeps same-origin in-WebView and routes cross-origin to the
+   * system browser. `about:blank` and `data:` bootstrap URIs are
+   * always allowed regardless of this prop.
    */
   readonly shouldHandleInWebView?: (url: string) => boolean
+  /**
+   * Script injected into the WebView before the page's own scripts
+   * execute. Forwarded verbatim to react-native-webview's
+   * `injectedJavaScriptBeforeContentLoaded`. Use when the host needs
+   * to install a shim or instrumentation that must run before any
+   * page-level code (e.g. the browser-sniffer's fetch/XHR wrappers).
+   */
+  readonly injectedJavaScriptBeforeContentLoaded?: string
 }
 
 const tryExtractOrigin = (url: string): string | null => {
@@ -54,19 +65,19 @@ const tryExtractOrigin = (url: string): string | null => {
 /**
  * WebView wrapper that hosts a single bundle's page. Pure transport
  * surface — holds the WebView ref, dismisses its loader overlay on
- * `onLoadEnd`, keeps the user inside the embedded bundle for
- * same-origin navigations, and redirects cross-origin link clicks to
- * the system browser.
+ * `onLoadEnd`, and routes navigations (same-origin in-WebView,
+ * cross-origin to the system browser by default).
  *
  * @remarks
- * Callers can pass `shouldHandleInWebView` to gate same-origin
- * navigations with app-specific exceptions — useful for forcing a
- * particular sub-path to open in the system browser without baking
- * project-specific routing into this generic transport.
+ * Routing is overridable: pass `shouldHandleInWebView` to replace the
+ * default same-origin gate with a per-URL predicate (e.g. `() => true`
+ * for sniffer-style hosts that want every navigation in-WebView).
+ * Pre-content shims (e.g. fetch/XHR wrappers) install via
+ * `injectedJavaScriptBeforeContentLoaded`.
  */
 const TransportWebView = forwardRef<BareSenderService, TransportWebViewProps>(
   function TransportWebView(
-    { source, onMessage, loader, shouldHandleInWebView },
+    { source, onMessage, loader, shouldHandleInWebView, injectedJavaScriptBeforeContentLoaded },
     bareSenderServiceRef
   ): JSX.Element {
     const webviewRef = useRef<WebView>(null)
@@ -123,13 +134,15 @@ const TransportWebView = forwardRef<BareSenderService, TransportWebViewProps>(
             // the WebView fires while rendering inline HTML — always
             // allow them or the page never loads.
             if (request.url === 'about:blank' || request.url.startsWith('data:')) return true
-            const requestOrigin = tryExtractOrigin(request.url)
-            if (
-              requestOrigin !== null &&
-              requestOrigin === maybeExpectedOrigin &&
-              (shouldHandleInWebView?.(request.url) ?? true)
-            )
-              return true
+            // When a `shouldHandleInWebView` predicate is supplied, the
+            // caller fully owns routing — the default same-origin gate
+            // is skipped. Otherwise, the default keeps same-origin
+            // in-WebView and routes cross-origin to the system browser.
+            const inWebView =
+              shouldHandleInWebView !== undefined
+                ? shouldHandleInWebView(request.url)
+                : tryExtractOrigin(request.url) === maybeExpectedOrigin
+            if (inWebView) return true
             Effect.runFork(
               Effect.tryPromise({
                 try: () => WebBrowser.openBrowserAsync(request.url),
@@ -138,6 +151,7 @@ const TransportWebView = forwardRef<BareSenderService, TransportWebViewProps>(
             )
             return false
           }}
+          injectedJavaScriptBeforeContentLoaded={injectedJavaScriptBeforeContentLoaded}
           style={styles.webview}
           originWhitelist={['*']}
           javaScriptEnabled={true}

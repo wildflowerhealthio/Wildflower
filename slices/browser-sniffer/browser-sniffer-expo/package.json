@@ -41,12 +41,12 @@
     "browser-sniffer-injected": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
+    "effect-messaging-expo": "workspace:*",
     "expo": "catalog:",
     "jest": "catalog:",
     "jest-expo": "catalog:",
     "react": "catalog:",
     "react-native": "catalog:",
-    "react-native-webview": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -55,8 +55,8 @@
     "browser-sniffer-injected": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
+    "effect-messaging-expo": "workspace:*",
     "react": "catalog:",
-    "react-native": "catalog:",
-    "react-native-webview": ">=13.0.0"
+    "react-native": "catalog:"
   }
 }

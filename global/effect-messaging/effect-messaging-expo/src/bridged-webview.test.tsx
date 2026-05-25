@@ -1,8 +1,6 @@
 import { act, render, waitFor } from '@testing-library/react-native'
 import { Effect, Schema } from 'effect'
 import { Bridge, type BridgeTransport, type HostBinding } from 'effect-messaging-core'
-import { makeBridgeDispatcher } from 'effect-messaging-react'
-import type * as RNType from 'react-native'
 import {
   mockWebViewModuleFactory,
   mockWebViewState,
@@ -18,13 +16,6 @@ jest.mock('react-native-webview', () => mockWebViewModuleFactory())
 jest.mock('expo-web-browser', () => ({
   openBrowserAsync: jest.fn(() => Promise.resolve()),
 }))
-
-// `BridgedWebView` wraps the WebView in `SafeAreaView`; the real
-// provider machinery isn't needed for this transport-level test.
-jest.mock('react-native-safe-area-context', () => {
-  const RN = jest.requireActual<typeof RNType>('react-native')
-  return { SafeAreaView: RN.View }
-})
 
 import { BridgedWebView } from './bridged-webview.tsx'
 
@@ -45,10 +36,9 @@ type PingPongSend = BridgeTransport.MessageSender<readonly [typeof PingPongBridg
 
 describe('BridgedWebView (integration)', () => {
   // Per-test captures populated by `beforeEach`. The shared setup
-  // builds the binding (with `pongCalls` + `capturedSend` captures),
-  // the registry provider, and renders the host shell. Each `it()`
-  // block exercises one slice of the handshake / round-trip sequence
-  // against this baseline.
+  // builds the binding (with `pongCalls` + `capturedSend` captures)
+  // and renders the host shell. Each `it()` block exercises one
+  // slice of the handshake / round-trip sequence against this baseline.
   let pongCalls: Array<{ readonly reply: string }>
   let capturedSend: PingPongSend | null
 
@@ -69,18 +59,15 @@ describe('BridgedWebView (integration)', () => {
     }
 
     const bindings: PingPongBindings = [binding]
-    const { BridgeDispatchRegistryProvider } = makeBridgeDispatcher(
-      'PingPong',
-      [PingPongBridge] as const,
-      'Host'
-    )
 
     render(
       <BridgedWebView<PingPongBindings>
         bindings={bindings}
-        BridgeDispatchRegistryProvider={BridgeDispatchRegistryProvider}
-        loadFrom={{ _tag: 'html', html: '<!doctype html><html></html>' } as const}
-        baseUrl="https://app.test/"
+        loadFrom={{
+          _tag: 'html',
+          html: '<!doctype html><html></html>',
+          baseUrl: 'https://app.test/',
+        }}
       />
     )
 
@@ -102,9 +89,9 @@ describe('BridgedWebView (integration)', () => {
   })
 
   it("fires each binding's `onTransportReady` with the host-side sender", async () => {
-    // `useTransportReadyCaller`'s `useEffect` forks each binding's
-    // `onTransportReady` once the transport is non-null; ours
-    // captures the host sender.
+    // `BridgedWebView`'s `useEffect` (transport-ready branch) forks
+    // each binding's `onTransportReady` once the transport is
+    // non-null; ours captures the host sender.
     await waitFor(() => {
       expect(capturedSend).not.toBeNull()
     })
@@ -198,23 +185,57 @@ describe('BridgedWebView (initial messages)', () => {
     }
 
     const bindings = [binding] as const
-    const { BridgeDispatchRegistryProvider } = makeBridgeDispatcher(
-      'Boot',
-      [BootBridge] as const,
-      'Host'
-    )
 
     render(
       <BridgedWebView<typeof bindings>
         bindings={bindings}
-        BridgeDispatchRegistryProvider={BridgeDispatchRegistryProvider}
-        loadFrom={{ _tag: 'html', html: '<!doctype html><html></html>' } as const}
-        baseUrl="https://app.test/"
+        loadFrom={{
+          _tag: 'html',
+          html: '<!doctype html><html></html>',
+          baseUrl: 'https://app.test/',
+        }}
       />
     )
 
     await waitFor(() => {
       expect(mockWebViewState.props?.source?.baseUrl).toContain('Setup=%2Fwelcome')
+    })
+  })
+
+  it("encodes a binding's `initialMessages` into the WebView URI when `loadFrom._tag === 'uri'`", async () => {
+    // Mirror of the html case but for the `uri` source variant: the
+    // params land on the URI the WebView loads directly, not as a
+    // baseUrl alongside inline html.
+    const SetupSchema = Schema.parseJson(Schema.TaggedStruct('Setup', { path: Schema.String }))
+    const BootBridge = Bridge.make({
+      name: 'Boot',
+      hostToWeb: [['Setup', SetupSchema]] as const,
+      webToHost: [] as const,
+      urlParams: {
+        Setup: Schema.transform(Schema.String, Schema.typeSchema(Schema.parseJson(SetupSchema)), {
+          decode: (path) => ({ _tag: 'Setup' as const, path }),
+          encode: ({ path }) => path,
+        }),
+      },
+    })
+
+    const binding: HostBinding.HostBinding<typeof BootBridge> = {
+      bridge: BootBridge,
+      receiverLayer: BootBridge.Host.ReceiverLayer({}),
+      initialMessages: [{ _tag: 'Setup', path: '/welcome' }],
+    }
+
+    const bindings = [binding] as const
+
+    render(
+      <BridgedWebView<typeof bindings>
+        bindings={bindings}
+        loadFrom={{ _tag: 'uri', uri: 'https://app.test/' }}
+      />
+    )
+
+    await waitFor(() => {
+      expect(mockWebViewState.props?.source?.uri).toContain('Setup=%2Fwelcome')
     })
   })
 })
