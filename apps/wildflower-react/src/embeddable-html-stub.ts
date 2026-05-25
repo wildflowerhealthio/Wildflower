@@ -16,7 +16,7 @@
  * (or `vp run build:embedded` inside `apps/wildflower-react`) produces
  * the real artifact and the Metro override picks it up automatically.
  */
-const PLACEHOLDER_HTML = `<!doctype html>
+export const html: string = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -44,5 +44,3 @@ const PLACEHOLDER_HTML = `<!doctype html>
 </body>
 </html>
 `
-
-export const html: string = PLACEHOLDER_HTML

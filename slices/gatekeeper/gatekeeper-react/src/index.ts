@@ -17,5 +17,9 @@ export {
 
 export { NeedsAuthMessage } from './components/NeedsAuthMessage.tsx'
 
-export { TOKEN_STORAGE_KEY, authTokenRef, writeToken } from './client/token-storage.ts'
-export { waitForHostTokenRef } from './client/wait-for-host-token-ref.ts'
+export {
+  TOKEN_STORAGE_KEY,
+  authTokenRef,
+  waitForHostTokenRef,
+  writeToken,
+} from './client/token-storage.ts'

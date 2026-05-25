@@ -63,14 +63,30 @@ const toErrorState = (error: unknown): DeviceFlowState =>
     ),
   })
 
-/** Grace period before any real OAuth I/O fires — see {@link NeedsAuthMessage}. */
+/**
+ * Grace period before any real OAuth I/O fires — see {@link NeedsAuthMessage}.
+ *
+ * @remarks
+ * The 250ms value is a guess: it's intended to absorb a transient mount
+ * that happens during the host's `WaitForToken` → `AuthTokenIssued`
+ * handshake (URL params dispatch + transport flush), so a stray render
+ * doesn't kick off a real device-authorization flow. `TransportProvider`'s
+ * `flushed` gate already blocks descendant mount until the host's URL-param
+ * messages have dispatched, so under correct host behavior this sleep is
+ * dead time. It exists as a defense against (a) a host that delays the
+ * `AuthTokenIssued` follow-up after `WaitForToken`, and (b) other
+ * mount-time races that would otherwise burn a device-code on the
+ * gatekeeper server. There's no measured upper bound it's protecting
+ * against — if a real bound surfaces, replace this with that bound or
+ * drop the sleep entirely.
+ */
 const MOUNT_DEBOUNCE = Duration.millis(250)
 
 /**
  * Starts the RFC 8628 device-authorization flow, surfaces the `user_code`,
  * and polls `/oauth/token` until approval. On success writes the token via
- * `writeToken`, which routes through `authTokenRef` so the auth gate's
- * stream subscriber picks it up.
+ * {@link writeToken}, which routes through the shared `authTokenRef` so the
+ * auth gate's stream subscriber picks it up.
  *
  * @remarks
  * The boot side effects are gated by a {@link MOUNT_DEBOUNCE} sleep so

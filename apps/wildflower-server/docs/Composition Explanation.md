@@ -145,6 +145,8 @@ the host's `Effect.gen` _before_ the Layer launch has a real ordering:
 The Expo host's composition mirrors the node host section-for-section,
 with two structural differences imposed by the Expo runtime.
 
+### HTTP server lifecycle
+
 **The HTTP server can stop and start mid-session.** The Expo host
 delegates server lifecycle to
 [`runHttpServerDaemon`](../../../slices/local-http-server/local-http-server-core/src/daemon/index.ts)
@@ -154,6 +156,8 @@ Stream into a sub-scope; the first stream emit is the "ready" signal,
 after which the stream parks until the sub-scope closes. The host
 provides the `startServer` callback that builds `FullServerLive` under
 `Effect.scoped(Layer.build(...))`.
+
+### Tunnel daemon co-location
 
 **The tunnel daemon runs alongside the HTTP server, under one
 `Layer.launch`.** The Expo host mirrors node's
@@ -169,6 +173,8 @@ inner `DaemonRuntimeScope` forks `Layer.launch(...)` once the store
 handle is available, with `Fiber.interrupt` cleanup so React's mount
 semantics drive scope lifetime cleanly (and StrictMode is handled by
 the standard cleanup contract).
+
+### `HttpServerDaemonLive` decomposition
 
 `HttpServerDaemonLive` further decomposes into:
 
@@ -190,6 +196,8 @@ Layer.provideMerge(SliceStoresLive))`. The anonymous
   the frozen context both to the daemon and to each per-bind
   `Layer.build(makeBindLive(cfg).pipe(Layer.provide(…)))`. The respawn
   loop only rebuilds the per-bind layer; bootstrap is not re-entered.
+
+### Expo-side substitutions
 
 Other Expo-side substitutions:
 

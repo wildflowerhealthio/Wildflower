@@ -75,23 +75,30 @@ type AnyResource =
   | typeof Observation.Schema.Type
 
 /**
- * Inline HTML wrapper that fetches `url` via `fetch()` and renders the
- * response body into the page. We wrap the FHIR JSON endpoints in an
- * HTML document instead of navigating to them directly because
- * `react-native-webview`'s `injectedJavaScriptBeforeContentLoaded` —
- * which installs the browser-sniffer — only fires for documents the
- * WebView parses as HTML. Raw `application/json` responses get rendered
- * by a native viewer (especially iOS) without executing any JS, so the
- * sniffer never installs and no `__Ready` / `PageLoaded` / `Response*`
- * events flow back. The wrapper page IS HTML, so the sniffer installs
- * on it, and its `fetch()` call is captured by the sniffer's
- * monkey-patched `fetch` — the streamed response triggers the standard
+ * Build an inline HTML wrapper document that fetches `url` via
+ * `fetch()` and renders the response body into the page.
+ *
+ * The FHIR JSON endpoints are wrapped in an HTML document instead of
+ * being navigated to directly because `react-native-webview`'s
+ * `injectedJavaScriptBeforeContentLoaded` — which installs the
+ * browser-sniffer — only fires for documents the WebView parses as
+ * HTML. Raw `application/json` responses get rendered by a native
+ * viewer (especially iOS) without executing any JS, so the sniffer
+ * never installs and no `__Ready` / `PageLoaded` / `Response*` events
+ * flow back. The wrapper page IS HTML, so the sniffer installs on it,
+ * and its `fetch()` call is captured by the sniffer's monkey-patched
+ * `fetch` — the streamed response triggers the standard
  * `ResponseStart` / `ResponseData` / `ResponseFinished` triple keyed on
  * the FHIR URL, which the slice's `entityDefinitions` then route.
  *
- * `credentials: 'omit'` is defensive: the wrapper has no cross-origin
- * credentials worth carrying, and omitting them sidesteps any CORS
- * preflight a `withCredentials` request would trigger.
+ * The `fetch()` call is left at the default `credentials: 'same-origin'`
+ * so cookie-backed FHIR servers continue to work when the wrapper is
+ * loaded with `baseUrl` matching `config.rootUrl` (callers should set
+ * that on the `WebViewSource.Html` to keep this request same-origin).
+ *
+ * @param url - The absolute FHIR URL to fetch from inside the wrapper.
+ * @returns A complete HTML document as a string, ready to hand to a
+ *   `WebViewSource.Html` `html` field.
  */
 const fetchWrapperHtml = (url: string): string => `<!doctype html>
 <html lang="en">
@@ -129,7 +136,7 @@ const fetchWrapperHtml = (url: string): string => `<!doctype html>
         window.addEventListener('load', function () { log('window.load fired') })
         document.addEventListener('DOMContentLoaded', function () { log('DOMContentLoaded fired') })
         log('issuing fetch...')
-        fetch(${JSON.stringify(url)}, { credentials: 'omit' })
+        fetch(${JSON.stringify(url)})
           .then(function (r) { log('fetch response: ' + r.status + ' ' + r.statusText); return r.text() })
           .then(function (t) {
             log('fetch body: ' + t.length + ' bytes')
@@ -175,7 +182,11 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<AnyReso
   const safePatientId = encodeURIComponent(config.patientId)
   const patientUrl = `${config.rootUrl}/Patient/${safePatientId}?_format=json`
   const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
-  const firstPage: WebViewSource.Any = { _tag: 'Html', html: fetchWrapperHtml(patientUrl) }
+  const firstPage: WebViewSource.Any = {
+    _tag: 'Html',
+    html: fetchWrapperHtml(patientUrl),
+    baseUrl: config.rootUrl,
+  }
   return ScrapingPlan.make<AnyResource>({
     name: 'FHIR R4',
     entityDefinitions: [
@@ -185,7 +196,14 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<AnyReso
     ] as readonly EntityDefinition.EntityDefinition<AnyResource>[],
     firstPage,
     linkSequence: [
-      { _tag: 'Open', source: { _tag: 'Html', html: fetchWrapperHtml(observationUrl) } },
+      {
+        _tag: 'Open',
+        source: {
+          _tag: 'Html',
+          html: fetchWrapperHtml(observationUrl),
+          baseUrl: config.rootUrl,
+        },
+      },
     ],
     stepDelay: Duration.seconds(5),
   })
