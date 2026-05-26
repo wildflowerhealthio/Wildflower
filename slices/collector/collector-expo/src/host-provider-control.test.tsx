@@ -1,26 +1,29 @@
 /**
- * Sniffer-control + no-op-pin tests for
+ * Sniffer-control + modal-close tests for
  * {@link CollectorBridgeExpo.HostProvider} +
- * {@link CollectorBridgeExpo.useReceiverLayer}. Every test here either
- * drives the `snifferControlRef` registered by the live modal (`Click`,
- * `CancelSnifferRequest`) or pins the no-op contract for handlers that
- * exist only to keep the tag↔handler mapping honest (`Open`,
- * `SniffingComplete`).
+ * {@link CollectorBridgeExpo.useReceiverLayer}. Every test here
+ * either:
+ *
+ *  - registers a captured sender via
+ *    {@link CollectorBridgeExpo.useAsMessageSenderToBrowserSniffer}
+ *    and asserts `Click` / `CancelSnifferRequest` route through it,
+ *    or
+ *  - asserts the modal-close path (`SniffingComplete` → `router.back()`).
  *
  * Sister file: `host-provider.test.tsx` covers the routing-side
- * handler (`RequestSniffableWebView`). Shared mocks +
+ * handlers (`RequestSniffableWebView` + `Open`). Shared mocks +
  * handler-capture harness live in
  * `__test-support__/host-provider-test-mocks.ts`.
  */
 import { act, render } from '@testing-library/react-native'
 import { Effect } from 'effect'
+import type { BridgeTransport } from 'effect-messaging-core'
 import type { ReactElement } from 'react'
 
 import {
   harness,
   mockBuildBrowserSnifferExpoFactory,
   mockBuildCollectorBridgeFactory,
-  mockBuildCollectorReactFactory,
   mockBuildExpoRouterFactory,
   mockBuildExpoTundraishFactory,
   requireLastHandlers,
@@ -32,22 +35,19 @@ import {
 // invoked from inside that literal so the shared harness module
 // (see `__test-support__/host-provider-test-mocks.ts`) still owns
 // the actual mock-construction logic.
-jest.mock('browser-sniffer-expo', () => mockBuildBrowserSnifferExpoFactory())
-jest.mock('expo-tundraish', () => mockBuildExpoTundraishFactory())
-jest.mock('collector-react', () => mockBuildCollectorReactFactory())
 jest.mock('expo-router', () => mockBuildExpoRouterFactory())
 jest.mock('collector-fundamentals/bridge', () => mockBuildCollectorBridgeFactory())
+jest.mock('browser-sniffer-expo', () => mockBuildBrowserSnifferExpoFactory())
+jest.mock('expo-tundraish', () => mockBuildExpoTundraishFactory())
 
+import type BrowserSnifferBridge from 'browser-sniffer-core/bridge'
 import { CollectorBridgeExpo } from './index.ts'
 
-const TestProbe = ({
-  onReady,
-}: {
-  readonly onReady: (host: ReturnType<typeof CollectorBridgeExpo.useHost>) => void
-}): ReactElement | null => {
+type SnifferSender = BridgeTransport.MessageSender<readonly [typeof BrowserSnifferBridge], 'Host'>
+
+const TestProbe = ({ sender }: { readonly sender: SnifferSender }): ReactElement | null => {
   CollectorBridgeExpo.useReceiverLayer()
-  const host = CollectorBridgeExpo.useHost()
-  onReady(host)
+  CollectorBridgeExpo.useAsMessageSenderToBrowserSniffer(sender)
   return null
 }
 
@@ -55,113 +55,81 @@ beforeEach(() => {
   resetHarness()
 })
 
-describe('CollectorBridgeExpo handlers (sniffer-control forwarding)', () => {
-  it('Click forwards to the registered snifferControlRef when a modal is mounted', () => {
-    const seenHosts: Array<ReturnType<typeof CollectorBridgeExpo.useHost>> = []
-    const clicks: string[] = []
+describe('CollectorBridgeExpo handlers — sniffer-control forwarding via pipe', () => {
+  it('Click forwards through the registered sender', async () => {
+    const calls: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = []
+    const sender: SnifferSender = (msg) => Effect.sync(() => calls.push(msg))
+
     render(
       <CollectorBridgeExpo.HostProvider>
-        <TestProbe onReady={(h) => seenHosts.push(h)} />
+        <TestProbe sender={sender} />
       </CollectorBridgeExpo.HostProvider>
     )
     const handlers = requireLastHandlers()
 
-    // Modal registers a sniffer-control surface on mount.
-    act(() => {
-      seenHosts[0].snifferControlRef.current = {
-        click: (qs) => clicks.push(qs),
-        cancelRequest: () => undefined,
-      }
+    await act(async () => {
+      await Effect.runPromise(handlers.Click({ _tag: 'Click', querySelector: '#submit' }))
     })
 
-    act(() => {
-      Effect.runSync(handlers.Click({ querySelector: '#submit' }))
-    })
-
-    expect(clicks).toEqual(['#submit'])
+    expect(calls).toEqual([{ _tag: 'Click', querySelector: '#submit' }])
   })
 
-  it('Click drops silently when no modal is mounted (null ref)', () => {
+  it('CancelSnifferRequest forwards through the registered sender', async () => {
+    const calls: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = []
+    const sender: SnifferSender = (msg) => Effect.sync(() => calls.push(msg))
+
     render(
       <CollectorBridgeExpo.HostProvider>
-        <TestProbe onReady={() => undefined} />
+        <TestProbe sender={sender} />
       </CollectorBridgeExpo.HostProvider>
     )
     const handlers = requireLastHandlers()
 
-    // No registration — snifferControlRef.current stays null.
-    expect(() => Effect.runSync(handlers.Click({ querySelector: '#submit' }))).not.toThrow()
+    await act(async () => {
+      await Effect.runPromise(
+        handlers.CancelSnifferRequest({ _tag: 'CancelSnifferRequest', id: 'req-1' })
+      )
+    })
+
+    expect(calls).toEqual([{ _tag: 'CancelSnifferRequest', id: 'req-1' }])
   })
 
-  it('CancelSnifferRequest forwards to the registered snifferControlRef', () => {
-    const seenHosts: Array<ReturnType<typeof CollectorBridgeExpo.useHost>> = []
-    const cancels: string[] = []
+  it('Click routes to the warn-and-drop default when no modal is mounted', async () => {
+    // No `TestProbe` calls `useAsMessageSenderToBrowserSniffer` —
+    // the pipe's default handler logs a warning and succeeds.
+    const NoopProbe = (): ReactElement | null => {
+      CollectorBridgeExpo.useReceiverLayer()
+      return null
+    }
     render(
       <CollectorBridgeExpo.HostProvider>
-        <TestProbe onReady={(h) => seenHosts.push(h)} />
+        <NoopProbe />
       </CollectorBridgeExpo.HostProvider>
     )
     const handlers = requireLastHandlers()
 
-    act(() => {
-      seenHosts[0].snifferControlRef.current = {
-        click: () => undefined,
-        cancelRequest: (id) => cancels.push(id),
-      }
-    })
-
-    act(() => {
-      Effect.runSync(handlers.CancelSnifferRequest({ id: 'req-1' }))
-    })
-
-    expect(cancels).toEqual(['req-1'])
+    const exit = await Effect.runPromise(
+      Effect.exit(handlers.Click({ _tag: 'Click', querySelector: '#submit' }))
+    )
+    expect(exit._tag).toBe('Success')
   })
 })
 
-describe('CollectorBridgeExpo handlers (no-op pins)', () => {
-  it('Open invokes the host context open() callback (currently a no-op) without pushing the router', () => {
-    // The production `open` callback is a no-op
-    // (`useCallback((_source) => undefined, [])`), so this test pins
-    // the handler-to-tag mapping and the isolation contract: invoking
-    // `Open` runs `open()` (currently a no-op, so no observable side
-    // effect) and crucially does *not* push the modal route or update
-    // `pendingSource` — those belong to `RequestSniffableWebView`.
-    const seenHosts: Array<ReturnType<typeof CollectorBridgeExpo.useHost>> = []
+describe('CollectorBridgeExpo handlers — modal lifecycle', () => {
+  it('SniffingComplete calls router.back()', async () => {
+    const sender: SnifferSender = () => Effect.void
     render(
       <CollectorBridgeExpo.HostProvider>
-        <TestProbe onReady={(h) => seenHosts.push(h)} />
+        <TestProbe sender={sender} />
       </CollectorBridgeExpo.HostProvider>
     )
     const handlers = requireLastHandlers()
-    expect(handlers.Open).toBeDefined()
 
-    act(() => {
-      Effect.runSync(handlers.Open({ source: { _tag: 'Uri', uri: 'https://example.com' } }))
+    await act(async () => {
+      await Effect.runPromise(handlers.SniffingComplete({ _tag: 'SniffingComplete' }))
     })
-    // The router must NOT have been pushed — that's
-    // `RequestSniffableWebView`'s job, not `Open`'s.
-    expect(harness.routerPush).not.toHaveBeenCalled()
-    // `pendingSource` must NOT have been advanced.
-    expect(seenHosts[seenHosts.length - 1]?.pendingSource).toBeNull()
-  })
 
-  it('SniffingComplete invokes the host context sniffingComplete() callback without touching the router', () => {
-    // Same shape as the `Open` test: pins the mapping + isolates
-    // SniffingComplete from the router-pushing tag.
-    const seenHosts: Array<ReturnType<typeof CollectorBridgeExpo.useHost>> = []
-    render(
-      <CollectorBridgeExpo.HostProvider>
-        <TestProbe onReady={(h) => seenHosts.push(h)} />
-      </CollectorBridgeExpo.HostProvider>
-    )
-    const handlers = requireLastHandlers()
-    expect(handlers.SniffingComplete).toBeDefined()
-
-    act(() => {
-      Effect.runSync(handlers.SniffingComplete())
-    })
+    expect(harness.routerBack).toHaveBeenCalledTimes(1)
     expect(harness.routerPush).not.toHaveBeenCalled()
-    expect(harness.routerBack).not.toHaveBeenCalled()
-    expect(seenHosts[seenHosts.length - 1]?.pendingSource).toBeNull()
   })
 })

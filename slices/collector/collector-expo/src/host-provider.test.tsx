@@ -2,11 +2,12 @@
  * Routing-side tests for {@link CollectorBridgeExpo.HostProvider} +
  * {@link CollectorBridgeExpo.useReceiverLayer} — every test in this
  * file exercises `RequestSniffableWebView`'s `router.push` /
- * `pendingSource` plumbing or its source-scheme guard.
+ * `pendingSource` plumbing, its source-scheme guard, or the `Open`
+ * handler's `pendingSource` re-mount path.
  *
  * Sister file: `host-provider-control.test.tsx` covers the
- * sniffer-control-ref forwarders (`Click`, `CancelSnifferRequest`) and
- * the no-op pinners (`Open`, `SniffingComplete`). Shared mocks +
+ * sniffer-control forwarders (`Click`, `CancelSnifferRequest`) and
+ * the modal-close path (`SniffingComplete`). Shared mocks +
  * handler-capture harness live in
  * `__test-support__/host-provider-test-mocks.ts`.
  */
@@ -18,7 +19,6 @@ import {
   harness,
   mockBuildBrowserSnifferExpoFactory,
   mockBuildCollectorBridgeFactory,
-  mockBuildCollectorReactFactory,
   mockBuildExpoRouterFactory,
   mockBuildExpoTundraishFactory,
   requireLastHandlers,
@@ -29,11 +29,10 @@ import {
 // function literal even when delegating to a `mock*`-prefixed import.
 // Wrapping each call lets the shared harness module still own the
 // actual mock-construction logic.
-jest.mock('browser-sniffer-expo', () => mockBuildBrowserSnifferExpoFactory())
-jest.mock('expo-tundraish', () => mockBuildExpoTundraishFactory())
-jest.mock('collector-react', () => mockBuildCollectorReactFactory())
 jest.mock('expo-router', () => mockBuildExpoRouterFactory())
 jest.mock('collector-fundamentals/bridge', () => mockBuildCollectorBridgeFactory())
+jest.mock('browser-sniffer-expo', () => mockBuildBrowserSnifferExpoFactory())
+jest.mock('expo-tundraish', () => mockBuildExpoTundraishFactory())
 
 import { CollectorBridgeExpo } from './index.ts'
 
@@ -67,6 +66,7 @@ describe('CollectorBridgeExpo.HostProvider + useReceiverLayer (routing)', () => 
     act(() => {
       Effect.runSync(
         handlers.RequestSniffableWebView({
+          _tag: 'RequestSniffableWebView',
           source: { _tag: 'Uri', uri: 'https://example.com' },
         })
       )
@@ -88,6 +88,7 @@ describe('CollectorBridgeExpo.HostProvider + useReceiverLayer (routing)', () => 
     act(() => {
       Effect.runSync(
         handlers.RequestSniffableWebView({
+          _tag: 'RequestSniffableWebView',
           source: { _tag: 'Uri', uri: 'https://example.com' },
         })
       )
@@ -121,6 +122,7 @@ describe('CollectorBridgeExpo.HostProvider + useReceiverLayer (routing)', () => 
     act(() => {
       Effect.runSync(
         handlers.RequestSniffableWebView({
+          _tag: 'RequestSniffableWebView',
           source: { _tag: 'Uri', uri },
         })
       )
@@ -146,6 +148,7 @@ describe('CollectorBridgeExpo.HostProvider + useReceiverLayer (routing)', () => 
     act(() => {
       Effect.runSync(
         handlers.RequestSniffableWebView({
+          _tag: 'RequestSniffableWebView',
           source: htmlSource,
         })
       )
@@ -153,5 +156,23 @@ describe('CollectorBridgeExpo.HostProvider + useReceiverLayer (routing)', () => 
 
     expect(harness.routerPush).toHaveBeenCalledWith('/collector-modal')
     expect(seenHosts[seenHosts.length - 1]?.pendingSource).toEqual(htmlSource)
+  })
+
+  it('Open re-mounts pendingSource without pushing the router (modal already open)', () => {
+    const seenHosts: Array<ReturnType<typeof CollectorBridgeExpo.useHost>> = []
+    render(
+      <CollectorBridgeExpo.HostProvider>
+        <TestProbe onReady={(h) => seenHosts.push(h)} />
+      </CollectorBridgeExpo.HostProvider>
+    )
+    const handlers = requireLastHandlers()
+    const nextSource = { _tag: 'Uri' as const, uri: 'https://example.com/step-2' }
+
+    act(() => {
+      Effect.runSync(handlers.Open({ _tag: 'Open', source: nextSource }))
+    })
+
+    expect(harness.routerPush).not.toHaveBeenCalled()
+    expect(seenHosts[seenHosts.length - 1]?.pendingSource).toEqual(nextSource)
   })
 })

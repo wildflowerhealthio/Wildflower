@@ -15,12 +15,9 @@ const silenceReactErrorBoundary = (): (() => void) => {
   }
 }
 
-// Note on rendering: `usePipeMessageSender` reads `handlerRef.current`
-// eagerly at render time. After the first render, `useAsPipeMessageSender`'s
-// `useEffect` writes the new sender — but the captured return is the
-// pre-effect value (the default). Each test that needs to see the post-effect
-// state calls `rerender()` once before reading, so the second render's eager
-// read sees the value the first render's effect committed.
+// `usePipeMessageSender` returns a stable sender that reads
+// `handlerRef.current` at suspend time, so a sender registered after the
+// hook's first render is picked up on the next send without re-rendering.
 
 describe('makeMessageSenderPipe — examples', () => {
   test('sends before any sender is registered land on the default warn-and-drop handler', async () => {
@@ -43,7 +40,7 @@ describe('makeMessageSenderPipe — examples', () => {
     )
     const { sender, received } = makeRecordingSender<TestBridges, 'Host'>()
 
-    const { result, rerender } = renderHook(
+    const { result } = renderHook(
       () => {
         useAsPipeMessageSender(sender)
         return usePipeMessageSender()
@@ -52,8 +49,6 @@ describe('makeMessageSenderPipe — examples', () => {
         wrapper: ({ children }) => <Provider>{children}</Provider>,
       }
     )
-    // Flush the effect (eager read otherwise sees the default).
-    rerender()
 
     await Effect.runPromise(result.current({ _tag: 'HostRequestedWebNavigation', path: '/x' }))
     expect(received).toEqual([{ _tag: 'HostRequestedWebNavigation', path: '/x' }])
@@ -79,11 +74,7 @@ describe('makeMessageSenderPipe — examples', () => {
       }
     )
 
-    // Flush the first effect, then send through it.
-    rerender({ which: 'first' })
     await Effect.runPromise(result.current({ _tag: 'HostBackRequested' }))
-    // Swap and flush again.
-    rerender({ which: 'second' })
     rerender({ which: 'second' })
     await Effect.runPromise(result.current({ _tag: 'HostBackRequested' }))
 
@@ -153,14 +144,11 @@ describe('makeMessageSenderPipe — properties', () => {
           )
 
           // Walk the registration sequence; each rerender writes to the
-          // ref, the next read sees the previous write (effect flushes
-          // between renders).
+          // ref. The probe sender reads `.current` lazily so the last
+          // write is what the next send routes to.
           for (const id of registrationIds) {
             rerender({ activeId: id })
           }
-          // One more rerender flushes the final effect so the probe read
-          // sees the last-written sender.
-          rerender({ activeId: registrationIds[registrationIds.length - 1] ?? 0 })
 
           const expectedActive = registrationIds[registrationIds.length - 1] ?? 0
           await Effect.runPromise(result.current({ _tag: 'HostBackRequested' }))

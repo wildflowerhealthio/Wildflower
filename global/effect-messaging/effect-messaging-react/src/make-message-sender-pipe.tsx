@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import type { Bridge, BridgeTransport } from 'effect-messaging-core'
 import {
   createContext,
+  useCallback,
   useRef,
   type RefObject,
   type FC as ReactFC,
@@ -52,9 +53,15 @@ const makeMessageSenderPipe = <
   }
   Provider.displayName = `${name}MessageSenderPipeContext`
 
+  /**
+   * Returns a stable sender that reads `handlerRef.current` at suspend
+   * time, so callers don't need to re-render to see a sender registered
+   * later. Pre-mount sends route through the default warn-and-drop
+   * handler until {@link useAsPipeMessageSender} commits its effect.
+   */
   const usePipeMessageSender = (): BridgeTransport.MessageSender<TBridges, TSide> => {
     const handlerRef = useContextOrThrow(Context)
-    return handlerRef.current
+    return useCallback((message) => Effect.suspend(() => handlerRef.current(message)), [handlerRef])
   }
 
   const useAsPipeMessageSender = (sender: BridgeTransport.MessageSender<TBridges, TSide>): void => {

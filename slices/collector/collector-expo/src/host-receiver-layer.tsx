@@ -13,46 +13,36 @@ import {
   useCallback,
   useContext,
   useMemo,
-  useRef,
   useState,
   type JSX,
   type ReactNode,
-  type RefObject,
 } from 'react'
 
-/**
- * Imperative surface the live `<CollectorModalScreen>` registers when
- * its underlying `<BrowserSnifferWebView>` mounts. The bridge's
- * `Click` / `CancelSnifferRequest` handlers reach into the ref to
- * drive the sniffer page. Null when no modal is mounted — handlers
- * silently drop, mirroring the bridge's "no peer attached" semantics.
- */
-interface SnifferControl {
-  readonly click: (querySelector: string) => void
-  readonly cancelRequest: (id: string) => void
-}
+import {
+  MessageSenderToBrowserSnifferProvider,
+  MessageSenderToCollectorProvider,
+  useMessageSenderToBrowserSniffer,
+} from './message-sender-pipes.tsx'
 
 /**
- * Private context exposing the host-side actions a
- * {@link useReceiverLayer}-built layer needs to call when the SPA fires
- * `RequestSniffableWebView` (and friends). Holds the `pendingSource`
- * state the modal route reads, plus the `snifferControlRef` the active
- * modal registers so inbound `Click` / `CancelSnifferRequest` messages
- * from the SPA reach the sniffer page.
+ * Private context exposing the navigation state the modal route
+ * reads + the dispatch callback the {@link useReceiverLayer}
+ * handlers fire when the SPA emits `RequestSniffableWebView` / `Open`
+ * / `SniffingComplete`. Outbound `Click` / `CancelSnifferRequest`
+ * route through {@link useMessageSenderToBrowserSniffer} instead —
+ * no ref state is needed on this context.
  */
 interface CollectorHostContextValue {
   readonly pendingSource: WebViewSource.Any | null
-  readonly snifferControlRef: RefObject<SnifferControl | null>
-  readonly requestSniffableWebView: (source: WebViewSource.Any) => void
-  readonly sniffingComplete: () => void
-  readonly open: (source: WebViewSource.Any) => void
+  readonly setPendingSource: (source: WebViewSource.Any | null) => void
+  readonly modalPath: string
 }
 
 const CollectorHostContext = createContext<CollectorHostContextValue | null>(null)
 
 interface HostProviderProps {
   /**
-   * Path of the file-system route that hosts {@link CollectorModalRoute}.
+   * Path of the file-system route that hosts the collector modal.
    * Defaults to `'/collector-modal'`.
    */
   readonly modalPath?: string
@@ -62,53 +52,41 @@ interface HostProviderProps {
 const DEFAULT_MODAL_PATH = '/collector-modal' as const
 
 /**
- * Owns the collector-side host state (`pendingSource` + the modal's
- * sniffer-control ref) and exposes stable action callbacks via a
- * private context. Wrap the app's router Stack with this provider;
- * render `{@link CollectorModalRoute}` at `modalPath` and use
- * {@link useReceiverLayer} inside the bridge-transport composition to
- * wire `CollectorBridge.Host`'s handlers.
+ * Owns the collector-side navigation state (`pendingSource`) and
+ * mounts the two message-sender pipes:
  *
- * Web→host tags are dispatched via the context:
+ *  - {@link MessageSenderToBrowserSnifferProvider} — the modal screen
+ *    installs the `<BrowserSnifferWebView>`'s ref-exposed typed
+ *    sender so the receiver layer's `Click` / `CancelSnifferRequest`
+ *    handlers can dispatch into the live sniffer page.
+ *  - {@link MessageSenderToCollectorProvider} — the app shell's
+ *    `<BridgedWebView>` (mounting the Collector SPA) installs its
+ *    ref-exposed typed sender so the modal screen can forward
+ *    decoded sniffer events back through `CollectorBridge.hostToWeb`.
  *
- *  - `RequestSniffableWebView` advances the pending source + pushes the modal route.
- *  - `Click` / `CancelSnifferRequest` call into `snifferControlRef.current` —
- *    set by the live modal when its `<BrowserSnifferWebView>` mounts.
- *    Null-ref calls (no modal mounted) drop silently.
- *  - `SniffingComplete` / `Open` — placeholder no-ops; future
- *    consumers can drive the modal imperatively through these.
+ * Wrap the app's router Stack with this provider, render the modal
+ * route at `modalPath`, and use {@link useReceiverLayer} inside the
+ * bridge-transport composition to wire `CollectorBridge.Host`'s
+ * handlers.
  */
 const HostProvider = ({
   modalPath = DEFAULT_MODAL_PATH,
   children,
 }: HostProviderProps): JSX.Element => {
-  const router = useRouter()
   const [pendingSource, setPendingSource] = useState<WebViewSource.Any | null>(null)
-  const snifferControlRef = useRef<SnifferControl | null>(null)
-
-  const requestSniffableWebView = useCallback(
-    (source: WebViewSource.Any): void => {
-      setPendingSource(source)
-      router.push(modalPath)
-    },
-    [router, modalPath]
-  )
-
-  const sniffingComplete = useCallback((): void => undefined, [])
-  const open = useCallback((_source: WebViewSource.Any): void => undefined, [])
 
   const value = useMemo<CollectorHostContextValue>(
-    () => ({
-      pendingSource,
-      snifferControlRef,
-      requestSniffableWebView,
-      sniffingComplete,
-      open,
-    }),
-    [pendingSource, requestSniffableWebView, sniffingComplete, open]
+    () => ({ pendingSource, setPendingSource, modalPath }),
+    [pendingSource, modalPath]
   )
 
-  return <CollectorHostContext.Provider value={value}>{children}</CollectorHostContext.Provider>
+  return (
+    <MessageSenderToBrowserSnifferProvider>
+      <MessageSenderToCollectorProvider>
+        <CollectorHostContext.Provider value={value}>{children}</CollectorHostContext.Provider>
+      </MessageSenderToCollectorProvider>
+    </MessageSenderToBrowserSnifferProvider>
+  )
 }
 
 /**
@@ -125,26 +103,37 @@ const useHost = (): CollectorHostContextValue => {
 }
 
 /**
- * Build the host-side `ReceiverLayer` for `CollectorBridge`, closing
- * over the actions exposed by {@link HostProvider}.
+ * Build the host-side `ReceiverLayer` for `CollectorBridge`.
  *
  * Handler bodies:
  *
  *  - `RequestSniffableWebView` — defense-in-depth: rejects any
- *    `{ _tag: 'Uri' }` source whose URI isn't `http(s)://`. The bridge
- *    schema already pins `Uri` to `https://` only, so this branch
- *    only ever runs on a future schema relaxation; until then it's a
- *    belt-and-suspenders log. Otherwise dispatches to
- *    `requestSniffableWebView(source)`.
- *  - `CancelSnifferRequest` / `Click` — drive the active sniffer
- *    page through `snifferControlRef`. Null-ref (no modal mounted)
- *    drops silently — mirrors the bridge's "no peer attached"
- *    behavior for outbound sends.
- *  - `SniffingComplete` / `Open` — forward to the corresponding
- *    context callbacks (currently no-op).
+ *    `{ _tag: 'Uri' }` source whose URI isn't `http(s)://`. The
+ *    bridge schema already pins `Uri` to `https://` only, so this
+ *    branch only ever runs on a future schema relaxation. Otherwise
+ *    sets `pendingSource` and pushes the modal route.
+ *  - `Open` — sets `pendingSource` to the next source so the
+ *    `<BrowserSnifferWebView>` re-mounts at a fresh URL without
+ *    remounting the modal.
+ *  - `SniffingComplete` — closes the modal via `router.back()`.
+ *  - `Click` / `CancelSnifferRequest` — forwarded verbatim through
+ *    {@link useMessageSenderToBrowserSniffer}. The sender suspends
+ *    on `BrowserSnifferWebView`'s `__Ready` handshake and logs an
+ *    error if no modal is mounted (pre-mount drop).
  */
 const useReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collector', 'Host'>> => {
-  const { requestSniffableWebView, sniffingComplete, open, snifferControlRef } = useHost()
+  const { setPendingSource, modalPath } = useHost()
+  const router = useRouter()
+  const sendToSniffer = useMessageSenderToBrowserSniffer()
+
+  const pushModal = useCallback(
+    (source: WebViewSource.Any): void => {
+      setPendingSource(source)
+      router.push(modalPath)
+    },
+    [router, modalPath, setPendingSource]
+  )
+
   return useMemo(
     () =>
       CollectorBridge.Host.ReceiverLayer({
@@ -160,26 +149,14 @@ const useReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collector', 'Host
               )
               return
             }
-            requestSniffableWebView(source)
+            pushModal(source)
           }),
-        CancelSnifferRequest: ({ id }) =>
-          Effect.sync(() => {
-            snifferControlRef.current?.cancelRequest(id)
-          }),
-        SniffingComplete: () =>
-          Effect.sync(() => {
-            sniffingComplete()
-          }),
-        Open: ({ source }) =>
-          Effect.sync(() => {
-            open(source)
-          }),
-        Click: ({ querySelector }) =>
-          Effect.sync(() => {
-            snifferControlRef.current?.click(querySelector)
-          }),
+        Open: ({ source }) => Effect.sync(() => setPendingSource(source)),
+        SniffingComplete: () => Effect.sync(() => router.back()),
+        Click: (message) => sendToSniffer(message),
+        CancelSnifferRequest: (message) => sendToSniffer(message),
       }),
-    [requestSniffableWebView, sniffingComplete, open, snifferControlRef]
+    [pushModal, setPendingSource, router, sendToSniffer]
   )
 }
 
@@ -193,5 +170,11 @@ const useHostBinding = (): HostBinding.HostBinding<typeof CollectorBridge> => {
   return useMemo(() => ({ bridge: CollectorBridge, receiverLayer }), [receiverLayer])
 }
 
+export {
+  useAsMessageSenderToBrowserSniffer,
+  useAsMessageSenderToCollector,
+  useMessageSenderToBrowserSniffer,
+  useMessageSenderToCollector,
+} from './message-sender-pipes.tsx'
 export { HostProvider, useHost, useHostBinding, useReceiverLayer }
-export type { HostProviderProps, SnifferControl }
+export type { HostProviderProps }
