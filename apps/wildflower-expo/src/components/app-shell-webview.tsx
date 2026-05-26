@@ -1,26 +1,24 @@
 import { AppsBridgeExpo } from 'apps-expo'
 import { useCollectorHostBinding } from 'collector-expo'
-import { Effect, type Layer } from 'effect'
-import { type BridgeTransport, type HostBinding } from 'effect-messaging-core'
-import { BridgedWebView } from 'effect-messaging-expo'
+import { Effect } from 'effect'
+import type { BridgeTransport } from 'effect-messaging-core'
+import { BridgedWebView, useLogHostBinding } from 'effect-messaging-expo'
 import { Loader } from 'expo-tundraish'
+import { LocalClientToken } from 'gatekeeper-core/livestore'
 import { GatekeeperBridgeExpo } from 'gatekeeper-expo'
+import { localOrigin$ } from 'local-http-server-core/livestore'
 import type { NavigationBridge } from 'navigation-core'
 import { NavigationBridgeExpo } from 'navigation-expo'
-import { useMemo, type JSX } from 'react'
+import { useCallback, useMemo, type JSX } from 'react'
 import { useFunctionSafeState } from 'react-kitchen-sink'
-import { TunnelStore } from 'tunnel-core/livestore'
 import { html } from 'wildflower-react/embeddable-html'
 
 import { useWildflowerStore } from '../livestore/livestore-store.ts'
-import { useAsNavigationSource } from './navigation-pipe.ts'
+import { defaultNavigationSender, useAsNavigationSource } from './navigation-pipe.ts'
 
 interface AppShellWebViewProps {
-  readonly baseUrl: string
   /** Initial in-SPA route, e.g. `/apps`. */
   readonly route: string
-  /** Bearer token issued to the embedded SPA on boot. */
-  readonly token?: string
   /** Fires every time the SPA emits `RouteChanged`. */
   readonly onRouteChanged?: (event: { pathname: string; canGoBack: boolean }) => void
 }
@@ -28,85 +26,65 @@ interface AppShellWebViewProps {
 type NavigationSender = BridgeTransport.MessageSender<readonly [typeof NavigationBridge], 'Host'>
 
 /**
- * Logged when a navigation message is dispatched before the shell's
- * `<BridgedWebView>` has built its transport. The pipe's own
- * warn-and-drop default would suffice; this wraps it so the
- * `[AppShellWebView]` tag in logs identifies the responsible layer.
- */
-const navigationNotReadySender: NavigationSender = (msg) =>
-  Effect.logWarning(`[AppShellWebView] transport not ready; dropping navigation ${msg._tag}`)
-
-/**
  * The persistent shell that hosts the wildflower-react SPA. Aggregates
- * one {@link HostBinding} per slice and hands the tuple to
- * {@link BridgedWebView}.
+ * one host binding per slice and hands the tuple to {@link BridgedWebView}.
  *
- * The native tab bar lives as a sibling of this component (rendered
- * by the surrounding screen, e.g. `HomeScreen`). To let it dispatch
- * `HostRequestedWebNavigation` from native press handlers, this
- * component wraps `NavigationBridgeExpo.useHostBinding`'s result with
- * an `onTransportReady` that captures the transport's typed sender
- * and registers it into the surrounding `NavigationPipeProvider` via
- * {@link useAsNavigationSource}. Descendants of the pipe provider
- * (the tab bar in particular) call `useNavigationSender()` to get the
- * sender.
+ * Wires the navigation binding's `onTransportReady` into the surrounding
+ * {@link useAsNavigationSource} pipe, so a sibling tab bar can dispatch
+ * `HostRequestedWebNavigation` through the same transport.
  *
- * See [Host Bindings Explanation](../../../../docs/Effect/Host%20Bindings%20Explanation.md)
- * for the binding contract; per-slice policy lives in each
- * `use<Slice>HostBinding` hook.
+ * See [Host Bindings Explanation](../../../../docs/Effect/Host%20Bindings%20Explanation.md).
  */
-const AppShellWebView = ({
-  route,
-  baseUrl,
-  token,
-  onRouteChanged,
-}: AppShellWebViewProps): JSX.Element => {
+const AppShellWebView = ({ route, onRouteChanged }: AppShellWebViewProps): JSX.Element => {
   const store = useWildflowerStore()
-  const tunnelStoreLayer: Layer.Layer<TunnelStore> = useMemo(
-    () => TunnelStore.layerFrom(store),
-    [store]
-  )
+  // The embedded SPA always loads against the loopback origin so its
+  // API calls hit `127.0.0.1` directly.
+  const loopbackBaseUrl = store.useQuery(localOrigin$)
+  // `localClientToken` is passed to gatekeeper's host binding so the
+  // embedded SPA is authenticated on first load. `null` while bootstrap
+  // is still in flight or the mint failed.
+  const { value: localClientToken } = store.useQuery(LocalClientToken.queries.current$)
+  const token = localClientToken ?? undefined
 
-  // `useFunctionSafeState` stores the sender callback verbatim — a
-  // raw `useState` would interpret the function as a state updater.
+  // `useFunctionSafeState` stores the sender callback verbatim — a raw
+  // `useState` would interpret the function as a state updater.
   const [navigationSender, setNavigationSender] = useFunctionSafeState<NavigationSender | null>(
     null
   )
 
-  // Plug the captured sender into the navigation pipe so the tab bar
-  // sibling can dispatch through it. Falls back to the local warning
-  // sender until the transport finishes building.
-  useAsNavigationSource(navigationSender ?? navigationNotReadySender)
+  // Register the captured sender into the pipe. Until `onTransportReady`
+  // fires, the pipe's built-in `defaultNavigationSender` (warn-and-drop)
+  // handles any pre-transport dispatches.
+  useAsNavigationSource(navigationSender ?? defaultNavigationSender)
 
-  const navigationBaseBinding = NavigationBridgeExpo.useHostBinding({
-    initialRoute: route,
-    onRouteChanged,
-  })
-  const navigationBinding = useMemo<HostBinding.HostBinding<typeof NavigationBridge>>(
-    () => ({
-      ...navigationBaseBinding,
-      // The base hook doesn't ship `onTransportReady`; wrap so the
-      // tab bar can dispatch into the same transport the shell built.
-      // Storing the sender in state (rather than a ref) triggers the
-      // `useAsNavigationSource` re-register on next render — without
-      // it, the pipe stays on the warn-and-drop default.
-      onTransportReady: (send) => Effect.sync(() => setNavigationSender(send)),
-    }),
-    [navigationBaseBinding, setNavigationSender]
+  const onNavigationTransportReady = useCallback(
+    (send: NavigationSender) => Effect.sync(() => setNavigationSender(send)),
+    [setNavigationSender]
   )
 
+  const navigationBinding = NavigationBridgeExpo.useHostBinding({
+    initialRoute: route,
+    onRouteChanged,
+    onTransportReady: onNavigationTransportReady,
+  })
   const gatekeeperBinding = GatekeeperBridgeExpo.useHostBinding({ token })
   const collectorBinding = useCollectorHostBinding()
-  const appsBinding = AppsBridgeExpo.useHostBinding({ tunnelStoreLayer })
+  const appsBinding = AppsBridgeExpo.useHostBinding({ store })
+  const logBinding = useLogHostBinding()
 
-  const loadFrom = useMemo(() => ({ _tag: 'html', html, baseUrl }) as const, [baseUrl])
+  const loadFrom = useMemo(
+    () => ({ _tag: 'html', html, baseUrl: loopbackBaseUrl }) as const,
+    [loopbackBaseUrl]
+  )
 
-  // Memoize the tuple so `BridgedWebView`'s transport doesn't rebuild
-  // on every render — the component's contract requires stable
-  // `bindings` identity (see its TSDoc).
+  // Memoize the tuple so `BridgedWebView`'s transport doesn't rebuild on
+  // every render — the component's contract requires stable `bindings`
+  // identity (see its TSDoc). Bridge ordering matches the page-side
+  // tuple in `wildflower-react`'s transport provider.
   const bindings = useMemo(
-    () => [navigationBinding, gatekeeperBinding, collectorBinding, appsBinding] as const,
-    [navigationBinding, gatekeeperBinding, collectorBinding, appsBinding]
+    () =>
+      [navigationBinding, gatekeeperBinding, collectorBinding, appsBinding, logBinding] as const,
+    [navigationBinding, gatekeeperBinding, collectorBinding, appsBinding, logBinding]
   )
 
   return <BridgedWebView bindings={bindings} loadFrom={loadFrom} loader={<Loader />} />

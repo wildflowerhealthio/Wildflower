@@ -31,6 +31,11 @@ interface MadeNamedPipe<
    * Provider — safe to include in `useEffect` / `useMemo` deps.
    */
   readonly useSender: () => BridgeTransport.MessageSender<TBridges, TSide>
+  /**
+   * The pipe's built-in warn-and-drop sender — the named analogue of
+   * {@link MadeMessageSenderPipe.defaultSender}.
+   */
+  readonly defaultSender: BridgeTransport.MessageSender<TBridges, TSide>
 }
 
 /**
@@ -70,6 +75,7 @@ const makeNamedPipe = <
     Provider: InnerProvider,
     useAsPipeMessageSender,
     usePipeMessageSender,
+    defaultSender,
   } = makeMessageSenderPipe(name, bridges, side)
 
   // Wrap the inner provider so we can give it a friendlier displayName
@@ -90,6 +96,7 @@ const makeNamedPipe = <
     },
     useAsSource: useAsPipeMessageSender,
     useSender: usePipeMessageSender,
+    defaultSender,
   }
 }
 

@@ -1,29 +1,91 @@
 import { act, render, waitFor } from '@testing-library/react-native'
-import { Effect as EffectType, type Layer as LayerType } from 'effect'
+import { Effect as EffectType } from 'effect'
+import type { BridgeTransport } from 'effect-messaging-core'
+import type { NavigationBridge as NavigationBridgeType } from 'navigation-core'
 import * as React from 'react'
 import type { ReactElement, ReactNode } from 'react'
 
-// `mock*` prefix is required for babel-plugin-jest-hoist to leave the
-// shared captures alone when it hoists `jest.mock` calls above
+import type * as BindingMocks from './__test-support__/app-shell-binding-mocks.ts'
+
+// `mock*` prefix is required for babel-plugin-jest-hoist to leave these
+// shared captures alone when it hoists the `jest.mock` factories above
 // non-mock identifiers.
+//
+// The onTransportReady slot is typed against the production
+// `BridgeTransport.MessageSender` rather than a widened
+// `{ readonly _tag: string }`, so a mismatched-tag bug in production
+// (a binding shipping `{ _tag: 'NotAFile' }` etc.) fails this test at
+// compile time.
+type NavigationSender = BridgeTransport.MessageSender<
+  readonly [typeof NavigationBridgeType],
+  'Host'
+>
+
+type NavigationBindingMock = {
+  readonly bridge: { readonly name: 'Navigation' }
+  readonly receiverLayer: unknown
+  readonly initialMessages?: ReadonlyArray<unknown>
+  readonly onTransportReady?: (send: NavigationSender) => EffectType.Effect<void>
+}
+
+type GatekeeperBindingMock = {
+  readonly bridge: { readonly name: 'Gatekeeper' }
+  readonly receiverLayer: unknown
+  readonly initialMessages?: ReadonlyArray<unknown>
+  readonly onTransportReady?: (
+    send: (msg: {
+      readonly _tag: 'AuthTokenIssued'
+      readonly token: string
+    }) => EffectType.Effect<void>
+  ) => EffectType.Effect<void>
+}
+
+type CollectorBindingMock = {
+  readonly bridge: { readonly name: 'Collector' }
+  readonly receiverLayer: unknown
+  readonly initialMessages?: ReadonlyArray<unknown>
+}
+
+type AppsBindingMock = {
+  readonly bridge: { readonly name: 'Apps' }
+  readonly receiverLayer: unknown
+  readonly initialMessages?: ReadonlyArray<unknown>
+}
+
+type LogBindingMock = {
+  readonly bridge: { readonly name: 'Log' }
+  readonly receiverLayer: unknown
+  readonly initialMessages?: ReadonlyArray<unknown>
+}
+
+type AnyBindingMock =
+  | NavigationBindingMock
+  | GatekeeperBindingMock
+  | CollectorBindingMock
+  | AppsBindingMock
+  | LogBindingMock
+
+type BindingByName<TName extends AnyBindingMock['bridge']['name']> = Extract<
+  AnyBindingMock,
+  { readonly bridge: { readonly name: TName } }
+>
+
+type AppShellBindings = ReadonlyArray<AnyBindingMock>
+
 let mockLastBridgedWebViewProps: {
   readonly loadFrom: { readonly _tag: 'html'; readonly html: string; readonly baseUrl: string }
-  readonly bindings: ReadonlyArray<{
-    readonly bridge: { readonly name?: string }
-    readonly receiverLayer: unknown
-    readonly initialMessages?: ReadonlyArray<unknown>
-    readonly onTransportReady?: (
-      send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
-    ) => EffectType.Effect<void>
-  }>
+  readonly bindings: AppShellBindings
 } | null = null
 
 // `BridgedWebView` is exercised in its own package's tests; here we
 // capture the props it receives so we can assert on the aggregated
-// binding tuple and pull each binding's lifecycle callbacks for
-// direct invocation.
+// binding tuple and pull each binding's lifecycle callbacks for direct
+// invocation. `useLogHostBinding` resolves through the same module.
 jest.mock('effect-messaging-expo', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
+  const mocks = jest.requireActual<typeof BindingMocks>(
+    './__test-support__/app-shell-binding-mocks.ts'
+  )
   return {
     BridgedWebView: function MockBridgedWebView(
       props: NonNullable<typeof mockLastBridgedWebViewProps>
@@ -31,83 +93,67 @@ jest.mock('effect-messaging-expo', () => {
       mockLastBridgedWebViewProps = props
       return ReactInner.createElement('BridgedWebView', null, null)
     },
+    useLogHostBinding: (): object => mocks.makeLogMock(),
   }
 })
 
-// Slice host-binding hooks: each returns a stub binding shaped like
-// `HostBinding.HostBinding<typeof Bridge>`. Identity-equality on
-// `bridge.name` is enough for the assertions below.
-let mockNavigationOptions: { initialRoute?: string; onRouteChanged?: unknown } | null = null
+let mockNavigationOptions: {
+  initialRoute?: string
+  onRouteChanged?: unknown
+  onTransportReady?: NavigationBindingMock['onTransportReady']
+} | null = null
 jest.mock('navigation-expo', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
+  const mocks = jest.requireActual<typeof BindingMocks>(
+    './__test-support__/app-shell-binding-mocks.ts'
   )
   return {
     NavigationBridgeExpo: {
-      useHostBinding: (options: { initialRoute?: string; onRouteChanged?: unknown }): object => {
+      useHostBinding: (options: {
+        initialRoute?: string
+        onRouteChanged?: unknown
+        onTransportReady?: NavigationBindingMock['onTransportReady']
+      }): object => {
         mockNavigationOptions = options
-        return {
-          bridge: { name: 'Navigation' },
-          receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
-          initialMessages:
-            options.initialRoute === undefined
-              ? undefined
-              : [{ _tag: 'HostRequestedWebNavigation' as const, path: options.initialRoute }],
-        }
+        return mocks.makeNavigationMock({
+          initialRoute: options.initialRoute,
+          onTransportReady: options.onTransportReady,
+        })
       },
     },
   }
 })
 
 jest.mock('gatekeeper-expo', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
+  const mocks = jest.requireActual<typeof BindingMocks>(
+    './__test-support__/app-shell-binding-mocks.ts'
   )
   return {
     GatekeeperBridgeExpo: {
-      useHostBinding: (options: { token?: string } = {}): object => ({
-        bridge: { name: 'Gatekeeper' },
-        receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
-        initialMessages: [{ _tag: 'WaitForToken' as const }],
-        onTransportReady:
-          options.token === undefined
-            ? undefined
-            : (
-                send: (msg: {
-                  readonly _tag: string
-                  readonly [k: string]: unknown
-                }) => EffectType.Effect<void>
-              ) => send({ _tag: 'AuthTokenIssued', token: options.token }),
-      }),
+      useHostBinding: (options: { token?: string } = {}): object =>
+        mocks.makeGatekeeperMock(options),
     },
   }
 })
 
 jest.mock('collector-expo', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
+  const mocks = jest.requireActual<typeof BindingMocks>(
+    './__test-support__/app-shell-binding-mocks.ts'
   )
   return {
-    useCollectorHostBinding: (): object => ({
-      bridge: { name: 'Collector' },
-      receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
-    }),
+    useCollectorHostBinding: (): object => mocks.makeCollectorMock(),
   }
 })
 
-let mockAppsOptions: { tunnelStoreLayer?: unknown } | null = null
+let mockAppsOptions: { store?: unknown } | null = null
 jest.mock('apps-expo', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
+  const mocks = jest.requireActual<typeof BindingMocks>(
+    './__test-support__/app-shell-binding-mocks.ts'
   )
   return {
     AppsBridgeExpo: {
-      useHostBinding: (options: { tunnelStoreLayer?: unknown }): object => {
+      useHostBinding: (options: { store?: unknown }): object => {
         mockAppsOptions = options
-        return {
-          bridge: { name: 'Apps' },
-          receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
-        }
+        return mocks.makeAppsMock()
       },
     },
   }
@@ -120,20 +166,36 @@ jest.mock('navigation-core', () => ({
   NavigationBridge: { name: 'Navigation' },
 }))
 
-jest.mock('tunnel-core/livestore', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
-  )
-  const fakeLayer = effect.Layer.effectDiscard(effect.Effect.void)
-  return {
-    TunnelStore: {
-      layerFrom: (_store: unknown): LayerType.Layer<never> => fakeLayer,
+// `Symbol.for(...)` (not `Symbol(...)`) so the mock factory — hoisted
+// above the `const mockLocalOriginQueryId = ...` initializer — and the
+// per-test useQuery handler resolve to the same symbol via the global
+// registry.
+const mockLocalOriginQueryId = Symbol.for('mock-wildflower-localOrigin$')
+const mockLocalClientTokenQueryId = Symbol.for('mock-wildflower-LocalClientToken.current$')
+
+jest.mock('local-http-server-core/livestore', () => ({
+  localOrigin$: Symbol.for('mock-wildflower-localOrigin$'),
+}))
+
+jest.mock('gatekeeper-core/livestore', () => ({
+  LocalClientToken: {
+    queries: {
+      current$: Symbol.for('mock-wildflower-LocalClientToken.current$'),
     },
-  }
+  },
+}))
+
+const defaultStoreMock = (): { useQuery: (q: unknown) => unknown } => ({
+  useQuery: (q: unknown): unknown => {
+    if (q === mockLocalOriginQueryId) return 'https://example.test'
+    if (q === mockLocalClientTokenQueryId) return { value: null }
+    throw new Error('unexpected query')
+  },
 })
 
+let mockWildflowerStoreImpl: () => { useQuery: (q: unknown) => unknown } = defaultStoreMock
 jest.mock('../livestore/livestore-store.ts', () => ({
-  useWildflowerStore: (): object => ({}),
+  useWildflowerStore: (): unknown => mockWildflowerStoreImpl(),
 }))
 
 jest.mock('wildflower-react/embeddable-html', () => ({ html: '<!doctype html><html></html>' }))
@@ -144,153 +206,240 @@ jest.mock('expo-tundraish', () => {
 })
 
 import { AppShellWebView } from './app-shell-webview.tsx'
-import { NavigationPipeProvider, useNavigationSender } from './navigation-pipe.ts'
+import {
+  NavigationPipeProvider,
+  useAsNavigationSource,
+  useNavigationSender,
+} from './navigation-pipe.ts'
+
+const storeMockWithToken =
+  (token: string): (() => { useQuery: (q: unknown) => unknown }) =>
+  () => ({
+    useQuery: (q: unknown): unknown => {
+      if (q === mockLocalOriginQueryId) return 'https://example.test'
+      if (q === mockLocalClientTokenQueryId) return { value: token }
+      throw new Error('unexpected query')
+    },
+  })
 
 beforeEach(() => {
   mockLastBridgedWebViewProps = null
   mockNavigationOptions = null
   mockAppsOptions = null
+  mockWildflowerStoreImpl = defaultStoreMock
 })
 
 const mountInPipe = (children: ReactNode): ReturnType<typeof render> =>
   render(<NavigationPipeProvider>{children}</NavigationPipeProvider>)
 
-const expectBindings = (): NonNullable<typeof mockLastBridgedWebViewProps>['bindings'] => {
+const expectBindings = (): AppShellBindings => {
   expect(mockLastBridgedWebViewProps).not.toBeNull()
   if (mockLastBridgedWebViewProps === null) throw new Error('BridgedWebView never mounted')
   return mockLastBridgedWebViewProps.bindings
 }
 
-const findBindingByName = (
-  bindings: NonNullable<typeof mockLastBridgedWebViewProps>['bindings'],
-  name: string
-): (typeof bindings)[number] | undefined => bindings.find((b): boolean => b.bridge.name === name)
+const findBindingByName = <TName extends AnyBindingMock['bridge']['name']>(
+  bindings: AppShellBindings,
+  name: TName
+): BindingByName<TName> | undefined =>
+  bindings.find((b): b is BindingByName<TName> => b.bridge.name === name)
 
 describe('AppShellWebView', () => {
-  it('mounts BridgedWebView with all four slice bindings in declaration order', () => {
-    mountInPipe(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
+  it('mounts BridgedWebView with all five slice bindings in declaration order', () => {
+    mountInPipe(<AppShellWebView route="/apps" />)
     const bindings = expectBindings()
     expect(bindings.map((b) => b.bridge.name)).toEqual([
       'Navigation',
       'Gatekeeper',
       'Collector',
       'Apps',
+      'Log',
     ])
   })
 
-  it('forwards baseUrl into BridgedWebView via loadFrom', () => {
-    mountInPipe(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
+  it('forwards the loopback origin from the store into BridgedWebView via loadFrom', () => {
+    mountInPipe(<AppShellWebView route="/apps" />)
     expect(mockLastBridgedWebViewProps?.loadFrom.baseUrl).toBe('https://example.test')
   })
 
   it('passes initialRoute + onRouteChanged into the navigation host-binding hook', () => {
     const onRouteChanged = jest.fn()
-    mountInPipe(
-      <AppShellWebView
-        baseUrl="https://example.test"
-        route="/apps"
-        onRouteChanged={onRouteChanged}
-      />
-    )
+    mountInPipe(<AppShellWebView route="/apps" onRouteChanged={onRouteChanged} />)
     expect(mockNavigationOptions?.initialRoute).toBe('/apps')
     expect(mockNavigationOptions?.onRouteChanged).toBe(onRouteChanged)
   })
 
+  it('passes an onTransportReady wrapper into the navigation host-binding hook', () => {
+    // The shell supplies the wrapper so the captured transport sender
+    // can be plugged into the navigation pipe.
+    mountInPipe(<AppShellWebView route="/apps" />)
+    expect(mockNavigationOptions?.onTransportReady).toBeDefined()
+  })
+
   it('seeds HostRequestedWebNavigation via the navigation binding initialMessages', () => {
-    mountInPipe(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
+    mountInPipe(<AppShellWebView route="/apps" />)
     const nav = findBindingByName(expectBindings(), 'Navigation')
     expect(nav?.initialMessages).toEqual([{ _tag: 'HostRequestedWebNavigation', path: '/apps' }])
   })
 
-  it('attaches an onTransportReady wrapper to the navigation binding', () => {
-    // The base `useNavigationHostBinding` doesn't ship one — the shell
-    // adds it so the captured transport sender can be plugged into
-    // the navigation pipe.
-    mountInPipe(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
-    const nav = findBindingByName(expectBindings(), 'Navigation')
-    expect(nav?.onTransportReady).toBeDefined()
+  it('threads the wildflower store into the apps host binding', () => {
+    mountInPipe(<AppShellWebView route="/apps" />)
+    // `apps-expo`'s host binding now takes the store directly (and
+    // builds the TunnelStore layer internally).
+    expect(mockAppsOptions?.store).toBeDefined()
   })
 
-  it('registers the captured navigation sender into the pipe so descendants resolve it', async () => {
-    // Wrap in a single-slot tuple so the closure assignment survives
-    // TS's `let` widening across async boundaries — `senderBox[0]`
-    // narrows cleanly after a null check, whereas a `let` declared
-    // outside the closure re-widens to `T | null` at the call site.
-    type NavSender = ReturnType<typeof useNavigationSender>
-    const senderBox: { current: NavSender | null } = { current: null }
+  describe('token issuance via gatekeeper', () => {
+    it('omits the gatekeeper onTransportReady when no token is in the store', () => {
+      // Default mock returns `null` for `LocalClientToken`.
+      mountInPipe(<AppShellWebView route="/apps" />)
+      const gk = findBindingByName(expectBindings(), 'Gatekeeper')
+      expect(gk?.onTransportReady).toBeUndefined()
+    })
 
-    function SenderProbe(): null {
-      senderBox.current = useNavigationSender()
-      return null
+    it('issues AuthTokenIssued through the gatekeeper binding when the store has a token', async () => {
+      mockWildflowerStoreImpl = storeMockWithToken('bearer-xyz')
+      mountInPipe(<AppShellWebView route="/apps" />)
+      const gk = findBindingByName(expectBindings(), 'Gatekeeper')
+      if (gk?.onTransportReady === undefined) throw new Error('gatekeeper onTransportReady missing')
+
+      const sent: Array<{ readonly _tag: 'AuthTokenIssued'; readonly token: string }> = []
+      await EffectType.runPromise(
+        gk.onTransportReady((msg) =>
+          EffectType.sync((): void => {
+            sent.push(msg)
+          })
+        )
+      )
+      expect(sent).toContainEqual({ _tag: 'AuthTokenIssued', token: 'bearer-xyz' })
+    })
+
+    it('keeps the bearer token out of every binding initialMessages', () => {
+      // Token round-trips through gatekeeper's `onTransportReady`;
+      // leaking it into `initialMessages` would serialize it into the
+      // WebView URL.
+      mockWildflowerStoreImpl = storeMockWithToken('bearer-xyz')
+      mountInPipe(<AppShellWebView route="/apps" />)
+      const bindings = expectBindings()
+      const allInitial = bindings.flatMap((b) => b.initialMessages ?? [])
+      expect(JSON.stringify(allInitial)).not.toContain('bearer-xyz')
+    })
+  })
+
+  describe('navigation pipe wiring', () => {
+    // The shell's navigation-binding-`onTransportReady` → pipe → sibling
+    // consumer flow is the most stateful seam in the file. The three
+    // tests below split it into single-seam assertions identified in PR
+    // #87 review.
+
+    type NavSender = ReturnType<typeof useNavigationSender>
+
+    const setupSenderProbe = (): {
+      readonly senderBox: { current: NavSender | null }
+      readonly SenderProbe: () => null
+    } => {
+      const senderBox: { current: NavSender | null } = { current: null }
+      function SenderProbe(): null {
+        senderBox.current = useNavigationSender()
+        return null
+      }
+      return { senderBox, SenderProbe }
     }
 
-    mountInPipe(
-      <>
-        <AppShellWebView baseUrl="https://example.test" route="/apps" />
-        <SenderProbe />
-      </>
-    )
+    it('the navigation binding onTransportReady runs without error and captures the supplied sender', async () => {
+      // Seam (a): wrapper-side. Running the binding's onTransportReady
+      // succeeds; the side effect (committing the sender into shell
+      // state) is observed via the pipe in (c). The test asserts the
+      // wrapper itself doesn't blow up and that no dispatches leak
+      // through before a press.
+      mountInPipe(<AppShellWebView route="/apps" />)
+      const nav = findBindingByName(expectBindings(), 'Navigation')
+      const navOnTransportReady = nav?.onTransportReady
+      if (navOnTransportReady === undefined) throw new Error('navigation onTransportReady missing')
 
-    const nav = findBindingByName(expectBindings(), 'Navigation')
-    const navOnTransportReady = nav?.onTransportReady
-    if (navOnTransportReady === undefined) throw new Error('navigation onTransportReady missing')
+      const dispatched: Array<{ readonly _tag: string }> = []
+      const fakeTransportSender: NavSender = (msg) =>
+        EffectType.sync((): void => {
+          dispatched.push(msg)
+        })
 
-    const dispatched: Array<{ readonly _tag: string }> = []
-    const fakeTransportSender = (msg: {
-      readonly _tag: string
-      readonly [k: string]: unknown
-    }): EffectType.Effect<void> => EffectType.sync(() => dispatched.push(msg))
-
-    // Fire the binding's `onTransportReady` — the shell's wrapper
-    // commits the sender into state, triggers a re-render, and
-    // `useAsNavigationSource` registers it in the pipe.
-    await act(async () => {
-      await EffectType.runPromise(navOnTransportReady(fakeTransportSender))
+      await act(async () => {
+        await EffectType.runPromise(navOnTransportReady(fakeTransportSender))
+      })
+      expect(dispatched).toEqual([])
     })
 
-    // The probe resolved `useNavigationSender` against the pipe's
-    // stable proxy; calling it routes through the now-registered
-    // fake transport sender.
-    await waitFor(() => {
-      expect(senderBox.current).not.toBeNull()
+    it('useNavigationSender resolves to the registered sender (pure pipe wiring)', async () => {
+      // Seam (b): pipe-only. No <AppShellWebView> involvement — just
+      // verifies the wildflower-local pipe forwards correctly when a
+      // sender is registered through `useAsNavigationSource`. Lives in
+      // this file rather than navigation-pipe.test.ts because the
+      // wildflower-local pipe is currently untested in isolation; the
+      // upstream `makeNamedPipe` tests cover the generic case.
+      const { senderBox, SenderProbe } = setupSenderProbe()
+
+      const dispatched: Array<{ readonly _tag: string }> = []
+      const fakeSender: NavSender = (msg) =>
+        EffectType.sync((): void => {
+          dispatched.push(msg)
+        })
+
+      function Register(): null {
+        useAsNavigationSource(fakeSender)
+        return null
+      }
+
+      mountInPipe(
+        <>
+          <Register />
+          <SenderProbe />
+        </>
+      )
+
+      await waitFor(() => {
+        expect(senderBox.current).not.toBeNull()
+      })
+      const sender = senderBox.current
+      if (sender === null) throw new Error('SenderProbe never resolved')
+      await EffectType.runPromise(sender({ _tag: 'HostRequestedWebNavigation', path: '/x' }))
+      expect(dispatched).toContainEqual({ _tag: 'HostRequestedWebNavigation', path: '/x' })
     })
-    const sender = senderBox.current
-    if (sender === null) throw new Error('SenderProbe never resolved')
-    await EffectType.runPromise(sender({ _tag: 'HostRequestedWebNavigation', path: '/test' }))
-    expect(dispatched).toContainEqual({ _tag: 'HostRequestedWebNavigation', path: '/test' })
-  })
 
-  it('keeps the bearer token out of every binding initialMessages', () => {
-    // Token round-trips through gatekeeper's `onTransportReady`
-    // (see `useGatekeeperHostBinding`); leaking it into
-    // `initialMessages` would serialize it into the WebView URL.
-    mountInPipe(<AppShellWebView baseUrl="https://example.test" route="/apps" token="bearer-xyz" />)
-    const bindings = expectBindings()
-    const allInitial = bindings.flatMap((b) => b.initialMessages ?? [])
-    expect(JSON.stringify(allInitial)).not.toContain('bearer-xyz')
-  })
+    it('end-to-end smoke: a tab-bar-side dispatch routes through the captured transport sender', async () => {
+      // Seam (c): full path. Mount the shell + a SenderProbe sibling,
+      // fire the navigation binding's onTransportReady, then dispatch
+      // through the probe and assert the fake transport saw the
+      // message.
+      const { senderBox, SenderProbe } = setupSenderProbe()
 
-  it("issues AuthTokenIssued through the gatekeeper binding's onTransportReady when a token is provided", async () => {
-    mountInPipe(<AppShellWebView baseUrl="https://example.test" route="/apps" token="bearer-xyz" />)
-    const gk = findBindingByName(expectBindings(), 'Gatekeeper')
-    if (gk?.onTransportReady === undefined) throw new Error('gatekeeper onTransportReady missing')
+      mountInPipe(
+        <>
+          <AppShellWebView route="/apps" />
+          <SenderProbe />
+        </>
+      )
 
-    const sent: Array<{ readonly _tag: string }> = []
-    await EffectType.runPromise(gk.onTransportReady((msg) => EffectType.sync(() => sent.push(msg))))
-    expect(sent).toContainEqual({ _tag: 'AuthTokenIssued', token: 'bearer-xyz' })
-  })
+      const nav = findBindingByName(expectBindings(), 'Navigation')
+      const navOnTransportReady = nav?.onTransportReady
+      if (navOnTransportReady === undefined) throw new Error('navigation onTransportReady missing')
 
-  it('omits the gatekeeper onTransportReady when no token is provided', () => {
-    mountInPipe(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
-    const gk = findBindingByName(expectBindings(), 'Gatekeeper')
-    expect(gk?.onTransportReady).toBeUndefined()
-  })
+      const dispatched: Array<{ readonly _tag: string }> = []
+      const fakeTransportSender: NavSender = (msg) =>
+        EffectType.sync((): void => {
+          dispatched.push(msg)
+        })
 
-  it('threads the tunnelStoreLayer into the apps host binding', () => {
-    mountInPipe(<AppShellWebView baseUrl="https://example.test" route="/apps" />)
-    // `apps-expo`'s host binding needs `TunnelStore` discharged — the
-    // shell constructs the layer from the wildflower store and hands
-    // it in.
-    expect(mockAppsOptions?.tunnelStoreLayer).toBeDefined()
+      await act(async () => {
+        await EffectType.runPromise(navOnTransportReady(fakeTransportSender))
+      })
+
+      await waitFor(() => {
+        expect(senderBox.current).not.toBeNull()
+      })
+      const sender = senderBox.current
+      if (sender === null) throw new Error('SenderProbe never resolved')
+      await EffectType.runPromise(sender({ _tag: 'HostRequestedWebNavigation', path: '/test' }))
+      expect(dispatched).toContainEqual({ _tag: 'HostRequestedWebNavigation', path: '/test' })
+    })
   })
 })

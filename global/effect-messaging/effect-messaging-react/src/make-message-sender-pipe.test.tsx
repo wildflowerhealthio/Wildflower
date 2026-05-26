@@ -110,6 +110,30 @@ describe('makeMessageSenderPipe — examples', () => {
     expect(Provider.displayName).toBe('TaggedPipeMessageSenderPipeContext')
   })
 
+  test('exposes a defaultSender that succeeds with a warn-and-drop log', async () => {
+    const { defaultSender } = makeMessageSenderPipe('Test', testBridges, 'Host')
+    const exit = await Effect.runPromise(Effect.exit(defaultSender({ _tag: 'HostBackRequested' })))
+    expect(exit._tag).toBe('Success')
+  })
+
+  test('passing defaultSender into useAsPipeMessageSender preserves the warn-and-drop behavior', async () => {
+    const { Provider, useAsPipeMessageSender, usePipeMessageSender, defaultSender } =
+      makeMessageSenderPipe('Test', testBridges, 'Host')
+
+    const { result } = renderHook(
+      () => {
+        useAsPipeMessageSender(defaultSender)
+        return usePipeMessageSender()
+      },
+      {
+        wrapper: ({ children }) => <Provider>{children}</Provider>,
+      }
+    )
+
+    const exit = await Effect.runPromise(Effect.exit(result.current({ _tag: 'HostBackRequested' })))
+    expect(exit._tag).toBe('Success')
+  })
+
   test('usePipeMessageSender returns an identity-stable function across re-renders', () => {
     const { Provider, usePipeMessageSender } = makeMessageSenderPipe('Test', testBridges, 'Host')
 
