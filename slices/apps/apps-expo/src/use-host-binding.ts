@@ -8,7 +8,13 @@ import { ReceiverLayer } from './host-receiver-layer.ts'
 interface UseAppsHostBindingOptions {
   /**
    * Discharges the `TunnelStore` Tag the receiver layer needs. Hosts
-   * construct this via `TunnelStore.layerFrom(store)` and memoize it.
+   * construct this via `TunnelStore.layerFrom(store)` — **callers must
+   * memoize it** (the host shell typically wraps it in its own
+   * `useMemo([store])`). The hook's `useMemo` dep list compares the
+   * layer by reference; passing a fresh `TunnelStore.layerFrom(store)`
+   * on every render rebuilds the binding (and, transitively, the
+   * receiver layer) each time, which the host shell will then treat as
+   * a fresh transport setup.
    */
   readonly tunnelStoreLayer: Layer.Layer<TunnelStore>
 }

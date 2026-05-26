@@ -23,14 +23,11 @@ const ReceiverLayer: Layer.Layer<
   never,
   TunnelStore
 > = Layer.unwrapEffect(
-  Effect.gen(function* () {
-    const tunnelStore = yield* TunnelStore
-    return AppsBridge.Host.ReceiverLayer({
+  Effect.map(TunnelStore, (tunnelStore) =>
+    AppsBridge.Host.ReceiverLayer({
       RequestTunnel: () =>
-        Effect.gen(function* () {
-          yield* commitRequestedRunning(tunnelStore, true)
-          return yield* awaitTunnelOrigin(tunnelStore)
-        }).pipe(
+        commitRequestedRunning(tunnelStore, true).pipe(
+          Effect.andThen(awaitTunnelOrigin(tunnelStore)),
           Effect.matchCauseEffect({
             onSuccess: (origin) => AppsBridge.Host.send({ _tag: 'TunnelStarted', origin }),
             onFailure: (cause) =>
@@ -38,7 +35,7 @@ const ReceiverLayer: Layer.Layer<
           })
         ),
     })
-  })
+  )
 )
 
 export { ReceiverLayer }

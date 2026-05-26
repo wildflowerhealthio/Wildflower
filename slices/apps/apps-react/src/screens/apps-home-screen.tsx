@@ -1,6 +1,7 @@
 import { AppsHttpApiClient } from 'apps-core/clients'
 import type { Schemas } from 'apps-core/http-api-definition'
 import { Effect, type Schema } from 'effect'
+import { stripTrailingSlash } from 'kitchen-sink'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Await } from 'react-router'
@@ -91,11 +92,11 @@ const AppsHomeBody = ({ tunnel, apps, onChanged }: AppsHomeBodyProps): JSX.Eleme
     //    request one via the bridge if it isn't yet.
     const launchPath = `/apps/${encodeURIComponent(app.id)}`
     if (!app.requiresTunnel) {
-      window.location.href = `${window.location.origin.replace(/\/$/, '')}${launchPath}`
+      window.location.href = `${stripTrailingSlash(window.location.origin)}${launchPath}`
       return
     }
     if (tunnel.running) {
-      window.location.href = `${tunnel.servedOrigin.replace(/\/$/, '')}${launchPath}`
+      window.location.href = `${stripTrailingSlash(tunnel.servedOrigin)}${launchPath}`
       return
     }
     // Embedding Expo host? Ask it to start its tunnel via the bridge,
@@ -106,7 +107,7 @@ const AppsHomeBody = ({ tunnel, apps, onChanged }: AppsHomeBodyProps): JSX.Eleme
       setError(`Tunnel failed: ${response.error}`)
       return
     }
-    window.location.href = `${response.origin.replace(/\/$/, '')}${launchPath}`
+    window.location.href = `${stripTrailingSlash(response.origin)}${launchPath}`
   }
 
   return (

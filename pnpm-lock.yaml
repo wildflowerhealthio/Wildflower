@@ -1445,6 +1445,9 @@ importers:
       effect-messaging-react:
         specifier: workspace:*
         version: link:../../../global/effect-messaging/effect-messaging-react
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
       react:
         specifier: 'catalog:'
         version: 19.1.0
