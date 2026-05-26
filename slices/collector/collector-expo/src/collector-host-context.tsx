@@ -1,5 +1,5 @@
-/* oxlint-disable react/only-export-components -- `HostProvider` is
-   the file's only component; `useCollectorHost` is its companion hook,
+/* oxlint-disable react/only-export-components -- `CollectorHostProvider`
+   is the file's only component; `useCollectorHost` is its companion hook,
    and lifting the hook into a third file would force a cross-file
    import of the otherwise-private context. */
 import type { WebViewSource } from 'collector-fundamentals/model'
@@ -22,7 +22,7 @@ interface CollectorHostContextValue {
 
 const CollectorHostContext = createContext<CollectorHostContextValue | null>(null)
 
-interface HostProviderProps {
+interface CollectorHostProviderProps {
   /**
    * Path of the file-system route that hosts the collector modal.
    * Defaults to `'/collector-modal'`.
@@ -46,14 +46,14 @@ const DEFAULT_MODAL_PATH = '/collector-modal' as const
  * typed senders.
  *
  * Wrap the app's router Stack with this provider, render the modal
- * route at `modalPath`, and use `useReceiverLayer` inside the
- * bridge-transport composition to wire `CollectorBridge.Host`'s
+ * route at `modalPath`, and use `useCollectorReceiverLayer` inside
+ * the bridge-transport composition to wire `CollectorBridge.Host`'s
  * handlers.
  */
-const HostProvider = ({
+const CollectorHostProvider = ({
   modalPath = DEFAULT_MODAL_PATH,
   children,
-}: HostProviderProps): JSX.Element => {
+}: CollectorHostProviderProps): JSX.Element => {
   const [pendingSource, setPendingSource] = useState<WebViewSource.Any | null>(null)
 
   const value = useMemo<CollectorHostContextValue>(
@@ -72,16 +72,16 @@ const HostProvider = ({
 
 /**
  * Read the collector host context. Throws when called outside a
- * {@link HostProvider} — the same fail-fast policy the rest of the
- * slice contexts use.
+ * {@link CollectorHostProvider} — the same fail-fast policy the rest
+ * of the slice contexts use.
  */
 const useCollectorHost = (): CollectorHostContextValue => {
   const ctx = useContext(CollectorHostContext)
   if (ctx === null) {
-    throw new Error('useCollectorHost must be called under <CollectorBridgeExpo.HostProvider>')
+    throw new Error('useCollectorHost must be called under <CollectorHostProvider>')
   }
   return ctx
 }
 
-export { HostProvider, useCollectorHost }
-export type { CollectorHostContextValue, HostProviderProps }
+export { CollectorHostProvider, useCollectorHost }
+export type { CollectorHostContextValue, CollectorHostProviderProps }

@@ -10,7 +10,7 @@ import { CollectorModalScreen } from './CollectorModalScreen.tsx'
  *
  * Consumers register this in their expo-router file system by
  * re-exporting it as the default from a route file at the path
- * passed to `<HostProvider modalPath="…">` (default `/collector-modal`):
+ * passed to `<CollectorHostProvider modalPath="…">` (default `/collector-modal`):
  *
  * ```ts
  * // apps/<your-app>/src/app/collector-modal.tsx

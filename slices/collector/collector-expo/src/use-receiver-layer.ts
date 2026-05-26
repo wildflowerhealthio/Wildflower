@@ -11,8 +11,8 @@ import { useBrowserSnifferSender } from './message-sender-pipes.tsx'
 /**
  * Build the host-side `ReceiverLayer` for `CollectorBridge`.
  *
- * Must be called under {@link HostProvider} — `useCollectorHost`
- * throws otherwise.
+ * Must be called under {@link CollectorHostProvider} —
+ * `useCollectorHost` throws otherwise.
  *
  * Non-obvious handler wiring:
  *
@@ -29,7 +29,7 @@ import { useBrowserSnifferSender } from './message-sender-pipes.tsx'
  *    screen mounts. The pipe suspends on the sender slot and
  *    warn-and-drops pre-mount.
  */
-const useReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collector', 'Host'>> => {
+const useCollectorReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collector', 'Host'>> => {
   const { setPendingSource, modalPath } = useCollectorHost()
   const router = useRouter()
   const sendToSniffer = useBrowserSnifferSender()
@@ -57,7 +57,7 @@ const useReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collector', 'Host
             // guard.
             if (source._tag === 'Uri' && !/^https?:\/\//i.test(source.uri)) {
               return Effect.logWarning(
-                'CollectorBridgeExpo: refusing non-http(s) RequestSniffableWebView URI'
+                'collector-expo: refusing non-http(s) RequestSniffableWebView URI'
               ).pipe(Effect.annotateLogs({ uri: source.uri }))
             }
             return Effect.sync(() => pushModal(source))
@@ -74,4 +74,4 @@ const useReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collector', 'Host
   )
 }
 
-export { useReceiverLayer }
+export { useCollectorReceiverLayer }

@@ -1,32 +1,134 @@
+import * as React from 'react'
+
 import { fc, test as fcTest } from '@fast-check/jest'
 import { act, render } from '@testing-library/react-native'
-import { Effect } from 'effect'
-import type { BridgeTransport } from 'effect-messaging-core'
+import type * as BrowserSnifferExpoModule from 'browser-sniffer-expo'
+import type CollectorBridgeType from 'collector-fundamentals/bridge'
+import type * as CollectorBridgeModule from 'collector-fundamentals/bridge'
+import type * as EffectModule from 'effect'
+import { Effect, type Layer } from 'effect'
+import type { BridgeTransport, MessageHandler } from 'effect-messaging-core'
+import type * as ExpoRouterModule from 'expo-router'
+import type * as ExpoTundraishModule from 'expo-tundraish'
 import { LoggingLayerTest } from 'kitchen-sink/test'
 import type { ReactElement } from 'react'
 
-import {
-  harness,
-  mockBuildBrowserSnifferExpoFactory,
-  mockBuildCollectorBridgeFactory,
-  mockBuildExpoRouterFactory,
-  mockBuildExpoTundraishFactory,
-  requireLastHandlers,
-  resetHarness,
-} from './__test-support__/host-provider-test-mocks.ts'
+// `var` is required inside `declare global` for module-augmenting a
+// `globalThis` property; the leading `__` flags the slot as a private
+// test-only key, both lint conventions notwithstanding.
+declare global {
+  // oxlint-disable-next-line no-underscore-dangle
+  var __mockCollectorExpoHostProviderHarness:
+    | {
+        routerPush: jest.Mock
+        routerBack: jest.Mock
+        lastHandlers: CapturedHandlers | null
+      }
+    | undefined
+}
 
-// See `host-provider-test-mocks.ts` for why each factory is the inline
-// literal passed to `jest.mock`.
-jest.mock('expo-router', () => mockBuildExpoRouterFactory())
-jest.mock('collector-fundamentals/bridge', () => mockBuildCollectorBridgeFactory())
-jest.mock('browser-sniffer-expo', () => mockBuildBrowserSnifferExpoFactory())
-jest.mock('expo-tundraish', () => mockBuildExpoTundraishFactory())
+type CapturedHandlers = MessageHandler.HandlersFor<typeof CollectorBridgeType.Host.InboundSchemas>
+
+// oxlint-disable-next-line no-underscore-dangle
+const mockHarness = (globalThis.__mockCollectorExpoHostProviderHarness ??= {
+  routerPush: jest.fn(),
+  routerBack: jest.fn(),
+  lastHandlers: null,
+})
+
+// Each factory typed as `Partial<typeof import('<module>')>` so an
+// upstream API change surfaces here at type-check time rather than at
+// test-execution time.
+jest.mock(
+  'expo-router',
+  (): Partial<typeof ExpoRouterModule> => ({
+    useRouter: (): ReturnType<typeof ExpoRouterModule.useRouter> =>
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the real `useRouter` returns a `Router` interface with ~12 fields; stubbing only the two methods used by `useCollectorReceiverLayer` keeps the mock minimal.
+      ({
+        push: mockHarness.routerPush,
+        back: mockHarness.routerBack,
+      }) as unknown as ReturnType<typeof ExpoRouterModule.useRouter>,
+  })
+)
+
+jest.mock(
+  'collector-fundamentals/bridge',
+  (): Partial<typeof CollectorBridgeModule> & { __esModule: true } => {
+    const { Effect: EffectInner, Layer: LayerInner } =
+      jest.requireActual<typeof EffectModule>('effect')
+    return {
+      __esModule: true,
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the real `default` is a full `Bridge.Bridge<...>` with name, hostToWeb, webToHost, Host, Web; the routing-side tests only reach into `.Host.ReceiverLayer`.
+      default: {
+        Host: {
+          ReceiverLayer: (
+            handlers: CapturedHandlers
+          ): Layer.Layer<MessageHandler.TagId<'Collector', 'Host'>> => {
+            mockHarness.lastHandlers = handlers
+            // The discard layer satisfies the structural shape but
+            // doesn't bind the phantom Id — routing-side tests
+            // capture handlers rather than resolving from the tag.
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+            return LayerInner.effectDiscard(EffectInner.void) as Layer.Layer<
+              MessageHandler.TagId<'Collector', 'Host'>
+            >
+          },
+        },
+      } as unknown as typeof CollectorBridgeModule.default,
+    }
+  }
+)
+
+jest.mock('browser-sniffer-expo', (): Partial<typeof BrowserSnifferExpoModule> => {
+  const ReactInner = jest.requireActual<typeof React>('react')
+  return {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the test never renders this stub; props are ignored at runtime.
+    BrowserSnifferWebView: ReactInner.forwardRef(function MockBrowserSnifferWebView(
+      _props: unknown,
+      _ref: unknown
+    ): ReactElement {
+      return ReactInner.createElement('MockBrowserSnifferWebView', null)
+    }) as unknown as typeof BrowserSnifferExpoModule.BrowserSnifferWebView,
+  }
+})
+
+jest.mock('expo-tundraish', (): Partial<typeof ExpoTundraishModule> => {
+  const ReactInner = jest.requireActual<typeof React>('react')
+  return {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    Spacing: { s5: 16 } as unknown as typeof ExpoTundraishModule.Spacing,
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    ThemedView: ((props: { readonly children?: React.ReactNode }): ReactElement =>
+      ReactInner.createElement(
+        'ThemedView',
+        props
+      )) as unknown as typeof ExpoTundraishModule.ThemedView,
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    ThemedText: ((props: { readonly children?: React.ReactNode }): ReactElement =>
+      ReactInner.createElement(
+        'ThemedText',
+        props
+      )) as unknown as typeof ExpoTundraishModule.ThemedText,
+  }
+})
 
 import type BrowserSnifferBridge from 'browser-sniffer-core/bridge'
 import { useCollectorHost } from './collector-host-context.tsx'
-import { CollectorBridgeExpo, useAsBrowserSnifferSource, type HostProviderProps } from './index.ts'
+import {
+  CollectorHostProvider,
+  useAsBrowserSnifferSource,
+  useCollectorReceiverLayer,
+  type CollectorHostProviderProps,
+} from './index.ts'
 
 type SnifferSender = BridgeTransport.MessageSender<readonly [typeof BrowserSnifferBridge], 'Host'>
+
+const requireLastHandlers = (): CapturedHandlers => {
+  if (mockHarness.lastHandlers === null) {
+    throw new Error('CollectorBridge.Host.ReceiverLayer mock never captured handlers')
+  }
+  return mockHarness.lastHandlers
+}
 
 const TestProbe = ({
   onReady,
@@ -36,7 +138,7 @@ const TestProbe = ({
   readonly sender?: SnifferSender
 }): ReactElement | null => {
   // Build the layer so the receiver-layer mock captures handlers.
-  CollectorBridgeExpo.useReceiverLayer()
+  useCollectorReceiverLayer()
   const host = useCollectorHost()
   useAsBrowserSnifferSource(sender ?? (() => Effect.void))
   onReady?.(host)
@@ -44,7 +146,7 @@ const TestProbe = ({
 }
 
 const renderProvider = (
-  props: Omit<HostProviderProps, 'children'> & {
+  props: Omit<CollectorHostProviderProps, 'children'> & {
     readonly onReady?: (host: ReturnType<typeof useCollectorHost>) => void
     readonly sender?: SnifferSender
   } = {}
@@ -52,7 +154,7 @@ const renderProvider = (
   const { onReady, sender, ...providerProps } = props
   const seenHosts: Array<ReturnType<typeof useCollectorHost>> = []
   render(
-    <CollectorBridgeExpo.HostProvider {...providerProps}>
+    <CollectorHostProvider {...providerProps}>
       <TestProbe
         onReady={(h) => {
           seenHosts.push(h)
@@ -60,16 +162,21 @@ const renderProvider = (
         }}
         sender={sender}
       />
-    </CollectorBridgeExpo.HostProvider>
+    </CollectorHostProvider>
   )
   return { seenHosts }
 }
 
 beforeEach(() => {
-  resetHarness()
+  mockHarness.routerPush.mockClear()
+  mockHarness.routerBack.mockClear()
+  mockHarness.lastHandlers = null
 })
 
 describe('routing handlers (RequestSniffableWebView / Open)', () => {
+  // `RequestSniffableWebView` and `Open` both call `setPendingSource`,
+  // which IS a React state update — `act` is required for these.
+
   it('RequestSniffableWebView updates pendingSource and pushes the modal route', () => {
     const { seenHosts } = renderProvider()
     const handlers = requireLastHandlers()
@@ -84,7 +191,7 @@ describe('routing handlers (RequestSniffableWebView / Open)', () => {
       )
     })
 
-    expect(harness.routerPush).toHaveBeenCalledWith('/collector-modal')
+    expect(mockHarness.routerPush).toHaveBeenCalledWith('/collector-modal')
     expect(seenHosts[seenHosts.length - 1]?.pendingSource).toEqual({
       _tag: 'Uri',
       uri: 'https://example.com',
@@ -104,10 +211,10 @@ describe('routing handlers (RequestSniffableWebView / Open)', () => {
       )
     })
 
-    expect(harness.routerPush).toHaveBeenCalledWith('/custom-modal')
+    expect(mockHarness.routerPush).toHaveBeenCalledWith('/custom-modal')
   })
 
-  // The host-side defense-in-depth check in `useReceiverLayer` refuses
+  // The host-side defense-in-depth check in `useCollectorReceiverLayer` refuses
   // any `{_tag: 'Uri'}` URI that doesn't case-insensitively start with
   // `http(s)://`. The bridge schema already pins `Uri` to `https://`
   // only, so the branch is belt-and-suspenders — fuzz it against any
@@ -119,16 +226,14 @@ describe('routing handlers (RequestSniffableWebView / Open)', () => {
     const { seenHosts } = renderProvider()
     const handlers = requireLastHandlers()
 
-    act(() => {
-      Effect.runSync(
-        handlers.RequestSniffableWebView({
-          _tag: 'RequestSniffableWebView',
-          source: { _tag: 'Uri', uri },
-        })
-      )
-    })
+    Effect.runSync(
+      handlers.RequestSniffableWebView({
+        _tag: 'RequestSniffableWebView',
+        source: { _tag: 'Uri', uri },
+      })
+    )
 
-    expect(harness.routerPush).not.toHaveBeenCalled()
+    expect(mockHarness.routerPush).not.toHaveBeenCalled()
     expect(seenHosts[seenHosts.length - 1]?.pendingSource).toBeNull()
   })
 
@@ -147,7 +252,7 @@ describe('routing handlers (RequestSniffableWebView / Open)', () => {
         )
       })
 
-      expect(harness.routerPush).toHaveBeenCalledWith('/collector-modal')
+      expect(mockHarness.routerPush).toHaveBeenCalledWith('/collector-modal')
       expect(seenHosts[seenHosts.length - 1]?.pendingSource).toEqual({ _tag: 'Uri', uri })
     }
   )
@@ -163,7 +268,7 @@ describe('routing handlers (RequestSniffableWebView / Open)', () => {
       )
     })
 
-    expect(harness.routerPush).toHaveBeenCalledWith('/collector-modal')
+    expect(mockHarness.routerPush).toHaveBeenCalledWith('/collector-modal')
     expect(seenHosts[seenHosts.length - 1]?.pendingSource).toEqual(htmlSource)
   })
 
@@ -176,21 +281,24 @@ describe('routing handlers (RequestSniffableWebView / Open)', () => {
       Effect.runSync(handlers.Open({ _tag: 'Open', source: nextSource }))
     })
 
-    expect(harness.routerPush).not.toHaveBeenCalled()
+    expect(mockHarness.routerPush).not.toHaveBeenCalled()
     expect(seenHosts[seenHosts.length - 1]?.pendingSource).toEqual(nextSource)
   })
 })
 
 describe('sniffer-control forwarding (Click / CancelSnifferRequest)', () => {
+  // `Click` and `CancelSnifferRequest` route through the pipe's
+  // `Effect.suspend → handlerRef.current(msg)`. The registered probe
+  // sender below is `Effect.sync(() => calls.push(msg))` — no React
+  // state, so `act` is intentionally absent.
+
   it('Click forwards through the registered sender', async () => {
     const calls: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = []
     const sender: SnifferSender = (msg) => Effect.sync(() => calls.push(msg))
     renderProvider({ sender })
     const handlers = requireLastHandlers()
 
-    await act(async () => {
-      await Effect.runPromise(handlers.Click({ _tag: 'Click', querySelector: '#submit' }))
-    })
+    await Effect.runPromise(handlers.Click({ _tag: 'Click', querySelector: '#submit' }))
 
     expect(calls).toEqual([{ _tag: 'Click', querySelector: '#submit' }])
   })
@@ -201,11 +309,9 @@ describe('sniffer-control forwarding (Click / CancelSnifferRequest)', () => {
     renderProvider({ sender })
     const handlers = requireLastHandlers()
 
-    await act(async () => {
-      await Effect.runPromise(
-        handlers.CancelSnifferRequest({ _tag: 'CancelSnifferRequest', id: 'req-1' })
-      )
-    })
+    await Effect.runPromise(
+      handlers.CancelSnifferRequest({ _tag: 'CancelSnifferRequest', id: 'req-1' })
+    )
 
     expect(calls).toEqual([{ _tag: 'CancelSnifferRequest', id: 'req-1' }])
   })
@@ -214,13 +320,13 @@ describe('sniffer-control forwarding (Click / CancelSnifferRequest)', () => {
     // No `TestProbe` registers a sender — the pipe's default handler
     // logs a warning and succeeds.
     const NoopProbe = (): ReactElement | null => {
-      CollectorBridgeExpo.useReceiverLayer()
+      useCollectorReceiverLayer()
       return null
     }
     render(
-      <CollectorBridgeExpo.HostProvider>
+      <CollectorHostProvider>
         <NoopProbe />
-      </CollectorBridgeExpo.HostProvider>
+      </CollectorHostProvider>
     )
     const handlers = requireLastHandlers()
     const { layer, logSink } = LoggingLayerTest.make()
@@ -236,15 +342,15 @@ describe('sniffer-control forwarding (Click / CancelSnifferRequest)', () => {
 })
 
 describe('modal lifecycle (SniffingComplete)', () => {
+  // `SniffingComplete` calls `router.back()` (a mock — no React state).
+  // `act` is intentionally absent.
   it('SniffingComplete calls router.back()', async () => {
     renderProvider()
     const handlers = requireLastHandlers()
 
-    await act(async () => {
-      await Effect.runPromise(handlers.SniffingComplete({ _tag: 'SniffingComplete' }))
-    })
+    await Effect.runPromise(handlers.SniffingComplete({ _tag: 'SniffingComplete' }))
 
-    expect(harness.routerBack).toHaveBeenCalledTimes(1)
-    expect(harness.routerPush).not.toHaveBeenCalled()
+    expect(mockHarness.routerBack).toHaveBeenCalledTimes(1)
+    expect(mockHarness.routerPush).not.toHaveBeenCalled()
   })
 })
