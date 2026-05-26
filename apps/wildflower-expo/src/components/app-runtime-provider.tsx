@@ -15,7 +15,7 @@ import { useWildflowerStore, WildflowerStore } from '../livestore/livestore-stor
  * launches the on-device daemons (HTTP server + tunnel) under React's
  * mount lifecycle inside that registry context.
  */
-export default function AppRuntimeProvider({ children }: PropsWithChildren): JSX.Element {
+export function AppRuntimeProvider({ children }: PropsWithChildren): JSX.Element {
   const [storeRegistry] = useState(() => new StoreRegistry())
 
   return (
@@ -45,6 +45,12 @@ export default function AppRuntimeProvider({ children }: PropsWithChildren): JSX
  * first effect's cleanup interrupts the first fiber before the second
  * mount's effect runs, so we don't end up with two HTTP servers
  * racing the same port.
+ *
+ * The `[store]` dep relies on `useWildflowerStore()` returning a
+ * stable reference from the `StoreRegistry` cache; if a future
+ * refactor returns a fresh wrapper per render, each render would
+ * tear down and relaunch the merged daemon Layer — i.e. churn the
+ * on-device HTTP server and tunnel.
  */
 function DaemonRuntimeScope({ children }: PropsWithChildren): JSX.Element {
   const store = useWildflowerStore()

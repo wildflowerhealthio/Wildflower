@@ -3,12 +3,16 @@ import type { Context as ContextType, Effect as EffectType, Layer as LayerType }
 import * as React from 'react'
 import type { ReactElement, ReactNode } from 'react'
 
-// Active-daemon counter incremented by the spy Layer's
+// Per-daemon active counters incremented by each spy Layer's
 // `Effect.acquireRelease` on build and decremented on teardown. The
-// assertions below pin the count after mount, after unmount, and
-// across a remount cycle to prove the launch lifecycle obeys React's
-// cleanup contract.
-let mockActiveCount = 0
+// assertions below pin both counts after mount, after unmount, and
+// across a remount cycle to prove the merged `Layer.launch`
+// dispatches *both* daemons and that each obeys React's cleanup
+// contract — if a future refactor dropped either from the merge
+// site, its counter would stay at 0 and the matching assertion
+// would fail.
+let mockHttpServerActiveCount = 0
+let mockTunnelActiveCount = 0
 
 jest.mock('../daemons/http-server.ts', () => {
   const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
@@ -21,11 +25,11 @@ jest.mock('../daemons/http-server.ts', () => {
     HttpServerDaemonLive: effect.Layer.scopedDiscard(
       effect.Effect.acquireRelease(
         effect.Effect.sync(() => {
-          mockActiveCount += 1
+          mockHttpServerActiveCount += 1
         }),
         () =>
           effect.Effect.sync(() => {
-            mockActiveCount -= 1
+            mockHttpServerActiveCount -= 1
           })
       )
     ),
@@ -36,11 +40,18 @@ jest.mock('tunnel-expo', () => {
   const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
     'effect'
   )
-  // Empty spy — we only need to prove the merged-Layer.launch
-  // dispatches both daemons; the http-server spy above is enough to
-  // observe the lifecycle.
   return {
-    TunnelDaemon: effect.Layer.effectDiscard(effect.Effect.void),
+    TunnelDaemon: effect.Layer.scopedDiscard(
+      effect.Effect.acquireRelease(
+        effect.Effect.sync(() => {
+          mockTunnelActiveCount += 1
+        }),
+        () =>
+          effect.Effect.sync(() => {
+            mockTunnelActiveCount -= 1
+          })
+      )
+    ),
   }
 })
 
@@ -70,7 +81,7 @@ const mockStore = { __brand: 'mock-store' } as const
 
 jest.mock('../livestore/livestore-store.ts', () => {
   const effect = jest.requireActual<{ Context: typeof ContextType }>('effect')
-  class MockWildflowerStore extends effect.Context.Tag('WildflowerStore')<
+  class MockWildflowerStore extends effect.Context.Tag('wildflower-expo/WildflowerStore')<
     MockWildflowerStore,
     typeof mockStore
   >() {}
@@ -100,10 +111,11 @@ jest.mock('@livestore/react', () => {
   }
 })
 
-import AppRuntimeProvider from './app-runtime-provider.tsx'
+import { AppRuntimeProvider } from './app-runtime-provider.tsx'
 
 beforeEach(() => {
-  mockActiveCount = 0
+  mockHttpServerActiveCount = 0
+  mockTunnelActiveCount = 0
 })
 
 // `Effect.runFork` for `Layer.launch` schedules the fiber on the
@@ -119,16 +131,19 @@ describe('AppRuntimeProvider lifecycle', () => {
   it('mounts the merged daemon Layer exactly once on initial render', async () => {
     render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
     await flushFibers()
-    expect(mockActiveCount).toBe(1)
+    expect(mockHttpServerActiveCount).toBe(1)
+    expect(mockTunnelActiveCount).toBe(1)
   })
 
   it('tears the merged daemon Layer down on unmount', async () => {
     const { unmount } = render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
     await flushFibers()
-    expect(mockActiveCount).toBe(1)
+    expect(mockHttpServerActiveCount).toBe(1)
+    expect(mockTunnelActiveCount).toBe(1)
     unmount()
     await flushFibers()
-    expect(mockActiveCount).toBe(0)
+    expect(mockHttpServerActiveCount).toBe(0)
+    expect(mockTunnelActiveCount).toBe(0)
   })
 
   it('survives an unmount → remount cycle without leaking a second active daemon', async () => {
@@ -138,12 +153,15 @@ describe('AppRuntimeProvider lifecycle', () => {
     // effect fires, so the active-daemon count never exceeds 1.
     const { unmount } = render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
     await flushFibers()
-    expect(mockActiveCount).toBe(1)
+    expect(mockHttpServerActiveCount).toBe(1)
+    expect(mockTunnelActiveCount).toBe(1)
     unmount()
     await flushFibers()
-    expect(mockActiveCount).toBe(0)
+    expect(mockHttpServerActiveCount).toBe(0)
+    expect(mockTunnelActiveCount).toBe(0)
     render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
     await flushFibers()
-    expect(mockActiveCount).toBe(1)
+    expect(mockHttpServerActiveCount).toBe(1)
+    expect(mockTunnelActiveCount).toBe(1)
   })
 })
