@@ -1,9 +1,15 @@
-// Placeholder — the previous `RunSyncModalScreen` consumed
-// `BrowserSnifferWebView`'s `postRaw` / `onRawMessage` passthrough
-// surface, which this PR retires (the wrapper now exposes a typed
-// `BridgeTransport.MessageSender` via ref and routes log/sniffer
-// handlers as props). The replacement screen built on typed
-// `CollectorBridge` re-emission lands in a follow-up PR. The empty
-// type export keeps `collector-expo` a valid module so workspace
-// consumers still resolve it.
-export type CollectorExpoPlaceholder = never
+export { CollectorHostProvider } from './collector-host-context.tsx'
+export type { CollectorHostProviderProps } from './collector-host-context.tsx'
+export { useCollectorReceiverLayer } from './use-receiver-layer.ts'
+export { useCollectorHostBinding } from './use-host-binding.ts'
+export {
+  useAsBrowserSnifferSource,
+  useAsCollectorSource,
+  useBrowserSnifferSender,
+  useCollectorSender,
+} from './message-sender-pipes.tsx'
+export {
+  CollectorModalScreen,
+  type CollectorModalScreenProps,
+} from './screens/CollectorModalScreen.tsx'
+export { CollectorModalRoute } from './screens/CollectorModalRoute.tsx'
