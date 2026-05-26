@@ -32,6 +32,10 @@ interface MadeNamedPipe<
    */
   readonly useSender: () => BridgeTransport.MessageSender<TBridges, TSide>
   /**
+   * Get a ref to the sender slot
+   */
+  readonly useSenderRef: () => React.RefObject<BridgeTransport.MessageSender<TBridges, TSide>>
+  /**
    * The pipe's built-in warn-and-drop sender — the named analogue of
    * {@link MadeMessageSenderPipe.defaultSender}.
    */
@@ -75,6 +79,7 @@ const makeNamedPipe = <
     Provider: InnerProvider,
     useAsPipeMessageSender,
     usePipeMessageSender,
+    usePipeMessageSenderRef,
     defaultSender,
   } = makeMessageSenderPipe(name, bridges, side)
 
@@ -94,6 +99,7 @@ const makeNamedPipe = <
     Provider: Provider as ReactFC<{ children: React.ReactNode }> & {
       displayName: `${TName}PipeProvider`
     },
+    useSenderRef: usePipeMessageSenderRef,
     useAsSource: useAsPipeMessageSender,
     useSender: usePipeMessageSender,
     defaultSender,

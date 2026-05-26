@@ -27,6 +27,7 @@ import { NavigationBridge } from 'navigation-core'
  */
 const {
   Provider: NavigationPipeProvider,
+  useSenderRef: useNavigationSenderRef,
   useAsSource: useAsNavigationSource,
   useSender: useNavigationSender,
   defaultSender: defaultNavigationSender,
@@ -37,4 +38,5 @@ export {
   NavigationPipeProvider,
   useAsNavigationSource,
   useNavigationSender,
+  useNavigationSenderRef,
 }

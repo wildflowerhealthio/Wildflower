@@ -92,7 +92,7 @@ const isLaunchableUrl = (target: string, originPrefix: string): boolean => {
   if (target.startsWith(originPrefix)) return true
   try {
     const parsed = new URL(target)
-    return parsed.protocol === 'https:'
+    return parsed.protocol === 'https:' || parsed.hostname == '127.0.0.1'
   } catch {
     return false
   }

@@ -20,7 +20,7 @@ export default function HomeScreen(): JSX.Element {
   const store = useWildflowerStore()
   const { running } = store.useQuery(ServerState.queries.current$)
 
-  const [activeTab, setActiveTab] = useState<TabKey>('apps')
+  const [activeTab, setActiveTab] = useState<TabKey | null>('apps')
   const [shellLive, setShellLive] = useState(false)
 
   // Hide the splash only after both the server is up AND the SPA has
@@ -39,10 +39,10 @@ export default function HomeScreen(): JSX.Element {
   )
 
   return (
-    <SafeAreaView style={styles.fill} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.fill} edges={['top']}>
       <ThemedView style={styles.fill}>
         <View style={styles.webViewWrap}>
-          <AppShellWebView route={TABS[0].path} onRouteChanged={handleRouteChanged} />
+          <AppShellWebView onRouteChanged={handleRouteChanged} />
         </View>
         <TabBar activeTab={activeTab} />
       </ThemedView>
@@ -51,7 +51,7 @@ export default function HomeScreen(): JSX.Element {
 }
 
 /** Native tab bar — dispatches `HostRequestedWebNavigation` through the navigation pipe. */
-const TabBar = ({ activeTab }: { activeTab: TabKey }): JSX.Element => {
+const TabBar = ({ activeTab }: { activeTab: TabKey | null }): JSX.Element => {
   const palette = useThemeColors()
   const sendNavigation = useNavigationSender()
   return (

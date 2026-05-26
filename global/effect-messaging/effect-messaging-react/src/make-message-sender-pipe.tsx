@@ -21,6 +21,8 @@ interface MadeMessageSenderPipe<
   }
   usePipeMessageSender: () => BridgeTransport.MessageSender<TBridges, TSide>
   useAsPipeMessageSender: (sender: BridgeTransport.MessageSender<TBridges, TSide>) => void
+
+  usePipeMessageSenderRef: () => RefObject<BridgeTransport.MessageSender<TBridges, TSide>>
   /**
    * The pipe's built-in warn-and-drop sender — what
    * {@link usePipeMessageSender} resolves to before any
@@ -86,11 +88,15 @@ const makeMessageSenderPipe = <
     }, [sender, handlerRef])
   }
 
+  const usePipeMessageSenderRef = (): RefObject<BridgeTransport.MessageSender<TBridges, TSide>> =>
+    useContextOrThrow(Context)
+
   return {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     Provider: Provider as ReactFC<{ children: React.ReactNode }> & {
       displayName: `${TName}MessageSenderPipeContext`
     },
+    usePipeMessageSenderRef,
     usePipeMessageSender,
     useAsPipeMessageSender,
     defaultSender,
