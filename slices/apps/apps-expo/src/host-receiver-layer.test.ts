@@ -9,8 +9,9 @@
  *    via the supplied `senderRef`.
  *
  * Sister file: `commit-and-await-tunnel.test.ts` covers the
- * `commitAndAwaitTunnel` helper this layer dispatches into. Shared
- * mocks + fake store live in `__test-support__/host-receiver-test-mocks.ts`.
+ * `commitRequestedRunning` + `awaitTunnelOrigin` helpers this layer
+ * composes. Shared mocks + fake store live in
+ * `__test-support__/host-receiver-test-mocks.ts`.
  */
 import { Duration, Effect, Fiber, Layer, TestClock, TestContext } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
@@ -21,21 +22,15 @@ import {
   harness,
   makeFakeStore,
   mockBuildAppsCoreFactory,
-  mockBuildSharedStructuresFactory,
+  mockBuildLivestoreBaseFactory,
   mockBuildTunnelCoreFactory,
   requireTunnelStoreTag,
   resetHarness,
   type FakeStore,
 } from './__test-support__/host-receiver-test-mocks.ts'
 
-// `jest.mock` calls are hoisted above imports — Jest's babel-plugin
-// requires the factory to be an *inline* function (a bare imported
-// identifier is rejected). Inside that inline arrow we can still call
-// out to an imported builder because Jest's hoister allows references
-// whose name starts with `mock`. The harness factories follow that
-// convention.
+jest.mock('@livestore/livestore', () => mockBuildLivestoreBaseFactory())
 jest.mock('tunnel-core/livestore', () => mockBuildTunnelCoreFactory())
-jest.mock('shared-structures-core/livestore', () => mockBuildSharedStructuresFactory())
 jest.mock('apps-core/bridge', () => mockBuildAppsCoreFactory())
 
 import type { TunnelStore } from 'tunnel-core/livestore'
@@ -55,7 +50,7 @@ beforeEach(() => {
 const makeRecordingSenderRef = (): RefObject<AppsHostMessageSender | null> => ({
   current: (message: AppsHostToWebMessage): Effect.Effect<void> =>
     Effect.sync(() => {
-      ;(harness.sentMessages ??= []).push(message)
+      harness.sentMessages.push(message)
     }),
 })
 
@@ -96,7 +91,7 @@ const buildHandlersWithStore = async (
   ) as Layer.Layer<MessageHandler.TagId<'Apps', 'Host'>>
   await Effect.runPromise(Layer.build(layer).pipe(Effect.scoped))
   const handlers = harness.lastHandlers
-  if (handlers === undefined || handlers === null) {
+  if (handlers === null) {
     throw new Error('receiver-layer mock failed to capture handlers')
   }
   return handlers
@@ -118,23 +113,23 @@ describe('AppsBridgeExpo.ReceiverLayer (RequestTunnel dispatch)', () => {
     // The snapshot fast-path resolves synchronously with
     // `https://app-1.tun.example` → onSuccess routes through the
     // senderRef as TunnelStarted.
-    await Effect.runPromise(handlers.RequestTunnel())
+    await Effect.runPromise(handlers.RequestTunnel({ _tag: 'RequestTunnel' }))
     expect(harness.sentMessages).toEqual([
       { _tag: 'TunnelStarted', origin: 'https://app-1.tun.example' },
     ])
   })
 
-  it('Failure → senderRef called with TunnelFailed carrying the stringified cause (timeout via TestClock)', async () => {
+  it('Failure → senderRef called with TunnelFailed carrying the prettied cause (timeout via TestClock)', async () => {
     // Empty state → the default 15s timeout fires → TunnelTimedOut →
-    // matchEffect's onFailure branch routes through the senderRef as
-    // `TunnelFailed { reason }`. We drive the timeout via `TestClock`
-    // so the test stays deterministic and millisecond-fast.
+    // matchCauseEffect's onFailure branch routes through the senderRef
+    // as `TunnelFailed { reason }`. We drive the timeout via
+    // `TestClock` so the test stays deterministic and millisecond-fast.
     const store = makeFakeStore()
     const senderRef = makeRecordingSenderRef()
     const handlers = await buildHandlersWithStore(store, senderRef)
     await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(handlers.RequestTunnel())
+        const fiber = yield* Effect.fork(handlers.RequestTunnel({ _tag: 'RequestTunnel' }))
         // Let the dispatch install its subscriber on the live store
         // before the clock jumps.
         yield* Effect.yieldNow()
@@ -144,11 +139,11 @@ describe('AppsBridgeExpo.ReceiverLayer (RequestTunnel dispatch)', () => {
       }).pipe(Effect.provide(TestContext.TestContext))
     )
     expect(harness.sentMessages).toHaveLength(1)
-    const [msg] = harness.sentMessages ?? []
+    const [msg] = harness.sentMessages
     expect(msg?._tag).toBe('TunnelFailed')
-    // Reason is `String(cause)` for the `TunnelTimedOut` cause —
-    // assert it mentions the tag rather than pinning the full string
-    // (which depends on Effect's Cause.pretty formatting).
+    // Reason is `Cause.pretty(cause)` — assert it mentions the tag
+    // rather than pinning the full string (which depends on Effect's
+    // pretty-print formatting).
     if (msg?._tag !== 'TunnelFailed') throw new Error('expected TunnelFailed')
     expect(msg.reason).toMatch(/TunnelTimedOut/)
   })
@@ -165,7 +160,7 @@ describe('AppsBridgeExpo.ReceiverLayer (RequestTunnel dispatch)', () => {
     })
     const senderRef: RefObject<AppsHostMessageSender | null> = { current: null }
     const handlers = await buildHandlersWithStore(store, senderRef)
-    await Effect.runPromise(handlers.RequestTunnel())
+    await Effect.runPromise(handlers.RequestTunnel({ _tag: 'RequestTunnel' }))
     expect(harness.sentMessages).toEqual([])
   })
 })

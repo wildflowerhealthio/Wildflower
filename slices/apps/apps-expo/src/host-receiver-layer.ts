@@ -1,9 +1,9 @@
 import AppsBridge from 'apps-core/bridge'
-import { Effect, Layer } from 'effect'
+import { Cause, Effect, Layer } from 'effect'
 import type { BridgeTransport, MessageHandler } from 'effect-messaging-core'
 import type { RefObject } from 'react'
 import { TunnelStore } from 'tunnel-core/livestore'
-import { commitAndAwaitTunnel } from './commit-and-await-tunnel.ts'
+import { awaitTunnelOrigin, commitRequestedRunning } from './commit-and-await-tunnel.ts'
 
 /**
  * Typed host→web sender for {@link AppsBridge}. The host shell exposes
@@ -14,9 +14,7 @@ import { commitAndAwaitTunnel } from './commit-and-await-tunnel.ts'
 type AppsHostMessageSender = BridgeTransport.MessageSender<readonly [typeof AppsBridge], 'Host'>
 
 /** Inbound web→host messages defined on {@link AppsBridge}. */
-type AppsHostToWebMessage =
-  | { readonly _tag: 'TunnelStarted'; readonly origin: string }
-  | { readonly _tag: 'TunnelFailed'; readonly reason: string }
+type AppsHostToWebMessage = Parameters<AppsHostMessageSender>[0]
 
 /**
  * Send {@link AppsHostToWebMessage} via the captured `senderRef`.
@@ -56,14 +54,14 @@ const ReceiverLayer = (
       const tunnelStore = yield* TunnelStore
       return AppsBridge.Host.ReceiverLayer({
         RequestTunnel: () =>
-          commitAndAwaitTunnel(tunnelStore, true).pipe(
-            Effect.matchEffect({
-              onSuccess: (origin) =>
-                origin === null
-                  ? Effect.void
-                  : sendOrDrop(senderRef, { _tag: 'TunnelStarted', origin }),
+          Effect.gen(function* () {
+            yield* commitRequestedRunning(tunnelStore, true)
+            return yield* awaitTunnelOrigin(tunnelStore)
+          }).pipe(
+            Effect.matchCauseEffect({
+              onSuccess: (origin) => sendOrDrop(senderRef, { _tag: 'TunnelStarted', origin }),
               onFailure: (cause) =>
-                sendOrDrop(senderRef, { _tag: 'TunnelFailed', reason: String(cause) }),
+                sendOrDrop(senderRef, { _tag: 'TunnelFailed', reason: Cause.pretty(cause) }),
             })
           ),
       })

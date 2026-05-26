@@ -1,35 +1,34 @@
 /**
- * Behavioral tests for {@link commitAndAwaitTunnel}. Sister file to
- * `host-receiver-layer.test.ts`, which covers the ReceiverLayer surface
- * that consumes this helper. Both files share the mock harness in
- * `__test-support__/host-receiver-test-mocks.ts`.
+ * Behavioral tests for {@link commitRequestedRunning} and {@link awaitTunnelOrigin}.
+ * Sister file to `host-receiver-layer.test.ts`, which covers the
+ * ReceiverLayer surface that composes these helpers. Shared mocks +
+ * fake store live in `__test-support__/host-receiver-test-mocks.ts`.
  */
 import { fc, test as fcTest } from '@fast-check/jest'
 import { Cause, Duration, Effect } from 'effect'
 
 import {
+  awaitSubscriberInstalled,
   harness,
   makeFakeStore,
   mockBuildAppsCoreFactory,
-  mockBuildSharedStructuresFactory,
+  mockBuildLivestoreBaseFactory,
   mockBuildTunnelCoreFactory,
   resetHarness,
   type FakeStore,
 } from './__test-support__/host-receiver-test-mocks.ts'
 
-// `jest.mock` calls are hoisted above imports — Jest's babel-plugin
-// requires the factory to be an *inline* function (a bare imported
-// identifier is rejected). Inside that inline arrow we can still call
-// out to an imported builder because Jest's hoister allows references
-// whose name starts with `mock`. See `host-receiver-test-mocks.ts` for
-// the wiring details.
+jest.mock('@livestore/livestore', () => mockBuildLivestoreBaseFactory())
 jest.mock('tunnel-core/livestore', () => mockBuildTunnelCoreFactory())
-jest.mock('shared-structures-core/livestore', () => mockBuildSharedStructuresFactory())
 jest.mock('apps-core/bridge', () => mockBuildAppsCoreFactory())
 
 import type { Context } from 'effect'
 import type { TunnelStore } from 'tunnel-core/livestore'
-import { commitAndAwaitTunnel, TunnelTimedOut } from './commit-and-await-tunnel.ts'
+import {
+  awaitTunnelOrigin,
+  commitRequestedRunning,
+  TunnelTimedOut,
+} from './commit-and-await-tunnel.ts'
 
 /** Cast — production code only invokes the three methods we mock. */
 const asTunnelStoreService = (store: FakeStore): Context.Tag.Service<typeof TunnelStore> =>
@@ -43,37 +42,40 @@ beforeEach(() => {
   resetHarness()
 })
 
-describe('commitAndAwaitTunnel', () => {
-  describe('active === false short-circuit', () => {
-    it('commits requestedRunning: false and returns null without touching subscribe/query', async () => {
+describe('commitRequestedRunning', () => {
+  it.each([true, false])(
+    'commits requestedRunning: %p without touching subscribe/query',
+    async (active) => {
       const store = makeFakeStore()
-      const result = await Effect.runPromise(
-        commitAndAwaitTunnel(asTunnelStoreService(store), false)
-      )
-      expect(result).toBeNull()
+      await Effect.runPromise(commitRequestedRunning(asTunnelStoreService(store), active))
       const cfgFn = harness.tunnelConfigSet
       expect(cfgFn).toBeDefined()
       expect(cfgFn).toHaveBeenCalledTimes(1)
-      expect(cfgFn).toHaveBeenCalledWith({ requestedRunning: false })
+      expect(cfgFn).toHaveBeenCalledWith({ requestedRunning: active })
       expect(store.commit).toHaveBeenCalledTimes(1)
       // The commit payload is the event the (mocked) tunnelConfigSet
       // returned — assert provenance so future implementation drift
       // (e.g. switching to a different event) fails loudly here.
       expect(store.commit).toHaveBeenCalledWith({
         _tag: 'tunnelConfigSet',
-        args: { requestedRunning: false },
+        args: { requestedRunning: active },
       })
       expect(store.subscribe).not.toHaveBeenCalled()
       expect(store.query).not.toHaveBeenCalled()
-    })
-  })
+    }
+  )
+})
 
-  describe('active === true snapshot-first short-circuit', () => {
-    fcTest.prop({
-      subdomain: fc.stringMatching(/^[a-z0-9-]{1,32}$/),
-      rootDomain: fc.stringMatching(/^[a-z0-9.-]{1,64}$/),
-      localPort: fc.integer({ min: 1, max: 65_535 }),
-    })(
+describe('awaitTunnelOrigin', () => {
+  describe('snapshot-first short-circuit', () => {
+    fcTest.prop(
+      {
+        subdomain: fc.stringMatching(/^[a-z0-9-]{1,32}$/),
+        rootDomain: fc.stringMatching(/^[a-z0-9.-]{1,64}$/),
+        localPort: fc.integer({ min: 1, max: 65_535 }),
+      },
+      { numRuns: 50 }
+    )(
       'resolves with `https://{sub}.{root}` when the snapshot already matches',
       async ({ subdomain, rootDomain, localPort }) => {
         const store = makeFakeStore({
@@ -85,30 +87,29 @@ describe('commitAndAwaitTunnel', () => {
             error: null,
           },
         })
-        const result = await Effect.runPromise(
-          commitAndAwaitTunnel(asTunnelStoreService(store), true)
-        )
+        const result = await Effect.runPromise(awaitTunnelOrigin(asTunnelStoreService(store)))
         expect(result).toBe(`https://${subdomain}.${rootDomain}`)
-        expect(harness.tunnelConfigSet).toHaveBeenCalledWith({ requestedRunning: true })
         // The subscribe path is skipped when the snapshot already matches.
         expect(store.subscribe).not.toHaveBeenCalled()
         expect(store.query).toHaveBeenCalledTimes(1)
       }
     )
 
-    fcTest.prop({
-      running: fc.boolean(),
-      currentSubdomain: fc.option(fc.stringMatching(/^[a-z0-9-]{1,32}$/), { nil: null }),
-      currentRootDomain: fc.option(fc.stringMatching(/^[a-z0-9.-]{1,64}$/), { nil: null }),
-    })(
+    fcTest.prop(
+      {
+        running: fc.boolean(),
+        currentSubdomain: fc.option(fc.stringMatching(/^[a-z0-9-]{1,32}$/), { nil: null }),
+        currentRootDomain: fc.option(fc.stringMatching(/^[a-z0-9.-]{1,64}$/), { nil: null }),
+      },
+      { numRuns: 50 }
+    )(
       'does not short-circuit unless running AND both domain fields are non-null',
       async ({ running, currentSubdomain, currentRootDomain }) => {
         // For every non-matching snapshot, the subscribe path is taken
         // (not the immediate resolve). Short-circuit happens iff
         // `running && sub !== null && root !== null` — covered by the
-        // previous property — so skip that case here.
-        const matches = running && currentSubdomain !== null && currentRootDomain !== null
-        if (matches) return
+        // previous property — so discard that case here.
+        fc.pre(!(running && currentSubdomain !== null && currentRootDomain !== null))
         const store = makeFakeStore({
           initialState: {
             running,
@@ -119,13 +120,9 @@ describe('commitAndAwaitTunnel', () => {
           },
         })
         const fiber = Effect.runFork(
-          commitAndAwaitTunnel(asTunnelStoreService(store), true, Duration.millis(20))
+          awaitTunnelOrigin(asTunnelStoreService(store), Duration.millis(20))
         )
-        // Yield enough microtasks for `Effect.async` to install the
-        // subscriber. Two ticks is enough for the current Effect
-        // runtime — bump if a runtime upgrade trips this.
-        await Promise.resolve()
-        await Promise.resolve()
+        await awaitSubscriberInstalled(store)
         expect(store.subscribe).toHaveBeenCalledTimes(1)
         // Clean up — wait for the timeout so jest doesn't complain
         // about a leaked fiber.
@@ -134,7 +131,7 @@ describe('commitAndAwaitTunnel', () => {
     )
   })
 
-  describe('active === true subscribe-then-resolve', () => {
+  describe('subscribe-then-resolve', () => {
     it('resolves once a matching state is pushed via the live subscriber', async () => {
       const store = makeFakeStore({
         initialState: {
@@ -146,10 +143,9 @@ describe('commitAndAwaitTunnel', () => {
         },
       })
       const fiber = Effect.runFork(
-        commitAndAwaitTunnel(asTunnelStoreService(store), true, Duration.millis(50))
+        awaitTunnelOrigin(asTunnelStoreService(store), Duration.millis(50))
       )
-      await Promise.resolve()
-      await Promise.resolve()
+      await awaitSubscriberInstalled(store)
       expect(store.subscribe).toHaveBeenCalledTimes(1)
       // Push a matching state — the subscriber should resolve.
       store.pushState({
@@ -178,10 +174,9 @@ describe('commitAndAwaitTunnel', () => {
         },
       })
       const fiber = Effect.runFork(
-        commitAndAwaitTunnel(asTunnelStoreService(store), true, Duration.millis(50))
+        awaitTunnelOrigin(asTunnelStoreService(store), Duration.millis(50))
       )
-      await Promise.resolve()
-      await Promise.resolve()
+      await awaitSubscriberInstalled(store)
       // Push partial (still missing rootDomain after another change) — must not resolve.
       store.pushState({
         running: true,
@@ -212,17 +207,18 @@ describe('commitAndAwaitTunnel', () => {
     })
   })
 
-  describe('active === true timeout', () => {
-    fcTest.prop({
-      timeoutMs: fc.integer({ min: 1, max: 50 }),
-    })(
+  describe('timeout', () => {
+    fcTest.prop(
+      {
+        timeoutMs: fc.integer({ min: 1, max: 50 }),
+      },
+      { numRuns: 20 }
+    )(
       'fails with TunnelTimedOut carrying the configured timeoutMs and unsubscribes',
       async ({ timeoutMs }) => {
         const store = makeFakeStore()
         const exit = await Effect.runPromise(
-          Effect.exit(
-            commitAndAwaitTunnel(asTunnelStoreService(store), true, Duration.millis(timeoutMs))
-          )
+          Effect.exit(awaitTunnelOrigin(asTunnelStoreService(store), Duration.millis(timeoutMs)))
         )
         if (exit._tag !== 'Failure') throw new Error(`expected Failure, got ${exit._tag}`)
         const failure = Cause.failureOption(exit.cause)

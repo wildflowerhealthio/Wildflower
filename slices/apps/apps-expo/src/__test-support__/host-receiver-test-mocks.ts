@@ -1,4 +1,3 @@
-// oxlint-disable typescript/consistent-type-imports
 /**
  * Shared mock factories + fake-store harness used by the apps-expo host
  * receiver test split. Both `host-receiver-layer.test.ts` (ReceiverLayer
@@ -6,23 +5,14 @@
  * register the same three module mocks against the same `globalThis`-
  * keyed harness; centralising the wiring keeps them in lockstep.
  *
- * ## Why the `mock` prefix
- *
- * Each consumer calls `jest.mock(path, mockBuild*Factory)`. Jest's
- * babel-plugin hoists `jest.mock(...)` above the imports — referencing
- * an imported binding inside the factory only works if the binding name
- * starts with `mock` (jest's escape-hatch from its temporal-dead-zone
- * check). That's why every factory export here is `mockBuild*`.
- *
- * ## Why `globalThis`-keyed state
- *
- * The factories run during ESM-import hoisting — before any
- * module-top `const`/`let`/`var` assignment — so a plain top-level
- * reference inside the factory would still be in TDZ. `globalThis` is
- * initialised before any user code runs, so the harness object lives
- * there and the test-file-local `harness` const just reads it.
+ * See `docs/Testing/Jest Mock Harness How-To.md` for the mock-prefix +
+ * globalThis-keyed-state pattern this file uses.
  */
+import type AppsBridge from 'apps-core/bridge'
 import type { Context, Layer } from 'effect'
+import type * as EffectModule from 'effect'
+import type { MessageHandler } from 'effect-messaging-core'
+import type { AppsHostMessageSender } from '../host-receiver-layer.ts'
 
 interface FakeStoreService {
   readonly commit: jest.Mock
@@ -30,34 +20,29 @@ interface FakeStoreService {
   readonly subscribe: jest.Mock
 }
 
+type AppsHostHandlers = Parameters<typeof AppsBridge.Host.ReceiverLayer>[0]
+type AppsHostToWebMessage = Parameters<AppsHostMessageSender>[0]
+
 interface MockHarness {
   tunnelConfigSet?: jest.Mock
   current$Sentinel?: symbol
   tunnelStoreTag?: Context.Tag<FakeStoreService, FakeStoreService>
-  lastHandlers?: {
-    // oxlint-disable-next-line typescript/consistent-type-imports
-    readonly RequestTunnel: () => import('effect').Effect.Effect<void>
-  } | null
-  sentMessages?: Array<
-    | { readonly _tag: 'TunnelStarted'; readonly origin: string }
-    | { readonly _tag: 'TunnelFailed'; readonly reason: string }
-  >
+  lastHandlers: AppsHostHandlers | null
+  sentMessages: Array<AppsHostToWebMessage>
 }
 
-const MOCK_HARNESS_KEY = '__mockAppsExpoHarness'
+declare global {
+  var wfMockAppsExpoHarness: MockHarness | undefined
+}
+
+const freshHarness = (): MockHarness => ({ lastHandlers: null, sentMessages: [] })
 
 /** Read (creating on first access) the singleton harness. */
-const harness = ((): MockHarness => {
-  // `globalThis` doesn't structurally overlap with the index-signature
-  // shape we want, so the cast routes through `unknown`. The cast is a
-  // test-only escape hatch and `MOCK_HARNESS_KEY` is the single source
-  // of truth shared with the factories below.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const g = globalThis as unknown as Record<string, MockHarness | undefined>
-  const existing = g[MOCK_HARNESS_KEY]
+const harness: MockHarness = (() => {
+  const existing = globalThis.wfMockAppsExpoHarness
   if (existing !== undefined) return existing
-  const fresh: MockHarness = {}
-  g[MOCK_HARNESS_KEY] = fresh
+  const fresh = freshHarness()
+  globalThis.wfMockAppsExpoHarness = fresh
   return fresh
 })()
 
@@ -132,6 +117,29 @@ const requireTunnelStoreTag = (): Context.Tag<FakeStoreService, FakeStoreService
   return tag
 }
 
+/**
+ * Resolve once {@link FakeStore.subscriberCount} reaches 1, polling
+ * the microtask queue. Replaces empirical `await Promise.resolve()`
+ * ladders that try to nudge `Effect.async` past the point where its
+ * subscriber is installed.
+ */
+const awaitSubscriberInstalled = async (
+  store: FakeStore,
+  opts: { readonly timeoutMs?: number } = {}
+): Promise<void> => {
+  const timeoutMs = opts.timeoutMs ?? 100
+  const start = Date.now()
+  while (store.subscriberCount() < 1) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`Subscriber not installed within ${timeoutMs}ms`)
+    }
+    // oxlint-disable-next-line no-await-in-loop -- sequential polling is the point
+    await new Promise((resolve) => {
+      setImmediate(resolve)
+    })
+  }
+}
+
 // ===========================================================================
 // jest.mock factories — see file-level comment for the `mock` prefix reason.
 // ===========================================================================
@@ -149,9 +157,7 @@ const mockBuildTunnelCoreFactory = (): unknown => {
   const effect = jest.requireActual<{ Context: typeof Context }>('effect')
   // Re-derive the harness object from globalThis — the import-level
   // `harness` may not be initialised when this runs during ESM hoisting.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const g = globalThis as unknown as Record<string, MockHarness | undefined>
-  const mockHarness = (g[MOCK_HARNESS_KEY] ??= {} as MockHarness)
+  const mockHarness = (globalThis.wfMockAppsExpoHarness ??= freshHarness())
   const tag = effect.Context.GenericTag<FakeStoreService, FakeStoreService>('TunnelStore')
   const sentinel = Symbol('TunnelState.current$')
   mockHarness.tunnelStoreTag = tag
@@ -176,46 +182,18 @@ const mockBuildTunnelCoreFactory = (): unknown => {
 }
 
 /**
- * Factory for `jest.mock('shared-structures-core/livestore', mockBuildSharedStructuresFactory)`.
- * The real barrel re-exports `defineSliceLivestore`, which loads
- * `@livestore/livestore` — whose ESM output trips Jest's CJS resolver.
- * Inlines a behavior-equivalent copy of `subscribeUntil` so the
- * `@livestore/livestore` import never runs under jest. Matches the
- * production `predicate`-overload semantics; the `refinement` overload
- * is structurally identical at runtime and the type-narrowing only
- * exists at compile time, so no separate branch is needed here.
+ * Factory for `jest.mock('@livestore/livestore', mockBuildLivestoreBaseFactory)`.
+ *
+ * `shared-structures-core/livestore` re-exports the real `subscribeUntil`
+ * (which only takes `type` imports from `@livestore/livestore`), but its
+ * sibling exports (`defineSliceLivestore`, `composeLivestoreModules`)
+ * pull `State` and `makeSchema` as runtime values. Stubbing the whole
+ * `@livestore/livestore` module to `{}` is enough to let Jest's CJS
+ * resolver load the barrel without tripping on `@livestore/livestore`'s
+ * ESM output — the production code under test never calls the
+ * functions that need the real `State` / `makeSchema`.
  */
-const mockBuildSharedStructuresFactory = (): unknown => {
-  const { Effect } = jest.requireActual<typeof import('effect')>('effect')
-  const subscribeUntil = <A>(
-    store: {
-      query: (q: unknown) => A
-      subscribe: (q: unknown, cb: (v: A) => void) => () => void
-    },
-    query: unknown,
-    predicate: (value: A) => boolean
-  ): import('effect').Effect.Effect<A> =>
-    Effect.suspend(() => {
-      const current = store.query(query)
-      if (predicate(current)) return Effect.succeed(current)
-      return Effect.async<A>((resume) => {
-        let resumed = false
-        const unsubscribe = store.subscribe(query, (value) => {
-          if (resumed || !predicate(value)) return
-          resumed = true
-          unsubscribe()
-          resume(Effect.succeed(value))
-        })
-        return Effect.sync(() => {
-          if (!resumed) {
-            resumed = true
-            unsubscribe()
-          }
-        })
-      })
-    })
-  return { __esModule: true, subscribeUntil }
-}
+const mockBuildLivestoreBaseFactory = (): unknown => ({ __esModule: true })
 
 /**
  * Factory for `jest.mock('apps-core/bridge', mockBuildAppsCoreFactory)`.
@@ -227,17 +205,27 @@ const mockBuildSharedStructuresFactory = (): unknown => {
  * captured `onTransportReady` sender rather than the bridge namespace.
  */
 const mockBuildAppsCoreFactory = (): unknown => {
-  const { Effect, Layer } = jest.requireActual<typeof import('effect')>('effect')
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const g = globalThis as unknown as Record<string, MockHarness | undefined>
-  const mockHarness = (g[MOCK_HARNESS_KEY] ??= {} as MockHarness)
+  const effect = jest.requireActual<typeof EffectModule>('effect')
+  const mockHarness = (globalThis.wfMockAppsExpoHarness ??= freshHarness())
+  // Provide the captured handlers via a freshly-built tag whose
+  // string-literal `Identifier` matches the real bridge's
+  // `MessageHandler.TagId<'Apps', 'Host'>`. The Tag instance is
+  // mock-local — the test never extracts it — but typing the layer
+  // honestly (no `as`-cast through a narrower R-out) lets oxlint stay
+  // happy and the mock structurally tracks the real bridge.
+  const handlerTag = effect.Context.GenericTag<
+    MessageHandler.TagId<'Apps', 'Host'>,
+    AppsHostHandlers
+  >('Apps.Host.HandlerTag')
   return {
     __esModule: true,
     default: {
       Host: {
-        ReceiverLayer: (handlers: NonNullable<MockHarness['lastHandlers']>): Layer.Layer<never> => {
+        ReceiverLayer: (
+          handlers: AppsHostHandlers
+        ): Layer.Layer<MessageHandler.TagId<'Apps', 'Host'>> => {
           mockHarness.lastHandlers = handlers
-          return Layer.effectDiscard(Effect.void)
+          return effect.Layer.succeed(handlerTag, handlers)
         },
       },
     },
@@ -262,13 +250,20 @@ const resetHarness = (): void => {
 }
 
 export {
-  EMPTY_STATE,
+  awaitSubscriberInstalled,
   harness,
   makeFakeStore,
   mockBuildAppsCoreFactory,
-  mockBuildSharedStructuresFactory,
+  mockBuildLivestoreBaseFactory,
   mockBuildTunnelCoreFactory,
   requireTunnelStoreTag,
   resetHarness,
 }
-export type { FakeStore, FakeStoreService, MockHarness, TunnelStateSnapshot }
+export type {
+  AppsHostHandlers,
+  AppsHostToWebMessage,
+  FakeStore,
+  FakeStoreService,
+  MockHarness,
+  TunnelStateSnapshot,
+}

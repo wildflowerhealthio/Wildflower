@@ -12,7 +12,6 @@ import { useTunnelAdminEffect } from 'tunnel-react'
 import { useAppsEffect } from '../apps-client.tsx'
 import { useRequestTunnel } from '../runtime/use-request-tunnel.ts'
 import { AppsEditor } from './apps-editor.tsx'
-import appsHome from '../styles/apps-home.module.css'
 import pageLayout from '../styles/page.module.css'
 
 type AppEntry = Schema.Schema.Type<typeof Schemas.AppEntrySchema>
@@ -114,7 +113,7 @@ const AppsHomeBody = ({ tunnel, apps, onChanged }: AppsHomeBodyProps): JSX.Eleme
     <div className={pageLayout['page']}>
       <header className={pageLayout['page__header']}>
         <h1 className={cn(pageLayout['page__title'], 'text-heading-4')}>Apps</h1>
-        <div className={appsHome['apps-home__header-actions']}>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
           {tunnel.running ? <span className="text-label-4">tunnel</span> : null}
           <button
             type="button"
