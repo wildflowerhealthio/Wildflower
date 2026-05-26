@@ -3,13 +3,13 @@
 import { HttpServer } from '@effect/platform'
 import { AppsStore } from 'apps-core/livestore'
 import { CollectorStore } from 'collector-core/livestore'
-import { Cause, Duration, Effect, Layer, type Scope, Stream } from 'effect'
+import { Cause, type DefaultServices, Duration, Effect, Layer, type Scope, Stream } from 'effect'
 import { EmrStore } from 'emr-core/livestore'
 import { ExpoContext, ExpoHttpServer } from 'expo-effect-platform'
 import { Directory, File, Paths } from 'expo-file-system'
 import { mintHostOwnerToken, seedFirstPartyClient, seedSigningKey } from 'gatekeeper-core/contexts'
 import { GatekeeperStore, LocalClientToken } from 'gatekeeper-core/livestore'
-import { cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
+import { type CryptoRandom, cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { runHttpServerDaemon } from 'local-http-server-core/daemon'
 import { LocalHttpServerStore } from 'local-http-server-core/livestore'
 import { injectActiveOtelContext, reactNativeTelemetryLayerFromEnv } from 'telemetry-react-native'
@@ -26,17 +26,25 @@ import { WildflowerStore } from '../livestore/livestore-store.ts'
  * to native; bytes never cross the JS bridge). Idempotent — the
  * cache-dir lifecycle is opaque to the OS, so we always (re)write on
  * boot to pick up rebuilds.
+ *
+ * Each filesystem step is its own `Effect.sync` so success/failure
+ * lands in the Effect trace under the surrounding Layer's scope. The
+ * direct `expo-file-system` reach-through is a stopgap until
+ * `expo-effect-platform` exposes a real `FileSystem.FileSystem`
+ * implementation (see Wildflower#88).
  */
-const stageWebAssetsDir = (): string => {
-  const dir = new Directory(Paths.cache, 'wildflower-static')
-  dir.create({ intermediates: true, idempotent: true })
-  const indexFile = new File(dir, 'index.html')
-  if (indexFile.exists) indexFile.delete()
-  indexFile.create()
-  indexFile.write(embeddableHtml)
+const stageWebAssetsDir: Effect.Effect<string> = Effect.gen(function* () {
+  const dir = yield* Effect.sync(() => new Directory(Paths.cache, 'wildflower-static'))
+  yield* Effect.sync(() => dir.create({ intermediates: true, idempotent: true }))
+  const indexFile = yield* Effect.sync(() => new File(dir, 'index.html'))
+  if (yield* Effect.sync(() => indexFile.exists)) {
+    yield* Effect.sync(() => indexFile.delete())
+  }
+  yield* Effect.sync(() => indexFile.create())
+  yield* Effect.sync(() => indexFile.write(embeddableHtml))
   // `Path.Path` resolvers don't accept the `file://` URI scheme — strip it.
-  return dir.uri.replace(/^file:\/\//, '')
-}
+  return yield* Effect.sync(() => dir.uri.replace(/^file:\/\//, ''))
+})
 
 const CryptoRandomLive = cryptoRandomLayerFromWebCrypto(globalThis.crypto)
 const TelemetryLive = reactNativeTelemetryLayerFromEnv({ otel: { serviceName: SERVICE_NAME } })
@@ -104,18 +112,8 @@ const HttpServerContextLive = Layer.mergeAll(
       // defaults so the JWT iss/aud is `http://127.0.0.1:8080`.
       const token = yield* mintHostOwnerToken({ ttl: Duration.hours(24) }).pipe(
         Effect.provide(OriginFromTunnelStore),
-        Effect.catchAll((cause) =>
-          Effect.as(
-            Effect.logError(
-              'Local client token unavailable.',
-              cause,
-              cause.cause,
-              typeof cause.cause === 'object' && cause.cause !== null && 'stack' in cause.cause
-                ? cause.cause.stack
-                : undefined
-            ),
-            null
-          )
+        Effect.catchAllCause((cause) =>
+          Effect.as(Effect.logError('Local client token unavailable.', Cause.pretty(cause)), null)
         )
       )
       if (token !== null) {
@@ -125,7 +123,7 @@ const HttpServerContextLive = Layer.mergeAll(
         yield* Effect.logInfo(`Local client token minted (prefix: ${token.slice(0, 8)}…)`)
       }
 
-      return stageWebAssetsDir()
+      return yield* stageWebAssetsDir
     })
   ),
   CryptoRandomLive,
@@ -144,14 +142,26 @@ const HttpServerContextLive = Layer.mergeAll(
  * (tunnel URL when running, LHS-bound loopback otherwise) — so the
  * `Origin` consumers (gatekeeper JWT audience, FHIR bundle URLs)
  * automatically follow tunnel toggles without rebuilding this Layer.
- *
- * The return type is the TS-inferred Layer over `WildflowerServerLive`'s
- * remaining requirements (six slice stores + `WebAssetsDir` +
- * `CryptoRandom` + `Telemetry` + the four `ExpoContext` peers); pinning
- * it explicitly would just duplicate inference across a 13-tag union.
  */
-// oxlint-disable-next-line typescript/explicit-function-return-type
-const makeBindLive = ({ port, hostname }: { port: number; hostname: string }) =>
+const makeBindLive = ({
+  port,
+  hostname,
+}: {
+  port: number
+  hostname: string
+}): Layer.Layer<
+  never,
+  never,
+  | AppsStore
+  | CollectorStore
+  | EmrStore
+  | GatekeeperStore
+  | LocalHttpServerStore
+  | TunnelStore
+  | CryptoRandom
+  | WebAssetsDir
+  | DefaultServices.DefaultServices
+> =>
   WildflowerServerLive.pipe(
     HttpServer.withLogAddress,
     Layer.provide(Layer.mergeAll(ExpoHttpServer.layer({ port, hostname }), OriginFromTunnelStore)),
@@ -168,11 +178,13 @@ const makeBindLive = ({ port, hostname }: { port: number; hostname: string }) =>
  * uses in [`apps/wildflower-node/src/index.ts`](../../../wildflower-node/src/index.ts).
  *
  * `Layer.scopedDiscard` runs the inner Effect once when the Layer is
- * built. `Layer.memoize` builds {@link HttpServerContextLive} into a
- * cached Layer at that point — the bootstrap (seeds + mint) runs
- * exactly once, before the watcher fiber is forked. The daemon's
- * respawn loop (`runHttpServerDaemon`'s `executeIntents`) only rebuilds
- * the per-bind layer; bootstrap is not re-entered.
+ * built. `Layer.build` runs the bootstrap (seeds + mint) at that
+ * point, then `Layer.succeedContext` rewraps the resulting `Context`
+ * as a requirement-less Layer that the respawn loop provides into
+ * each per-bind build — so the bootstrap runs exactly once before the
+ * watcher fiber is forked, and the daemon's respawn loop
+ * (`runHttpServerDaemon`'s `executeIntents`) only rebuilds the
+ * per-bind layer; bootstrap is not re-entered.
  *
  * `Effect.forkScoped` ties the watcher fiber to the Layer's scope.
  * When the launcher (the `useEffect` in `app-runtime-provider.tsx`)
