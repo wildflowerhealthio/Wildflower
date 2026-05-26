@@ -22,7 +22,6 @@ import { webAssetsDir } from 'wildflower-react/web-assets'
 import { WebAssetsDir, WildflowerServerLive } from 'wildflower-server'
 import { createStore } from './livestore-store.ts'
 import { SERVICE_NAME } from './service-name.ts'
-
 // Config
 
 const PORT = Number(process.env['PORT'] ?? 3000)

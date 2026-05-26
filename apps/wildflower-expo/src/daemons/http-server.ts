@@ -1,6 +1,7 @@
 /* oxlint-disable import/max-dependencies -- on-device platform entry; mirrors wildflower-node by
    wiring every slice's expo-side Layer + store + telemetry into WildflowerServerLive. */
 import { HttpServer } from '@effect/platform'
+import type { HttpRouter } from '@effect/platform/HttpRouter'
 import { AppsStore } from 'apps-core/livestore'
 import { CollectorStore } from 'collector-core/livestore'
 import { Cause, DefaultServices, Duration, Effect, Layer, type Scope, Stream } from 'effect'
@@ -33,7 +34,7 @@ import { WildflowerStore } from '../livestore/livestore-store.ts'
  * `expo-effect-platform` exposes a real `FileSystem.FileSystem`
  * implementation (see Wildflower#88).
  */
-const stageWebAssetsDir: Effect.Effect<string> = Effect.gen(function* () {
+const stageWebAssetsDir: Effect.Effect<string, never, never> = Effect.gen(function* () {
   const dir = yield* Effect.sync(() => new Directory(Paths.cache, 'wildflower-static'))
   yield* Effect.sync(() => dir.create({ intermediates: true, idempotent: true }))
   const indexFile = yield* Effect.sync(() => new File(dir, 'index.html'))
@@ -168,6 +169,7 @@ const makeBindLive = ({
   | TunnelStore
   | CryptoRandom
   | WebAssetsDir
+  | HttpRouter.DefaultServices
 > =>
   WildflowerServerLive.pipe(
     HttpServer.withLogAddress,

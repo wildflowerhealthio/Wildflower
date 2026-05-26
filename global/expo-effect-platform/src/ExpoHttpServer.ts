@@ -1,4 +1,4 @@
-import type * as Server from '@effect/platform/HttpServer'
+import type * as PlatformHttpServer from '@effect/platform/HttpServer'
 /**
  * Expo HTTP server implementation of `@effect/platform` HttpServer.
  */
@@ -11,5 +11,6 @@ export { type ExpoFileBody } from './internal/httpServer.ts'
 /**
  * Create an HttpServer layer backed by the Expo native HTTP server module.
  */
-export const layer: (options: { port: number } & ServerOptions) => Layer.Layer<Server.HttpServer> =
-  internal.layer
+export const layer: (
+  options: { port: number } & ServerOptions
+) => Layer.Layer<PlatformHttpServer.HttpServer, never, never> = internal.layer
