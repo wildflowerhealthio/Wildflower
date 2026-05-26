@@ -7,7 +7,7 @@ import { HttpServer } from '@effect/platform'
 import { NodeFileSystem, NodeHttpServer, NodePath, NodeRuntime } from '@effect/platform-node'
 import { AppsStore } from 'apps-core/livestore'
 import { CollectorStore } from 'collector-core/livestore'
-import { Duration, Effect, Layer } from 'effect'
+import { Cause, Duration, Effect, Layer } from 'effect'
 import { EmrStore } from 'emr-core/livestore'
 import { mintHostOwnerToken, seedFirstPartyClient, seedSigningKey } from 'gatekeeper-core/contexts'
 import { GatekeeperStore } from 'gatekeeper-core/livestore'
@@ -22,7 +22,6 @@ import { webAssetsDir } from 'wildflower-react/web-assets'
 import { WebAssetsDir, WildflowerServerLive } from 'wildflower-server'
 import { createStore } from './livestore-store.ts'
 import { SERVICE_NAME } from './service-name.ts'
-
 // Config
 
 const PORT = Number(process.env['PORT'] ?? 3000)
@@ -69,8 +68,8 @@ const run = Effect.gen(function* () {
     ? yield* mintHostOwnerToken({ ttl: Duration.hours(1) }).pipe(
         Effect.provide(gatekeeperStoreLayer),
         Effect.provide(originLayer),
-        Effect.catchAll((err) =>
-          Effect.as(Effect.logError('Bootstrap token unavailable.', err), null)
+        Effect.catchAllCause((cause) =>
+          Effect.as(Effect.logError('Bootstrap token unavailable.', Cause.pretty(cause)), null)
         )
       )
     : null

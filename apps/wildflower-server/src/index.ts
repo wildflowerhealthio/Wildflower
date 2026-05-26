@@ -130,9 +130,9 @@ const WildflowerHttpApiLive = HttpApiBuilder.api(WildflowerHttpApi).pipe(
  * `LocalHttpServerStore`).
  */
 const WildflowerServerLive = HttpApiBuilder.serve(middleware).pipe(
-  Layer.provide(HttpApiSwagger.layer()),
-  Layer.provide(WildflowerHttpApiLive),
-  Layer.provide(StaticSpaLive)
+  Layer.provide(
+    Layer.merge(Layer.provideMerge(HttpApiSwagger.layer(), WildflowerHttpApiLive), StaticSpaLive)
+  )
 )
 
 export { WildflowerHttpApi, WildflowerServerLive }
