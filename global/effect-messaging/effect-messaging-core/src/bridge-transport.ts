@@ -93,8 +93,17 @@ interface BridgeTransport<
 // oxlint-disable-next-line typescript/no-explicit-any
 type AnyTaggedSchema = Schema.Schema<any, any, never>
 
-/** Handler invoked by the dispatch fiber when a tag's message arrives. */
-type Handler = (message: { readonly _tag: string }) => Effect.Effect<void>
+/**
+ * Handler invoked by the dispatch fiber when a tag's message arrives.
+ *
+ * @remarks
+ * The `TransportAdapter` requirement matches `HandlersFor` (handlers can
+ * reply via the same-bridge `send(...)`). The dispatch fiber discharges
+ * the requirement per-invocation under the transport's own adapter, so
+ * handlers returning `Effect<void, never, never>` and handlers calling
+ * `send(...)` both compose into the same dispatch path.
+ */
+type Handler = (message: { readonly _tag: string }) => Effect.Effect<void, never, TransportAdapter>
 
 const make = <
   const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
@@ -217,7 +226,11 @@ const make = <
     const decodeAndDispatch = (
       raw: string,
       source: DispatchError.Source
-    ): Effect.Effect<void, DispatchError.DispatchError | ParseResult.ParseError> =>
+    ): Effect.Effect<
+      void,
+      DispatchError.DispatchError | ParseResult.ParseError,
+      TransportAdapter
+    > =>
       Effect.gen(function* () {
         // The Union schema decodes to `any`; re-narrow at this single
         // boundary. Schema acceptance guarantees `_tag: string`.

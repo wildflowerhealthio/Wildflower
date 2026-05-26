@@ -9,6 +9,8 @@ import { expectTypeOf } from 'expect-type'
 import { NavigationBridge } from 'navigation-core'
 import { NavigationBridgeExpo } from './index.ts'
 
+const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
+
 // Type-only assertions on `ReceiverLayer`'s signature. Hoisted to module
 // scope so the type check fires at file load — `expect-type` is purely
 // compile-time, so wrapping these in `it(...)` would have Jest report them
@@ -48,7 +50,11 @@ describe('NavigationBridgeExpo.ReceiverLayer (RouteChanged handler)', () => {
     async ({ pathname, canGoBack }) => {
       const onRouteChanged = jest.fn()
       const handlers = await resolveHandlers(NavigationBridgeExpo.ReceiverLayer(onRouteChanged))
-      await Effect.runPromise(handlers.RouteChanged({ _tag: 'RouteChanged', pathname, canGoBack }))
+      await Effect.runPromise(
+        handlers
+          .RouteChanged({ _tag: 'RouteChanged', pathname, canGoBack })
+          .pipe(Effect.provide(adapterLayer))
+      )
       expect(onRouteChanged).toHaveBeenCalledTimes(1)
       expect(onRouteChanged).toHaveBeenCalledWith({ pathname, canGoBack })
     }
@@ -58,7 +64,9 @@ describe('NavigationBridgeExpo.ReceiverLayer (RouteChanged handler)', () => {
     const handlers = await resolveHandlers(NavigationBridgeExpo.ReceiverLayer())
     await expect(
       Effect.runPromise(
-        handlers.RouteChanged({ _tag: 'RouteChanged', pathname: '/foo', canGoBack: true })
+        handlers
+          .RouteChanged({ _tag: 'RouteChanged', pathname: '/foo', canGoBack: true })
+          .pipe(Effect.provide(adapterLayer))
       )
     ).resolves.toBeUndefined()
   })
@@ -71,7 +79,7 @@ describe('NavigationBridgeExpo.ReceiverLayer (RouteChanged handler)', () => {
     // and await `transport.flushed`, which only resolves once every
     // queued message has been processed. A fiber crash during dispatch
     // would surface here as a rejected promise.
-    const { layer: adapterLayer, liveBareSenderRef } = TestPlatformAdapterLayer.make({
+    const { layer: capturingAdapterLayer, liveBareSenderRef } = TestPlatformAdapterLayer.make({
       captureBareSenderLive: true,
     })
     const routeChangedEncoded = Schema.encodeSync(NavigationBridge.MessageSchemas.RouteChanged)({
@@ -85,7 +93,7 @@ describe('NavigationBridgeExpo.ReceiverLayer (RouteChanged handler)', () => {
           bridges: [NavigationBridge] as const,
           layers: [NavigationBridgeExpo.ReceiverLayer()] as const,
           side: 'Host',
-        }).pipe(Effect.provide(adapterLayer))
+        }).pipe(Effect.provide(capturingAdapterLayer))
         if (liveBareSenderRef.current === null) {
           throw new Error('liveBareSenderRef not captured')
         }

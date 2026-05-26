@@ -29,6 +29,7 @@
     "@sentry/react": "catalog:",
     "@sentry/react-native": "catalog:",
     "apps-core": "workspace:*",
+    "apps-expo": "workspace:*",
     "browser-sniffer-core": "workspace:*",
     "browser-sniffer-expo": "workspace:*",
     "browser-sniffer-injected": "workspace:*",

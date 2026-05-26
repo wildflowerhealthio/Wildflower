@@ -1,9 +1,16 @@
 import { fc, test as fcTest } from '@fast-check/jest'
 import { renderHook } from '@testing-library/react-native'
 import { Context, Effect, Layer, Logger, LogLevel as EffectLogLevel } from 'effect'
-import { type HostBinding, LogBridge, type MessageHandler } from 'effect-messaging-core'
+import {
+  type HostBinding,
+  LogBridge,
+  type MessageHandler,
+  TestPlatformAdapterLayer,
+} from 'effect-messaging-core'
 import { expectTypeOf } from 'expect-type'
 import { useLogHostBinding, type UseLogHostBindingOptions } from './use-log-host-binding.ts'
+
+const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
 
 describe('useLogHostBinding — types', () => {
   it('returns a HostBinding for the LogBridge', () => {
@@ -87,8 +94,16 @@ describe('useLogHostBinding — runtime', () => {
       })
     const { result } = renderHook(() => useLogHostBinding({ onLog }))
     const handlers = await resolveHandlers(result.current.receiverLayer)
-    await Effect.runPromise(handlers.Log({ _tag: 'Log', level: 'info', payload: ['first', 1] }))
-    await Effect.runPromise(handlers.Log({ _tag: 'Log', level: 'warn', payload: ['second'] }))
+    await Effect.runPromise(
+      handlers
+        .Log({ _tag: 'Log', level: 'info', payload: ['first', 1] })
+        .pipe(Effect.provide(adapterLayer))
+    )
+    await Effect.runPromise(
+      handlers
+        .Log({ _tag: 'Log', level: 'warn', payload: ['second'] })
+        .pipe(Effect.provide(adapterLayer))
+    )
     expect(received).toEqual([
       { _tag: 'Log', level: 'info', payload: ['first', 1] },
       { _tag: 'Log', level: 'warn', payload: ['second'] },
@@ -111,7 +126,7 @@ describe('useLogHostBinding — runtime', () => {
       const sink: CapturedLog[] = []
       await Effect.runPromise(
         handlers.Log({ _tag: 'Log', level, payload: ['hello from the spa'] }).pipe(
-          Effect.provide(captureLogs(sink)),
+          Effect.provide(Layer.mergeAll(captureLogs(sink), adapterLayer)),
           // Default runtime minimum is INFO; lift it so DEBUG surfaces too.
           Logger.withMinimumLogLevel(EffectLogLevel.All)
         )
@@ -147,7 +162,10 @@ describe('useLogHostBinding — runtime', () => {
       await Effect.runPromise(
         handlers
           .Log({ _tag: 'Log', level, payload })
-          .pipe(Effect.provide(captureLogs(sink)), Logger.withMinimumLogLevel(EffectLogLevel.All))
+          .pipe(
+            Effect.provide(Layer.mergeAll(captureLogs(sink), adapterLayer)),
+            Logger.withMinimumLogLevel(EffectLogLevel.All)
+          )
       )
       // Empty payload still produces a single (empty-message) log entry —
       // `Effect.log<Level>()` emits with an empty message, not nothing.

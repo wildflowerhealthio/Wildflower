@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react'
 import CollectorBridge from 'collector-fundamentals/bridge'
 import { Effect } from 'effect'
+import { TestPlatformAdapterLayer, type TransportAdapter } from 'effect-messaging-core'
 import { useContext, type JSX, type ReactNode } from 'react'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -33,6 +34,11 @@ const captureContextValue = (): CollectorRuntimeContextValue => {
   }
   return box.value
 }
+
+const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
+
+const runHandlerPromise = <A, E>(eff: Effect.Effect<A, E, TransportAdapter>): Promise<A> =>
+  Effect.runPromise(Effect.provide(eff, adapterLayer))
 
 describe('CollectorRuntimeProvider', () => {
   it('exposes a setActiveHandler function on the context value', () => {
@@ -77,6 +83,6 @@ describe('CollectorRuntimeProvider', () => {
       yield* service.Cancelled({ _tag: 'Cancelled', id: '1' })
     })
 
-    await Effect.runPromise(program.pipe(Effect.provide(value.receiverLayer)))
+    await runHandlerPromise(program.pipe(Effect.provide(value.receiverLayer)))
   })
 })

@@ -3,6 +3,9 @@ import * as fc from 'fast-check'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
 import * as LogBridge from '../src/log-bridge.ts'
 import type * as MessageHandler from '../src/message-handler.ts'
+import * as TestPlatformAdapterLayer from '../src/test-platform-adapter-layer.ts'
+
+const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
 
 const decodeLog = Schema.decodeUnknownSync(Schema.typeSchema(LogBridge.LogMessage))
 
@@ -114,7 +117,7 @@ describe('LogBridge.defaultHostReceiverLayer', () => {
     const sink: CapturedLog[] = []
     await Effect.runPromise(
       handlers.Log({ _tag: 'Log', level, payload: ['hello from the web', { extra: 1 }] }).pipe(
-        Effect.provide(captureLogs(sink)),
+        Effect.provide(Layer.mergeAll(captureLogs(sink), adapterLayer)),
         // Default runtime minimum is INFO; lift it so DEBUG surfaces too.
         Logger.withMinimumLogLevel(EffectLogLevel.All)
       )
