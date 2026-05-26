@@ -1,13 +1,13 @@
+import { FileSystem, HttpServer, Path } from '@effect/platform'
 /* oxlint-disable import/max-dependencies -- on-device platform entry; mirrors wildflower-node by
    wiring every slice's expo-side Layer + store + telemetry into WildflowerServerLive. */
-import { HttpServer } from '@effect/platform'
+import type * as PlatformError from '@effect/platform/Error'
 import type { HttpRouter } from '@effect/platform/HttpRouter'
 import { AppsStore } from 'apps-core/livestore'
 import { CollectorStore } from 'collector-core/livestore'
 import { Cause, DefaultServices, Duration, Effect, Layer, type Scope, Stream } from 'effect'
 import { EmrStore } from 'emr-core/livestore'
-import { ExpoContext, ExpoHttpServer } from 'expo-effect-platform'
-import { Directory, File, Paths } from 'expo-file-system'
+import { ExpoContext, ExpoFileSystem, ExpoHttpServer } from 'expo-effect-platform'
 import { mintHostOwnerToken, seedFirstPartyClient, seedSigningKey } from 'gatekeeper-core/contexts'
 import { GatekeeperStore, LocalClientToken } from 'gatekeeper-core/livestore'
 import { type CryptoRandom, cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
@@ -28,23 +28,24 @@ import { WildflowerStore } from '../livestore/livestore-store.ts'
  * cache-dir lifecycle is opaque to the OS, so we always (re)write on
  * boot to pick up rebuilds.
  *
- * Each filesystem step is its own `Effect.sync` so success/failure
- * lands in the Effect trace under the surrounding Layer's scope. The
- * direct `expo-file-system` reach-through is a stopgap until
- * `expo-effect-platform` exposes a real `FileSystem.FileSystem`
- * implementation (see Wildflower#88).
+ * Routed through the Expo-backed `FileSystem.FileSystem` (provided by
+ * {@link ExpoContext.layer}) so each filesystem step lands in the
+ * Effect trace under the surrounding Layer's scope and failures are
+ * typed.
  */
-const stageWebAssetsDir: Effect.Effect<string, never, never> = Effect.gen(function* () {
-  const dir = yield* Effect.sync(() => new Directory(Paths.cache, 'wildflower-static'))
-  yield* Effect.sync(() => dir.create({ intermediates: true, idempotent: true }))
-  const indexFile = yield* Effect.sync(() => new File(dir, 'index.html'))
-  if (yield* Effect.sync(() => indexFile.exists)) {
-    yield* Effect.sync(() => indexFile.delete())
-  }
-  yield* Effect.sync(() => indexFile.create())
-  yield* Effect.sync(() => indexFile.write(embeddableHtml))
-  // `Path.Path` resolvers don't accept the `file://` URI scheme — strip it.
-  return yield* Effect.sync(() => dir.uri.replace(/^file:\/\//, ''))
+const stageWebAssetsDir: Effect.Effect<
+  string,
+  PlatformError.PlatformError,
+  FileSystem.FileSystem | Path.Path | ExpoFileSystem.ExpoCacheDir
+> = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const cacheDir = yield* ExpoFileSystem.ExpoCacheDir
+  const dir = path.join(cacheDir, 'wildflower-static')
+  yield* fs.makeDirectory(dir, { recursive: true })
+  const indexFile = path.join(dir, 'index.html')
+  yield* fs.writeFileString(indexFile, embeddableHtml)
+  return dir
 })
 
 const CryptoRandomLive = cryptoRandomLayerFromWebCrypto(globalThis.crypto)
@@ -124,12 +125,11 @@ const HttpServerContextLive = Layer.mergeAll(
         yield* Effect.logInfo(`Local client token minted (prefix: ${token.slice(0, 8)}…)`)
       }
 
-      return yield* stageWebAssetsDir
+      return yield* stageWebAssetsDir.pipe(Effect.orDie)
     })
-  ),
+  ).pipe(Layer.provideMerge(ExpoContext.layer)),
   CryptoRandomLive,
-  TelemetryLive,
-  ExpoContext.layer
+  TelemetryLive
 ).pipe(Layer.provideMerge(SliceStoresLive))
 
 /**
