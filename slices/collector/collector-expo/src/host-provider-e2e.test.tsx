@@ -1,19 +1,9 @@
 /**
  * End-to-end smoke test for the collector-expo wiring. Uses the
  * **real** `CollectorBridge.Host.ReceiverLayer` (no `jest.mock` for
- * the bridge), the real `makeMessageSenderPipe`-built pipes, and the
- * real `HostProvider` — only `expo-router` is stubbed because there's
- * no router stack in the test environment.
- *
- * Covers the load-bearing piping: a `Click` decoded by the
- * collector bridge's host receiver layer, fired in the host tree,
- * exits through the registered BrowserSniffer pipe sender. Likewise
- * for the Collector pipe — a sender registered there is reachable
- * via `useMessageSenderToCollector` and forwards messages.
- *
- * Together this proves both pipes survive being mounted by
- * `HostProvider` and that the late-register-then-send path works
- * thanks to the `usePipeMessageSender` suspend-wrapping change.
+ * the bridge), the real `makeNamedPipe`-built pipes, and the real
+ * `HostProvider` — only `expo-router` is stubbed because there's no
+ * router stack in the test environment.
  */
 import { act, render } from '@testing-library/react-native'
 import type BrowserSnifferBridge from 'browser-sniffer-core/bridge'
@@ -33,19 +23,18 @@ jest.mock('expo-router', () => mockBuildExpoRouterFactory())
 jest.mock('browser-sniffer-expo', () => mockBuildBrowserSnifferExpoFactory())
 jest.mock('expo-tundraish', () => mockBuildExpoTundraishFactory())
 
-import { CollectorBridgeExpo } from './index.ts'
+import {
+  CollectorBridgeExpo,
+  useAsBrowserSnifferSource,
+  useAsCollectorSource,
+  useCollectorSender,
+} from './index.ts'
 
 type SnifferSender = BridgeTransport.MessageSender<readonly [typeof BrowserSnifferBridge], 'Host'>
 type CollectorSender = BridgeTransport.MessageSender<readonly [typeof CollectorBridge], 'Host'>
 
 const noopBareSender = Layer.succeed(BareSender, { bareSender: () => Effect.void })
 
-/**
- * Mounts inside `HostProvider`, builds the real receiver layer, and
- * registers both pipe senders. The receiver-layer build also
- * publishes the layer via `onLayer` so the test can resolve handlers
- * out of it and fire them.
- */
 const ProbeInsideProvider = ({
   snifferSender,
   collectorSender,
@@ -58,9 +47,9 @@ const ProbeInsideProvider = ({
   readonly onLayerReady: (layer: ReturnType<typeof CollectorBridgeExpo.useReceiverLayer>) => void
 }): ReactElement | null => {
   const layer = CollectorBridgeExpo.useReceiverLayer()
-  CollectorBridgeExpo.useAsMessageSenderToBrowserSniffer(snifferSender)
-  CollectorBridgeExpo.useAsMessageSenderToCollector(collectorSender)
-  const collectorRead = CollectorBridgeExpo.useMessageSenderToCollector()
+  useAsBrowserSnifferSource(snifferSender)
+  useAsCollectorSource(collectorSender)
+  const collectorRead = useCollectorSender()
 
   useEffect(() => {
     onLayerReady(layer)
@@ -96,16 +85,18 @@ describe('CollectorBridgeExpo end-to-end pipe wiring', () => {
         />
       </CollectorBridgeExpo.HostProvider>
     )
-    expect(capturedLayer).not.toBeNull()
-    expect(capturedCollectorRead).not.toBeNull()
+    if (capturedLayer === null) {
+      throw new Error('Receiver layer was not captured')
+    }
+    if (capturedCollectorRead === null) {
+      throw new Error('Collector pipe-read sender was not captured')
+    }
+    const layer: ReturnType<typeof CollectorBridgeExpo.useReceiverLayer> = capturedLayer
 
-    // Dispatch a decoded `Click` through the real receiver layer via
-    // its `MessageHandler` service. The layer + a no-op `BareSender`
-    // discharge the requirements.
     const dispatchClick = Effect.gen(function* () {
       const service = yield* CollectorBridge.Host.HandlerTag
       yield* service.Click({ _tag: 'Click', querySelector: '#submit' })
-    }).pipe(Effect.provide(capturedLayer!), Effect.provide(noopBareSender))
+    }).pipe(Effect.provide(layer), Effect.provide(noopBareSender))
 
     await act(async () => {
       await Effect.runPromise(dispatchClick)
@@ -114,7 +105,7 @@ describe('CollectorBridgeExpo end-to-end pipe wiring', () => {
     expect(snifferCalls).toEqual([{ _tag: 'Click', querySelector: '#submit' }])
   })
 
-  it('A send through useMessageSenderToCollector reaches the registered Collector sender', async () => {
+  it('A send through useCollectorSender reaches the registered Collector sender', async () => {
     const snifferSender: SnifferSender = () => Effect.void
     const collectorCalls: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = []
     const collectorSender: CollectorSender = (msg) => Effect.sync(() => collectorCalls.push(msg))
@@ -132,7 +123,10 @@ describe('CollectorBridgeExpo end-to-end pipe wiring', () => {
         />
       </CollectorBridgeExpo.HostProvider>
     )
-    expect(capturedCollectorRead).not.toBeNull()
+    if (capturedCollectorRead === null) {
+      throw new Error('Collector pipe-read sender was not captured')
+    }
+    const collectorRead: CollectorSender = capturedCollectorRead
 
     const event = {
       _tag: 'PageLoaded' as const,
@@ -140,7 +134,7 @@ describe('CollectorBridgeExpo end-to-end pipe wiring', () => {
       pageContentId: 'p-1',
     }
     await act(async () => {
-      await Effect.runPromise(capturedCollectorRead!(event))
+      await Effect.runPromise(collectorRead(event))
     })
 
     expect(collectorCalls).toEqual([event])

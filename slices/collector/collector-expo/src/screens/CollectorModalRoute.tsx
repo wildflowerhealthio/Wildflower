@@ -1,9 +1,6 @@
-import { useRouter } from 'expo-router'
-import { ThemedText, ThemedView } from 'expo-tundraish'
 import { type JSX } from 'react'
-import { StyleSheet } from 'react-native'
 
-import { useHost } from '../host-receiver-layer.tsx'
+import { useCollectorHost } from '../collector-host-context.tsx'
 import { CollectorModalScreen } from './CollectorModalScreen.tsx'
 
 /**
@@ -21,36 +18,19 @@ import { CollectorModalScreen } from './CollectorModalScreen.tsx'
  * ```
  */
 const CollectorModalRoute = (): JSX.Element => {
-  const { pendingSource } = useHost()
-  const router = useRouter()
+  const { pendingSource } = useCollectorHost()
 
   if (pendingSource === null) {
-    // Defensive — the route should only ever be pushed after the
-    // receiver layer's `RequestSniffableWebView` handler set
-    // `pendingSource`. Surface the inconsistency rather than render
-    // a broken `BrowserSnifferWebView`.
-    return (
-      <ThemedView style={styles.empty}>
-        <ThemedText type="heading3">No sniffer source</ThemedText>
-        <ThemedText>The host shell pushed this modal without queuing a sniffer source.</ThemedText>
-        <ThemedText type="link" onPress={() => router.back()}>
-          Close
-        </ThemedText>
-      </ThemedView>
+    // The route should only ever be pushed after the receiver layer's
+    // `RequestSniffableWebView` handler set `pendingSource`. Fail
+    // fast (matching `useCollectorHost`'s policy) rather than render
+    // a misleading empty state.
+    throw new Error(
+      'CollectorModalRoute mounted without pendingSource — push via the receiver layer.'
     )
   }
 
   return <CollectorModalScreen source={pendingSource} />
 }
-
-const styles = StyleSheet.create({
-  empty: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    gap: 12,
-  },
-})
 
 export { CollectorModalRoute }

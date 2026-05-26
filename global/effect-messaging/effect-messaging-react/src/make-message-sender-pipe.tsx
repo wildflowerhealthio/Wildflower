@@ -58,6 +58,10 @@ const makeMessageSenderPipe = <
    * time, so callers don't need to re-render to see a sender registered
    * later. Pre-mount sends route through the default warn-and-drop
    * handler until {@link useAsPipeMessageSender} commits its effect.
+   *
+   * The returned function is identity-stable for the lifetime of the
+   * surrounding Provider — safe to include in `useEffect` / `useMemo`
+   * deps.
    */
   const usePipeMessageSender = (): BridgeTransport.MessageSender<TBridges, TSide> => {
     const handlerRef = useContextOrThrow(Context)

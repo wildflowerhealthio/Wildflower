@@ -4,15 +4,13 @@
  * Behaviour pinned:
  *
  *  - Each sniffer event handler routes the decoded message through
- *    `useMessageSenderToCollector` so the embedded SPA's bridge
+ *    the Collector pipe sender so the embedded SPA's bridge
  *    dispatches it. `RequestError` additionally fires the optional
  *    `onError` callback (and the dispatch survives a callback throw).
  *  - The `BrowserSnifferWebView` ref (a `BrowserSnifferMessageSender`)
- *    is registered through `useAsMessageSenderToBrowserSniffer` so
- *    the receiver layer's `Click` / `CancelSnifferRequest` handlers
- *    can dispatch into the sniffer page.
- *  - `WebViewSource.Any → BridgedWebViewLoadFrom` conversion is
- *    correct for both `Uri` and `Html` variants.
+ *    is registered through the BrowserSniffer pipe so the receiver
+ *    layer's `Click` / `CancelSnifferRequest` handlers can dispatch
+ *    into the sniffer page.
  */
 import { act, render } from '@testing-library/react-native'
 import type * as EffectType from 'effect'
@@ -31,8 +29,6 @@ import type { BridgedWebViewLoadFrom } from 'effect-messaging-expo'
 const mockHarness = {
   lastLoadFrom: null as BridgedWebViewLoadFrom | null,
   lastHandlers: null as SnifferHandlers | null,
-  // The mock's stable sender — returned via ref. Records each call so
-  // tests can assert the sniffer pipe round-trip.
   snifferCalls: [] as Array<{ readonly _tag: string; readonly [key: string]: unknown }>,
 }
 
@@ -49,7 +45,6 @@ jest.mock('browser-sniffer-expo', () => {
     ): ReactElement {
       mockHarness.lastLoadFrom = props.loadFrom
       mockHarness.lastHandlers = props.browserSnifferHandlers
-      // Mirrors the real component's stable `BrowserSnifferMessageSender` ref shape.
       const stableSender: BrowserSnifferMessageSender = (msg) =>
         EffectInner.sync(() => mockHarness.snifferCalls.push(msg))
       ReactInner.useImperativeHandle(ref, () => stableSender, [])
@@ -67,38 +62,34 @@ jest.mock('expo-tundraish', () => {
   }
 })
 
-// `useMessageSenderToCollector` reads from a real
-// `makeMessageSenderPipe`-built context inside `HostProvider`. The
-// screen test wraps in a thin custom provider that records dispatch
-// calls (avoids dragging in `expo-router` etc.).
+// Pipe mock — the e2e test already exercises the real-pipe round-trip,
+// so this mock only needs to: (a) act as a no-op Provider, (b) capture
+// the sender installed via `useAsBrowserSnifferSource` into a single
+// slot, and (c) return a recording sender from `useCollectorSender`.
+let lastRegisteredSender: BrowserSnifferMessageSender | null = null
 const mockCollectorCalls: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = []
 jest.mock('../message-sender-pipes.tsx', () => {
   const { Effect: EffectInner } = jest.requireActual<typeof EffectType>('effect')
   const ReactInner = jest.requireActual<typeof React>('react')
-  let registeredSnifferSender: BrowserSnifferMessageSender | null = null
   const PassThroughProvider = ({
     children,
   }: {
     readonly children: React.ReactNode
   }): ReactElement => ReactInner.createElement(ReactInner.Fragment, null, children)
   return {
-    MessageSenderToBrowserSnifferProvider: PassThroughProvider,
-    MessageSenderToCollectorProvider: PassThroughProvider,
-    useAsMessageSenderToBrowserSniffer: (sender: BrowserSnifferMessageSender): void => {
+    BrowserSnifferPipeProvider: PassThroughProvider,
+    CollectorPipeProvider: PassThroughProvider,
+    useAsBrowserSnifferSource: (sender: BrowserSnifferMessageSender): void => {
       ReactInner.useEffect(() => {
-        registeredSnifferSender = sender
+        lastRegisteredSender = sender
       }, [sender])
     },
-    useAsMessageSenderToCollector: (): void => undefined,
-    useMessageSenderToBrowserSniffer: (): BrowserSnifferMessageSender =>
-      ReactInner.useCallback(
-        (msg) =>
-          EffectInner.suspend(() =>
-            registeredSnifferSender === null ? EffectInner.void : registeredSnifferSender(msg)
-          ),
-        []
-      ),
-    useMessageSenderToCollector: () =>
+    useAsCollectorSource: (): void => undefined,
+    useBrowserSnifferSender: (): BrowserSnifferMessageSender => () => EffectInner.void,
+    useCollectorSender: (): ((msg: {
+      readonly _tag: string
+      readonly [key: string]: unknown
+    }) => EffectType.Effect.Effect<void>) =>
       ReactInner.useCallback(
         (msg: { readonly _tag: string; readonly [key: string]: unknown }) =>
           EffectInner.sync(() => {
@@ -106,19 +97,24 @@ jest.mock('../message-sender-pipes.tsx', () => {
           }),
         []
       ),
-    // Expose the internal slot for tests that assert
-    // the sniffer-pipe round-trip.
-    getRegisteredSnifferSender: (): BrowserSnifferMessageSender | null => registeredSnifferSender,
   }
 })
 
 import { CollectorModalScreen } from './CollectorModalScreen.tsx'
+
+const requireHandlers = (): SnifferHandlers => {
+  if (mockHarness.lastHandlers === null) {
+    throw new Error('BrowserSnifferWebView mock never received handlers')
+  }
+  return mockHarness.lastHandlers
+}
 
 beforeEach(() => {
   mockHarness.lastLoadFrom = null
   mockHarness.lastHandlers = null
   mockHarness.snifferCalls = []
   mockCollectorCalls.length = 0
+  lastRegisteredSender = null
 })
 
 describe('CollectorModalScreen', () => {
@@ -151,28 +147,46 @@ describe('CollectorModalScreen', () => {
     })
   })
 
-  describe('typed re-emit through useMessageSenderToCollector', () => {
-    type Case = readonly [string, { readonly _tag: string } & Readonly<Record<string, unknown>>]
-    const cases: ReadonlyArray<Case> = [
-      ['ResponseStart', { _tag: 'ResponseStart', id: 'r1', url: 'u', status: 200 }],
-      ['ResponseData', { _tag: 'ResponseData', id: 'r1', data: 'b64' }],
-      ['ResponseFinished', { _tag: 'ResponseFinished', id: 'r1' }],
-      ['Cancelled', { _tag: 'Cancelled', id: 'r1' }],
-      ['PageLoaded', { _tag: 'PageLoaded', url: 'u', pageContentId: 'p' }],
-    ]
-    it.each(cases)('forwards %s verbatim through the collector pipe', async (tag, event) => {
+  describe('typed re-emit through the Collector pipe', () => {
+    it('forwards ResponseStart verbatim', async () => {
+      const event = {
+        _tag: 'ResponseStart' as const,
+        id: 'r1',
+        url: 'u',
+        status: 200,
+        statusText: 'OK',
+        headers: [['content-type', 'application/json']] as const,
+      }
       render(<CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />)
-      const handlers = mockHarness.lastHandlers
-      expect(handlers).not.toBeNull()
-      if (handlers === null) return
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const handlersRecord = handlers as unknown as Readonly<
-        Record<string, ((e: unknown) => Effect.Effect<void>) | undefined>
-      >
-      const handler = handlersRecord[tag]
-      expect(handler).toBeDefined()
-      if (handler === undefined) return
-      await Effect.runPromise(handler(event))
+      await Effect.runPromise(requireHandlers().ResponseStart(event))
+      expect(mockCollectorCalls).toEqual([event])
+    })
+
+    it('forwards ResponseData verbatim', async () => {
+      const event = { _tag: 'ResponseData' as const, id: 'r1', data: 'b64' }
+      render(<CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />)
+      await Effect.runPromise(requireHandlers().ResponseData(event))
+      expect(mockCollectorCalls).toEqual([event])
+    })
+
+    it('forwards ResponseFinished verbatim', async () => {
+      const event = { _tag: 'ResponseFinished' as const, id: 'r1' }
+      render(<CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />)
+      await Effect.runPromise(requireHandlers().ResponseFinished(event))
+      expect(mockCollectorCalls).toEqual([event])
+    })
+
+    it('forwards Cancelled verbatim', async () => {
+      const event = { _tag: 'Cancelled' as const, id: 'r1' }
+      render(<CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />)
+      await Effect.runPromise(requireHandlers().Cancelled(event))
+      expect(mockCollectorCalls).toEqual([event])
+    })
+
+    it('forwards PageLoaded verbatim', async () => {
+      const event = { _tag: 'PageLoaded' as const, url: 'u', pageContentId: 'p' }
+      render(<CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />)
+      await Effect.runPromise(requireHandlers().PageLoaded(event))
       expect(mockCollectorCalls).toEqual([event])
     })
   })
@@ -183,16 +197,13 @@ describe('CollectorModalScreen', () => {
       render(
         <CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} onError={onError} />
       )
-      const handlers = mockHarness.lastHandlers
-      expect(handlers).not.toBeNull()
-      if (handlers === null) return
       const event = {
         _tag: 'RequestError' as const,
         id: 'r1',
         url: 'https://example.test',
         message: 'oh no',
       }
-      await Effect.runPromise(handlers.RequestError(event))
+      await Effect.runPromise(requireHandlers().RequestError(event))
       expect(onError).toHaveBeenCalledTimes(1)
       expect(onError).toHaveBeenCalledWith(event)
       expect(mockCollectorCalls).toEqual([event])
@@ -205,35 +216,28 @@ describe('CollectorModalScreen', () => {
       render(
         <CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} onError={onError} />
       )
-      const handlers = mockHarness.lastHandlers
-      expect(handlers).not.toBeNull()
-      if (handlers === null) return
       const event = {
         _tag: 'RequestError' as const,
         id: 'r1',
         url: 'https://example.test',
         message: 'boom',
       }
-      await expect(Effect.runPromise(handlers.RequestError(event))).resolves.toBeUndefined()
+      await expect(
+        Effect.runPromise(requireHandlers().RequestError(event))
+      ).resolves.toBeUndefined()
       expect(onError).toHaveBeenCalledTimes(1)
       expect(mockCollectorCalls).toEqual([event])
     })
   })
 
   describe('sniffer-pipe registration', () => {
-    it('registers the WebView ref sender through useAsMessageSenderToBrowserSniffer', async () => {
+    it('registers the WebView ref sender through useAsBrowserSnifferSource', async () => {
       render(<CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />)
-      // After mount, the screen's useEffect has installed the sender
-      // exposed by the mocked BrowserSnifferWebView. The pipe mock
-      // exposes the registered value via a private accessor.
-      const pipeMock = jest.requireMock<{
-        getRegisteredSnifferSender: () => BrowserSnifferMessageSender | null
-      }>('../message-sender-pipes.tsx')
-      const registered = pipeMock.getRegisteredSnifferSender()
-      expect(registered).not.toBeNull()
-      if (registered === null) return
+      if (lastRegisteredSender === null) {
+        throw new Error('No sender was registered through useAsBrowserSnifferSource')
+      }
       await act(async () => {
-        await Effect.runPromise(registered({ _tag: 'Click', querySelector: '#go' }))
+        await Effect.runPromise(lastRegisteredSender!({ _tag: 'Click', querySelector: '#go' }))
       })
       expect(mockHarness.snifferCalls).toEqual([{ _tag: 'Click', querySelector: '#go' }])
     })

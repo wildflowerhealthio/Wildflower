@@ -1,6 +1,8 @@
-import { renderHook } from '@testing-library/react'
+import { render, renderHook } from '@testing-library/react'
 import { Effect } from 'effect'
+import type { BridgeTransport } from 'effect-messaging-core'
 import * as fc from 'fast-check'
+import { memo } from 'react'
 import { NoContextException } from 'react-kitchen-sink'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
@@ -106,6 +108,86 @@ describe('makeMessageSenderPipe — examples', () => {
   test('Provider has a displayName tagged with the factory name', () => {
     const { Provider } = makeMessageSenderPipe('TaggedPipe', testBridges, 'Host')
     expect(Provider.displayName).toBe('TaggedPipeMessageSenderPipeContext')
+  })
+
+  test('usePipeMessageSender returns an identity-stable function across re-renders', () => {
+    const { Provider, usePipeMessageSender } = makeMessageSenderPipe('Test', testBridges, 'Host')
+
+    const { result, rerender } = renderHook(() => usePipeMessageSender(), {
+      wrapper: ({ children }) => <Provider>{children}</Provider>,
+    })
+
+    const first = result.current
+    rerender()
+    const second = result.current
+    rerender()
+    const third = result.current
+
+    expect(Object.is(first, second)).toBe(true)
+    expect(Object.is(second, third)).toBe(true)
+  })
+
+  test('a sender registered by a later-mounted child routes through a pipe captured before that child mounted, without re-rendering the consumer', async () => {
+    const { Provider, useAsPipeMessageSender, usePipeMessageSender } = makeMessageSenderPipe(
+      'Test',
+      testBridges,
+      'Host'
+    )
+    const { sender, received } = makeRecordingSender<TestBridges, 'Host'>()
+
+    // Capture records its render count so we can assert it stays at 1 across
+    // the test — proving the registering child mounting doesn't bounce the
+    // consumer. The captured sender is held in a ref so even an accidental
+    // re-render couldn't overwrite it with a fresh closure.
+    let captureRenderCount = 0
+    const capturedSenderRef: {
+      current: BridgeTransport.MessageSender<TestBridges, 'Host'> | undefined
+    } = { current: undefined }
+
+    const Capture = memo((): null => {
+      captureRenderCount += 1
+      const senderFromHook = usePipeMessageSender()
+      if (capturedSenderRef.current === undefined) {
+        capturedSenderRef.current = senderFromHook
+      }
+      return null
+    })
+    Capture.displayName = 'Capture'
+
+    const RegisterChild = (): null => {
+      useAsPipeMessageSender(sender)
+      return null
+    }
+
+    // The Provider's children are swapped via testing-library's `rerender`,
+    // which re-runs the root element. `Capture` is wrapped in `memo` and
+    // takes no props, so React skips re-rendering it on the second pass —
+    // pinning the contract that the captured sender continues to route
+    // correctly without the consumer ever re-rendering.
+    const { rerender } = render(
+      <Provider>
+        <Capture />
+      </Provider>
+    )
+
+    expect(captureRenderCount).toBe(1)
+    expect(capturedSenderRef.current).toBeDefined()
+    const captured = capturedSenderRef.current
+    if (captured === undefined) throw new Error('capturedSender not set')
+
+    rerender(
+      <Provider>
+        <Capture />
+        <RegisterChild />
+      </Provider>
+    )
+
+    // Capture should not have re-rendered — its position in the tree is
+    // unchanged and its props are unchanged.
+    expect(captureRenderCount).toBe(1)
+
+    await Effect.runPromise(captured({ _tag: 'HostBackRequested' }))
+    expect(received).toEqual([{ _tag: 'HostBackRequested' }])
   })
 })
 

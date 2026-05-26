@@ -31,6 +31,7 @@
     "@babel/core": "catalog:",
     "@babel/plugin-syntax-import-attributes": "catalog:",
     "@babel/runtime": "catalog:",
+    "@fast-check/jest": "catalog:",
     "@testing-library/react-native": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
@@ -40,7 +41,6 @@
     "browser-sniffer-core": "workspace:*",
     "browser-sniffer-expo": "workspace:*",
     "collector-fundamentals": "workspace:*",
-    "collector-react": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "effect-messaging-expo": "workspace:*",
@@ -51,7 +51,9 @@
     "expo-tundraish": "workspace:*",
     "jest": "catalog:",
     "jest-expo": "catalog:",
+    "kitchen-sink": "workspace:*",
     "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
     "react-native": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
@@ -60,7 +62,6 @@
     "browser-sniffer-core": "workspace:*",
     "browser-sniffer-expo": "workspace:*",
     "collector-fundamentals": "workspace:*",
-    "collector-react": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "effect-messaging-expo": "workspace:*",
@@ -68,6 +69,7 @@
     "expo-router": "*",
     "expo-tundraish": "workspace:*",
     "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
     "react-native": "catalog:"
   }
 }
