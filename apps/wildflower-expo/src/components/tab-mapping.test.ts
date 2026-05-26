@@ -1,14 +1,13 @@
 import { fc, it as fcIt } from '@fast-check/jest'
-import { TABS, tabForPath } from './tab-mapping.ts'
+import { FALLBACK_TAB_KEY, TABS, tabForPath } from './tab-mapping.ts'
+
+const NON_FALLBACK_TABS = TABS.filter((t) => t.key !== FALLBACK_TAB_KEY)
 
 describe('tabForPath', () => {
   describe('exact-path match', () => {
-    fcIt.prop({ tab: fc.constantFrom(...TABS) })(
-      'returns the tab whose path equals the input verbatim',
-      ({ tab }) => {
-        expect(tabForPath(tab.path)).toBe(tab.key)
-      }
-    )
+    it.each(TABS)('returns $key when input equals $path', (tab) => {
+      expect(tabForPath(tab.path)).toBe(tab.key)
+    })
   })
 
   describe('descendant match', () => {
@@ -28,40 +27,33 @@ describe('tabForPath', () => {
   describe('non-descendant prefix sibling', () => {
     // `/appsxyz` shares `/apps` as a *string* prefix but is NOT a
     // descendant. The implementation distinguishes by requiring a
-    // trailing `/`.
+    // trailing `/`. The fallback tab is excluded because for it
+    // "not this tab" and "is the fallback" collapse to the same
+    // value, which would let every iteration trivially pass.
     fcIt.prop({
-      tab: fc.constantFrom(...TABS),
+      tab: fc.constantFrom(...NON_FALLBACK_TABS),
       sibling: fc.stringMatching(/^[a-zA-Z0-9]+$/),
     })('does not match a path that shares the prefix but no trailing slash', ({ tab, sibling }) => {
       const input = `${tab.path}${sibling}`
-      // Either the input maps to a *different* tab (none of which
-      // can match in this construction) or falls back to TABS[0].
-      // When `tab` IS the fallback tab, "not this tab" and "is the
-      // fallback" collapse to the same value — assert against the
-      // fallback directly so the case still exercises a property.
-      if (tab.key === TABS[0].key) {
-        expect(tabForPath(input)).toBe(TABS[0].key)
-        return
-      }
       expect(tabForPath(input)).not.toBe(tab.key)
     })
   })
 
   describe('fallback', () => {
-    it('returns TABS[0].key for the empty string', () => {
-      expect(tabForPath('')).toBe(TABS[0].key)
+    it('returns FALLBACK_TAB_KEY for the empty string', () => {
+      expect(tabForPath('')).toBe(FALLBACK_TAB_KEY)
     })
 
-    it('returns TABS[0].key for the SPA root `/`', () => {
-      expect(tabForPath('/')).toBe(TABS[0].key)
+    it('returns FALLBACK_TAB_KEY for the SPA root `/`', () => {
+      expect(tabForPath('/')).toBe(FALLBACK_TAB_KEY)
     })
 
     fcIt.prop({
       pathname: fc
         .stringMatching(/^\/[a-zA-Z0-9_\-./]*$/)
         .filter((s) => !TABS.some((t) => s === t.path || s.startsWith(`${t.path}/`))),
-    })('returns TABS[0].key for any pathname not under a tab root', ({ pathname }) => {
-      expect(tabForPath(pathname)).toBe(TABS[0].key)
+    })('returns FALLBACK_TAB_KEY for any pathname not under a tab root', ({ pathname }) => {
+      expect(tabForPath(pathname)).toBe(FALLBACK_TAB_KEY)
     })
   })
 })
