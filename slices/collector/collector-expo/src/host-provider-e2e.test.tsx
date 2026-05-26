@@ -12,7 +12,12 @@ import type BrowserSnifferBridge from 'browser-sniffer-core/bridge'
 import type * as BrowserSnifferExpoModule from 'browser-sniffer-expo'
 import CollectorBridge from 'collector-fundamentals/bridge'
 import { Effect, Layer } from 'effect'
-import { BareSender, type BridgeTransport } from 'effect-messaging-core'
+import {
+  BareSender,
+  TestPlatformAdapterLayer,
+  type BridgeTransport,
+  type TransportAdapter,
+} from 'effect-messaging-core'
 import type * as ExpoRouterModule from 'expo-router'
 import type * as ExpoTundraishModule from 'expo-tundraish'
 import { useEffect, type ReactElement } from 'react'
@@ -100,6 +105,11 @@ const ProbeInsideProvider = ({
   return null
 }
 
+const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
+
+const runHandlerPromise = <A, E>(eff: Effect.Effect<A, E, TransportAdapter>): Promise<A> =>
+  Effect.runPromise(Effect.provide(eff, adapterLayer))
+
 describe('collector-expo end-to-end pipe wiring', () => {
   it('Click decoded by the real CollectorBridge receiver layer reaches the registered BrowserSniffer sender', async () => {
     const snifferCalls: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = []
@@ -136,7 +146,7 @@ describe('collector-expo end-to-end pipe wiring', () => {
     }).pipe(Effect.provide(layer), Effect.provide(noopBareSender))
 
     await act(async () => {
-      await Effect.runPromise(dispatchClick)
+      await runHandlerPromise(dispatchClick)
     })
 
     expect(snifferCalls).toEqual([{ _tag: 'Click', querySelector: '#submit' }])

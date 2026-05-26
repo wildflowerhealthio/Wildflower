@@ -1,12 +1,13 @@
 /**
  * Tests for the {@link AppsBridgeExpo.ReceiverLayer} surface:
  *
- *  - **Type-only**: the Layer's `R` requires only `TunnelStore` (the
- *    `senderRef` parameter is React state captured by the hook, not a
- *    layer requirement).
+ *  - **Type-only**: the Layer's `R` requires only `TunnelStore`. Replies
+ *    route through `AppsBridge.Host.send(...)` which the bridge transport
+ *    discharges via its own `TransportAdapter` per invocation — at test
+ *    time we discharge with `TestPlatformAdapterLayer.make()`.
  *  - **Dispatch behavior**: `RequestTunnel` succeeds → `TunnelStarted`,
- *    fails (timeout, driven by `TestClock`) → `TunnelFailed`, dispatched
- *    via the supplied `senderRef`.
+ *    fails (timeout, driven by `TestClock`) → `TunnelFailed`, both
+ *    dispatched via the mocked `AppsBridge.Host.send`.
  *
  * Sister file: `commit-and-await-tunnel.test.ts` covers the
  * `commitRequestedRunning` + `awaitTunnelOrigin` helpers this layer
@@ -14,9 +15,8 @@
  * `__test-support__/host-receiver-test-mocks.ts`.
  */
 import { Duration, Effect, Fiber, Layer, TestClock, TestContext } from 'effect'
-import type { MessageHandler } from 'effect-messaging-core'
+import { TestPlatformAdapterLayer, type MessageHandler } from 'effect-messaging-core'
 import { expectTypeOf } from 'expect-type'
-import type { RefObject } from 'react'
 
 import {
   harness,
@@ -34,43 +34,25 @@ jest.mock('tunnel-core/livestore', () => mockBuildTunnelCoreFactory())
 jest.mock('apps-core/bridge', () => mockBuildAppsCoreFactory())
 
 import type { TunnelStore } from 'tunnel-core/livestore'
-import type { AppsHostMessageSender, AppsHostToWebMessage } from './host-receiver-layer.ts'
 import { AppsBridgeExpo } from './index.ts'
+
+const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
 
 beforeEach(() => {
   resetHarness()
 })
 
-/**
- * Sender ref whose `.current` records every sent message into
- * `harness.sentMessages`. Returned Effect resolves immediately —
- * mirroring the real transport's post-`__Ready` behaviour for this
- * test's purposes.
- */
-const makeRecordingSenderRef = (): RefObject<AppsHostMessageSender | null> => ({
-  current: (message: AppsHostToWebMessage): Effect.Effect<void> =>
-    Effect.sync(() => {
-      harness.sentMessages.push(message)
-    }),
-})
-
 describe('AppsBridgeExpo.ReceiverLayer (type)', () => {
-  it('returns a Layer providing the Apps host handler tag and requiring only TunnelStore', () => {
-    expectTypeOf(AppsBridgeExpo.ReceiverLayer).returns.toEqualTypeOf<
+  it('is a Layer providing the Apps host handler tag and requiring only TunnelStore', () => {
+    expectTypeOf(AppsBridgeExpo.ReceiverLayer).toEqualTypeOf<
       Layer.Layer<MessageHandler.TagId<'Apps', 'Host'>, never, TunnelStore>
     >()
   })
-
-  it('takes one argument: the host→web sender ref', () => {
-    expectTypeOf(AppsBridgeExpo.ReceiverLayer).parameters.toEqualTypeOf<
-      [RefObject<AppsHostMessageSender | null>]
-    >()
-  })
 })
 
 /**
- * Build the receiver layer against `store` + `senderRef`, capture its
- * handlers via the `apps-core/bridge` mock, and return them.
+ * Build the receiver layer against `store`, capture its handlers via the
+ * `apps-core/bridge` mock, and return them.
  *
  * Type note: the runtime `TunnelStore` value is the mocked tag the
  * `tunnel-core/livestore` factory installs (see `harness.tunnelStoreTag`),
@@ -81,14 +63,13 @@ describe('AppsBridgeExpo.ReceiverLayer (type)', () => {
  * requirements before `Layer.build`.
  */
 const buildHandlersWithStore = async (
-  store: FakeStore,
-  senderRef: RefObject<AppsHostMessageSender | null>
+  store: FakeStore
 ): Promise<NonNullable<typeof harness.lastHandlers>> => {
   const tunnelStoreLayer = Layer.succeed(requireTunnelStoreTag(), store)
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const layer = AppsBridgeExpo.ReceiverLayer(senderRef).pipe(
-    Layer.provide(tunnelStoreLayer)
-  ) as Layer.Layer<MessageHandler.TagId<'Apps', 'Host'>>
+  const layer = AppsBridgeExpo.ReceiverLayer.pipe(Layer.provide(tunnelStoreLayer)) as Layer.Layer<
+    MessageHandler.TagId<'Apps', 'Host'>
+  >
   await Effect.runPromise(Layer.build(layer).pipe(Effect.scoped))
   const handlers = harness.lastHandlers
   if (handlers === null) {
@@ -98,7 +79,7 @@ const buildHandlersWithStore = async (
 }
 
 describe('AppsBridgeExpo.ReceiverLayer (RequestTunnel dispatch)', () => {
-  it('Success → senderRef called with TunnelStarted carrying the composed origin (snapshot fast-path)', async () => {
+  it('Success → AppsBridge.Host.send called with TunnelStarted carrying the composed origin (snapshot fast-path)', async () => {
     const store = makeFakeStore({
       initialState: {
         running: true,
@@ -108,28 +89,29 @@ describe('AppsBridgeExpo.ReceiverLayer (RequestTunnel dispatch)', () => {
         error: null,
       },
     })
-    const senderRef = makeRecordingSenderRef()
-    const handlers = await buildHandlersWithStore(store, senderRef)
+    const handlers = await buildHandlersWithStore(store)
     // The snapshot fast-path resolves synchronously with
-    // `https://app-1.tun.example` → onSuccess routes through the
-    // senderRef as TunnelStarted.
-    await Effect.runPromise(handlers.RequestTunnel({ _tag: 'RequestTunnel' }))
+    // `https://app-1.tun.example` → onSuccess dispatches TunnelStarted.
+    await Effect.runPromise(
+      handlers.RequestTunnel({ _tag: 'RequestTunnel' }).pipe(Effect.provide(adapterLayer))
+    )
     expect(harness.sentMessages).toEqual([
       { _tag: 'TunnelStarted', origin: 'https://app-1.tun.example' },
     ])
   })
 
-  it('Failure → senderRef called with TunnelFailed carrying the prettied cause (timeout via TestClock)', async () => {
+  it('Failure → AppsBridge.Host.send called with TunnelFailed carrying the prettied cause (timeout via TestClock)', async () => {
     // Empty state → the default 15s timeout fires → TunnelTimedOut →
-    // matchCauseEffect's onFailure branch routes through the senderRef
-    // as `TunnelFailed { reason }`. We drive the timeout via
-    // `TestClock` so the test stays deterministic and millisecond-fast.
+    // matchCauseEffect's onFailure branch dispatches `TunnelFailed`. We
+    // drive the timeout via `TestClock` so the test stays deterministic
+    // and millisecond-fast.
     const store = makeFakeStore()
-    const senderRef = makeRecordingSenderRef()
-    const handlers = await buildHandlersWithStore(store, senderRef)
+    const handlers = await buildHandlersWithStore(store)
     await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(handlers.RequestTunnel({ _tag: 'RequestTunnel' }))
+        const fiber = yield* Effect.fork(
+          handlers.RequestTunnel({ _tag: 'RequestTunnel' }).pipe(Effect.provide(adapterLayer))
+        )
         // Let the dispatch install its subscriber on the live store
         // before the clock jumps.
         yield* Effect.yieldNow()
@@ -146,21 +128,5 @@ describe('AppsBridgeExpo.ReceiverLayer (RequestTunnel dispatch)', () => {
     // pretty-print formatting).
     if (msg?._tag !== 'TunnelFailed') throw new Error('expected TunnelFailed')
     expect(msg.reason).toMatch(/TunnelTimedOut/)
-  })
-
-  it('senderRef.current === null → success path drops loud (Effect.logError) and records no message', async () => {
-    const store = makeFakeStore({
-      initialState: {
-        running: true,
-        currentSubdomain: 'app-2',
-        currentRootDomain: 'tun.example',
-        currentLocalPort: 3000,
-        error: null,
-      },
-    })
-    const senderRef: RefObject<AppsHostMessageSender | null> = { current: null }
-    const handlers = await buildHandlersWithStore(store, senderRef)
-    await Effect.runPromise(handlers.RequestTunnel({ _tag: 'RequestTunnel' }))
-    expect(harness.sentMessages).toEqual([])
   })
 })

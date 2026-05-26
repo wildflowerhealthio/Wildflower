@@ -15,6 +15,7 @@
 import { act, render } from '@testing-library/react-native'
 import type * as EffectType from 'effect'
 import { Effect } from 'effect'
+import { TestPlatformAdapterLayer, type TransportAdapter } from 'effect-messaging-core'
 import * as React from 'react'
 import type { ReactElement } from 'react'
 
@@ -117,6 +118,11 @@ beforeEach(() => {
   lastRegisteredSender = null
 })
 
+const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
+
+const runHandlerPromise = <A, E>(eff: Effect.Effect<A, E, TransportAdapter>): Promise<A> =>
+  Effect.runPromise(Effect.provide(eff, adapterLayer))
+
 describe('CollectorModalScreen', () => {
   describe('source → loadFrom conversion', () => {
     it('Uri source maps to lowercase `_tag: uri`', () => {
@@ -158,35 +164,35 @@ describe('CollectorModalScreen', () => {
         headers: [['content-type', 'application/json']] as const,
       }
       render(<CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />)
-      await Effect.runPromise(requireHandlers().ResponseStart(event))
+      await runHandlerPromise(requireHandlers().ResponseStart(event))
       expect(mockCollectorCalls).toEqual([event])
     })
 
     it('forwards ResponseData verbatim', async () => {
       const event = { _tag: 'ResponseData' as const, id: 'r1', data: 'b64' }
       render(<CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />)
-      await Effect.runPromise(requireHandlers().ResponseData(event))
+      await runHandlerPromise(requireHandlers().ResponseData(event))
       expect(mockCollectorCalls).toEqual([event])
     })
 
     it('forwards ResponseFinished verbatim', async () => {
       const event = { _tag: 'ResponseFinished' as const, id: 'r1' }
       render(<CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />)
-      await Effect.runPromise(requireHandlers().ResponseFinished(event))
+      await runHandlerPromise(requireHandlers().ResponseFinished(event))
       expect(mockCollectorCalls).toEqual([event])
     })
 
     it('forwards Cancelled verbatim', async () => {
       const event = { _tag: 'Cancelled' as const, id: 'r1' }
       render(<CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />)
-      await Effect.runPromise(requireHandlers().Cancelled(event))
+      await runHandlerPromise(requireHandlers().Cancelled(event))
       expect(mockCollectorCalls).toEqual([event])
     })
 
     it('forwards PageLoaded verbatim', async () => {
       const event = { _tag: 'PageLoaded' as const, url: 'u', pageContentId: 'p' }
       render(<CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />)
-      await Effect.runPromise(requireHandlers().PageLoaded(event))
+      await runHandlerPromise(requireHandlers().PageLoaded(event))
       expect(mockCollectorCalls).toEqual([event])
     })
   })
@@ -203,7 +209,7 @@ describe('CollectorModalScreen', () => {
         url: 'https://example.test',
         message: 'oh no',
       }
-      await Effect.runPromise(requireHandlers().RequestError(event))
+      await runHandlerPromise(requireHandlers().RequestError(event))
       expect(onError).toHaveBeenCalledTimes(1)
       expect(onError).toHaveBeenCalledWith(event)
       expect(mockCollectorCalls).toEqual([event])
@@ -223,7 +229,7 @@ describe('CollectorModalScreen', () => {
         message: 'boom',
       }
       await expect(
-        Effect.runPromise(requireHandlers().RequestError(event))
+        runHandlerPromise(requireHandlers().RequestError(event))
       ).resolves.toBeUndefined()
       expect(onError).toHaveBeenCalledTimes(1)
       expect(mockCollectorCalls).toEqual([event])

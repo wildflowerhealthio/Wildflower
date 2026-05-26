@@ -12,7 +12,6 @@ import type AppsBridge from 'apps-core/bridge'
 import type { Context, Layer } from 'effect'
 import type * as EffectModule from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
-import type { AppsHostMessageSender } from '../host-receiver-layer.ts'
 
 interface FakeStoreService {
   readonly commit: jest.Mock
@@ -21,7 +20,7 @@ interface FakeStoreService {
 }
 
 type AppsHostHandlers = Parameters<typeof AppsBridge.Host.ReceiverLayer>[0]
-type AppsHostToWebMessage = Parameters<AppsHostMessageSender>[0]
+type AppsHostToWebMessage = Parameters<typeof AppsBridge.Host.send>[0]
 
 interface MockHarness {
   tunnelConfigSet?: jest.Mock
@@ -199,10 +198,9 @@ const mockBuildLivestoreBaseFactory = (): unknown => ({ __esModule: true })
  * Factory for `jest.mock('apps-core/bridge', mockBuildAppsCoreFactory)`.
  * Captures the handlers record passed to `AppsBridge.Host.ReceiverLayer`
  * so the dispatch tests can invoke `RequestTunnel` directly without
- * standing up a transport. Replies are recorded via the `senderRef`
- * the test passes into `ReceiverLayer(senderRef)` — not via a bridge-
- * level `send` mock — since main routes host→web sends through the
- * captured `onTransportReady` sender rather than the bridge namespace.
+ * standing up a transport. Mocks `AppsBridge.Host.send` to record
+ * replies into `harness.sentMessages` — the production handler dispatches
+ * its reply through this `send`.
  */
 const mockBuildAppsCoreFactory = (): unknown => {
   const effect = jest.requireActual<typeof EffectModule>('effect')
@@ -227,6 +225,10 @@ const mockBuildAppsCoreFactory = (): unknown => {
           mockHarness.lastHandlers = handlers
           return effect.Layer.succeed(handlerTag, handlers)
         },
+        send: (message: AppsHostToWebMessage): EffectModule.Effect.Effect<void> =>
+          effect.Effect.sync(() => {
+            mockHarness.sentMessages.push(message)
+          }),
       },
     },
   }

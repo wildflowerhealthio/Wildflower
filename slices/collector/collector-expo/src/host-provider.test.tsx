@@ -6,8 +6,14 @@ import type * as BrowserSnifferExpoModule from 'browser-sniffer-expo'
 import type CollectorBridgeType from 'collector-fundamentals/bridge'
 import type * as CollectorBridgeModule from 'collector-fundamentals/bridge'
 import type * as EffectModule from 'effect'
-import { Effect, type Layer } from 'effect'
-import type { BridgeTransport, MessageHandler } from 'effect-messaging-core'
+import type { Layer } from 'effect'
+import { Effect } from 'effect'
+import {
+  TestPlatformAdapterLayer,
+  type BridgeTransport,
+  type MessageHandler,
+  type TransportAdapter,
+} from 'effect-messaging-core'
 import type * as ExpoRouterModule from 'expo-router'
 import type * as ExpoTundraishModule from 'expo-tundraish'
 import { LoggingLayerTest } from 'kitchen-sink/test'
@@ -173,6 +179,14 @@ beforeEach(() => {
   mockHarness.lastHandlers = null
 })
 
+const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
+
+const runHandlerSync = <A, E>(eff: Effect.Effect<A, E, TransportAdapter>): A =>
+  Effect.runSync(Effect.provide(eff, adapterLayer))
+
+const runHandlerPromise = <A, E>(eff: Effect.Effect<A, E, TransportAdapter>): Promise<A> =>
+  Effect.runPromise(Effect.provide(eff, adapterLayer))
+
 describe('routing handlers (RequestSniffableWebView / Open)', () => {
   // `RequestSniffableWebView` and `Open` both call `setPendingSource`,
   // which IS a React state update — `act` is required for these.
@@ -183,7 +197,7 @@ describe('routing handlers (RequestSniffableWebView / Open)', () => {
     expect(seenHosts[0]?.pendingSource).toBeNull()
 
     act(() => {
-      Effect.runSync(
+      runHandlerSync(
         handlers.RequestSniffableWebView({
           _tag: 'RequestSniffableWebView',
           source: { _tag: 'Uri', uri: 'https://example.com' },
@@ -203,7 +217,7 @@ describe('routing handlers (RequestSniffableWebView / Open)', () => {
     const handlers = requireLastHandlers()
 
     act(() => {
-      Effect.runSync(
+      runHandlerSync(
         handlers.RequestSniffableWebView({
           _tag: 'RequestSniffableWebView',
           source: { _tag: 'Uri', uri: 'https://example.com' },
@@ -226,7 +240,7 @@ describe('routing handlers (RequestSniffableWebView / Open)', () => {
     const { seenHosts } = renderProvider()
     const handlers = requireLastHandlers()
 
-    Effect.runSync(
+    runHandlerSync(
       handlers.RequestSniffableWebView({
         _tag: 'RequestSniffableWebView',
         source: { _tag: 'Uri', uri },
@@ -244,7 +258,7 @@ describe('routing handlers (RequestSniffableWebView / Open)', () => {
       const handlers = requireLastHandlers()
 
       act(() => {
-        Effect.runSync(
+        runHandlerSync(
           handlers.RequestSniffableWebView({
             _tag: 'RequestSniffableWebView',
             source: { _tag: 'Uri', uri },
@@ -263,7 +277,7 @@ describe('routing handlers (RequestSniffableWebView / Open)', () => {
     const htmlSource = { _tag: 'Html' as const, html: '<html><body>ok</body></html>' }
 
     act(() => {
-      Effect.runSync(
+      runHandlerSync(
         handlers.RequestSniffableWebView({ _tag: 'RequestSniffableWebView', source: htmlSource })
       )
     })
@@ -278,7 +292,7 @@ describe('routing handlers (RequestSniffableWebView / Open)', () => {
     const nextSource = { _tag: 'Uri' as const, uri: 'https://example.com/step-2' }
 
     act(() => {
-      Effect.runSync(handlers.Open({ _tag: 'Open', source: nextSource }))
+      runHandlerSync(handlers.Open({ _tag: 'Open', source: nextSource }))
     })
 
     expect(mockHarness.routerPush).not.toHaveBeenCalled()
@@ -298,7 +312,7 @@ describe('sniffer-control forwarding (Click / CancelSnifferRequest)', () => {
     renderProvider({ sender })
     const handlers = requireLastHandlers()
 
-    await Effect.runPromise(handlers.Click({ _tag: 'Click', querySelector: '#submit' }))
+    await runHandlerPromise(handlers.Click({ _tag: 'Click', querySelector: '#submit' }))
 
     expect(calls).toEqual([{ _tag: 'Click', querySelector: '#submit' }])
   })
@@ -309,7 +323,7 @@ describe('sniffer-control forwarding (Click / CancelSnifferRequest)', () => {
     renderProvider({ sender })
     const handlers = requireLastHandlers()
 
-    await Effect.runPromise(
+    await runHandlerPromise(
       handlers.CancelSnifferRequest({ _tag: 'CancelSnifferRequest', id: 'req-1' })
     )
 
@@ -331,7 +345,7 @@ describe('sniffer-control forwarding (Click / CancelSnifferRequest)', () => {
     const handlers = requireLastHandlers()
     const { layer, logSink } = LoggingLayerTest.make()
 
-    await Effect.runPromise(
+    await runHandlerPromise(
       handlers.Click({ _tag: 'Click', querySelector: '#submit' }).pipe(Effect.provide(layer))
     )
 
@@ -348,7 +362,7 @@ describe('modal lifecycle (SniffingComplete)', () => {
     renderProvider()
     const handlers = requireLastHandlers()
 
-    await Effect.runPromise(handlers.SniffingComplete({ _tag: 'SniffingComplete' }))
+    await runHandlerPromise(handlers.SniffingComplete({ _tag: 'SniffingComplete' }))
 
     expect(mockHarness.routerBack).toHaveBeenCalledTimes(1)
     expect(mockHarness.routerPush).not.toHaveBeenCalled()

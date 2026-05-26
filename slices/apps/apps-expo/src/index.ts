@@ -14,5 +14,4 @@ const AppsBridgeExpo: {
 }
 
 export { AppsBridgeExpo }
-export type { AppsHostMessageSender, AppsHostToWebMessage } from './host-receiver-layer.ts'
 export type { UseAppsHostBindingOptions } from './use-host-binding.ts'

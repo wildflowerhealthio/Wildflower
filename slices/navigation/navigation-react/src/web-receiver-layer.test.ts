@@ -1,7 +1,10 @@
-import { Effect } from 'effect'
+import { Effect, Layer } from 'effect'
+import { TestPlatformAdapterLayer } from 'effect-messaging-core'
 import { NavigationBridge } from 'navigation-core'
 import { describe, expect, test } from 'vite-plus/test'
 import { makeNavigationWebReceiverLayer } from './web-receiver-layer.ts'
+
+const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
 
 describe('makeNavigationWebReceiverLayer', () => {
   test('HostBackRequested handler calls navigate(-1)', () => {
@@ -11,7 +14,7 @@ describe('makeNavigationWebReceiverLayer', () => {
       Effect.gen(function* () {
         const handlers = yield* NavigationBridge.Web.HandlerTag
         yield* handlers.HostBackRequested({ _tag: 'HostBackRequested' })
-      }).pipe(Effect.provide(layer))
+      }).pipe(Effect.provide(Layer.mergeAll(layer, adapterLayer)))
     )
     expect(calls).toEqual([-1])
   })
@@ -26,7 +29,7 @@ describe('makeNavigationWebReceiverLayer', () => {
           _tag: 'HostRequestedWebNavigation',
           path: '/visits/123',
         })
-      }).pipe(Effect.provide(layer))
+      }).pipe(Effect.provide(Layer.mergeAll(layer, adapterLayer)))
     )
     expect(calls).toEqual(['/visits/123'])
   })
@@ -40,7 +43,7 @@ describe('makeNavigationWebReceiverLayer', () => {
       Effect.gen(function* () {
         const handlers = yield* NavigationBridge.Web.HandlerTag
         yield* handlers.HostBackRequested({ _tag: 'HostBackRequested' })
-      }).pipe(Effect.provide(layerA))
+      }).pipe(Effect.provide(Layer.mergeAll(layerA, adapterLayer)))
     )
     Effect.runSync(
       Effect.gen(function* () {
@@ -49,7 +52,7 @@ describe('makeNavigationWebReceiverLayer', () => {
           _tag: 'HostRequestedWebNavigation',
           path: '/x',
         })
-      }).pipe(Effect.provide(layerB))
+      }).pipe(Effect.provide(Layer.mergeAll(layerB, adapterLayer)))
     )
     expect(callsA).toEqual([-1])
     expect(callsB).toEqual(['/x'])

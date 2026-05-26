@@ -77,8 +77,9 @@ describe('Bridge.make — ReceiverLayer', () => {
       yield* handlers.Ping({ _tag: 'Ping', value: 7 })
       yield* handlers.Buzz({ _tag: 'Buzz' })
     })
+    const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
 
-    Effect.runSync(Effect.provide(program, layer))
+    Effect.runSync(Effect.provide(program, Layer.mergeAll(layer, adapterLayer)))
     expect(seen).toEqual([7, -1])
   })
 
@@ -224,8 +225,9 @@ describe('Bridge.make — Layer integration', () => {
       yield* aHandlers.Buzz({ _tag: 'Buzz' })
       yield* bHandlers.Ping({ _tag: 'Ping', value: 11 })
     })
+    const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
 
-    Effect.runSync(Effect.provide(program, Layer.mergeAll(aLayer, bLayer)))
+    Effect.runSync(Effect.provide(program, Layer.mergeAll(aLayer, bLayer, adapterLayer)))
     expect(seen).toEqual(['Buzz', 'Ping(11)'])
   })
 })

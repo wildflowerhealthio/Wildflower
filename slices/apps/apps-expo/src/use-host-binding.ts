@@ -1,9 +1,9 @@
 import AppsBridge from 'apps-core/bridge'
-import { Effect, Layer } from 'effect'
+import { Layer } from 'effect'
 import type { HostBinding } from 'effect-messaging-core'
-import { useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import type { TunnelStore } from 'tunnel-core/livestore'
-import { ReceiverLayer, type AppsHostMessageSender } from './host-receiver-layer.ts'
+import { ReceiverLayer } from './host-receiver-layer.ts'
 
 interface UseAppsHostBindingOptions {
   /**
@@ -16,28 +16,21 @@ interface UseAppsHostBindingOptions {
 /**
  * Host binding for the apps bridge.
  *
- * Owns the host→web sender ref the receiver layer uses to reply to
- * `RequestTunnel` (`onTransportReady` writes; the layer reads through
- * the ref so a single hook keeps both halves in lockstep). Pre-discharges
- * `TunnelStore`.
+ * Pre-discharges `TunnelStore` against the supplied layer; the receiver
+ * layer's `RequestTunnel` handler replies via `AppsBridge.Host.send(...)`
+ * (whose `TransportAdapter` requirement the bridge transport's dispatch
+ * fiber discharges per invocation).
  */
 const useAppsHostBinding = ({
   tunnelStoreLayer,
-}: UseAppsHostBindingOptions): HostBinding.HostBinding<typeof AppsBridge> => {
-  const senderRef = useRef<AppsHostMessageSender | null>(null)
-
-  return useMemo(
+}: UseAppsHostBindingOptions): HostBinding.HostBinding<typeof AppsBridge> =>
+  useMemo(
     () => ({
       bridge: AppsBridge,
-      receiverLayer: ReceiverLayer(senderRef).pipe(Layer.provide(tunnelStoreLayer)),
-      onTransportReady: (send) =>
-        Effect.sync(() => {
-          senderRef.current = send
-        }),
+      receiverLayer: ReceiverLayer.pipe(Layer.provide(tunnelStoreLayer)),
     }),
     [tunnelStoreLayer]
   )
-}
 
 export { useAppsHostBinding }
 export type { UseAppsHostBindingOptions }

@@ -1,13 +1,30 @@
 // oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers and `vi.fn()` call args are typed as `any`; the unsafe-assignment / unsafe-destructure lint fires on idiomatic `mock.calls[0]` access here
 
 import type { CancelSnifferRequestMessage } from 'browser-sniffer-core'
-import { Duration, Effect, Encoding, MutableHashMap, TestClock, TestContext } from 'effect'
+import { Duration, Effect, Encoding, Layer, MutableHashMap, TestClock, TestContext } from 'effect'
+import { TestPlatformAdapterLayer, type TransportAdapter } from 'effect-messaging-core'
 import { LoggingLayerTest, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { EntityDefinition, type Link, ScrapingPlan } from 'collector-fundamentals/model'
 import { AnotherEntity, SimpleEntity } from 'collector-fundamentals/test-helpers'
 import * as CollectorBridgeMessageHandler from './collector-bridge-message-handler.ts'
+
+const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
+
+/**
+ * Wrap `Effect.runSync` with a `TransportAdapter` discharge. Handlers
+ * returned by `CollectorBridgeMessageHandler.make` declare R=TransportAdapter
+ * (per `effect-messaging-core/src/message-handler.ts` widening); the live
+ * dispatch fiber satisfies it for free, but isolated test calls have to
+ * provide a stub. `TestPlatformAdapterLayer.make()` returns a valid layer
+ * with a no-op `bareSender` — the handlers under test don't call it.
+ */
+const runHandlerSync = <A, E>(eff: Effect.Effect<A, E, TransportAdapter>): A =>
+  Effect.runSync(Effect.provide(eff, adapterLayer))
+
+const runHandlerPromise = <A, E>(eff: Effect.Effect<A, E, TransportAdapter>): Promise<A> =>
+  Effect.runPromise(Effect.provide(eff, adapterLayer))
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
@@ -95,7 +112,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const sendMessage = vi.fn(noopSendMessage)
       const handler = makeSimpleHandler({ sendMessage })
 
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/42' }))
       )
 
@@ -107,7 +124,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
       const handler = makeSimpleHandler({ sendMessage })
 
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r2', url: 'https://example.com/unknown' }))
       )
 
@@ -141,10 +158,10 @@ describe('CollectorBridgeMessageHandler.make', () => {
         })
       )
 
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r2', url: 'https://example.com/items/abc' }))
       )
 
@@ -159,12 +176,12 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(handler.ResponseData(responseData('r1', '{"name":"Bob"')))
-      Effect.runSync(handler.ResponseData(responseData('r1', ',"age":25}')))
-      Effect.runSync(handler.ResponseFinished(responseFinished('r1')))
+      runHandlerSync(handler.ResponseData(responseData('r1', '{"name":"Bob"')))
+      runHandlerSync(handler.ResponseData(responseData('r1', ',"age":25}')))
+      runHandlerSync(handler.ResponseFinished(responseFinished('r1')))
 
       expect(onResult).toHaveBeenCalledOnce()
       expectRightToEqual(onResult.mock.calls[0][0].result, [{ name: 'Bob', age: 25 }])
@@ -174,7 +191,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      await Effect.runPromise(
+      await runHandlerPromise(
         handler.ResponseData(responseData('unknown', 'data')).pipe(
           LoggingLayerTest.expectToLog((logs) => {
             expect(logs).toEqual([
@@ -196,10 +213,10 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseData({ _tag: 'ResponseData', id: 'r1', data: '!!! not base64 !!!' })
       )
 
@@ -210,7 +227,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
       // The tracked entry is removed so a subsequent ResponseFinished
       // becomes a no-op rather than a duplicate onResult.
       expect(MutableHashMap.keys(handler.inProgressResponses)).not.toContain('r1')
-      Effect.runSync(handler.ResponseFinished(responseFinished('r1')))
+      runHandlerSync(handler.ResponseFinished(responseFinished('r1')))
       expect(onResult).toHaveBeenCalledOnce()
     })
   })
@@ -220,7 +237,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      await Effect.runPromise(
+      await runHandlerPromise(
         handler.ResponseFinished(responseFinished('unknown')).pipe(
           LoggingLayerTest.expectToLog((logs) => {
             expect(logs).toEqual([
@@ -243,11 +260,11 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const handler = makeSimpleHandler({ onResult })
 
       const body = JSON.stringify({ name: 'Carol', age: 40 })
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/99' }))
       )
-      Effect.runSync(handler.ResponseData(responseData('r1', body)))
-      Effect.runSync(handler.ResponseFinished(responseFinished('r1')))
+      runHandlerSync(handler.ResponseData(responseData('r1', body)))
+      runHandlerSync(handler.ResponseFinished(responseFinished('r1')))
 
       expect(onResult).toHaveBeenCalledOnce()
       const [{ response, result }] = onResult.mock.calls[0]
@@ -260,13 +277,13 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(handler.ResponseData(responseData('r1', '{}')))
-      Effect.runSync(handler.ResponseFinished(responseFinished('r1')))
+      runHandlerSync(handler.ResponseData(responseData('r1', '{}')))
+      runHandlerSync(handler.ResponseFinished(responseFinished('r1')))
       // Second finish: tracked entry is gone → log + no-op.
-      expect(() => Effect.runSync(handler.ResponseFinished(responseFinished('r1')))).not.toThrow()
+      expect(() => runHandlerSync(handler.ResponseFinished(responseFinished('r1')))).not.toThrow()
       // Only the first finish should have produced an onResult call.
       expect(onResult).toHaveBeenCalledOnce()
     })
@@ -294,11 +311,11 @@ describe('CollectorBridgeMessageHandler.make', () => {
         })
       )
 
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(handler.ResponseData(responseData('r1', '{}')))
-      Effect.runSync(handler.ResponseFinished(responseFinished('r1')))
+      runHandlerSync(handler.ResponseData(responseData('r1', '{}')))
+      runHandlerSync(handler.ResponseFinished(responseFinished('r1')))
 
       expect(onResult).toHaveBeenCalledOnce()
       // Overlapping wins because it's first in `entityDefinitions`; its parse
@@ -310,21 +327,21 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r2', url: 'https://example.com/people/2' }))
       )
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseData(responseData('r1', JSON.stringify({ name: 'Alice', age: 30 })))
       )
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseData(responseData('r2', JSON.stringify({ name: 'Bob', age: 25 })))
       )
 
-      Effect.runSync(handler.ResponseFinished(responseFinished('r2')))
-      Effect.runSync(handler.ResponseFinished(responseFinished('r1')))
+      runHandlerSync(handler.ResponseFinished(responseFinished('r2')))
+      runHandlerSync(handler.ResponseFinished(responseFinished('r1')))
 
       expect(onResult).toHaveBeenCalledTimes(2)
       expectRightToEqual(onResult.mock.calls[0][0].result, [{ name: 'Bob', age: 25 }])
@@ -337,10 +354,10 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(handler.Cancelled(cancelled('r1')))
+      runHandlerSync(handler.Cancelled(cancelled('r1')))
 
       expect(onResult).toHaveBeenCalledOnce()
       const [{ response, result }] = onResult.mock.calls[0]
@@ -353,7 +370,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      await Effect.runPromise(
+      await runHandlerPromise(
         handler.Cancelled(cancelled('unknown')).pipe(
           LoggingLayerTest.expectToLog((logs) => {
             expect(logs).toEqual([
@@ -377,15 +394,15 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/1' }))
       )
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r2', url: 'https://example.com/people/2' }))
       )
       expect(MutableHashMap.size(handler.inProgressResponses)).toBe(2)
 
-      Effect.runSync(handler.clear())
+      runHandlerSync(handler.clear())
 
       expect(MutableHashMap.size(handler.inProgressResponses)).toBe(0)
       expect(onResult).not.toHaveBeenCalled()
@@ -397,10 +414,10 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      Effect.runSync(
+      runHandlerSync(
         handler.ResponseStart(responseStart({ id: 'r1', url: 'https://example.com/people/99' }))
       )
-      Effect.runSync(
+      runHandlerSync(
         handler.RequestError(
           requestError({
             id: 'r1',
@@ -430,7 +447,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
-      await Effect.runPromise(
+      await runHandlerPromise(
         handler
           .RequestError(
             requestError({ id: 'unknown', url: 'https://example.com', message: 'oops' })
@@ -484,7 +501,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledOnce()
           expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SniffingComplete' })
-        }).pipe(Effect.provide(TestContext.TestContext))
+        }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
       ))
 
     it('dispatches each link in order, separated by stepDelay, then SniffingComplete', () =>
@@ -522,7 +539,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           yield* Effect.yieldNow()
           expect(sendMessage).toHaveBeenCalledTimes(3)
           expect(sendMessage.mock.calls[2][0]).toEqual({ _tag: 'SniffingComplete' })
-        }).pipe(Effect.provide(TestContext.TestContext))
+        }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
       ))
 
     it('a second PageLoaded during the wait interrupts the pending timer and re-arms for the same index', () =>
@@ -554,7 +571,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
             _tag: 'Open',
             source: linkA.source,
           })
-        }).pipe(Effect.provide(TestContext.TestContext))
+        }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
       ))
 
     it('warns and no-ops on PageLoaded after SniffingComplete has fired', () =>
@@ -588,7 +605,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           yield* Effect.yieldNow()
           // Still only the one SniffingComplete from earlier.
           expect(sendMessage).toHaveBeenCalledOnce()
-        }).pipe(Effect.provide(TestContext.TestContext))
+        }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
       ))
 
     it('clear() interrupts the pending step timer', () =>
@@ -605,7 +622,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).not.toHaveBeenCalled()
-        }).pipe(Effect.provide(TestContext.TestContext))
+        }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
       ))
 
     it('cancelAllInFlight interrupts the pending step timer', () =>
@@ -622,7 +639,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
           yield* TestClock.adjust(Duration.seconds(5))
           yield* Effect.yieldNow()
           expect(sendMessage).not.toHaveBeenCalled()
-        }).pipe(Effect.provide(TestContext.TestContext))
+        }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
       ))
 
     it('clear() resets the index so subsequent PageLoadeds restart from linkSequence[0]', () =>
@@ -651,7 +668,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
             _tag: 'Open',
             source: linkA.source,
           })
-        }).pipe(Effect.provide(TestContext.TestContext))
+        }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
       ))
   })
 })
