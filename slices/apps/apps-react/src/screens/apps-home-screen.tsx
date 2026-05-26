@@ -4,6 +4,7 @@ import { Effect, type Schema } from 'effect'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Await } from 'react-router'
+import { ItemList, type ItemListItem } from 'react-tundraish'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import type { Tunnel } from 'tunnel-core/http-api-definition'
 import { useTunnelAdminEffect } from 'tunnel-react'
@@ -80,10 +81,22 @@ const AppsHomeBody = ({ tunnel, apps, onChanged }: AppsHomeBodyProps): JSX.Eleme
     // LaunchApp is GET /apps/:id which returns a 302 redirect; we set
     // window.location so the browser follows the redirect chain (and any
     // tunnel-side origin swap) just as a normal app-shell click would.
-    const base = window.location.origin.replace(/\/$/, '')
-    const target = `${base}/apps/${encodeURIComponent(app.id)}`
-    if (!app.requiresTunnel || tunnel.running) {
-      window.location.href = target
+    //
+    // Origin policy:
+    //  - Non-tunnel apps always go through `window.location.origin`,
+    //    which the embedded shell pins to the loopback origin. That
+    //    keeps the redirect off the public tunnel even when one is up
+    //    (avoiding localtunnel's 511 captive-portal interstitial).
+    //  - Tunnel apps explicitly target `tunnel.servedOrigin` — the
+    //    server-resolved public URL — when the tunnel is live, or
+    //    request one via the bridge if it isn't yet.
+    const launchPath = `/apps/${encodeURIComponent(app.id)}`
+    if (!app.requiresTunnel) {
+      window.location.href = `${window.location.origin.replace(/\/$/, '')}${launchPath}`
+      return
+    }
+    if (tunnel.running) {
+      window.location.href = `${tunnel.servedOrigin.replace(/\/$/, '')}${launchPath}`
       return
     }
     // Embedding Expo host? Ask it to start its tunnel via the bridge,
@@ -94,8 +107,7 @@ const AppsHomeBody = ({ tunnel, apps, onChanged }: AppsHomeBodyProps): JSX.Eleme
       setError(`Tunnel failed: ${response.error}`)
       return
     }
-    const newOrigin = response.origin.replace(/\/$/, '')
-    window.location.href = `${newOrigin}/apps/${encodeURIComponent(app.id)}`
+    window.location.href = `${response.origin.replace(/\/$/, '')}${launchPath}`
   }
 
   return (
@@ -123,29 +135,18 @@ const AppsHomeBody = ({ tunnel, apps, onChanged }: AppsHomeBodyProps): JSX.Eleme
       {visible.length === 0 ? (
         <p className="text-body-2">No apps enabled. Tap Manage to turn some on.</p>
       ) : (
-        <div className={appsHome['apps-home__card-grid']}>
-          {visible.map((app) => (
-            <button
-              key={app.id}
-              className={appsHome['apps-home__card']}
-              type="button"
-              onClick={() => {
-                void launch(app)
-              }}
-            >
-              <span className="text-body-1">{app.name}</span>
-              {app.subtitle !== undefined ? (
-                <span className={cn(appsHome['apps-home__card-subtitle'], 'text-body-3')}>
-                  {app.subtitle}
-                </span>
-              ) : null}
-              <div className={appsHome['apps-home__card-footer']}>
-                {app.requiresTunnel ? <span className="text-label-4">tunnel</span> : null}
-                <span className="text-label-4">{app.kind}</span>
-              </div>
-            </button>
-          ))}
-        </div>
+        <ItemList
+          items={visible.map<ItemListItem>((app) => ({
+            id: app.id,
+            title: app.name,
+            subtitle: app.subtitle,
+            badge: app.requiresTunnel ? 'tunnel' : undefined,
+            actions: <span className="text-label-4">{app.kind}</span>,
+            onClick: () => {
+              void launch(app)
+            },
+          }))}
+        />
       )}
       <AppsEditor
         open={editorOpen}
