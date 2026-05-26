@@ -3,7 +3,7 @@
 import { HttpServer } from '@effect/platform'
 import { AppsStore } from 'apps-core/livestore'
 import { CollectorStore } from 'collector-core/livestore'
-import { Cause, type DefaultServices, Duration, Effect, Layer, type Scope, Stream } from 'effect'
+import { Cause, DefaultServices, Duration, Effect, Layer, type Scope, Stream } from 'effect'
 import { EmrStore } from 'emr-core/livestore'
 import { ExpoContext, ExpoHttpServer } from 'expo-effect-platform'
 import { Directory, File, Paths } from 'expo-file-system'
@@ -142,6 +142,14 @@ const HttpServerContextLive = Layer.mergeAll(
  * (tunnel URL when running, LHS-bound loopback otherwise) — so the
  * `Origin` consumers (gatekeeper JWT audience, FHIR bundle URLs)
  * automatically follow tunnel toggles without rebuilding this Layer.
+ *
+ * `Layer.succeedContext(DefaultServices.liveServices)` is appended to
+ * the pipe to absorb the `DefaultServices` (Clock/Console/Random/
+ * ConfigProvider/Tracer) requirement that the inner Effect operations
+ * pull into `R`. The Effect runtime auto-provides these at fiber
+ * start, but the static type still tracks them; injecting the live
+ * services here keeps `makeBindLive`'s residual `R` to just the
+ * domain tags so the inferred shape stays writeable.
  */
 const makeBindLive = ({
   port,
@@ -160,11 +168,11 @@ const makeBindLive = ({
   | TunnelStore
   | CryptoRandom
   | WebAssetsDir
-  | DefaultServices.DefaultServices
 > =>
   WildflowerServerLive.pipe(
     HttpServer.withLogAddress,
     Layer.provide(Layer.mergeAll(ExpoHttpServer.layer({ port, hostname }), OriginFromTunnelStore)),
+    Layer.provide(Layer.succeedContext(DefaultServices.liveServices)),
     Layer.tapErrorCause((cause) =>
       Effect.logError('[wildflower-expo] FullServerLive cause:\n' + Cause.pretty(cause))
     )
