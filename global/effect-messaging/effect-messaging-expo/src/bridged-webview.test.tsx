@@ -1,6 +1,6 @@
 import { act, render, waitFor } from '@testing-library/react-native'
 import { Effect, Schema } from 'effect'
-import { Bridge, type BridgeTransport, type HostBinding } from 'effect-messaging-core'
+import { Bridge, type BridgeTransport, HostBindings } from 'effect-messaging-core'
 import {
   mockWebViewModuleFactory,
   mockWebViewState,
@@ -31,12 +31,11 @@ const PingPongBridge = Bridge.make({
   webToHost: [['Pong', PongSchema]] as const,
 })
 
-type PingPongBindings = readonly [HostBinding.HostBinding<typeof PingPongBridge>]
 type PingPongSend = BridgeTransport.MessageSender<readonly [typeof PingPongBridge], 'Host'>
 
 describe('BridgedWebView (integration)', () => {
   // Per-test captures populated by `beforeEach`. The shared setup
-  // builds the binding (with `pongCalls` + `capturedSend` captures)
+  // builds the bindings (with `pongCalls` + `capturedSend` captures)
   // and renders the host shell. Each `it()` block exercises one
   // slice of the handshake / round-trip sequence against this baseline.
   let pongCalls: Array<{ readonly reply: string }>
@@ -47,7 +46,7 @@ describe('BridgedWebView (integration)', () => {
     pongCalls = []
     capturedSend = null
 
-    const binding: HostBinding.HostBinding<typeof PingPongBridge> = {
+    const bindings = HostBindings.single({
       bridge: PingPongBridge,
       receiverLayer: PingPongBridge.Host.ReceiverLayer({
         Pong: ({ reply }) => Effect.sync(() => pongCalls.push({ reply })),
@@ -56,12 +55,10 @@ describe('BridgedWebView (integration)', () => {
         Effect.sync(() => {
           capturedSend = send
         }),
-    }
-
-    const bindings: PingPongBindings = [binding]
+    })
 
     render(
-      <BridgedWebView<PingPongBindings>
+      <BridgedWebView
         bindings={bindings}
         loadFrom={{
           _tag: 'html',
@@ -81,8 +78,8 @@ describe('BridgedWebView (integration)', () => {
   })
 
   it('mounts the WebView with the configured baseUrl', () => {
-    // `BridgedWebView`'s `useEffect` forks `makeExpoTransport`, sets
-    // local `transport` state on success, and only then renders
+    // `BridgedWebView`'s `useEffect` forks the inlined transport build,
+    // sets local `transport` state on success, and only then renders
     // `<TransportWebView>`. The shared `beforeEach` already pinned
     // the mount — the assertion locks in the URL passthrough.
     expect(mockWebViewState.props?.source?.baseUrl).toBe('https://app.test/')
@@ -178,16 +175,14 @@ describe('BridgedWebView (initial messages)', () => {
       },
     })
 
-    const binding: HostBinding.HostBinding<typeof BootBridge> = {
+    const bindings = HostBindings.single({
       bridge: BootBridge,
       receiverLayer: BootBridge.Host.ReceiverLayer({}),
       initialMessages: [{ _tag: 'Setup', path: '/welcome' }],
-    }
-
-    const bindings = [binding] as const
+    })
 
     render(
-      <BridgedWebView<typeof bindings>
+      <BridgedWebView
         bindings={bindings}
         loadFrom={{
           _tag: 'html',
@@ -219,19 +214,14 @@ describe('BridgedWebView (initial messages)', () => {
       },
     })
 
-    const binding: HostBinding.HostBinding<typeof BootBridge> = {
+    const bindings = HostBindings.single({
       bridge: BootBridge,
       receiverLayer: BootBridge.Host.ReceiverLayer({}),
       initialMessages: [{ _tag: 'Setup', path: '/welcome' }],
-    }
-
-    const bindings = [binding] as const
+    })
 
     render(
-      <BridgedWebView<typeof bindings>
-        bindings={bindings}
-        loadFrom={{ _tag: 'uri', uri: 'https://app.test/' }}
-      />
+      <BridgedWebView bindings={bindings} loadFrom={{ _tag: 'uri', uri: 'https://app.test/' }} />
     )
 
     await waitFor(() => {
@@ -256,16 +246,14 @@ describe('BridgedWebView (initial messages)', () => {
       },
     })
 
-    const binding: HostBinding.HostBinding<typeof BootBridge> = {
+    const bindings = HostBindings.single({
       bridge: BootBridge,
       receiverLayer: BootBridge.Host.ReceiverLayer({}),
       initialMessages: [{ _tag: 'Setup', path: '/welcome' }],
-    }
-
-    const bindings = [binding] as const
+    })
 
     render(
-      <BridgedWebView<typeof bindings>
+      <BridgedWebView
         bindings={bindings}
         loadFrom={{ _tag: 'uri', uri: 'https://app.test/?session=abc' }}
       />

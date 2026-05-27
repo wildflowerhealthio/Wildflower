@@ -1,6 +1,6 @@
 import { renderHook } from '@testing-library/react-native'
 import { Context, Effect, Layer, type Layer as LayerNs } from 'effect'
-import type { HostBinding, MessageHandler } from 'effect-messaging-core'
+import type { HostBindings, MessageHandler } from 'effect-messaging-core'
 import { expectTypeOf } from 'expect-type'
 import type { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { GatekeeperBridgeExpo } from './index.ts'
@@ -12,7 +12,7 @@ import { useGatekeeperHostBinding } from './use-host-binding.ts'
 // these as passing tests when only the implementation regresses.
 expectTypeOf(GatekeeperBridgeExpo.useHostBinding).toEqualTypeOf(useGatekeeperHostBinding)
 expectTypeOf<ReturnType<typeof useGatekeeperHostBinding>>().toEqualTypeOf<
-  HostBinding.HostBinding<typeof GatekeeperBridge>
+  HostBindings.HostBindings<readonly [typeof GatekeeperBridge]>
 >()
 expectTypeOf(useGatekeeperHostBinding).parameters.toEqualTypeOf<
   [({ readonly token?: string } | undefined)?]
@@ -22,7 +22,7 @@ describe('useGatekeeperHostBinding receiverLayer', () => {
   it('builds at runtime and provides the Gatekeeper Host handler tag with no message handlers (Gatekeeper has no web→host messages)', async () => {
     const { result } = renderHook(() => useGatekeeperHostBinding())
     const layer: LayerNs.Layer<MessageHandler.TagId<'Gatekeeper', 'Host'>> =
-      result.current.receiverLayer
+      result.current.receiverLayers[0]
 
     // Re-derive the tag instance so we can read it out of the built context.
     const tag = Context.GenericTag<

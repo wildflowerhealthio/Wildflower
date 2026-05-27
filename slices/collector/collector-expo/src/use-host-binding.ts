@@ -1,5 +1,5 @@
 import { CollectorBridge } from 'collector-fundamentals/bridge'
-import type { HostBinding } from 'effect-messaging-core'
+import { HostBindings } from 'effect-messaging-core'
 import { useMemo } from 'react'
 
 import { useCollectorReceiverLayer } from './use-receiver-layer.ts'
@@ -13,9 +13,14 @@ import { useCollectorReceiverLayer } from './use-receiver-layer.ts'
  * No per-slice options today; the hook exists for shape parity with
  * `useNavigationHostBinding` and other slice host bindings.
  */
-const useCollectorHostBinding = (): HostBinding.HostBinding<typeof CollectorBridge> => {
+const useCollectorHostBinding = (): HostBindings.HostBindings<
+  readonly [typeof CollectorBridge]
+> => {
   const receiverLayer = useCollectorReceiverLayer()
-  return useMemo(() => ({ bridge: CollectorBridge, receiverLayer }), [receiverLayer])
+  return useMemo(
+    () => HostBindings.single({ bridge: CollectorBridge, receiverLayer }),
+    [receiverLayer]
+  )
 }
 
 export { useCollectorHostBinding }

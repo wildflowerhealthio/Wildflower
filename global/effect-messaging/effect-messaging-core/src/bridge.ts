@@ -118,8 +118,8 @@ type SendableMessage<
  * `undefined` so the `infer A` branch can extract the message type.
  * The `-?` mapped-type modifier strips the optional flag inherited
  * from `UrlParamSchemas`'s `?` keys; without it, the indexed access
- * would yield `MessageOf<Tag> | undefined` and `HostBinding<B>` would
- * not be assignable to `HostBinding.Any`.
+ * would yield `MessageOf<Tag> | undefined`, breaking the slot type
+ * `HostBindings<readonly [B]>['initialMessages'][0]` expects.
  */
 type UrlParamableMessage<Bridges extends ReadonlyArray<AnyBridge>> = Bridges[number] extends infer B
   ? B extends { readonly UrlParamSchemas: infer UP }

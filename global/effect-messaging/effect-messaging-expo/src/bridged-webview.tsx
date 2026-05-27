@@ -1,8 +1,15 @@
-import { Effect, Fiber } from 'effect'
-import { type BareSenderService, HostBinding } from 'effect-messaging-core'
+import { Effect, Fiber, Layer } from 'effect'
+import {
+  type BareSenderFunction,
+  type BareSenderService,
+  type Bridge,
+  BridgeTransport,
+  HostBindings,
+  TransportAdapter,
+  UrlParamMessage,
+} from 'effect-messaging-core'
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { TransportWebView, type TransportWebViewSource } from './transport-webview.tsx'
-import { type ExpoTransport, makeExpoTransport } from './transport.ts'
 
 /**
  * Where the WebView's content comes from. `uri` for a remote page;
@@ -12,32 +19,34 @@ import { type ExpoTransport, makeExpoTransport } from './transport.ts'
  *
  * Shape mirrors react-native-webview's `source` prop, plus a `_tag`
  * discriminator so the consumer's intent survives the
- * initial-messages URL rewrite the transport performs.
+ * initial-messages URL rewrite the transport build performs.
  */
 type BridgedWebViewLoadFrom =
   | { readonly _tag: 'uri'; readonly uri: string }
   | { readonly _tag: 'html'; readonly html: string; readonly baseUrl: string }
 
 /**
- * Props for {@link BridgedWebView}. Generic over `TBindings` so the
- * tuple shape survives into `HostBinding.aggregate` and the
- * transport — each binding's narrowly-typed sender and receiver layer
- * keeps its position.
+ * Props for {@link BridgedWebView}. Generic over `Bridges` so the
+ * tuple shape survives into the transport build — each binding's
+ * narrowly-typed sender and receiver layer keeps its position.
  *
  * See [Host Bindings Explanation](../../effect-messaging-core/docs/Host%20Bindings%20Explanation.md).
  */
-interface BridgedWebViewProps<TBindings extends ReadonlyArray<HostBinding.Any>> {
+interface BridgedWebViewProps<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   /**
-   * Tuple of host bindings to wire into the transport.
+   * Host bindings to wire into the transport — the four
+   * parallel-indexed arrays produced by `HostBindings.single({...})`
+   * (one slice) or `HostBindings.combine(...)` (many slices).
    *
    * **Stable identity required.** The transport is rebuilt whenever
-   * the `bindings` reference changes (so the dispatch fiber, the
-   * outbound queue, and each binding's `onTransportReady` re-fire).
-   * Pass a `useMemo`-ed tuple from the calling component (or a
-   * module-level constant) — a fresh literal rebuilds the transport
-   * on every render, which is almost never what you want.
+   * the `bindings.bridges` / `bindings.receiverLayers` reference
+   * changes (so the dispatch fiber, the outbound queue, and each
+   * binding's `onTransportReady` re-fire). Pass a `useMemo`-ed value
+   * from the calling component (or a module-level constant) — a fresh
+   * literal rebuilds the transport on every render, which is almost
+   * never what you want.
    */
-  readonly bindings: TBindings
+  readonly bindings: HostBindings.HostBindings<Bridges>
   /**
    * What the WebView should load. `uri` for a remote page; `html`
    * for inline content with a mandatory `baseUrl`. The transport
@@ -70,28 +79,40 @@ interface BridgedWebViewProps<TBindings extends ReadonlyArray<HostBinding.Any>> 
 }
 
 /**
- * Generic host shell. Aggregates `bindings` via
- * {@link HostBinding.aggregate}, builds the transport via
- * {@link makeExpoTransport} on a mount-bound fiber
- * (`Effect.runFork`/`Fiber.interrupt`), stores it in local state,
- * fires each binding's `onTransportReady` from a separate effect
- * keyed on transport identity, and renders a {@link TransportWebView}.
+ * Built transport handle. `embedUrl` carries the configured base URL
+ * with each binding's `initialMessages` appended as `?<Tag>=<value>`
+ * query parameters; `sendMessage` is the typed Host→Web sender;
+ * `onMessage` consumes inbound message payloads and routes them
+ * through the dispatch fiber.
+ */
+interface BuiltTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
+  readonly sendMessage: BridgeTransport.MessageSender<Bridges, 'Host'>
+  readonly embedUrl: string
+  readonly onMessage: (raw: string) => Effect.Effect<void>
+}
+
+/**
+ * Generic host shell. Builds the bridge transport on a mount-bound
+ * fiber from the supplied `bindings`, stores the resulting handle in
+ * local state, fires each binding's `onTransportReady` from a separate
+ * effect keyed on transport identity, and renders a
+ * {@link TransportWebView}.
  *
  * @remarks
  * `transport` starts `null`; while the fiber is still building it we
- * render `loader ?? null` (single render flash — `makeExpoTransport`
- * performs no real I/O during construction). Once the transport is
- * set, the WebView mounts and `loader` overlays it until its first
- * `onLoadEnd` per {@link TransportWebView}'s contract. Changing the
- * `bindings` reference rebuilds the transport; `loadFrom` and each
- * binding's `initialMessages` are read at build time only and don't
- * trigger a rebuild on their own.
+ * render `loader ?? null` (single render flash — no real I/O happens
+ * during construction). Once the transport is set, the WebView mounts
+ * and `loader` overlays it until its first `onLoadEnd` per
+ * {@link TransportWebView}'s contract. Changing the
+ * `bindings.bridges` / `bindings.receiverLayers` reference rebuilds
+ * the transport; `loadFrom` and each binding's `initialMessages` are
+ * read at build time only and don't trigger a rebuild on their own.
  *
  * @example
  * ```tsx
  * const bindings = useMemo(
- *   () => [navBinding, logBinding] as const,
- *   [navBinding, logBinding]
+ *   () => HostBindings.combine(navBindings, logBindings),
+ *   [navBindings, logBindings]
  * )
  * return (
  *   <BridgedWebView
@@ -102,23 +123,16 @@ interface BridgedWebViewProps<TBindings extends ReadonlyArray<HostBinding.Any>> 
  * )
  * ```
  */
-const BridgedWebView = <const TBindings extends ReadonlyArray<HostBinding.Any>>({
+const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   loadFrom,
   loader,
   bindings,
   shouldOpenInSystemBrowser,
   injectedJavaScriptBeforeContentLoaded,
-}: BridgedWebViewProps<TBindings>): JSX.Element => {
-  const { bridges, layers, initialMessages } = useMemo(
-    () => HostBinding.aggregate(bindings),
-    [bindings]
-  )
-
+}: BridgedWebViewProps<Bridges>): JSX.Element => {
   const webviewBareSenderRef = useRef<BareSenderService | null>(null)
 
-  const [transport, setTransport] = useState<ExpoTransport<
-    HostBinding.BridgesOf<TBindings>
-  > | null>(null)
+  const [transport, setTransport] = useState<BuiltTransport<Bridges> | null>(null)
 
   const transportBaseUrl = loadFrom._tag === 'uri' ? loadFrom.uri : loadFrom.baseUrl
 
@@ -130,9 +144,11 @@ const BridgedWebView = <const TBindings extends ReadonlyArray<HostBinding.Any>>(
     return { uri: transport.embedUrl }
   }, [loadFrom, transport])
 
+  const { bridges, receiverLayers } = bindings
+
   useEffect((): undefined | (() => void) => {
     if (transport === null) return undefined
-    const fiber = Effect.runFork(HostBinding.callTransportReady(bindings, transport.sendMessage))
+    const fiber = Effect.runFork(HostBindings.callTransportReady(bindings, transport.sendMessage))
     return (): void => {
       Effect.runFork(Fiber.interrupt(fiber))
     }
@@ -142,14 +158,59 @@ const BridgedWebView = <const TBindings extends ReadonlyArray<HostBinding.Any>>(
     const fiber = Effect.runFork(
       Effect.scoped(
         Effect.gen(function* () {
-          const built = yield* makeExpoTransport({
+          // `react-native-webview`'s imperative `postMessage(string)`
+          // doesn't take a `targetOrigin`. Pre-mount sends warn and
+          // drop; post-mount messages flow live to the page. Sends
+          // also suspend on the page's `__Ready` post (handshake
+          // gating inside `BridgeTransport.make`).
+          const bareSender: BareSenderFunction = (encoded) =>
+            Effect.gen(function* () {
+              const handle = webviewBareSenderRef.current
+              if (handle === null) {
+                yield* Effect.logWarning(
+                  `[effect-messaging] sendMessage: no WebView handle yet; dropping. Pre-mount messages should ride initialMessages.`
+                )
+                return undefined
+              }
+              return yield* handle.bareSender(encoded)
+            })
+
+          // The page reads `window.location.search` synchronously at
+          // boot; `appendMessagesToUrl` validates each message has a
+          // urlParams schema (throws on mismatch — wiring drift fails
+          // fast). Flatten the parallel `initialMessages` arrays into
+          // one stream before appending; TS doesn't reduce the nested
+          // mapped-tuple over `Array.prototype.flat`, so we re-narrow
+          // here.
+          const baseUrlParsed = new URL(transportBaseUrl)
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const flatInitial = bindings.initialMessages.flat() as ReadonlyArray<
+            Bridge.UrlParamableMessage<Bridges>
+          >
+          const embedUrl = UrlParamMessage.appendMessagesToUrl(
+            baseUrlParsed,
             bridges,
-            layers,
-            initialMessages,
-            baseUrl: transportBaseUrl,
-            webviewHandleRef: webviewBareSenderRef,
-          })
-          yield* Effect.sync(() => setTransport(built))
+            flatInitial
+          ).toString()
+
+          // The Expo platform doesn't attach its own listener — the
+          // consumer wires `onMessage` to the WebView's `onMessage` prop.
+          const adapter: TransportAdapter['Type'] = {
+            bareSender,
+            drainInitial: Effect.succeed([]),
+          }
+
+          const built = yield* BridgeTransport.make({
+            bridges,
+            layers: receiverLayers,
+            side: 'Host',
+          }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter)))
+
+          const onMessage = (raw: string): Effect.Effect<void> => built.enqueue(raw)
+
+          yield* Effect.sync(() =>
+            setTransport({ sendMessage: built.sendMessage, embedUrl, onMessage })
+          )
           yield* Effect.never
         })
       )
@@ -164,7 +225,7 @@ const BridgedWebView = <const TBindings extends ReadonlyArray<HostBinding.Any>>(
     // URL/query at boot and can't be reapplied mid-life without a
     // remount.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [bridges, layers])
+  }, [bridges, receiverLayers])
 
   if (transport === null || source === null) return loader ?? <></>
 
@@ -180,7 +241,7 @@ const BridgedWebView = <const TBindings extends ReadonlyArray<HostBinding.Any>>(
         // drop it, silently losing every page→host message including
         // the `__Ready` handshake. A detached fork is sufficient
         // because the underlying queue is unbounded.
-        Effect.runFork(transport.onMessage(event))
+        Effect.runFork(transport.onMessage(event.nativeEvent.data))
       }}
       loader={loader}
       shouldOpenInSystemBrowser={shouldOpenInSystemBrowser}
