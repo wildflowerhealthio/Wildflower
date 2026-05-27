@@ -8,8 +8,8 @@ interface TabSpec {
 
 /**
  * The three top-level surfaces the persistent shell exposes. The order
- * here is a presentation concern (left-to-right in the tab bar); the
- * fallback tab is named separately via `FALLBACK_TAB_KEY`.
+ * here is a presentation concern (left-to-right in the tab bar).
+ * Pathnames that don't match any tab return `null` from {@link tabForPath}.
  */
 const TABS: ReadonlyArray<TabSpec> = [
   { key: 'apps', label: 'Apps', path: '/apps' },

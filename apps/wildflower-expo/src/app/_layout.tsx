@@ -28,12 +28,7 @@ const RootLayout = Sentry.wrap(function RootLayout(): JSX.Element {
               options={{ presentation: 'modal', title: 'Run Sync' }}
             />
           </Stack>
-          {/* oxlint-disable-next-line react/style-prop-object --
-             this is `expo-status-bar`'s `StatusBar`, not React Native's;
-             its `style` is a `StatusBarStyle` string union
-             (`"auto" | "inverted" | "light" | "dark"`), not RN's
-             `ViewStyle`. The rule's heuristic flags any string `style`
-             prop as suspicious. */}
+          {/* oxlint-disable-next-line react/style-prop-object -- expo-status-bar's StatusBar, not RN's */}
           <StatusBar style="auto" />
         </NavigationPipeProvider>
       </CollectorHostProvider>

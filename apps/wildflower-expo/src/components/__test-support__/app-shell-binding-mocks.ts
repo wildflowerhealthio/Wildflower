@@ -12,6 +12,8 @@
  * keeps the (necessarily file-scoped) `jest.mock` registrations.
  */
 import { Effect, Layer } from 'effect'
+import type { BridgeTransport } from 'effect-messaging-core'
+import type { NavigationBridge } from 'navigation-core'
 
 interface BindingShape<TName extends string> {
   readonly bridge: { readonly name: TName }
@@ -21,15 +23,19 @@ interface BindingShape<TName extends string> {
 
 const fakeReceiverLayer = (): Layer.Layer<never> => Layer.effectDiscard(Effect.void)
 
-interface NavigationMockOptions<TOnTransportReady> {
+type NavigationOnTransportReady = (
+  send: BridgeTransport.MessageSender<readonly [typeof NavigationBridge], 'Host'>
+) => Effect.Effect<void>
+
+interface NavigationMockOptions {
   readonly initialRoute?: string
-  readonly onTransportReady?: TOnTransportReady
+  readonly onTransportReady?: NavigationOnTransportReady
 }
 
-const makeNavigationMock = <TOnTransportReady>(
-  options: NavigationMockOptions<TOnTransportReady>
+const makeNavigationMock = (
+  options: NavigationMockOptions
 ): BindingShape<'Navigation'> & {
-  readonly onTransportReady?: TOnTransportReady
+  readonly onTransportReady?: NavigationOnTransportReady
 } => ({
   bridge: { name: 'Navigation' as const },
   receiverLayer: fakeReceiverLayer(),
@@ -53,16 +59,19 @@ const makeGatekeeperMock = (
   options: GatekeeperMockOptions = {}
 ): BindingShape<'Gatekeeper'> & {
   readonly onTransportReady?: <R>(send: GatekeeperSendCallback<R>) => Effect.Effect<void, never, R>
-} => ({
-  bridge: { name: 'Gatekeeper' as const },
-  receiverLayer: fakeReceiverLayer(),
-  initialMessages: [{ _tag: 'WaitForToken' as const }],
-  onTransportReady:
-    options.token === undefined
-      ? undefined
-      : <R>(send: GatekeeperSendCallback<R>): Effect.Effect<void, never, R> =>
-          send({ _tag: 'AuthTokenIssued', token: options.token! }),
-})
+} => {
+  const token = options.token
+  return {
+    bridge: { name: 'Gatekeeper' as const },
+    receiverLayer: fakeReceiverLayer(),
+    initialMessages: [{ _tag: 'WaitForToken' as const }],
+    onTransportReady:
+      token === undefined
+        ? undefined
+        : <R>(send: GatekeeperSendCallback<R>): Effect.Effect<void, never, R> =>
+            send({ _tag: 'AuthTokenIssued', token }),
+  }
+}
 
 const makeCollectorMock = (): BindingShape<'Collector'> => ({
   bridge: { name: 'Collector' as const },

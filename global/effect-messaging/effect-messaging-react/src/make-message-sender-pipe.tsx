@@ -22,6 +22,19 @@ interface MadeMessageSenderPipe<
   usePipeMessageSender: () => BridgeTransport.MessageSender<TBridges, TSide>
   useAsPipeMessageSender: (sender: BridgeTransport.MessageSender<TBridges, TSide>) => void
 
+  /**
+   * Returns the underlying RefObject holding the active sender.
+   * Identity-stable across renders. Initially points at
+   * {@link MadeMessageSenderPipe.defaultSender} (the pipe's built-in
+   * warn-and-drop) and is updated by
+   * {@link MadeMessageSenderPipe.useAsPipeMessageSender} when a sender
+   * is registered.
+   *
+   * Direct mutation of `.current` is a supported pattern — reach for
+   * it when the registration site cannot run inside a `useEffect`
+   * (e.g. capturing a transport sender from inside an
+   * `onTransportReady` `Effect.sync` callback).
+   */
   usePipeMessageSenderRef: () => RefObject<BridgeTransport.MessageSender<TBridges, TSide>>
   /**
    * The pipe's built-in warn-and-drop sender — what

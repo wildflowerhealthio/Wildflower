@@ -5,7 +5,7 @@ import { useMemo } from 'react'
 import { TunnelStore } from 'tunnel-core/livestore'
 import { ReceiverLayer } from './host-receiver-layer.ts'
 
-type TunnelLivestore = Parameters<typeof TunnelStore.layerFrom>[0]
+type TunnelLivestore = typeof TunnelStore.Service
 
 interface UseAppsHostBindingOptions {
   /**

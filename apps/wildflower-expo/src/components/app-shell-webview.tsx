@@ -21,6 +21,23 @@ interface AppShellWebViewProps {
 
 type NavigationSender = BridgeTransport.MessageSender<readonly [typeof NavigationBridge], 'Host'>
 
+const shouldOpenInSystemBrowser = (urlString: string, loopbackBaseUrl: string): boolean => {
+  try {
+    const url = new URL(urlString)
+    const loopbackUrl = new URL(loopbackBaseUrl)
+
+    if (url.origin !== loopbackUrl.origin) return true
+    const isRootPath = url.pathname === '' || url.pathname === '/'
+    const isTabbedPath = tabForPath(url.pathname) !== null
+    if (isRootPath || isTabbedPath) return false
+
+    return true
+  } catch {
+    // Conservative: malformed WebView-supplied URL → open in system browser.
+    return true
+  }
+}
+
 /**
  * The persistent shell that hosts the wildflower-react SPA. Aggregates
  * one host binding per slice and hands the tuple to {@link BridgedWebView}.
@@ -49,16 +66,13 @@ const AppShellWebView = ({ onRouteChanged }: AppShellWebViewProps): JSX.Element 
       bridge: NavigationBridge,
       receiverLayer: Layer.succeed(NavigationBridge.Host.HandlerTag, {
         RouteChanged: ({ pathname, canGoBack }) =>
-          Effect.sync(() => onRouteChanged?.({ pathname, canGoBack })),
+          Effect.sync(() => onRouteChanged({ pathname, canGoBack })),
       }),
       onTransportReady: (send: NavigationSender) =>
         Effect.sync(() => {
           navigationSenderRef.current = send
         }),
-      initialMessages: [
-        // Navigate to the "Apps" tab on first load so the SPA's initial route is
-        { _tag: 'HostRequestedWebNavigation', path: '/apps' },
-      ],
+      initialMessages: [{ _tag: 'HostRequestedWebNavigation', path: '/apps' }],
     }
   }, [navigationSenderRef, onRouteChanged])
 
@@ -82,30 +96,12 @@ const AppShellWebView = ({ onRouteChanged }: AppShellWebViewProps): JSX.Element 
     [navigationBinding, gatekeeperBinding, collectorBinding, appsBinding, logBinding]
   )
 
-  const shouldOpenInSystemBrowser = (urlString: string): boolean => {
-    // Open external links in the system browser; keep same-origin links in the WebView.
-    try {
-      const url = new URL(urlString)
-      const loopbackUrl = new URL(loopbackBaseUrl)
-
-      if (url.origin !== loopbackUrl.origin) return true
-      const isRootPath = url.pathname === '' || url.pathname === '/'
-      const isTabbedPath = tabForPath(url.pathname) !== null
-      if (isRootPath || isTabbedPath) return false
-
-      return true
-    } catch {
-      // If URL parsing fails, be conservative and open in the system browser.
-      return true
-    }
-  }
-
   return (
     <BridgedWebView
       bindings={bindings}
       loadFrom={loadFrom}
       loader={<Loader />}
-      shouldOpenInSystemBrowser={shouldOpenInSystemBrowser}
+      shouldOpenInSystemBrowser={(url) => shouldOpenInSystemBrowser(url, loopbackBaseUrl)}
     />
   )
 }

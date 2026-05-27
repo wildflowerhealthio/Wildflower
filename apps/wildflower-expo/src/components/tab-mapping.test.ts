@@ -1,7 +1,5 @@
 import { fc, it as fcIt } from '@fast-check/jest'
-import { FALLBACK_TAB_KEY, TABS, tabForPath } from './tab-mapping.ts'
-
-const NON_FALLBACK_TABS = TABS.filter((t) => t.key !== FALLBACK_TAB_KEY)
+import { TABS, tabForPath } from './tab-mapping.ts'
 
 describe('tabForPath', () => {
   describe('exact-path match', () => {
@@ -27,11 +25,9 @@ describe('tabForPath', () => {
   describe('non-descendant prefix sibling', () => {
     // `/appsxyz` shares `/apps` as a *string* prefix but is NOT a
     // descendant. The implementation distinguishes by requiring a
-    // trailing `/`. The fallback tab is excluded because for it
-    // "not this tab" and "is the fallback" collapse to the same
-    // value, which would let every iteration trivially pass.
+    // trailing `/`.
     fcIt.prop({
-      tab: fc.constantFrom(...NON_FALLBACK_TABS),
+      tab: fc.constantFrom(...TABS),
       sibling: fc.stringMatching(/^[a-zA-Z0-9]+$/),
     })('does not match a path that shares the prefix but no trailing slash', ({ tab, sibling }) => {
       const input = `${tab.path}${sibling}`
@@ -40,20 +36,20 @@ describe('tabForPath', () => {
   })
 
   describe('fallback', () => {
-    it('returns FALLBACK_TAB_KEY for the empty string', () => {
-      expect(tabForPath('')).toBe(FALLBACK_TAB_KEY)
+    it('returns null for the empty string', () => {
+      expect(tabForPath('')).toBeNull()
     })
 
-    it('returns FALLBACK_TAB_KEY for the SPA root `/`', () => {
-      expect(tabForPath('/')).toBe(FALLBACK_TAB_KEY)
+    it('returns null for the SPA root `/`', () => {
+      expect(tabForPath('/')).toBeNull()
     })
 
     fcIt.prop({
       pathname: fc
         .stringMatching(/^\/[a-zA-Z0-9_\-./]*$/)
         .filter((s) => !TABS.some((t) => s === t.path || s.startsWith(`${t.path}/`))),
-    })('returns FALLBACK_TAB_KEY for any pathname not under a tab root', ({ pathname }) => {
-      expect(tabForPath(pathname)).toBe(FALLBACK_TAB_KEY)
+    })('returns null for any pathname not under a tab root', ({ pathname }) => {
+      expect(tabForPath(pathname)).toBeNull()
     })
   })
 })

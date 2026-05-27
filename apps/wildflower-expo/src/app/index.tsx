@@ -4,7 +4,7 @@ import { Colors, Spacing, ThemedText, ThemedView, useThemeColors } from 'expo-tu
 import { ServerState } from 'local-http-server-core/livestore'
 import { useCallback, useEffect, useState, type JSX } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { AppShellWebView } from '../components/app-shell-webview.tsx'
 import { useNavigationSender } from '../components/navigation-pipe.ts'
@@ -19,6 +19,9 @@ import { useWildflowerStore } from '../livestore/livestore-store.ts'
 export default function HomeScreen(): JSX.Element {
   const store = useWildflowerStore()
   const { running } = store.useQuery(ServerState.queries.current$)
+  const palette = useThemeColors()
+  const sendNavigation = useNavigationSender()
+  const insets = useSafeAreaInsets()
 
   const [activeTab, setActiveTab] = useState<TabKey | null>('apps')
   const [shellLive, setShellLive] = useState(false)
@@ -27,7 +30,16 @@ export default function HomeScreen(): JSX.Element {
   // reported a first `RouteChanged` (which means the embedded
   // wildflower-react has mounted + the transport has flushed).
   useEffect(() => {
-    if (running && shellLive) void SplashScreen.hideAsync()
+    if (running && shellLive) {
+      Effect.runFork(
+        Effect.tryPromise({
+          try: () => SplashScreen.hideAsync(),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.catchAll((cause) => Effect.logWarning('SplashScreen.hideAsync failed', cause))
+        )
+      )
+    }
   }, [running, shellLive])
 
   const handleRouteChanged = useCallback(
@@ -44,47 +56,43 @@ export default function HomeScreen(): JSX.Element {
         <View style={styles.webViewWrap}>
           <AppShellWebView onRouteChanged={handleRouteChanged} />
         </View>
-        <TabBar activeTab={activeTab} />
+        <View
+          style={[
+            styles.tabBar,
+            {
+              borderTopColor: palette.icon,
+              backgroundColor: palette.background,
+              paddingBottom: Spacing.s3 + insets.bottom,
+            },
+          ]}
+        >
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.key
+            return (
+              <Pressable
+                key={tab.key}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: isActive }}
+                onPress={() => {
+                  Effect.runFork(
+                    sendNavigation({ _tag: 'HostRequestedWebNavigation', path: tab.path })
+                  )
+                }}
+                style={styles.tabButton}
+              >
+                <ThemedText
+                  type={isActive ? 'bodySemiBold' : 'body'}
+                  lightTextColor={isActive ? Colors.light.accent : Colors.light.icon}
+                  darkTextColor={isActive ? Colors.dark.accent : Colors.dark.icon}
+                >
+                  {tab.label}
+                </ThemedText>
+              </Pressable>
+            )
+          })}
+        </View>
       </ThemedView>
     </SafeAreaView>
-  )
-}
-
-/** Native tab bar — dispatches `HostRequestedWebNavigation` through the navigation pipe. */
-const TabBar = ({ activeTab }: { activeTab: TabKey | null }): JSX.Element => {
-  const palette = useThemeColors()
-  const sendNavigation = useNavigationSender()
-  return (
-    <View
-      style={[styles.tabBar, { borderTopColor: palette.icon, backgroundColor: palette.background }]}
-    >
-      {TABS.map((tab) => {
-        const isActive = activeTab === tab.key
-        return (
-          <Pressable
-            key={tab.key}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: isActive }}
-            onPress={() => {
-              // Fire-and-forget: the only failure mode is the pipe's
-              // own warn-and-drop (logged via `Effect.logWarning`) when
-              // the transport hasn't built yet — not a swallowed
-              // user-visible error.
-              Effect.runFork(sendNavigation({ _tag: 'HostRequestedWebNavigation', path: tab.path }))
-            }}
-            style={styles.tabButton}
-          >
-            <ThemedText
-              type={isActive ? 'bodySemiBold' : 'body'}
-              lightTextColor={isActive ? Colors.light.accent : Colors.light.icon}
-              darkTextColor={isActive ? Colors.dark.accent : Colors.dark.icon}
-            >
-              {tab.label}
-            </ThemedText>
-          </Pressable>
-        )
-      })}
-    </View>
   )
 }
 
@@ -94,7 +102,7 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: 'row',
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingVertical: Spacing.s3,
+    paddingTop: Spacing.s3,
   },
   tabButton: {
     flex: 1,
