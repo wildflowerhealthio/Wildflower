@@ -18,3 +18,12 @@ export {
 export { TunnelToggle, type TunnelToggleProps } from './components/TunnelToggle.tsx'
 
 export { TunnelScreen } from './screens/tunnel-screen.tsx'
+
+export {
+  applyTunnelOptimistic,
+  TUNNEL_STATE_QUERY_KEY,
+  useTunnelPatchMutation,
+  useTunnelStateQuery,
+  type TunnelPatchPayload,
+  type TunnelState,
+} from './queries.ts'

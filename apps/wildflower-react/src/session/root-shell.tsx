@@ -9,6 +9,7 @@ import { TunnelClientProvider } from 'tunnel-react'
 
 import { AppsSenderForwarder } from '../bridges/apps-sender-forwarder.tsx'
 import { CollectorSenderForwarder } from '../bridges/collector-sender-forwarder.tsx'
+import { QueryClientPersistProvider } from '../bridges/query-client-persist-provider.tsx'
 import { TransportProvider } from '../bridges/transport-provider.tsx'
 
 // Mount order:
@@ -38,6 +39,11 @@ import { TransportProvider } from '../bridges/transport-provider.tsx'
 //     client layer. It takes no props — the layer reads the live token
 //     from `BearerToken` per request, like the other slice client
 //     providers. Tunnel has no public counterpart (owner-only API).
+//  6. `<QueryClientPersistProvider>` mounts the TanStack Query client +
+//     localStorage persister. Sits innermost so the slice client
+//     providers are already wired by the time any query function runs
+//     against them. Caches every GET, hydrates from localStorage on
+//     mount, and refetches in the background (staleTime: 0).
 /**
  * Root route component rendered inside TanStack `<RouterProvider>`.
  * Hosts the full provider stack and renders `<Outlet />` so the matched
@@ -55,7 +61,9 @@ const RootShell = (): JSX.Element => (
                   <FhirR4ResourcesClientProvider>
                     <AppsClientProvider>
                       <TunnelClientProvider>
-                        <Outlet />
+                        <QueryClientPersistProvider>
+                          <Outlet />
+                        </QueryClientPersistProvider>
                       </TunnelClientProvider>
                     </AppsClientProvider>
                   </FhirR4ResourcesClientProvider>

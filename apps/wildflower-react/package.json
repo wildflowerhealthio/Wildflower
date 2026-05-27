@@ -24,6 +24,9 @@
   },
   "dependencies": {
     "@effect/platform": "catalog:",
+    "@tanstack/query-sync-storage-persister": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-query-persist-client": "catalog:",
     "@tanstack/react-router": "catalog:",
     "apps-core": "workspace:*",
     "apps-react": "workspace:*",

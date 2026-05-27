@@ -65,6 +65,9 @@ catalog:
   '@sentry/react-native': ~7.2.0
   # Transitive peer of @effect/* required at install time (not declared by @livestore/peer-deps).
   '@standard-schema/spec': 1.0.0
+  '@tanstack/query-sync-storage-persister': ^5.100.14
+  '@tanstack/react-query': ^5.100.14
+  '@tanstack/react-query-persist-client': ^5.100.14
   '@tanstack/react-router': ^1.170.8
   '@testing-library/react-native': ^13.3.3
   '@tsdown/css': ^0.21.10
