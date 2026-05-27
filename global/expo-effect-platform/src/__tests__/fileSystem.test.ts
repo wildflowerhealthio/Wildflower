@@ -1,10 +1,13 @@
 import * as PlatformError from '@effect/platform/Error'
 import * as FileSystem from '@effect/platform/FileSystem'
+import * as Server from '@effect/platform/HttpServer'
 import * as Cause from 'effect/Cause'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import { pipe } from 'effect/Function'
+import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
+import * as Stream from 'effect/Stream'
 import * as fc from 'fast-check'
 
 // Stub the TurboModule so Jest can resolve the module graph; nothing in this test file calls into the native side.
@@ -46,9 +49,16 @@ jest.mock('expo-file-system', () => {
     get creationTime(): number | null {
       return null
     }
-    create(): void {
+    create(options?: { intermediates?: boolean; overwrite?: boolean }): void {
       const path = stripScheme(this.uri)
-      if (MOCK_FS.has(path)) {
+      const existing = MOCK_FS.get(path)
+      if (existing !== undefined) {
+        if (options?.overwrite) {
+          // Mirror expo-file-system: overwrite collapses to "create fresh,
+          // discarding prior contents."
+          MOCK_FS.set(path, { kind: 'file', bytes: new Uint8Array(), modificationTime: null })
+          return
+        }
         throw new Error(`File already exists at ${path}`)
       }
       MOCK_FS.set(path, { kind: 'file', bytes: new Uint8Array(), modificationTime: null })
@@ -139,6 +149,11 @@ const runFs = <A, E>(body: (fs: FileSystem.FileSystem) => Effect.Effect<A, E>): 
   return Effect.runPromise(program)
 }
 
+const expectFailureCause = async <A, E>(eff: Effect.Effect<A, E>): Promise<E> => {
+  const exit = await Effect.runPromiseExit(eff)
+  return pipe(exit, Exit.causeOption, Option.flatMap(Cause.failureOption), Option.getOrThrow)
+}
+
 beforeEach(() => {
   MOCK_FS.clear()
 })
@@ -180,16 +195,10 @@ describe('ExpoFileSystem', () => {
     })
 
     test('access fails with NotFound when path is missing', async () => {
-      const exit = await Effect.runPromiseExit(
+      const error = await expectFailureCause(
         Effect.flatMap(FileSystem.FileSystem, (fs) => fs.access('/cache/missing')).pipe(
           Effect.provide(ExpoFileSystem.layer)
         )
-      )
-      const error = pipe(
-        exit,
-        Exit.causeOption,
-        Option.flatMap(Cause.failureOption),
-        Option.getOrThrow
       )
       expect(error).toMatchObject({
         _tag: 'SystemError',
@@ -213,19 +222,41 @@ describe('ExpoFileSystem', () => {
       )
     })
 
-    test('non-recursive create on an existing directory fails', async () => {
+    test('non-recursive create on an existing directory fails with AlreadyExists', async () => {
       stage('/cache/exists', { kind: 'dir', size: 0 })
-      const exit = await Effect.runPromiseExit(
+      const error = await expectFailureCause(
         Effect.flatMap(FileSystem.FileSystem, (fs) => fs.makeDirectory('/cache/exists')).pipe(
           Effect.provide(ExpoFileSystem.layer)
         )
       )
-      expect(Exit.isFailure(exit)).toBe(true)
+      expect(error).toMatchObject({
+        _tag: 'SystemError',
+        reason: 'AlreadyExists',
+        pathOrDescriptor: '/cache/exists',
+      })
+    })
+
+    test('non-recursive create on an existing file path fails with AlreadyExists', async () => {
+      stage('/cache/file.txt', {
+        kind: 'file',
+        bytes: new Uint8Array(),
+        modificationTime: null,
+      })
+      const error = await expectFailureCause(
+        Effect.flatMap(FileSystem.FileSystem, (fs) => fs.makeDirectory('/cache/file.txt')).pipe(
+          Effect.provide(ExpoFileSystem.layer)
+        )
+      )
+      expect(error).toMatchObject({
+        _tag: 'SystemError',
+        reason: 'AlreadyExists',
+        pathOrDescriptor: '/cache/file.txt',
+      })
     })
   })
 
   describe('writeFileString / readFileString round-trip', () => {
-    test('write then read returns the same bytes', async () => {
+    test('write then read returns the same string', async () => {
       await fc.assert(
         fc.asyncProperty(fc.string(), async (data) => {
           MOCK_FS.clear()
@@ -249,6 +280,53 @@ describe('ExpoFileSystem', () => {
           expect(yield* fs.readFileString('/cache/idx.html')).toBe('second')
         })
       )
+    })
+  })
+
+  describe('writeFile / readFile (Uint8Array path)', () => {
+    test('byte-level round trip', async () => {
+      await fc.assert(
+        fc.asyncProperty(fc.uint8Array(), async (data) => {
+          MOCK_FS.clear()
+          await runFs((fs) =>
+            Effect.gen(function* () {
+              yield* fs.writeFile('/cache/bytes.bin', data)
+              const read = yield* fs.readFile('/cache/bytes.bin')
+              expect(read).toEqual(data)
+            })
+          )
+        }),
+        { numRuns: 25 }
+      )
+    })
+
+    test('stat.size matches the written byteLength', async () => {
+      await fc.assert(
+        fc.asyncProperty(fc.uint8Array(), async (data) => {
+          MOCK_FS.clear()
+          await runFs((fs) =>
+            Effect.gen(function* () {
+              yield* fs.writeFile('/cache/sized.bin', data)
+              const info = yield* fs.stat('/cache/sized.bin')
+              expect(Number(info.size)).toBe(data.byteLength)
+            })
+          )
+        }),
+        { numRuns: 25 }
+      )
+    })
+
+    test('non-default flag is rejected with a typed SystemError', async () => {
+      const error = await expectFailureCause(
+        Effect.flatMap(FileSystem.FileSystem, (fs) =>
+          fs.writeFile('/cache/append.bin', new Uint8Array([1, 2, 3]), { flag: 'a' })
+        ).pipe(Effect.provide(ExpoFileSystem.layer))
+      )
+      expect(error).toMatchObject({
+        _tag: 'SystemError',
+        reason: 'BadResource',
+        pathOrDescriptor: '/cache/append.bin',
+      })
     })
   })
 
@@ -286,16 +364,10 @@ describe('ExpoFileSystem', () => {
     })
 
     test('remove on missing path without force fails with NotFound', async () => {
-      const exit = await Effect.runPromiseExit(
+      const error = await expectFailureCause(
         Effect.flatMap(FileSystem.FileSystem, (fs) => fs.remove('/cache/missing')).pipe(
           Effect.provide(ExpoFileSystem.layer)
         )
-      )
-      const error = pipe(
-        exit,
-        Exit.causeOption,
-        Option.flatMap(Cause.failureOption),
-        Option.getOrThrow
       )
       expect(error).toMatchObject({
         _tag: 'SystemError',
@@ -330,17 +402,28 @@ describe('ExpoFileSystem', () => {
       )
     })
 
-    test('stat on missing path fails with NotFound', async () => {
-      const exit = await Effect.runPromiseExit(
-        Effect.flatMap(FileSystem.FileSystem, (fs) => fs.stat('/cache/missing')).pipe(
+    test('stat on a directory whose size is null surfaces PermissionDenied', async () => {
+      // expo-file-system's docs call out `Directory.size === null` as
+      // "unreadable" (e.g. permission failure). It must not silently
+      // coalesce to `size: 0` — exercising the explicit failure branch.
+      stage('/cache/sealed', { kind: 'dir', size: null })
+      const error = await expectFailureCause(
+        Effect.flatMap(FileSystem.FileSystem, (fs) => fs.stat('/cache/sealed')).pipe(
           Effect.provide(ExpoFileSystem.layer)
         )
       )
-      const error = pipe(
-        exit,
-        Exit.causeOption,
-        Option.flatMap(Cause.failureOption),
-        Option.getOrThrow
+      expect(error).toMatchObject({
+        _tag: 'SystemError',
+        reason: 'PermissionDenied',
+        pathOrDescriptor: '/cache/sealed',
+      })
+    })
+
+    test('stat on missing path fails with NotFound', async () => {
+      const error = await expectFailureCause(
+        Effect.flatMap(FileSystem.FileSystem, (fs) => fs.stat('/cache/missing')).pipe(
+          Effect.provide(ExpoFileSystem.layer)
+        )
       )
       expect(error).toMatchObject({
         _tag: 'SystemError',
@@ -353,22 +436,41 @@ describe('ExpoFileSystem', () => {
   describe('unsupported operations', () => {
     test.each([
       ['chmod', (fs: FileSystem.FileSystem) => fs.chmod('/cache/x', 0o644)],
+      ['chown', (fs: FileSystem.FileSystem) => fs.chown('/cache/x', 0, 0)],
       ['copy', (fs: FileSystem.FileSystem) => fs.copy('/cache/x', '/cache/y')],
-      ['rename', (fs: FileSystem.FileSystem) => fs.rename('/cache/x', '/cache/y')],
+      ['copyFile', (fs: FileSystem.FileSystem) => fs.copyFile('/cache/x', '/cache/y')],
+      ['link', (fs: FileSystem.FileSystem) => fs.link('/cache/x', '/cache/y')],
+      ['makeTempDirectory', (fs: FileSystem.FileSystem) => fs.makeTempDirectory()],
+      ['makeTempFile', (fs: FileSystem.FileSystem) => fs.makeTempFile()],
+      ['open', (fs: FileSystem.FileSystem) => Effect.scoped(fs.open('/cache/x'))],
       ['readDirectory', (fs: FileSystem.FileSystem) => fs.readDirectory('/cache')],
-    ])('%s fails with a typed SystemError', async (_label, call) => {
-      const exit = await Effect.runPromiseExit(
+      ['readLink', (fs: FileSystem.FileSystem) => fs.readLink('/cache/x')],
+      ['realPath', (fs: FileSystem.FileSystem) => fs.realPath('/cache/x')],
+      ['rename', (fs: FileSystem.FileSystem) => fs.rename('/cache/x', '/cache/y')],
+      ['symlink', (fs: FileSystem.FileSystem) => fs.symlink('/cache/x', '/cache/y')],
+      ['truncate', (fs: FileSystem.FileSystem) => fs.truncate('/cache/x')],
+      ['utimes', (fs: FileSystem.FileSystem) => fs.utimes('/cache/x', new Date(), new Date())],
+    ])('%s fails with reason BadResource', async (_label, call) => {
+      const error = await expectFailureCause(
         Effect.flatMap(FileSystem.FileSystem, (fs) => call(fs)).pipe(
           Effect.provide(ExpoFileSystem.layer)
         )
       )
-      const error = pipe(
-        exit,
-        Exit.causeOption,
-        Option.flatMap(Cause.failureOption),
-        Option.getOrThrow
+      expect(error).toBeInstanceOf(PlatformError.SystemError)
+      expect(error).toMatchObject({ _tag: 'SystemError', reason: 'BadResource' })
+    })
+
+    test('watch fails with reason BadResource (routed via Stream.fail)', async () => {
+      // `watch` returns a `Stream`, not an `Effect`, so it never hits the
+      // `Effect.fail` path the rest of the unsupported methods use. Drain
+      // the stream into an Effect to capture the typed failure.
+      const error = await expectFailureCause(
+        Effect.flatMap(FileSystem.FileSystem, (fs) => Stream.runDrain(fs.watch('/cache/x'))).pipe(
+          Effect.provide(ExpoFileSystem.layer)
+        )
       )
       expect(error).toBeInstanceOf(PlatformError.SystemError)
+      expect(error).toMatchObject({ _tag: 'SystemError', reason: 'BadResource' })
     })
   })
 
@@ -382,16 +484,30 @@ describe('ExpoFileSystem', () => {
     })
   })
 
-  describe('ExpoFileSystem.layer overrides HttpServer.layerContext FileSystem', () => {
-    test('an effect requiring FileSystem.FileSystem succeeds against ExpoFileSystem.layer', async () => {
-      // Sanity: providing only the Expo layer satisfies the FileSystem requirement.
-      await runFs((fs) =>
-        Effect.gen(function* () {
-          yield* fs.makeDirectory('/cache/staging', { recursive: true })
-          yield* fs.writeFileString('/cache/staging/index.html', '<html></html>')
-          expect(yield* fs.readFileString('/cache/staging/index.html')).toBe('<html></html>')
-        })
+  describe('ExpoFileSystem.layer composition with HttpServer.layerContext', () => {
+    test('ExpoFileSystem.layer listed AFTER Server.layerContext wins (Expo impl takes effect)', async () => {
+      // This pins the `Context.mergeAll` last-writer-wins ordering that
+      // `ExpoContext.layer` depends on. If the noop from `Server.layerContext`
+      // were winning, `writeFileString` would fail (noop's `writeFile` rejects).
+      const composed = Layer.mergeAll(Server.layerContext, ExpoFileSystem.layer)
+      const program = Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        yield* fs.writeFileString('/cache/ord.html', '<p>hi</p>')
+        return yield* fs.readFileString('/cache/ord.html')
+      }).pipe(Effect.provide(composed))
+      const result = await Effect.runPromise(program)
+      expect(result).toBe('<p>hi</p>')
+    })
+
+    test('with the order reversed, the noop wins (regression guard on ordering)', async () => {
+      const composed = Layer.mergeAll(ExpoFileSystem.layer, Server.layerContext)
+      const error = await expectFailureCause(
+        Effect.flatMap(FileSystem.FileSystem, (fs) =>
+          fs.writeFileString('/cache/noop.html', 'x')
+        ).pipe(Effect.provide(composed))
       )
+      // The noop's `writeFileString` rejects with `SystemError NotFound`.
+      expect(error).toMatchObject({ _tag: 'SystemError', reason: 'NotFound' })
     })
   })
 })

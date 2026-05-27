@@ -125,7 +125,7 @@ const HttpServerContextLive = Layer.mergeAll(
         yield* Effect.logInfo(`Local client token minted (prefix: ${token.slice(0, 8)}…)`)
       }
 
-      return yield* stageWebAssetsDir.pipe(Effect.orDie)
+      return yield* stageWebAssetsDir
     })
   ).pipe(Layer.provideMerge(ExpoContext.layer)),
   CryptoRandomLive,
@@ -204,33 +204,34 @@ const makeBindLive = ({
  * [`Composition Explanation`](../../../wildflower-server/docs/Composition%20Explanation.md)
  * for the full layer graph.
  */
-const HttpServerDaemonLive: Layer.Layer<never, never, WildflowerStore> = Layer.scopedDiscard(
-  Effect.gen(function* () {
-    // Build the static peer context once and freeze it as a
-    // requirement-less Layer for downstream `Layer.provide`s.
-    // `Layer.build` runs the bootstrap (seeds + mint) here, before
-    // the watcher fiber forks; `Layer.succeedContext` re-wraps the
-    // built Context so the daemon's respawn loop reuses the same
-    // built tags without re-entering bootstrap.
-    const httpServerContext = Layer.succeedContext(yield* Layer.build(HttpServerContextLive))
-    const startServer = (cfg: {
-      port: number
-      hostname: string
-    }): Stream.Stream<void, never, Scope.Scope> =>
-      Stream.unwrapScoped(
-        Effect.gen(function* () {
-          yield* Layer.build(makeBindLive(cfg).pipe(Layer.provide(httpServerContext)))
-          // First emit = bind signal. `Stream.never` parks the stream
-          // until the daemon closes the sub-scope, releasing
-          // `Layer.build`'s scoped finalizers (which tears down the
-          // HTTP listener).
-          return Stream.concat(Stream.succeed(undefined as void), Stream.never)
-        }).pipe(Effect.orDie)
+const HttpServerDaemonLive: Layer.Layer<never, PlatformError.PlatformError, WildflowerStore> =
+  Layer.scopedDiscard(
+    Effect.gen(function* () {
+      // Build the static peer context once and freeze it as a
+      // requirement-less Layer for downstream `Layer.provide`s.
+      // `Layer.build` runs the bootstrap (seeds + mint) here, before
+      // the watcher fiber forks; `Layer.succeedContext` re-wraps the
+      // built Context so the daemon's respawn loop reuses the same
+      // built tags without re-entering bootstrap.
+      const httpServerContext = Layer.succeedContext(yield* Layer.build(HttpServerContextLive))
+      const startServer = (cfg: {
+        port: number
+        hostname: string
+      }): Stream.Stream<void, never, Scope.Scope> =>
+        Stream.unwrapScoped(
+          Effect.gen(function* () {
+            yield* Layer.build(makeBindLive(cfg).pipe(Layer.provide(httpServerContext)))
+            // First emit = bind signal. `Stream.never` parks the stream
+            // until the daemon closes the sub-scope, releasing
+            // `Layer.build`'s scoped finalizers (which tears down the
+            // HTTP listener).
+            return Stream.concat(Stream.succeed(undefined as void), Stream.never)
+          }).pipe(Effect.orDie)
+        )
+      yield* Effect.forkScoped(
+        runHttpServerDaemon(startServer).pipe(Effect.provide(httpServerContext))
       )
-    yield* Effect.forkScoped(
-      runHttpServerDaemon(startServer).pipe(Effect.provide(httpServerContext))
-    )
-  })
-)
+    })
+  )
 
 export { HttpServerDaemonLive }
