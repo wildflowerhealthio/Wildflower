@@ -29,6 +29,7 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@fast-check/vitest": "catalog:",
+    "@tanstack/react-router": "catalog:",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.0",
     "@types/react": "catalog:",
@@ -40,7 +41,6 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
-    "react-router": "catalog:",
     "react-tundraish": "workspace:*",
     "shared-structures-react": "workspace:*",
     "telemetry-react": "workspace:*",
@@ -50,11 +50,11 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
+    "@tanstack/react-router": "catalog:",
     "effect": "catalog:",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
-    "react-router": "catalog:",
     "react-tundraish": "workspace:*",
     "shared-structures-react": "workspace:*",
     "telemetry-react": "workspace:*",

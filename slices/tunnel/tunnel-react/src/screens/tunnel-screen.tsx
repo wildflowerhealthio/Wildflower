@@ -1,14 +1,7 @@
 import { Effect, type Schema } from 'effect'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Await } from 'react-router'
-import {
-  AsyncErrorView,
-  Field,
-  FieldDescription,
-  pageLayoutStyles,
-  PageLoading,
-} from 'react-tundraish'
+import { Awaited, Field, FieldDescription, pageLayoutStyles, PageLoading } from 'react-tundraish'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import type { Tunnel } from 'tunnel-core/http-api-definition'
 
@@ -32,7 +25,7 @@ const TunnelScreen = (): JSX.Element => {
 
   return (
     <Suspense fallback={<PageLoading message="Loading tunnel…" />}>
-      <Await resolve={tunnelPromise} errorElement={<AsyncErrorView title="Tunnel" />}>
+      <Awaited promise={tunnelPromise} resetKey={refreshKey} errorTitle="Tunnel">
         {(state: TunnelState) => (
           <TunnelScreenBody
             state={state}
@@ -41,7 +34,7 @@ const TunnelScreen = (): JSX.Element => {
             }}
           />
         )}
-      </Await>
+      </Awaited>
     </Suspense>
   )
 }

@@ -1,12 +1,12 @@
+import { useNavigate } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Await, useNavigate } from 'react-router'
 import {
-  AsyncErrorView,
+  Awaited,
   ItemList,
   Menu,
   pageLayoutStyles,
@@ -38,7 +38,7 @@ const AccessIndexScreen = (): JSX.Element => {
 
   return (
     <Suspense fallback={<PageLoading />}>
-      <Await resolve={grantsPromise} errorElement={<AsyncErrorView />}>
+      <Awaited promise={grantsPromise} resetKey={refreshKey}>
         {(grants: readonly Grant[]) => (
           <AccessIndexBody
             runGatekeeper={runGatekeeper}
@@ -48,7 +48,7 @@ const AccessIndexScreen = (): JSX.Element => {
             }}
           />
         )}
-      </Await>
+      </Awaited>
     </Suspense>
   )
 }
@@ -98,7 +98,7 @@ const AccessIndexBody = ({
             title: 'HTTP Requests',
             subtitle: 'View incoming request history',
             onClick: () => {
-              void navigate('/settings/gatekeeper/requests')
+              void navigate({ to: '/settings/gatekeeper/requests' })
             },
           },
         ]}
@@ -112,7 +112,9 @@ const AccessIndexBody = ({
             title: grant.clientId,
             subtitle: `${grant.scopes.join(', ')} · Granted ${formatInstant(grant.grantedAt)}`,
             onClick: () => {
-              void navigate(`/settings/gatekeeper/approved/${encodeURIComponent(grant.id)}`)
+              void navigate({
+                to: `/settings/gatekeeper/approved/${encodeURIComponent(grant.id)}`,
+              })
             },
             actions: (
               <Menu

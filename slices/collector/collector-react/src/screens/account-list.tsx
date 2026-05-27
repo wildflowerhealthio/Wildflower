@@ -1,10 +1,10 @@
+import { useNavigate } from '@tanstack/react-router'
 import { CollectorHttpApiClient } from 'collector-core/clients'
 import type { Remotes } from 'collector-core/http-api-definition'
 import { Effect, type Schema } from 'effect'
 import { defaultConfig } from 'fhir-r4-client-collector'
 import { useEffect, useState, type JSX } from 'react'
 import { cn, unwrapCause } from 'react-kitchen-sink'
-import { useNavigate } from 'react-router'
 import { Dialog, ItemList, Menu, pageLayoutStyles, type MenuItem } from 'react-tundraish'
 
 import { useCollectorEffectAction } from '../collector-client.tsx'
@@ -102,7 +102,7 @@ const AccountListScreen = (): JSX.Element => {
                 </span>
               ),
               onClick: () => {
-                void navigate(`/collector/account/${encodeURIComponent(remote.id)}`)
+                void navigate({ to: `/collector/account/${encodeURIComponent(remote.id)}` })
               },
               actions: (
                 <Menu
@@ -113,7 +113,9 @@ const AccountListScreen = (): JSX.Element => {
                         id: 'edit',
                         label: 'Edit',
                         onSelect: () => {
-                          void navigate(`/collector/account/${encodeURIComponent(remote.id)}`)
+                          void navigate({
+                            to: `/collector/account/${encodeURIComponent(remote.id)}`,
+                          })
                         },
                       },
                       {
@@ -148,9 +150,9 @@ const AccountListScreen = (): JSX.Element => {
             title: 'Demo FHIR Server',
             subtitle: defaultConfig.rootUrl,
             onClick: () => {
-              void navigate(
-                `/collector/account/new?prefillName=${encodeURIComponent('Demo FHIR Server')}&prefillRootUrl=${encodeURIComponent(defaultConfig.rootUrl)}&prefillPatientId=${encodeURIComponent(defaultConfig.patientId)}`
-              )
+              void navigate({
+                to: `/collector/account/new?prefillName=${encodeURIComponent('Demo FHIR Server')}&prefillRootUrl=${encodeURIComponent(defaultConfig.rootUrl)}&prefillPatientId=${encodeURIComponent(defaultConfig.patientId)}`,
+              })
             },
           },
           {

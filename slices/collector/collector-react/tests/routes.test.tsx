@@ -12,15 +12,17 @@ const routesSource = readFileSync(
   'utf8'
 )
 
+// Each fragment is a `(parent) => Route[]` factory returning
+// `createRoute({ path: '...' })` entries (TanStack code-based routing).
 const declareFragmentPaths = (fragmentName: string): readonly string[] => {
-  const fragmentRegex = new RegExp(`const\\s+${fragmentName}[^=]*=\\s*\\(([\\s\\S]*?)^\\)`, 'm')
+  const fragmentRegex = new RegExp(`const\\s+${fragmentName}[\\s\\S]*?(?=\\n(?:const|export)\\s|$)`)
   const fragmentMatch = fragmentRegex.exec(routesSource)
   if (fragmentMatch === null) {
     throw new Error(`Could not locate ${fragmentName} block in routes.tsx`)
   }
-  const block = fragmentMatch[1] ?? ''
+  const block = fragmentMatch[0]
   const paths: string[] = []
-  const pathRegex = /<Route\b[^>]*\bpath="([^"]+)"/g
+  const pathRegex = /path:\s*['"]([^'"]+)['"]/g
   let pathMatch: RegExpExecArray | null
   while ((pathMatch = pathRegex.exec(block)) !== null) {
     paths.push(pathMatch[1] ?? '')
@@ -34,7 +36,7 @@ describe('collectorAuthenticatedRoutesFragment', () => {
   test('declares the account list and resource-styled account config routes under /collector', () => {
     expect(routePaths).toContain('/collector')
     expect(routePaths).toContain('/collector/account/new')
-    expect(routePaths).toContain('/collector/account/:id')
+    expect(routePaths).toContain('/collector/account/$id')
   })
 
   test('contains no open routes (all flows are owner-only)', () => {

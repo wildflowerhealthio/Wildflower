@@ -1,8 +1,8 @@
+import { useNavigate, useParams } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { Suspense, useMemo, type JSX } from 'react'
-import { Await, useNavigate, useParams } from 'react-router'
-import { AsyncErrorView, PageLoading } from 'react-tundraish'
+import { Awaited, PageLoading } from 'react-tundraish'
 
 import { useGatekeeperEffect, useGatekeeperEffectAction } from '../../gatekeeper-client.tsx'
 import { OAuthConsentForm } from './oauth-consent-form.tsx'
@@ -11,7 +11,9 @@ import type { Consent } from './types.ts'
 const OAuthConsentScreen = (): JSX.Element => {
   const runGatekeeper = useGatekeeperEffectAction()
   const navigate = useNavigate()
-  const { id = '' } = useParams<{ id: string }>()
+  // `strict: false`: see `oauth-polling.tsx` for the rationale.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see oauth-polling.tsx
+  const { id = '' } = useParams({ strict: false }) as unknown as { readonly id?: string }
 
   const consentEffect = useMemo(
     () =>
@@ -25,20 +27,17 @@ const OAuthConsentScreen = (): JSX.Element => {
 
   return (
     <Suspense fallback={<PageLoading />}>
-      <Await
-        resolve={consentPromise}
-        errorElement={<AsyncErrorView title="Authorization Request" />}
-      >
+      <Awaited promise={consentPromise} resetKey={id} errorTitle="Authorization Request">
         {(consent: Consent) => (
           <OAuthConsentForm
             runGatekeeper={runGatekeeper}
             consent={consent}
             onDone={() => {
-              void navigate('/settings/gatekeeper')
+              void navigate({ to: '/settings/gatekeeper' })
             }}
           />
         )}
-      </Await>
+      </Awaited>
     </Suspense>
   )
 }

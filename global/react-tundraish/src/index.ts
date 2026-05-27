@@ -1,4 +1,5 @@
 export { AsyncErrorView, type AsyncErrorViewProps } from './async-error-view.tsx'
+export { Awaited, type AwaitedProps } from './awaited.tsx'
 export { Checkbox, type CheckboxProps } from './checkbox.tsx'
 export { Dialog, type DialogProps } from './dialog.tsx'
 export { ErrorBoundary, type ErrorBoundaryProps } from './error-boundary.tsx'

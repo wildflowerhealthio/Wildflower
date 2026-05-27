@@ -1,5 +1,5 @@
+import { useNavigate } from '@tanstack/react-router'
 import { useState, type JSX } from 'react'
-import { useNavigate } from 'react-router'
 import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
 import pageLayout from '../styles/page-layout.module.css'
@@ -22,7 +22,7 @@ const DeviceEntryScreen = (): JSX.Element => {
 
   const submit = (): void => {
     if (!isValid) return
-    void navigate(`/gatekeeper/devices/${encodeURIComponent(code)}`)
+    void navigate({ to: `/gatekeeper/devices/${encodeURIComponent(code)}` })
   }
 
   return (

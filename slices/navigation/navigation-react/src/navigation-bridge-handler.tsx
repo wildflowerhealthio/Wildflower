@@ -1,7 +1,7 @@
+import { useCanGoBack, useLocation } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import type { NavigationBridge } from 'navigation-core'
-import { type JSX, useEffect, useRef } from 'react'
-import { NavigationType, useLocation, useNavigationType } from 'react-router'
+import { type JSX, useEffect } from 'react'
 
 /**
  * Sender shape consumers actually have: same input as
@@ -16,19 +16,16 @@ type RouteChangeSender = (
 
 /**
  * Observe every router navigation and emit a `RouteChanged` message.
- * `canGoBack` tracks in-page history depth (Push deepens, Pop shallows;
- * Replace leaves depth alone) so the native header's back chevron
- * disappears on the initial route and reappears as the user pushes.
+ * `canGoBack` comes straight from `useCanGoBack()` (TanStack Router's
+ * own back-availability hook), so the native header's back chevron
+ * disappears on the initial route and reappears as the user pushes —
+ * without re-deriving history depth in user space.
  */
 const useRouteChangeWatcher = (send: RouteChangeSender): void => {
   const location = useLocation()
-  const navigationType = useNavigationType()
-  const depthRef = useRef(0)
+  const canGoBack = useCanGoBack()
 
   useEffect(() => {
-    if (navigationType === NavigationType.Push) depthRef.current += 1
-    else if (navigationType === NavigationType.Pop)
-      depthRef.current = Math.max(0, depthRef.current - 1)
     // `send` returns an `Effect`; constructing one and discarding it
     // is a silent no-op. `useEffect` callbacks can't be Effect-aware,
     // so detach-fork it onto the default runtime.
@@ -36,14 +33,14 @@ const useRouteChangeWatcher = (send: RouteChangeSender): void => {
       send({
         _tag: 'RouteChanged',
         pathname: location.pathname,
-        canGoBack: depthRef.current > 0,
+        canGoBack,
       })
     )
-  }, [location.key, location.pathname, navigationType, send])
+  }, [location.pathname, location.state, canGoBack, send])
 }
 
 /**
- * Mount under a React Router router. Watches navigation to emit
+ * Mount under a TanStack `<RouterProvider>`. Watches navigation to emit
  * `RouteChanged`. Renders no DOM.
  *
  * @remarks

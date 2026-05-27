@@ -1,9 +1,9 @@
+import { useParams } from '@tanstack/react-router'
 import { type AuthorizationStatus, pollAuthorizationStatus } from 'gatekeeper-core/clients'
 
 import { Suspense, useEffect, useMemo, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Await, useParams } from 'react-router'
-import { AsyncErrorView, pageLayoutStyles } from 'react-tundraish'
+import { Awaited, pageLayoutStyles } from 'react-tundraish'
 
 import { useGatekeeperStream } from '../gatekeeper-client.tsx'
 import pageLayout from '../styles/page-layout.module.css'
@@ -16,24 +16,27 @@ import styles from './oauth-polling.module.css'
  * resolves to `null` here and adds no header).
  */
 const OAuthPollingScreen = (): JSX.Element => {
-  const { id = '' } = useParams<{ id: string }>()
+  // `strict: false` returns the un-narrowed cross-route params union at
+  // type-level; runtime shape is `Record<string, string>` produced by the
+  // matched route's placeholders. The cast surfaces the `id` field for
+  // screen-local use without registering the app's routeTree from this
+  // slice.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see comment above
+  const { id = '' } = useParams({ strict: false }) as unknown as { readonly id?: string }
   const stream = useMemo(() => pollAuthorizationStatus(id), [id])
   const statusPromise = useGatekeeperStream(stream)
 
   return (
     <Suspense fallback={<PollingSpinner />}>
-      <Await
-        resolve={statusPromise}
-        errorElement={
-          <AsyncErrorView
-            title="Authorization Error"
-            className={styles['poll']}
-            titleClassName={pageLayout['poll-declined']}
-          />
-        }
+      <Awaited
+        promise={statusPromise}
+        resetKey={id}
+        errorTitle="Authorization Error"
+        errorClassName={styles['poll']}
+        errorTitleClassName={pageLayout['poll-declined']}
       >
         {(status: AuthorizationStatus) => <PollingResult status={status} />}
-      </Await>
+      </Awaited>
     </Suspense>
   )
 }

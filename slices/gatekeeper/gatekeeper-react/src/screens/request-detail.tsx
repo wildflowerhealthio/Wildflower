@@ -1,12 +1,12 @@
+import { useParams } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Await, useParams } from 'react-router'
 import {
-  AsyncErrorView,
+  Awaited,
   pageLayoutStyles,
   PageLoading,
   StatusBadge,
@@ -32,7 +32,9 @@ const statusTone = (status: string): StatusTone => {
 
 const RequestDetailScreen = (): JSX.Element => {
   const runGatekeeper = useGatekeeperEffectAction()
-  const { id = '' } = useParams<{ id: string }>()
+  // `strict: false`: see `oauth-polling.tsx` for the rationale.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see oauth-polling.tsx
+  const { id = '' } = useParams({ strict: false }) as unknown as { readonly id?: string }
   const [refreshKey, setRefreshKey] = useState(0)
 
   const requestEffect = useMemo(
@@ -48,7 +50,7 @@ const RequestDetailScreen = (): JSX.Element => {
 
   return (
     <Suspense fallback={<PageLoading />}>
-      <Await resolve={requestPromise} errorElement={<AsyncErrorView title="Not Found" />}>
+      <Awaited promise={requestPromise} resetKey={`${id}:${refreshKey}`} errorTitle="Not Found">
         {(request: HttpRequest) => (
           <RequestDetailBody
             runGatekeeper={runGatekeeper}
@@ -59,7 +61,7 @@ const RequestDetailScreen = (): JSX.Element => {
             }}
           />
         )}
-      </Await>
+      </Awaited>
     </Suspense>
   )
 }

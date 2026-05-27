@@ -1,10 +1,10 @@
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { CollectorHttpApiClient } from 'collector-core/clients'
 import type { Remotes } from 'collector-core/http-api-definition'
 import { Effect, type Schema } from 'effect'
 import { defaultConfig } from 'fhir-r4-client-collector'
 import { useEffect, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { pageLayoutStyles } from 'react-tundraish'
 
 import { useCollectorEffectAction } from '../collector-client.tsx'
@@ -22,12 +22,26 @@ type RemoteRow = Schema.Schema.Type<typeof Remotes.RemoteSchema>
 const AccountConfigScreen = (): JSX.Element => {
   const navigate = useNavigate()
   const run = useCollectorEffectAction()
-  const { id: accountId } = useParams<{ id: string }>()
-  const [searchParams] = useSearchParams()
-  const prefillName = searchParams.get('prefillName')
-  const prefillRootUrl = searchParams.get('prefillRootUrl')
-  const prefillPatientId = searchParams.get('prefillPatientId')
-
+  // `strict: false` returns the un-narrowed cross-route params union at
+  // type-level; runtime shape is `Record<string, string>` produced by the
+  // matched route's placeholders. The cast surfaces the `id` field for
+  // screen-local use without registering the app's routeTree from this
+  // slice.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see comment above
+  const params = useParams({ strict: false }) as unknown as { readonly id?: string }
+  const accountId = params.id
+  // `strict: false` similarly returns the un-narrowed search union; we
+  // read the prefill fields defensively as `unknown` and string-guard.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see comment above
+  const search = useSearch({ strict: false }) as unknown as {
+    readonly prefillName?: unknown
+    readonly prefillRootUrl?: unknown
+    readonly prefillPatientId?: unknown
+  }
+  const prefillName = typeof search.prefillName === 'string' ? search.prefillName : null
+  const prefillRootUrl = typeof search.prefillRootUrl === 'string' ? search.prefillRootUrl : null
+  const prefillPatientId =
+    typeof search.prefillPatientId === 'string' ? search.prefillPatientId : null
   const [existing, setExisting] = useState<RemoteRow | null>(null)
   const [loading, setLoading] = useState(accountId !== undefined)
   const [error, setError] = useState<string | null>(null)
@@ -91,7 +105,7 @@ const AccountConfigScreen = (): JSX.Element => {
               })
             )
       await run(operation)
-      void navigate('/collector')
+      void navigate({ to: '/collector' })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -174,7 +188,7 @@ const AccountConfigScreen = (): JSX.Element => {
         <button
           type="button"
           className="button-2 outline"
-          onClick={() => void navigate('/collector')}
+          onClick={() => void navigate({ to: '/collector' })}
         >
           Cancel
         </button>

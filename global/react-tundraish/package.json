@@ -42,6 +42,7 @@
     "test": "vp test"
   },
   "devDependencies": {
+    "@tanstack/react-router": "catalog:",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.5.2",
@@ -53,17 +54,16 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
-    "react-router": "catalog:",
     "tundra-css": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@tanstack/react-router": "catalog:",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
-    "react-router": "catalog:",
     "tundra-css": "catalog:"
   }
 }

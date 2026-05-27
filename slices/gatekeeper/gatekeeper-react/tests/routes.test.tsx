@@ -11,21 +11,23 @@ const routesSource = readFileSync(
   'utf8'
 )
 
-// Captures each fragment's contents as `block`; iterate matches to split into
-// open/authenticated/settings buckets. The drift test below cares which bucket
-// a path lands in — open routes don't need a bearer; authenticated routes do
-// and are externally published; settings routes are owner-facing landings —
-// so a path migrating between fragments without a corresponding intent change
-// is a regression worth catching.
+// Each fragment is now a `(parent) => Route[]` factory returning an array
+// of `createRoute({ path: '...' })` entries (TanStack code-based routing).
+// Find the named fragment, then pull every `path: '<literal>'` out of its
+// body. The drift test cares which bucket a path lands in: open routes
+// don't need a bearer; authenticated routes do and are externally
+// published; settings routes are owner-facing landings — so a path
+// migrating between fragments without a corresponding intent change is a
+// regression worth catching.
 const declareFragmentPaths = (fragmentName: string): readonly string[] => {
-  const fragmentRegex = new RegExp(`const\\s+${fragmentName}[^=]*=\\s*\\(([\\s\\S]*?)^\\)`, 'm')
+  const fragmentRegex = new RegExp(`const\\s+${fragmentName}[\\s\\S]*?(?=\\n(?:const|export)\\s|$)`)
   const fragmentMatch = fragmentRegex.exec(routesSource)
   if (fragmentMatch === null) {
     throw new Error(`Could not locate ${fragmentName} block in routes.tsx`)
   }
-  const block = fragmentMatch[1] ?? ''
+  const block = fragmentMatch[0]
   const paths: string[] = []
-  const pathRegex = /<Route\b[^>]*\bpath="([^"]+)"/g
+  const pathRegex = /path:\s*['"]([^'"]+)['"]/g
   let pathMatch: RegExpExecArray | null
   while ((pathMatch = pathRegex.exec(block)) !== null) {
     paths.push(pathMatch[1] ?? '')
@@ -38,15 +40,17 @@ const authenticatedRoutePaths = declareFragmentPaths('gatekeeperAuthenticatedRou
 const settingsRoutePaths = declareFragmentPaths('gatekeeperSettingsRoutesFragment')
 const externalRoutePaths = [...openRoutePaths, ...authenticatedRoutePaths]
 
-describe('GatekeeperPaths ↔ <Route path> drift', () => {
+describe('GatekeeperPaths ↔ createRoute({ path }) drift', () => {
   // One-direction drift only: owner-nav routes are intentionally absent from `GatekeeperPaths`.
-  test('every GatekeeperPaths redirect target has a matching <Route path>', () => {
-    // Decode percent-encoded path params so `:id` aligns with `<Route path>` literals.
+  test('every GatekeeperPaths redirect target has a matching createRoute path', () => {
+    // Decode percent-encoded path params so `$id` aligns with the route
+    // literals. TanStack Router uses `$` for path params, so the
+    // drift-check feeds `'$id'` (etc.) into `GatekeeperPaths`.
     const expectedPaths: readonly string[] = [
-      decodeURIComponent(GatekeeperPaths.oauthPollingPath(':id')),
-      decodeURIComponent(GatekeeperPaths.oauthConsentPath(':id')),
+      decodeURIComponent(GatekeeperPaths.oauthPollingPath('$id')),
+      decodeURIComponent(GatekeeperPaths.oauthConsentPath('$id')),
       decodeURIComponent(GatekeeperPaths.deviceEntryPath()),
-      decodeURIComponent(GatekeeperPaths.deviceConsentPath(':userCode')),
+      decodeURIComponent(GatekeeperPaths.deviceConsentPath('$userCode')),
     ]
 
     for (const expected of expectedPaths) {
@@ -59,16 +63,16 @@ describe('GatekeeperPaths ↔ <Route path> drift', () => {
   // an owner types a code from another device). oauth-consent and
   // device-consent require the owner to already be authenticated.
   test('oauth-polling and device-entry are in the open fragment', () => {
-    expect(openRoutePaths).toContain(decodeURIComponent(GatekeeperPaths.oauthPollingPath(':id')))
+    expect(openRoutePaths).toContain(decodeURIComponent(GatekeeperPaths.oauthPollingPath('$id')))
     expect(openRoutePaths).toContain(decodeURIComponent(GatekeeperPaths.deviceEntryPath()))
   })
 
   test('oauth-consent and device-consent are in the authenticated fragment', () => {
     expect(authenticatedRoutePaths).toContain(
-      decodeURIComponent(GatekeeperPaths.oauthConsentPath(':id'))
+      decodeURIComponent(GatekeeperPaths.oauthConsentPath('$id'))
     )
     expect(authenticatedRoutePaths).toContain(
-      decodeURIComponent(GatekeeperPaths.deviceConsentPath(':userCode'))
+      decodeURIComponent(GatekeeperPaths.deviceConsentPath('$userCode'))
     )
   })
 
@@ -86,8 +90,8 @@ describe('gatekeeperSettingsRoutesFragment', () => {
   test('declares the four owner-facing landing routes', () => {
     expect(settingsRoutePaths).toContain('/settings/gatekeeper')
     expect(settingsRoutePaths).toContain('/settings/gatekeeper/requests')
-    expect(settingsRoutePaths).toContain('/settings/gatekeeper/requests/:id')
-    expect(settingsRoutePaths).toContain('/settings/gatekeeper/approved/:id')
+    expect(settingsRoutePaths).toContain('/settings/gatekeeper/requests/$id')
+    expect(settingsRoutePaths).toContain('/settings/gatekeeper/approved/$id')
   })
 
   test('every settings path is under /settings/gatekeeper/', () => {

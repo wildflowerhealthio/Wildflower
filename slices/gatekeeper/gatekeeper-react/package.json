@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
+    "@tanstack/react-router": "catalog:",
     "@types/react": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
@@ -31,7 +32,6 @@
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
-    "react-router": "catalog:",
     "react-tundraish": "workspace:*",
     "shared-structures-react": "workspace:*",
     "telemetry-react": "workspace:*",
@@ -40,6 +40,7 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
+    "@tanstack/react-router": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "effect-messaging-react": "workspace:*",
@@ -49,7 +50,6 @@
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
-    "react-router": "catalog:",
     "react-tundraish": "workspace:*",
     "shared-structures-react": "workspace:*",
     "telemetry-react": "workspace:*"

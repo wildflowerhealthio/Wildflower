@@ -1,12 +1,12 @@
+import { useNavigate, useParams } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { Devices } from 'gatekeeper-core/http-api-definition'
 
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Await, useNavigate, useParams } from 'react-router'
 import {
-  AsyncErrorView,
+  Awaited,
   Checkbox,
   Field,
   FieldDescription,
@@ -27,7 +27,11 @@ type DeviceConsent = Schema.Schema.Type<typeof Devices.DeviceConsentSchema>
 const DeviceConsentScreen = (): JSX.Element => {
   const runGatekeeper = useGatekeeperEffectAction()
   const navigate = useNavigate()
-  const { userCode = '' } = useParams<{ userCode: string }>()
+  // `strict: false`: see `oauth-polling.tsx` for the rationale.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see oauth-polling.tsx
+  const { userCode = '' } = useParams({ strict: false }) as unknown as {
+    readonly userCode?: string
+  }
 
   const consentEffect = useMemo(
     () =>
@@ -41,20 +45,17 @@ const DeviceConsentScreen = (): JSX.Element => {
 
   return (
     <Suspense fallback={<PageLoading />}>
-      <Await
-        resolve={consentPromise}
-        errorElement={<AsyncErrorView title="Device Authorization" />}
-      >
+      <Awaited promise={consentPromise} resetKey={userCode} errorTitle="Device Authorization">
         {(consent: DeviceConsent) => (
           <DeviceConsentForm
             runGatekeeper={runGatekeeper}
             consent={consent}
             onDone={() => {
-              void navigate('/settings/gatekeeper')
+              void navigate({ to: '/settings/gatekeeper' })
             }}
           />
         )}
-      </Await>
+      </Awaited>
     </Suspense>
   )
 }

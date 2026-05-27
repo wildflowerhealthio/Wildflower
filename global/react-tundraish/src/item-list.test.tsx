@@ -1,6 +1,12 @@
-import { render, screen } from '@testing-library/react'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
+import { render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
+import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { ItemList, type ItemListItem } from './item-list.tsx'
@@ -8,6 +14,20 @@ import { ItemList, type ItemListItem } from './item-list.tsx'
 afterEach(() => {
   document.body.innerHTML = ''
 })
+
+/**
+ * Mount `content` inside a minimal TanStack router so any `<Link>` inside
+ * `ItemList` resolves its `RouterContext`. The router only exists for
+ * link rendering — no navigation is exercised here.
+ */
+const renderWithRouter = (content: ReactNode): ReturnType<typeof render> => {
+  const rootRoute = createRootRoute({ component: () => <>{content}</> })
+  const router = createRouter({
+    routeTree: rootRoute,
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  return render(<RouterProvider router={router} />)
+}
 
 describe('ItemList', () => {
   it('renders nothing when items is empty', () => {
@@ -22,21 +42,20 @@ describe('ItemList', () => {
   // First-render React Testing Library setup (jsdom environment + render) can
   // exceed the 5s default under the CPU contention of `vp run -r test`. Bumped
   // for headroom; cheap once the renderer has warmed up for later tests.
-  it('renders an <a> with href when an item has href and is not disabled', () => {
+  it('renders an <a> with href when an item has href and is not disabled', async () => {
     // Arrange
     const items: ItemListItem[] = [{ id: '1', title: 'Settings', href: '/settings' }]
 
-    // Act — `/`-prefixed hrefs render through react-router's `<Link>`, which
-    // requires a router context; mount under `<MemoryRouter>` so the test
+    // Act — `/`-prefixed hrefs render through TanStack's `<Link>`, which
+    // requires a router context; mount under a minimal router so the test
     // exercises the same code path real consumers do.
-    render(
-      <MemoryRouter>
-        <ItemList items={items} />
-      </MemoryRouter>
-    )
+    renderWithRouter(<ItemList items={items} />)
 
-    // Assert
-    expect(screen.getByRole('link', { name: /Settings/ }).getAttribute('href')).toBe('/settings')
+    // Assert — TanStack's `<RouterProvider>` resolves its first match
+    // asynchronously, so we wait for the link to materialize.
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Settings/ }).getAttribute('href')).toBe('/settings')
+    })
   }, 15_000)
 
   it('does NOT render a navigable link when href is set but the item is disabled', () => {

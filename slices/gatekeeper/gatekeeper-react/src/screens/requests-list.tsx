@@ -1,10 +1,10 @@
+import { useNavigate } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Await, useNavigate } from 'react-router'
-import { AsyncErrorView, ItemList, pageLayoutStyles, PageLoading } from 'react-tundraish'
+import { Awaited, ItemList, pageLayoutStyles, PageLoading } from 'react-tundraish'
 
 import { formatInstant } from '../format-date.ts'
 import {
@@ -30,7 +30,7 @@ const RequestsListScreen = (): JSX.Element => {
 
   return (
     <Suspense fallback={<PageLoading />}>
-      <Await resolve={requestsPromise} errorElement={<AsyncErrorView />}>
+      <Awaited promise={requestsPromise} resetKey={refreshKey}>
         {(requests: readonly HttpRequest[]) => (
           <RequestsListBody
             runGatekeeper={runGatekeeper}
@@ -40,7 +40,7 @@ const RequestsListScreen = (): JSX.Element => {
             }}
           />
         )}
-      </Await>
+      </Awaited>
     </Suspense>
   )
 }
@@ -92,7 +92,7 @@ const RequestsListBody = ({
         ? `${r.origin} · ${formatInstant(r.requestedAt)}`
         : formatInstant(r.requestedAt),
     onClick: () => {
-      void navigate(`/settings/gatekeeper/requests/${encodeURIComponent(r.id)}`)
+      void navigate({ to: `/settings/gatekeeper/requests/${encodeURIComponent(r.id)}` })
     },
     actions:
       r.status === 'pending' ? (

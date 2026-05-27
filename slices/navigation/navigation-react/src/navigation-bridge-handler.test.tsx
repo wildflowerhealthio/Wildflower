@@ -1,9 +1,16 @@
-import { act, render } from '@testing-library/react'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
+import { act, render, waitFor } from '@testing-library/react'
 import { Effect } from 'effect'
 import type { NavigationBridge } from 'navigation-core'
-import { type JSX, useEffect } from 'react'
-import { MemoryRouter, type NavigateFunction, useNavigate } from 'react-router'
+import { type JSX } from 'react'
 import { describe, expect, test } from 'vite-plus/test'
+
 import { NavigationBridgeHandler, type RouteChangeSender } from './navigation-bridge-handler'
 
 type RouteChanged = NavigationBridge['MessageSchemas']['RouteChanged']['Type']
@@ -23,70 +30,102 @@ const setupCalls = (): {
   return { calls, send }
 }
 
+const blankComponent = (): JSX.Element | null => null
+
+const buildRouter = (
+  send: RouteChangeSender,
+  initialEntry: string
+): ReturnType<typeof createRouter> => {
+  const rootRoute = createRootRoute({
+    component: () => <NavigationBridgeHandler sender={send} />,
+  })
+  const routeTree = rootRoute.addChildren([
+    createRoute({ getParentRoute: () => rootRoute, path: '/', component: blankComponent }),
+    createRoute({ getParentRoute: () => rootRoute, path: '/start', component: blankComponent }),
+    createRoute({ getParentRoute: () => rootRoute, path: '/next', component: blankComponent }),
+    createRoute({ getParentRoute: () => rootRoute, path: '/foo', component: blankComponent }),
+  ])
+  return createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
+  })
+}
+
 describe('NavigationBridgeHandler', () => {
-  test('fires the callback once per navigation, with canGoBack tracking history depth', () => {
+  test('fires the callback once per navigation, with canGoBack tracking history depth', async () => {
     const { calls, send } = setupCalls()
+    const router = buildRouter(send, '/start')
 
-    function PushOnMount({ to }: { readonly to: string }): JSX.Element | null {
-      const navigate = useNavigate()
-      useEffect(() => {
-        void navigate(to)
-      }, [navigate, to])
-      return null
-    }
+    render(<RouterProvider router={router} />)
 
-    render(
-      <MemoryRouter initialEntries={['/start']}>
-        <NavigationBridgeHandler sender={send} />
-        <PushOnMount to="/next" />
-      </MemoryRouter>
-    )
+    // TanStack `<RouterProvider>` resolves its first match asynchronously
+    // (loaders + state-store hydration), so `NavigationBridgeHandler`'s
+    // `useEffect` only fires once the location subscription is wired up.
+    // `waitFor` collapses the timing windows into a single, deterministic
+    // assertion.
+    await waitFor(() => {
+      // Initial POP-equivalent (router boot at index 0) → canGoBack false.
+      expect(calls[0]).toEqual({ _tag: 'RouteChanged', pathname: '/start', canGoBack: false })
+    })
 
-    // Initial Pop → canGoBack false; Push → canGoBack true.
-    expect(calls[0]).toEqual({ _tag: 'RouteChanged', pathname: '/start', canGoBack: false })
-    expect(calls.at(-1)).toEqual({ _tag: 'RouteChanged', pathname: '/next', canGoBack: true })
+    // Push → canGoBack true (history index advances to 1).
+    await act(async () => {
+      await router.navigate({ to: '/next' })
+    })
+    await waitFor(() => {
+      expect(calls.at(-1)).toEqual({ _tag: 'RouteChanged', pathname: '/next', canGoBack: true })
+    })
   })
 
   // Push/Pop sequences should land canGoBack at false on the initial route and
-  // never permit a negative depth — the `Math.max(0, ...)` guard in
-  // `useRouteChangeWatcher` is what holds the floor.
-  test('repeated push-then-pop cycles return to canGoBack=false without going negative', () => {
+  // never permit a negative depth — TanStack's `useCanGoBack` reads
+  // `history.index > 0`, which clamps naturally at the initial entry.
+  test('repeated push-then-pop cycles return to canGoBack=false without going negative', async () => {
     const { calls, send } = setupCalls()
-    let captured: NavigateFunction | undefined
+    const router = buildRouter(send, '/')
 
-    function CaptureNavigate(): JSX.Element | null {
-      captured = useNavigate()
-      return null
-    }
+    render(<RouterProvider router={router} />)
 
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <NavigationBridgeHandler sender={send} />
-        <CaptureNavigate />
-      </MemoryRouter>
-    )
+    // Initial mount: at index 0 on '/'.
+    await waitFor(() => {
+      expect(calls.at(-1)).toEqual({ _tag: 'RouteChanged', pathname: '/', canGoBack: false })
+    })
 
-    if (captured === undefined) throw new Error('useNavigate handle not captured')
-    const navigate = captured
+    await act(async () => {
+      await router.navigate({ to: '/foo' })
+    })
+    await waitFor(() => {
+      expect(calls.at(-1)).toEqual({ _tag: 'RouteChanged', pathname: '/foo', canGoBack: true })
+    })
 
-    // Initial mount: Pop on '/'.
-    expect(calls.at(-1)).toEqual({ _tag: 'RouteChanged', pathname: '/', canGoBack: false })
+    await act(async () => {
+      router.history.back()
+    })
+    await waitFor(() => {
+      expect(calls.at(-1)).toEqual({ _tag: 'RouteChanged', pathname: '/', canGoBack: false })
+    })
 
-    act(() => void navigate('/foo'))
-    expect(calls.at(-1)).toEqual({ _tag: 'RouteChanged', pathname: '/foo', canGoBack: true })
+    await act(async () => {
+      await router.navigate({ to: '/foo' })
+    })
+    await waitFor(() => {
+      expect(calls.at(-1)).toEqual({ _tag: 'RouteChanged', pathname: '/foo', canGoBack: true })
+    })
 
-    act(() => void navigate(-1))
-    expect(calls.at(-1)).toEqual({ _tag: 'RouteChanged', pathname: '/', canGoBack: false })
+    await act(async () => {
+      router.history.back()
+    })
+    await waitFor(() => {
+      expect(calls.at(-1)).toEqual({ _tag: 'RouteChanged', pathname: '/', canGoBack: false })
+    })
 
-    act(() => void navigate('/foo'))
-    expect(calls.at(-1)).toEqual({ _tag: 'RouteChanged', pathname: '/foo', canGoBack: true })
-
-    act(() => void navigate(-1))
-    expect(calls.at(-1)).toEqual({ _tag: 'RouteChanged', pathname: '/', canGoBack: false })
-
-    // Extra Pop past the initial entry: depth must clamp at 0, not go negative.
-    act(() => void navigate(-1))
-    const lastCall = calls.at(-1)
-    expect(lastCall).toEqual({ _tag: 'RouteChanged', pathname: '/', canGoBack: false })
+    // Extra Pop past the initial entry: history clamps at index 0, so the
+    // bridge keeps `canGoBack=false`.
+    await act(async () => {
+      router.history.back()
+    })
+    await waitFor(() => {
+      expect(calls.at(-1)).toEqual({ _tag: 'RouteChanged', pathname: '/', canGoBack: false })
+    })
   })
 })

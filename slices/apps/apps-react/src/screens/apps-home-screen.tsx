@@ -4,8 +4,7 @@ import { Effect, type Schema } from 'effect'
 import { stripTrailingSlash } from 'kitchen-sink'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Await } from 'react-router'
-import { ItemList, type ItemListItem } from 'react-tundraish'
+import { Awaited, ItemList, type ItemListItem } from 'react-tundraish'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import type { Tunnel } from 'tunnel-core/http-api-definition'
 import { useTunnelAdminEffect } from 'tunnel-react'
@@ -48,7 +47,7 @@ const AppsHomeScreen = (): JSX.Element => {
 
   return (
     <Suspense fallback={<p className="text-body-2">Loading apps…</p>}>
-      <Await resolve={combined}>
+      <Awaited promise={combined} resetKey={refreshKey}>
         {([apps, tunnel]: readonly [readonly AppEntry[], TunnelState]) => (
           <AppsHomeBody
             tunnel={tunnel}
@@ -58,7 +57,7 @@ const AppsHomeScreen = (): JSX.Element => {
             }}
           />
         )}
-      </Await>
+      </Awaited>
     </Suspense>
   )
 }

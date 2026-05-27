@@ -12,18 +12,19 @@ const routesSource = readFileSync(
   'utf8'
 )
 
-// Captures the fragment's contents as `block`; iterate matches to pull
-// out each declared <Route path="…">. The drift test asserts the
-// fragment contains the documented `/settings/tunnel` mount point.
+// Each fragment is a `(parent) => Route[]` factory returning
+// `createRoute({ path: '...' })` entries (TanStack code-based routing).
+// The drift test asserts the fragment contains the documented
+// `/settings/tunnel` mount point.
 const declareFragmentPaths = (fragmentName: string): readonly string[] => {
-  const fragmentRegex = new RegExp(`const\\s+${fragmentName}[^=]*=\\s*\\(([\\s\\S]*?)^\\)`, 'm')
+  const fragmentRegex = new RegExp(`const\\s+${fragmentName}[\\s\\S]*?(?=\\n(?:const|export)\\s|$)`)
   const fragmentMatch = fragmentRegex.exec(routesSource)
   if (fragmentMatch === null) {
     throw new Error(`Could not locate ${fragmentName} block in routes.tsx`)
   }
-  const block = fragmentMatch[1] ?? ''
+  const block = fragmentMatch[0]
   const paths: string[] = []
-  const pathRegex = /<Route\b[^>]*\bpath="([^"]+)"/g
+  const pathRegex = /path:\s*['"]([^'"]+)['"]/g
   let pathMatch: RegExpExecArray | null
   while ((pathMatch = pathRegex.exec(block)) !== null) {
     paths.push(pathMatch[1] ?? '')
