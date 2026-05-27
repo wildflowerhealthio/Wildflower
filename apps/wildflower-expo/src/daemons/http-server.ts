@@ -7,7 +7,8 @@ import { AppsStore } from 'apps-core/livestore'
 import { CollectorStore } from 'collector-core/livestore'
 import { Cause, DefaultServices, Duration, Effect, Layer, type Scope, Stream } from 'effect'
 import { EmrStore } from 'emr-core/livestore'
-import { ExpoContext, ExpoFileSystem, ExpoHttpServer } from 'expo-effect-platform'
+import { ExpoContext, ExpoHttpServer } from 'expo-effect-platform'
+import { Paths } from 'expo-file-system'
 import { mintHostOwnerToken, seedFirstPartyClient, seedSigningKey } from 'gatekeeper-core/contexts'
 import { GatekeeperStore, LocalClientToken } from 'gatekeeper-core/livestore'
 import { type CryptoRandom, cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
@@ -31,16 +32,18 @@ import { WildflowerStore } from '../livestore/livestore-store.ts'
  * Routed through the Expo-backed `FileSystem.FileSystem` (provided by
  * {@link ExpoContext.layer}) so each filesystem step lands in the
  * Effect trace under the surrounding Layer's scope and failures are
- * typed.
+ * typed. `Paths.cache.uri` is the only cache-directory consumer in this
+ * project, so it's resolved inline rather than threaded through a tag.
  */
 const stageWebAssetsDir: Effect.Effect<
   string,
   PlatformError.PlatformError,
-  FileSystem.FileSystem | Path.Path | ExpoFileSystem.ExpoCacheDir
+  FileSystem.FileSystem | Path.Path
 > = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
-  const cacheDir = yield* ExpoFileSystem.ExpoCacheDir
+  // `Path.Path` resolvers don't accept the `file://` URI scheme — strip it.
+  const cacheDir = Paths.cache.uri.replace(/^file:\/\//, '')
   const dir = path.join(cacheDir, 'wildflower-static')
   yield* fs.makeDirectory(dir, { recursive: true })
   const indexFile = path.join(dir, 'index.html')

@@ -12,19 +12,7 @@
  */
 import type * as FileSystem from '@effect/platform/FileSystem'
 import type * as Layer from 'effect/Layer'
-import * as internal from './internal/fileSystem.ts'
+import * as internal from './internal/file-system/index.ts'
 
 /** `Layer` providing the Expo-backed `FileSystem.FileSystem` — no requirements. */
-const layer: Layer.Layer<FileSystem.FileSystem> = internal.layer
-
-/**
- * Absolute path (no `file://` scheme) to Expo's cache directory. See the
- * source-of-truth tag in `./internal/fileSystem.ts` for the full remarks.
- */
-const ExpoCacheDir = internal.ExpoCacheDir
-type ExpoCacheDir = internal.ExpoCacheDir
-
-/** `Layer` providing {@link ExpoCacheDir}. */
-const ExpoCacheDirLive: Layer.Layer<ExpoCacheDir> = internal.expoCacheDirLayer
-
-export { layer, ExpoCacheDir, ExpoCacheDirLive }
+export const layer: Layer.Layer<FileSystem.FileSystem> = internal.layer
