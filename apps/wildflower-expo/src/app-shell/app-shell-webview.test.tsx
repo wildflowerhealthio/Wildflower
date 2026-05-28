@@ -21,9 +21,14 @@ let mockLastBridgedWebViewProps: {
 // `BridgedWebView` is exercised in its own package's tests; here we
 // capture the props it receives so we can assert on the merged
 // binding value and pull each binding's lifecycle callback for
-// direct invocation.
+// direct invocation. `useLogHostBinding` is stubbed as a 1-tuple
+// log binding so the shell's tuple-combine matches the production
+// shape at runtime.
 jest.mock('effect-messaging-expo', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
+  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
+    'effect'
+  )
   return {
     BridgedWebView: function MockBridgedWebView(
       props: NonNullable<typeof mockLastBridgedWebViewProps>
@@ -31,6 +36,17 @@ jest.mock('effect-messaging-expo', () => {
       mockLastBridgedWebViewProps = props
       return ReactInner.createElement('BridgedWebView', null, null)
     },
+    useLogHostBinding: (): {
+      readonly bridges: ReadonlyArray<{ readonly name: string }>
+      readonly receiverLayers: ReadonlyArray<unknown>
+      readonly initialMessages: ReadonlyArray<ReadonlyArray<unknown>>
+      readonly onTransportReady: ReadonlyArray<undefined>
+    } => ({
+      bridges: [{ name: 'Log' }],
+      receiverLayers: [effect.Layer.effectDiscard(effect.Effect.void)],
+      initialMessages: [[]],
+      onTransportReady: [undefined],
+    }),
   }
 })
 
@@ -68,7 +84,13 @@ const singleMock = (binding: {
 // Slice host-binding hooks: each returns a 1-tuple `HostBindings`
 // stand-in. Identity-equality on `bridge.name` is enough for the
 // assertions below.
-let mockNavigationOptions: { initialRoute?: string; onRouteChanged?: unknown } | null = null
+let mockNavigationOptions: {
+  initialRoute?: string
+  onRouteChanged?: unknown
+  onTransportReady?: (
+    send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
+  ) => EffectType.Effect<void>
+} | null = null
 jest.mock('navigation-expo', () => {
   const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
     'effect'
@@ -78,6 +100,9 @@ jest.mock('navigation-expo', () => {
       useHostBinding: (options: {
         initialRoute?: string
         onRouteChanged?: unknown
+        onTransportReady?: (
+          send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
+        ) => EffectType.Effect<void>
       }): MockBindings => {
         mockNavigationOptions = options
         return singleMock({
@@ -87,6 +112,7 @@ jest.mock('navigation-expo', () => {
             options.initialRoute === undefined
               ? undefined
               : [{ _tag: 'HostRequestedWebNavigation' as const, path: options.initialRoute }],
+          onTransportReady: options.onTransportReady,
         })
       },
     },
@@ -131,14 +157,14 @@ jest.mock('collector-expo', () => {
   }
 })
 
-let mockAppsOptions: { tunnelStoreLayer?: unknown } | null = null
+let mockAppsOptions: { store?: unknown } | null = null
 jest.mock('apps-expo', () => {
   const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
     'effect'
   )
   return {
     AppsBridgeExpo: {
-      useHostBinding: (options: { tunnelStoreLayer?: unknown }): MockBindings => {
+      useHostBinding: (options: { store?: unknown }): MockBindings => {
         mockAppsOptions = options
         return singleMock({
           bridge: { name: 'Apps' },
@@ -168,8 +194,38 @@ jest.mock('tunnel-core/livestore', () => {
   }
 })
 
+// Sentinel keys are inlined into the factories below. babel-jest hoists
+// these `jest.mock` calls (and the `import` for `AppShellWebView`) above
+// the file body, so any `const` declared up here would still be
+// `undefined` when the factory runs during the require chain. The
+// `useQuery` mock discriminates by reading `kind` at call time —
+// which is safely after the body has executed.
+jest.mock('local-http-server-core/livestore', () => ({
+  localOrigin$: { kind: 'localOrigin$' },
+}))
+
+jest.mock('gatekeeper-core/livestore', () => ({
+  LocalClientToken: {
+    queries: { current$: { kind: 'localClientToken' } },
+  },
+}))
+
+// Per-test override slot for the local client token row. Defaults to a
+// bearer so the gatekeeper `onTransportReady` path is exercised; tests
+// that need the absent-token branch reassign this before mounting. The
+// `mock` prefix lets the `jest.mock` factory below close over it.
+let mockLocalClientTokenRow: { readonly value: string | null } = { value: 'bearer-xyz' }
+
 jest.mock('../livestore/livestore-store.ts', () => ({
-  useWildflowerStore: (): object => ({}),
+  useWildflowerStore: (): { useQuery: (q: unknown) => unknown } => ({
+    useQuery: (q: unknown): unknown => {
+      if (typeof q === 'object' && q !== null && 'kind' in q) {
+        if (q.kind === 'localOrigin$') return 'https://example.test'
+        if (q.kind === 'localClientToken') return mockLocalClientTokenRow
+      }
+      throw new Error(`Unexpected useQuery key: ${JSON.stringify(q)}`)
+    },
+  }),
 }))
 
 jest.mock('wildflower-react/embeddable-html', () => ({ html: '<!doctype html><html></html>' }))
@@ -186,6 +242,7 @@ beforeEach(() => {
   mockLastBridgedWebViewProps = null
   mockNavigationOptions = null
   mockAppsOptions = null
+  mockLocalClientTokenRow = { value: 'bearer-xyz' }
 })
 
 const noopRouteChanged = (): void => {}
@@ -205,7 +262,10 @@ const indexOf = (
 ): number => bindings.bridges.findIndex((b): boolean => b.name === name)
 
 describe('AppShellWebView', () => {
-  it('mounts BridgedWebView with all four slice bindings in declaration order', () => {
+  it('mounts BridgedWebView with all five bindings in declaration order', () => {
+    // Order matches `HostBindings.combine([...])` in `use-host-bindings.ts`:
+    // four slice bindings followed by the cross-cutting `LogBridge` binding
+    // supplied by `useLogHostBinding`.
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
     const bindings = expectBindings()
     expect(bindings.bridges.map((b) => b.name)).toEqual([
@@ -213,6 +273,7 @@ describe('AppShellWebView', () => {
       'Gatekeeper',
       'Collector',
       'Apps',
+      'Log',
     ])
   })
 
@@ -320,17 +381,18 @@ describe('AppShellWebView', () => {
   })
 
   it('omits the gatekeeper onTransportReady when no token is provided', () => {
+    mockLocalClientTokenRow = { value: null }
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
     const bindings = expectBindings()
     const gkIdx = indexOf(bindings, 'Gatekeeper')
     expect(bindings.onTransportReady[gkIdx]).toBeUndefined()
   })
 
-  it('threads the tunnelStoreLayer into the apps host binding', () => {
+  it('threads the wildflower store into the apps host binding', () => {
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
-    // `apps-expo`'s host binding needs `TunnelStore` discharged — the
-    // shell constructs the layer from the wildflower store and hands
-    // it in.
-    expect(mockAppsOptions?.tunnelStoreLayer).toBeDefined()
+    // `apps-expo`'s host binding receives the wildflower store directly
+    // and internally constructs `TunnelStore.layerFrom(store)`; the shell
+    // only owes it a stable store reference.
+    expect(mockAppsOptions?.store).toBeDefined()
   })
 })

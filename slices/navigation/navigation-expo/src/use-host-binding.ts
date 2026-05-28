@@ -53,6 +53,7 @@ interface UseNavigationHostBindingOptions {
 const useNavigationHostBinding = ({
   initialRoute,
   onRouteChanged,
+  onTransportReady,
 }: UseNavigationHostBindingOptions = {}): HostBindings.HostBindings<
   readonly [typeof NavigationBridge]
 > =>
@@ -65,8 +66,9 @@ const useNavigationHostBinding = ({
           initialRoute === undefined
             ? undefined
             : [{ _tag: 'HostRequestedWebNavigation' as const, path: initialRoute }],
+        onTransportReady,
       }),
-    [initialRoute, onRouteChanged]
+    [initialRoute, onRouteChanged, onTransportReady]
   )
 
 export { useNavigationHostBinding }

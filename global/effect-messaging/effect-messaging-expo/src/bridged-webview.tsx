@@ -55,8 +55,9 @@ interface BridgedWebViewProps<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
    * synchronously from `window.location.search` at boot.
    *
    * Existing query strings on `loadFrom.uri` are **merged, not
-   * replaced**: a caller passing `{ _tag: 'uri', uri:
-   * 'https://app/?session=x' }` together with a binding emitting
+   * replaced**: a caller passing
+   * `{ _tag: 'uri', uri: 'https://app/?session=x' }` together with
+   * a binding emitting
    * `initialMessages: [{ _tag: 'Setup', path: '/' }]` ends up with
    * `?session=x&Setup=%2F` on the WebView source. (Same-name keys
    * coexist — `URLSearchParams` allows duplicates.)

@@ -23,15 +23,18 @@ const useNavigationHostBinding = (
 ): HostBindings.HostBindings<readonly [typeof NavigationBridge]> => {
   const navigationSenderRef = useNavigationSenderRef()
 
-  const navigationBinding = NavigationBridgeExpo.useHostBinding({
-    onRouteChanged: ({ pathname, canGoBack }) =>
-      Effect.sync(() => onRouteChanged({ pathname, canGoBack })),
-    onTransportReady: (send: NavigationSender) =>
-      Effect.sync(() => {
-        navigationSenderRef.current = send
-      }),
-    initialRoute: '/apps',
-  })
+  const navigationBindingArgs = useMemo(() => {
+    return {
+      onRouteChanged,
+      onTransportReady: (send: NavigationSender) =>
+        Effect.sync(() => {
+          navigationSenderRef.current = send
+        }),
+      initialRoute: '/apps',
+    }
+  }, [onRouteChanged, navigationSenderRef])
+
+  const navigationBinding = NavigationBridgeExpo.useHostBinding(navigationBindingArgs)
 
   return navigationBinding
 }
