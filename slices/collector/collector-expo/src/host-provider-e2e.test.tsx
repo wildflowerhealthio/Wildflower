@@ -8,9 +8,9 @@
 import * as React from 'react'
 
 import { act, render } from '@testing-library/react-native'
-import type BrowserSnifferBridge from 'browser-sniffer-core/bridge'
+import type { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
 import type * as BrowserSnifferExpoModule from 'browser-sniffer-expo'
-import CollectorBridge from 'collector-fundamentals/bridge'
+import { CollectorBridge } from 'collector-fundamentals/bridge'
 import { Effect, Layer } from 'effect'
 import {
   BareSender,

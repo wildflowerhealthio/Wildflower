@@ -1,4 +1,4 @@
-import CollectorBridge from 'collector-fundamentals/bridge'
+import { CollectorBridge } from 'collector-fundamentals/bridge'
 import type { WebViewSource } from 'collector-fundamentals/model'
 import { Effect, type Layer } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'

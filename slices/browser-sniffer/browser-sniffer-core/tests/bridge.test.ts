@@ -2,7 +2,7 @@ import { Arbitrary, Effect, Schema } from 'effect'
 import { BridgeTransport, TestPlatformAdapterLayer } from 'effect-messaging-core'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
-import BrowserSnifferBridge from '../src/bridge.ts'
+import { BrowserSnifferBridge } from '../src/bridge.ts'
 import {
   CancelSnifferRequestMessage,
   CancelledMessage,

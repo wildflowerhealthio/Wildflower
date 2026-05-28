@@ -1,4 +1,4 @@
-import CollectorBridge from 'collector-fundamentals/bridge'
+import { CollectorBridge } from 'collector-fundamentals/bridge'
 import { Effect } from 'effect'
 import { useMemo, useRef, type JSX, type ReactNode } from 'react'
 

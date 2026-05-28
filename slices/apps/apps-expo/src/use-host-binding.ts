@@ -1,4 +1,4 @@
-import AppsBridge from 'apps-core/bridge'
+import { AppsBridge } from 'apps-core/bridge'
 import { Layer } from 'effect'
 import type { HostBinding } from 'effect-messaging-core'
 import { useMemo } from 'react'

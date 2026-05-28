@@ -6,8 +6,8 @@ import { useCallback, useEffect, useState, type JSX } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { AppShellWebView } from '../components/app-shell-webview.tsx'
-import { useNavigationSender } from '../components/navigation-pipe.ts'
+import { AppShellWebView } from '../app-shell/app-shell-webview.tsx'
+import { useNavigationSender } from '../app-shell/navigation-pipe.ts'
 import { TABS, tabForPath, type TabKey } from '../components/tab-mapping.ts'
 import { useWildflowerStore } from '../livestore/livestore-store.ts'
 
@@ -62,7 +62,6 @@ export default function HomeScreen(): JSX.Element {
             {
               borderTopColor: palette.icon,
               backgroundColor: palette.background,
-              paddingBottom: Spacing.s3 + insets.bottom,
             },
           ]}
         >
@@ -78,7 +77,10 @@ export default function HomeScreen(): JSX.Element {
                     sendNavigation({ _tag: 'HostRequestedWebNavigation', path: tab.path })
                   )
                 }}
-                style={styles.tabButton}
+                style={{
+                  ...styles.tabButton,
+                  paddingBottom: Math.max(Spacing.s2, insets.bottom - 12),
+                }}
               >
                 <ThemedText
                   type={isActive ? 'bodySemiBold' : 'body'}

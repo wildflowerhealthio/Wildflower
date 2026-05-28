@@ -1,4 +1,4 @@
-export { default as BrowserSnifferBridge } from './bridge.ts'
+export { BrowserSnifferBridge } from './bridge.ts'
 export {
   CancelSnifferRequestMessage,
   CancelSnifferRequestMessageBody,

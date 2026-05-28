@@ -1,4 +1,4 @@
-import BrowserSnifferBridge from 'browser-sniffer-core/bridge'
+import { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
 import { snifferScript } from 'browser-sniffer-injected'
 import { Effect } from 'effect'
 import {

@@ -2,7 +2,7 @@ import { StoreRegistry, StoreRegistryProvider } from '@livestore/react'
 import { Layer } from 'effect'
 import { LocalHttpServerStore } from 'local-http-server-core/livestore'
 import { type JSX, type PropsWithChildren, Suspense, useMemo, useState } from 'react'
-import { useLaunchLayer } from 'react-kitchen-sink'
+import { useComponentScopedRunner } from 'react-kitchen-sink'
 import { Text } from 'react-native'
 import { TunnelStore } from 'tunnel-core/livestore'
 import { TunnelDaemon } from 'tunnel-expo'
@@ -30,7 +30,7 @@ export default function AppRuntimeProvider({ children }: PropsWithChildren): JSX
 
 /**
  * Ties the daemon launch's Effect Scope to this component's React
- * mount via {@link useLaunchLayer}. Lifecycle parity with
+ * mount via {@link useComponentScopedRunner}. Lifecycle parity with
  * `apps/wildflower-node/src/index.ts`: one `Layer.launch` over
  * `Layer.mergeAll(HttpServerDaemonLive, TunnelDaemon)`, one scope,
  * one fiber. The wildflower store is provided once at the outer
@@ -57,7 +57,7 @@ function DaemonRuntimeScope({ children }: PropsWithChildren): JSX.Element {
     [store]
   )
 
-  useLaunchLayer(daemons)
+  useComponentScopedRunner(daemons)
 
   return <>{children}</>
 }

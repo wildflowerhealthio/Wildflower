@@ -5,8 +5,8 @@ import 'react-native-reanimated'
 import { type JSX } from 'react'
 import { Sentry } from 'telemetry-react-native'
 
+import { NavigationPipeProvider } from '../app-shell/navigation-pipe.ts'
 import AppRuntimeProvider from '../components/app-runtime-provider.tsx'
-import { NavigationPipeProvider } from '../components/navigation-pipe.ts'
 
 /**
  * Root layout. Stacks the runtime, collector host, and navigation pipe

@@ -14,8 +14,11 @@ import {
 } from 'effect'
 import { UnknownException } from 'effect/Cause'
 import type { RuntimeFiber } from 'effect/Fiber'
-import type CollectorBridge from '../bridge.ts'
-import type { OpenMessage, SniffingComplete as SniffingCompleteMessage } from '../bridge.ts'
+import type {
+  CollectorBridge,
+  OpenMessage,
+  SniffingComplete as SniffingCompleteMessage,
+} from '../bridge.ts'
 import type * as EntityDefinition from '../model/entity-definition.ts'
 
 type Service = CollectorBridge['Web']['HandlerTag']['Service']

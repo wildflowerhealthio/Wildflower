@@ -67,4 +67,4 @@ const NavigationBridge: NavigationBridge = Bridge.make({
   },
 })
 
-export default NavigationBridge
+export { NavigationBridge }

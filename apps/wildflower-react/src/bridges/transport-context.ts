@@ -1,7 +1,7 @@
-import type AppsBridge from 'apps-core/bridge'
-import type CollectorBridge from 'collector-fundamentals/bridge'
+import type { AppsBridge } from 'apps-core/bridge'
+import type { CollectorBridge } from 'collector-fundamentals/bridge'
 import type { BridgeTransport, LogBridge } from 'effect-messaging-core'
-import type GatekeeperBridge from 'gatekeeper-core/bridge'
+import type { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import type { NavigationBridge } from 'navigation-core'
 import { createContext, useContext } from 'react'
 

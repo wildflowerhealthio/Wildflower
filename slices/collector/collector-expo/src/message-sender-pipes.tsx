@@ -2,8 +2,8 @@
    components alongside their companion `useAs*` / `use*` hooks; the
    pipe factory's own file already documents the rationale for keeping
    them paired. */
-import BrowserSnifferBridge from 'browser-sniffer-core/bridge'
-import CollectorBridge from 'collector-fundamentals/bridge'
+import { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
+import { CollectorBridge } from 'collector-fundamentals/bridge'
 import { makeNamedPipe } from 'effect-messaging-react'
 
 const {

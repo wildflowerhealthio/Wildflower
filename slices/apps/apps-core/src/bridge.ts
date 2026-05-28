@@ -53,5 +53,4 @@ const AppsBridge: AppsBridge = Bridge.make({
   webToHost: [['RequestTunnel', RequestTunnel]] as const,
 })
 
-export default AppsBridge
-export { RequestTunnel, TunnelFailed, TunnelStarted }
+export { AppsBridge, RequestTunnel, TunnelFailed, TunnelStarted }

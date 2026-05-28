@@ -1,4 +1,4 @@
-import type CollectorBridge from 'collector-fundamentals/bridge'
+import type { CollectorBridge } from 'collector-fundamentals/bridge'
 import type { Effect } from 'effect'
 import type { Message } from 'effect-messaging-core'
 import { createContext } from 'react'

@@ -1,4 +1,4 @@
-import CollectorBridge from 'collector-fundamentals/bridge'
+import { CollectorBridge } from 'collector-fundamentals/bridge'
 import type { HostBinding } from 'effect-messaging-core'
 import { useMemo } from 'react'
 

@@ -12,13 +12,16 @@ import { useEffect } from 'react'
  * `useMemo`); the hook's `useEffect` keys on the layer reference, so a
  * fresh layer on every render would relaunch the daemon stack.
  */
-const useLaunchLayer = (layer: Layer.Layer<never>): void => {
+const useComponentScopedRunner = (
+  arg: Layer.Layer<never, never, never> | Effect.Effect<never, never, never>
+): void => {
   useEffect(() => {
-    const fiber = Effect.runFork(Layer.launch(layer))
+    const effect = Effect.isEffect(arg) ? arg : Layer.launch(arg)
+    const fiber = Effect.runFork(effect)
     return (): void => {
       Effect.runFork(Fiber.interrupt(fiber))
     }
-  }, [layer])
+  }, [arg])
 }
 
-export { useLaunchLayer }
+export { useComponentScopedRunner }

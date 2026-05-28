@@ -1,7 +1,7 @@
 import { Effect, Schema } from 'effect'
 import { TestPlatformAdapterLayer } from 'effect-messaging-core'
 import { describe, expect, test } from 'vite-plus/test'
-import NavigationBridge from '../src/navigation-bridge.ts'
+import { NavigationBridge } from '../src/navigation-bridge.ts'
 
 describe('NavigationBridge', () => {
   test('Host send encodes a HostRequestedWebNavigation and the Web side decodes it', () => {
