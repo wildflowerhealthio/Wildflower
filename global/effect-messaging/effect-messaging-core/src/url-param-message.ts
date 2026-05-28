@@ -1,5 +1,6 @@
 import { Array, Option, Schema } from 'effect'
-import * as Bridge from './bridge.ts'
+import type * as Bridge from './bridge.ts'
+import { findUrlParamSchema, findWireSchema } from './internal/bridge-lookups.ts'
 
 /**
  * URL-param wire-format helpers. The page-side bundle reads initial
@@ -88,7 +89,7 @@ const appendMessagesToUrl = (
   messages: ReadonlyArray<{ readonly _tag: string } & Readonly<Record<string, unknown>>>
 ): URL => {
   const newEntries = Array.map(messages, (message): [string, string] => {
-    const schema = Bridge.findUrlParamSchema(bridges, message._tag)
+    const schema = findUrlParamSchema(bridges, message._tag)
     if (schema === undefined) {
       throw new Error(
         `[effect-messaging] no urlParams schema for tag "${message._tag}"; cannot encode as URL param`
@@ -117,8 +118,8 @@ const reEncodeMessagesFromParams = (
 ): ReadonlyArray<string> =>
   Array.filterMap([...new URLSearchParams(search)], ([key, value]) =>
     Option.gen(function* () {
-      const urlSchema = yield* Option.fromNullable(Bridge.findUrlParamSchema(bridges, key))
-      const wireSchema = yield* Option.fromNullable(Bridge.findWireSchema(bridges, key))
+      const urlSchema = yield* Option.fromNullable(findUrlParamSchema(bridges, key))
+      const wireSchema = yield* Option.fromNullable(findWireSchema(bridges, key))
       return yield* Option.flatMap(
         Schema.decodeOption(urlSchema)(value),
         Schema.encodeOption(wireSchema)
@@ -136,7 +137,7 @@ const stripMessageParams = (search: string, bridges: ReadonlyArray<Bridge.AnyBri
   const params = new URLSearchParams(search)
   const remaining: Array<readonly [string, string]> = []
   for (const [key, value] of params) {
-    if (Bridge.findUrlParamSchema(bridges, key) !== undefined) continue
+    if (findUrlParamSchema(bridges, key) !== undefined) continue
     remaining.push([key, value])
   }
   return serializeParams(remaining)

@@ -13,7 +13,8 @@ import {
   Option,
   HashMap,
 } from 'effect'
-import * as Bridge from './bridge.ts'
+import type * as Bridge from './bridge.ts'
+import { senderByTag } from './internal/bridge-lookups.ts'
 import { TransportAdapter } from './transport-adapter.ts'
 
 /**
@@ -235,7 +236,7 @@ const make = <
       Array.append(ReadyMessageSchema)
     )
 
-    const taggedSenders = Bridge.senderByTag(bridges, side)
+    const taggedSenders = senderByTag(bridges, side)
 
     /**
      * Single-pass decode for inbound dispatch. `Schema.parseJson`
