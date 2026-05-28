@@ -1,6 +1,5 @@
 export * as Bridge from './bridge.ts'
 export * as BridgeTransport from './bridge-transport.ts'
-export * as DispatchError from './dispatch-error.ts'
 export * as Logging from './logging.ts'
 export * as Message from './message.ts'
 export * as MessageHandler from './message-handler.ts'
