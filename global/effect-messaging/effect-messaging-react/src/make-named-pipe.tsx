@@ -1,11 +1,15 @@
-/* oxlint-disable react/only-export-components -- this factory module
-   intentionally exports a builder that returns a `Provider` component;
-   the rest of the file's exports are types and a non-component factory,
-   so fast-refresh's per-file rule doesn't model the pattern. */
+import { Effect } from 'effect'
 import type { Bridge, BridgeTransport } from 'effect-messaging-core'
-import type { FC as ReactFC, JSX } from 'react'
-
-import { makeMessageSenderPipe } from './make-message-sender-pipe.tsx'
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useRef,
+  type FC as ReactFC,
+  type JSX,
+  type RefObject,
+} from 'react'
+import { useContextOrThrow } from 'react-kitchen-sink'
 
 interface MadeNamedPipe<
   TName extends string,
@@ -20,15 +24,17 @@ interface MadeNamedPipe<
     displayName: `${TName}PipeProvider`
   }
   /**
-   * Register a typed sender as the active downstream for this pipe — the
-   * named analogue of {@link MadeMessageSenderPipe.useAsPipeMessageSender}.
+   * Register a typed sender as the active downstream for this pipe.
    */
   readonly useAsSource: (sender: BridgeTransport.MessageSender<TBridges, TSide>) => void
   /**
-   * Get the typed sender for this pipe — the named analogue of
-   * {@link MadeMessageSenderPipe.usePipeMessageSender}. The returned
-   * function is identity-stable for the lifetime of the surrounding
-   * Provider — safe to include in `useEffect` / `useMemo` deps.
+   * Get the typed sender for this pipe. The returned function is
+   * identity-stable for the lifetime of the surrounding Provider — safe
+   * to include in `useEffect` / `useMemo` deps. It reads
+   * `handlerRef.current` at suspend time, so callers don't need to
+   * re-render to see a sender registered later. Pre-mount sends route
+   * through the default warn-and-drop handler until
+   * {@link MadeNamedPipe.useAsSource} commits its effect.
    */
   readonly useSender: () => BridgeTransport.MessageSender<TBridges, TSide>
   /**
@@ -41,40 +47,39 @@ interface MadeNamedPipe<
    * Direct mutation of `.current` is a supported pattern — reach for
    * it when the registration site cannot run inside a `useEffect`
    * (e.g. capturing a transport sender from inside an
-   * `onTransportReady` `Effect.sync` callback). The named analogue of
-   * {@link MadeMessageSenderPipe.usePipeMessageSenderRef}.
+   * `onTransportReady` `Effect.sync` callback).
    */
-  readonly useSenderRef: () => React.RefObject<BridgeTransport.MessageSender<TBridges, TSide>>
+  readonly useSenderRef: () => RefObject<BridgeTransport.MessageSender<TBridges, TSide>>
   /**
-   * The pipe's built-in warn-and-drop sender — the named analogue of
-   * {@link MadeMessageSenderPipe.defaultSender}.
+   * The pipe's built-in warn-and-drop sender — what
+   * {@link MadeNamedPipe.useSender} resolves to before any
+   * {@link MadeNamedPipe.useAsSource} call commits.
+   *
+   * Exposed so consumers gating registration on a not-yet-ready upstream
+   * (e.g. `useAsSource(realSender ?? defaultSender)`) can plug the same
+   * default in directly instead of re-implementing their own
+   * warn-and-drop wrapper.
    */
   readonly defaultSender: BridgeTransport.MessageSender<TBridges, TSide>
 }
 
 /**
- * Friendly-named wrapper around {@link makeMessageSenderPipe}.
+ * Factory for a typed, friendly-named React pipe carrying a
+ * {@link BridgeTransport.MessageSender} for the given bridge tuple and
+ * side.
  *
- * Each call returns a `{ Provider, useAsSource, useSender }` trio where
- * `Provider.displayName` is `${TName}PipeProvider` (instead of the
- * underlying `${TName}MessageSenderPipeContext`), and the hook keys drop
- * the `Pipe` / `Message` boilerplate so consumers can write:
+ * Each call returns a `{ Provider, useAsSource, useSender, useSenderRef,
+ * defaultSender }` quintuple where `Provider.displayName` is
+ * `${TName}PipeProvider`. Consumers typically destructure-and-rename:
  *
  * ```ts
- * const { Provider, useAsSource, useSender } = makeNamedPipe(
- *   'BrowserSniffer',
- *   [BrowserSnifferBridge] as const,
- *   'Host'
- * )
+ * const pipe = makeNamedPipe('BrowserSniffer', [BrowserSnifferBridge] as const, 'Host')
  * export const {
  *   Provider: MessageSenderToBrowserSnifferProvider,
  *   useAsSource: useAsMessageSenderToBrowserSniffer,
  *   useSender: useMessageSenderToBrowserSniffer,
  * } = pipe
  * ```
- *
- * Behaviour is delegated 1:1 to {@link makeMessageSenderPipe}; this only
- * renames the surface area.
  */
 const makeNamedPipe = <
   const TName extends string,
@@ -82,36 +87,53 @@ const makeNamedPipe = <
   const TSide extends 'Host' | 'Web',
 >(
   name: TName,
-  bridges: TBridges,
-  side: TSide
+  _bridges: TBridges,
+  _side: TSide
 ): MadeNamedPipe<TName, TBridges, TSide> => {
-  const {
-    Provider: InnerProvider,
-    useAsPipeMessageSender,
-    usePipeMessageSender,
-    usePipeMessageSenderRef,
-    defaultSender,
-  } = makeMessageSenderPipe(name, bridges, side)
+  // `_bridges` and `_side` are type witnesses — they bind TBridges/TSide into
+  // the returned closure so downstream types flow without runtime generics.
 
-  // Wrap the inner provider so we can give it a friendlier displayName
-  // without losing the type-witness chain. The wrapper is a passthrough —
-  // identity / behavior comes from `InnerProvider`. Captures `InnerProvider`
-  // from the enclosing factory call, so each `makeNamedPipe` call returns
-  // its own provider tied to its own context.
-  // oxlint-disable-next-line unicorn/consistent-function-scoping
-  const Provider = ({ children }: { children: React.ReactNode }): JSX.Element => (
-    <InnerProvider>{children}</InnerProvider>
+  const defaultSender: BridgeTransport.MessageSender<TBridges, TSide> = (msg) =>
+    Effect.logWarning(
+      `[effect-messaging] no ${name}Pipe handler registered; dropping message "${JSON.stringify(msg)}"`
+    )
+
+  const Context = createContext<RefObject<BridgeTransport.MessageSender<TBridges, TSide>> | null>(
+    null
   )
+  Context.displayName = `${name}PipeContext`
+
+  // oxlint-disable-next-line react-refresh/only-export-components
+  const Provider = ({ children }: { children: React.ReactNode }): JSX.Element => {
+    const handlerRef = useRef<BridgeTransport.MessageSender<TBridges, TSide>>(defaultSender)
+
+    return <Context.Provider value={handlerRef}>{children}</Context.Provider>
+  }
   Provider.displayName = `${name}PipeProvider`
+
+  const useSender = (): BridgeTransport.MessageSender<TBridges, TSide> => {
+    const handlerRef = useContextOrThrow(Context)
+    return useCallback((message) => Effect.suspend(() => handlerRef.current(message)), [handlerRef])
+  }
+
+  const useAsSource = (sender: BridgeTransport.MessageSender<TBridges, TSide>): void => {
+    const handlerRef = useContextOrThrow(Context)
+    useEffect(() => {
+      handlerRef.current = sender
+    }, [sender, handlerRef])
+  }
+
+  const useSenderRef = (): RefObject<BridgeTransport.MessageSender<TBridges, TSide>> =>
+    useContextOrThrow(Context)
 
   return {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     Provider: Provider as ReactFC<{ children: React.ReactNode }> & {
       displayName: `${TName}PipeProvider`
     },
-    useSenderRef: usePipeMessageSenderRef,
-    useAsSource: useAsPipeMessageSender,
-    useSender: usePipeMessageSender,
+    useSenderRef,
+    useAsSource,
+    useSender,
     defaultSender,
   }
 }
