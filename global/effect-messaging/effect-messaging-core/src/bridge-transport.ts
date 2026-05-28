@@ -1,6 +1,7 @@
 import type { ParseResult, Scope } from 'effect'
 import {
   Array,
+  Data,
   Deferred,
   Effect,
   Match,
@@ -12,9 +13,55 @@ import {
   Option,
   HashMap,
 } from 'effect'
-import * as Bridge from './bridge.ts'
-import * as DispatchError from './dispatch-error.ts'
+import type * as Bridge from './bridge.ts'
+import { senderByTag } from './internal/bridge-lookups.ts'
 import { TransportAdapter } from './transport-adapter.ts'
+
+/**
+ * Two-bucket failure surface for inbound dispatch.
+ *
+ * - {@link ParseResult.ParseError}: anything Schema rejects — malformed
+ *   JSON, an unrecognised `_tag`, or a known tag whose payload doesn't
+ *   match. The dispatch core decodes via `Schema.parseJson(Schema.Union(...))`
+ *   so the three previously-distinguished cases collapse into one
+ *   parse-error variant.
+ * - {@link DispatchInternalError}: an invariant the dup-check + lockstep
+ *   schema/handler loop should make unreachable. Surfaces a wiring/refactor
+ *   bug loudly instead of dropping the message silently — e.g., a deliberate
+ *   `handlers: { Tag: undefined }` cast in a test fixture.
+ */
+
+/** Source channel an inbound message arrived through. */
+type DispatchSource = 'live' | 'initial'
+
+/**
+ * Internal-invariant failure: the schema accepted the message but no
+ * handler is wired for the tag. Reachable when a consumer passes
+ * `undefined` as a handler (typically a test cast).
+ */
+class DispatchInternalError extends Data.TaggedError('Internal')<{
+  readonly source: DispatchSource
+  readonly tag: string
+  readonly reason: string
+}> {}
+
+/** Union of every failure variant the inbound-dispatch fiber can yield. */
+type DispatchError = ParseResult.ParseError | DispatchInternalError
+
+/**
+ * Map a structured {@link DispatchError} to a single
+ * `Effect.logWarning` call. The dispatch fiber uses this in
+ * `Effect.catchAll(dispatchErrorToLog)` so every dispatch failure
+ * surfaces through the same channel.
+ */
+const dispatchErrorToLog = (error: DispatchError): Effect.Effect<void> => {
+  if (error._tag === 'Internal') {
+    return Effect.logWarning(
+      `[effect-messaging] internal dispatch invariant violated for ${error.source} tag "${error.tag}": ${error.reason}`
+    )
+  }
+  return Effect.logWarning(`[effect-messaging] failed to decode message: ${String(error)}`)
+}
 
 /** The web-→-host handshake signal. Resolves the host's `peerReady` Deferred. */
 const READY_TAG = '__Ready' as const
@@ -189,7 +236,7 @@ const make = <
       Array.append(ReadyMessageSchema)
     )
 
-    const taggedSenders = Bridge.senderByTag(bridges, side)
+    const taggedSenders = senderByTag(bridges, side)
 
     /**
      * Single-pass decode for inbound dispatch. `Schema.parseJson`
@@ -225,12 +272,8 @@ const make = <
      */
     const decodeAndDispatch = (
       raw: string,
-      source: DispatchError.Source
-    ): Effect.Effect<
-      void,
-      DispatchError.DispatchError | ParseResult.ParseError,
-      TransportAdapter
-    > =>
+      source: DispatchSource
+    ): Effect.Effect<void, DispatchError | ParseResult.ParseError, TransportAdapter> =>
       Effect.gen(function* () {
         // The Union schema decodes to `any`; re-narrow at this single
         // boundary. Schema acceptance guarantees `_tag: string`.
@@ -241,7 +284,7 @@ const make = <
         return yield* Option.match(maybeHandler, {
           onNone: () =>
             Effect.fail(
-              new DispatchError.Internal({
+              new DispatchInternalError({
                 source,
                 tag: decoded._tag,
                 reason: 'handler is undefined for a dispatched tag',
@@ -253,7 +296,7 @@ const make = <
 
     interface QueueItem {
       readonly raw: string
-      readonly source: DispatchError.Source
+      readonly source: DispatchSource
       readonly drainMarker?: Deferred.Deferred<void>
     }
     const queue = yield* Queue.unbounded<QueueItem>()
@@ -267,7 +310,7 @@ const make = <
       item: QueueItem
     ): Effect.Effect<void, never, TransportAdapter | Scope.Scope> =>
       decodeAndDispatch(item.raw, item.source).pipe(
-        Effect.catchAll(DispatchError.toLog),
+        Effect.catchAll(dispatchErrorToLog),
         // Handler defects don't take the dispatch fiber down.
         Effect.catchAllDefect((defect) =>
           Effect.logError(
@@ -340,5 +383,5 @@ const make = <
     }
   })
 
-export { make, READY_TAG }
+export { make }
 export type { BridgeTransport, MessageSender }

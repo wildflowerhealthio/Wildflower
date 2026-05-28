@@ -292,7 +292,7 @@ const indexOf = (
 describe('AppShellWebView', () => {
   it('mounts BridgedWebView with all five bindings in declaration order', () => {
     // Order matches `HostBindings.combine([...])` in `use-host-bindings.ts`:
-    // four slice bindings followed by the cross-cutting `LogBridge` binding
+    // four slice bindings followed by the cross-cutting `Logging` binding
     // supplied by `useLogHostBinding`.
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
     const bindings = expectBindings()
@@ -369,7 +369,7 @@ describe('AppShellWebView', () => {
 
     // Fire the binding's `onTransportReady` — the shell's wrapper
     // commits the sender into state, triggers a re-render, and
-    // `useAsNavigationSource` registers it in the pipe.
+    // `useAsNavigationOutlet` registers it in the pipe.
     await act(async () => {
       await EffectType.runPromise(navOnTransportReady(fakeTransportSender))
     })

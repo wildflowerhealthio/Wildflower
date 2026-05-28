@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 
-import { HostBindings, type LogBridge, type BridgeTransport } from 'effect-messaging-core'
+import { HostBindings, type Logging, type BridgeTransport } from 'effect-messaging-core'
 import { useLogHostBinding } from 'effect-messaging-expo'
 
 import { type AppsBridge } from 'apps-core/bridge'
@@ -49,7 +49,7 @@ export const useHostBindings = ({
     typeof GatekeeperBridge,
     typeof CollectorBridge,
     typeof AppsBridge,
-    typeof LogBridge.LogBridge,
+    typeof Logging.LogBridge,
   ]
 > => {
   const store = useWildflowerStore()

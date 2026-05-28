@@ -9,7 +9,7 @@ import {
   ResponseStartMessage,
 } from 'browser-sniffer-core'
 import { Schema } from 'effect'
-import { LogBridge } from 'effect-messaging-core'
+import { Logging } from 'effect-messaging-core'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -74,7 +74,7 @@ const cancelRequest = (id: string): void => {
 }
 
 // Domain-event schemas (everything except the transport-level `__Ready`).
-const decodeLog = Schema.decodeUnknownSync(Schema.typeSchema(LogBridge.LogMessage))
+const decodeLog = Schema.decodeUnknownSync(Schema.typeSchema(Logging.LogMessage))
 const decodeResponseStart = Schema.decodeUnknownSync(Schema.typeSchema(ResponseStartMessage))
 const decodeResponseData = Schema.decodeUnknownSync(Schema.typeSchema(ResponseDataMessage))
 const decodeResponseFinished = Schema.decodeUnknownSync(Schema.typeSchema(ResponseFinishedMessage))

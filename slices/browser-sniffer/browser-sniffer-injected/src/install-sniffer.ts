@@ -12,7 +12,7 @@ import type {
   ResponseStartMessageBody,
 } from 'browser-sniffer-core'
 import type { Schema } from 'effect'
-import type { LogBridge } from 'effect-messaging-core'
+import type { Logging } from 'effect-messaging-core'
 
 /**
  * Browser-side sniffer installed into an arbitrary third-party page.
@@ -53,7 +53,7 @@ import type { LogBridge } from 'effect-messaging-core'
 
 /** Wire form posted Web→Host: JSON-stringifiable, base64 `data`, plus the `__Ready` handshake. */
 type SnifferOutboundMessage =
-  | Schema.Schema.Encoded<typeof LogBridge.LogMessageBody>
+  | Schema.Schema.Encoded<typeof Logging.LogMessageBody>
   | Schema.Schema.Encoded<typeof ResponseStartMessageBody>
   | Schema.Schema.Encoded<typeof ResponseDataMessageBody>
   | Schema.Schema.Encoded<typeof ResponseFinishedMessageBody>
@@ -134,11 +134,11 @@ const installSniffer = function (): void {
   // native sink. Mirrors the `makeLogForLevel` factory in
   // `apps/wildflower-react/src/bridges/transport-provider.tsx`; the
   // injected script can't import the Effect runtime, so this is the
-  // plain-JS analogue. `LogLevel` is type-imported from `LogBridge` so
+  // plain-JS analogue. `LogLevel` is type-imported from `Logging` so
   // any future expansion of the bridge's level union surfaces here at
   // compile time. (Type-only imports survive `Function.prototype.toString`.)
   const makeLogForLevel =
-    (level: LogBridge.LogLevel) =>
+    (level: Logging.LogLevel) =>
     (...args: unknown[]): void => {
       post({ _tag: 'Log', level, payload: args })
     }

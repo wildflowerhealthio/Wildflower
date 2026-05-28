@@ -13,9 +13,9 @@ import { NavigationBridge } from 'navigation-core'
  *
  *  - `NavigationPipeProvider` mounts the ref slot — wrap the router
  *    Stack with it so both the shell screen (which calls
- *    `useAsNavigationSource`) and the tab bar (which calls
+ *    `useAsNavigationOutlet`) and the tab bar (which calls
  *    `useNavigationSender`) resolve to the same context.
- *  - `useAsNavigationSource(sender)` registers the active sender;
+ *  - `useAsNavigationOutlet(sender)` registers the active sender;
  *    pre-mount / pre-transport sends route through the pipe's
  *    warn-and-drop default until a real sender is installed.
  *  - `useNavigationSender()` returns the typed sender for descendants
@@ -28,13 +28,13 @@ import { NavigationBridge } from 'navigation-core'
 const {
   Provider: NavigationPipeProvider,
   useSenderRef: useNavigationSenderRef,
-  useAsSource: useAsNavigationSource,
+  useAsOutlet: useAsNavigationOutlet,
   useSender: useNavigationSender,
 } = makeNamedPipe('WildflowerNavigation', [NavigationBridge] as const, 'Host')
 
 export {
   NavigationPipeProvider,
-  useAsNavigationSource,
+  useAsNavigationOutlet,
   useNavigationSender,
   useNavigationSenderRef,
 }

@@ -8,21 +8,21 @@ import { makeNamedPipe } from 'effect-messaging-react'
 
 const {
   Provider: BrowserSnifferPipeProvider,
-  useAsSource: useAsBrowserSnifferSource,
+  useAsOutlet: useAsBrowserSnifferOutlet,
   useSender: useBrowserSnifferSender,
 } = makeNamedPipe('BrowserSniffer', [BrowserSnifferBridge] as const, 'Host')
 
 const {
   Provider: CollectorPipeProvider,
-  useAsSource: useAsCollectorSource,
+  useAsOutlet: useAsCollectorOutlet,
   useSender: useCollectorSender,
 } = makeNamedPipe('Collector', [CollectorBridge] as const, 'Host')
 
 export {
   BrowserSnifferPipeProvider,
   CollectorPipeProvider,
-  useAsBrowserSnifferSource,
-  useAsCollectorSource,
+  useAsBrowserSnifferOutlet,
+  useAsCollectorOutlet,
   useBrowserSnifferSender,
   useCollectorSender,
 }

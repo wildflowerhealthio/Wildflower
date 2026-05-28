@@ -3,7 +3,7 @@ import { renderHook } from '@testing-library/react-native'
 import { Context, Effect, Layer, Logger, LogLevel as EffectLogLevel } from 'effect'
 import {
   type HostBindings,
-  LogBridge,
+  Logging,
   type MessageHandler,
   TestPlatformAdapterLayer,
 } from 'effect-messaging-core'
@@ -13,33 +13,33 @@ import { useLogHostBinding, type UseLogHostBindingOptions } from './use-log-host
 const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
 
 describe('useLogHostBinding — types', () => {
-  it('returns a 1-tuple HostBindings for the LogBridge', () => {
+  it('returns a 1-tuple HostBindings for the Logging', () => {
     expectTypeOf(useLogHostBinding).returns.toEqualTypeOf<
-      HostBindings.HostBindings<readonly [typeof LogBridge.LogBridge]>
+      HostBindings.HostBindings<readonly [typeof Logging.LogBridge]>
     >()
   })
 
   it('accepts an optional onLog callback receiving the structured Log payload', () => {
     expectTypeOf<UseLogHostBindingOptions['onLog']>().toEqualTypeOf<
-      ((log: LogBridge.LogPayload) => Effect.Effect<void>) | undefined
+      ((log: Logging.LogPayload) => Effect.Effect<void>) | undefined
     >()
   })
 })
 
 /**
- * Resolve the LogBridge's `Log.Host.HandlerTag` from a built receiver
- * layer. `LogBridge.LogBridge.Host.HandlerTag` is the same `Context.Tag`
+ * Resolve the Logging's `Log.Host.HandlerTag` from a built receiver
+ * layer. `Logging.LogBridge.Host.HandlerTag` is the same `Context.Tag`
  * the production `ReceiverLayer` stores into, so we read from it directly —
  * the handler-record type comes back narrowed without a local re-declaration.
  */
 const resolveHandlers = async (
   layer: Layer.Layer<MessageHandler.TagId<'Log', 'Host'>>
-): Promise<Context.Tag.Service<typeof LogBridge.LogBridge.Host.HandlerTag>> =>
+): Promise<Context.Tag.Service<typeof Logging.LogBridge.Host.HandlerTag>> =>
   Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
         const ctx = yield* Layer.build(layer)
-        return Context.get(ctx, LogBridge.LogBridge.Host.HandlerTag)
+        return Context.get(ctx, Logging.LogBridge.Host.HandlerTag)
       })
     )
   )
@@ -59,13 +59,13 @@ const captureLogs = (sink: CapturedLog[]): Layer.Layer<never> =>
   )
 
 describe('useLogHostBinding — runtime', () => {
-  it('returns a 1-tuple HostBindings whose only bridge is LogBridge', () => {
+  it('returns a 1-tuple HostBindings whose only bridge is Logging', () => {
     const { result } = renderHook(() => useLogHostBinding())
     // Identity assertion (`toBe`) — the slot must hold the canonical
-    // `LogBridge.LogBridge` declaration, not a freshly-built look-alike.
+    // `Logging.LogBridge` declaration, not a freshly-built look-alike.
     expect(result.current.bridges).toHaveLength(1)
-    expect(result.current.bridges[0]).toBe(LogBridge.LogBridge)
-    // The LogBridge is web→host only; no initial-message channel.
+    expect(result.current.bridges[0]).toBe(Logging.LogBridge)
+    // The Logging is web→host only; no initial-message channel.
     expect(result.current.initialMessages).toEqual([[]])
     // No post-mount work for the log binding either.
     expect(result.current.onTransportReady).toEqual([undefined])
@@ -79,10 +79,10 @@ describe('useLogHostBinding — runtime', () => {
   })
 
   it('rebuilds the binding when onLog identity changes', () => {
-    const onLogA = (_log: LogBridge.LogPayload): Effect.Effect<void> => Effect.void
-    const onLogB = (_log: LogBridge.LogPayload): Effect.Effect<void> => Effect.void
+    const onLogA = (_log: Logging.LogPayload): Effect.Effect<void> => Effect.void
+    const onLogB = (_log: Logging.LogPayload): Effect.Effect<void> => Effect.void
     const { result, rerender } = renderHook(
-      ({ onLog }: { readonly onLog: (log: LogBridge.LogPayload) => Effect.Effect<void> }) =>
+      ({ onLog }: { readonly onLog: (log: Logging.LogPayload) => Effect.Effect<void> }) =>
         useLogHostBinding({ onLog }),
       { initialProps: { onLog: onLogA } }
     )
@@ -92,8 +92,8 @@ describe('useLogHostBinding — runtime', () => {
   })
 
   it('forwards the decoded {level, payload} to a custom onLog when provided', async () => {
-    const received: LogBridge.LogPayload[] = []
-    const onLog = (msg: LogBridge.LogPayload): Effect.Effect<void> =>
+    const received: Logging.LogPayload[] = []
+    const onLog = (msg: Logging.LogPayload): Effect.Effect<void> =>
       Effect.sync(() => {
         received.push(msg)
       })

@@ -65,7 +65,7 @@ jest.mock('expo-tundraish', () => {
 
 // Pipe mock — the e2e test already exercises the real-pipe round-trip,
 // so this mock only needs to: (a) act as a no-op Provider, (b) capture
-// the sender installed via `useAsBrowserSnifferSource` into a single
+// the sender installed via `useAsBrowserSnifferOutlet` into a single
 // slot, and (c) return a recording sender from `useCollectorSender`.
 let lastRegisteredSender: BrowserSnifferMessageSender | null = null
 const mockCollectorCalls: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = []
@@ -80,12 +80,12 @@ jest.mock('../message-sender-pipes.tsx', () => {
   return {
     BrowserSnifferPipeProvider: PassThroughProvider,
     CollectorPipeProvider: PassThroughProvider,
-    useAsBrowserSnifferSource: (sender: BrowserSnifferMessageSender): void => {
+    useAsBrowserSnifferOutlet: (sender: BrowserSnifferMessageSender): void => {
       ReactInner.useEffect(() => {
         lastRegisteredSender = sender
       }, [sender])
     },
-    useAsCollectorSource: (): void => undefined,
+    useAsCollectorOutlet: (): void => undefined,
     useBrowserSnifferSender: (): BrowserSnifferMessageSender => () => EffectInner.void,
     useCollectorSender: (): ((msg: {
       readonly _tag: string
@@ -237,10 +237,10 @@ describe('CollectorModalScreen', () => {
   })
 
   describe('sniffer-pipe registration', () => {
-    it('registers the WebView ref sender through useAsBrowserSnifferSource', async () => {
+    it('registers the WebView ref sender through useAsBrowserSnifferOutlet', async () => {
       render(<CollectorModalScreen source={{ _tag: 'Html', html: '<html></html>' }} />)
       if (lastRegisteredSender === null) {
-        throw new Error('No sender was registered through useAsBrowserSnifferSource')
+        throw new Error('No sender was registered through useAsBrowserSnifferOutlet')
       }
       await act(async () => {
         await Effect.runPromise(lastRegisteredSender!({ _tag: 'Click', querySelector: '#go' }))

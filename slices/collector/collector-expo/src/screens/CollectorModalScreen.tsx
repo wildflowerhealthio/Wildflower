@@ -10,7 +10,7 @@ import { useMemo, type JSX } from 'react'
 import { useFunctionSafeState } from 'react-kitchen-sink'
 import { StyleSheet } from 'react-native'
 
-import { useAsBrowserSnifferSource, useCollectorSender } from '../message-sender-pipes.tsx'
+import { useAsBrowserSnifferOutlet, useCollectorSender } from '../message-sender-pipes.tsx'
 import { toLoadFrom } from './to-load-from.ts'
 
 interface CollectorModalScreenProps {
@@ -51,7 +51,7 @@ const CollectorModalScreen = ({ source, onError }: CollectorModalScreenProps): J
   // it as a state updater.
   const [snifferSender, setSnifferSender] =
     useFunctionSafeState<BrowserSnifferMessageSender | null>(null)
-  useAsBrowserSnifferSource(snifferSender ?? fallbackWarningSnifferSender)
+  useAsBrowserSnifferOutlet(snifferSender ?? fallbackWarningSnifferSender)
 
   const sendToCollector = useCollectorSender()
 

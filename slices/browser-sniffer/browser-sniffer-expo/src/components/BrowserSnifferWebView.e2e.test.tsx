@@ -17,7 +17,7 @@
  */
 import { act, render, waitFor } from '@testing-library/react-native'
 import { Effect } from 'effect'
-import type { LogBridge } from 'effect-messaging-core'
+import type { Logging } from 'effect-messaging-core'
 import * as React from 'react'
 import type * as RNType from 'react-native'
 
@@ -141,8 +141,8 @@ describe('BrowserSnifferWebView (e2e with real BridgedWebView)', () => {
   })
 
   it('routes a Log wire message through onLog', async () => {
-    const logEvents: Array<LogBridge.LogPayload> = []
-    const onLog = (msg: LogBridge.LogPayload): Effect.Effect<void> =>
+    const logEvents: Array<Logging.LogPayload> = []
+    const onLog = (msg: Logging.LogPayload): Effect.Effect<void> =>
       Effect.sync(() => {
         logEvents.push(msg)
       })

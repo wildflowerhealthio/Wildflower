@@ -1,21 +1,21 @@
 import { type Effect } from 'effect'
-import { HostBindings, LogBridge } from 'effect-messaging-core'
+import { HostBindings, Logging } from 'effect-messaging-core'
 import { useMemo } from 'react'
 
 /** Optional override for the host-side `Log` handler. */
 interface UseLogHostBindingOptions {
   /**
    * Custom handler for decoded `Log` messages. When omitted, the default
-   * is {@link LogBridge.defaultOnLog} — surfaces each `Log` through
+   * is {@link Logging.defaultOnLog} — surfaces each `Log` through
    * `Effect.log<Level>(...payload)`. Kept as the parameter default (not
    * a body-level ternary) so the entry point documents the fallback at
    * the call site.
    */
-  readonly onLog?: (log: LogBridge.LogPayload) => Effect.Effect<void>
+  readonly onLog?: (log: Logging.LogPayload) => Effect.Effect<void>
 }
 
 /**
- * Host binding for {@link LogBridge.LogBridge}. Returns a memoised
+ * Host binding for {@link Logging.LogBridge}. Returns a memoised
  * {@link HostBindings.HostBindings} keyed on the (optional) `onLog`
  * override so callers can pass the result directly into a
  * `BridgedWebView`'s `bindings` (via `HostBindings.combine(...)`)
@@ -25,20 +25,18 @@ interface UseLogHostBindingOptions {
  * Mirrors the shape of slice-level `use<Slice>HostBinding` hooks
  * (`useNavigationHostBinding`, etc.) — `bridge`, `receiverLayer`, no
  * `initialMessages` (the bridge is Web→Host only). The web-side wiring
- * lives in {@link LogBridge.installConsoleInterceptor}, called inside
+ * lives in {@link Logging.installConsoleInterceptor}, called inside
  * an `onTransportReady` step at the embedded SPA's transport build
  * site, not here.
  */
 const useLogHostBinding = ({
-  onLog = LogBridge.defaultOnLog,
-}: UseLogHostBindingOptions = {}): HostBindings.HostBindings<
-  readonly [typeof LogBridge.LogBridge]
-> =>
+  onLog = Logging.defaultOnLog,
+}: UseLogHostBindingOptions = {}): HostBindings.HostBindings<readonly [typeof Logging.LogBridge]> =>
   useMemo(
     () =>
       HostBindings.single({
-        bridge: LogBridge.LogBridge,
-        receiverLayer: LogBridge.LogBridge.Host.ReceiverLayer({
+        bridge: Logging.LogBridge,
+        receiverLayer: Logging.LogBridge.Host.ReceiverLayer({
           Log: onLog,
         }),
       }),

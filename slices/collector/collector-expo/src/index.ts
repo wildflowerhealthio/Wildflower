@@ -3,8 +3,8 @@ export type { CollectorHostProviderProps } from './collector-host-context.tsx'
 export { useCollectorReceiverLayer } from './use-receiver-layer.ts'
 export { useCollectorHostBinding } from './use-host-binding.ts'
 export {
-  useAsBrowserSnifferSource,
-  useAsCollectorSource,
+  useAsBrowserSnifferOutlet,
+  useAsCollectorOutlet,
   useBrowserSnifferSender,
   useCollectorSender,
 } from './message-sender-pipes.tsx'
