@@ -1,10 +1,11 @@
-import * as PlatformError from '@effect/platform/Error'
-import type * as FileSystem from '@effect/platform/FileSystem'
-import * as Headers from '@effect/platform/Headers'
-import * as HttpPlatform from '@effect/platform/HttpPlatform'
-import * as ServerResponse from '@effect/platform/HttpServerResponse'
-import * as Effect from 'effect/Effect'
-import * as Layer from 'effect/Layer'
+import {
+  Error as PlatformError,
+  type FileSystem,
+  Headers,
+  HttpPlatform,
+  HttpServerResponse as ServerResponse,
+} from '@effect/platform'
+import { Effect, Layer } from 'effect'
 import { File } from 'expo-file-system'
 import type { ExpoFileBody } from './httpServer.ts'
 

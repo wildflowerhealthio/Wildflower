@@ -1,26 +1,33 @@
 /**
- * Combined context layer providing the Expo `HttpPlatform` together with the
- * default `FileSystem` (noop), `Etag.Generator`, and `Path` services from
- * `@effect/platform`'s `HttpServer.layerContext`.
+ * Combined context layer providing the Expo `HttpPlatform`, the Expo-backed
+ * `FileSystem.FileSystem`, and the default `Etag.Generator` + `Path` services
+ * from `@effect/platform`'s `HttpServer.layerContext`.
  */
-import type * as Etag from '@effect/platform/Etag'
-import type * as FileSystem from '@effect/platform/FileSystem'
-import type * as HttpPlatform from '@effect/platform/HttpPlatform'
-import * as Server from '@effect/platform/HttpServer'
-import type * as Path from '@effect/platform/Path'
-import * as Layer from 'effect/Layer'
+import {
+  type Etag,
+  type FileSystem,
+  type HttpPlatform,
+  HttpServer as Server,
+  type Path,
+} from '@effect/platform'
+import { Layer } from 'effect'
+import * as ExpoFileSystem from './expo-file-system.ts'
 import * as ExpoHttpPlatform from './ExpoHttpPlatform.ts'
 
 /**
- * Provides the Expo `HttpPlatform` together with `FileSystem` (noop),
+ * Provides the Expo `HttpPlatform`, the Expo-backed `FileSystem.FileSystem`,
  * `Etag.Generator`, and `Path`.
  *
- * Built by merging `@effect/platform`'s `HttpServer.layerContext` with the
- * Expo-specific `HttpPlatform`, so `HttpServerResponse.file()` produces the
- * `ExpoFileBody` sentinel that the native bridge serves directly without
- * crossing the JS bridge as bytes.
- *
+ * `HttpServer.layerContext` ships a noop `FileSystem` whose `stat` fails
+ * unconditionally. `Layer.mergeAll` is built on `Context.mergeAll`, which
+ * walks the contexts in order and uses `Map.set` for each entry — so later
+ * arguments shadow earlier ones for shared tags. Listing `Server.layerContext`
+ * first and `ExpoFileSystem.layer` after it lets the Expo `FileSystem` win
+ * while still pulling in the default `Etag.Generator` and `Path.Path`.
+ * Callers of `HttpServerResponse.file(...)` (e.g. `StaticSpaLive`'s asset
+ * fallback) and any other `FileSystem.FileSystem` consumer get a working
+ * implementation backed by `expo-file-system`'s synchronous APIs.
  */
 export const layer: Layer.Layer<
   HttpPlatform.HttpPlatform | FileSystem.FileSystem | Etag.Generator | Path.Path
-> = Layer.provideMerge(ExpoHttpPlatform.layer, Server.layerContext)
+> = Layer.mergeAll(Server.layerContext, ExpoFileSystem.layer, ExpoHttpPlatform.layer)

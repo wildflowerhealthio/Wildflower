@@ -1,9 +1,7 @@
 /* oxlint-disable typescript-eslint/no-unsafe-type-assertion, typescript-eslint/unbound-method */
-import * as Cookies from '@effect/platform/Cookies'
+import { Cookies } from '@effect/platform'
 import { fc, test as fcTest } from '@fast-check/jest'
-import * as Effect from 'effect/Effect'
-import * as Option from 'effect/Option'
-import type * as Stream from 'effect/Stream'
+import { Effect, Option, type Stream } from 'effect'
 import type ExpoEffectPlatformModuleType from '../ExpoEffectPlatformModule.ts'
 
 // ---------------------------------------------------------------------------
