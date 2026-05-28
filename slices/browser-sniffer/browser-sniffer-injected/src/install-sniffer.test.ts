@@ -11,7 +11,7 @@ import {
 import { Schema } from 'effect'
 import { LogBridge } from 'effect-messaging-core'
 import * as fc from 'fast-check'
-import { utilityExpectations } from 'kitchen-sink/test'
+import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import { installSniffer, SNIFFER_STATE_KEY, snifferScript, type SnifferState } from './index.ts'
 
@@ -193,7 +193,8 @@ describe('fetch shim', () => {
             expect.objectContaining({ _tag: 'ResponseStart', status, statusText }),
           ])
         }
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -239,7 +240,8 @@ describe('fetch shim', () => {
           }),
         ])
         validateMessages(getMs())
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -292,7 +294,8 @@ describe('fetch shim', () => {
         await res.text()
 
         validateMessages(getMs())
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -310,7 +313,8 @@ describe('fetch shim', () => {
         const datas = withTag(getMs(), 'ResponseData')
         const reconstructed = datas.map((m) => fromBase64(m.data as string)).join('')
         expect(reconstructed).toBe(body)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -324,7 +328,8 @@ describe('fetch shim', () => {
         await window.fetch(url)
 
         expect(withTag(getMs(), 'ResponseStart')).toEqual([expect.objectContaining({ url })])
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -341,7 +346,8 @@ describe('fetch shim', () => {
         const msgs = getMs().filter((m) => m._tag !== 'Log' && m._tag !== '__Ready')
         expect(withTag(msgs, 'ResponseStart')).toHaveLength(1)
         expect(withTag(msgs, 'ResponseFinished')).toHaveLength(1)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -358,7 +364,8 @@ describe('fetch shim', () => {
         const msgs = getMs().filter((m) => m._tag !== 'Log' && m._tag !== '__Ready')
         const ids = new Set(msgs.map((m) => m['id']))
         expect(ids.size).toBe(1)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -464,7 +471,8 @@ describe('fetch shim', () => {
           }
           validateMessages(getMs())
         }
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 })
@@ -612,7 +620,8 @@ describe('XHR shim', () => {
         const datas = withTag(getMs(), 'ResponseData')
         expect(datas.map((m) => fromBase64(m.data as string))).toEqual(parts)
         expect(datas.map((m) => fromBase64(m.data as string)).join('')).toBe(accumulated)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 

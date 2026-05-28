@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Timing as StoreTiming } from 'emr-core/schemas'
@@ -13,7 +14,8 @@ describe('FhirR4Timing', () => {
         const fhir = Schema.encodeSync(Timing.Schema)(timing)
         const decoded = Schema.decodeSync(Timing.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreTiming.Schema, timing)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

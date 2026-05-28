@@ -53,6 +53,7 @@
     "bumpp": "^11.0.1",
     "effect": "catalog:",
     "fast-check": "catalog:",
+    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },

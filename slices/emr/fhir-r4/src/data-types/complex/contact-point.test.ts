@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { ContactPoint as StoreContactPoint } from 'emr-core/schemas'
@@ -13,7 +14,8 @@ describe('FhirR4ContactPoint', () => {
         const fhir = Schema.encodeSync(ContactPoint.Schema)(contactPoint)
         const decoded = Schema.decodeSync(ContactPoint.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreContactPoint.Schema, contactPoint)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as SampledData from './sampled-data.ts'
@@ -17,7 +18,8 @@ describe('SampledData model', () => {
         const encoded = Schema.encodeSync(SampledData.Schema)(sample)
         const decoded = Schema.decodeSync(SampledData.Schema)(encoded)
         expect(decoded).toSchemaEqual(SampledData.Schema, sample)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

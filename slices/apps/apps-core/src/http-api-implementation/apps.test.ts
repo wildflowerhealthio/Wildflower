@@ -10,6 +10,7 @@ import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise, makeSchema, type Store, State } from '@livestore/livestore'
 import { Layer, Schema } from 'effect'
 import fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import * as LocalHttpServerLivestore from 'local-http-server-core/livestore'
 import * as TunnelLivestore from 'tunnel-core/livestore'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
@@ -389,7 +390,7 @@ describe('LaunchApp property tests', () => {
           await localStore.shutdownPromise().catch(() => undefined)
         }
       }),
-      { numRuns: 25 }
+      { numRuns: numRunsFor(25) }
     )
   }, 60_000)
 })

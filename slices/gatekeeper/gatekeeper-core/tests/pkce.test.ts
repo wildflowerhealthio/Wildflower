@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { expect, test } from 'vite-plus/test'
 import { computeCodeChallenge } from '../src/internal/pkce.ts'
 
@@ -31,7 +32,7 @@ test('computeCodeChallenge produces base64url output (no +, /, =)', async () => 
         expect(challenge).not.toContain('=')
       }
     ),
-    { numRuns: 50 }
+    { numRuns: numRunsFor(50) }
   )
 })
 
@@ -48,7 +49,7 @@ test('computeCodeChallenge is deterministic', async () => {
         expect(a).toBe(b)
       }
     ),
-    { numRuns: 25 }
+    { numRuns: numRunsFor(25) }
   )
 })
 
@@ -59,6 +60,6 @@ test('computeCodeChallenge produces a 43-character output for any input', async 
       const challenge = await Effect.runPromise(computeCodeChallenge(verifier))
       expect(challenge).toHaveLength(43)
     }),
-    { numRuns: 25 }
+    { numRuns: numRunsFor(25) }
   )
 })

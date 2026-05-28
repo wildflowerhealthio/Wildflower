@@ -1,5 +1,6 @@
 import { Arbitrary, Either, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as HumanName from './human-name.ts'
@@ -14,7 +15,8 @@ describe('HumanName model', () => {
         const encoded = Schema.encodeSync(HumanName.Schema)(humanName)
         const decoded = Schema.decodeSync(HumanName.Schema)(encoded)
         expect(decoded).toSchemaEqual(HumanName.Schema, humanName)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -111,7 +113,8 @@ describe('HumanName model', () => {
             const encoded = Schema.encodeSync(HumanName.Schema)(result.right)
             expect(encoded.family).toBe(name)
           }
-        })
+        }),
+        { numRuns: numRunsFor(100) }
       )
     })
   })

@@ -1,6 +1,7 @@
 import { renderHook } from '@testing-library/react'
 import { Effect } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { NoContextException } from 'react-kitchen-sink'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
@@ -162,7 +163,7 @@ describe('makeBridgeDispatcher — properties', () => {
           expect(NavigationBridge.name).toBe('Navigation')
         }
       ),
-      { numRuns: 50 }
+      { numRuns: numRunsFor(50) }
     )
   })
 
@@ -210,7 +211,7 @@ describe('makeBridgeDispatcher — properties', () => {
           expect(received).toEqual(beforeMessages.map((m) => m.pathname))
         }
       ),
-      { numRuns: 25 }
+      { numRuns: numRunsFor(25) }
     )
   })
 })

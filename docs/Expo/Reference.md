@@ -81,7 +81,7 @@ The other commonly-failing two are config drift, covered above:
 
 Vite+ owns lint/format/typecheck/test/pack across the monorepo. Expo CLI owns native builds, bundling for the device, and dev-server orchestration.
 
-- Use `vp check` for lint/typecheck and `vp run jest` for the JS layer of an Expo module — Expo packages run Jest (with `jest-expo`), not Vitest. The root `vp run test-all` covers both runners.
+- Use `vp check` for lint/typecheck and `vp run jest` for the JS layer of an Expo module — Expo packages run Jest (with `jest-expo`), not Vitest. The root `vp run test:all` covers both runners.
 - Use `npx expo run:ios` / `npx expo run:android` / `npx expo start` from the example app for native and device work.
 - Never run `npx expo install` against the catalog — it pins versions in `package.json`. Update `pnpm-workspace.yaml`'s `catalog:` instead, then `vp install`.
 

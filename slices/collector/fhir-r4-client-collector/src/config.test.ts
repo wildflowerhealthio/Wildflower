@@ -1,6 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import fc from 'fast-check'
-import { utilityExpectations } from 'kitchen-sink/test'
+import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { InstanceConfig, defaultConfig } from './config.ts'
@@ -20,7 +20,8 @@ describe('InstanceConfig', () => {
       fc.property(Arbitrary.make(InstanceConfig), (config) => {
         const encoded = Schema.encodeSync(InstanceConfig)(config)
         expect(Schema.decodeSync(InstanceConfig)(encoded)).toEqual(config)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 

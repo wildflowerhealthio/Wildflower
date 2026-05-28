@@ -1,6 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import fc from 'fast-check'
-import { utilityExpectations } from 'kitchen-sink/test'
+import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { SetTunnelRequestBodySchema, TunnelStateSchema } from './tunnel.ts'
@@ -13,7 +13,8 @@ describe('TunnelStateSchema', () => {
       fc.property(Arbitrary.make(TunnelStateSchema), (state) => {
         const encoded = Schema.encodeSync(TunnelStateSchema)(state)
         expect(Schema.decodeSync(TunnelStateSchema)(encoded)).toEqual(state)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 

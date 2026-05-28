@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as Identifier from './identifier.ts'
@@ -20,7 +21,7 @@ import * as Reference from './reference.ts'
 // runtime every schema is no-context, so the cast is sound.
 // ---------------------------------------------------------------------------
 
-const REFERENCE_NUM_RUNS = 25
+const REFERENCE_NUM_RUNS = numRunsFor(25)
 
 const roundTripReferenceField = (
   name: keyof typeof Reference.Schema.Type,

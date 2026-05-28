@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Narrative as StoreNarrative } from 'emr-core/schemas'
@@ -13,7 +14,8 @@ describe('FhirR4Narrative', () => {
         const fhir = Schema.encodeSync(Narrative.Schema)(narrative)
         const decoded = Schema.decodeSync(Narrative.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreNarrative.Schema, narrative)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

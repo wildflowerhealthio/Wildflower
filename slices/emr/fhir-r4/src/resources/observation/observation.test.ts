@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Observation as StoreObservation } from 'emr-core/livestore'
@@ -104,7 +105,8 @@ describe('FhirR4Observation', () => {
 
   test('property: code field round-trips', () => {
     fc.assert(
-      fc.property(fieldArb('code'), (override) => roundTrip({ ...sampleObservation, ...override }))
+      fc.property(fieldArb('code'), (override) => roundTrip({ ...sampleObservation, ...override })),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -112,7 +114,8 @@ describe('FhirR4Observation', () => {
     fc.assert(
       fc.property(fieldArb('status'), (override) =>
         roundTrip({ ...sampleObservation, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -120,7 +123,8 @@ describe('FhirR4Observation', () => {
     fc.assert(
       fc.property(fieldArb('identifier'), (override) =>
         roundTrip({ ...sampleObservation, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -128,7 +132,8 @@ describe('FhirR4Observation', () => {
     fc.assert(
       fc.property(fieldArb('category'), (override) =>
         roundTrip({ ...sampleObservation, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -136,13 +141,15 @@ describe('FhirR4Observation', () => {
     fc.assert(
       fc.property(fieldArb('interpretation'), (override) =>
         roundTrip({ ...sampleObservation, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
   test('property: note field round-trips', () => {
     fc.assert(
-      fc.property(fieldArb('note'), (override) => roundTrip({ ...sampleObservation, ...override }))
+      fc.property(fieldArb('note'), (override) => roundTrip({ ...sampleObservation, ...override })),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -150,7 +157,8 @@ describe('FhirR4Observation', () => {
     fc.assert(
       fc.property(fieldArb('component'), (override) =>
         roundTrip({ ...sampleObservation, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -158,7 +166,8 @@ describe('FhirR4Observation', () => {
     fc.assert(
       fc.property(fieldArb('referenceRange'), (override) =>
         roundTrip({ ...sampleObservation, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -173,28 +182,46 @@ describe('FhirR4Observation', () => {
         'performer'
       )
     )
-    fc.assert(fc.property(arb, (override) => roundTrip({ ...sampleObservation, ...override })))
+    fc.assert(
+      fc.property(arb, (override) => roundTrip({ ...sampleObservation, ...override })),
+      {
+        numRuns: numRunsFor(100),
+      }
+    )
   })
 
   test('property: nullable single references round-trip (subject / encounter / device / specimen)', () => {
     const arb = Arbitrary.make(
       StoreObservation.RowSchema.pick('subject', 'encounter', 'device', 'specimen')
     )
-    fc.assert(fc.property(arb, (override) => roundTrip({ ...sampleObservation, ...override })))
+    fc.assert(
+      fc.property(arb, (override) => roundTrip({ ...sampleObservation, ...override })),
+      {
+        numRuns: numRunsFor(100),
+      }
+    )
   })
 
   test('property: nullable single CodeableConcepts round-trip (bodySite / dataAbsentReason / method)', () => {
     const arb = Arbitrary.make(
       StoreObservation.RowSchema.pick('bodySite', 'dataAbsentReason', 'method')
     )
-    fc.assert(fc.property(arb, (override) => roundTrip({ ...sampleObservation, ...override })))
+    fc.assert(
+      fc.property(arb, (override) => roundTrip({ ...sampleObservation, ...override })),
+      {
+        numRuns: numRunsFor(100),
+      }
+    )
   })
 
   test('property: shell primitives round-trip', () => {
     const shellArb = Arbitrary.make(
       StoreObservation.RowSchema.pick('issued', 'language', 'implicitRules', 'meta')
     )
-    fc.assert(fc.property(shellArb, (override) => roundTrip({ ...sampleObservation, ...override })))
+    fc.assert(
+      fc.property(shellArb, (override) => roundTrip({ ...sampleObservation, ...override })),
+      { numRuns: numRunsFor(100) }
+    )
   })
 
   test('property: effective[x] choice field round-trips', () => {
@@ -207,7 +234,8 @@ describe('FhirR4Observation', () => {
       )
     )
     fc.assert(
-      fc.property(effectiveArb, (override) => roundTrip({ ...sampleObservation, ...override }))
+      fc.property(effectiveArb, (override) => roundTrip({ ...sampleObservation, ...override })),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -227,6 +255,11 @@ describe('FhirR4Observation', () => {
         'valuePeriod'
       )
     )
-    fc.assert(fc.property(valueArb, (override) => roundTrip({ ...sampleObservation, ...override })))
+    fc.assert(
+      fc.property(valueArb, (override) => roundTrip({ ...sampleObservation, ...override })),
+      {
+        numRuns: numRunsFor(100),
+      }
+    )
   })
 })

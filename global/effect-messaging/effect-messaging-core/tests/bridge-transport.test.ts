@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { LoggingLayerTest } from 'kitchen-sink/test'
+import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 import * as BridgeTransport from '../src/bridge-transport.ts'
 import * as Bridge from '../src/bridge.ts'
@@ -264,7 +264,7 @@ describe('BridgeTransport.make — queue lifecycle', () => {
           }
         }
       ),
-      { numRuns: 25 }
+      { numRuns: numRunsFor(25) }
     )
   })
 })

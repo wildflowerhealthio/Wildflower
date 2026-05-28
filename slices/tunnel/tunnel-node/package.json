@@ -36,6 +36,7 @@
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
+    "kitchen-sink": "workspace:*",
     "local-http-server-core": "workspace:*",
     "tunnel-core": "workspace:*",
     "typescript": "catalog:",

@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as Address from './address.ts'
@@ -13,7 +14,8 @@ describe('Address model', () => {
         const encoded = Schema.encodeSync(Address.Schema)(address)
         const decoded = Schema.decodeSync(Address.Schema)(encoded)
         expect(decoded).toSchemaEqual(Address.Schema, address)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

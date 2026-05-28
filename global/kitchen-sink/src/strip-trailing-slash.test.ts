@@ -2,6 +2,7 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { stripTrailingSlash } from './index.ts'
+import { numRunsFor } from './test/num-runs-for.ts'
 
 describe('stripTrailingSlash', () => {
   it('removes a single trailing slash', () => {
@@ -36,7 +37,8 @@ describe('stripTrailingSlash', () => {
         } else {
           expect(stripped).toBe(s)
         }
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

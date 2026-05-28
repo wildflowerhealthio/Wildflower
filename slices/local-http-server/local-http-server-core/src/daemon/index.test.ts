@@ -15,6 +15,7 @@ import type { Store } from '@livestore/livestore'
 import { createStorePromise } from '@livestore/livestore'
 import { Deferred, Effect, Exit, Queue, Stream, type Scope } from 'effect'
 import fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { LocalHttpServerStore, schema, ServerState } from '../livestore/index.ts'
@@ -529,7 +530,7 @@ describe('runHttpServerDaemon', () => {
   // -------------------------------------------------------------------------
 
   describe('properties', () => {
-    const PROP_OPTS = { numRuns: 50 }
+    const PROP_OPTS = { numRuns: numRunsFor(50) }
     // 50 runs × a fresh in-memory livestore + reconfigure cycle each
     // pushes the default 5 s ceiling; 30 s gives headroom for CI.
     const PROP_TIMEOUT_MS = 30_000

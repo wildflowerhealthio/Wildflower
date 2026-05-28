@@ -48,10 +48,10 @@ All workflow runs through `vp`:
 
 ```bash
 vp run dev           # Start the website dev server
-vp run ready         # Format, lint, test-all (Vitest + Jest), build (-r) — full pre-PR check
+vp run ready         # Format, lint, test:all (Vitest + Jest), build (-r) — full pre-PR check
 vp test              # Run Vitest across all packages (Vitest projects mode wired in root vite.config.ts)
 vp run jest          # Run Jest across Expo packages (vp run -r --concurrency-limit 1 jest)
-vp run test-all      # Run Vitest then Jest (full test pass)
+vp run test:all      # Run Vitest then Jest (full test pass)
 vp run build -r      # Build the monorepo
 vp check             # Format + lint + typecheck
 vp install           # Install/sync dependencies
@@ -59,7 +59,7 @@ vp fmt               # Format with Oxfmt
 vp lint              # Lint with Oxlint (add --type-aware for type-aware rules)
 ```
 
-Most packages use Vitest via Vite+. The Expo packages (`apps/wildflower`, `global/expo-effect-platform`, `global/expo-localtunnel`, `global/expo-tundraish`) run their tests through Jest with `jest-expo`, exposed as a `vp run jest` script in each package. The root `vp run jest` fans out to those packages with `--concurrency-limit 1`, and `vp run test-all` runs Vitest followed by Jest.
+Most packages use Vitest via Vite+. The Expo packages (`apps/wildflower`, `global/expo-effect-platform`, `global/expo-localtunnel`, `global/expo-tundraish`) run their tests through Jest with `jest-expo`, exposed as a `vp run jest` script in each package. The root `vp run jest` fans out to those packages with `--concurrency-limit 1`, and `vp run test:all` runs Vitest followed by Jest.
 
 For the full Vite+ command surface and pitfalls, see the Vite+ block at the bottom of [AGENTS.md](./AGENTS.md).
 
@@ -118,7 +118,7 @@ For comprehensive testing documentation, see [docs/Testing/](./docs/Testing/Test
 
 - Use **Vitest via Vite+** for all packages except Expo. Run `vp test` from the workspace root (Vitest projects mode honors per-package configs) or from any package directory.
 - Expo packages (`apps/wildflower`, `global/expo-*`) use **Jest with `jest-expo`** — run via `vp run jest` in the package, or `vp run jest` from the root to fan out
-- `vp run test-all` runs Vitest then Jest for a complete test pass
+- `vp run test:all` runs Vitest then Jest for a complete test pass
 - Test files alongside source: `*.test.ts`
 - **Property-based testing first** with `fast-check` and `Arbitrary.make(Schema)`
 

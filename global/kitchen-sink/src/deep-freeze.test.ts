@@ -2,6 +2,7 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { deepFreeze } from './index.ts'
+import { numRunsFor } from './test/num-runs-for.ts'
 
 describe('deepFreeze', () => {
   it('freezes the top-level object', () => {
@@ -73,7 +74,8 @@ describe('deepFreeze', () => {
           }
         }
         walk(frozen)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

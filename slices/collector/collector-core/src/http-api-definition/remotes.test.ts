@@ -1,6 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import fc from 'fast-check'
-import { utilityExpectations } from 'kitchen-sink/test'
+import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
@@ -17,7 +17,8 @@ describe('CreateRemotePayloadSchema', () => {
       fc.property(Arbitrary.make(CreateRemotePayloadSchema), (payload) => {
         const encoded = Schema.encodeSync(CreateRemotePayloadSchema)(payload)
         expect(Schema.decodeSync(CreateRemotePayloadSchema)(encoded)).toEqual(payload)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -42,7 +43,8 @@ describe('UpdateRemotePayloadSchema', () => {
       fc.property(Arbitrary.make(UpdateRemotePayloadSchema), (payload) => {
         const encoded = Schema.encodeSync(UpdateRemotePayloadSchema)(payload)
         expect(Schema.decodeSync(UpdateRemotePayloadSchema)(encoded)).toEqual(payload)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 

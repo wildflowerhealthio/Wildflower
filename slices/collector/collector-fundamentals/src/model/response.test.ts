@@ -1,4 +1,5 @@
 import fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { RemoteResponse } from './response.ts'
@@ -58,7 +59,8 @@ describe('RemoteResponse', () => {
             statusText,
           })
         }
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

@@ -1,4 +1,5 @@
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { cn } from './cn.ts'
@@ -40,7 +41,8 @@ describe('cn', () => {
         expect(result).not.toMatch(/^\s/)
         expect(result).not.toMatch(/\s$/)
         expect(result).not.toMatch(/\s\s/)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -51,7 +53,8 @@ describe('cn', () => {
           .split(' ')
           .filter((t) => t.length > 0)
         expect(tokens).toEqual(classes.filter((c) => c.length > 0))
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as Meta from './meta.ts'
@@ -13,7 +14,8 @@ describe('Meta base model', () => {
         const encoded = Schema.encodeSync(Meta.Schema)(resource)
         const decoded = Schema.decodeSync(Meta.Schema)(encoded)
         expect(decoded).toSchemaEqual(Meta.Schema, resource)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

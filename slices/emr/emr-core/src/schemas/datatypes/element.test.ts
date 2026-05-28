@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, expectTypeOf, test } from 'vite-plus/test'
 
 import { Schema as TestElementSchema } from './element.ts'
@@ -41,7 +42,8 @@ describe('Element', () => {
         const encoded = Schema.encodeSync(TestElementSchema)(element)
         const decoded = Schema.decodeSync(TestElementSchema)(encoded)
         expect(decoded).toSchemaEqual(TestElementSchema, element)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

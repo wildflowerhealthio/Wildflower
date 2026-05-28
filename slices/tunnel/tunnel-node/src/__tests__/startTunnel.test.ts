@@ -28,6 +28,7 @@ import { EventEmitter } from 'node:events'
 
 import { Cause, Effect, Exit, Fiber, Stream } from 'effect'
 import fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import type { ResolvedConfig } from 'tunnel-core/daemon'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -305,6 +306,7 @@ describe('startTunnel — granted-domain parsing (property)', () => {
             expect(result.value).toEqual({ subdomain: head, rootDomain: tail })
           }
         }
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     ))
 })

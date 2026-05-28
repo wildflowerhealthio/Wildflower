@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Logger, LogLevel as EffectLogLevel, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
 import * as LogBridge from '../src/log-bridge.ts'
 import type * as MessageHandler from '../src/message-handler.ts'
@@ -53,7 +54,8 @@ describe('LogBridge — wire round-trip', () => {
           const decoded = Schema.decodeSync(LogBridge.LogMessage)(encoded)
           expect(decoded).toEqual({ _tag: 'Log', level, payload })
         }
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 

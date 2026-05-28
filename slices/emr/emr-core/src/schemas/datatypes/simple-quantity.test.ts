@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as SimpleQuantity from './simple-quantity.ts'
@@ -13,7 +14,8 @@ describe('SimpleQuantity model', () => {
         const encoded = Schema.encodeSync(SimpleQuantity.Schema)(quantity)
         const decoded = Schema.decodeSync(SimpleQuantity.Schema)(encoded)
         expect(decoded).toSchemaEqual(SimpleQuantity.Schema, quantity)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

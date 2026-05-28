@@ -11,6 +11,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # Need history + origin/main for `test:changed` to compute the merge-base.
+          fetch-depth: 0
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
@@ -23,8 +26,10 @@ jobs:
       - name: Build internal projects
         run: vp run pack
 
-      - name: Run tests in Vitest packages
-        run: vp test
+      - name: Run tests (full strength on main)
+        if: github.event_name == 'push'
+        run: vp run test:all
 
-      - name: Run tests in React Native + Jest packages
-        run: vp run jest
+      - name: Run tests (reduced for unchanged on PR)
+        if: github.event_name == 'pull_request'
+        run: vp run test:changed

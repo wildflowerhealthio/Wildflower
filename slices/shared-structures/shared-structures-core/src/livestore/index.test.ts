@@ -6,6 +6,7 @@ import {
 } from '@livestore/livestore'
 import { Effect, Schema } from 'effect'
 import fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
 
 import { composeLivestoreModules, defineSliceLivestore } from './index.ts'
@@ -134,7 +135,8 @@ describe('defineSliceLivestore', () => {
           class FixtureStore extends sliceLs.StoreTag<FixtureStore>() {}
           expect(FixtureStore.key).toBe(name)
         }
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

@@ -6,6 +6,7 @@
  */
 import { Chunk, Data, Effect, Stream } from 'effect'
 import fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { diffIntents } from './diffIntents.ts'
@@ -116,7 +117,8 @@ describe('diffIntents', () => {
       fc.asyncProperty(fc.array(arbSnapshot, { minLength: 0, maxLength: 8 }), async (snapshots) => {
         const intents = await Effect.runPromise(collect(snapshots))
         expect(intents.length).toBeLessThanOrEqual(snapshots.length)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     ))
 
   it('never emits two consecutive Stop intents (each Stop must be preceded by a Start)', () =>
@@ -128,7 +130,8 @@ describe('diffIntents', () => {
             throw new Error(`consecutive Stops at index ${String(i)}`)
           }
         }
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     ))
 
   it('the first emitted intent is always StartOrReconfigure (initial inactive is filtered)', () =>
@@ -137,7 +140,8 @@ describe('diffIntents', () => {
         const intents = await Effect.runPromise(collect(snapshots))
         if (intents.length === 0) return
         expect(intents[0]._tag).toBe('StartOrReconfigure')
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     ))
 
   it('every Stop is preceded by a StartOrReconfigure with no intervening Stop', () =>
@@ -166,6 +170,7 @@ describe('diffIntents', () => {
             throw new Error(`Stop at index ${String(i)} has no preceding StartOrReconfigure`)
           }
         })
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     ))
 })

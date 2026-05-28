@@ -1,6 +1,7 @@
 import type { Context } from 'effect'
 import { Effect, Layer, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { assertType, describe, expect, test } from 'vite-plus/test'
 import * as Bridge from '../src/bridge.ts'
 import * as TestPlatformAdapterLayer from '../src/test-platform-adapter-layer.ts'
@@ -258,7 +259,8 @@ test('property: outbound schema keys equal declared tag set', () => {
         expect(Object.keys(bridge.Host.OutboundSchemas).toSorted()).toEqual(hostOnly.toSorted())
         expect(Object.keys(bridge.Web.OutboundSchemas).toSorted()).toEqual(webTags.toSorted())
       }
-    )
+    ),
+    { numRuns: numRunsFor(100) }
   )
 })
 
@@ -280,7 +282,8 @@ test('property: send → decodeSync round-trips identity for any wired message',
             : Schema.decodeSync(bridge.Web.InboundSchemas.Buzz)(sentSink[0] ?? '')
         expect(decoded).toEqual(message)
       }
-    )
+    ),
+    { numRuns: numRunsFor(100) }
   )
 })
 
@@ -311,6 +314,7 @@ test('property: same-name bridges always mint distinct HandlerTag instances', ()
         expect(a.Host.HandlerTag).not.toBe(b.Host.HandlerTag)
         expect(a.Web.HandlerTag).not.toBe(b.Web.HandlerTag)
       }
-    )
+    ),
+    { numRuns: numRunsFor(100) }
   )
 })

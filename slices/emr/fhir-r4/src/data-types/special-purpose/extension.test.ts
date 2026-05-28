@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Address as StoreAddress, Extension as StoreExtension } from 'emr-core/schemas'
@@ -18,7 +19,8 @@ describe('FhirR4Extension', () => {
           const decoded = Schema.decodeSync(Extension.Schema)(fhir)
           expect(decoded).toSchemaEqual(StoreExtension.Schema, extension)
         }
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -35,7 +37,8 @@ describe('FhirR4Extension', () => {
         const encoded = Schema.encodeSync(Extension.Schema)(storeExtension)
         const decoded = Schema.decodeSync(Extension.Schema)(encoded)
         expect(decoded).toSchemaEqual(StoreExtension.Schema, storeExtension)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

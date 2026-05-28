@@ -1,5 +1,6 @@
 import { Arbitrary, DateTime, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as Period from './period.ts'
@@ -17,7 +18,8 @@ describe('Period model', () => {
         const encoded = Schema.encodeSync(Period.Schema)(period)
         const decoded = Schema.decodeSync(Period.Schema)(encoded)
         expect(decoded).toSchemaEqual(Period.Schema, period)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
