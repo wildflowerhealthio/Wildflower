@@ -8,6 +8,7 @@ import {
   TransportAdapter,
   UrlParamMessage,
 } from 'effect-messaging-core'
+import { flattenTuples } from 'kitchen-sink/types'
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { useComponentScopedRunner } from 'react-kitchen-sink'
 import { TransportWebView, type TransportWebViewSource } from './transport-webview.tsx'
@@ -185,10 +186,7 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
           // mapped-tuple over `Array.prototype.flat`, so we re-narrow
           // here.
           const baseUrlParsed = new URL(transportBaseUrl)
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          const flatInitial = bindings.initialMessages.flat() as ReadonlyArray<
-            Bridge.UrlParamableMessage<Bridges>
-          >
+          const flatInitial = flattenTuples(bindings.initialMessages)
           const embedUrl = UrlParamMessage.appendMessagesToUrl(
             baseUrlParsed,
             bridges,

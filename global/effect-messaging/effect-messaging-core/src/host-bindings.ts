@@ -88,11 +88,7 @@ const single = <const B extends Bridge.AnyBridge>(binding: {
   // doesn't fire on the structural `Bridge.AnyBridge` bound. The
   // assertion is sound: the layer was declared against the same
   // handler tag the mapped type extracts.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  receiverLayers: [binding.receiverLayer] as unknown as Bridge.TransportLayers<
-    readonly [B],
-    'Host'
-  >,
+  receiverLayers: [binding.receiverLayer],
   initialMessages: [binding.initialMessages ?? []] as const,
   onTransportReady: [binding.onTransportReady] as const,
 })
