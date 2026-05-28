@@ -26,7 +26,7 @@ interface MadeNamedPipe<
   /**
    * Register a typed sender as the active downstream for this pipe.
    */
-  readonly useAsSource: (sender: BridgeTransport.MessageSender<TBridges, TSide>) => void
+  readonly useAsOutlet: (sender: BridgeTransport.MessageSender<TBridges, TSide>) => void
   /**
    * Get the typed sender for this pipe. The returned function is
    * identity-stable for the lifetime of the surrounding Provider — safe
@@ -34,14 +34,14 @@ interface MadeNamedPipe<
    * `handlerRef.current` at suspend time, so callers don't need to
    * re-render to see a sender registered later. Pre-mount sends route
    * through the default warn-and-drop handler until
-   * {@link MadeNamedPipe.useAsSource} commits its effect.
+   * {@link MadeNamedPipe.useAsOutlet} commits its effect.
    */
   readonly useSender: () => BridgeTransport.MessageSender<TBridges, TSide>
   /**
    * Returns the underlying RefObject holding the active sender.
    * Identity-stable across renders. Initially points at
    * {@link MadeNamedPipe.defaultSender} (the pipe's built-in
-   * warn-and-drop) and is updated by {@link MadeNamedPipe.useAsSource}
+   * warn-and-drop) and is updated by {@link MadeNamedPipe.useAsOutlet}
    * when a sender is registered.
    *
    * Direct mutation of `.current` is a supported pattern — reach for
@@ -53,10 +53,10 @@ interface MadeNamedPipe<
   /**
    * The pipe's built-in warn-and-drop sender — what
    * {@link MadeNamedPipe.useSender} resolves to before any
-   * {@link MadeNamedPipe.useAsSource} call commits.
+   * {@link MadeNamedPipe.useAsOutlet} call commits.
    *
    * Exposed so consumers gating registration on a not-yet-ready upstream
-   * (e.g. `useAsSource(realSender ?? defaultSender)`) can plug the same
+   * (e.g. `useAsOutlet(realSender ?? defaultSender)`) can plug the same
    * default in directly instead of re-implementing their own
    * warn-and-drop wrapper.
    */
@@ -68,7 +68,7 @@ interface MadeNamedPipe<
  * {@link BridgeTransport.MessageSender} for the given bridge tuple and
  * side.
  *
- * Each call returns a `{ Provider, useAsSource, useSender, useSenderRef,
+ * Each call returns a `{ Provider, useAsOutlet, useSender, useSenderRef,
  * defaultSender }` quintuple where `Provider.displayName` is
  * `${TName}PipeProvider`. Consumers typically destructure-and-rename:
  *
@@ -76,7 +76,7 @@ interface MadeNamedPipe<
  * const pipe = makeNamedPipe('BrowserSniffer', [BrowserSnifferBridge] as const, 'Host')
  * export const {
  *   Provider: MessageSenderToBrowserSnifferProvider,
- *   useAsSource: useAsMessageSenderToBrowserSniffer,
+ *   useAsOutlet: useAsMessageSenderToBrowserSniffer,
  *   useSender: useMessageSenderToBrowserSniffer,
  * } = pipe
  * ```
@@ -116,7 +116,7 @@ const makeNamedPipe = <
     return useCallback((message) => Effect.suspend(() => handlerRef.current(message)), [handlerRef])
   }
 
-  const useAsSource = (sender: BridgeTransport.MessageSender<TBridges, TSide>): void => {
+  const useAsOutlet = (sender: BridgeTransport.MessageSender<TBridges, TSide>): void => {
     const handlerRef = useContextOrThrow(Context)
     useEffect(() => {
       handlerRef.current = sender
@@ -132,7 +132,7 @@ const makeNamedPipe = <
       displayName: `${TName}PipeProvider`
     },
     useSenderRef,
-    useAsSource,
+    useAsOutlet,
     useSender,
     defaultSender,
   }

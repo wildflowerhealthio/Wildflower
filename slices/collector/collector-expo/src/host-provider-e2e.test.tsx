@@ -70,8 +70,8 @@ jest.mock('expo-tundraish', (): Partial<typeof ExpoTundraishModule> => {
 
 import {
   CollectorHostProvider,
-  useAsBrowserSnifferSource,
-  useAsCollectorSource,
+  useAsBrowserSnifferOutlet,
+  useAsCollectorOutlet,
   useCollectorReceiverLayer,
   useCollectorSender,
 } from './index.ts'
@@ -93,8 +93,8 @@ const ProbeInsideProvider = ({
   readonly onLayerReady: (layer: ReturnType<typeof useCollectorReceiverLayer>) => void
 }): ReactElement | null => {
   const layer = useCollectorReceiverLayer()
-  useAsBrowserSnifferSource(snifferSender)
-  useAsCollectorSource(collectorSender)
+  useAsBrowserSnifferOutlet(snifferSender)
+  useAsCollectorOutlet(collectorSender)
   const collectorRead = useCollectorSender()
 
   useEffect(() => {

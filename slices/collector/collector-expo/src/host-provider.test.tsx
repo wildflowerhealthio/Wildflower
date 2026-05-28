@@ -122,7 +122,7 @@ import type { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
 import { useCollectorHost } from './collector-host-context.tsx'
 import {
   CollectorHostProvider,
-  useAsBrowserSnifferSource,
+  useAsBrowserSnifferOutlet,
   useCollectorReceiverLayer,
   type CollectorHostProviderProps,
 } from './index.ts'
@@ -146,7 +146,7 @@ const TestProbe = ({
   // Build the layer so the receiver-layer mock captures handlers.
   useCollectorReceiverLayer()
   const host = useCollectorHost()
-  useAsBrowserSnifferSource(sender ?? (() => Effect.void))
+  useAsBrowserSnifferOutlet(sender ?? (() => Effect.void))
   onReady?.(host)
   return null
 }

@@ -369,7 +369,7 @@ describe('AppShellWebView', () => {
 
     // Fire the binding's `onTransportReady` — the shell's wrapper
     // commits the sender into state, triggers a re-render, and
-    // `useAsNavigationSource` registers it in the pipe.
+    // `useAsNavigationOutlet` registers it in the pipe.
     await act(async () => {
       await EffectType.runPromise(navOnTransportReady(fakeTransportSender))
     })

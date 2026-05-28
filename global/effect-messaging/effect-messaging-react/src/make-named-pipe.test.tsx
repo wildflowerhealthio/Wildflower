@@ -41,12 +41,12 @@ describe('makeNamedPipe — examples', () => {
   })
 
   test('register → send forwards to the registered sender', async () => {
-    const { Provider, useAsSource, useSender } = makeNamedPipe('Test', testBridges, 'Host')
+    const { Provider, useAsOutlet, useSender } = makeNamedPipe('Test', testBridges, 'Host')
     const { sender, received } = makeRecordingSender<TestBridges, 'Host'>()
 
     const { result } = renderHook(
       () => {
-        useAsSource(sender)
+        useAsOutlet(sender)
         return useSender()
       },
       {
@@ -59,13 +59,13 @@ describe('makeNamedPipe — examples', () => {
   })
 
   test('re-register replaces the active sender', async () => {
-    const { Provider, useAsSource, useSender } = makeNamedPipe('Test', testBridges, 'Host')
+    const { Provider, useAsOutlet, useSender } = makeNamedPipe('Test', testBridges, 'Host')
     const first = makeRecordingSender<TestBridges, 'Host'>()
     const second = makeRecordingSender<TestBridges, 'Host'>()
 
     const { result, rerender } = renderHook(
       ({ which }: { which: 'first' | 'second' }) => {
-        useAsSource(which === 'first' ? first.sender : second.sender)
+        useAsOutlet(which === 'first' ? first.sender : second.sender)
         return useSender()
       },
       {
@@ -92,12 +92,12 @@ describe('makeNamedPipe — examples', () => {
     }
   })
 
-  test('useAsSource throws NoContextException outside Provider', () => {
-    const { useAsSource } = makeNamedPipe('Test', testBridges, 'Host')
+  test('useAsOutlet throws NoContextException outside Provider', () => {
+    const { useAsOutlet } = makeNamedPipe('Test', testBridges, 'Host')
     const { sender } = makeRecordingSender<TestBridges, 'Host'>()
     const restore = silenceReactErrorBoundary()
     try {
-      expect(() => renderHook(() => useAsSource(sender))).toThrow(NoContextException)
+      expect(() => renderHook(() => useAsOutlet(sender))).toThrow(NoContextException)
     } finally {
       restore()
     }
@@ -109,8 +109,8 @@ describe('makeNamedPipe — examples', () => {
     expect(exit._tag).toBe('Success')
   })
 
-  test('passing defaultSender into useAsSource preserves the warn-and-drop behavior', async () => {
-    const { Provider, useAsSource, useSender, defaultSender } = makeNamedPipe(
+  test('passing defaultSender into useAsOutlet preserves the warn-and-drop behavior', async () => {
+    const { Provider, useAsOutlet, useSender, defaultSender } = makeNamedPipe(
       'Test',
       testBridges,
       'Host'
@@ -118,7 +118,7 @@ describe('makeNamedPipe — examples', () => {
 
     const { result } = renderHook(
       () => {
-        useAsSource(defaultSender)
+        useAsOutlet(defaultSender)
         return useSender()
       },
       {
@@ -148,7 +148,7 @@ describe('makeNamedPipe — examples', () => {
   })
 
   test('a sender registered by a later-mounted child routes through a pipe captured before that child mounted, without re-rendering the consumer', async () => {
-    const { Provider, useAsSource, useSender } = makeNamedPipe('Test', testBridges, 'Host')
+    const { Provider, useAsOutlet, useSender } = makeNamedPipe('Test', testBridges, 'Host')
     const { sender, received } = makeRecordingSender<TestBridges, 'Host'>()
 
     // Capture records its render count so we can assert it stays at 1 across
@@ -171,7 +171,7 @@ describe('makeNamedPipe — examples', () => {
     Capture.displayName = 'Capture'
 
     const RegisterChild = (): null => {
-      useAsSource(sender)
+      useAsOutlet(sender)
       return null
     }
 
@@ -214,8 +214,8 @@ describe('makeNamedPipe — examples', () => {
 
     const { result } = renderHook(
       () => {
-        a.useAsSource(recordingA.sender)
-        b.useAsSource(recordingB.sender)
+        a.useAsOutlet(recordingA.sender)
+        b.useAsOutlet(recordingB.sender)
         return { aSender: a.useSender(), bSender: b.useSender() }
       },
       {
@@ -239,7 +239,7 @@ describe('makeNamedPipe — properties', () => {
       fc.asyncProperty(
         fc.array(fc.integer({ min: 0, max: 3 }), { minLength: 1, maxLength: 6 }),
         async (registrationIds) => {
-          const { Provider, useAsSource, useSender } = makeNamedPipe('Test', testBridges, 'Host')
+          const { Provider, useAsOutlet, useSender } = makeNamedPipe('Test', testBridges, 'Host')
           // Reuse one recording sender per id so we can assert which one
           // received the probe message after the sequence finishes.
           type Recording = ReturnType<typeof makeRecordingSender<TestBridges, 'Host'>>
@@ -254,7 +254,7 @@ describe('makeNamedPipe — properties', () => {
 
           const { result, rerender } = renderHook(
             ({ activeId }: { activeId: number }) => {
-              useAsSource(senderFor(activeId).sender)
+              useAsOutlet(senderFor(activeId).sender)
               return useSender()
             },
             {
