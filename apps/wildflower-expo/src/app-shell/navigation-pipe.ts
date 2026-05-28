@@ -27,8 +27,14 @@ import { NavigationBridge } from 'navigation-core'
  */
 const {
   Provider: NavigationPipeProvider,
+  useSenderRef: useNavigationSenderRef,
   useAsSource: useAsNavigationSource,
   useSender: useNavigationSender,
 } = makeNamedPipe('WildflowerNavigation', [NavigationBridge] as const, 'Host')
 
-export { NavigationPipeProvider, useAsNavigationSource, useNavigationSender }
+export {
+  NavigationPipeProvider,
+  useAsNavigationSource,
+  useNavigationSender,
+  useNavigationSenderRef,
+}

@@ -1,4 +1,4 @@
-import AppsBridge from 'apps-core/bridge'
+import { AppsBridge } from 'apps-core/bridge'
 import { Effect } from 'effect'
 import { useMemo, useRef, type JSX, type ReactNode } from 'react'
 

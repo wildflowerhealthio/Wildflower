@@ -8,7 +8,7 @@
  * See `docs/Testing/Jest Mock Harness How-To.md` for the mock-prefix +
  * globalThis-keyed-state pattern this file uses.
  */
-import type AppsBridge from 'apps-core/bridge'
+import type { AppsBridge } from 'apps-core/bridge'
 import type { Context, Layer } from 'effect'
 import type * as EffectModule from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
@@ -217,7 +217,7 @@ const mockBuildAppsCoreFactory = (): unknown => {
   >('Apps.Host.HandlerTag')
   return {
     __esModule: true,
-    default: {
+    AppsBridge: {
       Host: {
         ReceiverLayer: (
           handlers: AppsHostHandlers

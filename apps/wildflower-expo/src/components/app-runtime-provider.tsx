@@ -1,7 +1,8 @@
 import { StoreRegistry, StoreRegistryProvider } from '@livestore/react'
-import { Effect, Fiber, Layer } from 'effect'
+import { Layer } from 'effect'
 import { LocalHttpServerStore } from 'local-http-server-core/livestore'
-import { type JSX, type PropsWithChildren, Suspense, useEffect, useState } from 'react'
+import { type JSX, type PropsWithChildren, Suspense, useMemo, useState } from 'react'
+import { useComponentScopedRunner } from 'react-kitchen-sink'
 import { Text } from 'react-native'
 import { TunnelStore } from 'tunnel-core/livestore'
 import { TunnelDaemon } from 'tunnel-expo'
@@ -29,44 +30,34 @@ export default function AppRuntimeProvider({ children }: PropsWithChildren): JSX
 
 /**
  * Ties the daemon launch's Effect Scope to this component's React
- * mount: `useEffect` `Effect.runFork`s `Layer.launch` on mount and
- * `Fiber.interrupt`s on cleanup.
+ * mount via {@link useComponentScopedRunner}. Lifecycle parity with
+ * `apps/wildflower-node/src/index.ts`: one `Layer.launch` over
+ * `Layer.mergeAll(HttpServerDaemonLive, TunnelDaemon)`, one scope,
+ * one fiber. The wildflower store is provided once at the outer
+ * layer; the tunnel slice gets its own projection.
  *
- * Lifecycle parity with `apps/wildflower-node/src/index.ts`: one
- * `Layer.launch` over `Layer.mergeAll(HttpServerDaemonLive, TunnelDaemon)`,
- * one scope, one fiber. The wildflower store is provided once at the
- * outer layer; the tunnel slice gets its own projection.
- *
- * Implemented as a component (rather than a hook) because
- * `useWildflowerStore()` consumes the registry context provided one
- * level up by `<StoreRegistryProvider>` and suspends on the store
- * load — both have to be ancestors of the call site. The React
- * cleanup contract handles StrictMode's dev-only double-mount: the
- * first effect's cleanup interrupts the first fiber before the second
- * mount's effect runs, so we don't end up with two HTTP servers
- * racing the same port.
+ * Component, not hook — `useWildflowerStore()` consumes the registry
+ * context provided one level up by `<StoreRegistryProvider>` and
+ * suspends on the store load.
  */
 function DaemonRuntimeScope({ children }: PropsWithChildren): JSX.Element {
   const store = useWildflowerStore()
 
-  useEffect(() => {
-    const fiber = Effect.runFork(
-      Layer.launch(
-        Layer.mergeAll(HttpServerDaemonLive, TunnelDaemon).pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.succeed(WildflowerStore, store),
-              TunnelStore.layerFrom(store),
-              LocalHttpServerStore.layerFrom(store)
-            )
+  const daemons = useMemo(
+    () =>
+      Layer.mergeAll(HttpServerDaemonLive, TunnelDaemon).pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(WildflowerStore, store),
+            TunnelStore.layerFrom(store),
+            LocalHttpServerStore.layerFrom(store)
           )
         )
-      )
-    )
-    return () => {
-      Effect.runFork(Fiber.interrupt(fiber))
-    }
-  }, [store])
+      ),
+    [store]
+  )
+
+  useComponentScopedRunner(daemons)
 
   return <>{children}</>
 }

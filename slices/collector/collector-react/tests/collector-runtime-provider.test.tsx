@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react'
-import CollectorBridge from 'collector-fundamentals/bridge'
+import { CollectorBridge } from 'collector-fundamentals/bridge'
 import { Effect } from 'effect'
 import { TestPlatformAdapterLayer, type TransportAdapter } from 'effect-messaging-core'
 import { useContext, type JSX, type ReactNode } from 'react'

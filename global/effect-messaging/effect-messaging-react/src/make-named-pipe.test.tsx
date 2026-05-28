@@ -84,6 +84,12 @@ describe('makeNamedPipe', () => {
     }
   })
 
+  test('exposes a defaultSender that succeeds with a warn-and-drop log', async () => {
+    const { defaultSender } = makeNamedPipe('Test', testBridges, 'Host')
+    const exit = await Effect.runPromise(Effect.exit(defaultSender({ _tag: 'HostBackRequested' })))
+    expect(exit._tag).toBe('Success')
+  })
+
   test('two pipes from the same factory are isolated (separate registries)', async () => {
     const a = makeNamedPipe('A', testBridges, 'Host')
     const b = makeNamedPipe('B', testBridges, 'Host')

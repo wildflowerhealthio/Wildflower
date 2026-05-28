@@ -1,4 +1,4 @@
-import { act, render } from '@testing-library/react-native'
+import { render, waitFor } from '@testing-library/react-native'
 import type { Context as ContextType, Effect as EffectType, Layer as LayerType } from 'effect'
 import * as React from 'react'
 import type { ReactElement, ReactNode } from 'react'
@@ -106,44 +106,28 @@ beforeEach(() => {
   mockActiveCount = 0
 })
 
-// `Effect.runFork` for `Layer.launch` schedules the fiber on the
-// microtask queue, and the cleanup `Effect.runFork(Fiber.interrupt)`
-// does the same — an empty `act` callback flushes both, which is the
-// supported way to drain pending React + microtask work without
-// resorting to `Effect.sleep`.
-const flushFibers = async (): Promise<void> => {
-  await act(async () => {})
-}
-
 describe('AppRuntimeProvider lifecycle', () => {
   it('mounts the merged daemon Layer exactly once on initial render', async () => {
     render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
-    await flushFibers()
-    expect(mockActiveCount).toBe(1)
+    await waitFor(() => expect(mockActiveCount).toBe(1))
   })
 
   it('tears the merged daemon Layer down on unmount', async () => {
     const { unmount } = render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
-    await flushFibers()
-    expect(mockActiveCount).toBe(1)
+    await waitFor(() => expect(mockActiveCount).toBe(1))
     unmount()
-    await flushFibers()
-    expect(mockActiveCount).toBe(0)
+    await waitFor(() => expect(mockActiveCount).toBe(0))
   })
 
   it('survives an unmount → remount cycle without leaking a second active daemon', async () => {
-    // Models the StrictMode mount/unmount/remount sequence that the
-    // production `useEffect` is designed to absorb. The first effect's
-    // cleanup must release the first Layer before the second mount's
-    // effect fires, so the active-daemon count never exceeds 1.
+    // Models the StrictMode mount/unmount/remount sequence: the first
+    // effect's cleanup must release the first Layer before the second
+    // mount's effect fires, so the active-daemon count never exceeds 1.
     const { unmount } = render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
-    await flushFibers()
-    expect(mockActiveCount).toBe(1)
+    await waitFor(() => expect(mockActiveCount).toBe(1))
     unmount()
-    await flushFibers()
-    expect(mockActiveCount).toBe(0)
+    await waitFor(() => expect(mockActiveCount).toBe(0))
     render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
-    await flushFibers()
-    expect(mockActiveCount).toBe(1)
+    await waitFor(() => expect(mockActiveCount).toBe(1))
   })
 })

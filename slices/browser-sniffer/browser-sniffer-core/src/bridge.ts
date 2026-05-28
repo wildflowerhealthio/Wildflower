@@ -67,4 +67,4 @@ const BrowserSnifferBridge: BrowserSnifferBridge = Bridge.make({
   ] as const,
 })
 
-export default BrowserSnifferBridge
+export { BrowserSnifferBridge }

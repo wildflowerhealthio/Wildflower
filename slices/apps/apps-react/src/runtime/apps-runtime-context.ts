@@ -1,4 +1,4 @@
-import type AppsBridge from 'apps-core/bridge'
+import type { AppsBridge } from 'apps-core/bridge'
 import type { Layer } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
 import { createContext } from 'react'

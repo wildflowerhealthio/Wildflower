@@ -1,4 +1,4 @@
-import AppsBridge from 'apps-core/bridge'
+import { AppsBridge } from 'apps-core/bridge'
 import { Cause, Effect, Layer } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
 import { TunnelStore } from 'tunnel-core/livestore'

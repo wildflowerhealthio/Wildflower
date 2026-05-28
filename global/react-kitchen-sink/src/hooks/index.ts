@@ -2,6 +2,7 @@ export { NoContextException, useContextOrThrow } from './use-context-or-throw.ts
 export { useEffectAction, type EffectAction } from './use-effect-action.ts'
 export { useEffectTs } from './use-effect-ts.ts'
 export { useFunctionSafeState } from './use-function-safe-state.ts'
+export { useComponentScopedRunner } from './use-component-scoped-runner.ts'
 export { useLoadingPromise, type LoadingPromiseState } from './use-loading-promise.ts'
 export { useStatePromise, type StatePromiseCallbacks } from './use-state-promise.ts'
 export { useStream, useStreamWithDefault } from './use-stream.ts'

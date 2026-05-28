@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react-native'
-import BrowserSnifferBridge from 'browser-sniffer-core/bridge'
+import { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
 import { snifferScript } from 'browser-sniffer-injected'
 import { Effect, LogLevel, Logger } from 'effect'
 import type { HostBinding, LogBridge } from 'effect-messaging-core'

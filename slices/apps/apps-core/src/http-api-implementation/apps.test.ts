@@ -284,6 +284,119 @@ describe('LaunchApp handler', () => {
     }
   })
 
+  // Regression guards for the launch-time URL allowlist. `isLaunchableUrl`
+  // is module-local, so we exercise it through `LaunchApp`'s 302-vs-404
+  // surface. Custom-URL events go through `AppSelection.events.customAppAdded`
+  // directly to bypass `CustomAppUrlSchema` and reach the launch-time check.
+  it('launches a custom app whose resolved url is an absolute https:// URL', async () => {
+    seedLocalHostname()
+    store.commit(
+      AppSelection.events.customAppAdded({
+        id: 'custom-https',
+        name: 'My App',
+        url: 'https://example.com/foo',
+        requiresTunnel: false,
+      })
+    )
+    const { handler, dispose } = buildHandler()
+    try {
+      const response = await handler(new Request('http://localhost/apps/custom-https'))
+      expect(response.status).toBe(302)
+      expect(response.headers.get('location')).toBe('https://example.com/foo')
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('launches a custom app whose resolved url shares the live loopback origin (origin-prefix branch)', async () => {
+    seedLocalHostname()
+    store.commit(
+      AppSelection.events.customAppAdded({
+        id: 'custom-origin',
+        name: 'My App',
+        url: '{origin}/foo',
+        requiresTunnel: false,
+      })
+    )
+    const { handler, dispose } = buildHandler()
+    try {
+      const response = await handler(new Request('http://localhost/apps/custom-origin'))
+      expect(response.status).toBe(302)
+      expect(response.headers.get('location')).toBe(`${LOCAL_ORIGIN}/foo`)
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('rejects a custom app whose resolved url is a non-loopback http:// URL', async () => {
+    seedLocalHostname()
+    store.commit(
+      AppSelection.events.customAppAdded({
+        id: 'custom-http',
+        name: 'My App',
+        url: 'http://example.com/foo',
+        requiresTunnel: false,
+      })
+    )
+    const { handler, dispose } = buildHandler()
+    try {
+      const response = await handler(new Request('http://localhost/apps/custom-http'))
+      expect(response.status).toBe(404)
+      const body = Schema.decodeUnknownSync(AppNotFoundSchema)(await response.json())
+      expect(body.error).toBe('AppNotFound')
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('rejects a custom app whose resolved url is loopback on a non-origin port', async () => {
+    // Regression guard: a prior implementation accepted any URL whose
+    // hostname was `127.0.0.1` regardless of port/scheme. After the
+    // tightening, only URLs starting with the live `originPrefix`
+    // (loopback host + port) are accepted on the loopback branch.
+    seedLocalHostname()
+    store.commit(
+      AppSelection.events.customAppAdded({
+        id: 'custom-loopback-other-port',
+        name: 'My App',
+        url: 'http://127.0.0.1:19000/foo',
+        requiresTunnel: false,
+      })
+    )
+    const { handler, dispose } = buildHandler()
+    try {
+      const response = await handler(
+        new Request('http://localhost/apps/custom-loopback-other-port')
+      )
+      expect(response.status).toBe(404)
+      const body = Schema.decodeUnknownSync(AppNotFoundSchema)(await response.json())
+      expect(body.error).toBe('AppNotFound')
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('rejects a custom app whose resolved url has a non-http(s) scheme on the loopback host', async () => {
+    seedLocalHostname()
+    store.commit(
+      AppSelection.events.customAppAdded({
+        id: 'custom-ftp',
+        name: 'My App',
+        url: 'ftp://127.0.0.1/foo',
+        requiresTunnel: false,
+      })
+    )
+    const { handler, dispose } = buildHandler()
+    try {
+      const response = await handler(new Request('http://localhost/apps/custom-ftp'))
+      expect(response.status).toBe(404)
+      const body = Schema.decodeUnknownSync(AppNotFoundSchema)(await response.json())
+      expect(body.error).toBe('AppNotFound')
+    } finally {
+      await dispose()
+    }
+  })
+
   it('returns 404 for an unknown id', async () => {
     seedLocalHostname()
     const { handler, dispose } = buildHandler()

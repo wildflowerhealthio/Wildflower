@@ -3,7 +3,7 @@ import * as React from 'react'
 import { fc, test as fcTest } from '@fast-check/jest'
 import { act, render } from '@testing-library/react-native'
 import type * as BrowserSnifferExpoModule from 'browser-sniffer-expo'
-import type CollectorBridgeType from 'collector-fundamentals/bridge'
+import type { CollectorBridge as CollectorBridgeType } from 'collector-fundamentals/bridge'
 import type * as CollectorBridgeModule from 'collector-fundamentals/bridge'
 import type * as EffectModule from 'effect'
 import type { Layer } from 'effect'
@@ -65,7 +65,7 @@ jest.mock(
     return {
       __esModule: true,
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the real `default` is a full `Bridge.Bridge<...>` with name, hostToWeb, webToHost, Host, Web; the routing-side tests only reach into `.Host.ReceiverLayer`.
-      default: {
+      CollectorBridge: {
         Host: {
           ReceiverLayer: (
             handlers: CapturedHandlers
@@ -80,7 +80,7 @@ jest.mock(
             >
           },
         },
-      } as unknown as typeof CollectorBridgeModule.default,
+      } as unknown as typeof CollectorBridgeModule.CollectorBridge,
     }
   }
 )
@@ -118,7 +118,7 @@ jest.mock('expo-tundraish', (): Partial<typeof ExpoTundraishModule> => {
   }
 })
 
-import type BrowserSnifferBridge from 'browser-sniffer-core/bridge'
+import type { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
 import { useCollectorHost } from './collector-host-context.tsx'
 import {
   CollectorHostProvider,

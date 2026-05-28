@@ -1,13 +1,13 @@
 import { Effect } from 'effect'
 import * as SplashScreen from 'expo-splash-screen'
 import { Colors, Spacing, ThemedText, ThemedView, useThemeColors } from 'expo-tundraish'
-import { LocalClientToken } from 'gatekeeper-core/livestore'
-import { localOrigin$, ServerState } from 'local-http-server-core/livestore'
+import { ServerState } from 'local-http-server-core/livestore'
 import { useCallback, useEffect, useState, type JSX } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { AppShellWebView } from '../components/app-shell-webview.tsx'
-import { useNavigationSender } from '../components/navigation-pipe.ts'
+import { AppShellWebView } from '../app-shell/app-shell-webview.tsx'
+import { useNavigationSender } from '../app-shell/navigation-pipe.ts'
 import { TABS, tabForPath, type TabKey } from '../components/tab-mapping.ts'
 import { useWildflowerStore } from '../livestore/livestore-store.ts'
 
@@ -15,42 +15,31 @@ import { useWildflowerStore } from '../livestore/livestore-store.ts'
 // (side-effect import in `index.ts`, before `expo-router/entry`).
 // Here we only own the `hideAsync` reveal once the WebView is alive.
 
-/**
- * The persistent shell screen. Boots the on-device server, then
- * mounts `<AppShellWebView>` once everything is ready and reveals
- * the splash. The native tab bar is rendered as a sibling of the
- * shell WebView — both live under `<NavigationPipeProvider>` (in
- * `_layout.tsx`), so the tab bar's press handlers dispatch typed
- * navigation messages through the same transport `AppShellWebView`
- * built.
- */
+/** The persistent shell screen — mounts `<AppShellWebView>` and the native tab bar. */
 export default function HomeScreen(): JSX.Element {
   const store = useWildflowerStore()
   const { running } = store.useQuery(ServerState.queries.current$)
-  // The embedded SPA always loads against the loopback origin so its
-  // API calls hit `127.0.0.1` directly — never the public tunnel
-  // relay (whose captive-portal interstitial returns 511 to
-  // non-browser requests). Tunneled-app launches use the tunnel
-  // origin separately, wired inside `apps-react`'s launch flow.
-  const baseUrl = store.useQuery(localOrigin$)
-  // `LocalClientToken` is minted by `HttpServerDaemonLive`'s
-  // bootstrap step and committed into the gatekeeper slice store;
-  // we pass it to `<AppShellWebView>` so the embedded SPA is
-  // authenticated on first load without going through the
-  // device-code flow. `null` while bootstrap is still in flight or
-  // the mint failed; coerced to `undefined` so
-  // `useGatekeeperHostBinding`'s `token === undefined` guard matches
-  // the never-issued case (omits the `onTransportReady` issuance).
-  const { value: localClientToken } = store.useQuery(LocalClientToken.queries.current$)
+  const palette = useThemeColors()
+  const sendNavigation = useNavigationSender()
+  const insets = useSafeAreaInsets()
 
-  const [activeTab, setActiveTab] = useState<TabKey>('apps')
+  const [activeTab, setActiveTab] = useState<TabKey | null>('apps')
   const [shellLive, setShellLive] = useState(false)
 
   // Hide the splash only after both the server is up AND the SPA has
   // reported a first `RouteChanged` (which means the embedded
   // wildflower-react has mounted + the transport has flushed).
   useEffect(() => {
-    if (running && shellLive) void SplashScreen.hideAsync()
+    if (running && shellLive) {
+      Effect.runFork(
+        Effect.tryPromise({
+          try: () => SplashScreen.hideAsync(),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.catchAll((cause) => Effect.logWarning('SplashScreen.hideAsync failed', cause))
+        )
+      )
+    }
   }, [running, shellLive])
 
   const handleRouteChanged = useCallback(
@@ -62,58 +51,50 @@ export default function HomeScreen(): JSX.Element {
   )
 
   return (
-    <ThemedView style={styles.fill}>
-      <View style={styles.webViewWrap}>
-        <AppShellWebView
-          baseUrl={baseUrl}
-          route={TABS[0].path}
-          token={localClientToken ?? undefined}
-          onRouteChanged={handleRouteChanged}
-        />
-      </View>
-      <TabBar activeTab={activeTab} />
-    </ThemedView>
-  )
-}
-
-/**
- * Native tab bar. Lives under `<NavigationPipeProvider>` (mounted in
- * `_layout.tsx`) so `useNavigationSender()` resolves to the sender
- * `<AppShellWebView>` registered via `useAsNavigationSource` once
- * its `<BridgedWebView>` transport finished building. Pre-transport
- * presses route through the pipe's warn-and-drop default and surface
- * in logs (see `navigation-pipe.ts`).
- */
-const TabBar = ({ activeTab }: { activeTab: TabKey }): JSX.Element => {
-  const palette = useThemeColors()
-  const sendNavigation = useNavigationSender()
-  return (
-    <View
-      style={[styles.tabBar, { borderTopColor: palette.icon, backgroundColor: palette.background }]}
-    >
-      {TABS.map((tab) => {
-        const isActive = activeTab === tab.key
-        return (
-          <Pressable
-            key={tab.key}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: isActive }}
-            onPress={() => {
-              Effect.runFork(sendNavigation({ _tag: 'HostRequestedWebNavigation', path: tab.path }))
-            }}
-            style={styles.tabButton}
-          >
-            <ThemedText
-              type={isActive ? 'bodySemiBold' : 'body'}
-              lightTextColor={isActive ? Colors.light.accent : Colors.light.icon}
-              darkTextColor={isActive ? Colors.dark.accent : Colors.dark.icon}
-            >
-              {tab.label}
-            </ThemedText>
-          </Pressable>
-        )
-      })}
-    </View>
+    <SafeAreaView style={styles.fill} edges={['top']}>
+      <ThemedView style={styles.fill}>
+        <View style={styles.webViewWrap}>
+          <AppShellWebView onRouteChanged={handleRouteChanged} />
+        </View>
+        <View
+          style={[
+            styles.tabBar,
+            {
+              borderTopColor: palette.icon,
+              backgroundColor: palette.background,
+            },
+          ]}
+        >
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.key
+            return (
+              <Pressable
+                key={tab.key}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: isActive }}
+                onPress={() => {
+                  Effect.runFork(
+                    sendNavigation({ _tag: 'HostRequestedWebNavigation', path: tab.path })
+                  )
+                }}
+                style={{
+                  ...styles.tabButton,
+                  paddingBottom: Math.max(Spacing.s2, insets.bottom - 12),
+                }}
+              >
+                <ThemedText
+                  type={isActive ? 'bodySemiBold' : 'body'}
+                  lightTextColor={isActive ? Colors.light.accent : Colors.light.icon}
+                  darkTextColor={isActive ? Colors.dark.accent : Colors.dark.icon}
+                >
+                  {tab.label}
+                </ThemedText>
+              </Pressable>
+            )
+          })}
+        </View>
+      </ThemedView>
+    </SafeAreaView>
   )
 }
 
@@ -123,7 +104,7 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: 'row',
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingVertical: Spacing.s3,
+    paddingTop: Spacing.s3,
   },
   tabButton: {
     flex: 1,

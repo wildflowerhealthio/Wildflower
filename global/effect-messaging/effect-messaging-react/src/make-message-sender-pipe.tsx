@@ -21,6 +21,32 @@ interface MadeMessageSenderPipe<
   }
   usePipeMessageSender: () => BridgeTransport.MessageSender<TBridges, TSide>
   useAsPipeMessageSender: (sender: BridgeTransport.MessageSender<TBridges, TSide>) => void
+
+  /**
+   * Returns the underlying RefObject holding the active sender.
+   * Identity-stable across renders. Initially points at
+   * {@link MadeMessageSenderPipe.defaultSender} (the pipe's built-in
+   * warn-and-drop) and is updated by
+   * {@link MadeMessageSenderPipe.useAsPipeMessageSender} when a sender
+   * is registered.
+   *
+   * Direct mutation of `.current` is a supported pattern — reach for
+   * it when the registration site cannot run inside a `useEffect`
+   * (e.g. capturing a transport sender from inside an
+   * `onTransportReady` `Effect.sync` callback).
+   */
+  usePipeMessageSenderRef: () => RefObject<BridgeTransport.MessageSender<TBridges, TSide>>
+  /**
+   * The pipe's built-in warn-and-drop sender — what
+   * {@link usePipeMessageSender} resolves to before any
+   * {@link useAsPipeMessageSender} call commits.
+   *
+   * Exposed so consumers gating registration on a not-yet-ready upstream
+   * (e.g. `useAsPipeMessageSender(realSender ?? defaultSender)`) can plug
+   * the same default in directly instead of re-implementing their own
+   * warn-and-drop wrapper.
+   */
+  defaultSender: BridgeTransport.MessageSender<TBridges, TSide>
 }
 
 const makeMessageSenderPipe = <
@@ -35,7 +61,7 @@ const makeMessageSenderPipe = <
   // `_bridges` and `_side` are type witnesses — they bind TBridges/TSide into
   // the returned closure so downstream types flow without runtime generics.
 
-  const defaultHandler: BridgeTransport.MessageSender<TBridges, TSide> = (msg) =>
+  const defaultSender: BridgeTransport.MessageSender<TBridges, TSide> = (msg) =>
     Effect.logWarning(
       `[effect-messaging] no ${name}MessageSenderPipe handler registered; dropping message "${JSON.stringify(msg)}"`
     )
@@ -47,7 +73,7 @@ const makeMessageSenderPipe = <
 
   // oxlint-disable-next-line react-refresh/only-export-components
   const Provider = ({ children }: { children: React.ReactNode }): JSX.Element => {
-    const handlerRef = useRef<BridgeTransport.MessageSender<TBridges, TSide>>(defaultHandler)
+    const handlerRef = useRef<BridgeTransport.MessageSender<TBridges, TSide>>(defaultSender)
 
     return <Context.Provider value={handlerRef}>{children}</Context.Provider>
   }
@@ -75,13 +101,18 @@ const makeMessageSenderPipe = <
     }, [sender, handlerRef])
   }
 
+  const usePipeMessageSenderRef = (): RefObject<BridgeTransport.MessageSender<TBridges, TSide>> =>
+    useContextOrThrow(Context)
+
   return {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     Provider: Provider as ReactFC<{ children: React.ReactNode }> & {
       displayName: `${TName}MessageSenderPipeContext`
     },
+    usePipeMessageSenderRef,
     usePipeMessageSender,
     useAsPipeMessageSender,
+    defaultSender,
   }
 }
 

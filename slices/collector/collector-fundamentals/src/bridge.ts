@@ -109,5 +109,4 @@ const CollectorBridge: CollectorBridge = Bridge.make({
   ] as const,
 })
 
-export default CollectorBridge
-export { OpenMessage, RequestSniffableWebView, SniffingComplete }
+export { CollectorBridge, OpenMessage, RequestSniffableWebView, SniffingComplete }

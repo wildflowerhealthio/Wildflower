@@ -31,6 +31,25 @@ interface MadeNamedPipe<
    * Provider — safe to include in `useEffect` / `useMemo` deps.
    */
   readonly useSender: () => BridgeTransport.MessageSender<TBridges, TSide>
+  /**
+   * Returns the underlying RefObject holding the active sender.
+   * Identity-stable across renders. Initially points at
+   * {@link MadeNamedPipe.defaultSender} (the pipe's built-in
+   * warn-and-drop) and is updated by {@link MadeNamedPipe.useAsSource}
+   * when a sender is registered.
+   *
+   * Direct mutation of `.current` is a supported pattern — reach for
+   * it when the registration site cannot run inside a `useEffect`
+   * (e.g. capturing a transport sender from inside an
+   * `onTransportReady` `Effect.sync` callback). The named analogue of
+   * {@link MadeMessageSenderPipe.usePipeMessageSenderRef}.
+   */
+  readonly useSenderRef: () => React.RefObject<BridgeTransport.MessageSender<TBridges, TSide>>
+  /**
+   * The pipe's built-in warn-and-drop sender — the named analogue of
+   * {@link MadeMessageSenderPipe.defaultSender}.
+   */
+  readonly defaultSender: BridgeTransport.MessageSender<TBridges, TSide>
 }
 
 /**
@@ -70,6 +89,8 @@ const makeNamedPipe = <
     Provider: InnerProvider,
     useAsPipeMessageSender,
     usePipeMessageSender,
+    usePipeMessageSenderRef,
+    defaultSender,
   } = makeMessageSenderPipe(name, bridges, side)
 
   // Wrap the inner provider so we can give it a friendlier displayName
@@ -88,8 +109,10 @@ const makeNamedPipe = <
     Provider: Provider as ReactFC<{ children: React.ReactNode }> & {
       displayName: `${TName}PipeProvider`
     },
+    useSenderRef: usePipeMessageSenderRef,
     useAsSource: useAsPipeMessageSender,
     useSender: usePipeMessageSender,
+    defaultSender,
   }
 }
 
