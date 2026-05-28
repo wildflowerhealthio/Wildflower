@@ -2,7 +2,7 @@ import type { Scope } from 'effect'
 import { Effect, Layer, Schema } from 'effect'
 import { Bridge, BridgeTransport, TransportAdapter, UrlParamMessage } from 'effect-messaging-core'
 import * as fc from 'fast-check'
-import { LoggingLayerTest } from 'kitchen-sink/test'
+import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
 import * as WebPlatformAdapter from '../src/web-platform-adapter.ts'
 
@@ -653,7 +653,7 @@ test('property: receive path survives arbitrary string inputs', async () => {
         )
       )
     }),
-    { numRuns: 25 }
+    { numRuns: numRunsFor(25) }
   )
 })
 
@@ -705,6 +705,7 @@ test('property: sendMessage routes to the correct bridge for arbitrary message s
         }).pipe(Effect.scoped)
       )
       delete (window as WindowWithBridge).ReactNativeWebView
-    })
+    }),
+    { numRuns: numRunsFor(100) }
   )
 })

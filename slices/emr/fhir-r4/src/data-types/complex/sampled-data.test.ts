@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { SampledData as StoreSampledData } from 'emr-core/schemas'
@@ -13,7 +14,8 @@ describe('FhirR4SampledData', () => {
         const fhir = Schema.encodeSync(SampledData.Schema)(sample)
         const decoded = Schema.decodeSync(SampledData.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreSampledData.Schema, sample)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

@@ -5,6 +5,7 @@ import type { FileSystem, Path } from '@effect/platform'
 import { NodeFileSystem, NodePath } from '@effect/platform-node'
 import { Effect, Layer, Option } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, beforeEach, expect, test } from 'vite-plus/test'
 import { sanitizeRequestPath, tryFindAssetFileForPath } from '../src/static-spa.ts'
 
@@ -85,7 +86,7 @@ test('sanitizeRequestPath property: every Some(rel) is a safe relative path', ()
       const segments = rel.split('/')
       for (const seg of segments) expect(seg).not.toBe('..')
     }),
-    { numRuns: 200 }
+    { numRuns: numRunsFor(200) }
   )
 })
 
@@ -148,6 +149,6 @@ test('tryFindAssetFileForPath property: returned path always lives under webAsse
         expect(result.value.startsWith(tempBase)).toBe(true)
       }
     ),
-    { numRuns: 50 }
+    { numRuns: numRunsFor(50) }
   )
 })

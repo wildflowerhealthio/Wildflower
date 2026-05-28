@@ -2,6 +2,7 @@ import { Arbitrary, Either, Encoding, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { numRunsFor } from '../test/num-runs-for.ts'
 import { Base64FromUint8ArrayBuffer, Uint8ArrayBufferFromSelf } from './uint8-array-buffer.ts'
 
 describe('Uint8ArrayBufferFromSelf', () => {
@@ -31,7 +32,8 @@ describe('Uint8ArrayBufferFromSelf', () => {
       fc.property(arb, (value) => {
         expect(value).toBeInstanceOf(Uint8Array)
         expect(value.buffer).toBeInstanceOf(ArrayBuffer)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })
@@ -62,7 +64,8 @@ describe('Base64FromUint8ArrayBuffer', () => {
         const encoded = Schema.decodeSync(Base64FromUint8ArrayBuffer)(bytes)
         const decoded = Schema.encodeSync(Base64FromUint8ArrayBuffer)(encoded)
         expect(Array.from(decoded)).toEqual(Array.from(bytes))
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -73,7 +76,8 @@ describe('Base64FromUint8ArrayBuffer', () => {
         const bytes = Schema.encodeSync(Base64FromUint8ArrayBuffer)(base64)
         const reEncoded = Schema.decodeSync(Base64FromUint8ArrayBuffer)(bytes)
         expect(reEncoded).toBe(base64)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -84,7 +88,8 @@ describe('Base64FromUint8ArrayBuffer', () => {
         expect(typeof value).toBe('string')
         const result = Schema.encodeEither(Base64FromUint8ArrayBuffer)(value)
         expect(Either.isRight(result)).toBe(true)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

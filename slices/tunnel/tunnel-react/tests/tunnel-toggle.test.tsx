@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { type JSX } from 'react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
@@ -79,7 +80,8 @@ describe('<TunnelToggle> status badge', () => {
           const badge = getByRole('status')
           expect(badge.textContent).toContain('Error')
         }
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

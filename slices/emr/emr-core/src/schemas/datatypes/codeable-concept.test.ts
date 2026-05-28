@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as CodeableConcept from './codeable-concept.ts'
@@ -17,7 +18,8 @@ describe('CodeableConcept model', () => {
         const encoded = Schema.encodeSync(CodeableConcept.Schema)(codeableConcept)
         const decoded = Schema.decodeSync(CodeableConcept.Schema)(encoded)
         expect(decoded).toSchemaEqual(CodeableConcept.Schema, codeableConcept)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

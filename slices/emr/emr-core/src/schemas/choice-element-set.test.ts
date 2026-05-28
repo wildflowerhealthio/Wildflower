@@ -1,5 +1,6 @@
 import { Arbitrary, DateTime, Either, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { State } from '@livestore/livestore'
@@ -72,7 +73,8 @@ describe('ChoiceElementSet.SchemaFields', () => {
           const encoded = encode(value)
           const decoded = decode(encoded)
           expect(decoded).toSchemaEqual(ValueChoice, value)
-        })
+        }),
+        { numRuns: numRunsFor(100) }
       )
     })
   })

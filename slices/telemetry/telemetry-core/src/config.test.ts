@@ -1,4 +1,5 @@
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 import { configFromEnv, isOtlpEnabled, isSentryEnabled, isTelemetryEnabled } from './config.ts'
 
@@ -114,7 +115,8 @@ describe('configFromEnv', () => {
           expect(configFromEnv(env, 'VITE_').sentry.dsn).toBe(viteDsn)
           expect(configFromEnv(env, 'EXPO_PUBLIC_').sentry.dsn).toBe(expoDsn)
         }
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 })
@@ -144,7 +146,8 @@ describe('isOtlpEnabled', () => {
       fc.property(fc.string(), (raw) => {
         const cfg = configFromEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: raw })
         expect(isOtlpEnabled(cfg)).toBe(raw.trim().length > 0)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

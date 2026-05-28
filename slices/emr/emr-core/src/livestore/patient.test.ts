@@ -2,6 +2,7 @@ import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise } from '@livestore/livestore'
 import { Arbitrary, Either, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { events, queries, schema, Patient } from './index.ts'
@@ -27,7 +28,7 @@ const PatientSchema = Patient.RowSchema
 // these columns get a smaller `numRuns` here purely to fit under 5s.
 // ---------------------------------------------------------------------------
 
-const REFERENCE_NUM_RUNS = 25
+const REFERENCE_NUM_RUNS = numRunsFor(25)
 
 const roundTripColumn = (name: keyof typeof PatientSchema.Type, numRuns?: number): void => {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see file header
@@ -308,7 +309,8 @@ describe('Patient model', () => {
           const result = decode(incomplete)
           expect(Either.isLeft(result)).toBe(true)
         }
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

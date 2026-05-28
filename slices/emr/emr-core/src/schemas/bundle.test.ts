@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Bundle } from './bundle.ts'
@@ -14,8 +15,8 @@ const TestBundle = Bundle.Schema(Schema.String)
 // on the `AnyNoContext` cast.
 // ---------------------------------------------------------------------------
 
-const REFERENCE_NUM_RUNS = 25
-const ANY_NUM_RUNS = 25
+const REFERENCE_NUM_RUNS = numRunsFor(25)
+const ANY_NUM_RUNS = numRunsFor(25)
 
 const roundTripField = (name: keyof typeof TestBundle.Type, numRuns?: number): void => {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see file header

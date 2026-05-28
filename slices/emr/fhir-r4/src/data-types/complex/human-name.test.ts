@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { HumanName as StoreHumanName } from 'emr-core/schemas'
@@ -13,7 +14,8 @@ describe('FhirR4HumanName', () => {
         const fhir = Schema.encodeSync(HumanName.Schema)(humanName)
         const decoded = Schema.decodeSync(HumanName.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreHumanName.Schema, humanName)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

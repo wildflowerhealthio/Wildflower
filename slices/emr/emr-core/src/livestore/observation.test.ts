@@ -1,5 +1,6 @@
 import { Arbitrary, Either, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as Observation from './observation.ts'
@@ -12,7 +13,7 @@ const ObservationSchema = Observation.RowSchema
 // `numRuns` budget for cycle-bearing columns.
 // ---------------------------------------------------------------------------
 
-const REFERENCE_NUM_RUNS = 25
+const REFERENCE_NUM_RUNS = numRunsFor(25)
 
 const roundTripColumn = (name: keyof typeof ObservationSchema.Type, numRuns?: number): void => {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see file header
@@ -116,7 +117,7 @@ describe('Observation model', () => {
           expect(Either.isLeft(result)).toBe(true)
         }
       ),
-      { numRuns: 20 }
+      { numRuns: numRunsFor(20) }
     )
   })
 })

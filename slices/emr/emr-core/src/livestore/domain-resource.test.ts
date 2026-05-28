@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { ChoiceElementSet, Datatype } from '../schemas/index.ts'
@@ -14,16 +15,14 @@ const PatientSchema = Patient.RowSchema
 // non-empty values directly (i.e. outside the arbitrary path).
 describe('DomainResource columns: contained / extension / modifierExtension', () => {
   test('default arbitraries always produce empty arrays', () => {
-    // Sample-based: the assertion is on the shape of the annotation, not on
-    // arbitrary inputs. Property-testing this with `Arbitrary.make(PatientSchema)`
-    // walked the full graph (Reference→Identifier, every column's nested
-    // schemas) per iteration, blowing the 5s timeout.
-    const samples = fc.sample(Arbitrary.make(PatientSchema), { numRuns: 5, seed: 1 })
-    for (const patient of samples) {
-      expect(patient.contained).toEqual([])
-      expect(patient.extension).toEqual([])
-      expect(patient.modifierExtension).toEqual([])
-    }
+    fc.assert(
+      fc.property(Arbitrary.make(PatientSchema), (patient) => {
+        expect(patient.contained).toEqual([])
+        expect(patient.extension).toEqual([])
+        expect(patient.modifierExtension).toEqual([])
+      }),
+      { numRuns: numRunsFor(5), seed: 1 }
+    )
   })
 
   test('round-trips when contained / extension / modifierExtension are populated', () => {

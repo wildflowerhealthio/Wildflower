@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 import * as Bridge from '../src/bridge.ts'
 import * as UrlParamMessage from '../src/url-param-message.ts'
@@ -136,7 +137,8 @@ describe('UrlParamMessage', () => {
         const wireStrings = UrlParamMessage.reEncodeMessagesFromParams(url.search, bridges)
         const decoded = wireStrings.map((s): unknown => JSON.parse(s))
         expect(decoded).toEqual(messages)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

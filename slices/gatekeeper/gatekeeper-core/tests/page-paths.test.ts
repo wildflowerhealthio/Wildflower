@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
 import { GatekeeperPaths } from '../src/page-paths.ts'
@@ -68,6 +69,6 @@ test('property: any user code produces a valid path that round-trips through dec
       const segment = path.slice('/gatekeeper/devices/'.length)
       expect(decodeURIComponent(segment)).toBe(userCode)
     }),
-    { numRuns: 100 }
+    { numRuns: numRunsFor(100) }
   )
 })

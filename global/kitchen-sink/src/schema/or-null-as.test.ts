@@ -2,6 +2,7 @@ import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
 
+import { numRunsFor } from '../test/num-runs-for.ts'
 import { OrNullAsOptional } from './or-null-as-optional.ts'
 import { OrNullAsUndefined } from './or-null-as-undefined.ts'
 
@@ -63,7 +64,8 @@ describe('OrNullAsUndefined', () => {
           const encoded = Schema.encodeSync(schema)(value)
           const reDecoded = Schema.decodeUnknownSync(schema)(encoded)
           expect(reDecoded).toEqual(value)
-        })
+        }),
+        { numRuns: numRunsFor(100) }
       )
     })
 
@@ -74,7 +76,8 @@ describe('OrNullAsUndefined', () => {
           const decoded = Schema.decodeUnknownSync(schema)(encoded)
           const reEncoded = Schema.encodeSync(schema)(decoded)
           expect(reEncoded).toEqual(encoded)
-        })
+        }),
+        { numRuns: numRunsFor(100) }
       )
     })
   })
@@ -144,7 +147,8 @@ describe('OrNullAsOptional', () => {
           const encoded = Schema.encodeSync(struct)(value)
           const reDecoded = Schema.decodeUnknownSync(struct)(encoded)
           expect(reDecoded).toEqual(value)
-        })
+        }),
+        { numRuns: numRunsFor(100) }
       )
     })
 
@@ -155,7 +159,8 @@ describe('OrNullAsOptional', () => {
           const decoded = Schema.decodeUnknownSync(struct)(encoded)
           const reEncoded = Schema.encodeSync(struct)(decoded)
           expect(reEncoded).toEqual(encoded)
-        })
+        }),
+        { numRuns: numRunsFor(100) }
       )
     })
   })

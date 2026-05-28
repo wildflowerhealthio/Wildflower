@@ -12,7 +12,7 @@ Read [AGENTS Explanation](./docs/Agents/Explanation.md) for what this file is an
 - **Test utilities import from `vite-plus/test`**, not `vitest`
 - **Slices must respect their layering** — `slices/<name>/<name>-core` is the pure layer; `-web`, `-node`, `-react-native`, `-expo` are platform adapters that may import from `-core` but not vice-versa
 - **Changes MUST include corresponding test updates**
-- **Vitest is the default; Expo packages run on Jest** — those packages expose a `vp run jest` script, the root aggregates them via `vp run jest` (`vp run -r --concurrency-limit 1 jest`), and `vp run test-all` runs both Vitest and Jest suites.
+- **Vitest is the default; Expo packages run on Jest** — those packages expose a `vp run jest` script, the root aggregates them via `vp run jest` (`vp run -r --concurrency-limit 1 jest`), and `vp run test:all` runs both Vitest and Jest suites.
 
 ### Agents MUST read relevant docs before certain tasks
 
@@ -106,10 +106,11 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 
 ```bash
 vp run dev           # Start the website dev server
-vp run ready         # Format, lint, test-all (Vitest + Jest), build (-r) — full pre-PR check
+vp run ready         # Format, lint, test:all (Vitest + Jest), build (-r) — full pre-PR check
 vp test              # Run Vitest across all packages (Vitest projects mode wired in root vite.config.ts)
 vp run jest          # Run Jest across Expo packages (vp run -r --concurrency-limit 1 jest)
-vp run test-all      # Run Vitest then Jest (full test pass)
+vp run test:all      # Run Vitest then Jest (full test pass)
+vp run test:changed  # Same as test:all but scales fast-check numRuns down for packages unchanged vs origin/main
 vp run build -r      # Build the monorepo
 vp check             # Format + lint + typecheck
 vp install           # Install/sync dependencies (run after pulling)

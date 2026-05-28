@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as Ratio from './ratio.ts'
@@ -17,7 +18,8 @@ describe('Ratio model', () => {
         const encoded = Schema.encodeSync(Ratio.Schema)(ratio)
         const decoded = Schema.decodeSync(Ratio.Schema)(encoded)
         expect(decoded).toSchemaEqual(Ratio.Schema, ratio)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

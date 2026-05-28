@@ -1,6 +1,8 @@
 import { Effect, type Layer } from 'effect'
 import * as fc from 'fast-check'
 import { expect, test } from 'vite-plus/test'
+
+import { numRunsFor } from '../test/num-runs-for.ts'
 import {
   CryptoRandom,
   type CryptoLike,
@@ -64,7 +66,7 @@ test('cryptoRandomFromSeed is reproducible: same seed → same sequence', () => 
       const b = drainBytes(cryptoRandomFromSeed(seed), 32)
       expect(a).toEqual(b)
     }),
-    { numRuns: 16 }
+    { numRuns: numRunsFor(16) }
   )
 })
 
@@ -75,7 +77,7 @@ test('cryptoRandomFromSeed produces v4-shaped UUIDs', () => {
       const uuids = drainUuids(cryptoRandomFromSeed(seed), 4)
       for (const u of uuids) expect(u).toMatch(v4)
     }),
-    { numRuns: 8 }
+    { numRuns: numRunsFor(8) }
   )
 })
 
@@ -88,7 +90,7 @@ test('cryptoRandomFromSeed produces bytes in [0, 256)', () => {
         expect(b).toBeLessThan(256)
       }
     }),
-    { numRuns: 8 }
+    { numRuns: numRunsFor(8) }
   )
 })
 

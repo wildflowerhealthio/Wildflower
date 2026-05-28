@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 import fc from 'fast-check'
-import { utilityExpectations } from 'kitchen-sink/test'
+import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { SimpleEntity } from '../test-helpers.ts'
@@ -66,7 +66,8 @@ describe('EntityDefinition.make', () => {
       fc.property(fc.json(), (json) => {
         const result = Effect.runSync(Effect.either(SimpleEntity.parse(makeResponse(json))))
         expect(['Right', 'Left']).toContain(result._tag)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

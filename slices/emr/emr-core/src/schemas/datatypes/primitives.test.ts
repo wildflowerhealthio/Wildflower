@@ -1,5 +1,6 @@
 import { Arbitrary, DateTime, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { IdSchema, InstantSchema, TimeSchema, UriSchema } from './primitives.ts'
@@ -47,7 +48,8 @@ describe('TimeSchema', () => {
     fc.assert(
       fc.property(arb, (value) => {
         expect(decode(value)._tag).toBe('Right')
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -58,7 +60,8 @@ describe('TimeSchema', () => {
     fc.assert(
       fc.property(arb, (value) => {
         expect(decodeSync(encode(value))).toBe(value)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })
@@ -102,7 +105,8 @@ describe('UriSchema', () => {
     fc.assert(
       fc.property(arb, (value) => {
         expect(decode(value)._tag).toBe('Right')
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -113,7 +117,8 @@ describe('UriSchema', () => {
     fc.assert(
       fc.property(arb, (value) => {
         expect(decodeSync(encode(value))).toBe(value)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })
@@ -157,7 +162,8 @@ describe('IdSchema', () => {
     fc.assert(
       fc.property(arb, (value) => {
         expect(decode(value)._tag).toBe('Right')
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -168,7 +174,8 @@ describe('IdSchema', () => {
     fc.assert(
       fc.property(arb, (value) => {
         expect(decodeSync(encode(value))).toBe(value)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })
@@ -205,7 +212,8 @@ describe('InstantSchema', () => {
     fc.assert(
       fc.property(arb, (value) => {
         expect(encode(value)).toMatch(FHIR_INSTANT_REGEX)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -216,7 +224,8 @@ describe('InstantSchema', () => {
         expect(DateTime.toEpochMillis(decodeSync(encode(value)))).toBe(
           DateTime.toEpochMillis(value)
         )
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 

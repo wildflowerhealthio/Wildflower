@@ -1,5 +1,6 @@
 import { Arbitrary, Either, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as Binary from './binary.ts'
@@ -15,7 +16,7 @@ const BinarySchema = Binary.RowSchema
 // arbitrary instead.
 // ---------------------------------------------------------------------------
 
-const REFERENCE_NUM_RUNS = 25
+const REFERENCE_NUM_RUNS = numRunsFor(25)
 
 const roundTripColumn = (name: keyof typeof BinarySchema.Type, numRuns?: number): void => {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see file header
@@ -68,7 +69,8 @@ describe('Binary model', () => {
         // oxlint-disable-next-line typescript/no-unsafe-assignment -- AnyNoContext typing erasure (test-only)
         const decoded = Schema.decodeSync(sub)(encoded)
         expect(decoded).toSchemaEqual(sub, value)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -92,7 +94,8 @@ describe('Binary model', () => {
           const result = decode(incomplete)
           expect(Either.isLeft(result)).toBe(true)
         }
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 

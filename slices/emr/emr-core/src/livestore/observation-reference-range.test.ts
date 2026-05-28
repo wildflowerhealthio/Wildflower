@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as ObservationReferenceRange from './observation-reference-range.ts'
@@ -17,7 +18,8 @@ describe('ObservationReferenceRange model', () => {
         const encoded = Schema.encodeSync(ReferenceRangeSchema)(rr)
         const decoded = Schema.decodeSync(ReferenceRangeSchema)(encoded)
         expect(decoded).toSchemaEqual(ReferenceRangeSchema, rr)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   }, 10_000)
 
@@ -40,7 +42,7 @@ describe('ObservationReferenceRange model', () => {
         const decoded = Schema.decodeSync(sub)(encoded)
         expect(decoded).toSchemaEqual(sub, value)
       }),
-      { numRuns: 25 }
+      { numRuns: numRunsFor(25) }
     )
   })
 

@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as Attachment from './attachment.ts'
@@ -17,7 +18,8 @@ describe('Attachment model', () => {
         const encoded = Schema.encodeSync(Attachment.Schema)(attachment)
         const decoded = Schema.decodeSync(Attachment.Schema)(encoded)
         expect(decoded).toSchemaEqual(Attachment.Schema, attachment)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

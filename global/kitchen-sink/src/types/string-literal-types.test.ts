@@ -1,6 +1,7 @@
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { numRunsFor } from '../test/num-runs-for.ts'
 import { endsWithAlphanumericCharacter, endsWithDigit, isDigit } from './string-literal-types.ts'
 
 describe('isDigit', () => {
@@ -9,7 +10,8 @@ describe('isDigit', () => {
       fc.property(fc.oneof(fc.string(), fc.string({ minLength: 1, maxLength: 1 })), (s) => {
         const expected = /^[0-9]$/.test(s)
         expect(isDigit(s)).toBe(expected)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -33,7 +35,8 @@ describe('endsWithDigit', () => {
         const last = s.at(-1)
         const expected = last !== undefined && '0123456789'.includes(last)
         expect(endsWithDigit(s)).toBe(expected)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -48,7 +51,8 @@ describe('endsWithAlphanumericCharacter', () => {
       fc.property(fc.string(), (s) => {
         const expected = /[a-zA-Z0-9]$/.test(s)
         expect(endsWithAlphanumericCharacter(s)).toBe(expected)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 

@@ -2,6 +2,7 @@ import { Schema } from 'effect'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { numRunsFor } from '../test/num-runs-for.ts'
 import { utilityExpectations } from '../test/utility-expectations.ts'
 import { JsonValue } from './json-value.ts'
 
@@ -72,7 +73,8 @@ describe('JsonValue', () => {
           )
           expect(roundTripped).toEqual(decoded)
         }
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

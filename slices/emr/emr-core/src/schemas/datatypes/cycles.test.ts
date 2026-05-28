@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as Extension from './extension.ts'
@@ -59,7 +60,7 @@ describe('Extension self-recursion', () => {
         const decoded = decodeExtension(encoded)
         expect(decoded).toSchemaEqual(Extension.Schema, ext)
       }),
-      { numRuns: 20 }
+      { numRuns: numRunsFor(20) }
     )
   }, 30_000)
 })
@@ -98,7 +99,7 @@ const runValueCycle = <K extends keyof Schema.Schema.Type<typeof Extension.Schem
       const decodedValue = decoded[field]
       expect(decodedValue).toSchemaEqual(schema, value)
     }),
-    { numRuns: 30 }
+    { numRuns: numRunsFor(30) }
   )
 }
 
@@ -155,7 +156,7 @@ describe('Extension composite cycle', () => {
         const decoded = decodeExtension(encodeExtension(outer))
         expect(decoded.extension[0]?.valueQuantity).toSchemaEqual(Quantity.Schema, quantity)
       }),
-      { numRuns: 30 }
+      { numRuns: numRunsFor(30) }
     )
   })
 })

@@ -2,6 +2,7 @@ import { render, renderHook } from '@testing-library/react'
 import { Effect } from 'effect'
 import type { BridgeTransport } from 'effect-messaging-core'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { memo } from 'react'
 import { NoContextException } from 'react-kitchen-sink'
 import { describe, expect, test, vi } from 'vite-plus/test'
@@ -270,7 +271,7 @@ describe('makeMessageSenderPipe — properties', () => {
           expect(NavigationBridge.name).toBe('Navigation')
         }
       ),
-      { numRuns: 25 }
+      { numRuns: numRunsFor(25) }
     )
   })
 })

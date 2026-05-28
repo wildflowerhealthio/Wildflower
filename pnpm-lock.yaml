@@ -294,6 +294,9 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260429.1
+      effect:
+        specifier: 3.21.2
+        version: 3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
       eslint:
         specifier: ^9.39.4
         version: 9.39.4(jiti@2.7.0)
@@ -1517,6 +1520,9 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -2585,6 +2591,9 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -2907,6 +2916,9 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
       local-http-server-core:
         specifier: workspace:*
         version: link:../../local-http-server/local-http-server-core
@@ -13327,7 +13339,7 @@ snapshots:
       wrap-ansi: 7.0.0
       ws: 8.20.1
     optionalDependencies:
-      expo-router: 6.0.23(185e9855e2206331b43523fcc3e2b5f6)
+      expo-router: 6.0.23(3a1ecd3dfe5459c332310830856796e5)
       react-native: 0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.1.0)(react@19.1.0)
     transitivePeerDependencies:
       - bufferutil

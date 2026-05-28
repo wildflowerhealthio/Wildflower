@@ -4,7 +4,7 @@ import {
   InstanceConfig as FhirR4InstanceConfig,
   scrapingPlan as fhirR4ScrapingPlan,
 } from 'fhir-r4-client-collector'
-import { utilityExpectations } from 'kitchen-sink/test'
+import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { CollectorConfig, CollectorTag, makeScrapingPlanForConfig } from './registry.ts'
@@ -40,7 +40,8 @@ describe('CollectorConfig', () => {
       fc.property(Arbitrary.make(CollectorConfig), (config) => {
         const encoded = Schema.encodeSync(CollectorConfig)(config)
         expect(Schema.decodeSync(CollectorConfig)(encoded)).toEqual(config)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 

@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, expectTypeOf, test } from 'vite-plus/test'
 
 import type { Schema as ExtensionSchema } from '../datatypes/extension.ts'
@@ -32,7 +33,8 @@ describe('BackboneElement', () => {
         const encoded = Schema.encodeSync(TestBackboneSchema)(element)
         const decoded = Schema.decodeSync(TestBackboneSchema)(encoded)
         expect(decoded).toSchemaEqual(TestBackboneSchema, element)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

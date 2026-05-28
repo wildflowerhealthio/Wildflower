@@ -1,4 +1,5 @@
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { expect, test } from 'vite-plus/test'
 import { timingSafeEqual } from '../src/internal/timing-safe-equal.ts'
 
@@ -7,7 +8,7 @@ test('timingSafeEqual returns true for identical strings', () => {
     fc.property(fc.string(), (s) => {
       expect(timingSafeEqual(s, s)).toBe(true)
     }),
-    { numRuns: 100 }
+    { numRuns: numRunsFor(100) }
   )
 })
 
@@ -18,7 +19,7 @@ test('timingSafeEqual returns false for different strings', () => {
       if (a === b) return
       expect(timingSafeEqual(a, b)).toBe(false)
     }),
-    { numRuns: 100 }
+    { numRuns: numRunsFor(100) }
   )
 })
 
@@ -27,7 +28,7 @@ test('timingSafeEqual matches strict equality', () => {
     fc.property(fc.string(), fc.string(), (a, b) => {
       expect(timingSafeEqual(a, b)).toBe(a === b)
     }),
-    { numRuns: 200 }
+    { numRuns: numRunsFor(200) }
   )
 })
 

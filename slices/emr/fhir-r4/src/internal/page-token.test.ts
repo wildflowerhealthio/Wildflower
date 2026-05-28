@@ -1,5 +1,6 @@
 import { Encoding } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { decodePageToken, encodePageToken } from './page-token.ts'
@@ -16,7 +17,8 @@ describe('page-token codec', () => {
         const token = encodePageToken(payload)
         const decoded = decodePageToken(token)
         expect(decoded).toEqual(payload)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -30,7 +32,8 @@ describe('page-token codec', () => {
     fc.assert(
       fc.property(notBase64, (token) => {
         expect(decodePageToken(token)).toBeUndefined()
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -47,7 +50,8 @@ describe('page-token codec', () => {
       fc.property(nonJsonString, (raw) => {
         const token = Encoding.encodeBase64Url(raw)
         expect(decodePageToken(token)).toBeUndefined()
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -74,7 +78,8 @@ describe('page-token codec', () => {
           const token = Encoding.encodeBase64Url(jsonText)
           expect(decodePageToken(token)).toBeUndefined()
         }
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

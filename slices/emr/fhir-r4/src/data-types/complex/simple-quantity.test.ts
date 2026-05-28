@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { SimpleQuantity as StoreSimpleQuantity } from 'emr-core/schemas'
@@ -13,7 +14,8 @@ describe('FhirR4SimpleQuantity', () => {
         const fhir = Schema.encodeSync(SimpleQuantity.Schema)(quantity)
         const decoded = Schema.decodeSync(SimpleQuantity.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreSimpleQuantity.Schema, quantity)
-      })
+      }),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

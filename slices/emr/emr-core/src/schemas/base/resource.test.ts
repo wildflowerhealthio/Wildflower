@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, expectTypeOf, test } from 'vite-plus/test'
 
 import * as Resource from './resource.ts'
@@ -11,7 +12,7 @@ import * as Resource from './resource.ts'
 // cast.
 // ---------------------------------------------------------------------------
 
-const META_NUM_RUNS = 25
+const META_NUM_RUNS = numRunsFor(25)
 
 const roundTripField = (name: keyof typeof Resource.Schema.Type, numRuns?: number): void => {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see file header

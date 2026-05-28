@@ -21,12 +21,14 @@
     "lint:docs": "markdownlint-cli2 --config .local.markdownlint-cli2.mjs",
     "pack": "vp run --cache -r build",
     "prepare": "vp config",
-    "ready": "vp fmt && vp lint && vp run lint:comments && vp run lint:docs && vp run pack && vp run test-all",
-    "test-all": "vp test && vp run jest"
+    "ready": "vp fmt && vp lint && vp run lint:comments && vp run lint:docs && vp run pack && vp run test:all",
+    "test:all": "vp test && vp run jest",
+    "test:changed": "FC_RISK_MAP=\"$(node scripts/risk-map.ts)\" vp test && vp run jest"
   },
   "devDependencies": {
     "@effect/language-service": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
     "eslint": "^9.39.4",
     "eslint-plugin-expo": "^1.0.0",
     "eslint-plugin-tsdoc": "^0.5.2",

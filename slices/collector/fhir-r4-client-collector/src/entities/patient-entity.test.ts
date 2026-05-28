@@ -1,6 +1,6 @@
 import { Effect, type Either, type ParseResult } from 'effect'
 import fc from 'fast-check'
-import { utilityExpectations } from 'kitchen-sink/test'
+import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { Response } from 'collector-fundamentals/model'
@@ -99,7 +99,8 @@ describe('PatientEntity', () => {
         fc.property(fc.json(), (json) => {
           const result = Effect.runSync(Effect.either(PatientEntity.parse(makeResponse(json))))
           expect(['Right', 'Left']).toContain(result._tag)
-        })
+        }),
+        { numRuns: numRunsFor(100) }
       )
     })
   })

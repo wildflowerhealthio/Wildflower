@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Annotation as StoreAnnotation } from 'emr-core/schemas'
@@ -43,22 +44,34 @@ describe('FhirR4Annotation', () => {
   })
 
   test('property: text field round-trips', () => {
-    fc.assert(fc.property(fieldArb('text'), (o) => roundTrip({ ...sampleAnnotation, ...o })))
+    fc.assert(
+      fc.property(fieldArb('text'), (o) => roundTrip({ ...sampleAnnotation, ...o })),
+      {
+        numRuns: numRunsFor(100),
+      }
+    )
   })
 
   test('property: time field round-trips', () => {
-    fc.assert(fc.property(fieldArb('time'), (o) => roundTrip({ ...sampleAnnotation, ...o })))
+    fc.assert(
+      fc.property(fieldArb('time'), (o) => roundTrip({ ...sampleAnnotation, ...o })),
+      {
+        numRuns: numRunsFor(100),
+      }
+    )
   })
 
   test('property: authorString field round-trips', () => {
     fc.assert(
-      fc.property(fieldArb('authorString'), (o) => roundTrip({ ...sampleAnnotation, ...o }))
+      fc.property(fieldArb('authorString'), (o) => roundTrip({ ...sampleAnnotation, ...o })),
+      { numRuns: numRunsFor(100) }
     )
   })
 
   test('property: authorReference field round-trips (Reference→Identifier cycle)', () => {
     fc.assert(
-      fc.property(fieldArb('authorReference'), (o) => roundTrip({ ...sampleAnnotation, ...o }))
+      fc.property(fieldArb('authorReference'), (o) => roundTrip({ ...sampleAnnotation, ...o })),
+      { numRuns: numRunsFor(100) }
     )
   })
 })

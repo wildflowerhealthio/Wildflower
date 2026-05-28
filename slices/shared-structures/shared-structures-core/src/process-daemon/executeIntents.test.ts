@@ -13,6 +13,7 @@
  */
 import { Cause, Chunk, Deferred, Effect, Ref, type Scope, Stream } from 'effect'
 import fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { executeIntents } from './executeIntents.ts'
@@ -184,6 +185,6 @@ describe('executeIntents', () => {
           }
         }
       }),
-      { numRuns: 50 }
+      { numRuns: numRunsFor(50) }
     ))
 })

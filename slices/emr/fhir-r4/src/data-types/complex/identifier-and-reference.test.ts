@@ -1,5 +1,6 @@
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Identifier as StoreIdentifier, Reference as StoreReference } from 'emr-core/schemas'
@@ -77,7 +78,8 @@ describe('FhirR4Reference', () => {
     fc.assert(
       fc.property(referenceFieldArb('display'), (override) =>
         roundTripReference({ ...sampleReference, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -85,7 +87,8 @@ describe('FhirR4Reference', () => {
     fc.assert(
       fc.property(referenceFieldArb('reference'), (override) =>
         roundTripReference({ ...sampleReference, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -93,7 +96,8 @@ describe('FhirR4Reference', () => {
     fc.assert(
       fc.property(referenceFieldArb('type'), (override) =>
         roundTripReference({ ...sampleReference, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -101,7 +105,8 @@ describe('FhirR4Reference', () => {
     fc.assert(
       fc.property(referenceFieldArb('identifier'), (override) =>
         roundTripReference({ ...sampleReference, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 })
@@ -115,7 +120,8 @@ describe('FhirR4Identifier', () => {
     fc.assert(
       fc.property(identifierFieldArb('system'), (override) =>
         roundTripIdentifier({ ...sampleIdentifier, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -123,7 +129,8 @@ describe('FhirR4Identifier', () => {
     fc.assert(
       fc.property(identifierFieldArb('value'), (override) =>
         roundTripIdentifier({ ...sampleIdentifier, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -131,7 +138,8 @@ describe('FhirR4Identifier', () => {
     fc.assert(
       fc.property(identifierFieldArb('use'), (override) =>
         roundTripIdentifier({ ...sampleIdentifier, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -139,7 +147,8 @@ describe('FhirR4Identifier', () => {
     fc.assert(
       fc.property(identifierFieldArb('period'), (override) =>
         roundTripIdentifier({ ...sampleIdentifier, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -147,7 +156,8 @@ describe('FhirR4Identifier', () => {
     fc.assert(
       fc.property(identifierFieldArb('type'), (override) =>
         roundTripIdentifier({ ...sampleIdentifier, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 
@@ -155,7 +165,8 @@ describe('FhirR4Identifier', () => {
     fc.assert(
       fc.property(identifierFieldArb('assigner'), (override) =>
         roundTripIdentifier({ ...sampleIdentifier, ...override })
-      )
+      ),
+      { numRuns: numRunsFor(100) }
     )
   })
 })
