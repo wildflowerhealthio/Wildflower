@@ -9,6 +9,7 @@ import {
   UrlParamMessage,
 } from 'effect-messaging-core'
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
+import { useComponentScopedRunner } from 'react-kitchen-sink'
 import { TransportWebView, type TransportWebViewSource } from './transport-webview.tsx'
 
 /**
@@ -147,13 +148,13 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
 
   const { bridges, receiverLayers } = bindings
 
-  useEffect((): undefined | (() => void) => {
-    if (transport === null) return undefined
-    const fiber = Effect.runFork(HostBindings.callTransportReady(bindings, transport.sendMessage))
-    return (): void => {
-      Effect.runFork(Fiber.interrupt(fiber))
-    }
+  const transportReadyEffect = useMemo(() => {
+    if (transport === null) return Effect.void
+
+    return HostBindings.callTransportReady(bindings, transport.sendMessage)
   }, [bindings, transport])
+
+  useComponentScopedRunner(transportReadyEffect)
 
   useEffect(() => {
     const fiber = Effect.runFork(

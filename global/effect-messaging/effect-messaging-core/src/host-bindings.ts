@@ -1,4 +1,5 @@
-import { type Context, Effect, type Layer } from 'effect'
+import { Effect, type Context, type Layer } from 'effect'
+import { flattenTuples } from 'kitchen-sink/types'
 import type * as BridgeTransport from './bridge-transport.ts'
 import type * as Bridge from './bridge.ts'
 
@@ -101,15 +102,12 @@ const single = <const B extends Bridge.AnyBridge>(binding: {
  * peels one element off the head and prepends its `Bridges` tuple to
  * the recursive tail.
  */
-type FlatBridges<T extends ReadonlyArray<HostBindings<ReadonlyArray<Bridge.AnyBridge>>>> =
-  T extends readonly []
-    ? readonly []
-    : T extends readonly [
-          HostBindings<infer Head>,
-          ...infer Rest extends ReadonlyArray<HostBindings<ReadonlyArray<Bridge.AnyBridge>>>,
-        ]
-      ? readonly [...Head, ...FlatBridges<Rest>]
-      : never
+type CombineHostBindings<T extends ReadonlyArray<HostBindings<ReadonlyArray<Bridge.AnyBridge>>>> =
+  HostBindings<
+    flattenTuples<{
+      readonly [I in keyof T]: T[I]['bridges']
+    }>
+  >
 
 /**
  * Concatenate a tuple of {@link HostBindings} into a single bindings
@@ -141,25 +139,18 @@ type FlatBridges<T extends ReadonlyArray<HostBindings<ReadonlyArray<Bridge.AnyBr
  * module at the top of the bundled dist — which shadows the global
  * `Array` constructor and crashes at runtime.
  */
-const combine = <const T extends ReadonlyArray<HostBindings<ReadonlyArray<Bridge.AnyBridge>>>>(
-  bindings: T
-): HostBindings<FlatBridges<T>> => {
-  type Out = FlatBridges<T>
+// const T extends ReadonlyArray<HostBindings<ReadonlyArray<Bridge.AnyBridge>>>
+
+const combine = <Bs extends ReadonlyArray<ReadonlyArray<Bridge.AnyBridge>>>(bindings: {
+  readonly [I in keyof Bs]: HostBindings<Bs[I]>
+}): CombineHostBindings<{
+  readonly [I in keyof Bs]: HostBindings<Bs[I]>
+}> => {
   return {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    bridges: bindings.flatMap((b) => b.bridges) as unknown as Out,
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    receiverLayers: bindings.flatMap(
-      (b) => b.receiverLayers as ReadonlyArray<Layer.Layer<unknown>>
-    ) as unknown as Bridge.TransportLayers<Out, 'Host'>,
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    initialMessages: bindings.flatMap(
-      (b) => b.initialMessages as ReadonlyArray<unknown>
-    ) as unknown as InitialMessagesByBridge<Out>,
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    onTransportReady: bindings.flatMap(
-      (b) => b.onTransportReady as ReadonlyArray<unknown>
-    ) as unknown as OnTransportReadyByBridge<Out>,
+    bridges: flattenTuples(bindings.map((b) => b.bridges)),
+    receiverLayers: flattenTuples(bindings.map((b) => b.receiverLayers)),
+    initialMessages: flattenTuples(bindings.map((b) => b.initialMessages)),
+    onTransportReady: flattenTuples(bindings.map((b) => b.onTransportReady)),
   }
 }
 
@@ -182,23 +173,18 @@ const callTransportReady = <const Bridges extends ReadonlyArray<Bridge.AnyBridge
   bindings: HostBindings<Bridges>,
   send: BridgeTransport.MessageSender<Bridges, 'Host'>
 ): Effect.Effect<void> =>
-  Effect.forEach(
-    bindings.onTransportReady,
-    (callback) => {
+  Effect.all(
+    bindings.onTransportReady.map((callback) => {
       if (callback === undefined) return Effect.void
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const widened = send as unknown as BridgeTransport.MessageSender<
-        ReadonlyArray<Bridge.AnyBridge>,
-        'Host'
-      >
-      return callback(widened).pipe(Effect.catchAllCause(Effect.logError))
-    },
+
+      return callback(send).pipe(Effect.catchAllCause(Effect.logError))
+    }),
     { discard: true, concurrency: 'unbounded' }
   )
 
 export { callTransportReady, combine, single }
 export type {
-  FlatBridges,
+  CombineHostBindings,
   HostBindings,
   HostHandlerTagId,
   InitialMessagesByBridge,

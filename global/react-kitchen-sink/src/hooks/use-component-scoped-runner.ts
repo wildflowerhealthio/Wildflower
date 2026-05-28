@@ -13,7 +13,11 @@ import { useEffect } from 'react'
  * fresh layer on every render would relaunch the daemon stack.
  */
 const useComponentScopedRunner = (
-  arg: Layer.Layer<never, never, never> | Effect.Effect<never, never, never>
+  arg:
+    | Layer.Layer<unknown, never, never>
+    | Layer.Layer<never, never, never>
+    | Effect.Effect<unknown, never, never>
+    | Effect.Effect<never, never, never>
 ): void => {
   useEffect(() => {
     const effect = Effect.isEffect(arg) ? arg : Layer.launch(arg)

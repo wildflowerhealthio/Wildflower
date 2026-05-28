@@ -48,6 +48,7 @@
     "jest-expo": "catalog:",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
     "react-native": "catalog:",
     "react-native-webview": "catalog:",
     "typescript": "catalog:",
@@ -58,6 +59,7 @@
     "effect-messaging-core": "workspace:*",
     "expo-web-browser": ">=15.0.0",
     "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
     "react-native": "catalog:",
     "react-native-webview": ">=13.0.0"
   }

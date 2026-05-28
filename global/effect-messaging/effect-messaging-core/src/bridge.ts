@@ -138,12 +138,7 @@ type UrlParamableMessage<Bridges extends ReadonlyArray<AnyBridge>> = Bridges[num
  * supply position `I`'s bridge tag (for the specified side).
  */
 type TransportLayers<Bridges extends ReadonlyArray<AnyBridge>, Side extends 'Host' | 'Web'> = {
-  readonly [I in keyof Bridges]: Bridges[I] extends {
-    // oxlint-disable-next-line typescript/no-explicit-any
-    readonly [K in Side]: { readonly HandlerTag: Context.Tag<infer Id, any> }
-  }
-    ? Layer.Layer<Id>
-    : never
+  readonly [I in keyof Bridges]: Layer.Layer<Bridges[I][Side]['HandlerTag']['Identifier']>
 }
 
 /**
