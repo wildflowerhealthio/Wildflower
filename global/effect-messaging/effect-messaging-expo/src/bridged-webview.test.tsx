@@ -229,6 +229,36 @@ describe('BridgedWebView (initial messages)', () => {
     })
   })
 
+  it('preserves an existing query string verbatim when initialMessages is omitted (no extra params, no trailing ?)', async () => {
+    // Sentinel coverage for the empty-initialMessages-with-existing-query
+    // path: a regression that appended a stray separator (or always
+    // emitted a `?` even when there's nothing to add) would slip through
+    // the other tests in this block, all of which exercise non-empty
+    // initialMessages.
+    const NoopBridge = Bridge.make({
+      name: 'Noop',
+      hostToWeb: [] as const,
+      webToHost: [] as const,
+    })
+
+    const bindings = HostBindings.single({
+      bridge: NoopBridge,
+      receiverLayer: NoopBridge.Host.ReceiverLayer({}),
+      // initialMessages intentionally omitted — defaults to [[]].
+    })
+
+    render(
+      <BridgedWebView
+        bindings={bindings}
+        loadFrom={{ _tag: 'uri', uri: 'https://app.test/?keep=me' }}
+      />
+    )
+
+    await waitFor(() => {
+      expect(mockWebViewState.props?.source?.uri).toBe('https://app.test/?keep=me')
+    })
+  })
+
   it('merges initialMessages alongside an existing query string on loadFrom.uri', async () => {
     // Pins the merge-vs-replace contract called out in the loadFrom
     // TSDoc: an existing query string on `loadFrom.uri` is preserved
@@ -265,6 +295,136 @@ describe('BridgedWebView (initial messages)', () => {
       const params = new URL(uri).searchParams
       expect(params.get('session')).toBe('abc')
       expect(params.get('Setup')).toBe('/welcome')
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Multi-binding combine: two distinct fixture bridges wired together.
+// The whole point of the parallel-array refactor is that each binding's
+// sender is constrained to its own tags and page-side messages decode
+// against the correct receiver layer. The single-bridge cases above
+// collapse the alignment question — these tests guard against
+// regressions that mis-align the per-binding arrays.
+// ---------------------------------------------------------------------------
+
+const FooSchema = Schema.parseJson(Schema.TaggedStruct('Foo', { value: Schema.String }))
+const FooReplySchema = Schema.parseJson(Schema.TaggedStruct('FooReply', { reply: Schema.String }))
+const BarSchema = Schema.parseJson(Schema.TaggedStruct('Bar', { value: Schema.Number }))
+const BarReplySchema = Schema.parseJson(Schema.TaggedStruct('BarReply', { count: Schema.Number }))
+
+const FooBarBridge = Bridge.make({
+  name: 'FooBar',
+  hostToWeb: [['Foo', FooSchema]] as const,
+  webToHost: [['FooReply', FooReplySchema]] as const,
+})
+const BazBridge = Bridge.make({
+  name: 'Baz',
+  hostToWeb: [['Bar', BarSchema]] as const,
+  webToHost: [['BarReply', BarReplySchema]] as const,
+})
+
+type FooSend = BridgeTransport.MessageSender<readonly [typeof FooBarBridge], 'Host'>
+type BarSend = BridgeTransport.MessageSender<readonly [typeof BazBridge], 'Host'>
+
+describe('BridgedWebView (multi-binding combine)', () => {
+  beforeEach(() => {
+    resetMockWebView()
+  })
+
+  it('fires each binding onTransportReady with its own narrowly-typed sender, and routes each page message to the correct receiver layer', async () => {
+    const fooReplies: Array<{ reply: string }> = []
+    const barReplies: Array<{ count: number }> = []
+    let fooSend: FooSend | null = null
+    let barSend: BarSend | null = null
+
+    const fooBindings = HostBindings.single({
+      bridge: FooBarBridge,
+      receiverLayer: FooBarBridge.Host.ReceiverLayer({
+        FooReply: ({ reply }) => Effect.sync(() => fooReplies.push({ reply })),
+      }),
+      onTransportReady: (send) =>
+        Effect.sync(() => {
+          fooSend = send
+        }),
+    })
+
+    const barBindings = HostBindings.single({
+      bridge: BazBridge,
+      receiverLayer: BazBridge.Host.ReceiverLayer({
+        BarReply: ({ count }) => Effect.sync(() => barReplies.push({ count })),
+      }),
+      onTransportReady: (send) =>
+        Effect.sync(() => {
+          barSend = send
+        }),
+    })
+
+    const merged = HostBindings.combine([fooBindings, barBindings])
+
+    render(
+      <BridgedWebView
+        bindings={merged}
+        loadFrom={{
+          _tag: 'html',
+          html: '<!doctype html><html></html>',
+          baseUrl: 'https://app.test/',
+        }}
+      />
+    )
+
+    await waitFor(() => {
+      expect(mockWebViewState.props).not.toBeNull()
+    })
+
+    // Both senders were captured — `onTransportReady` fired for both
+    // slots, not just one.
+    await waitFor(() => {
+      expect(fooSend).not.toBeNull()
+      expect(barSend).not.toBeNull()
+    })
+
+    // Deliver `__Ready` so the gated dispatch fiber unblocks.
+    const onMessage = mockWebViewState.props?.onMessage
+    if (onMessage === undefined) throw new Error('onMessage prop not captured')
+    act(() => {
+      onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } })
+    })
+
+    // Each per-binding sender, narrowly typed to its own bridge, routes
+    // through the same transport and ends up on the WebView postMessage
+    // log in order.
+    await act(async () => {
+      const fs = fooSend
+      const bs = barSend
+      if (fs === null || bs === null) throw new Error('sender capture missing')
+      await Effect.runPromise(fs({ _tag: 'Foo', value: 'hello' }))
+      await Effect.runPromise(bs({ _tag: 'Bar', value: 7 }))
+    })
+
+    await waitFor(() => {
+      expect(mockWebViewState.postMessageCalls).toEqual([
+        JSON.stringify({ _tag: 'Foo', value: 'hello' }),
+        JSON.stringify({ _tag: 'Bar', value: 7 }),
+      ])
+    })
+
+    // Page-side replies decode to the matching receiver layer — Foo to
+    // Foo's handler, Bar to Bar's. A regression that swapped receiver
+    // layers across the parallel arrays would land replies in the
+    // wrong sink.
+    act(() => {
+      onMessage({
+        nativeEvent: { data: JSON.stringify({ _tag: 'FooReply', reply: 'pong-foo' }) },
+      })
+      onMessage({
+        nativeEvent: { data: JSON.stringify({ _tag: 'BarReply', count: 42 }) },
+      })
+    })
+
+    await waitFor(() => {
+      expect(fooReplies).toEqual([{ reply: 'pong-foo' }])
+      expect(barReplies).toEqual([{ count: 42 }])
     })
   })
 })

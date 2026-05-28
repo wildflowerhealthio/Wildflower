@@ -82,12 +82,6 @@ const single = <const B extends Bridge.AnyBridge>(binding: {
   ) => Effect.Effect<void>
 }): HostBindings<readonly [B]> => ({
   bridges: [binding.bridge] as const,
-  // The mapped-tuple TransportLayers<readonly [B], 'Host'> doesn't
-  // structurally reduce against `[Layer<HostHandlerTagId<B>>]` because
-  // its conditional `B extends { Host: { HandlerTag: Tag<infer Id> } }`
-  // doesn't fire on the structural `Bridge.AnyBridge` bound. The
-  // assertion is sound: the layer was declared against the same
-  // handler tag the mapped type extracts.
   receiverLayers: [binding.receiverLayer],
   initialMessages: [binding.initialMessages ?? []] as const,
   onTransportReady: [binding.onTransportReady] as const,
@@ -124,10 +118,10 @@ type CombineHostBindings<T extends ReadonlyArray<HostBindings<ReadonlyArray<Brid
  * ```
  *
  * @remarks
- * The four `as unknown as` casts re-narrow `Array.prototype.flatMap`
- * results to the tuple-mapped types — TS widens the result of `flatMap`
- * over a tuple-of-tuples to `T[]`, which the mapped-tuple shape
- * doesn't unify with.
+ * `flattenTuples` (from `kitchen-sink/types`) preserves the
+ * tuple-mapped shape that `Array.prototype.flatMap` would widen to
+ * `T[]` — the parallel-tuple invariant carries through without any
+ * runtime cast.
  *
  * Takes a single tuple parameter rather than rest (`...bindings`)
  * because `babel-preset-expo` transpiles rest params to `new Array(_len)`,
@@ -135,8 +129,6 @@ type CombineHostBindings<T extends ReadonlyArray<HostBindings<ReadonlyArray<Brid
  * module at the top of the bundled dist — which shadows the global
  * `Array` constructor and crashes at runtime.
  */
-// const T extends ReadonlyArray<HostBindings<ReadonlyArray<Bridge.AnyBridge>>>
-
 const combine = <Bs extends ReadonlyArray<ReadonlyArray<Bridge.AnyBridge>>>(bindings: {
   readonly [I in keyof Bs]: HostBindings<Bs[I]>
 }): CombineHostBindings<{
@@ -155,15 +147,15 @@ const combine = <Bs extends ReadonlyArray<ReadonlyArray<Bridge.AnyBridge>>>(bind
  * the tuple-typed sender) — concurrently, fault-isolated via
  * `catchAllCause`/`logError` so one binding's defect doesn't block the
  * others. Bindings whose slot is `undefined` are skipped. Returns an
- * Effect; the React caller `runFork`s it once and interrupts the fiber
- * on unmount for proper teardown.
+ * Effect; the React caller runs it on a component-scoped fiber that
+ * is interrupted on unmount for proper teardown.
  *
  * @remarks
- * Each `onTransportReady[i]` is typed against `[Bridges[i]]`, but
- * `send` is `MessageSender<Bridges, 'Host'>` (the full-tuple sender).
- * The cast is the contravariance-to-`out`-annotation gap on
- * `MessageSender` — at runtime the per-slot callback only fires
- * `bridges[i]`-shaped messages, which the full-tuple sender accepts.
+ * Each `onTransportReady[i]` is typed against `[Bridges[i]]`. The
+ * full-tuple sender accepts every per-slot message — TS resolves the
+ * call structurally because `MessageSender` distributes its outbound
+ * union over `Bridges[number]`, so handing the wide sender to a narrow
+ * slot fires only that slot's payloads at runtime.
  */
 const callTransportReady = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(
   bindings: HostBindings<Bridges>,

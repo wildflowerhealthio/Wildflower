@@ -61,7 +61,10 @@ const captureLogs = (sink: CapturedLog[]): Layer.Layer<never> =>
 describe('useLogHostBinding — runtime', () => {
   it('returns a 1-tuple HostBindings whose only bridge is LogBridge', () => {
     const { result } = renderHook(() => useLogHostBinding())
-    expect(result.current.bridges).toEqual([LogBridge.LogBridge])
+    // Identity assertion (`toBe`) — the slot must hold the canonical
+    // `LogBridge.LogBridge` declaration, not a freshly-built look-alike.
+    expect(result.current.bridges).toHaveLength(1)
+    expect(result.current.bridges[0]).toBe(LogBridge.LogBridge)
     // The LogBridge is web→host only; no initial-message channel.
     expect(result.current.initialMessages).toEqual([[]])
     // No post-mount work for the log binding either.

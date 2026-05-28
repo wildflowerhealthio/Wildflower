@@ -32,7 +32,7 @@ interface HostBindings<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
 }
 ```
 
-Every value is an array indexed by bridge position. `bridges[i]`'s receiver layer is `receiverLayers[i]`; its zero-or-many initial messages are `initialMessages[i]`; its optional post-mount step is `onTransportReady[i]`. The whole struct is exactly the shape `BridgeTransport.make` consumes (after a single `.flat()` to inline the `initialMessages` arrays), so no positional reshuffle happens at the call site.
+Every value is an array indexed by bridge position. `bridges[i]`'s receiver layer is `receiverLayers[i]`; its zero-or-many initial messages are `initialMessages[i]`; its optional post-mount step is `onTransportReady[i]`. The whole struct is exactly the shape `BridgeTransport.make` consumes (after a single `flattenTuples(...)` to inline the `initialMessages` arrays), so no positional reshuffle happens at the call site.
 
 Each slice's `*-expo` package exposes a `use<Slice>HostBinding` hook that returns a single-bridge `HostBindings<readonly [SliceBridge]>` (a 1-tuple). Single-bridge slices construct theirs via `HostBindings.single({...})`, which keeps the per-slice DX in the traditional `{ bridge, receiverLayer, initialMessages?, onTransportReady? }` shape:
 
@@ -80,7 +80,7 @@ Each of the four arrays is concatenated in tuple order. The result satisfies `Ho
 />
 ```
 
-Owns the WebView ref, builds the bridge transport inline (no separate `makeExpoTransport` indirection), and renders a `TransportWebView` once the transport state is set. A second `useEffect`, keyed on `(bindings, transport)`, runs `HostBindings.callTransportReady(bindings, transport.sendMessage)` so every per-bridge `onTransportReady` fires concurrently with fault isolation.
+Owns the WebView ref, builds the bridge transport inline (no separate `makeExpoTransport` indirection), and renders a `TransportWebView` once the transport state is set. The post-build step lives in a `useMemo` (keyed on `(bindings, transport)`) handed to `useComponentScopedRunner`, which runs `HostBindings.callTransportReady(bindings, transport.sendMessage)` on a component-scoped fiber so every per-bridge `onTransportReady` fires concurrently with fault isolation and the fiber is interrupted on unmount.
 
 `initialMessages` is read once at transport build time and seeded into the WebView's URL as `?<Tag>=<value>` query params — the page reads them synchronously from `window.location.search` at boot.
 
@@ -92,24 +92,11 @@ Owns the WebView ref, builds the bridge transport inline (no separate `makeExpoT
 
 The wider `HandlersFor<R>` type (`Effect<void, never, BareSender>`) is upward-compatible: handlers that don't need a reply return `Effect<void>` and still typecheck via covariance.
 
-## Why `callTransportReady` Casts the Sender
-
-`MessageSender<Bridges, 'Host'>` is declared `out Bridges` (covariant on the bridges tuple). A per-slot `onTransportReady[i]` is typed `(send: MessageSender<readonly [Bridges[i]], 'Host'>) => Effect<void>` — the narrow sender for that one bridge.
-
-`callTransportReady` only has the full-tuple sender. Passing it to a narrow slot would naturally compose via function-parameter contravariance — except the `out` annotation declares the type covariant, which blocks the assignment. One `as unknown as` cast bridges the gap. At runtime the per-slot callback only fires `bridges[i]`-shaped messages, which the full-tuple sender accepts.
-
 ## Where the Casts Live
 
-Three `as unknown as` casts remain, all inside `HostBindings.combine`. Each one re-narrows an `Array.prototype.flatMap` result to the tuple-mapped shape the consumer expects:
+The parallel-tuple invariant carries through `combine`, `single`, and `callTransportReady` without any `as unknown as` casts. `flattenTuples` (in [`global/kitchen-sink/src/types/flatten-tuples.ts`](../../../kitchen-sink/src/types/flatten-tuples.ts)) handles the four mapped-tuple flat-concats inside `combine` directly — TS reduces the recursive `readonly [...Head, ...flattenTuples<Rest>]` shape against the parallel-array consumer without a re-narrowing step. `single` builds its 1-tuples with literal `[x] as const` shapes that TS unifies against `Bridge.TransportLayers<readonly [B], 'Host'>` structurally. `callTransportReady` distributes `MessageSender`'s outbound union over `Bridges[number]`, so the full-tuple sender is assignable into each narrow per-slot callback.
 
-1. `bindings.flatMap(b => b.bridges)` → `FlatBridges<T>`
-2. `bindings.flatMap(b => b.receiverLayers)` → `Bridge.TransportLayers<FlatBridges<T>, 'Host'>`
-3. `bindings.flatMap(b => b.initialMessages)` → `InitialMessagesByBridge<FlatBridges<T>>` (preserves the array-of-arrays shape; the shell `.flat()`s before passing to `appendMessagesToUrl`)
-4. `bindings.flatMap(b => b.onTransportReady)` → `OnTransportReadyByBridge<FlatBridges<T>>`
-
-Plus the one cast in `callTransportReady`: `send as unknown as MessageSender<…>` — the covariance-annotation gap above.
-
-All five live in two files — `host-bindings.ts` for the parallel-tuple invariant, and nothing in `bridged-webview.tsx` (the inlined transport build has no casts). The consumer (`BridgedWebView` for the prop, `AppShellWebView` further up) sees a clean Bindings-shaped API.
+The page-side flatten in `bridged-webview.tsx` reuses the same `flattenTuples` helper to collapse `initialMessages` into a single sequence before `appendMessagesToUrl`. The consumer (`BridgedWebView` for the prop, `AppShellWebView` further up) sees a clean Bindings-shaped API with no casts in the chain.
 
 ## See Also
 

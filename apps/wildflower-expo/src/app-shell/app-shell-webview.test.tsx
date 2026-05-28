@@ -1,5 +1,7 @@
 import { act, render, waitFor } from '@testing-library/react-native'
 import { Effect as EffectType, type Layer as LayerType } from 'effect'
+import { Bridge, HostBindings } from 'effect-messaging-core'
+import { expectTypeOf } from 'expect-type'
 import * as React from 'react'
 import type { ReactElement, ReactNode } from 'react'
 
@@ -67,6 +69,29 @@ type MockBindings = {
   >
 }
 
+// Anchor `MockBindings` against the production `HostBindings` shape so
+// any parallel-array drift — a fifth field, a renamed field — fails
+// this file at compile time. Uses a minimal `Bridge.make`-built stub as
+// the bridge witness because `HostBindings.HostBindings<Bridges>`
+// requires `Bridges extends ReadonlyArray<Bridge.AnyBridge>`; a bare
+// `{ name: string }` doesn't satisfy that bound. Keys-level comparison
+// sidesteps the per-bridge variance the slice mocks intentionally relax
+// (their stub bridges aren't real `Bridge.AnyBridge`s).
+const stubBridgeForTypeCheck = Bridge.make({
+  name: 'TypeCheckStub',
+  hostToWeb: [] as const,
+  webToHost: [] as const,
+})
+expectTypeOf<keyof MockBindings>().toEqualTypeOf<
+  keyof HostBindings.HostBindings<readonly [typeof stubBridgeForTypeCheck]>
+>()
+
+// Delegate to the production `HostBindings.single` so a future change
+// to its body (e.g. populating a fifth array) surfaces in every mock
+// factory below at runtime. The input cast widens the lightweight stub
+// to `Bridge.AnyBridge`; the output cast narrows the rich result to
+// `MockBindings`. Both are sound because `single` reads only the four
+// input fields and returns the same four arrays it received.
 const singleMock = (binding: {
   readonly bridge: { readonly name: string }
   readonly receiverLayer: unknown
@@ -74,12 +99,15 @@ const singleMock = (binding: {
   readonly onTransportReady?: (
     send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
   ) => EffectType.Effect<void>
-}): MockBindings => ({
-  bridges: [binding.bridge],
-  receiverLayers: [binding.receiverLayer],
-  initialMessages: [binding.initialMessages ?? []],
-  onTransportReady: [binding.onTransportReady],
-})
+}): MockBindings => {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const widenedBinding = binding as unknown as Parameters<
+    typeof HostBindings.single<typeof stubBridgeForTypeCheck>
+  >[0]
+  const result = HostBindings.single(widenedBinding)
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return result as unknown as MockBindings
+}
 
 // Slice host-binding hooks: each returns a 1-tuple `HostBindings`
 // stand-in. Identity-equality on `bridge.name` is enough for the

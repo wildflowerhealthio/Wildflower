@@ -1,4 +1,4 @@
-import { Effect, Fiber, Layer } from 'effect'
+import { Effect, Layer } from 'effect'
 import {
   type BareSenderFunction,
   type BareSenderService,
@@ -157,8 +157,20 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
 
   useComponentScopedRunner(transportReadyEffect)
 
-  useEffect(() => {
-    const fiber = Effect.runFork(
+  // Reset to the loader between rebuilds. The build fiber below is
+  // owned by `useComponentScopedRunner`, which interrupts the prior
+  // build asynchronously when `bridges`/`receiverLayers` flip; this
+  // synchronous reset ensures the next render shows `loader` rather
+  // than a stale WebView while the new transport is being built.
+  useEffect(
+    () => (): void => {
+      setTransport(null)
+    },
+    [bridges, receiverLayers]
+  )
+
+  const buildEffect = useMemo(
+    () =>
       Effect.scoped(
         Effect.gen(function* () {
           // `react-native-webview`'s imperative `postMessage(string)`
@@ -181,10 +193,10 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
           // The page reads `window.location.search` synchronously at
           // boot; `appendMessagesToUrl` validates each message has a
           // urlParams schema (throws on mismatch — wiring drift fails
-          // fast). Flatten the parallel `initialMessages` arrays into
-          // one stream before appending; TS doesn't reduce the nested
-          // mapped-tuple over `Array.prototype.flat`, so we re-narrow
-          // here.
+          // fast). `flattenTuples` (kitchen-sink) collapses the
+          // parallel `initialMessages` mapped-tuple into one flat
+          // sequence while preserving the union over `Bridges`, so no
+          // cast is needed.
           const baseUrlParsed = new URL(transportBaseUrl)
           const flatInitial = flattenTuples(bindings.initialMessages)
           const embedUrl = UrlParamMessage.appendMessagesToUrl(
@@ -211,21 +223,22 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
           yield* Effect.sync(() =>
             setTransport({ sendMessage: built.sendMessage, embedUrl, onMessage })
           )
+          // Park the fiber until `useComponentScopedRunner`'s cleanup
+          // interrupts it — closing the scope tears down
+          // `BridgeTransport.make`'s dispatch fiber + outbound queue.
           yield* Effect.never
         })
-      )
-    )
-    return (): void => {
-      setTransport(null)
-      Effect.runFork(Fiber.interrupt(fiber))
-    }
+      ),
     // Rebuild only when the aggregated bridge/layer tuples change.
     // `initialMessages` and `transportBaseUrl` are read at build time
     // and intentionally excluded — they're seeded into the WebView's
     // URL/query at boot and can't be reapplied mid-life without a
     // remount.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [bridges, receiverLayers])
+    [bridges, receiverLayers]
+  )
+
+  useComponentScopedRunner(buildEffect)
 
   if (transport === null || source === null) return loader ?? <></>
 

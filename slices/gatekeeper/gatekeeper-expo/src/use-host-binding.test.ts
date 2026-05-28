@@ -42,3 +42,41 @@ describe('useGatekeeperHostBinding receiverLayer', () => {
     expect(handlers).toEqual({})
   })
 })
+
+describe('useGatekeeperHostBinding initialMessages', () => {
+  // `WaitForToken` is unconditional — the embedded SPA needs it to
+  // distinguish "token coming" from "no host" regardless of whether
+  // the host already has a token in hand.
+  it('seeds [{ _tag: "WaitForToken" }] when no token is provided', () => {
+    const { result } = renderHook(() => useGatekeeperHostBinding())
+    expect(result.current.initialMessages[0]).toEqual([{ _tag: 'WaitForToken' }])
+  })
+
+  it('seeds [{ _tag: "WaitForToken" }] when a token is provided (token never rides URL params)', () => {
+    const { result } = renderHook(() => useGatekeeperHostBinding({ token: 'bearer-abc' }))
+    expect(result.current.initialMessages[0]).toEqual([{ _tag: 'WaitForToken' }])
+  })
+})
+
+describe('useGatekeeperHostBinding onTransportReady', () => {
+  it('is undefined when no token is provided (no post-mount work to do)', () => {
+    const { result } = renderHook(() => useGatekeeperHostBinding())
+    expect(result.current.onTransportReady[0]).toBeUndefined()
+  })
+
+  it('issues AuthTokenIssued through the binding sender when a token is provided', async () => {
+    const { result } = renderHook(() => useGatekeeperHostBinding({ token: 'bearer-xyz' }))
+    const onReady = result.current.onTransportReady[0]
+    if (onReady === undefined)
+      throw new Error('onTransportReady should be defined when token is set')
+
+    const sent: Array<{ readonly _tag: string }> = []
+    const fakeSend = (msg: {
+      readonly _tag: string
+      readonly [k: string]: unknown
+    }): Effect.Effect<void> => Effect.sync(() => sent.push(msg))
+
+    await Effect.runPromise(onReady(fakeSend))
+    expect(sent).toEqual([{ _tag: 'AuthTokenIssued', token: 'bearer-xyz' }])
+  })
+})
