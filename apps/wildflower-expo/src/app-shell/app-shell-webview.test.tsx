@@ -292,7 +292,7 @@ const indexOf = (
 describe('AppShellWebView', () => {
   it('mounts BridgedWebView with all five bindings in declaration order', () => {
     // Order matches `HostBindings.combine([...])` in `use-host-bindings.ts`:
-    // four slice bindings followed by the cross-cutting `LogBridge` binding
+    // four slice bindings followed by the cross-cutting `Logging` binding
     // supplied by `useLogHostBinding`.
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
     const bindings = expectBindings()

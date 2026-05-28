@@ -1,5 +1,4 @@
 import { type CancelSnifferRequestMessage, type ClickMessage } from 'browser-sniffer-core'
-import { Response, type ScrapingPlan } from '../model/index.ts'
 import {
   Data,
   Effect,
@@ -20,6 +19,7 @@ import type {
   SniffingComplete as SniffingCompleteMessage,
 } from '../bridge.ts'
 import type * as EntityDefinition from '../model/entity-definition.ts'
+import { Response, type ScrapingPlan } from '../model/index.ts'
 
 type Service = CollectorBridge['Web']['HandlerTag']['Service']
 

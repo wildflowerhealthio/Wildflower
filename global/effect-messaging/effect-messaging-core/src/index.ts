@@ -1,7 +1,7 @@
 export * as Bridge from './bridge.ts'
 export * as BridgeTransport from './bridge-transport.ts'
 export * as DispatchError from './dispatch-error.ts'
-export * as LogBridge from './log-bridge.ts'
+export * as Logging from './logging.ts'
 export * as Message from './message.ts'
 export * as MessageHandler from './message-handler.ts'
 export { TransportAdapter, REACT_NATIVE_WEBVIEW_GLOBAL } from './transport-adapter.ts'

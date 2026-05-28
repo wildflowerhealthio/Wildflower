@@ -2,7 +2,7 @@ import { render } from '@testing-library/react-native'
 import { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
 import { snifferScript } from 'browser-sniffer-injected'
 import { Effect, LogLevel, Logger } from 'effect'
-import type { Bridge, LogBridge } from 'effect-messaging-core'
+import type { Bridge, Logging } from 'effect-messaging-core'
 import type { BridgedWebViewLoadFrom, BridgedWebViewProps } from 'effect-messaging-expo'
 import * as React from 'react'
 
@@ -23,7 +23,7 @@ const mockBridgedWebViewState: {
  * widened shape that doesn't carry our mock fields).
  */
 const mockUseLogHostBindingCalls: Array<{
-  onLog?: (log: LogBridge.LogPayload) => Effect.Effect<void>
+  onLog?: (log: Logging.LogPayload) => Effect.Effect<void>
 }> = []
 
 /**
@@ -47,7 +47,7 @@ jest.mock('effect-messaging-expo', () => {
       return ReactInner.createElement('MockBridgedWebView', null)
     },
     useLogHostBinding: (opts: {
-      onLog?: (log: LogBridge.LogPayload) => Effect.Effect<void>
+      onLog?: (log: Logging.LogPayload) => Effect.Effect<void>
     }): typeof MOCK_LOG_BINDINGS => {
       mockUseLogHostBindingCalls.push(opts)
       return MOCK_LOG_BINDINGS
@@ -238,8 +238,8 @@ describe('BrowserSnifferWebView ref-exposed MessageSender', () => {
   })
 
   it('threads onLog through to useLogHostBinding verbatim', async () => {
-    const logCalls: Array<LogBridge.LogPayload> = []
-    const myOnLog = (msg: LogBridge.LogPayload): Effect.Effect<void> =>
+    const logCalls: Array<Logging.LogPayload> = []
+    const myOnLog = (msg: Logging.LogPayload): Effect.Effect<void> =>
       Effect.sync(() => {
         logCalls.push(msg)
       })
@@ -271,7 +271,7 @@ describe('BrowserSnifferWebView ref-exposed MessageSender', () => {
     )
     expect(mockUseLogHostBindingCalls.length).toBe(1)
     // `useLogHostBinding` itself defaults `onLog` to
-    // `LogBridge.defaultOnLog` via parameter destructuring; passing
+    // `Logging.defaultOnLog` via parameter destructuring; passing
     // `undefined` here lets that default activate.
     expect(mockUseLogHostBindingCalls[0]?.onLog).toBeUndefined()
   })

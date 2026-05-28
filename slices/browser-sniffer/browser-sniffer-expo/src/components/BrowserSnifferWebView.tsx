@@ -4,7 +4,7 @@ import { Effect } from 'effect'
 import {
   type BridgeTransport,
   HostBindings,
-  type LogBridge,
+  type Logging,
   type MessageHandler,
 } from 'effect-messaging-core'
 import {
@@ -57,8 +57,8 @@ interface BrowserSnifferWebViewProps {
   readonly loader?: JSX.Element
   /**
    * Handler for page-side `console.<level>(...)` calls mirrored over
-   * {@link LogBridge.LogBridge}. Omit to fall back to
-   * {@link LogBridge.defaultOnLog} (routes through the host's Effect
+   * {@link Logging.LogBridge}. Omit to fall back to
+   * {@link Logging.defaultOnLog} (routes through the host's Effect
    * logger at the matching level — what most callers want).
    *
    * **Memoization required.** A fresh function literal on every
@@ -66,7 +66,7 @@ interface BrowserSnifferWebViewProps {
    * {@link BridgedWebView}'s `bindings`-identity rebuild rule). Wrap
    * in `useCallback` upstream.
    */
-  readonly onLog?: (msg: LogBridge.LogPayload) => Effect.Effect<void>
+  readonly onLog?: (msg: Logging.LogPayload) => Effect.Effect<void>
   /**
    * Per-tag handler record for sniffer events (`ResponseStart`,
    * `ResponseData`, `PageLoaded`, etc.). See {@link SnifferHandlers}.
@@ -110,15 +110,15 @@ const embedSnifferIntoHtml = (html: string): string => {
  * WebView that hosts an arbitrary third-party page with the
  * `browser-sniffer-injected` script installed pre-content-load,
  * built as a thin wrapper around {@link BridgedWebView} with
- * {@link BrowserSnifferBridge} and {@link LogBridge.LogBridge}
+ * {@link BrowserSnifferBridge} and {@link Logging.LogBridge}
  * composed into the same transport.
  *
  * @remarks
  * - **Decoded sniffer events** reach `browserSnifferHandlers` via
  *   `BridgedWebView`'s dispatch fiber.
  * - **Page-side `console.<level>(...)`** is mirrored over
- *   {@link LogBridge.LogBridge} and surfaces through `onLog` (or
- *   {@link LogBridge.defaultOnLog} when the prop is omitted).
+ *   {@link Logging.LogBridge} and surfaces through `onLog` (or
+ *   {@link Logging.defaultOnLog} when the prop is omitted).
  * - **Host→Web sends** (`Click`, `CancelSnifferRequest`) go through
  *   the typed sender exposed via `ref` — call with the decoded
  *   message and wrap in `Effect.runFork` at the call site. The

@@ -3,7 +3,7 @@ import { useAppsWebReceiverLayer } from 'apps-react'
 import { CollectorBridge } from 'collector-fundamentals/bridge'
 import { useCollectorWebReceiverLayer } from 'collector-react'
 import { Effect, Exit, Layer, Scope } from 'effect'
-import { BridgeTransport, LogBridge, TransportAdapter } from 'effect-messaging-core'
+import { BridgeTransport, Logging, TransportAdapter } from 'effect-messaging-core'
 import { WebPlatformAdapter } from 'effect-messaging-react'
 import { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { gatekeeperWebReceiverLayer } from 'gatekeeper-react/web-bridge'
@@ -68,16 +68,16 @@ function TransportProvider({
       if (typeof to === 'number') void navigateRef.current(to)
       else void navigateRef.current(to)
     })
-    // LogBridge sits alongside the slice bridges so page-side
+    // Logging sits alongside the slice bridges so page-side
     // `console.<level>(...)` rides its own bridge. The Web side here is
-    // outbound-only — `LogBridge.installConsoleInterceptor` does the
+    // outbound-only — `Logging.installConsoleInterceptor` does the
     // `console` patching once the transport is built.
     const bridges = [
       NavigationBridge,
       GatekeeperBridge,
       CollectorBridge,
       AppsBridge,
-      LogBridge.LogBridge,
+      Logging.LogBridge,
     ] as const
     const adapter = WebPlatformAdapter.make(bridges)
     return Effect.runPromise(
@@ -89,9 +89,9 @@ function TransportProvider({
             gatekeeperWebReceiverLayer,
             collectorLayer,
             appsLayer,
-            // LogBridge is Web→Host only on the page side; the Web
+            // Logging is Web→Host only on the page side; the Web
             // ReceiverLayer is the empty `{}` handlers record.
-            LogBridge.LogBridge.Web.ReceiverLayer({}),
+            Logging.LogBridge.Web.ReceiverLayer({}),
           ] as const,
           side: 'Web',
         }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter))),
@@ -101,17 +101,15 @@ function TransportProvider({
       await Effect.runPromise(Effect.andThen(transport.flushed, transport.signalReady))
 
       // Patch `globalThis.console.<level>` to forward through the
-      // LogBridge. `transport.sendMessage` returns an `Effect`; the
+      // Logging. `transport.sendMessage` returns an `Effect`; the
       // interceptor takes a plain `(msg) => void` and we hand it a
       // fiber-running closure here (the canonical fire-and-forget
       // wiring). Teardown is captured into `teardownConsoleRef` so the
       // useEffect cleanup can restore the originals BEFORE Scope.close
       // closes the transport.
-      teardownConsoleRef.current = LogBridge.installConsoleInterceptor(
-        (msg: LogBridge.LogPayload) => {
-          Effect.runFork(transport.sendMessage(msg))
-        }
-      )
+      teardownConsoleRef.current = Logging.installConsoleInterceptor((msg: Logging.LogPayload) => {
+        Effect.runFork(transport.sendMessage(msg))
+      })
       return transport
     })
   })
