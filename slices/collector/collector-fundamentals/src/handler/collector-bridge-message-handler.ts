@@ -1,5 +1,5 @@
 import { type CancelSnifferRequestMessage, type ClickMessage } from 'browser-sniffer-core'
-import { Response, type ScrapingPlan } from 'collector-fundamentals/model'
+import { Response, type ScrapingPlan } from '../model/index.ts'
 import {
   Data,
   Effect,

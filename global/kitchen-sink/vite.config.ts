@@ -21,8 +21,14 @@ export default defineConfig({
     // `platform: 'neutral'` makes vp pack emit `.js` (not `.mjs`), which matters
     // for Expo consumers: jest-expo's babel transform regex matches `.js` but
     // not `.mjs`, so `.mjs` dist files break Jest in expo packages that import
-    // from kitchen-sink.
+    // from kitchen-sink. The 'neutral' platform doesn't externalize `node:*`
+    // imports automatically, so `kitchen-sink/test` (which runs under
+    // Vitest/Jest on Node) needs them listed in `deps.neverBundle` — otherwise
+    // rolldown's resolver warns about each `node:fs` / `node:path` import.
     platform: 'neutral',
+    deps: {
+      neverBundle: [/^node:/],
+    },
     entry: {
       index: 'src/index.ts',
       'auth-token': 'src/auth-token/index.ts',
