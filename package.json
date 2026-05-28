@@ -28,6 +28,7 @@
   "devDependencies": {
     "@effect/language-service": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
     "eslint": "^9.39.4",
     "eslint-plugin-expo": "^1.0.0",
     "eslint-plugin-tsdoc": "^0.5.2",
