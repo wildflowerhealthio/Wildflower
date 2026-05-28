@@ -1,5 +1,5 @@
 import { type Effect } from 'effect'
-import { type HostBinding, LogBridge } from 'effect-messaging-core'
+import { HostBindings, LogBridge } from 'effect-messaging-core'
 import { useMemo } from 'react'
 
 /** Optional override for the host-side `Log` handler. */
@@ -16,10 +16,10 @@ interface UseLogHostBindingOptions {
 
 /**
  * Host binding for {@link LogBridge.LogBridge}. Returns a memoised
- * {@link HostBinding.HostBinding} keyed on the (optional) `onLog`
+ * {@link HostBindings.HostBindings} keyed on the (optional) `onLog`
  * override so callers can pass the result directly into a
- * `BridgedWebView`'s `bindings` tuple alongside slice-specific
- * bindings.
+ * `BridgedWebView`'s `bindings` (via `HostBindings.combine(...)`)
+ * alongside slice-specific bindings.
  *
  * @remarks
  * Mirrors the shape of slice-level `use<Slice>HostBinding` hooks
@@ -31,14 +31,17 @@ interface UseLogHostBindingOptions {
  */
 const useLogHostBinding = ({
   onLog = LogBridge.defaultOnLog,
-}: UseLogHostBindingOptions = {}): HostBinding.HostBinding<typeof LogBridge.LogBridge> =>
+}: UseLogHostBindingOptions = {}): HostBindings.HostBindings<
+  readonly [typeof LogBridge.LogBridge]
+> =>
   useMemo(
-    () => ({
-      bridge: LogBridge.LogBridge,
-      receiverLayer: LogBridge.LogBridge.Host.ReceiverLayer({
-        Log: onLog,
+    () =>
+      HostBindings.single({
+        bridge: LogBridge.LogBridge,
+        receiverLayer: LogBridge.LogBridge.Host.ReceiverLayer({
+          Log: onLog,
+        }),
       }),
-    }),
     [onLog]
   )
 

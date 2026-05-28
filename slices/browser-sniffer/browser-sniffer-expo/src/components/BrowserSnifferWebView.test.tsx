@@ -2,11 +2,11 @@ import { render } from '@testing-library/react-native'
 import { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
 import { snifferScript } from 'browser-sniffer-injected'
 import { Effect, LogLevel, Logger } from 'effect'
-import type { HostBinding, LogBridge } from 'effect-messaging-core'
+import type { Bridge, LogBridge } from 'effect-messaging-core'
 import type { BridgedWebViewLoadFrom, BridgedWebViewProps } from 'effect-messaging-expo'
 import * as React from 'react'
 
-type MockBridgedWebViewProps = BridgedWebViewProps<ReadonlyArray<HostBinding.Any>>
+type MockBridgedWebViewProps = BridgedWebViewProps<ReadonlyArray<Bridge.AnyBridge>>
 
 const mockBridgedWebViewState: {
   lastProps: MockBridgedWebViewProps | null
@@ -17,14 +17,27 @@ const mockBridgedWebViewState: {
 /**
  * Side-channel capture of every `useLogHostBinding` call the wrapper
  * makes. Lets the assertion compare the consumer's `onLog` against
- * what got threaded through the hook without inspecting the
- * `bindings` tuple (which `BridgedWebView`'s mock receives as
- * `HostBinding.Any`, a structurally narrower type that doesn't
- * carry our mock fields).
+ * what got threaded through the hook without inspecting the merged
+ * `bindings` value (which `BridgedWebView`'s mock receives as
+ * `HostBindings<ReadonlyArray<Bridge.AnyBridge>>`, a structurally
+ * widened shape that doesn't carry our mock fields).
  */
 const mockUseLogHostBindingCalls: Array<{
   onLog?: (log: LogBridge.LogPayload) => Effect.Effect<void>
 }> = []
+
+/**
+ * Minimal stand-in returned by the mocked `useLogHostBinding`. Shape
+ * matches the four parallel arrays {@link HostBindings.combine}
+ * concatenates, so the wrapper's `HostBindings.combine(...)` succeeds
+ * at runtime without pulling in the real bridge plumbing.
+ */
+const MOCK_LOG_BINDINGS = {
+  bridges: [{ name: 'MockLog' }],
+  receiverLayers: [{ _tag: 'mock-log-receiver-layer' }],
+  initialMessages: [[]],
+  onTransportReady: [undefined],
+} as const
 
 jest.mock('effect-messaging-expo', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
@@ -35,9 +48,9 @@ jest.mock('effect-messaging-expo', () => {
     },
     useLogHostBinding: (opts: {
       onLog?: (log: LogBridge.LogPayload) => Effect.Effect<void>
-    }): { readonly _tag: 'mock-log-binding' } => {
+    }): typeof MOCK_LOG_BINDINGS => {
       mockUseLogHostBindingCalls.push(opts)
-      return { _tag: 'mock-log-binding' }
+      return MOCK_LOG_BINDINGS
     },
   }
 })
@@ -80,9 +93,11 @@ describe('BrowserSnifferWebView (wrapper around BridgedWebView)', () => {
     const props = mockBridgedWebViewState.lastProps
     if (props === null) throw new Error('BridgedWebView never mounted')
 
-    const snifferBinding = props.bindings.find((b) => b.bridge.name === BrowserSnifferBridge.name)
-    if (snifferBinding === undefined) throw new Error('sniffer binding missing')
-    expect(snifferBinding.bridge).toBe(BrowserSnifferBridge)
+    const snifferIndex = props.bindings.bridges.findIndex(
+      (b) => b.name === BrowserSnifferBridge.name
+    )
+    if (snifferIndex < 0) throw new Error('sniffer binding missing')
+    expect(props.bindings.bridges[snifferIndex]).toBe(BrowserSnifferBridge)
 
     // Side-channel confirms `useLogHostBinding` was invoked — proves
     // the wrapper went through the canonical hook rather than
@@ -198,11 +213,15 @@ describe('BrowserSnifferWebView ref-exposed MessageSender', () => {
     )
     const props = mockBridgedWebViewState.lastProps
     if (props === null) throw new Error('BridgedWebView never mounted')
-    const snifferBinding = props.bindings.find((b) => b.bridge.name === BrowserSnifferBridge.name)
-    if (snifferBinding === undefined) throw new Error('sniffer binding missing')
+    const snifferIndex = props.bindings.bridges.findIndex(
+      (b) => b.name === BrowserSnifferBridge.name
+    )
+    if (snifferIndex < 0) throw new Error('sniffer binding missing')
+    const onTransportReady = props.bindings.onTransportReady[snifferIndex]
+    if (onTransportReady === undefined) throw new Error('sniffer onTransportReady missing')
 
     // Stand in for the per-binding sender the transport would supply
-    // via `HostBinding.callTransportReady`. Captures every message
+    // via `HostBindings.callTransportReady`. Captures every message
     // the wrapper forwards.
     const sends: Array<{ readonly _tag: string }> = []
     const fakeSend = (msg: { readonly _tag: string }): Effect.Effect<void> =>
@@ -210,9 +229,8 @@ describe('BrowserSnifferWebView ref-exposed MessageSender', () => {
         sends.push(msg)
       })
 
-    if (snifferBinding.onTransportReady === undefined)
-      throw new Error('snifferBinding.onTransportReady missing')
-    await Effect.runPromise(snifferBinding.onTransportReady(fakeSend))
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    await Effect.runPromise(onTransportReady(fakeSend as never))
 
     if (ref.current === null) throw new Error('ref never populated')
     await Effect.runPromise(ref.current({ _tag: 'Click', querySelector: 'button.import' }))

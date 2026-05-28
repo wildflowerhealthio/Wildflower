@@ -12,22 +12,24 @@ interface AppShellWebViewProps {
   readonly onRouteChanged: (event: { pathname: string; canGoBack: boolean }) => void
 }
 
-const shouldOpenInSystemBrowser = (urlString: string, loopbackBaseUrl: string): boolean => {
-  try {
-    const url = new URL(urlString)
-    const loopbackUrl = new URL(loopbackBaseUrl)
+const makeShouldOpenInSystemBrowser =
+  (loopbackBaseUrl: string) =>
+  (urlString: string): boolean => {
+    try {
+      const url = new URL(urlString)
+      const loopbackUrl = new URL(loopbackBaseUrl)
 
-    if (url.origin !== loopbackUrl.origin) return true
-    const isRootPath = url.pathname === '' || url.pathname === '/'
-    const isTabbedPath = tabForPath(url.pathname) !== null
-    if (isRootPath || isTabbedPath) return false
+      if (url.origin !== loopbackUrl.origin) return true
+      const isRootPath = url.pathname === '' || url.pathname === '/'
+      const isTabbedPath = tabForPath(url.pathname) !== null
+      if (isRootPath || isTabbedPath) return false
 
-    return true
-  } catch {
-    // Conservative: malformed WebView-supplied URL → open in system browser.
-    return true
+      return true
+    } catch {
+      // Conservative: malformed WebView-supplied URL → open in system browser.
+      return true
+    }
   }
-}
 
 /**
  * The persistent shell that hosts the wildflower-react SPA. Aggregates
@@ -48,7 +50,10 @@ const AppShellWebView = ({ onRouteChanged }: AppShellWebViewProps): JSX.Element 
     () => ({ _tag: 'html', html, baseUrl: loopbackBaseUrl }) as const,
     [loopbackBaseUrl]
   )
-
+  const shouldOpenInSystemBrowser = useMemo(
+    () => makeShouldOpenInSystemBrowser(loopbackBaseUrl),
+    [loopbackBaseUrl]
+  )
   // Memoize the tuple so `BridgedWebView`'s transport doesn't rebuild on
   // every render — the component's contract requires stable `bindings`
   // identity (see its TSDoc). Bridge ordering matches the page-side
@@ -60,7 +65,7 @@ const AppShellWebView = ({ onRouteChanged }: AppShellWebViewProps): JSX.Element 
       bindings={bindings}
       loadFrom={loadFrom}
       loader={<Loader />}
-      shouldOpenInSystemBrowser={(url) => shouldOpenInSystemBrowser(url, loopbackBaseUrl)}
+      shouldOpenInSystemBrowser={shouldOpenInSystemBrowser}
     />
   )
 }

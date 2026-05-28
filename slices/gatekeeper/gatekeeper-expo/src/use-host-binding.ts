@@ -1,4 +1,4 @@
-import type { HostBinding } from 'effect-messaging-core'
+import { HostBindings } from 'effect-messaging-core'
 import { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { useMemo } from 'react'
 
@@ -17,20 +17,23 @@ interface UseGatekeeperHostBindingOptions {
  *
  * @remarks
  * Token transitions invalidate the memo (`[token]` dep), which flips the
- * bindings tuple identity and tears down the transport — including a full
+ * bindings identity and tears down the transport — including a full
  * WebView reload. Once-per-session is fine; rotating sessions remount the SPA.
  */
 const useGatekeeperHostBinding = ({
   token,
-}: UseGatekeeperHostBindingOptions = {}): HostBinding.HostBinding<typeof GatekeeperBridge> =>
+}: UseGatekeeperHostBindingOptions = {}): HostBindings.HostBindings<
+  readonly [typeof GatekeeperBridge]
+> =>
   useMemo(
-    () => ({
-      bridge: GatekeeperBridge,
-      receiverLayer: GatekeeperBridge.Host.ReceiverLayer({}),
-      initialMessages: [{ _tag: 'WaitForToken' as const }],
-      onTransportReady:
-        token === undefined ? undefined : (send) => send({ _tag: 'AuthTokenIssued', token }),
-    }),
+    () =>
+      HostBindings.single({
+        bridge: GatekeeperBridge,
+        receiverLayer: GatekeeperBridge.Host.ReceiverLayer({}),
+        initialMessages: [{ _tag: 'WaitForToken' as const }],
+        onTransportReady:
+          token === undefined ? undefined : (send) => send({ _tag: 'AuthTokenIssued', token }),
+      }),
     [token]
   )
 

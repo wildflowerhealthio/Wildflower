@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 
-import { type LogBridge, type HostBinding, type BridgeTransport } from 'effect-messaging-core'
+import { HostBindings, type LogBridge, type BridgeTransport } from 'effect-messaging-core'
 import { useLogHostBinding } from 'effect-messaging-expo'
 
 import { type AppsBridge } from 'apps-core/bridge'
@@ -20,18 +20,21 @@ type NavigationSender = BridgeTransport.MessageSender<readonly [typeof Navigatio
 
 const useNavigationHostBinding = (
   onRouteChanged: (event: { pathname: string; canGoBack: boolean }) => void
-): HostBinding.HostBinding<typeof NavigationBridge> => {
+): HostBindings.HostBindings<readonly [typeof NavigationBridge]> => {
   const navigationSenderRef = useNavigationSenderRef()
 
-  const navigationBinding = NavigationBridgeExpo.useHostBinding({
-    onRouteChanged: ({ pathname, canGoBack }) =>
-      Effect.sync(() => onRouteChanged({ pathname, canGoBack })),
-    onTransportReady: (send: NavigationSender) =>
-      Effect.sync(() => {
-        navigationSenderRef.current = send
-      }),
-    initialRoute: '/apps',
-  })
+  const navigationBindingArgs = useMemo(() => {
+    return {
+      onRouteChanged,
+      onTransportReady: (send: NavigationSender) =>
+        Effect.sync(() => {
+          navigationSenderRef.current = send
+        }),
+      initialRoute: '/apps',
+    }
+  }, [onRouteChanged, navigationSenderRef])
+
+  const navigationBinding = NavigationBridgeExpo.useHostBinding(navigationBindingArgs)
 
   return navigationBinding
 }
@@ -40,13 +43,15 @@ export const useHostBindings = ({
   onRouteChanged,
 }: {
   onRouteChanged: (event: { pathname: string; canGoBack: boolean }) => void
-}): [
-  HostBinding.HostBinding<NavigationBridge>,
-  HostBinding.HostBinding<GatekeeperBridge>,
-  HostBinding.HostBinding<CollectorBridge>,
-  HostBinding.HostBinding<AppsBridge>,
-  HostBinding.HostBinding<LogBridge.LogBridge>,
-] => {
+}): HostBindings.HostBindings<
+  readonly [
+    typeof NavigationBridge,
+    typeof GatekeeperBridge,
+    typeof CollectorBridge,
+    typeof AppsBridge,
+    typeof LogBridge.LogBridge,
+  ]
+> => {
   const store = useWildflowerStore()
   // `localClientToken` is passed to gatekeeper's host binding so the
   // embedded SPA is authenticated on first load. `null` while bootstrap
@@ -60,9 +65,14 @@ export const useHostBindings = ({
   const appsBinding = AppsBridgeExpo.useHostBinding({ store })
   const logBinding = useLogHostBinding()
 
-  return useMemo(
-    () =>
-      [navigationBinding, gatekeeperBinding, collectorBinding, appsBinding, logBinding] as const,
-    [navigationBinding, gatekeeperBinding, collectorBinding, appsBinding, logBinding]
-  )
+  return useMemo(() => {
+    const bindings = HostBindings.combine([
+      navigationBinding,
+      gatekeeperBinding,
+      collectorBinding,
+      appsBinding,
+      logBinding,
+    ] as const)
+    return bindings
+  }, [navigationBinding, gatekeeperBinding, collectorBinding, appsBinding, logBinding])
 }

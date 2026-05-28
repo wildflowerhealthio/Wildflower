@@ -8,5 +8,4 @@ export {
   type TransportWebViewProps,
   type TransportWebViewSource,
 } from './transport-webview.tsx'
-export { type ExpoTransport, type ExpoTransportLayers, makeExpoTransport } from './transport.ts'
 export { useLogHostBinding, type UseLogHostBindingOptions } from './use-log-host-binding.ts'

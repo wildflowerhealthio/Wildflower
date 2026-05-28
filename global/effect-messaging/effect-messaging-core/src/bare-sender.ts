@@ -16,7 +16,7 @@ interface BareSenderService {
  * `Context.Tag` providing a {@link BareSenderService} — a single-shot
  * encoded-string sender for the underlying transport. Satisfied by the
  * platform transport adapter layer (see `transport-adapter.ts` and the
- * per-platform builders such as `makeExpoTransport` / the web
+ * per-platform wiring sites such as `BridgedWebView` / the web
  * equivalents). Consumers `yield*` it inside handler effects whose
  * requirements include this tag (typically wired in through
  * `BridgeTransport.make`) to obtain the `bareSender` function.

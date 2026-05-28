@@ -2,7 +2,7 @@ import { fc, test as fcTest } from '@fast-check/jest'
 import { renderHook } from '@testing-library/react-native'
 import { Context, Effect, Layer, Logger, LogLevel as EffectLogLevel } from 'effect'
 import {
-  type HostBinding,
+  type HostBindings,
   LogBridge,
   type MessageHandler,
   TestPlatformAdapterLayer,
@@ -13,9 +13,9 @@ import { useLogHostBinding, type UseLogHostBindingOptions } from './use-log-host
 const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
 
 describe('useLogHostBinding — types', () => {
-  it('returns a HostBinding for the LogBridge', () => {
+  it('returns a 1-tuple HostBindings for the LogBridge', () => {
     expectTypeOf(useLogHostBinding).returns.toEqualTypeOf<
-      HostBinding.HostBinding<typeof LogBridge.LogBridge>
+      HostBindings.HostBindings<readonly [typeof LogBridge.LogBridge]>
     >()
   })
 
@@ -59,11 +59,16 @@ const captureLogs = (sink: CapturedLog[]): Layer.Layer<never> =>
   )
 
 describe('useLogHostBinding — runtime', () => {
-  it('returns a HostBinding whose bridge is LogBridge', () => {
+  it('returns a 1-tuple HostBindings whose only bridge is LogBridge', () => {
     const { result } = renderHook(() => useLogHostBinding())
-    expect(result.current.bridge).toBe(LogBridge.LogBridge)
+    // Identity assertion (`toBe`) — the slot must hold the canonical
+    // `LogBridge.LogBridge` declaration, not a freshly-built look-alike.
+    expect(result.current.bridges).toHaveLength(1)
+    expect(result.current.bridges[0]).toBe(LogBridge.LogBridge)
     // The LogBridge is web→host only; no initial-message channel.
-    expect(result.current.initialMessages).toBeUndefined()
+    expect(result.current.initialMessages).toEqual([[]])
+    // No post-mount work for the log binding either.
+    expect(result.current.onTransportReady).toEqual([undefined])
   })
 
   it('memoises the binding across renders when onLog is omitted (default identity is stable)', () => {
@@ -93,7 +98,7 @@ describe('useLogHostBinding — runtime', () => {
         received.push(msg)
       })
     const { result } = renderHook(() => useLogHostBinding({ onLog }))
-    const handlers = await resolveHandlers(result.current.receiverLayer)
+    const handlers = await resolveHandlers(result.current.receiverLayers[0])
     await Effect.runPromise(
       handlers
         .Log({ _tag: 'Log', level: 'info', payload: ['first', 1] })
@@ -122,7 +127,7 @@ describe('useLogHostBinding — runtime', () => {
     'default onLog routes wire level %s through Effect.log at %s',
     async (level, expectedLabel) => {
       const { result } = renderHook(() => useLogHostBinding())
-      const handlers = await resolveHandlers(result.current.receiverLayer)
+      const handlers = await resolveHandlers(result.current.receiverLayers[0])
       const sink: CapturedLog[] = []
       await Effect.runPromise(
         handlers.Log({ _tag: 'Log', level, payload: ['hello from the spa'] }).pipe(
@@ -157,7 +162,7 @@ describe('useLogHostBinding — runtime', () => {
     'default onLog spreads every payload element through Effect.log',
     async ({ level, payload }) => {
       const { result } = renderHook(() => useLogHostBinding())
-      const handlers = await resolveHandlers(result.current.receiverLayer)
+      const handlers = await resolveHandlers(result.current.receiverLayers[0])
       const sink: CapturedLog[] = []
       await Effect.runPromise(
         handlers

@@ -3,7 +3,7 @@ import { snifferScript } from 'browser-sniffer-injected'
 import { Effect } from 'effect'
 import {
   type BridgeTransport,
-  type HostBinding,
+  HostBindings,
   type LogBridge,
   type MessageHandler,
 } from 'effect-messaging-core'
@@ -136,26 +136,27 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferMessageSender, BrowserSni
   ): JSX.Element {
     const senderRef = useRef<BrowserSnifferMessageSender | null>(null)
 
-    const snifferBinding = useMemo<HostBinding.HostBinding<typeof BrowserSnifferBridge>>(
-      () => ({
-        bridge: BrowserSnifferBridge,
-        receiverLayer: BrowserSnifferBridge.Host.ReceiverLayer(browserSnifferHandlers),
-        onTransportReady: (send) =>
-          Effect.sync(() => {
-            senderRef.current = send
-          }),
-      }),
+    const snifferBindings = useMemo(
+      () =>
+        HostBindings.single({
+          bridge: BrowserSnifferBridge,
+          receiverLayer: BrowserSnifferBridge.Host.ReceiverLayer(browserSnifferHandlers),
+          onTransportReady: (send) =>
+            Effect.sync(() => {
+              senderRef.current = send
+            }),
+        }),
       [browserSnifferHandlers]
     )
 
-    const logBinding = useLogHostBinding({ onLog })
+    const logBindings = useLogHostBinding({ onLog })
 
     // `BridgedWebView` keys its transport rebuild on `bindings`
-    // identity, so the tuple must be memoised even though both deps
-    // are already stable.
+    // identity, so the merged value must be memoised even though both
+    // deps are already stable.
     const bindings = useMemo(
-      () => [snifferBinding, logBinding] as const,
-      [snifferBinding, logBinding]
+      () => HostBindings.combine([snifferBindings, logBindings]),
+      [snifferBindings, logBindings]
     )
 
     // Loud over silent: pre-mount calls log an error rather than

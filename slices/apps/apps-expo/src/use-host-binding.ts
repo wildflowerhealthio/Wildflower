@@ -1,6 +1,6 @@
 import { AppsBridge } from 'apps-core/bridge'
 import { Layer } from 'effect'
-import type { HostBinding } from 'effect-messaging-core'
+import { HostBindings } from 'effect-messaging-core'
 import { useMemo } from 'react'
 import { TunnelStore } from 'tunnel-core/livestore'
 import { ReceiverLayer } from './host-receiver-layer.ts'
@@ -28,13 +28,14 @@ interface UseAppsHostBindingOptions {
  */
 const useAppsHostBinding = ({
   store,
-}: UseAppsHostBindingOptions): HostBinding.HostBinding<typeof AppsBridge> => {
+}: UseAppsHostBindingOptions): HostBindings.HostBindings<readonly [typeof AppsBridge]> => {
   const tunnelStoreLayer = useMemo(() => TunnelStore.layerFrom(store), [store])
   return useMemo(
-    () => ({
-      bridge: AppsBridge,
-      receiverLayer: ReceiverLayer.pipe(Layer.provide(tunnelStoreLayer)),
-    }),
+    () =>
+      HostBindings.single({
+        bridge: AppsBridge,
+        receiverLayer: ReceiverLayer.pipe(Layer.provide(tunnelStoreLayer)),
+      }),
     [tunnelStoreLayer]
   )
 }

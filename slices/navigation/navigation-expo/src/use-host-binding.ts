@@ -1,5 +1,5 @@
 import type { Effect } from 'effect'
-import type { BridgeTransport, HostBinding } from 'effect-messaging-core'
+import { type BridgeTransport, HostBindings } from 'effect-messaging-core'
 import { NavigationBridge } from 'navigation-core'
 import { useMemo } from 'react'
 import { ReceiverLayer } from './host-receiver-layer.ts'
@@ -27,11 +27,10 @@ interface UseNavigationHostBindingOptions {
  * sibling consumer (e.g. a native tab bar) can dispatch through it.
  *
  * @remarks
- * Callers must stabilise `onRouteChanged` and `onTransportReady`
- * themselves (e.g. with `useCallback`) — both sit in the memo's dep
- * list, and an unstable reference re-runs `BridgedWebView`'s
- * `HostBinding.aggregate` and rebuilds the WebView transport on every
- * host render.
+ * Callers must stabilise `onRouteChanged` themselves (e.g. with
+ * `useCallback`) — it's in the memo's dep list, and an unstable
+ * reference re-runs `HostBindings.combine` and rebuilds the WebView
+ * transport on every host render.
  *
  * Cross-process `Log` mirroring used to ride this binding via an
  * `onLog` option; it's now on the shared `LogBridge` (compose
@@ -55,17 +54,20 @@ const useNavigationHostBinding = ({
   initialRoute,
   onRouteChanged,
   onTransportReady,
-}: UseNavigationHostBindingOptions = {}): HostBinding.HostBinding<typeof NavigationBridge> =>
+}: UseNavigationHostBindingOptions = {}): HostBindings.HostBindings<
+  readonly [typeof NavigationBridge]
+> =>
   useMemo(
-    () => ({
-      bridge: NavigationBridge,
-      receiverLayer: ReceiverLayer(onRouteChanged),
-      initialMessages:
-        initialRoute === undefined
-          ? undefined
-          : [{ _tag: 'HostRequestedWebNavigation' as const, path: initialRoute }],
-      ...(onTransportReady === undefined ? {} : { onTransportReady }),
-    }),
+    () =>
+      HostBindings.single({
+        bridge: NavigationBridge,
+        receiverLayer: ReceiverLayer(onRouteChanged),
+        initialMessages:
+          initialRoute === undefined
+            ? undefined
+            : [{ _tag: 'HostRequestedWebNavigation' as const, path: initialRoute }],
+        onTransportReady,
+      }),
     [initialRoute, onRouteChanged, onTransportReady]
   )
 
