@@ -12,12 +12,7 @@ import { Console, Effect, Either, Option, pipe, Schema } from 'effect'
 const HIGH = 1.0
 const LOW = 0.2
 
-const ROOT_CONFIG_FILES = new Set([
-  'vite.config.base.ts',
-  'vite.config.ts',
-  'pnpm-workspace.yaml',
-  'pnpm-lock.yaml',
-])
+const ROOT_CONFIG_FILES = new Set(['vite.config.base.ts', 'vite.config.ts', 'pnpm-workspace.yaml'])
 
 const WORKSPACE_PACKAGE_PATTERNS = [
   'apps/*/package.json',

@@ -1,5 +1,6 @@
 import { Effect, Layer, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 import type * as BridgeTransport from '../src/bridge-transport.ts'
 import * as Bridge from '../src/bridge.ts'
@@ -203,7 +204,7 @@ describe('HostBindings.combine', () => {
           expect(rightGrouped.onTransportReady).toEqual(flat.onTransportReady)
         }
       ),
-      { numRuns: 40 }
+      { numRuns: numRunsFor(40) }
     )
   })
 })
