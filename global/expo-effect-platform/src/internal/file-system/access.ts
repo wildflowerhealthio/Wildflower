@@ -1,5 +1,5 @@
-import type * as FileSystem from '@effect/platform/FileSystem'
-import * as Effect from 'effect/Effect'
+import { type FileSystem } from '@effect/platform'
+import { Effect } from 'effect'
 import { inspect, systemError } from './helpers.ts'
 
 const access: FileSystem.FileSystem['access'] = (path, _options) =>

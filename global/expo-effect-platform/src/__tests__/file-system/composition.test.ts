@@ -1,10 +1,8 @@
 jest.mock('../../ExpoEffectPlatformModule', () => ({ __esModule: true, default: {} }))
 jest.mock('expo-file-system', () => jest.requireActual('./mock-expo-file-system'))
 
-import * as FileSystem from '@effect/platform/FileSystem'
-import * as Server from '@effect/platform/HttpServer'
-import * as Effect from 'effect/Effect'
-import * as Layer from 'effect/Layer'
+import { FileSystem, HttpServer as Server } from '@effect/platform'
+import { Effect, Layer } from 'effect'
 import { resetMockFs } from './mock-expo-file-system.ts'
 import { ExpoFileSystem, expectFailureCause } from './run-fs.ts'
 

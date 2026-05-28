@@ -1,6 +1,5 @@
-import type * as PlatformError from '@effect/platform/Error'
-import * as Effect from 'effect/Effect'
-import * as Stream from 'effect/Stream'
+import { type Error as PlatformError } from '@effect/platform'
+import { Effect, Stream } from 'effect'
 import { systemError } from './helpers.ts'
 
 /**

@@ -1,5 +1,5 @@
-import type * as FileSystem from '@effect/platform/FileSystem'
-import * as Effect from 'effect/Effect'
+import { type FileSystem } from '@effect/platform'
+import { Effect } from 'effect'
 import { Directory } from 'expo-file-system'
 import { fileUri, inspect, systemError, trySystem } from './helpers.ts'
 

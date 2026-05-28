@@ -10,8 +10,8 @@
  *
  * @packageDocumentation
  */
-import type * as FileSystem from '@effect/platform/FileSystem'
-import type * as Layer from 'effect/Layer'
+import { type FileSystem } from '@effect/platform'
+import { type Layer } from 'effect'
 import * as internal from './internal/file-system/index.ts'
 
 /** `Layer` providing the Expo-backed `FileSystem.FileSystem` — no requirements. */

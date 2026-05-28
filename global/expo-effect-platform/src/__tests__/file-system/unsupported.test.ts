@@ -1,10 +1,8 @@
 jest.mock('../../ExpoEffectPlatformModule', () => ({ __esModule: true, default: {} }))
 jest.mock('expo-file-system', () => jest.requireActual('./mock-expo-file-system'))
 
-import * as PlatformError from '@effect/platform/Error'
-import * as FileSystem from '@effect/platform/FileSystem'
-import * as Effect from 'effect/Effect'
-import * as Stream from 'effect/Stream'
+import { Error as PlatformError, FileSystem } from '@effect/platform'
+import { Effect, Stream } from 'effect'
 import { resetMockFs } from './mock-expo-file-system.ts'
 import { ExpoFileSystem, expectFailureCause } from './run-fs.ts'
 

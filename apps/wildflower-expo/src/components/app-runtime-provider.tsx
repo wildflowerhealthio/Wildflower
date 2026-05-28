@@ -1,5 +1,5 @@
 import { StoreRegistry, StoreRegistryProvider } from '@livestore/react'
-import { Layer } from 'effect'
+import { Effect, Layer } from 'effect'
 import { LocalHttpServerStore } from 'local-http-server-core/livestore'
 import { type JSX, type PropsWithChildren, Suspense, useMemo, useState } from 'react'
 import { useComponentScopedRunner } from 'react-kitchen-sink'
@@ -52,7 +52,10 @@ function DaemonRuntimeScope({ children }: PropsWithChildren): JSX.Element {
             TunnelStore.layerFrom(store),
             LocalHttpServerStore.layerFrom(store)
           )
-        )
+        ),
+        Layer.launch,
+        Effect.onError((cause) => Effect.logError('HTTP + Tunnel Daemon failed', cause)),
+        Effect.orDie
       ),
     [store]
   )

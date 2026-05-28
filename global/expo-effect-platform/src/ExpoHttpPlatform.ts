@@ -4,8 +4,8 @@
  *
  * @packageDocumentation
  */
-import type * as HttpPlatform from '@effect/platform/HttpPlatform'
-import type * as Layer from 'effect/Layer'
+import { type HttpPlatform } from '@effect/platform'
+import { type Layer } from 'effect'
 import * as internal from './internal/httpPlatform.ts'
 
 /** `Layer` providing the Expo `HttpPlatform` — no service requirements. */

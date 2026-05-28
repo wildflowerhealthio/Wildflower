@@ -3,12 +3,8 @@
  * Keeping them here (rather than re-declaring per file) avoids subtle
  * divergence as the assertion patterns evolve.
  */
-import * as FileSystem from '@effect/platform/FileSystem'
-import * as Cause from 'effect/Cause'
-import * as Effect from 'effect/Effect'
-import * as Exit from 'effect/Exit'
-import { pipe } from 'effect/Function'
-import * as Option from 'effect/Option'
+import { FileSystem } from '@effect/platform'
+import { Cause, Effect, Exit, Option, pipe } from 'effect'
 
 import type * as ExpoFileSystemModule from '../../expo-file-system.ts'
 

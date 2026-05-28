@@ -1,5 +1,5 @@
-import * as FileSystem from '@effect/platform/FileSystem'
-import * as Layer from 'effect/Layer'
+import { FileSystem } from '@effect/platform'
+import { Layer } from 'effect'
 import { access } from './access.ts'
 import { makeDirectory } from './make-directory.ts'
 import { readFile } from './read-file.ts'

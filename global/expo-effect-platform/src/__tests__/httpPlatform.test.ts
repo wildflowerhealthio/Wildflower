@@ -1,12 +1,5 @@
-import * as Headers from '@effect/platform/Headers'
-import type * as HttpBody from '@effect/platform/HttpBody'
-import * as HttpPlatform from '@effect/platform/HttpPlatform'
-import * as Cause from 'effect/Cause'
-import * as Effect from 'effect/Effect'
-import * as Exit from 'effect/Exit'
-import { pipe } from 'effect/Function'
-import * as Layer from 'effect/Layer'
-import * as Option from 'effect/Option'
+import { Headers, type HttpBody, HttpPlatform } from '@effect/platform'
+import { Cause, Effect, Exit, Layer, Option, pipe } from 'effect'
 import * as fc from 'fast-check'
 
 // Stub the TurboModule so Jest can resolve the module graph; nothing in this test file calls into the native side.

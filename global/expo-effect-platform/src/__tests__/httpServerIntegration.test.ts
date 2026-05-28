@@ -1,9 +1,6 @@
 /* oxlint-disable typescript-eslint/no-explicit-any, typescript-eslint/no-unsafe-type-assertion, typescript-eslint/no-unsafe-assignment, typescript-eslint/no-unnecessary-type-assertion */
-import * as ServerRequest from '@effect/platform/HttpServerRequest'
-import * as HttpServerResponse from '@effect/platform/HttpServerResponse'
-import * as Effect from 'effect/Effect'
-import * as Option from 'effect/Option'
-import * as Stream from 'effect/Stream'
+import { HttpServerRequest as ServerRequest, HttpServerResponse } from '@effect/platform'
+import { Effect, Option, Stream } from 'effect'
 
 import type { OnHttpRequestPayload } from '../ExpoEffectPlatform.types.ts'
 

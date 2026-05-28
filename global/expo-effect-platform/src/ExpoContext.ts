@@ -3,12 +3,14 @@
  * `FileSystem.FileSystem`, and the default `Etag.Generator` + `Path` services
  * from `@effect/platform`'s `HttpServer.layerContext`.
  */
-import type * as Etag from '@effect/platform/Etag'
-import type * as FileSystem from '@effect/platform/FileSystem'
-import type * as HttpPlatform from '@effect/platform/HttpPlatform'
-import * as Server from '@effect/platform/HttpServer'
-import type * as Path from '@effect/platform/Path'
-import * as Layer from 'effect/Layer'
+import {
+  type Etag,
+  type FileSystem,
+  type HttpPlatform,
+  HttpServer as Server,
+  type Path,
+} from '@effect/platform'
+import { Layer } from 'effect'
 import * as ExpoFileSystem from './expo-file-system.ts'
 import * as ExpoHttpPlatform from './ExpoHttpPlatform.ts'
 

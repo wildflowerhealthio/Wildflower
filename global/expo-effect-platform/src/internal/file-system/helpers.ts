@@ -1,5 +1,5 @@
-import * as PlatformError from '@effect/platform/Error'
-import * as Effect from 'effect/Effect'
+import { Error as PlatformError } from '@effect/platform'
+import { Effect } from 'effect'
 import { Paths } from 'expo-file-system'
 
 /**
