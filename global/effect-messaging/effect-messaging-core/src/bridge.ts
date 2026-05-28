@@ -247,7 +247,6 @@ export type {
   Bridge,
   Half,
   SendableMessage,
-  SenderFn,
   TransportLayers,
   UrlParamableMessage,
   UrlParamSchemas,

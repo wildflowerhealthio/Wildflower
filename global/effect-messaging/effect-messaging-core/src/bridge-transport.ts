@@ -383,5 +383,5 @@ const make = <
     }
   })
 
-export { make, READY_TAG }
+export { make }
 export type { BridgeTransport, MessageSender }
