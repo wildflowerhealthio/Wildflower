@@ -1,11 +1,12 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
-import { Effect, Layer, SubscriptionRef } from 'effect'
+import { Effect, Layer, pipe, SubscriptionRef } from 'effect'
 import fc from 'fast-check'
 import { BearerToken } from 'kitchen-sink/auth-token'
 import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
+import type { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import {
   applyTunnelOptimistic,
   TUNNEL_STATE_QUERY_KEY,
@@ -13,18 +14,12 @@ import {
   type RunAuthed,
   type TunnelState,
 } from '../src/queries.ts'
+import { sliceRuntimeLayer } from '../src/router-context.ts'
 
 /**
- * Pins the TanStack-Query surface the tunnel slice was migrated onto
- * (Issue #101 Phase 1): the shared `tunnelStateQueryOptions(runAuthed)`
- * factory (consumed by both the route `loader` and the screen), the
- * query key, and the optimistic-projection helper.
- *
- * `runAuthed` is built the same way the app builds it — a real
- * `ManagedRuntime` over `Layer.succeed(BearerToken, ref)` merged with a
- * stub `HttpClient` — so these tests exercise the genuine
- * runner→tunnel-layer→HttpClient path offline. The stub returns a canned
- * `TunnelState` JSON body matching `TunnelStateSchema`.
+ * Drives `tunnelStateQueryOptions(runAuthed)` over the real
+ * runner→tunnel-layer→HttpClient path, with a stub HttpClient that
+ * returns a canned `TunnelState` body.
  */
 
 const TUNNEL_STATE_BODY = {
@@ -39,10 +34,7 @@ const TUNNEL_STATE_BODY = {
   servedOrigin: 'http://127.0.0.1:8080',
 }
 
-// A stub `HttpClient` that replies with the canned `TunnelState` body
-// for GET and 500s otherwise — enough for the GetTunnel read the query
-// drives. `failing` makes it always reject so the best-effort loader
-// path can be exercised.
+// `failing: true` always 500s — exercises the loader's swallow path.
 const stubHttpClientLayer = (options?: {
   readonly failing?: boolean
 }): Layer.Layer<HttpClient.HttpClient> =>
@@ -68,14 +60,21 @@ afterEach(async () => {
   await Promise.all(disposers.splice(0).map((dispose) => dispose()))
 })
 
-// Build a `runAuthed` over the given HttpClient stub. Mirrors the app's
-// `buildRunAuthed`, kept local so the slice test has no app dependency.
+// Mirrors `buildRunAuthed`; kept local so the slice has no app dep.
 const makeRunAuthed = (httpLayer: Layer.Layer<HttpClient.HttpClient>): RunAuthed => {
   const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('token'))
-  return <A, E>(effect: Effect.Effect<A, E, BearerToken | HttpClient.HttpClient>): Promise<A> =>
+  return <A, E>(
+    effect: Effect.Effect<A, E, BearerToken | HttpClient.HttpClient | TunnelAdminHttpApiClient>
+  ): Promise<A> =>
     Effect.runPromise(
       effect.pipe(
-        Effect.provide(Layer.succeed(BearerToken, tokenRef).pipe(Layer.provideMerge(httpLayer))),
+        Effect.provide(
+          pipe(
+            sliceRuntimeLayer,
+            Layer.provideMerge(httpLayer),
+            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef))
+          )
+        ),
         Effect.scoped
       )
     )
@@ -96,8 +95,6 @@ describe('tunnelStateQueryOptions', () => {
 
     expect(state.servedOrigin).toBe('http://127.0.0.1:8080')
     expect(state.running).toBe(false)
-    // The loader warms the cache; the screen's `useSuspenseQuery` then
-    // reads this same entry synchronously.
     expect(queryClient.getQueryData(TUNNEL_STATE_QUERY_KEY)).toEqual(state)
   })
 
@@ -108,12 +105,7 @@ describe('tunnelStateQueryOptions', () => {
     })
     disposers.push(() => Promise.resolve(queryClient.clear()))
 
-    // `ensureQueryData` rejects on a fetch error. The tunnel route
-    // `loader` wraps this in try/catch precisely so an embedded
-    // first-paint 401 (token not yet delivered over the bridge) is
-    // non-fatal — navigation proceeds and the in-component query reads
-    // later, post-gate. This test pins the rejection the loader relies
-    // on being able to swallow.
+    // Pins the rejection the route loader swallows in try/catch.
     await expect(queryClient.ensureQueryData(options)).rejects.toThrow()
     expect(queryClient.getQueryData(TUNNEL_STATE_QUERY_KEY)).toBeUndefined()
   })
@@ -151,9 +143,6 @@ describe('applyTunnelOptimistic', () => {
     expect(next.servedOrigin).toBe('http://live')
   })
 
-  // Property: for any client-writable triple, `undefined` preserves and a
-  // present value (incl. null) writes through — the wire schema's
-  // "undefined preserves, null clears" contract.
   test('client-writable fields follow undefined-preserves / present-writes', () => {
     const optionalString = fc.option(fc.string(), { nil: null })
     fc.assert(

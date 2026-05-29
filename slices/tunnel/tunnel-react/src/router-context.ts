@@ -1,23 +1,34 @@
-import type { QueryClient } from '@tanstack/react-query'
+import { type QueryClient } from '@tanstack/react-query'
+import { type Effect, type Layer } from 'effect'
+import { type BaseRouterContext } from 'shared-structures-react'
+import type { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
+import { buildTunnelAdminClientLayer } from './client/tunnel-client'
 
-import type { RunAuthed } from './queries.ts'
+type RuntimeLayer = Layer.Layer<
+  Layer.Layer.Success<BaseRouterContext.RuntimeLayer> | TunnelAdminHttpApiClient,
+  never,
+  never
+>
 
 /**
- * The structural router-context shape the tunnel slice's routes depend
- * on: the shared in-memory `QueryClient` (for loader `ensureQueryData`)
- * and the authed {@link RunAuthed} runner (for the tunnel admin effects).
- *
- * Re-declared here — NOT imported from `apps/wildflower-react` — so the
- * slice stays decoupled from the app that hosts it (Issue #101). The
- * app's own `RouterContext`
- * (`apps/wildflower-react/src/bridges/router-context.ts`) is structurally
- * a superset/equal of this, so the tunnel route file type-checks both in
- * the slice's standalone route tree and when mounted under the app's
- * `createRootRouteWithContext<RouterContext>()` root.
+ * Slice-local router-context shape — structurally a subset of the host
+ * app's, but declared here so the slice doesn't import from the app.
  */
-interface TunnelRouterContext {
+type RunAuthed = <A, E>(
+  effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayer>>
+) => Promise<A>
+
+interface RouterContext {
   readonly queryClient: QueryClient
   readonly runAuthed: RunAuthed
+  readonly runtimeLayer: RuntimeLayer
 }
 
-export type { TunnelRouterContext }
+const sliceRuntimeLayer: Layer.Layer<
+  TunnelAdminHttpApiClient,
+  never,
+  Layer.Layer.Success<BaseRouterContext.RuntimeLayer>
+> = buildTunnelAdminClientLayer()
+
+export { sliceRuntimeLayer }
+export type { RouterContext, RunAuthed, RuntimeLayer }

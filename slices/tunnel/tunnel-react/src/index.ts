@@ -7,7 +7,7 @@ export {
 
 export { TunnelToggle, type TunnelToggleProps } from './components/TunnelToggle.tsx'
 
-export type { TunnelRouterContext } from './router-context.ts'
+export * as TunnelRouterContext from './router-context.ts'
 
 export {
   applyTunnelOptimistic,

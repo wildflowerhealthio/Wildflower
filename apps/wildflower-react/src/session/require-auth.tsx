@@ -1,5 +1,6 @@
+import { Effect } from 'effect'
 import { NeedsAuthMessage } from 'gatekeeper-react'
-import type { JSX, ReactNode } from 'react'
+import { useMemo, type JSX, type ReactNode } from 'react'
 import { useAuthTokenSubscribable, useStreamWithDefault } from 'react-kitchen-sink'
 
 /**
@@ -14,8 +15,13 @@ import { useAuthTokenSubscribable, useStreamWithDefault } from 'react-kitchen-si
  * No provider re-mount is needed, so this is pure UI gating.
  */
 const RequireAuth = ({ children }: { readonly children: ReactNode }): JSX.Element => {
-  const { changes: tokenStream } = useAuthTokenSubscribable()
-  const token = useStreamWithDefault(tokenStream, null)
+  const subscribable = useAuthTokenSubscribable()
+  // `.changes` is a getter that returns a fresh `Stream` per access;
+  // memoizing keeps the ref stable so `useStreamWithDefault`'s effect
+  // doesn't re-fire (and reset to `null`) on every parent re-render.
+  const tokenStream = useMemo(() => subscribable.changes, [subscribable])
+  const starterToken = useMemo(() => Effect.runSync(subscribable.get), [subscribable])
+  const token = useStreamWithDefault(tokenStream, starterToken)
   if (token === null || token === '') return <NeedsAuthMessage />
   return <>{children}</>
 }

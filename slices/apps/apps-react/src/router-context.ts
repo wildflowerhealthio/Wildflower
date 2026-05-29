@@ -1,26 +1,37 @@
-import type { QueryClient } from '@tanstack/react-query'
-import type { RunAuthed } from 'tunnel-react'
+import { type QueryClient } from '@tanstack/react-query'
+import { type Effect, Layer } from 'effect'
+import { type BaseRouterContext } from 'shared-structures-react'
+import { type TunnelRouterContext } from 'tunnel-react'
+
+import { AppsAdminHttpApiClient, AppsHttpApiClient } from 'apps-core/clients'
+
+type RuntimeLayer = Layer.Layer<
+  | Layer.Layer.Success<TunnelRouterContext.RuntimeLayer>
+  | AppsHttpApiClient
+  | AppsAdminHttpApiClient,
+  never,
+  never
+>
 
 /**
- * The structural router-context shape the apps slice's routes depend on:
- * the shared in-memory `QueryClient` and the authed `RunAuthed` runner.
- *
- * Re-declared here — NOT imported from `apps/wildflower-react` — so the
- * slice stays decoupled from the app that hosts it (Issue #101). The
- * app's own `RouterContext`
- * (`apps/wildflower-react/src/bridges/router-context.ts`) is structurally
- * equal to this, so the apps route file type-checks both in the slice's
- * standalone route tree and when mounted under the app's
- * `createRootRouteWithContext<RouterContext>()` root.
- *
- * The apps landing reads tunnel state (`useTunnelStateQuery(runAuthed)`),
- * so it needs the same `runAuthed` runner the tunnel slice declares — we
- * reuse `tunnel-react`'s `RunAuthed` (a structural, app-free type) rather
- * than re-declaring it a third time.
+ * Slice-local router-context shape — structurally a subset of the host
+ * app's, but declared here so the slice doesn't import from the app.
  */
-interface AppsRouterContext {
+type RunAuthed = <A, E>(
+  effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayer>>
+) => Promise<A>
+
+interface RouterContext {
   readonly queryClient: QueryClient
   readonly runAuthed: RunAuthed
+  readonly runtimeLayer: RuntimeLayer
 }
 
-export type { AppsRouterContext }
+const sliceRuntimeLayer: Layer.Layer<
+  AppsHttpApiClient | AppsAdminHttpApiClient,
+  never,
+  Layer.Layer.Success<BaseRouterContext.RuntimeLayer>
+> = Layer.mergeAll(AppsHttpApiClient.layer, AppsAdminHttpApiClient.layer)
+
+export { sliceRuntimeLayer }
+export type { RouterContext, RunAuthed, RuntimeLayer }

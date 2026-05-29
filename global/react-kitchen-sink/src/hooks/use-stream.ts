@@ -101,14 +101,22 @@ function useStream<A, E, R>(
 
 const useStreamWithDefault = <A>(stream: Stream.Stream<A, never, Scope.Scope>, defaultA: A): A => {
   const [lastValue, setLastValue] = useState<A>(defaultA)
-  useStreamWithCallbacks(stream, {
-    reset: () => setLastValue(defaultA),
-    resolve: (emitted) => setLastValue(emitted),
-    reject: (err) => {
-      setLastValue(defaultA)
-      return Promise.reject(err)
-    },
-  })
+  const callbacks = useMemo(
+    () => ({
+      reset: () => {
+        setLastValue(defaultA)
+      },
+      resolve: (emitted: A) => {
+        return setLastValue(emitted)
+      },
+      reject: (err: unknown) => {
+        setLastValue(defaultA)
+        return Promise.reject(err)
+      },
+    }),
+    [defaultA]
+  )
+  useStreamWithCallbacks(stream, callbacks)
   return lastValue
 }
 

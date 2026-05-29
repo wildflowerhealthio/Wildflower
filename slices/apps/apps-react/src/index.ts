@@ -1,18 +1,4 @@
 export {
-  AppsAdminClientLayerContext,
-  AppsClientLayerContext,
-  AppsClientProvider,
-  useAppsAdminClientLayer,
-  useAppsAdminEffect,
-  useAppsAdminEffectAction,
-  useAppsClientLayer,
-  useAppsEffect,
-  useAppsEffectAction,
-  type AppsAdminEffectAction,
-  type AppsEffectAction,
-} from './apps-client.tsx'
-
-export {
   AppsRuntimeProvider,
   type AppsRuntimeProviderProps,
 } from './runtime/apps-runtime-provider.tsx'
@@ -26,8 +12,11 @@ export type { AppsOutboundMessage, AppsSender } from './runtime/apps-sender-cont
 export type { TunnelOutcome } from './runtime/apps-runtime-context.ts'
 export { useRequestTunnel } from './runtime/use-request-tunnel.ts'
 
+export * as AppsRouterContext from './router-context.ts'
+
 export {
   APPS_LIST_QUERY_KEY,
+  appsListQueryOptions,
   useAppsAdminCreateMutation,
   useAppsAdminDeleteMutation,
   useAppsAdminUpdateMutation,

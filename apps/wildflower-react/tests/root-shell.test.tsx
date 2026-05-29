@@ -86,9 +86,7 @@ const { lifecycleSpy, makePassthrough } = vi.hoisted(() => {
 vi.mock('react-kitchen-sink', () => ({
   AuthTokenProvider: makePassthrough('AuthTokenProvider'),
 }))
-// `renderApp` reads the token via `Effect.runSync(authTokenRef.get)` to
-// gate the eager startup prefetch, so `get` must be an Effect (not a
-// plain value). A null-token ref keeps the prefetch short-circuited.
+// `get` must be an Effect; null-token short-circuits the startup prefetch.
 vi.mock('gatekeeper-react', () => ({
   authTokenRef: { get: Effect.succeed(null), changes: { pipe: () => ({}) } },
   GatekeeperClientProvider: makePassthrough('GatekeeperClientProvider'),
@@ -101,18 +99,13 @@ vi.mock('fhir-r4-react', () => ({
   FhirR4ResourcesClientProvider: makePassthrough('FhirR4ResourcesClientProvider'),
 }))
 vi.mock('apps-react', () => ({
-  AppsClientProvider: makePassthrough('AppsClientProvider'),
   AppsRuntimeProvider: makePassthrough('AppsRuntimeProvider'),
+  AppsRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
-// `renderApp` builds the router context's `runAuthed` and eagerly
-// prefetches the tunnel state query (`tunnelStateQueryOptions`) at
-// startup. The prefetch is gated on a token in `authTokenRef`, and the
-// mocked `gatekeeper-react` ref below reports `null` — so the prefetch
-// short-circuits and `tunnelStateQueryOptions` is never invoked. Stub it
-// to a no-throw factory so the import resolves without dragging the
-// tunnel HttpApi client into the harness.
+// Prefetch is gated off (null token); these stubs keep the import light.
 vi.mock('tunnel-react', () => ({
   tunnelStateQueryOptions: () => ({ queryKey: ['tunnel', 'state'], queryFn: () => null }),
+  TunnelRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('../src/bridges/collector-sender-forwarder.tsx', () => ({
   CollectorSenderForwarder: makePassthrough('CollectorSenderForwarder'),
@@ -129,13 +122,7 @@ vi.mock('telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },
 }))
-// `renderApp` builds the router context's `runAuthed` via
-// `buildRunAuthed(authTokenRef, webHttpClientLayer)`. The real
-// `webHttpClientLayer` pulls `telemetry-react` → `telemetry-web`'s
-// `webTelemetryLayerFromEnv`, which the `telemetry-web` mock above does
-// NOT provide (and which is not this block's concern — no loader invokes
-// `runAuthed`). Stub the layer to a bare `HttpClient` so the authed
-// runtime constructs without dragging telemetry/fetch into the harness.
+// Bare `HttpClient` so the authed runtime constructs without telemetry/fetch.
 vi.mock('telemetry-react', () => ({
   webHttpClientLayer: Layer.succeed(
     HttpClient.HttpClient,
@@ -199,7 +186,6 @@ describe('RootShell mount lifecycle', () => {
     'GatekeeperClientProvider',
     'CollectorClientProvider',
     'FhirR4ResourcesClientProvider',
-    'AppsClientProvider',
   ] as const
 
   const buildTestRouter = (): ReturnType<typeof createRouter> => {

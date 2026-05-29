@@ -7,24 +7,8 @@ import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**
- * Pins the IN-MEMORY query-client wiring this branch introduces — the
- * deliberate alternative to PR #99's localStorage-backed
- * `PersistQueryClientProvider`.
- *
- * `renderApp` now:
- *   - builds ONE `QueryClient` via `buildQueryClient()`,
- *   - hands it to a plain `<QueryClientProvider>` (from
- *     `@tanstack/react-query`) wrapping the whole tree, so every
- *     descendant `useQueryClient()` resolves THAT client (no persister,
- *     nothing read from / written to `localStorage`), AND
- *   - passes the same instance into `createRouter`'s typed `context`.
- *
- * This test mounts the real `renderApp` with a minimal route tree whose
- * leaf records the `QueryClient` it sees via `useQueryClient()`, and
- * asserts a single shared client is provided. Rendered WITHOUT a persist
- * provider, so the `PersistQueryClientProvider × StrictMode` jsdom
- * deadlock (#99/#102) cannot occur — a plain in-memory provider is safe
- * under `<StrictMode>`.
+ * Pins that `renderApp` provides ONE shared in-memory `QueryClient` to
+ * the whole tree — no persister.
  */
 
 const { capturedQueryClients, LeafQueryClient } = vi.hoisted(() => {
@@ -40,8 +24,7 @@ const { Passthrough } = vi.hoisted(() => ({
   Passthrough: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
 }))
 
-// `renderApp` reads the token via `Effect.runSync(authTokenRef.get)` to
-// gate the eager startup prefetch; a null-token ref short-circuits it.
+// Null-token ref short-circuits the eager startup prefetch.
 vi.mock('gatekeeper-react', () => ({
   authTokenRef: { get: Effect.succeed(null), changes: { pipe: () => ({}) } },
   GatekeeperClientProvider: Passthrough,
@@ -53,13 +36,13 @@ vi.mock('collector-react', () => ({
 }))
 vi.mock('fhir-r4-react', () => ({ FhirR4ResourcesClientProvider: Passthrough }))
 vi.mock('apps-react', () => ({
-  AppsClientProvider: Passthrough,
   AppsRuntimeProvider: Passthrough,
+  AppsRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
-// Eager prefetch is gated off (null token), so `tunnelStateQueryOptions`
-// is never invoked; stub it so the import resolves.
+// Prefetch is gated off; these stubs just satisfy the imports.
 vi.mock('tunnel-react', () => ({
   tunnelStateQueryOptions: () => ({ queryKey: ['tunnel', 'state'], queryFn: () => null }),
+  TunnelRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('../src/bridges/collector-sender-forwarder.tsx', () => ({
   CollectorSenderForwarder: Passthrough,
@@ -71,8 +54,7 @@ vi.mock('telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },
 }))
-// `renderApp` builds `runAuthed` from `webHttpClientLayer`; stub it to a
-// bare `HttpClient` so the authed runtime constructs offline.
+// Bare `HttpClient` so the authed runtime constructs offline.
 vi.mock('telemetry-react', () => ({
   webHttpClientLayer: Layer.succeed(
     HttpClient.HttpClient,
@@ -81,10 +63,7 @@ vi.mock('telemetry-react', () => ({
     )
   ),
 }))
-// Swap the generated route tree for a minimal one: the real
-// `RootShell` is a passthrough chain (mocked above), and the leaf
-// records the `QueryClient` it sees. The router still mounts through the
-// real `renderApp` + `<QueryClientProvider>`, which is the thing pinned.
+// Minimal route tree; leaf records the `QueryClient` it sees.
 vi.mock('../src/routeTree.gen.ts', () => {
   const rootRoute = createRootRoute({ component: RootShell })
   const leaf = createRoute({
@@ -131,9 +110,7 @@ describe('in-memory QueryClientProvider', () => {
       expect(screen.getByTestId('leaf')).toBeDefined()
     })
 
-    // At least one capture (StrictMode may double-invoke), and EVERY
-    // captured client is the same instance — proving one shared
-    // in-memory client is provided app-wide.
+    // StrictMode may double-invoke; every capture must be the same instance.
     expect(capturedQueryClients.length).toBeGreaterThan(0)
     const first = capturedQueryClients[0]
     expect(first).toBeInstanceOf(QueryClient)

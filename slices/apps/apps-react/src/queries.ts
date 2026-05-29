@@ -1,57 +1,60 @@
 import {
+  queryOptions,
   useMutation,
   useQueryClient,
   useSuspenseQuery,
   type UseMutationResult,
+  type UseSuspenseQueryOptions,
   type UseSuspenseQueryResult,
 } from '@tanstack/react-query'
+import { useRouteContext } from '@tanstack/react-router'
 import { AppsAdminHttpApiClient, AppsHttpApiClient } from 'apps-core/clients'
 import type { Schemas } from 'apps-core/http-api-definition'
 import { Effect, type Schema } from 'effect'
 
-import { useAppsAdminEffectAction, useAppsEffectAction } from './apps-client.tsx'
+import type { RouterContext, RunAuthed } from './router-context.ts'
+
+// Annotated `select` so the result stays typed when the slice's router
+// isn't registered (standalone build).
+const useRunAuthed = (): RunAuthed =>
+  useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })
 
 type AppEntry = Schema.Schema.Type<typeof Schemas.AppEntrySchema>
 type CreateCustomAppPayload = Schema.Schema.Type<typeof Schemas.CreateCustomAppBodySchema>
 type UpdateAppPayload = Schema.Schema.Type<typeof Schemas.UpdateAppBodySchema>
 
-/**
- * Query key for {@link useAppsListQuery}. Mutations
- * ({@link useAppsAdminUpdateMutation}, {@link useAppsAdminCreateMutation},
- * {@link useAppsAdminDeleteMutation}) invalidate this key on success so
- * the next render re-fetches. Persisting the cache via TanStack Query's
- * localStorage persister keys the snapshot here too.
- */
+/** Mutations invalidate this key on success so the next render refetches. */
 const APPS_LIST_QUERY_KEY = ['apps', 'list'] as const
 
-/**
- * Suspense-backed read of the public `ListApps` endpoint. The query
- * stays in cache (and is persisted) across reloads; with `staleTime: 0`
- * on the global `QueryClient`, the first render after a remount fires a
- * background refetch that swaps in fresh data once the request returns.
- */
-const useAppsListQuery = (): UseSuspenseQueryResult<readonly AppEntry[], Error> => {
-  const run = useAppsEffectAction()
-  return useSuspenseQuery({
+/** Shared by route `loader` (`ensureQueryData`) and {@link useAppsListQuery}. */
+const appsListQueryOptions = (
+  runAuthed: RunAuthed
+): UseSuspenseQueryOptions<
+  readonly AppEntry[],
+  Error,
+  readonly AppEntry[],
+  typeof APPS_LIST_QUERY_KEY
+> =>
+  queryOptions({
     queryKey: APPS_LIST_QUERY_KEY,
-    queryFn: () => run(Effect.flatMap(AppsHttpApiClient, (c) => c.apps.ListApps())),
+    queryFn: () => runAuthed(Effect.flatMap(AppsHttpApiClient, (c) => c.apps.ListApps())),
   })
-}
 
-/**
- * Admin `UpdateApp` (PATCH /apps/:id). Invalidates {@link APPS_LIST_QUERY_KEY}
- * on success.
- */
+/** Reads synchronously from cache when the route loader has already warmed it. */
+const useAppsListQuery = (): UseSuspenseQueryResult<readonly AppEntry[], Error> =>
+  useSuspenseQuery(appsListQueryOptions(useRunAuthed()))
+
+/** Admin `UpdateApp` (PATCH /apps/:id). Invalidates {@link APPS_LIST_QUERY_KEY}. */
 const useAppsAdminUpdateMutation = (): UseMutationResult<
   unknown,
   Error,
   { readonly id: string; readonly payload: UpdateAppPayload }
 > => {
-  const run = useAppsAdminEffectAction()
+  const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, payload }) =>
-      run(
+      runAuthed(
         Effect.flatMap(AppsAdminHttpApiClient, (c) =>
           c['apps-admin'].UpdateApp({ path: { id }, payload })
         )
@@ -62,20 +65,17 @@ const useAppsAdminUpdateMutation = (): UseMutationResult<
   })
 }
 
-/**
- * Admin `CreateCustomApp` (POST /apps). Invalidates
- * {@link APPS_LIST_QUERY_KEY} on success.
- */
+/** Admin `CreateCustomApp` (POST /apps). Invalidates {@link APPS_LIST_QUERY_KEY}. */
 const useAppsAdminCreateMutation = (): UseMutationResult<
   unknown,
   Error,
   CreateCustomAppPayload
 > => {
-  const run = useAppsAdminEffectAction()
+  const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (payload) =>
-      run(
+      runAuthed(
         Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].CreateCustomApp({ payload }))
       ),
     onSuccess: async () => {
@@ -84,20 +84,17 @@ const useAppsAdminCreateMutation = (): UseMutationResult<
   })
 }
 
-/**
- * Admin `DeleteApp` (DELETE /apps/:id). Invalidates
- * {@link APPS_LIST_QUERY_KEY} on success.
- */
+/** Admin `DeleteApp` (DELETE /apps/:id). Invalidates {@link APPS_LIST_QUERY_KEY}. */
 const useAppsAdminDeleteMutation = (): UseMutationResult<
   unknown,
   Error,
   { readonly id: string }
 > => {
-  const run = useAppsAdminEffectAction()
+  const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id }) =>
-      run(
+      runAuthed(
         Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].DeleteApp({ path: { id } }))
       ),
     onSuccess: async () => {
@@ -108,6 +105,7 @@ const useAppsAdminDeleteMutation = (): UseMutationResult<
 
 export {
   APPS_LIST_QUERY_KEY,
+  appsListQueryOptions,
   useAppsAdminCreateMutation,
   useAppsAdminDeleteMutation,
   useAppsAdminUpdateMutation,

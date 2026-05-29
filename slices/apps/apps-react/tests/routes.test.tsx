@@ -1,20 +1,21 @@
 import { QueryClient } from '@tanstack/react-query'
 import { createRouter, type AnyRoute } from '@tanstack/react-router'
-import type { RunAuthed } from 'tunnel-react'
+import { Layer } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
+import type { RunAuthed } from '../src/router-context.ts'
 import { routeTree } from '../src/routeTree.gen.ts'
 
-// The slice's root is now typed with `AppsRouterContext`
-// (`createRootRouteWithContext`), so the router needs a context value.
-// These tests only inspect the generated tree's structure (ids /
-// fullPaths) — no loader runs — so a stub context that never resolves an
-// effect suffices.
+// Structural-only checks; no loader runs, so the runner is unused.
 const stubRunAuthed: RunAuthed = () =>
   Promise.reject(new Error('runAuthed not used in route tests'))
 const router = createRouter({
   routeTree,
-  context: { queryClient: new QueryClient(), runAuthed: stubRunAuthed },
+  context: {
+    queryClient: new QueryClient(),
+    runAuthed: stubRunAuthed,
+    runtimeLayer: Layer.die('runtimeLayer not used in route tests'),
+  },
 })
 
 const routes = (): readonly AnyRoute[] =>
