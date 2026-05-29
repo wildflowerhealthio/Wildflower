@@ -48,7 +48,7 @@ describe('collector routes', () => {
       '/_auth/collector/',
       '/_auth/collector/account/$id',
       '/_auth/collector/account/new',
-    ]
+    ] as const
     for (const id of pageIds) {
       expect(router.routesById[id]?.parentRoute?.id).toBe('/_auth/collector')
     }
