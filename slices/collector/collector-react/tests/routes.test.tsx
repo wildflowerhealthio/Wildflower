@@ -31,9 +31,26 @@ describe('collector routes', () => {
       .map((route): string => route.id)
       .toSorted()
     expect(ids).toEqual([
+      '/_auth/collector',
       '/_auth/collector/',
       '/_auth/collector/account/$id',
       '/_auth/collector/account/new',
     ])
+  })
+
+  test('the collector layout route is the parent of every collector page', () => {
+    // `/_auth/collector` is the shared layout route: it renders the page
+    // shell around an `<Outlet />`, and the index, new-account, and
+    // edit-account pages all hang off it. Asserting the parent id keeps the
+    // single-wrapper guarantee from silently regressing back to per-page
+    // wrappers.
+    const pageIds = [
+      '/_auth/collector/',
+      '/_auth/collector/account/$id',
+      '/_auth/collector/account/new',
+    ] as const
+    for (const id of pageIds) {
+      expect(router.routesById[id]?.parentRoute?.id).toBe('/_auth/collector')
+    }
   })
 })

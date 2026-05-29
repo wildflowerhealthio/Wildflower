@@ -57,7 +57,7 @@ function AccountNewScreen({
   }
 
   return (
-    <div className={pageLayoutStyles['page']}>
+    <>
       <h2 className="text-heading-4">Add Account</h2>
 
       {error !== null ? (
@@ -130,7 +130,7 @@ function AccountNewScreen({
           Cancel
         </button>
       </div>
-    </div>
+    </>
   )
 }
 
