@@ -19,11 +19,14 @@ const AppsHomeContent = (): JSX.Element => {
 
 /**
  * Owner-facing apps landing. Reads the apps list and the tunnel state
- * via TanStack Query (`useAppsListQuery` + `useTunnelStateQuery`), so
- * the screen renders from localStorage-persisted cache on mount and a
- * background refetch swaps in fresh data once both queries return.
- * Mutations triggered inside `<AppsEditor>` auto-invalidate the list
- * query — no `onChanged` prop drilling required.
+ * via TanStack Query (`useAppsListQuery` + `useTunnelStateQuery`) against
+ * the app's in-memory `QueryClient`. The cache is warmed ahead of the
+ * render by the router's intent preloading (`defaultPreload: 'intent'`),
+ * so a hovered/touched link primes both reads and the screen resolves
+ * from cache instead of suspending; with `staleTime: 0` a background
+ * refetch still swaps fresh data in once both queries return. Mutations
+ * triggered inside `<AppsEditor>` auto-invalidate the list query — no
+ * `onChanged` prop drilling required.
  */
 function AppsHomeScreen(): JSX.Element {
   return (
