@@ -9,14 +9,20 @@
       "types": "./dist-embedded/html.d.ts",
       "default": "./dist-embedded/html.js"
     },
+    "./single-web-html": {
+      "source": "./src/single-web-html-stub.ts",
+      "types": "./dist-single-web/html.d.ts",
+      "default": "./dist-single-web/html.js"
+    },
     "./web-assets": {
       "source": "./src/web-assets.ts"
     },
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "vp run build:embedded && vp run build:web",
+    "build": "vp run build:embedded && vp run build:single-web && vp run build:web",
     "build:embedded": "vp build --config vite.config.embedded.ts",
+    "build:single-web": "vp build --config vite.config.single-web.ts",
     "build:web": "vp build --config vite.config.web.ts",
     "check": "vp check",
     "dev": "vp dev --config vite.config.web.ts",

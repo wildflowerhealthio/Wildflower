@@ -36,13 +36,7 @@ import { TransportContext, type Transport } from './transport-context.ts'
  * runtime navigations and the navigation handler calls `navigate(path)`
  * during bootstrap. One mechanism for every initial message.
  */
-function TransportProvider({
-  children,
-  loader = null,
-}: {
-  readonly children: ReactNode
-  readonly loader?: ReactNode
-}): JSX.Element {
+function TransportProvider({ children }: { readonly children?: ReactNode }): JSX.Element {
   const navigate = useNavigate()
   const navigateRef = useRef(navigate)
   navigateRef.current = navigate
@@ -140,7 +134,7 @@ function TransportProvider({
   // Only display the body once the transport has been flushed and
   // any initial navigations have completed, to prevent a flashing ui
   return (
-    <Suspense fallback={loader}>
+    <Suspense fallback={<div>Transport Provider Loading</div>}>
       <Awaited promise={transportPromise}>
         {(transport) => (
           <TransportContext.Provider value={transport}>
@@ -153,4 +147,15 @@ function TransportProvider({
   )
 }
 
-export { TransportProvider }
+const stubTransport: Transport = {
+  sendMessage: () => Effect.void,
+  flushed: Effect.void,
+  enqueue: () => Effect.void,
+  signalReady: Effect.void,
+}
+
+const StubTransportProvider = ({ children }: { children?: React.ReactNode }): JSX.Element => {
+  return <TransportContext.Provider value={stubTransport}>{children}</TransportContext.Provider>
+}
+
+export { TransportProvider, StubTransportProvider }

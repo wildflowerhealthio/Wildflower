@@ -8,7 +8,6 @@
     "android:build": "expo run:android",
     "ios": "expo start --clear --ios",
     "ios:build": "expo run:ios",
-    "ios:dev": "expo start --clear --ios -d",
     "jest": "jest",
     "lint": "expo lint",
     "start": "expo start",

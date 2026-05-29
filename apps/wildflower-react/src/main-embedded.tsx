@@ -2,7 +2,12 @@ import './instrument.ts'
 import { createMemoryHistory } from '@tanstack/react-router'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
-import { renderApp } from './app-root.tsx'
 import './styles/global.css'
+import { renderApp } from './app-root.tsx'
+import { TransportProvider } from './bridges/transport-provider.tsx'
 
-renderApp({ history: createMemoryHistory(), entry: 'main-embedded' })
+renderApp({
+  history: createMemoryHistory(),
+  TransportProvider: TransportProvider,
+  entry: 'main-embedded',
+})

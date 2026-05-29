@@ -1,15 +1,10 @@
 import { Outlet } from '@tanstack/react-router'
-import { AppsClientProvider, AppsRuntimeProvider } from 'apps-react'
-import { CollectorClientProvider, CollectorRuntimeProvider } from 'collector-react'
+import { AppsClientProvider } from 'apps-react'
+import { CollectorClientProvider } from 'collector-react'
 import { FhirR4ResourcesClientProvider } from 'fhir-r4-react'
-import { authTokenRef, GatekeeperClientProvider } from 'gatekeeper-react'
+import { GatekeeperClientProvider } from 'gatekeeper-react'
 import type { JSX } from 'react'
-import { AuthTokenProvider } from 'react-kitchen-sink'
 import { TunnelClientProvider } from 'tunnel-react'
-
-import { AppsSenderForwarder } from '../bridges/apps-sender-forwarder.tsx'
-import { CollectorSenderForwarder } from '../bridges/collector-sender-forwarder.tsx'
-import { TransportProvider } from '../bridges/transport-provider.tsx'
 
 // Mount order:
 //  1. `<AuthTokenProvider>` exposes the gatekeeper-react module-scoped
@@ -44,29 +39,17 @@ import { TransportProvider } from '../bridges/transport-provider.tsx'
  * child route mounts under the providers.
  */
 const RootShell = (): JSX.Element => (
-  <AuthTokenProvider subscribable={authTokenRef}>
-    <CollectorRuntimeProvider>
-      <AppsRuntimeProvider>
-        <TransportProvider>
-          <CollectorSenderForwarder>
-            <AppsSenderForwarder>
-              <GatekeeperClientProvider>
-                <CollectorClientProvider>
-                  <FhirR4ResourcesClientProvider>
-                    <AppsClientProvider>
-                      <TunnelClientProvider>
-                        <Outlet />
-                      </TunnelClientProvider>
-                    </AppsClientProvider>
-                  </FhirR4ResourcesClientProvider>
-                </CollectorClientProvider>
-              </GatekeeperClientProvider>
-            </AppsSenderForwarder>
-          </CollectorSenderForwarder>
-        </TransportProvider>
-      </AppsRuntimeProvider>
-    </CollectorRuntimeProvider>
-  </AuthTokenProvider>
+  <GatekeeperClientProvider>
+    <CollectorClientProvider>
+      <FhirR4ResourcesClientProvider>
+        <AppsClientProvider>
+          <TunnelClientProvider>
+            <Outlet />
+          </TunnelClientProvider>
+        </AppsClientProvider>
+      </FhirR4ResourcesClientProvider>
+    </CollectorClientProvider>
+  </GatekeeperClientProvider>
 )
 
 export { RootShell }

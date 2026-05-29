@@ -7,10 +7,6 @@ const path = require('node:path')
 
 const projectRoot = __dirname
 const workspaceRoot = path.resolve(__dirname, '../..')
-const embeddableHtmlBuiltPath = path.resolve(
-  workspaceRoot,
-  'apps/wildflower-react/dist-embedded/html.js'
-)
 
 /**
  * Reports any package that ends up bundled at two paths.
@@ -92,12 +88,30 @@ config = withOverriddenModules(config, {
   // Expo app sees the real bundled HTML; otherwise fall through to the
   // stub (which renders the "not built" placeholder).
   'wildflower-react/embeddable-html': () => {
+    const embeddableHtmlBuiltPath = path.resolve(
+      workspaceRoot,
+      'apps/wildflower-react/dist-embedded/html.js'
+    )
     if (fs.existsSync(embeddableHtmlBuiltPath)) {
       return { type: 'sourceFile', filePath: embeddableHtmlBuiltPath }
     }
     // oxlint-disable-next-line no-console
     console.error(
       `No compiled react app at ${embeddableHtmlBuiltPath}, please run "vp build:embedded" to generate it.`
+    )
+    return undefined
+  },
+  'wildflower-react/single-web-html': () => {
+    const singleWebHtmlBuiltPath = path.resolve(
+      workspaceRoot,
+      'apps/wildflower-react/dist-single-web/html.js'
+    )
+    if (fs.existsSync(singleWebHtmlBuiltPath)) {
+      return { type: 'sourceFile', filePath: singleWebHtmlBuiltPath }
+    }
+    // oxlint-disable-next-line no-console
+    console.error(
+      `No compiled react app at ${singleWebHtmlBuiltPath}, please run "vp build:single-web" to generate it.`
     )
     return undefined
   },

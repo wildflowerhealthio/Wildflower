@@ -1,11 +1,25 @@
 import { createRouter, type RouterHistory, RouterProvider } from '@tanstack/react-router'
-import { StrictMode } from 'react'
+import { StrictMode, type ComponentType, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ErrorBoundary } from 'react-tundraish'
 import { Sentry } from 'telemetry-web'
 
+import { AppsRuntimeProvider } from 'apps-react'
+import { CollectorRuntimeProvider } from 'collector-react'
+import { authTokenRef } from 'gatekeeper-react'
+import { AuthTokenProvider } from 'react-kitchen-sink'
+import { AppsSenderForwarder } from './bridges/apps-sender-forwarder.tsx'
+import { CollectorSenderForwarder } from './bridges/collector-sender-forwarder.tsx'
 import { routeTree } from './routeTree.gen.ts'
 
+/**
+ * Props passed to the chosen router component (`BrowserRouter` for the
+ * standalone web build, `MemoryRouter` for the embedded WebView build).
+ * Typed as `{ children?: ReactNode }` because that's the only prop the
+ * app shell forwards — we don't need the full `BrowserRouterProps`
+ * surface from `react-router`.
+ */
+type WrapperComponent = ComponentType<{ readonly children?: ReactNode }>
 interface RenderAppOptions {
   /**
    * TanStack history instance: `createBrowserHistory()` for the
@@ -13,11 +27,13 @@ interface RenderAppOptions {
    * WebView build.
    */
   readonly history: RouterHistory
+  /** Router component to wrap the route tree. */
+  readonly TransportProvider: WrapperComponent
   /**
    * Entry-point label forwarded to the ErrorBoundary's `extraContext` so
    * Sentry events distinguish web-vs-embedded crashes.
    */
-  readonly entry: 'main-web' | 'main-embedded'
+  readonly entry: 'main-web' | 'main-embedded' | 'main-single-web'
 }
 
 /**
@@ -32,7 +48,7 @@ interface RenderAppOptions {
  * TanStack's `<RouterProvider>` does not accept children — child routes
  * are mounted via the root's `<Outlet />`.
  */
-const renderApp = ({ history, entry }: RenderAppOptions): void => {
+const renderApp = ({ history, TransportProvider, entry }: RenderAppOptions): void => {
   const router = createRouter({ routeTree, history })
   const container = document.getElementById('root')
   if (container === null) {
@@ -41,17 +57,35 @@ const renderApp = ({ history, entry }: RenderAppOptions): void => {
   createRoot(container).render(
     <StrictMode>
       <ErrorBoundary
-        onError={(error, info) =>
+        onError={(error, info) => {
+          console.error(`[${entry}] Uncaught error:`, error, info)
           Sentry.captureException(error, {
             extra: { componentStack: info.componentStack ?? undefined },
           })
-        }
+        }}
         extraContext={{
           mode: import.meta.env.MODE,
           entry,
         }}
       >
-        <RouterProvider router={router} />
+        <AuthTokenProvider subscribable={authTokenRef}>
+          <RouterProvider
+            router={router}
+            InnerWrap={({ children }) => {
+              return (
+                <CollectorRuntimeProvider>
+                  <AppsRuntimeProvider>
+                    <TransportProvider>
+                      <CollectorSenderForwarder>
+                        <AppsSenderForwarder>{children}</AppsSenderForwarder>
+                      </CollectorSenderForwarder>
+                    </TransportProvider>
+                  </AppsRuntimeProvider>
+                </CollectorRuntimeProvider>
+              )
+            }}
+          />
+        </AuthTokenProvider>
       </ErrorBoundary>
     </StrictMode>
   )
