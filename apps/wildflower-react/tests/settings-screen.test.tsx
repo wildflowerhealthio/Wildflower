@@ -7,7 +7,7 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { describe, expect, test, vi } from 'vite-plus/test'
+import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 // `SettingsLayout` gates its content behind `RequireAuth`, which reads a
 // live bearer token off `<AuthTokenProvider>` and renders `NeedsAuthMessage`
@@ -44,7 +44,15 @@ const renderSettingsScreen = (): void => {
   render(<RouterProvider router={router} />)
 }
 
+// TanStack Router's scroll-restoration runs on every emit and calls
+// `window.scrollTo`, which jsdom logs as "Not implemented:
+// window.scrollTo" through `console.error`. The behavior is irrelevant
+// here, so suppress the noise to keep test output focused on real failures.
 describe('SettingsScreen', () => {
+  beforeEach(() => {
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+  })
+
   test('renders the page heading', async () => {
     renderSettingsScreen()
     await waitFor(() => {
