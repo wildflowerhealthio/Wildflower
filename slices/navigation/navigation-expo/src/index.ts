@@ -6,7 +6,10 @@ import { useNavigationHostBinding } from './use-host-binding.ts'
  * receiver layer with the initial-route URL-param message;
  * `ReceiverLayer` is exported for direct composition.
  */
-const NavigationBridgeExpo = {
+const NavigationBridgeExpo: {
+  readonly ReceiverLayer: typeof ReceiverLayer
+  readonly useHostBinding: typeof useNavigationHostBinding
+} = {
   ReceiverLayer,
   useHostBinding: useNavigationHostBinding,
 }
