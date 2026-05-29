@@ -1,6 +1,6 @@
 import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise } from '@livestore/livestore'
-import { Arbitrary, Either, Schema } from 'effect'
+import { Arbitrary, Either, LogLevel, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
@@ -252,6 +252,10 @@ describe('Patient model', () => {
       adapter: makeAdapter({ storage: { type: 'in-memory' } }),
       schema,
       storeId: `patient-active-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      // LiveStore defaults to LogLevel.Debug in a non-production env, emitting
+      // a `LiveStore shutdown complete` line on teardown. Pin to Info to keep
+      // genuine warnings/errors visible without the debug noise.
+      logLevel: LogLevel.Info,
     })
 
     try {
