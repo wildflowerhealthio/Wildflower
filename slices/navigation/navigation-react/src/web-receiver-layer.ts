@@ -2,7 +2,7 @@ import { Effect, type Layer } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
 import { NavigationBridge } from 'navigation-core'
 
-/** Navigation target: `-1` is react-router's back-step sentinel; a string is a path push. */
+/** Navigation target: `-1` is the back-step sentinel; a string is a path push. */
 type NavTarget = -1 | string
 
 /**

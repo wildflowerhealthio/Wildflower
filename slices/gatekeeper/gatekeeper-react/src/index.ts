@@ -1,8 +1,3 @@
-export {
-  gatekeeperOpenRoutesFragment,
-  gatekeeperAuthenticatedRoutesFragment,
-  gatekeeperSettingsRoutesFragment,
-} from './routes.tsx'
 export { gatekeeperSettingsItemsFragment } from './settings-fragments.ts'
 
 export {
@@ -23,3 +18,5 @@ export {
   waitForHostTokenRef,
   writeToken,
 } from './client/token-storage.ts'
+
+export { openSubtree, authSubtree, settingsSubtree } from './route-handles.ts'

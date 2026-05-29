@@ -1,13 +1,13 @@
+import { Outlet } from '@tanstack/react-router'
 import { NeedsAuthMessage } from 'gatekeeper-react'
 import type { JSX } from 'react'
 import { useAuthTokenSubscribable, useStreamWithDefault } from 'react-kitchen-sink'
-import { Outlet } from 'react-router'
 
 /**
  * Outlet wrapper that gates owner-facing routes on a live bearer
  * token. Renders `<NeedsAuthMessage>` (the RFC 8628 device flow) when
- * no token is present; otherwise renders the matched child `<Route>`
- * via `<Outlet>`.
+ * no token is present; otherwise renders the matched child route via
+ * `<Outlet>`.
  *
  * Note: the gatekeeper and collector client layers are the same on
  * both sides of this gate — they read the live token from `BearerToken`

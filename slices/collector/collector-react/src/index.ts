@@ -1,4 +1,4 @@
-export { collectorAuthenticatedRoutesFragment } from './routes.tsx'
+export { openSubtree, authSubtree, settingsSubtree } from './route-handles.ts'
 
 export {
   CollectorClientLayerContext,
