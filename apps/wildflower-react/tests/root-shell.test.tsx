@@ -168,15 +168,6 @@ const lifecycleEventsFor = (name: string): readonly ('mount' | 'unmount')[] =>
     .filter(([, providerName]) => providerName === name)
     .map(([event]) => event)
 
-// TanStack Router's scroll-restoration runs on every navigation and
-// calls `window.scrollTo`, which jsdom logs as "Not implemented:
-// window.scrollTo" through `console.error`. The behavior is irrelevant
-// to these regression guards, so suppress the noise to keep the test
-// output focused on real failures.
-const silenceScrollTo = (): void => {
-  vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
-}
-
 describe('RootShell mount lifecycle', () => {
   // The five slice client providers `RootShell` actually renders, from
   // outermost to innermost. The relocated auth/runtime/transport/sender
@@ -215,7 +206,6 @@ describe('RootShell mount lifecycle', () => {
   })
 
   beforeEach(() => {
-    silenceScrollTo()
     lifecycleSpy.mockClear()
   })
 
@@ -310,7 +300,6 @@ describe('renderApp InnerWrap lifecycle', () => {
   // `createRoot` on the same node warns and the prior tree's elements
   // linger in the shared jsdom body.
   beforeEach(() => {
-    silenceScrollTo()
     lifecycleSpy.mockClear()
     const container = document.createElement('div')
     container.id = 'root'

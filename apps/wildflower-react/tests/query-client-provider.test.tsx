@@ -76,13 +76,8 @@ vi.mock('../src/routeTree.gen.ts', () => {
 
 import { RootShell } from '../src/session/root-shell.tsx'
 
-const silenceScrollTo = (): void => {
-  vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
-}
-
 describe('in-memory QueryClientProvider', () => {
   beforeEach(() => {
-    silenceScrollTo()
     capturedQueryClients.length = 0
     const container = document.createElement('div')
     container.id = 'root'
