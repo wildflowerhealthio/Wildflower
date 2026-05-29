@@ -114,27 +114,21 @@ describe('<AppsEditor> mutation reset on open', () => {
     expect(deleteStub.reset).toHaveBeenCalledTimes(1)
   })
 
-  test('clears the stale error from the DOM after the reset clears the mutation', () => {
-    // Arrange — a failed write left a stale error and the dialog is
-    // closed (the bug's pre-condition: `Dialog` keeps children mounted,
-    // so the error survives the close).
-    updateStub.error = new Error('stale failure')
-    const { rerender } = renderEditor(false)
+  test('surfaces the alert from the live mutation error, not a stale snapshot', () => {
+    // Arrange — open with a write error present on the mutation.
+    updateStub.error = new Error('write failed')
+    const { rerender } = renderEditor(true)
+    expect(screen.getByRole('alert').textContent).toBe('write failed')
 
-    // Act 1 — reopen. The editor's open-transition effect calls
-    // `reset()`. In production react-query's `reset()` flips the
-    // mutation's `error` to null and re-renders subscribers; model that
-    // settled post-reset state by clearing the stub before the
-    // re-render the reset would have triggered.
-    rerender(<AppsEditor open apps={NO_APPS} onClose={() => {}} />)
-    expect(updateStub.reset).toHaveBeenCalledTimes(1)
+    // Act — react-query's `reset()` clears `mutation.error` and re-renders
+    // subscribers. Drive that from the source the component reads: flip the
+    // live mutation `error` to null and rerender.
     updateStub.error = null
-
-    // Act 2 — the re-render react-query's reset would schedule.
     rerender(<AppsEditor open apps={NO_APPS} onClose={() => {}} />)
 
-    // Assert — no alert: the stale error is gone, so reopening no longer
-    // flashes the previous session's failure.
+    // Assert — the alert follows the live mutation error to null, proving
+    // the editor renders the alert off `updateMutation.error` rather than a
+    // value the test plants independently of the component.
     expect(screen.queryByRole('alert')).toBeNull()
   })
 

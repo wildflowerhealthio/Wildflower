@@ -23,10 +23,11 @@ const AppsHomeContent = (): JSX.Element => {
  * the app's in-memory `QueryClient`. The cache is warmed ahead of the
  * render by the router's intent preloading (`defaultPreload: 'intent'`),
  * so a hovered/touched link primes both reads and the screen resolves
- * from cache instead of suspending; with `staleTime: 0` a background
- * refetch still swaps fresh data in once both queries return. Mutations
- * triggered inside `<AppsEditor>` auto-invalidate the list query — no
- * `onChanged` prop drilling required.
+ * from cache instead of suspending; with `staleTime: 5 minutes` (set in
+ * `router-context.ts`) a freshly-preloaded read stays fresh and does not
+ * refetch on mount within that window. Mutations triggered inside
+ * `<AppsEditor>` auto-invalidate the list query — no `onChanged` prop
+ * drilling required.
  */
 function AppsHomeScreen(): JSX.Element {
   return (
