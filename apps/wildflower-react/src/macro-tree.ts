@@ -4,8 +4,8 @@ import * as collector from 'collector-react'
 import * as gatekeeper from 'gatekeeper-react'
 import * as tunnel from 'tunnel-react'
 
-import { SettingsIndex } from './routes/settings/index.tsx'
 import { SettingsLayout } from './routes/settings.tsx'
+import { SettingsIndex } from './routes/settings/index.tsx'
 import { AuthorizedAppShell } from './session/authorized-app-shell.tsx'
 import { RootShell } from './session/root-shell.tsx'
 
