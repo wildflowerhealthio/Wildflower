@@ -16,6 +16,9 @@ interface AppsEditorProps {
   readonly onClose: () => void
 }
 
+const formatError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+
 /**
  * Modal editor for the apps list. Bundled apps toggle on/off; custom
  * apps can be added or removed. Writes are issued through the slice's
@@ -41,12 +44,7 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
   // original imperative flow had.
   const busy = updateMutation.isPending || createMutation.isPending || deleteMutation.isPending
   const submitError = updateMutation.error ?? createMutation.error ?? deleteMutation.error
-  const errorMessage =
-    submitError === null || submitError === undefined
-      ? null
-      : submitError instanceof Error
-        ? submitError.message
-        : String(submitError)
+  const errorMessage = submitError === null ? null : formatError(submitError)
 
   const toggle = (app: AppEntry): void => {
     updateMutation.mutate({ id: app.id, payload: { enabled: !app.enabled } })

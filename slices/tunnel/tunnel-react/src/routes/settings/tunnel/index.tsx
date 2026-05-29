@@ -28,6 +28,9 @@ const normalizeOptionalString = (raw: string): string | null => {
   return trimmed === '' ? null : trimmed
 }
 
+const formatError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+
 const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   const patchMutation = useTunnelPatchMutation()
   const [subdomainInput, setSubdomainInput] = useState(state.subdomain ?? '')
@@ -42,12 +45,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   // The mutation hangs onto its last error until the next `mutate` call
   // clears it; surface it next to the existing display.
   const submitError = patchMutation.error
-  const errorMessage =
-    submitError === null
-      ? null
-      : submitError instanceof Error
-        ? submitError.message
-        : String(submitError)
+  const errorMessage = submitError === null ? null : formatError(submitError)
 
   const nextSubdomain = normalizeOptionalString(subdomainInput)
   const nextRootDomain = normalizeOptionalString(rootDomainInput)
