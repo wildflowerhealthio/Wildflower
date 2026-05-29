@@ -34,7 +34,8 @@ const TUNNEL_STATE_BODY = {
   servedOrigin: 'http://127.0.0.1:8080',
 }
 
-// `failing: true` always 500s — exercises the loader's swallow path.
+// `failing: true` always 500s — drives the rejecting read path that the
+// route loader now propagates (see routes.test.tsx) instead of swallowing.
 const stubHttpClientLayer = (options?: {
   readonly failing?: boolean
 }): Layer.Layer<HttpClient.HttpClient> =>
@@ -98,14 +99,15 @@ describe('tunnelStateQueryOptions', () => {
     expect(queryClient.getQueryData(TUNNEL_STATE_QUERY_KEY)).toEqual(state)
   })
 
-  test('a failed read rejects ensureQueryData (the route loader swallows this)', async () => {
+  test('a failed read rejects ensureQueryData (the route loader propagates this)', async () => {
     const options = tunnelStateQueryOptions(makeRunAuthed(stubHttpClientLayer({ failing: true })))
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
     disposers.push(() => Promise.resolve(queryClient.clear()))
 
-    // Pins the rejection the route loader swallows in try/catch.
+    // Pins the rejection the route loader surfaces to its errorComponent
+    // (no longer swallowed) — see routes.test.tsx for the loader path.
     await expect(queryClient.ensureQueryData(options)).rejects.toThrow()
     expect(queryClient.getQueryData(TUNNEL_STATE_QUERY_KEY)).toBeUndefined()
   })

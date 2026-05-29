@@ -18,10 +18,11 @@ const buildAppQueryRuntime = (): {
   readonly queryClient: QueryClient
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
+  readonly isTokenReady: () => boolean
 } => {
   const queryClient = buildQueryClient()
-  const { runAuthed, runtimeLayer } = buildRunAuthed(authTokenRef, webHttpClientLayer)
-  return { queryClient, runAuthed, runtimeLayer }
+  const { runAuthed, runtimeLayer, isTokenReady } = buildRunAuthed(authTokenRef, webHttpClientLayer)
+  return { queryClient, runAuthed, runtimeLayer, isTokenReady }
 }
 
 export { buildAppQueryRuntime }
