@@ -89,15 +89,11 @@ function AccountConfigScreen({ accountId }: { readonly accountId: string }): JSX
   }
 
   if (loading) {
-    return (
-      <div className={pageLayoutStyles['page']}>
-        <p className="text-body-2">Loading…</p>
-      </div>
-    )
+    return <p className="text-body-2">Loading…</p>
   }
 
   return (
-    <div className={pageLayoutStyles['page']}>
+    <>
       <h2 className="text-heading-4">{existing !== null ? 'Edit Account' : 'Add Account'}</h2>
 
       {error !== null ? (
@@ -170,7 +166,7 @@ function AccountConfigScreen({ accountId }: { readonly accountId: string }): JSX
           Cancel
         </button>
       </div>
-    </div>
+    </>
   )
 }
 

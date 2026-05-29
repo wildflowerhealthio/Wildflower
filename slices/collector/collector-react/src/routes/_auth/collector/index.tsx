@@ -80,7 +80,7 @@ function AccountListScreen(): JSX.Element {
   const remoteToDelete = remotes.find((r) => r.id === confirmDeleteId)
 
   return (
-    <div className={pageLayoutStyles['page']}>
+    <>
       {error !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
       ) : null}
@@ -209,7 +209,7 @@ function AccountListScreen(): JSX.Element {
           </button>
         </div>
       </Dialog>
-    </div>
+    </>
   )
 }
 
