@@ -3,20 +3,38 @@ import { stripTrailingSlash } from 'kitchen-sink'
 import { Suspense, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { AsyncErrorView, ItemList, type ItemListItem } from 'react-tundraish'
-import { useTunnelStateQuery, type TunnelState } from 'tunnel-react'
+import { useTunnelStateQuery, type RunAuthed, type TunnelState } from 'tunnel-react'
 
 import { useAppsListQuery, type AppEntry } from '../../../queries.ts'
+import type { AppsRouterContext } from '../../../router-context.ts'
 import { useRequestTunnel } from '../../../runtime/use-request-tunnel.ts'
 import { AppsEditor } from '../../../screens/apps-editor.tsx'
 import pageLayout from '../../../styles/page.module.css'
 
+/**
+ * Read the authed runner off this route's context. `select` is annotated
+ * with the structural {@link AppsRouterContext} so the result is a typed
+ * {@link RunAuthed} — NOT `any`. (Standalone, the slice registers no
+ * `Router`, so an un-`select`ed `Route.useRouteContext()` widens to
+ * `any`; the annotated `select` keeps it honest without an unsafe cast.)
+ */
+const useAppsRunAuthed = (): RunAuthed =>
+  Route.useRouteContext({ select: (context: AppsRouterContext) => context.runAuthed })
+
 const AppsHomeContent = (): JSX.Element => {
   // Two Suspense-backed queries side-by-side. TanStack Query runs them
-  // in parallel and suspends until both resolve; the persister gives us
-  // an instant cached render between sessions while the refetches go
-  // out in the background.
+  // in parallel and suspends until both resolve, reading from the shared
+  // in-memory cache (warmed by route preloading) so a revisit within the
+  // session renders instantly while any refetch goes out in the
+  // background.
+  //
+  // The tunnel read crosses a slice boundary: `useTunnelStateQuery` now
+  // takes the authed `runAuthed` runner explicitly (tunnel-react dropped
+  // its `<TunnelClientProvider>` DI), so we pull `runAuthed` off this
+  // route's context and hand it over.
+  const runAuthed = useAppsRunAuthed()
   const { data: apps } = useAppsListQuery()
-  const { data: tunnel } = useTunnelStateQuery()
+  const { data: tunnel } = useTunnelStateQuery(runAuthed)
   return <AppsHomeBody apps={apps} tunnel={tunnel} />
 }
 

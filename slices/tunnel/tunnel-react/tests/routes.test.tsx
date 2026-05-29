@@ -1,13 +1,21 @@
+import { QueryClient } from '@tanstack/react-query'
 import { createRouter, type AnyRoute } from '@tanstack/react-router'
 import { describe, expect, test } from 'vite-plus/test'
 
+import type { RunAuthed } from '../src/queries.ts'
 import { routeTree } from '../src/routeTree.gen.ts'
 
-// The slice generates its own `routeTree.gen.ts`. `settings/` is a real
-// path segment (not a pathless bucket), so the id and the resolved
-// `fullPath` both carry `/settings`. In the app the same file mounts
-// under the app's `/settings` route, producing the identical id.
-const router = createRouter({ routeTree })
+// The slice's root is now typed with `TunnelRouterContext`
+// (`createRootRouteWithContext`), so the router needs a context value.
+// These tests only inspect the generated tree's structure (ids /
+// fullPaths) — no loader runs — so a stub context that never resolves an
+// effect suffices.
+const stubRunAuthed: RunAuthed = () =>
+  Promise.reject(new Error('runAuthed not used in route tests'))
+const router = createRouter({
+  routeTree,
+  context: { queryClient: new QueryClient(), runAuthed: stubRunAuthed },
+})
 
 const routes = (): readonly AnyRoute[] =>
   Object.values(router.routesById).filter((route) => route.id !== '__root__')

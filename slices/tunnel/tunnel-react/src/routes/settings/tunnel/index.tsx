@@ -1,17 +1,30 @@
-import { CatchBoundary, createFileRoute } from '@tanstack/react-router'
-import { Suspense, useState, type JSX } from 'react'
+import { createFileRoute } from '@tanstack/react-router'
+import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import {
-  AsyncErrorView,
-  Field,
-  FieldDescription,
-  pageLayoutStyles,
-  PageLoading,
-} from 'react-tundraish'
+import { AsyncErrorView, Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
 import { TunnelToggle } from '../../../components/TunnelToggle.tsx'
-import { useTunnelPatchMutation, useTunnelStateQuery, type TunnelState } from '../../../queries.ts'
+import {
+  tunnelStateQueryOptions,
+  useTunnelPatchMutation,
+  useTunnelStateQuery,
+  type RunAuthed,
+  type TunnelState,
+} from '../../../queries.ts'
+import type { TunnelRouterContext } from '../../../router-context.ts'
 import styles from './index.module.css'
+
+/**
+ * Read the authed runner off this route's context. `select` is annotated
+ * with the structural {@link TunnelRouterContext} so the result is a
+ * typed {@link RunAuthed} — NOT `any`. (In the slice's standalone build
+ * there is no registered `Router`, so an un-`select`ed
+ * `Route.useRouteContext()` widens to `any`; the annotated `select`
+ * keeps it honest without an unsafe cast. The app build, which DOES
+ * register the router, sees the same shape.)
+ */
+const useTunnelRunAuthed = (): RunAuthed =>
+  Route.useRouteContext({ select: (context: TunnelRouterContext) => context.runAuthed })
 
 interface TunnelScreenBodyProps {
   readonly state: TunnelState
@@ -32,7 +45,8 @@ const formatError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
 const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
-  const patchMutation = useTunnelPatchMutation()
+  const runAuthed = useTunnelRunAuthed()
+  const patchMutation = useTunnelPatchMutation(runAuthed)
   const [subdomainInput, setSubdomainInput] = useState(state.subdomain ?? '')
   const [rootDomainInput, setRootDomainInput] = useState(state.rootDomain ?? '')
 
@@ -154,31 +168,27 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   )
 }
 
-const TunnelScreenContent = (): JSX.Element => {
-  const { data: state } = useTunnelStateQuery()
-  return <TunnelScreenBody state={state} />
-}
-
 /**
- * Settings landing for the tunnel slice. Reads `TunnelState` through
- * TanStack Query (`useTunnelStateQuery`), so the screen renders from
- * localStorage-persisted cache on mount and the in-flight refetch
- * swaps fresh data in once it lands. Edits go through
- * `useTunnelPatchMutation`, which optimistically projects the change
- * into the cache for instant feedback and rolls back if the daemon
- * rejects the patch.
+ * Settings landing for the tunnel slice — the fully-migrated worked
+ * slice (Issue #101 Phase 1). `TunnelState` is read through TanStack
+ * Query off the shared in-memory cache, warmed two ways:
+ *
+ *   - the route `loader` (below) prefetches via `ensureQueryData`, so
+ *     navigation blocks until the data is ready and the component renders
+ *     instantly with no spinner;
+ *   - failing that (embedded first paint before the token lands), the
+ *     in-component `useTunnelStateQuery` fetches once the `RequireAuth`
+ *     gate above renders it (post-flush, token present).
+ *
+ * Edits go through `useTunnelPatchMutation`, which optimistically
+ * projects the change into the cache for instant feedback and rolls back
+ * if the daemon rejects the patch. `runAuthed` comes from the router
+ * context — no `<TunnelClientProvider>` / `use*EffectAction` DI.
  */
-function TunnelScreen(): JSX.Element {
-  return (
-    <CatchBoundary
-      getResetKey={() => 'tunnel-screen'}
-      errorComponent={({ error }) => <AsyncErrorView error={error} title="Tunnel" />}
-    >
-      <Suspense fallback={<PageLoading message="Loading tunnel…" />}>
-        <TunnelScreenContent />
-      </Suspense>
-    </CatchBoundary>
-  )
+const TunnelScreenContent = (): JSX.Element => {
+  const runAuthed = useTunnelRunAuthed()
+  const { data: state } = useTunnelStateQuery(runAuthed)
+  return <TunnelScreenBody state={state} />
 }
 
 /**
@@ -187,7 +197,33 @@ function TunnelScreen(): JSX.Element {
  * this same file is mounted under the app's `/settings` route via
  * `@tanstack/virtual-file-routes`, which computes the identical
  * `/settings/tunnel/` id, so the literal below is stable across both trees.
+ *
+ * The `loader` prefetches `TunnelState` into the shared query cache via
+ * the router context's `runAuthed` runner. It is BEST-EFFORT: in the
+ * embedded WebView the bearer token arrives over the gatekeeper bridge
+ * only after `transport.flushed`, so a loader firing on first paint can
+ * 401. The `/settings` layout gate (`RequireAuth`) is a React-component
+ * gate, NOT a `beforeLoad` gate, so it does not hold the loader back.
+ * Rather than 401 into the `errorComponent`, the loader swallows a failed
+ * prefetch and lets the in-component `useSuspenseQuery` — which only
+ * renders once the gate sees the post-flush token — perform the first
+ * read. On standalone web the token is present from module load, so the
+ * prefetch succeeds and the screen paints instantly.
+ *
+ * `errorComponent` replaces the old inline `<CatchBoundary>` +
+ * `<Suspense>`: the loader (and `useSuspenseQuery`) drive suspense, and a
+ * genuine fetch error surfaces here as `<AsyncErrorView title="Tunnel">`.
  */
 export const Route = createFileRoute('/settings/tunnel/')({
-  component: TunnelScreen,
+  loader: async ({ context }) => {
+    try {
+      await context.queryClient.ensureQueryData(tunnelStateQueryOptions(context.runAuthed))
+    } catch {
+      // Best-effort warm-up — see the route doc comment. A failed
+      // prefetch (e.g. embedded first paint before the token lands) is
+      // intentionally non-fatal; the in-component query reads later.
+    }
+  },
+  component: TunnelScreenContent,
+  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Tunnel" />,
 })

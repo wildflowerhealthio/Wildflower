@@ -1,14 +1,5 @@
 export { tunnelSettingsItemsFragment } from './settings-fragments.ts'
 
-export { TunnelClientProvider, type TunnelClientProviderProps } from './tunnel-client-provider.tsx'
-export { TunnelAdminClientLayerContext } from './tunnel-client-context.ts'
-export { useTunnelAdminClientLayer } from './use-tunnel-admin-client-layer.ts'
-export { useTunnelAdminEffect } from './use-tunnel-admin-effect.ts'
-export {
-  useTunnelAdminEffectRunner,
-  type TunnelAdminEffectRunner,
-} from './use-tunnel-admin-effect-runner.ts'
-
 export {
   buildTunnelAdminClientLayer,
   type TunnelAdminClientRequirements,
@@ -16,11 +7,15 @@ export {
 
 export { TunnelToggle, type TunnelToggleProps } from './components/TunnelToggle.tsx'
 
+export type { TunnelRouterContext } from './router-context.ts'
+
 export {
   applyTunnelOptimistic,
   TUNNEL_STATE_QUERY_KEY,
+  tunnelStateQueryOptions,
   useTunnelPatchMutation,
   useTunnelStateQuery,
+  type RunAuthed,
   type TunnelPatchPayload,
   type TunnelState,
 } from './queries.ts'
