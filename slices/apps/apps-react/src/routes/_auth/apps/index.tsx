@@ -1,44 +1,37 @@
-import { CatchBoundary, createFileRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { stripTrailingSlash } from 'kitchen-sink'
-import { Suspense, useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { AsyncErrorView, ItemList, type ItemListItem } from 'react-tundraish'
 import { useTunnelStateQuery, type TunnelState } from 'tunnel-react'
 
-import { useAppsListQuery, type AppEntry } from '../../../queries.ts'
+import {
+  appsListQueryOptions,
+  runAppsPublicEffect,
+  useAppsListQuery,
+  type AppEntry,
+} from '../../../queries.ts'
 import { useRequestTunnel } from '../../../runtime/use-request-tunnel.ts'
 import { AppsEditor } from '../../../screens/apps-editor.tsx'
 import pageLayout from '../../../styles/page.module.css'
 
-const AppsHomeContent = (): JSX.Element => {
-  // Two Suspense-backed queries side-by-side. TanStack Query runs them
-  // in parallel and suspends until both resolve; the persister gives us
-  // an instant cached render between sessions while the refetches go
-  // out in the background.
+/**
+ * Owner-facing apps landing. The route `loader` prefetches the apps list
+ * into the shared `QueryClient` (blocking the navigation until it
+ * resolves), so the two Suspense-backed reads below
+ * (`useAppsListQuery` + `useTunnelStateQuery`) resolve from cache without
+ * a fallback flash. With `staleTime: 0` a background refetch still swaps
+ * fresh data in once both queries return. Mutations triggered inside
+ * `<AppsEditor>` auto-invalidate the list query — no `onChanged` prop
+ * drilling required.
+ */
+function AppsHomeScreen(): JSX.Element {
+  // Both reads resolve instantly: the apps list from the loader's
+  // prefetch, the tunnel state from its own persisted cache. TanStack
+  // Query suspends only if either is genuinely uncached.
   const { data: apps } = useAppsListQuery()
   const { data: tunnel } = useTunnelStateQuery()
   return <AppsHomeBody apps={apps} tunnel={tunnel} />
-}
-
-/**
- * Owner-facing apps landing. Reads the apps list and the tunnel state
- * via TanStack Query (`useAppsListQuery` + `useTunnelStateQuery`), so
- * the screen renders from localStorage-persisted cache on mount and a
- * background refetch swaps in fresh data once both queries return.
- * Mutations triggered inside `<AppsEditor>` auto-invalidate the list
- * query — no `onChanged` prop drilling required.
- */
-function AppsHomeScreen(): JSX.Element {
-  return (
-    <CatchBoundary
-      getResetKey={() => 'apps-home'}
-      errorComponent={({ error }) => <AsyncErrorView error={error} title="Apps" />}
-    >
-      <Suspense fallback={<p className="text-body-2">Loading apps…</p>}>
-        <AppsHomeContent />
-      </Suspense>
-    </CatchBoundary>
-  )
 }
 
 interface AppsHomeBodyProps {
@@ -134,5 +127,25 @@ function AppsHomeBody({ tunnel, apps }: AppsHomeBodyProps): JSX.Element {
 }
 
 export const Route = createFileRoute('/_auth/apps/')({
+  /**
+   * Prefetch the apps list into the shared `QueryClient` before the
+   * screen mounts. `ensureQueryData` resolves from cache when present
+   * (and kicks off a background refetch under `staleTime: 0`) or fetches
+   * when cold — either way the router blocks the navigation until it
+   * settles, so `AppsHomeScreen`'s `useSuspenseQuery` never flashes a
+   * fallback. The runner is `runAppsPublicEffect` (not the React hook),
+   * since the loader runs outside React; it binds the same public apps
+   * layer the in-component `useAppsEffectAction()` does, so loader and
+   * hook share the identical `queryKey` + `queryFn` via
+   * {@link appsListQueryOptions}.
+   */
+  loader: ({ context: { queryClient } }) =>
+    queryClient.ensureQueryData(appsListQueryOptions(runAppsPublicEffect)),
   component: AppsHomeScreen,
+  /**
+   * Loader / query failures surface through the router's error path
+   * rather than an inline `CatchBoundary`. Renders the same
+   * `AsyncErrorView` the previous boundary did.
+   */
+  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Apps" />,
 })

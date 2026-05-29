@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react'
+import { useEffect, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Checkbox, Dialog } from 'react-tundraish'
 
@@ -30,6 +30,13 @@ const formatError = (error: unknown): string =>
  * form locks during an in-flight write, not just the submit button —
  * stops the user from racing toggles or adding a duplicate custom row
  * while a previous write is still pending.
+ *
+ * The host `Dialog` (react-tundraish) keeps its children mounted while
+ * closed, so the three mutations' `error` state would otherwise persist
+ * and a stale error would reappear on the next open. An effect keyed on
+ * `open` resets all three mutations (and clears the new-custom form
+ * fields) whenever the dialog transitions to open, so each open starts
+ * from a clean slate.
  */
 const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
   const updateMutation = useAppsAdminUpdateMutation()
@@ -38,6 +45,28 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
   const [newName, setNewName] = useState('')
   const [newUrl, setNewUrl] = useState('')
   const [newRequiresTunnel, setNewRequiresTunnel] = useState(false)
+
+  // `Dialog` does not unmount its children when closed, so a settled
+  // mutation hangs onto its last `error` until the next `mutate`. Without
+  // this, reopening the dialog after a failed write would flash the stale
+  // error before any new interaction. Resetting on the open transition
+  // (and clearing the new-custom form) gives every open a clean slate.
+  // `.reset` is a plain function (not an Effect), so calling it directly
+  // in a sync effect is safe — no `Effect.runFork` needed. The mutation
+  // `reset` identities are stable across renders, so listing them keeps
+  // the exhaustive-deps lint satisfied without re-running on every render.
+  const resetUpdate = updateMutation.reset
+  const resetCreate = createMutation.reset
+  const resetDelete = deleteMutation.reset
+  useEffect(() => {
+    if (!open) return
+    resetUpdate()
+    resetCreate()
+    resetDelete()
+    setNewName('')
+    setNewUrl('')
+    setNewRequiresTunnel(false)
+  }, [open, resetUpdate, resetCreate, resetDelete])
 
   // Any in-flight write locks the whole fieldset. Aggregating across the
   // three mutations keeps the "one write at a time" guarantee the

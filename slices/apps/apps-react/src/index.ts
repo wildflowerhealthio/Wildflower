@@ -28,11 +28,14 @@ export { useRequestTunnel } from './runtime/use-request-tunnel.ts'
 
 export {
   APPS_LIST_QUERY_KEY,
+  appsListQueryOptions,
+  runAppsPublicEffect,
   useAppsAdminCreateMutation,
   useAppsAdminDeleteMutation,
   useAppsAdminUpdateMutation,
   useAppsListQuery,
   type AppEntry,
+  type AppsPublicEffectAction,
   type CreateCustomAppPayload,
   type UpdateAppPayload,
 } from './queries.ts'

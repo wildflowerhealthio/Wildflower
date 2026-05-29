@@ -1,3 +1,4 @@
+import { QueryClient } from '@tanstack/react-query'
 import { createRouter, type AnyRoute } from '@tanstack/react-router'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -8,7 +9,12 @@ import { routeTree } from '../src/routeTree.gen.ts'
 // matches what the app's `_auth` layout produces) but contributes no URL
 // segment, so the `fullPath`s below are the slice-local URLs the macro tree
 // resolves.
-const router = createRouter({ routeTree })
+//
+// The slice root is `createRootRouteWithContext<AppsRouterContext>()`, so
+// `createRouter` requires a `context` carrying a `QueryClient` — the same
+// shape the app shell supplies. A bare client is enough to assemble the
+// tree for these structural assertions.
+const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } })
 
 const routes = (): readonly AnyRoute[] =>
   Object.values(router.routesById).filter((route) => route.id !== '__root__')
