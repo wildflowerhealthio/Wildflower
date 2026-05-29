@@ -2,7 +2,7 @@ import { render, renderHook } from '@testing-library/react'
 import { Effect } from 'effect'
 import type { BridgeTransport } from 'effect-messaging-core'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
+import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { memo } from 'react'
 import { NoContextException } from 'react-kitchen-sink'
 import { describe, expect, test, vi } from 'vite-plus/test'
@@ -126,8 +126,15 @@ describe('makeNamedPipe — examples', () => {
       }
     )
 
-    const exit = await Effect.runPromise(Effect.exit(result.current({ _tag: 'HostBackRequested' })))
+    const { layer, logSink } = LoggingLayerTest.make()
+    const exit = await Effect.runPromise(
+      Effect.exit(result.current({ _tag: 'HostBackRequested' })).pipe(Effect.provide(layer))
+    )
     expect(exit._tag).toBe('Success')
+    const warn = logSink.find((entry) => entry.level === 'WARN')
+    expect(warn?.message).toContain(
+      '[effect-messaging] no TestPipe handler registered; dropping message'
+    )
   })
 
   test('useSender returns an identity-stable function across re-renders', () => {

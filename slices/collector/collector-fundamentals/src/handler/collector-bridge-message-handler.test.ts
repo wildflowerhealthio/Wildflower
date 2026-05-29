@@ -273,7 +273,7 @@ describe('CollectorBridgeMessageHandler.make', () => {
       expectRightToEqual(result, [{ name: 'Carol', age: 40 }])
     })
 
-    it('removes the response after finishing so a second ResponseFinished is a no-op', () => {
+    it('removes the response after finishing so a second ResponseFinished is a no-op', async () => {
       const onResult = vi.fn()
       const handler = makeSimpleHandler({ onResult })
 
@@ -283,7 +283,21 @@ describe('CollectorBridgeMessageHandler.make', () => {
       runHandlerSync(handler.ResponseData(responseData('r1', '{}')))
       runHandlerSync(handler.ResponseFinished(responseFinished('r1')))
       // Second finish: tracked entry is gone → log + no-op.
-      expect(() => runHandlerSync(handler.ResponseFinished(responseFinished('r1')))).not.toThrow()
+      await runHandlerPromise(
+        handler.ResponseFinished(responseFinished('r1')).pipe(
+          LoggingLayerTest.expectToLog((logs) => {
+            expect(logs).toEqual([
+              expect.objectContaining({
+                level: 'WARN',
+                message: expect.stringContaining(
+                  'CollectorBridgeMessageHandler.ResponseFinished: no tracked response for id r1'
+                ),
+              }),
+            ])
+          }),
+          Effect.scoped
+        )
+      )
       // Only the first finish should have produced an onResult call.
       expect(onResult).toHaveBeenCalledOnce()
     })
