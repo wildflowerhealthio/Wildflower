@@ -1,4 +1,4 @@
-/* oxlint-disable react/only-export-components, typescript/no-unsafe-assignment -- typed via createFileRoute and a slice-local routeTree.gen.ts augmentation; oxlint type inference does not pick it up */
+/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
 
 import { createFileRoute } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
@@ -34,7 +34,7 @@ const statusTone = (status: string): StatusTone => {
 
 function RequestDetailScreen(): JSX.Element {
   const runGatekeeper = useGatekeeperEffectAction()
-  const { id } = Route.useParams()
+  const { id }: { id: string } = Route.useParams()
   const [refreshKey, setRefreshKey] = useState(0)
 
   const requestEffect = useMemo(

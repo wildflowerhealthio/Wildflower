@@ -23,6 +23,13 @@ type TunnelState = Schema.Schema.Type<typeof Tunnel.TunnelStateSchema>
 function AppsHomeScreen(): JSX.Element {
   const [refreshKey, setRefreshKey] = useState(0)
 
+  // Build each Effect inside `useMemo([refreshKey])` so a refresh produces
+  // fresh Effect references and the underlying `useEffectTs`
+  // (`useAppsEffect` / `useTunnelAdminEffect`) reaches its new-input branch
+  // and re-fetches. We run them as two Suspense-friendly promises and
+  // `Promise.all` the results, handing the combined promise to
+  // `<Awaited resetKey={refreshKey}>` so a refresh also clears any stale
+  // error view.
   const appsEffect = useMemo(
     () => Effect.flatMap(AppsHttpApiClient, (c) => c.apps.ListApps()),
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- refreshKey is the intentional re-fetch trigger
@@ -74,6 +81,18 @@ function AppsHomeBody({ tunnel, apps, onChanged }: AppsHomeBodyProps): JSX.Eleme
 
   const launch = async (app: AppEntry): Promise<void> => {
     setError(null)
+    // LaunchApp is GET /apps/:id which returns a 302 redirect; we set
+    // window.location so the browser follows the redirect chain (and any
+    // tunnel-side origin swap) just as a normal app-shell click would.
+    //
+    // Origin policy:
+    //  - Non-tunnel apps always go through `window.location.origin`,
+    //    which the embedded shell pins to the loopback origin. That
+    //    keeps the redirect off the public tunnel even when one is up
+    //    (avoiding localtunnel's 511 captive-portal interstitial).
+    //  - Tunnel apps explicitly target `tunnel.servedOrigin` — the
+    //    server-resolved public URL — when the tunnel is live, or
+    //    request one via the bridge if it isn't yet.
     const launchPath = `/apps/${encodeURIComponent(app.id)}`
     if (!app.requiresTunnel) {
       window.location.href = `${stripTrailingSlash(window.location.origin)}${launchPath}`

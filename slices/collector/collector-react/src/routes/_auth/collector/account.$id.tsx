@@ -1,4 +1,4 @@
-/* oxlint-disable react/only-export-components, typescript/no-unsafe-assignment -- typed via createFileRoute and a slice-local routeTree.gen.ts augmentation; oxlint type inference does not pick it up */
+/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
 
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { CollectorHttpApiClient } from 'collector-core/clients'
@@ -22,7 +22,7 @@ type RemoteRow = Schema.Schema.Type<typeof Remotes.RemoteSchema>
 function AccountConfigScreen(): JSX.Element {
   const navigate = useNavigate()
   const run = useCollectorEffectAction()
-  const { id: accountId } = Route.useParams()
+  const { id: accountId }: { id: string } = Route.useParams()
   const [existing, setExisting] = useState<RemoteRow | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

@@ -1,4 +1,4 @@
-/* oxlint-disable react/only-export-components, typescript/no-unsafe-assignment -- typed via createFileRoute and a slice-local routeTree.gen.ts augmentation; oxlint type inference does not pick it up */
+/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
 
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
@@ -12,7 +12,7 @@ import { OAuthConsentForm } from '../../../screens/oauth-consent/oauth-consent-f
 function OAuthConsentScreen(): JSX.Element {
   const runGatekeeper = useGatekeeperEffectAction()
   const navigate = useNavigate()
-  const { id } = Route.useParams()
+  const { id }: { id: string } = Route.useParams()
 
   const consentEffect = useMemo(
     () =>

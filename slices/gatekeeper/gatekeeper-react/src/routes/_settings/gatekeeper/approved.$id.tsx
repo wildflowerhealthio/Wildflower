@@ -1,4 +1,4 @@
-/* oxlint-disable react/only-export-components, typescript/no-unsafe-assignment -- typed via createFileRoute and a slice-local routeTree.gen.ts augmentation; oxlint type inference does not pick it up */
+/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
 
 import { createFileRoute } from '@tanstack/react-router'
 import { Effect } from 'effect'
@@ -10,7 +10,7 @@ import { useGatekeeperEffect } from '../../../gatekeeper-client.tsx'
 import styles from './approved.$id.module.css'
 
 function ApprovedAppDetailScreen(): JSX.Element {
-  const { id } = Route.useParams()
+  const { id }: { id: string } = Route.useParams()
 
   const grantEffect = useMemo(
     () =>

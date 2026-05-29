@@ -1,4 +1,4 @@
-/* oxlint-disable react/only-export-components, typescript/no-unsafe-assignment -- typed via createFileRoute and a slice-local routeTree.gen.ts augmentation; oxlint type inference does not pick it up */
+/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
 
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { CollectorHttpApiClient } from 'collector-core/clients'
@@ -21,7 +21,15 @@ import pageLayout from './page-layout.module.css'
 function AccountNewScreen(): JSX.Element {
   const navigate = useNavigate()
   const run = useCollectorEffectAction()
-  const { prefillName, prefillRootUrl, prefillPatientId } = Route.useSearch()
+  const {
+    prefillName,
+    prefillRootUrl,
+    prefillPatientId,
+  }: {
+    readonly prefillName?: string
+    readonly prefillRootUrl?: string
+    readonly prefillPatientId?: string
+  } = Route.useSearch()
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState(prefillName ?? '')
   const [rootUrl, setRootUrl] = useState(prefillRootUrl ?? defaultConfig.rootUrl)

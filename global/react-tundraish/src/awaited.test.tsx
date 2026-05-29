@@ -145,4 +145,51 @@ describe('Awaited', () => {
     })
     expect(screen.queryByRole('heading', { name: 'Boom' })).toBeNull()
   }, 15_000)
+
+  it('keeps a stale error view when resetKey is omitted (the documented footgun)', async () => {
+    // Arrange — render with a rejected promise and NO `resetKey`. With
+    // `resetKey` omitted it defaults to a constant `0`, so the
+    // CatchBoundary's getResetKey never changes and the boundary can
+    // never auto-reset — the footgun called out on `AwaitedBaseProps`.
+    const failure = new Error('stale failure')
+    const failed = Promise.reject<string>(failure)
+    const failedSettled = failed.catch(() => {})
+
+    let rendered: ReturnType<typeof render> | undefined
+    await act(async () => {
+      rendered = renderSuspended(
+        <Awaited promise={failed} errorTitle="Stale">
+          {(value) => <p data-testid="resolved">{value}</p>}
+        </Awaited>
+      )
+      await failedSettled
+    })
+    if (rendered === undefined) throw new Error('render did not run')
+    const { rerender } = rendered
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Stale' })).toBeTruthy()
+    })
+
+    // Act — swap in a resolved promise but leave `resetKey` omitted, so
+    // the boundary's reset key stays pinned at the constant default.
+    const recovered = Promise.resolve('recovered')
+    await act(async () => {
+      rerender(
+        <Suspense fallback={<p>loading</p>}>
+          <Awaited promise={recovered} errorTitle="Stale">
+            {(value) => <p data-testid="resolved">{value}</p>}
+          </Awaited>
+        </Suspense>
+      )
+      await recovered
+    })
+
+    // Assert — without a changing resetKey the error view persists and the
+    // recovered value never reaches the DOM.
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Stale' })).toBeTruthy()
+    })
+    expect(screen.queryByTestId('resolved')).toBeNull()
+  }, 15_000)
 })

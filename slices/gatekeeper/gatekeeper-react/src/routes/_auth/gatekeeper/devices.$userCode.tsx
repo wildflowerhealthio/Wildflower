@@ -1,4 +1,4 @@
-/* oxlint-disable react/only-export-components, typescript/no-unsafe-assignment -- typed via createFileRoute and a slice-local routeTree.gen.ts augmentation; oxlint type inference does not pick it up */
+/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
 
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
@@ -29,7 +29,7 @@ type DeviceConsent = Schema.Schema.Type<typeof Devices.DeviceConsentSchema>
 function DeviceConsentScreen(): JSX.Element {
   const runGatekeeper = useGatekeeperEffectAction()
   const navigate = useNavigate()
-  const { userCode } = Route.useParams()
+  const { userCode }: { userCode: string } = Route.useParams()
 
   const consentEffect = useMemo(
     () =>

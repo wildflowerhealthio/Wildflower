@@ -153,7 +153,12 @@ function AccountListScreen(): JSX.Element {
             subtitle: defaultConfig.rootUrl,
             onClick: () => {
               void navigate({
-                to: `/collector/account/new?prefillName=${encodeURIComponent('Demo FHIR Server')}&prefillRootUrl=${encodeURIComponent(defaultConfig.rootUrl)}&prefillPatientId=${encodeURIComponent(defaultConfig.patientId)}`,
+                to: '/collector/account/new',
+                search: {
+                  prefillName: 'Demo FHIR Server',
+                  prefillRootUrl: defaultConfig.rootUrl,
+                  prefillPatientId: defaultConfig.patientId,
+                },
               })
             },
           },

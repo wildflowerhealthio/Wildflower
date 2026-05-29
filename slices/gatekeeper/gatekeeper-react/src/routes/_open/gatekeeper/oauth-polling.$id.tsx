@@ -1,4 +1,4 @@
-/* oxlint-disable react/only-export-components, typescript/no-unsafe-assignment -- typed via createFileRoute and a slice-local routeTree.gen.ts augmentation; oxlint type inference does not pick it up */
+/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
 
 import { createFileRoute } from '@tanstack/react-router'
 import { type AuthorizationStatus, pollAuthorizationStatus } from 'gatekeeper-core/clients'
@@ -18,7 +18,7 @@ import styles from './oauth-polling.module.css'
  * resolves to `null` here and adds no header).
  */
 function OAuthPollingScreen(): JSX.Element {
-  const { id } = Route.useParams()
+  const { id }: { id: string } = Route.useParams()
   const stream = useMemo(() => pollAuthorizationStatus(id), [id])
   const statusPromise = useGatekeeperStream(stream)
 
