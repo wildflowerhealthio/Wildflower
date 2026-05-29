@@ -15,3 +15,12 @@ export {
 } from './client/tunnel-client.ts'
 
 export { TunnelToggle, type TunnelToggleProps } from './components/TunnelToggle.tsx'
+
+export {
+  applyTunnelOptimistic,
+  TUNNEL_STATE_QUERY_KEY,
+  useTunnelPatchMutation,
+  useTunnelStateQuery,
+  type TunnelPatchPayload,
+  type TunnelState,
+} from './queries.ts'

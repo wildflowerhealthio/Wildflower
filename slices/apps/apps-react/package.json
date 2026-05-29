@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
+    "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tanstack/router-plugin": "catalog:",
     "@types/react": "catalog:",
@@ -37,6 +38,7 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
+    "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "apps-core": "workspace:*",
     "effect": "catalog:",
