@@ -6,37 +6,28 @@ import { GatekeeperClientProvider } from 'gatekeeper-react'
 import type { JSX } from 'react'
 import { TunnelClientProvider } from 'tunnel-react'
 
-// Mount order:
-//  1. `<AuthTokenProvider>` exposes the gatekeeper-react module-scoped
-//     `authTokenRef` (a `SubscriptionRef<string | null>` syncing with
-//     localStorage) to every slice's client layer below it. All five
-//     slice client providers (gatekeeper, collector, fhir-r4, apps,
-//     tunnel) read the live token per-request via the `BearerToken`
-//     service, so rotation surfaces without remounting any provider.
-//  2. `<CollectorRuntimeProvider>` exposes the CollectorBridge `Web`
-//     receiver layer + the active-handler ref the running sync installs
-//     into; mounted before the transport builds.
-//  2b. `<AppsRuntimeProvider>` exposes the AppsBridge `Web` receiver
-//     layer + the pending-tunnel-resolver ref `useRequestTunnel`
-//     installs into; mounted before the transport builds.
-//  3. `<TransportProvider>` builds the BridgeTransport using
-//     collector's + apps' receiver layers via context and hosts it via
-//     TransportContext.
-//  4. `<CollectorSenderForwarder>` reads `transport.sendMessage` and
-//     surfaces it to collector-react screens via CollectorSenderProvider.
-//  4b. `<AppsSenderForwarder>` does the same for the apps slice.
-//  5. The slice client providers each put a slice's client layer in
-//     context; the admin layers read the live token from `BearerToken`
-//     per request. `<AppsClientProvider>` provides BOTH the public and
-//     admin apps client layers.
-//  5b. `<TunnelClientProvider>` provides the tunnel slice's admin
-//     client layer. It takes no props — the layer reads the live token
-//     from `BearerToken` per request, like the other slice client
-//     providers. Tunnel has no public counterpart (owner-only API).
+// Slice client-provider nesting. Each provider puts one slice's client
+// layer in context; the admin layers read the live bearer token from the
+// `BearerToken` service per request, so token rotation surfaces without
+// remounting any provider. Nesting order is otherwise free — the layers
+// are independent — so it just mirrors the slice load order:
+//   gatekeeper → collector → fhir-r4 → apps → tunnel.
+// Two providers earn a note:
+//  - `<AppsClientProvider>` provides BOTH the public and admin apps
+//    client layers.
+//  - `<TunnelClientProvider>` provides the tunnel slice's admin client
+//    layer and has no public counterpart (owner-only API); it takes no
+//    props, reading the live token from `BearerToken` like the others.
+//
+// The auth/runtime/transport/sender providers (AuthTokenProvider, the two
+// RuntimeProviders, TransportProvider, the two SenderForwarders) do NOT
+// live here — they wrap the router from above via `app-root.tsx`'s
+// `InnerWrap`, so the transport (built from `useNavigate()`/`useRouter()`)
+// survives child navigations. See `app-root.tsx` for that stack.
 /**
  * Root route component rendered inside TanStack `<RouterProvider>`.
- * Hosts the full provider stack and renders `<Outlet />` so the matched
- * child route mounts under the providers.
+ * Hosts the slice client providers and renders `<Outlet />` so the
+ * matched child route mounts under them.
  */
 const RootShell = (): JSX.Element => (
   <GatekeeperClientProvider>

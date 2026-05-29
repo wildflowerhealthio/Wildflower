@@ -10,13 +10,6 @@ import { useCollectorEffectAction } from '../../../collector-client.tsx'
 import accountConfig from './account-config.module.css'
 import pageLayout from './page-layout.module.css'
 
-/**
- * Create a new FHIR R4 remote. Mounted at `/collector/account/new`;
- * the prefill fields are optionally handed off by the source list on
- * `/collector` so a user landing on this screen from "Demo FHIR Server"
- * sees the defaults pre-populated. The schema decodes (and runtime-checks
- * presence/absence/type of) the URL search in `validateSearch`.
- */
 const AccountNewSearch = Schema.Struct({
   prefillName: Schema.optional(Schema.String),
   prefillRootUrl: Schema.optional(Schema.String),
@@ -24,6 +17,13 @@ const AccountNewSearch = Schema.Struct({
 })
 type AccountNewSearch = Schema.Schema.Type<typeof AccountNewSearch>
 
+/**
+ * Create a new FHIR R4 remote. Mounted at `/collector/account/new`;
+ * the prefill fields are optionally handed off by the source list on
+ * `/collector` so a user landing on this screen from "Demo FHIR Server"
+ * sees the defaults pre-populated. The schema decodes (and runtime-checks
+ * presence/absence/type of) the URL search in `validateSearch`.
+ */
 function AccountNewScreen({
   prefillName,
   prefillRootUrl,
@@ -150,8 +150,9 @@ function AccountNewRoute(): JSX.Element {
   )
 }
 
-export const Route = createFileRoute('/_auth/collector/account/new')({
-  validateSearch: (search: Record<string, unknown>): AccountNewSearch =>
-    Schema.decodeUnknownSync(AccountNewSearch)(search),
+const Route = createFileRoute('/_auth/collector/account/new')({
+  validateSearch: Schema.standardSchemaV1(AccountNewSearch),
   component: AccountNewRoute,
 })
+
+export { AccountNewSearch, Route }

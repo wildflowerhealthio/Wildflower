@@ -23,7 +23,52 @@ beforeEach(() => {
 const renderSuspended = (node: JSX.Element): ReturnType<typeof render> =>
   render(<Suspense fallback={<p>loading</p>}>{node}</Suspense>)
 
+/**
+ * A promise paired with its `resolve` function, so a test can render while
+ * the promise is still pending and settle it on demand — no timers, fully
+ * deterministic.
+ */
+const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } => {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
+}
+
 describe('Awaited', () => {
+  it('shows the Suspense fallback while pending, then the resolved value once settled', async () => {
+    // Arrange — a deferred promise we hold open so the underlying `<Await>`
+    // stays suspended. Holding `resolve` lets us flip pending → resolved
+    // deterministically without leaning on timers.
+    const { promise, resolve } = deferred<string>()
+
+    // Act — render and let React commit the suspended boundary so it attaches
+    // the `use()` ping listener that settling the promise later triggers.
+    await act(async () => {
+      renderSuspended(
+        <Awaited promise={promise}>{(value) => <p data-testid="resolved">{value}</p>}</Awaited>
+      )
+    })
+
+    // Assert — the Suspense fallback is visible and the resolved node is not.
+    expect(screen.getByText('loading')).toBeTruthy()
+    expect(screen.queryByTestId('resolved')).toBeNull()
+
+    // Act — settle the promise inside `act` so React's `use()` retry of the
+    // suspended render is flushed and committed before we assert.
+    await act(async () => {
+      resolve('settled')
+      await promise
+    })
+
+    // Assert — the fallback gives way to the resolved value.
+    await waitFor(() => {
+      expect(screen.getByTestId('resolved').textContent).toBe('settled')
+    })
+    expect(screen.queryByText('loading')).toBeNull()
+  }, 15_000)
+
   it('renders children with the resolved value once the promise settles', async () => {
     // Arrange — a promise that resolves with a known payload. The generic
     // is left to be inferred from `Promise.resolve('hello')` to verify
@@ -69,6 +114,61 @@ describe('Awaited', () => {
       expect(screen.getByRole('heading', { name: 'Not Found' })).toBeTruthy()
     })
     expect(screen.getByText('not found')).toBeTruthy()
+  }, 15_000)
+
+  it('applies errorClassName / errorTitleClassName to the default error container and heading', async () => {
+    // Arrange — a rejected promise on the default error path, styled via
+    // both class props. `errorClassName` should land on the AsyncErrorView
+    // container and `errorTitleClassName` on its heading.
+    const failure = new Error('styled failure')
+    const promise = Promise.reject<string>(failure)
+    const settled = promise.catch(() => {})
+
+    // Act
+    await act(async () => {
+      renderSuspended(
+        <Awaited
+          promise={promise}
+          errorTitle="Styled"
+          errorClassName="custom-error-container"
+          errorTitleClassName="custom-error-heading"
+        >
+          {(value) => <p>{value}</p>}
+        </Awaited>
+      )
+      await settled
+    })
+
+    // Assert — the heading carries the title class, and its containing
+    // panel carries the container class.
+    const heading = await waitFor(() => screen.getByRole('heading', { name: 'Styled' }))
+    expect(heading.classList.contains('custom-error-heading')).toBe(true)
+    expect(heading.closest('.custom-error-container')).toBeTruthy()
+  }, 15_000)
+
+  it('renders the bare default AsyncErrorView (message, no heading) when no styling props are passed', async () => {
+    // Arrange — a rejected promise with NO error styling props at all. The
+    // default AsyncErrorView should surface the error message but, with no
+    // `errorTitle`, render no heading.
+    const failure = new Error('bare failure')
+    const promise = Promise.reject<string>(failure)
+    const settled = promise.catch(() => {})
+
+    // Act
+    await act(async () => {
+      renderSuspended(
+        <Awaited promise={promise}>{(value) => <p data-testid="resolved">{value}</p>}</Awaited>
+      )
+      await settled
+    })
+
+    // Assert — the message renders through the default view, no heading is
+    // emitted, and the resolved children never appear.
+    await waitFor(() => {
+      expect(screen.getByText('bare failure')).toBeTruthy()
+    })
+    expect(screen.queryByRole('heading')).toBeNull()
+    expect(screen.queryByTestId('resolved')).toBeNull()
   }, 15_000)
 
   it('invokes a custom errorComponent with the thrown value, bypassing the default view', async () => {

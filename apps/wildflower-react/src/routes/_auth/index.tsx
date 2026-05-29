@@ -1,6 +1,11 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import type { JSX } from 'react'
 
+/**
+ * Owner-facing landing page rendered at the `_auth` layout's index
+ * (`/`). Links out to the slice entry points (apps, collector,
+ * settings, device auth) mounted as siblings under the same auth gate.
+ */
 function HomePage(): JSX.Element {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
@@ -25,6 +30,6 @@ function HomePage(): JSX.Element {
   )
 }
 
-const Route = createFileRoute('/_auth')({ component: HomePage })
+const Route = createFileRoute('/_auth/')({ component: HomePage })
 
 export { Route }

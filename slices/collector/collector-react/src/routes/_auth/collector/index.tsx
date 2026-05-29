@@ -102,7 +102,7 @@ function AccountListScreen(): JSX.Element {
                 </span>
               ),
               onClick: () => {
-                void navigate({ to: `/collector/account/${encodeURIComponent(remote.id)}` })
+                void navigate({ to: '/collector/account/$id', params: { id: remote.id } })
               },
               actions: (
                 <Menu
@@ -114,7 +114,8 @@ function AccountListScreen(): JSX.Element {
                         label: 'Edit',
                         onSelect: () => {
                           void navigate({
-                            to: `/collector/account/${encodeURIComponent(remote.id)}`,
+                            to: '/collector/account/$id',
+                            params: { id: remote.id },
                           })
                         },
                       },

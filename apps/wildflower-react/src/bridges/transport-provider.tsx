@@ -154,7 +154,7 @@ const stubTransport: Transport = {
   signalReady: Effect.void,
 }
 
-const StubTransportProvider = ({ children }: { children?: React.ReactNode }): JSX.Element => {
+const StubTransportProvider = ({ children }: { readonly children?: ReactNode }): JSX.Element => {
   return <TransportContext.Provider value={stubTransport}>{children}</TransportContext.Provider>
 }
 

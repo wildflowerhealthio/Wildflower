@@ -13,11 +13,10 @@ import { CollectorSenderForwarder } from './bridges/collector-sender-forwarder.t
 import { routeTree } from './routeTree.gen.ts'
 
 /**
- * Props passed to the chosen router component (`BrowserRouter` for the
- * standalone web build, `MemoryRouter` for the embedded WebView build).
- * Typed as `{ children?: ReactNode }` because that's the only prop the
- * app shell forwards — we don't need the full `BrowserRouterProps`
- * surface from `react-router`.
+ * A per-entry transport wrapper component mounted inside the router's
+ * `InnerWrap`. Typed as `{ children?: ReactNode }` because forwarding
+ * children is the only contract the app shell needs — the concrete
+ * implementation (live vs. stub transport) varies per entry point.
  */
 type WrapperComponent = ComponentType<{ readonly children?: ReactNode }>
 interface RenderAppOptions {
@@ -27,7 +26,7 @@ interface RenderAppOptions {
    * WebView build.
    */
   readonly history: RouterHistory
-  /** Router component to wrap the route tree. */
+  /** Transport wrapper mounted inside the router's `InnerWrap`. */
   readonly TransportProvider: WrapperComponent
   /**
    * Entry-point label forwarded to the ErrorBoundary's `extraContext` so
