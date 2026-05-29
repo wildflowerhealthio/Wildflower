@@ -1,7 +1,7 @@
 import { makeAdapter } from '@livestore/adapter-node'
 import type { Store } from '@livestore/livestore'
 import { createStorePromise } from '@livestore/livestore'
-import { Schema } from 'effect'
+import { LogLevel, Schema } from 'effect'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -88,6 +88,11 @@ const makeFreshStore = async (): Promise<Store<typeof schema, object>> =>
     adapter: makeAdapter({ storage: { type: 'in-memory' } }),
     schema,
     storeId: `apps-it-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    // LiveStore defaults to LogLevel.Debug in a non-production env, which
+    // floods the test output with one `LiveStore shutdown complete` line per
+    // store teardown (this suite creates a fresh store per property run).
+    // Pin to Info to keep genuine warnings/errors visible without the noise.
+    logLevel: LogLevel.Info,
   })
 
 const withStore = async <T>(

@@ -8,7 +8,7 @@
 import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise, makeSchema, type Store, State } from '@livestore/livestore'
-import { Layer, Schema } from 'effect'
+import { Layer, LogLevel, Schema } from 'effect'
 import fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import * as LocalHttpServerLivestore from 'local-http-server-core/livestore'
@@ -48,6 +48,10 @@ beforeEach(async () => {
     adapter: makeAdapter({ storage: { type: 'in-memory' } }),
     schema,
     storeId: `apps-launch-it-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    // LiveStore defaults to LogLevel.Debug in a non-production env, emitting
+    // a `LiveStore shutdown complete` line on teardown. Pin to Info to keep
+    // genuine warnings/errors visible without the debug noise.
+    logLevel: LogLevel.Info,
   })
 })
 
@@ -459,6 +463,11 @@ describe('LaunchApp property tests', () => {
           adapter: makeAdapter({ storage: { type: 'in-memory' } }),
           schema,
           storeId: `prop-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          // LiveStore defaults to LogLevel.Debug in a non-production env, which
+          // floods the test output with one `LiveStore shutdown complete` line
+          // per store teardown (this property creates a fresh store per run).
+          // Pin to Info to keep genuine warnings/errors visible without noise.
+          logLevel: LogLevel.Info,
         })
         try {
           localStore.commit(

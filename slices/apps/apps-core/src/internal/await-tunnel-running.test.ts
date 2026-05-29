@@ -1,6 +1,6 @@
 import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise, type Store } from '@livestore/livestore'
-import { Cause, Duration, Effect, Exit } from 'effect'
+import { Cause, Duration, Effect, Exit, LogLevel } from 'effect'
 import { schema, TunnelState, TunnelStore } from 'tunnel-core/livestore'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -11,6 +11,10 @@ const makeStore = (): Promise<Store<typeof schema, object>> =>
     adapter: makeAdapter({ storage: { type: 'in-memory' } }),
     schema,
     storeId: `await-tunnel-running-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    // LiveStore defaults to LogLevel.Debug in a non-production env, emitting
+    // a `LiveStore shutdown complete` line on teardown. Pin to Info to keep
+    // genuine warnings/errors visible without the debug noise.
+    logLevel: LogLevel.Info,
   })
 
 describe('awaitTunnelRunning', () => {

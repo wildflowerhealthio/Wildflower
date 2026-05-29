@@ -1,5 +1,6 @@
 import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise, makeSchema, State } from '@livestore/livestore'
+import { LogLevel } from 'effect'
 import * as LocalHttpServerLivestore from 'local-http-server-core/livestore'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -35,6 +36,10 @@ const makeStore = (): ReturnType<typeof createStorePromise<typeof composedSchema
     adapter: makeAdapter({ storage: { type: 'in-memory' } }),
     schema: composedSchema,
     storeId: `served-origin-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    // LiveStore defaults to LogLevel.Debug in a non-production env, emitting
+    // a `LiveStore shutdown complete` line on teardown. Pin to Info to keep
+    // genuine warnings/errors visible without the debug noise.
+    logLevel: LogLevel.Info,
   })
 
 describe('servedOrigin$', () => {
