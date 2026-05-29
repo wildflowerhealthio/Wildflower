@@ -11,10 +11,7 @@ import { AppsEditor } from '../../../screens/apps-editor.tsx'
 import pageLayout from '../../../styles/page.module.css'
 
 const AppsHomeContent = (): JSX.Element => {
-  // Two Suspense-backed queries side-by-side. TanStack Query runs them
-  // in parallel and suspends until both resolve; the persister gives us
-  // an instant cached render between sessions while the refetches go
-  // out in the background.
+  // Two parallel Suspense queries.
   const { data: apps } = useAppsListQuery()
   const { data: tunnel } = useTunnelStateQuery()
   return <AppsHomeBody apps={apps} tunnel={tunnel} />

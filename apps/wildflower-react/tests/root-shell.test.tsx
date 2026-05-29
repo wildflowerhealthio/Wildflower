@@ -1,3 +1,4 @@
+import { HttpClient, HttpClientResponse } from '@effect/platform'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -6,6 +7,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { Effect, Layer } from 'effect'
 import { useEffect, type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -15,7 +17,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/tes
  *
  *  - `<RootShell>` — the TanStack root-route `component`. Renders ONLY
  *    the slice client providers (gatekeeper → collector → fhir-r4 →
- *    apps → tunnel) around `<Outlet />`.
+ *    apps) around `<Outlet />`. (Tunnel's client provider was dropped in
+ *    the TanStack-Query migration — Issue #101 Phase 1.)
  *  - `app-root.tsx`'s `InnerWrap` — passed to `<RouterProvider>`. Renders
  *    the auth/runtime/transport/sender stack (AuthTokenProvider, the two
  *    RuntimeProviders, TransportProvider, the two SenderForwarders)
@@ -83,8 +86,9 @@ const { lifecycleSpy, makePassthrough } = vi.hoisted(() => {
 vi.mock('react-kitchen-sink', () => ({
   AuthTokenProvider: makePassthrough('AuthTokenProvider'),
 }))
+// `get` must be an Effect; null-token short-circuits the startup prefetch.
 vi.mock('gatekeeper-react', () => ({
-  authTokenRef: { get: () => null, subscribe: () => () => {} },
+  authTokenRef: { get: Effect.succeed(null), changes: { pipe: () => ({}) } },
   GatekeeperClientProvider: makePassthrough('GatekeeperClientProvider'),
 }))
 vi.mock('collector-react', () => ({
@@ -95,11 +99,13 @@ vi.mock('fhir-r4-react', () => ({
   FhirR4ResourcesClientProvider: makePassthrough('FhirR4ResourcesClientProvider'),
 }))
 vi.mock('apps-react', () => ({
-  AppsClientProvider: makePassthrough('AppsClientProvider'),
   AppsRuntimeProvider: makePassthrough('AppsRuntimeProvider'),
+  AppsRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
+// Prefetch is gated off (null token); these stubs keep the import light.
 vi.mock('tunnel-react', () => ({
-  TunnelClientProvider: makePassthrough('TunnelClientProvider'),
+  tunnelStateQueryOptions: () => ({ queryKey: ['tunnel', 'state'], queryFn: () => null }),
+  TunnelRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('../src/bridges/collector-sender-forwarder.tsx', () => ({
   CollectorSenderForwarder: makePassthrough('CollectorSenderForwarder'),
@@ -115,6 +121,15 @@ vi.mock('../src/bridges/apps-sender-forwarder.tsx', () => ({
 vi.mock('telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },
+}))
+// Bare `HttpClient` so the authed runtime constructs without telemetry/fetch.
+vi.mock('telemetry-react', () => ({
+  webHttpClientLayer: Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request) =>
+      Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 })))
+    )
+  ),
 }))
 // `renderApp` imports the real `routeTree.gen.ts`, whose top-level
 // imports eagerly pull in every slice's route screens (Effect HttpApi
@@ -171,8 +186,6 @@ describe('RootShell mount lifecycle', () => {
     'GatekeeperClientProvider',
     'CollectorClientProvider',
     'FhirR4ResourcesClientProvider',
-    'AppsClientProvider',
-    'TunnelClientProvider',
   ] as const
 
   const buildTestRouter = (): ReturnType<typeof createRouter> => {

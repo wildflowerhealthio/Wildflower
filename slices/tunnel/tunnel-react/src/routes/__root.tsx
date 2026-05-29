@@ -1,10 +1,11 @@
-import { createRootRoute, Outlet } from '@tanstack/react-router'
+import { createRootRouteWithContext, Outlet } from '@tanstack/react-router'
+
+import type { RouterContext } from '../router-context.ts'
 
 /**
- * Standalone root for the tunnel slice's own file-based route tree. The
- * generator needs a `__root` to anchor `routeTree.gen.ts` so the slice
- * type-checks in isolation. In `apps/wildflower-react` the slice's
- * `settings/` directory is mounted under the app's own root via
- * `@tanstack/virtual-file-routes`, so this root is never used there.
+ * Standalone root anchoring `routeTree.gen.ts`. Never used inside
+ * `apps/wildflower-react` (the slice's `settings/` is mounted under the
+ * app's own root) — but the context shape must match so the same route
+ * files type-check under both roots.
  */
-export const Route = createRootRoute({ component: Outlet })
+export const Route = createRootRouteWithContext<RouterContext>()({ component: Outlet })

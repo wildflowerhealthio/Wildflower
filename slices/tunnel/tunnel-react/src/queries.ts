@@ -1,45 +1,48 @@
 import {
+  queryOptions,
   useMutation,
   useQueryClient,
   useSuspenseQuery,
   type UseMutationResult,
+  type UseSuspenseQueryOptions,
   type UseSuspenseQueryResult,
 } from '@tanstack/react-query'
+import { useRouteContext } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import type { Tunnel } from 'tunnel-core/http-api-definition'
 
-import { useTunnelAdminEffectRunner } from './use-tunnel-admin-effect-runner.ts'
+import { buildTunnelAdminClientLayer } from './client/tunnel-client.ts'
+import type { RouterContext, RunAuthed } from './router-context.ts'
+
+// Annotated `select` so the result stays typed when the slice's router
+// isn't registered (standalone build).
+const useRunAuthed = (): RunAuthed =>
+  useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })
 
 type TunnelState = Schema.Schema.Type<typeof Tunnel.TunnelStateSchema>
 type TunnelPatchPayload = Schema.Schema.Type<typeof Tunnel.SetTunnelRequestBodySchema>
 
-/**
- * Query key for {@link useTunnelStateQuery}. Mutations invalidate /
- * patch the cache at this key; persisting it via TanStack Query's
- * localStorage persister keys the snapshot too. Mutations elsewhere in
- * the app that affect `TunnelState` (e.g. host-bridge events) should
- * invalidate this key.
- */
+/** External mutators of `TunnelState` (e.g. host-bridge events) should invalidate this. */
 const TUNNEL_STATE_QUERY_KEY = ['tunnel', 'state'] as const
 
-/**
- * Suspense-backed read of the daemon's `TunnelState`. The query stays
- * in cache (and is persisted) across reloads; with `staleTime: 0` set
- * on the global `QueryClient`, the first render after a remount triggers
- * a background refetch that swaps in fresh data once the daemon replies.
- *
- * Use this from any owner-facing tunnel screen. Mutations should pair
- * with {@link useTunnelPatchMutation}, which optimistically updates
- * this key.
- */
-const useTunnelStateQuery = (): UseSuspenseQueryResult<TunnelState, Error> => {
-  const run = useTunnelAdminEffectRunner()
-  return useSuspenseQuery({
+/** Shared by the route `loader` (`ensureQueryData`) and {@link useTunnelStateQuery}. */
+const tunnelStateQueryOptions = (
+  runAuthed: RunAuthed
+): UseSuspenseQueryOptions<TunnelState, Error, TunnelState, typeof TUNNEL_STATE_QUERY_KEY> =>
+  queryOptions({
     queryKey: TUNNEL_STATE_QUERY_KEY,
-    queryFn: () => run(Effect.flatMap(TunnelAdminHttpApiClient, (c) => c.tunnel.GetTunnel())),
+    queryFn: () =>
+      runAuthed(
+        Effect.flatMap(TunnelAdminHttpApiClient, (c) => c.tunnel.GetTunnel()).pipe(
+          Effect.provide(buildTunnelAdminClientLayer())
+        )
+      ),
   })
-}
+
+/** Reads synchronously from cache when the route loader has already warmed it. */
+const useTunnelStateQuery = (): UseSuspenseQueryResult<TunnelState, Error> =>
+  useSuspenseQuery(tunnelStateQueryOptions(useRunAuthed()))
 
 /**
  * Apply a `PatchTunnel` payload to a cached `TunnelState` snapshot
@@ -69,19 +72,9 @@ interface TunnelPatchMutationContext {
 }
 
 /**
- * `PatchTunnel` mutation with cache-side optimistic application:
- *
- *   - `onMutate` snapshots the current `TunnelState` and writes an
- *     optimistic projection back into the cache so listeners (the
- *     settings screen) re-render with the requested-but-not-yet-acked
- *     values.
- *   - `onError` rolls the cache back to the snapshot.
- *   - `onSettled` invalidates the query so the daemon's authoritative
- *     `TunnelState` replaces the optimistic snapshot — picking up
- *     `running`, `current*`, and any new `error` from the response.
- *
- * Use `mutation.isPending` to disable the inputs during the in-flight
- * window.
+ * `PatchTunnel` with optimistic cache update + rollback. Server-derived
+ * fields (`running`, `current*`, `error`) come back via `onSettled`'s
+ * invalidate, not from the optimistic projection.
  */
 const useTunnelPatchMutation = (): UseMutationResult<
   TunnelState,
@@ -89,11 +82,15 @@ const useTunnelPatchMutation = (): UseMutationResult<
   TunnelPatchPayload,
   TunnelPatchMutationContext
 > => {
-  const run = useTunnelAdminEffectRunner()
+  const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation<TunnelState, Error, TunnelPatchPayload, TunnelPatchMutationContext>({
     mutationFn: (payload) =>
-      run(Effect.flatMap(TunnelAdminHttpApiClient, (c) => c.tunnel.PatchTunnel({ payload }))),
+      runAuthed(
+        Effect.flatMap(TunnelAdminHttpApiClient, (c) => c.tunnel.PatchTunnel({ payload })).pipe(
+          Effect.provide(buildTunnelAdminClientLayer())
+        )
+      ),
     onMutate: async (payload) => {
       await queryClient.cancelQueries({ queryKey: TUNNEL_STATE_QUERY_KEY })
       const previous = queryClient.getQueryData<TunnelState>(TUNNEL_STATE_QUERY_KEY)
@@ -119,7 +116,8 @@ const useTunnelPatchMutation = (): UseMutationResult<
 export {
   applyTunnelOptimistic,
   TUNNEL_STATE_QUERY_KEY,
+  tunnelStateQueryOptions,
   useTunnelPatchMutation,
   useTunnelStateQuery,
 }
-export type { TunnelPatchPayload, TunnelState }
+export type { RunAuthed, TunnelPatchPayload, TunnelState }

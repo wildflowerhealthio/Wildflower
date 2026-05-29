@@ -4,6 +4,16 @@ A running log of non-obvious insights discovered during agent sessions. Triage i
 
 <!-- Append new entries below this line -->
 
+## Slice-standalone route files: `Route.useRouteContext()` widens to `any` without a registered Router; annotate `select`
+
+**Discovered during**: ruthmarks/tanstack-inmemory-foundation — tunnel/apps migration onto router-context `runAuthed`
+**Learning**: A `*-react` slice's route file (`createFileRoute(...)`) type-checks BOTH standalone (`vp run --filter <slice> check`) and when mounted under `apps/wildflower-react`. `Route.useParams()` is typed in both (params come from the route's own path). `Route.useRouteContext()` is NOT — in the slice's standalone build there is no `declare module '@tanstack/react-router' { interface Register }` (the slice never calls `createRouter` for a real app), so `RegisteredRouter` falls back to `AnyRouter` and an un-`select`ed `Route.useRouteContext()` returns `any` → `typescript(no-unsafe-assignment)` under oxlint. Fix WITHOUT a cast: give the slice a structural `XRouterContext` (`{ queryClient; runAuthed }`, re-declared per Issue #101, NOT imported from the app), make the slice's `__root.tsx` use `createRootRouteWithContext<XRouterContext>()`, and read context via an ANNOTATED select: `Route.useRouteContext({ select: (c: XRouterContext) => c.runAuthed })`. The annotation makes the result a typed value; the app build (which DOES register the router) sees the structurally-equal shape. The loader's `({ context })` is fine — it's typed from the route's resolved context chain, not the Register.
+
+## Embedded WebView token lands AFTER `transport.flushed`; authed route loaders can 401 because the auth gate is a React component, not `beforeLoad`
+
+**Discovered during**: ruthmarks/tanstack-inmemory-foundation — adding a tunnel route loader
+**Learning**: In `wildflower-react` the `_auth` / `/settings` auth gates are React-COMPONENT gates (`AuthorizedAppShell`/`SettingsLayout` → `RequireAuth`, which reads the token reactively and renders `<NeedsAuthMessage>` when absent), NOT `beforeLoad` gates. TanStack `loader`s run during routing, before those components render — and `<TransportProvider>` (which blocks the React tree until the gatekeeper-bridge handshake delivers the token via `AuthTokenIssued`, post-`transport.flushed`) sits BELOW `<RouterProvider>`. So an authed loader on an admin route fires on embedded first paint BEFORE the token exists and 401s. `authTokenRef` reads `localStorage` synchronously at module load, so on standalone web the token is present immediately, but embedded has no localStorage token until the bridge writes it. Mitigations used: (1) eager startup prefetch is gated on `Effect.runSync(authTokenRef.get)` being non-null/non-empty (skips on embedded first paint); (2) the route loader's `ensureQueryData` is wrapped in try/catch so a failed prefetch is non-fatal — navigation proceeds and the in-component `useSuspenseQuery` (rendered only once `RequireAuth` sees the post-flush token) does the first read. `waitForHostTokenRef` (gatekeeper-react) is the readiness flag the gate consults but is not currently consumed by loaders.
+
 ## Decompose property tests by column to escape graph-walk fan-out
 
 **Discovered during**: ruthmarks/add-fhir-r4-slice — slow-test investigation

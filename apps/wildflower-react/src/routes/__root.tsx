@@ -1,11 +1,11 @@
-import { createRootRoute } from '@tanstack/react-router'
+import { createRootRouteWithContext } from '@tanstack/react-router'
 
+import type { RouterContext } from '../router-context.ts'
 import { RootShell } from '../session/root-shell.tsx'
 
 /**
- * App root. Hosts the full provider stack (via `RootShell`) and renders
- * the matched child route through its `<Outlet />`. Every slice's route
- * directory is mounted beneath this root by the virtual-route config in
- * `vite.config.base.ts`.
+ * App root. Hosts the slice client providers (`RootShell`) and renders
+ * the matched child via `<Outlet />`. Slice route directories are
+ * mounted beneath via virtual-route config in `vite.config.base.ts`.
  */
-export const Route = createRootRoute({ component: RootShell })
+export const Route = createRootRouteWithContext<RouterContext>()({ component: RootShell })

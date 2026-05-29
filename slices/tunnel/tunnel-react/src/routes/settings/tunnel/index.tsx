@@ -1,16 +1,15 @@
-import { CatchBoundary, createFileRoute } from '@tanstack/react-router'
-import { Suspense, useState, type JSX } from 'react'
+import { createFileRoute } from '@tanstack/react-router'
+import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import {
-  AsyncErrorView,
-  Field,
-  FieldDescription,
-  pageLayoutStyles,
-  PageLoading,
-} from 'react-tundraish'
+import { AsyncErrorView, Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
 import { TunnelToggle } from '../../../components/TunnelToggle.tsx'
-import { useTunnelPatchMutation, useTunnelStateQuery, type TunnelState } from '../../../queries.ts'
+import {
+  tunnelStateQueryOptions,
+  useTunnelPatchMutation,
+  useTunnelStateQuery,
+  type TunnelState,
+} from '../../../queries.ts'
 import styles from './index.module.css'
 
 interface TunnelScreenBodyProps {
@@ -36,14 +35,8 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   const [subdomainInput, setSubdomainInput] = useState(state.subdomain ?? '')
   const [rootDomainInput, setRootDomainInput] = useState(state.rootDomain ?? '')
 
-  // `mutation.isPending` is the canonical "in-flight write" signal —
-  // wired into every input/button to lock the form during the request.
-  // Even though the cached state has already optimistically advanced
-  // (so the badge can show "Starting…"), we still want to keep the
-  // controls inert until the daemon's response arrives.
+  // Locks inputs even though the optimistic state has already advanced.
   const pending = patchMutation.isPending
-  // The mutation hangs onto its last error until the next `mutate` call
-  // clears it; surface it next to the existing display.
   const submitError = patchMutation.error
   const errorMessage = submitError === null ? null : formatError(submitError)
 
@@ -160,34 +153,20 @@ const TunnelScreenContent = (): JSX.Element => {
 }
 
 /**
- * Settings landing for the tunnel slice. Reads `TunnelState` through
- * TanStack Query (`useTunnelStateQuery`), so the screen renders from
- * localStorage-persisted cache on mount and the in-flight refetch
- * swaps fresh data in once it lands. Edits go through
- * `useTunnelPatchMutation`, which optimistically projects the change
- * into the cache for instant feedback and rolls back if the daemon
- * rejects the patch.
- */
-function TunnelScreen(): JSX.Element {
-  return (
-    <CatchBoundary
-      getResetKey={() => 'tunnel-screen'}
-      errorComponent={({ error }) => <AsyncErrorView error={error} title="Tunnel" />}
-    >
-      <Suspense fallback={<PageLoading message="Loading tunnel…" />}>
-        <TunnelScreenContent />
-      </Suspense>
-    </CatchBoundary>
-  )
-}
-
-/**
- * The `/settings/tunnel/` landing route. Defined as a file route so the
- * slice generates its own `routeTree.gen.ts`; in `apps/wildflower-react`
- * this same file is mounted under the app's `/settings` route via
- * `@tanstack/virtual-file-routes`, which computes the identical
- * `/settings/tunnel/` id, so the literal below is stable across both trees.
+ * Loader is best-effort: the `/settings` gate is a React component, not
+ * `beforeLoad`, so on embedded first paint the bearer token may not yet
+ * exist and the prefetch can 401. The in-component `useSuspenseQuery`
+ * (rendered only after `RequireAuth` passes) does the real read in that
+ * case.
  */
 export const Route = createFileRoute('/settings/tunnel/')({
-  component: TunnelScreen,
+  loader: async ({ context }) => {
+    try {
+      await context.queryClient.ensureQueryData(tunnelStateQueryOptions(context.runAuthed))
+    } catch {
+      // see route doc — embedded first paint before token lands.
+    }
+  },
+  component: TunnelScreenContent,
+  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Tunnel" />,
 })

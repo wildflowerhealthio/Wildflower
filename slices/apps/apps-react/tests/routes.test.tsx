@@ -1,14 +1,22 @@
+import { QueryClient } from '@tanstack/react-query'
 import { createRouter, type AnyRoute } from '@tanstack/react-router'
+import { Layer } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
+import type { RunAuthed } from '../src/router-context.ts'
 import { routeTree } from '../src/routeTree.gen.ts'
 
-// The slice generates its own `routeTree.gen.ts`. The `_auth/` directory is
-// a pathless prefix: it carries `/_auth` into each route's id (so the id
-// matches what the app's `_auth` layout produces) but contributes no URL
-// segment, so the `fullPath`s below are the slice-local URLs the macro tree
-// resolves.
-const router = createRouter({ routeTree })
+// Structural-only checks; no loader runs, so the runner is unused.
+const stubRunAuthed: RunAuthed = () =>
+  Promise.reject(new Error('runAuthed not used in route tests'))
+const router = createRouter({
+  routeTree,
+  context: {
+    queryClient: new QueryClient(),
+    runAuthed: stubRunAuthed,
+    runtimeLayer: Layer.die('runtimeLayer not used in route tests'),
+  },
+})
 
 const routes = (): readonly AnyRoute[] =>
   Object.values(router.routesById).filter((route) => route.id !== '__root__')

@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react'
+import { Effect } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -36,9 +37,15 @@ const { tokenHolder } = vi.hoisted(() => ({
 }))
 
 vi.mock('react-kitchen-sink', () => ({
-  // `RequireAuth` destructures `{ changes }`; the stub `useStreamWithDefault`
-  // ignores the stream, so a placeholder satisfies the type at runtime.
-  useAuthTokenSubscribable: () => ({ changes: null }),
+  // `RequireAuth` reads `subscribable.get` (an `Effect`) for its initial
+  // value and `subscribable.changes` (a `Stream`) for updates. The stub
+  // `useStreamWithDefault` ignores the stream, so `changes` is a
+  // placeholder; `get` returns the test-controlled token so the
+  // `Effect.runSync` call inside `RequireAuth` succeeds.
+  useAuthTokenSubscribable: () => ({
+    changes: null,
+    get: Effect.sync(() => tokenHolder.value),
+  }),
   useStreamWithDefault: () => tokenHolder.value,
 }))
 
