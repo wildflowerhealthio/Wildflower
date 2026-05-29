@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router'
-import { pageLayoutStyles } from 'react-tundraish'
 import type { JSX } from 'react'
+import { pageLayoutStyles } from 'react-tundraish'
 
 /**
  * Collector-level layout route. Sits at `/_auth/collector` and nests every
