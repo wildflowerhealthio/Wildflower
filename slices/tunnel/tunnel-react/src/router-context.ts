@@ -22,6 +22,20 @@ interface RouterContext {
   readonly queryClient: QueryClient
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
+  /**
+   * Whether the bearer token is available yet, so an authed route
+   * `loader` can decide between prefetching now and deferring to the
+   * post-gate in-component read.
+   *
+   * The `/settings` auth gate is a React component (not a `beforeLoad`),
+   * so on embedded first paint the bridge hasn't delivered the token
+   * when the loader runs — prefetching then would 401. Standalone web
+   * has the token synchronously from localStorage, so this returns
+   * `true` and the loader warms the cache for first paint. The app wires
+   * the concrete reader (`gatekeeper-react`'s `authTokenRef`); the slice
+   * stays decoupled from that package.
+   */
+  readonly isTokenReady: () => boolean
 }
 
 const sliceRuntimeLayer: Layer.Layer<

@@ -36,11 +36,11 @@ interface RenderAppOptions {
  * not wrapping `<RouterProvider>` — it doesn't accept children.
  */
 const renderApp = ({ history, TransportProvider, entry }: RenderAppOptions): void => {
-  const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime()
+  const { queryClient, runAuthed, runtimeLayer, isTokenReady } = buildAppQueryRuntime()
   const router = createRouter({
     routeTree,
     history,
-    context: { queryClient, runAuthed, runtimeLayer },
+    context: { queryClient, runAuthed, runtimeLayer, isTokenReady },
     defaultPreload: 'intent',
   })
   const container = document.getElementById('root')
