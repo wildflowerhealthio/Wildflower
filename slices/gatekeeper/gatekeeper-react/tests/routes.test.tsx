@@ -1,26 +1,34 @@
-import { createRootRoute, createRouter, type AnyRoute } from '@tanstack/react-router'
+import { createRouter, type AnyRoute } from '@tanstack/react-router'
 import { GatekeeperPaths } from 'gatekeeper-core/page-paths'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { authRoutes, openRoutes, settingsRoutes } from '../src/route-handles.ts'
+import { routeTree } from '../src/routeTree.gen.ts'
 
-// Each factory builds a fresh route under the parent it's handed. We parent
-// every bucket directly to a plain root so the resulting `fullPath`/`id` are
-// the slice-local URLs (no app-side `_auth`/`_settings` layout segments), then
-// run `createRouter` to populate them. The app router composes the same
-// factories under its own layouts; here we only assert the slice-local shape.
-const root = createRootRoute()
-const open = openRoutes.map((make) => make(() => root))
-const auth = authRoutes.map((make) => make(() => root))
-const settings = settingsRoutes.map((make) => make(() => root))
-root.addChildren([...open, ...auth, ...settings])
-const router = createRouter({ routeTree: root })
+// The slice generates its own `routeTree.gen.ts`. The `_auth`/`_open`
+// directories are pathless prefixes: they carry `/_auth` or `/_open` into
+// each route's id (matching what the app's layouts produce) but contribute
+// no URL segment, so the `fullPath`s are the slice-local URLs the macro tree
+// resolves. The `settings/` directory IS a real segment, so its routes carry
+// `/settings` into both their id and their fullPath.
+const router = createRouter({ routeTree })
 
-const fullPaths = (routes: readonly AnyRoute[]): readonly string[] =>
-  routes.map((route) => route.fullPath)
+const routes = (): readonly AnyRoute[] =>
+  Object.values(router.routesById).filter((route) => route.id !== '__root__')
+
+// Routes are bucketed by their id prefix: `_open`/`_auth` are the app's
+// no-shell and authenticated mounts; `settings` is the owner-facing mount.
+const inBucket = (prefix: string): readonly AnyRoute[] =>
+  routes().filter((route) => route.id.startsWith(prefix))
+
+const fullPaths = (bucket: readonly AnyRoute[]): readonly string[] =>
+  bucket.map((route) => route.fullPath)
+
+const open = inBucket('/_open/')
+const auth = inBucket('/_auth/')
+const settings = inBucket('/settings/')
 
 // GatekeeperPaths percent-encodes its params; decode so `$id` / `$userCode`
-// line up with the route path literals TanStack resolves to.
+// line up with the route fullPaths TanStack resolves to.
 const oauthPolling = decodeURIComponent(GatekeeperPaths.oauthPollingPath('$id'))
 const oauthConsent = decodeURIComponent(GatekeeperPaths.oauthConsentPath('$id'))
 const deviceEntry = decodeURIComponent(GatekeeperPaths.deviceEntryPath())
@@ -85,11 +93,25 @@ describe('gatekeeper settings bucket', () => {
 })
 
 describe('gatekeeper route tree', () => {
-  test('the composed tree exposes exactly the documented routes', () => {
-    const ids = Object.keys(router.routesById)
-      .filter((id) => id !== '__root__')
+  test('the generated tree exposes exactly the gatekeeper routes', () => {
+    const ids = routes()
+      .map((route): string => route.id)
       .toSorted()
-    expect(ids).toEqual(
+    expect(ids).toEqual([
+      '/_auth/gatekeeper/devices/$userCode',
+      '/_auth/gatekeeper/oauth-consent/$id',
+      '/_open/gatekeeper/devices',
+      '/_open/gatekeeper/oauth-polling/$id',
+      '/settings/gatekeeper/',
+      '/settings/gatekeeper/approved/$id',
+      '/settings/gatekeeper/requests',
+      '/settings/gatekeeper/requests_/$id',
+    ])
+  })
+
+  test('the slice-local fullPaths resolve to the documented URLs', () => {
+    const paths = fullPaths(routes()).toSorted()
+    expect(paths).toEqual(
       [
         '/gatekeeper/devices',
         '/gatekeeper/devices/$userCode',

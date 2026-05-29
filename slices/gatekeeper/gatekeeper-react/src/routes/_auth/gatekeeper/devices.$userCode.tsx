@@ -1,4 +1,4 @@
-import { createRoute, useNavigate, type AnyRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { Devices } from 'gatekeeper-core/http-api-definition'
@@ -13,7 +13,6 @@ import {
   pageLayoutStyles,
   PageLoading,
 } from 'react-tundraish'
-import { useRouteParams } from 'shared-structures-react'
 
 import {
   useGatekeeperEffect,
@@ -194,23 +193,16 @@ const DeviceConsentForm = ({
   )
 }
 
-const deviceConsentPath = '/gatekeeper/devices/$userCode'
-
 /**
- * Builds the `/gatekeeper/devices/$userCode` route under an app-provided
- * parent. The component closure reads `$userCode` via `useRouteParams`, which
- * reconstructs the param shape from the path literal (`$userCode` →
- * `{ userCode: string }`) and hands it to the screen as a prop.
+ * The `/gatekeeper/devices/$userCode` file route. Reads the typed
+ * `$userCode` path param from the generated route via `Route.useParams()`
+ * and hands it to the screen as a prop.
  */
-// oxlint-disable-next-line typescript/explicit-function-return-type
-export const makeDeviceConsentRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) => {
-  const route = createRoute({
-    getParentRoute,
-    path: deviceConsentPath,
-    component: function DeviceConsentRoute() {
-      const { userCode } = useRouteParams(route, deviceConsentPath)
-      return <DeviceConsentScreen userCode={userCode} />
-    },
-  })
-  return route
+function DeviceConsentRoute(): JSX.Element {
+  const { userCode } = Route.useParams()
+  return <DeviceConsentScreen userCode={userCode} />
 }
+
+export const Route = createFileRoute('/_auth/gatekeeper/devices/$userCode')({
+  component: DeviceConsentRoute,
+})

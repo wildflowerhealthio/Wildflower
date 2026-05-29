@@ -1,4 +1,4 @@
-import { createRoute, useNavigate, type AnyRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
@@ -151,14 +151,9 @@ const AccessIndexBody = ({
 }
 
 /**
- * Builds the `/settings/gatekeeper/` landing route under an app-provided
- * parent. A fresh route is created per call so the same factory can compose
- * the app router and a throwaway test router without sharing a singleton.
+ * The `/settings/gatekeeper/` landing file route — the owner-facing access
+ * management index.
  */
-// oxlint-disable-next-line typescript/explicit-function-return-type
-export const makeAccessIndexRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) =>
-  createRoute({
-    getParentRoute,
-    path: '/settings/gatekeeper/',
-    component: AccessIndexScreen,
-  })
+export const Route = createFileRoute('/settings/gatekeeper/')({
+  component: AccessIndexScreen,
+})

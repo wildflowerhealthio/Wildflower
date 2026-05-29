@@ -6,10 +6,24 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, test } from 'vite-plus/test'
+import type { ReactNode } from 'react'
+import { describe, expect, test, vi } from 'vite-plus/test'
 
-import { SettingsLayout } from '../src/routes/settings.tsx'
-import { SettingsIndex } from '../src/routes/settings/index.tsx'
+// `SettingsLayout` gates its content behind `RequireAuth`, which reads a
+// live bearer token off `<AuthTokenProvider>` and renders `NeedsAuthMessage`
+// until one arrives. Auth gating is exercised in RequireAuth's own tests; here
+// it's noise, so the gate is mocked to a transparent passthrough — the same
+// "mock the concern that isn't under test" approach the RootShell test uses.
+// The factory returns `children` directly (no JSX) because `vi.mock` is
+// hoisted above the file's imports, so the JSX runtime isn't in scope yet.
+vi.mock('../src/session/require-auth.tsx', () => ({
+  RequireAuth: ({ children }: { readonly children: ReactNode }): ReactNode => children,
+}))
+
+// Dynamic import AFTER the `vi.mock` call so the passthrough is registered
+// before `SettingsLayout` pulls in `RequireAuth`.
+const { SettingsLayout } = await import('../src/routes/settings.tsx')
+const { SettingsIndex } = await import('../src/routes/settings/index.tsx')
 
 /**
  * Mount the `/settings` layout + index inside a minimal TanStack router

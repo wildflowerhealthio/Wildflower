@@ -66,6 +66,8 @@ catalog:
   # Transitive peer of @effect/* required at install time (not declared by @livestore/peer-deps).
   '@standard-schema/spec': 1.0.0
   '@tanstack/react-router': ^1.170.8
+  '@tanstack/router-plugin': ^1.168.12
+  '@tanstack/virtual-file-routes': ^1.162.0
   '@testing-library/react-native': ^13.3.3
   '@tsdown/css': ^0.21.10
   '@types/fhir': ^0.0.41

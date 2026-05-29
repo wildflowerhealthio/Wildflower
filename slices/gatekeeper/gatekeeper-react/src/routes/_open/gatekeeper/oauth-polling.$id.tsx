@@ -1,10 +1,9 @@
-import { createRoute, type AnyRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { type AuthorizationStatus, pollAuthorizationStatus } from 'gatekeeper-core/clients'
 
 import { Suspense, useEffect, useMemo, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Awaited, pageLayoutStyles } from 'react-tundraish'
-import { useRouteParams } from 'shared-structures-react'
 
 import { useGatekeeperStream } from '../../../gatekeeper-client.tsx'
 import pageLayout from '../../../styles/page-layout.module.css'
@@ -74,23 +73,16 @@ const PollingSpinner = (): JSX.Element => (
   </div>
 )
 
-const oAuthPollingPath = '/gatekeeper/oauth-polling/$id'
-
 /**
- * Builds the `/gatekeeper/oauth-polling/$id` route under an app-provided
- * parent. The component closure reads `$id` via `useRouteParams`, which
- * reconstructs the param shape from the path literal (`$id` → `{ id: string }`)
- * and hands it to the screen as a prop.
+ * The `/gatekeeper/oauth-polling/$id` file route. Reads the typed `$id`
+ * path param from the generated route via `Route.useParams()` and hands it
+ * to the screen as a prop.
  */
-// oxlint-disable-next-line typescript/explicit-function-return-type
-export const makeOAuthPollingRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) => {
-  const route = createRoute({
-    getParentRoute,
-    path: oAuthPollingPath,
-    component: function OAuthPollingRoute() {
-      const { id } = useRouteParams(route, oAuthPollingPath)
-      return <OAuthPollingScreen id={id} />
-    },
-  })
-  return route
+function OAuthPollingRoute(): JSX.Element {
+  const { id } = Route.useParams()
+  return <OAuthPollingScreen id={id} />
 }
+
+export const Route = createFileRoute('/_open/gatekeeper/oauth-polling/$id')({
+  component: OAuthPollingRoute,
+})

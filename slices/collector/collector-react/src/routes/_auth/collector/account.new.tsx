@@ -1,11 +1,10 @@
-import { createRoute, useNavigate, type AnyRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { CollectorHttpApiClient } from 'collector-core/clients'
 import { Effect, Schema } from 'effect'
 import { defaultConfig } from 'fhir-r4-client-collector'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { pageLayoutStyles } from 'react-tundraish'
-import { useRouteSearch } from 'shared-structures-react'
 
 import { useCollectorEffectAction } from '../../../collector-client.tsx'
 import accountConfig from './account-config.module.css'
@@ -136,31 +135,23 @@ function AccountNewScreen({
 }
 
 /**
- * Builds the `/collector/account/new` route under an app-provided parent.
- * `validateSearch` decodes the URL search with `AccountNewSearch` at the
- * router boundary; the component reads it back through `useRouteSearch`,
- * which re-applies the same schema's type, and hands it to the screen.
+ * The `/collector/account/new` route. `validateSearch` decodes the URL
+ * search with `AccountNewSearch` at the router boundary; the component
+ * reads it back through the generated, typed `Route.useSearch()`.
  */
-// oxlint-disable-next-line typescript/explicit-function-return-type
-export const makeAccountNewRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) => {
-  const route = createRoute({
-    getParentRoute,
-    path: '/collector/account/new',
-    validateSearch: (search: Record<string, unknown>): AccountNewSearch =>
-      Schema.decodeUnknownSync(AccountNewSearch)(search),
-    component: function AccountNewRoute() {
-      const { prefillName, prefillRootUrl, prefillPatientId } = useRouteSearch(
-        route,
-        AccountNewSearch
-      )
-      return (
-        <AccountNewScreen
-          prefillName={prefillName}
-          prefillRootUrl={prefillRootUrl}
-          prefillPatientId={prefillPatientId}
-        />
-      )
-    },
-  })
-  return route
+function AccountNewRoute(): JSX.Element {
+  const { prefillName, prefillRootUrl, prefillPatientId } = Route.useSearch()
+  return (
+    <AccountNewScreen
+      prefillName={prefillName}
+      prefillRootUrl={prefillRootUrl}
+      prefillPatientId={prefillPatientId}
+    />
+  )
 }
+
+export const Route = createFileRoute('/_auth/collector/account/new')({
+  validateSearch: (search: Record<string, unknown>): AccountNewSearch =>
+    Schema.decodeUnknownSync(AccountNewSearch)(search),
+  component: AccountNewRoute,
+})

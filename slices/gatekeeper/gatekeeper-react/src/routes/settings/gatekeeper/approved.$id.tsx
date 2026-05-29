@@ -1,9 +1,8 @@
-import { createRoute, type AnyRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { Suspense, useMemo, type JSX } from 'react'
 import { Awaited, pageLayoutStyles, PageLoading } from 'react-tundraish'
-import { useRouteParams } from 'shared-structures-react'
 
 import { useGatekeeperEffect } from '../../../gatekeeper-client.tsx'
 import styles from './approved.$id.module.css'
@@ -33,25 +32,16 @@ function ApprovedAppDetailScreen({ id }: { readonly id: string }): JSX.Element {
   )
 }
 
-const approvedAppDetailPath = '/settings/gatekeeper/approved/$id'
-
 /**
- * Builds the `/settings/gatekeeper/approved/$id` route under an app-provided
- * parent. The component closure reads `$id` via `useRouteParams`, which
- * reconstructs the param shape from the path literal (`$id` → `{ id: string }`)
- * and hands it to the screen as a prop.
+ * The `/settings/gatekeeper/approved/$id` file route. Reads the typed `$id`
+ * path param from the generated route via `Route.useParams()` and hands it
+ * to the screen as a prop.
  */
-export const makeApprovedAppDetailRoute = <TParent extends AnyRoute>(
-  getParentRoute: () => TParent
-  // oxlint-disable-next-line typescript/explicit-function-return-type
-) => {
-  const route = createRoute({
-    getParentRoute,
-    path: approvedAppDetailPath,
-    component: function ApprovedAppDetailRoute() {
-      const { id } = useRouteParams(route, approvedAppDetailPath)
-      return <ApprovedAppDetailScreen id={id} />
-    },
-  })
-  return route
+function ApprovedAppDetailRoute(): JSX.Element {
+  const { id } = Route.useParams()
+  return <ApprovedAppDetailScreen id={id} />
 }
+
+export const Route = createFileRoute('/settings/gatekeeper/approved/$id')({
+  component: ApprovedAppDetailRoute,
+})

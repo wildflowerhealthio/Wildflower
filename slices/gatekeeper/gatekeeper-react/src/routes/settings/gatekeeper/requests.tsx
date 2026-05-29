@@ -1,4 +1,4 @@
-import { createRoute, useNavigate, type AnyRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
@@ -138,14 +138,9 @@ const RequestsListBody = ({
 }
 
 /**
- * Builds the `/settings/gatekeeper/requests` route under an app-provided
- * parent. A fresh route is created per call so the same factory can compose
- * the app router and a throwaway test router without sharing a singleton.
+ * The `/settings/gatekeeper/requests` file route — the incoming HTTP
+ * request history.
  */
-// oxlint-disable-next-line typescript/explicit-function-return-type
-export const makeRequestsListRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) =>
-  createRoute({
-    getParentRoute,
-    path: '/settings/gatekeeper/requests',
-    component: RequestsListScreen,
-  })
+export const Route = createFileRoute('/settings/gatekeeper/requests')({
+  component: RequestsListScreen,
+})

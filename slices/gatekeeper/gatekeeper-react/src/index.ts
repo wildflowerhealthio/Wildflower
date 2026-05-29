@@ -18,5 +18,3 @@ export {
   waitForHostTokenRef,
   writeToken,
 } from './client/token-storage.ts'
-
-export { openRoutes, authRoutes, settingsRoutes, type RouteFactory } from './route-handles.ts'

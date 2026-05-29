@@ -1,4 +1,4 @@
-import { createRoute, useNavigate, type AnyRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { CollectorHttpApiClient } from 'collector-core/clients'
 import type { Remotes } from 'collector-core/http-api-definition'
 import { Effect, type Schema } from 'effect'
@@ -6,7 +6,6 @@ import { defaultConfig } from 'fhir-r4-client-collector'
 import { useEffect, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { pageLayoutStyles } from 'react-tundraish'
-import { useRouteParams } from 'shared-structures-react'
 
 import { useCollectorEffectAction } from '../../../collector-client.tsx'
 import accountConfig from './account-config.module.css'
@@ -175,23 +174,16 @@ function AccountConfigScreen({ accountId }: { readonly accountId: string }): JSX
   )
 }
 
-const accountConfigPath = '/collector/account/$id'
-
 /**
- * Builds the `/collector/account/$id` route under an app-provided parent.
- * The component closure reads the `$id` param via `useRouteParams`, which
- * reconstructs the param shape from the path literal (`$id` → `{ id: string }`)
- * and hands it to the screen as a prop.
+ * The `/collector/account/$id` route. Reads the typed `$id` path param
+ * from the generated route via `Route.useParams()` and hands it to the
+ * screen as a prop.
  */
-// oxlint-disable-next-line typescript/explicit-function-return-type
-export const makeAccountConfigRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) => {
-  const route = createRoute({
-    getParentRoute,
-    path: accountConfigPath,
-    component: function AccountConfigRoute() {
-      const { id } = useRouteParams(route, accountConfigPath)
-      return <AccountConfigScreen accountId={id} />
-    },
-  })
-  return route
+function AccountConfigRoute(): JSX.Element {
+  const { id } = Route.useParams()
+  return <AccountConfigScreen accountId={id} />
 }
+
+export const Route = createFileRoute('/_auth/collector/account/$id')({
+  component: AccountConfigRoute,
+})

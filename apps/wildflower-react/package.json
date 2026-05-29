@@ -53,6 +53,8 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
+    "@tanstack/router-plugin": "catalog:",
+    "@tanstack/virtual-file-routes": "catalog:",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.0",
     "@types/react": "catalog:",

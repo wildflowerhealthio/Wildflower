@@ -1,4 +1,4 @@
-import { createRoute, useNavigate, type AnyRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState, type JSX } from 'react'
 import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
@@ -60,14 +60,9 @@ function DeviceEntryScreen(): JSX.Element {
 }
 
 /**
- * Builds the `/gatekeeper/devices` route under an app-provided parent. A
- * fresh route is created per call so the same factory can compose the app
- * router and a throwaway test router without sharing a mutable singleton.
+ * The `/gatekeeper/devices` file route — the device-code entry screen,
+ * reachable without a bearer.
  */
-// oxlint-disable-next-line typescript/explicit-function-return-type
-export const makeDeviceEntryRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) =>
-  createRoute({
-    getParentRoute,
-    path: '/gatekeeper/devices',
-    component: DeviceEntryScreen,
-  })
+export const Route = createFileRoute('/_open/gatekeeper/devices')({
+  component: DeviceEntryScreen,
+})

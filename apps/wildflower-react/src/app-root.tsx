@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { ErrorBoundary } from 'react-tundraish'
 import { Sentry } from 'telemetry-web'
 
-import { routeTree } from './macro-tree.ts'
+import { routeTree } from './routeTree.gen.ts'
 
 interface RenderAppOptions {
   /**

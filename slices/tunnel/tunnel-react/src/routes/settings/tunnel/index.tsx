@@ -1,4 +1,4 @@
-import { createRoute, type AnyRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
@@ -9,7 +9,7 @@ import type { Tunnel } from 'tunnel-core/http-api-definition'
 import { TunnelToggle } from '../../../components/TunnelToggle.tsx'
 import { useTunnelAdminEffectRunner } from '../../../use-tunnel-admin-effect-runner.ts'
 import { useTunnelAdminEffect } from '../../../use-tunnel-admin-effect.ts'
-import styles from './tunnel-screen.module.css'
+import styles from './index.module.css'
 
 type TunnelState = Schema.Schema.Type<typeof Tunnel.TunnelStateSchema>
 
@@ -188,14 +188,12 @@ function TunnelScreen(): JSX.Element {
 }
 
 /**
- * Builds the `/settings/tunnel/` landing route under an app-provided parent.
- * A fresh route is created per call so the same factory can compose the app
- * router and a throwaway test router without sharing a singleton.
+ * The `/settings/tunnel/` landing route. Defined as a file route so the
+ * slice generates its own `routeTree.gen.ts`; in `apps/wildflower-react`
+ * this same file is mounted under the app's `/settings` route via
+ * `@tanstack/virtual-file-routes`, which computes the identical
+ * `/settings/tunnel/` id, so the literal below is stable across both trees.
  */
-// oxlint-disable-next-line typescript/explicit-function-return-type
-export const makeTunnelRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) =>
-  createRoute({
-    getParentRoute,
-    path: '/settings/tunnel/',
-    component: TunnelScreen,
-  })
+export const Route = createFileRoute('/settings/tunnel/')({
+  component: TunnelScreen,
+})

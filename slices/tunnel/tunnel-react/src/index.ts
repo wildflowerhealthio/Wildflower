@@ -15,5 +15,3 @@ export {
 } from './client/tunnel-client.ts'
 
 export { TunnelToggle, type TunnelToggleProps } from './components/TunnelToggle.tsx'
-
-export { openRoutes, authRoutes, settingsRoutes, type RouteFactory } from './route-handles.ts'

@@ -1,3 +1,4 @@
+import { createFileRoute } from '@tanstack/react-router'
 import { gatekeeperSettingsItemsFragment } from 'gatekeeper-react'
 import type { JSX } from 'react'
 import { ItemList } from 'react-tundraish'
@@ -23,4 +24,6 @@ function SettingsIndex(): JSX.Element {
   return <ItemList items={settingsItems} />
 }
 
-export { SettingsIndex }
+const Route = createFileRoute('/settings/')({ component: SettingsIndex })
+
+export { Route, SettingsIndex }

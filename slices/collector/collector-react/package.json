@@ -30,6 +30,7 @@
     "@livestore/livestore": "catalog:",
     "@livestore/peer-deps": "catalog:",
     "@tanstack/react-router": "catalog:",
+    "@tanstack/router-plugin": "catalog:",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.0",
     "@types/react": "catalog:",

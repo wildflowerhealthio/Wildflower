@@ -1,48 +1,39 @@
-import { createRootRoute, createRouter, type AnyRoute } from '@tanstack/react-router'
+import { createRouter, type AnyRoute } from '@tanstack/react-router'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { authRoutes, openRoutes, settingsRoutes } from '../src/route-handles.ts'
+import { routeTree } from '../src/routeTree.gen.ts'
 
-// `route-handles.ts` exports route *factories*, not route objects: each
-// builds a fresh route under an app-provided parent. We reproduce the
-// slice-local URL space by parenting every factory directly to a plain
-// root (the app's pathless `_auth` layout contributes no URL segment, so
-// fullPaths match what the macro tree resolves). Building a router runs
-// the init that populates each route's `fullPath`/`id` in place.
-const root = createRootRoute()
-const open = openRoutes.map((make) => make(() => root))
-const auth = authRoutes.map((make) => make(() => root))
-const settings = settingsRoutes.map((make) => make(() => root))
-root.addChildren([...open, ...auth, ...settings])
-const router = createRouter({ routeTree: root })
+// The slice generates its own `routeTree.gen.ts`. The `_auth/` directory
+// is a pathless prefix: it carries `/_auth` into each route's id (so the
+// id matches what the app's `_auth` layout produces) but contributes no
+// URL segment, so the `fullPath`s below are the slice-local URLs the
+// macro tree resolves.
+const router = createRouter({ routeTree })
 
-const fullPaths = (routes: readonly AnyRoute[]): readonly string[] =>
-  routes.map((route) => route.fullPath)
+const routes = (): readonly AnyRoute[] =>
+  Object.values(router.routesById).filter((route) => route.id !== '__root__')
 
-describe('collector route-handles', () => {
-  test('every authenticated route is under /collector', () => {
-    for (const path of fullPaths(auth)) {
-      expect(path.startsWith('/collector')).toBe(true)
+describe('collector routes', () => {
+  test('every collector route resolves under /collector', () => {
+    for (const route of routes()) {
+      expect(route.fullPath.startsWith('/collector')).toBe(true)
     }
   })
 
-  test('no authenticated route is under /settings — collector is top-level, not a settings concern', () => {
-    for (const path of fullPaths(auth)) {
-      expect(path.startsWith('/settings')).toBe(false)
+  test('no collector route resolves under /settings — collector is top-level, not a settings concern', () => {
+    for (const route of routes()) {
+      expect(route.fullPath.startsWith('/settings')).toBe(false)
     }
   })
 
-  test('collector contributes only authenticated routes', () => {
-    // The open and settings buckets are intentionally empty; a route landing
-    // in one should be a deliberate edit, not a silent drift.
-    expect(openRoutes).toEqual([])
-    expect(settingsRoutes).toEqual([])
-  })
-
-  test('the factory tree exposes exactly the collector routes', () => {
-    const ids = Object.keys(router.routesById)
-      .filter((id) => id !== '__root__')
+  test('the generated tree exposes exactly the collector routes', () => {
+    const ids = routes()
+      .map((route): string => route.id)
       .toSorted()
-    expect(ids).toEqual(['/collector/', '/collector/account/$id', '/collector/account/new'])
+    expect(ids).toEqual([
+      '/_auth/collector/',
+      '/_auth/collector/account/$id',
+      '/_auth/collector/account/new',
+    ])
   })
 })

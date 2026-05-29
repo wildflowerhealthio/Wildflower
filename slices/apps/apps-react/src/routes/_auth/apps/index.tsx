@@ -1,4 +1,4 @@
-import { createRoute, type AnyRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { AppsHttpApiClient } from 'apps-core/clients'
 import type { Schemas } from 'apps-core/http-api-definition'
 import { Effect, type Schema } from 'effect'
@@ -158,16 +158,6 @@ function AppsHomeBody({ tunnel, apps, onChanged }: AppsHomeBodyProps): JSX.Eleme
   )
 }
 
-/**
- * Builds the `/apps/` home route under an app-provided parent. The macro
- * tree calls this with its `_auth` shell as the parent; a fresh route is
- * created per call so the same factory can also build a throwaway router
- * in tests without sharing a mutable singleton.
- */
-// oxlint-disable-next-line typescript/explicit-function-return-type
-export const makeAppsHomeRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) =>
-  createRoute({
-    getParentRoute,
-    path: '/apps/',
-    component: AppsHomeScreen,
-  })
+export const Route = createFileRoute('/_auth/apps/')({
+  component: AppsHomeScreen,
+})
