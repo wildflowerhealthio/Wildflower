@@ -4,6 +4,12 @@ A running log of non-obvious insights discovered during agent sessions. Triage i
 
 <!-- Append new entries below this line -->
 
+## `PersistQueryClientProvider` + `<StrictMode>` deadlocks testing-library `act`/`waitFor`
+
+**Discovered during**: ruthmarks/mount-query-client-persist-provider
+**Learning**: Mounting `@tanstack/react-query-persist-client`'s `PersistQueryClientProvider` inside `<StrictMode>` and then driving it through testing-library's `act` / `waitFor` (or `await act(async () => createRoot(...).render(...))`) hangs until the 5s test timeout. StrictMode double-invokes the provider's restore effect; the async `persistQueryClientRestore` + the `setIsRestoring(false)` re-render + the live `persistQueryClientSubscribe` subscription leave a pending async transition that `act` waits on forever **in jsdom only** — the real tree renders fine in a browser, and a manual DOM poll (`document.querySelector(...)` in a `setTimeout` loop, outside `act`) confirms the leaf does mount within ~100ms. Two fixes depending on intent: (1) to test the persister wiring, render WITHOUT StrictMode via a plain testing-library `render` (no `createRoot`); (2) to drive the real `renderApp` (which uses StrictMode), either mock the persist provider down to a passthrough / real `<QueryClientProvider>` stand-in, or assert via a manual DOM poll instead of `waitFor`. The deadlock is a harness artifact, not a production bug.
+**Suggested destination**: docs/Testing/Testing Reference.md (React testing)
+
 ## Decompose property tests by column to escape graph-walk fan-out
 
 **Discovered during**: ruthmarks/add-fhir-r4-slice — slow-test investigation

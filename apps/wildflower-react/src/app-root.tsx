@@ -10,6 +10,8 @@ import { authTokenRef } from 'gatekeeper-react'
 import { AuthTokenProvider } from 'react-kitchen-sink'
 import { AppsSenderForwarder } from './bridges/apps-sender-forwarder.tsx'
 import { CollectorSenderForwarder } from './bridges/collector-sender-forwarder.tsx'
+import { QueryClientPersistProvider } from './bridges/query-client-persist-provider.tsx'
+import { buildQueryClient } from './bridges/router-context.ts'
 import { routeTree } from './routeTree.gen.ts'
 
 /**
@@ -42,13 +44,22 @@ interface RenderAppOptions {
  * `main-embedded.tsx`) with the appropriate history and entry label.
  *
  * @remarks
- * The provider stack lives inside `routeTree`'s root component
+ * A single {@link buildQueryClient} instance is created here and shared
+ * two ways: it is passed to `createRouter`'s typed `context` (so route
+ * `loader`s can prefetch via `context.queryClient.ensureQueryData(...)`)
+ * AND handed to `<QueryClientPersistProvider>`, which wraps the entire
+ * tree — including `<RouterProvider>` — so every `useQuery` /
+ * `useMutation` in a slice resolves the same client and the localStorage
+ * persister is active app-wide.
+ *
+ * The slice client providers live inside `routeTree`'s root component
  * (`RootShell`) rather than wrapping `<RouterProvider>`, because
  * TanStack's `<RouterProvider>` does not accept children — child routes
  * are mounted via the root's `<Outlet />`.
  */
 const renderApp = ({ history, TransportProvider, entry }: RenderAppOptions): void => {
-  const router = createRouter({ routeTree, history })
+  const queryClient = buildQueryClient()
+  const router = createRouter({ routeTree, history, context: { queryClient } })
   const container = document.getElementById('root')
   if (container === null) {
     throw new Error('root element not found')
@@ -67,24 +78,26 @@ const renderApp = ({ history, TransportProvider, entry }: RenderAppOptions): voi
           entry,
         }}
       >
-        <AuthTokenProvider subscribable={authTokenRef}>
-          <RouterProvider
-            router={router}
-            InnerWrap={({ children }) => {
-              return (
-                <CollectorRuntimeProvider>
-                  <AppsRuntimeProvider>
-                    <TransportProvider>
-                      <CollectorSenderForwarder>
-                        <AppsSenderForwarder>{children}</AppsSenderForwarder>
-                      </CollectorSenderForwarder>
-                    </TransportProvider>
-                  </AppsRuntimeProvider>
-                </CollectorRuntimeProvider>
-              )
-            }}
-          />
-        </AuthTokenProvider>
+        <QueryClientPersistProvider queryClient={queryClient}>
+          <AuthTokenProvider subscribable={authTokenRef}>
+            <RouterProvider
+              router={router}
+              InnerWrap={({ children }) => {
+                return (
+                  <CollectorRuntimeProvider>
+                    <AppsRuntimeProvider>
+                      <TransportProvider>
+                        <CollectorSenderForwarder>
+                          <AppsSenderForwarder>{children}</AppsSenderForwarder>
+                        </CollectorSenderForwarder>
+                      </TransportProvider>
+                    </AppsRuntimeProvider>
+                  </CollectorRuntimeProvider>
+                )
+              }}
+            />
+          </AuthTokenProvider>
+        </QueryClientPersistProvider>
       </ErrorBoundary>
     </StrictMode>
   )

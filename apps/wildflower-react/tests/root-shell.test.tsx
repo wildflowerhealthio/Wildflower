@@ -116,6 +116,19 @@ vi.mock('telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },
 }))
+// `renderApp` now also wraps the tree in `<QueryClientPersistProvider>`
+// (the app-wide React Query client + localStorage persister). Its
+// lifecycle is NOT this block's concern — it's pinned in
+// `query-client-provider.test.tsx` — and its async `persistQueryClient`
+// restore deadlocks testing-library's `act` / `waitFor` under
+// `<StrictMode>` (StrictMode double-invokes the restore effect, leaving a
+// pending async state transition `act` waits on forever in jsdom). The
+// real tree renders fine in a browser; only the harness's `act` flush
+// stalls. So reduce it to a passthrough here, consistent with how this
+// block mocks every other provider down to the identity wrapper.
+vi.mock('../src/bridges/query-client-persist-provider.tsx', () => ({
+  QueryClientPersistProvider: makePassthrough('QueryClientPersistProvider'),
+}))
 // `renderApp` imports the real `routeTree.gen.ts`, whose top-level
 // imports eagerly pull in every slice's route screens (Effect HttpApi
 // clients, CSS modules, sync runners). Those modules are incidental to

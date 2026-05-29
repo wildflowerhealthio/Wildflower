@@ -1,56 +1,35 @@
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister'
-import { QueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { type JSX, type ReactNode, useState } from 'react'
 
-const ONE_DAY_MS = 1000 * 60 * 60 * 24
+import { ONE_DAY_MS } from './router-context.ts'
 
 /**
- * QueryClient defaults shared by every screen in the app:
+ * Mount at the app root, wrapping the ENTIRE provider/router subtree.
+ * Wires the shared {@link QueryClient} and a localStorage-backed
+ * persister so every cached query survives page reloads + WebView
+ * remounts. Pair with `useSuspenseQuery` / `useMutation` calls in slice
+ * hooks (see `apps-react` and `tunnel-react`'s `queries.ts`) and with
+ * route `loader`s that call `context.queryClient.ensureQueryData(...)`.
  *
- *   - `staleTime: 0` — every query is stale on mount, so the very next
- *     render after the persister hydrates from localStorage kicks off a
- *     background refetch. The cached value renders immediately; the
- *     fresh value swaps in once it returns.
- *   - `gcTime: 24h` — keep queries in cache long enough for the
- *     persister to round-trip them through localStorage between
- *     sessions. Without this, queries would be garbage-collected after
- *     5 minutes of being unused and the persister would have nothing to
- *     write.
- *   - `refetchOnWindowFocus: false` — the embedded WebView has no
- *     stable focus story (frequent host bridge re-renders trigger
- *     spurious focus events); the on-mount refetch already gives us
- *     stale-while-revalidate.
- */
-const buildQueryClient = (): QueryClient =>
-  new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 0,
-        gcTime: ONE_DAY_MS,
-        refetchOnWindowFocus: false,
-      },
-    },
-  })
-
-/**
- * Mount inside the app root. Wires a process-local {@link QueryClient}
- * and a localStorage-backed persister so every cached query survives
- * page reloads + WebView remounts. Pair with `useSuspenseQuery` /
- * `useMutation` calls in slice hooks (see `apps-react` and
- * `tunnel-react`'s `queries.ts`).
+ * The `queryClient` is supplied by the caller (rather than built
+ * internally) so the identical instance can also be threaded into the
+ * router context — see `buildQueryClient` (`router-context.ts`) and
+ * `renderApp` (`app-root.tsx`).
  *
  * @remarks
- * `window.localStorage` is read inside `useState` initializers so the
+ * `window.localStorage` is read inside a `useState` initializer so the
  * module can be imported in environments without a DOM (the embedded
  * bundle's pre-hydration build pass) without crashing at import time.
  */
 const QueryClientPersistProvider = ({
+  queryClient,
   children,
 }: {
+  readonly queryClient: QueryClient
   readonly children: ReactNode
 }): JSX.Element => {
-  const [queryClient] = useState(buildQueryClient)
   const [persister] = useState(() =>
     createSyncStoragePersister({
       storage: window.localStorage,
