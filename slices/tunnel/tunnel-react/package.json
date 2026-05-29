@@ -29,6 +29,7 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@fast-check/vitest": "catalog:",
+    "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tanstack/router-plugin": "catalog:",
     "@testing-library/dom": "^10.4.0",
@@ -51,6 +52,7 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
+    "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "effect": "catalog:",
     "kitchen-sink": "workspace:*",

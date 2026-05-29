@@ -1,21 +1,20 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { Effect, type Schema } from 'effect'
-import { Suspense, useMemo, useState, type JSX } from 'react'
+import { CatchBoundary, createFileRoute } from '@tanstack/react-router'
+import { Suspense, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Awaited, PageLoading, Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
-import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
-import type { Tunnel } from 'tunnel-core/http-api-definition'
+import {
+  AsyncErrorView,
+  Field,
+  FieldDescription,
+  pageLayoutStyles,
+  PageLoading,
+} from 'react-tundraish'
 
 import { TunnelToggle } from '../../../components/TunnelToggle.tsx'
-import { useTunnelAdminEffectRunner } from '../../../use-tunnel-admin-effect-runner.ts'
-import { useTunnelAdminEffect } from '../../../use-tunnel-admin-effect.ts'
+import { useTunnelPatchMutation, useTunnelStateQuery, type TunnelState } from '../../../queries.ts'
 import styles from './index.module.css'
-
-type TunnelState = Schema.Schema.Type<typeof Tunnel.TunnelStateSchema>
 
 interface TunnelScreenBodyProps {
   readonly state: TunnelState
-  readonly onChanged: () => void
 }
 
 /**
@@ -29,43 +28,38 @@ const normalizeOptionalString = (raw: string): string | null => {
   return trimmed === '' ? null : trimmed
 }
 
-const TunnelScreenBody = ({ state, onChanged }: TunnelScreenBodyProps): JSX.Element => {
-  const runTunnel = useTunnelAdminEffectRunner()
+const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
+  const patchMutation = useTunnelPatchMutation()
   const [subdomainInput, setSubdomainInput] = useState(state.subdomain ?? '')
   const [rootDomainInput, setRootDomainInput] = useState(state.rootDomain ?? '')
-  const [error, setError] = useState<string | null>(null)
-  const [pending, setPending] = useState(false)
+
+  // `mutation.isPending` is the canonical "in-flight write" signal —
+  // wired into every input/button to lock the form during the request.
+  // Even though the cached state has already optimistically advanced
+  // (so the badge can show "Starting…"), we still want to keep the
+  // controls inert until the daemon's response arrives.
+  const pending = patchMutation.isPending
+  // The mutation hangs onto its last error until the next `mutate` call
+  // clears it; surface it next to the existing display.
+  const submitError = patchMutation.error
+  const errorMessage =
+    submitError === null
+      ? null
+      : submitError instanceof Error
+        ? submitError.message
+        : String(submitError)
 
   const nextSubdomain = normalizeOptionalString(subdomainInput)
   const nextRootDomain = normalizeOptionalString(rootDomainInput)
 
   const dirty = nextSubdomain !== state.subdomain || nextRootDomain !== state.rootDomain
 
-  const patch = async (payload: {
-    readonly subdomain?: string | null
-    readonly rootDomain?: string | null
-    readonly requestedRunning?: boolean
-  }): Promise<void> => {
-    setError(null)
-    setPending(true)
-    try {
-      await runTunnel(
-        Effect.flatMap(TunnelAdminHttpApiClient, (c) => c.tunnel.PatchTunnel({ payload }))
-      )
-      onChanged()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setPending(false)
-    }
-  }
-
   const onToggle = (requestedRunning: boolean): void => {
-    void patch({ requestedRunning })
+    patchMutation.mutate({ requestedRunning })
   }
 
   const onSave = (): void => {
-    void patch({
+    patchMutation.mutate({
       subdomain: nextSubdomain,
       rootDomain: nextRootDomain,
     })
@@ -78,9 +72,9 @@ const TunnelScreenBody = ({ state, onChanged }: TunnelScreenBodyProps): JSX.Elem
         Expose this device to the public Internet so apps installed on phones can reach it.
       </FieldDescription>
 
-      {error !== null ? (
+      {errorMessage !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
-          {error}
+          {errorMessage}
         </p>
       ) : null}
 
@@ -102,6 +96,7 @@ const TunnelScreenBody = ({ state, onChanged }: TunnelScreenBodyProps): JSX.Elem
             className={styles['input']}
             value={subdomainInput}
             placeholder="my-clinic"
+            disabled={pending}
             onChange={(e) => {
               setSubdomainInput(e.target.value)
             }}
@@ -122,6 +117,7 @@ const TunnelScreenBody = ({ state, onChanged }: TunnelScreenBodyProps): JSX.Elem
             className={styles['input']}
             value={rootDomainInput}
             placeholder="example.com"
+            disabled={pending}
             onChange={(e) => {
               setRootDomainInput(e.target.value)
             }}
@@ -160,30 +156,30 @@ const TunnelScreenBody = ({ state, onChanged }: TunnelScreenBodyProps): JSX.Elem
   )
 }
 
+const TunnelScreenContent = (): JSX.Element => {
+  const { data: state } = useTunnelStateQuery()
+  return <TunnelScreenBody state={state} />
+}
+
+/**
+ * Settings landing for the tunnel slice. Reads `TunnelState` through
+ * TanStack Query (`useTunnelStateQuery`), so the screen renders from
+ * localStorage-persisted cache on mount and the in-flight refetch
+ * swaps fresh data in once it lands. Edits go through
+ * `useTunnelPatchMutation`, which optimistically projects the change
+ * into the cache for instant feedback and rolls back if the daemon
+ * rejects the patch.
+ */
 function TunnelScreen(): JSX.Element {
-  const [refreshKey, setRefreshKey] = useState(0)
-
-  const tunnelEffect = useMemo(
-    () => Effect.flatMap(TunnelAdminHttpApiClient, (c) => c.tunnel.GetTunnel()),
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- refreshKey is the intentional re-fetch trigger
-    [refreshKey]
-  )
-
-  const tunnelPromise = useTunnelAdminEffect(tunnelEffect)
-
   return (
-    <Suspense fallback={<PageLoading message="Loading tunnel…" />}>
-      <Awaited promise={tunnelPromise} resetKey={refreshKey} errorTitle="Tunnel">
-        {(state) => (
-          <TunnelScreenBody
-            state={state}
-            onChanged={() => {
-              setRefreshKey((n) => n + 1)
-            }}
-          />
-        )}
-      </Awaited>
-    </Suspense>
+    <CatchBoundary
+      getResetKey={() => 'tunnel-screen'}
+      errorComponent={({ error }) => <AsyncErrorView error={error} title="Tunnel" />}
+    >
+      <Suspense fallback={<PageLoading message="Loading tunnel…" />}>
+        <TunnelScreenContent />
+      </Suspense>
+    </CatchBoundary>
   )
 }
 

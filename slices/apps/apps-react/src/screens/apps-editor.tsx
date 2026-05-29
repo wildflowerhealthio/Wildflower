@@ -1,101 +1,75 @@
-import { AppsAdminHttpApiClient } from 'apps-core/clients'
-import type { Schemas } from 'apps-core/http-api-definition'
-import { Effect, type Schema } from 'effect'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Checkbox, Dialog } from 'react-tundraish'
 
-import { useAppsAdminEffectAction } from '../apps-client.tsx'
+import {
+  useAppsAdminCreateMutation,
+  useAppsAdminDeleteMutation,
+  useAppsAdminUpdateMutation,
+  type AppEntry,
+} from '../queries.ts'
 import editorStyles from '../styles/apps-editor.module.css'
-
-type AppEntry = Schema.Schema.Type<typeof Schemas.AppEntrySchema>
 
 interface AppsEditorProps {
   readonly open: boolean
   readonly apps: readonly AppEntry[]
   readonly onClose: () => void
-  readonly onChanged: () => void
 }
 
 /**
  * Modal editor for the apps list. Bundled apps toggle on/off; custom
- * apps can be added or removed. Writes are issued through
- * `useAppsAdminEffectAction` (a one-off Effect runner that
- * auto-provides the slice's *admin* client layer + bearer token —
- * `AppsAdminApi` is owner-only).
+ * apps can be added or removed. Writes are issued through the slice's
+ * TanStack Query mutations (`useAppsAdmin{Update,Create,Delete}Mutation`),
+ * which invalidate the cached apps list on success — the parent screen
+ * re-renders with the new data without any prop drilling.
  *
  * Every input lives inside a `<fieldset disabled={busy}>` so the entire
  * form locks during an in-flight write, not just the submit button —
  * stops the user from racing toggles or adding a duplicate custom row
  * while a previous write is still pending.
  */
-const AppsEditor = ({ open, apps, onClose, onChanged }: AppsEditorProps): JSX.Element => {
-  const run = useAppsAdminEffectAction()
+const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
+  const updateMutation = useAppsAdminUpdateMutation()
+  const createMutation = useAppsAdminCreateMutation()
+  const deleteMutation = useAppsAdminDeleteMutation()
   const [newName, setNewName] = useState('')
   const [newUrl, setNewUrl] = useState('')
   const [newRequiresTunnel, setNewRequiresTunnel] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  const toggle = async (app: AppEntry): Promise<void> => {
-    setBusy(true)
-    setError(null)
-    try {
-      await run(
-        Effect.flatMap(AppsAdminHttpApiClient, (c) =>
-          c['apps-admin'].UpdateApp({ path: { id: app.id }, payload: { enabled: !app.enabled } })
-        )
-      )
-      onChanged()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setBusy(false)
-    }
+  // Any in-flight write locks the whole fieldset. Aggregating across the
+  // three mutations keeps the "one write at a time" guarantee the
+  // original imperative flow had.
+  const busy = updateMutation.isPending || createMutation.isPending || deleteMutation.isPending
+  const submitError = updateMutation.error ?? createMutation.error ?? deleteMutation.error
+  const errorMessage =
+    submitError === null || submitError === undefined
+      ? null
+      : submitError instanceof Error
+        ? submitError.message
+        : String(submitError)
+
+  const toggle = (app: AppEntry): void => {
+    updateMutation.mutate({ id: app.id, payload: { enabled: !app.enabled } })
   }
 
-  const removeCustom = async (app: AppEntry): Promise<void> => {
-    setBusy(true)
-    setError(null)
-    try {
-      await run(
-        Effect.flatMap(AppsAdminHttpApiClient, (c) =>
-          c['apps-admin'].DeleteApp({ path: { id: app.id } })
-        )
-      )
-      onChanged()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setBusy(false)
-    }
+  const removeCustom = (app: AppEntry): void => {
+    deleteMutation.mutate({ id: app.id })
   }
 
-  const submitNewCustom = async (): Promise<void> => {
+  const submitNewCustom = (): void => {
     const name = newName.trim()
     const url = newUrl.trim()
-    if (name === '' || url === '') {
-      return
-    }
-    setBusy(true)
-    setError(null)
-    try {
-      await run(
-        Effect.flatMap(AppsAdminHttpApiClient, (c) =>
-          c['apps-admin'].CreateCustomApp({
-            payload: { name, url, requiresTunnel: newRequiresTunnel },
-          })
-        )
-      )
-      setNewName('')
-      setNewUrl('')
-      setNewRequiresTunnel(false)
-      onChanged()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setBusy(false)
-    }
+    if (name === '' || url === '') return
+    createMutation.mutate(
+      { name, url, requiresTunnel: newRequiresTunnel },
+      {
+        onSuccess: () => {
+          setNewName('')
+          setNewUrl('')
+          setNewRequiresTunnel(false)
+        },
+      }
+    )
   }
 
   const nonCustom = apps.filter((app) => app.kind !== 'custom')
@@ -103,9 +77,9 @@ const AppsEditor = ({ open, apps, onClose, onChanged }: AppsEditorProps): JSX.El
 
   return (
     <Dialog open={open} onClose={onClose} title="Manage apps">
-      {error !== null ? (
+      {errorMessage !== null ? (
         <p className="text-body-3" role="alert">
-          {error}
+          {errorMessage}
         </p>
       ) : null}
       <fieldset className={editorStyles['apps-editor__fieldset']} disabled={busy}>
@@ -125,7 +99,7 @@ const AppsEditor = ({ open, apps, onClose, onChanged }: AppsEditorProps): JSX.El
                 checked={app.enabled}
                 label=""
                 onChange={() => {
-                  void toggle(app)
+                  toggle(app)
                 }}
               />
             </div>
@@ -148,7 +122,7 @@ const AppsEditor = ({ open, apps, onClose, onChanged }: AppsEditorProps): JSX.El
                 type="button"
                 className="button-3 outline accent-red"
                 onClick={() => {
-                  void removeCustom(app)
+                  removeCustom(app)
                 }}
               >
                 Remove
@@ -159,7 +133,7 @@ const AppsEditor = ({ open, apps, onClose, onChanged }: AppsEditorProps): JSX.El
             className={editorStyles['apps-editor__form']}
             onSubmit={(event) => {
               event.preventDefault()
-              void submitNewCustom()
+              submitNewCustom()
             }}
           >
             <label className={editorStyles['apps-editor__form-field']}>

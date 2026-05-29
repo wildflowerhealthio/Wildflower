@@ -1,76 +1,52 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { AppsHttpApiClient } from 'apps-core/clients'
-import type { Schemas } from 'apps-core/http-api-definition'
-import { Effect, type Schema } from 'effect'
+import { CatchBoundary, createFileRoute } from '@tanstack/react-router'
 import { stripTrailingSlash } from 'kitchen-sink'
-import { Suspense, useMemo, useState, type JSX } from 'react'
+import { Suspense, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Awaited, ItemList, type ItemListItem } from 'react-tundraish'
-import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
-import type { Tunnel } from 'tunnel-core/http-api-definition'
-import { useTunnelAdminEffect } from 'tunnel-react'
+import { AsyncErrorView, ItemList, type ItemListItem } from 'react-tundraish'
+import { useTunnelStateQuery, type TunnelState } from 'tunnel-react'
 
-import { useAppsEffect } from '../../../apps-client.tsx'
+import { useAppsListQuery, type AppEntry } from '../../../queries.ts'
 import { useRequestTunnel } from '../../../runtime/use-request-tunnel.ts'
 import { AppsEditor } from '../../../screens/apps-editor.tsx'
 import pageLayout from '../../../styles/page.module.css'
 
-type AppEntry = Schema.Schema.Type<typeof Schemas.AppEntrySchema>
-type TunnelState = Schema.Schema.Type<typeof Tunnel.TunnelStateSchema>
+const AppsHomeContent = (): JSX.Element => {
+  // Two Suspense-backed queries side-by-side. TanStack Query runs them
+  // in parallel and suspends until both resolve; the persister gives us
+  // an instant cached render between sessions while the refetches go
+  // out in the background.
+  const { data: apps } = useAppsListQuery()
+  const { data: tunnel } = useTunnelStateQuery()
+  return <AppsHomeBody apps={apps} tunnel={tunnel} />
+}
 
+/**
+ * Owner-facing apps landing. Reads the apps list and the tunnel state
+ * via TanStack Query (`useAppsListQuery` + `useTunnelStateQuery`), so
+ * the screen renders from localStorage-persisted cache on mount and a
+ * background refetch swaps in fresh data once both queries return.
+ * Mutations triggered inside `<AppsEditor>` auto-invalidate the list
+ * query — no `onChanged` prop drilling required.
+ */
 function AppsHomeScreen(): JSX.Element {
-  const [refreshKey, setRefreshKey] = useState(0)
-
-  // Build each Effect inside `useMemo([refreshKey])` so a refresh produces
-  // fresh Effect references and the underlying `useEffectTs`
-  // (`useAppsEffect` / `useTunnelAdminEffect`) reaches its new-input branch
-  // and re-fetches. We run them as two Suspense-friendly promises and
-  // `Promise.all` the results, handing the combined promise to
-  // `<Awaited resetKey={refreshKey}>` so a refresh also clears any stale
-  // error view.
-  const appsEffect = useMemo(
-    () => Effect.flatMap(AppsHttpApiClient, (c) => c.apps.ListApps()),
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- refreshKey is the intentional re-fetch trigger
-    [refreshKey]
-  )
-  const tunnelEffect = useMemo(
-    () => Effect.flatMap(TunnelAdminHttpApiClient, (c) => c.tunnel.GetTunnel()),
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- refreshKey is the intentional re-fetch trigger
-    [refreshKey]
-  )
-
-  const appsPromise = useAppsEffect(appsEffect)
-  const tunnelPromise = useTunnelAdminEffect(tunnelEffect)
-
-  const combined = useMemo(
-    () => Promise.all([appsPromise, tunnelPromise] as const),
-    [appsPromise, tunnelPromise]
-  )
-
   return (
-    <Suspense fallback={<p className="text-body-2">Loading apps…</p>}>
-      <Awaited promise={combined} resetKey={refreshKey}>
-        {([apps, tunnel]) => (
-          <AppsHomeBody
-            tunnel={tunnel}
-            apps={apps}
-            onChanged={() => {
-              setRefreshKey((n) => n + 1)
-            }}
-          />
-        )}
-      </Awaited>
-    </Suspense>
+    <CatchBoundary
+      getResetKey={() => 'apps-home'}
+      errorComponent={({ error }) => <AsyncErrorView error={error} title="Apps" />}
+    >
+      <Suspense fallback={<p className="text-body-2">Loading apps…</p>}>
+        <AppsHomeContent />
+      </Suspense>
+    </CatchBoundary>
   )
 }
 
 interface AppsHomeBodyProps {
   readonly tunnel: TunnelState
   readonly apps: readonly AppEntry[]
-  readonly onChanged: () => void
 }
 
-function AppsHomeBody({ tunnel, apps, onChanged }: AppsHomeBodyProps): JSX.Element {
+function AppsHomeBody({ tunnel, apps }: AppsHomeBodyProps): JSX.Element {
   const [editorOpen, setEditorOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const requestTunnel = useRequestTunnel()
@@ -152,7 +128,6 @@ function AppsHomeBody({ tunnel, apps, onChanged }: AppsHomeBodyProps): JSX.Eleme
         onClose={() => {
           setEditorOpen(false)
         }}
-        onChanged={onChanged}
       />
     </div>
   )

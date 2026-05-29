@@ -93,6 +93,15 @@ catalogs:
     '@sentry/react-native':
       specifier: ~7.2.0
       version: 7.2.0
+    '@tanstack/query-sync-storage-persister':
+      specifier: ^5.100.14
+      version: 5.100.14
+    '@tanstack/react-query':
+      specifier: ^5.100.14
+      version: 5.100.14
+    '@tanstack/react-query-persist-client':
+      specifier: ^5.100.14
+      version: 5.100.14
     '@tanstack/react-router':
       specifier: ^1.170.9
       version: 1.170.9
@@ -746,6 +755,15 @@ importers:
       '@effect/platform':
         specifier: 0.96.1
         version: 0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@tanstack/query-sync-storage-persister':
+        specifier: 'catalog:'
+        version: 5.100.14
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.100.14(react@19.1.0)
+      '@tanstack/react-query-persist-client':
+        specifier: 'catalog:'
+        version: 5.100.14(@tanstack/react-query@5.100.14(react@19.1.0))(react@19.1.0)
       '@tanstack/react-router':
         specifier: 'catalog:'
         version: 1.170.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -1458,6 +1476,9 @@ importers:
       '@effect/platform':
         specifier: 0.96.1
         version: 0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.100.14(react@19.1.0)
       '@tanstack/react-router':
         specifier: 'catalog:'
         version: 1.170.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -2977,6 +2998,9 @@ importers:
       '@fast-check/vitest':
         specifier: 'catalog:'
         version: 0.3.0(vitest@3.2.4(@types/debug@4.1.13)(@types/node@24.12.4)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.100.14(react@19.1.0)
       '@tanstack/react-router':
         specifier: 'catalog:'
         version: 1.170.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -6658,6 +6682,26 @@ packages:
   '@tanstack/history@1.162.0':
     resolution: {integrity: sha512-79pf/RkhteYZTRgcR4F9kbk84P2N8rugQJswxfIqovlbRiT3yI7eBE+5QorIrZaOKktsgzRlXh1l/du/xpl4iA==}
     engines: {node: '>=20.19'}
+
+  '@tanstack/query-core@5.100.14':
+    resolution: {integrity: sha512-5X41dGpxgeaHISCRW2oYwcSycZeULZzAunaudXT9ov1KOTj9xwt0CH6hbwqP1/z74ZWF7rYFnDpyYH07XFcZew==}
+
+  '@tanstack/query-persist-client-core@5.100.14':
+    resolution: {integrity: sha512-mn60cqoQO/xB6aHxp/hxlSj5mcdcTO4tjj4SXSz5MKzkaMZnvcEGySz3+cGQOT8McREN56fL41L0eR//v5RwNw==}
+
+  '@tanstack/query-sync-storage-persister@5.100.14':
+    resolution: {integrity: sha512-sDsiVjLJqslUdqIANGvRyB4hYpAooYj5R1fe2EzKfrSY7XufSe+AFBvirLgX/nL2uS1JeP4XeyUuG3TM0bAN9w==}
+
+  '@tanstack/react-query-persist-client@5.100.14':
+    resolution: {integrity: sha512-lQSnbJva85o7jGcJiIDrA8s3VGGx9zaBCgAljm0H1QcScU2iaDYnPuRLg/xI0k0dC45pgg9RTvpgJx5iVHRsjA==}
+    peerDependencies:
+      '@tanstack/react-query': ^5.100.14
+      react: ^18 || ^19
+
+  '@tanstack/react-query@5.100.14':
+    resolution: {integrity: sha512-oOr6aRdSFEwWhzxEkD/9ZcItM3+LjBSkeVmadWKwUssAHTsqd/7bOjWrX4AbvEkoEhgAxzN0Xk6H/aYzXiYBAw==}
+    peerDependencies:
+      react: ^18 || ^19
 
   '@tanstack/react-router@1.170.9':
     resolution: {integrity: sha512-rXXztp6GyXFwResQR0jdvkf52wy/sAQqze3OR08+8uNM7nHir1P46qBrwg2TL5EEtX+0WUho4BZ/nMpAgQVB6A==}
@@ -16219,6 +16263,28 @@ snapshots:
   '@standard-schema/spec@1.1.0': {}
 
   '@tanstack/history@1.162.0': {}
+
+  '@tanstack/query-core@5.100.14': {}
+
+  '@tanstack/query-persist-client-core@5.100.14':
+    dependencies:
+      '@tanstack/query-core': 5.100.14
+
+  '@tanstack/query-sync-storage-persister@5.100.14':
+    dependencies:
+      '@tanstack/query-core': 5.100.14
+      '@tanstack/query-persist-client-core': 5.100.14
+
+  '@tanstack/react-query-persist-client@5.100.14(@tanstack/react-query@5.100.14(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@tanstack/query-persist-client-core': 5.100.14
+      '@tanstack/react-query': 5.100.14(react@19.1.0)
+      react: 19.1.0
+
+  '@tanstack/react-query@5.100.14(react@19.1.0)':
+    dependencies:
+      '@tanstack/query-core': 5.100.14
+      react: 19.1.0
 
   '@tanstack/react-router@1.170.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
