@@ -1,93 +1,52 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Effect, type Schema } from 'effect'
-import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
-
-import { Suspense, useMemo, useState, type JSX } from 'react'
+import type { JSX } from 'react'
+import { useState } from 'react'
 import { cn } from 'react-kitchen-sink'
-import {
-  Awaited,
-  ItemList,
-  Menu,
-  pageLayoutStyles,
-  PageLoading,
-  type MenuItem,
-} from 'react-tundraish'
+import { AsyncErrorView, ItemList, Menu, pageLayoutStyles, type MenuItem } from 'react-tundraish'
 
 import { RevokeGrantDialog } from '../../../components/RevokeGrantDialog.tsx'
 import { formatInstant } from '../../../format-date.ts'
 import {
-  useGatekeeperEffect,
-  useGatekeeperEffectAction,
-  type GatekeeperEffectAction,
-} from '../../../gatekeeper-client.tsx'
-
-type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
-
-function AccessIndexScreen(): JSX.Element {
-  const runGatekeeper = useGatekeeperEffectAction()
-  const [refreshKey, setRefreshKey] = useState(0)
-
-  const grantsEffect = useMemo(
-    () => Effect.flatMap(GatekeeperHttpApiClient, (c) => c['access-management'].ListGrants()),
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- refreshKey is the intentional re-fetch trigger
-    [refreshKey]
-  )
-
-  const grantsPromise = useGatekeeperEffect(grantsEffect)
-
-  return (
-    <Suspense fallback={<PageLoading />}>
-      <Awaited promise={grantsPromise} resetKey={refreshKey}>
-        {(grants) => (
-          <AccessIndexBody
-            runGatekeeper={runGatekeeper}
-            grants={grants}
-            onRevoked={() => {
-              setRefreshKey((n) => n + 1)
-            }}
-          />
-        )}
-      </Awaited>
-    </Suspense>
-  )
-}
+  grantsQueryOptions,
+  useGrantsQuery,
+  useRevokeGrantMutation,
+  type Grant,
+} from '../../../queries.ts'
+import { ensureAuthedQuery } from '../../../router-loader.ts'
 
 interface AccessIndexBodyProps {
-  readonly runGatekeeper: GatekeeperEffectAction
   readonly grants: readonly Grant[]
-  readonly onRevoked: () => void
 }
 
-const AccessIndexBody = ({
-  runGatekeeper,
-  grants,
-  onRevoked,
-}: AccessIndexBodyProps): JSX.Element => {
+const formatError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+
+const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
   const navigate = useNavigate()
-  const [error, setError] = useState<string | null>(null)
+  const revokeMutation = useRevokeGrantMutation()
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null)
 
-  const revoke = async (id: string): Promise<void> => {
-    try {
-      await runGatekeeper(
-        Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-          c['access-management'].RevokeGrant({ path: { id } })
-        )
-      )
-      setConfirmRevokeId(null)
-      onRevoked()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
+  const errorMessage = revokeMutation.error === null ? null : formatError(revokeMutation.error)
+
+  const revoke = (id: string): void => {
+    revokeMutation.mutate(
+      { id },
+      {
+        onSuccess: () => {
+          setConfirmRevokeId(null)
+        },
+      }
+    )
   }
 
   const grantToRevoke = grants.find((g) => g.id === confirmRevokeId) ?? null
 
   return (
     <div className={pageLayoutStyles['page']}>
-      {error !== null ? (
-        <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
+      {errorMessage !== null ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
+          {errorMessage}
+        </p>
       ) : null}
 
       <ItemList
@@ -140,7 +99,7 @@ const AccessIndexBody = ({
       <RevokeGrantDialog
         clientId={grantToRevoke?.clientId ?? null}
         onConfirm={() => {
-          if (grantToRevoke !== null) void revoke(grantToRevoke.id)
+          if (grantToRevoke !== null) revoke(grantToRevoke.id)
         }}
         onCancel={() => {
           setConfirmRevokeId(null)
@@ -150,10 +109,24 @@ const AccessIndexBody = ({
   )
 }
 
+const AccessIndexScreen = (): JSX.Element => {
+  const { data: grants } = useGrantsQuery()
+  return <AccessIndexBody grants={grants} />
+}
+
 /**
  * The `/settings/gatekeeper/` landing file route — the owner-facing access
  * management index.
+ *
+ * The `/settings` gate is a React component (`RequireAuth`), not
+ * `beforeLoad`, so the loader fires before auth. {@link ensureAuthedQuery}
+ * skips the prefetch when the bearer token isn't ready yet (embedded first
+ * paint, before `transport.flushed`) and lets the in-component
+ * `useSuspenseQuery` — rendered only after `RequireAuth` passes — do the
+ * real read. Genuine read failures propagate to `errorComponent`.
  */
 export const Route = createFileRoute('/settings/gatekeeper/')({
+  loader: ({ context }) => ensureAuthedQuery(context, grantsQueryOptions(context.runAuthed)),
   component: AccessIndexScreen,
+  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Gatekeeper" />,
 })

@@ -16,9 +16,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/tes
  * SPLIT the provider stack across two homes:
  *
  *  - `<RootShell>` — the TanStack root-route `component`. Renders ONLY
- *    the slice client providers (gatekeeper → collector → fhir-r4 →
- *    apps) around `<Outlet />`. (Tunnel's client provider was dropped in
- *    the TanStack-Query migration — Issue #101 Phase 1.)
+ *    the slice client providers (collector → fhir-r4) around `<Outlet />`.
+ *    (Tunnel, apps, and gatekeeper client providers were dropped in the
+ *    TanStack-Query migration — Issue #107.)
  *  - `app-root.tsx`'s `InnerWrap` — passed to `<RouterProvider>`. Renders
  *    the auth/runtime/transport/sender stack (AuthTokenProvider, the two
  *    RuntimeProviders, TransportProvider, the two SenderForwarders)
@@ -89,7 +89,7 @@ vi.mock('react-kitchen-sink', () => ({
 // `get` must be an Effect; null-token short-circuits the startup prefetch.
 vi.mock('gatekeeper-react', () => ({
   authTokenRef: { get: Effect.succeed(null), changes: { pipe: () => ({}) } },
-  GatekeeperClientProvider: makePassthrough('GatekeeperClientProvider'),
+  GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('collector-react', () => ({
   CollectorClientProvider: makePassthrough('CollectorClientProvider'),
@@ -182,11 +182,7 @@ describe('RootShell mount lifecycle', () => {
   // outermost to innermost. The relocated auth/runtime/transport/sender
   // providers are NOT here — they live in `app-root.tsx`'s `InnerWrap`
   // and are covered by the "renderApp InnerWrap lifecycle" block below.
-  const ROOT_SHELL_PROVIDERS = [
-    'GatekeeperClientProvider',
-    'CollectorClientProvider',
-    'FhirR4ResourcesClientProvider',
-  ] as const
+  const ROOT_SHELL_PROVIDERS = ['CollectorClientProvider', 'FhirR4ResourcesClientProvider'] as const
 
   const buildTestRouter = (): ReturnType<typeof createRouter> => {
     // RootShell renders its own `<Outlet />`, so we mount it directly as
@@ -233,11 +229,11 @@ describe('RootShell mount lifecycle', () => {
     })
 
     // The outermost provider `RootShell` actually renders is
-    // `GatekeeperClientProvider`: if anything ABOVE the Outlet remounts
+    // `CollectorClientProvider`: if anything ABOVE the Outlet remounts
     // (or unmounts and never remounts), its event log diverges from a
     // single `['mount']`. Other providers might wobble in subtle
     // refactors, but the outer one is the regression-grade indicator.
-    expect(lifecycleEventsFor('GatekeeperClientProvider')).toEqual(['mount'])
+    expect(lifecycleEventsFor('CollectorClientProvider')).toEqual(['mount'])
 
     // Navigate to a sibling. If `RootShell` were promoted to a child
     // route whose path stops matching at `/b`, this would unmount the
@@ -255,7 +251,7 @@ describe('RootShell mount lifecycle', () => {
 
     // Pin: still exactly one mount, no unmounts of the outermost
     // provider.
-    expect(lifecycleEventsFor('GatekeeperClientProvider')).toEqual(['mount'])
+    expect(lifecycleEventsFor('CollectorClientProvider')).toEqual(['mount'])
   })
 
   test('no slice client provider unmounts or remounts across navigation', async () => {

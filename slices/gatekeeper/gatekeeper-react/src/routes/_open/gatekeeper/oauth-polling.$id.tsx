@@ -1,23 +1,27 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { type AuthorizationStatus, pollAuthorizationStatus } from 'gatekeeper-core/clients'
-
 import { Suspense, useEffect, useMemo, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
+import { cn, useStream } from 'react-kitchen-sink'
 import { Awaited, pageLayoutStyles } from 'react-tundraish'
 
-import { useGatekeeperStream } from '../../../gatekeeper-client.tsx'
+import { useGatekeeperRuntimeLayer } from '../../../router-context.ts'
 import pageLayout from '../../../styles/page-layout.module.css'
 import styles from './oauth-polling.module.css'
 
 /**
  * SPA route that subscribes to `pollAuthorizationStatus(id)` and renders
- * the latest emission. The polling endpoint is public — but the runner
- * pipes through the same `BearerToken` plumbing as authed routes (which
- * resolves to `null` here and adds no header).
+ * the latest emission. This is a long-lived `Stream` (it emits `pending`
+ * heartbeats until a terminal status), not a one-shot read, so it runs
+ * through `react-kitchen-sink`'s generic `useStream` against the
+ * composed `runtimeLayer` from router context — NOT a one-shot TanStack
+ * query. The polling endpoint is public, but the layer pipes through the
+ * same `BearerToken` plumbing as authed routes (which resolves to `null`
+ * here and adds no header).
  */
 function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
+  const runtimeLayer = useGatekeeperRuntimeLayer()
   const stream = useMemo(() => pollAuthorizationStatus(id), [id])
-  const statusPromise = useGatekeeperStream(stream)
+  const statusPromise = useStream(stream, runtimeLayer)
 
   return (
     <Suspense fallback={<PollingSpinner />}>

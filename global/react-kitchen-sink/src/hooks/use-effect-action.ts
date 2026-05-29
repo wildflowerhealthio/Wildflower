@@ -40,14 +40,10 @@ interface UseEffectActionOptions {
  *
  * @example
  * ```ts
- * const run = useEffectAction(useGatekeeperClientLayer())
+ * const run = useEffectAction(clientLayer)
  *
- * const revoke = async (id: string): Promise<void> => {
- *   await run(
- *     Effect.flatMap(GatekeeperHttpApiClient, (c) =>
- *       c['access-management'].RevokeGrant({ path: { id } })
- *     )
- *   )
+ * const remove = async (id: string): Promise<void> => {
+ *   await run(Effect.flatMap(ApiClient, (c) => c.delete({ path: { id } })))
  * }
  * ```
  */

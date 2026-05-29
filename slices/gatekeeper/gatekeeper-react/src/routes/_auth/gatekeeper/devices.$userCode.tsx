@@ -1,77 +1,44 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Effect, type Schema } from 'effect'
-import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-import type { Devices } from 'gatekeeper-core/http-api-definition'
-
-import { Suspense, useMemo, useState, type JSX } from 'react'
+import type { JSX } from 'react'
+import { useState } from 'react'
 import { cn } from 'react-kitchen-sink'
 import {
-  Awaited,
+  AsyncErrorView,
   Checkbox,
   Field,
   FieldDescription,
   pageLayoutStyles,
-  PageLoading,
 } from 'react-tundraish'
 
 import {
-  useGatekeeperEffect,
-  useGatekeeperEffectAction,
-  type GatekeeperEffectAction,
-} from '../../../gatekeeper-client.tsx'
+  deviceConsentQueryOptions,
+  useDeviceConsentMutation,
+  useDeviceConsentQuery,
+  type DeviceConsent,
+} from '../../../queries.ts'
+import { ensureAuthedQuery } from '../../../router-loader.ts'
 import pageLayout from '../../../styles/page-layout.module.css'
 import scopeListStyles from '../../../styles/scope-list.module.css'
 
-type DeviceConsent = Schema.Schema.Type<typeof Devices.DeviceConsentSchema>
-
-function DeviceConsentScreen({ userCode }: { readonly userCode: string }): JSX.Element {
-  const runGatekeeper = useGatekeeperEffectAction()
-  const navigate = useNavigate()
-
-  const consentEffect = useMemo(
-    () =>
-      Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-        c.devices.GetDeviceConsent({ path: { userCode } })
-      ),
-    [userCode]
-  )
-
-  const consentPromise = useGatekeeperEffect(consentEffect)
-
-  return (
-    <Suspense fallback={<PageLoading />}>
-      <Awaited promise={consentPromise} resetKey={userCode} errorTitle="Device Authorization">
-        {(consent) => (
-          <DeviceConsentForm
-            runGatekeeper={runGatekeeper}
-            consent={consent}
-            onDone={() => {
-              void navigate({ to: '/settings/gatekeeper' })
-            }}
-          />
-        )}
-      </Awaited>
-    </Suspense>
-  )
-}
+const formatError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
 
 interface DeviceConsentFormProps {
-  readonly runGatekeeper: GatekeeperEffectAction
   readonly consent: DeviceConsent
   readonly onDone: () => void
 }
 
-const DeviceConsentForm = ({
-  runGatekeeper,
-  consent,
-  onDone,
-}: DeviceConsentFormProps): JSX.Element => {
+const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Element => {
   const requestedScopes = consent.requestedScopes
+  const consentMutation = useDeviceConsentMutation()
   const [selectedScopes, setSelectedScopes] = useState<ReadonlySet<string>>(
     () => new Set(requestedScopes)
   )
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [denied, setDenied] = useState(false)
+
+  const submitting = consentMutation.isPending
+  const mutationError = consentMutation.error === null ? null : formatError(consentMutation.error)
+  const errorMessage = denied ? 'Authorization request was denied.' : mutationError
 
   const toggleScope = (scope: string): void => {
     setSelectedScopes((prev) => {
@@ -85,47 +52,34 @@ const DeviceConsentForm = ({
     })
   }
 
-  const handleApprove = async (): Promise<void> => {
-    setSubmitting(true)
-    setError(null)
-    try {
-      const result = await runGatekeeper(
-        Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-          c.devices.ApproveDeviceConsent({
-            path: { userCode: consent.userCode },
-            payload: { approvedScopes: [...selectedScopes] },
-          })
-        )
-      )
-      if (result.status === 'approved') {
-        onDone()
-      } else {
-        setError('Authorization request was denied.')
+  const handleApprove = (): void => {
+    setDenied(false)
+    consentMutation.mutate(
+      { kind: 'approve', userCode: consent.userCode, approvedScopes: [...selectedScopes] },
+      {
+        onSuccess: (result) => {
+          if (result.status === 'approved') {
+            onDone()
+          } else {
+            setDenied(true)
+          }
+        },
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setSubmitting(false)
-    }
+    )
   }
 
-  const handleDecline = async (): Promise<void> => {
-    setSubmitting(true)
-    setError(null)
-    try {
-      const result = await runGatekeeper(
-        Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-          c.devices.DenyDeviceConsent({ path: { userCode: consent.userCode } })
-        )
-      )
-      if (result.status === 'denied' || result.status === 'approved') {
-        onDone()
+  const handleDecline = (): void => {
+    setDenied(false)
+    consentMutation.mutate(
+      { kind: 'deny', userCode: consent.userCode },
+      {
+        onSuccess: (result) => {
+          if (result.status === 'denied' || result.status === 'approved') {
+            onDone()
+          }
+        },
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setSubmitting(false)
-    }
+    )
   }
 
   return (
@@ -161,8 +115,10 @@ const DeviceConsentForm = ({
         </div>
       </Field>
 
-      {error !== null ? (
-        <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
+      {errorMessage !== null ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
+          {errorMessage}
+        </p>
       ) : null}
 
       <div className={pageLayout['buttons']}>
@@ -170,9 +126,7 @@ const DeviceConsentForm = ({
           type="button"
           className="button-2 filled"
           disabled={selectedScopes.size === 0 || submitting}
-          onClick={() => {
-            void handleApprove()
-          }}
+          onClick={handleApprove}
         >
           {selectedScopes.size < requestedScopes.length
             ? `Approve (${selectedScopes.size}/${requestedScopes.length})`
@@ -182,9 +136,7 @@ const DeviceConsentForm = ({
           type="button"
           className="button-2 filled accent-red"
           disabled={submitting}
-          onClick={() => {
-            void handleDecline()
-          }}
+          onClick={handleDecline}
         >
           Decline
         </button>
@@ -193,10 +145,24 @@ const DeviceConsentForm = ({
   )
 }
 
+const DeviceConsentScreen = ({ userCode }: { readonly userCode: string }): JSX.Element => {
+  const navigate = useNavigate()
+  const { data: consent } = useDeviceConsentQuery(userCode)
+  return (
+    <DeviceConsentForm
+      consent={consent}
+      onDone={() => {
+        void navigate({ to: '/settings/gatekeeper' })
+      }}
+    />
+  )
+}
+
 /**
  * The `/gatekeeper/devices/$userCode` file route. Reads the typed
  * `$userCode` path param from the generated route via `Route.useParams()`
- * and hands it to the screen as a prop.
+ * and hands it to the screen as a prop. See {@link ensureAuthedQuery} for
+ * the loader's token-ready guard and error-propagation contract.
  */
 function DeviceConsentRoute(): JSX.Element {
   const { userCode } = Route.useParams()
@@ -204,5 +170,8 @@ function DeviceConsentRoute(): JSX.Element {
 }
 
 export const Route = createFileRoute('/_auth/gatekeeper/devices/$userCode')({
+  loader: ({ context, params }) =>
+    ensureAuthedQuery(context, deviceConsentQueryOptions(context.runAuthed, params.userCode)),
   component: DeviceConsentRoute,
+  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Device Authorization" />,
 })

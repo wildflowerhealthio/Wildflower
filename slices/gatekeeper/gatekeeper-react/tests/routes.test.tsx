@@ -1,7 +1,10 @@
+import { QueryClient } from '@tanstack/react-query'
 import { createRouter, type AnyRoute } from '@tanstack/react-router'
+import { Layer } from 'effect'
 import { GatekeeperPaths } from 'gatekeeper-core/page-paths'
 import { describe, expect, test } from 'vite-plus/test'
 
+import type { RunAuthed } from '../src/queries.ts'
 import { routeTree } from '../src/routeTree.gen.ts'
 
 // The slice generates its own `routeTree.gen.ts`. The `_auth`/`_open`
@@ -10,7 +13,17 @@ import { routeTree } from '../src/routeTree.gen.ts'
 // no URL segment, so the `fullPath`s are the slice-local URLs the macro tree
 // resolves. The `settings/` directory IS a real segment, so its routes carry
 // `/settings` into both their id and their fullPath.
-const router = createRouter({ routeTree })
+// Structural-only checks; no loader runs, so the context fields are inert.
+const stubRunAuthed: RunAuthed = () =>
+  Promise.reject(new Error('runAuthed not used in route tests'))
+const router = createRouter({
+  routeTree,
+  context: {
+    queryClient: new QueryClient(),
+    runAuthed: stubRunAuthed,
+    runtimeLayer: Layer.die('runtimeLayer not used in route tests'),
+  },
+})
 
 const routes = (): readonly AnyRoute[] =>
   Object.values(router.routesById).filter((route) => route.id !== '__root__')

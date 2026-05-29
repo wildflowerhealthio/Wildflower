@@ -1,27 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Effect, type Schema } from 'effect'
-import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
-
-import { Suspense, useMemo, useState, type JSX } from 'react'
+import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import {
-  Awaited,
-  pageLayoutStyles,
-  PageLoading,
-  StatusBadge,
-  type StatusTone,
-} from 'react-tundraish'
+import { AsyncErrorView, pageLayoutStyles, StatusBadge, type StatusTone } from 'react-tundraish'
 
 import { formatInstant } from '../../../format-date.ts'
 import {
-  useGatekeeperEffect,
-  useGatekeeperEffectAction,
-  type GatekeeperEffectAction,
-} from '../../../gatekeeper-client.tsx'
+  requestQueryOptions,
+  useDecideRequestMutation,
+  useRequestQuery,
+  type HttpRequest,
+} from '../../../queries.ts'
+import { ensureAuthedQuery } from '../../../router-loader.ts'
 import pageLayout from '../../../styles/page-layout.module.css'
-
-type HttpRequest = Schema.Schema.Type<typeof AccessManagement.HttpRequestSchema>
 
 const statusTone = (status: string): StatusTone => {
   if (status === 'approved') return 'success'
@@ -30,69 +20,20 @@ const statusTone = (status: string): StatusTone => {
   return 'neutral'
 }
 
-function RequestDetailScreen({ id }: { readonly id: string }): JSX.Element {
-  const runGatekeeper = useGatekeeperEffectAction()
-  const [refreshKey, setRefreshKey] = useState(0)
-
-  const requestEffect = useMemo(
-    () =>
-      Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-        c['access-management'].GetRequest({ path: { id } })
-      ),
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- refreshKey is the intentional re-fetch trigger
-    [id, refreshKey]
-  )
-
-  const requestPromise = useGatekeeperEffect(requestEffect)
-
-  return (
-    <Suspense fallback={<PageLoading />}>
-      <Awaited promise={requestPromise} resetKey={`${id}:${refreshKey}`} errorTitle="Not Found">
-        {(request) => (
-          <RequestDetailBody
-            runGatekeeper={runGatekeeper}
-            request={request}
-            id={id}
-            onDecided={() => {
-              setRefreshKey((n) => n + 1)
-            }}
-          />
-        )}
-      </Awaited>
-    </Suspense>
-  )
-}
+const formatError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
 
 interface RequestDetailBodyProps {
-  readonly runGatekeeper: GatekeeperEffectAction
   readonly request: HttpRequest
   readonly id: string
-  readonly onDecided: () => void
 }
 
-const RequestDetailBody = ({
-  runGatekeeper,
-  request,
-  id,
-  onDecided,
-}: RequestDetailBodyProps): JSX.Element => {
-  const [error, setError] = useState<string | null>(null)
+const RequestDetailBody = ({ request, id }: RequestDetailBodyProps): JSX.Element => {
+  const decideMutation = useDecideRequestMutation()
+  const errorMessage = decideMutation.error === null ? null : formatError(decideMutation.error)
 
-  const decide = async (status: 'approved' | 'rejected'): Promise<void> => {
-    try {
-      const operation =
-        status === 'approved'
-          ? Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-              c['access-management'].ApproveRequest({ path: { id } })
-            )
-          : Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-              c['access-management'].DenyRequest({ path: { id } })
-            )
-      await runGatekeeper(operation)
-      onDecided()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
+  const decide = (decision: 'approved' | 'rejected'): void => {
+    decideMutation.mutate({ id, decision })
   }
 
   return (
@@ -130,8 +71,9 @@ const RequestDetailBody = ({
           <button
             type="button"
             className="button-2 filled"
+            disabled={decideMutation.isPending}
             onClick={() => {
-              void decide('approved')
+              decide('approved')
             }}
           >
             Approve
@@ -139,8 +81,9 @@ const RequestDetailBody = ({
           <button
             type="button"
             className="button-2 filled accent-red"
+            disabled={decideMutation.isPending}
             onClick={() => {
-              void decide('rejected')
+              decide('rejected')
             }}
           >
             Reject
@@ -148,11 +91,18 @@ const RequestDetailBody = ({
         </div>
       ) : null}
 
-      {error !== null ? (
-        <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
+      {errorMessage !== null ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
+          {errorMessage}
+        </p>
       ) : null}
     </div>
   )
+}
+
+const RequestDetailScreen = ({ id }: { readonly id: string }): JSX.Element => {
+  const { data: request } = useRequestQuery(id)
+  return <RequestDetailBody request={request} id={id} />
 }
 
 /**
@@ -164,7 +114,8 @@ const RequestDetailBody = ({
  * the bare `/requests/` segment — only the route id carries `requests_`.
  *
  * Reads the typed `$id` path param via `Route.useParams()` and hands it to
- * the screen as a prop.
+ * the screen as a prop. See {@link ensureAuthedQuery} for the loader's
+ * token-ready guard and error-propagation contract.
  */
 function RequestDetailRoute(): JSX.Element {
   const { id } = Route.useParams()
@@ -172,5 +123,8 @@ function RequestDetailRoute(): JSX.Element {
 }
 
 export const Route = createFileRoute('/settings/gatekeeper/requests_/$id')({
+  loader: ({ context, params }) =>
+    ensureAuthedQuery(context, requestQueryOptions(context.runAuthed, params.id)),
   component: RequestDetailRoute,
+  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Not Found" />,
 })

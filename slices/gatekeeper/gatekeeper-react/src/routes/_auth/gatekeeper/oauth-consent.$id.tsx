@@ -1,47 +1,29 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Effect } from 'effect'
-import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-import { Suspense, useMemo, type JSX } from 'react'
-import { Awaited, PageLoading } from 'react-tundraish'
+import type { JSX } from 'react'
+import { AsyncErrorView } from 'react-tundraish'
 
-import { useGatekeeperEffect, useGatekeeperEffectAction } from '../../../gatekeeper-client.tsx'
+import { oauthConsentQueryOptions, useOAuthConsentQuery } from '../../../queries.ts'
+import { ensureAuthedQuery } from '../../../router-loader.ts'
 import { OAuthConsentForm } from '../../../screens/oauth-consent/oauth-consent-form.tsx'
 
-function OAuthConsentScreen({ id }: { readonly id: string }): JSX.Element {
-  const runGatekeeper = useGatekeeperEffectAction()
+const OAuthConsentScreen = ({ id }: { readonly id: string }): JSX.Element => {
   const navigate = useNavigate()
-
-  const consentEffect = useMemo(
-    () =>
-      Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-        c['oauth-consent'].GetOAuthConsent({ path: { id } })
-      ),
-    [id]
-  )
-
-  const consentPromise = useGatekeeperEffect(consentEffect)
-
+  const { data: consent } = useOAuthConsentQuery(id)
   return (
-    <Suspense fallback={<PageLoading />}>
-      <Awaited promise={consentPromise} resetKey={id} errorTitle="Authorization Request">
-        {(consent) => (
-          <OAuthConsentForm
-            runGatekeeper={runGatekeeper}
-            consent={consent}
-            onDone={() => {
-              void navigate({ to: '/settings/gatekeeper' })
-            }}
-          />
-        )}
-      </Awaited>
-    </Suspense>
+    <OAuthConsentForm
+      consent={consent}
+      onDone={() => {
+        void navigate({ to: '/settings/gatekeeper' })
+      }}
+    />
   )
 }
 
 /**
  * The `/gatekeeper/oauth-consent/$id` file route. Reads the typed `$id`
  * path param from the generated route via `Route.useParams()` and hands it
- * to the screen as a prop.
+ * to the screen as a prop. See {@link ensureAuthedQuery} for the loader's
+ * token-ready guard and error-propagation contract.
  */
 function OAuthConsentRoute(): JSX.Element {
   const { id } = Route.useParams()
@@ -49,5 +31,8 @@ function OAuthConsentRoute(): JSX.Element {
 }
 
 export const Route = createFileRoute('/_auth/gatekeeper/oauth-consent/$id')({
+  loader: ({ context, params }) =>
+    ensureAuthedQuery(context, oauthConsentQueryOptions(context.runAuthed, params.id)),
   component: OAuthConsentRoute,
+  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Authorization Request" />,
 })

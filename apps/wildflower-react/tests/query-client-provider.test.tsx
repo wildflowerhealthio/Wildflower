@@ -27,7 +27,7 @@ const { Passthrough } = vi.hoisted(() => ({
 // Null-token ref short-circuits the eager startup prefetch.
 vi.mock('gatekeeper-react', () => ({
   authTokenRef: { get: Effect.succeed(null), changes: { pipe: () => ({}) } },
-  GatekeeperClientProvider: Passthrough,
+  GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('react-kitchen-sink', () => ({ AuthTokenProvider: Passthrough }))
 vi.mock('collector-react', () => ({

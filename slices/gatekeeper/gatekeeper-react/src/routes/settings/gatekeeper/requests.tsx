@@ -1,79 +1,32 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Effect, type Schema } from 'effect'
-import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
-import { Suspense, useMemo, useState, type JSX } from 'react'
+import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Awaited, ItemList, pageLayoutStyles, PageLoading } from 'react-tundraish'
+import { AsyncErrorView, ItemList, pageLayoutStyles } from 'react-tundraish'
 
 import { formatInstant } from '../../../format-date.ts'
 import {
-  useGatekeeperEffect,
-  useGatekeeperEffectAction,
-  type GatekeeperEffectAction,
-} from '../../../gatekeeper-client.tsx'
+  requestsQueryOptions,
+  useDecideRequestMutation,
+  useRequestsQuery,
+  type HttpRequest,
+} from '../../../queries.ts'
+import { ensureAuthedQuery } from '../../../router-loader.ts'
 import pageLayout from '../../../styles/page-layout.module.css'
 
-type HttpRequest = Schema.Schema.Type<typeof AccessManagement.HttpRequestSchema>
-
-function RequestsListScreen(): JSX.Element {
-  const runGatekeeper = useGatekeeperEffectAction()
-  const [refreshKey, setRefreshKey] = useState(0)
-
-  const requestsEffect = useMemo(
-    () => Effect.flatMap(GatekeeperHttpApiClient, (c) => c['access-management'].ListRequests()),
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- refreshKey is the intentional re-fetch trigger
-    [refreshKey]
-  )
-
-  const requestsPromise = useGatekeeperEffect(requestsEffect)
-
-  return (
-    <Suspense fallback={<PageLoading />}>
-      <Awaited promise={requestsPromise} resetKey={refreshKey}>
-        {(requests) => (
-          <RequestsListBody
-            runGatekeeper={runGatekeeper}
-            requests={requests}
-            onDecided={() => {
-              setRefreshKey((n) => n + 1)
-            }}
-          />
-        )}
-      </Awaited>
-    </Suspense>
-  )
-}
+const formatError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
 
 interface RequestsListBodyProps {
-  readonly runGatekeeper: GatekeeperEffectAction
   readonly requests: readonly HttpRequest[]
-  readonly onDecided: () => void
 }
 
-const RequestsListBody = ({
-  runGatekeeper,
-  requests,
-  onDecided,
-}: RequestsListBodyProps): JSX.Element => {
+const RequestsListBody = ({ requests }: RequestsListBodyProps): JSX.Element => {
   const navigate = useNavigate()
-  const [error, setError] = useState<string | null>(null)
+  const decideMutation = useDecideRequestMutation()
+  const errorMessage = decideMutation.error === null ? null : formatError(decideMutation.error)
 
-  const decide = async (id: string, status: 'approved' | 'rejected'): Promise<void> => {
-    try {
-      const operation =
-        status === 'approved'
-          ? Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-              c['access-management'].ApproveRequest({ path: { id } })
-            )
-          : Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-              c['access-management'].DenyRequest({ path: { id } })
-            )
-      await runGatekeeper(operation)
-      onDecided()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
+  const decide = (id: string, decision: 'approved' | 'rejected'): void => {
+    decideMutation.mutate({ id, decision })
   }
 
   const toItem = (
@@ -100,9 +53,10 @@ const RequestsListBody = ({
           <button
             type="button"
             className="button-2 filled"
+            disabled={decideMutation.isPending}
             onClick={(e) => {
               e.stopPropagation()
-              void decide(r.id, 'approved')
+              decide(r.id, 'approved')
             }}
           >
             Approve
@@ -110,9 +64,10 @@ const RequestsListBody = ({
           <button
             type="button"
             className="button-2 filled accent-red"
+            disabled={decideMutation.isPending}
             onClick={(e) => {
               e.stopPropagation()
-              void decide(r.id, 'rejected')
+              decide(r.id, 'rejected')
             }}
           >
             Reject
@@ -127,8 +82,10 @@ const RequestsListBody = ({
 
   return (
     <div className={pageLayoutStyles['page']}>
-      {error !== null ? (
-        <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
+      {errorMessage !== null ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
+          {errorMessage}
+        </p>
       ) : null}
       <ItemList title="In-Flight" items={pending.map((r) => toItem(r))} />
       <ItemList title="Approved" items={approved.map((r) => toItem(r))} />
@@ -137,10 +94,18 @@ const RequestsListBody = ({
   )
 }
 
+const RequestsListScreen = (): JSX.Element => {
+  const { data: requests } = useRequestsQuery()
+  return <RequestsListBody requests={requests} />
+}
+
 /**
  * The `/settings/gatekeeper/requests` file route — the incoming HTTP
- * request history.
+ * request history. See {@link ensureAuthedQuery} for the loader's
+ * token-ready guard and error-propagation contract.
  */
 export const Route = createFileRoute('/settings/gatekeeper/requests')({
+  loader: ({ context }) => ensureAuthedQuery(context, requestsQueryOptions(context.runAuthed)),
   component: RequestsListScreen,
+  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Requests" />,
 })
