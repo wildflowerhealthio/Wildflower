@@ -1,7 +1,7 @@
 import { Arbitrary, Effect, Schema } from 'effect'
 import { BridgeTransport, TestPlatformAdapterLayer } from 'effect-messaging-core'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
+import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 import { BrowserSnifferBridge } from '../src/bridge.ts'
 import {
@@ -97,6 +97,10 @@ const runHost = async (
   layer: ReturnType<typeof BrowserSnifferBridge.Host.ReceiverLayer>
 ): Promise<void> => {
   const { layer: adapterLayer } = TestPlatformAdapterLayer.make({ initialMessages: inputs })
+  // Negative-path tests below intentionally feed malformed wire input, which
+  // the bridge logs at WARN. Capture (and discard) those logs so the test
+  // output stays quiet.
+  const { layer: capturingLoggerLayer } = LoggingLayerTest.make()
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
@@ -106,7 +110,7 @@ const runHost = async (
           side: 'Host',
         })
         yield* transport.flushed
-      }).pipe(Effect.provide(adapterLayer))
+      }).pipe(Effect.provide(adapterLayer), Effect.provide(capturingLoggerLayer))
     )
   )
 }

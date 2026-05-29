@@ -239,16 +239,26 @@ describe('routing handlers (RequestSniffableWebView / Open)', () => {
   })('drops non-http(s) URIs without touching the router (defense-in-depth)', ({ uri }) => {
     const { seenHosts } = renderProvider()
     const handlers = requireLastHandlers()
+    // The defense-in-depth branch warns on every iteration. Capture the
+    // logs into the sink rather than letting them spam Jest's stdout, and
+    // assert the warn fired so the contract stays verified.
+    const { layer, logSink } = LoggingLayerTest.make()
 
     runHandlerSync(
-      handlers.RequestSniffableWebView({
-        _tag: 'RequestSniffableWebView',
-        source: { _tag: 'Uri', uri },
-      })
+      handlers
+        .RequestSniffableWebView({
+          _tag: 'RequestSniffableWebView',
+          source: { _tag: 'Uri', uri },
+        })
+        .pipe(Effect.provide(layer))
     )
 
     expect(mockHarness.routerPush).not.toHaveBeenCalled()
     expect(seenHosts[seenHosts.length - 1]?.pendingSource).toBeNull()
+    const warn = logSink.find((entry) => entry.level === 'WARN')
+    expect(warn?.message).toContain(
+      'collector-expo: refusing non-http(s) RequestSniffableWebView URI'
+    )
   })
 
   it.each([['http://example.com'], ['HTTP://example.com'], ['HtTpS://EXAMPLE.com']])(
