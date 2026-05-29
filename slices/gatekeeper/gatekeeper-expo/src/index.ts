@@ -5,7 +5,9 @@ export {
   type NotificationTap,
 } from './hooks/use-notification-tap-handler.ts'
 
-const GatekeeperBridgeExpo = {
+const GatekeeperBridgeExpo: {
+  readonly useHostBinding: typeof useGatekeeperHostBinding
+} = {
   useHostBinding: useGatekeeperHostBinding,
 }
 
