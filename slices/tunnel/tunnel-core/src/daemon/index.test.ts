@@ -25,7 +25,7 @@
 import { makeAdapter } from '@livestore/adapter-node'
 import type { Store } from '@livestore/livestore'
 import { createStorePromise, makeSchema, State } from '@livestore/livestore'
-import { Deferred, Effect, Layer, Queue, type Scope, Stream } from 'effect'
+import { Deferred, Effect, Layer, LogLevel, Queue, type Scope, Stream } from 'effect'
 import fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import * as LocalHttpServerLivestore from 'local-http-server-core/livestore'
@@ -104,6 +104,11 @@ const makeFreshStore = (): Promise<Store<Schema, object>> =>
     adapter: makeAdapter({ storage: { type: 'in-memory' } }),
     schema: composedSchema,
     storeId: `tunnel-daemon-it-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    // LiveStore defaults to LogLevel.Debug in a non-production env, which
+    // floods the test output with one `LiveStore shutdown complete` line per
+    // store teardown (this suite creates a fresh store per property run).
+    // Pin to Info to keep genuine warnings/errors visible without the noise.
+    logLevel: LogLevel.Info,
   })
 
 const configId = (c: ResolvedConfig): string =>

@@ -1,6 +1,6 @@
 import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise, type Store } from '@livestore/livestore'
-import { Effect } from 'effect'
+import { Effect, LogLevel } from 'effect'
 import { afterEach, beforeEach, expect, test } from 'vite-plus/test'
 import { seedSigningKey } from '../src/contexts/seed-signing-key.ts'
 import { GatekeeperStore, schema, SigningKey } from '../src/livestore/index.ts'
@@ -11,6 +11,10 @@ beforeEach(async () => {
     adapter: makeAdapter({ storage: { type: 'in-memory' } }),
     schema,
     storeId: `seed-signing-key-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    // LiveStore defaults to LogLevel.Debug in a non-production env, emitting
+    // a `LiveStore shutdown complete` line on teardown. Pin to Info to keep
+    // genuine warnings/errors visible without the debug noise.
+    logLevel: LogLevel.Info,
   })
 })
 

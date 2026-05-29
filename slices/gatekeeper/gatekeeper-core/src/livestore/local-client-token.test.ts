@@ -1,5 +1,6 @@
 import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise } from '@livestore/livestore'
+import { LogLevel } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { events, LocalClientToken, schema } from './index.ts'
@@ -10,6 +11,10 @@ describe('LocalClientToken.queries.current$', () => {
       adapter: makeAdapter({ storage: { type: 'in-memory' } }),
       schema,
       storeId: `sanity-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      // LiveStore defaults to LogLevel.Debug in a non-production env, emitting
+      // a `LiveStore shutdown complete` line on teardown. Pin to Info to keep
+      // genuine warnings/errors visible without the debug noise.
+      logLevel: LogLevel.Info,
     })
     try {
       expect(store.query(LocalClientToken.queries.current$)).toEqual({ value: null })
@@ -23,6 +28,10 @@ describe('LocalClientToken.queries.current$', () => {
       adapter: makeAdapter({ storage: { type: 'in-memory' } }),
       schema,
       storeId: `sanity-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      // LiveStore defaults to LogLevel.Debug in a non-production env, emitting
+      // a `LiveStore shutdown complete` line on teardown. Pin to Info to keep
+      // genuine warnings/errors visible without the debug noise.
+      logLevel: LogLevel.Info,
     })
     try {
       store.commit(events.localClientTokenSet({ value: 'jwt.local.client.token' }))
@@ -39,6 +48,10 @@ describe('LocalClientToken.queries.current$', () => {
       adapter: makeAdapter({ storage: { type: 'in-memory' } }),
       schema,
       storeId: `sanity-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      // LiveStore defaults to LogLevel.Debug in a non-production env, emitting
+      // a `LiveStore shutdown complete` line on teardown. Pin to Info to keep
+      // genuine warnings/errors visible without the debug noise.
+      logLevel: LogLevel.Info,
     })
     try {
       store.commit(events.localClientTokenSet({ value: 'first' }))
