@@ -1,3 +1,4 @@
+import { HttpClient, HttpClientResponse } from '@effect/platform'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -6,6 +7,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { Effect, Layer } from 'effect'
 import { useEffect, type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -115,6 +117,21 @@ vi.mock('../src/bridges/apps-sender-forwarder.tsx', () => ({
 vi.mock('telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },
+}))
+// `renderApp` builds the router context's `runAuthed` via
+// `buildRunAuthed(authTokenRef, webHttpClientLayer)`. The real
+// `webHttpClientLayer` pulls `telemetry-react` → `telemetry-web`'s
+// `webTelemetryLayerFromEnv`, which the `telemetry-web` mock above does
+// NOT provide (and which is not this block's concern — no loader invokes
+// `runAuthed`). Stub the layer to a bare `HttpClient` so the authed
+// runtime constructs without dragging telemetry/fetch into the harness.
+vi.mock('telemetry-react', () => ({
+  webHttpClientLayer: Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request) =>
+      Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 })))
+    )
+  ),
 }))
 // `renderApp` now also wraps the tree in `<QueryClientPersistProvider>`
 // (the app-wide React Query client + localStorage persister). Its

@@ -4,6 +4,18 @@ A running log of non-obvious insights discovered during agent sessions. Triage i
 
 <!-- Append new entries below this line -->
 
+## Slice HTTP transport is uniform across wildflower-react entries; the `BridgeTransport` is messaging-only
+
+**Discovered during**: ruthmarks/router-context-authed-runner — adding a `runAuthed` runner to the TanStack Router context
+**Learning**: All three `wildflower-react` entries (`main-web`, `main-single-web`, `main-embedded`) reach the network the same way — every slice client layer (`gatekeeper`, `collector`, `fhir-r4`, `tunnel`, `apps`) provides `webHttpClientLayer` (= `FetchHttpClient.layer` + web telemetry, `slices/telemetry/telemetry-react/src/web-http-client-layer.ts`) at the bottom of its composed layer (see `apps/wildflower-react/src/session/use-all-clients-layer.ts` and each slice's `use-*-client-layer.ts`). The embedded WebView build differs ONLY in its `BridgeTransport` (`apps/wildflower-react/src/bridges/transport-provider.tsx`), which carries navigation / gatekeeper / collector / logging **messages** — NOT HTTP. Slice HTTP always goes over browser `fetch` against `baseUrl: '/'`. So anything that needs to supply the shared HTTP environment outside React (e.g. an authed `ManagedRuntime` for route loaders) can use one `webHttpClientLayer` for every entry; no per-entry HTTP switch is needed. The `BearerToken` service (`global/kitchen-sink/src/auth-token`) is a `Subscribable<string|null>`; `Layer.succeed(BearerToken, authTokenRef)` reads the live token per request via `Subscribable.get` inside each client's `transformClient`, so a token rotation surfaces without rebuilding the runtime.
+**Suggested destination**: apps/ architecture notes, or a wildflower-react routing/runtime reference
+
+## Adding a `telemetry-react` import to `renderApp` breaks tests that mock only `telemetry-web`
+
+**Discovered during**: ruthmarks/router-context-authed-runner
+**Learning**: `apps/wildflower-react/tests/{query-client-provider,root-shell}.test.tsx` drive the real `renderApp` and `vi.mock` every slice provider/bridge down to passthroughs, including `telemetry-web` (just `ErrorBoundary` + `Sentry`). The moment `app-root.tsx` statically imports `webHttpClientLayer` from `telemetry-react`, those tests fail at module-eval with `No "webTelemetryLayerFromEnv" export is defined on the "telemetry-web" mock` — because `telemetry-react`'s real `web-http-client-layer.ts` calls `webTelemetryLayerFromEnv()` from `telemetry-web` at module top-level, and the partial mock omits it. Fix: add `vi.mock('telemetry-react', () => ({ webHttpClientLayer: Layer.succeed(HttpClient.HttpClient, HttpClient.make(() => Effect.succeed(...))) }))` to those tests — a bare stub `HttpClient` layer so the authed `ManagedRuntime` constructs without dragging telemetry/fetch into the harness (no loader invokes `runAuthed` in those tests). General pattern: when `renderApp` gains a transitive import of a telemetry-coupled module, the `renderApp`-driving tests need a matching stub mock.
+**Suggested destination**: docs/Testing/Unit Testing How-To.md
+
 ## `PersistQueryClientProvider` + `<StrictMode>` deadlocks testing-library `act`/`waitFor`
 
 **Discovered during**: ruthmarks/mount-query-client-persist-provider

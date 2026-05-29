@@ -2,6 +2,7 @@ import { createRouter, type RouterHistory, RouterProvider } from '@tanstack/reac
 import { StrictMode, type ComponentType, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ErrorBoundary } from 'react-tundraish'
+import { webHttpClientLayer } from 'telemetry-react'
 import { Sentry } from 'telemetry-web'
 
 import { AppsRuntimeProvider } from 'apps-react'
@@ -11,7 +12,7 @@ import { AuthTokenProvider } from 'react-kitchen-sink'
 import { AppsSenderForwarder } from './bridges/apps-sender-forwarder.tsx'
 import { CollectorSenderForwarder } from './bridges/collector-sender-forwarder.tsx'
 import { QueryClientPersistProvider } from './bridges/query-client-persist-provider.tsx'
-import { buildQueryClient } from './bridges/router-context.ts'
+import { buildQueryClient, buildRunAuthed } from './bridges/router-context.ts'
 import { routeTree } from './routeTree.gen.ts'
 
 /**
@@ -56,10 +57,37 @@ interface RenderAppOptions {
  * (`RootShell`) rather than wrapping `<RouterProvider>`, because
  * TanStack's `<RouterProvider>` does not accept children — child routes
  * are mounted via the root's `<Outlet />`.
+ *
+ * Alongside the `QueryClient`, a long-lived authed runner is built via
+ * {@link buildRunAuthed} and exposed to the router context as
+ * `runAuthed`. Route `loader`s run outside React, so they can't use the
+ * React-provided bearer token or the React-composed slice client layers;
+ * `runAuthed` supplies the shared `BearerToken` + `HttpClient.HttpClient`
+ * environment (the same `authTokenRef` the React tree reads through
+ * `<AuthTokenProvider>`, and the same `webHttpClientLayer` every slice
+ * client uses), while each slice loader still provides its own client
+ * layer. The runtime is app-scoped and lives for the page's lifetime —
+ * there is no `renderApp` teardown hook to dispose against, which matches
+ * the page-lifetime `authTokenRef` it closes over.
+ *
+ * @remarks
+ * The HTTP transport is the same `webHttpClientLayer` (browser `fetch` +
+ * web telemetry) for every entry point. The embedded WebView build
+ * differs only in its `BridgeTransport` (navigation / gatekeeper /
+ * collector / logging messaging), NOT in how slice HTTP clients reach the
+ * network — those always go over `fetch` against `baseUrl: '/'`. So a
+ * single authed runtime layer is correct across `main-web`,
+ * `main-single-web`, and `main-embedded`.
  */
 const renderApp = ({ history, TransportProvider, entry }: RenderAppOptions): void => {
   const queryClient = buildQueryClient()
-  const router = createRouter({ routeTree, history, context: { queryClient } })
+  // Long-lived authed runner for route loaders: provides `BearerToken`
+  // (from the page-lifetime `authTokenRef` the React tree also reads) over
+  // the same `webHttpClientLayer` every slice client uses. The runtime is
+  // app-scoped and lives for the page's lifetime; `renderApp` has no
+  // teardown hook to dispose against, which matches `authTokenRef`.
+  const { runAuthed } = buildRunAuthed(authTokenRef, webHttpClientLayer)
+  const router = createRouter({ routeTree, history, context: { queryClient, runAuthed } })
   const container = document.getElementById('root')
   if (container === null) {
     throw new Error('root element not found')

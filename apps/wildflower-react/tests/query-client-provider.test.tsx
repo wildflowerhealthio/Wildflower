@@ -1,3 +1,4 @@
+import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient, useQueryClient } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -7,6 +8,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { Effect, Layer } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -137,6 +139,21 @@ const { capturedQueryClients, LeafQueryClient } = vi.hoisted(() => {
   return { capturedQueryClients: captured, LeafQueryClient: Leaf }
 })
 
+// `renderApp` now builds an authed `ManagedRuntime` via
+// `buildRunAuthed(authTokenRef, webHttpClientLayer)` for the router
+// context's `runAuthed`. The real `webHttpClientLayer` pulls
+// `telemetry-react` → `telemetry-web`'s `webTelemetryLayerFromEnv`, none
+// of which is this test's concern (no loader invokes `runAuthed` here).
+// Stub the layer down to a bare `HttpClient` so the runtime constructs
+// without dragging telemetry/fetch into the harness.
+vi.mock('telemetry-react', () => ({
+  webHttpClientLayer: Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request) =>
+      Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 })))
+    )
+  ),
+}))
 vi.mock('react-kitchen-sink', () => ({ AuthTokenProvider: Passthrough }))
 vi.mock('gatekeeper-react', () => ({
   authTokenRef: { get: () => null, subscribe: () => () => {} },
