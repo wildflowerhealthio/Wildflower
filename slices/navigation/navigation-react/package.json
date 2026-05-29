@@ -27,6 +27,7 @@
     "test": "vp test --passWithNoTests"
   },
   "devDependencies": {
+    "@tanstack/react-router": "catalog:",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.0",
     "@types/react": "catalog:",
@@ -39,18 +40,17 @@
     "navigation-core": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-router": "catalog:",
     "shared-structures-react": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@tanstack/react-router": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "effect-messaging-react": "workspace:*",
     "navigation-core": "workspace:*",
     "react": "catalog:",
-    "react-router": "catalog:",
     "shared-structures-react": "workspace:*"
   }
 }

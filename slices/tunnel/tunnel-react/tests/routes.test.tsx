@@ -1,46 +1,26 @@
-import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { createRouter, type AnyRoute } from '@tanstack/react-router'
 import { describe, expect, test } from 'vite-plus/test'
 
-// Read source as text rather than importing — importing the routes
-// module pulls in every screen's transitive deps, which fail to resolve
-// under vitest without a rebuilt workspace dist. Mirrors the same
-// drift-test technique used by gatekeeper-react/tests/routes.test.tsx.
-const routesSource = readFileSync(
-  resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'routes.tsx'),
-  'utf8'
-)
+import { routeTree } from '../src/routeTree.gen.ts'
 
-// Captures the fragment's contents as `block`; iterate matches to pull
-// out each declared <Route path="…">. The drift test asserts the
-// fragment contains the documented `/settings/tunnel` mount point.
-const declareFragmentPaths = (fragmentName: string): readonly string[] => {
-  const fragmentRegex = new RegExp(`const\\s+${fragmentName}[^=]*=\\s*\\(([\\s\\S]*?)^\\)`, 'm')
-  const fragmentMatch = fragmentRegex.exec(routesSource)
-  if (fragmentMatch === null) {
-    throw new Error(`Could not locate ${fragmentName} block in routes.tsx`)
-  }
-  const block = fragmentMatch[1] ?? ''
-  const paths: string[] = []
-  const pathRegex = /<Route\b[^>]*\bpath="([^"]+)"/g
-  let pathMatch: RegExpExecArray | null
-  while ((pathMatch = pathRegex.exec(block)) !== null) {
-    paths.push(pathMatch[1] ?? '')
-  }
-  return paths
-}
+// The slice generates its own `routeTree.gen.ts`. `settings/` is a real
+// path segment (not a pathless bucket), so the id and the resolved
+// `fullPath` both carry `/settings`. In the app the same file mounts
+// under the app's `/settings` route, producing the identical id.
+const router = createRouter({ routeTree })
 
-const settingsRoutePaths = declareFragmentPaths('tunnelSettingsRoutesFragment')
+const routes = (): readonly AnyRoute[] =>
+  Object.values(router.routesById).filter((route) => route.id !== '__root__')
 
-describe('tunnelSettingsRoutesFragment', () => {
-  test('mounts /settings/tunnel', () => {
-    expect(settingsRoutePaths).toContain('/settings/tunnel')
+describe('tunnel routes', () => {
+  test('the generated tree exposes exactly the tunnel settings route', () => {
+    const ids = routes().map((route) => route.id)
+    expect(ids).toEqual(['/settings/tunnel/'])
   })
 
-  test('declares exactly one route (the screen)', () => {
-    // The slice's full surface is one settings page. If the count grows,
-    // the test should be expanded deliberately rather than silently.
-    expect(settingsRoutePaths.length).toBe(1)
+  test('the settings route resolves at /settings/tunnel/', () => {
+    // The screen is an index route, so the resolved fullPath keeps the
+    // trailing slash.
+    expect(routes()[0]?.fullPath).toBe('/settings/tunnel/')
   })
 })

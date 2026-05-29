@@ -1,4 +1,3 @@
-export { tunnelSettingsRoutesFragment } from './routes.tsx'
 export { tunnelSettingsItemsFragment } from './settings-fragments.ts'
 
 export { TunnelClientProvider, type TunnelClientProviderProps } from './tunnel-client-provider.tsx'
@@ -16,5 +15,3 @@ export {
 } from './client/tunnel-client.ts'
 
 export { TunnelToggle, type TunnelToggleProps } from './components/TunnelToggle.tsx'
-
-export { TunnelScreen } from './screens/tunnel-screen.tsx'

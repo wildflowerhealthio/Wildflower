@@ -1,3 +1,4 @@
+import { useNavigate, useRouter } from '@tanstack/react-router'
 import { AppsBridge } from 'apps-core/bridge'
 import { useAppsWebReceiverLayer } from 'apps-react'
 import { CollectorBridge } from 'collector-fundamentals/bridge'
@@ -10,7 +11,8 @@ import { gatekeeperWebReceiverLayer } from 'gatekeeper-react/web-bridge'
 import { NavigationBridge } from 'navigation-core'
 import { makeNavigationWebReceiverLayer, NavigationBridgeHandler } from 'navigation-react'
 import { type JSX, type ReactNode, Suspense, useEffect, useRef, useState } from 'react'
-import { Await, useNavigate } from 'react-router'
+import { Awaited } from 'react-tundraish'
+
 import { TransportContext, type Transport } from './transport-context.ts'
 
 /**
@@ -34,16 +36,16 @@ import { TransportContext, type Transport } from './transport-context.ts'
  * runtime navigations and the navigation handler calls `navigate(path)`
  * during bootstrap. One mechanism for every initial message.
  */
-function TransportProvider({
-  children,
-  loader = null,
-}: {
-  readonly children: ReactNode
-  readonly loader?: ReactNode
-}): JSX.Element {
+function TransportProvider({ children }: { readonly children?: ReactNode }): JSX.Element {
   const navigate = useNavigate()
   const navigateRef = useRef(navigate)
   navigateRef.current = navigate
+  // Router exposes the history primitive used for back-step navigation
+  // (`router.history.back()`). The router instance is stable for the
+  // life of `<RouterProvider>`, so we capture it once here.
+  const router = useRouter()
+  const routerRef = useRef(router)
+  routerRef.current = router
 
   // Collector's receiver layer closes over the React-tree-bound
   // active-handler ref inside <CollectorRuntimeProvider>. The provider
@@ -64,9 +66,10 @@ function TransportProvider({
   const teardownConsoleRef = useRef<(() => void) | null>(null)
   const [transportPromise] = useState<Promise<Transport>>(() => {
     const navLayer = makeNavigationWebReceiverLayer((to) => {
-      // Split branches so React Router's `navigate` overload picks the right signature.
-      if (typeof to === 'number') void navigateRef.current(to)
-      else void navigateRef.current(to)
+      // Back-step uses the router's history primitive; path push goes
+      // through TanStack's `navigate({ to })` options bag.
+      if (typeof to === 'number') routerRef.current.history.back()
+      else void navigateRef.current({ to })
     })
     // Logging sits alongside the slice bridges so page-side
     // `console.<level>(...)` rides its own bridge. The Web side here is
@@ -131,17 +134,28 @@ function TransportProvider({
   // Only display the body once the transport has been flushed and
   // any initial navigations have completed, to prevent a flashing ui
   return (
-    <Suspense fallback={loader}>
-      <Await resolve={transportPromise}>
+    <Suspense fallback={<div>Transport Provider Loading</div>}>
+      <Awaited promise={transportPromise}>
         {(transport) => (
           <TransportContext.Provider value={transport}>
             <NavigationBridgeHandler sender={transport.sendMessage} />
             {children}
           </TransportContext.Provider>
         )}
-      </Await>
+      </Awaited>
     </Suspense>
   )
 }
 
-export { TransportProvider }
+const stubTransport: Transport = {
+  sendMessage: () => Effect.void,
+  flushed: Effect.void,
+  enqueue: () => Effect.void,
+  signalReady: Effect.void,
+}
+
+const StubTransportProvider = ({ children }: { readonly children?: ReactNode }): JSX.Element => {
+  return <TransportContext.Provider value={stubTransport}>{children}</TransportContext.Provider>
+}
+
+export { TransportProvider, StubTransportProvider }

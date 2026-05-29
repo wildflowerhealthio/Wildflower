@@ -1,101 +1,127 @@
-import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { createRouter, type AnyRoute } from '@tanstack/react-router'
 import { GatekeeperPaths } from 'gatekeeper-core/page-paths'
 import { describe, expect, test } from 'vite-plus/test'
 
-// Read source as text rather than importing — importing pulls in every screen's
-// transitive deps which fail to resolve under vitest without a rebuilt workspace dist.
-const routesSource = readFileSync(
-  resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'routes.tsx'),
-  'utf8'
-)
+import { routeTree } from '../src/routeTree.gen.ts'
 
-// Captures each fragment's contents as `block`; iterate matches to split into
-// open/authenticated/settings buckets. The drift test below cares which bucket
-// a path lands in — open routes don't need a bearer; authenticated routes do
-// and are externally published; settings routes are owner-facing landings —
-// so a path migrating between fragments without a corresponding intent change
-// is a regression worth catching.
-const declareFragmentPaths = (fragmentName: string): readonly string[] => {
-  const fragmentRegex = new RegExp(`const\\s+${fragmentName}[^=]*=\\s*\\(([\\s\\S]*?)^\\)`, 'm')
-  const fragmentMatch = fragmentRegex.exec(routesSource)
-  if (fragmentMatch === null) {
-    throw new Error(`Could not locate ${fragmentName} block in routes.tsx`)
-  }
-  const block = fragmentMatch[1] ?? ''
-  const paths: string[] = []
-  const pathRegex = /<Route\b[^>]*\bpath="([^"]+)"/g
-  let pathMatch: RegExpExecArray | null
-  while ((pathMatch = pathRegex.exec(block)) !== null) {
-    paths.push(pathMatch[1] ?? '')
-  }
-  return paths
-}
+// The slice generates its own `routeTree.gen.ts`. The `_auth`/`_open`
+// directories are pathless prefixes: they carry `/_auth` or `/_open` into
+// each route's id (matching what the app's layouts produce) but contribute
+// no URL segment, so the `fullPath`s are the slice-local URLs the macro tree
+// resolves. The `settings/` directory IS a real segment, so its routes carry
+// `/settings` into both their id and their fullPath.
+const router = createRouter({ routeTree })
 
-const openRoutePaths = declareFragmentPaths('gatekeeperOpenRoutesFragment')
-const authenticatedRoutePaths = declareFragmentPaths('gatekeeperAuthenticatedRoutesFragment')
-const settingsRoutePaths = declareFragmentPaths('gatekeeperSettingsRoutesFragment')
-const externalRoutePaths = [...openRoutePaths, ...authenticatedRoutePaths]
+const routes = (): readonly AnyRoute[] =>
+  Object.values(router.routesById).filter((route) => route.id !== '__root__')
 
-describe('GatekeeperPaths ↔ <Route path> drift', () => {
-  // One-direction drift only: owner-nav routes are intentionally absent from `GatekeeperPaths`.
-  test('every GatekeeperPaths redirect target has a matching <Route path>', () => {
-    // Decode percent-encoded path params so `:id` aligns with `<Route path>` literals.
-    const expectedPaths: readonly string[] = [
-      decodeURIComponent(GatekeeperPaths.oauthPollingPath(':id')),
-      decodeURIComponent(GatekeeperPaths.oauthConsentPath(':id')),
-      decodeURIComponent(GatekeeperPaths.deviceEntryPath()),
-      decodeURIComponent(GatekeeperPaths.deviceConsentPath(':userCode')),
-    ]
+// Routes are bucketed by their id prefix: `_open`/`_auth` are the app's
+// no-shell and authenticated mounts; `settings` is the owner-facing mount.
+const inBucket = (prefix: string): readonly AnyRoute[] =>
+  routes().filter((route) => route.id.startsWith(prefix))
 
-    for (const expected of expectedPaths) {
-      expect(externalRoutePaths).toContain(expected)
+const fullPaths = (bucket: readonly AnyRoute[]): readonly string[] =>
+  bucket.map((route) => route.fullPath)
+
+const open = inBucket('/_open/')
+const auth = inBucket('/_auth/')
+const settings = inBucket('/settings/')
+
+// GatekeeperPaths percent-encodes its params; decode so `$id` / `$userCode`
+// line up with the route fullPaths TanStack resolves to.
+const oauthPolling = decodeURIComponent(GatekeeperPaths.oauthPollingPath('$id'))
+const oauthConsent = decodeURIComponent(GatekeeperPaths.oauthConsentPath('$id'))
+const deviceEntry = decodeURIComponent(GatekeeperPaths.deviceEntryPath())
+const deviceConsent = decodeURIComponent(GatekeeperPaths.deviceConsentPath('$userCode'))
+
+describe('GatekeeperPaths ↔ Route.fullPath drift', () => {
+  // One-direction drift only: owner-facing settings routes are intentionally
+  // absent from `GatekeeperPaths`.
+  test('every GatekeeperPaths redirect target has a matching route', () => {
+    const external = [...fullPaths(open), ...fullPaths(auth)]
+    for (const target of [oauthPolling, oauthConsent, deviceEntry, deviceConsent]) {
+      expect(external).toContain(target)
     }
   })
 
-  // Bucket assertions: oauth-polling and device-entry are reachable without
-  // a bearer (the polling endpoint is unauth; device-entry is the page where
-  // an owner types a code from another device). oauth-consent and
-  // device-consent require the owner to already be authenticated.
-  test('oauth-polling and device-entry are in the open fragment', () => {
-    expect(openRoutePaths).toContain(decodeURIComponent(GatekeeperPaths.oauthPollingPath(':id')))
-    expect(openRoutePaths).toContain(decodeURIComponent(GatekeeperPaths.deviceEntryPath()))
+  // oauth-polling and device-entry are reachable without a bearer: the
+  // polling endpoint is unauth, and device-entry is where an owner types a
+  // code from another device.
+  test('oauth-polling and device-entry live in the open bucket', () => {
+    const openPaths = fullPaths(open)
+    expect(openPaths).toContain(oauthPolling)
+    expect(openPaths).toContain(deviceEntry)
   })
 
-  test('oauth-consent and device-consent are in the authenticated fragment', () => {
-    expect(authenticatedRoutePaths).toContain(
-      decodeURIComponent(GatekeeperPaths.oauthConsentPath(':id'))
-    )
-    expect(authenticatedRoutePaths).toContain(
-      decodeURIComponent(GatekeeperPaths.deviceConsentPath(':userCode'))
-    )
+  // oauth-consent and device-consent require the owner to already be
+  // authenticated.
+  test('oauth-consent and device-consent live in the authenticated bucket', () => {
+    const authPaths = fullPaths(auth)
+    expect(authPaths).toContain(oauthConsent)
+    expect(authPaths).toContain(deviceConsent)
   })
 
-  // GatekeeperPaths only models externally-published URLs. Owner-facing
-  // settings landings (`/settings/gatekeeper/*`) must not appear there — if a
-  // landing started being externally linked, this would catch it.
-  test('settings landings are NOT in the open or authenticated fragments', () => {
-    for (const settingsPath of settingsRoutePaths) {
-      expect(externalRoutePaths).not.toContain(settingsPath)
+  // GatekeeperPaths models only externally-published URLs; owner-facing
+  // settings landings must never appear there.
+  test('settings landings are not externally published', () => {
+    const external = [...fullPaths(open), ...fullPaths(auth)]
+    for (const path of fullPaths(settings)) {
+      expect(external).not.toContain(path)
     }
   })
 })
 
-describe('gatekeeperSettingsRoutesFragment', () => {
-  test('declares the four owner-facing landing routes', () => {
-    expect(settingsRoutePaths).toContain('/settings/gatekeeper')
-    expect(settingsRoutePaths).toContain('/settings/gatekeeper/requests')
-    expect(settingsRoutePaths).toContain('/settings/gatekeeper/requests/:id')
-    expect(settingsRoutePaths).toContain('/settings/gatekeeper/approved/:id')
+describe('gatekeeper settings bucket', () => {
+  test('every settings route is under /settings/gatekeeper', () => {
+    for (const path of fullPaths(settings)) {
+      expect(path === '/settings/gatekeeper/' || path.startsWith('/settings/gatekeeper/')).toBe(
+        true
+      )
+    }
   })
 
-  test('every settings path is under /settings/gatekeeper/', () => {
-    // The clean-rename decision means no `/gatekeeper/*` aliases survive
-    // inside the settings fragment; if one did, an unintentional duplicate
-    // would slip in alongside the externally-published path.
-    for (const path of settingsRoutePaths) {
-      expect(path === '/settings/gatekeeper' || path.startsWith('/settings/gatekeeper/')).toBe(true)
-    }
+  test('declares the four owner-facing landing routes', () => {
+    expect([...fullPaths(settings)].toSorted()).toEqual(
+      [
+        '/settings/gatekeeper/',
+        '/settings/gatekeeper/approved/$id',
+        '/settings/gatekeeper/requests',
+        '/settings/gatekeeper/requests/$id',
+      ].toSorted()
+    )
+  })
+})
+
+describe('gatekeeper route tree', () => {
+  test('the generated tree exposes exactly the gatekeeper routes', () => {
+    const ids = routes()
+      .map((route): string => route.id)
+      .toSorted()
+    expect(ids).toEqual([
+      '/_auth/gatekeeper/devices/$userCode',
+      '/_auth/gatekeeper/oauth-consent/$id',
+      '/_open/gatekeeper/devices',
+      '/_open/gatekeeper/oauth-polling/$id',
+      '/settings/gatekeeper/',
+      '/settings/gatekeeper/approved/$id',
+      '/settings/gatekeeper/requests',
+      '/settings/gatekeeper/requests_/$id',
+    ])
+  })
+
+  test('the slice-local fullPaths resolve to the documented URLs', () => {
+    const paths = fullPaths(routes()).toSorted()
+    expect(paths).toEqual(
+      [
+        '/gatekeeper/devices',
+        '/gatekeeper/devices/$userCode',
+        '/gatekeeper/oauth-consent/$id',
+        '/gatekeeper/oauth-polling/$id',
+        '/settings/gatekeeper/',
+        '/settings/gatekeeper/approved/$id',
+        '/settings/gatekeeper/requests',
+        '/settings/gatekeeper/requests/$id',
+      ].toSorted()
+    )
   })
 })

@@ -1,5 +1,3 @@
-export { collectorAuthenticatedRoutesFragment } from './routes.tsx'
-
 export {
   CollectorClientLayerContext,
   CollectorClientProvider,

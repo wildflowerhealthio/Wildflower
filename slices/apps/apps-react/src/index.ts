@@ -1,5 +1,3 @@
-export { appsAuthorizedRoutesFragment } from './routes.tsx'
-
 export {
   AppsAdminClientLayerContext,
   AppsClientLayerContext,

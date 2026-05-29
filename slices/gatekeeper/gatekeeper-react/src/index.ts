@@ -1,8 +1,3 @@
-export {
-  gatekeeperOpenRoutesFragment,
-  gatekeeperAuthenticatedRoutesFragment,
-  gatekeeperSettingsRoutesFragment,
-} from './routes.tsx'
 export { gatekeeperSettingsItemsFragment } from './settings-fragments.ts'
 
 export {

@@ -10,9 +10,9 @@ const HostBackRequested = Schema.parseJson(Schema.TaggedStruct('HostBackRequeste
 
 /**
  * Host → Web: navigate the embedded SPA to `path`. Carries both the
- * pre-injected initial route (read synchronously to seed
- * `<MemoryRouter initialEntries={[path]}>`) and runtime host-driven
- * deep links.
+ * pre-injected initial route (read synchronously to seed the TanStack
+ * router's `createMemoryHistory({ initialEntries: [path] })`) and
+ * runtime host-driven deep links.
  */
 const HostRequestedWebNavigation = Schema.parseJson(
   Schema.TaggedStruct('HostRequestedWebNavigation', { path: Schema.String })
