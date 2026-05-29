@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
+    "@tanstack/react-router": "catalog:",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.0",
     "@types/react": "catalog:",
@@ -47,6 +48,7 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
+    "@tanstack/react-router": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "effect-messaging-react": "workspace:*",

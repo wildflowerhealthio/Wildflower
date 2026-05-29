@@ -16,4 +16,4 @@ export {
 
 export { TunnelToggle, type TunnelToggleProps } from './components/TunnelToggle.tsx'
 
-export { openSubtree, authSubtree, settingsSubtree } from './route-handles.ts'
+export { openRoutes, authRoutes, settingsRoutes, type RouteFactory } from './route-handles.ts'

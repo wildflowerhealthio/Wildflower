@@ -1,25 +1,33 @@
 import type { AnyRoute } from '@tanstack/react-router'
 
-import { Route as TunnelScreen } from './routes/_settings/tunnel/index.tsx'
+import { makeTunnelRoute } from './routes/_settings/tunnel/index.tsx'
 
 /**
- * Routes the macro tree attaches under its root (no auth shell).
- * Each route's literal is the slice-local URL; the macro adds nothing
- * because open routes mount directly at root. Tunnel has no open routes.
+ * A route factory: given the app-provided parent, it builds a fresh
+ * route under it. The macro tree calls each factory once with the parent
+ * that owns its bucket; a second call (e.g. a test router) yields an
+ * independent object, so there is no shared mutable singleton to collide.
  */
-export const openSubtree: readonly AnyRoute[] = []
+export type RouteFactory = (getParentRoute: () => AnyRoute) => AnyRoute
 
 /**
- * Routes the macro tree attaches under its `_auth` layout
- * (`AuthorizedAppShell`). Slice-local URLs are preserved. Tunnel has no
- * authenticated (non-settings) routes.
+ * Factories the macro tree mounts under its root (no auth shell). Tunnel
+ * has no open routes.
  */
-export const authSubtree: readonly AnyRoute[] = []
+const openRoutes: readonly RouteFactory[] = []
 
 /**
- * Routes the macro tree attaches under its `/settings` layout
+ * Factories the macro tree mounts under its `_auth` layout
+ * (`AuthorizedAppShell`). Tunnel has no authenticated (non-settings)
+ * routes.
+ */
+const authRoutes: readonly RouteFactory[] = []
+
+/**
+ * Factories the macro tree mounts under its `/settings` layout
  * (`SettingsLayout`). Slice-local URLs already include the `/settings`
- * prefix (the slice's routes-config mounts the `_settings/` directory
- * at `/settings`).
+ * prefix.
  */
-export const settingsSubtree: readonly AnyRoute[] = [TunnelScreen]
+const settingsRoutes: readonly RouteFactory[] = [makeTunnelRoute]
+
+export { openRoutes, authRoutes, settingsRoutes }

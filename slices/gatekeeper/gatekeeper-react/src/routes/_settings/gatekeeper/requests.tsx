@@ -1,6 +1,4 @@
-/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
-
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createRoute, useNavigate, type AnyRoute } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
@@ -139,6 +137,15 @@ const RequestsListBody = ({
   )
 }
 
-export const Route = createFileRoute('/settings/gatekeeper/requests')({
-  component: RequestsListScreen,
-})
+/**
+ * Builds the `/settings/gatekeeper/requests` route under an app-provided
+ * parent. A fresh route is created per call so the same factory can compose
+ * the app router and a throwaway test router without sharing a singleton.
+ */
+// oxlint-disable-next-line typescript/explicit-function-return-type
+export const makeRequestsListRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) =>
+  createRoute({
+    getParentRoute,
+    path: '/settings/gatekeeper/requests',
+    component: RequestsListScreen,
+  })

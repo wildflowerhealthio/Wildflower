@@ -22,7 +22,6 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@tanstack/react-router": "catalog:",
-    "@tanstack/router-plugin": "catalog:",
     "@types/react": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",

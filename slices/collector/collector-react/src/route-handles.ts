@@ -1,27 +1,38 @@
 import type { AnyRoute } from '@tanstack/react-router'
 
-import { Route as AccountConfig } from './routes/_auth/collector/account.$id.tsx'
-import { Route as AccountNew } from './routes/_auth/collector/account.new.tsx'
-import { Route as AccountList } from './routes/_auth/collector/index.tsx'
+import { makeAccountConfigRoute } from './routes/_auth/collector/account.$id.tsx'
+import { makeAccountNewRoute } from './routes/_auth/collector/account.new.tsx'
+import { makeAccountListRoute } from './routes/_auth/collector/index.tsx'
 
 /**
- * Routes the macro tree attaches under its root (no auth shell).
- * Each route's literal is the slice-local URL; the macro adds nothing
- * because open routes mount directly at root. Collector has no open
- * routes — every flow is owner-only.
+ * A route factory: given the app-provided parent, it builds a fresh
+ * route under it. The macro tree calls each factory once with the parent
+ * that owns its bucket; a second call (e.g. a test router) yields an
+ * independent object, so there is no shared mutable singleton to collide.
  */
-export const openSubtree: readonly AnyRoute[] = []
+export type RouteFactory = (getParentRoute: () => AnyRoute) => AnyRoute
 
 /**
- * Routes the macro tree attaches under its `_auth` layout
+ * Factories the macro tree mounts under its root (no auth shell).
+ * Collector has no open routes — every flow is owner-only.
+ */
+const openRoutes: readonly RouteFactory[] = []
+
+/**
+ * Factories the macro tree mounts under its `_auth` layout
  * (`AuthorizedAppShell`). Slice-local URLs are preserved.
  */
-export const authSubtree: readonly AnyRoute[] = [AccountList, AccountNew, AccountConfig]
+const authRoutes: readonly RouteFactory[] = [
+  makeAccountListRoute,
+  makeAccountNewRoute,
+  makeAccountConfigRoute,
+]
 
 /**
- * Routes the macro tree attaches under its `/settings` layout
- * (`SettingsLayout`). Slice-local URLs already include the `/settings`
- * prefix. Collector is top-level functionality, not a settings concern,
- * so this is empty.
+ * Factories the macro tree mounts under its `/settings` layout
+ * (`SettingsLayout`). Collector is top-level functionality, not a
+ * settings concern, so this is empty.
  */
-export const settingsSubtree: readonly AnyRoute[] = []
+const settingsRoutes: readonly RouteFactory[] = []
+
+export { openRoutes, authRoutes, settingsRoutes }

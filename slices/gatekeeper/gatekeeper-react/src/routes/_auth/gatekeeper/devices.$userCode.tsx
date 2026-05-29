@@ -1,6 +1,4 @@
-/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
-
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createRoute, useNavigate, type AnyRoute } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { Devices } from 'gatekeeper-core/http-api-definition'
@@ -15,6 +13,7 @@ import {
   pageLayoutStyles,
   PageLoading,
 } from 'react-tundraish'
+import { useRouteParams } from 'shared-structures-react'
 
 import {
   useGatekeeperEffect,
@@ -26,10 +25,9 @@ import scopeListStyles from '../../../styles/scope-list.module.css'
 
 type DeviceConsent = Schema.Schema.Type<typeof Devices.DeviceConsentSchema>
 
-function DeviceConsentScreen(): JSX.Element {
+function DeviceConsentScreen({ userCode }: { readonly userCode: string }): JSX.Element {
   const runGatekeeper = useGatekeeperEffectAction()
   const navigate = useNavigate()
-  const { userCode }: { userCode: string } = Route.useParams()
 
   const consentEffect = useMemo(
     () =>
@@ -196,6 +194,23 @@ const DeviceConsentForm = ({
   )
 }
 
-export const Route = createFileRoute('/gatekeeper/devices/$userCode')({
-  component: DeviceConsentScreen,
-})
+const deviceConsentPath = '/gatekeeper/devices/$userCode'
+
+/**
+ * Builds the `/gatekeeper/devices/$userCode` route under an app-provided
+ * parent. The component closure reads `$userCode` via `useRouteParams`, which
+ * reconstructs the param shape from the path literal (`$userCode` →
+ * `{ userCode: string }`) and hands it to the screen as a prop.
+ */
+// oxlint-disable-next-line typescript/explicit-function-return-type
+export const makeDeviceConsentRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) => {
+  const route = createRoute({
+    getParentRoute,
+    path: deviceConsentPath,
+    component: function DeviceConsentRoute() {
+      const { userCode } = useRouteParams(route, deviceConsentPath)
+      return <DeviceConsentScreen userCode={userCode} />
+    },
+  })
+  return route
+}

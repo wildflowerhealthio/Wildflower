@@ -1,6 +1,4 @@
-/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
-
-import { createFileRoute } from '@tanstack/react-router'
+import { createRoute, type AnyRoute } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
@@ -14,6 +12,7 @@ import {
   StatusBadge,
   type StatusTone,
 } from 'react-tundraish'
+import { useRouteParams } from 'shared-structures-react'
 
 import { formatInstant } from '../../../format-date.ts'
 import {
@@ -32,9 +31,8 @@ const statusTone = (status: string): StatusTone => {
   return 'neutral'
 }
 
-function RequestDetailScreen(): JSX.Element {
+function RequestDetailScreen({ id }: { readonly id: string }): JSX.Element {
   const runGatekeeper = useGatekeeperEffectAction()
-  const { id }: { id: string } = Route.useParams()
   const [refreshKey, setRefreshKey] = useState(0)
 
   const requestEffect = useMemo(
@@ -158,6 +156,23 @@ const RequestDetailBody = ({
   )
 }
 
-export const Route = createFileRoute('/settings/gatekeeper/requests/$id')({
-  component: RequestDetailScreen,
-})
+const requestDetailPath = '/settings/gatekeeper/requests/$id'
+
+/**
+ * Builds the `/settings/gatekeeper/requests/$id` route under an app-provided
+ * parent. The component closure reads `$id` via `useRouteParams`, which
+ * reconstructs the param shape from the path literal (`$id` → `{ id: string }`)
+ * and hands it to the screen as a prop.
+ */
+// oxlint-disable-next-line typescript/explicit-function-return-type
+export const makeRequestDetailRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) => {
+  const route = createRoute({
+    getParentRoute,
+    path: requestDetailPath,
+    component: function RequestDetailRoute() {
+      const { id } = useRouteParams(route, requestDetailPath)
+      return <RequestDetailScreen id={id} />
+    },
+  })
+  return route
+}

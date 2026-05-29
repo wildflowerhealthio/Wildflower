@@ -1,6 +1,4 @@
-/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
-
-import { createFileRoute } from '@tanstack/react-router'
+import { createRoute, type AnyRoute } from '@tanstack/react-router'
 import { Effect, type Schema } from 'effect'
 import { Suspense, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
@@ -189,6 +187,15 @@ function TunnelScreen(): JSX.Element {
   )
 }
 
-export const Route = createFileRoute('/settings/tunnel/')({
-  component: TunnelScreen,
-})
+/**
+ * Builds the `/settings/tunnel/` landing route under an app-provided parent.
+ * A fresh route is created per call so the same factory can compose the app
+ * router and a throwaway test router without sharing a singleton.
+ */
+// oxlint-disable-next-line typescript/explicit-function-return-type
+export const makeTunnelRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) =>
+  createRoute({
+    getParentRoute,
+    path: '/settings/tunnel/',
+    component: TunnelScreen,
+  })

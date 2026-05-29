@@ -1,23 +1,31 @@
 import type { AnyRoute } from '@tanstack/react-router'
 
-import { Route as AppsHome } from './routes/_auth/apps/index.tsx'
+import { makeAppsHomeRoute } from './routes/_auth/apps/index.tsx'
 
 /**
- * Routes the macro tree attaches under its root (no auth shell).
- * Each route's literal is the slice-local URL; the macro adds nothing
- * because open routes mount directly at root. Apps has no open routes.
+ * A route factory: given the app-provided parent, it builds a fresh
+ * route under it. The macro tree calls each factory once with the parent
+ * that owns its bucket; a second call (e.g. a test router) yields an
+ * independent object, so there is no shared mutable singleton to collide.
  */
-export const openSubtree: readonly AnyRoute[] = []
+export type RouteFactory = (getParentRoute: () => AnyRoute) => AnyRoute
 
 /**
- * Routes the macro tree attaches under its `_auth` layout
+ * Factories the macro tree mounts under its root (no auth shell). Each
+ * factory's path literal is the slice-local URL. Apps has no open routes.
+ */
+const openRoutes: readonly RouteFactory[] = []
+
+/**
+ * Factories the macro tree mounts under its `_auth` layout
  * (`AuthorizedAppShell`). Slice-local URLs are preserved.
  */
-export const authSubtree: readonly AnyRoute[] = [AppsHome]
+const authRoutes: readonly RouteFactory[] = [makeAppsHomeRoute]
 
 /**
- * Routes the macro tree attaches under its `/settings` layout
- * (`SettingsLayout`). Slice-local URLs already include the `/settings`
- * prefix. Apps has no settings routes.
+ * Factories the macro tree mounts under its `/settings` layout
+ * (`SettingsLayout`). Apps has no settings routes.
  */
-export const settingsSubtree: readonly AnyRoute[] = []
+const settingsRoutes: readonly RouteFactory[] = []
+
+export { openRoutes, authRoutes, settingsRoutes }

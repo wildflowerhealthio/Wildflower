@@ -1,17 +1,14 @@
-/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
-
-import { createFileRoute } from '@tanstack/react-router'
+import { createRoute, type AnyRoute } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { Suspense, useMemo, type JSX } from 'react'
 import { Awaited, pageLayoutStyles, PageLoading } from 'react-tundraish'
+import { useRouteParams } from 'shared-structures-react'
 
 import { useGatekeeperEffect } from '../../../gatekeeper-client.tsx'
 import styles from './approved.$id.module.css'
 
-function ApprovedAppDetailScreen(): JSX.Element {
-  const { id }: { id: string } = Route.useParams()
-
+function ApprovedAppDetailScreen({ id }: { readonly id: string }): JSX.Element {
   const grantEffect = useMemo(
     () =>
       Effect.flatMap(GatekeeperHttpApiClient, (c) =>
@@ -36,6 +33,25 @@ function ApprovedAppDetailScreen(): JSX.Element {
   )
 }
 
-export const Route = createFileRoute('/settings/gatekeeper/approved/$id')({
-  component: ApprovedAppDetailScreen,
-})
+const approvedAppDetailPath = '/settings/gatekeeper/approved/$id'
+
+/**
+ * Builds the `/settings/gatekeeper/approved/$id` route under an app-provided
+ * parent. The component closure reads `$id` via `useRouteParams`, which
+ * reconstructs the param shape from the path literal (`$id` → `{ id: string }`)
+ * and hands it to the screen as a prop.
+ */
+export const makeApprovedAppDetailRoute = <TParent extends AnyRoute>(
+  getParentRoute: () => TParent
+  // oxlint-disable-next-line typescript/explicit-function-return-type
+) => {
+  const route = createRoute({
+    getParentRoute,
+    path: approvedAppDetailPath,
+    component: function ApprovedAppDetailRoute() {
+      const { id } = useRouteParams(route, approvedAppDetailPath)
+      return <ApprovedAppDetailScreen id={id} />
+    },
+  })
+  return route
+}

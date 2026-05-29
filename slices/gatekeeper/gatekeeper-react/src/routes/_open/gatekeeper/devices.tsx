@@ -1,6 +1,4 @@
-/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
-
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createRoute, useNavigate, type AnyRoute } from '@tanstack/react-router'
 import { useState, type JSX } from 'react'
 import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
@@ -61,6 +59,15 @@ function DeviceEntryScreen(): JSX.Element {
   )
 }
 
-export const Route = createFileRoute('/gatekeeper/devices')({
-  component: DeviceEntryScreen,
-})
+/**
+ * Builds the `/gatekeeper/devices` route under an app-provided parent. A
+ * fresh route is created per call so the same factory can compose the app
+ * router and a throwaway test router without sharing a mutable singleton.
+ */
+// oxlint-disable-next-line typescript/explicit-function-return-type
+export const makeDeviceEntryRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) =>
+  createRoute({
+    getParentRoute,
+    path: '/gatekeeper/devices',
+    component: DeviceEntryScreen,
+  })

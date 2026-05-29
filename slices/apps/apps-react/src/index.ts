@@ -26,4 +26,4 @@ export type { AppsOutboundMessage, AppsSender } from './runtime/apps-sender-cont
 export type { TunnelOutcome } from './runtime/apps-runtime-context.ts'
 export { useRequestTunnel } from './runtime/use-request-tunnel.ts'
 
-export { openSubtree, authSubtree, settingsSubtree } from './route-handles.ts'
+export { openRoutes, authRoutes, settingsRoutes, type RouteFactory } from './route-handles.ts'

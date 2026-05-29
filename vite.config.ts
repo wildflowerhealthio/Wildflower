@@ -178,6 +178,12 @@ export default defineConfig({
     },
     overrides: [
       {
+        files: ['**/src/routes/**/*.tsx'],
+        rules: {
+          'react/only-export-components': 'off',
+        },
+      },
+      {
         files: ['**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts'],
         rules: {
           'no-var': 'error',

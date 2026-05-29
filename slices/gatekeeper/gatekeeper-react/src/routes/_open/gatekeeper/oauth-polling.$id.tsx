@@ -1,11 +1,10 @@
-/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
-
-import { createFileRoute } from '@tanstack/react-router'
+import { createRoute, type AnyRoute } from '@tanstack/react-router'
 import { type AuthorizationStatus, pollAuthorizationStatus } from 'gatekeeper-core/clients'
 
 import { Suspense, useEffect, useMemo, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Awaited, pageLayoutStyles } from 'react-tundraish'
+import { useRouteParams } from 'shared-structures-react'
 
 import { useGatekeeperStream } from '../../../gatekeeper-client.tsx'
 import pageLayout from '../../../styles/page-layout.module.css'
@@ -17,8 +16,7 @@ import styles from './oauth-polling.module.css'
  * pipes through the same `BearerToken` plumbing as authed routes (which
  * resolves to `null` here and adds no header).
  */
-function OAuthPollingScreen(): JSX.Element {
-  const { id }: { id: string } = Route.useParams()
+function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
   const stream = useMemo(() => pollAuthorizationStatus(id), [id])
   const statusPromise = useGatekeeperStream(stream)
 
@@ -76,6 +74,23 @@ const PollingSpinner = (): JSX.Element => (
   </div>
 )
 
-export const Route = createFileRoute('/gatekeeper/oauth-polling/$id')({
-  component: OAuthPollingScreen,
-})
+const oAuthPollingPath = '/gatekeeper/oauth-polling/$id'
+
+/**
+ * Builds the `/gatekeeper/oauth-polling/$id` route under an app-provided
+ * parent. The component closure reads `$id` via `useRouteParams`, which
+ * reconstructs the param shape from the path literal (`$id` → `{ id: string }`)
+ * and hands it to the screen as a prop.
+ */
+// oxlint-disable-next-line typescript/explicit-function-return-type
+export const makeOAuthPollingRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) => {
+  const route = createRoute({
+    getParentRoute,
+    path: oAuthPollingPath,
+    component: function OAuthPollingRoute() {
+      const { id } = useRouteParams(route, oAuthPollingPath)
+      return <OAuthPollingScreen id={id} />
+    },
+  })
+  return route
+}

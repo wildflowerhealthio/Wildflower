@@ -10,11 +10,14 @@ import { AuthorizedAppShell } from './session/authorized-app-shell.tsx'
 import { RootShell } from './session/root-shell.tsx'
 
 /**
- * App-level macro tree. Each slice exposes three arrays of typed routes
- * (`openSubtree`, `authSubtree`, `settingsSubtree`); the slice's own
- * file-based plugin invocation generates them with `Route.useParams()`
- * / `Route.useSearch()` typed against the slice-local URLs. Here we
- * union them under the app's structural skeleton:
+ * App-level macro tree. Each slice exposes three arrays of route
+ * factories (`openRoutes`, `authRoutes`, `settingsRoutes`). A factory
+ * takes the app-provided parent and builds a fresh route under it, with
+ * `route.useParams()` / `route.useSearch()` typed against the
+ * slice-local URLs. Calling a factory here binds it to the app's
+ * structural skeleton; calling it again elsewhere (a slice's test
+ * router) yields an independent object, so no mutable singleton is
+ * shared between trees.
  *
  *   - Open routes mount directly under root (no auth shell).
  *   - Authenticated routes mount under a pathless `_auth` layout that
@@ -22,8 +25,7 @@ import { RootShell } from './session/root-shell.tsx'
  *   - Settings routes mount under a pathless `_settings-wrapper`
  *     layout that contributes the persistent "Settings" header. The
  *     `/settings` URL prefix is baked into the slice's settings route
- *     literals (the slice mounts its `_settings/` directory at
- *     `/settings`), so the layout doesn't need a path of its own.
+ *     literals, so the layout doesn't need a path of its own.
  */
 const rootRoute = createRootRoute({ component: RootShell })
 
@@ -45,22 +47,32 @@ const settingsIndexRoute = createRoute({
   component: SettingsIndex,
 })
 
+const openFactories = [
+  ...gatekeeper.openRoutes,
+  ...apps.openRoutes,
+  ...collector.openRoutes,
+  ...tunnel.openRoutes,
+]
+const authFactories = [
+  ...gatekeeper.authRoutes,
+  ...apps.authRoutes,
+  ...collector.authRoutes,
+  ...tunnel.authRoutes,
+]
+const settingsFactories = [
+  ...gatekeeper.settingsRoutes,
+  ...apps.settingsRoutes,
+  ...collector.settingsRoutes,
+  ...tunnel.settingsRoutes,
+]
+
 const routeTree = rootRoute.addChildren([
-  ...gatekeeper.openSubtree,
-  ...apps.openSubtree,
-  ...collector.openSubtree,
-  ...tunnel.openSubtree,
+  ...openFactories.map((make) => make(() => rootRoute)),
   authShellRoute.addChildren([
-    ...gatekeeper.authSubtree,
-    ...apps.authSubtree,
-    ...collector.authSubtree,
-    ...tunnel.authSubtree,
+    ...authFactories.map((make) => make(() => authShellRoute)),
     settingsLayoutRoute.addChildren([
       settingsIndexRoute,
-      ...gatekeeper.settingsSubtree,
-      ...apps.settingsSubtree,
-      ...collector.settingsSubtree,
-      ...tunnel.settingsSubtree,
+      ...settingsFactories.map((make) => make(() => settingsLayoutRoute)),
     ]),
   ]),
 ])

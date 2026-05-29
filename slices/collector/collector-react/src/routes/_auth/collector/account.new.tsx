@@ -1,12 +1,11 @@
-/* oxlint-disable react/only-export-components -- file-based route file exports `Route` alongside the component */
-
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createRoute, useNavigate, type AnyRoute } from '@tanstack/react-router'
 import { CollectorHttpApiClient } from 'collector-core/clients'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { defaultConfig } from 'fhir-r4-client-collector'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { pageLayoutStyles } from 'react-tundraish'
+import { useRouteSearch } from 'shared-structures-react'
 
 import { useCollectorEffectAction } from '../../../collector-client.tsx'
 import accountConfig from './account-config.module.css'
@@ -16,20 +15,23 @@ import pageLayout from './page-layout.module.css'
  * Create a new FHIR R4 remote. Mounted at `/collector/account/new`;
  * the prefill fields are optionally handed off by the source list on
  * `/collector` so a user landing on this screen from "Demo FHIR Server"
- * sees the defaults pre-populated.
+ * sees the defaults pre-populated. The schema decodes (and runtime-checks
+ * presence/absence/type of) the URL search in `validateSearch`.
  */
-function AccountNewScreen(): JSX.Element {
+const AccountNewSearch = Schema.Struct({
+  prefillName: Schema.optional(Schema.String),
+  prefillRootUrl: Schema.optional(Schema.String),
+  prefillPatientId: Schema.optional(Schema.String),
+})
+type AccountNewSearch = Schema.Schema.Type<typeof AccountNewSearch>
+
+function AccountNewScreen({
+  prefillName,
+  prefillRootUrl,
+  prefillPatientId,
+}: AccountNewSearch): JSX.Element {
   const navigate = useNavigate()
   const run = useCollectorEffectAction()
-  const {
-    prefillName,
-    prefillRootUrl,
-    prefillPatientId,
-  }: {
-    readonly prefillName?: string
-    readonly prefillRootUrl?: string
-    readonly prefillPatientId?: string
-  } = Route.useSearch()
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState(prefillName ?? '')
   const [rootUrl, setRootUrl] = useState(prefillRootUrl ?? defaultConfig.rootUrl)
@@ -133,19 +135,32 @@ function AccountNewScreen(): JSX.Element {
   )
 }
 
-export const Route = createFileRoute('/collector/account/new')({
-  component: AccountNewScreen,
-  validateSearch: (
-    search: Record<string, unknown>
-  ): {
-    readonly prefillName?: string
-    readonly prefillRootUrl?: string
-    readonly prefillPatientId?: string
-  } => ({
-    prefillName: typeof search['prefillName'] === 'string' ? search['prefillName'] : undefined,
-    prefillRootUrl:
-      typeof search['prefillRootUrl'] === 'string' ? search['prefillRootUrl'] : undefined,
-    prefillPatientId:
-      typeof search['prefillPatientId'] === 'string' ? search['prefillPatientId'] : undefined,
-  }),
-})
+/**
+ * Builds the `/collector/account/new` route under an app-provided parent.
+ * `validateSearch` decodes the URL search with `AccountNewSearch` at the
+ * router boundary; the component reads it back through `useRouteSearch`,
+ * which re-applies the same schema's type, and hands it to the screen.
+ */
+// oxlint-disable-next-line typescript/explicit-function-return-type
+export const makeAccountNewRoute = <TParent extends AnyRoute>(getParentRoute: () => TParent) => {
+  const route = createRoute({
+    getParentRoute,
+    path: '/collector/account/new',
+    validateSearch: (search: Record<string, unknown>): AccountNewSearch =>
+      Schema.decodeUnknownSync(AccountNewSearch)(search),
+    component: function AccountNewRoute() {
+      const { prefillName, prefillRootUrl, prefillPatientId } = useRouteSearch(
+        route,
+        AccountNewSearch
+      )
+      return (
+        <AccountNewScreen
+          prefillName={prefillName}
+          prefillRootUrl={prefillRootUrl}
+          prefillPatientId={prefillPatientId}
+        />
+      )
+    },
+  })
+  return route
+}

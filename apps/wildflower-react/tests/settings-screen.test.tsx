@@ -8,8 +8,8 @@ import {
 import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { SettingsIndex } from '../src/routes/settings/index.tsx'
 import { SettingsLayout } from '../src/routes/settings.tsx'
+import { SettingsIndex } from '../src/routes/settings/index.tsx'
 
 /**
  * Mount the `/settings` layout + index inside a minimal TanStack router
