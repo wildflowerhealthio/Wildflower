@@ -59,14 +59,14 @@ const AppShellWebView = ({ onRouteChanged }: AppShellWebViewProps): JSX.Element 
   // passed + startup prefetches settled). `hideAsync` rejects when the
   // splash is already hidden (e.g. the `prevent-splash-hide` fallback
   // timer fired first); swallow that so a late `UIReady` doesn't crash.
-  const onUIReady = useCallback(() => {
+  const handleUiReady = useCallback(() => {
     void SplashScreen.hideAsync().catch(() => undefined)
   }, [])
   // Memoize the tuple so `BridgedWebView`'s transport doesn't rebuild on
   // every render — the component's contract requires stable `bindings`
   // identity (see its TSDoc). Bridge ordering matches the page-side
   // tuple in `wildflower-react`'s transport provider.
-  const bindings = useHostBindings({ onRouteChanged, onUIReady })
+  const bindings = useHostBindings({ onRouteChanged, onUIReady: handleUiReady })
 
   return (
     <BridgedWebView

@@ -17,7 +17,7 @@ import { useFhirR4ResourcesRuntimeLayer } from 'fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { useCollectorRuntime } from './use-collector-runtime.ts'
+import { setActiveHandler } from './active-handler-ref.ts'
 import { useCollectorSender } from './use-collector-sender.ts'
 
 /**
@@ -47,8 +47,8 @@ type RunnerState =
   | { readonly _tag: 'errored'; readonly error: unknown }
 
 /**
- * Hook that wires a single sync run to the active-handler ref on
- * `<CollectorRuntimeProvider>`:
+ * Hook that wires a single sync run to the module-level
+ * `activeHandlerRef` (see {@link setActiveHandler}):
  *
  *   - Builds the per-config `ScrapingPlan` via
  *     `makeScrapingPlanForConfig(remote.config)`.
@@ -69,7 +69,7 @@ type RunnerState =
  *     so the host opens the sniffer modal. Install-before-dispatch
  *     ordering guarantees any sniffer events the host emits land on a
  *     live receiver (events that arrive on `activeHandlerRef.current === null`
- *     would otherwise be log-and-dropped by `<CollectorRuntimeProvider>`).
+ *     would otherwise be log-and-dropped by `collectorWebReceiverLayer`).
  *   - On unmount or remote change: dispatches `CancelSnifferRequest`
  *     for every in-flight id, clears the handler's state, and
  *     uninstalls it.
@@ -78,11 +78,9 @@ type RunnerState =
  * from a parent re-render doesn't tear down the handler and lose
  * `inProgressResponses`. The effect's dep array is narrowed to the
  * inputs that materially change the handler (`remote.id`,
- * `remote.config`, `sendCollectorMessage`, `setActiveHandler`,
- * `runFhir`).
+ * `remote.config`, `sendCollectorMessage`, `runFhir`).
  */
 const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
-  const { setActiveHandler } = useCollectorRuntime()
   const sendCollectorMessage = useCollectorSender()
   // The per-resource PUT is imperative (one retried write per parsed
   // resource arriving over the bridge), not a one-shot query, so it runs
@@ -227,7 +225,7 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
 
       setActiveHandler(null)
     }
-  }, [remote, scrapingPlan, sendCollectorMessage, setActiveHandler, runFhir])
+  }, [remote, scrapingPlan, sendCollectorMessage, runFhir])
 
   return state
 }

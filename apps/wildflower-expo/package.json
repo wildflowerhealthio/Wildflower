@@ -61,6 +61,7 @@
     "expo-symbols": "catalog:",
     "expo-system-ui": "catalog:",
     "expo-tundraish": "workspace:*",
+    "expo-updates": "catalog:",
     "expo-web-browser": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-r4-client-collector": "workspace:*",

@@ -59,6 +59,7 @@ const renderEmitter = (): void => {
       runAuthed: () => Promise.reject(new Error('runAuthed not used here')),
       runtimeLayer: Layer.die('runtimeLayer not used here'),
       awaitAuthReady: () => Promise.resolve(),
+      transportReady: Promise.resolve(),
     },
   })
   render(<RouterProvider router={router} />)

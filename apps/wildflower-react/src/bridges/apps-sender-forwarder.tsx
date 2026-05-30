@@ -11,7 +11,9 @@ interface AppsSenderForwarderProps {
  * Bridges the app's `BridgeTransport.sendMessage` into the apps
  * slice's sender context — so apps-react screens can fire
  * `RequestTunnel` without depending on the app-level transport
- * directly. Mount inside `<TransportProvider>`.
+ * directly. Mount inside a `<TransportContext.Provider>` (the
+ * `app-root.tsx` `AppRoot` component supplies one above
+ * `<RouterProvider>`).
  *
  * The cast widens `transport.sendMessage` (a function-intersection over
  * every wired bridge's outbound message) to the slice's looser

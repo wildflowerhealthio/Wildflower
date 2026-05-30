@@ -132,7 +132,7 @@ const installSniffer = function (): void {
   // `console[level](...payload)` on its side, so each page-side
   // `console.<level>(...args)` flows verbatim to the host's matching
   // native sink. Mirrors the `makeLogForLevel` factory in
-  // `apps/wildflower-react/src/bridges/transport-provider.tsx`; the
+  // `apps/wildflower-react/src/bridges/build-transport.ts`; the
   // injected script can't import the Effect runtime, so this is the
   // plain-JS analogue. `LogLevel` is type-imported from `Logging` so
   // any future expansion of the bridge's level union surfaces here at

@@ -70,10 +70,10 @@ const toErrorState = (error: unknown): DeviceFlowState =>
  * The 250ms value is a guess: it's intended to absorb a transient mount
  * that happens during the host's `WaitForToken` → `AuthTokenIssued`
  * handshake (URL params dispatch + transport flush), so a stray render
- * doesn't kick off a real device-authorization flow. `TransportProvider`'s
- * `flushed` gate already blocks descendant mount until the host's URL-param
- * messages have dispatched, so under correct host behavior this sleep is
- * dead time. It exists as a defense against (a) a host that delays the
+ * doesn't kick off a real device-authorization flow. The `_auth`
+ * `beforeLoad` gate already awaits `transportReady` before checking the
+ * token, so under correct host behavior this sleep is dead time. It
+ * exists as a defense against (a) a host that delays the
  * `AuthTokenIssued` follow-up after `WaitForToken`, and (b) other
  * mount-time races that would otherwise burn a device-code on the
  * gatekeeper server. There's no measured upper bound it's protecting

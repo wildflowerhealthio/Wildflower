@@ -14,8 +14,8 @@ interface CollectorSenderProviderProps {
 /**
  * Surfaces the app's `BridgeTransport.sendMessage` to collector-react
  * screens via {@link CollectorSenderContext}. Mounted *inside* the
- * app's `<TransportProvider>` so the transport is available; collector
- * screens read it via {@link useCollectorSender}.
+ * app's `<TransportContext.Provider>` so the transport is available;
+ * collector screens read it via {@link useCollectorSender}.
  */
 const CollectorSenderProvider = ({ send, children }: CollectorSenderProviderProps): JSX.Element => (
   <CollectorSenderContext.Provider value={send}>{children}</CollectorSenderContext.Provider>

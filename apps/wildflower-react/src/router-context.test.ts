@@ -99,10 +99,10 @@ describe('runAuthed router-context runner', () => {
   })
 
   // Type-level: a `satisfies` guard so dropping a field fails compile.
-  // `awaitAuthReady` is injected per entry (not built by
-  // `buildRunAuthed`), so the test supplies a trivial resolver to
+  // `awaitAuthReady` and `transportReady` are injected per entry (not
+  // built by `buildRunAuthed`); the test supplies trivial resolvers to
   // complete the structural context.
-  it('should type RouterContext as { queryClient; runAuthed; runtimeLayer; awaitAuthReady }', () => {
+  it('should type RouterContext with queryClient, runAuthed, runtimeLayer, awaitAuthReady, transportReady', () => {
     // Arrange / Act
     const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
     const { runAuthed, runtimeLayer } = makeRunner(tokenRef)
@@ -111,11 +111,13 @@ describe('runAuthed router-context runner', () => {
       runAuthed,
       runtimeLayer,
       awaitAuthReady: () => Promise.resolve(),
+      transportReady: Promise.resolve(),
     } satisfies RouterContext
 
     // Assert
     expect(typeof context.runAuthed).toBe('function')
     expect(typeof context.awaitAuthReady).toBe('function')
+    expect(context.transportReady).toBeInstanceOf(Promise)
     expect(context.queryClient).toBeDefined()
   })
 })

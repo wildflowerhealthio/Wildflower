@@ -21,11 +21,7 @@ export {
   type UpdateRemotePayload,
 } from './queries/index.ts'
 
-export { CollectorRuntimeProvider } from './runtime/collector-runtime-provider.tsx'
-export {
-  useCollectorRuntime,
-  useCollectorWebReceiverLayer,
-} from './runtime/use-collector-runtime.ts'
+export { collectorWebReceiverLayer } from './runtime/active-handler-ref.ts'
 export {
   CollectorSenderProvider,
   type CollectorSenderProviderProps,

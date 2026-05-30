@@ -1,45 +1,28 @@
-import { CatchBoundary, createFileRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { stripTrailingSlash } from 'kitchen-sink'
-import { Suspense, useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { AsyncErrorView, ItemList, type ItemListItem } from 'react-tundraish'
-import { useTunnelStateQuery, type TunnelState } from 'tunnel-react'
+import { tunnelStateQueryOptions, useTunnelStateQuery, type TunnelState } from 'tunnel-react'
 
-import { useAppsListQuery, type AppEntry } from '../../../queries.ts'
+import { appsListQueryOptions, useAppsListQuery, type AppEntry } from '../../../queries.ts'
 import { useRequestTunnel } from '../../../runtime/use-request-tunnel.ts'
 import { AppsEditor } from '../../../screens/apps-editor.tsx'
 import pageLayout from '../../../styles/page.module.css'
 
-const AppsHomeContent = (): JSX.Element => {
-  // Two parallel Suspense queries.
+/**
+ * Owner-facing apps landing. The route `loader` warms both queries in
+ * parallel against the shared `QueryClient`; by the time the component
+ * renders, `useAppsListQuery` / `useTunnelStateQuery` resolve
+ * synchronously from cache. The router's own pending UI covers the
+ * load window — no inline `<Suspense>` fallback, no `<CatchBoundary>`;
+ * read failures propagate to the route's `errorComponent`. Mutations
+ * triggered inside `<AppsEditor>` auto-invalidate the list query.
+ */
+const AppsHomeScreen = (): JSX.Element => {
   const { data: apps } = useAppsListQuery()
   const { data: tunnel } = useTunnelStateQuery()
   return <AppsHomeBody apps={apps} tunnel={tunnel} />
-}
-
-/**
- * Owner-facing apps landing. Reads the apps list and the tunnel state
- * via TanStack Query (`useAppsListQuery` + `useTunnelStateQuery`) against
- * the app's in-memory `QueryClient`. The cache is warmed ahead of the
- * render by the router's intent preloading (`defaultPreload: 'intent'`),
- * so a hovered/touched link primes both reads and the screen resolves
- * from cache instead of suspending; with `staleTime: 5 minutes` (set in
- * `router-context.ts`) a freshly-preloaded read stays fresh and does not
- * refetch on mount within that window. Mutations triggered inside
- * `<AppsEditor>` auto-invalidate the list query — no `onChanged` prop
- * drilling required.
- */
-function AppsHomeScreen(): JSX.Element {
-  return (
-    <CatchBoundary
-      getResetKey={() => 'apps-home'}
-      errorComponent={({ error }) => <AsyncErrorView error={error} title="Apps" />}
-    >
-      <Suspense fallback={<p className="text-body-2">Loading apps…</p>}>
-        <AppsHomeContent />
-      </Suspense>
-    </CatchBoundary>
-  )
 }
 
 interface AppsHomeBodyProps {
@@ -47,7 +30,7 @@ interface AppsHomeBodyProps {
   readonly apps: readonly AppEntry[]
 }
 
-function AppsHomeBody({ tunnel, apps }: AppsHomeBodyProps): JSX.Element {
+const AppsHomeBody = ({ tunnel, apps }: AppsHomeBodyProps): JSX.Element => {
   const [editorOpen, setEditorOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const requestTunnel = useRequestTunnel()
@@ -135,5 +118,11 @@ function AppsHomeBody({ tunnel, apps }: AppsHomeBodyProps): JSX.Element {
 }
 
 export const Route = createFileRoute('/_auth/apps/')({
+  loader: ({ context }) =>
+    Promise.all([
+      context.queryClient.ensureQueryData(appsListQueryOptions(context.runAuthed)),
+      context.queryClient.ensureQueryData(tunnelStateQueryOptions(context.runAuthed)),
+    ]),
   component: AppsHomeScreen,
+  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Apps" />,
 })

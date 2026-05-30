@@ -31,7 +31,6 @@ vi.mock('gatekeeper-react', () => ({
 }))
 vi.mock('react-kitchen-sink', () => ({ AuthTokenProvider: Passthrough }))
 vi.mock('collector-react', () => ({
-  CollectorRuntimeProvider: Passthrough,
   CollectorRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 // fhir-r4-react migrated off its client provider; the app composes its
@@ -40,7 +39,6 @@ vi.mock('fhir-r4-react', () => ({
   FhirR4ResourcesRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('apps-react', () => ({
-  AppsRuntimeProvider: Passthrough,
   AppsRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 // Prefetch is gated off; these stubs just satisfy the imports.
@@ -97,12 +95,13 @@ describe('in-memory QueryClientProvider', () => {
   test('provides a single shared QueryClient to the whole tree', async () => {
     const { renderApp } = await import('../app-root.tsx')
 
+    const { stubTransport } = await import('./transport-context.ts')
     await act(async () => {
       renderApp({
         history: createMemoryHistory({ initialEntries: ['/'] }),
-        TransportProvider: Passthrough,
         entry: 'main-web',
         awaitAuthReady: () => Promise.resolve(),
+        makeTransport: () => Promise.resolve(stubTransport),
       })
     })
 

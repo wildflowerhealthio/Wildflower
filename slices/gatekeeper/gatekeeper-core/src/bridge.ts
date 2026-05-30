@@ -13,7 +13,7 @@ type AuthTokenIssued = Schema.Schema.Type<typeof AuthTokenIssued>
 /**
  * Host → Web: signals at boot that the host commits to delivering an
  * `AuthTokenIssued` later. Rides URL params (bare flag) so the web
- * `TransportProvider` dispatches it before the descendant tree mounts.
+ * transport dispatches it before the `_auth` `beforeLoad` gate runs.
  * The web receiver flips `waitForHostTokenRef`; the auth gate consults
  * the flag and renders a neutral loader instead of falling through to
  * the device-flow UI while it waits.

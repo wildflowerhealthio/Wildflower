@@ -40,6 +40,15 @@ interface RouterContext {
    * this, so an authed loader that runs is guaranteed a token.
    */
   readonly awaitAuthReady: BaseRouterContext.AwaitAuthReady
+  /**
+   * Resolves once the page-side `BridgeTransport` has flushed its
+   * initial inbound queue and signalled the host to start sending.
+   * For standalone web (`StubTransport`) this is `Promise.resolve()`.
+   * For embedded, this gates the `_auth` `beforeLoad` so the bearer
+   * token the host pushes over the gatekeeper bridge has had a chance
+   * to arrive before `awaitAuthReady` reads `authTokenRef`.
+   */
+  readonly transportReady: Promise<void>
 }
 
 /**

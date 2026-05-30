@@ -1,8 +1,7 @@
 import { Effect } from 'effect'
 import { useCallback } from 'react'
 
-import type { TunnelOutcome } from './apps-runtime-context.ts'
-import { useAppsRuntime } from './use-apps-runtime.ts'
+import { setPendingTunnelResolver, type TunnelOutcome } from './tunnel-resolver-ref.ts'
 import { useAppsSender } from './use-apps-sender.ts'
 
 /**
@@ -30,7 +29,6 @@ const TUNNEL_REQUEST_TIMEOUT_MS = 8000
  */
 const useRequestTunnel = (): (() => Promise<TunnelOutcome>) => {
   const send = useAppsSender()
-  const { setPendingTunnelResolver } = useAppsRuntime()
   return useCallback(
     () =>
       new Promise<TunnelOutcome>((resolve) => {
@@ -57,7 +55,7 @@ const useRequestTunnel = (): (() => Promise<TunnelOutcome>) => {
           settle({ error: 'tunnel request failed to dispatch' })
         })
       }),
-    [send, setPendingTunnelResolver]
+    [send]
   )
 }
 

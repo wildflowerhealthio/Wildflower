@@ -5,7 +5,10 @@ import type { RouterContext } from '../router-context.ts'
 
 /**
  * `beforeLoad` auth gate for the owner-facing layouts (`_auth`,
- * `/settings`). Calls the injected, environment-specific
+ * `/settings`). Awaits `context.transportReady` first — embedded
+ * cannot receive the bearer token over the gatekeeper bridge until
+ * `transport.signalReady` has run; web's stub is already-resolved so
+ * this is a microtask — then calls the injected, environment-specific
  * `context.awaitAuthReady()` and branches on its tagged rejection:
  *
  *   - resolve → proceed (an authed loader below is guaranteed a token).
@@ -20,6 +23,7 @@ import type { RouterContext } from '../router-context.ts'
  * than being silently swallowed into a proceed.
  */
 const authBeforeLoad = async ({ context }: { readonly context: RouterContext }): Promise<void> => {
+  await context.transportReady
   try {
     await context.awaitAuthReady()
   } catch (error) {

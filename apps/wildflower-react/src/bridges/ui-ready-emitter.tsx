@@ -14,8 +14,8 @@ import { useBridgeTransport } from './transport-context.ts'
  * reveal) — posts the `UIReady` nav-bridge message so the embedded host
  * hides its native splash / reveals the WebView.
  *
- * Standalone web wires a `StubTransportProvider`, whose `sendMessage` is
- * a no-op `Effect.void`, so the emit is harmless there — the prefetch
+ * Standalone web wires the `stubTransport`, whose `sendMessage` is a
+ * no-op `Effect.void`, so the emit is harmless there — the prefetch
  * still warms the cache for first paint.
  *
  * @remarks

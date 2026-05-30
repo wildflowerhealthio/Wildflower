@@ -14,12 +14,29 @@ import { authBeforeLoad } from './auth-gate.ts'
  * renders the retry screen.
  */
 
-const makeContext = (awaitAuthReady: () => Promise<void>): RouterContext => ({
+const makeContext = (
+  awaitAuthReady: () => Promise<void>,
+  transportReady: Promise<void> = Promise.resolve()
+): RouterContext => ({
   queryClient: new QueryClient(),
   runAuthed: () => Promise.reject(new Error('runAuthed not used in gate tests')),
   runtimeLayer: Layer.die('runtimeLayer not used in gate tests'),
   awaitAuthReady,
+  transportReady,
 })
+
+interface Deferred<T> {
+  readonly promise: Promise<T>
+  readonly resolve: (value: T) => void
+}
+
+const makeDeferred = <T>(): Deferred<T> => {
+  const box: { resolve: (value: T) => void } = { resolve: () => undefined }
+  const promise = new Promise<T>((res) => {
+    box.resolve = res
+  })
+  return { promise, resolve: (value) => box.resolve(value) }
+}
 
 describe('authBeforeLoad', () => {
   test('proceeds (resolves void) when awaitAuthReady resolves', async () => {
@@ -51,5 +68,32 @@ describe('authBeforeLoad', () => {
     const context = makeContext(() => Promise.reject(boom))
 
     await expect(authBeforeLoad({ context })).rejects.toBe(boom)
+  })
+
+  test('awaits transportReady before calling awaitAuthReady', async () => {
+    // The embedded entry's host pushes the bearer over the gatekeeper
+    // bridge after `transport.signalReady`. The gate must therefore wait
+    // for `transportReady` before `awaitAuthReady` reads the ref.
+    const order: string[] = []
+    const deferred = makeDeferred<void>()
+    const transportReady = deferred.promise.then(() => {
+      order.push('transportReady')
+    })
+    const awaitAuthReady = (): Promise<void> => {
+      order.push('awaitAuthReady')
+      return Promise.resolve()
+    }
+    const context = makeContext(awaitAuthReady, transportReady)
+
+    const gate = authBeforeLoad({ context })
+    // Microtask flush: without the await, the gate would already have
+    // called `awaitAuthReady`. Order should still be empty.
+    await Promise.resolve()
+    expect(order).toEqual([])
+
+    deferred.resolve()
+    await gate
+
+    expect(order).toEqual(['transportReady', 'awaitAuthReady'])
   })
 })
