@@ -31,7 +31,7 @@ describe('unknownErrorToString', () => {
       fc.property(fc.string(), (message) => {
         expect(unknownErrorToString(new Error(message))).toBe(message)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -40,7 +40,7 @@ describe('unknownErrorToString', () => {
       fc.property(fc.oneof(fc.string(), fc.integer(), fc.boolean(), fc.constant(null)), (value) => {
         expect(unknownErrorToString(value)).toBe(String(value))
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })
