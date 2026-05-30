@@ -1,53 +1,42 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  RouterProvider,
-} from '@tanstack/react-router'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/react-router'
+import { act, cleanup, screen, waitFor } from '@testing-library/react'
 import { Effect, Layer } from 'effect'
 import { useEffect, type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**
- * Regression guard for the PR that migrated react-router → TanStack and
- * SPLIT the provider stack across two homes:
+ * Regression guard for the PR that migrated react-router → TanStack. After
+ * every slice's client DI migrated to TanStack Query + the router-context
+ * `runAuthed`/`runtimeLayer` (Issue #107), `<RootShell>` renders ONLY an
+ * `<Outlet />` — no slice client providers nest there anymore. The whole
+ * provider stack now lives in one home:
  *
- *  - `<RootShell>` — the TanStack root-route `component`. Renders ONLY
- *    the slice client providers (collector → fhir-r4) around `<Outlet />`.
- *    (Tunnel, apps, and gatekeeper client providers were dropped in the
- *    TanStack-Query migration — Issue #107.)
  *  - `app-root.tsx`'s `InnerWrap` — passed to `<RouterProvider>`. Renders
  *    the auth/runtime/transport/sender stack (AuthTokenProvider, the two
  *    RuntimeProviders, TransportProvider, the two SenderForwarders)
  *    ABOVE the router's matched routes.
  *
- * The invariant both halves share: TanStack's `<RouterProvider>` does NOT
- * remount the root-route component OR the `InnerWrap` on child
- * navigations — children mount/unmount inside the `<Outlet />` — so both
- * provider tiers keep state across nav. That's the whole reason it's safe
- * to host `BridgeTransport` (built via `useNavigate()` / `useRouter()`)
- * in the `InnerWrap`: a remount would tear down and rebuild the transport
- * on every navigation, dropping pending bridge messages and breaking the
- * `__Ready` handshake.
+ * The invariant: TanStack's `<RouterProvider>` does NOT remount the
+ * `InnerWrap` on child navigations — children mount/unmount inside the
+ * `<Outlet />` — so the provider tier keeps state across nav. That's the
+ * whole reason it's safe to host `BridgeTransport` (built via
+ * `useNavigate()` / `useRouter()`) in the `InnerWrap`: a remount would
+ * tear down and rebuild the transport on every navigation, dropping
+ * pending bridge messages and breaking the `__Ready` handshake.
  *
- * The two describe blocks below pin each tier:
- *  - "RootShell mount lifecycle" mounts `<RootShell>` directly as a
- *    root-route component and asserts its slice client providers stay
- *    mounted across navigation.
+ * The single describe block below pins that tier:
  *  - "renderApp InnerWrap lifecycle" exercises the real `renderApp`
  *    (with `InnerWrap`) and asserts the relocated auth/runtime/transport
  *    stack mounts and is left untouched by navigation.
  *
- * Strategy (shared): mock every provider/bridge as an identity
- * passthrough that records `'mount'` / `'unmount'` events into a shared
- * `lifecycleSpy`, so the test exercises only mount semantics — not the
- * Effect runtimes, BridgeTransport build, or console interceptors the
- * real stack pulls in. The recorded event log distinguishes "the
- * provider stayed put" (its log is unchanged by navigation) from "the
- * stack rebuilt under the new route" (mount + unmount appended on nav).
+ * Strategy: mock every provider/bridge as an identity passthrough that
+ * records `'mount'` / `'unmount'` events into a shared `lifecycleSpy`, so
+ * the test exercises only mount semantics — not the Effect runtimes,
+ * BridgeTransport build, or console interceptors the real stack pulls in.
+ * The recorded event log distinguishes "the provider stayed put" (its log
+ * is unchanged by navigation) from "the stack rebuilt under the new route"
+ * (mount + unmount appended on nav).
  */
 
 // `vi.hoisted` lifts these declarations above the `vi.mock` factory
@@ -95,8 +84,11 @@ vi.mock('collector-react', () => ({
   CollectorRuntimeProvider: makePassthrough('CollectorRuntimeProvider'),
   CollectorRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
+// fhir-r4-react no longer ships a client provider — the app composes its
+// `sliceRuntimeLayer` into the runtime layer (see `router-context.ts`),
+// so the mock now mirrors the other migrated slices' router-context shape.
 vi.mock('fhir-r4-react', () => ({
-  FhirR4ResourcesClientProvider: makePassthrough('FhirR4ResourcesClientProvider'),
+  FhirR4ResourcesRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('apps-react', () => ({
   AppsRuntimeProvider: makePassthrough('AppsRuntimeProvider'),
@@ -167,114 +159,6 @@ const lifecycleEventsFor = (name: string): readonly ('mount' | 'unmount')[] =>
   lifecycleSpy.mock.calls
     .filter(([, providerName]) => providerName === name)
     .map(([event]) => event)
-
-describe('RootShell mount lifecycle', () => {
-  // The slice client providers `RootShell` actually renders. After the
-  // collector migration only `fhir-r4-react` remains; the relocated
-  // auth/runtime/transport/sender providers are NOT here — they live in
-  // `app-root.tsx`'s `InnerWrap` and are covered by the "renderApp
-  // InnerWrap lifecycle" block below.
-  const ROOT_SHELL_PROVIDERS = ['FhirR4ResourcesClientProvider'] as const
-
-  const buildTestRouter = (): ReturnType<typeof createRouter> => {
-    // RootShell renders its own `<Outlet />`, so we mount it directly as
-    // the root-route component — the same wiring as `__root.tsx`.
-    const rootRoute = createRootRoute({ component: RootShell })
-    const routeA = createRoute({ getParentRoute: () => rootRoute, path: '/a', component: LeafA })
-    const routeB = createRoute({ getParentRoute: () => rootRoute, path: '/b', component: LeafB })
-    const routeTree = rootRoute.addChildren([routeA, routeB])
-    return createRouter({
-      routeTree,
-      history: createMemoryHistory({ initialEntries: ['/a'] }),
-    })
-  }
-
-  // Vitest does NOT clean up the rendered DOM between tests by default,
-  // and both tests below render their own router into the shared jsdom
-  // body — without an explicit cleanup the second test would observe
-  // the first test's elements alongside its own and fail `getByTestId`
-  // with a "multiple elements" match. Running `cleanup()` here also
-  // fires React's unmount effects, which flush a final 'unmount' event
-  // per provider into `lifecycleSpy` — `mockClear` in the next test's
-  // setup discards those before any assertion runs.
-  afterEach(() => {
-    cleanup()
-    vi.restoreAllMocks()
-  })
-
-  beforeEach(() => {
-    lifecycleSpy.mockClear()
-  })
-
-  test('navigating between sibling routes leaves the outermost provider mounted', async () => {
-    const router = buildTestRouter()
-
-    render(<RouterProvider router={router} />)
-
-    // First match resolves asynchronously under `<RouterProvider>`; the
-    // root-route component renders before the leaf, but the spy call
-    // lives in `useEffect`, so wait for the leaf to confirm the tree
-    // settled.
-    await waitFor(() => {
-      expect(screen.getByTestId('leaf-a')).toBeDefined()
-    })
-
-    // The outermost provider `RootShell` actually renders is
-    // `FhirR4ResourcesClientProvider`: if anything ABOVE the Outlet
-    // remounts (or unmounts and never remounts), its event log diverges
-    // from a single `['mount']`. Other providers might wobble in subtle
-    // refactors, but the outer one is the regression-grade indicator.
-    expect(lifecycleEventsFor('FhirR4ResourcesClientProvider')).toEqual(['mount'])
-
-    // Navigate to a sibling. If `RootShell` were promoted to a child
-    // route whose path stops matching at `/b`, this would unmount the
-    // whole stack — surfacing as an `'unmount'` event tail.
-    await act(async () => {
-      await router.navigate({ to: '/b' })
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('leaf-b')).toBeDefined()
-    })
-    // Leaf A is gone — confirms the Outlet actually swapped children,
-    // so the navigation was real (not a no-op masking the assertion).
-    expect(screen.queryByTestId('leaf-a')).toBeNull()
-
-    // Pin: still exactly one mount, no unmounts of the outermost
-    // provider.
-    expect(lifecycleEventsFor('FhirR4ResourcesClientProvider')).toEqual(['mount'])
-  })
-
-  test('no slice client provider unmounts or remounts across navigation', async () => {
-    // Broader assertion: every passthrough `RootShell` renders sees
-    // exactly `['mount']` — no remounts (would mean the stack rebuilt
-    // under a new parent route) and no unmounts (would mean the parent
-    // route stopped matching). The all-providers sweep catches the
-    // subtle regression mode where the stack splits and some providers
-    // migrate into a sub-component that remounts.
-    const router = buildTestRouter()
-
-    render(<RouterProvider router={router} />)
-    await waitFor(() => {
-      expect(screen.getByTestId('leaf-a')).toBeDefined()
-    })
-
-    for (const name of ROOT_SHELL_PROVIDERS) {
-      expect(lifecycleEventsFor(name)).toEqual(['mount'])
-    }
-
-    await act(async () => {
-      await router.navigate({ to: '/b' })
-    })
-    await waitFor(() => {
-      expect(screen.getByTestId('leaf-b')).toBeDefined()
-    })
-
-    for (const name of ROOT_SHELL_PROVIDERS) {
-      expect(lifecycleEventsFor(name)).toEqual(['mount'])
-    }
-  })
-})
 
 describe('renderApp InnerWrap lifecycle', () => {
   // The six providers that moved OUT of `RootShell` and into

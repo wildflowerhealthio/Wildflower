@@ -2,7 +2,7 @@
   "name": "fhir-r4-react",
   "version": "0.0.0",
   "private": true,
-  "description": "React surface for the FHIR R4 slice — client provider, layer, and effect/stream/action hooks for FhirR4ResourcesHttpApiClient. Mirrors gatekeeper-react's BearerToken-driven client-layer pattern; names are FhirR4-specific so future FHIR-version slices can coexist.",
+  "description": "React surface for the FHIR R4 slice — a BearerToken-driven `buildFhirR4ResourcesClientLayer()` + structural router-context (`sliceRuntimeLayer`, `useFhirR4ResourcesRuntimeLayer`) the host app merges into its composed `runtimeLayer`, plus the `Patient` TanStack-Query read. Cross-slice consumers: `gatekeeper-react`'s patient picker (`usePatientsQuery`) and `collector-react`'s `useSyncRunner` (imperative per-resource PUT via the runtime layer). Mirrors gatekeeper-react's migrated pattern; names are FhirR4-specific so future FHIR-version slices can coexist.",
   "type": "module",
   "exports": {
     ".": {
@@ -14,10 +14,13 @@
   "scripts": {
     "build": "vp pack",
     "check": "vp check",
-    "dev": "vp pack --watch"
+    "dev": "vp pack --watch",
+    "test": "vp test"
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.0",
     "@types/react": "catalog:",
@@ -25,21 +28,21 @@
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-kitchen-sink": "workspace:*",
     "shared-structures-react": "workspace:*",
-    "telemetry-react": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
+    "kitchen-sink": "workspace:*",
     "react": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "shared-structures-react": "workspace:*",
-    "telemetry-react": "workspace:*"
+    "shared-structures-react": "workspace:*"
   }
 }

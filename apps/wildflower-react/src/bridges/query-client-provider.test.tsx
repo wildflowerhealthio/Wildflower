@@ -34,7 +34,11 @@ vi.mock('collector-react', () => ({
   CollectorRuntimeProvider: Passthrough,
   CollectorRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
-vi.mock('fhir-r4-react', () => ({ FhirR4ResourcesClientProvider: Passthrough }))
+// fhir-r4-react migrated off its client provider; the app composes its
+// `sliceRuntimeLayer` (see `router-context.ts`), so mock that shape.
+vi.mock('fhir-r4-react', () => ({
+  FhirR4ResourcesRouterContext: { sliceRuntimeLayer: Layer.empty },
+}))
 vi.mock('apps-react', () => ({
   AppsRuntimeProvider: Passthrough,
   AppsRouterContext: { sliceRuntimeLayer: Layer.empty },
