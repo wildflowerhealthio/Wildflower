@@ -10,9 +10,11 @@ const sliceClient = defineSliceHttpClient({
 
 /**
  * Effect Service providing the resolved `CollectorApi` HttpApi client.
- * `collector-react` provides it via `<CollectorClientProvider>`
- * (mirrors `GatekeeperHttpApiClient` from `gatekeeper-core/clients`);
- * call sites consume it Effect-natively.
+ * `collector-react` exposes it as a per-slice layer
+ * (`buildCollectorClientLayer`) that the app merges into its composed
+ * `runtimeLayer` (mirrors `GatekeeperHttpApiClient` from
+ * `gatekeeper-core/clients`); call sites consume it Effect-natively
+ * through the `runAuthed` runner.
  *
  * @example
  * ```ts

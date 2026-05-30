@@ -31,8 +31,8 @@ vi.mock('gatekeeper-react', () => ({
 }))
 vi.mock('react-kitchen-sink', () => ({ AuthTokenProvider: Passthrough }))
 vi.mock('collector-react', () => ({
-  CollectorClientProvider: Passthrough,
   CollectorRuntimeProvider: Passthrough,
+  CollectorRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('fhir-r4-react', () => ({ FhirR4ResourcesClientProvider: Passthrough }))
 vi.mock('apps-react', () => ({

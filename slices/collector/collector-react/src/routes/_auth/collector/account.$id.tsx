@@ -1,100 +1,61 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { CollectorHttpApiClient } from 'collector-core/clients'
-import type { Remotes } from 'collector-core/http-api-definition'
-import { Effect, type Schema } from 'effect'
 import { defaultConfig } from 'fhir-r4-client-collector'
-import { useEffect, useState, type JSX } from 'react'
+import { unknownErrorToString } from 'kitchen-sink'
+import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { pageLayoutStyles } from 'react-tundraish'
+import { AsyncErrorView, pageLayoutStyles } from 'react-tundraish'
 
-import { useCollectorEffectAction } from '../../../collector-client.tsx'
+import {
+  remoteQueryOptions,
+  useRemoteQuery,
+  useUpdateRemoteMutation,
+  type Remote,
+} from '../../../queries/index.ts'
+import { ensureAuthedQuery } from '../../../router-loader.ts'
 import accountConfig from './account-config.module.css'
 import pageLayout from './page-layout.module.css'
 
-type RemoteRow = Schema.Schema.Type<typeof Remotes.RemoteSchema>
-
 /**
  * Edit an existing FHIR R4 remote. Mounted at `/collector/account/$id`;
- * the row is loaded by the path param.
+ * the row is read through `useRemoteQuery` (TanStack Query), warmed by
+ * the route `loader`. Saving rides `useUpdateRemoteMutation`, whose
+ * `invalidateQueries` refetches the accounts list + this remote's detail.
  */
-function AccountConfigScreen({ accountId }: { readonly accountId: string }): JSX.Element {
+function AccountConfigScreen({ existing }: { readonly existing: Remote }): JSX.Element {
   const navigate = useNavigate()
-  const run = useCollectorEffectAction()
-  const [existing, setExisting] = useState<RemoteRow | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [name, setName] = useState('')
-  const [rootUrl, setRootUrl] = useState(defaultConfig.rootUrl)
-  const [patientId, setPatientId] = useState(defaultConfig.patientId)
+  const updateMutation = useUpdateRemoteMutation()
+  const [name, setName] = useState(existing.name)
+  const [rootUrl, setRootUrl] = useState(
+    typeof existing.config['rootUrl'] === 'string'
+      ? existing.config['rootUrl']
+      : defaultConfig.rootUrl
+  )
+  const [patientId, setPatientId] = useState(
+    typeof existing.config['patientId'] === 'string'
+      ? existing.config['patientId']
+      : defaultConfig.patientId
+  )
 
-  useEffect(() => {
-    let cancelled = false
-    const load = async (): Promise<void> => {
-      try {
-        const remote = await run(
-          Effect.flatMap(CollectorHttpApiClient, (c) =>
-            c['collector-remotes'].GetRemote({ path: { id: accountId } })
-          )
-        )
-        if (!cancelled) {
-          setExisting(remote)
-          setName(remote.name)
-          const rootUrlVal = remote.config['rootUrl']
-          const patientIdVal = remote.config['patientId']
-          setRootUrl(typeof rootUrlVal === 'string' ? rootUrlVal : defaultConfig.rootUrl)
-          setPatientId(typeof patientIdVal === 'string' ? patientIdVal : defaultConfig.patientId)
-          setLoading(false)
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : String(e))
-          setLoading(false)
-        }
-      }
-    }
-    void load()
-    return () => {
-      cancelled = true
-    }
-  }, [accountId, run])
+  const error = updateMutation.error === null ? null : unknownErrorToString(updateMutation.error)
 
-  const handleSave = async (): Promise<void> => {
+  const handleSave = (): void => {
     const remoteName = name === '' ? `FHIR R4 ${new Date().toLocaleDateString()}` : name
-    try {
-      const operation =
-        existing !== null
-          ? Effect.flatMap(CollectorHttpApiClient, (c) =>
-              c['collector-remotes'].UpdateRemote({
-                path: { id: accountId },
-                payload: {
-                  name: remoteName,
-                  config: { _tag: 'fhir-r4', rootUrl, patientId },
-                },
-              })
-            )
-          : Effect.flatMap(CollectorHttpApiClient, (c) =>
-              c['collector-remotes'].CreateRemote({
-                payload: {
-                  id: crypto.randomUUID(),
-                  name: remoteName,
-                  config: { _tag: 'fhir-r4', rootUrl, patientId },
-                },
-              })
-            )
-      await run(operation)
-      void navigate({ to: '/collector' })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }
-
-  if (loading) {
-    return <p className="text-body-2">Loading…</p>
+    updateMutation.mutate(
+      {
+        id: existing.id,
+        payload: { name: remoteName, config: { _tag: 'fhir-r4', rootUrl, patientId } },
+      },
+      {
+        onSuccess: () => {
+          void navigate({ to: '/collector' })
+        },
+      }
+    )
   }
 
   return (
     <>
-      <h2 className="text-heading-4">{existing !== null ? 'Edit Account' : 'Add Account'}</h2>
+      <h2 className="text-heading-4">Edit Account</h2>
 
       {error !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
@@ -155,7 +116,7 @@ function AccountConfigScreen({ accountId }: { readonly accountId: string }): JSX
       </div>
 
       <div className={pageLayout['button-row']}>
-        <button type="button" className="button-2 filled" onClick={() => void handleSave()}>
+        <button type="button" className="button-2 filled" onClick={handleSave}>
           Save
         </button>
         <button
@@ -172,14 +133,25 @@ function AccountConfigScreen({ accountId }: { readonly accountId: string }): JSX
 
 /**
  * The `/collector/account/$id` route. Reads the typed `$id` path param
- * from the generated route via `Route.useParams()` and hands it to the
- * screen as a prop.
+ * from the generated route via `Route.useParams()`, fetches the remote
+ * through `useRemoteQuery`, and hands the loaded row to the screen.
  */
 function AccountConfigRoute(): JSX.Element {
   const { id } = Route.useParams()
-  return <AccountConfigScreen accountId={id} />
+  const { data: existing } = useRemoteQuery(id)
+  return <AccountConfigScreen existing={existing} />
 }
 
+/**
+ * The `_auth` gate is a React component (`RequireAuth`), not `beforeLoad`,
+ * so the loader fires before auth. {@link ensureAuthedQuery} skips the
+ * prefetch when the bearer token isn't ready yet and lets the in-component
+ * `useSuspenseQuery` do the real read; genuine read failures (including a
+ * 404 `RemoteNotFound`) propagate to `errorComponent`.
+ */
 export const Route = createFileRoute('/_auth/collector/account/$id')({
+  loader: ({ context, params }) =>
+    ensureAuthedQuery(context, remoteQueryOptions(context.runAuthed, params.id)),
   component: AccountConfigRoute,
+  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Collector" />,
 })

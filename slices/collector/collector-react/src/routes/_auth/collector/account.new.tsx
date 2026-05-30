@@ -1,12 +1,12 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { CollectorHttpApiClient } from 'collector-core/clients'
-import { Effect, Schema } from 'effect'
+import { Schema } from 'effect'
 import { defaultConfig } from 'fhir-r4-client-collector'
+import { unknownErrorToString } from 'kitchen-sink'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { pageLayoutStyles } from 'react-tundraish'
 
-import { useCollectorEffectAction } from '../../../collector-client.tsx'
+import { useCreateRemoteMutation } from '../../../queries/index.ts'
 import accountConfig from './account-config.module.css'
 import pageLayout from './page-layout.module.css'
 
@@ -30,30 +30,27 @@ function AccountNewScreen({
   prefillPatientId,
 }: AccountNewSearch): JSX.Element {
   const navigate = useNavigate()
-  const run = useCollectorEffectAction()
-  const [error, setError] = useState<string | null>(null)
+  const createMutation = useCreateRemoteMutation()
   const [name, setName] = useState(prefillName ?? '')
   const [rootUrl, setRootUrl] = useState(prefillRootUrl ?? defaultConfig.rootUrl)
   const [patientId, setPatientId] = useState(prefillPatientId ?? defaultConfig.patientId)
 
-  const handleSave = async (): Promise<void> => {
+  const error = createMutation.error === null ? null : unknownErrorToString(createMutation.error)
+
+  const handleSave = (): void => {
     const remoteName = name === '' ? `FHIR R4 ${new Date().toLocaleDateString()}` : name
-    try {
-      await run(
-        Effect.flatMap(CollectorHttpApiClient, (c) =>
-          c['collector-remotes'].CreateRemote({
-            payload: {
-              id: crypto.randomUUID(),
-              name: remoteName,
-              config: { _tag: 'fhir-r4', rootUrl, patientId },
-            },
-          })
-        )
-      )
-      void navigate({ to: '/collector' })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
+    createMutation.mutate(
+      {
+        id: crypto.randomUUID(),
+        name: remoteName,
+        config: { _tag: 'fhir-r4', rootUrl, patientId },
+      },
+      {
+        onSuccess: () => {
+          void navigate({ to: '/collector' })
+        },
+      }
+    )
   }
 
   return (
@@ -119,7 +116,7 @@ function AccountNewScreen({
       </div>
 
       <div className={pageLayout['button-row']}>
-        <button type="button" className="button-2 filled" onClick={() => void handleSave()}>
+        <button type="button" className="button-2 filled" onClick={handleSave}>
           Save
         </button>
         <button

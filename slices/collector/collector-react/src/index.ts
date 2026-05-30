@@ -1,12 +1,25 @@
 export {
-  CollectorClientLayerContext,
-  CollectorClientProvider,
-  useCollectorClientLayer,
-  useCollectorEffect,
-  useCollectorEffectAction,
-  useCollectorStream,
-  type CollectorEffectAction,
-} from './collector-client.tsx'
+  buildCollectorClientLayer,
+  type CollectorClientRequirements,
+} from './client/collector-client.ts'
+
+export * as CollectorRouterContext from './router-context.ts'
+
+export {
+  REMOTES_QUERY_KEY,
+  remoteQueryOptions,
+  remotesQueryOptions,
+  useCreateRemoteMutation,
+  useDeleteRemoteMutation,
+  useRemoteQuery,
+  useRemotesQuery,
+  useRunAuthed,
+  useUpdateRemoteMutation,
+  type CreateRemotePayload,
+  type Remote,
+  type RunAuthed,
+  type UpdateRemotePayload,
+} from './queries/index.ts'
 
 export { CollectorRuntimeProvider } from './runtime/collector-runtime-provider.tsx'
 export {

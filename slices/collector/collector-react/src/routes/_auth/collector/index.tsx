@@ -1,19 +1,32 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { CollectorHttpApiClient } from 'collector-core/clients'
-import type { Remotes } from 'collector-core/http-api-definition'
-import { Effect, type Schema } from 'effect'
 import { defaultConfig } from 'fhir-r4-client-collector'
-import { useEffect, useState, type JSX } from 'react'
+import { unknownErrorToString } from 'kitchen-sink'
+import { useState, type JSX } from 'react'
 import { cn, unwrapCause } from 'react-kitchen-sink'
-import { Dialog, ItemList, Menu, pageLayoutStyles, type MenuItem } from 'react-tundraish'
+import {
+  AsyncErrorView,
+  Dialog,
+  ItemList,
+  Menu,
+  pageLayoutStyles,
+  type MenuItem,
+} from 'react-tundraish'
 
-import { useCollectorEffectAction } from '../../../collector-client.tsx'
 import { formatInstant } from '../../../format-date.ts'
+import {
+  remotesQueryOptions,
+  useDeleteRemoteMutation,
+  useRemotesQuery,
+  type Remote,
+} from '../../../queries/index.ts'
+import { ensureAuthedQuery } from '../../../router-loader.ts'
 import { useSyncRunner } from '../../../runtime/use-sync-runner.ts'
 import accountList from './account-list.module.css'
 import pageLayout from './page-layout.module.css'
 
-type Remote = Schema.Schema.Type<typeof Remotes.RemoteSchema>
+interface AccountListBodyProps {
+  readonly remotes: readonly Remote[]
+}
 
 /**
  * Lists the remotes registered against `CollectorApi`. "Import Now"
@@ -22,58 +35,47 @@ type Remote = Schema.Schema.Type<typeof Remotes.RemoteSchema>
  * warns-and-drops in the bridge transport, which is fine — the menu
  * stays visible so a Wildflower-on-phone deployment over an HTTP
  * tunnel can still hand off to the device.
+ *
+ * The remotes list is read through `useRemotesQuery` (TanStack Query),
+ * warmed by the route `loader`. Deleting a remote rides
+ * `useDeleteRemoteMutation`, whose `invalidateQueries` refetches the list
+ * — no manual `refresh()`.
  */
-function AccountListScreen(): JSX.Element {
+function AccountListBody({ remotes }: AccountListBodyProps): JSX.Element {
   const navigate = useNavigate()
-  const run = useCollectorEffectAction()
-  const [remotes, setRemotes] = useState<readonly Remote[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const deleteMutation = useDeleteRemoteMutation()
+  const [importError, setImportError] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [activeImportRemote, setActiveImportRemote] = useState<Remote | null>(null)
   useSyncRunner({
     remote: activeImportRemote,
     onError: (e) => {
       console.error('Error during import:', unwrapCause(e))
-      setError(e instanceof Error ? e.message : String(e))
+      setImportError(e instanceof Error ? e.message : String(e))
       setActiveImportRemote(null)
     },
   })
-  const refresh = async (): Promise<void> => {
-    try {
-      const list = await run(
-        Effect.flatMap(CollectorHttpApiClient, (c) => c['collector-remotes'].ListRemotes())
-      )
-      setRemotes(list)
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }
 
-  useEffect(() => {
-    void refresh()
-    // refresh closes over `run`; only re-fetch when the runner rotates
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [run])
+  const deleteError =
+    deleteMutation.error === null ? null : unknownErrorToString(deleteMutation.error)
+  const error = importError ?? deleteError
 
-  const deleteRemote = async (id: string): Promise<void> => {
-    try {
-      await run(
-        Effect.flatMap(CollectorHttpApiClient, (c) =>
-          c['collector-remotes'].DeleteRemote({ path: { id } })
-        )
-      )
-      setConfirmDeleteId(null)
-      await refresh()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
+  const deleteRemote = (id: string): void => {
+    deleteMutation.mutate(
+      { id },
+      {
+        onSuccess: () => {
+          setConfirmDeleteId(null)
+        },
+      }
+    )
   }
 
   const importNow = (remote: Remote): void => {
     const rootUrl = typeof remote.config['rootUrl'] === 'string' ? remote.config['rootUrl'] : ''
     if (rootUrl === '') return
 
+    setImportError(null)
     setActiveImportRemote(remote)
   }
 
@@ -193,7 +195,7 @@ function AccountListScreen(): JSX.Element {
             type="button"
             className="button-2 filled accent-red"
             onClick={() => {
-              if (remoteToDelete !== undefined) void deleteRemote(remoteToDelete.id)
+              if (remoteToDelete !== undefined) deleteRemote(remoteToDelete.id)
             }}
           >
             Delete
@@ -213,6 +215,23 @@ function AccountListScreen(): JSX.Element {
   )
 }
 
+function AccountListScreen(): JSX.Element {
+  const { data: remotes } = useRemotesQuery()
+  return <AccountListBody remotes={remotes} />
+}
+
+/**
+ * The `/_auth/collector/` accounts-list route.
+ *
+ * The `_auth` gate is a React component (`RequireAuth`), not
+ * `beforeLoad`, so the loader fires before auth. {@link ensureAuthedQuery}
+ * skips the prefetch when the bearer token isn't ready yet (embedded first
+ * paint, before `transport.flushed`) and lets the in-component
+ * `useSuspenseQuery` — rendered only after `RequireAuth` passes — do the
+ * real read. Genuine read failures propagate to `errorComponent`.
+ */
 export const Route = createFileRoute('/_auth/collector/')({
+  loader: ({ context }) => ensureAuthedQuery(context, remotesQueryOptions(context.runAuthed)),
   component: AccountListScreen,
+  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Collector" />,
 })

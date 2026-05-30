@@ -92,8 +92,8 @@ vi.mock('gatekeeper-react', () => ({
   GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('collector-react', () => ({
-  CollectorClientProvider: makePassthrough('CollectorClientProvider'),
   CollectorRuntimeProvider: makePassthrough('CollectorRuntimeProvider'),
+  CollectorRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('fhir-r4-react', () => ({
   FhirR4ResourcesClientProvider: makePassthrough('FhirR4ResourcesClientProvider'),
@@ -169,11 +169,12 @@ const lifecycleEventsFor = (name: string): readonly ('mount' | 'unmount')[] =>
     .map(([event]) => event)
 
 describe('RootShell mount lifecycle', () => {
-  // The five slice client providers `RootShell` actually renders, from
-  // outermost to innermost. The relocated auth/runtime/transport/sender
-  // providers are NOT here — they live in `app-root.tsx`'s `InnerWrap`
-  // and are covered by the "renderApp InnerWrap lifecycle" block below.
-  const ROOT_SHELL_PROVIDERS = ['CollectorClientProvider', 'FhirR4ResourcesClientProvider'] as const
+  // The slice client providers `RootShell` actually renders. After the
+  // collector migration only `fhir-r4-react` remains; the relocated
+  // auth/runtime/transport/sender providers are NOT here — they live in
+  // `app-root.tsx`'s `InnerWrap` and are covered by the "renderApp
+  // InnerWrap lifecycle" block below.
+  const ROOT_SHELL_PROVIDERS = ['FhirR4ResourcesClientProvider'] as const
 
   const buildTestRouter = (): ReturnType<typeof createRouter> => {
     // RootShell renders its own `<Outlet />`, so we mount it directly as
@@ -219,11 +220,11 @@ describe('RootShell mount lifecycle', () => {
     })
 
     // The outermost provider `RootShell` actually renders is
-    // `CollectorClientProvider`: if anything ABOVE the Outlet remounts
-    // (or unmounts and never remounts), its event log diverges from a
-    // single `['mount']`. Other providers might wobble in subtle
+    // `FhirR4ResourcesClientProvider`: if anything ABOVE the Outlet
+    // remounts (or unmounts and never remounts), its event log diverges
+    // from a single `['mount']`. Other providers might wobble in subtle
     // refactors, but the outer one is the regression-grade indicator.
-    expect(lifecycleEventsFor('CollectorClientProvider')).toEqual(['mount'])
+    expect(lifecycleEventsFor('FhirR4ResourcesClientProvider')).toEqual(['mount'])
 
     // Navigate to a sibling. If `RootShell` were promoted to a child
     // route whose path stops matching at `/b`, this would unmount the
@@ -241,7 +242,7 @@ describe('RootShell mount lifecycle', () => {
 
     // Pin: still exactly one mount, no unmounts of the outermost
     // provider.
-    expect(lifecycleEventsFor('CollectorClientProvider')).toEqual(['mount'])
+    expect(lifecycleEventsFor('FhirR4ResourcesClientProvider')).toEqual(['mount'])
   })
 
   test('no slice client provider unmounts or remounts across navigation', async () => {

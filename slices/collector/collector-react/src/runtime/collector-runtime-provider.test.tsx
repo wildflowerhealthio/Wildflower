@@ -8,8 +8,8 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   CollectorRuntimeContext,
   type CollectorRuntimeContextValue,
-} from '../src/runtime/collector-runtime-context.ts'
-import { CollectorRuntimeProvider } from '../src/runtime/collector-runtime-provider.tsx'
+} from './collector-runtime-context.ts'
+import { CollectorRuntimeProvider } from './collector-runtime-provider.tsx'
 
 /**
  * Render the provider with a probe child that captures the context
