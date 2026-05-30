@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { AccountNewSearch } from '../src/routes/_auth/collector/account.new.tsx'
+import { AccountNewSearch } from './account.new.tsx'
 
 // `validateSearch` on the `/collector/account/new` route is wired as
 // `Schema.standardSchemaV1(AccountNewSearch)`. These cases pin the

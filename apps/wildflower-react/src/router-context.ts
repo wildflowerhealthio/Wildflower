@@ -1,6 +1,7 @@
 import type { HttpClient } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
 import { AppsRouterContext } from 'apps-react'
+import { CollectorRouterContext } from 'collector-react'
 import { Duration, Effect, Layer, pipe, type Subscribable } from 'effect'
 import { GatekeeperRouterContext } from 'gatekeeper-react'
 import { BearerToken } from 'kitchen-sink/auth-token'
@@ -11,7 +12,8 @@ type RuntimeLayer = Layer.Layer<
   | Layer.Layer.Success<BaseRouterContext.RuntimeLayer>
   | Layer.Layer.Success<TunnelRouterContext.RuntimeLayer>
   | Layer.Layer.Success<AppsRouterContext.RuntimeLayer>
-  | Layer.Layer.Success<GatekeeperRouterContext.RuntimeLayer>,
+  | Layer.Layer.Success<GatekeeperRouterContext.RuntimeLayer>
+  | Layer.Layer.Success<CollectorRouterContext.RuntimeLayer>,
   never,
   never
 >
@@ -84,7 +86,8 @@ const buildRunAuthed = (
     Layer.mergeAll(
       TunnelRouterContext.sliceRuntimeLayer,
       AppsRouterContext.sliceRuntimeLayer,
-      GatekeeperRouterContext.sliceRuntimeLayer
+      GatekeeperRouterContext.sliceRuntimeLayer,
+      CollectorRouterContext.sliceRuntimeLayer
     ),
     baseRuntimeLayer
   )
