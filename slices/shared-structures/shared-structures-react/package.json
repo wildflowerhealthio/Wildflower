@@ -2,7 +2,7 @@
   "name": "shared-structures-react",
   "version": "0.0.0",
   "private": true,
-  "description": "React-side helpers paired with shared-structures-core. `defineSliceReact` collapses each slice-react's per-client context + provider + 4 hooks (`useClientLayer`, `useEffect`, `useEffectRunner`, `useStream`) into a single declaration.",
+  "description": "React-side helpers paired with shared-structures-core. Ships `BaseRouterContext` — the shared TanStack-Router context shape (`queryClient`, `runAuthed`, `runtimeLayer`, and the unified `isTokenReady` readiness guard slice loaders consult before prefetching) — plus the `SettingsItem` type.",
   "license": "MIT",
   "repository": {
     "type": "git",
