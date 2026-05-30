@@ -54,16 +54,31 @@ const withOverriddenModules = (config, overrides) => {
 let config = getDefaultConfig(projectRoot)
 config.resolver.assetExts.push('txt')
 
-addLiveStoreDevtoolsMiddleware(config, {
-  schemaPath: './src/livestore/schema.ts',
-  viteConfig: (viteConfig) => {
-    viteConfig.server.fs ??= {}
-    viteConfig.server.fs.strict = false
-    viteConfig.optimizeDeps ??= {}
-    viteConfig.optimizeDeps.force = true
-    return viteConfig
-  },
-})
+// The devtools middleware boots a Vite dev server (default port 4242)
+// at metro.config.js load time. EAS evaluates this file during
+// `expo export:embed --eager`, where a dev server has no business
+// running and the bind can race / collide. Skip it whenever Metro
+// is running a one-shot export instead of serving — `expo export`
+// and `expo export:embed` both put their subcommand on argv. Also
+// honor EAS_BUILD / NODE_ENV when set.
+const isProductionBundle =
+  process.argv.some((a) => a === 'export' || a === 'export:embed') ||
+  process.env.EAS_BUILD === 'true' ||
+  process.env.EAS_BUILD === '1' ||
+  process.env.NODE_ENV === 'production'
+
+if (!isProductionBundle) {
+  addLiveStoreDevtoolsMiddleware(config, {
+    schemaPath: './src/livestore/schema.ts',
+    viteConfig: (viteConfig) => {
+      viteConfig.server.fs ??= {}
+      viteConfig.server.fs.strict = false
+      viteConfig.optimizeDeps ??= {}
+      viteConfig.optimizeDeps.force = true
+      return viteConfig
+    },
+  })
+}
 
 // Monorepo setup — always include the workspace root so Metro can
 // resolve hoisted node_modules and watch workspace package sources.
