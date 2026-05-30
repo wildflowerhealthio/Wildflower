@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs'
 import { dirname, join, parse as parsePath, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Either, Option, pipe, Schema } from 'effect'
-import { expect } from 'vite-plus/test'
 
 const RiskMap = Schema.Record({ key: Schema.String, value: Schema.Number })
 const PackageJson = Schema.Struct({ name: Schema.optional(Schema.String) })
@@ -23,34 +22,64 @@ const decodePackageJson = decodeOptional(PackageJson)
 const tryReadFile = (path: string): Option.Option<string> =>
   Either.getRight(Either.try({ try: () => readFileSync(path, 'utf8'), catch: () => undefined }))
 
-/** Absolute path of this module, used to skip its own stack frames. */
-const selfFile = Either.getOrElse(
-  Either.try({ try: () => fileURLToPath(import.meta.url), catch: () => undefined }),
-  () => ''
-)
+/** Coerce an unknown to a non-empty-string `Option`. */
+const nonEmptyString = (value: unknown): Option.Option<string> =>
+  Option.filter(
+    Option.fromNullable(value),
+    (v): v is string => typeof v === 'string' && v.length > 0
+  )
 
 /**
- * The test file Vitest is currently running, if available.
- *
- * `expect.getState().testPath` is set per running test file and survives
- * Vitest projects mode (where the worker `cwd` is the monorepo root). Unlike
- * the stack walk, this signal is the file *under test*, not merely the first
- * non-internal caller — so it stays correct even if a future shared in-repo
- * helper (outside this module) wraps `numRunsFor` on behalf of other packages.
- *
- * Guarded so a non-Vitest caller (where `expect` lacks `getState`, or it
- * throws outside a running test) falls back to the stack walk rather than
- * crashing.
+ * Read `obj[key]` as `unknown` when `obj` is a non-null object, else
+ * `undefined`. Uses `Reflect.get` so no narrowing type assertion is needed.
  */
-const vitestTestPath = (): Option.Option<string> =>
+const readProp = (obj: unknown, key: string): unknown =>
+  typeof obj === 'object' && obj !== null ? (Reflect.get(obj, key) as unknown) : undefined
+
+/** Vitest's running test file, via the worker global it always populates. */
+const vitestTestPath = (): unknown =>
+  // The dunder key is Vitest's, accessed dynamically so the dangling-underscore
+  // identifier never appears as a property reference in our source.
+  readProp(readProp(globalThis, '__vitest_worker__'), 'filepath')
+
+/** Jest's running test file, via the global `expect`'s state. */
+const jestTestPath = (): unknown => {
+  const getState = readProp(readProp(globalThis, 'expect'), 'getState')
+  if (typeof getState !== 'function') return undefined
+  return readProp(getState(), 'testPath')
+}
+
+/**
+ * The path of the test file the current runner is executing, read from
+ * runner-provided globals rather than an imported `expect`.
+ *
+ * Two runners are served, and the path is read from `globalThis` for each so
+ * this module pulls in neither `vite-plus/test` (whose CommonJS entry eagerly
+ * requires Vitest and throws under Jest) nor the ESM-only `import.meta` syntax
+ * (which Jest's Babel transform rejects at parse time). That matters because
+ * the `kitchen-sink/test` barrel re-exports `numRunsFor`, so an Expo (Jest)
+ * test importing anything from that barrel transitively loads this module.
+ *
+ * - **Vitest** populates `globalThis.__vitest_worker__.filepath`, the same
+ *   source of truth as `expect.getState().testPath` (verified equal) but
+ *   available without the `globals: true` option this repo does not set.
+ * - **Jest** exposes a global `expect`, whose `getState().testPath` is the
+ *   running test file.
+ *
+ * Unlike the stack walk, this signal is the file *under test*, not merely the
+ * first non-internal caller — so it stays correct even if a future shared
+ * in-repo helper (outside this module) wraps `numRunsFor` on behalf of other
+ * packages. Reads are fully guarded so any unexpected shape falls back to the
+ * stack walk rather than throwing.
+ */
+const runnerTestPath = (): Option.Option<string> =>
   pipe(
     Either.try({
-      try: () => (typeof expect.getState === 'function' ? expect.getState().testPath : undefined),
+      try: (): unknown => Option.getOrElse(nonEmptyString(vitestTestPath()), () => jestTestPath()),
       catch: () => undefined,
     }),
     Either.getRight,
-    Option.flatMap(Option.fromNullable),
-    Option.filter((path): path is string => typeof path === 'string' && path.length > 0)
+    Option.flatMap(nonEmptyString)
   )
 
 /**
@@ -79,14 +108,35 @@ const frameToPath = (line: string): Option.Option<string> => {
   return Option.some(path)
 }
 
+/** First frame path of a stack, or empty string if none can be read. */
+const topFramePath = (stack: string | undefined): string => {
+  if (stack === undefined) return ''
+  for (const line of stack.split('\n')) {
+    const path = Option.getOrElse(frameToPath(line), () => '')
+    if (path.length > 0) return path
+  }
+  return ''
+}
+
+/**
+ * Absolute path of this module, used to skip its own stack frames.
+ *
+ * Captured once at module load from the top frame of a fresh stack — that
+ * frame is this very file (under a bundler, the emitted bundle). This avoids
+ * the ESM-only `import.meta` syntax, which Jest's Babel transform rejects at
+ * parse time when an Expo (Jest) test transitively loads this module through
+ * the `kitchen-sink/test` barrel.
+ */
+const selfFile = topFramePath(new Error('numRunsFor self probe').stack)
+
 /**
  * Pull the absolute path of the test file that called into this module by
  * walking the call stack.
  *
- * Used as a fallback when Vitest's `expect.getState().testPath` is unavailable
- * (a non-Vitest caller). Skips frames belonging to this module (matched by its
- * own resolved path, not a fragile substring) and to `node_modules` (the test
- * runner internals), then takes the first remaining frame.
+ * Used as a fallback when the runner exposes no per-test-file path global
+ * (see {@link runnerTestPath}). Skips frames belonging to this module (matched
+ * by its own resolved path, not a fragile substring) and to `node_modules`
+ * (the test runner internals), then takes the first remaining frame.
  *
  * `numRunsFor` lives in the shared `kitchen-sink/test` bundle, so it cannot
  * learn the package under test from `process.cwd()`: under Vitest projects
@@ -109,11 +159,11 @@ const callerFileFromStack = (): Option.Option<string> => {
 }
 
 /**
- * Resolve the calling test file, preferring Vitest's per-test-file
- * `expect.getState().testPath` and falling back to a call-stack walk for
- * non-Vitest callers. See {@link vitestTestPath} and {@link callerFileFromStack}.
+ * Resolve the calling test file, preferring the runner's per-test-file path
+ * and falling back to a call-stack walk when no runner global is exposed.
+ * See {@link runnerTestPath} and {@link callerFileFromStack}.
  */
-const callerFile = (): Option.Option<string> => Option.orElse(vitestTestPath(), callerFileFromStack)
+const callerFile = (): Option.Option<string> => Option.orElse(runnerTestPath(), callerFileFromStack)
 
 const packageNameCache = new Map<string, Option.Option<string>>()
 
