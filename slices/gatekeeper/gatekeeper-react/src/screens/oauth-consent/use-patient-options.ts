@@ -1,7 +1,4 @@
-import { Cause, Effect } from 'effect'
-import { useFhirR4ResourcesEffectAction } from 'fhir-r4-react'
-import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import { useEffect, useState } from 'react'
+import { usePatientsQuery } from 'fhir-r4-react'
 
 import type { PatientOption } from './types.ts'
 
@@ -11,67 +8,39 @@ interface PatientOptionsState {
 }
 
 /**
- * Fetches the patient list from the FHIR R4 service. The patient
- * endpoint sits on a different API surface than `GatekeeperHttpApiClient`,
- * so we reach for `useFhirR4ResourcesEffectAction` — the slice's
- * pre-bound runner already wires `FhirR4ResourcesHttpApiClient.layer`
- * (bearer-attaching), the host's HttpClient layer, and BearerToken,
- * so this hook just builds the Effect and runs it.
+ * Fetches the patient list from the FHIR R4 service and maps it to the
+ * `{ id, displayName }` options the consent radio group renders.
  *
- * Skips entirely when not enabled — the patient picker is only
- * meaningful for an authenticated owner consenting to a SMART app.
+ * The patient endpoint sits on a different API surface than
+ * `GatekeeperHttpApiClient`, so the read lives in `fhir-r4-react`'s
+ * {@link usePatientsQuery} — a TanStack Query keyed off the slice's
+ * `runAuthed` (post-migration; the old `useFhirR4ResourcesEffectAction`
+ * runner is gone). This hook keeps only the gatekeeper-specific
+ * presentation mapping (display-name derivation, the `PatientOption`
+ * shape) and the `loading` flag the form needs.
+ *
+ * `enabled` gates the query off entirely when not needed — the picker is
+ * only meaningful for an authenticated owner consenting to a SMART app
+ * that requested a `patient/*` scope. While disabled the query never
+ * fires (`isLoading` stays `false`, `data` `undefined`), so this returns
+ * an empty list and `loading: false`.
  */
 const usePatientOptions = (enabled: boolean): PatientOptionsState => {
-  const runFhir = useFhirR4ResourcesEffectAction()
-  const [options, setOptions] = useState<readonly PatientOption[]>([])
-  const [loading, setLoading] = useState(enabled)
+  const query = usePatientsQuery(enabled)
 
-  useEffect(() => {
-    if (!enabled) {
-      setOptions([])
-      setLoading(false)
-      return () => undefined
+  const options: readonly PatientOption[] = (query.data ?? []).flatMap(
+    (resource): readonly PatientOption[] => {
+      if (resource.id === undefined || resource.id === null) return []
+      const name = resource.name?.[0]
+      const given = name?.given?.join(' ') ?? ''
+      const family = name?.family ?? ''
+      const joined = [given, family].filter((s) => s !== '').join(' ')
+      const displayName = joined === '' ? resource.id : joined
+      return [{ id: resource.id, displayName }]
     }
-    setLoading(true)
-    let cancelled = false
-    const fetchOptions = Effect.gen(function* () {
-      const client = yield* FhirR4ResourcesHttpApiClient
-      const bundle = yield* client.Patient.SearchByGet({ urlParams: {} })
-      return (bundle.entry ?? []).flatMap((entry): PatientOption[] => {
-        const resource = entry.resource
-        if (
-          resource === undefined ||
-          resource === null ||
-          resource.id === undefined ||
-          resource.id === null
-        ) {
-          return []
-        }
-        const name = resource.name?.[0]
-        const given = name?.given?.join(' ') ?? ''
-        const family = name?.family ?? ''
-        const joined = [given, family].filter((s) => s !== '').join(' ')
-        let displayName = joined
-        if (displayName === '') displayName = resource.id
-        return [{ id: resource.id, displayName }]
-      })
-    })
-    runFhir(fetchOptions)
-      .then((loadedOptions) => {
-        if (!cancelled) setOptions(loadedOptions)
-      })
-      .catch((cause: unknown) => {
-        Effect.runFork(Effect.logError('gatekeeper-react: patient lookup failed', Cause.die(cause)))
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [runFhir, enabled])
+  )
 
-  return { options, loading }
+  return { options, loading: enabled && query.isLoading }
 }
 
 export { usePatientOptions }

@@ -3,6 +3,7 @@ import { QueryClient } from '@tanstack/react-query'
 import { AppsRouterContext } from 'apps-react'
 import { CollectorRouterContext } from 'collector-react'
 import { Duration, Effect, Layer, pipe, type Subscribable } from 'effect'
+import { FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { GatekeeperRouterContext } from 'gatekeeper-react'
 import { BearerToken } from 'kitchen-sink/auth-token'
 import type { BaseRouterContext } from 'shared-structures-react'
@@ -13,7 +14,8 @@ type RuntimeLayer = Layer.Layer<
   | Layer.Layer.Success<TunnelRouterContext.RuntimeLayer>
   | Layer.Layer.Success<AppsRouterContext.RuntimeLayer>
   | Layer.Layer.Success<GatekeeperRouterContext.RuntimeLayer>
-  | Layer.Layer.Success<CollectorRouterContext.RuntimeLayer>,
+  | Layer.Layer.Success<CollectorRouterContext.RuntimeLayer>
+  | Layer.Layer.Success<FhirR4ResourcesRouterContext.RuntimeLayer>,
   never,
   never
 >
@@ -87,7 +89,8 @@ const buildRunAuthed = (
       TunnelRouterContext.sliceRuntimeLayer,
       AppsRouterContext.sliceRuntimeLayer,
       GatekeeperRouterContext.sliceRuntimeLayer,
-      CollectorRouterContext.sliceRuntimeLayer
+      CollectorRouterContext.sliceRuntimeLayer,
+      FhirR4ResourcesRouterContext.sliceRuntimeLayer
     ),
     baseRuntimeLayer
   )

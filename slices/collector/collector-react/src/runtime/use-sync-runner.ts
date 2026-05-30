@@ -13,7 +13,7 @@ import type { Remote as CollectorRemote } from 'collector-core/livestore'
 import { makeScrapingPlanForConfig, type AnyCollectorResource } from 'collector-core/registry'
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import { Effect, Either, Schedule } from 'effect'
-import { useFhirR4ResourcesEffectAction } from 'fhir-r4-react'
+import { useFhirR4ResourcesRuntimeLayer } from 'fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -56,7 +56,14 @@ type RunnerState =
  *     PUTs parsed resources to the local FHIR R4 server via
  *     `FhirR4ResourcesHttpApiClient`. Each PUT is retried with a
  *     bounded exponential schedule (3 attempts, 250ms → 1s); the
- *     `onError` callback fires only after retries are exhausted.
+ *     `onError` callback fires only after retries are exhausted. The PUT
+ *     is an imperative, per-bridge-message authed write — NOT a one-shot
+ *     query — so it runs against `fhir-r4-react`'s composed
+ *     `runtimeLayer` from router context (`useFhirR4ResourcesRuntimeLayer`),
+ *     `Effect.provide`d and run as a Promise per resource. This mirrors
+ *     how gatekeeper's `NeedsAuthMessage` device flow runs its own
+ *     fiber against the runtime layer rather than going through
+ *     `runAuthed`/`useSuspenseQuery`.
  *   - Installs the handler into the runtime ref on mount, *then*
  *     dispatches `RequestSniffableWebView` with `scrapingPlan.firstPage`
  *     so the host opens the sniffer modal. Install-before-dispatch
@@ -77,7 +84,20 @@ type RunnerState =
 const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
   const { setActiveHandler } = useCollectorRuntime()
   const sendCollectorMessage = useCollectorSender()
-  const runFhir = useFhirR4ResourcesEffectAction()
+  // The per-resource PUT is imperative (one retried write per parsed
+  // resource arriving over the bridge), not a one-shot query, so it runs
+  // against the composed `runtimeLayer` from router context — the same
+  // layer the app provides to every slice (`BearerToken | HttpClient |
+  // FhirR4ResourcesHttpApiClient`). `runFhir` is the thin promise runner
+  // that provides it; memoised on `runtimeLayer` so its identity is
+  // stable across renders (the main effect's dep array keys on it).
+  const runtimeLayer = useFhirR4ResourcesRuntimeLayer()
+  const runFhir = useMemo(
+    () =>
+      <A, E>(effect: Effect.Effect<A, E, FhirR4ResourcesHttpApiClient>): Promise<A> =>
+        Effect.runPromise(effect.pipe(Effect.provide(runtimeLayer))),
+    [runtimeLayer]
+  )
   const [state, setState] = useState<RunnerState>({ _tag: 'idle' })
 
   // Stash `onError` in a ref so a parent passing a fresh lambda on

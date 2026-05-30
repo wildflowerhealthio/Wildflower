@@ -10,10 +10,10 @@ const sliceClient = defineSliceHttpClient({
 
 /**
  * Effect Service providing the resolved `FhirResourcesApi` HttpApi
- * client. `fhir-r4-react` provides it via
- * `<FhirR4ResourcesClientProvider>` (mirrors `GatekeeperHttpApiClient`
- * from `gatekeeper-core/clients`); call sites consume it
- * Effect-natively.
+ * client. `fhir-r4-react` builds its layer via
+ * `buildFhirR4ResourcesClientLayer()` and the host app composes it into
+ * the shared `runtimeLayer` (mirrors `GatekeeperHttpApiClient` from
+ * `gatekeeper-core/clients`); call sites consume it Effect-natively.
  *
  * @example
  * ```ts
