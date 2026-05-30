@@ -19,7 +19,7 @@ describe('Ratio model', () => {
         const decoded = Schema.decodeSync(Ratio.Schema)(encoded)
         expect(decoded).toSchemaEqual(Ratio.Schema, ratio)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

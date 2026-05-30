@@ -14,7 +14,7 @@ describe('TunnelStateSchema', () => {
         const encoded = Schema.encodeSync(TunnelStateSchema)(state)
         expect(Schema.decodeSync(TunnelStateSchema)(encoded)).toEqual(state)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

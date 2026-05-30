@@ -19,7 +19,7 @@ describe('Coding model', () => {
         const decoded = Schema.decodeSync(Coding.Schema)(encoded)
         expect(decoded).toSchemaEqual(Coding.Schema, coding)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

@@ -15,7 +15,7 @@ describe('Address model', () => {
         const decoded = Schema.decodeSync(Address.Schema)(encoded)
         expect(decoded).toSchemaEqual(Address.Schema, address)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

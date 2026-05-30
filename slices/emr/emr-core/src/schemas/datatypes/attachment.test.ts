@@ -19,7 +19,7 @@ describe('Attachment model', () => {
         const decoded = Schema.decodeSync(Attachment.Schema)(encoded)
         expect(decoded).toSchemaEqual(Attachment.Schema, attachment)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

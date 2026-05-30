@@ -145,7 +145,7 @@ describe('BrowserSnifferBridge — Web→Host round-trip', () => {
         await runHost(messages.map(encodeWebToHost), layer)
         expect(collected).toEqual(messages)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })
@@ -193,7 +193,7 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
 
         expect(collected).toEqual(messages)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

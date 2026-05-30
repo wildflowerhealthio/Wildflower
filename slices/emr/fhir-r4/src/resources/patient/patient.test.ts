@@ -84,21 +84,21 @@ describe('FhirR4Patient', () => {
   test('property: name field round-trips', () => {
     fc.assert(
       fc.property(fieldArb('name'), (override) => roundTrip({ ...samplePatient, ...override })),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
   test('property: address field round-trips', () => {
     fc.assert(
       fc.property(fieldArb('address'), (override) => roundTrip({ ...samplePatient, ...override })),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
   test('property: telecom field round-trips', () => {
     fc.assert(
       fc.property(fieldArb('telecom'), (override) => roundTrip({ ...samplePatient, ...override })),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -107,7 +107,7 @@ describe('FhirR4Patient', () => {
       fc.property(fieldArb('identifier'), (override) =>
         roundTrip({ ...samplePatient, ...override })
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -116,21 +116,21 @@ describe('FhirR4Patient', () => {
       fc.property(fieldArb('generalPractitioner'), (override) =>
         roundTrip({ ...samplePatient, ...override })
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
   test('property: photo field round-trips', () => {
     fc.assert(
       fc.property(fieldArb('photo'), (override) => roundTrip({ ...samplePatient, ...override })),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
   test('property: link field round-trips', () => {
     fc.assert(
       fc.property(fieldArb('link'), (override) => roundTrip({ ...samplePatient, ...override })),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -139,14 +139,14 @@ describe('FhirR4Patient', () => {
       fc.property(fieldArb('communication'), (override) =>
         roundTrip({ ...samplePatient, ...override })
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
   test('property: contact field round-trips', () => {
     fc.assert(
       fc.property(fieldArb('contact'), (override) => roundTrip({ ...samplePatient, ...override })),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -155,7 +155,7 @@ describe('FhirR4Patient', () => {
       fc.property(fieldArb('managingOrganization'), (override) =>
         roundTrip({ ...samplePatient, ...override })
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -164,7 +164,7 @@ describe('FhirR4Patient', () => {
       fc.property(fieldArb('maritalStatus'), (override) =>
         roundTrip({ ...samplePatient, ...override })
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -186,7 +186,7 @@ describe('FhirR4Patient', () => {
     fc.assert(
       fc.property(shellArb, (override) => roundTrip({ ...samplePatient, ...override })),
       {
-        numRuns: numRunsFor(100),
+        numRuns: numRunsFor({ base: 100 }),
       }
     )
   })

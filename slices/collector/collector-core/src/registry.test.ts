@@ -41,7 +41,7 @@ describe('CollectorConfig', () => {
         const encoded = Schema.encodeSync(CollectorConfig)(config)
         expect(Schema.decodeSync(CollectorConfig)(encoded)).toEqual(config)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

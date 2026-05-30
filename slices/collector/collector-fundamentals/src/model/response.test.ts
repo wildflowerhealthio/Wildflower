@@ -60,7 +60,7 @@ describe('RemoteResponse', () => {
           })
         }
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

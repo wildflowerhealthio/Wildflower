@@ -12,7 +12,7 @@ import * as Resource from './resource.ts'
 // cast.
 // ---------------------------------------------------------------------------
 
-const META_NUM_RUNS = numRunsFor(25)
+const META_NUM_RUNS = numRunsFor({ base: 25 })
 
 const roundTripField = (name: keyof typeof Resource.Schema.Type, numRuns?: number): void => {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see file header

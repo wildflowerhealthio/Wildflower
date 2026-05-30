@@ -19,7 +19,7 @@ describe('CodeableConcept model', () => {
         const decoded = Schema.decodeSync(CodeableConcept.Schema)(encoded)
         expect(decoded).toSchemaEqual(CodeableConcept.Schema, codeableConcept)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

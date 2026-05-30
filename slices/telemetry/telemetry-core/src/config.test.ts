@@ -116,7 +116,7 @@ describe('configFromEnv', () => {
           expect(configFromEnv(env, 'EXPO_PUBLIC_').sentry.dsn).toBe(expoDsn)
         }
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })
@@ -147,7 +147,7 @@ describe('isOtlpEnabled', () => {
         const cfg = configFromEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: raw })
         expect(isOtlpEnabled(cfg)).toBe(raw.trim().length > 0)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

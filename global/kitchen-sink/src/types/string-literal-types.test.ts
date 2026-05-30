@@ -11,7 +11,7 @@ describe('isDigit', () => {
         const expected = /^[0-9]$/.test(s)
         expect(isDigit(s)).toBe(expected)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -36,7 +36,7 @@ describe('endsWithDigit', () => {
         const expected = last !== undefined && '0123456789'.includes(last)
         expect(endsWithDigit(s)).toBe(expected)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -52,7 +52,7 @@ describe('endsWithAlphanumericCharacter', () => {
         const expected = /[a-zA-Z0-9]$/.test(s)
         expect(endsWithAlphanumericCharacter(s)).toBe(expected)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

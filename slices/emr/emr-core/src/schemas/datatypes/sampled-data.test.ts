@@ -19,7 +19,7 @@ describe('SampledData model', () => {
         const decoded = Schema.decodeSync(SampledData.Schema)(encoded)
         expect(decoded).toSchemaEqual(SampledData.Schema, sample)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

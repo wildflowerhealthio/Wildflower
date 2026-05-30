@@ -60,7 +60,7 @@ describe('Extension self-recursion', () => {
         const decoded = decodeExtension(encoded)
         expect(decoded).toSchemaEqual(Extension.Schema, ext)
       }),
-      { numRuns: numRunsFor(20) }
+      { numRuns: numRunsFor({ base: 20 }) }
     )
   }, 30_000)
 })
@@ -99,7 +99,7 @@ const runValueCycle = <K extends keyof Schema.Schema.Type<typeof Extension.Schem
       const decodedValue = decoded[field]
       expect(decodedValue).toSchemaEqual(schema, value)
     }),
-    { numRuns: numRunsFor(30) }
+    { numRuns: numRunsFor({ base: 30 }) }
   )
 }
 
@@ -156,7 +156,7 @@ describe('Extension composite cycle', () => {
         const decoded = decodeExtension(encodeExtension(outer))
         expect(decoded.extension[0]?.valueQuantity).toSchemaEqual(Quantity.Schema, quantity)
       }),
-      { numRuns: numRunsFor(30) }
+      { numRuns: numRunsFor({ base: 30 }) }
     )
   })
 })

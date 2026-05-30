@@ -291,7 +291,7 @@ describe('makeNamedPipe — properties', () => {
           expect(NavigationBridge.name).toBe('Navigation')
         }
       ),
-      { numRuns: numRunsFor(25) }
+      { numRuns: numRunsFor({ base: 25 }) }
     )
   })
 })

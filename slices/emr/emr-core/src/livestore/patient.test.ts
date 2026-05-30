@@ -28,7 +28,7 @@ const PatientSchema = Patient.RowSchema
 // these columns get a smaller `numRuns` here purely to fit under 5s.
 // ---------------------------------------------------------------------------
 
-const REFERENCE_NUM_RUNS = numRunsFor(25)
+const REFERENCE_NUM_RUNS = numRunsFor({ base: 25 })
 
 const roundTripColumn = (name: keyof typeof PatientSchema.Type, numRuns?: number): void => {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see file header
@@ -314,7 +314,7 @@ describe('Patient model', () => {
           expect(Either.isLeft(result)).toBe(true)
         }
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

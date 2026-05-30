@@ -118,7 +118,7 @@ describe('diffIntents', () => {
         const intents = await Effect.runPromise(collect(snapshots))
         expect(intents.length).toBeLessThanOrEqual(snapshots.length)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     ))
 
   it('never emits two consecutive Stop intents (each Stop must be preceded by a Start)', () =>
@@ -131,7 +131,7 @@ describe('diffIntents', () => {
           }
         }
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     ))
 
   it('the first emitted intent is always StartOrReconfigure (initial inactive is filtered)', () =>
@@ -141,7 +141,7 @@ describe('diffIntents', () => {
         if (intents.length === 0) return
         expect(intents[0]._tag).toBe('StartOrReconfigure')
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     ))
 
   it('every Stop is preceded by a StartOrReconfigure with no intervening Stop', () =>
@@ -171,6 +171,6 @@ describe('diffIntents', () => {
           }
         })
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     ))
 })

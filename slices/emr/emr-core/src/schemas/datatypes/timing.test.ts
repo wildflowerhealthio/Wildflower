@@ -12,7 +12,7 @@ const timingArb = Arbitrary.make(Timing.Schema)
 // so the property assertion is heavier than a flat datatype. Reduced budget
 // mirrors `REFERENCE_NUM_RUNS` in `observation.test.ts` to stay under the
 // default per-test timeout when the suite runs in parallel.
-const NUM_RUNS = numRunsFor(25)
+const NUM_RUNS = numRunsFor({ base: 25 })
 
 describe('Timing model', () => {
   test('Timing.ResourceType is "Timing"', () => {

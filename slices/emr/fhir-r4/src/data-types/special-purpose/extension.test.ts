@@ -20,7 +20,7 @@ describe('FhirR4Extension', () => {
           expect(decoded).toSchemaEqual(StoreExtension.Schema, extension)
         }
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -38,7 +38,7 @@ describe('FhirR4Extension', () => {
         const decoded = Schema.decodeSync(Extension.Schema)(encoded)
         expect(decoded).toSchemaEqual(StoreExtension.Schema, storeExtension)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

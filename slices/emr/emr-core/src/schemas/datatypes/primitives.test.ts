@@ -49,7 +49,7 @@ describe('TimeSchema', () => {
       fc.property(arb, (value) => {
         expect(decode(value)._tag).toBe('Right')
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -61,7 +61,7 @@ describe('TimeSchema', () => {
       fc.property(arb, (value) => {
         expect(decodeSync(encode(value))).toBe(value)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })
@@ -106,7 +106,7 @@ describe('UriSchema', () => {
       fc.property(arb, (value) => {
         expect(decode(value)._tag).toBe('Right')
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -118,7 +118,7 @@ describe('UriSchema', () => {
       fc.property(arb, (value) => {
         expect(decodeSync(encode(value))).toBe(value)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })
@@ -163,7 +163,7 @@ describe('IdSchema', () => {
       fc.property(arb, (value) => {
         expect(decode(value)._tag).toBe('Right')
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -175,7 +175,7 @@ describe('IdSchema', () => {
       fc.property(arb, (value) => {
         expect(decodeSync(encode(value))).toBe(value)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })
@@ -213,7 +213,7 @@ describe('InstantSchema', () => {
       fc.property(arb, (value) => {
         expect(encode(value)).toMatch(FHIR_INSTANT_REGEX)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -225,7 +225,7 @@ describe('InstantSchema', () => {
           DateTime.toEpochMillis(value)
         )
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

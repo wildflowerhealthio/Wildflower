@@ -67,7 +67,7 @@ describe('EntityDefinition.make', () => {
         const result = Effect.runSync(Effect.either(SimpleEntity.parse(makeResponse(json))))
         expect(['Right', 'Left']).toContain(result._tag)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

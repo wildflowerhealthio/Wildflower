@@ -307,6 +307,6 @@ describe('startTunnel — granted-domain parsing (property)', () => {
           }
         }
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     ))
 })

@@ -15,7 +15,7 @@ describe('FhirR4Coding', () => {
         const decoded = Schema.decodeSync(Coding.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreCoding.Schema, coding)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

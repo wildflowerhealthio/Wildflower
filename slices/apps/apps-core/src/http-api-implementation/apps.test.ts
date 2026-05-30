@@ -512,7 +512,7 @@ describe('LaunchApp property tests', () => {
           await localStore.shutdownPromise().catch(() => undefined)
         }
       }),
-      { numRuns: numRunsFor(25) }
+      { numRuns: numRunsFor({ base: 25 }) }
     )
   }, 60_000)
 })

@@ -21,7 +21,7 @@ describe('DomainResource columns: contained / extension / modifierExtension', ()
         expect(patient.extension).toEqual([])
         expect(patient.modifierExtension).toEqual([])
       }),
-      { numRuns: numRunsFor(5), seed: 1 }
+      { numRuns: numRunsFor({ base: 5 }), seed: 1 }
     )
   })
 

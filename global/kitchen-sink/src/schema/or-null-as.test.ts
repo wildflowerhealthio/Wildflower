@@ -65,7 +65,7 @@ describe('OrNullAsUndefined', () => {
           const reDecoded = Schema.decodeUnknownSync(schema)(encoded)
           expect(reDecoded).toEqual(value)
         }),
-        { numRuns: numRunsFor(100) }
+        { numRuns: numRunsFor({ base: 100 }) }
       )
     })
 
@@ -77,7 +77,7 @@ describe('OrNullAsUndefined', () => {
           const reEncoded = Schema.encodeSync(schema)(decoded)
           expect(reEncoded).toEqual(encoded)
         }),
-        { numRuns: numRunsFor(100) }
+        { numRuns: numRunsFor({ base: 100 }) }
       )
     })
   })
@@ -148,7 +148,7 @@ describe('OrNullAsOptional', () => {
           const reDecoded = Schema.decodeUnknownSync(struct)(encoded)
           expect(reDecoded).toEqual(value)
         }),
-        { numRuns: numRunsFor(100) }
+        { numRuns: numRunsFor({ base: 100 }) }
       )
     })
 
@@ -160,7 +160,7 @@ describe('OrNullAsOptional', () => {
           const reEncoded = Schema.encodeSync(struct)(decoded)
           expect(reEncoded).toEqual(encoded)
         }),
-        { numRuns: numRunsFor(100) }
+        { numRuns: numRunsFor({ base: 100 }) }
       )
     })
   })

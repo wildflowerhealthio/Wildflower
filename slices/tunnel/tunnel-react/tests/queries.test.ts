@@ -171,7 +171,7 @@ describe('applyTunnelOptimistic', () => {
           expect(next.requestedRunning).toBe(payRun === undefined ? false : payRun)
         }
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

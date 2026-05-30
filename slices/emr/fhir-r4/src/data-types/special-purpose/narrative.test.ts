@@ -15,7 +15,7 @@ describe('FhirR4Narrative', () => {
         const decoded = Schema.decodeSync(Narrative.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreNarrative.Schema, narrative)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

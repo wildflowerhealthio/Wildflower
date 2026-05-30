@@ -15,7 +15,7 @@ describe('FhirR4ContactPoint', () => {
         const decoded = Schema.decodeSync(ContactPoint.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreContactPoint.Schema, contactPoint)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

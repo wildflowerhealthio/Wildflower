@@ -19,7 +19,7 @@ describe('Period model', () => {
         const decoded = Schema.decodeSync(Period.Schema)(encoded)
         expect(decoded).toSchemaEqual(Period.Schema, period)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

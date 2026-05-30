@@ -15,7 +15,7 @@ describe('SimpleQuantity model', () => {
         const decoded = Schema.decodeSync(SimpleQuantity.Schema)(encoded)
         expect(decoded).toSchemaEqual(SimpleQuantity.Schema, quantity)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

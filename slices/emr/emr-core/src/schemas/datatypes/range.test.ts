@@ -19,7 +19,7 @@ describe('Range model', () => {
         const decoded = Schema.decodeSync(Range.Schema)(encoded)
         expect(decoded).toSchemaEqual(Range.Schema, range)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

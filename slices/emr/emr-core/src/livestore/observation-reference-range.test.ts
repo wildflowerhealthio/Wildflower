@@ -19,7 +19,7 @@ describe('ObservationReferenceRange model', () => {
         const decoded = Schema.decodeSync(ReferenceRangeSchema)(encoded)
         expect(decoded).toSchemaEqual(ReferenceRangeSchema, rr)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   }, 10_000)
 
@@ -42,7 +42,7 @@ describe('ObservationReferenceRange model', () => {
         const decoded = Schema.decodeSync(sub)(encoded)
         expect(decoded).toSchemaEqual(sub, value)
       }),
-      { numRuns: numRunsFor(25) }
+      { numRuns: numRunsFor({ base: 25 }) }
     )
   })
 

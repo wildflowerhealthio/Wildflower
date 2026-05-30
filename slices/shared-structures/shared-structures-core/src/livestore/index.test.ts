@@ -136,7 +136,7 @@ describe('defineSliceLivestore', () => {
           expect(FixtureStore.key).toBe(name)
         }
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

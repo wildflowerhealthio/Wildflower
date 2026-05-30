@@ -8,7 +8,7 @@ test('timingSafeEqual returns true for identical strings', () => {
     fc.property(fc.string(), (s) => {
       expect(timingSafeEqual(s, s)).toBe(true)
     }),
-    { numRuns: numRunsFor(100) }
+    { numRuns: numRunsFor({ base: 100 }) }
   )
 })
 
@@ -19,7 +19,7 @@ test('timingSafeEqual returns false for different strings', () => {
       if (a === b) return
       expect(timingSafeEqual(a, b)).toBe(false)
     }),
-    { numRuns: numRunsFor(100) }
+    { numRuns: numRunsFor({ base: 100 }) }
   )
 })
 
@@ -28,7 +28,7 @@ test('timingSafeEqual matches strict equality', () => {
     fc.property(fc.string(), fc.string(), (a, b) => {
       expect(timingSafeEqual(a, b)).toBe(a === b)
     }),
-    { numRuns: numRunsFor(200) }
+    { numRuns: numRunsFor({ base: 200 }) }
   )
 })
 

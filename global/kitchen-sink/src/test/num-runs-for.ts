@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join, parse as parsePath, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Either, Option, pipe, Schema } from 'effect'
+import { expect } from 'vite-plus/test'
 
 const RiskMap = Schema.Record({ key: Schema.String, value: Schema.Number })
 const PackageJson = Schema.Struct({ name: Schema.optional(Schema.String) })
@@ -27,6 +28,30 @@ const selfFile = Either.getOrElse(
   Either.try({ try: () => fileURLToPath(import.meta.url), catch: () => undefined }),
   () => ''
 )
+
+/**
+ * The test file Vitest is currently running, if available.
+ *
+ * `expect.getState().testPath` is set per running test file and survives
+ * Vitest projects mode (where the worker `cwd` is the monorepo root). Unlike
+ * the stack walk, this signal is the file *under test*, not merely the first
+ * non-internal caller — so it stays correct even if a future shared in-repo
+ * helper (outside this module) wraps `numRunsFor` on behalf of other packages.
+ *
+ * Guarded so a non-Vitest caller (where `expect` lacks `getState`, or it
+ * throws outside a running test) falls back to the stack walk rather than
+ * crashing.
+ */
+const vitestTestPath = (): Option.Option<string> =>
+  pipe(
+    Either.try({
+      try: () => (typeof expect.getState === 'function' ? expect.getState().testPath : undefined),
+      catch: () => undefined,
+    }),
+    Either.getRight,
+    Option.flatMap(Option.fromNullable),
+    Option.filter((path): path is string => typeof path === 'string' && path.length > 0)
+  )
 
 /**
  * Extract a filesystem path from a single V8 stack frame line, dropping the
@@ -55,19 +80,21 @@ const frameToPath = (line: string): Option.Option<string> => {
 }
 
 /**
- * Pull the absolute path of the test file that called into this module.
+ * Pull the absolute path of the test file that called into this module by
+ * walking the call stack.
+ *
+ * Used as a fallback when Vitest's `expect.getState().testPath` is unavailable
+ * (a non-Vitest caller). Skips frames belonging to this module (matched by its
+ * own resolved path, not a fragile substring) and to `node_modules` (the test
+ * runner internals), then takes the first remaining frame.
  *
  * `numRunsFor` lives in the shared `kitchen-sink/test` bundle, so it cannot
  * learn the package under test from `process.cwd()`: under Vitest projects
  * mode the worker's cwd is the monorepo root (the runner is launched from the
- * root), not the per-package directory. Walking the call stack instead yields
- * the calling test file, whose directory does sit inside the package being
- * tested.
- *
- * Skips frames belonging to this module (matched by its own resolved path, not
- * a fragile substring) and to `node_modules` (the test runner internals).
+ * root), not the per-package directory. The calling test file's directory does
+ * sit inside the package being tested.
  */
-const callerFile = (): Option.Option<string> => {
+const callerFileFromStack = (): Option.Option<string> => {
   const stack = new Error('numRunsFor caller probe').stack
   if (stack === undefined) return Option.none()
   for (const line of stack.split('\n')) {
@@ -80,6 +107,13 @@ const callerFile = (): Option.Option<string> => {
   }
   return Option.none()
 }
+
+/**
+ * Resolve the calling test file, preferring Vitest's per-test-file
+ * `expect.getState().testPath` and falling back to a call-stack walk for
+ * non-Vitest callers. See {@link vitestTestPath} and {@link callerFileFromStack}.
+ */
+const callerFile = (): Option.Option<string> => Option.orElse(vitestTestPath(), callerFileFromStack)
 
 const packageNameCache = new Map<string, Option.Option<string>>()
 
@@ -143,17 +177,22 @@ const multiplierFromMap = (
     Option.getOrElse(() => 1.0)
   )
 
+/** Default floor for {@link scaleNumRuns} and {@link numRunsFor}'s `minimum`. */
+const DEFAULT_MINIMUM = 10
+
 /**
- * Scale `base` by `multiplier`, flooring at `min(10, base)` so a non-trivial
- * property still runs end-to-end even when the package is low risk, while a
- * test that intentionally requests fewer than 10 runs is left untouched. A
- * multiplier of `1.0` or higher returns `base` unchanged.
+ * Scale `base` by `multiplier`, flooring at `min(minimum, base)` so a
+ * non-trivial property still runs end-to-end even when the package is low risk,
+ * while a test that intentionally requests fewer than `minimum` runs is left
+ * untouched. A multiplier of `1.0` or higher returns `base` unchanged.
+ *
+ * `minimum` defaults to `10`.
  *
  * Exported for unit testing — production callers go through {@link numRunsFor}.
  */
-const scaleNumRuns = (base: number, multiplier: number): number => {
+const scaleNumRuns = (base: number, multiplier: number, minimum = DEFAULT_MINIMUM): number => {
   if (multiplier >= 1) return base
-  return Math.max(Math.min(10, base), Math.floor(base * multiplier))
+  return Math.max(Math.min(minimum, base), Math.floor(base * multiplier))
 }
 
 const currentMultiplier = (): number =>
@@ -165,12 +204,24 @@ const currentMultiplier = (): number =>
     Option.getOrElse(() => 1.0)
   )
 
+/** Options for {@link numRunsFor}. */
+interface NumRunsForOptions {
+  /** The unscaled fast-check `numRuns` to request when risk scaling is off. */
+  readonly base: number
+  /**
+   * The floor the scaled result never drops below, unless `base` itself is
+   * smaller (a deliberately tiny `base` is left untouched). Defaults to `10`.
+   */
+  readonly minimum?: number
+}
+
 /**
  * Scale a fast-check `numRuns` value by the calling package's risk multiplier.
  *
- * Floors at `min(10, base)` so a non-trivial property still runs end-to-end
- * even when the package is low risk, but a test that intentionally requests
- * fewer than 10 runs is left untouched.
+ * Floors at `min(minimum, base)` so a non-trivial property still runs
+ * end-to-end even when the package is low risk, but a test that intentionally
+ * requests fewer than `minimum` runs is left untouched. `minimum` defaults to
+ * `10`.
  *
  * When `FC_RISK_MAP` is unset (the default, including local `vp test`), or the
  * calling package cannot be resolved, this returns `base` unchanged.
@@ -182,14 +233,20 @@ const currentMultiplier = (): number =>
  * the package under test.
  *
  * @example
- * fc.assert(prop, { numRuns: numRunsFor(100) })
+ * ```ts
+ * fc.assert(prop, { numRuns: numRunsFor({ base: 100 }) })
+ * ```
  *
  * @example
- * const REFERENCE_NUM_RUNS = numRunsFor(25)
+ * ```ts
+ * const REFERENCE_NUM_RUNS = numRunsFor({ base: 25, minimum: 5 })
+ * ```
  */
-const numRunsFor = (base: number): number => scaleNumRuns(base, currentMultiplier())
+const numRunsFor = ({ base, minimum }: NumRunsForOptions): number =>
+  scaleNumRuns(base, currentMultiplier(), minimum)
 
 // `multiplierFromMap` and `scaleNumRuns` are exported for unit testing only;
 // the public `kitchen-sink/test` entry (src/test/index.ts) re-exports just
 // `numRunsFor`.
+export type { NumRunsForOptions }
 export { multiplierFromMap, numRunsFor, scaleNumRuns }

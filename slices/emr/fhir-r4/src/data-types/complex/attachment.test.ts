@@ -15,7 +15,7 @@ describe('FhirR4Attachment', () => {
         const decoded = Schema.decodeSync(Attachment.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreAttachment.Schema, attachment)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

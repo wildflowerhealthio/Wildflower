@@ -74,7 +74,7 @@ describe('JsonValue', () => {
           expect(roundTripped).toEqual(decoded)
         }
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

@@ -163,7 +163,7 @@ describe('makeBridgeDispatcher — properties', () => {
           expect(NavigationBridge.name).toBe('Navigation')
         }
       ),
-      { numRuns: numRunsFor(50) }
+      { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 
@@ -211,7 +211,7 @@ describe('makeBridgeDispatcher — properties', () => {
           expect(received).toEqual(beforeMessages.map((m) => m.pathname))
         }
       ),
-      { numRuns: numRunsFor(25) }
+      { numRuns: numRunsFor({ base: 25 }) }
     )
   })
 })

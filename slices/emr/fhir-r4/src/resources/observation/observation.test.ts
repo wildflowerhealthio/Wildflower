@@ -106,7 +106,7 @@ describe('FhirR4Observation', () => {
   test('property: code field round-trips', () => {
     fc.assert(
       fc.property(fieldArb('code'), (override) => roundTrip({ ...sampleObservation, ...override })),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -115,7 +115,7 @@ describe('FhirR4Observation', () => {
       fc.property(fieldArb('status'), (override) =>
         roundTrip({ ...sampleObservation, ...override })
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -124,7 +124,7 @@ describe('FhirR4Observation', () => {
       fc.property(fieldArb('identifier'), (override) =>
         roundTrip({ ...sampleObservation, ...override })
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -133,7 +133,7 @@ describe('FhirR4Observation', () => {
       fc.property(fieldArb('category'), (override) =>
         roundTrip({ ...sampleObservation, ...override })
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -142,14 +142,14 @@ describe('FhirR4Observation', () => {
       fc.property(fieldArb('interpretation'), (override) =>
         roundTrip({ ...sampleObservation, ...override })
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
   test('property: note field round-trips', () => {
     fc.assert(
       fc.property(fieldArb('note'), (override) => roundTrip({ ...sampleObservation, ...override })),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -158,7 +158,7 @@ describe('FhirR4Observation', () => {
       fc.property(fieldArb('component'), (override) =>
         roundTrip({ ...sampleObservation, ...override })
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -167,7 +167,7 @@ describe('FhirR4Observation', () => {
       fc.property(fieldArb('referenceRange'), (override) =>
         roundTrip({ ...sampleObservation, ...override })
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -185,7 +185,7 @@ describe('FhirR4Observation', () => {
     fc.assert(
       fc.property(arb, (override) => roundTrip({ ...sampleObservation, ...override })),
       {
-        numRuns: numRunsFor(100),
+        numRuns: numRunsFor({ base: 100 }),
       }
     )
   })
@@ -197,7 +197,7 @@ describe('FhirR4Observation', () => {
     fc.assert(
       fc.property(arb, (override) => roundTrip({ ...sampleObservation, ...override })),
       {
-        numRuns: numRunsFor(100),
+        numRuns: numRunsFor({ base: 100 }),
       }
     )
   })
@@ -209,7 +209,7 @@ describe('FhirR4Observation', () => {
     fc.assert(
       fc.property(arb, (override) => roundTrip({ ...sampleObservation, ...override })),
       {
-        numRuns: numRunsFor(100),
+        numRuns: numRunsFor({ base: 100 }),
       }
     )
   })
@@ -220,7 +220,7 @@ describe('FhirR4Observation', () => {
     )
     fc.assert(
       fc.property(shellArb, (override) => roundTrip({ ...sampleObservation, ...override })),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -235,7 +235,7 @@ describe('FhirR4Observation', () => {
     )
     fc.assert(
       fc.property(effectiveArb, (override) => roundTrip({ ...sampleObservation, ...override })),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -258,7 +258,7 @@ describe('FhirR4Observation', () => {
     fc.assert(
       fc.property(valueArb, (override) => roundTrip({ ...sampleObservation, ...override })),
       {
-        numRuns: numRunsFor(100),
+        numRuns: numRunsFor({ base: 100 }),
       }
     )
   })
