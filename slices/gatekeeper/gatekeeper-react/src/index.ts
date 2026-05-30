@@ -32,7 +32,7 @@ export {
   type HttpRequest,
   type RequestDecision,
   type RunAuthed,
-} from './queries.ts'
+} from './queries/index.ts'
 
 export { NeedsAuthMessage } from './components/NeedsAuthMessage.tsx'
 

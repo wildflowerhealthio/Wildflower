@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import type { JSX } from 'react'
 import { AsyncErrorView } from 'react-tundraish'
 
-import { oauthConsentQueryOptions, useOAuthConsentQuery } from '../../../queries.ts'
+import { oauthConsentQueryOptions, useOAuthConsentQuery } from '../../../queries/index.ts'
 import { ensureAuthedQuery } from '../../../router-loader.ts'
 import { OAuthConsentForm } from '../../../screens/oauth-consent/oauth-consent-form.tsx'
 

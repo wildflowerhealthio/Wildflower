@@ -1,4 +1,5 @@
 export { deepFreeze } from './deep-freeze.ts'
 export { stripTrailingSlash } from './strip-trailing-slash.ts'
+export { unknownErrorToString } from './unknown-error-to-string.ts'
 export * as Schema from './schema/index.ts'
 export * as Types from './types/index.ts'

@@ -24,6 +24,14 @@ interface RouterContext {
   readonly queryClient: QueryClient
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
+  /**
+   * Whether the bearer token is ready — the single readiness reader the
+   * app wires onto {@link BaseRouterContext.RouterContext}. Gatekeeper's
+   * {@link ensureAuthedQuery} loader consults this (rather than reading
+   * `authTokenRef` directly) so there's one source of truth for "is the
+   * bearer ready" shared with the app's `prefetchKeyRoutes`.
+   */
+  readonly isTokenReady: () => boolean
 }
 
 /**

@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { AsyncErrorView, pageLayoutStyles, StatusBadge, type StatusTone } from 'react-tundraish'
@@ -9,7 +10,7 @@ import {
   useDecideRequestMutation,
   useRequestQuery,
   type HttpRequest,
-} from '../../../queries.ts'
+} from '../../../queries/index.ts'
 import { ensureAuthedQuery } from '../../../router-loader.ts'
 import pageLayout from '../../../styles/page-layout.module.css'
 
@@ -20,9 +21,6 @@ const statusTone = (status: string): StatusTone => {
   return 'neutral'
 }
 
-const formatError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
-
 interface RequestDetailBodyProps {
   readonly request: HttpRequest
   readonly id: string
@@ -30,7 +28,8 @@ interface RequestDetailBodyProps {
 
 const RequestDetailBody = ({ request, id }: RequestDetailBodyProps): JSX.Element => {
   const decideMutation = useDecideRequestMutation()
-  const errorMessage = decideMutation.error === null ? null : formatError(decideMutation.error)
+  const errorMessage =
+    decideMutation.error === null ? null : unknownErrorToString(decideMutation.error)
 
   const decide = (decision: 'approved' | 'rejected'): void => {
     decideMutation.mutate({ id, decision })

@@ -47,7 +47,7 @@ const renderApp = ({ history, TransportProvider, entry }: RenderAppOptions): voi
   if (container === null) {
     throw new Error('root element not found')
   }
-  prefetchKeyRoutes(queryClient, runAuthed)
+  prefetchKeyRoutes(queryClient, runAuthed, isTokenReady)
   createRoot(container).render(
     <StrictMode>
       <ErrorBoundary

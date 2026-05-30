@@ -4,7 +4,7 @@ import { Layer } from 'effect'
 import { GatekeeperPaths } from 'gatekeeper-core/page-paths'
 import { describe, expect, test } from 'vite-plus/test'
 
-import type { RunAuthed } from '../src/queries.ts'
+import type { RunAuthed } from '../src/queries/index.ts'
 import { routeTree } from '../src/routeTree.gen.ts'
 
 // The slice generates its own `routeTree.gen.ts`. The `_auth`/`_open`
@@ -22,6 +22,7 @@ const router = createRouter({
     queryClient: new QueryClient(),
     runAuthed: stubRunAuthed,
     runtimeLayer: Layer.die('runtimeLayer not used in route tests'),
+    isTokenReady: () => false,
   },
 })
 

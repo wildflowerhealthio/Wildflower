@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { cn } from 'react-kitchen-sink'
@@ -15,13 +16,10 @@ import {
   useDeviceConsentMutation,
   useDeviceConsentQuery,
   type DeviceConsent,
-} from '../../../queries.ts'
+} from '../../../queries/index.ts'
 import { ensureAuthedQuery } from '../../../router-loader.ts'
 import pageLayout from '../../../styles/page-layout.module.css'
 import scopeListStyles from '../../../styles/scope-list.module.css'
-
-const formatError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
 
 interface DeviceConsentFormProps {
   readonly consent: DeviceConsent
@@ -37,10 +35,18 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
   const [denied, setDenied] = useState(false)
 
   const submitting = consentMutation.isPending
-  const mutationError = consentMutation.error === null ? null : formatError(consentMutation.error)
-  const errorMessage = denied ? 'Authorization request was denied.' : mutationError
+  const mutationError =
+    consentMutation.error === null ? null : unknownErrorToString(consentMutation.error)
+  // A genuine mutation failure takes precedence over a stale "denied"
+  // flag: if a later approve/deny attempt throws (e.g. a network error)
+  // while `denied` lingers from an earlier server-side denial, the user
+  // must see the real error, not the old denial copy.
+  const errorMessage = mutationError ?? (denied ? 'Authorization request was denied.' : null)
 
   const toggleScope = (scope: string): void => {
+    // Clear a stale denial when the user re-toggles scopes for a fresh
+    // attempt, so the denial message doesn't linger across a new approve.
+    setDenied(false)
     setSelectedScopes((prev) => {
       const next = new Set(prev)
       if (next.has(scope)) {

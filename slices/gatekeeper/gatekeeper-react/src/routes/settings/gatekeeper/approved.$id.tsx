@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import type { JSX } from 'react'
 import { AsyncErrorView, pageLayoutStyles } from 'react-tundraish'
 
-import { grantQueryOptions, useGrantQuery } from '../../../queries.ts'
+import { grantQueryOptions, useGrantQuery } from '../../../queries/index.ts'
 import { ensureAuthedQuery } from '../../../router-loader.ts'
 import styles from './approved.$id.module.css'
 

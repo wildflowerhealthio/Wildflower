@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { cn } from 'react-kitchen-sink'
@@ -11,22 +12,20 @@ import {
   useGrantsQuery,
   useRevokeGrantMutation,
   type Grant,
-} from '../../../queries.ts'
+} from '../../../queries/index.ts'
 import { ensureAuthedQuery } from '../../../router-loader.ts'
 
 interface AccessIndexBodyProps {
   readonly grants: readonly Grant[]
 }
 
-const formatError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
-
 const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
   const navigate = useNavigate()
   const revokeMutation = useRevokeGrantMutation()
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null)
 
-  const errorMessage = revokeMutation.error === null ? null : formatError(revokeMutation.error)
+  const errorMessage =
+    revokeMutation.error === null ? null : unknownErrorToString(revokeMutation.error)
 
   const revoke = (id: string): void => {
     revokeMutation.mutate(

@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { AsyncErrorView, ItemList, pageLayoutStyles } from 'react-tundraish'
@@ -9,12 +10,9 @@ import {
   useDecideRequestMutation,
   useRequestsQuery,
   type HttpRequest,
-} from '../../../queries.ts'
+} from '../../../queries/index.ts'
 import { ensureAuthedQuery } from '../../../router-loader.ts'
 import pageLayout from '../../../styles/page-layout.module.css'
-
-const formatError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
 
 interface RequestsListBodyProps {
   readonly requests: readonly HttpRequest[]
@@ -23,11 +21,19 @@ interface RequestsListBodyProps {
 const RequestsListBody = ({ requests }: RequestsListBodyProps): JSX.Element => {
   const navigate = useNavigate()
   const decideMutation = useDecideRequestMutation()
-  const errorMessage = decideMutation.error === null ? null : formatError(decideMutation.error)
+  const errorMessage =
+    decideMutation.error === null ? null : unknownErrorToString(decideMutation.error)
 
   const decide = (id: string, decision: 'approved' | 'rejected'): void => {
     decideMutation.mutate({ id, decision })
   }
+
+  // Gate only the acting row's buttons while its decision is in flight.
+  // `decideMutation` is shared across the list, so `isPending` alone would
+  // disable every row's buttons; comparing the in-flight `variables.id`
+  // restores the old per-row behaviour.
+  const rowPending = (id: string): boolean =>
+    decideMutation.isPending && decideMutation.variables?.id === id
 
   const toItem = (
     r: HttpRequest
@@ -53,7 +59,7 @@ const RequestsListBody = ({ requests }: RequestsListBodyProps): JSX.Element => {
           <button
             type="button"
             className="button-2 filled"
-            disabled={decideMutation.isPending}
+            disabled={rowPending(r.id)}
             onClick={(e) => {
               e.stopPropagation()
               decide(r.id, 'approved')
@@ -64,7 +70,7 @@ const RequestsListBody = ({ requests }: RequestsListBodyProps): JSX.Element => {
           <button
             type="button"
             className="button-2 filled accent-red"
-            disabled={decideMutation.isPending}
+            disabled={rowPending(r.id)}
             onClick={(e) => {
               e.stopPropagation()
               decide(r.id, 'rejected')

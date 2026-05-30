@@ -6,12 +6,14 @@ import { BearerToken } from 'kitchen-sink/auth-token'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import {
+  deviceConsentQueryOptions,
   GRANTS_QUERY_KEY,
   grantsQueryOptions,
+  oauthConsentQueryOptions,
   REQUESTS_QUERY_KEY,
   requestsQueryOptions,
   type RunAuthed,
-} from '../src/queries.ts'
+} from '../src/queries/index.ts'
 import { sliceRuntimeLayer } from '../src/router-context.ts'
 
 /**
@@ -47,6 +49,24 @@ const REQUEST_BODY = [
     respondedAt: null,
   },
 ]
+
+// Wire shape mirrors `Devices.DeviceConsentSchema`.
+const DEVICE_CONSENT_BODY = {
+  userCode: 'WDJB-MJHT',
+  clientId: 'client-a',
+  clientName: 'Test Device',
+  requestedScopes: ['owner'],
+}
+
+// Wire shape mirrors `OAuthConsent.OAuthConsentSchema`.
+const OAUTH_CONSENT_BODY = {
+  id: 'consent-1',
+  clientId: 'client-a',
+  scopes: ['patient/*.read'],
+  redirectUri: 'https://example.com/cb',
+  preApprovedScopes: [],
+  patient: null,
+}
 
 const jsonResponse = (body: unknown): Response =>
   new Response(JSON.stringify(body), {
@@ -98,6 +118,12 @@ const makeRunAuthed = (httpLayer: Layer.Layer<HttpClient.HttpClient>): RunAuthed
     )
 }
 
+const freshQueryClient = (): QueryClient => {
+  const queryClient = new QueryClient()
+  disposers.push(() => Promise.resolve(queryClient.clear()))
+  return queryClient
+}
+
 describe('grantsQueryOptions', () => {
   test('exposes the canonical GRANTS_QUERY_KEY', () => {
     const options = grantsQueryOptions(makeRunAuthed(stubHttpClientLayer()))
@@ -106,8 +132,7 @@ describe('grantsQueryOptions', () => {
 
   test('queryFn reads the grants list through the authed runner', async () => {
     const options = grantsQueryOptions(makeRunAuthed(stubHttpClientLayer({ body: GRANT_BODY })))
-    const queryClient = new QueryClient()
-    disposers.push(() => Promise.resolve(queryClient.clear()))
+    const queryClient = freshQueryClient()
 
     const grants = await queryClient.ensureQueryData(options)
 
@@ -134,12 +159,74 @@ describe('requestsQueryOptions', () => {
 
   test('queryFn reads the requests list through the authed runner', async () => {
     const options = requestsQueryOptions(makeRunAuthed(stubHttpClientLayer({ body: REQUEST_BODY })))
-    const queryClient = new QueryClient()
-    disposers.push(() => Promise.resolve(queryClient.clear()))
+    const queryClient = freshQueryClient()
 
     const requests = await queryClient.ensureQueryData(options)
 
     expect(requests).toHaveLength(1)
     expect(requests[0]?.status).toBe('pending')
+  })
+})
+
+describe('deviceConsentQueryOptions', () => {
+  test('keys the query under the user code', () => {
+    const options = deviceConsentQueryOptions(makeRunAuthed(stubHttpClientLayer()), 'WDJB-MJHT')
+    expect(options.queryKey).toEqual(['gatekeeper', 'device-consent', 'WDJB-MJHT'])
+  })
+
+  test('queryFn reads the device consent through the authed runner', async () => {
+    const options = deviceConsentQueryOptions(
+      makeRunAuthed(stubHttpClientLayer({ body: DEVICE_CONSENT_BODY })),
+      'WDJB-MJHT'
+    )
+    const queryClient = freshQueryClient()
+
+    const consent = await queryClient.ensureQueryData(options)
+
+    expect(consent.userCode).toBe('WDJB-MJHT')
+    expect(consent.clientName).toBe('Test Device')
+    expect([...consent.requestedScopes]).toEqual(['owner'])
+  })
+
+  test('a failed read rejects ensureQueryData', async () => {
+    const options = deviceConsentQueryOptions(
+      makeRunAuthed(stubHttpClientLayer({ failing: true })),
+      'WDJB-MJHT'
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    disposers.push(() => Promise.resolve(queryClient.clear()))
+
+    await expect(queryClient.ensureQueryData(options)).rejects.toThrow()
+  })
+})
+
+describe('oauthConsentQueryOptions', () => {
+  test('keys the query under the consent id', () => {
+    const options = oauthConsentQueryOptions(makeRunAuthed(stubHttpClientLayer()), 'consent-1')
+    expect(options.queryKey).toEqual(['gatekeeper', 'oauth-consent', 'consent-1'])
+  })
+
+  test('queryFn reads the oauth consent through the authed runner', async () => {
+    const options = oauthConsentQueryOptions(
+      makeRunAuthed(stubHttpClientLayer({ body: OAUTH_CONSENT_BODY })),
+      'consent-1'
+    )
+    const queryClient = freshQueryClient()
+
+    const consent = await queryClient.ensureQueryData(options)
+
+    expect(consent.id).toBe('consent-1')
+    expect([...consent.scopes]).toEqual(['patient/*.read'])
+  })
+
+  test('a failed read rejects ensureQueryData', async () => {
+    const options = oauthConsentQueryOptions(
+      makeRunAuthed(stubHttpClientLayer({ failing: true })),
+      'consent-1'
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    disposers.push(() => Promise.resolve(queryClient.clear()))
+
+    await expect(queryClient.ensureQueryData(options)).rejects.toThrow()
   })
 })

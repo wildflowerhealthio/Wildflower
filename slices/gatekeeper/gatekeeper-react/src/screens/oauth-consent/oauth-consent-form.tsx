@@ -1,9 +1,10 @@
+import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Checkbox, Field, FieldDescription, pageLayoutStyles, RadioGroup } from 'react-tundraish'
 
-import { useOAuthConsentMutation } from '../../queries.ts'
+import { useOAuthConsentMutation } from '../../queries/index.ts'
 import type { Consent } from './types.ts'
 import { usePatientOptions } from './use-patient-options.ts'
 import pageLayout from '../../styles/page-layout.module.css'
@@ -13,9 +14,6 @@ interface OAuthConsentFormProps {
   readonly consent: Consent
   readonly onDone: () => void
 }
-
-const formatError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
 
 const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Element => {
   const requestedScopes = consent.scopes
@@ -33,7 +31,8 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
   const [resultError, setResultError] = useState<string | null>(null)
 
   const submitting = consentMutation.isPending
-  const mutationError = consentMutation.error === null ? null : formatError(consentMutation.error)
+  const mutationError =
+    consentMutation.error === null ? null : unknownErrorToString(consentMutation.error)
   const errorMessage = resultError ?? mutationError
 
   const toggleScope = (scope: string): void => {
