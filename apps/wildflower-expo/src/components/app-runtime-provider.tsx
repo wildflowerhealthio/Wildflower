@@ -1,13 +1,17 @@
-import { StoreRegistry, StoreRegistryProvider } from '@livestore/react'
+import { StoreRegistryProvider } from '@livestore/react'
 import { Effect, Layer } from 'effect'
 import { LocalHttpServerStore } from 'local-http-server-core/livestore'
-import { type JSX, type PropsWithChildren, Suspense, useMemo, useState } from 'react'
+import { type JSX, type PropsWithChildren, Suspense, useMemo } from 'react'
 import { useComponentScopedRunner } from 'react-kitchen-sink'
 import { Text } from 'react-native'
 import { TunnelStore } from 'tunnel-core/livestore'
 import { TunnelDaemon } from 'tunnel-expo'
 import { HttpServerDaemonLive } from '../daemons/http-server.ts'
-import { useWildflowerStore, WildflowerStore } from '../livestore/livestore-store.ts'
+import {
+  useWildflowerStore,
+  wildflowerStoreRegistry,
+  WildflowerStore,
+} from '../livestore/livestore-store.ts'
 
 /**
  * Root runtime context for the on-device app shell: wires the
@@ -15,13 +19,14 @@ import { useWildflowerStore, WildflowerStore } from '../livestore/livestore-stor
  * downstream resolves to the shared module-singleton store) and
  * launches the on-device daemons (HTTP server + tunnel) under React's
  * mount lifecycle inside that registry context.
+ *
+ * The registry itself is owned by `livestore-store.ts` and warmed at
+ * module-eval — see {@link wildflowerStoreRegistry}.
  */
 export default function AppRuntimeProvider({ children }: PropsWithChildren): JSX.Element {
-  const [storeRegistry] = useState(() => new StoreRegistry())
-
   return (
     <Suspense fallback={<Text>Loading AppRuntimeProvider …</Text>}>
-      <StoreRegistryProvider storeRegistry={storeRegistry}>
+      <StoreRegistryProvider storeRegistry={wildflowerStoreRegistry}>
         <DaemonRuntimeScope>{children}</DaemonRuntimeScope>
       </StoreRegistryProvider>
     </Suspense>
