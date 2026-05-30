@@ -16,7 +16,7 @@ const BinarySchema = Binary.RowSchema
 // arbitrary instead.
 // ---------------------------------------------------------------------------
 
-const REFERENCE_NUM_RUNS = numRunsFor(25)
+const REFERENCE_NUM_RUNS = numRunsFor({ base: 25 })
 
 const roundTripColumn = (name: keyof typeof BinarySchema.Type, numRuns?: number): void => {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see file header
@@ -70,7 +70,7 @@ describe('Binary model', () => {
         const decoded = Schema.decodeSync(sub)(encoded)
         expect(decoded).toSchemaEqual(sub, value)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -95,7 +95,7 @@ describe('Binary model', () => {
           expect(Either.isLeft(result)).toBe(true)
         }
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

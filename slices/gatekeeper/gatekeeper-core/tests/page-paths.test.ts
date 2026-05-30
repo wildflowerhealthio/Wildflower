@@ -69,6 +69,6 @@ test('property: any user code produces a valid path that round-trips through dec
       const segment = path.slice('/gatekeeper/devices/'.length)
       expect(decodeURIComponent(segment)).toBe(userCode)
     }),
-    { numRuns: numRunsFor(100) }
+    { numRuns: numRunsFor({ base: 100 }) }
   )
 })

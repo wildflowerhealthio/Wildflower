@@ -127,7 +127,7 @@ describe('defineSliceHttpClient (authType: bearer)', () => {
 
         expect(captures).toEqual([token === null ? undefined : `Bearer ${token}`])
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

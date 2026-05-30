@@ -21,7 +21,7 @@ describe('InstanceConfig', () => {
         const encoded = Schema.encodeSync(InstanceConfig)(config)
         expect(Schema.decodeSync(InstanceConfig)(encoded)).toEqual(config)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

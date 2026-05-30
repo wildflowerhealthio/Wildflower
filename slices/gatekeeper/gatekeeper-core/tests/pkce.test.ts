@@ -32,7 +32,7 @@ test('computeCodeChallenge produces base64url output (no +, /, =)', async () => 
         expect(challenge).not.toContain('=')
       }
     ),
-    { numRuns: numRunsFor(50) }
+    { numRuns: numRunsFor({ base: 50 }) }
   )
 })
 
@@ -49,7 +49,7 @@ test('computeCodeChallenge is deterministic', async () => {
         expect(a).toBe(b)
       }
     ),
-    { numRuns: numRunsFor(25) }
+    { numRuns: numRunsFor({ base: 25 }) }
   )
 })
 
@@ -60,6 +60,6 @@ test('computeCodeChallenge produces a 43-character output for any input', async 
       const challenge = await Effect.runPromise(computeCodeChallenge(verifier))
       expect(challenge).toHaveLength(43)
     }),
-    { numRuns: numRunsFor(25) }
+    { numRuns: numRunsFor({ base: 25 }) }
   )
 })

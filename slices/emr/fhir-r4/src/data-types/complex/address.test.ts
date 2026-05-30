@@ -15,7 +15,7 @@ describe('FhirR4Address', () => {
         const decoded = Schema.decodeSync(Address.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreAddress.Schema, address)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

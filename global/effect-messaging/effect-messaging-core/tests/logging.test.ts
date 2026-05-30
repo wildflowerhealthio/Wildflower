@@ -55,7 +55,7 @@ describe('Logging — wire round-trip', () => {
           expect(decoded).toEqual({ _tag: 'Log', level, payload })
         }
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

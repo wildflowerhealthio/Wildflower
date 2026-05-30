@@ -15,7 +15,7 @@ describe('FhirR4HumanName', () => {
         const decoded = Schema.decodeSync(HumanName.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreHumanName.Schema, humanName)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

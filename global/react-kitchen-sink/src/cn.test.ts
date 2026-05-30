@@ -42,7 +42,7 @@ describe('cn', () => {
         expect(result).not.toMatch(/\s$/)
         expect(result).not.toMatch(/\s\s/)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -54,7 +54,7 @@ describe('cn', () => {
           .filter((t) => t.length > 0)
         expect(tokens).toEqual(classes.filter((c) => c.length > 0))
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

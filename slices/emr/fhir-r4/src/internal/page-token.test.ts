@@ -18,7 +18,7 @@ describe('page-token codec', () => {
         const decoded = decodePageToken(token)
         expect(decoded).toEqual(payload)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -33,7 +33,7 @@ describe('page-token codec', () => {
       fc.property(notBase64, (token) => {
         expect(decodePageToken(token)).toBeUndefined()
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -51,7 +51,7 @@ describe('page-token codec', () => {
         const token = Encoding.encodeBase64Url(raw)
         expect(decodePageToken(token)).toBeUndefined()
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -79,7 +79,7 @@ describe('page-token codec', () => {
           expect(decodePageToken(token)).toBeUndefined()
         }
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

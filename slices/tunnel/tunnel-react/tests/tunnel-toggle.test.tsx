@@ -81,7 +81,7 @@ describe('<TunnelToggle> status badge', () => {
           expect(badge.textContent).toContain('Error')
         }
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

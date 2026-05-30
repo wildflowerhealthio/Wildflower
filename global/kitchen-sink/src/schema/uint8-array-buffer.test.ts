@@ -33,7 +33,7 @@ describe('Uint8ArrayBufferFromSelf', () => {
         expect(value).toBeInstanceOf(Uint8Array)
         expect(value.buffer).toBeInstanceOf(ArrayBuffer)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })
@@ -65,7 +65,7 @@ describe('Base64FromUint8ArrayBuffer', () => {
         const decoded = Schema.encodeSync(Base64FromUint8ArrayBuffer)(encoded)
         expect(Array.from(decoded)).toEqual(Array.from(bytes))
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -77,7 +77,7 @@ describe('Base64FromUint8ArrayBuffer', () => {
         const reEncoded = Schema.decodeSync(Base64FromUint8ArrayBuffer)(bytes)
         expect(reEncoded).toBe(base64)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -89,7 +89,7 @@ describe('Base64FromUint8ArrayBuffer', () => {
         const result = Schema.encodeEither(Base64FromUint8ArrayBuffer)(value)
         expect(Either.isRight(result)).toBe(true)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

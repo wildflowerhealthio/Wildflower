@@ -260,7 +260,7 @@ test('property: outbound schema keys equal declared tag set', () => {
         expect(Object.keys(bridge.Web.OutboundSchemas).toSorted()).toEqual(webTags.toSorted())
       }
     ),
-    { numRuns: numRunsFor(100) }
+    { numRuns: numRunsFor({ base: 100 }) }
   )
 })
 
@@ -283,7 +283,7 @@ test('property: send → decodeSync round-trips identity for any wired message',
         expect(decoded).toEqual(message)
       }
     ),
-    { numRuns: numRunsFor(100) }
+    { numRuns: numRunsFor({ base: 100 }) }
   )
 })
 
@@ -315,6 +315,6 @@ test('property: same-name bridges always mint distinct HandlerTag instances', ()
         expect(a.Web.HandlerTag).not.toBe(b.Web.HandlerTag)
       }
     ),
-    { numRuns: numRunsFor(100) }
+    { numRuns: numRunsFor({ base: 100 }) }
   )
 })

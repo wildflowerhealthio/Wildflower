@@ -15,7 +15,7 @@ describe('FhirR4Quantity', () => {
         const decoded = Schema.decodeSync(Quantity.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreQuantity.Schema, quantity)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

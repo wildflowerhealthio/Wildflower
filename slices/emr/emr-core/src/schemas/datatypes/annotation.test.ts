@@ -12,7 +12,7 @@ import * as Annotation from './annotation.ts'
 // for the rationale on the `AnyNoContext` cast.
 // ---------------------------------------------------------------------------
 
-const REFERENCE_NUM_RUNS = numRunsFor(25)
+const REFERENCE_NUM_RUNS = numRunsFor({ base: 25 })
 
 const roundTripField = (name: keyof typeof Annotation.Schema.Type, numRuns?: number): void => {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see file header

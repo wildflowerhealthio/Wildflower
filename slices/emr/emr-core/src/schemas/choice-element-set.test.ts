@@ -74,7 +74,7 @@ describe('ChoiceElementSet.SchemaFields', () => {
           const decoded = decode(encoded)
           expect(decoded).toSchemaEqual(ValueChoice, value)
         }),
-        { numRuns: numRunsFor(100) }
+        { numRuns: numRunsFor({ base: 100 }) }
       )
     })
   })

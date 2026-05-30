@@ -15,7 +15,7 @@ describe('FhirR4Period', () => {
         const decoded = Schema.decodeSync(Period.Schema)(fhir)
         expect(decoded).toSchemaEqual(StorePeriod.Schema, period)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

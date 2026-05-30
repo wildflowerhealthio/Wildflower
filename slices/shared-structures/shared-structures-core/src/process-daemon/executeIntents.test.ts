@@ -185,6 +185,6 @@ describe('executeIntents', () => {
           }
         }
       }),
-      { numRuns: numRunsFor(50) }
+      { numRuns: numRunsFor({ base: 50 }) }
     ))
 })

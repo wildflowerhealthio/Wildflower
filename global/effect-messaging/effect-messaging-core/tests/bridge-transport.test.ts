@@ -264,7 +264,7 @@ describe('BridgeTransport.make — queue lifecycle', () => {
           }
         }
       ),
-      { numRuns: numRunsFor(25) }
+      { numRuns: numRunsFor({ base: 25 }) }
     )
   })
 })

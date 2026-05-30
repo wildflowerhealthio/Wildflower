@@ -138,7 +138,7 @@ describe('UrlParamMessage', () => {
         const decoded = wireStrings.map((s): unknown => JSON.parse(s))
         expect(decoded).toEqual(messages)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

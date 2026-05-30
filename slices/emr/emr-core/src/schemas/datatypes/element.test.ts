@@ -43,7 +43,7 @@ describe('Element', () => {
         const decoded = Schema.decodeSync(TestElementSchema)(encoded)
         expect(decoded).toSchemaEqual(TestElementSchema, element)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

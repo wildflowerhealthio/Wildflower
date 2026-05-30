@@ -204,7 +204,7 @@ describe('HostBindings.combine', () => {
           expect(rightGrouped.onTransportReady).toEqual(flat.onTransportReady)
         }
       ),
-      { numRuns: numRunsFor(40) }
+      { numRuns: numRunsFor({ base: 40 }) }
     )
   })
 })

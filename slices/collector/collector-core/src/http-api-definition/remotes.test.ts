@@ -18,7 +18,7 @@ describe('CreateRemotePayloadSchema', () => {
         const encoded = Schema.encodeSync(CreateRemotePayloadSchema)(payload)
         expect(Schema.decodeSync(CreateRemotePayloadSchema)(encoded)).toEqual(payload)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -44,7 +44,7 @@ describe('UpdateRemotePayloadSchema', () => {
         const encoded = Schema.encodeSync(UpdateRemotePayloadSchema)(payload)
         expect(Schema.decodeSync(UpdateRemotePayloadSchema)(encoded)).toEqual(payload)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

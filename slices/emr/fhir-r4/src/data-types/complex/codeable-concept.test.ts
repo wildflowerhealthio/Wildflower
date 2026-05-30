@@ -15,7 +15,7 @@ describe('FhirR4CodeableConcept', () => {
         const decoded = Schema.decodeSync(CodeableConcept.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreCodeableConcept.Schema, codeableConcept)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

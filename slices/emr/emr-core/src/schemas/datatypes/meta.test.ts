@@ -15,7 +15,7 @@ describe('Meta base model', () => {
         const decoded = Schema.decodeSync(Meta.Schema)(encoded)
         expect(decoded).toSchemaEqual(Meta.Schema, resource)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

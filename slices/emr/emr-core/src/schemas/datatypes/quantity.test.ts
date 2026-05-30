@@ -19,7 +19,7 @@ describe('Quantity model', () => {
         const decoded = Schema.decodeSync(Quantity.Schema)(encoded)
         expect(decoded).toSchemaEqual(Quantity.Schema, quantity)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

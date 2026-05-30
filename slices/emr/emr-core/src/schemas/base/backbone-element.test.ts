@@ -34,7 +34,7 @@ describe('BackboneElement', () => {
         const decoded = Schema.decodeSync(TestBackboneSchema)(encoded)
         expect(decoded).toSchemaEqual(TestBackboneSchema, element)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

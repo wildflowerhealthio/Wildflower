@@ -13,7 +13,7 @@ const ObservationSchema = Observation.RowSchema
 // `numRuns` budget for cycle-bearing columns.
 // ---------------------------------------------------------------------------
 
-const REFERENCE_NUM_RUNS = numRunsFor(25)
+const REFERENCE_NUM_RUNS = numRunsFor({ base: 25 })
 
 const roundTripColumn = (name: keyof typeof ObservationSchema.Type, numRuns?: number): void => {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see file header
@@ -117,7 +117,7 @@ describe('Observation model', () => {
           expect(Either.isLeft(result)).toBe(true)
         }
       ),
-      { numRuns: numRunsFor(20) }
+      { numRuns: numRunsFor({ base: 20 }) }
     )
   })
 })

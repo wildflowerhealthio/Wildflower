@@ -15,7 +15,7 @@ describe('ContactPoint model', () => {
         const decoded = Schema.decodeSync(ContactPoint.Schema)(encoded)
         expect(decoded).toSchemaEqual(ContactPoint.Schema, contactPoint)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

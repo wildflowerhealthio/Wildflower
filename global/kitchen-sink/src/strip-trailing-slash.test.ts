@@ -38,7 +38,7 @@ describe('stripTrailingSlash', () => {
           expect(stripped).toBe(s)
         }
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

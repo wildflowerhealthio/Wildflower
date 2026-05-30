@@ -15,7 +15,7 @@ describe('FhirR4SampledData', () => {
         const decoded = Schema.decodeSync(SampledData.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreSampledData.Schema, sample)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

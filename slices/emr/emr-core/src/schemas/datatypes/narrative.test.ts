@@ -15,7 +15,7 @@ describe('Narrative model', () => {
         const decoded = Schema.decodeSync(Narrative.Schema)(encoded)
         expect(decoded).toSchemaEqual(Narrative.Schema, narrative)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

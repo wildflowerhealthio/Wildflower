@@ -15,7 +15,7 @@ describe('FhirR4Ratio', () => {
         const decoded = Schema.decodeSync(Ratio.Schema)(fhir)
         expect(decoded).toSchemaEqual(StoreRatio.Schema, ratio)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

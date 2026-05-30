@@ -535,7 +535,7 @@ describe('runHttpServerDaemon', () => {
   // -------------------------------------------------------------------------
 
   describe('properties', () => {
-    const PROP_OPTS = { numRuns: numRunsFor(50) }
+    const PROP_OPTS = { numRuns: numRunsFor({ base: 50 }) }
     // 50 runs × a fresh in-memory livestore + reconfigure cycle each
     // pushes the default 5 s ceiling; 30 s gives headroom for CI.
     const PROP_TIMEOUT_MS = 30_000

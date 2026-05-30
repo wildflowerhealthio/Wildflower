@@ -66,7 +66,7 @@ test('cryptoRandomFromSeed is reproducible: same seed → same sequence', () => 
       const b = drainBytes(cryptoRandomFromSeed(seed), 32)
       expect(a).toEqual(b)
     }),
-    { numRuns: numRunsFor(16) }
+    { numRuns: numRunsFor({ base: 16 }) }
   )
 })
 
@@ -77,7 +77,7 @@ test('cryptoRandomFromSeed produces v4-shaped UUIDs', () => {
       const uuids = drainUuids(cryptoRandomFromSeed(seed), 4)
       for (const u of uuids) expect(u).toMatch(v4)
     }),
-    { numRuns: numRunsFor(8) }
+    { numRuns: numRunsFor({ base: 8 }) }
   )
 })
 
@@ -90,7 +90,7 @@ test('cryptoRandomFromSeed produces bytes in [0, 256)', () => {
         expect(b).toBeLessThan(256)
       }
     }),
-    { numRuns: numRunsFor(8) }
+    { numRuns: numRunsFor({ base: 8 }) }
   )
 })
 

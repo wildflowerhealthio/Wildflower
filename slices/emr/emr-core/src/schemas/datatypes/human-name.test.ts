@@ -16,7 +16,7 @@ describe('HumanName model', () => {
         const decoded = Schema.decodeSync(HumanName.Schema)(encoded)
         expect(decoded).toSchemaEqual(HumanName.Schema, humanName)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -114,7 +114,7 @@ describe('HumanName model', () => {
             expect(encoded.family).toBe(name)
           }
         }),
-        { numRuns: numRunsFor(100) }
+        { numRuns: numRunsFor({ base: 100 }) }
       )
     })
   })

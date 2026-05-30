@@ -86,7 +86,7 @@ test('sanitizeRequestPath property: every Some(rel) is a safe relative path', ()
       const segments = rel.split('/')
       for (const seg of segments) expect(seg).not.toBe('..')
     }),
-    { numRuns: numRunsFor(200) }
+    { numRuns: numRunsFor({ base: 200 }) }
   )
 })
 
@@ -149,6 +149,6 @@ test('tryFindAssetFileForPath property: returned path always lives under webAsse
         expect(result.value.startsWith(tempBase)).toBe(true)
       }
     ),
-    { numRuns: numRunsFor(50) }
+    { numRuns: numRunsFor({ base: 50 }) }
   )
 })

@@ -653,7 +653,7 @@ test('property: receive path survives arbitrary string inputs', async () => {
         )
       )
     }),
-    { numRuns: numRunsFor(25) }
+    { numRuns: numRunsFor({ base: 25 }) }
   )
 })
 
@@ -706,6 +706,6 @@ test('property: sendMessage routes to the correct bridge for arbitrary message s
       )
       delete (window as WindowWithBridge).ReactNativeWebView
     }),
-    { numRuns: numRunsFor(100) }
+    { numRuns: numRunsFor({ base: 100 }) }
   )
 })

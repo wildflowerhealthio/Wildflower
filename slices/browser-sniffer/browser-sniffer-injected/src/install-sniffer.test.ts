@@ -194,7 +194,7 @@ describe('fetch shim', () => {
           ])
         }
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -241,7 +241,7 @@ describe('fetch shim', () => {
         ])
         validateMessages(getMs())
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -295,7 +295,7 @@ describe('fetch shim', () => {
 
         validateMessages(getMs())
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -314,7 +314,7 @@ describe('fetch shim', () => {
         const reconstructed = datas.map((m) => fromBase64(m.data as string)).join('')
         expect(reconstructed).toBe(body)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -329,7 +329,7 @@ describe('fetch shim', () => {
 
         expect(withTag(getMs(), 'ResponseStart')).toEqual([expect.objectContaining({ url })])
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -347,7 +347,7 @@ describe('fetch shim', () => {
         expect(withTag(msgs, 'ResponseStart')).toHaveLength(1)
         expect(withTag(msgs, 'ResponseFinished')).toHaveLength(1)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -365,7 +365,7 @@ describe('fetch shim', () => {
         const ids = new Set(msgs.map((m) => m['id']))
         expect(ids.size).toBe(1)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -472,7 +472,7 @@ describe('fetch shim', () => {
           validateMessages(getMs())
         }
       ),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })
@@ -621,7 +621,7 @@ describe('XHR shim', () => {
         expect(datas.map((m) => fromBase64(m.data as string))).toEqual(parts)
         expect(datas.map((m) => fromBase64(m.data as string)).join('')).toBe(accumulated)
       }),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

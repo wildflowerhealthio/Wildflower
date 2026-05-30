@@ -21,7 +21,7 @@ import * as Reference from './reference.ts'
 // runtime every schema is no-context, so the cast is sound.
 // ---------------------------------------------------------------------------
 
-const REFERENCE_NUM_RUNS = numRunsFor(25)
+const REFERENCE_NUM_RUNS = numRunsFor({ base: 25 })
 
 const roundTripReferenceField = (
   name: keyof typeof Reference.Schema.Type,

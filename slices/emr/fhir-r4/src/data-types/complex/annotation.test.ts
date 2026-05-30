@@ -47,7 +47,7 @@ describe('FhirR4Annotation', () => {
     fc.assert(
       fc.property(fieldArb('text'), (o) => roundTrip({ ...sampleAnnotation, ...o })),
       {
-        numRuns: numRunsFor(100),
+        numRuns: numRunsFor({ base: 100 }),
       }
     )
   })
@@ -56,7 +56,7 @@ describe('FhirR4Annotation', () => {
     fc.assert(
       fc.property(fieldArb('time'), (o) => roundTrip({ ...sampleAnnotation, ...o })),
       {
-        numRuns: numRunsFor(100),
+        numRuns: numRunsFor({ base: 100 }),
       }
     )
   })
@@ -64,14 +64,14 @@ describe('FhirR4Annotation', () => {
   test('property: authorString field round-trips', () => {
     fc.assert(
       fc.property(fieldArb('authorString'), (o) => roundTrip({ ...sampleAnnotation, ...o })),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
   test('property: authorReference field round-trips (Reference→Identifier cycle)', () => {
     fc.assert(
       fc.property(fieldArb('authorReference'), (o) => roundTrip({ ...sampleAnnotation, ...o })),
-      { numRuns: numRunsFor(100) }
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })
