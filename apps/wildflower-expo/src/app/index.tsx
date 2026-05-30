@@ -1,8 +1,7 @@
 import { Effect } from 'effect'
-import * as SplashScreen from 'expo-splash-screen'
 import { Colors, Spacing, ThemedText, ThemedView, useThemeColors } from 'expo-tundraish'
 import { ServerState } from 'local-http-server-core/livestore'
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useCallback, useState, type JSX } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -18,34 +17,15 @@ import { useWildflowerStore } from '../livestore/livestore-store.ts'
 /** The persistent shell screen — mounts `<AppShellWebView>` and the native tab bar. */
 export default function HomeScreen(): JSX.Element {
   const store = useWildflowerStore()
-  const { running } = store.useQuery(ServerState.queries.current$)
   const palette = useThemeColors()
   const sendNavigation = useNavigationSender()
   const insets = useSafeAreaInsets()
 
   const [activeTab, setActiveTab] = useState<TabKey | null>('apps')
-  const [shellLive, setShellLive] = useState(false)
-
-  // Hide the splash only after both the server is up AND the SPA has
-  // reported a first `RouteChanged` (which means the embedded
-  // wildflower-react has mounted + the transport has flushed).
-  useEffect(() => {
-    if (running && shellLive) {
-      Effect.runFork(
-        Effect.tryPromise({
-          try: () => SplashScreen.hideAsync(),
-          catch: (cause) => cause,
-        }).pipe(
-          Effect.catchAll((cause) => Effect.logWarning('SplashScreen.hideAsync failed', cause))
-        )
-      )
-    }
-  }, [running, shellLive])
 
   const handleRouteChanged = useCallback(
     ({ pathname }: { pathname: string; canGoBack: boolean }): void => {
       setActiveTab(tabForPath(pathname))
-      setShellLive(true)
     },
     []
   )

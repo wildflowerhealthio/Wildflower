@@ -11,4 +11,4 @@ setTimeout(() => {
     // can still function, just with a janky flash.
     console.warn('SplashScreen.preventAutoHideAsync failed', cause)
   })
-}, 5_000)
+}, 10_000)

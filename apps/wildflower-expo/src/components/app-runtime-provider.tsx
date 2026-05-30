@@ -20,7 +20,7 @@ export default function AppRuntimeProvider({ children }: PropsWithChildren): JSX
   const [storeRegistry] = useState(() => new StoreRegistry())
 
   return (
-    <Suspense fallback={<Text>Loading…</Text>}>
+    <Suspense fallback={<Text>Loading AppRuntimeProvider …</Text>}>
       <StoreRegistryProvider storeRegistry={storeRegistry}>
         <DaemonRuntimeScope>{children}</DaemonRuntimeScope>
       </StoreRegistryProvider>
