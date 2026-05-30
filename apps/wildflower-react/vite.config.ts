@@ -10,7 +10,7 @@ export default defineConfig({
   ...baseConfig,
   test: {
     environment: 'jsdom',
-    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     exclude: ['**/node_modules/**', '**/dist*/**'],
     // Stub jsdom's unimplemented `window.scrollTo` once for the whole suite so
     // TanStack Router's scroll-restoration doesn't flood the output with
