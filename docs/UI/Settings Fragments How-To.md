@@ -112,7 +112,6 @@ If the slice was at `/<slice>` before, the move is a **clean rename** — no red
 - Sort order — preserve fragment-declaration order; sorting is a future v2 concern.
 - Icons or structured `badge: { kind: 'info' | 'warn' | 'error'; label }` — both deferred. Today, `badge` is `ReactNode` per `ItemListItem`.
 - Per-item platform gating (`requires?: 'host:node' | 'host:expo'`) — also deferred.
-- Folding `*SettingsItemsFragment` / `*SettingsRoutesFragment` into `defineSliceReact` — the v1 pattern proves out first.
 
 ## See also
 
