@@ -1,26 +1,43 @@
+// This file route must keep its `export const Route` (the tanstackRouter
+// plugin keys off it), and `PollingResult` is exported separately as a
+// unit-test seam — so a consolidated single export isn't possible here.
+/* oxlint-disable import/group-exports -- file route needs `export const Route`; `PollingResult` is a test seam */
 import { createFileRoute } from '@tanstack/react-router'
 import { type AuthorizationStatus, pollAuthorizationStatus } from 'gatekeeper-core/clients'
-
 import { Suspense, useEffect, useMemo, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
+import { cn, useStream } from 'react-kitchen-sink'
 import { Awaited, pageLayoutStyles } from 'react-tundraish'
 
-import { useGatekeeperStream } from '../../../gatekeeper-client.tsx'
+import { useGatekeeperRuntimeLayer } from '../../../router-context.ts'
 import pageLayout from '../../../styles/page-layout.module.css'
 import styles from './oauth-polling.module.css'
 
 /**
  * SPA route that subscribes to `pollAuthorizationStatus(id)` and renders
- * the latest emission. The polling endpoint is public — but the runner
- * pipes through the same `BearerToken` plumbing as authed routes (which
- * resolves to `null` here and adds no header).
+ * the latest emission. This is a long-lived `Stream` (it emits `pending`
+ * heartbeats until a terminal status), not a one-shot read, so it runs
+ * through `react-kitchen-sink`'s generic `useStream` against the
+ * composed `runtimeLayer` from router context — NOT a one-shot TanStack
+ * query. The polling endpoint is public, but the layer pipes through the
+ * same `BearerToken` plumbing as authed routes (which resolves to `null`
+ * here and adds no header).
  */
 function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
+  const runtimeLayer = useGatekeeperRuntimeLayer()
   const stream = useMemo(() => pollAuthorizationStatus(id), [id])
-  const statusPromise = useGatekeeperStream(stream)
+  const statusPromise = useStream(stream, runtimeLayer)
 
   return (
     <Suspense fallback={<PollingSpinner />}>
+      {/*
+        Unlike the query routes, this one surfaces a read failure through
+        the inline `<Awaited errorTitle>` boundary, NOT a route
+        `errorComponent`. The route has no `loader` — the data is a
+        long-lived `Stream` whose rejection is delivered as the promise
+        this `<Awaited>` boundary owns, so a route `errorComponent` (which
+        fires for loader/beforeLoad failures) would never see it. Keep the
+        inline boundary; don't "fix" it into an `errorComponent`.
+      */}
       <Awaited
         promise={statusPromise}
         resetKey={id}
@@ -38,7 +55,10 @@ interface PollingResultProps {
   readonly status: AuthorizationStatus
 }
 
-const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
+// Exported for unit tests: the deterministic status→view mapping each
+// stream emission flows into, tested directly without the Suspense/fiber
+// timing of the full stream subscription.
+export const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
   useEffect(() => {
     if (status.status === 'approved') {
       window.location.replace(status.redirect)

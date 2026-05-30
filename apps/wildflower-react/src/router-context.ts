@@ -2,6 +2,7 @@ import type { HttpClient } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
 import { AppsRouterContext } from 'apps-react'
 import { Duration, Effect, Layer, pipe, type Subscribable } from 'effect'
+import { GatekeeperRouterContext } from 'gatekeeper-react'
 import { BearerToken } from 'kitchen-sink/auth-token'
 import type { BaseRouterContext } from 'shared-structures-react'
 import { TunnelRouterContext } from 'tunnel-react'
@@ -9,7 +10,8 @@ import { TunnelRouterContext } from 'tunnel-react'
 type RuntimeLayer = Layer.Layer<
   | Layer.Layer.Success<BaseRouterContext.RuntimeLayer>
   | Layer.Layer.Success<TunnelRouterContext.RuntimeLayer>
-  | Layer.Layer.Success<AppsRouterContext.RuntimeLayer>,
+  | Layer.Layer.Success<AppsRouterContext.RuntimeLayer>
+  | Layer.Layer.Success<GatekeeperRouterContext.RuntimeLayer>,
   never,
   never
 >
@@ -79,7 +81,11 @@ const buildRunAuthed = (
     Layer.provideMerge(httpClientLayer)
   )
   const runtimeLayer: RuntimeLayer = Layer.provideMerge(
-    Layer.mergeAll(TunnelRouterContext.sliceRuntimeLayer, AppsRouterContext.sliceRuntimeLayer),
+    Layer.mergeAll(
+      TunnelRouterContext.sliceRuntimeLayer,
+      AppsRouterContext.sliceRuntimeLayer,
+      GatekeeperRouterContext.sliceRuntimeLayer
+    ),
     baseRuntimeLayer
   )
   return {

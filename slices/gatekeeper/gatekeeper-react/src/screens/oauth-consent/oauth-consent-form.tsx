@@ -1,31 +1,26 @@
-import { Effect } from 'effect'
-import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-
-import { useState, type JSX } from 'react'
+import { unknownErrorToString } from 'kitchen-sink'
+import type { JSX } from 'react'
+import { useState } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Checkbox, Field, FieldDescription, pageLayoutStyles, RadioGroup } from 'react-tundraish'
 
-import type { GatekeeperEffectAction } from '../../gatekeeper-client.tsx'
+import { useOAuthConsentMutation } from '../../queries/index.ts'
 import type { Consent } from './types.ts'
 import { usePatientOptions } from './use-patient-options.ts'
 import pageLayout from '../../styles/page-layout.module.css'
 import scopeListStyles from '../../styles/scope-list.module.css'
 
 interface OAuthConsentFormProps {
-  readonly runGatekeeper: GatekeeperEffectAction
   readonly consent: Consent
   readonly onDone: () => void
 }
 
-const OAuthConsentForm = ({
-  runGatekeeper,
-  consent,
-  onDone,
-}: OAuthConsentFormProps): JSX.Element => {
+const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Element => {
   const requestedScopes = consent.scopes
   const hasPatientScope = requestedScopes.some(
     (s) => s.startsWith('patient/') || s === 'launch/patient'
   )
+  const consentMutation = useOAuthConsentMutation()
   const [selectedScopes, setSelectedScopes] = useState<ReadonlySet<string>>(() =>
     consent.preApprovedScopes.length > 0
       ? new Set(consent.preApprovedScopes)
@@ -33,8 +28,12 @@ const OAuthConsentForm = ({
   )
   const [selectedPatient, setSelectedPatient] = useState<string>(consent.patient ?? '')
   const { options: patients } = usePatientOptions(hasPatientScope)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [resultError, setResultError] = useState<string | null>(null)
+
+  const submitting = consentMutation.isPending
+  const mutationError =
+    consentMutation.error === null ? null : unknownErrorToString(consentMutation.error)
+  const errorMessage = resultError ?? mutationError
 
   const toggleScope = (scope: string): void => {
     setSelectedScopes((prev) => {
@@ -48,56 +47,45 @@ const OAuthConsentForm = ({
     })
   }
 
-  const handleApprove = async (): Promise<void> => {
-    setSubmitting(true)
-    setError(null)
-    try {
-      const result = await runGatekeeper(
-        Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-          c['oauth-consent'].ApproveOAuthConsent({
-            path: { id: consent.id },
-            payload: {
-              approvedScopes: [...selectedScopes],
-              patient: selectedPatient === '' ? null : selectedPatient,
-            },
-          })
-        )
-      )
-      if (result.status === 'approved') {
-        onDone()
-      } else if (result.status === 'denied') {
-        setError('Authorization request was denied.')
-      } else {
-        setError(result.message)
+  const handleApprove = (): void => {
+    setResultError(null)
+    consentMutation.mutate(
+      {
+        kind: 'approve',
+        id: consent.id,
+        payload: {
+          approvedScopes: [...selectedScopes],
+          patient: selectedPatient === '' ? null : selectedPatient,
+        },
+      },
+      {
+        onSuccess: (result) => {
+          if (result.status === 'approved') {
+            onDone()
+          } else if (result.status === 'denied') {
+            setResultError('Authorization request was denied.')
+          } else {
+            setResultError(result.message)
+          }
+        },
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setSubmitting(false)
-    }
+    )
   }
 
-  const handleDecline = async (): Promise<void> => {
-    setSubmitting(true)
-    setError(null)
-    try {
-      const result = await runGatekeeper(
-        Effect.flatMap(GatekeeperHttpApiClient, (c) =>
-          c['oauth-consent'].DenyOAuthConsent({
-            path: { id: consent.id },
-          })
-        )
-      )
-      if (result.status === 'denied' || result.status === 'approved') {
-        onDone()
-      } else {
-        setError(result.message)
+  const handleDecline = (): void => {
+    setResultError(null)
+    consentMutation.mutate(
+      { kind: 'deny', id: consent.id },
+      {
+        onSuccess: (result) => {
+          if (result.status === 'denied' || result.status === 'approved') {
+            onDone()
+          } else {
+            setResultError(result.message)
+          }
+        },
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setSubmitting(false)
-    }
+    )
   }
 
   return (
@@ -148,8 +136,10 @@ const OAuthConsentForm = ({
         </Field>
       ) : null}
 
-      {error !== null ? (
-        <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
+      {errorMessage !== null ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
+          {errorMessage}
+        </p>
       ) : null}
 
       <div className={pageLayout['buttons']}>
@@ -157,9 +147,7 @@ const OAuthConsentForm = ({
           type="button"
           className="button-2 filled"
           disabled={selectedScopes.size === 0 || submitting}
-          onClick={() => {
-            void handleApprove()
-          }}
+          onClick={handleApprove}
         >
           {selectedScopes.size < requestedScopes.length
             ? `Approve (${selectedScopes.size}/${requestedScopes.length})`
@@ -169,9 +157,7 @@ const OAuthConsentForm = ({
           type="button"
           className="button-2 outline"
           disabled={submitting}
-          onClick={() => {
-            void handleDecline()
-          }}
+          onClick={handleDecline}
         >
           Decline
         </button>

@@ -8,7 +8,7 @@ import { cn } from 'react-kitchen-sink'
 import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
 import { writeToken } from '../client/token-storage.ts'
-import { useGatekeeperClientLayer } from '../gatekeeper-client.tsx'
+import { useGatekeeperRuntimeLayer } from '../router-context.ts'
 import deviceEntryStyles from '../routes/_open/gatekeeper/devices.module.css'
 import pageLayout from '../styles/page-layout.module.css'
 
@@ -99,9 +99,11 @@ const MOUNT_DEBOUNCE = Duration.millis(250)
 const NeedsAuthMessage = (): JSX.Element => {
   const [state, setState] = useState<DeviceFlowState>({ tag: 'starting' })
   // Long-running device flow with retry — needs a fiber handle for
-  // interrupt-on-unmount, which the promise-returning runner can't give.
-  // Compose the slice's three layers manually here.
-  const layer = useGatekeeperClientLayer()
+  // interrupt-on-unmount, which the promise-returning `runAuthed` can't
+  // give. Runs against the composed `runtimeLayer` from router context
+  // (`BearerToken | HttpClient | GatekeeperHttpApiClient`), provided once
+  // by the app — not a one-shot query.
+  const layer = useGatekeeperRuntimeLayer()
 
   useEffect(() => {
     const flow = Effect.gen(function* () {

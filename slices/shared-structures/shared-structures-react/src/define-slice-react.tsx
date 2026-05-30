@@ -30,7 +30,7 @@ type SliceClientLayerRequirements<AuthType extends SliceHttpClientAuth> = AuthTy
 
 /**
  * Result of fully providing the slice's client layer. App-level code
- * (e.g. `useAllClientsLayer`) consumes this shape directly. The
+ * consumes this shape directly when composing slice client layers. The
  * requirements channel narrows on `AuthType`:
  *  - `'bearer'` → `Self | HttpClient.HttpClient | BearerToken` provided.
  *  - `'none'`   → `Self | HttpClient.HttpClient` provided; `BearerToken`
@@ -51,8 +51,8 @@ type FullyProvidedSliceLayer<Self, AuthType extends SliceHttpClientAuth> = AuthT
  *
  *  - `ClientLayerContext`: a `Context<Layer | null>` whose value is the
  *    slice's unprovided client layer. App-level code reads it via
- *    `useClientLayer` and composes with other slices in
- *    `useAllClientsLayer`.
+ *    `useClientLayer` and composes it with the other slices' client
+ *    layers.
  *  - `ClientProvider`: a tiny React provider that hands the layer to
  *    `ClientLayerContext`. Singleton — built once at factory time and
  *    reused across every mount.
