@@ -124,6 +124,83 @@ describe('BridgeTransport.make — live-attachment path', () => {
   })
 })
 
+describe('BridgeTransport.setLayers — atomic handler swap', () => {
+  test('replaces per-tag handlers on the next inbound message without rebuilding the transport', async () => {
+    // Cold-start regression guard: before `setLayers`, a fresh receiver
+    // layer on the host required `BridgeTransport.make` to re-run from
+    // scratch (queue, dispatch fiber, peerReady — all torn down and
+    // recreated). The BridgedWebView consumer relied on that, which
+    // tore the WebView down with it and flashed the loader. `setLayers`
+    // swaps the handler map in place via the internal `Ref`; the
+    // queue, dispatch fiber, schemas, and outbound senders all persist.
+    const { NavigationLike } = makeBridges()
+    const seen: Array<{ via: 'first' | 'second'; value: number }> = []
+    const firstLayer = NavigationLike.Web.ReceiverLayer({
+      Ping: ({ value }) => Effect.sync(() => seen.push({ via: 'first', value })),
+    })
+    const secondLayer = NavigationLike.Web.ReceiverLayer({
+      Ping: ({ value }) => Effect.sync(() => seen.push({ via: 'second', value })),
+    })
+    const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const transport = yield* BridgeTransport.make({
+          bridges: [NavigationLike] as const,
+          layers: [firstLayer] as const,
+          side: 'Web',
+        }).pipe(Effect.provide(adapterLayer))
+
+        yield* transport.enqueue(Schema.encodeSync(Ping)({ _tag: 'Ping', value: 1 }))
+        yield* transport.flushed
+        yield* transport.setLayers([secondLayer] as const)
+        yield* transport.enqueue(Schema.encodeSync(Ping)({ _tag: 'Ping', value: 2 }))
+        yield* transport.flushed
+
+        expect(seen).toEqual([
+          { via: 'first', value: 1 },
+          { via: 'second', value: 2 },
+        ])
+      }).pipe(Effect.scoped)
+    )
+  })
+
+  test('preserves the `peerReady` Deferred across swaps (host sends remain gated by the original `__Ready`)', async () => {
+    // The `peerReady` Deferred is captured once at make time; setLayers
+    // must not rebuild it or a host that already received `__Ready`
+    // would suddenly start gating again on a fresh deferred.
+    const { NavigationLike } = makeBridges()
+    const firstLayer = NavigationLike.Host.ReceiverLayer({
+      Pong: () => Effect.void,
+    })
+    const secondLayer = NavigationLike.Host.ReceiverLayer({
+      Pong: () => Effect.void,
+    })
+    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make()
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const transport = yield* BridgeTransport.make({
+          bridges: [NavigationLike] as const,
+          layers: [firstLayer] as const,
+          side: 'Host',
+        }).pipe(Effect.provide(adapterLayer))
+
+        // Resolve `peerReady` via the inbound __Ready handler.
+        yield* transport.enqueue('{"_tag":"__Ready"}')
+        yield* transport.flushed
+
+        yield* transport.setLayers([secondLayer] as const)
+        yield* transport.sendMessage({ _tag: 'Ping', value: 5 })
+
+        // If setLayers had rebuilt peerReady, this send would have
+        // suspended forever; reaching the assertion proves the
+        // deferred persisted across the swap.
+        expect(sentSink).toHaveLength(1)
+        expect(JSON.parse(sentSink[0] ?? '')).toMatchObject({ _tag: 'Ping', value: 5 })
+      }).pipe(Effect.scoped)
+    )
+  })
+})
+
 describe('BridgeTransport.make — initial-message replay', () => {
   test('drains and dispatches initial messages on construction', async () => {
     const { NavigationLike } = makeBridges()

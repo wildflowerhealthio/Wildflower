@@ -1,4 +1,4 @@
-import { Effect, Layer } from 'effect'
+import { Effect, Fiber, Layer } from 'effect'
 import {
   type BareSenderFunction,
   type BareSenderService,
@@ -86,12 +86,15 @@ interface BridgedWebViewProps<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  * with each binding's `initialMessages` appended as `?<Tag>=<value>`
  * query parameters; `sendMessage` is the typed Host→Web sender;
  * `onMessage` consumes inbound message payloads and routes them
- * through the dispatch fiber.
+ * through the dispatch fiber. `setLayers` swaps the active receiver
+ * layers without rebuilding the transport (see
+ * {@link BridgeTransport.BridgeTransport.setLayers}).
  */
 interface BuiltTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   readonly sendMessage: BridgeTransport.MessageSender<Bridges, 'Host'>
   readonly embedUrl: string
   readonly onMessage: (raw: string) => Effect.Effect<void>
+  readonly setLayers: (layers: Bridge.TransportLayers<Bridges, 'Host'>) => Effect.Effect<void>
 }
 
 /**
@@ -148,6 +151,15 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   }, [loadFrom, transport])
 
   const { bridges, receiverLayers } = bindings
+  // Stable ref to the current receiver layers so the (build-once)
+  // buildEffect closure captures the initial value while the
+  // layer-sync effect below can still observe React-render reference
+  // flips and call `setLayers`. Without the ref, the buildEffect's
+  // `useMemo([bridges])` would freeze whichever receiverLayers it
+  // first saw, and a later sibling-binding flip during the build
+  // window would never make it into the transport.
+  const initialReceiverLayersRef = useRef(receiverLayers)
+  const initialBindingsRef = useRef(bindings)
 
   const transportReadyEffect = useMemo(() => {
     if (transport === null) return Effect.void
@@ -157,16 +169,16 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
 
   useComponentScopedRunner(transportReadyEffect)
 
-  // Reset to the loader between rebuilds. The build fiber below is
-  // owned by `useComponentScopedRunner`, which interrupts the prior
-  // build asynchronously when `bridges`/`receiverLayers` flip; this
-  // synchronous reset ensures the next render shows `loader` rather
-  // than a stale WebView while the new transport is being built.
+  // Reset to the loader on the rare `bridges` change. With the
+  // post-mount `setLayers` path below, `receiverLayers` flips no
+  // longer tear down the transport — only a bridges-set change
+  // (slice added/removed) forces a rebuild, since the schema union
+  // and outbound sender map are bridges-derived.
   useEffect(
     () => (): void => {
       setTransport(null)
     },
-    [bridges, receiverLayers]
+    [bridges]
   )
 
   const buildEffect = useMemo(
@@ -196,9 +208,13 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
           // fast). `flattenTuples` (kitchen-sink) collapses the
           // parallel `initialMessages` mapped-tuple into one flat
           // sequence while preserving the union over `Bridges`, so no
-          // cast is needed.
+          // cast is needed. `initialBindingsRef.current` carries the
+          // freshest `initialMessages` tuple at build time — usually
+          // the first-render value, but if a sibling binding flipped
+          // between mount and this build firing, we pick up the
+          // newer URL-seeded payloads.
           const baseUrlParsed = new URL(transportBaseUrl)
-          const flatInitial = flattenTuples(bindings.initialMessages)
+          const flatInitial = flattenTuples(initialBindingsRef.current.initialMessages)
           const embedUrl = UrlParamMessage.appendMessagesToUrl(
             baseUrlParsed,
             bridges,
@@ -214,14 +230,19 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
 
           const built = yield* BridgeTransport.make({
             bridges,
-            layers: receiverLayers,
+            layers: initialReceiverLayersRef.current,
             side: 'Host',
           }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter)))
 
           const onMessage = (raw: string): Effect.Effect<void> => built.enqueue(raw)
 
           yield* Effect.sync(() =>
-            setTransport({ sendMessage: built.sendMessage, embedUrl, onMessage })
+            setTransport({
+              sendMessage: built.sendMessage,
+              embedUrl,
+              onMessage,
+              setLayers: built.setLayers,
+            })
           )
           // Park the fiber until `useComponentScopedRunner`'s cleanup
           // interrupts it — closing the scope tears down
@@ -229,16 +250,36 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
           yield* Effect.never
         })
       ),
-    // Rebuild only when the aggregated bridge/layer tuples change.
-    // `initialMessages` and `transportBaseUrl` are read at build time
-    // and intentionally excluded — they're seeded into the WebView's
-    // URL/query at boot and can't be reapplied mid-life without a
-    // remount.
+    // Bridges-keyed only. `initialMessages` / `transportBaseUrl` /
+    // `receiverLayers` are intentionally excluded: the first two
+    // are URL-baked at build time and can't be reapplied mid-life
+    // without a remount; the third flows through `setLayers` (the
+    // sync effect below) so the transport stays alive across
+    // sibling-binding rerenders.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-    [bridges, receiverLayers]
+    [bridges]
   )
 
   useComponentScopedRunner(buildEffect)
+
+  // Layer sync: when `receiverLayers` reference flips (typically a
+  // sibling binding re-rendering — token arrival, modal state, etc.),
+  // discharge the new layers into the existing transport's handler
+  // Ref via `setLayers`. The dispatch fiber, queue, schema union,
+  // and `peerReady` Deferred all persist; only the per-bridge
+  // handler map swaps. Bypasses the loader entirely — the WebView
+  // never unmounts.
+  useEffect(() => {
+    if (transport === null) return undefined
+    // Skip the initial render: the first `receiverLayers` value is
+    // already baked into the transport via `BridgeTransport.make`'s
+    // initial-layers arg above.
+    if (receiverLayers === initialReceiverLayersRef.current) return undefined
+    const fiber = Effect.runFork(transport.setLayers(receiverLayers))
+    return (): void => {
+      Effect.runFork(Fiber.interrupt(fiber))
+    }
+  }, [receiverLayers, transport])
 
   if (transport === null || source === null) return loader ?? <></>
 

@@ -93,10 +93,16 @@ cmd_new() {
 
   mkdir -p "$(dirname "$worktree_dir")" "$nm_dir"
 
+  # --relative-paths writes both the admin gitdir pointer and the worktree's
+  # .git file as paths relative to the workspace root. The container path
+  # `/workspaces/wildflower/...` does not exist on the host, so absolute
+  # pointers leave host-side git tooling (CLI, VSCode source control, GitLens)
+  # unable to enumerate or open the worktrees. Relative paths resolve from
+  # both views since the bind-mount preserves the layout. Requires git 2.48+.
   if git -C "$MAIN_REPO" show-ref --verify --quiet "refs/heads/$branch"; then
-    git -C "$MAIN_REPO" worktree add "$worktree_dir" "$branch"
+    git -C "$MAIN_REPO" worktree add --relative-paths "$worktree_dir" "$branch"
   else
-    git -C "$MAIN_REPO" worktree add -b "$branch" "$worktree_dir" "$base"
+    git -C "$MAIN_REPO" worktree add --relative-paths -b "$branch" "$worktree_dir" "$base"
   fi
 
   ln -sfn "$nm_dir" "$worktree_dir/node_modules"

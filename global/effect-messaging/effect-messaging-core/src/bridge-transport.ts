@@ -1,17 +1,19 @@
-import type { ParseResult, Scope } from 'effect'
+import type { ParseResult } from 'effect'
 import {
   Array,
   Data,
   Deferred,
   Effect,
+  HashMap,
   Match,
+  Option,
   pipe,
   Queue,
-  Schema,
-  Stream,
   Record,
-  Option,
-  HashMap,
+  Ref,
+  Schema,
+  Scope,
+  Stream,
 } from 'effect'
 import type * as Bridge from './bridge.ts'
 import { senderByTag } from './internal/bridge-lookups.ts'
@@ -128,6 +130,29 @@ interface BridgeTransport<
    * host is a no-op (the handshake is one-way). Idempotent.
    */
   readonly signalReady: Effect.Effect<void>
+  /**
+   * Atomically replace the per-bridge handler set without rebuilding
+   * the transport (queue, dispatch fiber, schemas, `peerReady`
+   * Deferred, and outbound sender map all persist). The dispatch
+   * fiber reads the handler map from a {@link Ref} on every inbound
+   * message, so the next message after this call's discharge picks
+   * up the new handlers.
+   *
+   * @remarks
+   * Each call discharges its `layers` into the transport's outer
+   * scope (the one in scope when `make` was invoked). Layer resources
+   * therefore accumulate across calls and release together when the
+   * transport's scope closes. Suitable for typical stateless receiver
+   * layers (Schema-keyed handler records); a stateful layer
+   * (database pool, file watcher) would accumulate per-call — wrap
+   * such a layer in your own per-bind scope before passing it in.
+   *
+   * Throws synchronously on duplicate inbound tags across bridges,
+   * matching the initial `make` build's wiring-error policy.
+   */
+  readonly setLayers: (
+    layers: Bridge.TransportLayers<Bridges, Side>
+  ) => Effect.Effect<void, never, never>
 }
 
 /**
@@ -152,6 +177,8 @@ type AnyTaggedSchema = Schema.Schema<any, any, never>
  */
 type Handler = (message: { readonly _tag: string }) => Effect.Effect<void, never, TransportAdapter>
 
+type AnyHandlers = Readonly<Record<string, Handler | undefined>>
+
 const make = <
   const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
   const Side extends 'Host' | 'Web',
@@ -161,24 +188,14 @@ const make = <
   readonly side: Side
 }): Effect.Effect<BridgeTransport<Bridges, Side>, never, TransportAdapter | Scope.Scope> =>
   Effect.gen(function* () {
-    const { bridges, layers, side } = config
+    const { bridges, layers: initialLayers, side } = config
     const adapter = yield* TransportAdapter
-
-    type AnyHandlers = Readonly<Record<string, Handler | undefined>>
-    const handlersByBridgeIndex: ReadonlyArray<AnyHandlers | undefined> = yield* pipe(
-      Array.zipWith(bridges, layers, (bridge, layer): Effect.Effect<AnyHandlers | undefined> => {
-        if (bridge === undefined || layer === undefined) {
-          return Effect.succeed<AnyHandlers | undefined>(undefined)
-        }
-        const half = bridge[side]
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        const handlersEffect = Effect.provide(half.HandlerTag, layer) as Effect.Effect<
-          AnyHandlers | undefined
-        >
-        return handlersEffect
-      }),
-      Effect.all
-    )
+    // Capture the transport's outer scope so {@link setLayers} can
+    // discharge replacement layers into it — same lifetime as the
+    // initial layer build. `Effect.scope` reads the active scope from
+    // the surrounding `Effect.gen` (provided by `make`'s `Scope.Scope`
+    // requirement).
+    const outerScope = yield* Effect.scope
 
     /**
      * Send-gating Deferred. Resolved when the local `__Ready` handler
@@ -187,49 +204,92 @@ const make = <
      * both sides (no parallel pre-resolve branch).
      */
     const peerReady = yield* Deferred.make<void>()
-
-    const tagHandlerPairs = pipe(
-      Array.zipWith(
-        bridges,
-        handlersByBridgeIndex,
-        (bridge, handlers): [string, Handler | undefined][] => {
-          if (bridge === undefined || handlers === undefined) {
-            return [] as [string, Handler | undefined][]
-          }
-          return Record.toEntries(handlers)
-        }
-      ),
-      Array.flatten,
-      Array.filter((entry): entry is [string, Handler] => entry[1] !== undefined),
-      Array.append([
-        READY_TAG,
-        () => Deferred.succeed(peerReady, undefined).pipe(Effect.asVoid),
-      ] as [string, Handler])
-    )
-    const [repeatedTags] = Array.reduce(
-      tagHandlerPairs,
-      [new Set<string>(), new Set<string>()] as const,
-      ([repeats, seen], [tag]) => {
-        if (seen.has(tag)) {
-          repeats.add(tag)
-        } else {
-          seen.add(tag)
-        }
-
-        return [repeats, seen]
-      }
-    )
-    if (repeatedTags.size > 0) {
-      throw new Error(`duplicate inbound tag(s) "${[...repeatedTags].join('", "')}"`)
-    }
+    const readyTagHandler: Handler = () =>
+      Deferred.succeed(peerReady, undefined).pipe(Effect.asVoid)
 
     /**
-     * Flat tag→handler map. Duplicate-tag detection runs above on
-     * `tagHandlerPairs` so a wiring drift fails synchronously here,
-     * before the dispatch fiber starts. The schema union below is
-     * built from the same bridges so its tags stay in sync.
+     * Per-layer-discharge handler-map builder. Folded over the
+     * `Bridges` × `Layers` parallel tuples to produce the same
+     * `HashMap<tag, Handler>` shape the dispatch fiber reads through
+     * the `handlersRef`. Used twice: once at initial `make` to seed
+     * the Ref, and again on every {@link BridgeTransport.setLayers}
+     * call.
+     *
+     * Throws synchronously on duplicate inbound tags so wiring drift
+     * fails the call before it touches the Ref — the previously-active
+     * handler map remains in place.
      */
-    const handlerByTag = HashMap.fromIterable<string, Handler>(tagHandlerPairs)
+    const buildHandlerByTag = (
+      layers: Bridge.TransportLayers<Bridges, Side>
+    ): Effect.Effect<HashMap.HashMap<string, Handler>, never, Scope.Scope> =>
+      Effect.gen(function* () {
+        const handlersByBridgeIndex: ReadonlyArray<AnyHandlers | undefined> = yield* pipe(
+          Array.zipWith(
+            bridges,
+            layers,
+            (bridge, layer): Effect.Effect<AnyHandlers | undefined, never, Scope.Scope> => {
+              if (bridge === undefined || layer === undefined) {
+                return Effect.succeed<AnyHandlers | undefined>(undefined)
+              }
+              const half = bridge[side]
+              // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+              const handlersEffect = Effect.provide(half.HandlerTag, layer) as Effect.Effect<
+                AnyHandlers | undefined,
+                never,
+                Scope.Scope
+              >
+              return handlersEffect
+            }
+          ),
+          Effect.all
+        )
+
+        const tagHandlerPairs = pipe(
+          Array.zipWith(
+            bridges,
+            handlersByBridgeIndex,
+            (bridge, handlers): [string, Handler | undefined][] => {
+              if (bridge === undefined || handlers === undefined) {
+                return [] as [string, Handler | undefined][]
+              }
+              return Record.toEntries(handlers)
+            }
+          ),
+          Array.flatten,
+          Array.filter((entry): entry is [string, Handler] => entry[1] !== undefined),
+          Array.append([READY_TAG, readyTagHandler] as [string, Handler])
+        )
+        const [repeatedTags] = Array.reduce(
+          tagHandlerPairs,
+          [new Set<string>(), new Set<string>()] as const,
+          ([repeats, seen], [tag]) => {
+            if (seen.has(tag)) {
+              repeats.add(tag)
+            } else {
+              seen.add(tag)
+            }
+
+            return [repeats, seen]
+          }
+        )
+        if (repeatedTags.size > 0) {
+          throw new Error(`duplicate inbound tag(s) "${[...repeatedTags].join('", "')}"`)
+        }
+
+        return HashMap.fromIterable<string, Handler>(tagHandlerPairs)
+      })
+
+    /**
+     * Flat tag→handler map, read by the dispatch fiber on every
+     * inbound message. Held in a {@link Ref} so {@link setLayers} can
+     * swap the map without rebuilding the queue, dispatch fiber, or
+     * `peerReady` Deferred — the schema union below stays static
+     * because it's bridges-derived (the bridges tuple itself doesn't
+     * change for the transport's lifetime).
+     */
+    const initialHandlerByTag = yield* buildHandlerByTag(initialLayers)
+    const handlersRef = yield* Ref.make(initialHandlerByTag)
+
     const innerSchemas: Array.NonEmptyArray<AnyTaggedSchema> = pipe(
       Array.flatMap(bridges, (bridge) => Record.values(bridge[side].InboundSchemas)),
       Array.map(Schema.typeSchema),
@@ -265,10 +325,11 @@ const make = <
 
     /**
      * Decode one raw inbound message and route to its handler. Schema
-     * acceptance implies the tag is in `handlerByTag` (built in lockstep
-     * with `innerSchemas`); a missing handler entry surfaces as
-     * `Internal` so a deliberate `handlers: { Tag: undefined }` cast
-     * doesn't crash the dispatch fiber.
+     * acceptance implies the tag is in the current `handlersRef`
+     * snapshot (built in lockstep with `innerSchemas`); a missing
+     * handler entry surfaces as `Internal` so a deliberate
+     * `handlers: { Tag: undefined }` cast doesn't crash the dispatch
+     * fiber.
      */
     const decodeAndDispatch = (
       raw: string,
@@ -279,6 +340,7 @@ const make = <
         // boundary. Schema acceptance guarantees `_tag: string`.
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
         const decoded = (yield* decodeMessage(raw)) as { readonly _tag: string }
+        const handlerByTag = yield* Ref.get(handlersRef)
         const maybeHandler = HashMap.get(handlerByTag, decoded._tag)
 
         return yield* Option.match(maybeHandler, {
@@ -375,11 +437,20 @@ const make = <
       Host: Effect.void,
     }[side]
 
+    const setLayers = (
+      newLayers: Bridge.TransportLayers<Bridges, Side>
+    ): Effect.Effect<void, never, never> =>
+      Effect.gen(function* () {
+        const next = yield* buildHandlerByTag(newLayers)
+        yield* Ref.set(handlersRef, next)
+      }).pipe(Scope.extend(outerScope))
+
     return {
       sendMessage,
       enqueue,
       flushed,
       signalReady,
+      setLayers,
     }
   })
 

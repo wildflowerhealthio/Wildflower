@@ -29,6 +29,10 @@ const stubTransport: Transport = {
   flushed: Effect.void,
   enqueue: () => Effect.void,
   signalReady: Effect.void,
+  // No-op: the standalone-web entry never wires a real bridge, so
+  // there are no handlers to swap. Matches the rest of the stub's
+  // "drop everything quietly" policy.
+  setLayers: () => Effect.void,
 }
 
 const TransportContext = createContext<Transport | null>(null)
