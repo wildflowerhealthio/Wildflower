@@ -147,27 +147,36 @@ jest.mock('navigation-expo', () => {
   }
 })
 
+// Capture the options gatekeeper-expo's hook receives so the wiring
+// assertions below can read what the shell passed in. The mock factory
+// itself only needs to mirror the new contract: `onTransportReady` is
+// always defined (it captures the sender), and token delivery happens
+// out-of-band via a post-mount effect in the real hook — so the mock
+// performs the conditional send inline as a faithful proxy.
+let mockGatekeeperOptions: { token?: string } | null = null
 jest.mock('gatekeeper-expo', () => {
   const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
     'effect'
   )
   return {
     GatekeeperBridgeExpo: {
-      useHostBinding: (options: { token?: string } = {}): MockBindings =>
-        singleMock({
+      useHostBinding: (options: { token?: string } = {}): MockBindings => {
+        mockGatekeeperOptions = options
+        return singleMock({
           bridge: { name: 'Gatekeeper' },
           receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
           initialMessages: [{ _tag: 'WaitForToken' as const }],
-          onTransportReady:
+          onTransportReady: (
+            send: (msg: {
+              readonly _tag: string
+              readonly [k: string]: unknown
+            }) => EffectType.Effect<void>
+          ): EffectType.Effect<void> =>
             options.token === undefined
-              ? undefined
-              : (
-                  send: (msg: {
-                    readonly _tag: string
-                    readonly [k: string]: unknown
-                  }) => EffectType.Effect<void>
-                ) => send({ _tag: 'AuthTokenIssued', token: options.token }),
-        }),
+              ? effect.Effect.void
+              : send({ _tag: 'AuthTokenIssued', token: options.token }),
+        })
+      },
     },
   }
 })
@@ -269,6 +278,7 @@ import { NavigationPipeProvider, useNavigationSender } from './navigation-pipe.t
 beforeEach(() => {
   mockLastBridgedWebViewProps = null
   mockNavigationOptions = null
+  mockGatekeeperOptions = null
   mockAppsOptions = null
   mockLocalClientTokenRow = { value: 'bearer-xyz' }
 })
@@ -396,24 +406,27 @@ describe('AppShellWebView', () => {
     expect(JSON.stringify(allInitial)).not.toContain('bearer-xyz')
   })
 
-  it("issues AuthTokenIssued through the gatekeeper binding's onTransportReady when a token is provided", async () => {
+  it('threads the bearer token from the local-client-token row into the gatekeeper binding hook', () => {
+    // Shell-level wiring contract: the shell reads `LocalClientToken`
+    // and hands the bearer to `GatekeeperBridgeExpo.useHostBinding`.
+    // What the binding *does* with the token (capture sender + send
+    // via post-mount effect) is covered by `gatekeeper-expo`'s own
+    // tests — the shell only owes it the value.
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
-    const bindings = expectBindings()
-    const gkIdx = indexOf(bindings, 'Gatekeeper')
-    const gkOnTransportReady = bindings.onTransportReady[gkIdx]
-    if (gkOnTransportReady === undefined) throw new Error('gatekeeper onTransportReady missing')
-
-    const sent: Array<{ readonly _tag: string }> = []
-    await EffectType.runPromise(gkOnTransportReady((msg) => EffectType.sync(() => sent.push(msg))))
-    expect(sent).toContainEqual({ _tag: 'AuthTokenIssued', token: 'bearer-xyz' })
+    expect(mockGatekeeperOptions?.token).toBe('bearer-xyz')
   })
 
-  it('omits the gatekeeper onTransportReady when no token is provided', () => {
+  it('passes undefined to the gatekeeper binding hook when no token is present in the store', () => {
     mockLocalClientTokenRow = { value: null }
+    mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
+    expect(mockGatekeeperOptions?.token).toBeUndefined()
+  })
+
+  it('always wires an onTransportReady on the gatekeeper binding (the slice captures the sender regardless of token state)', () => {
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
     const bindings = expectBindings()
     const gkIdx = indexOf(bindings, 'Gatekeeper')
-    expect(bindings.onTransportReady[gkIdx]).toBeUndefined()
+    expect(bindings.onTransportReady[gkIdx]).toBeDefined()
   })
 
   it('threads the wildflower store into the apps host binding', () => {

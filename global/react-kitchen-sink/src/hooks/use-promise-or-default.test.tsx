@@ -9,11 +9,9 @@ describe('usePromiseOrDefault', () => {
     const { promise } = Promise.withResolvers<number>()
 
     // Act
-    const { result } = renderHook(
-      ({ p }) =>
-        usePromiseOrDefault(p, -1, () => -2),
-      { initialProps: { p: promise } }
-    )
+    const { result } = renderHook(({ p }) => usePromiseOrDefault(p, -1, () => -2), {
+      initialProps: { p: promise },
+    })
 
     // Assert
     expect(result.current).toBe(-1)
@@ -22,11 +20,9 @@ describe('usePromiseOrDefault', () => {
   it('should return the resolved value once the promise settles', async () => {
     // Arrange
     const { promise, resolve } = Promise.withResolvers<number>()
-    const { result } = renderHook(
-      ({ p }) =>
-        usePromiseOrDefault(p, -1, () => -2),
-      { initialProps: { p: promise } }
-    )
+    const { result } = renderHook(({ p }) => usePromiseOrDefault(p, -1, () => -2), {
+      initialProps: { p: promise },
+    })
 
     // Act
     await act(async () => {
@@ -69,11 +65,9 @@ describe('usePromiseOrDefault', () => {
     // Arrange
     const first = Promise.withResolvers<number>()
     const second = Promise.withResolvers<number>()
-    const { result, rerender } = renderHook(
-      ({ p }) =>
-        usePromiseOrDefault(p, -1, () => -2),
-      { initialProps: { p: first.promise } }
-    )
+    const { result, rerender } = renderHook(({ p }) => usePromiseOrDefault(p, -1, () => -2), {
+      initialProps: { p: first.promise },
+    })
     await act(async () => {
       first.resolve(1)
     })
@@ -99,11 +93,9 @@ describe('usePromiseOrDefault', () => {
   it('should ignore stale settlements after unmount', async () => {
     // Arrange
     const { promise, resolve } = Promise.withResolvers<number>()
-    const { result, unmount } = renderHook(
-      ({ p }) =>
-        usePromiseOrDefault(p, -1, () => -2),
-      { initialProps: { p: promise } }
-    )
+    const { result, unmount } = renderHook(({ p }) => usePromiseOrDefault(p, -1, () => -2), {
+      initialProps: { p: promise },
+    })
     const valueBeforeUnmount = result.current
 
     // Act

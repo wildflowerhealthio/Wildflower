@@ -6,6 +6,7 @@ import { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
 import { CollectorBridge } from 'collector-fundamentals/bridge'
 import type { BridgeTransport } from 'effect-messaging-core'
 import { type MadeNamedPipe, makeNamedPipe } from 'effect-messaging-react'
+import type { RefObject } from 'react'
 
 // The `useAs*` / `use*` hooks below are destructured-and-renamed off the
 // `makeNamedPipe(...)` result, so tsgo re-infers each renamed binding's type
@@ -37,6 +38,11 @@ const collectorPipe: MadeNamedPipe<'Collector', readonly [typeof CollectorBridge
 const { Provider: CollectorPipeProvider } = collectorPipe
 const useAsCollectorOutlet: (sender: CollectorSender) => void = collectorPipe.useAsOutlet
 const useCollectorSender: () => CollectorSender = collectorPipe.useSender
+// Read the pipe's mutable sender slot directly. `useCollectorHostBinding`
+// uses this to install the host-built transport's outbound sender from
+// inside `onTransportReady` — an Effect callback that fires after the
+// transport binds, where calling React hooks isn't valid.
+const useCollectorSenderRef: () => RefObject<CollectorSender> = collectorPipe.useSenderRef
 
 export {
   BrowserSnifferPipeProvider,
@@ -45,4 +51,5 @@ export {
   useAsCollectorOutlet,
   useBrowserSnifferSender,
   useCollectorSender,
+  useCollectorSenderRef,
 }
