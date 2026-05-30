@@ -14,26 +14,31 @@ type RunAuthed = <A, E>(
   effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayer>>
 ) => Promise<A>
 
+/**
+ * Resolve once the bearer token is available, or reject with a tagged
+ * reason. Injected per entry (web vs. embedded) and threaded into the
+ * router context so the `beforeLoad` auth gate can `await` it without
+ * knowing which environment it runs in.
+ *
+ * Rejections are {@link AuthReadyError} instances so the gate can
+ * branch on `_tag`: a missing standalone token redirects into the
+ * device-login flow, an embedded timeout throws to a web-side retry
+ * screen.
+ */
+type AwaitAuthReady = () => Promise<void>
+
 interface RouterContext {
   readonly queryClient: QueryClient
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
   /**
-   * Whether the bearer token is available yet. Authed route `loader`s
-   * consult this to decide between prefetching now and deferring to the
-   * post-gate in-component read.
-   *
-   * The `/settings` and `_auth` gates are React *component* gates
-   * (`RequireAuth`), not `beforeLoad`, so on embedded first paint the
-   * bridge hasn't delivered the token when a loader runs — prefetching
-   * then would 401. Standalone web has the token synchronously from
-   * localStorage, so this returns `true` and the loader warms the cache
-   * for first paint. The app wires the concrete reader (`gatekeeper-react`'s
-   * `authTokenRef`); slices stay decoupled from that package by reading
-   * through this context field — the single source of truth for "is the
-   * bearer ready" across every slice loader and the app's prefetch.
+   * Environment-specific auth-readiness wait, injected at `renderApp`
+   * and consulted by the gated layouts' `beforeLoad`. Resolves when a
+   * bearer token is present; rejects with a tagged {@link AuthReadyError}
+   * otherwise. The gate — not the loaders — owns this, so an authed
+   * loader that runs is guaranteed a token (no more first-paint skip).
    */
-  readonly isTokenReady: () => boolean
+  readonly awaitAuthReady: AwaitAuthReady
 }
 
-export type { RouterContext, RunAuthed, RuntimeLayer }
+export type { AwaitAuthReady, RouterContext, RunAuthed, RuntimeLayer }

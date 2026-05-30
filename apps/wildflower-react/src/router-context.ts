@@ -34,14 +34,12 @@ interface RouterContext {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
   /**
-   * Whether the bearer token is available yet. Authed route loaders
-   * consult this to skip a first-paint prefetch that would 401 on the
-   * embedded WebView (token arrives over the gatekeeper bridge only
-   * after `transport.flushed`). Standalone web has the token
-   * synchronously from localStorage, so this is `true` immediately and
-   * loaders warm the cache for first paint.
+   * Environment-specific auth-readiness wait, injected at `renderApp`
+   * and consulted by the gated layouts' `beforeLoad`. Resolves when a
+   * bearer token is present; rejects (tagged) otherwise. The gate owns
+   * this, so an authed loader that runs is guaranteed a token.
    */
-  readonly isTokenReady: () => boolean
+  readonly awaitAuthReady: BaseRouterContext.AwaitAuthReady
 }
 
 /**
@@ -67,11 +65,9 @@ const buildQueryClient = (): QueryClient =>
  * token rotation surfaces without rebuilding the runtime. `dispose` is
  * for tests; the app keeps the runtime for the page's lifetime.
  *
- * `isTokenReady` reads the same `Subscribable` synchronously so authed
- * loaders can gate a first-paint prefetch on the token being present —
- * a non-empty string means standalone web (localStorage) or a
- * post-flush embedded session; `null`/`''` means the embedded bridge
- * hasn't delivered the token yet.
+ * The `beforeLoad` auth gate (not the loaders) now guarantees a token
+ * before any authed loader runs, so there's no `isTokenReady` reader
+ * here anymore — loaders are plain `ensureQueryData` again.
  */
 const buildRunAuthed = (
   tokenSubscribable: Subscribable.Subscribable<string | null>,
@@ -79,7 +75,6 @@ const buildRunAuthed = (
 ): {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
-  readonly isTokenReady: () => boolean
 } => {
   const baseRuntimeLayer = Layer.succeed(BearerToken, tokenSubscribable).pipe(
     Layer.provideMerge(httpClientLayer)
@@ -97,10 +92,6 @@ const buildRunAuthed = (
   return {
     runAuthed: (effect) => pipe(effect, Effect.provide(runtimeLayer), Effect.runPromise),
     runtimeLayer,
-    isTokenReady: () => {
-      const token = Effect.runSync(tokenSubscribable.get)
-      return token !== null && token !== ''
-    },
   }
 }
 

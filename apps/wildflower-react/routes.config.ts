@@ -15,9 +15,9 @@ import { index, layout, physical, rootRoute, route } from '@tanstack/virtual-fil
  *   - `_auth/`    → mounted under the pathless `_auth` layout  → `/_auth/…`
  *   - `_open/`    → mounted under the pathless `_open` layout  → `/_open/…`
  *
- * Because `/settings` is a sibling of `_auth` (not a child), it is no
- * longer auth-gated by `AuthorizedAppShell`. `SettingsLayout` re-applies
- * the same bearer-token gate via the shared `RequireAuth` wrapper, so the
+ * Because `/settings` is a sibling of `_auth` (not a child), it is not
+ * auth-gated by the `_auth` layout's `beforeLoad`. `SettingsLayout`
+ * re-applies the same gate via the shared `authBeforeLoad`, so the
  * runtime behavior (settings requires auth) is preserved.
  *
  * Paths passed to `physical()` are resolved relative to

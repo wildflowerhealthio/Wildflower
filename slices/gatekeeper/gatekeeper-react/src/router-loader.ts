@@ -3,32 +3,20 @@ import { type UseSuspenseQueryOptions } from '@tanstack/react-query'
 import { type RouterContext } from './router-context.ts'
 
 /**
- * Loader helper for authed gatekeeper routes. The `/settings` and `_auth`
- * gates are React *component* gates (`RequireAuth`), not `beforeLoad`, so
- * loaders fire before auth resolves. In embedded mode the bearer arrives
- * only after `transport.flushed`, so a prefetch on first paint would 401.
+ * Loader helper for authed gatekeeper routes. The `_auth` and
+ * `/settings` layouts now gate on a `beforeLoad` that `await`s the
+ * bearer token, so by the time this loader runs the token is
+ * guaranteed present — embedded waited the bridge handshake, web had it
+ * synchronously. No more first-paint skip; this is a plain
+ * `ensureQueryData`.
  *
- * Behaviour:
- *   - Token not ready yet (`context.isTokenReady()` false) → skip the
- *     prefetch and resolve immediately. The in-component
- *     `useSuspenseQuery` (rendered only after `RequireAuth` passes, i.e.
- *     post-flush) does the real read.
- *   - Token present → `ensureQueryData`, and let any genuine read failure
- *     (500 / schema-invalid / network) propagate so the route's
- *     `errorComponent` fires. **Never** swallow with a blanket `catch`.
- *
- * The readiness check reads through `context.isTokenReady` — the single
- * reader hoisted onto `BaseRouterContext` and shared with the app's
- * `prefetchKeyRoutes` — rather than reading `authTokenRef` directly, so
- * there is one source of truth for "is the bearer ready" (reconciled with
- * the tunnel loader's guard from #111).
+ * Any genuine read failure (500 / schema-invalid / network) propagates
+ * so the route's `errorComponent` fires. **Never** swallow with a
+ * blanket `catch`.
  */
 const ensureAuthedQuery = <TData, TKey extends readonly unknown[]>(
-  context: Pick<RouterContext, 'queryClient' | 'isTokenReady'>,
+  context: Pick<RouterContext, 'queryClient'>,
   options: UseSuspenseQueryOptions<TData, Error, TData, TKey>
-): Promise<TData | undefined> => {
-  if (!context.isTokenReady()) return Promise.resolve(undefined)
-  return context.queryClient.ensureQueryData(options)
-}
+): Promise<TData> => context.queryClient.ensureQueryData(options)
 
 export { ensureAuthedQuery }

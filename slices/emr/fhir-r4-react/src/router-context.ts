@@ -25,13 +25,13 @@ interface RouterContext {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
   /**
-   * Whether the bearer token is ready — the single readiness reader the
-   * app wires onto {@link BaseRouterContext.RouterContext}. The FHIR
-   * slice has no routes/loaders of its own (its consumers live in other
-   * slices), so this field is here only to keep the structural context
-   * a faithful subset of the app's `RouterContext`.
+   * Environment-specific auth-readiness wait the app injects onto
+   * {@link BaseRouterContext.RouterContext}. The FHIR slice has no
+   * routes/loaders of its own (its consumers live in other slices), so
+   * this field is here only to keep the structural context a faithful
+   * subset of the app's `RouterContext`.
    */
-  readonly isTokenReady: () => boolean
+  readonly awaitAuthReady: BaseRouterContext.AwaitAuthReady
 }
 
 /**

@@ -21,6 +21,9 @@ expectTypeOf(NavigationBridgeExpo.ReceiverLayer).returns.toEqualTypeOf<
 expectTypeOf(NavigationBridgeExpo.ReceiverLayer)
   .parameter(0)
   .toEqualTypeOf<((route: { pathname: string; canGoBack: boolean }) => void) | undefined>()
+expectTypeOf(NavigationBridgeExpo.ReceiverLayer)
+  .parameter(1)
+  .toEqualTypeOf<(() => void) | undefined>()
 
 /**
  * Resolve the bridge's `Navigation.Host.HandlerTag` from a built receiver
@@ -68,6 +71,22 @@ describe('NavigationBridgeExpo.ReceiverLayer (RouteChanged handler)', () => {
           .RouteChanged({ _tag: 'RouteChanged', pathname: '/foo', canGoBack: true })
           .pipe(Effect.provide(adapterLayer))
       )
+    ).resolves.toBeUndefined()
+  })
+
+  it('invokes onUIReady when the SPA posts UIReady (host reveals the WebView)', async () => {
+    const onUIReady = jest.fn()
+    const handlers = await resolveHandlers(NavigationBridgeExpo.ReceiverLayer(undefined, onUIReady))
+    await Effect.runPromise(
+      handlers.UIReady({ _tag: 'UIReady' }).pipe(Effect.provide(adapterLayer))
+    )
+    expect(onUIReady).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not crash when onUIReady is omitted', async () => {
+    const handlers = await resolveHandlers(NavigationBridgeExpo.ReceiverLayer())
+    await expect(
+      Effect.runPromise(handlers.UIReady({ _tag: 'UIReady' }).pipe(Effect.provide(adapterLayer)))
     ).resolves.toBeUndefined()
   })
 

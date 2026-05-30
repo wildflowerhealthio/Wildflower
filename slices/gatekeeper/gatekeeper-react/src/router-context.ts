@@ -25,13 +25,14 @@ interface RouterContext {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
   /**
-   * Whether the bearer token is ready — the single readiness reader the
-   * app wires onto {@link BaseRouterContext.RouterContext}. Gatekeeper's
-   * {@link ensureAuthedQuery} loader consults this (rather than reading
-   * `authTokenRef` directly) so there's one source of truth for "is the
-   * bearer ready" shared with the app's `prefetchKeyRoutes`.
+   * Environment-specific auth-readiness wait the app injects onto
+   * {@link BaseRouterContext.RouterContext} and consults from the gated
+   * layouts' `beforeLoad`. Declared here only to keep this structural
+   * context a faithful subset of the app's `RouterContext`; gatekeeper's
+   * {@link ensureAuthedQuery} loader no longer reads it — the gate
+   * guarantees the token before the loader runs.
    */
-  readonly isTokenReady: () => boolean
+  readonly awaitAuthReady: BaseRouterContext.AwaitAuthReady
 }
 
 /**

@@ -202,6 +202,7 @@ describe('renderApp InnerWrap lifecycle', () => {
         history,
         TransportProvider: makePassthrough('TransportProvider'),
         entry: 'main-web',
+        awaitAuthReady: () => Promise.resolve(),
       })
     })
 

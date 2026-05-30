@@ -102,6 +102,7 @@ describe('in-memory QueryClientProvider', () => {
         history: createMemoryHistory({ initialEntries: ['/'] }),
         TransportProvider: Passthrough,
         entry: 'main-web',
+        awaitAuthReady: () => Promise.resolve(),
       })
     })
 

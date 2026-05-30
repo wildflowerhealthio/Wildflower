@@ -37,6 +37,16 @@ export {
 export { NeedsAuthMessage } from './components/NeedsAuthMessage.tsx'
 
 export {
+  awaitEmbeddedAuthReady,
+  awaitWebAuthReady,
+  DEVICE_LOGIN_PATH,
+  EMBEDDED_TOKEN_TIMEOUT,
+  NeedsSignIn,
+  TokenTimeout,
+  type AuthReadyError,
+} from './client/auth-ready.ts'
+
+export {
   TOKEN_STORAGE_KEY,
   authTokenRef,
   waitForHostTokenRef,

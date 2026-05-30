@@ -1,7 +1,8 @@
 import { BridgedWebView } from 'effect-messaging-expo'
+import * as SplashScreen from 'expo-splash-screen'
 import { Loader } from 'expo-tundraish'
 import { localOrigin$ } from 'local-http-server-core/livestore'
-import { useMemo, type JSX } from 'react'
+import { useCallback, useMemo, type JSX } from 'react'
 import { html } from 'wildflower-react/embeddable-html'
 import { tabForPath } from '@/src/components/tab-mapping.ts'
 import { useWildflowerStore } from '../livestore/livestore-store.ts'
@@ -54,11 +55,18 @@ const AppShellWebView = ({ onRouteChanged }: AppShellWebViewProps): JSX.Element 
     () => makeShouldOpenInSystemBrowser(loopbackBaseUrl),
     [loopbackBaseUrl]
   )
+  // Reveal the native UI when the SPA reports `UIReady` (auth gate
+  // passed + startup prefetches settled). `hideAsync` rejects when the
+  // splash is already hidden (e.g. the `prevent-splash-hide` fallback
+  // timer fired first); swallow that so a late `UIReady` doesn't crash.
+  const onUIReady = useCallback(() => {
+    void SplashScreen.hideAsync().catch(() => undefined)
+  }, [])
   // Memoize the tuple so `BridgedWebView`'s transport doesn't rebuild on
   // every render — the component's contract requires stable `bindings`
   // identity (see its TSDoc). Bridge ordering matches the page-side
   // tuple in `wildflower-react`'s transport provider.
-  const bindings = useHostBindings({ onRouteChanged })
+  const bindings = useHostBindings({ onRouteChanged, onUIReady })
 
   return (
     <BridgedWebView

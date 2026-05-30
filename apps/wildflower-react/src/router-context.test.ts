@@ -26,7 +26,6 @@ const makeRunner = (
 ): {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
-  readonly isTokenReady: () => boolean
 } => buildRunAuthed(tokenRef, stubHttpClientLayer)
 
 // Requires both services so the type carries `BearerToken | HttpClient`.
@@ -100,76 +99,23 @@ describe('runAuthed router-context runner', () => {
   })
 
   // Type-level: a `satisfies` guard so dropping a field fails compile.
-  it('should type RouterContext as { queryClient; runAuthed; runtimeLayer; isTokenReady }', () => {
+  // `awaitAuthReady` is injected per entry (not built by
+  // `buildRunAuthed`), so the test supplies a trivial resolver to
+  // complete the structural context.
+  it('should type RouterContext as { queryClient; runAuthed; runtimeLayer; awaitAuthReady }', () => {
     // Arrange / Act
     const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
-    const { runAuthed, runtimeLayer, isTokenReady } = makeRunner(tokenRef)
+    const { runAuthed, runtimeLayer } = makeRunner(tokenRef)
     const context = {
       queryClient: buildQueryClient(),
       runAuthed,
       runtimeLayer,
-      isTokenReady,
+      awaitAuthReady: () => Promise.resolve(),
     } satisfies RouterContext
 
     // Assert
     expect(typeof context.runAuthed).toBe('function')
-    expect(typeof context.isTokenReady).toBe('function')
+    expect(typeof context.awaitAuthReady).toBe('function')
     expect(context.queryClient).toBeDefined()
-  })
-})
-
-describe('isTokenReady token-readiness gate', () => {
-  it('should be false when the ref holds no token (embedded first paint)', () => {
-    // Arrange — embedded WebView before the bridge delivers the token.
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
-    const { isTokenReady } = makeRunner(tokenRef)
-
-    // Act / Assert
-    expect(isTokenReady()).toBe(false)
-  })
-
-  it('should be false when the ref holds an empty string', () => {
-    // Arrange — empty sentinel must not count as a usable token.
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(''))
-    const { isTokenReady } = makeRunner(tokenRef)
-
-    // Act / Assert
-    expect(isTokenReady()).toBe(false)
-  })
-
-  it('should be true once a non-empty token is present (standalone web)', () => {
-    // Arrange — token read synchronously from localStorage at startup.
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('a-token'))
-    const { isTokenReady } = makeRunner(tokenRef)
-
-    // Act / Assert
-    expect(isTokenReady()).toBe(true)
-  })
-
-  it('should reflect the ref live — false before a token lands, true after', () => {
-    // Arrange — mirrors the embedded handshake: built empty, token
-    // arrives over the bridge after the runtime exists.
-    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
-    const { isTokenReady } = makeRunner(tokenRef)
-    expect(isTokenReady()).toBe(false)
-
-    // Act
-    Effect.runSync(SubscriptionRef.set(tokenRef, 'arrived'))
-
-    // Assert
-    expect(isTokenReady()).toBe(true)
-  })
-
-  it('should equal "non-empty string" for any ref value', () => {
-    fc.assert(
-      fc.property(fc.option(fc.string(), { nil: null }), (token) => {
-        // Arrange
-        const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(token))
-        const { isTokenReady } = makeRunner(tokenRef)
-
-        // Act / Assert
-        expect(isTokenReady()).toBe(token !== null && token !== '')
-      })
-    )
   })
 })

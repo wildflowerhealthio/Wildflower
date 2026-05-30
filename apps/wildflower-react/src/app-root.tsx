@@ -9,10 +9,10 @@ import { AppsRuntimeProvider } from 'apps-react'
 import { CollectorRuntimeProvider } from 'collector-react'
 import { authTokenRef } from 'gatekeeper-react'
 import { AuthTokenProvider } from 'react-kitchen-sink'
+import type { BaseRouterContext } from 'shared-structures-react'
 import { buildAppQueryRuntime } from './bridges/app-query-runtime.ts'
 import { AppsSenderForwarder } from './bridges/apps-sender-forwarder.tsx'
 import { CollectorSenderForwarder } from './bridges/collector-sender-forwarder.tsx'
-import { prefetchKeyRoutes } from './bridges/prefetch-key-routes.ts'
 import { routeTree } from './routeTree.gen.ts'
 
 type WrapperComponent = ComponentType<{ readonly children?: ReactNode }>
@@ -22,6 +22,14 @@ interface RenderAppOptions {
   readonly TransportProvider: WrapperComponent
   /** Tagged onto Sentry events to distinguish web/embedded crashes. */
   readonly entry: 'main-web' | 'main-embedded' | 'main-single-web'
+  /**
+   * Environment-specific auth-readiness wait, injected per entry (web
+   * resolves/rejects immediately on token presence; embedded awaits the
+   * host token up to 5s). Threaded into the router context so the
+   * `beforeLoad` auth gate awaits it without knowing the environment —
+   * the entry, not a context flag, encodes the behavior.
+   */
+  readonly awaitAuthReady: BaseRouterContext.AwaitAuthReady
 }
 
 /**
@@ -35,19 +43,23 @@ interface RenderAppOptions {
  * Slice client providers live in `RootShell` (root route component),
  * not wrapping `<RouterProvider>` — it doesn't accept children.
  */
-const renderApp = ({ history, TransportProvider, entry }: RenderAppOptions): void => {
-  const { queryClient, runAuthed, runtimeLayer, isTokenReady } = buildAppQueryRuntime()
+const renderApp = ({
+  history,
+  TransportProvider,
+  entry,
+  awaitAuthReady,
+}: RenderAppOptions): void => {
+  const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime()
   const router = createRouter({
     routeTree,
     history,
-    context: { queryClient, runAuthed, runtimeLayer, isTokenReady },
+    context: { queryClient, runAuthed, runtimeLayer, awaitAuthReady },
     defaultPreload: 'intent',
   })
   const container = document.getElementById('root')
   if (container === null) {
     throw new Error('root element not found')
   }
-  prefetchKeyRoutes(queryClient, runAuthed, isTokenReady)
   createRoot(container).render(
     <StrictMode>
       <ErrorBoundary
