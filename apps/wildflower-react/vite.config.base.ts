@@ -22,6 +22,11 @@ export default defineConfig({
       generatedRouteTree: './src/routeTree.gen.ts',
       virtualRouteConfig: routes,
       autoCodeSplitting: false,
+      // Colocated `*.test.tsx` files live beside the route modules they
+      // exercise (here and in the slice route dirs mounted via
+      // `physical()`); without this the route generator would treat them
+      // as routes and pollute `routeTree.gen.ts`.
+      routeFileIgnorePattern: '\\.(test|spec)\\.',
     }),
     react(),
   ],

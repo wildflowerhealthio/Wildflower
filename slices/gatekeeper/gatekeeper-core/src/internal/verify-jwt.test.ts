@@ -1,0 +1,250 @@
+import { DateTime, Effect, Either } from 'effect'
+import * as jose from 'jose'
+import { Origin } from 'navigation-core'
+import { expect, test } from 'vite-plus/test'
+import { Client, type ClientRow, GatekeeperStore, SigningKey } from '../livestore/index.ts'
+import { testingKey1, testingKey2 } from '../test-fixtures/signing-keys.ts'
+import { verifyJwt } from './jwt.ts'
+const labelOf = (q: unknown): string | undefined => {
+  if (typeof q === 'object' && q !== null && 'label' in q && typeof q.label === 'string') {
+    return q.label
+  }
+  return undefined
+}
+const hashOf = (q: unknown): string | undefined => {
+  if (typeof q === 'object' && q !== null && 'hash' in q && typeof q.hash === 'string') {
+    return q.hash
+  }
+  return undefined
+}
+
+const makeStubStore = (options: {
+  signingKeys: ReadonlyArray<SigningKey.Type>
+  clients?: ReadonlyArray<ClientRow>
+}): typeof GatekeeperStore.Service => {
+  const { signingKeys, clients = [] } = options
+  const clientMap = new Map(clients.map((c) => [c.clientId, c]))
+
+  const query = (q: unknown): unknown => {
+    if (q === SigningKey.queries.all$) return signingKeys
+    const label = labelOf(q)
+    const hash = hashOf(q)
+    if (label === 'clientById' && hash !== undefined) {
+      for (const clientId of clientMap.keys()) {
+        if (Client.queries.byId$(clientId).hash === hash) {
+          return clientMap.get(clientId) ?? null
+        }
+      }
+      return null
+    }
+    return []
+  }
+
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return { query, commit: () => undefined } as unknown as typeof GatekeeperStore.Service
+}
+
+const ORIGIN = 'https://example.test'
+
+// `jose.importJWK` returns `CryptoKey | Uint8Array`; runtime-check rather than unsafe-cast.
+const importRsaJwk = async (jwk: jose.JWK): Promise<jose.CryptoKey> => {
+  const imported = await jose.importJWK(jwk)
+  if (!(imported instanceof CryptoKey)) {
+    throw new Error('Expected jose.importJWK to return a CryptoKey for an RSA JWK')
+  }
+  return imported
+}
+
+// Raw jose call: `mintAccessToken`'s signature rejects non-string `sub`, custom `aud`, explicit `exp`.
+const signWith = async (key: SigningKey.Type, payload: jose.JWTPayload): Promise<string> => {
+  const joseKey = await importRsaJwk(SigningKey.privateJwk(key))
+  return await new jose.SignJWT(payload)
+    .setProtectedHeader({ alg: key.alg, kid: key.kid })
+    .sign(joseKey)
+}
+
+const makeClient = (overrides: Partial<ClientRow> = {}): ClientRow => ({
+  clientId: 'client-1',
+  name: 'Test Client',
+  kind: 'public',
+  redirectUris: [],
+  allowedScopes: ['owner'],
+  secretHash: null,
+  registeredAt: DateTime.unsafeNow(),
+  disabledAt: null,
+  ...overrides,
+})
+
+const runVerify = (
+  store: typeof GatekeeperStore.Service,
+  token: string
+): Promise<Either.Either<unknown, unknown>> =>
+  Effect.runPromise(
+    verifyJwt(token).pipe(
+      Effect.provide(GatekeeperStore.layerFrom(store)),
+      Effect.provide(Origin.layerFromLiteral(ORIGIN)),
+      Effect.either
+    )
+  )
+
+test('JWT verifies when sub matches a registered client (no type claim)', async () => {
+  const key = testingKey1
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: `${ORIGIN}/fhir`,
+    sub: 'client-1',
+  })
+  const store = makeStubStore({
+    signingKeys: [key],
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, token)
+  expect(Either.isRight(result)).toBe(true)
+})
+
+test('JWT is rejected when sub does not match any client', async () => {
+  const key = testingKey1
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: `${ORIGIN}/fhir`,
+    sub: 'unknown-client',
+  })
+  const store = makeStubStore({
+    signingKeys: [key],
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, token)
+  expect(Either.isLeft(result)).toBe(true)
+})
+
+test('JWT is rejected when client is disabled', async () => {
+  const key = testingKey1
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: `${ORIGIN}/fhir`,
+    sub: 'client-1',
+  })
+  const store = makeStubStore({
+    signingKeys: [key],
+    clients: [makeClient({ disabledAt: DateTime.unsafeNow() })],
+  })
+  const result = await runVerify(store, token)
+  expect(Either.isLeft(result)).toBe(true)
+})
+
+test('JWT verifies when audience is the origin', async () => {
+  const key = testingKey1
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: ORIGIN,
+    sub: 'client-1',
+  })
+  const store = makeStubStore({
+    signingKeys: [key],
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, token)
+  expect(Either.isRight(result)).toBe(true)
+})
+
+test('JWT is rejected when issuer mismatches origin', async () => {
+  const key = testingKey1
+  const token = await signWith(key, {
+    iss: 'https://other.example',
+    aud: ORIGIN,
+    sub: 'client-1',
+  })
+  const store = makeStubStore({
+    signingKeys: [key],
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, token)
+  expect(Either.isLeft(result)).toBe(true)
+})
+
+test('JWT is rejected when sub is not a string', async () => {
+  const key = testingKey1
+  // Deliberately bypass the typed `sub` to exercise the runtime guard.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: ORIGIN,
+    sub: 12345,
+  } as unknown as jose.JWTPayload)
+  const store = makeStubStore({
+    signingKeys: [key],
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, token)
+  expect(Either.isLeft(result)).toBe(true)
+})
+
+test('JWT is rejected when exp is in the past', async () => {
+  const key = testingKey1
+  const past = Math.floor(Date.now() / 1000) - 60
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: ORIGIN,
+    sub: 'client-1',
+    exp: past,
+  })
+  const store = makeStubStore({
+    signingKeys: [key],
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, token)
+  expect(Either.isLeft(result)).toBe(true)
+})
+
+test('JWT is rejected when audience is not in accepted set', async () => {
+  const key = testingKey1
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: 'https://malicious.example',
+    sub: 'client-1',
+  })
+  const store = makeStubStore({
+    signingKeys: [key],
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, token)
+  expect(Either.isLeft(result)).toBe(true)
+})
+
+test('JWT is rejected when no signing keys are present', async () => {
+  const store = makeStubStore({ signingKeys: [], clients: [makeClient()] })
+  const result = await runVerify(store, 'token')
+  expect(Either.isLeft(result)).toBe(true)
+})
+
+test('JWT is verified when one of multiple signing keys can verify it', async () => {
+  // Rotation scenario: sign with key B, present `[A, B]`; verifyAgainstAnyKey iterates.
+  const keyA = testingKey1
+  const keyB = testingKey2
+  const token = await signWith(keyB, {
+    iss: ORIGIN,
+    aud: ORIGIN,
+    sub: 'client-1',
+  })
+  const store = makeStubStore({
+    signingKeys: [keyA, keyB],
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, token)
+  expect(Either.isRight(result)).toBe(true)
+})
+
+test('JWT is verified when audience is an array containing an accepted entry', async () => {
+  const key = testingKey1
+  const token = await signWith(key, {
+    iss: ORIGIN,
+    aud: ['https://other.example', `${ORIGIN}/fhir`],
+    sub: 'client-1',
+  })
+  const store = makeStubStore({
+    signingKeys: [key],
+    clients: [makeClient()],
+  })
+  const result = await runVerify(store, token)
+  expect(Either.isRight(result)).toBe(true)
+})

@@ -20,7 +20,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
+    include: ['src/**/*.test.ts'],
     // Integration suites live under `integration-tests/` and run only via
     // `vp run integration` (which uses `vite.integration.config.ts`). They
     // boot a real in-memory livestore per case, so they're slower than unit
