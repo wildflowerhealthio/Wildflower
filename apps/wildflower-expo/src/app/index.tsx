@@ -1,6 +1,5 @@
 import { Effect } from 'effect'
 import { Colors, Spacing, ThemedText, ThemedView, useThemeColors } from 'expo-tundraish'
-import { ServerState } from 'local-http-server-core/livestore'
 import { useCallback, useState, type JSX } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -8,7 +7,6 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AppShellWebView } from '../app-shell/app-shell-webview.tsx'
 import { useNavigationSender } from '../app-shell/navigation-pipe.ts'
 import { TABS, tabForPath, type TabKey } from '../components/tab-mapping.ts'
-import { useWildflowerStore } from '../livestore/livestore-store.ts'
 
 // Splash is suppressed by `side-effect-imports/prevent-splash-hide.ts`
 // (side-effect import in `index.ts`, before `expo-router/entry`).
@@ -16,7 +14,6 @@ import { useWildflowerStore } from '../livestore/livestore-store.ts'
 
 /** The persistent shell screen — mounts `<AppShellWebView>` and the native tab bar. */
 export default function HomeScreen(): JSX.Element {
-  const store = useWildflowerStore()
   const palette = useThemeColors()
   const sendNavigation = useNavigationSender()
   const insets = useSafeAreaInsets()

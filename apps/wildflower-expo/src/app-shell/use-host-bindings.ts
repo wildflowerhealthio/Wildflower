@@ -20,21 +20,21 @@ type NavigationSender = BridgeTransport.MessageSender<readonly [typeof Navigatio
 
 const useNavigationHostBinding = (
   onRouteChanged: (event: { pathname: string; canGoBack: boolean }) => void,
-  onUIReady: () => void
+  onUiReady: () => void
 ): HostBindings.HostBindings<readonly [typeof NavigationBridge]> => {
   const navigationSenderRef = useNavigationSenderRef()
 
   const navigationBindingArgs = useMemo(() => {
     return {
       onRouteChanged,
-      onUIReady,
+      onUiReady,
       onTransportReady: (send: NavigationSender) =>
         Effect.sync(() => {
           navigationSenderRef.current = send
         }),
       initialRoute: '/apps',
     }
-  }, [onRouteChanged, onUIReady, navigationSenderRef])
+  }, [onRouteChanged, onUiReady, navigationSenderRef])
 
   const navigationBinding = NavigationBridgeExpo.useHostBinding(navigationBindingArgs)
 
@@ -43,7 +43,7 @@ const useNavigationHostBinding = (
 
 export const useHostBindings = ({
   onRouteChanged,
-  onUIReady,
+  onUiReady,
 }: {
   onRouteChanged: (event: { pathname: string; canGoBack: boolean }) => void
   /**
@@ -51,7 +51,7 @@ export const useHostBindings = ({
    * startup prefetches settled). The shell hides the native splash /
    * reveals the WebView here.
    */
-  onUIReady: () => void
+  onUiReady: () => void
 }): HostBindings.HostBindings<
   readonly [
     typeof NavigationBridge,
@@ -68,7 +68,7 @@ export const useHostBindings = ({
   const { value: localClientToken } = store.useQuery(LocalClientToken.queries.current$)
   const token = localClientToken ?? undefined
 
-  const navigationBinding = useNavigationHostBinding(onRouteChanged, onUIReady)
+  const navigationBinding = useNavigationHostBinding(onRouteChanged, onUiReady)
   const gatekeeperBinding = GatekeeperBridgeExpo.useHostBinding({ token })
   const collectorBinding = useCollectorHostBinding()
   const appsBinding = AppsBridgeExpo.useHostBinding({ store })

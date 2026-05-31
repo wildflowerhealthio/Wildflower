@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import { Origin } from 'navigation-core'
 
 // Per the SMART App Launch IG (https://hl7.org/fhir/smart-app-launch/conformance.html#metadata)
@@ -26,13 +26,6 @@ const SmartConfigurationSchema = Schema.Struct({
   revocation_endpoint: Schema.optional(Schema.String),
   associated_endpoints: Schema.optional(Schema.Array(Schema.String)),
 })
-
-class SmartConfiguration extends Context.Tag('SmartConfiguration')<
-  SmartConfiguration,
-  typeof SmartConfigurationSchema.Type
->() {
-  static readonly Schema = SmartConfigurationSchema
-}
 
 const makeSmartConfiguration = (origin: string): typeof SmartConfigurationSchema.Type => {
   const host = `${origin}/fhir-r4`
@@ -71,12 +64,9 @@ const makeSmartConfiguration = (origin: string): typeof SmartConfigurationSchema
   })
 }
 
-const SmartConfigurationLive = Layer.effect(
-  SmartConfiguration,
-  Effect.gen(function* () {
-    const origin = yield* Origin.get
-    return makeSmartConfiguration(origin)
-  })
-)
+const SmartConfiguration = Effect.gen(function* () {
+  const origin = yield* Origin.get
+  return makeSmartConfiguration(origin)
+})
 
-export { SmartConfiguration, SmartConfigurationLive, makeSmartConfiguration }
+export { SmartConfiguration, SmartConfigurationSchema, makeSmartConfiguration }

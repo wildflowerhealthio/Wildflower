@@ -15,7 +15,7 @@ interface UseNavigationHostBindingOptions {
    * WebView here. Callers must stabilise this themselves — it's in the
    * memo's dep list.
    */
-  readonly onUIReady?: () => void
+  readonly onUiReady?: () => void
   /**
    * Invoked once the WebView transport has built. Receives the typed
    * sender for outbound navigation messages; the host shell typically
@@ -60,7 +60,7 @@ interface UseNavigationHostBindingOptions {
 const useNavigationHostBinding = ({
   initialRoute,
   onRouteChanged,
-  onUIReady,
+  onUiReady,
   onTransportReady,
 }: UseNavigationHostBindingOptions = {}): HostBindings.HostBindings<
   readonly [typeof NavigationBridge]
@@ -69,14 +69,14 @@ const useNavigationHostBinding = ({
     () =>
       HostBindings.single({
         bridge: NavigationBridge,
-        receiverLayer: ReceiverLayer(onRouteChanged, onUIReady),
+        receiverLayer: ReceiverLayer(onRouteChanged, onUiReady),
         initialMessages:
           initialRoute === undefined
             ? undefined
             : [{ _tag: 'HostRequestedWebNavigation' as const, path: initialRoute }],
         onTransportReady,
       }),
-    [initialRoute, onRouteChanged, onUIReady, onTransportReady]
+    [initialRoute, onRouteChanged, onUiReady, onTransportReady]
   )
 
 export { useNavigationHostBinding }

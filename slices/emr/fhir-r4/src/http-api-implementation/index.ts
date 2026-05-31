@@ -4,11 +4,7 @@ import { Layer } from 'effect'
 import type { EmrStore } from 'emr-core/livestore'
 import type { Origin } from 'navigation-core'
 import { FhirPublicApi, FhirResourcesApi } from '../http-api-definition/index.ts'
-import {
-  SmartConfiguration as SmartConfigurationTag,
-  SmartConfigurationLive,
-  makeSmartConfiguration,
-} from '../internal/smart-configuration-context.ts'
+import { makeSmartConfiguration } from '../internal/smart-configuration-context.ts'
 import * as Binary from './binary.ts'
 import * as Observation from './observation.ts'
 import * as Patient from './patient.ts'
@@ -53,8 +49,7 @@ const FhirResourcesApiHandlersFor = <ParentId extends string>(): Layer.Layer<
 const FhirPublicApiHandlersLive = Layer.mergeAll(SmartConfiguration.layer)
 
 const FhirPublicApiLive = HttpApiBuilder.api(FhirPublicApi).pipe(
-  Layer.provide(FhirPublicApiHandlersLive),
-  Layer.provide(SmartConfigurationLive)
+  Layer.provide(FhirPublicApiHandlersLive)
 )
 
 type FhirPublicGroupNames = 'smart-well-known'
@@ -62,7 +57,7 @@ type FhirPublicGroupNames = 'smart-well-known'
 const FhirPublicApiHandlersFor = <ParentId extends string>(): Layer.Layer<
   HttpApiGroup.ApiGroup<ParentId, FhirPublicGroupNames>,
   never,
-  SmartConfigurationTag
+  Origin
 > =>
   // Phantom-id bridge — same rationale as FhirResourcesApiHandlersFor; the
   // `satisfies` clause pins the source layer's actual shape so a new
@@ -74,20 +69,14 @@ const FhirPublicApiHandlersFor = <ParentId extends string>(): Layer.Layer<
   FhirPublicApiHandlersLive satisfies Layer.Layer<
     HttpApiGroup.ApiGroup<'FhirPublicApi', FhirPublicGroupNames>,
     never,
-    SmartConfigurationTag
-  > as unknown as Layer.Layer<
-    HttpApiGroup.ApiGroup<ParentId, FhirPublicGroupNames>,
-    never,
-    SmartConfigurationTag
-  >
+    Origin
+  > as unknown as Layer.Layer<HttpApiGroup.ApiGroup<ParentId, FhirPublicGroupNames>, never, Origin>
 
 export {
   Binary,
   Observation,
   Patient,
   SmartConfiguration,
-  SmartConfigurationTag,
-  SmartConfigurationLive,
   makeSmartConfiguration,
   FhirResourcesApiHandlersLive,
   FhirResourcesApiHandlersFor,
