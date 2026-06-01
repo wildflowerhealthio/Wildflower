@@ -428,3 +428,9 @@ describe('BridgedWebView (multi-binding combine)', () => {
     })
   })
 })
+
+// The setLayers semantics (rapid-flip convergence, no resource leaks)
+// are exercised at the core level in `bridge-transport.test.ts`, where
+// `transport.flushed` provides a deterministic await. The BridgedWebView
+// wiring of `setLayers` into a useEffect is small enough that the
+// existing "decodes Page → Host Pong" test above pins the happy path.

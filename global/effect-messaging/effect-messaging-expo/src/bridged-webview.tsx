@@ -1,4 +1,4 @@
-import { Effect, Fiber, Layer } from 'effect'
+import { Effect, Layer } from 'effect'
 import {
   type BareSenderFunction,
   type BareSenderService,
@@ -269,16 +269,24 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   // and `peerReady` Deferred all persist; only the per-bridge
   // handler map swaps. Bypasses the loader entirely — the WebView
   // never unmounts.
+  //
+  // No cleanup interrupt: `setLayers` is one-shot and fast (build
+  // the new handler-by-tag map, write the handlers Ref). Interrupting
+  // mid-discharge would leak the partially-allocated handler
+  // resources into the transport's outerScope while leaving the Ref
+  // pointing at the prior layers, so rapid receiverLayers flips
+  // (A→B→C) could yield A still in the ref + B's resources orphaned
+  // in outerScope + C eventually succeeds — O(N) accumulation per
+  // flip on a frequently-re-rendering sibling binding. Letting each
+  // discharge run to completion is the safer trade.
   useEffect(() => {
     if (transport === null) return undefined
     // Skip the initial render: the first `receiverLayers` value is
     // already baked into the transport via `BridgeTransport.make`'s
     // initial-layers arg above.
     if (receiverLayers === initialReceiverLayersRef.current) return undefined
-    const fiber = Effect.runFork(transport.setLayers(receiverLayers))
-    return (): void => {
-      Effect.runFork(Fiber.interrupt(fiber))
-    }
+    Effect.runFork(transport.setLayers(receiverLayers))
+    return undefined
   }, [receiverLayers, transport])
 
   if (transport === null || source === null) return loader ?? <></>

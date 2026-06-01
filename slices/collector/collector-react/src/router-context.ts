@@ -27,9 +27,9 @@ interface RouterContext {
    * Environment-specific auth-readiness wait the app injects onto
    * {@link BaseRouterContext.RouterContext} and consults from the gated
    * layouts' `beforeLoad`. Declared here only to keep this structural
-   * context a faithful subset of the app's `RouterContext`; collector's
-   * {@link ensureAuthedQuery} loader no longer reads it — the gate
-   * guarantees the token before the loader runs.
+   * context a faithful subset of the app's `RouterContext`; collector
+   * loaders no longer read it — the gate guarantees the token before
+   * the loader runs.
    */
   readonly awaitAuthReady: BaseRouterContext.AwaitAuthReady
 }

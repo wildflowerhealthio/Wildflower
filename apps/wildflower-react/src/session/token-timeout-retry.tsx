@@ -1,3 +1,4 @@
+import { useRouter } from '@tanstack/react-router'
 import { TokenTimeout } from 'gatekeeper-react'
 import type { JSX } from 'react'
 import { pageLayoutStyles } from 'react-tundraish'
@@ -5,18 +6,23 @@ import { pageLayoutStyles } from 'react-tundraish'
 /**
  * `errorComponent` for the gated layouts (`_auth`, `/settings`). The
  * embedded `TokenTimeout` is the only error the gate rethrows (the
- * standalone path redirects instead of throwing), so this screen offers
- * a re-attempt: `reset` re-runs the route (and its `beforeLoad`), which
- * awaits the host token again. Reaching here for any other thrown error
- * still surfaces a generic retry rather than a blank page.
+ * standalone path bubbles a TanStack `redirect` instead of throwing
+ * an error), so this screen offers a re-attempt: clicking Retry runs
+ * `router.invalidate()` which re-fires the route's `beforeLoad` — and
+ * therefore `awaitAuthReady`, which awaits the host token again.
+ *
+ * `errorComponent`'s `reset` only clears the matched route's local
+ * error state (`setState({ error: null })` inside TanStack's
+ * `CatchBoundary`); it does NOT re-run `beforeLoad`, so a `reset`-only
+ * retry would just paint the same error again as soon as React
+ * re-rendered. `router.invalidate()` is the official "rerun every
+ * route's loaders + gates" handle.
+ *
+ * Reaching here for any other thrown error still surfaces a generic
+ * retry rather than a blank page.
  */
-const TokenTimeoutRetry = ({
-  error,
-  reset,
-}: {
-  readonly error: Error
-  readonly reset: () => void
-}): JSX.Element => {
+const TokenTimeoutRetry = ({ error }: { readonly error: Error }): JSX.Element => {
+  const router = useRouter()
   const isTimeout = error instanceof TokenTimeout
   return (
     <div className={pageLayoutStyles['page']}>
@@ -26,7 +32,13 @@ const TokenTimeoutRetry = ({
           ? "We didn't receive your session in time. Tap retry to keep waiting."
           : error.message}
       </p>
-      <button type="button" className="button-2 filled" onClick={reset}>
+      <button
+        type="button"
+        className="button-2 filled"
+        onClick={() => {
+          void router.invalidate()
+        }}
+      >
         Retry
       </button>
     </div>

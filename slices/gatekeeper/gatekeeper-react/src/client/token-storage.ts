@@ -86,22 +86,4 @@ const writeToken = (token: string | null): void => {
   Effect.runSync(SubscriptionRef.set(authTokenRef, token))
 }
 
-/**
- * Module-scoped flag indicating the embedding host has committed to
- * delivering an `AuthTokenIssued` via the gatekeeper bridge. Initialized
- * `false`; flipped to `true` by `gatekeeperWebReceiverLayer` when a
- * `WaitForToken` bridge message arrives.
- *
- * `WaitForToken` rides URL params, so the transport dispatches it
- * during its initial flush — before the `_auth` `beforeLoad` gate
- * (which awaits `transportReady`) runs `awaitAuthReady`. Subscribers
- * therefore see the post-handshake value on first read. The auth gate
- * consults this to decide whether to render a neutral loader (host
- * present) vs. the device-flow UI (truly standalone) when no token is
- * present yet.
- */
-const waitForHostTokenRef: SubscriptionRef.SubscriptionRef<boolean> = Effect.runSync(
-  SubscriptionRef.make(false)
-)
-
-export { TOKEN_STORAGE_KEY, authTokenRef, waitForHostTokenRef, writeToken }
+export { TOKEN_STORAGE_KEY, authTokenRef, writeToken }

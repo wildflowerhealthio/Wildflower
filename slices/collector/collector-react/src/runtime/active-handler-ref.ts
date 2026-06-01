@@ -25,7 +25,13 @@ type ActiveCollectorBridgeMessageHandler =
  *
  * Singleton by design — the page has exactly one transport, exactly
  * one running sync at a time. Last writer wins; `useSyncRunner`
- * installs its handler on mount and clears it on unmount.
+ * installs its handler on mount and clears it on unmount via
+ * {@link clearActiveHandlerIfCurrent} (set-if-equal) so a delayed
+ * cleanup can't blank a fresher handler that just took the slot.
+ *
+ * See the [Singleton Bridge Refs Explanation](../../../../../docs/Effect/Singleton%20Bridge%20Refs%20Explanation.md)
+ * for the runtime-singleton invariant this enforces and its
+ * implications for StrictMode, HMR, and test isolation.
  */
 const activeHandlerRef: { current: ActiveCollectorBridgeMessageHandler | null } = { current: null }
 
@@ -72,5 +78,19 @@ const setActiveHandler = (handler: ActiveCollectorBridgeMessageHandler | null): 
   activeHandlerRef.current = handler
 }
 
-export { collectorWebReceiverLayer, setActiveHandler }
+/**
+ * Set-if-equal clear. Only blanks {@link activeHandlerRef} when it
+ * still points at the supplied `handler`. Callers (cleanup paths in
+ * `useSyncRunner`) use this in place of `setActiveHandler(null)` so a
+ * cleanup that runs after a successor handler has already taken the
+ * slot — possible under StrictMode double-mount or any async-tinged
+ * cleanup ordering — does not blank out the live handler.
+ */
+const clearActiveHandlerIfCurrent = (handler: ActiveCollectorBridgeMessageHandler): void => {
+  if (activeHandlerRef.current === handler) {
+    activeHandlerRef.current = null
+  }
+}
+
+export { clearActiveHandlerIfCurrent, collectorWebReceiverLayer, setActiveHandler }
 export type { ActiveCollectorBridgeMessageHandler }

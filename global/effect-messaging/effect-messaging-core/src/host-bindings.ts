@@ -64,12 +64,10 @@ interface HostBindings<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  * @example
  * ```ts
  * const bindings = HostBindings.single({
- *   bridge: GatekeeperBridge,
- *   receiverLayer: GatekeeperBridge.Host.ReceiverLayer({}),
- *   initialMessages: [{ _tag: 'WaitForToken' }],
- *   onTransportReady: token === undefined
- *     ? undefined
- *     : (send) => send({ _tag: 'AuthTokenIssued', token }),
+ *   bridge: NavigationBridge,
+ *   receiverLayer: NavigationBridge.Host.ReceiverLayer({ ... }),
+ *   initialMessages: [{ _tag: 'Setup', path: '/' }],
+ *   onTransportReady: (send) => send({ _tag: 'Greet', value: 'hello' }),
  * })
  * ```
  */

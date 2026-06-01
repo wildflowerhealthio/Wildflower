@@ -9,6 +9,8 @@ import { BearerToken } from 'kitchen-sink/auth-token'
 import type { BaseRouterContext } from 'shared-structures-react'
 import { TunnelRouterContext } from 'tunnel-react'
 
+import type { ReactTransport } from './bridges/transport-context.ts'
+
 type RuntimeLayer = Layer.Layer<
   | Layer.Layer.Success<BaseRouterContext.RuntimeLayer>
   | Layer.Layer.Success<TunnelRouterContext.RuntimeLayer>
@@ -41,14 +43,15 @@ interface RouterContext {
    */
   readonly awaitAuthReady: BaseRouterContext.AwaitAuthReady
   /**
-   * Resolves once the page-side `BridgeTransport` has flushed its
-   * initial inbound queue and signalled the host to start sending.
-   * For standalone web (`StubTransport`) this is `Promise.resolve()`.
-   * For embedded, this gates the `_auth` `beforeLoad` so the bearer
-   * token the host pushes over the gatekeeper bridge has had a chance
-   * to arrive before `awaitAuthReady` reads `authTokenRef`.
+   * Resolves to the page-side `BridgeTransport` (narrowed to the React
+   * surface — only `sendMessage`) once the boot-time `flushed →
+   * signalReady` chain finishes. The `_auth` route loader awaits this
+   * before emitting the embedded `UIReady` handshake; by the time the
+   * loader runs the `beforeLoad` gate's `awaitAuthReady` has already
+   * resolved (which on embedded already waited the same promise), so
+   * the await is a microtask on every path that reaches here.
    */
-  readonly transportReady: Promise<void>
+  readonly transport: Promise<ReactTransport>
 }
 
 /**

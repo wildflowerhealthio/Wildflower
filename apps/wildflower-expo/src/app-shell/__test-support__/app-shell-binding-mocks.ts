@@ -64,7 +64,7 @@ const makeGatekeeperMock = (
   return {
     bridge: { name: 'Gatekeeper' as const },
     receiverLayer: fakeReceiverLayer(),
-    initialMessages: [{ _tag: 'WaitForToken' as const }],
+    initialMessages: [],
     onTransportReady:
       token === undefined
         ? undefined

@@ -19,7 +19,6 @@ import {
   useRemotesQuery,
   type Remote,
 } from '../../../queries/index.ts'
-import { ensureAuthedQuery } from '../../../router-loader.ts'
 import { useSyncRunner } from '../../../runtime/use-sync-runner.ts'
 import accountList from './account-list.module.css'
 import pageLayout from './page-layout.module.css'
@@ -221,17 +220,14 @@ function AccountListScreen(): JSX.Element {
 }
 
 /**
- * The `/_auth/collector/` accounts-list route.
- *
- * The `_auth` gate is a React component (`RequireAuth`), not
- * `beforeLoad`, so the loader fires before auth. {@link ensureAuthedQuery}
- * skips the prefetch when the bearer token isn't ready yet (embedded first
- * paint, before `transport.flushed`) and lets the in-component
- * `useSuspenseQuery` — rendered only after `RequireAuth` passes — do the
- * real read. Genuine read failures propagate to `errorComponent`.
+ * The `/_auth/collector/` accounts-list route. The `_auth` layout's
+ * `beforeLoad` gates on the bearer token, so the loader can call
+ * `ensureQueryData` directly — token is guaranteed by the time it
+ * runs. Genuine read failures propagate to `errorComponent`.
  */
 export const Route = createFileRoute('/_auth/collector/')({
-  loader: ({ context }) => ensureAuthedQuery(context, remotesQueryOptions(context.runAuthed)),
+  loader: ({ context }) =>
+    context.queryClient.ensureQueryData(remotesQueryOptions(context.runAuthed)),
   component: AccountListScreen,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Collector" />,
 })

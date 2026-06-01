@@ -1,19 +1,23 @@
-import type { AppsBridge } from 'apps-core/bridge'
-import type { CollectorBridge } from 'collector-fundamentals/bridge'
 import { Effect } from 'effect'
-import type { BridgeTransport, Logging } from 'effect-messaging-core'
-import type { GatekeeperBridge } from 'gatekeeper-core/bridge'
-import type { NavigationBridge } from 'navigation-core'
+import type { BridgeTransport } from 'effect-messaging-core'
 import { createContext, useContext } from 'react'
 
-type Bridges = readonly [
-  typeof NavigationBridge,
-  typeof GatekeeperBridge,
-  typeof CollectorBridge,
-  typeof AppsBridge,
-  typeof Logging.LogBridge,
-]
-type Transport = BridgeTransport.BridgeTransport<Bridges, 'Web'>
+import type { Bridges } from './bridges.ts'
+
+type FullTransport = BridgeTransport.BridgeTransport<Bridges, 'Web'>
+
+/**
+ * Narrowed view of `BridgeTransport` that React-side consumers see. The
+ * components below the `TransportContext.Provider` only ever need to
+ * send messages — `flushed`, `signalReady`, `enqueue`, `setLayers` are
+ * boot-time / Effect-side concerns that {@link AppRootTree} drives
+ * directly off the resolved transport. Narrowing here means the stub
+ * doesn't have to grow every time the underlying transport gains a new
+ * method.
+ */
+interface ReactTransport {
+  readonly sendMessage: FullTransport['sendMessage']
+}
 
 /**
  * No-op transport used by standalone-web entries and as the
@@ -21,32 +25,25 @@ type Transport = BridgeTransport.BridgeTransport<Bridges, 'Web'>
  * embedded transport's `flushed → signalReady` chain is in flight. Its
  * `sendMessage` is `Effect.void`, so emits during that window are
  * dropped (which is correct — the host isn't ready to receive yet).
- * The `_auth` gate awaits `transportReady` before any consumer that
- * needs a real sender renders.
+ * The `_auth` gate's `awaitAuthReady` waits the bridge handshake before
+ * any consumer that needs a real sender renders.
  */
-const stubTransport: Transport = {
+const stubTransport: ReactTransport = {
   sendMessage: () => Effect.void,
-  flushed: Effect.void,
-  enqueue: () => Effect.void,
-  signalReady: Effect.void,
-  // No-op: the standalone-web entry never wires a real bridge, so
-  // there are no handlers to swap. Matches the rest of the stub's
-  // "drop everything quietly" policy.
-  setLayers: () => Effect.void,
 }
 
-const TransportContext = createContext<Transport | null>(null)
+const TransportContext = createContext<ReactTransport | null>(null)
 
 /**
  * Hook for components that need to send messages to the host.
  *
  * @throws if no `<TransportContext.Provider>` mounts above.
  */
-const useBridgeTransport = (): Transport => {
+const useBridgeTransport = (): ReactTransport => {
   const ctx = useContext(TransportContext)
   if (ctx === null) throw new Error('useBridgeTransport called outside a TransportContext provider')
   return ctx
 }
 
 export { stubTransport, TransportContext, useBridgeTransport }
-export type { Transport }
+export type { FullTransport, ReactTransport }

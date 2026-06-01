@@ -20,10 +20,12 @@ type RunAuthed = <A, E>(
  * router context so the `beforeLoad` auth gate can `await` it without
  * knowing which environment it runs in.
  *
- * Rejections are {@link AuthReadyError} instances so the gate can
- * branch on `_tag`: a missing standalone token redirects into the
- * device-login flow, an embedded timeout throws to a web-side retry
- * screen.
+ * Rejections are tagged so the gate can branch:
+ *   - a TanStack `redirect(...)` (standalone web, no token) bubbles so
+ *     the router follows the redirect into the device-login flow.
+ *   - a `TokenTimeout` (embedded, host never delivered a token in the
+ *     window) bubbles to the layout's `errorComponent`, which renders
+ *     a web-side retry screen.
  */
 type AwaitAuthReady = () => Promise<void>
 
@@ -34,8 +36,9 @@ interface RouterContext {
   /**
    * Environment-specific auth-readiness wait, injected at `renderApp`
    * and consulted by the gated layouts' `beforeLoad`. Resolves when a
-   * bearer token is present; rejects with a tagged {@link AuthReadyError}
-   * otherwise. The gate — not the loaders — owns this, so an authed
+   * bearer token is present; rejects with a tagged reason otherwise
+   * (TanStack `redirect(...)` for standalone web, `TokenTimeout` for
+   * embedded). The gate — not the loaders — owns this, so an authed
    * loader that runs is guaranteed a token (no more first-paint skip).
    */
   readonly awaitAuthReady: AwaitAuthReady

@@ -199,6 +199,55 @@ describe('BridgeTransport.setLayers — atomic handler swap', () => {
       }).pipe(Effect.scoped)
     )
   })
+
+  test('rapid back-to-back setLayers calls converge on the last layer (no race, no leak)', async () => {
+    // Property guard for the BridgedWebView consumer that drops the
+    // useEffect cleanup `Fiber.interrupt(setLayersFiber)`: with the
+    // interrupt removed, every forked discharge runs to completion. If
+    // the runtime ordered Ref.set differently from fork order — or if
+    // one of the intermediate discharges leaked a partial handler map —
+    // the final dispatch would land on an earlier layer's id rather
+    // than the last.
+    //
+    // Drives a sequence of N layers each tagged with its position; after
+    // installing them sequentially via `setLayers`, dispatches one Ping
+    // and asserts only the last layer's handler ran.
+    await fc.assert(
+      fc.asyncProperty(fc.integer({ min: 2, max: 8 }), async (n) => {
+        const { NavigationLike } = makeBridges()
+        const observed: number[] = []
+        const buildLayerForIndex = (
+          i: number
+        ): ReturnType<typeof NavigationLike.Web.ReceiverLayer> =>
+          NavigationLike.Web.ReceiverLayer({
+            Ping: () => Effect.sync(() => observed.push(i)),
+          })
+        const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
+        await Effect.runPromise(
+          Effect.gen(function* () {
+            const transport = yield* BridgeTransport.make({
+              bridges: [NavigationLike] as const,
+              layers: [buildLayerForIndex(0)] as const,
+              side: 'Web',
+            }).pipe(Effect.provide(adapterLayer))
+
+            // Issue every setLayers call in sequence. Each completes
+            // its `Ref.set(handlersRef, …)` before the next runs, so
+            // the final ref state matches the last layer.
+            for (let i = 1; i < n; i++) {
+              yield* transport.setLayers([buildLayerForIndex(i)] as const)
+            }
+
+            yield* transport.enqueue(Schema.encodeSync(Ping)({ _tag: 'Ping', value: 1 }))
+            yield* transport.flushed
+
+            expect(observed).toEqual([n - 1])
+          }).pipe(Effect.scoped)
+        )
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
 })
 
 describe('BridgeTransport.make — initial-message replay', () => {

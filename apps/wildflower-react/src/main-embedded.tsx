@@ -8,11 +8,13 @@ import { renderApp } from './app-root.tsx'
 import { buildTransport } from './bridges/build-transport.ts'
 
 // Embedded WebView: the host delivers the bearer over the gatekeeper
-// bridge after `transport.signalReady`, so the `_auth` `beforeLoad`
-// awaits `transportReady` first and then `awaitEmbeddedAuthReady` (up
-// to 5s for the host token) before falling through to the timeout
-// retry screen. The transport is built outside React; its
-// `flushed → signalReady` chain is what `transportReady` resolves on.
+// bridge after `transport.signalReady`. `awaitEmbeddedAuthReady` is a
+// factory that closes over the transport's `flushed → signalReady`
+// settled promise — `renderApp` calls it once with the post-flush
+// promise, and the resolved `awaitAuthReady` does the wait inside
+// itself before reading the token ref. The transport is built outside
+// React; its returned promise feeds `context.transport` for the
+// `_auth` loader's `UIReady` emit.
 renderApp({
   history: createMemoryHistory(),
   entry: 'main-embedded',

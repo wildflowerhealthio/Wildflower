@@ -68,17 +68,17 @@ const toErrorState = (error: unknown): DeviceFlowState =>
  *
  * @remarks
  * The 250ms value is a guess: it's intended to absorb a transient mount
- * that happens during the host's `WaitForToken` → `AuthTokenIssued`
- * handshake (URL params dispatch + transport flush), so a stray render
- * doesn't kick off a real device-authorization flow. The `_auth`
- * `beforeLoad` gate already awaits `transportReady` before checking the
- * token, so under correct host behavior this sleep is dead time. It
- * exists as a defense against (a) a host that delays the
- * `AuthTokenIssued` follow-up after `WaitForToken`, and (b) other
- * mount-time races that would otherwise burn a device-code on the
- * gatekeeper server. There's no measured upper bound it's protecting
- * against — if a real bound surfaces, replace this with that bound or
- * drop the sleep entirely.
+ * that happens during the host's `AuthTokenIssued` handshake (post-mount
+ * token delivery over the gatekeeper bridge), so a stray render doesn't
+ * kick off a real device-authorization flow. The `_auth` `beforeLoad`
+ * gate's `awaitEmbeddedAuthReady` already waits the bridge handshake +
+ * token before any authed subtree renders, so under correct host
+ * behavior this sleep is dead time. It exists as a defense against
+ * (a) a host that delays the `AuthTokenIssued` send relative to the
+ * transport's `signalReady`, and (b) other mount-time races that would
+ * otherwise burn a device-code on the gatekeeper server. There's no
+ * measured upper bound it's protecting against — if a real bound
+ * surfaces, replace this with that bound or drop the sleep entirely.
  */
 const MOUNT_DEBOUNCE = Duration.millis(250)
 

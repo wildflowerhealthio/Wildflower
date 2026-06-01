@@ -2,10 +2,17 @@ import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { Effect, Layer, SubscriptionRef } from 'effect'
 import fc from 'fast-check'
 import { BearerToken } from 'kitchen-sink/auth-token'
-import { describe, expect, it } from 'vite-plus/test'
+import type { BaseRouterContext } from 'shared-structures-react'
+import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
 
 import { buildQueryClient, buildRunAuthed } from './router-context.ts'
 import type { RouterContext, RunAuthed, RuntimeLayer } from './router-context.ts'
+
+// Pins `RouterContext['awaitAuthReady']` to the shared structural type
+// — drift between the app-level context and the slice-published shape
+// would silently break standalone slice route files (which read context
+// via an annotated `select` typed against `BaseRouterContext`).
+expectTypeOf<RouterContext['awaitAuthReady']>().toEqualTypeOf<BaseRouterContext.AwaitAuthReady>()
 
 /**
  * Pins `runAuthed`: drives the real `buildRunAuthed` over a
@@ -99,10 +106,10 @@ describe('runAuthed router-context runner', () => {
   })
 
   // Type-level: a `satisfies` guard so dropping a field fails compile.
-  // `awaitAuthReady` and `transportReady` are injected per entry (not
-  // built by `buildRunAuthed`); the test supplies trivial resolvers to
+  // `awaitAuthReady` and `transport` are injected per entry (not built
+  // by `buildRunAuthed`); the test supplies trivial resolvers to
   // complete the structural context.
-  it('should type RouterContext with queryClient, runAuthed, runtimeLayer, awaitAuthReady, transportReady', () => {
+  it('should type RouterContext with queryClient, runAuthed, runtimeLayer, awaitAuthReady, transport', () => {
     // Arrange / Act
     const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
     const { runAuthed, runtimeLayer } = makeRunner(tokenRef)
@@ -111,13 +118,13 @@ describe('runAuthed router-context runner', () => {
       runAuthed,
       runtimeLayer,
       awaitAuthReady: () => Promise.resolve(),
-      transportReady: Promise.resolve(),
+      transport: Promise.resolve({ sendMessage: () => Effect.void }),
     } satisfies RouterContext
 
     // Assert
     expect(typeof context.runAuthed).toBe('function')
     expect(typeof context.awaitAuthReady).toBe('function')
-    expect(context.transportReady).toBeInstanceOf(Promise)
+    expect(context.transport).toBeInstanceOf(Promise)
     expect(context.queryClient).toBeDefined()
   })
 })

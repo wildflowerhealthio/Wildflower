@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 /**
  * Tracks a `Promise<T>` as React state, returning the resolved value
@@ -10,6 +10,17 @@ import { useEffect, useState } from 'react'
  * Returns to `whilePending` when the `promise` reference changes;
  * ignores stale settlements after unmount.
  *
+ * @param promise - Promise to track. Reference identity is the
+ *   load-bearing input — a new reference resets the value to
+ *   `whilePending` and re-subscribes.
+ * @param whilePending - Value rendered until the current promise
+ *   settles. Read from the current render whenever a fresh promise
+ *   reference is observed; an already-settled `Promise.resolve(x)`
+ *   never overwrites with this value.
+ * @param onErr - Mapper invoked with the rejection reason on the
+ *   current promise; its return value is stored as the resolved value.
+ *   Read from the current render at settlement time.
+ *
  * @remarks
  * Compared to {@link useLoadingPromise}, this hook flattens the
  * three-state union (`loading | resolved | error`) into a single `T`
@@ -18,10 +29,12 @@ import { useEffect, useState } from 'react'
  * unconditionally and the fallback is a sensible no-op of the same
  * shape — e.g. a stub service used until the real one resolves.
  *
- * `whilePending` and `onErr` are read on first render and on promise
- * reference changes; later changes to these props do not retroactively
- * rewrite the state. Pass stable references if you need different
- * semantics across re-renders.
+ * The settlement callbacks close over the rendering closure each pass,
+ * so `whilePending` and `onErr` always reflect the current render's
+ * values at settle time (not first-render snapshots). The `setValue`
+ * to `whilePending` on promise-change is gated on the promise actually
+ * being a new reference, so a pre-resolved `Promise.resolve(x)` does
+ * not flicker through `whilePending` before landing on `x`.
  */
 const usePromiseOrDefault = <T>(
   promise: Promise<T>,
@@ -29,10 +42,19 @@ const usePromiseOrDefault = <T>(
   onErr: (err: unknown) => T
 ): T => {
   const [value, setValue] = useState<T>(whilePending)
+  const lastPromiseRef = useRef<Promise<T> | null>(null)
 
   useEffect(() => {
     let isMounted = true
-    setValue(whilePending)
+    // Only reset to `whilePending` if the promise reference actually
+    // changed. Without the gate, a pre-resolved `Promise.resolve(x)`
+    // (or any effect re-run for the same promise) would briefly clobber
+    // the resolved value back to `whilePending` before the microtask
+    // settlement repainted it.
+    if (lastPromiseRef.current !== promise) {
+      lastPromiseRef.current = promise
+      setValue(whilePending)
+    }
     promise
       .then((resolved) => {
         if (isMounted) setValue(resolved)

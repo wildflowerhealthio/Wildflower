@@ -65,6 +65,16 @@ const { lifecycleSpy, makePassthrough } = vi.hoisted(() => {
 // publishes — the mocked AuthTokenProvider doesn't use it.
 vi.mock('react-kitchen-sink', () => ({
   AuthTokenProvider: makePassthrough('AuthTokenProvider'),
+  // Mirror the real `cn` helper so the ErrorBoundary in `renderApp`'s
+  // tree (`react-tundraish` reads `cn` via this re-export) doesn't
+  // crash if the rendered subtree throws.
+  cn: (
+    ...args: ReadonlyArray<string | undefined | null | false | Record<string, boolean>>
+  ): string => args.filter((a): a is string => typeof a === 'string').join(' '),
+  // `AppRootTree` consumes the transport promise through this hook;
+  // resolve immediately to the fallback so the test renders past the
+  // suspense window.
+  usePromiseOrDefault: <T,>(_promise: Promise<T>, fallback: T): T => fallback,
 }))
 // `get` must be an Effect; null-token short-circuits the startup prefetch.
 vi.mock('gatekeeper-react', () => ({
@@ -188,7 +198,7 @@ describe('renderApp InnerWrap lifecycle', () => {
       renderApp({
         history,
         entry: 'main-web',
-        awaitAuthReady: () => Promise.resolve(),
+        awaitAuthReady: () => () => Promise.resolve(),
         makeTransport: () => Promise.resolve(stubTransport),
       })
     })

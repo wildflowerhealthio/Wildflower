@@ -17,7 +17,7 @@ import { useFhirR4ResourcesRuntimeLayer } from 'fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { setActiveHandler } from './active-handler-ref.ts'
+import { clearActiveHandlerIfCurrent, setActiveHandler } from './active-handler-ref.ts'
 import { useCollectorSender } from './use-collector-sender.ts'
 
 /**
@@ -223,7 +223,12 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
         handler.cancelAllInFlight(sendCollectorMessage).pipe(Effect.andThen(() => handler.clear()))
       )
 
-      setActiveHandler(null)
+      // Set-if-equal: only blank the ref if it still points at the
+      // handler we installed above. A successor mount (StrictMode
+      // double-mount, rapid remount on remote change) may already have
+      // taken the slot before this cleanup ran; blanking it
+      // unconditionally would silently drop sniffer events.
+      clearActiveHandlerIfCurrent(handler)
     }
   }, [remote, scrapingPlan, sendCollectorMessage, runFhir])
 

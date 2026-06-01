@@ -115,6 +115,7 @@ const singleMock = (binding: {
 let mockNavigationOptions: {
   initialRoute?: string
   onRouteChanged?: unknown
+  onUiReady?: () => void
   onTransportReady?: (
     send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
   ) => EffectType.Effect<void>
@@ -128,6 +129,7 @@ jest.mock('navigation-expo', () => {
       useHostBinding: (options: {
         initialRoute?: string
         onRouteChanged?: unknown
+        onUiReady?: () => void
         onTransportReady?: (
           send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
         ) => EffectType.Effect<void>
@@ -147,6 +149,15 @@ jest.mock('navigation-expo', () => {
   }
 })
 
+// Capture the splash-screen mock's `hideAsync` so the test below can
+// assert the navigation binding's `onUiReady` calls it. Returning a
+// resolved promise mirrors expo-splash-screen's real API, which the
+// shell calls inside a `void` to discard the promise.
+const mockSplashHideAsync = jest.fn<Promise<void>, []>(() => Promise.resolve())
+jest.mock('expo-splash-screen', () => ({
+  hideAsync: (): Promise<void> => mockSplashHideAsync(),
+}))
+
 // Capture the options gatekeeper-expo's hook receives so the wiring
 // assertions below can read what the shell passed in. The mock factory
 // itself only needs to mirror the new contract: `onTransportReady` is
@@ -165,7 +176,7 @@ jest.mock('gatekeeper-expo', () => {
         return singleMock({
           bridge: { name: 'Gatekeeper' },
           receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
-          initialMessages: [{ _tag: 'WaitForToken' as const }],
+          initialMessages: [],
           onTransportReady: (
             send: (msg: {
               readonly _tag: string
@@ -281,6 +292,7 @@ beforeEach(() => {
   mockGatekeeperOptions = null
   mockAppsOptions = null
   mockLocalClientTokenRow = { value: 'bearer-xyz' }
+  mockSplashHideAsync.mockClear()
 })
 
 const noopRouteChanged = (): void => {}
@@ -325,6 +337,22 @@ describe('AppShellWebView', () => {
     mountInPipe(<AppShellWebView onRouteChanged={onRouteChanged} />)
     expect(mockNavigationOptions?.initialRoute).toBe('/apps')
     expect(mockNavigationOptions?.onRouteChanged).toBe(onRouteChanged)
+  })
+
+  it('threads an onUiReady into the navigation binding that hides the native splash', () => {
+    // Shell-level wiring contract: the navigation binding's `UIReady`
+    // receiver runs the supplied `onUiReady` callback, which the shell
+    // wires to `SplashScreen.hideAsync()`. Without this, the embedded
+    // SPA's `UIReady` arrives but the host's splash never lifts.
+    mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
+    const onUiReady = mockNavigationOptions?.onUiReady
+    expect(typeof onUiReady).toBe('function')
+    expect(mockSplashHideAsync).not.toHaveBeenCalled()
+
+    if (onUiReady === undefined) throw new Error('onUiReady not threaded into navigation binding')
+    onUiReady()
+
+    expect(mockSplashHideAsync).toHaveBeenCalledTimes(1)
   })
 
   it('seeds HostRequestedWebNavigation via the navigation binding initialMessages', () => {

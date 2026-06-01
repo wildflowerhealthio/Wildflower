@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native'
-import { Context, Effect, Layer, type Layer as LayerNs } from 'effect'
+import { Context, Deferred, Effect, Layer, type Layer as LayerNs } from 'effect'
 import type { HostBindings, MessageHandler } from 'effect-messaging-core'
 import { expectTypeOf } from 'expect-type'
 import type { GatekeeperBridge } from 'gatekeeper-core/bridge'
@@ -44,17 +44,17 @@ describe('useGatekeeperHostBinding receiverLayer', () => {
 })
 
 describe('useGatekeeperHostBinding initialMessages', () => {
-  // `WaitForToken` is unconditional — the embedded SPA needs it to
-  // distinguish "token coming" from "no host" regardless of whether
-  // the host already has a token in hand.
-  it('seeds [{ _tag: "WaitForToken" }] when no token is provided', () => {
+  // No URL-param-encoded initial messages: the token never rides URL
+  // params (it's delivered post-mount through the captured sender), so
+  // the gatekeeper bridge has nothing to seed on first paint.
+  it('seeds an empty list when no token is provided', () => {
     const { result } = renderHook(() => useGatekeeperHostBinding())
-    expect(result.current.initialMessages[0]).toEqual([{ _tag: 'WaitForToken' }])
+    expect(result.current.initialMessages[0]).toEqual([])
   })
 
-  it('seeds [{ _tag: "WaitForToken" }] when a token is provided (token never rides URL params)', () => {
+  it('seeds an empty list when a token is provided (token never rides URL params)', () => {
     const { result } = renderHook(() => useGatekeeperHostBinding({ token: 'bearer-abc' }))
-    expect(result.current.initialMessages[0]).toEqual([{ _tag: 'WaitForToken' }])
+    expect(result.current.initialMessages[0]).toEqual([])
   })
 })
 
@@ -85,9 +85,13 @@ describe('useGatekeeperHostBinding onTransportReady', () => {
     await act(async () => {
       await Effect.runPromise(onReady(fakeSend))
     })
-    // Give the post-mount effect a tick to run if it were going to —
-    // the absent token should gate the send away.
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    // Flush the post-mount effect deterministically: a microtask is all
+    // React needs to commit, and the `act` boundary catches any further
+    // scheduled work. No real-timer wait — the absent-token gate is
+    // synchronous in the effect body.
+    await act(async () => {
+      await Promise.resolve()
+    })
     expect(sent).toEqual([])
   })
 
@@ -154,5 +158,49 @@ describe('useGatekeeperHostBinding onTransportReady', () => {
         { _tag: 'AuthTokenIssued', token: 'bearer-new' },
       ])
     })
+  })
+
+  it('cancels in-flight sends when the hook unmounts (Fiber.interrupt in cleanup)', async () => {
+    // Pin the cleanup branch: a regression that drops the
+    // `Effect.runFork(Fiber.interrupt(fiber))` in the post-mount
+    // useEffect would leak fibers across rotations and let
+    // post-unmount writes land on the captured sender. Drive a
+    // Deferred-gated send so the fiber is observably mid-flight when
+    // we unmount; if the interrupt fires, releasing the latch never
+    // delivers the message.
+    const latch = Effect.runSync(Deferred.make<void>())
+    const sent: Array<{ readonly _tag: string }> = []
+    const fakeSend = (msg: {
+      readonly _tag: string
+      readonly [k: string]: unknown
+    }): Effect.Effect<void> =>
+      Deferred.await(latch).pipe(Effect.tap(() => Effect.sync(() => sent.push(msg))))
+
+    const { result, unmount } = renderHook(() => useGatekeeperHostBinding({ token: 'bearer-xyz' }))
+    const onReady = result.current.onTransportReady[0]
+    if (onReady === undefined) throw new Error('onTransportReady should be defined')
+
+    await act(async () => {
+      await Effect.runPromise(onReady(fakeSend))
+    })
+    // Flush React/microtasks so the post-mount effect forks the
+    // in-flight send and blocks on the latch.
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    unmount()
+
+    // Release the latch — without the cleanup interrupt the fiber
+    // would push to `sent` here. With it in place the fiber was
+    // cancelled before the latch resolved.
+    await Effect.runPromise(Deferred.succeed(latch, undefined))
+    // Give any orphaned scheduling one tick to surface; the
+    // assertion is "stays empty" so a deterministic flush is enough.
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(sent).toEqual([])
   })
 })

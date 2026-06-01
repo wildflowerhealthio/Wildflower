@@ -1,4 +1,4 @@
-import { Effect, Fiber } from 'effect'
+import { Effect, Fiber, pipe } from 'effect'
 import type { BridgeTransport } from 'effect-messaging-core'
 import { HostBindings } from 'effect-messaging-core'
 import { GatekeeperBridge } from 'gatekeeper-core/bridge'
@@ -13,12 +13,9 @@ type GatekeeperSender = BridgeTransport.MessageSender<readonly [typeof Gatekeepe
 /**
  * Host binding for the gatekeeper bridge.
  *
- * - `WaitForToken` is unconditional — without it the embedded SPA can't
- *   distinguish "token coming" from "no host" and falls through to a
- *   different auth path.
- * - The bearer token is deliberately kept off the WebView URL and instead
- *   delivered through `onTransportReady`'s captured sender so it never
- *   appears in WebView URL logs.
+ * The bearer token is deliberately kept off the WebView URL and instead
+ * delivered through `onTransportReady`'s captured sender so it never
+ * appears in WebView URL logs.
  *
  * @remarks
  * Binding identity is **stable** across `token` transitions: the
@@ -32,7 +29,11 @@ type GatekeeperSender = BridgeTransport.MessageSender<readonly [typeof Gatekeepe
  *
  * Token rotation now flows the new value through the same effect
  * without a rebuild — the SPA receives a fresh `AuthTokenIssued` over
- * the live transport instead of remounting.
+ * the live transport instead of remounting. To preserve ordering
+ * under rapid rotation, each new send chains on `Fiber.await` of the
+ * previous send fiber (held in {@link sendFiberRef}) before forking —
+ * so an interrupted predecessor finalises before the successor starts
+ * `postMessage`, preventing out-of-order writes to the page-side ref.
  */
 const useGatekeeperHostBinding = ({
   token,
@@ -40,13 +41,24 @@ const useGatekeeperHostBinding = ({
   readonly [typeof GatekeeperBridge]
 > => {
   const senderRef = useRef<GatekeeperSender | null>(null)
+  const sendFiberRef = useRef<Fiber.RuntimeFiber<unknown, unknown> | null>(null)
   const [transportReady, setTransportReady] = useState(false)
 
   useEffect(() => {
     if (!transportReady || token === undefined) return undefined
     const send = senderRef.current
     if (send === null) return undefined
-    const fiber = Effect.runFork(send({ _tag: 'AuthTokenIssued', token }))
+    const previousFiber = sendFiberRef.current
+    // Wait the previous fiber's exit (success, failure, or interrupt)
+    // before starting the next send, so rapid token rotations dispatch
+    // in declared order even if the prior send hadn't finished its
+    // postMessage when React fired this effect.
+    const program = pipe(
+      previousFiber === null ? Effect.void : Fiber.await(previousFiber),
+      Effect.zipRight(send({ _tag: 'AuthTokenIssued', token }))
+    )
+    const fiber = Effect.runFork(program)
+    sendFiberRef.current = fiber
     return (): void => {
       Effect.runFork(Fiber.interrupt(fiber))
     }
@@ -57,7 +69,7 @@ const useGatekeeperHostBinding = ({
       HostBindings.single({
         bridge: GatekeeperBridge,
         receiverLayer: GatekeeperBridge.Host.ReceiverLayer({}),
-        initialMessages: [{ _tag: 'WaitForToken' as const }],
+        initialMessages: [],
         onTransportReady: (send: GatekeeperSender) =>
           Effect.sync(() => {
             senderRef.current = send

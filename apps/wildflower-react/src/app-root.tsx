@@ -11,17 +11,29 @@ import { Sentry } from 'telemetry-web'
 
 import { buildAppQueryRuntime } from './bridges/app-query-runtime.ts'
 import { AppRootTree } from './bridges/app-root-tree.tsx'
-import type { Transport } from './bridges/transport-context.ts'
+import type { ReactTransport } from './bridges/transport-context.ts'
 import { routeTree } from './routeTree.gen.ts'
 
 /**
  * Per-entry transport factory. Receives a stable `navigate` closure
  * that delegates to the router instance (set after `createRouter`) and
- * returns the page's `BridgeTransport`. Web entries return a
- * pre-resolved stub; embedded returns the real built transport
- * (`buildTransport(navigate)`).
+ * returns the page's `BridgeTransport` (narrowed to the React-facing
+ * `ReactTransport` surface). Web entries return a pre-resolved stub;
+ * embedded returns the real built transport (`buildTransport(navigate)`).
  */
-type MakeTransport = (navigate: (to: NavTarget) => void) => Promise<Transport>
+type MakeTransport = (navigate: (to: NavTarget) => void) => Promise<ReactTransport>
+
+/**
+ * Per-entry `awaitAuthReady` factory. Receives a `transportReady`
+ * promise (the transport's `flushed → signalReady` settled) and returns
+ * the actual `awaitAuthReady` function the `beforeLoad` gate calls.
+ * Web's implementation ignores the argument (standalone has no host
+ * handshake to wait); embedded's awaits it before reading the token
+ * ref. Lifting the transport wait into the factory means the gate stays
+ * environment-agnostic and the router context no longer needs its own
+ * `transportReady` field.
+ */
+type MakeAwaitAuthReady = (transportReady: Promise<void>) => BaseRouterContext.AwaitAuthReady
 
 interface RenderAppOptions {
   /** Browser history for web, memory history for embedded WebView. */
@@ -29,18 +41,19 @@ interface RenderAppOptions {
   /** Tagged onto Sentry events to distinguish web/embedded crashes. */
   readonly entry: 'main-web' | 'main-embedded' | 'main-single-web'
   /**
-   * Environment-specific auth-readiness wait, injected per entry (web
-   * resolves/rejects immediately on token presence; embedded awaits the
-   * host token up to 5s). Threaded into the router context so the
-   * `beforeLoad` auth gate awaits it without knowing the environment —
-   * the entry, not a context flag, encodes the behavior.
+   * Environment-specific auth-readiness factory, injected per entry.
+   * Called once at `renderApp` time with `transportReady`; the
+   * resolved function is threaded into router context so the
+   * `beforeLoad` gate calls it without knowing the environment — the
+   * entry, not a context flag, encodes the behavior.
    */
-  readonly awaitAuthReady: BaseRouterContext.AwaitAuthReady
+  readonly awaitAuthReady: MakeAwaitAuthReady
   /**
    * Per-entry transport factory (real for embedded, stub for web).
    * Called once before `createRouter`; its returned promise feeds
-   * `transportReady` into router context and seeds the React-tree
-   * `TransportContext` once it resolves.
+   * `context.transport` (for the `_auth` loader's `UIReady` emit) and
+   * is consumed inside the React tree via `usePromiseOrDefault` to
+   * seed `TransportContext`.
    */
   readonly makeTransport: MakeTransport
 }
@@ -54,10 +67,11 @@ interface RenderAppOptions {
  * persister; warm via preloading.
  *
  * The transport is built *outside* React, before the router mounts.
- * Its `flushed → signalReady` chain becomes `transportReady` in router
- * context — the `_auth` `beforeLoad` awaits it before `awaitAuthReady`,
- * making the embedded ordering ("transport flush before host pushes
- * token") explicit instead of relying on a Suspense fence.
+ * Its `flushed → signalReady` chain becomes `transportReady`, which
+ * `awaitAuthReady` (the embedded factory) waits on internally — so the
+ * embedded ordering ("transport flush before host pushes token") is
+ * encoded inside `awaitAuthReady` itself rather than in a separate
+ * `transportReady` field on router context.
  *
  * `navigate` (used by the navigation bridge's receiver layer to handle
  * `HostRequestedWebNavigation` / `HostBackRequested`) closes over a
@@ -78,11 +92,18 @@ const renderApp = ({ history, entry, awaitAuthReady, makeTransport }: RenderAppO
 
   const transportPromise = makeTransport(navigate)
   const transportReady = transportPromise.then(() => undefined)
+  const resolvedAwaitAuthReady = awaitAuthReady(transportReady)
 
   const router = createRouter({
     routeTree,
     history,
-    context: { queryClient, runAuthed, runtimeLayer, awaitAuthReady, transportReady },
+    context: {
+      queryClient,
+      runAuthed,
+      runtimeLayer,
+      awaitAuthReady: resolvedAwaitAuthReady,
+      transport: transportPromise,
+    },
     defaultPreload: 'intent',
   })
   routerHandle.current = router
@@ -116,4 +137,4 @@ const renderApp = ({ history, entry, awaitAuthReady, makeTransport }: RenderAppO
 }
 
 export { renderApp }
-export type { MakeTransport, RenderAppOptions }
+export type { MakeAwaitAuthReady, MakeTransport, RenderAppOptions }

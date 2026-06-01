@@ -1,22 +1,20 @@
-import { AppsBridge } from 'apps-core/bridge'
 import { appsWebReceiverLayer } from 'apps-react'
-import { CollectorBridge } from 'collector-fundamentals/bridge'
 import { collectorWebReceiverLayer } from 'collector-react'
 import { Effect, Layer, Scope } from 'effect'
 import { BridgeTransport, Logging, TransportAdapter } from 'effect-messaging-core'
 import { WebPlatformAdapter } from 'effect-messaging-react'
-import { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { gatekeeperWebReceiverLayer } from 'gatekeeper-react/web-bridge'
-import { NavigationBridge } from 'navigation-core'
 import { makeNavigationWebReceiverLayer, type NavTarget } from 'navigation-react'
 
-import type { Transport } from './transport-context.ts'
+import { bridges } from './bridges.ts'
+import type { ReactTransport } from './transport-context.ts'
 
 /**
  * Build the page-side `BridgeTransport` once at boot, outside React.
- * Returns a Promise that resolves to the live transport after its
- * inbound queue has drained (`flushed`) and the Host has been told to
- * start sending (`signalReady`).
+ * Returns a Promise that resolves to the live transport (narrowed to
+ * the React-facing {@link ReactTransport} surface) after its inbound
+ * queue has drained (`flushed`) and the Host has been told to start
+ * sending (`signalReady`).
  *
  * The slice receiver layers (`apps`, `collector`, `gatekeeper`) are
  * module-level constants that close over module-level mutable cells
@@ -33,16 +31,18 @@ import type { Transport } from './transport-context.ts'
  * never closed; the transport, its dispatch fiber, and the console
  * interceptor live as long as the page does. (Tests that need teardown
  * can call `BridgeTransport.make` directly with their own scope.)
+ *
+ * @remarks
+ * The console interceptor is installed BEFORE the `flushed →
+ * signalReady` chain runs so that any `console.*` emitted by Sentry
+ * init (`instrument.ts`), `BridgeTransport.make` internals, or the
+ * adapter's `drainInitial` get routed through the transport's outbound
+ * dispatch — buffered behind the bridge's `peerReady` gate until the
+ * host comes online, then drained in order. Installing post-`flushed`
+ * (the previous shape) silently dropped those early lines.
  */
-const buildTransport = (navigate: (to: NavTarget) => void): Promise<Transport> => {
+const buildTransport = (navigate: (to: NavTarget) => void): Promise<ReactTransport> => {
   const navLayer = makeNavigationWebReceiverLayer(navigate)
-  const bridges = [
-    NavigationBridge,
-    GatekeeperBridge,
-    CollectorBridge,
-    AppsBridge,
-    Logging.LogBridge,
-  ] as const
   const adapter = WebPlatformAdapter.make(bridges)
   const scope = Effect.runSync(Scope.make())
   return Effect.runPromise(
@@ -63,10 +63,10 @@ const buildTransport = (navigate: (to: NavTarget) => void): Promise<Transport> =
       scope
     )
   ).then(async (transport) => {
-    await Effect.runPromise(Effect.andThen(transport.flushed, transport.signalReady))
     Logging.installConsoleInterceptor((msg: Logging.LogPayload) => {
       Effect.runFork(transport.sendMessage(msg))
     })
+    await Effect.runPromise(Effect.andThen(transport.flushed, transport.signalReady))
     return transport
   })
 }

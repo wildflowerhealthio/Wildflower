@@ -1,13 +1,7 @@
+import { redirect, type AnyRedirect } from '@tanstack/react-router'
 import { Data, Duration, Effect, Option, pipe, Stream, SubscriptionRef } from 'effect'
 
 import { authTokenRef } from './token-storage.ts'
-
-/**
- * Standalone web has no token in `localStorage`: the user must run the
- * device-login flow. The gate redirects to the device-login route on
- * this reason.
- */
-class NeedsSignIn extends Data.TaggedError('NeedsSignIn')<Record<string, never>> {}
 
 /**
  * Embedded WebView waited the full {@link EMBEDDED_TOKEN_TIMEOUT} for
@@ -17,18 +11,6 @@ class NeedsSignIn extends Data.TaggedError('NeedsSignIn')<Record<string, never>>
  */
 class TokenTimeout extends Data.TaggedError('TokenTimeout')<Record<string, never>> {}
 
-/** Union of the tagged rejections {@link AwaitAuthReady} fns reject with. */
-type AuthReadyError = NeedsSignIn | TokenTimeout
-
-/**
- * Public device-login route the `beforeLoad` gate redirects standalone
- * web to on {@link NeedsSignIn}. Matches the `createFileRoute` id of
- * `routes/_open/gatekeeper/device-login.tsx` (the `_open` layout
- * contributes no URL segment). Exported so the app gate redirects here
- * without re-typing the literal the slice owns.
- */
-const DEVICE_LOGIN_PATH = '/gatekeeper/device-login' as const
-
 /** How long the embedded entry waits for the host's bearer token. */
 const EMBEDDED_TOKEN_TIMEOUT = Duration.seconds(5)
 
@@ -37,16 +19,30 @@ const isPresent = (token: string | null): token is string => token !== null && t
 /**
  * Web auth-readiness logic, parameterized over the token ref so it's
  * unit-testable. Reads the ref once: present → succeed; absent →
- * `NeedsSignIn`. No waiting — a standalone browser has no host to
- * deliver a token later. See {@link awaitWebAuthReady} for the
- * singleton-bound wrapper.
+ * fails with a TanStack `redirect` to the device-login route so the
+ * app-level gate's bubble path lands the user in the device flow
+ * without any intermediate `instanceof` translation. No waiting — a
+ * standalone browser has no host to deliver a token later. See
+ * {@link awaitWebAuthReady} for the singleton-bound wrapper.
+ *
+ * @remarks
+ * The redirect is constructed (not thrown) and routed through
+ * `Effect.fail`, so the failure channel carries TanStack's own redirect
+ * sentinel. `Effect.runPromise` rejects with that sentinel; the gate
+ * lets it bubble, which TanStack's `beforeLoad` machinery interprets as
+ * a redirect. Keeping the destination literal inside this module means
+ * the slice still owns the route path without exporting a constant.
  */
 const webAuthReadyEffect = (
   tokenRef: SubscriptionRef.SubscriptionRef<string | null>
-): Effect.Effect<void, NeedsSignIn> =>
+): Effect.Effect<void, AnyRedirect> =>
   pipe(
     SubscriptionRef.get(tokenRef),
-    Effect.flatMap((token) => (isPresent(token) ? Effect.void : Effect.fail(new NeedsSignIn({}))))
+    Effect.flatMap((token) =>
+      isPresent(token)
+        ? Effect.void
+        : Effect.fail<AnyRedirect>(redirect({ to: '/gatekeeper/device-login' }))
+    )
   )
 
 /**
@@ -82,31 +78,47 @@ const embeddedAuthReadyEffect = (
 /**
  * Web (`main-web` / `main-single-web`) auth-readiness wait. Resolves
  * immediately when a token is already present (standalone web reads it
- * synchronously from `localStorage` at module load); rejects
- * immediately with {@link NeedsSignIn} otherwise, so the gate redirects
- * into the device-login flow.
+ * synchronously from `localStorage` at module load); rejects with a
+ * TanStack `redirect` to the device-login route otherwise, which the
+ * gate lets bubble so TanStack's routing machinery follows the
+ * redirect.
  */
 const awaitWebAuthReady = (): Promise<void> => Effect.runPromise(webAuthReadyEffect(authTokenRef))
 
 /**
- * Embedded (`main-embedded`) auth-readiness wait. The host hands the
+ * Embedded (`main-embedded`) auth-readiness factory. The host hands the
  * bearer token to the SPA over the gatekeeper bridge after
- * `transport.flushed`, so on first paint `authTokenRef` may still be
- * `null`. Awaits the ref going non-null for up to
+ * `transport.flushed → transport.signalReady`, so on first paint
+ * `authTokenRef` may still be `null` AND the transport may not yet be
+ * ready to even receive the host's `AuthTokenIssued` message.
+ *
+ * Closes over the entry-supplied `transportReady` promise and returns
+ * the actual `awaitAuthReady` function the `beforeLoad` gate calls.
+ * The returned function awaits `transportReady` first (so the bridge
+ * handshake has had a chance to flush the host's URL-param-encoded
+ * token messages), then waits the ref going non-null for up to
  * {@link EMBEDDED_TOKEN_TIMEOUT}; resolves on the first present value,
  * rejects with {@link TokenTimeout} on timeout.
+ *
+ * @param transportReady - Promise that resolves once the page-side
+ *   `BridgeTransport` has flushed its initial inbound queue and
+ *   signalled the host. The factory shape is what lets the gate stay
+ *   environment-agnostic — the `_auth` `beforeLoad` only sees the
+ *   resolved `() => Promise<void>` and doesn't have to know about the
+ *   transport.
  */
-const awaitEmbeddedAuthReady = (): Promise<void> =>
-  Effect.runPromise(embeddedAuthReadyEffect(authTokenRef))
+const awaitEmbeddedAuthReady =
+  (transportReady: Promise<void>): (() => Promise<void>) =>
+  async () => {
+    await transportReady
+    return Effect.runPromise(embeddedAuthReadyEffect(authTokenRef))
+  }
 
 export {
   awaitEmbeddedAuthReady,
   awaitWebAuthReady,
-  DEVICE_LOGIN_PATH,
   embeddedAuthReadyEffect,
   EMBEDDED_TOKEN_TIMEOUT,
-  NeedsSignIn,
   TokenTimeout,
   webAuthReadyEffect,
 }
-export type { AuthReadyError }

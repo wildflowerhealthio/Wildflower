@@ -1,7 +1,11 @@
 import { Effect } from 'effect'
 import { useCallback } from 'react'
 
-import { setPendingTunnelResolver, type TunnelOutcome } from './tunnel-resolver-ref.ts'
+import {
+  clearPendingTunnelResolverIfCurrent,
+  setPendingTunnelResolver,
+  type TunnelOutcome,
+} from './tunnel-resolver-ref.ts'
 import { useAppsSender } from './use-apps-sender.ts'
 
 /**
@@ -36,7 +40,10 @@ const useRequestTunnel = (): (() => Promise<TunnelOutcome>) => {
         const settle = (outcome: TunnelOutcome): void => {
           if (settled) return
           settled = true
-          setPendingTunnelResolver(null)
+          // Set-if-equal clear: only blank the ref if it still points
+          // at this `settle`. A supersede (newer request taking the
+          // slot) will have already moved the ref onto the successor.
+          clearPendingTunnelResolverIfCurrent(settle)
           clearTimeout(timer)
           resolve(outcome)
         }

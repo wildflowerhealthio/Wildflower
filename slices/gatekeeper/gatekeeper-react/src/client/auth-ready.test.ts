@@ -1,10 +1,12 @@
+import { isRedirect } from '@tanstack/react-router'
 import { Duration, Effect, Either, Fiber, SubscriptionRef, TestClock, TestContext } from 'effect'
+import fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import {
   EMBEDDED_TOKEN_TIMEOUT,
   embeddedAuthReadyEffect,
-  NeedsSignIn,
   TokenTimeout,
   webAuthReadyEffect,
 } from './auth-ready.ts'
@@ -30,22 +32,41 @@ describe('webAuthReadyEffect', () => {
     expect(result).toStrictEqual(Either.void)
   })
 
-  test('rejects with NeedsSignIn when no token is present', async () => {
+  test('rejects with a TanStack redirect to the device-login route when no token is present', async () => {
     const result = await Effect.runPromise(
       Effect.flatMap(makeRef(null), (ref) => Effect.either(webAuthReadyEffect(ref)))
     )
 
     expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(NeedsSignIn)
+    if (Either.isLeft(result)) {
+      expect(isRedirect(result.left)).toBe(true)
+      if (isRedirect(result.left)) expect(result.left.options.to).toBe('/gatekeeper/device-login')
+    }
   })
 
-  test('treats the empty string as absent (rejects)', async () => {
+  test('treats the empty string as absent (rejects with a redirect)', async () => {
     const result = await Effect.runPromise(
       Effect.flatMap(makeRef(''), (ref) => Effect.either(webAuthReadyEffect(ref)))
     )
 
     expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(NeedsSignIn)
+    if (Either.isLeft(result)) expect(isRedirect(result.left)).toBe(true)
+  })
+
+  test('Right ↔ present-and-non-empty token (property)', async () => {
+    // Pins the truth-table for `isPresent`: a `Right` corresponds
+    // exactly to a non-null, non-empty token. `fc.string()` includes
+    // the empty string, so this also covers the empty-string-as-absent
+    // case across the rest of the input space.
+    await fc.assert(
+      fc.asyncProperty(fc.option(fc.string(), { nil: null }), async (token) => {
+        const result = await Effect.runPromise(
+          Effect.flatMap(makeRef(token), (ref) => Effect.either(webAuthReadyEffect(ref)))
+        )
+        expect(Either.isRight(result)).toBe(token !== null && token !== '')
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })
 

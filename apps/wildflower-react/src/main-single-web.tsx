@@ -8,10 +8,11 @@ import { renderApp } from './app-root.tsx'
 import { stubTransport } from './bridges/transport-context.ts'
 
 // Same standalone-web auth behavior as `main-web`: synchronous token
-// read → gate resolves or redirects immediately. Stub transport.
+// read → gate resolves or throws a TanStack redirect immediately.
+// Stub transport (pre-resolved).
 renderApp({
   history: createBrowserHistory(),
   entry: 'main-single-web',
-  awaitAuthReady: awaitWebAuthReady,
+  awaitAuthReady: () => awaitWebAuthReady,
   makeTransport: () => Promise.resolve(stubTransport),
 })

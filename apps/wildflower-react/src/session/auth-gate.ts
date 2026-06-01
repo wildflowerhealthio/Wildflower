@@ -1,37 +1,67 @@
-import { redirect } from '@tanstack/react-router'
-import { DEVICE_LOGIN_PATH, NeedsSignIn } from 'gatekeeper-react'
+import { Cause, Runtime } from 'effect'
 
 import type { RouterContext } from '../router-context.ts'
 
 /**
  * `beforeLoad` auth gate for the owner-facing layouts (`_auth`,
- * `/settings`). Awaits `context.transportReady` first — embedded
- * cannot receive the bearer token over the gatekeeper bridge until
- * `transport.signalReady` has run; web's stub is already-resolved so
- * this is a microtask — then calls the injected, environment-specific
- * `context.awaitAuthReady()` and branches on its tagged rejection:
+ * `/settings`). Calls the injected, environment-specific
+ * `context.awaitAuthReady()` and lets its rejection bubble after
+ * unwrapping any `FiberFailure`-style wrapper:
  *
  *   - resolve → proceed (an authed loader below is guaranteed a token).
- *   - `NeedsSignIn` (standalone web, no token) → `throw redirect` into
- *     the public device-login flow.
+ *   - `redirect(...)` (standalone web, no token) → bubbles so TanStack
+ *     follows the redirect into the device-login flow.
  *   - `TokenTimeout` (embedded, host never delivered the token in 5s) →
- *     rethrow so the layout's `errorComponent` renders the web-side
+ *     bubbles so the layout's `errorComponent` renders the web-side
  *     `TokenTimeoutRetry` screen. No host signal on timeout — the user
  *     re-attempts the wait from the browser.
  *
- * Any other rejection is unexpected; rethrow it so it surfaces rather
+ * Any other rejection is unexpected; bubbles too so it surfaces rather
  * than being silently swallowed into a proceed.
+ *
+ * @remarks
+ * `awaitAuthReady()` is a `Promise` produced by `Effect.runPromise`,
+ * which usually rejects with the typed `Effect.fail` value directly.
+ * But for failures routed through the defect path (timeout races,
+ * scope-interrupt chains around `Stream` operators) the rejection is a
+ * `FiberFailure` whose `.cause` carries the real value. The gate
+ * unwraps that with `Cause.failureOption` so a downstream
+ * `instanceof TokenTimeout` or `isRedirect(...)` operates on the real
+ * raised value, not on the `FiberFailure` shell. Without the unwrap,
+ * a defect-routed `TokenTimeout` would hit the retry screen's
+ * generic-error branch instead of the timeout-aware branch.
  */
 const authBeforeLoad = async ({ context }: { readonly context: RouterContext }): Promise<void> => {
-  await context.transportReady
   try {
     await context.awaitAuthReady()
-  } catch (error) {
-    if (error instanceof NeedsSignIn) {
-      throw redirect({ to: DEVICE_LOGIN_PATH })
-    }
-    throw error
+  } catch (caught: unknown) {
+    throw unwrapFiberFailure(caught)
   }
+}
+
+/**
+ * Reach through any `FiberFailure`-style wrapping to the underlying
+ * raised value. Returns `caught` unchanged when nothing to unwrap.
+ *
+ * Checks both the failure channel (`Cause.failureOption` — what a
+ * typed `Effect.fail(...)` rides) and the defect channel
+ * (`Cause.dieOption` — what `Effect.die(...)` / unhandled throws ride)
+ * so a `TokenTimeout` raised either way reaches the same branch
+ * downstream.
+ *
+ * `FiberFailure` stores its cause under a unique-symbol-keyed property
+ * (`Runtime.FiberFailureCauseId`), not a string-named field, so the
+ * `Runtime.isFiberFailure` guard is the only safe way to detect and
+ * unwrap it from outside the Effect runtime.
+ */
+const unwrapFiberFailure = (caught: unknown): unknown => {
+  if (!Runtime.isFiberFailure(caught)) return caught
+  const cause = caught[Runtime.FiberFailureCauseId]
+  const failure = Cause.failureOption(cause)
+  if (failure._tag === 'Some') return failure.value
+  const die = Cause.dieOption(cause)
+  if (die._tag === 'Some') return die.value
+  return caught
 }
 
 export { authBeforeLoad }
