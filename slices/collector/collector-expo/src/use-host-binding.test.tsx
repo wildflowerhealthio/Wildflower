@@ -1,13 +1,13 @@
 /**
- * Regression test for the `CollectorPipe` outlet wiring. Before this
- * binding installed `onTransportReady`, no production code called
- * `useAsCollectorOutlet`, so `useCollectorSender()` always fell through
- * to the pipe's warn-and-drop default sender — observable in the logs
- * as `"[effect-messaging] no CollectorPipe handler registered; dropping
- * message ..."` for every sniffer event the modal forwarded. This test
- * pins that the binding's `onTransportReady` populates the pipe's
- * sender ref so subsequent `useCollectorSender()` calls reach the
- * host-built transport's outbound sender.
+ * Regression test for the collector sender-pipe wiring. Before this
+ * binding installed `onTransportReady`, nothing populated the collector
+ * pipe's sender ref, so `useCollectorSender()` always fell through to the
+ * warn-and-drop default — observable in the logs as `"[effect-messaging]
+ * no Collector sender registered; dropping message ..."` for every
+ * sniffer event the modal forwarded. This test pins that the binding's
+ * `onTransportReady` populates the pipe's sender ref so subsequent
+ * `useCollectorSender()` calls reach the host-built transport's outbound
+ * sender.
  */
 import { act, render } from '@testing-library/react-native'
 import type { CollectorBridge } from 'collector-fundamentals/bridge'

@@ -272,7 +272,7 @@ jest.mock('expo-tundraish', () => {
 })
 
 import { AppShellWebView } from './app-shell-webview.tsx'
-import { NavigationPipeProvider, useNavigationSender } from './navigation-pipe.ts'
+import { NavigationPipeProvider, useNavigationSender } from './navigation-pipe.tsx'
 
 beforeEach(() => {
   mockLastBridgedWebViewProps = null
@@ -393,9 +393,8 @@ describe('AppShellWebView', () => {
       readonly [k: string]: unknown
     }): EffectType.Effect<void> => EffectType.sync(() => dispatched.push(msg))
 
-    // Fire the binding's `onTransportReady` — the shell's wrapper
-    // commits the sender into state, triggers a re-render, and
-    // `useAsNavigationOutlet` registers it in the pipe.
+    // Fire the binding's `onTransportReady` — the navigation binding
+    // writes the transport sender into the pipe's sender ref.
     await act(async () => {
       await EffectType.runPromise(navOnTransportReady(fakeTransportSender))
     })

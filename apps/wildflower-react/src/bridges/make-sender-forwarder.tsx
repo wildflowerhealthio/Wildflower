@@ -31,9 +31,8 @@ type SliceSenderProvider = (props: {
  * `<TransportContext.Provider>` (the `app-root.tsx` `AppRoot` supplies
  * one above `<RouterProvider>`).
  *
- * Mirrors the `makeNamedPipe` factory shape: the returned component
- * carries the supplied {@link displayName} so it reads correctly in
- * React DevTools and render-order assertions.
+ * The returned component carries the supplied {@link displayName} so it
+ * reads correctly in React DevTools and render-order assertions.
  */
 const makeSliceSenderForwarder = (
   displayName: string,

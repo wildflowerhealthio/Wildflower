@@ -86,7 +86,6 @@ jest.mock('../message-sender-pipes.tsx', () => {
         lastRegisteredSender = sender
       }, [sender])
     },
-    useAsCollectorOutlet: (): void => undefined,
     useBrowserSnifferSender: (): BrowserSnifferMessageSender => () => EffectInner.void,
     useCollectorSender: (): ((msg: {
       readonly _tag: string

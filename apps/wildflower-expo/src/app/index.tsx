@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { AppShellWebView } from '../app-shell/app-shell-webview.tsx'
-import { useNavigationSender } from '../app-shell/navigation-pipe.ts'
+import { useNavigationSender } from '../app-shell/navigation-pipe.tsx'
 import { TABS, tabForPath, type TabKey } from '../components/tab-mapping.ts'
 
 // Splash is suppressed by `side-effect-imports/prevent-splash-hide.ts`

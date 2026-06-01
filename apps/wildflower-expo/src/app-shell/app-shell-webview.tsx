@@ -36,7 +36,7 @@ const makeShouldOpenInSystemBrowser =
  * one host binding per slice and hands the tuple to {@link BridgedWebView}.
  *
  * Wires the navigation binding's `onTransportReady` into the surrounding
- * {@link useAsNavigationOutlet} pipe, so a sibling tab bar can dispatch
+ * navigation pipe's sender ref, so a sibling tab bar can dispatch
  * `HostRequestedWebNavigation` through the same transport.
  *
  * See [Host Bindings Explanation](../../../../docs/Effect/Host%20Bindings%20Explanation.md).

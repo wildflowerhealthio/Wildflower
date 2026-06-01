@@ -14,7 +14,7 @@ import { type NavigationBridge } from 'navigation-core'
 import { NavigationBridgeExpo } from 'navigation-expo'
 import { useMemo } from 'react'
 import { useWildflowerStore } from '@/src/livestore/livestore-store.ts'
-import { useNavigationSenderRef } from './navigation-pipe.ts'
+import { useNavigationSenderRef } from './navigation-pipe.tsx'
 
 type NavigationSender = BridgeTransport.MessageSender<
   readonly [typeof NavigationBridge],

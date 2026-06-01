@@ -4,9 +4,9 @@ export { useCollectorHostHandlers } from './use-receiver-layer.ts'
 export { useCollectorHostBinding } from './use-host-binding.ts'
 export {
   useAsBrowserSnifferOutlet,
-  useAsCollectorOutlet,
   useBrowserSnifferSender,
   useCollectorSender,
+  useCollectorSenderRef,
 } from './message-sender-pipes.tsx'
 export {
   CollectorModalScreen,

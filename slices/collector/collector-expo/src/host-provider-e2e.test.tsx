@@ -1,7 +1,7 @@
 /**
  * End-to-end smoke test for the collector-expo wiring. Uses the
  * **real** `useCollectorHostHandlers` record (no `jest.mock` for the
- * bridge), the real `makeNamedPipe`-built pipes, and the real
+ * bridge), the real sender-pipe contexts, and the real
  * `CollectorHostProvider` — only `expo-router` is stubbed because
  * there's no router stack in the test environment.
  */
@@ -66,9 +66,9 @@ jest.mock('expo-tundraish', (): Partial<typeof ExpoTundraishModule> => {
 import {
   CollectorHostProvider,
   useAsBrowserSnifferOutlet,
-  useAsCollectorOutlet,
   useCollectorHostHandlers,
   useCollectorSender,
+  useCollectorSenderRef,
 } from './index.ts'
 
 type SnifferSender = BridgeTransport.MessageSender<
@@ -91,13 +91,23 @@ const ProbeInsideProvider = ({
 }): ReactElement | null => {
   const handlers = useCollectorHostHandlers()
   useAsBrowserSnifferOutlet(snifferSender)
-  useAsCollectorOutlet(collectorSender)
+  // Mirror the host binding: install the collector sender by writing the
+  // pipe's sender ref directly (what `onTransportReady` does in prod).
+  const collectorSenderRef = useCollectorSenderRef()
   const collectorRead = useCollectorSender()
 
   useEffect(() => {
+    collectorSenderRef.current = collectorSender
     onHandlersReady(handlers)
     onCollectorPipeRead(collectorRead)
-  }, [handlers, collectorRead, onHandlersReady, onCollectorPipeRead])
+  }, [
+    collectorSenderRef,
+    collectorSender,
+    handlers,
+    collectorRead,
+    onHandlersReady,
+    onCollectorPipeRead,
+  ])
 
   return null
 }
