@@ -1,4 +1,4 @@
-import { Effect, Layer } from 'effect'
+import { Deferred, Effect, Layer } from 'effect'
 import {
   type BareSenderFunction,
   type BareSenderService,
@@ -9,7 +9,7 @@ import {
   UrlParamMessage,
 } from 'effect-messaging-core'
 import { flattenTuples } from 'kitchen-sink/types'
-import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
+import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react'
 import { useComponentScopedRunner } from 'react-kitchen-sink'
 import { TransportWebView, type TransportWebViewSource } from './transport-webview.tsx'
 
@@ -30,7 +30,7 @@ type BridgedWebViewLoadFrom =
 /**
  * Props for {@link BridgedWebView}. Generic over `Bridges` so the
  * tuple shape survives into the transport build — each binding's
- * narrowly-typed sender and receiver layer keeps its position.
+ * narrowly-typed sender and inbound handler record keeps its position.
  *
  * See [Host Bindings Explanation](../../effect-messaging-core/docs/Host%20Bindings%20Explanation.md).
  */
@@ -40,13 +40,14 @@ interface BridgedWebViewProps<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
    * parallel-indexed arrays produced by `HostBindings.single({...})`
    * (one slice) or `HostBindings.combine(...)` (many slices).
    *
-   * **Stable identity required.** The transport is rebuilt whenever
-   * the `bindings.bridges` / `bindings.receiverLayers` reference
-   * changes (so the dispatch fiber, the outbound queue, and each
-   * binding's `onTransportReady` re-fire). Pass a `useMemo`-ed value
-   * from the calling component (or a module-level constant) — a fresh
-   * literal rebuilds the transport on every render, which is almost
-   * never what you want.
+   * **Stable identity required.** The transport is rebuilt only when
+   * the `bindings.bridges` reference changes (so the dispatch fiber,
+   * the two queues, and each binding's `onTransportReady` re-fire). A
+   * `bindings.handlers` reference flip swaps the active handler records
+   * in place via `registerHandlers` — no rebuild. Pass a `useMemo`-ed
+   * value from the calling component (or a module-level constant) — a
+   * fresh literal rebuilds the transport on every render, which is
+   * almost never what you want.
    */
   readonly bindings: HostBindings.HostBindings<Bridges>
   /**
@@ -82,49 +83,51 @@ interface BridgedWebViewProps<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
 }
 
 /**
- * Built transport handle. `embedUrl` carries the configured base URL
- * with each binding's `initialMessages` appended as `?<Tag>=<value>`
- * query parameters; `sendMessage` is the typed Host→Web sender;
- * `onMessage` consumes inbound message payloads and routes them
- * through the dispatch fiber. `setLayers` swaps the active receiver
- * layers without rebuilding the transport (see
- * {@link BridgeTransport.BridgeTransport.setLayers}).
+ * Built transport handle, stashed in a ref once the build fiber
+ * resolves. `sendMessage` is the typed Host→Web sender; `onMessage`
+ * pushes an inbound payload into the dispatch fiber's inbox;
+ * `registerHandlers` swaps the active handler records without
+ * rebuilding the transport (see
+ * {@link BridgeTransport.BridgeTransport.registerHandlers}).
  */
 interface BuiltTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   readonly sendMessage: BridgeTransport.MessageSender<Bridges, 'Host'>
-  readonly embedUrl: string
   readonly onMessage: (raw: string) => Effect.Effect<void>
-  readonly setLayers: (layers: Bridge.TransportLayers<Bridges, 'Host'>) => Effect.Effect<void>
+  readonly registerHandlers: (
+    handlers: Bridge.HandlersByBridge<Bridges, 'Host'>
+  ) => Effect.Effect<void>
 }
 
 /**
- * Generic host shell. Builds the bridge transport on a mount-bound
- * fiber from the supplied `bindings`, stores the resulting handle in
- * local state, fires each binding's `onTransportReady` from a separate
- * effect keyed on transport identity, and renders a
- * {@link TransportWebView}.
+ * Generic host shell. Computes the WebView's URL synchronously and
+ * mounts a {@link TransportWebView} on the first render — under the
+ * host's native splash — so the page starts downloading immediately
+ * while the bridge transport builds on a mount-bound fiber in parallel.
+ * The built transport is stashed in a ref (nothing in render depends on
+ * it), each binding's `onTransportReady` fires from the same build
+ * fiber, and a `bindings.handlers` flip swaps the live handler records
+ * through `registerHandlers` without a rebuild.
  *
  * @remarks
- * `transport` starts `null`; while the fiber is still building it we
- * render `loader ?? null` (single render flash — no real I/O happens
- * during construction). Once the transport is set, the WebView mounts
- * and `loader` overlays it until its first `onLoadEnd` per
- * {@link TransportWebView}'s contract. Changing the
- * `bindings.bridges` / `bindings.receiverLayers` reference rebuilds
- * the transport; `loadFrom` and each binding's `initialMessages` are
- * read at build time only and don't trigger a rebuild on their own.
+ * There is no JS loader gate: the WebView is in the tree from the start.
+ * Hosts that want a covering placeholder during page load pass `loader`
+ * (overlaid by {@link TransportWebView} until its first `onLoadEnd`);
+ * the app shell instead lets the native splash cover the load and hides
+ * it on the page's UI-ready signal. Changing the `bindings.bridges`
+ * reference tears down and rebuilds the transport; `loadFrom` and each
+ * binding's `initialMessages` are URL-baked at first render and don't
+ * trigger a rebuild on their own.
  *
  * @example
  * ```tsx
  * const bindings = useMemo(
- *   () => HostBindings.combine(navBindings, logBindings),
+ *   () => HostBindings.combine([navBindings, logBindings]),
  *   [navBindings, logBindings]
  * )
  * return (
  *   <BridgedWebView
  *     bindings={bindings}
  *     loadFrom={{ _tag: 'uri', uri: 'https://app.example.com/' }}
- *     loader={<ActivityIndicator />}
  *   />
  * )
  * ```
@@ -136,173 +139,158 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   shouldOpenInSystemBrowser,
   injectedJavaScriptBeforeContentLoaded,
 }: BridgedWebViewProps<Bridges>): JSX.Element => {
-  const webviewBareSenderRef = useRef<BareSenderService | null>(null)
+  const { bridges, handlers } = bindings
 
-  const [transport, setTransport] = useState<BuiltTransport<Bridges> | null>(null)
+  const transportRef = useRef<BuiltTransport<Bridges> | null>(null)
+
+  // First-render bindings, frozen. `initialMessages` are URL-baked once
+  // and `handlers` seed the transport's initial handler map; a later
+  // sibling-binding flip is reconciled by the `registerHandlers` effect
+  // below, never by re-reading this ref.
+  const initialBindingsRef = useRef(bindings)
+
+  // Bare-sender handle as a Deferred the build fiber's adapter awaits,
+  // so a host→web send never observes a missing WebView. Resolved by
+  // the WebView ref callback once react-native-webview attaches its
+  // imperative handle. Created eagerly (running `Deferred.make` only
+  // allocates) so the ref callback — which fires during commit, before
+  // the build fiber runs — has something to resolve.
+  const bareSenderDeferredRef = useRef<Deferred.Deferred<BareSenderFunction> | null>(null)
+  if (bareSenderDeferredRef.current === null) {
+    bareSenderDeferredRef.current = Effect.runSync(Deferred.make<BareSenderFunction>())
+  }
+  const bareSenderDeferred = bareSenderDeferredRef.current
+
+  const bareSenderRefCallback = useCallback(
+    (handle: BareSenderService | null): void => {
+      if (handle === null) return
+      // Idempotent: a re-attach (same WebView instance) re-succeeds a
+      // resolved Deferred, which is a no-op.
+      Effect.runSync(Deferred.succeed(bareSenderDeferred, (encoded) => handle.bareSender(encoded)))
+    },
+    [bareSenderDeferred]
+  )
 
   const transportBaseUrl = loadFrom._tag === 'uri' ? loadFrom.uri : loadFrom.baseUrl
 
-  const source = useMemo<TransportWebViewSource | null>(() => {
-    if (transport === null) return null
-    if (loadFrom._tag === 'html') {
-      return { html: loadFrom.html, baseUrl: transport.embedUrl }
-    }
-    return { uri: transport.embedUrl }
-  }, [loadFrom, transport])
+  // Synchronous so the WebView mounts on the first render. The page
+  // reads `window.location.search` at boot; `appendMessagesToUrl`
+  // validates each message has a urlParams schema (throws on mismatch —
+  // wiring drift fails fast). `flattenTuples` collapses the parallel
+  // `initialMessages` mapped-tuple into one flat sequence while
+  // preserving the union over `Bridges`, so no cast is needed. Read off
+  // the frozen first-render bindings: the URL can't be re-seeded
+  // mid-life without a remount.
+  const embedUrl = useMemo(() => {
+    const flatInitial = flattenTuples(initialBindingsRef.current.initialMessages)
+    return UrlParamMessage.appendMessagesToUrl(
+      new URL(transportBaseUrl),
+      bridges,
+      flatInitial
+    ).toString()
+  }, [bridges, transportBaseUrl])
 
-  const { bridges, receiverLayers } = bindings
-  // Stable ref to the current receiver layers so the (build-once)
-  // buildEffect closure captures the initial value while the
-  // layer-sync effect below can still observe React-render reference
-  // flips and call `setLayers`. Without the ref, the buildEffect's
-  // `useMemo([bridges])` would freeze whichever receiverLayers it
-  // first saw, and a later sibling-binding flip during the build
-  // window would never make it into the transport.
-  const initialReceiverLayersRef = useRef(receiverLayers)
-  const initialBindingsRef = useRef(bindings)
-
-  const transportReadyEffect = useMemo(() => {
-    if (transport === null) return Effect.void
-
-    return HostBindings.callTransportReady(bindings, transport.sendMessage)
-  }, [bindings, transport])
-
-  useComponentScopedRunner(transportReadyEffect)
-
-  // Reset to the loader on the rare `bridges` change. With the
-  // post-mount `setLayers` path below, `receiverLayers` flips no
-  // longer tear down the transport — only a bridges-set change
-  // (slice added/removed) forces a rebuild, since the schema union
-  // and outbound sender map are bridges-derived.
-  useEffect(
-    () => (): void => {
-      setTransport(null)
-    },
-    [bridges]
+  const source = useMemo<TransportWebViewSource>(
+    () =>
+      loadFrom._tag === 'html' ? { html: loadFrom.html, baseUrl: embedUrl } : { uri: embedUrl },
+    [loadFrom, embedUrl]
   )
 
   const buildEffect = useMemo(
     () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          // `react-native-webview`'s imperative `postMessage(string)`
-          // doesn't take a `targetOrigin`. Pre-mount sends warn and
-          // drop; post-mount messages flow live to the page. Sends
-          // also suspend on the page's `__Ready` post (handshake
-          // gating inside `BridgeTransport.make`).
-          const bareSender: BareSenderFunction = (encoded) =>
-            Effect.gen(function* () {
-              const handle = webviewBareSenderRef.current
-              if (handle === null) {
-                yield* Effect.logWarning(
-                  `[effect-messaging] sendMessage: no WebView handle yet; dropping. Pre-mount messages should ride initialMessages.`
-                )
-                return undefined
-              }
-              return yield* handle.bareSender(encoded)
-            })
+      Effect.gen(function* () {
+        // `react-native-webview`'s imperative `postMessage(string)`
+        // doesn't take a `targetOrigin`. Awaiting the Deferred blocks
+        // the send until the WebView handle exists; sends also gate on
+        // the page's `__Ready` post inside the transport's outbox pump.
+        const bareSender: BareSenderFunction = (encoded) =>
+          Deferred.await(bareSenderDeferred).pipe(Effect.flatMap((send) => send(encoded)))
 
-          // The page reads `window.location.search` synchronously at
-          // boot; `appendMessagesToUrl` validates each message has a
-          // urlParams schema (throws on mismatch — wiring drift fails
-          // fast). `flattenTuples` (kitchen-sink) collapses the
-          // parallel `initialMessages` mapped-tuple into one flat
-          // sequence while preserving the union over `Bridges`, so no
-          // cast is needed. `initialBindingsRef.current` carries the
-          // freshest `initialMessages` tuple at build time — usually
-          // the first-render value, but if a sibling binding flipped
-          // between mount and this build firing, we pick up the
-          // newer URL-seeded payloads.
-          const baseUrlParsed = new URL(transportBaseUrl)
-          const flatInitial = flattenTuples(initialBindingsRef.current.initialMessages)
-          const embedUrl = UrlParamMessage.appendMessagesToUrl(
-            baseUrlParsed,
-            bridges,
-            flatInitial
-          ).toString()
+        // The Expo platform doesn't attach its own listener — the
+        // consumer wires `onMessage` to the WebView's `onMessage` prop.
+        const adapter: TransportAdapter['Type'] = {
+          bareSender,
+          drainInitial: Effect.succeed([]),
+        }
 
-          // The Expo platform doesn't attach its own listener — the
-          // consumer wires `onMessage` to the WebView's `onMessage` prop.
-          const adapter: TransportAdapter['Type'] = {
-            bareSender,
-            drainInitial: Effect.succeed([]),
+        const built = yield* BridgeTransport.make({
+          bridges,
+          handlers: initialBindingsRef.current.handlers,
+          side: 'Host',
+        }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter)))
+
+        yield* Effect.sync(() => {
+          transportRef.current = {
+            sendMessage: built.sendMessage,
+            onMessage: (raw) => built.enqueue(raw),
+            registerHandlers: built.registerHandlers,
           }
-
-          const built = yield* BridgeTransport.make({
-            bridges,
-            layers: initialReceiverLayersRef.current,
-            side: 'Host',
-          }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter)))
-
-          const onMessage = (raw: string): Effect.Effect<void> => built.enqueue(raw)
-
-          yield* Effect.sync(() =>
-            setTransport({
-              sendMessage: built.sendMessage,
-              embedUrl,
-              onMessage,
-              setLayers: built.setLayers,
-            })
-          )
-          // Park the fiber until `useComponentScopedRunner`'s cleanup
-          // interrupts it — closing the scope tears down
-          // `BridgeTransport.make`'s dispatch fiber + outbound queue.
-          yield* Effect.never
         })
+
+        // Fire each binding's `onTransportReady` once the transport
+        // exists; the sender identity is stable for its lifetime, so a
+        // single firing (re-fired only on a bridges rebuild) is correct.
+        yield* HostBindings.callTransportReady(initialBindingsRef.current, built.sendMessage)
+
+        // Park until `useComponentScopedRunner`'s cleanup interrupts —
+        // closing the scope tears down both queues and both fibers.
+        yield* Effect.never
+      }).pipe(
+        Effect.scoped,
+        Effect.ensuring(
+          Effect.sync(() => {
+            transportRef.current = null
+          })
+        )
       ),
-    // Bridges-keyed only. `initialMessages` / `transportBaseUrl` /
-    // `receiverLayers` are intentionally excluded: the first two
-    // are URL-baked at build time and can't be reapplied mid-life
-    // without a remount; the third flows through `setLayers` (the
-    // sync effect below) so the transport stays alive across
-    // sibling-binding rerenders.
+    // Bridges-keyed only. `initialMessages` / `transportBaseUrl` are
+    // URL-baked at build time and can't be reapplied mid-life without a
+    // remount; `handlers` flow through `registerHandlers` (the sync
+    // effect below) so the transport survives sibling-binding rerenders.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
     [bridges]
   )
 
   useComponentScopedRunner(buildEffect)
 
-  // Layer sync: when `receiverLayers` reference flips (typically a
-  // sibling binding re-rendering — token arrival, modal state, etc.),
-  // discharge the new layers into the existing transport's handler
-  // Ref via `setLayers`. The dispatch fiber, queue, schema union,
-  // and `peerReady` Deferred all persist; only the per-bridge
-  // handler map swaps. Bypasses the loader entirely — the WebView
-  // never unmounts.
-  //
-  // No cleanup interrupt: `setLayers` is one-shot and fast (build
-  // the new handler-by-tag map, write the handlers Ref). Interrupting
-  // mid-discharge would leak the partially-allocated handler
-  // resources into the transport's outerScope while leaving the Ref
-  // pointing at the prior layers, so rapid receiverLayers flips
-  // (A→B→C) could yield A still in the ref + B's resources orphaned
-  // in outerScope + C eventually succeeds — O(N) accumulation per
-  // flip on a frequently-re-rendering sibling binding. Letting each
-  // discharge run to completion is the safer trade.
+  // Handler sync: when `handlers` reference flips (typically a sibling
+  // binding re-rendering — token arrival, modal state, etc.), route the
+  // new records through `registerHandlers`. Ordered against in-flight
+  // inbound via the inbox queue; a message that arrived before its
+  // handler was registered is parked and replayed on swap. The two
+  // queues, both fibers, the schema union, and `peerReady` all persist.
   useEffect(() => {
+    // Skip the initial render: the first `handlers` value is already
+    // baked into the transport via `BridgeTransport.make`'s initial arg.
+    if (handlers === initialBindingsRef.current.handlers) return undefined
+    const transport = transportRef.current
     if (transport === null) return undefined
-    // Skip the initial render: the first `receiverLayers` value is
-    // already baked into the transport via `BridgeTransport.make`'s
-    // initial-layers arg above.
-    if (receiverLayers === initialReceiverLayersRef.current) return undefined
-    Effect.runFork(transport.setLayers(receiverLayers))
+    Effect.runFork(transport.registerHandlers(handlers))
     return undefined
-  }, [receiverLayers, transport])
-
-  if (transport === null || source === null) return loader ?? <></>
+  }, [handlers])
 
   return (
     <TransportWebView
-      ref={webviewBareSenderRef}
+      ref={bareSenderRefCallback}
       source={source}
       onMessage={(event): void => {
-        // `react-native-webview`'s `onMessage` is a synchronous
-        // `void` callback. `transport.onMessage` returns the queue
-        // `offer` Effect; passing it through as a value (or calling
-        // it inline without running) would construct the Effect and
-        // drop it, silently losing every page→host message including
-        // the `__Ready` handshake. A detached fork is sufficient
-        // because the underlying queue is unbounded.
+        // `react-native-webview`'s `onMessage` is a synchronous `void`
+        // callback. `transport.onMessage` returns the inbox `offer`
+        // Effect; running it inline as a value would construct and drop
+        // it, silently losing every page→host message including the
+        // `__Ready` handshake. A detached fork suffices (the inbox is
+        // unbounded). The transport is built well before the page can
+        // post (its bundle has to load first), so the null branch is a
+        // loud guard rather than an expected path.
+        const transport = transportRef.current
+        if (transport === null) {
+          Effect.runFork(
+            Effect.logWarning(
+              `[effect-messaging] onMessage before transport built; dropping "${event.nativeEvent.data}".`
+            )
+          )
+          return
+        }
         Effect.runFork(transport.onMessage(event.nativeEvent.data))
       }}
       loader={loader}

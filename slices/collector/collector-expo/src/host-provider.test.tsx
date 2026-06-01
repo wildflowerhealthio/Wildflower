@@ -4,9 +4,6 @@ import { fc, test as fcTest } from '@fast-check/jest'
 import { act, render } from '@testing-library/react-native'
 import type * as BrowserSnifferExpoModule from 'browser-sniffer-expo'
 import type { CollectorBridge as CollectorBridgeType } from 'collector-fundamentals/bridge'
-import type * as CollectorBridgeModule from 'collector-fundamentals/bridge'
-import type * as EffectModule from 'effect'
-import type { Layer } from 'effect'
 import { Effect } from 'effect'
 import {
   TestPlatformAdapterLayer,
@@ -49,40 +46,12 @@ jest.mock(
   'expo-router',
   (): Partial<typeof ExpoRouterModule> => ({
     useRouter: (): ReturnType<typeof ExpoRouterModule.useRouter> =>
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the real `useRouter` returns a `Router` interface with ~12 fields; stubbing only the two methods used by `useCollectorReceiverLayer` keeps the mock minimal.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the real `useRouter` returns a `Router` interface with ~12 fields; stubbing only the two methods used by `useCollectorHostHandlers` keeps the mock minimal.
       ({
         push: mockHarness.routerPush,
         back: mockHarness.routerBack,
       }) as unknown as ReturnType<typeof ExpoRouterModule.useRouter>,
   })
-)
-
-jest.mock(
-  'collector-fundamentals/bridge',
-  (): Partial<typeof CollectorBridgeModule> & { __esModule: true } => {
-    const { Effect: EffectInner, Layer: LayerInner } =
-      jest.requireActual<typeof EffectModule>('effect')
-    return {
-      __esModule: true,
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the real `default` is a full `Bridge.Bridge<...>` with name, hostToWeb, webToHost, Host, Web; the routing-side tests only reach into `.Host.ReceiverLayer`.
-      CollectorBridge: {
-        Host: {
-          ReceiverLayer: (
-            handlers: CapturedHandlers
-          ): Layer.Layer<MessageHandler.TagId<'Collector', 'Host'>> => {
-            mockHarness.lastHandlers = handlers
-            // The discard layer satisfies the structural shape but
-            // doesn't bind the phantom Id — routing-side tests
-            // capture handlers rather than resolving from the tag.
-            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-            return LayerInner.effectDiscard(EffectInner.void) as Layer.Layer<
-              MessageHandler.TagId<'Collector', 'Host'>
-            >
-          },
-        },
-      } as unknown as typeof CollectorBridgeModule.CollectorBridge,
-    }
-  }
 )
 
 jest.mock('browser-sniffer-expo', (): Partial<typeof BrowserSnifferExpoModule> => {
@@ -123,7 +92,7 @@ import { useCollectorHost } from './collector-host-context.tsx'
 import {
   CollectorHostProvider,
   useAsBrowserSnifferOutlet,
-  useCollectorReceiverLayer,
+  useCollectorHostHandlers,
   type CollectorHostProviderProps,
 } from './index.ts'
 
@@ -131,7 +100,7 @@ type SnifferSender = BridgeTransport.MessageSender<readonly [typeof BrowserSniff
 
 const requireLastHandlers = (): CapturedHandlers => {
   if (mockHarness.lastHandlers === null) {
-    throw new Error('CollectorBridge.Host.ReceiverLayer mock never captured handlers')
+    throw new Error('useCollectorHostHandlers never captured a handler record')
   }
   return mockHarness.lastHandlers
 }
@@ -143,8 +112,8 @@ const TestProbe = ({
   readonly onReady?: (host: ReturnType<typeof useCollectorHost>) => void
   readonly sender?: SnifferSender
 }): ReactElement | null => {
-  // Build the layer so the receiver-layer mock captures handlers.
-  useCollectorReceiverLayer()
+  // Render the hook so its returned handler record is captured.
+  mockHarness.lastHandlers = useCollectorHostHandlers()
   const host = useCollectorHost()
   useAsBrowserSnifferOutlet(sender ?? (() => Effect.void))
   onReady?.(host)
@@ -228,7 +197,7 @@ describe('routing handlers (RequestSniffableWebView / Open)', () => {
     expect(mockHarness.routerPush).toHaveBeenCalledWith('/custom-modal')
   })
 
-  // The host-side defense-in-depth check in `useCollectorReceiverLayer` refuses
+  // The host-side defense-in-depth check in `useCollectorHostHandlers` refuses
   // any `{_tag: 'Uri'}` URI that doesn't case-insensitively start with
   // `http(s)://`. The bridge schema already pins `Uri` to `https://`
   // only, so the branch is belt-and-suspenders — fuzz it against any
@@ -344,7 +313,7 @@ describe('sniffer-control forwarding (Click / CancelSnifferRequest)', () => {
     // No `TestProbe` registers a sender — the pipe's default handler
     // logs a warning and succeeds.
     const NoopProbe = (): ReactElement | null => {
-      useCollectorReceiverLayer()
+      mockHarness.lastHandlers = useCollectorHostHandlers()
       return null
     }
     render(

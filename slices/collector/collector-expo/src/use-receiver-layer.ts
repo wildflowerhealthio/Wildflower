@@ -1,7 +1,7 @@
-import { CollectorBridge } from 'collector-fundamentals/bridge'
+import type { CollectorBridge } from 'collector-fundamentals/bridge'
 import type { WebViewSource } from 'collector-fundamentals/model'
-import { Effect, type Layer } from 'effect'
-import type { MessageHandler } from 'effect-messaging-core'
+import { Effect } from 'effect'
+import type { Bridge } from 'effect-messaging-core'
 import { useRouter } from 'expo-router'
 import { useCallback, useMemo } from 'react'
 
@@ -9,7 +9,7 @@ import { useCollectorHost } from './collector-host-context.tsx'
 import { useBrowserSnifferSender } from './message-sender-pipes.tsx'
 
 /**
- * Build the host-side `ReceiverLayer` for `CollectorBridge`.
+ * Build the host-side inbound handler record for `CollectorBridge`.
  *
  * Must be called under {@link CollectorHostProvider} —
  * `useCollectorHost` throws otherwise.
@@ -29,7 +29,7 @@ import { useBrowserSnifferSender } from './message-sender-pipes.tsx'
  *    screen mounts. The pipe suspends on the sender slot and
  *    warn-and-drops pre-mount.
  */
-const useCollectorReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collector', 'Host'>> => {
+const useCollectorHostHandlers = (): Bridge.HalfHandlers<(typeof CollectorBridge)['Host']> => {
   const { setPendingSource, modalPath } = useCollectorHost()
   const router = useRouter()
   const sendToSniffer = useBrowserSnifferSender()
@@ -46,27 +46,26 @@ const useCollectorReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collecto
   )
 
   return useMemo(
-    () =>
-      CollectorBridge.Host.ReceiverLayer({
-        RequestSniffableWebView: ({ source }) =>
-          Effect.suspend(() => {
-            // Defense-in-depth: refuse non-`http(s)://` URIs even
-            // though the bridge schema already restricts `Uri` to
-            // `https://`. Case-insensitive so a future schema
-            // relaxation accepting mixed casing still passes this
-            // guard.
-            if (source._tag === 'Uri' && !/^https?:\/\//i.test(source.uri)) {
-              return Effect.logWarning(
-                'collector-expo: refusing non-http(s) RequestSniffableWebView URI'
-              ).pipe(Effect.annotateLogs({ uri: source.uri }))
-            }
-            return Effect.sync(() => pushModal(source))
-          }),
-        Open: ({ source }) => Effect.sync(() => setPendingSource(source)),
-        SniffingComplete: () => Effect.sync(() => router.back()),
-        Click: sendToSniffer,
-        CancelSnifferRequest: sendToSniffer,
-      }),
+    () => ({
+      RequestSniffableWebView: ({ source }) =>
+        Effect.suspend(() => {
+          // Defense-in-depth: refuse non-`http(s)://` URIs even
+          // though the bridge schema already restricts `Uri` to
+          // `https://`. Case-insensitive so a future schema
+          // relaxation accepting mixed casing still passes this
+          // guard.
+          if (source._tag === 'Uri' && !/^https?:\/\//i.test(source.uri)) {
+            return Effect.logWarning(
+              'collector-expo: refusing non-http(s) RequestSniffableWebView URI'
+            ).pipe(Effect.annotateLogs({ uri: source.uri }))
+          }
+          return Effect.sync(() => pushModal(source))
+        }),
+      Open: ({ source }) => Effect.sync(() => setPendingSource(source)),
+      SniffingComplete: () => Effect.sync(() => router.back()),
+      Click: sendToSniffer,
+      CancelSnifferRequest: sendToSniffer,
+    }),
     // `router` and `setPendingSource` are captured directly by
     // `SniffingComplete` and `Open` (not transitively via `pushModal`),
     // so they must stay listed independently.
@@ -74,4 +73,4 @@ const useCollectorReceiverLayer = (): Layer.Layer<MessageHandler.TagId<'Collecto
   )
 }
 
-export { useCollectorReceiverLayer }
+export { useCollectorHostHandlers }

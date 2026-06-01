@@ -9,7 +9,7 @@ let mockLastBridgedWebViewProps: {
   readonly loadFrom: { readonly _tag: 'html'; readonly html: string; readonly baseUrl: string }
   readonly bindings: {
     readonly bridges: ReadonlyArray<{ readonly name?: string }>
-    readonly receiverLayers: ReadonlyArray<unknown>
+    readonly handlers: ReadonlyArray<unknown>
     readonly initialMessages: ReadonlyArray<ReadonlyArray<unknown>>
     readonly onTransportReady: ReadonlyArray<
       | ((
@@ -28,9 +28,6 @@ let mockLastBridgedWebViewProps: {
 // shape at runtime.
 jest.mock('effect-messaging-expo', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
-  )
   return {
     BridgedWebView: function MockBridgedWebView(
       props: NonNullable<typeof mockLastBridgedWebViewProps>
@@ -40,12 +37,12 @@ jest.mock('effect-messaging-expo', () => {
     },
     useLogHostBinding: (): {
       readonly bridges: ReadonlyArray<{ readonly name: string }>
-      readonly receiverLayers: ReadonlyArray<unknown>
+      readonly handlers: ReadonlyArray<unknown>
       readonly initialMessages: ReadonlyArray<ReadonlyArray<unknown>>
       readonly onTransportReady: ReadonlyArray<undefined>
     } => ({
       bridges: [{ name: 'Log' }],
-      receiverLayers: [effect.Layer.effectDiscard(effect.Effect.void)],
+      handlers: [{}],
       initialMessages: [[]],
       onTransportReady: [undefined],
     }),
@@ -59,7 +56,7 @@ jest.mock('effect-messaging-expo', () => {
  */
 type MockBindings = {
   readonly bridges: ReadonlyArray<{ readonly name: string }>
-  readonly receiverLayers: ReadonlyArray<unknown>
+  readonly handlers: ReadonlyArray<unknown>
   readonly initialMessages: ReadonlyArray<ReadonlyArray<unknown>>
   readonly onTransportReady: ReadonlyArray<
     | ((
@@ -94,7 +91,7 @@ expectTypeOf<keyof MockBindings>().toEqualTypeOf<
 // input fields and returns the same four arrays it received.
 const singleMock = (binding: {
   readonly bridge: { readonly name: string }
-  readonly receiverLayer: unknown
+  readonly handlers: unknown
   readonly initialMessages?: ReadonlyArray<unknown>
   readonly onTransportReady?: (
     send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
@@ -121,9 +118,6 @@ let mockNavigationOptions: {
   ) => EffectType.Effect<void>
 } | null = null
 jest.mock('navigation-expo', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
-  )
   return {
     NavigationBridgeExpo: {
       useHostBinding: (options: {
@@ -137,7 +131,7 @@ jest.mock('navigation-expo', () => {
         mockNavigationOptions = options
         return singleMock({
           bridge: { name: 'Navigation' },
-          receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
+          handlers: {},
           initialMessages:
             options.initialRoute === undefined
               ? undefined
@@ -175,7 +169,7 @@ jest.mock('gatekeeper-expo', () => {
         mockGatekeeperOptions = options
         return singleMock({
           bridge: { name: 'Gatekeeper' },
-          receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
+          handlers: {},
           initialMessages: [],
           onTransportReady: (
             send: (msg: {
@@ -193,30 +187,24 @@ jest.mock('gatekeeper-expo', () => {
 })
 
 jest.mock('collector-expo', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
-  )
   return {
     useCollectorHostBinding: (): MockBindings =>
       singleMock({
         bridge: { name: 'Collector' },
-        receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
+        handlers: {},
       }),
   }
 })
 
 let mockAppsOptions: { store?: unknown } | null = null
 jest.mock('apps-expo', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
-  )
   return {
     AppsBridgeExpo: {
       useHostBinding: (options: { store?: unknown }): MockBindings => {
         mockAppsOptions = options
         return singleMock({
           bridge: { name: 'Apps' },
-          receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
+          handlers: {},
         })
       },
     },

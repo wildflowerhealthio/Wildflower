@@ -68,7 +68,7 @@ const useGatekeeperHostBinding = ({
     () =>
       HostBindings.single({
         bridge: GatekeeperBridge,
-        receiverLayer: GatekeeperBridge.Host.ReceiverLayer({}),
+        handlers: {},
         initialMessages: [],
         onTransportReady: (send: GatekeeperSender) =>
           Effect.sync(() => {

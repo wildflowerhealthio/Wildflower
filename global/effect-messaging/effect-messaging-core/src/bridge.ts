@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import type * as MessageHandler from './message-handler.ts'
 import * as Message from './message.ts'
 import { TransportAdapter } from './transport-adapter.ts'
@@ -12,21 +12,9 @@ type SenderFn<R extends Message.SchemaRecord> = (
 ) => Effect.Effect<void, never, TransportAdapter>
 
 /** One side of a bridge. `Outbound` is what this side sends; `Inbound` is what it receives. */
-interface Half<
-  Name extends string,
-  Side extends 'Host' | 'Web',
-  Outbound extends Message.SchemaRecord,
-  Inbound extends Message.SchemaRecord,
-> {
+interface Half<Outbound extends Message.SchemaRecord, Inbound extends Message.SchemaRecord> {
   readonly OutboundSchemas: Outbound
   readonly InboundSchemas: Inbound
-  readonly HandlerTag: Context.Tag<
-    MessageHandler.TagId<Name, Side>,
-    MessageHandler.HandlersFor<Inbound>
-  >
-  readonly ReceiverLayer: (
-    handlers: MessageHandler.HandlersFor<Inbound>
-  ) => Layer.Layer<MessageHandler.TagId<Name, Side>>
   readonly send: SenderFn<Outbound>
 }
 
@@ -53,8 +41,8 @@ interface Bridge<
   WebToHost extends Message.SchemaRecord,
 > {
   readonly name: Name
-  readonly Host: Half<Name, 'Host', HostToWeb, WebToHost>
-  readonly Web: Half<Name, 'Web', WebToHost, HostToWeb>
+  readonly Host: Half<HostToWeb, WebToHost>
+  readonly Web: Half<WebToHost, HostToWeb>
   readonly MessageSchemas: HostToWeb & WebToHost
   readonly UrlParamSchemas: UrlParamSchemas<HostToWeb>
 }
@@ -63,17 +51,23 @@ interface Bridge<
  * Structural bound for "any half of a bridge a transport can drive".
  *
  * @remarks
- * `Context.Tag<any, any>` and `(m: never) => …` widen invariant
- * positions so concrete halves fit. See `README.md` for the full
- * variance write-up.
+ * `(m: never) => …` widens the invariant `send` position so concrete
+ * halves fit. See `README.md` for the full variance write-up.
  */
 type AnyHalf = {
   readonly InboundSchemas: Message.SchemaRecord
   readonly OutboundSchemas: Message.SchemaRecord
-  // oxlint-disable-next-line typescript/no-explicit-any
-  readonly HandlerTag: Context.Tag<any, any>
   readonly send: (m: never) => Effect.Effect<void, never, TransportAdapter>
 }
+
+/**
+ * The inbound-handler record for a bridge half — `HandlersFor` keyed by
+ * the half's `InboundSchemas`. This is what a receiver supplies and what
+ * the transport routes inbound messages through. Replaces the former
+ * `Half.HandlerTag['Service']` accessor now that handlers are passed as
+ * plain records rather than discharged from a `Context.Tag`.
+ */
+type HalfHandlers<H extends AnyHalf> = MessageHandler.HandlersFor<H['InboundSchemas']>
 
 /** Structural bound for "any wired bridge". */
 type AnyBridge = {
@@ -134,11 +128,11 @@ type UrlParamableMessage<Bridges extends ReadonlyArray<AnyBridge>> = Bridges[num
   : never
 
 /**
- * Tuple-mapped layers requirement for a bridge transport. Position `I` must
- * supply position `I`'s bridge tag (for the specified side).
+ * Tuple-mapped handler requirement for a bridge transport. Position `I`
+ * carries position `I`'s inbound-handler record (for the specified side).
  */
-type TransportLayers<Bridges extends ReadonlyArray<AnyBridge>, Side extends 'Host' | 'Web'> = {
-  readonly [I in keyof Bridges]: Layer.Layer<Bridges[I][Side]['HandlerTag']['Identifier']>
+type HandlersByBridge<Bridges extends ReadonlyArray<AnyBridge>, Side extends 'Host' | 'Web'> = {
+  readonly [I in keyof Bridges]: HalfHandlers<Bridges[I][Side]>
 }
 
 /**
@@ -179,23 +173,11 @@ const make = <
   const hostToWebRecord = Message.recordFromPairs<HostToWebPairs>(definition.hostToWeb)
   const webToHostRecord = Message.recordFromPairs<WebToHostPairs>(definition.webToHost)
 
-  const HostHandlerTag = Context.GenericTag<
-    MessageHandler.TagId<Name, 'Host'>,
-    MessageHandler.HandlersFor<Message.RecordFromPairs<WebToHostPairs>>
-  >(`${definition.name}.Host.HandlerTag`)
-
-  const WebHandlerTag = Context.GenericTag<
-    MessageHandler.TagId<Name, 'Web'>,
-    MessageHandler.HandlersFor<Message.RecordFromPairs<HostToWebPairs>>
-  >(`${definition.name}.Web.HandlerTag`)
-
   return {
     name: definition.name,
     Host: {
       OutboundSchemas: hostToWebRecord,
       InboundSchemas: webToHostRecord,
-      HandlerTag: HostHandlerTag,
-      ReceiverLayer: (handlers) => Layer.succeed(HostHandlerTag, handlers),
       send: (message) =>
         // `message` is `Message.Of<...>` (abstract); runtime invariant: every value is a tagged struct.
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
@@ -204,8 +186,6 @@ const make = <
     Web: {
       OutboundSchemas: webToHostRecord,
       InboundSchemas: hostToWebRecord,
-      HandlerTag: WebHandlerTag,
-      ReceiverLayer: (handlers) => Layer.succeed(WebHandlerTag, handlers),
       send: (message) =>
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
         sendThrough(webToHostRecord, message as { readonly _tag: string }),
@@ -246,8 +226,9 @@ export type {
   AnyHalf,
   Bridge,
   Half,
+  HalfHandlers,
+  HandlersByBridge,
   SendableMessage,
-  TransportLayers,
   UrlParamableMessage,
   UrlParamSchemas,
 }

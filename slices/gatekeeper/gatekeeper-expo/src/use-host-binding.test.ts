@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native'
-import { Context, Deferred, Effect, Layer, type Layer as LayerNs } from 'effect'
-import type { HostBindings, MessageHandler } from 'effect-messaging-core'
+import { Deferred, Effect } from 'effect'
+import type { HostBindings } from 'effect-messaging-core'
 import { expectTypeOf } from 'expect-type'
 import type { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { GatekeeperBridgeExpo } from './index.ts'
@@ -18,28 +18,12 @@ expectTypeOf(useGatekeeperHostBinding).parameters.toEqualTypeOf<
   [({ readonly token?: string } | undefined)?]
 >()
 
-describe('useGatekeeperHostBinding receiverLayer', () => {
-  it('builds at runtime and provides the Gatekeeper Host handler tag with no message handlers (Gatekeeper has no web→host messages)', async () => {
+describe('useGatekeeperHostBinding handlers', () => {
+  it('exposes an empty Gatekeeper Host handler record (Gatekeeper has no web→host messages)', () => {
     const { result } = renderHook(() => useGatekeeperHostBinding())
-    const layer: LayerNs.Layer<MessageHandler.TagId<'Gatekeeper', 'Host'>> =
-      result.current.receiverLayers[0]
-
-    // Re-derive the tag instance so we can read it out of the built context.
-    const tag = Context.GenericTag<
-      MessageHandler.TagId<'Gatekeeper', 'Host'>,
-      Record<string, never>
-    >('Gatekeeper.Host.HandlerTag')
-
-    const handlers = await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const ctx = yield* Layer.build(layer)
-          return Context.get(ctx, tag)
-        })
-      )
-    )
-
-    expect(handlers).toEqual({})
+    // The single bridge's inbound handler record is the binding's
+    // `handlers[0]` slot — empty, since Gatekeeper is host→web only.
+    expect(result.current.handlers[0]).toEqual({})
   })
 })
 

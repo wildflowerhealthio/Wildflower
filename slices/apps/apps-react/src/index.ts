@@ -1,4 +1,4 @@
-export { appsWebReceiverLayer } from './runtime/tunnel-resolver-ref.ts'
+export { appsWebHandlers } from './runtime/tunnel-resolver-ref.ts'
 export type { TunnelOutcome } from './runtime/tunnel-resolver-ref.ts'
 export {
   AppsSenderProvider,

@@ -1,9 +1,8 @@
-import { Context, Effect, Layer, Logger, LogLevel as EffectLogLevel, Schema } from 'effect'
+import { Effect, Layer, Logger, LogLevel as EffectLogLevel, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
 import * as Logging from './logging.ts'
-import type * as MessageHandler from './message-handler.ts'
 import * as TestPlatformAdapterLayer from './test-platform-adapter-layer.ts'
 
 const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
@@ -16,11 +15,6 @@ describe('Logging — shape', () => {
     expect(Object.keys(Logging.LogBridge.Host.InboundSchemas)).toEqual(['Log'])
     expect(Object.keys(Logging.LogBridge.Web.OutboundSchemas)).toEqual(['Log'])
     expect(Object.keys(Logging.LogBridge.Web.InboundSchemas)).toEqual([])
-  })
-
-  test('the HandlerTag keys reflect the bridge name and side', () => {
-    expect(Logging.LogBridge.Host.HandlerTag.key).toBe('Log.Host.HandlerTag')
-    expect(Logging.LogBridge.Web.HandlerTag.key).toBe('Log.Web.HandlerTag')
   })
 })
 
@@ -69,13 +63,13 @@ describe('Logging — wire round-trip', () => {
   })
 })
 
-describe('Logging.defaultHostReceiverLayer field', () => {
-  test('is the same Layer the bridge would build for the default Log handler', () => {
-    expect(Logging.defaultHostReceiverLayer).toBeDefined()
+describe('Logging.defaultLogHostHandlers field', () => {
+  test('exposes a Log handler', () => {
+    expect(typeof Logging.defaultLogHostHandlers.Log).toBe('function')
   })
 })
 
-describe('Logging.defaultHostReceiverLayer', () => {
+describe('Logging.defaultLogHostHandlers', () => {
   interface CapturedLog {
     readonly level: string
     readonly message: unknown
@@ -90,24 +84,6 @@ describe('Logging.defaultHostReceiverLayer', () => {
       })
     )
 
-  /**
-   * Look up the `Log.Host.HandlerTag` from a built receiver layer.
-   * `Logging.Host.HandlerTag` is the same `Context.Tag` the production
-   * `ReceiverLayer` stores into, so we read from it directly — the
-   * handler-record type comes back narrowed without a local re-declaration.
-   */
-  const resolveHandlers = async (
-    layer: Layer.Layer<MessageHandler.TagId<'Log', 'Host'>>
-  ): Promise<Context.Tag.Service<typeof Logging.LogBridge.Host.HandlerTag>> =>
-    Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const ctx = yield* Layer.build(layer)
-          return Context.get(ctx, Logging.LogBridge.Host.HandlerTag)
-        })
-      )
-    )
-
   test.each([
     ['debug', 'DEBUG'],
     ['info', 'INFO'],
@@ -115,14 +91,15 @@ describe('Logging.defaultHostReceiverLayer', () => {
     ['warn', 'WARN'],
     ['error', 'ERROR'],
   ] as const)('maps wire level %s to Effect.log at %s', async (level, expectedLabel) => {
-    const handlers = await resolveHandlers(Logging.defaultHostReceiverLayer)
     const sink: CapturedLog[] = []
     await Effect.runPromise(
-      handlers.Log({ _tag: 'Log', level, payload: ['hello from the web', { extra: 1 }] }).pipe(
-        Effect.provide(Layer.mergeAll(captureLogs(sink), adapterLayer)),
-        // Default runtime minimum is INFO; lift it so DEBUG surfaces too.
-        Logger.withMinimumLogLevel(EffectLogLevel.All)
-      )
+      Logging.defaultLogHostHandlers
+        .Log({ _tag: 'Log', level, payload: ['hello from the web', { extra: 1 }] })
+        .pipe(
+          Effect.provide(Layer.mergeAll(captureLogs(sink), adapterLayer)),
+          // Default runtime minimum is INFO; lift it so DEBUG surfaces too.
+          Logger.withMinimumLogLevel(EffectLogLevel.All)
+        )
     )
     expect(sink).toHaveLength(1)
     expect(sink[0]?.level).toBe(expectedLabel)

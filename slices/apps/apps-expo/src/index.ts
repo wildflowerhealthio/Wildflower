@@ -1,15 +1,15 @@
-import { ReceiverLayer } from './host-receiver-layer.ts'
+import { makeAppsHostHandlers } from './host-receiver-layer.ts'
 import { useAppsHostBinding } from './use-host-binding.ts'
 
 /**
  * Apps slice Expo host surface. `useHostBinding` is the typical entry
- * point; `ReceiverLayer` is exported for direct composition (e.g. tests).
+ * point; `makeHostHandlers` is exported for direct composition (e.g. tests).
  */
 const AppsBridgeExpo: {
-  readonly ReceiverLayer: typeof ReceiverLayer
+  readonly makeHostHandlers: typeof makeAppsHostHandlers
   readonly useHostBinding: typeof useAppsHostBinding
 } = {
-  ReceiverLayer,
+  makeHostHandlers: makeAppsHostHandlers,
   useHostBinding: useAppsHostBinding,
 }
 

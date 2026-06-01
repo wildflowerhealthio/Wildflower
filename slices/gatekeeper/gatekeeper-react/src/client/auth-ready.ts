@@ -87,8 +87,8 @@ const awaitWebAuthReady = (): Promise<void> => Effect.runPromise(webAuthReadyEff
 
 /**
  * Embedded (`main-embedded`) auth-readiness factory. The host hands the
- * bearer token to the SPA over the gatekeeper bridge after
- * `transport.flushed → transport.signalReady`, so on first paint
+ * bearer token to the SPA over the gatekeeper bridge once the page-side
+ * transport calls `transport.signalReady`, so on first paint
  * `authTokenRef` may still be `null` AND the transport may not yet be
  * ready to even receive the host's `AuthTokenIssued` message.
  *
@@ -101,8 +101,8 @@ const awaitWebAuthReady = (): Promise<void> => Effect.runPromise(webAuthReadyEff
  * rejects with {@link TokenTimeout} on timeout.
  *
  * @param transportReady - Promise that resolves once the page-side
- *   `BridgeTransport` has flushed its initial inbound queue and
- *   signalled the host. The factory shape is what lets the gate stay
+ *   `BridgeTransport` has signalled the host (`signalReady`). The
+ *   factory shape is what lets the gate stay
  *   environment-agnostic — the `_auth` `beforeLoad` only sees the
  *   resolved `() => Promise<void>` and doesn't have to know about the
  *   transport.

@@ -4,12 +4,12 @@ import { HostBindings } from 'effect-messaging-core'
 import { useMemo } from 'react'
 
 import { useCollectorSenderRef } from './message-sender-pipes.tsx'
-import { useCollectorReceiverLayer } from './use-receiver-layer.ts'
+import { useCollectorHostHandlers } from './use-receiver-layer.ts'
 
 /**
  * Host binding for the collector bridge.
  *
- * Wraps {@link useCollectorReceiverLayer} (which reads from the
+ * Wraps {@link useCollectorHostHandlers} (which reads from the
  * surrounding {@link CollectorHostProvider} context) and installs the
  * host-built transport's outbound `CollectorSender` into the
  * {@link CollectorPipe} via its sender ref on `onTransportReady`.
@@ -30,19 +30,19 @@ import { useCollectorReceiverLayer } from './use-receiver-layer.ts'
 const useCollectorHostBinding = (): HostBindings.HostBindings<
   readonly [typeof CollectorBridge]
 > => {
-  const receiverLayer = useCollectorReceiverLayer()
+  const handlers = useCollectorHostHandlers()
   const collectorSenderRef = useCollectorSenderRef()
   return useMemo(
     () =>
       HostBindings.single({
         bridge: CollectorBridge,
-        receiverLayer,
+        handlers,
         onTransportReady: (send) =>
           Effect.sync(() => {
             collectorSenderRef.current = send
           }),
       }),
-    [receiverLayer, collectorSenderRef]
+    [handlers, collectorSenderRef]
   )
 }
 

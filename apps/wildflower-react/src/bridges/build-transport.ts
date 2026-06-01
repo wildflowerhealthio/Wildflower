@@ -1,10 +1,10 @@
-import { appsWebReceiverLayer } from 'apps-react'
-import { collectorWebReceiverLayer } from 'collector-react'
+import { appsWebHandlers } from 'apps-react'
+import { collectorWebHandlers } from 'collector-react'
 import { Effect, Layer, Scope } from 'effect'
 import { BridgeTransport, Logging, TransportAdapter } from 'effect-messaging-core'
 import { WebPlatformAdapter } from 'effect-messaging-react'
-import { gatekeeperWebReceiverLayer } from 'gatekeeper-react/web-bridge'
-import { makeNavigationWebReceiverLayer, type NavTarget } from 'navigation-react'
+import { gatekeeperWebHandlers } from 'gatekeeper-react/web-bridge'
+import { makeNavigationWebHandlers, type NavTarget } from 'navigation-react'
 
 import { bridges } from './bridges.ts'
 import type { ReactTransport } from './transport-context.ts'
@@ -12,15 +12,14 @@ import type { ReactTransport } from './transport-context.ts'
 /**
  * Build the page-side `BridgeTransport` once at boot, outside React.
  * Returns a Promise that resolves to the live transport (narrowed to
- * the React-facing {@link ReactTransport} surface) after its inbound
- * queue has drained (`flushed`) and the Host has been told to start
- * sending (`signalReady`).
+ * the React-facing {@link ReactTransport} surface) once the Host has
+ * been told the page is ready to receive (`signalReady`).
  *
- * The slice receiver layers (`apps`, `collector`, `gatekeeper`) are
+ * The slice handler records (`apps`, `collector`, `gatekeeper`) are
  * module-level constants that close over module-level mutable cells
  * (`pendingTunnelResolverRef`, `activeHandlerRef`, `authTokenRef`).
  * That's what makes building the transport outside React possible: no
- * hook needs to run first to produce a closure-bound layer.
+ * hook needs to run first to produce a closure-bound handler record.
  *
  * `navigate` is passed in by the caller. It's the only seam onto the
  * router, captured behind a stable indirection so the transport build
@@ -33,30 +32,30 @@ import type { ReactTransport } from './transport-context.ts'
  * can call `BridgeTransport.make` directly with their own scope.)
  *
  * @remarks
- * The console interceptor is installed BEFORE the `flushed →
- * signalReady` chain runs so that any `console.*` emitted by Sentry
- * init (`instrument.ts`), `BridgeTransport.make` internals, or the
- * adapter's `drainInitial` get routed through the transport's outbound
- * dispatch — buffered behind the bridge's `peerReady` gate until the
- * host comes online, then drained in order. Installing post-`flushed`
- * (the previous shape) silently dropped those early lines.
+ * The console interceptor is installed immediately after the transport
+ * is built (before `signalReady`) so that any `console.*` emitted by
+ * Sentry init (`instrument.ts`), `BridgeTransport.make` internals, or
+ * the adapter's `drainInitial` get routed through the transport's
+ * outbox — held behind the bridge's `peerReady` gate, then drained in
+ * order once it resolves. Installing later would silently drop those
+ * early lines.
  */
 const buildTransport = (navigate: (to: NavTarget) => void): Promise<ReactTransport> => {
-  const navLayer = makeNavigationWebReceiverLayer(navigate)
+  const navHandlers = makeNavigationWebHandlers(navigate)
   const adapter = WebPlatformAdapter.make(bridges)
   const scope = Effect.runSync(Scope.make())
   return Effect.runPromise(
     Scope.extend(
       BridgeTransport.make({
         bridges,
-        layers: [
-          navLayer,
-          gatekeeperWebReceiverLayer,
-          collectorWebReceiverLayer,
-          appsWebReceiverLayer,
-          // Logging is Web→Host only on the page side; the Web
-          // ReceiverLayer is the empty `{}` handlers record.
-          Logging.LogBridge.Web.ReceiverLayer({}),
+        handlers: [
+          navHandlers,
+          gatekeeperWebHandlers,
+          collectorWebHandlers,
+          appsWebHandlers,
+          // Logging is Web→Host only on the page side; the Web half has
+          // no inbound handlers, so its record is empty.
+          {},
         ] as const,
         side: 'Web',
       }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter))),
@@ -66,7 +65,7 @@ const buildTransport = (navigate: (to: NavTarget) => void): Promise<ReactTranspo
     Logging.installConsoleInterceptor((msg: Logging.LogPayload) => {
       Effect.runFork(transport.sendMessage(msg))
     })
-    await Effect.runPromise(Effect.andThen(transport.flushed, transport.signalReady))
+    await Effect.runPromise(transport.signalReady)
     return transport
   })
 }

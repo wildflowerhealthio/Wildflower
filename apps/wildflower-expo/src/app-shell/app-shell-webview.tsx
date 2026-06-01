@@ -1,6 +1,5 @@
 import { BridgedWebView } from 'effect-messaging-expo'
 import * as SplashScreen from 'expo-splash-screen'
-import { Loader } from 'expo-tundraish'
 import { localOrigin$ } from 'local-http-server-core/livestore'
 import { useCallback, useMemo, type JSX } from 'react'
 import { html } from 'wildflower-react/embeddable-html'
@@ -56,6 +55,9 @@ const AppShellWebView = ({ onRouteChanged }: AppShellWebViewProps): JSX.Element 
     [loopbackBaseUrl]
   )
 
+  // The WebView mounts under the native splash with no JS loader; the
+  // splash stays up until the page reports its first paint via `UIReady`,
+  // avoiding a blank/loader flash during bundle load.
   const handleUiReady = useCallback(() => {
     void SplashScreen.hideAsync().catch(() => undefined)
   }, [])
@@ -69,7 +71,6 @@ const AppShellWebView = ({ onRouteChanged }: AppShellWebViewProps): JSX.Element 
     <BridgedWebView
       bindings={bindings}
       loadFrom={loadFrom}
-      loader={<Loader />}
       shouldOpenInSystemBrowser={shouldOpenInSystemBrowser}
     />
   )

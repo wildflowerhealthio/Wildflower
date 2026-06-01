@@ -34,7 +34,7 @@ const mockUseLogHostBindingCalls: Array<{
  */
 const MOCK_LOG_BINDINGS = {
   bridges: [{ name: 'MockLog' }],
-  receiverLayers: [{ _tag: 'mock-log-receiver-layer' }],
+  handlers: [{}],
   initialMessages: [[]],
   onTransportReady: [undefined],
 } as const

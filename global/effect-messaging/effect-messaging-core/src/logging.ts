@@ -1,6 +1,5 @@
-import { Effect, type Layer, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import * as Bridge from './bridge.ts'
-import type * as MessageHandler from './message-handler.ts'
 
 /**
  * Console-method levels mirrored across the LogBridge wire.
@@ -82,7 +81,7 @@ type LogBridge = Bridge.Bridge<'Log', Record<never, never>, { readonly Log: type
  *
  * @remarks
  * Compose into a transport tuple like any slice bridge. The default
- * host receiver lives in {@link defaultHostReceiverLayer}; the
+ * host handlers live in {@link defaultLogHostHandlers}; the
  * canonical web-side wiring is {@link installConsoleInterceptor}.
  */
 const LogBridge: LogBridge = Bridge.make({
@@ -92,13 +91,14 @@ const LogBridge: LogBridge = Bridge.make({
 })
 
 /**
- * Default host-side receiver: dispatches each `Log` via {@link defaultOnLog}.
- * Compose into the host shell via `useLogHostBinding()` from
- * `effect-messaging-expo` (or directly here if the consumer wants a
- * non-React host).
+ * Default host-side handler record: dispatches each `Log` via
+ * {@link defaultOnLog}. Compose into the host shell via
+ * `useLogHostBinding()` from `effect-messaging-expo` (or directly here
+ * if the consumer wants a non-React host).
  */
-const defaultHostReceiverLayer: Layer.Layer<MessageHandler.TagId<'Log', 'Host'>> =
-  LogBridge.Host.ReceiverLayer({ Log: defaultOnLog })
+const defaultLogHostHandlers: Bridge.HalfHandlers<LogBridge['Host']> = {
+  Log: defaultOnLog,
+}
 
 /**
  * Subset of `Console` we patch. Each method is the spread-args shape
@@ -214,7 +214,7 @@ const installConsoleInterceptor = (
 }
 
 export {
-  defaultHostReceiverLayer,
+  defaultLogHostHandlers,
   defaultOnLog,
   effectLogForLevel,
   installConsoleInterceptor,

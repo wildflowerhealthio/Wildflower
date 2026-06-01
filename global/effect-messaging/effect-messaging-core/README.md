@@ -10,14 +10,20 @@ packages (`effect-messaging-react`, `effect-messaging-expo`) supply.
 
 A **bridge** binds an outbound schema record to an inbound schema
 record at the type level. `Bridge.make({hostToWeb, webToHost, …})`
-returns two `Half`s — one per side — each with a typed `send` and a
-`ReceiverLayer` factory.
+returns two `Half`s — one per side — each with a typed `send`. The
+inbound side of a half is served by a plain **handler record**
+(`Bridge.HalfHandlers<Half>` = `MessageHandler.HandlersFor<InboundSchemas>`):
+one Effect-returning function per inbound tag, passed as a value — no
+`Context.Tag`, no `Layer`.
 
-A **transport** consumes a tuple of bridges plus their receiver
-layers, drains the platform's initial messages, and forks a dispatch
-fiber that decodes inbound messages to the right bridge's handler.
-The transport's public `sendMessage` is the function-intersection of
-every wired bridge's typed sender.
+A **transport** consumes a tuple of bridges plus a parallel tuple of
+their handler records (`Bridge.HandlersByBridge<Bridges, Side>`), drains
+the platform's initial messages, and forks a dispatch fiber that
+decodes inbound messages to the right bridge's handler. The transport's
+public `sendMessage` is the function-intersection of every wired
+bridge's typed sender. `registerHandlers(next)` swaps the active records
+at runtime — routed through the inbox so it sequences against in-flight
+messages (see [Two queues](#two-queues)).
 
 ## Variance: `AnyHalf` and `AnyBridge`
 
@@ -29,21 +35,23 @@ Concrete halves have to fit through `AnyHalf`'s structural bound:
 type AnyHalf = {
   readonly InboundSchemas: Message.SchemaRecord
   readonly OutboundSchemas: Message.SchemaRecord
-  readonly HandlerTag: Context.Tag<any, any>
   readonly send: (m: never) => Effect.Effect<void, never, TransportAdapter>
 }
 ```
 
-Two design points are load-bearing:
+The load-bearing point is the `send` widening:
 
-- **`Context.Tag<any, any>`** — `Context.Tag` is invariant in both
-  parameters, so `Context.Tag<MyId, MyHandlers>` is _not_ assignable
-  to `Context.Tag<string, unknown>`. `any` widens both invariant
-  positions; concrete tags pass through.
 - **`(m: never) => …`** — function parameters are contravariant.
   Every concrete `send: (m: SomeUnion) => …` is assignable to
   `(m: never) => …`. This also lets bridges with empty outbound
   records (`send: (m: never) => …` natively) fit without special-casing.
+
+There is no handler-tag field on the half anymore: inbound handlers are
+plain records supplied alongside the bridges via
+`HandlersByBridge<Bridges, Side>`, so the only variance the half has to
+absorb is on `send`. `HalfHandlers<H>` reads `H['InboundSchemas']`
+structurally, so concrete handler records fit `AnyHalf` without an
+invariant tag position to widen.
 
 The runtime dispatch layer assumes the structural invariant: every
 message has a `_tag: string` and the `senderByTag` map routes on that
@@ -52,12 +60,40 @@ escape hatch — TS can't see through the `(m: never)` widening, but
 runtime dispatch by `_tag` lands every message on a sender that
 accepts it.
 
+## Two queues
+
+Two unbounded `Queue`s run behind the public surface, each drained by
+one scoped fiber:
+
+- **outbox** — `sendMessage` offers here and returns immediately (it
+  never suspends the caller). A pump fiber awaits the `peerReady`
+  Deferred once, then drains forever, routing each message through the
+  `senderByTag` map. Sends issued before the peer is ready buffer in
+  order and flush the moment the handshake lands.
+- **inbox** — carries two kinds of item: a `message` (raw inbound wire
+  string) and a `register` (a `registerHandlers` swap plus a `done`
+  Deferred). One dispatch fiber processes them FIFO, so a handler swap
+  is correctly sequenced against the messages around it. Each `message`
+  decodes through a single `parseJson(Union(...))`; a tag with no
+  current handler is _parked_ per-tag (not dropped — schema acceptance
+  proved it's a known inbound tag) and replayed in arrival order once a
+  `register` installs a covering handler.
+
+The `__Ready` handshake is one-way and rides the same inbox dispatch
+path on both sides: the host's `peerReady` resolves when it dispatches
+the web peer's `__Ready`; the web self-queues a `__Ready` at make so its
+own gate resolves through the identical path (no parallel pre-resolve
+branch). `signalReady` posts the `__Ready` wire string on the web and is
+a no-op on the host. Scope close shuts both queues down and interrupts
+both fibers.
+
 ## Drain-then-replay
 
 The Web platform adapter's `drainInitial` reads
 `window.__INITIAL_MESSAGES__` once, deletes the global, and returns
-the strings. The transport then offers each string into its dispatch
-queue.
+the strings. The transport then offers each string into the inbox as a
+`message` item — behind the web's self-`__Ready`, so the handshake gates
+before the seeded messages dispatch.
 
 Web consumers that need to _peek_ at the initial messages before
 mounting (e.g. to seed `<MemoryRouter initialEntries={[…]}>` at the
@@ -69,5 +105,6 @@ full pattern.
 ## Subpaths
 
 - `effect-messaging-core` — main barrel: `Bridge`, `BridgeTransport`,
-  `Message`, `MessageHandler`, `DispatchError`, `TransportAdapter`,
-  `TestPlatformAdapterLayer`.
+  `HostBindings`, `Message`, `MessageHandler`, `Logging`,
+  `TransportAdapter`, `UrlParamMessage`, `TestPlatformAdapterLayer`,
+  and the `bare-sender` re-exports.

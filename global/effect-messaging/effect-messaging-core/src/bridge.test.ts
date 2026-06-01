@@ -1,5 +1,4 @@
-import type { Context } from 'effect'
-import { Effect, Layer, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { assertType, describe, expect, test } from 'vite-plus/test'
@@ -38,64 +37,6 @@ describe('Bridge.make — shape', () => {
     })
     expect(Object.keys(bridge.Host.OutboundSchemas)).toEqual([])
     expect(Object.keys(bridge.Web.OutboundSchemas)).toEqual([])
-  })
-})
-
-describe('Bridge.make — HandlerTag', () => {
-  test('mints a fresh runtime tag instance per call (even with the same name)', () => {
-    const a = makeTestBridge('Same')
-    const b = makeTestBridge('Same')
-    expect(a.Host.HandlerTag).not.toBe(b.Host.HandlerTag)
-    expect(a.Web.HandlerTag).not.toBe(b.Web.HandlerTag)
-  })
-
-  test('Host and Web halves of the same call have distinct tags', () => {
-    const bridge = makeTestBridge()
-    expect(bridge.Host.HandlerTag).not.toBe(
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-      bridge.Web.HandlerTag as unknown as typeof bridge.Host.HandlerTag
-    )
-  })
-
-  test('the tag.key reflects the bridge name and side', () => {
-    const bridge = makeTestBridge('Inspect')
-    expect(bridge.Host.HandlerTag.key).toBe('Inspect.Host.HandlerTag')
-    expect(bridge.Web.HandlerTag.key).toBe('Inspect.Web.HandlerTag')
-  })
-})
-
-describe('Bridge.make — ReceiverLayer', () => {
-  test('produces a Layer that supplies HandlerTag with the caller-provided handlers', () => {
-    const bridge = makeTestBridge()
-    const seen: number[] = []
-    const layer = bridge.Web.ReceiverLayer({
-      Ping: ({ value }) => Effect.sync(() => seen.push(value)),
-      Buzz: () => Effect.sync(() => seen.push(-1)),
-    })
-
-    const program = Effect.gen(function* () {
-      const handlers = yield* bridge.Web.HandlerTag
-      yield* handlers.Ping({ _tag: 'Ping', value: 7 })
-      yield* handlers.Buzz({ _tag: 'Buzz' })
-    })
-    const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
-
-    Effect.runSync(Effect.provide(program, Layer.mergeAll(layer, adapterLayer)))
-    expect(seen).toEqual([7, -1])
-  })
-
-  test('handlers from one bridge cannot satisfy a different bridge`s tag', () => {
-    const a = makeTestBridge('A')
-    const b = makeTestBridge('B')
-    const aLayer = a.Web.ReceiverLayer({
-      Ping: () => Effect.void,
-      Buzz: () => Effect.void,
-    })
-    const program = Effect.gen(function* () {
-      const handlers = yield* b.Web.HandlerTag
-      return handlers
-    })
-    expect(() => Effect.runSync(Effect.provide(program, aLayer))).toThrow()
   })
 })
 
@@ -187,8 +128,11 @@ describe('Bridge.make — type-level surface', () => {
     type InboundType = Schema.Schema.Type<Inbound>
     assertType<InboundType>({ _tag: 'Ping', value: 1 })
 
-    type HandlerService = Context.Tag.Service<typeof bridge.Web.HandlerTag>
-    assertType<HandlerService>({
+    // The inbound-handler record type is `HalfHandlers` keyed by the
+    // half's `InboundSchemas` — the shape `BridgeTransport.make` and
+    // `registerHandlers` consume.
+    type WebHandlers = Bridge.HalfHandlers<typeof bridge.Web>
+    assertType<WebHandlers>({
       Ping: ({ value }) => Effect.sync(() => expect(typeof value).toBe('number')),
       Buzz: () => Effect.void,
     })
@@ -196,40 +140,6 @@ describe('Bridge.make — type-level surface', () => {
     type HostSender = typeof bridge.Host.send
     assertType<Parameters<HostSender>[0]>({ _tag: 'Ping', value: 1 })
     assertType<Parameters<HostSender>[0]>({ _tag: 'Buzz' })
-  })
-})
-
-describe('Bridge.make — Layer integration', () => {
-  test('two bridges` ReceiverLayers compose into one merged context', () => {
-    const a = Bridge.make({
-      name: 'A',
-      hostToWeb: [['Buzz', Buzz]] as const,
-      webToHost: [] as const,
-    })
-    const b = Bridge.make({
-      name: 'B',
-      hostToWeb: [['Ping', Ping]] as const,
-      webToHost: [] as const,
-    })
-
-    const seen: string[] = []
-    const aLayer = a.Web.ReceiverLayer({
-      Buzz: () => Effect.sync(() => seen.push('Buzz')),
-    })
-    const bLayer = b.Web.ReceiverLayer({
-      Ping: ({ value }) => Effect.sync(() => seen.push(`Ping(${value})`)),
-    })
-
-    const program = Effect.gen(function* () {
-      const aHandlers = yield* a.Web.HandlerTag
-      const bHandlers = yield* b.Web.HandlerTag
-      yield* aHandlers.Buzz({ _tag: 'Buzz' })
-      yield* bHandlers.Ping({ _tag: 'Ping', value: 11 })
-    })
-    const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
-
-    Effect.runSync(Effect.provide(program, Layer.mergeAll(aLayer, bLayer, adapterLayer)))
-    expect(seen).toEqual(['Buzz', 'Ping(11)'])
   })
 })
 
@@ -281,38 +191,6 @@ test('property: send → decodeSync round-trips identity for any wired message',
             ? Schema.decodeSync(bridge.Web.InboundSchemas.Ping)(sentSink[0] ?? '')
             : Schema.decodeSync(bridge.Web.InboundSchemas.Buzz)(sentSink[0] ?? '')
         expect(decoded).toEqual(message)
-      }
-    ),
-    { numRuns: numRunsFor({ base: 100 }) }
-  )
-})
-
-test('property: same-name bridges always mint distinct HandlerTag instances', () => {
-  fc.assert(
-    fc.property(
-      fc.string({ minLength: 1, maxLength: 10 }),
-      fc.boolean(),
-      fc.boolean(),
-      (name, includePing, includeBuzz) => {
-        const aPairs = [
-          ...(includePing ? [['Ping', Ping] as const] : []),
-          ...(includeBuzz ? [['Buzz', Buzz] as const] : []),
-        ]
-        const bPairs = includeBuzz ? [['Buzz', Buzz] as const] : []
-        const a = Bridge.make({
-          name,
-          // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-          hostToWeb: aPairs as never,
-          webToHost: [] as const,
-        })
-        const b = Bridge.make({
-          name,
-          // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-          hostToWeb: bPairs as never,
-          webToHost: [] as const,
-        })
-        expect(a.Host.HandlerTag).not.toBe(b.Host.HandlerTag)
-        expect(a.Web.HandlerTag).not.toBe(b.Web.HandlerTag)
       }
     ),
     { numRuns: numRunsFor({ base: 100 }) }

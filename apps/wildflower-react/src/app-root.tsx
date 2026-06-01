@@ -25,7 +25,8 @@ type MakeTransport = (navigate: (to: NavTarget) => void) => Promise<ReactTranspo
 
 /**
  * Per-entry `awaitAuthReady` factory. Receives a `transportReady`
- * promise (the transport's `flushed → signalReady` settled) and returns
+ * promise (resolved once the transport's boot-time `signalReady` has
+ * settled) and returns
  * the actual `awaitAuthReady` function the `beforeLoad` gate calls.
  * Web's implementation ignores the argument (standalone has no host
  * handshake to wait); embedded's awaits it before reading the token
@@ -67,13 +68,13 @@ interface RenderAppOptions {
  * persister; warm via preloading.
  *
  * The transport is built *outside* React, before the router mounts.
- * Its `flushed → signalReady` chain becomes `transportReady`, which
+ * Its boot-time `signalReady` settles into `transportReady`, which
  * `awaitAuthReady` (the embedded factory) waits on internally — so the
- * embedded ordering ("transport flush before host pushes token") is
+ * embedded ordering ("transport ready before host pushes token") is
  * encoded inside `awaitAuthReady` itself rather than in a separate
  * `transportReady` field on router context.
  *
- * `navigate` (used by the navigation bridge's receiver layer to handle
+ * `navigate` (used by the navigation bridge's web handlers to handle
  * `HostRequestedWebNavigation` / `HostBackRequested`) closes over a
  * `routerHandle` cell set immediately after `createRouter`. Host nav
  * messages can only arrive after `transport.signalReady`, by which

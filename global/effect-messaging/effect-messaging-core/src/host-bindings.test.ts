@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
@@ -32,17 +32,16 @@ const GammaBridge = Bridge.make({
   webToHost: [['Pong', Pong]] as const,
 })
 
-// Sentinel layers — `Layer.effectDiscard(Effect.void)` is enough to
-// satisfy the receiver-layer slot at the type level; the production
-// helpers only flat-concat receiver layers, they don't build the
-// context from them.
-const AlphaReceiverLayer = AlphaBridge.Host.ReceiverLayer({
+// Sentinel handler records — empty or no-op handlers are enough to fill
+// the per-bridge `handlers` slot; the production helpers only flat-concat
+// these records, they never dispatch through them here.
+const alphaHandlers: Bridge.HalfHandlers<typeof AlphaBridge.Host> = {
   Pong: () => Effect.void,
-})
-const BetaReceiverLayer = BetaBridge.Host.ReceiverLayer({})
-const GammaReceiverLayer = GammaBridge.Host.ReceiverLayer({
+}
+const betaHandlers: Bridge.HalfHandlers<typeof BetaBridge.Host> = {}
+const gammaHandlers: Bridge.HalfHandlers<typeof GammaBridge.Host> = {
   Pong: () => Effect.void,
-})
+}
 
 // ---------------------------------------------------------------------------
 // single
@@ -56,7 +55,7 @@ describe('HostBindings.single', () => {
 
     const bindings = HostBindings.single({
       bridge: AlphaBridge,
-      receiverLayer: AlphaReceiverLayer,
+      handlers: alphaHandlers,
       initialMessages: [{ _tag: 'Ping', value: 1 }],
       onTransportReady: onReady,
     })
@@ -66,7 +65,7 @@ describe('HostBindings.single', () => {
     // just shape equality, so a future copy-on-write of the input would
     // surface here.
     expect(bindings.bridges[0]).toBe(AlphaBridge)
-    expect(bindings.receiverLayers[0]).toBe(AlphaReceiverLayer)
+    expect(bindings.handlers[0]).toBe(alphaHandlers)
     expect(bindings.initialMessages).toEqual([[{ _tag: 'Ping', value: 1 }]])
     expect(bindings.onTransportReady[0]).toBe(onReady)
   })
@@ -74,7 +73,7 @@ describe('HostBindings.single', () => {
   test('defaults initialMessages to [[]] when omitted (1-tuple of empty inner array)', () => {
     const bindings = HostBindings.single({
       bridge: BetaBridge,
-      receiverLayer: BetaReceiverLayer,
+      handlers: betaHandlers,
     })
     expect(bindings.initialMessages).toEqual([[]])
     expect(bindings.initialMessages).toHaveLength(1)
@@ -83,7 +82,7 @@ describe('HostBindings.single', () => {
   test('defaults onTransportReady to [undefined] when omitted', () => {
     const bindings = HostBindings.single({
       bridge: BetaBridge,
-      receiverLayer: BetaReceiverLayer,
+      handlers: betaHandlers,
     })
     expect(bindings.onTransportReady).toEqual([undefined])
   })
@@ -96,12 +95,12 @@ describe('HostBindings.single', () => {
 describe('HostBindings.combine', () => {
   const alpha = HostBindings.single({
     bridge: AlphaBridge,
-    receiverLayer: AlphaReceiverLayer,
+    handlers: alphaHandlers,
     initialMessages: [{ _tag: 'Ping', value: 1 }],
   })
   const beta = HostBindings.single({
     bridge: BetaBridge,
-    receiverLayer: BetaReceiverLayer,
+    handlers: betaHandlers,
     initialMessages: [
       { _tag: 'Ping', value: 2 },
       { _tag: 'Ping', value: 3 },
@@ -109,7 +108,7 @@ describe('HostBindings.combine', () => {
   })
   const gamma = HostBindings.single({
     bridge: GammaBridge,
-    receiverLayer: GammaReceiverLayer,
+    handlers: gammaHandlers,
     onTransportReady: () => Effect.void,
   })
 
@@ -117,17 +116,17 @@ describe('HostBindings.combine', () => {
     const merged = HostBindings.combine([alpha, beta, gamma])
     expect(merged.bridges).toEqual([AlphaBridge, BetaBridge, GammaBridge])
     // The flatten must reuse the same Bridge instances, not copies —
-    // `BridgeTransport.make`'s context wiring keys on identity.
+    // `BridgeTransport.make`'s sender wiring keys on identity.
     expect(merged.bridges[0]).toBe(AlphaBridge)
     expect(merged.bridges[1]).toBe(BetaBridge)
     expect(merged.bridges[2]).toBe(GammaBridge)
   })
 
-  test('receiverLayers concatenates index-aligned with bridges', () => {
+  test('handlers concatenates index-aligned with bridges', () => {
     const merged = HostBindings.combine([alpha, beta, gamma])
-    expect(merged.receiverLayers[0]).toBe(AlphaReceiverLayer)
-    expect(merged.receiverLayers[1]).toBe(BetaReceiverLayer)
-    expect(merged.receiverLayers[2]).toBe(GammaReceiverLayer)
+    expect(merged.handlers[0]).toBe(alphaHandlers)
+    expect(merged.handlers[1]).toBe(betaHandlers)
+    expect(merged.handlers[2]).toBe(gammaHandlers)
   })
 
   test('initialMessages preserves the parallel-array shape (inner arrays are the per-bridge messages)', () => {
@@ -153,7 +152,7 @@ describe('HostBindings.combine', () => {
   test('empty input produces an empty bindings struct', () => {
     const merged = HostBindings.combine([])
     expect(merged.bridges).toEqual([])
-    expect(merged.receiverLayers).toEqual([])
+    expect(merged.handlers).toEqual([])
     expect(merged.initialMessages).toEqual([])
     expect(merged.onTransportReady).toEqual([])
   })
@@ -172,20 +171,20 @@ describe('HostBindings.combine', () => {
         (aMsgs, bMsgs, cMsgs) => {
           const a = HostBindings.single({
             bridge: AlphaBridge,
-            receiverLayer: AlphaReceiverLayer,
+            handlers: alphaHandlers,
             initialMessages: aMsgs.map((value) => ({ _tag: 'Ping' as const, value })),
           })
           const b = HostBindings.single({
             bridge: BetaBridge,
-            receiverLayer: BetaReceiverLayer,
+            handlers: betaHandlers,
             initialMessages: bMsgs.map((value) => ({ _tag: 'Ping' as const, value })),
           })
           const c = HostBindings.single({
             bridge: GammaBridge,
-            receiverLayer: GammaReceiverLayer,
+            handlers: gammaHandlers,
             initialMessages: [],
           })
-          // `c` is bridge-of-no-host-to-web messages so a Ping payload
+          // `c` is a bridge of no host-to-web messages so a Ping payload
           // doesn't typecheck; the structural array shape still survives.
           void cMsgs
 
@@ -194,12 +193,12 @@ describe('HostBindings.combine', () => {
           const flat = HostBindings.combine([a, b, c])
 
           expect(leftGrouped.bridges).toEqual(flat.bridges)
-          expect(leftGrouped.receiverLayers).toEqual(flat.receiverLayers)
+          expect(leftGrouped.handlers).toEqual(flat.handlers)
           expect(leftGrouped.initialMessages).toEqual(flat.initialMessages)
           expect(leftGrouped.onTransportReady).toEqual(flat.onTransportReady)
 
           expect(rightGrouped.bridges).toEqual(flat.bridges)
-          expect(rightGrouped.receiverLayers).toEqual(flat.receiverLayers)
+          expect(rightGrouped.handlers).toEqual(flat.handlers)
           expect(rightGrouped.initialMessages).toEqual(flat.initialMessages)
           expect(rightGrouped.onTransportReady).toEqual(flat.onTransportReady)
         }
@@ -229,17 +228,17 @@ describe('HostBindings.callTransportReady', () => {
     const bindings = HostBindings.combine([
       HostBindings.single({
         bridge: AlphaBridge,
-        receiverLayer: AlphaReceiverLayer,
+        handlers: alphaHandlers,
         onTransportReady: () => Effect.sync(() => calls.push('alpha')),
       }),
       HostBindings.single({
         bridge: BetaBridge,
-        receiverLayer: BetaReceiverLayer,
+        handlers: betaHandlers,
         // intentional: no onTransportReady
       }),
       HostBindings.single({
         bridge: GammaBridge,
-        receiverLayer: GammaReceiverLayer,
+        handlers: gammaHandlers,
         onTransportReady: () => Effect.sync(() => calls.push('gamma')),
       }),
     ])
@@ -255,13 +254,13 @@ describe('HostBindings.callTransportReady', () => {
     const bindings = HostBindings.combine([
       HostBindings.single({
         bridge: AlphaBridge,
-        receiverLayer: AlphaReceiverLayer,
+        handlers: alphaHandlers,
         onTransportReady: () =>
           Effect.sync(() => calls.push('alpha-pre')).pipe(Effect.zipRight(Effect.die('boom'))),
       }),
       HostBindings.single({
         bridge: GammaBridge,
-        receiverLayer: GammaReceiverLayer,
+        handlers: gammaHandlers,
         onTransportReady: () => Effect.sync(() => calls.push('gamma')),
       }),
     ])
@@ -279,8 +278,8 @@ describe('HostBindings.callTransportReady', () => {
 
   test('returns immediately when every slot is undefined', async () => {
     const bindings = HostBindings.combine([
-      HostBindings.single({ bridge: AlphaBridge, receiverLayer: AlphaReceiverLayer }),
-      HostBindings.single({ bridge: BetaBridge, receiverLayer: BetaReceiverLayer }),
+      HostBindings.single({ bridge: AlphaBridge, handlers: alphaHandlers }),
+      HostBindings.single({ bridge: BetaBridge, handlers: betaHandlers }),
     ])
     // Smoke test: this should resolve without throwing — there's nothing
     // observable beyond "no failure" since every slot is a no-op.
@@ -295,6 +294,3 @@ const Expect = {
     await p
   },
 }
-// Silence unused warning when the test runner picks this module up
-// without exercising the smoke path.
-void Layer

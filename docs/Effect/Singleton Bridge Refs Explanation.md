@@ -1,10 +1,10 @@
 # Singleton Bridge Refs Explanation
 
-Several slices (`gatekeeper-react`, `collector-react`, `apps-react`) bridge React-side state into Effect-side message-receiver Layers via a **module-level mutable cell** — a "ref" in the JavaScript sense, not the React sense. This document explains the invariant, why it works, and the cross-cutting constraints it imposes.
+Several slices (`gatekeeper-react`, `collector-react`, `apps-react`) bridge React-side state into Effect-side message-handler records via a **module-level mutable cell** — a "ref" in the JavaScript sense, not the React sense. This document explains the invariant, why it works, and the cross-cutting constraints it imposes.
 
 ## The pattern
 
-Each slice's page-side `BridgeTransport` is built **once at boot**, outside React (see `apps/wildflower-react/src/bridges/build-transport.ts`). Its receiver Layer for the slice's Host→Web messages needs to call into React-installed handlers — token writers, sync handlers, tunnel resolvers — that don't exist at boot.
+Each slice's page-side `BridgeTransport` is built **once at boot**, outside React (see `apps/wildflower-react/src/bridges/build-transport.ts`). Its handler record for the slice's Host→Web messages needs to call into React-installed handlers — token writers, sync handlers, tunnel resolvers — that don't exist at boot.
 
 To bridge the lifecycle gap, each slice exports:
 
@@ -14,16 +14,16 @@ To bridge the lifecycle gap, each slice exports:
    const activeHandlerRef: { current: ActiveHandler | null } = { current: null }
    ```
 
-2. A receiver `Layer` that reads `cell.current` on every dispatch and forwards into it (or `log-and-drops` when `null`):
+2. A plain handler record (`Bridge.HalfHandlers<Bridge['Web']>`) — one Effect-returning function per Host→Web tag — that reads `cell.current` on every dispatch and forwards into it (or `log-and-drops` when `null`):
 
    ```ts
-   const collectorWebReceiverLayer = CollectorBridge.Web.ReceiverLayer({
+   const collectorWebHandlers: Bridge.HalfHandlers<(typeof CollectorBridge)['Web']> = {
      ResponseStart: (event) => {
        const h = activeHandlerRef.current
        return h === null ? droppedTagWarning('ResponseStart') : h.ResponseStart(event)
      },
      // ...one handler per Host→Web tag
-   })
+   }
    ```
 
 3. A setter (and matching set-if-equal clearer) the React-side hook calls on mount/unmount:
@@ -39,11 +39,11 @@ To bridge the lifecycle gap, each slice exports:
 
 Concrete instances in this repo:
 
-| Slice              | Ref                        | Hook               | Layer                        |
-| ------------------ | -------------------------- | ------------------ | ---------------------------- |
-| `gatekeeper-react` | `authTokenRef`             | n/a (token write)  | `gatekeeperWebReceiverLayer` |
-| `collector-react`  | `activeHandlerRef`         | `useSyncRunner`    | `collectorWebReceiverLayer`  |
-| `apps-react`       | `pendingTunnelResolverRef` | `useRequestTunnel` | `appsWebReceiverLayer`       |
+| Slice              | Ref                        | Hook               | Handler record          |
+| ------------------ | -------------------------- | ------------------ | ----------------------- |
+| `gatekeeper-react` | `authTokenRef`             | n/a (token write)  | `gatekeeperWebHandlers` |
+| `collector-react`  | `activeHandlerRef`         | `useSyncRunner`    | `collectorWebHandlers`  |
+| `apps-react`       | `pendingTunnelResolverRef` | `useRequestTunnel` | `appsWebHandlers`       |
 
 ## The invariant
 
@@ -98,7 +98,7 @@ The `apps-react` resolver ref uses an additional **supersede** layer: installing
 
 The transport is built before React mounts. A React context-only design would require the transport build to wait for React, which adds an asynchronous lifecycle step the embedded host has to coordinate around (host posts URL-encoded `AuthTokenIssued` messages immediately on transport readiness; deferring transport build past React commit would let those messages hit a closed bridge).
 
-The module-level ref decouples transport lifetime from React lifetime: transport spawns at module-eval, receiver layers close over the (still `null`) ref, and the React tree later writes into the ref via slice-specific hooks. Layers read through the ref on every dispatch, so the staleness window between transport-build and first React commit only manifests as `log-and-drop` of any messages that arrive in that window — which is correct for messages the React tree wouldn't have known how to handle yet.
+The module-level ref decouples transport lifetime from React lifetime: transport spawns at module-eval, the handler records close over the (still `null`) ref, and the React tree later writes into the ref via slice-specific hooks. The records read through the ref on every dispatch, so the staleness window between transport-build and first React commit only manifests as `log-and-drop` of any messages that arrive in that window — which is correct for messages the React tree wouldn't have known how to handle yet.
 
 ## See also
 

@@ -9,7 +9,7 @@ import { BrowserSnifferPipeProvider, CollectorPipeProvider } from './message-sen
 
 /**
  * Private context exposing the navigation state the modal route reads
- * (`pendingSource`) and the dispatch callback the receiver layer's
+ * (`pendingSource`) and the dispatch callback the handler record's
  * `RequestSniffableWebView` / `Open` handlers fire. Outbound
  * `Click` / `CancelSnifferRequest` route through the BrowserSniffer
  * pipe instead — no ref state lives on this context.
@@ -46,7 +46,7 @@ const DEFAULT_MODAL_PATH = '/collector-modal' as const
  * typed senders.
  *
  * Wrap the app's router Stack with this provider, render the modal
- * route at `modalPath`, and use `useCollectorReceiverLayer` inside
+ * route at `modalPath`, and use `useCollectorHostHandlers` inside
  * the bridge-transport composition to wire `CollectorBridge.Host`'s
  * handlers.
  */

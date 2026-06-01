@@ -1,5 +1,5 @@
 import { Arbitrary, Effect, Schema } from 'effect'
-import { BridgeTransport, TestPlatformAdapterLayer } from 'effect-messaging-core'
+import { type Bridge, BridgeTransport, TestPlatformAdapterLayer } from 'effect-messaging-core'
 import * as fc from 'fast-check'
 import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
@@ -67,34 +67,34 @@ const encodeWebToHost = (m: WebToHostMessage): string => {
 }
 
 /**
- * Build a Host-side receiver layer where every webToHost handler
+ * Build a Host-side handler record where every webToHost handler
  * pushes the decoded payload onto a shared array. Returned alongside
  * the array so a caller can drive the transport then inspect what
  * landed.
  */
-const makeCollectingHostLayer = (): {
+const makeCollectingHostHandlers = (): {
   collected: WebToHostMessage[]
-  layer: ReturnType<typeof BrowserSnifferBridge.Host.ReceiverLayer>
+  handlers: Bridge.HalfHandlers<(typeof BrowserSnifferBridge)['Host']>
 } => {
   const collected: WebToHostMessage[] = []
   const push = (m: WebToHostMessage): Effect.Effect<void> =>
     Effect.sync(() => {
       collected.push(m)
     })
-  const layer = BrowserSnifferBridge.Host.ReceiverLayer({
+  const handlers: Bridge.HalfHandlers<(typeof BrowserSnifferBridge)['Host']> = {
     ResponseStart: push,
     ResponseData: push,
     ResponseFinished: push,
     RequestError: push,
     Cancelled: push,
     PageLoaded: push,
-  })
-  return { collected, layer }
+  }
+  return { collected, handlers }
 }
 
 const runHost = async (
   inputs: string[],
-  layer: ReturnType<typeof BrowserSnifferBridge.Host.ReceiverLayer>
+  handlers: Bridge.HalfHandlers<(typeof BrowserSnifferBridge)['Host']>
 ): Promise<void> => {
   const { layer: adapterLayer } = TestPlatformAdapterLayer.make({ initialMessages: inputs })
   // Negative-path tests below intentionally feed malformed wire input, which
@@ -106,10 +106,14 @@ const runHost = async (
       Effect.gen(function* () {
         const transport = yield* BridgeTransport.make({
           bridges: [BrowserSnifferBridge] as const,
-          layers: [layer] as const,
+          handlers: [handlers] as const,
           side: 'Host',
         })
-        yield* transport.flushed
+        // `make` offers every drained initial message to the inbox before
+        // returning; this `registerHandlers` rides the same FIFO inbox, so
+        // when it resolves they have all been dispatched. (Replaces the
+        // removed `transport.flushed` sentinel.)
+        yield* transport.registerHandlers([handlers])
       }).pipe(Effect.provide(adapterLayer), Effect.provide(capturingLoggerLayer))
     )
   )
@@ -141,8 +145,8 @@ describe('BrowserSnifferBridge — Web→Host round-trip', () => {
   test('every encoded message round-trips through dispatch by _tag with the payload preserved', async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(webToHostArb), async (messages) => {
-        const { collected, layer } = makeCollectingHostLayer()
-        await runHost(messages.map(encodeWebToHost), layer)
+        const { collected, handlers } = makeCollectingHostHandlers()
+        await runHost(messages.map(encodeWebToHost), handlers)
         expect(collected).toEqual(messages)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -164,10 +168,10 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
           Effect.sync(() => {
             collected.push(m)
           })
-        const layer = BrowserSnifferBridge.Web.ReceiverLayer({
+        const webHandlers: Bridge.HalfHandlers<(typeof BrowserSnifferBridge)['Web']> = {
           CancelSnifferRequest: push,
           Click: push,
-        })
+        }
 
         const inputs = messages.map((m) =>
           m._tag === 'CancelSnifferRequest'
@@ -183,10 +187,12 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
             Effect.gen(function* () {
               const transport = yield* BridgeTransport.make({
                 bridges: [BrowserSnifferBridge] as const,
-                layers: [layer] as const,
+                handlers: [webHandlers] as const,
                 side: 'Web',
               })
-              yield* transport.flushed
+              // FIFO inbox barrier behind the drained initial messages
+              // (replaces the removed `transport.flushed`).
+              yield* transport.registerHandlers([webHandlers])
             }).pipe(Effect.provide(adapterLayer))
           )
         )
@@ -200,25 +206,25 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
 
 describe('BrowserSnifferBridge — Web→Host negative paths', () => {
   test('drops malformed JSON without dispatching to any handler', async () => {
-    const { collected, layer } = makeCollectingHostLayer()
-    await runHost(['{ not valid json }', '"plain string"', '12345', 'undefined'], layer)
+    const { collected, handlers } = makeCollectingHostHandlers()
+    await runHost(['{ not valid json }', '"plain string"', '12345', 'undefined'], handlers)
     expect(collected).toEqual([])
   })
 
   test('drops payloads with an unknown _tag', async () => {
-    const { collected, layer } = makeCollectingHostLayer()
+    const { collected, handlers } = makeCollectingHostHandlers()
     await runHost(
       [
         JSON.stringify({ _tag: 'NotARealMessage', id: 'r1' }),
         JSON.stringify({ _tag: 'ResponseFinished', id: 'kept' }),
       ],
-      layer
+      handlers
     )
     expect(collected).toEqual([{ _tag: 'ResponseFinished', id: 'kept' }])
   })
 
   test('drops payloads that match a known _tag but fail field validation', async () => {
-    const { collected, layer } = makeCollectingHostLayer()
+    const { collected, handlers } = makeCollectingHostHandlers()
     await runHost(
       [
         // Missing `id` field
@@ -246,13 +252,13 @@ describe('BrowserSnifferBridge — Web→Host negative paths', () => {
         // Valid message: makes it through
         JSON.stringify({ _tag: 'ResponseFinished', id: 'r-valid' }),
       ],
-      layer
+      handlers
     )
     expect(collected).toEqual([{ _tag: 'ResponseFinished', id: 'r-valid' }])
   })
 
   test('preserves ResponseStart → ResponseData → ResponseFinished ordering for the same id', async () => {
-    const { collected, layer } = makeCollectingHostLayer()
+    const { collected, handlers } = makeCollectingHostHandlers()
     await runHost(
       [
         JSON.stringify({
@@ -266,7 +272,7 @@ describe('BrowserSnifferBridge — Web→Host negative paths', () => {
         JSON.stringify({ _tag: 'ResponseData', id: 'a', data: 'aGVsbG8=' }),
         JSON.stringify({ _tag: 'ResponseFinished', id: 'a' }),
       ],
-      layer
+      handlers
     )
     expect(collected.map((m) => m._tag)).toEqual([
       'ResponseStart',
@@ -276,7 +282,7 @@ describe('BrowserSnifferBridge — Web→Host negative paths', () => {
   })
 
   test('preserves dispatch order even when two id streams interleave', async () => {
-    const { collected, layer } = makeCollectingHostLayer()
+    const { collected, handlers } = makeCollectingHostHandlers()
     await runHost(
       [
         JSON.stringify({
@@ -300,7 +306,7 @@ describe('BrowserSnifferBridge — Web→Host negative paths', () => {
         JSON.stringify({ _tag: 'ResponseFinished', id: 'b' }),
         JSON.stringify({ _tag: 'ResponseFinished', id: 'a' }),
       ],
-      layer
+      handlers
     )
     // Wire order is preserved end-to-end; consumers correlate by id.
     expect(collected.map((m) => [m._tag, 'id' in m ? m.id : undefined])).toEqual([

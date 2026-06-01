@@ -9,7 +9,7 @@ type FullTransport = BridgeTransport.BridgeTransport<Bridges, 'Web'>
 /**
  * Narrowed view of `BridgeTransport` that React-side consumers see. The
  * components below the `TransportContext.Provider` only ever need to
- * send messages — `flushed`, `signalReady`, `enqueue`, `setLayers` are
+ * send messages — `signalReady`, `enqueue`, `registerHandlers` are
  * boot-time / Effect-side concerns that {@link AppRootTree} drives
  * directly off the resolved transport. Narrowing here means the stub
  * doesn't have to grow every time the underlying transport gains a new
@@ -22,7 +22,7 @@ interface ReactTransport {
 /**
  * No-op transport used by standalone-web entries and as the
  * pre-resolution placeholder for `<TransportContext>` while the real
- * embedded transport's `flushed → signalReady` chain is in flight. Its
+ * embedded transport's `signalReady` handshake is in flight. Its
  * `sendMessage` is `Effect.void`, so emits during that window are
  * dropped (which is correct — the host isn't ready to receive yet).
  * The `_auth` gate's `awaitAuthReady` waits the bridge handshake before

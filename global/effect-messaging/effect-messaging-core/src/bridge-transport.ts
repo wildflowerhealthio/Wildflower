@@ -1,7 +1,6 @@
-import type { ParseResult } from 'effect'
+import type { ParseResult, Scope } from 'effect'
 import {
   Array,
-  Data,
   Deferred,
   Effect,
   HashMap,
@@ -12,58 +11,11 @@ import {
   Record,
   Ref,
   Schema,
-  Scope,
   Stream,
 } from 'effect'
 import type * as Bridge from './bridge.ts'
 import { senderByTag } from './internal/bridge-lookups.ts'
 import { TransportAdapter } from './transport-adapter.ts'
-
-/**
- * Two-bucket failure surface for inbound dispatch.
- *
- * - {@link ParseResult.ParseError}: anything Schema rejects — malformed
- *   JSON, an unrecognised `_tag`, or a known tag whose payload doesn't
- *   match. The dispatch core decodes via `Schema.parseJson(Schema.Union(...))`
- *   so the three previously-distinguished cases collapse into one
- *   parse-error variant.
- * - {@link DispatchInternalError}: an invariant the dup-check + lockstep
- *   schema/handler loop should make unreachable. Surfaces a wiring/refactor
- *   bug loudly instead of dropping the message silently — e.g., a deliberate
- *   `handlers: { Tag: undefined }` cast in a test fixture.
- */
-
-/** Source channel an inbound message arrived through. */
-type DispatchSource = 'live' | 'initial'
-
-/**
- * Internal-invariant failure: the schema accepted the message but no
- * handler is wired for the tag. Reachable when a consumer passes
- * `undefined` as a handler (typically a test cast).
- */
-class DispatchInternalError extends Data.TaggedError('Internal')<{
-  readonly source: DispatchSource
-  readonly tag: string
-  readonly reason: string
-}> {}
-
-/** Union of every failure variant the inbound-dispatch fiber can yield. */
-type DispatchError = ParseResult.ParseError | DispatchInternalError
-
-/**
- * Map a structured {@link DispatchError} to a single
- * `Effect.logWarning` call. The dispatch fiber uses this in
- * `Effect.catchAll(dispatchErrorToLog)` so every dispatch failure
- * surfaces through the same channel.
- */
-const dispatchErrorToLog = (error: DispatchError): Effect.Effect<void> => {
-  if (error._tag === 'Internal') {
-    return Effect.logWarning(
-      `[effect-messaging] internal dispatch invariant violated for ${error.source} tag "${error.tag}": ${error.reason}`
-    )
-  }
-  return Effect.logWarning(`[effect-messaging] failed to decode message: ${String(error)}`)
-}
 
 /** The web-→-host handshake signal. Resolves the host's `peerReady` Deferred. */
 const READY_TAG = '__Ready' as const
@@ -99,7 +51,11 @@ type MessageSender<
  * {@link Bridge.Bridge} declarations into a single Effect program.
  *
  * @remarks
- * Scope close shuts down the queue, interrupts the dispatch fiber, and
+ * Two queues run behind the public surface: an **outbox** (sends are
+ * offered immediately and a pump fiber drains them once the peer signals
+ * `__Ready`) and an **inbox** (raw inbound strings plus `registerHandlers`
+ * control items, processed in FIFO order by a single dispatch fiber).
+ * Scope close shuts down both queues, interrupts both fibers, and
  * detaches platform listeners.
  */
 interface BridgeTransport<
@@ -107,14 +63,15 @@ interface BridgeTransport<
   Side extends 'Host' | 'Web',
 > {
   /**
-   * Send any outbound message belonging to one of the wired bridges.
+   * Enqueue an outbound message belonging to one of the wired bridges.
    *
    * @remarks
-   * On the host side, the returned Effect suspends until the web has
-   * posted `__Ready` (the handshake signal). On the web side, sends
-   * flow immediately — the asymmetry matches the lifecycle: the host
-   * is up before the web bundle even loads, so the web doesn't need
-   * to wait on anyone.
+   * The send is buffered in the outbox and never suspends the caller.
+   * A pump fiber flushes the outbox once the peer has signalled `__Ready`:
+   * on the host that's when the page posts it; on the web it resolves
+   * immediately (the web self-posts `__Ready` at make). The asymmetry
+   * matches the lifecycle — the host is up before the web bundle loads,
+   * so the web never waits on anyone.
    */
   readonly sendMessage: MessageSender<Bridges, Side>
   /**
@@ -122,8 +79,6 @@ interface BridgeTransport<
    * close the call is a no-op (the queue is shut down).
    */
   readonly enqueue: (raw: string) => Effect.Effect<void>
-  /** Resolves once the dispatch fiber has drained every message enqueued before the call. */
-  readonly flushed: Effect.Effect<void>
   /**
    * Tell the peer this side is ready to receive messages. Web posts
    * `__Ready` to the host (resolving the host's send-gating Deferred);
@@ -131,28 +86,22 @@ interface BridgeTransport<
    */
   readonly signalReady: Effect.Effect<void>
   /**
-   * Atomically replace the per-bridge handler set without rebuilding
-   * the transport (queue, dispatch fiber, schemas, `peerReady`
-   * Deferred, and outbound sender map all persist). The dispatch
-   * fiber reads the handler map from a {@link Ref} on every inbound
-   * message, so the next message after this call's discharge picks
-   * up the new handlers.
+   * Replace the active per-bridge handler records. Routed through the
+   * inbox queue as a control item, so it is ordered against in-flight
+   * inbound messages: a message that arrived before its handler was
+   * registered is parked per-tag and replayed in arrival order once a
+   * covering handler lands. The returned Effect resolves after the swap
+   * (and any parked-message replay) has been applied.
    *
    * @remarks
-   * Each call discharges its `layers` into the transport's outer
-   * scope (the one in scope when `make` was invoked). Layer resources
-   * therefore accumulate across calls and release together when the
-   * transport's scope closes. Suitable for typical stateless receiver
-   * layers (Schema-keyed handler records); a stateful layer
-   * (database pool, file watcher) would accumulate per-call — wrap
-   * such a layer in your own per-bind scope before passing it in.
-   *
-   * Throws synchronously on duplicate inbound tags across bridges,
-   * matching the initial `make` build's wiring-error policy.
+   * Pure — handlers are plain records, so there is no layer/resource
+   * discharge and repeated calls don't accumulate. Replace semantics:
+   * the supplied records become the whole active set; a tag absent from
+   * the new records loses its handler (future messages for it park).
    */
-  readonly setLayers: (
-    layers: Bridge.TransportLayers<Bridges, Side>
-  ) => Effect.Effect<void, never, never>
+  readonly registerHandlers: (
+    handlers: Bridge.HandlersByBridge<Bridges, Side>
+  ) => Effect.Effect<void>
 }
 
 /**
@@ -179,23 +128,34 @@ type Handler = (message: { readonly _tag: string }) => Effect.Effect<void, never
 
 type AnyHandlers = Readonly<Record<string, Handler | undefined>>
 
+/** Decoded inbound message — re-narrowed to its `_tag` at the routing site. */
+type DecodedMessage = { readonly _tag: string }
+
+/**
+ * Items flowing through the inbox. `message` carries a raw inbound wire
+ * string; `register` swaps the active handler records (and resolves
+ * `done` once applied). One consumer fiber processes both in FIFO order,
+ * so a `register` is correctly sequenced against the messages around it.
+ */
+type InboxItem<Bridges extends ReadonlyArray<Bridge.AnyBridge>, Side extends 'Host' | 'Web'> =
+  | { readonly kind: 'message'; readonly raw: string }
+  | {
+      readonly kind: 'register'
+      readonly handlers: Bridge.HandlersByBridge<Bridges, Side>
+      readonly done: Deferred.Deferred<void>
+    }
+
 const make = <
   const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
   const Side extends 'Host' | 'Web',
 >(config: {
   readonly bridges: Bridges
-  readonly layers: Bridge.TransportLayers<Bridges, Side>
+  readonly handlers: Bridge.HandlersByBridge<Bridges, Side>
   readonly side: Side
 }): Effect.Effect<BridgeTransport<Bridges, Side>, never, TransportAdapter | Scope.Scope> =>
   Effect.gen(function* () {
-    const { bridges, layers: initialLayers, side } = config
+    const { bridges, handlers: initialHandlers, side } = config
     const adapter = yield* TransportAdapter
-    // Capture the transport's outer scope so {@link setLayers} can
-    // discharge replacement layers into it — same lifetime as the
-    // initial layer build. `Effect.scope` reads the active scope from
-    // the surrounding `Effect.gen` (provided by `make`'s `Scope.Scope`
-    // requirement).
-    const outerScope = yield* Effect.scope
 
     /**
      * Send-gating Deferred. Resolved when the local `__Ready` handler
@@ -208,87 +168,73 @@ const make = <
       Deferred.succeed(peerReady, undefined).pipe(Effect.asVoid)
 
     /**
-     * Per-layer-discharge handler-map builder. Folded over the
-     * `Bridges` × `Layers` parallel tuples to produce the same
-     * `HashMap<tag, Handler>` shape the dispatch fiber reads through
-     * the `handlersRef`. Used twice: once at initial `make` to seed
-     * the Ref, and again on every {@link BridgeTransport.setLayers}
-     * call.
+     * Pure tag→handler map builder. Folds the `Bridges` × handler-records
+     * parallel tuples into the flat `HashMap<tag, Handler>` the dispatch
+     * fiber reads through {@link handlersRef}. Always appends the
+     * `__Ready` handler so the handshake survives every replace.
      *
-     * Throws synchronously on duplicate inbound tags so wiring drift
-     * fails the call before it touches the Ref — the previously-active
-     * handler map remains in place.
+     * Throws synchronously on duplicate inbound tags across bridges — a
+     * wiring error. At initial `make` this fails the build loudly; on a
+     * `register` the dispatch fiber catches the defect, logs it, and
+     * keeps the prior map in place (see the consumer's `catchAllDefect`).
      */
     const buildHandlerByTag = (
-      layers: Bridge.TransportLayers<Bridges, Side>
-    ): Effect.Effect<HashMap.HashMap<string, Handler>, never, Scope.Scope> =>
-      Effect.gen(function* () {
-        const handlersByBridgeIndex: ReadonlyArray<AnyHandlers | undefined> = yield* pipe(
-          Array.zipWith(
-            bridges,
-            layers,
-            (bridge, layer): Effect.Effect<AnyHandlers | undefined, never, Scope.Scope> => {
-              if (bridge === undefined || layer === undefined) {
-                return Effect.succeed<AnyHandlers | undefined>(undefined)
-              }
-              const half = bridge[side]
-              // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-              const handlersEffect = Effect.provide(half.HandlerTag, layer) as Effect.Effect<
-                AnyHandlers | undefined,
-                never,
-                Scope.Scope
-              >
-              return handlersEffect
+      handlersByBridge: Bridge.HandlersByBridge<Bridges, Side>
+    ): HashMap.HashMap<string, Handler> => {
+      const tagHandlerPairs = pipe(
+        Array.zipWith(
+          bridges,
+          handlersByBridge,
+          (bridge, handlers): [string, Handler | undefined][] => {
+            if (bridge === undefined || handlers === undefined) {
+              return []
             }
-          ),
-          Effect.all
-        )
-
-        const tagHandlerPairs = pipe(
-          Array.zipWith(
-            bridges,
-            handlersByBridgeIndex,
-            (bridge, handlers): [string, Handler | undefined][] => {
-              if (bridge === undefined || handlers === undefined) {
-                return [] as [string, Handler | undefined][]
-              }
-              return Record.toEntries(handlers)
-            }
-          ),
-          Array.flatten,
-          Array.filter((entry): entry is [string, Handler] => entry[1] !== undefined),
-          Array.append([READY_TAG, readyTagHandler] as [string, Handler])
-        )
-        const [repeatedTags] = Array.reduce(
-          tagHandlerPairs,
-          [new Set<string>(), new Set<string>()] as const,
-          ([repeats, seen], [tag]) => {
-            if (seen.has(tag)) {
-              repeats.add(tag)
-            } else {
-              seen.add(tag)
-            }
-
-            return [repeats, seen]
+            // Each record's handlers accept their specific message type;
+            // erase to the routing-site `Handler` shape (re-narrowed by
+            // `_tag` at dispatch).
+            return Record.toEntries(handlers as AnyHandlers)
           }
-        )
-        if (repeatedTags.size > 0) {
-          throw new Error(`duplicate inbound tag(s) "${[...repeatedTags].join('", "')}"`)
-        }
+        ),
+        Array.flatten,
+        Array.filter((entry): entry is [string, Handler] => entry[1] !== undefined),
+        Array.append([READY_TAG, readyTagHandler] as [string, Handler])
+      )
+      const [repeatedTags] = Array.reduce(
+        tagHandlerPairs,
+        [new Set<string>(), new Set<string>()] as const,
+        ([repeats, seen], [tag]) => {
+          if (seen.has(tag)) {
+            repeats.add(tag)
+          } else {
+            seen.add(tag)
+          }
 
-        return HashMap.fromIterable<string, Handler>(tagHandlerPairs)
-      })
+          return [repeats, seen]
+        }
+      )
+      if (repeatedTags.size > 0) {
+        throw new Error(`duplicate inbound tag(s) "${[...repeatedTags].join('", "')}"`)
+      }
+
+      return HashMap.fromIterable<string, Handler>(tagHandlerPairs)
+    }
 
     /**
-     * Flat tag→handler map, read by the dispatch fiber on every
-     * inbound message. Held in a {@link Ref} so {@link setLayers} can
-     * swap the map without rebuilding the queue, dispatch fiber, or
-     * `peerReady` Deferred — the schema union below stays static
-     * because it's bridges-derived (the bridges tuple itself doesn't
-     * change for the transport's lifetime).
+     * Flat tag→handler map, read by the dispatch fiber on every inbound
+     * message. Held in a {@link Ref} so {@link registerHandlers} can swap
+     * it without rebuilding the queues, dispatch fiber, or `peerReady`
+     * Deferred. The schema union below stays static — it's bridges-derived
+     * and the bridges tuple is fixed for the transport's lifetime.
      */
-    const initialHandlerByTag = yield* buildHandlerByTag(initialLayers)
-    const handlersRef = yield* Ref.make(initialHandlerByTag)
+    const handlersRef = yield* Ref.make(buildHandlerByTag(initialHandlers))
+
+    /**
+     * Per-tag parking lot for inbound messages whose tag has no handler
+     * yet. Schema acceptance proves the tag is a known inbound message,
+     * so it's held (not dropped) until a {@link registerHandlers} call
+     * installs a covering handler, then replayed in arrival order.
+     */
+    const parkedRef = yield* Ref.make(HashMap.empty<string, ReadonlyArray<DecodedMessage>>())
 
     const innerSchemas: Array.NonEmptyArray<AnyTaggedSchema> = pipe(
       Array.flatMap(bridges, (bridge) => Record.values(bridge[side].InboundSchemas)),
@@ -299,18 +245,15 @@ const make = <
     const taggedSenders = senderByTag(bridges, side)
 
     /**
-     * Single-pass decode for inbound dispatch. `Schema.parseJson`
-     * parses the wire string once; the surrounding `Schema.Union`
-     * discriminates by `_tag` and produces the typed message in one
-     * shot. Tags outside the union surface as `ParseError` (no
-     * separate `UnknownTag` distinction — the union folds the two
-     * cases into one).
+     * Single-pass decode for inbound dispatch. `Schema.parseJson` parses
+     * the wire string once; the surrounding `Schema.Union` discriminates
+     * by `_tag` and produces the typed message in one shot. Tags outside
+     * the union surface as `ParseError` and are logged-and-dropped (a
+     * known tag with no handler is parked instead — see {@link dispatchOrPark}).
      *
      * Today `innerSchemas` always carries at least `ReadyMessageSchema`
-     * (appended above), so the empty-array branch below is defensive —
-     * `Schema.Never` would reject every inbound message, matching "this
-     * side accepts nothing inbound" if the `__Ready` append is ever
-     * removed.
+     * (appended above), so the single-member branch is the floor; the
+     * `Schema.Union` branch covers every real transport.
      */
     const dispatchMessage: AnyTaggedSchema = Match.value(innerSchemas).pipe(
       Match.withReturnType<AnyTaggedSchema>(),
@@ -324,133 +267,155 @@ const make = <
     const decodeMessage = Schema.decode(Schema.parseJson(dispatchMessage))
 
     /**
-     * Decode one raw inbound message and route to its handler. Schema
-     * acceptance implies the tag is in the current `handlersRef`
-     * snapshot (built in lockstep with `innerSchemas`); a missing
-     * handler entry surfaces as `Internal` so a deliberate
-     * `handlers: { Tag: undefined }` cast doesn't crash the dispatch
-     * fiber.
+     * Decode one raw inbound message and route to its handler, or park
+     * it under its tag when no handler is registered yet. Schema
+     * acceptance guarantees `_tag: string`; re-narrow at this single
+     * boundary.
      */
-    const decodeAndDispatch = (
-      raw: string,
-      source: DispatchSource
-    ): Effect.Effect<void, DispatchError | ParseResult.ParseError, TransportAdapter> =>
+    const dispatchOrPark = (
+      raw: string
+    ): Effect.Effect<void, ParseResult.ParseError, TransportAdapter> =>
       Effect.gen(function* () {
-        // The Union schema decodes to `any`; re-narrow at this single
-        // boundary. Schema acceptance guarantees `_tag: string`.
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-        const decoded = (yield* decodeMessage(raw)) as { readonly _tag: string }
+        const decoded = (yield* decodeMessage(raw)) as DecodedMessage
         const handlerByTag = yield* Ref.get(handlersRef)
-        const maybeHandler = HashMap.get(handlerByTag, decoded._tag)
-
-        return yield* Option.match(maybeHandler, {
-          onNone: () =>
-            Effect.fail(
-              new DispatchInternalError({
-                source,
-                tag: decoded._tag,
-                reason: 'handler is undefined for a dispatched tag',
-              })
-            ),
+        yield* Option.match(HashMap.get(handlerByTag, decoded._tag), {
           onSome: (handler) => handler(decoded),
+          onNone: () =>
+            Ref.update(parkedRef, (parked) =>
+              HashMap.set(parked, decoded._tag, [
+                ...Option.getOrElse(
+                  HashMap.get(parked, decoded._tag),
+                  (): ReadonlyArray<DecodedMessage> => []
+                ),
+                decoded,
+              ])
+            ),
         })
       })
 
-    interface QueueItem {
-      readonly raw: string
-      readonly source: DispatchSource
-      readonly drainMarker?: Deferred.Deferred<void>
-    }
-    const queue = yield* Queue.unbounded<QueueItem>()
-
-    const handleDrainMarker = (
-      item: QueueItem & { readonly drainMarker: Deferred.Deferred<void> }
-    ): Effect.Effect<void, never, TransportAdapter | Scope.Scope> =>
-      Deferred.succeed(item.drainMarker, undefined).pipe(Effect.asVoid)
-
-    const handleDecode = (
-      item: QueueItem
-    ): Effect.Effect<void, never, TransportAdapter | Scope.Scope> =>
-      decodeAndDispatch(item.raw, item.source).pipe(
-        Effect.catchAll(dispatchErrorToLog),
-        // Handler defects don't take the dispatch fiber down.
-        Effect.catchAllDefect((defect) =>
-          Effect.logError(
-            `[effect-messaging] handler defect; dispatch continues: ${String(defect)}`
-          )
+    /**
+     * Apply a `register` control item: rebuild the handler map (may throw
+     * on a duplicate-tag wiring error — surfaces as a defect the consumer
+     * catches), swap the Ref, then replay every parked message whose tag
+     * the new map now covers, clearing each replayed tag.
+     */
+    const applyRegister = (
+      next: Bridge.HandlersByBridge<Bridges, Side>
+    ): Effect.Effect<void, never, TransportAdapter> =>
+      Effect.gen(function* () {
+        const nextMap = buildHandlerByTag(next)
+        yield* Ref.set(handlersRef, nextMap)
+        const parked = yield* Ref.get(parkedRef)
+        yield* Effect.forEach(
+          HashMap.toEntries(parked),
+          ([tag, messages]) =>
+            Option.match(HashMap.get(nextMap, tag), {
+              onNone: () => Effect.void,
+              onSome: (handler) =>
+                Effect.forEach(messages, (message) => handler(message), { discard: true }).pipe(
+                  Effect.andThen(Ref.update(parkedRef, (current) => HashMap.remove(current, tag)))
+                ),
+            }),
+          { discard: true }
         )
-      )
+      })
+
+    const inbox = yield* Queue.unbounded<InboxItem<Bridges, Side>>()
+
+    const processItem = (
+      item: InboxItem<Bridges, Side>
+    ): Effect.Effect<void, ParseResult.ParseError, TransportAdapter> =>
+      item.kind === 'register'
+        ? applyRegister(item.handlers).pipe(Effect.ensuring(Deferred.succeed(item.done, undefined)))
+        : dispatchOrPark(item.raw)
 
     yield* Effect.forkScoped(
-      Stream.fromQueue(queue, { shutdown: true }).pipe(
-        Stream.runForEach(
-          Match.type<QueueItem>().pipe(
-            Match.withReturnType<Effect.Effect<void, never, TransportAdapter | Scope.Scope>>(),
-            Match.when({ drainMarker: Match.defined }, handleDrainMarker),
-            Match.orElse((item) => handleDecode(item))
+      Stream.runForEach(Stream.fromQueue(inbox, { shutdown: true }), (item) =>
+        processItem(item).pipe(
+          Effect.catchAll((error) =>
+            Effect.logWarning(`[effect-messaging] failed to decode message: ${String(error)}`)
+          ),
+          // Handler defects (and register wiring throws) don't take the
+          // dispatch fiber down.
+          Effect.catchAllDefect((defect) =>
+            Effect.logError(`[effect-messaging] dispatch defect; continues: ${String(defect)}`)
           )
         )
-      )
+      ).pipe(Effect.provideService(TransportAdapter, adapter))
     )
 
     if (side === 'Web') {
-      yield* Queue.offer(queue, { raw: '{"_tag":"__Ready"}', source: 'initial' })
+      yield* Queue.offer(inbox, { kind: 'message', raw: '{"_tag":"__Ready"}' })
     }
     const initial = yield* adapter.drainInitial
     for (const raw of initial) {
-      yield* Queue.offer(queue, { raw, source: 'initial' })
+      yield* Queue.offer(inbox, { kind: 'message', raw })
     }
 
-    // After scope close the queue is shut down; `Effect.ignore` drops the resulting interrupt cleanly.
+    // After scope close the queue is shut down; offering then fails with an
+    // interrupt cause, which `Effect.ignore` (typed-error channel only) lets
+    // through. `catchAllCause` swallows it so a late enqueue is a clean no-op.
     const enqueue = (raw: string): Effect.Effect<void> =>
-      Queue.offer(queue, { raw, source: 'live' }).pipe(Effect.ignore)
+      Queue.offer(inbox, { kind: 'message', raw }).pipe(Effect.catchAllCause(() => Effect.void))
 
     if (adapter.attachBareSender !== undefined) {
       yield* adapter.attachBareSender(enqueue)
     }
 
-    /** Sentinel-marker drain: the dispatch fiber processes the marker after every prior message. */
-    const flushed: Effect.Effect<void> = pipe(
-      Deferred.make<void>(),
-      Effect.tap((marker) => Queue.offer(queue, { raw: '', source: 'live', drainMarker: marker })),
-      Effect.flatMap((marker) => Deferred.await(marker))
-    )
+    /**
+     * Outbox: sends are offered here immediately. A single pump fiber
+     * gates once on `peerReady`, then drains forever — so messages
+     * enqueued before the peer is ready ride out in order the moment the
+     * handshake lands.
+     */
+    const outbox = yield* Queue.unbounded<Bridge.SendableMessage<Bridges, Side>>()
 
     const sendMessage: MessageSender<Bridges, Side> = (
       message: Bridge.SendableMessage<Bridges, Side>
-    ): Effect.Effect<void> =>
-      Effect.gen(function* () {
-        yield* Deferred.await(peerReady)
-        const sender = taggedSenders.get(message._tag)
-        if (sender === undefined) {
-          yield* Effect.logWarning(
-            `[effect-messaging] sendMessage: no bridge owns tag "${message._tag}"; dropping`
+    ): Effect.Effect<void> => Queue.offer(outbox, message).pipe(Effect.ignore)
+
+    yield* Effect.forkScoped(
+      Deferred.await(peerReady)
+        .pipe(
+          Effect.andThen(
+            Stream.runForEach(Stream.fromQueue(outbox, { shutdown: true }), (message) => {
+              const sender = taggedSenders.get(message._tag)
+              if (sender === undefined) {
+                return Effect.logWarning(
+                  `[effect-messaging] sendMessage: no bridge owns tag "${message._tag}"; dropping`
+                )
+              }
+              return sender(message)
+            })
           )
-          return undefined
-        }
-        yield* sender(message)
-        return undefined
-      }).pipe(Effect.provideService(TransportAdapter, adapter))
+        )
+        .pipe(Effect.provideService(TransportAdapter, adapter))
+    )
 
     const signalReady = {
       Web: adapter.bareSender(READY_RAW),
       Host: Effect.void,
     }[side]
 
-    const setLayers = (
-      newLayers: Bridge.TransportLayers<Bridges, Side>
-    ): Effect.Effect<void, never, never> =>
+    const registerHandlers = (
+      handlers: Bridge.HandlersByBridge<Bridges, Side>
+    ): Effect.Effect<void> =>
       Effect.gen(function* () {
-        const next = yield* buildHandlerByTag(newLayers)
-        yield* Ref.set(handlersRef, next)
-      }).pipe(Scope.extend(outerScope))
+        const done = yield* Deferred.make<void>()
+        const accepted = yield* Queue.offer(inbox, { kind: 'register', handlers, done })
+        // A shut-down inbox (post scope close) rejects the offer; skip
+        // the await so a late call can't hang on a `done` that never resolves.
+        if (accepted) {
+          yield* Deferred.await(done)
+        }
+      })
 
     return {
       sendMessage,
       enqueue,
-      flushed,
       signalReady,
-      setLayers,
+      registerHandlers,
     }
   })
 

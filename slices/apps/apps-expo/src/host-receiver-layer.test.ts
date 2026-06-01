@@ -1,7 +1,9 @@
 /**
- * Tests for the {@link AppsBridgeExpo.ReceiverLayer} surface:
+ * Tests for the apps-expo host handler record built by
+ * {@link AppsBridgeExpo.makeHostHandlers}:
  *
- *  - **Type-only**: the Layer's `R` requires only `TunnelStore`. Replies
+ *  - **Type-only**: `makeHostHandlers` takes a resolved `TunnelStore`
+ *    service and returns the `Apps` host-side handler record. Replies
  *    route through `AppsBridge.Host.send(...)` which the bridge transport
  *    discharges via its own `TransportAdapter` per invocation — at test
  *    time we discharge with `TestPlatformAdapterLayer.make()`.
@@ -10,12 +12,13 @@
  *    dispatched via the mocked `AppsBridge.Host.send`.
  *
  * Sister file: `commit-and-await-tunnel.test.ts` covers the
- * `commitRequestedRunning` + `awaitTunnelOrigin` helpers this layer
- * composes. Shared mocks + fake store live in
+ * `commitRequestedRunning` + `awaitTunnelOrigin` helpers these handlers
+ * compose. Shared mocks + fake store live in
  * `__test-support__/host-receiver-test-mocks.ts`.
  */
-import { Duration, Effect, Fiber, Layer, TestClock, TestContext } from 'effect'
-import { TestPlatformAdapterLayer, type MessageHandler } from 'effect-messaging-core'
+import type { AppsBridge } from 'apps-core/bridge'
+import { Duration, Effect, Fiber, TestClock, TestContext } from 'effect'
+import { type Bridge, TestPlatformAdapterLayer } from 'effect-messaging-core'
 import { expectTypeOf } from 'expect-type'
 
 import {
@@ -24,7 +27,6 @@ import {
   mockBuildAppsCoreFactory,
   mockBuildLivestoreBaseFactory,
   mockBuildTunnelCoreFactory,
-  requireTunnelStoreTag,
   resetHarness,
   type FakeStore,
 } from './__test-support__/host-receiver-test-mocks.ts'
@@ -33,52 +35,34 @@ jest.mock('@livestore/livestore', () => mockBuildLivestoreBaseFactory())
 jest.mock('tunnel-core/livestore', () => mockBuildTunnelCoreFactory())
 jest.mock('apps-core/bridge', () => mockBuildAppsCoreFactory())
 
-import type { TunnelStore } from 'tunnel-core/livestore'
+import type { TunnelStoreService } from './commit-and-await-tunnel.ts'
 import { AppsBridgeExpo } from './index.ts'
 
 const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
+
+/**
+ * The fake livestore only implements the three methods the production
+ * helpers touch (`commit` / `query` / `subscribe`); route it through
+ * `unknown` to the full `TunnelStore` service the handler factory expects.
+ */
+const asTunnelStoreService = (store: FakeStore): TunnelStoreService =>
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  store as unknown as TunnelStoreService
 
 beforeEach(() => {
   resetHarness()
 })
 
-describe('AppsBridgeExpo.ReceiverLayer (type)', () => {
-  it('is a Layer providing the Apps host handler tag and requiring only TunnelStore', () => {
-    expectTypeOf(AppsBridgeExpo.ReceiverLayer).toEqualTypeOf<
-      Layer.Layer<MessageHandler.TagId<'Apps', 'Host'>, never, TunnelStore>
+describe('AppsBridgeExpo.makeHostHandlers (type)', () => {
+  it('takes a resolved TunnelStore service and returns the Apps host handler record', () => {
+    expectTypeOf(AppsBridgeExpo.makeHostHandlers).returns.toEqualTypeOf<
+      Bridge.HalfHandlers<AppsBridge['Host']>
     >()
+    expectTypeOf(AppsBridgeExpo.makeHostHandlers).parameter(0).toEqualTypeOf<TunnelStoreService>()
   })
 })
 
-/**
- * Build the receiver layer against `store`, capture its handlers via the
- * `apps-core/bridge` mock, and return them.
- *
- * Type note: the runtime `TunnelStore` value is the mocked tag the
- * `tunnel-core/livestore` factory installs (see `harness.tunnelStoreTag`),
- * so `Layer.provide(tunnelStoreLayer)` discharges it correctly. The
- * compiler can't see that — the real `TunnelStore` import is a class
- * with a richer service shape — so the resulting layer is cast through
- * the `MessageHandler.TagId<'Apps', 'Host'>` shape with no other
- * requirements before `Layer.build`.
- */
-const buildHandlersWithStore = async (
-  store: FakeStore
-): Promise<NonNullable<typeof harness.lastHandlers>> => {
-  const tunnelStoreLayer = Layer.succeed(requireTunnelStoreTag(), store)
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const layer = AppsBridgeExpo.ReceiverLayer.pipe(Layer.provide(tunnelStoreLayer)) as Layer.Layer<
-    MessageHandler.TagId<'Apps', 'Host'>
-  >
-  await Effect.runPromise(Layer.build(layer).pipe(Effect.scoped))
-  const handlers = harness.lastHandlers
-  if (handlers === null) {
-    throw new Error('receiver-layer mock failed to capture handlers')
-  }
-  return handlers
-}
-
-describe('AppsBridgeExpo.ReceiverLayer (RequestTunnel dispatch)', () => {
+describe('AppsBridgeExpo.makeHostHandlers (RequestTunnel dispatch)', () => {
   it('Success → AppsBridge.Host.send called with TunnelStarted carrying the composed origin (snapshot fast-path)', async () => {
     const store = makeFakeStore({
       initialState: {
@@ -89,7 +73,7 @@ describe('AppsBridgeExpo.ReceiverLayer (RequestTunnel dispatch)', () => {
         error: null,
       },
     })
-    const handlers = await buildHandlersWithStore(store)
+    const handlers = AppsBridgeExpo.makeHostHandlers(asTunnelStoreService(store))
     // The snapshot fast-path resolves synchronously with
     // `https://app-1.tun.example` → onSuccess dispatches TunnelStarted.
     await Effect.runPromise(
@@ -106,7 +90,7 @@ describe('AppsBridgeExpo.ReceiverLayer (RequestTunnel dispatch)', () => {
     // drive the timeout via `TestClock` so the test stays deterministic
     // and millisecond-fast.
     const store = makeFakeStore()
-    const handlers = await buildHandlersWithStore(store)
+    const handlers = AppsBridgeExpo.makeHostHandlers(asTunnelStoreService(store))
     await Effect.runPromise(
       Effect.gen(function* () {
         const fiber = yield* Effect.fork(

@@ -1,9 +1,8 @@
 import { AppsBridge } from 'apps-core/bridge'
-import { Layer } from 'effect'
 import { HostBindings } from 'effect-messaging-core'
 import { useMemo } from 'react'
-import { TunnelStore } from 'tunnel-core/livestore'
-import { ReceiverLayer } from './host-receiver-layer.ts'
+import type { TunnelStore } from 'tunnel-core/livestore'
+import { makeAppsHostHandlers } from './host-receiver-layer.ts'
 
 type TunnelLivestore = typeof TunnelStore.Service
 
@@ -21,24 +20,23 @@ interface UseAppsHostBindingOptions {
 /**
  * Host binding for the apps bridge.
  *
- * Pre-discharges `TunnelStore` against a layer built from the supplied
- * livestore handle; the receiver layer's `RequestTunnel` handler replies
- * via `AppsBridge.Host.send(...)` (whose `TransportAdapter` requirement
- * the bridge transport's dispatch fiber discharges per invocation).
+ * Passes the supplied livestore handle straight to
+ * {@link makeAppsHostHandlers} (the `TunnelStore` tag's resolved service
+ * is that handle); the `RequestTunnel` handler replies via
+ * `AppsBridge.Host.send(...)` (whose `TransportAdapter` requirement the
+ * bridge transport's dispatch fiber discharges per invocation).
  */
 const useAppsHostBinding = ({
   store,
-}: UseAppsHostBindingOptions): HostBindings.HostBindings<readonly [typeof AppsBridge]> => {
-  const tunnelStoreLayer = useMemo(() => TunnelStore.layerFrom(store), [store])
-  return useMemo(
+}: UseAppsHostBindingOptions): HostBindings.HostBindings<readonly [typeof AppsBridge]> =>
+  useMemo(
     () =>
       HostBindings.single({
         bridge: AppsBridge,
-        receiverLayer: ReceiverLayer.pipe(Layer.provide(tunnelStoreLayer)),
+        handlers: makeAppsHostHandlers(store),
       }),
-    [tunnelStoreLayer]
+    [store]
   )
-}
 
 export { useAppsHostBinding }
 export type { UseAppsHostBindingOptions }

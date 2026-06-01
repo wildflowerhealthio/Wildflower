@@ -44,8 +44,8 @@ interface RouterContext {
   readonly awaitAuthReady: BaseRouterContext.AwaitAuthReady
   /**
    * Resolves to the page-side `BridgeTransport` (narrowed to the React
-   * surface — only `sendMessage`) once the boot-time `flushed →
-   * signalReady` chain finishes. The `_auth` route loader awaits this
+   * surface — only `sendMessage`) once the boot-time `signalReady`
+   * finishes. The `_auth` route loader awaits this
    * before emitting the embedded `UIReady` handshake; by the time the
    * loader runs the `beforeLoad` gate's `awaitAuthReady` has already
    * resolved (which on embedded already waited the same promise), so

@@ -3,7 +3,9 @@ import type * as Message from './message.ts'
 import type { TransportAdapter } from './transport-adapter.ts'
 
 /**
- * Per-tag handler record consumed by `Bridge.make`'s `ReceiverLayer`.
+ * Per-tag handler record for one bridge half's inbound messages, passed
+ * to the transport via `BridgeTransport.make`'s `handlers` tuple (or
+ * swapped later through `registerHandlers`).
  *
  * @remarks
  * Each handler returns `Effect<void, never, TransportAdapter>` so a
@@ -23,14 +25,4 @@ type HandlersFor<R extends Message.SchemaRecord> = {
     : never
 }
 
-/**
- * String-literal identifier for a bridge half's `Context.Tag`.
- *
- * @remarks
- * Two `Bridge.make({name: 'X', …})` calls produce type-equivalent
- * `HandlerTag`s but runtime-distinct tag instances; the runtime never
- * confuses two bridges, but TS can't catch accidental name collisions.
- */
-type TagId<Name extends string, Side extends 'Host' | 'Web'> = `${Name}.${Side}.HandlerTag`
-
-export type { HandlersFor, TagId }
+export type { HandlersFor }

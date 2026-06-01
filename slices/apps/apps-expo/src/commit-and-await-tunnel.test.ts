@@ -1,7 +1,7 @@
 /**
  * Behavioral tests for {@link commitRequestedRunning} and {@link awaitTunnelOrigin}.
- * Sister file to `host-receiver-layer.test.ts`, which covers the
- * ReceiverLayer surface that composes these helpers. Shared mocks +
+ * Sister file to `host-receiver-layer.test.ts`, which covers the host
+ * handler record that composes these helpers. Shared mocks +
  * fake store live in `__test-support__/host-receiver-test-mocks.ts`.
  */
 import { fc, test as fcTest } from '@fast-check/jest'

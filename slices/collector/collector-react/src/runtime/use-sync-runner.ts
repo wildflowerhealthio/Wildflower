@@ -69,7 +69,7 @@ type RunnerState =
  *     so the host opens the sniffer modal. Install-before-dispatch
  *     ordering guarantees any sniffer events the host emits land on a
  *     live receiver (events that arrive on `activeHandlerRef.current === null`
- *     would otherwise be log-and-dropped by `collectorWebReceiverLayer`).
+ *     would otherwise be log-and-dropped by `collectorWebHandlers`).
  *   - On unmount or remote change: dispatches `CancelSnifferRequest`
  *     for every in-flight id, clears the handler's state, and
  *     uninstalls it.

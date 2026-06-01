@@ -9,8 +9,8 @@ import { buildTransport } from './bridges/build-transport.ts'
 
 // Embedded WebView: the host delivers the bearer over the gatekeeper
 // bridge after `transport.signalReady`. `awaitEmbeddedAuthReady` is a
-// factory that closes over the transport's `flushed → signalReady`
-// settled promise — `renderApp` calls it once with the post-flush
+// factory that closes over the transport's boot-time `signalReady`
+// settled promise — `renderApp` calls it once with that ready
 // promise, and the resolved `awaitAuthReady` does the wait inside
 // itself before reading the token ref. The transport is built outside
 // React; its returned promise feeds `context.transport` for the

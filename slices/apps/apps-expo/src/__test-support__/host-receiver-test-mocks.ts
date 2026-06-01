@@ -1,7 +1,7 @@
 /**
  * Shared mock factories + fake-store harness used by the apps-expo host
- * receiver test split. Both `host-receiver-layer.test.ts` (ReceiverLayer
- * surface) and `commit-and-await-tunnel.test.ts` (helper behavior)
+ * receiver test split. Both `host-receiver-layer.test.ts` (handler-record
+ * dispatch) and `commit-and-await-tunnel.test.ts` (helper behavior)
  * register the same three module mocks against the same `globalThis`-
  * keyed harness; centralising the wiring keeps them in lockstep.
  *
@@ -9,9 +9,8 @@
  * globalThis-keyed-state pattern this file uses.
  */
 import type { AppsBridge } from 'apps-core/bridge'
-import type { Context, Layer } from 'effect'
+import type { Context } from 'effect'
 import type * as EffectModule from 'effect'
-import type { MessageHandler } from 'effect-messaging-core'
 
 interface FakeStoreService {
   readonly commit: jest.Mock
@@ -19,14 +18,12 @@ interface FakeStoreService {
   readonly subscribe: jest.Mock
 }
 
-type AppsHostHandlers = Parameters<typeof AppsBridge.Host.ReceiverLayer>[0]
 type AppsHostToWebMessage = Parameters<typeof AppsBridge.Host.send>[0]
 
 interface MockHarness {
   tunnelConfigSet?: jest.Mock
   current$Sentinel?: symbol
   tunnelStoreTag?: Context.Tag<FakeStoreService, FakeStoreService>
-  lastHandlers: AppsHostHandlers | null
   sentMessages: Array<AppsHostToWebMessage>
 }
 
@@ -34,7 +31,7 @@ declare global {
   var wfMockAppsExpoHarness: MockHarness | undefined
 }
 
-const freshHarness = (): MockHarness => ({ lastHandlers: null, sentMessages: [] })
+const freshHarness = (): MockHarness => ({ sentMessages: [] })
 
 /** Read (creating on first access) the singleton harness. */
 const harness: MockHarness = (() => {
@@ -196,35 +193,19 @@ const mockBuildLivestoreBaseFactory = (): unknown => ({ __esModule: true })
 
 /**
  * Factory for `jest.mock('apps-core/bridge', mockBuildAppsCoreFactory)`.
- * Captures the handlers record passed to `AppsBridge.Host.ReceiverLayer`
- * so the dispatch tests can invoke `RequestTunnel` directly without
- * standing up a transport. Mocks `AppsBridge.Host.send` to record
- * replies into `harness.sentMessages` — the production handler dispatches
- * its reply through this `send`.
+ * Mocks `AppsBridge.Host.send` to record replies into
+ * `harness.sentMessages` — the production handler (built by
+ * `makeAppsHostHandlers`) dispatches its `TunnelStarted` / `TunnelFailed`
+ * reply through this `send`, so the dispatch tests assert against the
+ * recorded log.
  */
 const mockBuildAppsCoreFactory = (): unknown => {
   const effect = jest.requireActual<typeof EffectModule>('effect')
   const mockHarness = (globalThis.wfMockAppsExpoHarness ??= freshHarness())
-  // Provide the captured handlers via a freshly-built tag whose
-  // string-literal `Identifier` matches the real bridge's
-  // `MessageHandler.TagId<'Apps', 'Host'>`. The Tag instance is
-  // mock-local — the test never extracts it — but typing the layer
-  // honestly (no `as`-cast through a narrower R-out) lets oxlint stay
-  // happy and the mock structurally tracks the real bridge.
-  const handlerTag = effect.Context.GenericTag<
-    MessageHandler.TagId<'Apps', 'Host'>,
-    AppsHostHandlers
-  >('Apps.Host.HandlerTag')
   return {
     __esModule: true,
     AppsBridge: {
       Host: {
-        ReceiverLayer: (
-          handlers: AppsHostHandlers
-        ): Layer.Layer<MessageHandler.TagId<'Apps', 'Host'>> => {
-          mockHarness.lastHandlers = handlers
-          return effect.Layer.succeed(handlerTag, handlers)
-        },
         send: (message: AppsHostToWebMessage): EffectModule.Effect.Effect<void> =>
           effect.Effect.sync(() => {
             mockHarness.sentMessages.push(message)
@@ -247,7 +228,6 @@ const resetHarness = (): void => {
       args,
     })
   )
-  harness.lastHandlers = null
   harness.sentMessages = []
 }
 
@@ -261,11 +241,4 @@ export {
   requireTunnelStoreTag,
   resetHarness,
 }
-export type {
-  AppsHostHandlers,
-  AppsHostToWebMessage,
-  FakeStore,
-  FakeStoreService,
-  MockHarness,
-  TunnelStateSnapshot,
-}
+export type { AppsHostToWebMessage, FakeStore, FakeStoreService, MockHarness, TunnelStateSnapshot }

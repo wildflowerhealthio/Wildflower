@@ -56,10 +56,10 @@ const useRouteChangeWatcher = (send: RouteChangeSender): void => {
  *
  * @remarks
  * Inbound navigation messages (`HostBackRequested`,
- * `HostRequestedWebNavigation`) are handled by the receiver Layer
- * built via {@link makeNavigationWebReceiverLayer} — call that inside
- * a component with `useNavigate()` access and pass the layer to
- * `BridgeTransport.make`.
+ * `HostRequestedWebNavigation`) are handled by the record built via
+ * {@link makeNavigationWebHandlers} — call that inside a component with
+ * `useNavigate()` access and pass the record to `BridgeTransport.make`'s
+ * `handlers`.
  */
 function NavigationBridgeHandler({ sender }: { sender: RouteChangeSender }): JSX.Element | null {
   useRouteChangeWatcher(sender)

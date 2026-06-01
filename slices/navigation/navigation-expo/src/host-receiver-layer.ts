@@ -1,9 +1,9 @@
-import { Effect, type Layer } from 'effect'
-import type { MessageHandler } from 'effect-messaging-core'
-import { NavigationBridge } from 'navigation-core'
+import { Effect } from 'effect'
+import type { Bridge } from 'effect-messaging-core'
+import type { NavigationBridge } from 'navigation-core'
 
 /**
- * Build the host-side `ReceiverLayer` for {@link NavigationBridge}.
+ * Build the host-side inbound handler record for {@link NavigationBridge}.
  *
  * @param onRouteChanged - Invoked for each `RouteChanged`. Omitted: the
  *   handler is a no-op (acknowledged, no side effect).
@@ -18,14 +18,13 @@ import { NavigationBridge } from 'navigation-core'
  * same split — wire `useLogHostBinding()` next to the slice's host
  * binding rather than re-adding a `Log` channel here.
  */
-const ReceiverLayer = (
+const makeNavigationHostHandlers = (
   onRouteChanged?: (route: { pathname: string; canGoBack: boolean }) => void,
   onUiReady?: () => void
-): Layer.Layer<MessageHandler.TagId<'Navigation', 'Host'>> =>
-  NavigationBridge.Host.ReceiverLayer({
-    RouteChanged: ({ pathname, canGoBack }) =>
-      Effect.sync(() => onRouteChanged?.({ pathname, canGoBack })),
-    UIReady: () => Effect.sync(() => onUiReady?.()),
-  })
+): Bridge.HalfHandlers<(typeof NavigationBridge)['Host']> => ({
+  RouteChanged: ({ pathname, canGoBack }) =>
+    Effect.sync(() => onRouteChanged?.({ pathname, canGoBack })),
+  UIReady: () => Effect.sync(() => onUiReady?.()),
+})
 
-export { ReceiverLayer }
+export { makeNavigationHostHandlers }

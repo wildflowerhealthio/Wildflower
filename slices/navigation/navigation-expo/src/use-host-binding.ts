@@ -2,7 +2,7 @@ import type { Effect } from 'effect'
 import { type BridgeTransport, HostBindings } from 'effect-messaging-core'
 import { NavigationBridge } from 'navigation-core'
 import { useMemo } from 'react'
-import { ReceiverLayer } from './host-receiver-layer.ts'
+import { makeNavigationHostHandlers } from './host-receiver-layer.ts'
 
 interface UseNavigationHostBindingOptions {
   /** Initial SPA route; seeded via the URL-param channel. */
@@ -28,7 +28,7 @@ interface UseNavigationHostBindingOptions {
 }
 
 /**
- * Host binding for the navigation bridge. Combines the receiver layer
+ * Host binding for the navigation bridge. Combines the handler record
  * with an optional `HostRequestedWebNavigation` initial message, and
  * surfaces the transport's typed sender via `onTransportReady` so a
  * sibling consumer (e.g. a native tab bar) can dispatch through it.
@@ -69,7 +69,7 @@ const useNavigationHostBinding = ({
     () =>
       HostBindings.single({
         bridge: NavigationBridge,
-        receiverLayer: ReceiverLayer(onRouteChanged, onUiReady),
+        handlers: makeNavigationHostHandlers(onRouteChanged, onUiReady),
         initialMessages:
           initialRoute === undefined
             ? undefined

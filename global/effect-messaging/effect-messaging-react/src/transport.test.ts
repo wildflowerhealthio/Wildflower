@@ -1,5 +1,5 @@
 import type { Scope } from 'effect'
-import { Effect, Layer, Schema } from 'effect'
+import { Effect, Layer, Logger, Queue, Schema } from 'effect'
 import { Bridge, BridgeTransport, TransportAdapter, UrlParamMessage } from 'effect-messaging-core'
 import * as fc from 'fast-check'
 import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
@@ -54,15 +54,53 @@ const setInitialNavigationPath = (path: string): void => {
   window.history.replaceState({}, '', next.toString())
 }
 
+/** No-op handler record for the NavigationBridge web side. */
+const navNoopHandlers = (): Bridge.HalfHandlers<typeof NavigationBridge.Web> => ({
+  HostBackRequested: () => Effect.void,
+  HostRequestedWebNavigation: () => Effect.void,
+})
+
+/**
+ * Wire the Web transport over the real {@link WebPlatformAdapter}, taking
+ * plain per-bridge handler records (the post-Layers surface).
+ */
 const webTransport = <Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
   readonly bridges: Bridges
-  readonly layers: Bridge.TransportLayers<Bridges, 'Web'>
+  readonly handlers: Bridge.HandlersByBridge<Bridges, 'Web'>
 }): Effect.Effect<BridgeTransport.BridgeTransport<Bridges, 'Web'>, never, Scope.Scope> =>
   BridgeTransport.make({
     bridges: config.bridges,
-    layers: config.layers,
+    handlers: config.handlers,
     side: 'Web',
   }).pipe(Effect.provide(Layer.succeed(TransportAdapter, WebPlatformAdapter.make(config.bridges))))
+
+/**
+ * A `Logger.replace` layer paired with a queue of captured entries.
+ *
+ * @remarks
+ * Inbound decode warnings and outbound send warnings are emitted by the
+ * transport's forked dispatch/pump fibers — there is no synchronous
+ * return value to await on. `Queue.take(logQueue)` blocks until the fiber
+ * actually logs, so the assertion can't race the fiber. The fibers
+ * inherit this replaced logger from the FiberRef captured at fork time
+ * (the layer is provided around the whole program), so their logs land
+ * here rather than on the console.
+ */
+const makeLogQueue = (): {
+  readonly layer: Layer.Layer<never>
+  readonly logQueue: Queue.Queue<{ readonly level: string; readonly message: string }>
+} => {
+  const logQueue = Effect.runSync(
+    Queue.unbounded<{ readonly level: string; readonly message: string }>()
+  )
+  const layer = Logger.replace(
+    Logger.defaultLogger,
+    Logger.make(({ logLevel, message }) => {
+      Effect.runSync(Queue.offer(logQueue, { level: logLevel.label, message: String(message) }))
+    })
+  )
+  return { layer, logQueue }
+}
 
 describe('BridgeTransport (Web) — live dispatch', () => {
   beforeEach(() => {
@@ -72,22 +110,29 @@ describe('BridgeTransport (Web) — live dispatch', () => {
 
   test('routes a live HostBackRequested to the NavigationBridge handler', async () => {
     let backCalls = 0
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.sync(() => (backCalls += 1)),
-      HostRequestedWebNavigation: () => Effect.void,
-    })
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* webTransport({
+        const ran = yield* Queue.unbounded<void>()
+        yield* webTransport({
           bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
+          handlers: [
+            {
+              HostBackRequested: () =>
+                Effect.gen(function* () {
+                  backCalls += 1
+                  yield* Queue.offer(ran, undefined)
+                }),
+              HostRequestedWebNavigation: () => Effect.void,
+            },
+          ],
         })
         dispatchPostMessage(
           Schema.encodeSync(NavigationBridge.MessageSchemas.HostBackRequested)({
             _tag: 'HostBackRequested',
           })
         )
-        yield* transport.flushed
+        // Blocks until the handler fiber has actually run.
+        yield* Queue.take(ran)
         expect(backCalls).toBe(1)
       }).pipe(Effect.scoped)
     )
@@ -95,18 +140,21 @@ describe('BridgeTransport (Web) — live dispatch', () => {
 
   test('routes HostRequestedWebNavigation with its decoded payload', async () => {
     const seenPaths: string[] = []
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.void,
-      HostRequestedWebNavigation: ({ path }) =>
-        Effect.sync(() => {
-          seenPaths.push(path)
-        }),
-    })
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* webTransport({
+        const ran = yield* Queue.unbounded<void>()
+        yield* webTransport({
           bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
+          handlers: [
+            {
+              HostBackRequested: () => Effect.void,
+              HostRequestedWebNavigation: ({ path }) =>
+                Effect.gen(function* () {
+                  seenPaths.push(path)
+                  yield* Queue.offer(ran, undefined)
+                }),
+            },
+          ],
         })
         dispatchPostMessage(
           Schema.encodeSync(NavigationBridge.MessageSchemas.HostRequestedWebNavigation)({
@@ -114,7 +162,7 @@ describe('BridgeTransport (Web) — live dispatch', () => {
             path: '/gatekeeper',
           })
         )
-        yield* transport.flushed
+        yield* Queue.take(ran)
         expect(seenPaths).toEqual(['/gatekeeper'])
       }).pipe(Effect.scoped)
     )
@@ -122,15 +170,21 @@ describe('BridgeTransport (Web) — live dispatch', () => {
 
   test('ignores events from a foreign origin', async () => {
     let backCalls = 0
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.sync(() => (backCalls += 1)),
-      HostRequestedWebNavigation: () => Effect.void,
-    })
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* webTransport({
+        const sentinel = yield* Queue.unbounded<void>()
+        yield* webTransport({
           bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
+          handlers: [
+            {
+              HostBackRequested: () => Effect.sync(() => (backCalls += 1)),
+              // A same-origin sentinel: once it dispatches, the foreign
+              // event ahead of it has already been filtered (or not) — so
+              // `backCalls` is settled when the sentinel's handler runs.
+              HostRequestedWebNavigation: () =>
+                Queue.offer(sentinel, undefined).pipe(Effect.asVoid),
+            },
+          ],
         })
         dispatchPostMessage(
           Schema.encodeSync(NavigationBridge.MessageSchemas.HostBackRequested)({
@@ -138,127 +192,84 @@ describe('BridgeTransport (Web) — live dispatch', () => {
           }),
           'https://attacker.example'
         )
-        yield* transport.flushed
+        dispatchPostMessage(
+          Schema.encodeSync(NavigationBridge.MessageSchemas.HostRequestedWebNavigation)({
+            _tag: 'HostRequestedWebNavigation',
+            path: '/sentinel',
+          })
+        )
+        yield* Queue.take(sentinel)
         expect(backCalls).toBe(0)
       }).pipe(Effect.scoped)
     )
   })
 
   test('warns on unknown live tags without throwing', async () => {
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.void,
-      HostRequestedWebNavigation: () => Effect.void,
-    })
+    const { layer, logQueue } = makeLogQueue()
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* webTransport({
-          bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
-        })
+        yield* webTransport({ bridges: [NavigationBridge] as const, handlers: [navNoopHandlers()] })
         dispatchPostMessage(JSON.stringify({ _tag: 'NotARealTag' }))
-        yield* transport.flushed
-      }).pipe(
-        LoggingLayerTest.expectToLog((logs) => {
-          // Schema.Union folds unknown-tag into the same ParseError variant
-          // as malformed payloads — both surface via the parse-error log.
-          expect(logs).toEqual([
-            expect.objectContaining({
-              level: 'WARN',
-              // oxlint-disable-next-line typescript/no-unsafe-assignment
-              message: expect.stringContaining('[effect-messaging] failed to decode message:'),
-            }),
-          ])
-        }),
-        Effect.scoped
-      )
+        // Schema.Union folds unknown-tag into the same ParseError variant
+        // as malformed payloads — both surface via the parse-error log.
+        const logged = yield* Queue.take(logQueue)
+        expect(logged.level).toBe('WARN')
+        expect(logged.message).toContain('[effect-messaging] failed to decode message:')
+      }).pipe(Effect.provide(layer), Effect.scoped)
     )
   })
 
   test('warns when a known tag fails to decode', async () => {
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.void,
-      HostRequestedWebNavigation: () => Effect.void,
-    })
+    const { layer, logQueue } = makeLogQueue()
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* webTransport({
-          bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
-        })
+        yield* webTransport({ bridges: [NavigationBridge] as const, handlers: [navNoopHandlers()] })
         // Tag matches but lacks the required `path` — passes envelope, fails specific decode.
         dispatchPostMessage(JSON.stringify({ _tag: 'HostRequestedWebNavigation' }))
-        yield* transport.flushed
-      }).pipe(
-        LoggingLayerTest.expectToLog((logs) => {
-          expect(logs).toEqual([
-            expect.objectContaining({
-              level: 'WARN',
-              // oxlint-disable-next-line typescript/no-unsafe-assignment
-              message: expect.stringContaining('[effect-messaging] failed to decode message:'),
-            }),
-          ])
-        }),
-        Effect.scoped
-      )
+        const logged = yield* Queue.take(logQueue)
+        expect(logged.level).toBe('WARN')
+        expect(logged.message).toContain('[effect-messaging] failed to decode message:')
+      }).pipe(Effect.provide(layer), Effect.scoped)
     )
   })
 
   test('warns on malformed JSON', async () => {
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.void,
-      HostRequestedWebNavigation: () => Effect.void,
-    })
+    const { layer, logQueue } = makeLogQueue()
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* webTransport({
-          bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
-        })
+        yield* webTransport({ bridges: [NavigationBridge] as const, handlers: [navNoopHandlers()] })
         dispatchPostMessage('not-json')
-        yield* transport.flushed
-      }).pipe(
-        LoggingLayerTest.expectToLog((logs) => {
-          expect(logs).toEqual([
-            expect.objectContaining({
-              level: 'WARN',
-              // oxlint-disable-next-line typescript/no-unsafe-assignment
-              message: expect.stringContaining('[effect-messaging] failed to decode message:'),
-            }),
-          ])
-        }),
-        Effect.scoped
-      )
+        const logged = yield* Queue.take(logQueue)
+        expect(logged.level).toBe('WARN')
+        expect(logged.message).toContain('[effect-messaging] failed to decode message:')
+      }).pipe(Effect.provide(layer), Effect.scoped)
     )
   })
 })
 
 describe('BridgeTransport (Web) — sendMessage', () => {
-  let posts: string[]
-
-  beforeEach(() => {
-    posts = []
-    ;(window as WindowWithBridge).ReactNativeWebView = {
-      postMessage: (data) => {
-        posts.push(data)
-      },
-    }
-  })
   afterEach(() => {
     delete (window as WindowWithBridge).ReactNativeWebView
   })
 
   test('encodes and posts to ReactNativeWebView when present', async () => {
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.void,
-      HostRequestedWebNavigation: () => Effect.void,
-    })
+    const posts: string[] = []
     await Effect.runPromise(
       Effect.gen(function* () {
+        const ran = yield* Queue.unbounded<void>()
+        ;(window as WindowWithBridge).ReactNativeWebView = {
+          postMessage: (data) => {
+            posts.push(data)
+            Effect.runSync(Queue.offer(ran, undefined))
+          },
+        }
         const transport = yield* webTransport({
           bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
+          handlers: [navNoopHandlers()],
         })
         yield* transport.sendMessage({ _tag: 'RouteChanged', pathname: '/x', canGoBack: true })
+        // The outbox pump flushes on a fiber; block until the post lands.
+        yield* Queue.take(ran)
         expect(posts).toHaveLength(1)
         expect(JSON.parse(posts[0] ?? '')).toEqual({
           _tag: 'RouteChanged',
@@ -271,29 +282,21 @@ describe('BridgeTransport (Web) — sendMessage', () => {
 
   test('warns and drops when ReactNativeWebView is absent (standalone web)', async () => {
     delete (window as WindowWithBridge).ReactNativeWebView
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.void,
-      HostRequestedWebNavigation: () => Effect.void,
-    })
+    const { layer, logQueue } = makeLogQueue()
     await Effect.runPromise(
       Effect.gen(function* () {
         const transport = yield* webTransport({
           bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
+          handlers: [navNoopHandlers()],
         })
         yield* transport.sendMessage({ _tag: 'RouteChanged', pathname: '/x', canGoBack: false })
-      }).pipe(
-        LoggingLayerTest.expectToLog((logs) => {
-          expect(logs).toEqual([
-            {
-              level: 'WARN',
-              message:
-                '[effect-messaging] sendMessage: no ReactNativeWebView in window; running standalone? message dropped.',
-            },
-          ])
-        }),
-        Effect.scoped
-      )
+        const logged = yield* Queue.take(logQueue)
+        expect(logged).toEqual({
+          level: 'WARN',
+          message:
+            '[effect-messaging] sendMessage: no ReactNativeWebView in window; running standalone? message dropped.',
+        })
+      }).pipe(Effect.provide(layer), Effect.scoped)
     )
   })
 })
@@ -311,20 +314,24 @@ describe('BridgeTransport (Web) — URL-param initial messages', () => {
     const path = '/gatekeeper/oauth-consent/abc'
     setInitialNavigationPath(path)
 
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.void,
-      HostRequestedWebNavigation: ({ path: p }) =>
-        Effect.sync(() => {
-          seenPaths.push(p)
-        }),
-    })
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* webTransport({
+        const ran = yield* Queue.unbounded<void>()
+        yield* webTransport({
           bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
+          handlers: [
+            {
+              HostBackRequested: () => Effect.void,
+              HostRequestedWebNavigation: ({ path: p }) =>
+                Effect.gen(function* () {
+                  seenPaths.push(p)
+                  yield* Queue.offer(ran, undefined)
+                }),
+            },
+          ],
         })
-        yield* transport.flushed
+        // The drained initial message dispatches on the fiber; await it.
+        yield* Queue.take(ran)
         expect(seenPaths).toEqual([path])
       }).pipe(Effect.scoped)
     )
@@ -334,17 +341,11 @@ describe('BridgeTransport (Web) — URL-param initial messages', () => {
     setInitialNavigationPath('/x')
     expect(window.location.search).toContain('HostRequestedWebNavigation')
 
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.void,
-      HostRequestedWebNavigation: () => Effect.void,
-    })
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* webTransport({
-          bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
-        })
-        yield* transport.flushed
+        // `drainInitial` strips the params synchronously during `make`,
+        // so the URL is already clean once the transport resolves.
+        yield* webTransport({ bridges: [NavigationBridge] as const, handlers: [navNoopHandlers()] })
         expect(window.location.search).not.toContain('HostRequestedWebNavigation')
       }).pipe(Effect.scoped)
     )
@@ -356,17 +357,9 @@ describe('BridgeTransport (Web) — URL-param initial messages', () => {
     url.searchParams.append('keep', 'me')
     window.history.replaceState({}, '', url.toString())
     setInitialNavigationPath('/anything')
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.void,
-      HostRequestedWebNavigation: () => Effect.void,
-    })
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* webTransport({
-          bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
-        })
-        yield* transport.flushed
+        yield* webTransport({ bridges: [NavigationBridge] as const, handlers: [navNoopHandlers()] })
       }).pipe(Effect.scoped)
     )
     expect(new URL(window.location.href).searchParams.get('keep')).toBe('me')
@@ -393,19 +386,29 @@ describe('BridgeTransport (Web) — multi-bridge composition', () => {
 
     let backCalls = 0
     let buzzCalls = 0
-    const navLayer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.sync(() => (backCalls += 1)),
-      HostRequestedWebNavigation: () => Effect.void,
-    })
-    const testLayer = TestBridge.Web.ReceiverLayer({
-      Pong: () => Effect.void,
-      Buzz: () => Effect.sync(() => (buzzCalls += 1)),
-    })
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* webTransport({
+        const ran = yield* Queue.unbounded<void>()
+        yield* webTransport({
           bridges: [NavigationBridge, TestBridge] as const,
-          layers: [navLayer, testLayer] as const,
+          handlers: [
+            {
+              HostBackRequested: () =>
+                Effect.gen(function* () {
+                  backCalls += 1
+                  yield* Queue.offer(ran, undefined)
+                }),
+              HostRequestedWebNavigation: () => Effect.void,
+            },
+            {
+              Pong: () => Effect.void,
+              Buzz: () =>
+                Effect.gen(function* () {
+                  buzzCalls += 1
+                  yield* Queue.offer(ran, undefined)
+                }),
+            },
+          ],
         })
         dispatchPostMessage(
           Schema.encodeSync(NavigationBridge.MessageSchemas.HostBackRequested)({
@@ -413,7 +416,7 @@ describe('BridgeTransport (Web) — multi-bridge composition', () => {
           })
         )
         dispatchPostMessage(Schema.encodeSync(Buzz)({ _tag: 'Buzz' }))
-        yield* transport.flushed
+        yield* Queue.takeN(ran, 2)
         expect(backCalls).toBe(1)
         expect(buzzCalls).toBe(1)
       }).pipe(Effect.scoped)
@@ -427,17 +430,10 @@ describe('BridgeTransport (Web) — multi-bridge composition', () => {
       hostToWeb: [['HostBackRequested', ConflictingBackRequested]] as const,
       webToHost: [] as const,
     })
-    const navLayer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.void,
-      HostRequestedWebNavigation: () => Effect.void,
-    })
-    const conflictingLayer = Conflicting.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.void,
-    })
     const program = Effect.scoped(
       webTransport({
         bridges: [NavigationBridge, Conflicting] as const,
-        layers: [navLayer, conflictingLayer] as const,
+        handlers: [navNoopHandlers(), { HostBackRequested: () => Effect.void }],
       })
     )
     await expect(Effect.runPromise(program)).rejects.toThrow(
@@ -448,35 +444,28 @@ describe('BridgeTransport (Web) — multi-bridge composition', () => {
 
 describe('BridgeTransport (Web) — type assertions (compile-only)', () => {
   test('compile-time: sendMessage rejects a tag not owned by any wired bridge', async () => {
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.void,
-      HostRequestedWebNavigation: () => Effect.void,
-    })
+    const { layer, logQueue } = makeLogQueue()
     await Effect.runPromise(
       Effect.gen(function* () {
         const transport = yield* webTransport({
           bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
+          handlers: [navNoopHandlers()],
         })
         // @ts-expect-error — `Bogus` is not in NavigationBridge.Web outbound.
         yield* transport.sendMessage({ _tag: 'Bogus' })
-      }).pipe(
-        LoggingLayerTest.expectToLog((logs) => {
-          expect(logs).toEqual([
-            {
-              level: 'WARN',
-              message: '[effect-messaging] sendMessage: no bridge owns tag "Bogus"; dropping',
-            },
-          ])
-        }),
-        Effect.scoped
-      )
+        const logged = yield* Queue.take(logQueue)
+        expect(logged).toEqual({
+          level: 'WARN',
+          message: '[effect-messaging] sendMessage: no bridge owns tag "Bogus"; dropping',
+        })
+      }).pipe(Effect.provide(layer), Effect.scoped)
     )
   })
 })
 
 describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
   beforeEach(() => {
+    clearUrlSearch()
     ;(window as WindowWithBridge).ReactNativeWebView = {
       postMessage: () => undefined,
     }
@@ -484,18 +473,21 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
 
   test('handlers fire in send order under load', async () => {
     const seen: number[] = []
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.void,
-      HostRequestedWebNavigation: ({ path }) =>
-        Effect.sync(() => {
-          seen.push(Number(path))
-        }),
-    })
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* webTransport({
+        const ran = yield* Queue.unbounded<void>()
+        yield* webTransport({
           bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
+          handlers: [
+            {
+              HostBackRequested: () => Effect.void,
+              HostRequestedWebNavigation: ({ path }) =>
+                Effect.gen(function* () {
+                  seen.push(Number(path))
+                  yield* Queue.offer(ran, undefined)
+                }),
+            },
+          ],
         })
         for (let i = 0; i < 100; i++) {
           dispatchPostMessage(
@@ -505,7 +497,8 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
             })
           )
         }
-        yield* transport.flushed
+        // The single dispatch fiber drains FIFO; awaiting all 100 proves order.
+        yield* Queue.takeN(ran, 100)
         expect(seen).toEqual(Array.from({ length: 100 }, (_, i) => i))
       }).pipe(Effect.scoped)
     )
@@ -513,22 +506,26 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
 
   test('a slow handler holds up the queue until it resolves', async () => {
     const order: string[] = []
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () =>
-        Effect.gen(function* () {
-          yield* Effect.sleep(20)
-          order.push('back')
-        }),
-      HostRequestedWebNavigation: () =>
-        Effect.sync(() => {
-          order.push('nav')
-        }),
-    })
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* webTransport({
+        const ran = yield* Queue.unbounded<void>()
+        yield* webTransport({
           bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
+          handlers: [
+            {
+              HostBackRequested: () =>
+                Effect.gen(function* () {
+                  yield* Effect.sleep(20)
+                  order.push('back')
+                  yield* Queue.offer(ran, undefined)
+                }),
+              HostRequestedWebNavigation: () =>
+                Effect.gen(function* () {
+                  order.push('nav')
+                  yield* Queue.offer(ran, undefined)
+                }),
+            },
+          ],
         })
         dispatchPostMessage(
           Schema.encodeSync(NavigationBridge.MessageSchemas.HostBackRequested)({
@@ -541,7 +538,7 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
             path: '/x',
           })
         )
-        yield* transport.flushed
+        yield* Queue.takeN(ran, 2)
         expect(order).toEqual(['back', 'nav'])
       }).pipe(Effect.scoped)
     )
@@ -549,15 +546,21 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
 
   test('a handler defect is logged but does not kill the dispatch fiber', async () => {
     let secondCalls = 0
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () => Effect.die('intentional defect'),
-      HostRequestedWebNavigation: () => Effect.sync(() => (secondCalls += 1)),
-    })
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* webTransport({
+        const ran = yield* Queue.unbounded<void>()
+        yield* webTransport({
           bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
+          handlers: [
+            {
+              HostBackRequested: () => Effect.die('intentional defect'),
+              HostRequestedWebNavigation: () =>
+                Effect.gen(function* () {
+                  secondCalls += 1
+                  yield* Queue.offer(ran, undefined)
+                }),
+            },
+          ],
         })
         dispatchPostMessage(
           Schema.encodeSync(NavigationBridge.MessageSchemas.HostBackRequested)({
@@ -570,14 +573,16 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
             path: '/after',
           })
         )
-        yield* transport.flushed
+        // The second message dispatches only if the defect didn't take the
+        // fiber down; the defect is logged ahead of it (FIFO).
+        yield* Queue.take(ran)
         expect(secondCalls).toBe(1)
       }).pipe(
         LoggingLayerTest.expectToLog((logs) => {
           expect(logs).toEqual([
             {
               level: 'ERROR',
-              message: '[effect-messaging] handler defect; dispatch continues: intentional defect',
+              message: '[effect-messaging] dispatch defect; continues: intentional defect',
             },
           ])
         }),
@@ -589,28 +594,31 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
   test('scope close interrupts an in-flight handler', async () => {
     let started = false
     let finished = false
-    const layer = NavigationBridge.Web.ReceiverLayer({
-      HostBackRequested: () =>
-        Effect.gen(function* () {
-          started = true
-          yield* Effect.sleep(10_000)
-          finished = true
-        }),
-      HostRequestedWebNavigation: () => Effect.void,
-    })
+    const startedSignal = Effect.runSync(Queue.unbounded<void>())
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* webTransport({
+        yield* webTransport({
           bridges: [NavigationBridge] as const,
-          layers: [layer] as const,
+          handlers: [
+            {
+              HostBackRequested: () =>
+                Effect.gen(function* () {
+                  started = true
+                  yield* Queue.offer(startedSignal, undefined)
+                  yield* Effect.sleep(10_000)
+                  finished = true
+                }),
+              HostRequestedWebNavigation: () => Effect.void,
+            },
+          ],
         })
         dispatchPostMessage(
           Schema.encodeSync(NavigationBridge.MessageSchemas.HostBackRequested)({
             _tag: 'HostBackRequested',
           })
         )
-        yield* Effect.sleep(10)
-        return transport
+        // Return (closing the scope) only once the handler is mid-flight.
+        yield* Queue.take(startedSignal)
       }).pipe(Effect.scoped)
     )
     expect(started).toBe(true)
@@ -620,12 +628,15 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
 
 test('property: receive path survives arbitrary string inputs', async () => {
   const Buzz = Schema.parseJson(Schema.TaggedStruct('Buzz', {}))
+  const Sentinel = Schema.parseJson(Schema.TaggedStruct('Sentinel', {}))
   const SmallBridge = Bridge.make({
     name: 'Small',
-    hostToWeb: [['Buzz', Buzz]] as const,
+    hostToWeb: [
+      ['Buzz', Buzz],
+      ['Sentinel', Sentinel],
+    ] as const,
     webToHost: [] as const,
   })
-  const layer = SmallBridge.Web.ReceiverLayer({ Buzz: () => Effect.void })
 
   const wellFormed = fc.constant(JSON.stringify({ _tag: 'Buzz' }))
   const badPayload = fc.constant(JSON.stringify({ _tag: 'Buzz', extra: { unexpected: true } }))
@@ -637,20 +648,26 @@ test('property: receive path survives arbitrary string inputs', async () => {
 
   await fc.assert(
     fc.asyncProperty(fc.array(inputArb, { maxLength: 30 }), async (inputs) => {
+      clearUrlSearch()
       await Effect.runPromise(
         Effect.gen(function* () {
-          const transport = yield* webTransport({
+          const done = yield* Queue.unbounded<void>()
+          yield* webTransport({
             bridges: [SmallBridge] as const,
-            layers: [layer] as const,
+            handlers: [
+              {
+                Buzz: () => Effect.void,
+                Sentinel: () => Queue.offer(done, undefined).pipe(Effect.asVoid),
+              },
+            ],
           })
           for (const raw of inputs) dispatchPostMessage(raw)
-          yield* transport.flushed
-        }).pipe(
-          LoggingLayerTest.expectToLog((_logs) => {
-            // consume the logs
-          }),
-          Effect.scoped
-        )
+          // The Sentinel is a known tag (maxLength 6 can't collide with it),
+          // so it never appears among `inputs`; FIFO guarantees every input
+          // ahead of it has been processed when its handler runs.
+          dispatchPostMessage(Schema.encodeSync(Sentinel)({ _tag: 'Sentinel' }))
+          yield* Queue.take(done)
+        }).pipe(Effect.provide(LoggingLayerTest.make().layer), Effect.scoped)
       )
     }),
     { numRuns: numRunsFor({ base: 25 }) }
@@ -680,23 +697,22 @@ test('property: sendMessage routes to the correct bridge for arbitrary message s
   await fc.assert(
     fc.asyncProperty(fc.array(stepArb, { maxLength: 30 }), async (steps: ReadonlyArray<Step>) => {
       const posts: string[] = []
+      const ran = Effect.runSync(Queue.unbounded<void>())
       ;(window as WindowWithBridge).ReactNativeWebView = {
         postMessage: (data) => {
           posts.push(data)
+          Effect.runSync(Queue.offer(ran, undefined))
         },
       }
-      const aLayer = BridgeA.Web.ReceiverLayer({})
-      const bLayer = BridgeB.Web.ReceiverLayer({})
       await Effect.runPromise(
         Effect.gen(function* () {
           const transport = yield* webTransport({
             bridges: [BridgeA, BridgeB] as const,
-            layers: [aLayer, bLayer] as const,
+            handlers: [{}, {}],
           })
-          for (const step of steps) {
-            if (step._tag === 'Alpha') yield* transport.sendMessage(step)
-            else yield* transport.sendMessage(step)
-          }
+          for (const step of steps) yield* transport.sendMessage(step)
+          // Block until every send has flushed through the outbox pump.
+          yield* Queue.takeN(ran, steps.length)
           expect(posts).toHaveLength(steps.length)
           for (let i = 0; i < steps.length; i++) {
             const decoded: unknown = JSON.parse(posts[i] ?? '')

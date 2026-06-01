@@ -42,7 +42,7 @@ const fallbackWarningSnifferSender: BrowserSnifferMessageSender = (msg) =>
  * "Import Now" flow. Forwards decoded sniffer events through the
  * Collector pipe so the embedded SPA's bridge dispatches them, and
  * registers the WebView's typed sender through the BrowserSniffer
- * pipe so the receiver layer's `Click` / `CancelSnifferRequest`
+ * pipe so the handler record's `Click` / `CancelSnifferRequest`
  * handlers can drive the sniffer page.
  */
 const CollectorModalScreen = ({ source, onError }: CollectorModalScreenProps): JSX.Element => {
