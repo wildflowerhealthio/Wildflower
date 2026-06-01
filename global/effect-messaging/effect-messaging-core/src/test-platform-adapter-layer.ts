@@ -8,17 +8,20 @@ import { TransportAdapter } from './transport-adapter.ts'
  *
  * @example
  * ```ts
- * import { TestPlatformAdapterLayer } from 'effect-messaging-core'
+ * import { Message, TestPlatformAdapterLayer, TransportAdapter } from 'effect-messaging-core'
  *
  * const { layer, sentSink } = TestPlatformAdapterLayer.make()
- * Effect.runSync(SomeBridge.Web.send({ _tag: 'X' }).pipe(Effect.provide(layer)))
+ * const send = Effect.flatMap(TransportAdapter, ({ bareSender }) =>
+ *   bareSender(Message.stringifyMessage(SomeBridge.WebToHost, { _tag: 'X' }))
+ * )
+ * Effect.runSync(send.pipe(Effect.provide(layer)))
  * expect(JSON.parse(sentSink[0])).toEqual({ _tag: 'X' })
  * ```
  *
  * @remarks
  * `bareSender` records every encoded outbound string two ways: it pushes
  * onto the synchronous `sentSink` array — for callers that drive
- * `Bridge.send` directly under `Effect.runSync` and read the array right
+ * `bareSender` directly under `Effect.runSync` and read the array right
  * after — and offers it to the `sentQueue` Effect queue. The queue is
  * the deterministic seam for transport tests: a `sendMessage` rides the
  * async outbox pump, so the array isn't populated synchronously; awaiting

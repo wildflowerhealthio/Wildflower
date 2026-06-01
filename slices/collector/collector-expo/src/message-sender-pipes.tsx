@@ -17,23 +17,23 @@ import type { RefObject } from 'react'
 // nameable) makes the emitted `.d.ts` portable.
 type BrowserSnifferSender = BridgeTransport.MessageSender<
   readonly [typeof BrowserSnifferBridge],
-  'Host'
+  'HostToWeb'
 >
-type CollectorSender = BridgeTransport.MessageSender<readonly [typeof CollectorBridge], 'Host'>
+type CollectorSender = BridgeTransport.MessageSender<readonly [typeof CollectorBridge], 'HostToWeb'>
 
 const browserSnifferPipe: MadeNamedPipe<
   'BrowserSniffer',
   readonly [typeof BrowserSnifferBridge],
-  'Host'
-> = makeNamedPipe('BrowserSniffer', [BrowserSnifferBridge] as const, 'Host')
+  'HostToWeb'
+> = makeNamedPipe('BrowserSniffer', [BrowserSnifferBridge] as const, 'HostToWeb')
 
 const { Provider: BrowserSnifferPipeProvider } = browserSnifferPipe
 const useAsBrowserSnifferOutlet: (sender: BrowserSnifferSender) => void =
   browserSnifferPipe.useAsOutlet
 const useBrowserSnifferSender: () => BrowserSnifferSender = browserSnifferPipe.useSender
 
-const collectorPipe: MadeNamedPipe<'Collector', readonly [typeof CollectorBridge], 'Host'> =
-  makeNamedPipe('Collector', [CollectorBridge] as const, 'Host')
+const collectorPipe: MadeNamedPipe<'Collector', readonly [typeof CollectorBridge], 'HostToWeb'> =
+  makeNamedPipe('Collector', [CollectorBridge] as const, 'HostToWeb')
 
 const { Provider: CollectorPipeProvider } = collectorPipe
 const useAsCollectorOutlet: (sender: CollectorSender) => void = collectorPipe.useAsOutlet

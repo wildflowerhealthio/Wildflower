@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vite-plus/test'
 import type * as BridgeTransport from './bridge-transport.ts'
 import * as Bridge from './bridge.ts'
 import * as HostBindings from './host-bindings.ts'
+import type * as MessageHandler from './message-handler.ts'
 
 // ---------------------------------------------------------------------------
 // Fixture bridges — distinct names so identity equality survives the
@@ -35,11 +36,11 @@ const GammaBridge = Bridge.make({
 // Sentinel handler records — empty or no-op handlers are enough to fill
 // the per-bridge `handlers` slot; the production helpers only flat-concat
 // these records, they never dispatch through them here.
-const alphaHandlers: Bridge.HalfHandlers<typeof AlphaBridge.Host> = {
+const alphaHandlers: MessageHandler.HandlersFor<(typeof AlphaBridge)['WebToHost']> = {
   Pong: () => Effect.void,
 }
-const betaHandlers: Bridge.HalfHandlers<typeof BetaBridge.Host> = {}
-const gammaHandlers: Bridge.HalfHandlers<typeof GammaBridge.Host> = {
+const betaHandlers: MessageHandler.HandlersFor<(typeof BetaBridge)['WebToHost']> = {}
+const gammaHandlers: MessageHandler.HandlersFor<(typeof GammaBridge)['WebToHost']> = {
   Pong: () => Effect.void,
 }
 
@@ -50,7 +51,7 @@ const gammaHandlers: Bridge.HalfHandlers<typeof GammaBridge.Host> = {
 describe('HostBindings.single', () => {
   test('produces 1-tuples in every slot with the supplied values', () => {
     const onReady = (
-      _send: BridgeTransport.MessageSender<readonly [typeof AlphaBridge], 'Host'>
+      _send: BridgeTransport.MessageSender<readonly [typeof AlphaBridge], 'HostToWeb'>
     ): Effect.Effect<void> => Effect.void
 
     const bindings = HostBindings.single({
@@ -220,7 +221,7 @@ describe('HostBindings.callTransportReady', () => {
   const noopSender = ((): Effect.Effect<void> =>
     Effect.void) as unknown as BridgeTransport.MessageSender<
     readonly [typeof AlphaBridge, typeof BetaBridge, typeof GammaBridge],
-    'Host'
+    'HostToWeb'
   >
 
   test('skips slots whose callback is undefined and invokes the rest exactly once', async () => {

@@ -60,7 +60,7 @@ const makeStubHandler = (): StubHandler => {
 
 /**
  * The handler record's per-tag methods are typed to the decoded
- * `CollectorBridge.Web` message schemas. These tests exercise only the
+ * CollectorBridge Host→Web (`HostToWeb`) message schemas. These tests exercise only the
  * ref-forwarding logic (install / clear / set-if-equal / null-drop),
  * which passes each event through verbatim without decoding it — so we
  * view the methods through an `unknown`-event shape and drive them with

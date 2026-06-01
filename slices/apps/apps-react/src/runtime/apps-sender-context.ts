@@ -6,11 +6,11 @@ import { createContext } from 'react'
 /**
  * Decoded union of every Web→Host AppsBridge message — the universe of
  * messages the apps SPA can send out. Derived from the bridge's own
- * `Web.OutboundSchemas` so adding (or renaming) a web→host tag in
+ * `WebToHost` record so adding (or renaming) a web→host tag in
  * `apps-core/bridge.ts` flows through to every sender call site
  * without an intermediate restatement.
  */
-type AppsOutboundMessage = Message.Of<(typeof AppsBridge)['Web']['OutboundSchemas']>
+type AppsOutboundMessage = Message.Of<AppsBridge['WebToHost']>
 
 /**
  * Send an AppsBridge Web→Host message. Returns an Effect that the

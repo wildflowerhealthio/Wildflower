@@ -1,19 +1,17 @@
 import { fc, test as fcTest } from '@fast-check/jest'
 import { Effect, Schema } from 'effect'
-import type { Bridge } from 'effect-messaging-core'
+import type { MessageHandler } from 'effect-messaging-core'
 import { BridgeTransport, TestPlatformAdapterLayer } from 'effect-messaging-core'
 import { expectTypeOf } from 'expect-type'
 import { NavigationBridge } from 'navigation-core'
 import { NavigationBridgeExpo } from './index.ts'
-
-const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
 
 // Type-only assertions on `makeHostHandlers`'s signature. Hoisted to module
 // scope so the type check fires at file load — `expect-type` is purely
 // compile-time, so wrapping these in `it(...)` would have Jest report them
 // as passing whether or not the type-level invariant holds.
 expectTypeOf(NavigationBridgeExpo.makeHostHandlers).returns.toEqualTypeOf<
-  Bridge.HalfHandlers<(typeof NavigationBridge)['Host']>
+  MessageHandler.HandlersFor<(typeof NavigationBridge)['WebToHost']>
 >()
 expectTypeOf(NavigationBridgeExpo.makeHostHandlers)
   .parameter(0)
@@ -31,11 +29,7 @@ describe('NavigationBridgeExpo.makeHostHandlers (RouteChanged handler)', () => {
     async ({ pathname, canGoBack }) => {
       const onRouteChanged = jest.fn()
       const handlers = NavigationBridgeExpo.makeHostHandlers(onRouteChanged)
-      await Effect.runPromise(
-        handlers
-          .RouteChanged({ _tag: 'RouteChanged', pathname, canGoBack })
-          .pipe(Effect.provide(adapterLayer))
-      )
+      await Effect.runPromise(handlers.RouteChanged({ _tag: 'RouteChanged', pathname, canGoBack }))
       expect(onRouteChanged).toHaveBeenCalledTimes(1)
       expect(onRouteChanged).toHaveBeenCalledWith({ pathname, canGoBack })
     }
@@ -45,9 +39,7 @@ describe('NavigationBridgeExpo.makeHostHandlers (RouteChanged handler)', () => {
     const handlers = NavigationBridgeExpo.makeHostHandlers()
     await expect(
       Effect.runPromise(
-        handlers
-          .RouteChanged({ _tag: 'RouteChanged', pathname: '/foo', canGoBack: true })
-          .pipe(Effect.provide(adapterLayer))
+        handlers.RouteChanged({ _tag: 'RouteChanged', pathname: '/foo', canGoBack: true })
       )
     ).resolves.toBeUndefined()
   })
@@ -55,17 +47,13 @@ describe('NavigationBridgeExpo.makeHostHandlers (RouteChanged handler)', () => {
   it('invokes onUiReady when the SPA posts UIReady (host reveals the WebView)', async () => {
     const onUiReady = jest.fn()
     const handlers = NavigationBridgeExpo.makeHostHandlers(undefined, onUiReady)
-    await Effect.runPromise(
-      handlers.UIReady({ _tag: 'UIReady' }).pipe(Effect.provide(adapterLayer))
-    )
+    await Effect.runPromise(handlers.UIReady({ _tag: 'UIReady' }))
     expect(onUiReady).toHaveBeenCalledTimes(1)
   })
 
   it('does not crash when onUiReady is omitted', async () => {
     const handlers = NavigationBridgeExpo.makeHostHandlers()
-    await expect(
-      Effect.runPromise(handlers.UIReady({ _tag: 'UIReady' }).pipe(Effect.provide(adapterLayer)))
-    ).resolves.toBeUndefined()
+    await expect(Effect.runPromise(handlers.UIReady({ _tag: 'UIReady' }))).resolves.toBeUndefined()
   })
 
   it('keeps the BridgeTransport dispatch fiber draining after no-op handlers run', async () => {
@@ -94,10 +82,9 @@ describe('NavigationBridgeExpo.makeHostHandlers (RouteChanged handler)', () => {
     })
     await Effect.runPromise(
       Effect.gen(function* () {
-        yield* BridgeTransport.make({
+        yield* BridgeTransport.makeHostTransport({
           bridges: [NavigationBridge] as const,
           handlers: [NavigationBridgeExpo.makeHostHandlers(undefined, () => resolveUiReady?.())],
-          side: 'Host',
         }).pipe(Effect.provide(capturingAdapterLayer))
         if (liveBareSenderRef.current === null) {
           throw new Error('liveBareSenderRef not captured')

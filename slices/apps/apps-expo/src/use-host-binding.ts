@@ -1,8 +1,9 @@
 import { AppsBridge } from 'apps-core/bridge'
+import { Effect } from 'effect'
 import { HostBindings } from 'effect-messaging-core'
 import { useMemo } from 'react'
 import type { TunnelStore } from 'tunnel-core/livestore'
-import { makeAppsHostHandlers } from './host-handlers.ts'
+import { type AppsHostSender, makeAppsHostHandlers, setAppsHostSender } from './host-handlers.ts'
 
 type TunnelLivestore = typeof TunnelStore.Service
 
@@ -22,9 +23,10 @@ interface UseAppsHostBindingOptions {
  *
  * Passes the supplied livestore handle straight to
  * {@link makeAppsHostHandlers} (the `TunnelStore` tag's resolved service
- * is that handle); the `RequestTunnel` handler replies via
- * `AppsBridge.Host.send(...)` (whose `TransportAdapter` requirement the
- * bridge transport's dispatch fiber discharges per invocation).
+ * is that handle). The `RequestTunnel` handler replies through the
+ * host→web sender captured here via `onTransportReady` — handlers no
+ * longer reply through a same-bridge `send`, so the proactive sender is
+ * threaded in once the transport is ready (and cleared on teardown).
  */
 const useAppsHostBinding = ({
   store,
@@ -34,6 +36,10 @@ const useAppsHostBinding = ({
       HostBindings.single({
         bridge: AppsBridge,
         handlers: makeAppsHostHandlers(store),
+        onTransportReady: (send: AppsHostSender) =>
+          Effect.sync(() => {
+            setAppsHostSender(send)
+          }),
       }),
     [store]
   )

@@ -71,8 +71,11 @@ import {
   useCollectorSender,
 } from './index.ts'
 
-type SnifferSender = BridgeTransport.MessageSender<readonly [typeof BrowserSnifferBridge], 'Host'>
-type CollectorSender = BridgeTransport.MessageSender<readonly [typeof CollectorBridge], 'Host'>
+type SnifferSender = BridgeTransport.MessageSender<
+  readonly [typeof BrowserSnifferBridge],
+  'HostToWeb'
+>
+type CollectorSender = BridgeTransport.MessageSender<readonly [typeof CollectorBridge], 'HostToWeb'>
 type CollectorHandlers = ReturnType<typeof useCollectorHostHandlers>
 
 const ProbeInsideProvider = ({

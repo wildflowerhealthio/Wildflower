@@ -23,7 +23,7 @@ interface UseNavigationHostBindingOptions {
    * transport.
    */
   readonly onTransportReady?: (
-    send: BridgeTransport.MessageSender<readonly [typeof NavigationBridge], 'Host'>
+    send: BridgeTransport.MessageSender<readonly [typeof NavigationBridge], 'HostToWeb'>
   ) => Effect.Effect<void>
 }
 

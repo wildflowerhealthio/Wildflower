@@ -5,7 +5,7 @@ import { GatekeeperBridge } from './bridge.ts'
 
 describe('GatekeeperBridge', () => {
   test('exposes only the AuthTokenIssued host→web tag', () => {
-    expect(Object.keys(GatekeeperBridge.Web.InboundSchemas).toSorted()).toEqual(['AuthTokenIssued'])
+    expect(Object.keys(GatekeeperBridge.HostToWeb).toSorted()).toEqual(['AuthTokenIssued'])
   })
 
   test('AuthTokenIssued URL schema round-trips the token', () => {

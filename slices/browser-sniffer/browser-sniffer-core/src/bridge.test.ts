@@ -1,5 +1,10 @@
 import { Arbitrary, Deferred, Effect, Schema } from 'effect'
-import { Bridge, BridgeTransport, TestPlatformAdapterLayer } from 'effect-messaging-core'
+import {
+  Bridge,
+  BridgeTransport,
+  type MessageHandler,
+  TestPlatformAdapterLayer,
+} from 'effect-messaging-core'
 import * as fc from 'fast-check'
 import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
@@ -90,14 +95,14 @@ const drainToWebEncoded = Schema.encodeSync(DrainToWeb)({ _tag: '__DrainToWeb__'
  */
 const makeCollectingHostHandlers = (): {
   collected: WebToHostMessage[]
-  handlers: Bridge.HalfHandlers<(typeof BrowserSnifferBridge)['Host']>
+  handlers: MessageHandler.HandlersFor<(typeof BrowserSnifferBridge)['WebToHost']>
 } => {
   const collected: WebToHostMessage[] = []
   const push = (m: WebToHostMessage): Effect.Effect<void> =>
     Effect.sync(() => {
       collected.push(m)
     })
-  const handlers: Bridge.HalfHandlers<(typeof BrowserSnifferBridge)['Host']> = {
+  const handlers: MessageHandler.HandlersFor<(typeof BrowserSnifferBridge)['WebToHost']> = {
     ResponseStart: push,
     ResponseData: push,
     ResponseFinished: push,
@@ -110,7 +115,7 @@ const makeCollectingHostHandlers = (): {
 
 const runHost = async (
   inputs: string[],
-  handlers: Bridge.HalfHandlers<(typeof BrowserSnifferBridge)['Host']>
+  handlers: MessageHandler.HandlersFor<(typeof BrowserSnifferBridge)['WebToHost']>
 ): Promise<void> => {
   const { layer: adapterLayer } = TestPlatformAdapterLayer.make({
     initialMessages: [...inputs, drainToHostEncoded],
@@ -123,13 +128,12 @@ const runHost = async (
     Effect.scoped(
       Effect.gen(function* () {
         const drained = yield* Deferred.make<void>()
-        yield* BridgeTransport.make({
+        yield* BridgeTransport.makeHostTransport({
           bridges: [BrowserSnifferBridge, SentinelBridge] as const,
           handlers: [
             handlers,
             { __DrainToHost__: () => Deferred.succeed(drained, undefined).pipe(Effect.asVoid) },
           ] as const,
-          side: 'Host',
         })
         // `make` offers every drained initial message to the inbox before
         // returning; the sentinel rides the same FIFO inbox behind them, so
@@ -142,7 +146,7 @@ const runHost = async (
 
 describe('BrowserSnifferBridge — shape', () => {
   test('declares the six sniffer events on Web→Host and the two control messages on Host→Web', () => {
-    expect(Object.keys(BrowserSnifferBridge.Web.OutboundSchemas).toSorted()).toEqual([
+    expect(Object.keys(BrowserSnifferBridge.WebToHost).toSorted()).toEqual([
       'Cancelled',
       'PageLoaded',
       'RequestError',
@@ -150,7 +154,7 @@ describe('BrowserSnifferBridge — shape', () => {
       'ResponseFinished',
       'ResponseStart',
     ])
-    expect(Object.keys(BrowserSnifferBridge.Host.OutboundSchemas).toSorted()).toEqual([
+    expect(Object.keys(BrowserSnifferBridge.HostToWeb).toSorted()).toEqual([
       'CancelSnifferRequest',
       'Click',
     ])
@@ -189,10 +193,11 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
           Effect.sync(() => {
             collected.push(m)
           })
-        const webHandlers: Bridge.HalfHandlers<(typeof BrowserSnifferBridge)['Web']> = {
-          CancelSnifferRequest: push,
-          Click: push,
-        }
+        const webHandlers: MessageHandler.HandlersFor<(typeof BrowserSnifferBridge)['HostToWeb']> =
+          {
+            CancelSnifferRequest: push,
+            Click: push,
+          }
 
         const inputs = messages.map((m) =>
           m._tag === 'CancelSnifferRequest'
@@ -207,7 +212,7 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
           Effect.scoped(
             Effect.gen(function* () {
               const drained = yield* Deferred.make<void>()
-              yield* BridgeTransport.make({
+              yield* BridgeTransport.makeWebTransport({
                 bridges: [BrowserSnifferBridge, SentinelBridge] as const,
                 handlers: [
                   webHandlers,
@@ -215,7 +220,6 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
                     __DrainToWeb__: () => Deferred.succeed(drained, undefined).pipe(Effect.asVoid),
                   },
                 ] as const,
-                side: 'Web',
               })
               // The sentinel rides the FIFO inbox behind the drained initial
               // messages, so awaiting it proves they have all been dispatched.

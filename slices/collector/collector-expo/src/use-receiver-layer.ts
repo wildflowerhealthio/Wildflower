@@ -1,7 +1,7 @@
 import type { CollectorBridge } from 'collector-fundamentals/bridge'
 import type { WebViewSource } from 'collector-fundamentals/model'
 import { Effect } from 'effect'
-import type { Bridge } from 'effect-messaging-core'
+import type { MessageHandler } from 'effect-messaging-core'
 import { useRouter } from 'expo-router'
 import { useCallback, useMemo } from 'react'
 
@@ -29,7 +29,9 @@ import { useBrowserSnifferSender } from './message-sender-pipes.tsx'
  *    screen mounts. The pipe suspends on the sender slot and
  *    warn-and-drops pre-mount.
  */
-const useCollectorHostHandlers = (): Bridge.HalfHandlers<(typeof CollectorBridge)['Host']> => {
+const useCollectorHostHandlers = (): MessageHandler.HandlersFor<
+  (typeof CollectorBridge)['WebToHost']
+> => {
   const { setPendingSource, modalPath } = useCollectorHost()
   const router = useRouter()
   const sendToSniffer = useBrowserSnifferSender()

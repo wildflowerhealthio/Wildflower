@@ -10,11 +10,11 @@ service.
 The page often needs to _peek_ at the host-injected initial
 messages before mounting (e.g. to seed a `<MemoryRouter
 initialEntries={[...]}>` at the right path). Doing that with a
-single fused `WebTransport.make({...})` wrapper requires reaching
-inside the transport. Instead, the page constructs the adapter
-itself, drains the initial messages once, and provides a replay
-adapter to `BridgeTransport.make` so the dispatch fiber sees the
-same messages exactly once.
+single fused wrapper that builds its own adapter internally would
+require reaching inside the transport. Instead, the page constructs
+the adapter itself, drains the initial messages once, and provides a
+replay adapter to `BridgeTransport.makeWebTransport` so the dispatch
+fiber sees the same messages exactly once.
 
 ```ts
 import { Effect, Layer, ManagedRuntime } from 'effect'
@@ -35,7 +35,7 @@ const replayAdapter = {
 
 const transport = await managedRuntime.runPromise(
   Scope.extend(
-    BridgeTransport.make({ bridges, layers, side: 'Web' }).pipe(
+    BridgeTransport.makeWebTransport({ bridges, handlers }).pipe(
       Effect.provide(Layer.succeed(TransportAdapter, replayAdapter))
     ),
     scope

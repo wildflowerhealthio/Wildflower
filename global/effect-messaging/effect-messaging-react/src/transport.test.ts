@@ -1,6 +1,12 @@
 import type { Scope } from 'effect'
 import { Effect, Layer, Logger, Queue, Schema } from 'effect'
-import { Bridge, BridgeTransport, TransportAdapter, UrlParamMessage } from 'effect-messaging-core'
+import {
+  Bridge,
+  BridgeTransport,
+  type MessageHandler,
+  TransportAdapter,
+  UrlParamMessage,
+} from 'effect-messaging-core'
 import * as fc from 'fast-check'
 import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
@@ -55,7 +61,7 @@ const setInitialNavigationPath = (path: string): void => {
 }
 
 /** No-op handler record for the NavigationBridge web side. */
-const navNoopHandlers = (): Bridge.HalfHandlers<typeof NavigationBridge.Web> => ({
+const navNoopHandlers = (): MessageHandler.HandlersFor<(typeof NavigationBridge)['HostToWeb']> => ({
   HostBackRequested: () => Effect.void,
   HostRequestedWebNavigation: () => Effect.void,
 })
@@ -66,12 +72,15 @@ const navNoopHandlers = (): Bridge.HalfHandlers<typeof NavigationBridge.Web> => 
  */
 const webTransport = <Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
   readonly bridges: Bridges
-  readonly handlers: Bridge.HandlersByBridge<Bridges, 'Web'>
-}): Effect.Effect<BridgeTransport.BridgeTransport<Bridges, 'Web'>, never, Scope.Scope> =>
-  BridgeTransport.make({
+  readonly handlers: Bridge.HandlersByBridge<Bridges, 'HostToWeb'>
+}): Effect.Effect<
+  BridgeTransport.BridgeTransport<Bridges, 'HostToWeb', 'WebToHost'>,
+  never,
+  Scope.Scope
+> =>
+  BridgeTransport.makeWebTransport({
     bridges: config.bridges,
     handlers: config.handlers,
-    side: 'Web',
   }).pipe(Effect.provide(Layer.succeed(TransportAdapter, WebPlatformAdapter.make(config.bridges))))
 
 /**
@@ -451,7 +460,7 @@ describe('BridgeTransport (Web) — type assertions (compile-only)', () => {
           bridges: [NavigationBridge] as const,
           handlers: [navNoopHandlers()],
         })
-        // @ts-expect-error — `Bogus` is not in NavigationBridge.Web outbound.
+        // @ts-expect-error — `Bogus` is not in NavigationBridge.WebToHost (web outbound).
         yield* transport.sendMessage({ _tag: 'Bogus' })
         const logged = yield* Queue.take(logQueue)
         expect(logged).toEqual({

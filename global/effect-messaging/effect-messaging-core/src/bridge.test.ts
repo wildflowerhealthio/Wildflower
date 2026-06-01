@@ -3,7 +3,8 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { assertType, describe, expect, test } from 'vite-plus/test'
 import * as Bridge from './bridge.ts'
-import * as TestPlatformAdapterLayer from './test-platform-adapter-layer.ts'
+import type * as MessageHandler from './message-handler.ts'
+import * as Message from './message.ts'
 
 const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.Number }))
 const Pong = Schema.parseJson(Schema.TaggedStruct('Pong', { reply: Schema.String }))
@@ -21,11 +22,11 @@ const makeTestBridge = (name: string = 'Test') =>
   })
 
 describe('Bridge.make — shape', () => {
-  test('exposes both halves with the correct outbound/inbound mapping', () => {
+  test('exposes the HostToWeb / WebToHost directional records', () => {
     const bridge = makeTestBridge()
     expect(bridge).toMatchObject({
-      Host: { OutboundSchemas: { Ping, Buzz }, InboundSchemas: { Pong } },
-      Web: { OutboundSchemas: { Pong }, InboundSchemas: { Ping, Buzz } },
+      HostToWeb: { Ping, Buzz },
+      WebToHost: { Pong },
     })
   })
 
@@ -35,54 +36,34 @@ describe('Bridge.make — shape', () => {
       hostToWeb: [] as const,
       webToHost: [] as const,
     })
-    expect(Object.keys(bridge.Host.OutboundSchemas)).toEqual([])
-    expect(Object.keys(bridge.Web.OutboundSchemas)).toEqual([])
+    expect(Object.keys(bridge.HostToWeb)).toEqual([])
+    expect(Object.keys(bridge.WebToHost)).toEqual([])
   })
 })
 
-describe('Bridge.make — send', () => {
-  test('encodes the typed message via the matching outbound schema', () => {
+describe('Bridge.make — encode', () => {
+  test('encodes a typed host→web message via the matching outbound schema', () => {
     const bridge = makeTestBridge()
-    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make()
 
-    Effect.runSync(bridge.Host.send({ _tag: 'Ping', value: 42 }).pipe(Effect.provide(adapterLayer)))
-    Effect.runSync(bridge.Host.send({ _tag: 'Buzz' }).pipe(Effect.provide(adapterLayer)))
-
-    expect(sentSink).toHaveLength(2)
-    expect(JSON.parse(sentSink[0])).toEqual({ _tag: 'Ping', value: 42 })
-    expect(JSON.parse(sentSink[1])).toEqual({ _tag: 'Buzz' })
+    expect(
+      JSON.parse(Message.stringifyMessage(bridge.HostToWeb, { _tag: 'Ping', value: 42 }))
+    ).toEqual({
+      _tag: 'Ping',
+      value: 42,
+    })
+    expect(JSON.parse(Message.stringifyMessage(bridge.HostToWeb, { _tag: 'Buzz' }))).toEqual({
+      _tag: 'Buzz',
+    })
   })
 
-  test('round-trips a sent message through the inbound schema on the other side', () => {
+  test('round-trips an encoded host→web message through the web side’s inbound schema', () => {
     const bridge = makeTestBridge()
-    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make()
-    Effect.runSync(bridge.Host.send({ _tag: 'Ping', value: 99 }).pipe(Effect.provide(adapterLayer)))
-    const decoded = Schema.decodeSync(bridge.Web.InboundSchemas.Ping)(sentSink[0])
+    // The web side's inbound record *is* the host→web record, so encoding
+    // with `HostToWeb` and decoding with the same record models the wire
+    // crossing host→web.
+    const wire = Message.stringifyMessage(bridge.HostToWeb, { _tag: 'Ping', value: 99 })
+    const decoded = Schema.decodeSync(bridge.HostToWeb.Ping)(wire)
     expect(decoded).toEqual({ _tag: 'Ping', value: 99 })
-  })
-
-  test('two bridges` Host senders compose via the same adapter layer', () => {
-    const navBridge = Bridge.make({
-      name: 'Nav',
-      hostToWeb: [['Buzz', Buzz]] as const,
-      webToHost: [] as const,
-    })
-    const gkBridge = Bridge.make({
-      name: 'Gk',
-      hostToWeb: [['Ping', Ping]] as const,
-      webToHost: [] as const,
-    })
-
-    const { layer: adapterLayer, sentSink } = TestPlatformAdapterLayer.make()
-
-    Effect.runSync(navBridge.Host.send({ _tag: 'Buzz' }).pipe(Effect.provide(adapterLayer)))
-    Effect.runSync(
-      gkBridge.Host.send({ _tag: 'Ping', value: 1 }).pipe(Effect.provide(adapterLayer))
-    )
-
-    expect(sentSink).toHaveLength(2)
-    expect(JSON.parse(sentSink[0])).toEqual({ _tag: 'Buzz' })
-    expect(JSON.parse(sentSink[1])).toEqual({ _tag: 'Ping', value: 1 })
   })
 })
 
@@ -117,29 +98,32 @@ describe('Bridge.make — ValidatedPairs', () => {
       hostToWeb: [['Ping', Ping]] as const,
       webToHost: [['Pong', Pong]] as const,
     })
-    expect(bridge.Host.OutboundSchemas.Ping).toBe(Ping)
+    expect(bridge.HostToWeb.Ping).toBe(Ping)
   })
 })
 
 describe('Bridge.make — type-level surface', () => {
   test('compile-only: derived types match indexed schema accesses', () => {
     const bridge = makeTestBridge()
-    type Inbound = (typeof bridge.Web.InboundSchemas)['Ping']
+    // The web side receives the host→web record.
+    type Inbound = (typeof bridge.HostToWeb)['Ping']
     type InboundType = Schema.Schema.Type<Inbound>
     assertType<InboundType>({ _tag: 'Ping', value: 1 })
 
-    // The inbound-handler record type is `HalfHandlers` keyed by the
-    // half's `InboundSchemas` — the shape `BridgeTransport.make` and
+    // The web side consumes `HandlersFor` over the bridge's `HostToWeb`
+    // record (its inbound direction) — the shape `makeWebTransport` and
     // `registerHandlers` consume.
-    type WebHandlers = Bridge.HalfHandlers<typeof bridge.Web>
+    type WebHandlers = MessageHandler.HandlersFor<(typeof bridge)['HostToWeb']>
     assertType<WebHandlers>({
       Ping: ({ value }) => Effect.sync(() => expect(typeof value).toBe('number')),
       Buzz: () => Effect.void,
     })
 
-    type HostSender = typeof bridge.Host.send
-    assertType<Parameters<HostSender>[0]>({ _tag: 'Ping', value: 1 })
-    assertType<Parameters<HostSender>[0]>({ _tag: 'Buzz' })
+    // `SendableMessage<[B], 'HostToWeb'>` is the decoded union the host may
+    // send (the bridge's host→web tags).
+    type HostOutbound = Bridge.SendableMessage<readonly [typeof bridge], 'HostToWeb'>
+    assertType<HostOutbound>({ _tag: 'Ping', value: 1 })
+    assertType<HostOutbound>({ _tag: 'Buzz' })
   })
 })
 
@@ -166,15 +150,15 @@ test('property: outbound schema keys equal declared tag set', () => {
           hostToWeb: hostPairs,
           webToHost: webPairs,
         })
-        expect(Object.keys(bridge.Host.OutboundSchemas).toSorted()).toEqual(hostOnly.toSorted())
-        expect(Object.keys(bridge.Web.OutboundSchemas).toSorted()).toEqual(webTags.toSorted())
+        expect(Object.keys(bridge.HostToWeb).toSorted()).toEqual(hostOnly.toSorted())
+        expect(Object.keys(bridge.WebToHost).toSorted()).toEqual(webTags.toSorted())
       }
     ),
     { numRuns: numRunsFor({ base: 100 }) }
   )
 })
 
-test('property: send → decodeSync round-trips identity for any wired message', () => {
+test('property: stringify → decodeSync round-trips identity for any wired message', () => {
   const bridge = makeTestBridge()
   fc.assert(
     fc.property(
@@ -183,13 +167,11 @@ test('property: send → decodeSync round-trips identity for any wired message',
         fc.constant({ _tag: 'Buzz' as const })
       ),
       (message) => {
-        const { layer, sentSink } = TestPlatformAdapterLayer.make()
-        Effect.runSync(bridge.Host.send(message).pipe(Effect.provide(layer)))
-        expect(sentSink).toHaveLength(1)
+        const wire = Message.stringifyMessage(bridge.HostToWeb, message)
         const decoded: unknown =
           message._tag === 'Ping'
-            ? Schema.decodeSync(bridge.Web.InboundSchemas.Ping)(sentSink[0] ?? '')
-            : Schema.decodeSync(bridge.Web.InboundSchemas.Buzz)(sentSink[0] ?? '')
+            ? Schema.decodeSync(bridge.HostToWeb.Ping)(wire)
+            : Schema.decodeSync(bridge.HostToWeb.Buzz)(wire)
         expect(decoded).toEqual(message)
       }
     ),

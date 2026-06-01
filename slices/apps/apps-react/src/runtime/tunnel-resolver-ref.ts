@@ -1,6 +1,6 @@
 import type { AppsBridge } from 'apps-core/bridge'
 import { Effect } from 'effect'
-import { MessageHandler, type Bridge } from 'effect-messaging-core'
+import { MessageHandler } from 'effect-messaging-core'
 
 /**
  * The tunnel-response outcomes the apps runtime resolves a pending
@@ -31,13 +31,14 @@ type PendingResolver = (outcome: TunnelOutcome) => void
 const pendingTunnelResolverRef: { current: PendingResolver | null } = { current: null }
 
 /**
- * Build the `AppsBridge.Web` inbound handler record the app's transport
- * build supplies to `BridgeTransport.make`. Each per-tag handler reads
+ * Build the AppsBridge Web-side inbound handler record (keyed by the
+ * bridge's `HostToWeb` tags) the app's transport build supplies to
+ * `BridgeTransport.makeWebTransport`. Each per-tag handler reads
  * {@link pendingTunnelResolverRef} on every Host→Web tag and forwards
  * the outcome to whichever caller is waiting (or log-and-drops if no
  * resolver is installed).
  */
-const makeAppsWebHandlers = (): Bridge.HalfHandlers<(typeof AppsBridge)['Web']> => ({
+const makeAppsWebHandlers = (): MessageHandler.HandlersFor<(typeof AppsBridge)['HostToWeb']> => ({
   TunnelStarted: ({ origin }) => {
     const resolver = pendingTunnelResolverRef.current
     if (resolver === null) {

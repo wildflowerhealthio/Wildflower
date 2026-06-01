@@ -31,7 +31,7 @@ const PingPongBridge = Bridge.make({
   webToHost: [['Pong', PongSchema]] as const,
 })
 
-type PingPongSend = BridgeTransport.MessageSender<readonly [typeof PingPongBridge], 'Host'>
+type PingPongSend = BridgeTransport.MessageSender<readonly [typeof PingPongBridge], 'HostToWeb'>
 
 describe('BridgedWebView (integration)', () => {
   // Per-test captures populated by `beforeEach`. The shared setup
@@ -324,8 +324,8 @@ const BazBridge = Bridge.make({
   webToHost: [['BarReply', BarReplySchema]] as const,
 })
 
-type FooSend = BridgeTransport.MessageSender<readonly [typeof FooBarBridge], 'Host'>
-type BarSend = BridgeTransport.MessageSender<readonly [typeof BazBridge], 'Host'>
+type FooSend = BridgeTransport.MessageSender<readonly [typeof FooBarBridge], 'HostToWeb'>
+type BarSend = BridgeTransport.MessageSender<readonly [typeof BazBridge], 'HostToWeb'>
 
 describe('BridgedWebView (multi-binding combine)', () => {
   beforeEach(() => {

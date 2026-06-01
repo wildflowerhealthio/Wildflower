@@ -1,5 +1,6 @@
 import { Effect, Schema } from 'effect'
 import * as Bridge from './bridge.ts'
+import type * as MessageHandler from './message-handler.ts'
 
 /**
  * Console-method levels mirrored across the LogBridge wire.
@@ -96,7 +97,7 @@ const LogBridge: LogBridge = Bridge.make({
  * `useLogHostBinding()` from `effect-messaging-expo` (or directly here
  * if the consumer wants a non-React host).
  */
-const defaultLogHostHandlers: Bridge.HalfHandlers<LogBridge['Host']> = {
+const defaultLogHostHandlers: MessageHandler.HandlersFor<LogBridge['WebToHost']> = {
   Log: defaultOnLog,
 }
 

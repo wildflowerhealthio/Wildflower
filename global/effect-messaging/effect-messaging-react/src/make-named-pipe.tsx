@@ -14,7 +14,7 @@ import { useContextOrThrow } from 'react-kitchen-sink'
 interface MadeNamedPipe<
   TName extends string,
   TBridges extends ReadonlyArray<Bridge.AnyBridge>,
-  TSide extends 'Host' | 'Web',
+  TDirection extends Bridge.Direction,
 > {
   /**
    * Renders the pipe's context. Its `displayName` is `${TName}PipeProvider`,
@@ -26,7 +26,7 @@ interface MadeNamedPipe<
   /**
    * Register a typed sender as the active downstream for this pipe.
    */
-  readonly useAsOutlet: (sender: BridgeTransport.MessageSender<TBridges, TSide>) => void
+  readonly useAsOutlet: (sender: BridgeTransport.MessageSender<TBridges, TDirection>) => void
   /**
    * Get the typed sender for this pipe. The returned function is
    * identity-stable for the lifetime of the surrounding Provider — safe
@@ -36,7 +36,7 @@ interface MadeNamedPipe<
    * through the default warn-and-drop handler until
    * {@link MadeNamedPipe.useAsOutlet} commits its effect.
    */
-  readonly useSender: () => BridgeTransport.MessageSender<TBridges, TSide>
+  readonly useSender: () => BridgeTransport.MessageSender<TBridges, TDirection>
   /**
    * Returns the underlying RefObject holding the active sender.
    * Identity-stable across renders. Initially points at
@@ -49,7 +49,7 @@ interface MadeNamedPipe<
    * (e.g. capturing a transport sender from inside an
    * `onTransportReady` `Effect.sync` callback).
    */
-  readonly useSenderRef: () => RefObject<BridgeTransport.MessageSender<TBridges, TSide>>
+  readonly useSenderRef: () => RefObject<BridgeTransport.MessageSender<TBridges, TDirection>>
   /**
    * The pipe's built-in warn-and-drop sender — what
    * {@link MadeNamedPipe.useSender} resolves to before any
@@ -60,20 +60,20 @@ interface MadeNamedPipe<
    * default in directly instead of re-implementing their own
    * warn-and-drop wrapper.
    */
-  readonly defaultSender: BridgeTransport.MessageSender<TBridges, TSide>
+  readonly defaultSender: BridgeTransport.MessageSender<TBridges, TDirection>
 }
 
 /**
  * Factory for a typed, friendly-named React pipe carrying a
  * {@link BridgeTransport.MessageSender} for the given bridge tuple and
- * side.
+ * outbound direction.
  *
  * Each call returns a `{ Provider, useAsOutlet, useSender, useSenderRef,
  * defaultSender }` quintuple where `Provider.displayName` is
  * `${TName}PipeProvider`. Consumers typically destructure-and-rename:
  *
  * ```ts
- * const pipe = makeNamedPipe('BrowserSniffer', [BrowserSnifferBridge] as const, 'Host')
+ * const pipe = makeNamedPipe('BrowserSniffer', [BrowserSnifferBridge] as const, 'HostToWeb')
  * export const {
  *   Provider: MessageSenderToBrowserSnifferProvider,
  *   useAsOutlet: useAsMessageSenderToBrowserSniffer,
@@ -84,46 +84,47 @@ interface MadeNamedPipe<
 const makeNamedPipe = <
   const TName extends string,
   const TBridges extends ReadonlyArray<Bridge.AnyBridge>,
-  const TSide extends 'Host' | 'Web',
+  const TDirection extends Bridge.Direction,
 >(
   name: TName,
   _bridges: TBridges,
-  _side: TSide
-): MadeNamedPipe<TName, TBridges, TSide> => {
-  // `_bridges` and `_side` are type witnesses — they bind TBridges/TSide into
-  // the returned closure so downstream types flow without runtime generics.
+  _direction: TDirection
+): MadeNamedPipe<TName, TBridges, TDirection> => {
+  // `_bridges` and `_direction` are type witnesses — they bind
+  // TBridges/TDirection into the returned closure so downstream types flow
+  // without runtime generics.
 
-  const defaultSender: BridgeTransport.MessageSender<TBridges, TSide> = (msg) =>
+  const defaultSender: BridgeTransport.MessageSender<TBridges, TDirection> = (msg) =>
     Effect.logWarning(
       `[effect-messaging] no ${name}Pipe handler registered; dropping message "${JSON.stringify(msg)}"`
     )
 
-  const Context = createContext<RefObject<BridgeTransport.MessageSender<TBridges, TSide>> | null>(
-    null
-  )
+  const Context = createContext<RefObject<
+    BridgeTransport.MessageSender<TBridges, TDirection>
+  > | null>(null)
   Context.displayName = `${name}PipeContext`
 
   // oxlint-disable-next-line react-refresh/only-export-components
   const Provider = ({ children }: { children: React.ReactNode }): JSX.Element => {
-    const handlerRef = useRef<BridgeTransport.MessageSender<TBridges, TSide>>(defaultSender)
+    const handlerRef = useRef<BridgeTransport.MessageSender<TBridges, TDirection>>(defaultSender)
 
     return <Context.Provider value={handlerRef}>{children}</Context.Provider>
   }
   Provider.displayName = `${name}PipeProvider`
 
-  const useSender = (): BridgeTransport.MessageSender<TBridges, TSide> => {
+  const useSender = (): BridgeTransport.MessageSender<TBridges, TDirection> => {
     const handlerRef = useContextOrThrow(Context)
     return useCallback((message) => Effect.suspend(() => handlerRef.current(message)), [handlerRef])
   }
 
-  const useAsOutlet = (sender: BridgeTransport.MessageSender<TBridges, TSide>): void => {
+  const useAsOutlet = (sender: BridgeTransport.MessageSender<TBridges, TDirection>): void => {
     const handlerRef = useContextOrThrow(Context)
     useEffect(() => {
       handlerRef.current = sender
     }, [sender, handlerRef])
   }
 
-  const useSenderRef = (): RefObject<BridgeTransport.MessageSender<TBridges, TSide>> =>
+  const useSenderRef = (): RefObject<BridgeTransport.MessageSender<TBridges, TDirection>> =>
     useContextOrThrow(Context)
 
   return {

@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { flattenTuples } from 'kitchen-sink/types'
 import type * as BridgeTransport from './bridge-transport.ts'
 import type * as Bridge from './bridge.ts'
+import type * as MessageHandler from './message-handler.ts'
 
 /**
  * Per-bridge initial messages, parallel-indexed against the surrounding
@@ -20,7 +21,9 @@ type InitialMessagesByBridge<Bridges extends ReadonlyArray<Bridge.AnyBridge>> = 
  */
 type OnTransportReadyByBridge<Bridges extends ReadonlyArray<Bridge.AnyBridge>> = {
   readonly [I in keyof Bridges]:
-    | ((send: BridgeTransport.MessageSender<readonly [Bridges[I]], 'Host'>) => Effect.Effect<void>)
+    | ((
+        send: BridgeTransport.MessageSender<readonly [Bridges[I]], 'HostToWeb'>
+      ) => Effect.Effect<void>)
     | undefined
 }
 
@@ -44,7 +47,7 @@ type OnTransportReadyByBridge<Bridges extends ReadonlyArray<Bridge.AnyBridge>> =
  */
 interface HostBindings<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   readonly bridges: Bridges
-  readonly handlers: Bridge.HandlersByBridge<Bridges, 'Host'>
+  readonly handlers: Bridge.HandlersByBridge<Bridges, 'WebToHost'>
   readonly initialMessages: InitialMessagesByBridge<Bridges>
   readonly onTransportReady: OnTransportReadyByBridge<Bridges>
 }
@@ -66,10 +69,10 @@ interface HostBindings<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  */
 const single = <const B extends Bridge.AnyBridge>(binding: {
   readonly bridge: B
-  readonly handlers: Bridge.HalfHandlers<B['Host']>
+  readonly handlers: MessageHandler.HandlersFor<B['WebToHost']>
   readonly initialMessages?: ReadonlyArray<Bridge.UrlParamableMessage<readonly [B]>>
   readonly onTransportReady?: (
-    send: BridgeTransport.MessageSender<readonly [B], 'Host'>
+    send: BridgeTransport.MessageSender<readonly [B], 'HostToWeb'>
   ) => Effect.Effect<void>
 }): HostBindings<readonly [B]> => ({
   bridges: [binding.bridge] as const,
@@ -150,7 +153,7 @@ const combine = <Bs extends ReadonlyArray<ReadonlyArray<Bridge.AnyBridge>>>(bind
  */
 const callTransportReady = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(
   bindings: HostBindings<Bridges>,
-  send: BridgeTransport.MessageSender<Bridges, 'Host'>
+  send: BridgeTransport.MessageSender<Bridges, 'HostToWeb'>
 ): Effect.Effect<void> =>
   Effect.all(
     bindings.onTransportReady.map((callback) => {

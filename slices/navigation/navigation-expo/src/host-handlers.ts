@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import type { Bridge } from 'effect-messaging-core'
+import type { MessageHandler } from 'effect-messaging-core'
 import type { NavigationBridge } from 'navigation-core'
 
 /**
@@ -21,7 +21,7 @@ import type { NavigationBridge } from 'navigation-core'
 const makeNavigationHostHandlers = (
   onRouteChanged?: (route: { pathname: string; canGoBack: boolean }) => void,
   onUiReady?: () => void
-): Bridge.HalfHandlers<(typeof NavigationBridge)['Host']> => ({
+): MessageHandler.HandlersFor<(typeof NavigationBridge)['WebToHost']> => ({
   RouteChanged: ({ pathname, canGoBack }) =>
     Effect.sync(() => onRouteChanged?.({ pathname, canGoBack })),
   UIReady: () => Effect.sync(() => onUiReady?.()),

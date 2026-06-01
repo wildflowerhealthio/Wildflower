@@ -30,7 +30,7 @@ declare global {
     | undefined
 }
 
-type CapturedHandlers = MessageHandler.HandlersFor<typeof CollectorBridgeType.Host.InboundSchemas>
+type CapturedHandlers = MessageHandler.HandlersFor<typeof CollectorBridgeType.WebToHost>
 
 // oxlint-disable-next-line no-underscore-dangle
 const mockHarness = (globalThis.__mockCollectorExpoHostProviderHarness ??= {
@@ -96,7 +96,10 @@ import {
   type CollectorHostProviderProps,
 } from './index.ts'
 
-type SnifferSender = BridgeTransport.MessageSender<readonly [typeof BrowserSnifferBridge], 'Host'>
+type SnifferSender = BridgeTransport.MessageSender<
+  readonly [typeof BrowserSnifferBridge],
+  'HostToWeb'
+>
 
 const requireLastHandlers = (): CapturedHandlers => {
   if (mockHarness.lastHandlers === null) {

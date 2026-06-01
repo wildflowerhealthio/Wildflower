@@ -10,7 +10,7 @@
  */
 import type { AppsBridge } from 'apps-core/bridge'
 import type { Context } from 'effect'
-import type * as EffectModule from 'effect'
+import type { Message } from 'effect-messaging-core'
 
 interface FakeStoreService {
   readonly commit: jest.Mock
@@ -18,7 +18,7 @@ interface FakeStoreService {
   readonly subscribe: jest.Mock
 }
 
-type AppsHostToWebMessage = Parameters<typeof AppsBridge.Host.send>[0]
+type AppsHostToWebMessage = Message.Of<AppsBridge['HostToWeb']>
 
 interface MockHarness {
   tunnelConfigSet?: jest.Mock
@@ -193,27 +193,19 @@ const mockBuildLivestoreBaseFactory = (): unknown => ({ __esModule: true })
 
 /**
  * Factory for `jest.mock('apps-core/bridge', mockBuildAppsCoreFactory)`.
- * Mocks `AppsBridge.Host.send` to record replies into
- * `harness.sentMessages` — the production handler (built by
- * `makeAppsHostHandlers`) dispatches its `TunnelStarted` / `TunnelFailed`
- * reply through this `send`, so the dispatch tests assert against the
- * recorded log.
+ *
+ * The production handler no longer references `AppsBridge` as a runtime
+ * value — `makeAppsHostHandlers` uses it in type positions only and
+ * replies through the host→web sender captured via `setAppsHostSender`.
+ * So this stub just satisfies the import; tests record replies by
+ * installing a capturing sender (which pushes into `harness.sentMessages`)
+ * rather than mocking a bridge-level `send`. Mocking still avoids pulling
+ * the real cross-package `apps-core/bridge` (and its `dist`) under Jest.
  */
-const mockBuildAppsCoreFactory = (): unknown => {
-  const effect = jest.requireActual<typeof EffectModule>('effect')
-  const mockHarness = (globalThis.wfMockAppsExpoHarness ??= freshHarness())
-  return {
-    __esModule: true,
-    AppsBridge: {
-      Host: {
-        send: (message: AppsHostToWebMessage): EffectModule.Effect.Effect<void> =>
-          effect.Effect.sync(() => {
-            mockHarness.sentMessages.push(message)
-          }),
-      },
-    },
-  }
-}
+const mockBuildAppsCoreFactory = (): unknown => ({
+  __esModule: true,
+  AppsBridge: {},
+})
 
 /**
  * Reset the per-test mutable harness fields. Each test file should call

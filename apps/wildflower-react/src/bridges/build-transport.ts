@@ -29,12 +29,12 @@ import type { ReactTransport } from './transport-context.ts'
  * Page lifetime — there is no teardown. `Scope.make` is created and
  * never closed; the transport, its dispatch fiber, and the console
  * interceptor live as long as the page does. (Tests that need teardown
- * can call `BridgeTransport.make` directly with their own scope.)
+ * can call `BridgeTransport.makeWebTransport` directly with their own scope.)
  *
  * @remarks
  * The console interceptor is installed immediately after the transport
  * is built (before `signalReady`) so that any `console.*` emitted by
- * Sentry init (`instrument.ts`), `BridgeTransport.make` internals, or
+ * Sentry init (`instrument.ts`), `BridgeTransport.makeWebTransport` internals, or
  * the adapter's `drainInitial` get routed through the transport's
  * outbox — held behind the bridge's `peerReady` gate, then drained in
  * order once it resolves. Installing later would silently drop those
@@ -48,7 +48,7 @@ const buildTransport = (navigate: (to: NavTarget) => void): Promise<ReactTranspo
   const pageLifetimeScope = Effect.runSync(Scope.make())
   return Effect.runPromise(
     Scope.extend(
-      BridgeTransport.make({
+      BridgeTransport.makeWebTransport({
         bridges,
         handlers: [
           navHandlers,
@@ -59,7 +59,6 @@ const buildTransport = (navigate: (to: NavTarget) => void): Promise<ReactTranspo
           // no inbound handlers, so its record is empty.
           {},
         ] as const,
-        side: 'Web',
       }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter))),
       pageLifetimeScope
     )

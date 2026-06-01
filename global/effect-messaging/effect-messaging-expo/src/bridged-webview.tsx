@@ -90,10 +90,10 @@ interface BridgedWebViewProps<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  * {@link BridgeTransport.BridgeTransport.registerHandlers}).
  */
 interface BuiltTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
-  readonly sendMessage: BridgeTransport.MessageSender<Bridges, 'Host'>
+  readonly sendMessage: BridgeTransport.MessageSender<Bridges, 'HostToWeb'>
   readonly onMessage: (raw: string) => Effect.Effect<void>
   readonly registerHandlers: (
-    handlers: Bridge.HandlersByBridge<Bridges, 'Host'>
+    handlers: Bridge.HandlersByBridge<Bridges, 'WebToHost'>
   ) => Effect.Effect<void>
 }
 
@@ -212,10 +212,9 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
           drainInitial: Effect.succeed([]),
         }
 
-        const built = yield* BridgeTransport.make({
+        const built = yield* BridgeTransport.makeHostTransport({
           bridges,
           handlers: initialBindingsRef.current.handlers,
-          side: 'Host',
         }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter)))
 
         yield* Effect.sync(() => {
@@ -260,7 +259,7 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   // that arrives with no covering handler is logged-and-dropped.
   useEffect(() => {
     // Skip the initial render: the first `handlers` value is already
-    // baked into the transport via `BridgeTransport.make`'s initial arg.
+    // baked into the transport via `BridgeTransport.makeHostTransport`'s initial arg.
     if (handlers === initialBindingsRef.current.handlers) return undefined
     const transport = transportRef.current
     if (transport === null) return undefined

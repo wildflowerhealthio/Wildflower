@@ -35,7 +35,7 @@ import { CollectorHostProvider } from './collector-host-context.tsx'
 import { useCollectorSender } from './message-sender-pipes.tsx'
 import { useCollectorHostBinding } from './use-host-binding.ts'
 
-type CollectorSender = BridgeTransport.MessageSender<readonly [typeof CollectorBridge], 'Host'>
+type CollectorSender = BridgeTransport.MessageSender<readonly [typeof CollectorBridge], 'HostToWeb'>
 type CollectorBinding = ReturnType<typeof useCollectorHostBinding>
 
 const ProbeInsideProvider = ({

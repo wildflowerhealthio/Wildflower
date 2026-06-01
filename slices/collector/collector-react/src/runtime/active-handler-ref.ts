@@ -1,6 +1,6 @@
 import type { CollectorBridge } from 'collector-fundamentals/bridge'
 import type { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
-import { MessageHandler, type Bridge } from 'effect-messaging-core'
+import { MessageHandler } from 'effect-messaging-core'
 
 /**
  * The runtime holds the active sync's handler erased of its
@@ -38,13 +38,16 @@ type ActiveCollectorBridgeMessageHandler =
 const activeHandlerRef: { current: ActiveCollectorBridgeMessageHandler | null } = { current: null }
 
 /**
- * Build the `CollectorBridge.Web` inbound handler record the app's
- * transport build supplies to `BridgeTransport.make`. Each per-tag
+ * Build the CollectorBridge Web-side inbound handler record (keyed by
+ * the bridge's `HostToWeb` tags) the app's transport build supplies to
+ * `BridgeTransport.makeWebTransport`. Each per-tag
  * handler reads {@link activeHandlerRef} on every Host→Web tag and
  * forwards into the installed handler's matching method (or
  * log-and-drops when nothing is installed).
  */
-const makeCollectorWebHandlers = (): Bridge.HalfHandlers<(typeof CollectorBridge)['Web']> => ({
+const makeCollectorWebHandlers = (): MessageHandler.HandlersFor<
+  (typeof CollectorBridge)['HostToWeb']
+> => ({
   ResponseStart: (event) => {
     const h = activeHandlerRef.current
     return h === null

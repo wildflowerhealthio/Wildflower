@@ -30,7 +30,7 @@ const {
   useSenderRef: useNavigationSenderRef,
   useAsOutlet: useAsNavigationOutlet,
   useSender: useNavigationSender,
-} = makeNamedPipe('WildflowerNavigation', [NavigationBridge] as const, 'Host')
+} = makeNamedPipe('WildflowerNavigation', [NavigationBridge] as const, 'HostToWeb')
 
 export {
   NavigationPipeProvider,

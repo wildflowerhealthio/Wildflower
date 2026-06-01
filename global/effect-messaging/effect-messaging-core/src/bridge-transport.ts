@@ -14,7 +14,7 @@ import {
   Stream,
 } from 'effect'
 import type * as Bridge from './bridge.ts'
-import { senderByTag } from './internal/bridge-lookups.ts'
+import * as Message from './message.ts'
 import { TransportAdapter } from './transport-adapter.ts'
 
 /** The web-→-host handshake signal. Resolves the host's `peerReady` Deferred. */
@@ -37,20 +37,31 @@ const ReadyMessageWireSchema = Schema.parseJson(ReadyMessageSchema)
 const READY_RAW = Schema.encodeSync(ReadyMessageWireSchema)({ _tag: READY_TAG })
 
 /**
- * Function-intersection of every wired bridge's typed sender for the
- * specified side. The transport's public `sendMessage` strips the
- * {@link TransportAdapter} requirement.
+ * Typed outbound sender for every wired bridge — one function accepting
+ * the union of decoded messages sendable in `OutDir`. The transport's
+ * public `sendMessage` strips the {@link TransportAdapter} requirement.
+ *
+ * @remarks
+ * `Bridges` appears only inside `SendableMessage`, a function-parameter
+ * (contravariant) position, so no variance annotation is needed — TS
+ * measures the contravariance and lets `callTransportReady` hand a
+ * full-tuple sender to each narrow per-slot callback structurally.
  */
 type MessageSender<
-  out Bridges extends ReadonlyArray<Bridge.AnyBridge>,
-  Side extends 'Host' | 'Web',
-> = (message: Bridge.SendableMessage<Bridges, Side>) => Effect.Effect<void>
+  Bridges extends ReadonlyArray<Bridge.AnyBridge>,
+  OutDir extends Bridge.Direction,
+> = (message: Bridge.SendableMessage<Bridges, OutDir>) => Effect.Effect<void>
 
 /**
  * Cross-platform bridge transport composing one or more
  * {@link Bridge.Bridge} declarations into a single Effect program.
  *
  * @remarks
+ * `InDir` is the direction this transport *receives* and `OutDir` the one
+ * it *sends* — the two are mirror directions, fixed by the entry point
+ * ({@link makeHostTransport} receives `'WebToHost'` / sends `'HostToWeb'`;
+ * {@link makeWebTransport} is the reverse).
+ *
  * Two queues run behind the public surface: an **outbox** (sends are
  * offered immediately and a pump fiber drains them once the peer signals
  * `__Ready`) and an **inbox** (raw inbound strings processed in FIFO
@@ -59,7 +70,8 @@ type MessageSender<
  */
 interface BridgeTransport<
   Bridges extends ReadonlyArray<Bridge.AnyBridge>,
-  Side extends 'Host' | 'Web',
+  InDir extends Bridge.Direction,
+  OutDir extends Bridge.Direction,
 > {
   /**
    * Enqueue an outbound message belonging to one of the wired bridges.
@@ -72,7 +84,7 @@ interface BridgeTransport<
    * matches the lifecycle — the host is up before the web bundle loads,
    * so the web never waits on anyone.
    */
-  readonly sendMessage: MessageSender<Bridges, Side>
+  readonly sendMessage: MessageSender<Bridges, OutDir>
   /**
    * Push one raw inbound string into the dispatch fiber. After scope
    * close the call is a no-op (the queue is shut down).
@@ -98,7 +110,7 @@ interface BridgeTransport<
    * error, leaving the prior map in place.
    */
   readonly registerHandlers: (
-    handlers: Bridge.HandlersByBridge<Bridges, Side>
+    handlers: Bridge.HandlersByBridge<Bridges, InDir>
   ) => Effect.Effect<void>
 }
 
@@ -116,13 +128,13 @@ type AnyTaggedSchema = Schema.Schema<any, any, never>
  * Handler invoked by the dispatch fiber when a tag's message arrives.
  *
  * @remarks
- * The `TransportAdapter` requirement matches `HandlersFor` (handlers can
- * reply via the same-bridge `send(...)`). The dispatch fiber discharges
- * the requirement per-invocation under the transport's own adapter, so
- * handlers returning `Effect<void, never, never>` and handlers calling
- * `send(...)` both compose into the same dispatch path.
+ * A pure `(message) => Effect<void>` matching `HandlersFor`. Handlers
+ * acknowledge-and-return; they never reply through the transport (a host
+ * slice that sends proactively captures its sender via
+ * `onTransportReady`). Re-narrowed from the routing-site `_tag` read —
+ * see {@link dispatch}.
  */
-type Handler = (message: { readonly _tag: string }) => Effect.Effect<void, never, TransportAdapter>
+type Handler = (message: { readonly _tag: string }) => Effect.Effect<void>
 
 type AnyHandlers = Readonly<Record<string, Handler | undefined>>
 
@@ -131,14 +143,29 @@ type DecodedMessage = { readonly _tag: string }
 
 const make = <
   const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
-  const Side extends 'Host' | 'Web',
+  const InDir extends Bridge.Direction,
+  const OutDir extends Bridge.Direction,
 >(config: {
   readonly bridges: Bridges
-  readonly handlers: Bridge.HandlersByBridge<Bridges, Side>
-  readonly side: Side
-}): Effect.Effect<BridgeTransport<Bridges, Side>, never, TransportAdapter | Scope.Scope> =>
+  readonly handlers: Bridge.HandlersByBridge<Bridges, InDir>
+  readonly inboundDirection: InDir
+  readonly outboundDirection: OutDir
+  /**
+   * Whether this transport is the host endpoint. Drives the one-way
+   * `__Ready` handshake asymmetry: the web self-queues `__Ready` (so its
+   * outbox pump unblocks immediately) and posts `__Ready` to the host via
+   * {@link signalReady}; the host waits to receive it and never sends one.
+   */
+  readonly isHost: boolean
+}): Effect.Effect<BridgeTransport<Bridges, InDir, OutDir>, never, TransportAdapter | Scope.Scope> =>
   Effect.gen(function* () {
-    const { bridges, handlers: initialHandlers, side } = config
+    const {
+      bridges,
+      handlers: initialHandlers,
+      inboundDirection,
+      outboundDirection,
+      isHost,
+    } = config
     const adapter = yield* TransportAdapter
 
     /**
@@ -163,7 +190,7 @@ const make = <
      * prior map stays in place (the `Ref.set` never runs).
      */
     const buildHandlerByTag = (
-      handlersByBridge: Bridge.HandlersByBridge<Bridges, Side>
+      handlersByBridge: Bridge.HandlersByBridge<Bridges, InDir>
     ): HashMap.HashMap<string, Handler> => {
       const tagHandlerPairs = pipe(
         Array.zipWith(
@@ -213,12 +240,27 @@ const make = <
     const handlersRef = yield* Ref.make(buildHandlerByTag(initialHandlers))
 
     const innerSchemas: Array.NonEmptyArray<AnyTaggedSchema> = pipe(
-      Array.flatMap(bridges, (bridge) => Record.values(bridge[side].InboundSchemas)),
+      Array.flatMap(bridges, (bridge) => Record.values(bridge[inboundDirection])),
       Array.map(Schema.typeSchema),
       Array.append(ReadyMessageSchema)
     )
 
-    const taggedSenders = senderByTag(bridges, side)
+    /**
+     * Merged outbound schema record across every wired bridge for this
+     * side — `{[tag]: schema}` the pump encodes against via
+     * {@link Message.stringifyMessage}. Throws on an outbound-tag
+     * collision, the same wiring-error policy the inbound dup check
+     * enforces.
+     */
+    const outboundByTag: Record<string, Message.AnyStringEncodedSchema> = {}
+    for (const bridge of bridges) {
+      for (const [tag, schema] of Record.toEntries(bridge[outboundDirection])) {
+        if (outboundByTag[tag] !== undefined) {
+          throw new Error(`[effect-messaging] duplicate outbound tag "${tag}" across bridges`)
+        }
+        outboundByTag[tag] = schema
+      }
+    }
 
     /**
      * Single-pass decode for inbound dispatch. `Schema.parseJson` parses
@@ -248,7 +290,7 @@ const make = <
      * acceptance guarantees `_tag: string`; re-narrow at this single
      * boundary.
      */
-    const dispatch = (raw: string): Effect.Effect<void, ParseResult.ParseError, TransportAdapter> =>
+    const dispatch = (raw: string): Effect.Effect<void, ParseResult.ParseError> =>
       Effect.gen(function* () {
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
         const decoded = (yield* decodeMessage(raw)) as DecodedMessage
@@ -275,10 +317,10 @@ const make = <
             Effect.logError(`[effect-messaging] dispatch defect; continues: ${String(defect)}`)
           )
         )
-      ).pipe(Effect.provideService(TransportAdapter, adapter))
+      )
     )
 
-    if (side === 'Web') {
+    if (!isHost) {
       yield* Queue.offer(inbox, READY_RAW)
     }
     const initial = yield* adapter.drainInitial
@@ -302,44 +344,40 @@ const make = <
      * enqueued before the peer is ready ride out in order the moment the
      * handshake lands.
      */
-    const outbox = yield* Queue.unbounded<Bridge.SendableMessage<Bridges, Side>>()
+    const outbox = yield* Queue.unbounded<Bridge.SendableMessage<Bridges, OutDir>>()
 
     // Mirror `enqueue`: after scope close the outbox is shut down and the
     // offer fails with an interrupt cause. `Effect.ignore` only swallows the
     // typed-error channel, so use `catchAllCause` to make a late send a no-op.
-    const sendMessage: MessageSender<Bridges, Side> = (
-      message: Bridge.SendableMessage<Bridges, Side>
+    const sendMessage: MessageSender<Bridges, OutDir> = (
+      message: Bridge.SendableMessage<Bridges, OutDir>
     ): Effect.Effect<void> =>
       Queue.offer(outbox, message).pipe(Effect.catchAllCause(() => Effect.void))
 
     yield* Effect.forkScoped(
-      Deferred.await(peerReady)
-        .pipe(
-          Effect.andThen(
-            Stream.runForEach(Stream.fromQueue(outbox, { shutdown: true }), (message) => {
-              const sender = taggedSenders.get(message._tag)
-              if (sender === undefined) {
-                return Effect.logWarning(
-                  `[effect-messaging] sendMessage: no bridge owns tag "${message._tag}"; dropping`
-                )
-              }
-              return sender(message)
-            })
-          )
+      Deferred.await(peerReady).pipe(
+        Effect.andThen(
+          Stream.runForEach(Stream.fromQueue(outbox, { shutdown: true }), (message) => {
+            if (outboundByTag[message._tag] === undefined) {
+              return Effect.logWarning(
+                `[effect-messaging] sendMessage: no bridge owns tag "${message._tag}"; dropping`
+              )
+            }
+            return adapter.bareSender(Message.stringifyMessage(outboundByTag, message))
+          })
         )
-        .pipe(Effect.provideService(TransportAdapter, adapter))
+      )
     )
 
-    const signalReady = {
-      Web: adapter.bareSender(READY_RAW),
-      Host: Effect.void,
-    }[side]
+    // One-way handshake: the web posts `__Ready` to the host; the host
+    // never sends one (it waits to receive the web's).
+    const signalReady = isHost ? Effect.void : adapter.bareSender(READY_RAW)
 
     // `Effect.suspend` defers `buildHandlerByTag` to run time: a duplicate-tag
     // throw surfaces as a defect on the returned Effect (not at call
     // construction), and the `Ref.set` never runs, so the prior map stays put.
     const registerHandlers = (
-      handlers: Bridge.HandlersByBridge<Bridges, Side>
+      handlers: Bridge.HandlersByBridge<Bridges, InDir>
     ): Effect.Effect<void> =>
       Effect.suspend(() => Ref.set(handlersRef, buildHandlerByTag(handlers)))
 
@@ -351,5 +389,49 @@ const make = <
     }
   })
 
-export { make }
+/**
+ * Build the **host** endpoint of a bridge transport: it receives
+ * `'WebToHost'` messages (routed through `handlers`) and sends
+ * `'HostToWeb'` messages via `sendMessage`. The host waits for the web
+ * peer's `__Ready` before flushing its outbox.
+ */
+const makeHostTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
+  readonly bridges: Bridges
+  readonly handlers: Bridge.HandlersByBridge<Bridges, 'WebToHost'>
+}): Effect.Effect<
+  BridgeTransport<Bridges, 'WebToHost', 'HostToWeb'>,
+  never,
+  TransportAdapter | Scope.Scope
+> =>
+  make({
+    bridges: config.bridges,
+    handlers: config.handlers,
+    inboundDirection: 'WebToHost',
+    outboundDirection: 'HostToWeb',
+    isHost: true,
+  })
+
+/**
+ * Build the **web** endpoint of a bridge transport: it receives
+ * `'HostToWeb'` messages (routed through `handlers`) and sends
+ * `'WebToHost'` messages via `sendMessage`. The web self-queues `__Ready`
+ * so its outbox flushes immediately, and posts `__Ready` to the host.
+ */
+const makeWebTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
+  readonly bridges: Bridges
+  readonly handlers: Bridge.HandlersByBridge<Bridges, 'HostToWeb'>
+}): Effect.Effect<
+  BridgeTransport<Bridges, 'HostToWeb', 'WebToHost'>,
+  never,
+  TransportAdapter | Scope.Scope
+> =>
+  make({
+    bridges: config.bridges,
+    handlers: config.handlers,
+    inboundDirection: 'HostToWeb',
+    outboundDirection: 'WebToHost',
+    isHost: false,
+  })
+
+export { makeHostTransport, makeWebTransport }
 export type { BridgeTransport, MessageSender }

@@ -8,7 +8,10 @@ interface UseGatekeeperHostBindingOptions {
   readonly token?: string
 }
 
-type GatekeeperSender = BridgeTransport.MessageSender<readonly [typeof GatekeeperBridge], 'Host'>
+type GatekeeperSender = BridgeTransport.MessageSender<
+  readonly [typeof GatekeeperBridge],
+  'HostToWeb'
+>
 
 /**
  * Host binding for the gatekeeper bridge.

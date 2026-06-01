@@ -12,8 +12,9 @@ The system spans four layers, strictly bottom-up:
 3. **Slice bridges + host bindings** — `slices/{navigation,gatekeeper,apps,collector,browser-sniffer}/*`.
 4. **App wiring** — `apps/wildflower-react` (the embedded SPA) and `apps/wildflower-expo` (the native shell).
 
-There are two live transports per running system: one `side: 'Host'`
-transport in the Expo shell and one `side: 'Web'` transport in the SPA.
+There are two live transports per running system: one host transport
+(`makeHostTransport`) in the Expo shell and one web transport
+(`makeWebTransport`) in the SPA.
 They talk over a single `react-native-webview` `postMessage` channel
 (plus the boot-time URL-param channel for host→web seeds).
 
@@ -35,7 +36,7 @@ graph TD
     bridge["bridge.ts<br/>Bridge.make, Half, AnyBridge,<br/>HalfHandlers, HandlersByBridge,<br/>SendableMessage"]
     msg["message.ts<br/>SchemaRecord, ValidatedPairs"]
     msgh["message-handler.ts<br/>HandlersFor"]
-    transport["bridge-transport.ts<br/>BridgeTransport.make<br/>outbox + inbox + 2 fibers<br/>peerReady / __Ready"]
+    transport["bridge-transport.ts<br/>makeHostTransport / makeWebTransport<br/>outbox + inbox + 2 fibers<br/>peerReady / __Ready"]
     adapter["transport-adapter.ts<br/>TransportAdapter Tag"]
     bare["bare-sender.ts<br/>BareSender(Function/Service)"]
     hostb["host-bindings.ts<br/>HostBindings single/combine/<br/>callTransportReady"]
@@ -136,7 +137,7 @@ graph TD
   colweb --> colb
 
   %% ---------- APP WIRING: WEB SPA ----------
-  subgraph APPWEB["apps/wildflower-react (embedded SPA, side='Web')"]
+  subgraph APPWEB["apps/wildflower-react (embedded SPA, web side)"]
     bbridges["bridges.ts<br/>bridges tuple"]
     bbuild["build-transport.ts<br/>buildTransport()"]
     bctx["transport-context.ts<br/>ReactTransport / stub"]
@@ -164,7 +165,7 @@ graph TD
   bfwd --> bctx
 
   %% ---------- APP WIRING: NATIVE SHELL ----------
-  subgraph APPEXPO["apps/wildflower-expo (native shell, side='Host')"]
+  subgraph APPEXPO["apps/wildflower-expo (native shell, host side)"]
     eshell["app-shell-webview.tsx<br/>AppShellWebView"]
     ehb["use-host-bindings.ts<br/>useHostBindings (combine 5)"]
     enavpipe["navigation-pipe.ts<br/>makeNamedPipe (tab bar -> shell)"]
@@ -184,7 +185,8 @@ graph TD
 Key takeaways from this graph:
 
 - `bridge-transport.ts` is the hub of the core: both adapters, host
-  bindings, and both apps converge on `BridgeTransport.make`.
+  bindings, and both apps converge on `BridgeTransport.makeHostTransport`
+  / `makeWebTransport`.
 - The `TransportAdapter` Tag (`transport-adapter.ts`) is the single
   platform seam. The web side satisfies it with
   `WebPlatformAdapter.make(bridges)`; the Expo side builds an inline
@@ -441,7 +443,7 @@ not prescriptions.
 
 - **`makeNamedPipe` is instantiated three times with the same shape** (collector-expo Collector pipe, collector-expo BrowserSniffer pipe, app-level navigation-pipe). They all follow the identical "ref slot written from `onTransportReady`, read by a sibling" pattern documented in each file's TSDoc. This is already a factory, so the duplication is mild — but the _navigation_ pipe lives in the app while the _collector_ pipes live in the slice adapter, an inconsistency worth aligning (the navigation-pipe file even notes it lives in the app "rather than navigation-expo").
 
-- **Two parallel "handler record builder" conventions coexist.** Some slices expose a plain factory (`makeNavigationHostHandlers`, `makeAppsHostHandlers`, `makeNavigationWebHandlers`) and some expose a module-level constant closing over a mutable ref (`collectorWebHandlers` + `activeHandlerRef`, `gatekeeperWebHandlers` + `authTokenRef`). Both feed `BridgeTransport.make`'s `handlers` tuple. The ref-cell convention exists so the web transport can build outside React; the factory convention exists so host hooks can close over React state. Unifying the naming (`make*Handlers` vs `*Handlers`) would make the parallel-tuple wiring in `build-transport.ts` / `use-host-bindings.ts` easier to read.
+- **Two parallel "handler record builder" conventions coexist.** Some slices expose a plain factory (`makeNavigationHostHandlers`, `makeAppsHostHandlers`, `makeNavigationWebHandlers`) and some expose a module-level constant closing over a mutable ref (`collectorWebHandlers` + `activeHandlerRef`, `gatekeeperWebHandlers` + `authTokenRef`). Both feed the transport factory's `handlers` tuple. The ref-cell convention exists so the web transport can build outside React; the factory convention exists so host hooks can close over React state. Unifying the naming (`make*Handlers` vs `*Handlers`) would make the parallel-tuple wiring in `build-transport.ts` / `use-host-bindings.ts` easier to read.
 
 - **`navigation-expo/host-receiver-layer.ts` and `apps-expo/host-receiver-layer.ts` are still named "receiver-layer"** even though the rework removed Layers in favor of plain handler records (the file bodies now return `Bridge.HalfHandlers<...>` records, not Layers). The filenames lag the new model — a rename to `*-host-handlers.ts` would remove a misleading breadcrumb.
 

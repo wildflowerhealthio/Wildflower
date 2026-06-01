@@ -1,5 +1,5 @@
 import type { CollectorBridge } from 'collector-fundamentals/bridge'
-import type { Bridge } from 'effect-messaging-core'
+import type { MessageHandler } from 'effect-messaging-core'
 import { expectTypeOf } from 'expect-type'
 
 import type { useCollectorHostHandlers } from './use-receiver-layer.ts'
@@ -10,7 +10,7 @@ import type { useCollectorHostHandlers } from './use-receiver-layer.ts'
 // would have Jest report them as passing whether or not the invariant
 // holds.
 expectTypeOf<ReturnType<typeof useCollectorHostHandlers>>().toEqualTypeOf<
-  Bridge.HalfHandlers<CollectorBridge['Host']>
+  MessageHandler.HandlersFor<CollectorBridge['WebToHost']>
 >()
 expectTypeOf<Parameters<typeof useCollectorHostHandlers>>().toEqualTypeOf<[]>()
 

@@ -11,7 +11,7 @@ import {
   type ParseResult,
   Match,
 } from 'effect'
-import type { Bridge } from 'effect-messaging-core'
+import type { MessageHandler } from 'effect-messaging-core'
 import { UnknownException } from 'effect/Cause'
 import type { RuntimeFiber } from 'effect/Fiber'
 import type {
@@ -22,7 +22,7 @@ import type {
 import type * as EntityDefinition from '../model/entity-definition.ts'
 import { Response, type ScrapingPlan } from '../model/index.ts'
 
-type Service = Bridge.HalfHandlers<CollectorBridge['Web']>
+type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 
 /**
  * Per-id state for an in-flight tracked response. `entity` is pinned

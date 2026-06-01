@@ -6,11 +6,11 @@ import { createContext } from 'react'
 /**
  * Decoded union of every Web→Host CollectorBridge message — the
  * universe of messages the collector SPA can send out. Derived from
- * the bridge's own `Web.OutboundSchemas` so adding (or renaming) a
+ * the bridge's own `WebToHost` record so adding (or renaming) a
  * web→host tag in `collector-fundamentals/bridge.ts` flows through to
  * every sender call site without an intermediate restatement.
  */
-type CollectorOutboundMessage = Message.Of<(typeof CollectorBridge)['Web']['OutboundSchemas']>
+type CollectorOutboundMessage = Message.Of<CollectorBridge['WebToHost']>
 
 /**
  * Send a CollectorBridge Web→Host message. Returns an Effect that the

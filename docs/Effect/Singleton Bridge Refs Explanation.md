@@ -14,10 +14,10 @@ To bridge the lifecycle gap, each slice exports:
    const activeHandlerRef: { current: ActiveHandler | null } = { current: null }
    ```
 
-2. A plain handler record (`Bridge.HalfHandlers<Bridge['Web']>`) — one Effect-returning function per Host→Web tag — that reads `cell.current` on every dispatch and forwards into it (or `log-and-drops` when `null`):
+2. A plain handler record (`MessageHandler.HandlersFor<Bridge['HostToWeb']>`) — one Effect-returning function per Host→Web tag — that reads `cell.current` on every dispatch and forwards into it (or `log-and-drops` when `null`):
 
    ```ts
-   const collectorWebHandlers: Bridge.HalfHandlers<(typeof CollectorBridge)['Web']> = {
+   const collectorWebHandlers: MessageHandler.HandlersFor<(typeof CollectorBridge)['HostToWeb']> = {
      ResponseStart: (event) => {
        const h = activeHandlerRef.current
        return h === null ? droppedTagWarning('ResponseStart') : h.ResponseStart(event)

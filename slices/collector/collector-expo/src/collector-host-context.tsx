@@ -47,8 +47,8 @@ const DEFAULT_MODAL_PATH = '/collector-modal' as const
  *
  * Wrap the app's router Stack with this provider, render the modal
  * route at `modalPath`, and use `useCollectorHostHandlers` inside
- * the bridge-transport composition to wire `CollectorBridge.Host`'s
- * handlers.
+ * the bridge-transport composition to wire `CollectorBridge`'s
+ * host-side handlers.
  */
 const CollectorHostProvider = ({
   modalPath = DEFAULT_MODAL_PATH,

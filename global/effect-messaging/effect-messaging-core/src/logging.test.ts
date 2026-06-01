@@ -11,10 +11,8 @@ const decodeLog = Schema.decodeUnknownSync(Schema.typeSchema(Logging.LogMessage)
 
 describe('Logging — shape', () => {
   test('exposes one webToHost Log entry and an empty hostToWeb side', () => {
-    expect(Object.keys(Logging.LogBridge.Host.OutboundSchemas)).toEqual([])
-    expect(Object.keys(Logging.LogBridge.Host.InboundSchemas)).toEqual(['Log'])
-    expect(Object.keys(Logging.LogBridge.Web.OutboundSchemas)).toEqual(['Log'])
-    expect(Object.keys(Logging.LogBridge.Web.InboundSchemas)).toEqual([])
+    expect(Object.keys(Logging.LogBridge.WebToHost)).toEqual(['Log'])
+    expect(Object.keys(Logging.LogBridge.HostToWeb)).toEqual([])
   })
 })
 

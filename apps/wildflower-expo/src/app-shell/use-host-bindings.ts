@@ -16,7 +16,10 @@ import { useMemo } from 'react'
 import { useWildflowerStore } from '@/src/livestore/livestore-store.ts'
 import { useNavigationSenderRef } from './navigation-pipe.ts'
 
-type NavigationSender = BridgeTransport.MessageSender<readonly [typeof NavigationBridge], 'Host'>
+type NavigationSender = BridgeTransport.MessageSender<
+  readonly [typeof NavigationBridge],
+  'HostToWeb'
+>
 
 const useNavigationHostBinding = (
   onRouteChanged: (event: { pathname: string; canGoBack: boolean }) => void,

@@ -4,7 +4,7 @@ import { createContext, useContext } from 'react'
 
 import type { Bridges } from './bridges.ts'
 
-type FullTransport = BridgeTransport.BridgeTransport<Bridges, 'Web'>
+type FullTransport = BridgeTransport.BridgeTransport<Bridges, 'HostToWeb', 'WebToHost'>
 
 /**
  * Narrowed view of `BridgeTransport` that React-side consumers see. The

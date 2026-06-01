@@ -20,7 +20,7 @@ import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, type JSX
  * `Effect<void>`; the dispatch fiber catches handler defects so a
  * throw from one handler doesn't tear down the rest.
  */
-type SnifferHandlers = MessageHandler.HandlersFor<typeof BrowserSnifferBridge.Host.InboundSchemas>
+type SnifferHandlers = MessageHandler.HandlersFor<typeof BrowserSnifferBridge.WebToHost>
 
 /**
  * Typed host-side sender for {@link BrowserSnifferBridge}. The
@@ -41,7 +41,7 @@ type SnifferHandlers = MessageHandler.HandlersFor<typeof BrowserSnifferBridge.Ho
  */
 type BrowserSnifferMessageSender = BridgeTransport.MessageSender<
   readonly [typeof BrowserSnifferBridge],
-  'Host'
+  'HostToWeb'
 >
 
 interface BrowserSnifferWebViewProps {

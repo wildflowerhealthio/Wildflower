@@ -1,5 +1,5 @@
 import { Effect, SubscriptionRef } from 'effect'
-import type { Bridge } from 'effect-messaging-core'
+import type { MessageHandler } from 'effect-messaging-core'
 import type { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { authTokenRef } from './client/token-storage.ts'
 
@@ -11,7 +11,9 @@ import { authTokenRef } from './client/token-storage.ts'
  *   to localStorage. The empty-string guard drops the bridge's empty
  *   sentinel without rotating the ref.
  */
-const makeGatekeeperWebHandlers = (): Bridge.HalfHandlers<(typeof GatekeeperBridge)['Web']> => ({
+const makeGatekeeperWebHandlers = (): MessageHandler.HandlersFor<
+  (typeof GatekeeperBridge)['HostToWeb']
+> => ({
   AuthTokenIssued: ({ token }) =>
     token !== '' ? SubscriptionRef.set(authTokenRef, token) : Effect.void,
 })
