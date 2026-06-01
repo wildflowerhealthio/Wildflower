@@ -7,7 +7,10 @@ export default defineConfig({
     dts: { tsgo: true },
     exports: false,
     platform: 'neutral',
-    entry: { index: 'src/index.ts' },
+    entry: {
+      index: 'src/index.ts',
+      'test-platform-adapter-layer': 'src/test-platform-adapter-layer.ts',
+    },
   },
   test: {
     include: ['src/**/*.test.ts'],

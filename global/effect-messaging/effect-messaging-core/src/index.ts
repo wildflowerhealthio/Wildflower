@@ -7,5 +7,4 @@ export { TransportAdapter, REACT_NATIVE_WEBVIEW_GLOBAL } from './transport-adapt
 export * as HostBindings from './host-bindings.ts'
 export * as HandlerHelpers from './handler-helpers.ts'
 export * from './bare-sender.ts'
-export * as TestPlatformAdapterLayer from './test-platform-adapter-layer.ts'
 export * as UrlParamMessage from './url-param-message.ts'

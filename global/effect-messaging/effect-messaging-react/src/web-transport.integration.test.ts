@@ -136,7 +136,7 @@ describe('BridgeTransport (Web) — live dispatch', () => {
           ],
         })
         dispatchPostMessage(
-          Schema.encodeSync(NavigationBridge.MessageSchemas.HostBackRequested)({
+          Schema.encodeSync(NavigationBridge.HostToWeb.HostBackRequested)({
             _tag: 'HostBackRequested',
           })
         )
@@ -166,7 +166,7 @@ describe('BridgeTransport (Web) — live dispatch', () => {
           ],
         })
         dispatchPostMessage(
-          Schema.encodeSync(NavigationBridge.MessageSchemas.HostRequestedWebNavigation)({
+          Schema.encodeSync(NavigationBridge.HostToWeb.HostRequestedWebNavigation)({
             _tag: 'HostRequestedWebNavigation',
             path: '/gatekeeper',
           })
@@ -196,13 +196,13 @@ describe('BridgeTransport (Web) — live dispatch', () => {
           ],
         })
         dispatchPostMessage(
-          Schema.encodeSync(NavigationBridge.MessageSchemas.HostBackRequested)({
+          Schema.encodeSync(NavigationBridge.HostToWeb.HostBackRequested)({
             _tag: 'HostBackRequested',
           }),
           'https://attacker.example'
         )
         dispatchPostMessage(
-          Schema.encodeSync(NavigationBridge.MessageSchemas.HostRequestedWebNavigation)({
+          Schema.encodeSync(NavigationBridge.HostToWeb.HostRequestedWebNavigation)({
             _tag: 'HostRequestedWebNavigation',
             path: '/sentinel',
           })
@@ -420,7 +420,7 @@ describe('BridgeTransport (Web) — multi-bridge composition', () => {
           ],
         })
         dispatchPostMessage(
-          Schema.encodeSync(NavigationBridge.MessageSchemas.HostBackRequested)({
+          Schema.encodeSync(NavigationBridge.HostToWeb.HostBackRequested)({
             _tag: 'HostBackRequested',
           })
         )
@@ -500,7 +500,7 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
         })
         for (let i = 0; i < 100; i++) {
           dispatchPostMessage(
-            Schema.encodeSync(NavigationBridge.MessageSchemas.HostRequestedWebNavigation)({
+            Schema.encodeSync(NavigationBridge.HostToWeb.HostRequestedWebNavigation)({
               _tag: 'HostRequestedWebNavigation',
               path: String(i),
             })
@@ -537,12 +537,12 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
           ],
         })
         dispatchPostMessage(
-          Schema.encodeSync(NavigationBridge.MessageSchemas.HostBackRequested)({
+          Schema.encodeSync(NavigationBridge.HostToWeb.HostBackRequested)({
             _tag: 'HostBackRequested',
           })
         )
         dispatchPostMessage(
-          Schema.encodeSync(NavigationBridge.MessageSchemas.HostRequestedWebNavigation)({
+          Schema.encodeSync(NavigationBridge.HostToWeb.HostRequestedWebNavigation)({
             _tag: 'HostRequestedWebNavigation',
             path: '/x',
           })
@@ -572,12 +572,12 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
           ],
         })
         dispatchPostMessage(
-          Schema.encodeSync(NavigationBridge.MessageSchemas.HostBackRequested)({
+          Schema.encodeSync(NavigationBridge.HostToWeb.HostBackRequested)({
             _tag: 'HostBackRequested',
           })
         )
         dispatchPostMessage(
-          Schema.encodeSync(NavigationBridge.MessageSchemas.HostRequestedWebNavigation)({
+          Schema.encodeSync(NavigationBridge.HostToWeb.HostRequestedWebNavigation)({
             _tag: 'HostRequestedWebNavigation',
             path: '/after',
           })
@@ -622,7 +622,7 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
           ],
         })
         dispatchPostMessage(
-          Schema.encodeSync(NavigationBridge.MessageSchemas.HostBackRequested)({
+          Schema.encodeSync(NavigationBridge.HostToWeb.HostBackRequested)({
             _tag: 'HostBackRequested',
           })
         )

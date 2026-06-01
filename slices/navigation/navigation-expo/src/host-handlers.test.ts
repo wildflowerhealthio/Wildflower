@@ -1,7 +1,8 @@
 import { fc, test as fcTest } from '@fast-check/jest'
 import { Effect, Schema } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
-import { BridgeTransport, TestPlatformAdapterLayer } from 'effect-messaging-core'
+import { BridgeTransport } from 'effect-messaging-core'
+import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
 import { expectTypeOf } from 'expect-type'
 import { NavigationBridge } from 'navigation-core'
 import { NavigationBridgeExpo } from './index.ts'
@@ -68,12 +69,12 @@ describe('NavigationBridgeExpo.makeHostHandlers (RouteChanged handler)', () => {
     const { layer: capturingAdapterLayer, liveBareSenderRef } = TestPlatformAdapterLayer.make({
       captureBareSenderLive: true,
     })
-    const routeChangedEncoded = Schema.encodeSync(NavigationBridge.MessageSchemas.RouteChanged)({
+    const routeChangedEncoded = Schema.encodeSync(NavigationBridge.WebToHost.RouteChanged)({
       _tag: 'RouteChanged',
       pathname: '/a',
       canGoBack: false,
     })
-    const uiReadyEncoded = Schema.encodeSync(NavigationBridge.MessageSchemas.UIReady)({
+    const uiReadyEncoded = Schema.encodeSync(NavigationBridge.WebToHost.UIReady)({
       _tag: 'UIReady',
     })
     let resolveUiReady: (() => void) | undefined

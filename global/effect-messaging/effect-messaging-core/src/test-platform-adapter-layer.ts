@@ -8,7 +8,8 @@ import { TransportAdapter } from './transport-adapter.ts'
  *
  * @example
  * ```ts
- * import { Message, TestPlatformAdapterLayer, TransportAdapter } from 'effect-messaging-core'
+ * import { Message, TransportAdapter } from 'effect-messaging-core'
+ * import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
  *
  * const { layer, sentSink } = TestPlatformAdapterLayer.make()
  * const send = Effect.flatMap(TransportAdapter, ({ bareSender }) =>

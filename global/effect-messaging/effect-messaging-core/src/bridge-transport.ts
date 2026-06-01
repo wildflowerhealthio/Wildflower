@@ -14,6 +14,8 @@ import {
   Stream,
 } from 'effect'
 import type * as Bridge from './bridge.ts'
+import { assertNoDuplicateTags } from './internal/assert-no-duplicate-tags.ts'
+import { offerQuietly } from './internal/offer-quietly.ts'
 import type * as MessageHandler from './message-handler.ts'
 import * as Message from './message.ts'
 import { TransportAdapter } from './transport-adapter.ts'
@@ -194,22 +196,10 @@ const make = <
         Array.filter((entry): entry is [string, MessageHandler.Handler] => entry[1] !== undefined),
         Array.append([READY_TAG, readyTagHandler] as [string, MessageHandler.Handler])
       )
-      const [repeatedTags] = Array.reduce(
-        tagHandlerPairs,
-        [new Set<string>(), new Set<string>()] as const,
-        ([repeats, seen], [tag]) => {
-          if (seen.has(tag)) {
-            repeats.add(tag)
-          } else {
-            seen.add(tag)
-          }
-
-          return [repeats, seen]
-        }
+      assertNoDuplicateTags(
+        Array.map(tagHandlerPairs, ([tag]) => tag),
+        'inbound'
       )
-      if (repeatedTags.size > 0) {
-        throw new Error(`duplicate inbound tag(s) "${[...repeatedTags].join('", "')}"`)
-      }
 
       return HashMap.fromIterable<string, MessageHandler.Handler>(tagHandlerPairs)
     }
@@ -236,12 +226,13 @@ const make = <
      * collision, the same wiring-error policy the inbound dup check
      * enforces.
      */
+    assertNoDuplicateTags(
+      Array.flatMap(bridges, (bridge) => Record.keys(bridge[outboundDirection])),
+      'outbound'
+    )
     const outboundByTag: Record<string, Message.AnyStringEncodedSchema> = {}
     for (const bridge of bridges) {
       for (const [tag, schema] of Record.toEntries(bridge[outboundDirection])) {
-        if (outboundByTag[tag] !== undefined) {
-          throw new Error(`[effect-messaging] duplicate outbound tag "${tag}" across bridges`)
-        }
         outboundByTag[tag] = schema
       }
     }
@@ -312,11 +303,7 @@ const make = <
       yield* Queue.offer(inbox, raw)
     }
 
-    // After scope close the queue is shut down; offering then fails with an
-    // interrupt cause, which `Effect.ignore` (typed-error channel only) lets
-    // through. `catchAllCause` swallows it so a late enqueue is a clean no-op.
-    const enqueue = (raw: string): Effect.Effect<void> =>
-      Queue.offer(inbox, raw).pipe(Effect.catchAllCause(() => Effect.void))
+    const enqueue = (raw: string): Effect.Effect<void> => offerQuietly(inbox, raw)
 
     if (adapter.attachBareSender !== undefined) {
       yield* adapter.attachBareSender(enqueue)
@@ -330,13 +317,9 @@ const make = <
      */
     const outbox = yield* Queue.unbounded<Bridge.SendableMessage<Bridges, OutDir>>()
 
-    // Mirror `enqueue`: after scope close the outbox is shut down and the
-    // offer fails with an interrupt cause. `Effect.ignore` only swallows the
-    // typed-error channel, so use `catchAllCause` to make a late send a no-op.
     const sendMessage: MessageSender<Bridges, OutDir> = (
       message: Bridge.SendableMessage<Bridges, OutDir>
-    ): Effect.Effect<void> =>
-      Queue.offer(outbox, message).pipe(Effect.catchAllCause(() => Effect.void))
+    ): Effect.Effect<void> => offerQuietly(outbox, message)
 
     yield* Effect.forkScoped(
       Deferred.await(peerReady).pipe(

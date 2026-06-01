@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { TestPlatformAdapterLayer } from 'effect-messaging-core'
+import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
 import { describe, expect, test } from 'vite-plus/test'
 import { makeNavigationWebHandlers } from './web-handlers.ts'
 

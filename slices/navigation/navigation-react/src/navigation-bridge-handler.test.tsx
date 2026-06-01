@@ -13,7 +13,7 @@ import { describe, expect, test } from 'vite-plus/test'
 
 import { NavigationBridgeHandler, type RouteChangeSender } from './navigation-bridge-handler'
 
-type RouteChanged = NavigationBridge['MessageSchemas']['RouteChanged']['Type']
+type RouteChanged = NavigationBridge['WebToHost']['RouteChanged']['Type']
 
 const setupCalls = (): {
   readonly calls: RouteChanged[]

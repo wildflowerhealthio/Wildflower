@@ -124,5 +124,8 @@ full pattern.
 
 - `effect-messaging-core` — main barrel: `Bridge`, `BridgeTransport`,
   `HostBindings`, `Message`, `MessageHandler`, `HandlerHelpers`,
-  `Logging`, `TransportAdapter`, `UrlParamMessage`,
-  `TestPlatformAdapterLayer`, and the `bare-sender` re-exports.
+  `Logging`, `TransportAdapter`, `UrlParamMessage`, and the
+  `bare-sender` re-exports.
+- `effect-messaging-core/test` — `TestPlatformAdapterLayer`, the
+  capturing-stub `Layer<TransportAdapter>` for tests. Kept out of the
+  production barrel (mirrors the `vite-plus/test` convention).

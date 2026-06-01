@@ -6,11 +6,11 @@ import type * as BrowserSnifferExpoModule from 'browser-sniffer-expo'
 import type { CollectorBridge as CollectorBridgeType } from 'collector-fundamentals/bridge'
 import { Effect } from 'effect'
 import {
-  TestPlatformAdapterLayer,
   type BridgeTransport,
   type MessageHandler,
   type TransportAdapter,
 } from 'effect-messaging-core'
+import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
 import type * as ExpoRouterModule from 'expo-router'
 import type * as ExpoTundraishModule from 'expo-tundraish'
 import { LoggingLayerTest } from 'kitchen-sink/test'

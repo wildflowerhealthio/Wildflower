@@ -42,7 +42,7 @@ describe('BridgeTransport.make — duplicate outbound-tag throw', () => {
         handlers: [{}, {}],
       }).pipe(Effect.provide(adapterLayer))
     )
-    await expect(Effect.runPromise(program)).rejects.toThrow(/duplicate outbound tag "Ping"/)
+    await expect(Effect.runPromise(program)).rejects.toThrow(/duplicate outbound tag\(s\) "Ping"/)
   })
 })
 

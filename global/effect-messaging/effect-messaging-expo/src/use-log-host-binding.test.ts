@@ -1,7 +1,8 @@
 import { fc, test as fcTest } from '@fast-check/jest'
 import { renderHook } from '@testing-library/react-native'
 import { Effect, Layer, Logger, LogLevel as EffectLogLevel } from 'effect'
-import { type HostBindings, Logging, TestPlatformAdapterLayer } from 'effect-messaging-core'
+import { type HostBindings, Logging } from 'effect-messaging-core'
+import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
 import { expectTypeOf } from 'expect-type'
 import { useLogHostBinding, type UseLogHostBindingOptions } from './use-log-host-binding.ts'
 

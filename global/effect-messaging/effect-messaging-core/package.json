@@ -18,6 +18,10 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./test": {
+      "source": "./src/test-platform-adapter-layer.ts",
+      "default": "./dist/test-platform-adapter-layer.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

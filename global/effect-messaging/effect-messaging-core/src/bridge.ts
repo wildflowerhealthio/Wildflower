@@ -51,7 +51,6 @@ interface Bridge<
   readonly name: Name
   readonly HostToWeb: HostToWeb
   readonly WebToHost: WebToHost
-  readonly MessageSchemas: HostToWeb & WebToHost
   readonly UrlParamSchemas: UrlParamSchemas<HostToWeb>
 }
 
@@ -174,10 +173,6 @@ const make = <
     name: definition.name,
     HostToWeb: hostToWebRecord,
     WebToHost: webToHostRecord,
-    MessageSchemas: {
-      ...hostToWebRecord,
-      ...webToHostRecord,
-    },
     UrlParamSchemas: definition.urlParams ?? {},
   }
 }
