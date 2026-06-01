@@ -451,8 +451,8 @@ describe('BridgeTransport (Web) — multi-bridge composition', () => {
   })
 })
 
-describe('BridgeTransport (Web) — type assertions (compile-only)', () => {
-  test('compile-time: sendMessage rejects a tag not owned by any wired bridge', async () => {
+describe('BridgeTransport (Web) — outbound tag tripwire', () => {
+  test('an unowned outbound tag is type-rejected and trips the pump at runtime', async () => {
     const { layer, logQueue } = makeLogQueue()
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -462,11 +462,13 @@ describe('BridgeTransport (Web) — type assertions (compile-only)', () => {
         })
         // @ts-expect-error — `Bogus` is not in NavigationBridge.WebToHost (web outbound).
         yield* transport.sendMessage({ _tag: 'Bogus' })
+        // The type forbids this; a forced escape makes the pump die on the
+        // unowned tag, whose catchAllDefect logs the defect loudly (ERROR)
+        // and lets the pump continue.
         const logged = yield* Queue.take(logQueue)
-        expect(logged).toEqual({
-          level: 'WARN',
-          message: '[effect-messaging] sendMessage: no bridge owns tag "Bogus"; dropping',
-        })
+        expect(logged.level).toBe('ERROR')
+        expect(logged.message).toContain('[effect-messaging] outbound pump defect; continues:')
+        expect(logged.message).toContain('no bridge owns tag "Bogus"')
       }).pipe(Effect.provide(layer), Effect.scoped)
     )
   })

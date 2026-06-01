@@ -35,3 +35,4 @@ class TransportAdapter extends Context.Tag('@effect-messaging/TransportAdapter')
 >() {}
 
 export { TransportAdapter, REACT_NATIVE_WEBVIEW_GLOBAL }
+export type { Service as TransportAdapterService }
