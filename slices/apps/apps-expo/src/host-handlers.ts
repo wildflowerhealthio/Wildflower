@@ -15,8 +15,7 @@ type AppsHostMessage = Parameters<AppsHostSender>[0]
 
 /**
  * Module-level cell holding the apps bridge's host→web sender (or `null`
- * before the transport is ready). Mirrors the apps-react slice's
- * `pendingTunnelResolverRef`: the handler record {@link makeAppsHostHandlers}
+ * before the transport is ready). The handler record {@link makeAppsHostHandlers}
  * returns closes over this cell, so the transport build does not depend
  * on the React tree, and `useAppsHostBinding` captures the live sender
  * into it via the binding's `onTransportReady`.

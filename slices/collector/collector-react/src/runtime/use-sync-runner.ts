@@ -11,13 +11,14 @@
  */
 import type { Remote as CollectorRemote } from 'collector-core/livestore'
 import { makeScrapingPlanForConfig, type AnyCollectorResource } from 'collector-core/registry'
+import { CollectorBridge } from 'collector-fundamentals/bridge'
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import { Effect, Either, Schedule } from 'effect'
+import { useHandlerCoordinator } from 'effect-messaging-react'
 import { useFhirR4ResourcesRuntimeLayer } from 'fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { activeHandlerRef, clearActiveHandlerIfCurrent } from './active-handler-ref.ts'
 import { useCollectorSender } from './use-collector-sender.ts'
 
 /**
@@ -47,8 +48,8 @@ type RunnerState =
   | { readonly _tag: 'errored'; readonly error: unknown }
 
 /**
- * Hook that wires a single sync run to the module-level
- * `activeHandlerRef`:
+ * Hook that wires a single sync run's inbound handler into the page's
+ * `HandlerCoordinator` (the `Collector` bridge slot):
  *
  *   - Builds the per-config `ScrapingPlan` via
  *     `makeScrapingPlanForConfig(remote.config)`.
@@ -64,15 +65,15 @@ type RunnerState =
  *     how gatekeeper's `NeedsAuthMessage` device flow runs its own
  *     fiber against the runtime layer rather than going through
  *     `runAuthed`/`useSuspenseQuery`.
- *   - Installs the handler into the runtime ref on mount, *then*
+ *   - Registers the handler in the coordinator's `Collector` slot, *then*
  *     dispatches `RequestSniffableWebView` with `scrapingPlan.firstPage`
- *     so the host opens the sniffer modal. Install-before-dispatch
- *     ordering guarantees any sniffer events the host emits land on a
- *     live receiver (events that arrive on `activeHandlerRef.current === null`
- *     would otherwise be log-and-dropped by `collectorWebHandlers`).
+ *     so the host opens the sniffer modal. Register-before-dispatch
+ *     ordering guarantees any sniffer events the host emits land on the
+ *     live handler (events that arrive while nothing is registered hit the
+ *     coordinator's drop-all and are log-and-dropped).
  *   - On unmount or remote change: dispatches `CancelSnifferRequest`
  *     for every in-flight id, clears the handler's state, and
- *     uninstalls it.
+ *     unregisters it (set-if-equal).
  *
  * Callback identity (`onError`) is stored in a ref so a fresh lambda
  * from a parent re-render doesn't tear down the handler and lose
@@ -115,6 +116,8 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
     () => (remote ? makeScrapingPlanForConfig(remote.config) : null),
     [remote]
   )
+
+  const coordinator = useHandlerCoordinator()
 
   useEffect((): undefined | (() => void) => {
     if (remote === null || scrapingPlan === null) return undefined
@@ -193,15 +196,27 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
           }),
       })
     )
-    activeHandlerRef.current = handler
+    // The handler carries `clear`/`cancelAllInFlight` alongside its per-tag
+    // methods; register only the bridge tags so they don't leak into the
+    // transport's tag→handler map.
+    const collectorHandlers = {
+      ResponseStart: handler.ResponseStart,
+      ResponseData: handler.ResponseData,
+      ResponseFinished: handler.ResponseFinished,
+      RequestError: handler.RequestError,
+      Cancelled: handler.Cancelled,
+      PageLoaded: handler.PageLoaded,
+    }
+    // Install-before-dispatch: registering is a synchronous `Ref.set`
+    // inside the transport, so by the time the host gets
+    // `RequestSniffableWebView` and starts emitting sniffer events, the
+    // Collector slot already points at the live handler.
+    Effect.runFork(coordinator.register(CollectorBridge.name, collectorHandlers))
     setState({ _tag: 'running' })
 
-    // Install-before-dispatch: the ref is set synchronously above, so
-    // by the time the host gets `RequestSniffableWebView` and starts
-    // emitting sniffer events, `activeHandlerRef.current` already
-    // points at the live handler. Defects in the send Effect are
-    // logged rather than re-thrown so a transport failure surfaces in
-    // the log instead of crashing the React render.
+    // Defects in the send Effect are logged rather than re-thrown so a
+    // transport failure surfaces in the log instead of crashing the React
+    // render.
     Effect.runFork(
       sendCollectorMessage({
         _tag: 'RequestSniffableWebView',
@@ -223,14 +238,14 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
         handler.cancelAllInFlight(sendCollectorMessage).pipe(Effect.andThen(() => handler.clear()))
       )
 
-      // Set-if-equal: only blank the ref if it still points at the
-      // handler we installed above. A successor mount (StrictMode
-      // double-mount, rapid remount on remote change) may already have
-      // taken the slot before this cleanup ran; blanking it
-      // unconditionally would silently drop sniffer events.
-      clearActiveHandlerIfCurrent(handler)
+      // Set-if-equal unregister: only relinquishes the Collector slot if it
+      // still holds the record we registered above. A successor mount
+      // (StrictMode double-mount, rapid remount on remote change) may have
+      // already taken the slot; unregistering unconditionally would drop a
+      // fresher handler's sniffer events.
+      Effect.runFork(coordinator.unregister(CollectorBridge.name, collectorHandlers))
     }
-  }, [remote, scrapingPlan, sendCollectorMessage, runFhir])
+  }, [remote, scrapingPlan, sendCollectorMessage, runFhir, coordinator])
 
   return state
 }

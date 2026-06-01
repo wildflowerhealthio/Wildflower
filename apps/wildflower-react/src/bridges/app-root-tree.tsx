@@ -1,4 +1,5 @@
 import { type AnyRouter, RouterProvider } from '@tanstack/react-router'
+import { HandlerCoordinatorContext } from 'effect-messaging-react'
 import { NavigationBridgeHandler } from 'navigation-react'
 import { type JSX } from 'react'
 import { usePromiseOrDefault } from 'react-kitchen-sink'
@@ -34,17 +35,19 @@ const AppRootTree = ({ router, transportPromise }: AppRootTreeProps): JSX.Elemen
 
   return (
     <TransportContext.Provider value={transport}>
-      <RouterProvider
-        router={router}
-        InnerWrap={({ children }) => (
-          <CollectorSenderForwarder>
-            <AppsSenderForwarder>
-              <NavigationBridgeHandler sender={transport.sendMessage} />
-              {children}
-            </AppsSenderForwarder>
-          </CollectorSenderForwarder>
-        )}
-      />
+      <HandlerCoordinatorContext.Provider value={transport.coordinator}>
+        <RouterProvider
+          router={router}
+          InnerWrap={({ children }) => (
+            <CollectorSenderForwarder>
+              <AppsSenderForwarder>
+                <NavigationBridgeHandler sender={transport.sendMessage} />
+                {children}
+              </AppsSenderForwarder>
+            </CollectorSenderForwarder>
+          )}
+        />
+      </HandlerCoordinatorContext.Provider>
     </TransportContext.Provider>
   )
 }

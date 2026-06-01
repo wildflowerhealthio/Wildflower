@@ -118,7 +118,10 @@ describe('runAuthed router-context runner', () => {
       runAuthed,
       runtimeLayer,
       awaitAuthReady: () => Promise.resolve(),
-      transport: Promise.resolve({ sendMessage: () => Effect.void }),
+      transport: Promise.resolve({
+        sendMessage: () => Effect.void,
+        coordinator: { register: () => Effect.void, unregister: () => Effect.void },
+      }),
     } satisfies RouterContext
 
     // Assert

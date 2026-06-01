@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
 import type { BridgeTransport } from 'effect-messaging-core'
+import type { HandlerCoordinator } from 'effect-messaging-react'
 import { createContext, useContext } from 'react'
 
 import type { Bridges } from './bridges.ts'
@@ -7,16 +8,17 @@ import type { Bridges } from './bridges.ts'
 type FullTransport = BridgeTransport.BridgeTransport<Bridges, 'HostToWeb', 'WebToHost'>
 
 /**
- * Narrowed view of `BridgeTransport` that React-side consumers see. The
- * components below the `TransportContext.Provider` only ever need to
- * send messages — `signalReady`, `enqueue`, `registerHandlers` are
- * boot-time / Effect-side concerns that {@link AppRootTree} drives
- * directly off the resolved transport. Narrowing here means the stub
- * doesn't have to grow every time the underlying transport gains a new
- * method.
+ * Narrowed view of `BridgeTransport` that React-side consumers see —
+ * `sendMessage` plus the {@link HandlerCoordinator} (so slices register
+ * their inbound handlers on mount). `signalReady`/`enqueue`/the raw
+ * `registerHandlers` stay boot-time / Effect-side concerns that
+ * {@link AppRootTree} drives off the resolved transport; the coordinator
+ * wraps `registerHandlers` with per-bridge recompose so React consumers
+ * never touch it directly.
  */
 interface ReactTransport {
   readonly sendMessage: FullTransport['sendMessage']
+  readonly coordinator: HandlerCoordinator
 }
 
 /**
@@ -30,6 +32,13 @@ interface ReactTransport {
  */
 const stubTransport: ReactTransport = {
   sendMessage: () => Effect.void,
+  // No-op until the real transport resolves; on-mount registrations during
+  // the stub window are dropped (correct — the host isn't ready to receive,
+  // and the `_auth` gate holds real consumers until the handshake lands).
+  coordinator: {
+    register: () => Effect.void,
+    unregister: () => Effect.void,
+  },
 }
 
 const TransportContext = createContext<ReactTransport | null>(null)

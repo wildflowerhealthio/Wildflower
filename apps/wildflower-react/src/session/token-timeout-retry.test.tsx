@@ -48,7 +48,10 @@ const renderGate = (
     runAuthed: () => Promise.reject(new Error('runAuthed not used')),
     runtimeLayer: Layer.die('runtimeLayer not used'),
     awaitAuthReady,
-    transport: Promise.resolve({ sendMessage: () => Effect.void }),
+    transport: Promise.resolve({
+      sendMessage: () => Effect.void,
+      coordinator: { register: () => Effect.void, unregister: () => Effect.void },
+    }),
   }
   const router = createRouter({
     routeTree: leaf,

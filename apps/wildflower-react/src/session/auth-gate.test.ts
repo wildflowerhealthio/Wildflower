@@ -25,7 +25,10 @@ const makeContext = (awaitAuthReady: () => Promise<void>): RouterContext => ({
   runAuthed: () => Promise.reject(new Error('runAuthed not used in gate tests')),
   runtimeLayer: Layer.die('runtimeLayer not used in gate tests'),
   awaitAuthReady,
-  transport: Promise.resolve({ sendMessage: () => Effect.void }),
+  transport: Promise.resolve({
+    sendMessage: () => Effect.void,
+    coordinator: { register: () => Effect.void, unregister: () => Effect.void },
+  }),
 })
 
 describe('authBeforeLoad', () => {
