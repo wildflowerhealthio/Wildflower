@@ -20,7 +20,9 @@ To bridge the lifecycle gap, each slice exports:
    const collectorWebHandlers: MessageHandler.HandlersFor<(typeof CollectorBridge)['HostToWeb']> = {
      ResponseStart: (event) => {
        const h = activeHandlerRef.current
-       return h === null ? droppedTagWarning('ResponseStart') : h.ResponseStart(event)
+       return h === null
+         ? HandlerHelpers.droppedTagWarning('ResponseStart')
+         : h.ResponseStart(event)
      },
      // ...one handler per Host→Web tag
    }

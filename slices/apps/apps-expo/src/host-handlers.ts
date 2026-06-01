@@ -1,6 +1,6 @@
 import type { AppsBridge } from 'apps-core/bridge'
 import { Cause, Effect } from 'effect'
-import { type BridgeTransport, MessageHandler } from 'effect-messaging-core'
+import { type BridgeTransport, HandlerHelpers, type MessageHandler } from 'effect-messaging-core'
 import {
   awaitTunnelOrigin,
   commitRequestedRunning,
@@ -38,7 +38,7 @@ const setAppsHostSender = (send: AppsHostSender | null): void => {
 const reply = (message: AppsHostMessage): Effect.Effect<void> => {
   const send = appsHostSenderRef.current
   return send === null
-    ? MessageHandler.droppedTagWarning('appsHostHandlers', message._tag)
+    ? HandlerHelpers.droppedTagWarning('appsHostHandlers', message._tag)
     : send(message)
 }
 

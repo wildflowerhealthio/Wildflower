@@ -1,6 +1,6 @@
 import type { CollectorBridge } from 'collector-fundamentals/bridge'
 import type { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
-import { MessageHandler } from 'effect-messaging-core'
+import { HandlerHelpers, type MessageHandler } from 'effect-messaging-core'
 
 /**
  * The runtime holds the active sync's handler erased of its
@@ -51,37 +51,37 @@ const makeCollectorWebHandlers = (): MessageHandler.HandlersFor<
   ResponseStart: (event) => {
     const h = activeHandlerRef.current
     return h === null
-      ? MessageHandler.droppedTagWarning('collectorWebHandlers', 'ResponseStart')
+      ? HandlerHelpers.droppedTagWarning('collectorWebHandlers', 'ResponseStart')
       : h.ResponseStart(event)
   },
   ResponseData: (event) => {
     const h = activeHandlerRef.current
     return h === null
-      ? MessageHandler.droppedTagWarning('collectorWebHandlers', 'ResponseData')
+      ? HandlerHelpers.droppedTagWarning('collectorWebHandlers', 'ResponseData')
       : h.ResponseData(event)
   },
   ResponseFinished: (event) => {
     const h = activeHandlerRef.current
     return h === null
-      ? MessageHandler.droppedTagWarning('collectorWebHandlers', 'ResponseFinished')
+      ? HandlerHelpers.droppedTagWarning('collectorWebHandlers', 'ResponseFinished')
       : h.ResponseFinished(event)
   },
   RequestError: (event) => {
     const h = activeHandlerRef.current
     return h === null
-      ? MessageHandler.droppedTagWarning('collectorWebHandlers', 'RequestError')
+      ? HandlerHelpers.droppedTagWarning('collectorWebHandlers', 'RequestError')
       : h.RequestError(event)
   },
   Cancelled: (event) => {
     const h = activeHandlerRef.current
     return h === null
-      ? MessageHandler.droppedTagWarning('collectorWebHandlers', 'Cancelled')
+      ? HandlerHelpers.droppedTagWarning('collectorWebHandlers', 'Cancelled')
       : h.Cancelled(event)
   },
   PageLoaded: (event) => {
     const h = activeHandlerRef.current
     return h === null
-      ? MessageHandler.droppedTagWarning('collectorWebHandlers', 'PageLoaded')
+      ? HandlerHelpers.droppedTagWarning('collectorWebHandlers', 'PageLoaded')
       : h.PageLoaded(event)
   },
 })

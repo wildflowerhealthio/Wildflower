@@ -14,6 +14,7 @@ import {
   Stream,
 } from 'effect'
 import type * as Bridge from './bridge.ts'
+import type * as MessageHandler from './message-handler.ts'
 import * as Message from './message.ts'
 import { TransportAdapter } from './transport-adapter.ts'
 
@@ -124,23 +125,6 @@ interface BridgeTransport<
 // oxlint-disable-next-line typescript/no-explicit-any
 type AnyTaggedSchema = Schema.Schema<any, any, never>
 
-/**
- * Handler invoked by the dispatch fiber when a tag's message arrives.
- *
- * @remarks
- * A pure `(message) => Effect<void>` matching `HandlersFor`. Handlers
- * acknowledge-and-return; they never reply through the transport (a host
- * slice that sends proactively captures its sender via
- * `onTransportReady`). Re-narrowed from the routing-site `_tag` read —
- * see {@link dispatch}.
- */
-type Handler = (message: { readonly _tag: string }) => Effect.Effect<void>
-
-type AnyHandlers = Readonly<Record<string, Handler | undefined>>
-
-/** Decoded inbound message — re-narrowed to its `_tag` at the routing site. */
-type DecodedMessage = { readonly _tag: string }
-
 const make = <
   const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
   const InDir extends Bridge.Direction,
@@ -175,7 +159,7 @@ const make = <
      * both sides (no parallel pre-resolve branch).
      */
     const peerReady = yield* Deferred.make<void>()
-    const readyTagHandler: Handler = () =>
+    const readyTagHandler: MessageHandler.Handler = () =>
       Deferred.succeed(peerReady, undefined).pipe(Effect.asVoid)
 
     /**
@@ -191,24 +175,24 @@ const make = <
      */
     const buildHandlerByTag = (
       handlersByBridge: Bridge.HandlersByBridge<Bridges, InDir>
-    ): HashMap.HashMap<string, Handler> => {
+    ): HashMap.HashMap<string, MessageHandler.Handler> => {
       const tagHandlerPairs = pipe(
         Array.zipWith(
           bridges,
           handlersByBridge,
-          (bridge, handlers): [string, Handler | undefined][] => {
+          (bridge, handlers): [string, MessageHandler.Handler | undefined][] => {
             if (bridge === undefined || handlers === undefined) {
               return []
             }
             // Each record's handlers accept their specific message type;
             // erase to the routing-site `Handler` shape (re-narrowed by
             // `_tag` at dispatch).
-            return Record.toEntries(handlers as AnyHandlers)
+            return Record.toEntries(handlers as MessageHandler.AnyHandlers)
           }
         ),
         Array.flatten,
-        Array.filter((entry): entry is [string, Handler] => entry[1] !== undefined),
-        Array.append([READY_TAG, readyTagHandler] as [string, Handler])
+        Array.filter((entry): entry is [string, MessageHandler.Handler] => entry[1] !== undefined),
+        Array.append([READY_TAG, readyTagHandler] as [string, MessageHandler.Handler])
       )
       const [repeatedTags] = Array.reduce(
         tagHandlerPairs,
@@ -227,7 +211,7 @@ const make = <
         throw new Error(`duplicate inbound tag(s) "${[...repeatedTags].join('", "')}"`)
       }
 
-      return HashMap.fromIterable<string, Handler>(tagHandlerPairs)
+      return HashMap.fromIterable<string, MessageHandler.Handler>(tagHandlerPairs)
     }
 
     /**
@@ -293,7 +277,7 @@ const make = <
     const dispatch = (raw: string): Effect.Effect<void, ParseResult.ParseError> =>
       Effect.gen(function* () {
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-        const decoded = (yield* decodeMessage(raw)) as DecodedMessage
+        const decoded = (yield* decodeMessage(raw)) as MessageHandler.DecodedMessage
         const handlerByTag = yield* Ref.get(handlersRef)
         yield* Option.match(HashMap.get(handlerByTag, decoded._tag), {
           onSome: (handler) => handler(decoded),

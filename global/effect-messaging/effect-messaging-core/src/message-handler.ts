@@ -1,4 +1,4 @@
-import { Effect, type Schema } from 'effect'
+import type { Effect, Schema } from 'effect'
 import type * as Message from './message.ts'
 
 /**
@@ -12,6 +12,10 @@ import type * as Message from './message.ts'
  * the bridge directly; a host slice that needs to send proactively
  * captures its transport sender via `HostBindings`' `onTransportReady`
  * and dispatches through that captured ref.
+ *
+ * This is the fully-typed end of the handler spectrum; {@link Handler}
+ * is its routing-erased counterpart, reached once the dispatch fiber has
+ * narrowed a decoded message to its `_tag`.
  */
 type HandlersFor<R extends Message.SchemaRecord> = {
   readonly [Tag in keyof R]: R[Tag] extends Schema.Schema<infer A, string, never>
@@ -20,21 +24,26 @@ type HandlersFor<R extends Message.SchemaRecord> = {
 }
 
 /**
- * Standard log-and-drop warning for an inbound tag that arrived while
- * no receiver was installed to handle it.
- *
- * Handler records backed by a runtime singleton — e.g. the web-side
- * collector / apps handlers that read a module-level ref and forward
- * into whatever is currently installed — call this on the empty-ref
- * branch so the message is acknowledged-and-dropped (resolved to
- * `void`) rather than throwing.
- *
- * @param receiverName - The handler record's name, used as the log
- *   prefix (e.g. `collectorWebHandlers`).
- * @param tag - The inbound message `_tag` being dropped.
+ * Decoded inbound message at the routing site. Schema acceptance
+ * guarantees a `_tag`; the dispatch fiber re-narrows to it for the
+ * handler lookup. The floor shape {@link Handler} accepts.
  */
-const droppedTagWarning = (receiverName: string, tag: string): Effect.Effect<void> =>
-  Effect.logWarning(`${receiverName}: dropping ${tag} — no receiver installed`)
+type DecodedMessage = { readonly _tag: string }
 
-export { droppedTagWarning }
-export type { HandlersFor }
+/**
+ * Routing-erased handler: the shape a {@link HandlersFor} member
+ * collapses to once the transport's dispatch fiber has decoded a wire
+ * string and re-narrowed it to its `_tag`. A pure
+ * `(message) => Effect<void>` with no requirements — handlers
+ * acknowledge-and-return and never reply through the transport.
+ */
+type Handler = (message: DecodedMessage) => Effect.Effect<void>
+
+/**
+ * Flat tag→handler lookup the transport's dispatch fiber holds (in a
+ * `Ref`) and reads on every inbound message. A tag absent from the
+ * record has no installed handler — its messages are logged-and-dropped.
+ */
+type AnyHandlers = Readonly<Record<string, Handler | undefined>>
+
+export type { AnyHandlers, DecodedMessage, Handler, HandlersFor }

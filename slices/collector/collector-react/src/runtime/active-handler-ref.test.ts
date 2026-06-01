@@ -154,7 +154,7 @@ describe('collectorWebHandlers dispatch', () => {
 
   test('resolves to void (log-and-drop) when no handler is installed', async () => {
     // Drives the null branch: every per-tag method returns
-    // `MessageHandler.droppedTagWarning(...)` when the ref is null. The
+    // `HandlerHelpers.droppedTagWarning(...)` when the ref is null. The
     // assertion is "doesn't throw and resolves cleanly"; the warning
     // itself is an `Effect.logWarning`, which surfaces via the
     // configured logger rather than the test's return channel.

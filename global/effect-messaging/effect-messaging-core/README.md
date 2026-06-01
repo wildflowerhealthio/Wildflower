@@ -123,6 +123,6 @@ full pattern.
 ## Subpaths
 
 - `effect-messaging-core` — main barrel: `Bridge`, `BridgeTransport`,
-  `HostBindings`, `Message`, `MessageHandler`, `Logging`,
-  `TransportAdapter`, `UrlParamMessage`, `TestPlatformAdapterLayer`,
-  and the `bare-sender` re-exports.
+  `HostBindings`, `Message`, `MessageHandler`, `HandlerHelpers`,
+  `Logging`, `TransportAdapter`, `UrlParamMessage`,
+  `TestPlatformAdapterLayer`, and the `bare-sender` re-exports.

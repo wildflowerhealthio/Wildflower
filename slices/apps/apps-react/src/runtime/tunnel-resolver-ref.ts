@@ -1,6 +1,6 @@
 import type { AppsBridge } from 'apps-core/bridge'
 import { Effect } from 'effect'
-import { MessageHandler } from 'effect-messaging-core'
+import { HandlerHelpers, type MessageHandler } from 'effect-messaging-core'
 
 /**
  * The tunnel-response outcomes the apps runtime resolves a pending
@@ -42,7 +42,7 @@ const makeAppsWebHandlers = (): MessageHandler.HandlersFor<(typeof AppsBridge)['
   TunnelStarted: ({ origin }) => {
     const resolver = pendingTunnelResolverRef.current
     if (resolver === null) {
-      return MessageHandler.droppedTagWarning('appsWebHandlers', 'TunnelStarted')
+      return HandlerHelpers.droppedTagWarning('appsWebHandlers', 'TunnelStarted')
     }
     pendingTunnelResolverRef.current = null
     return Effect.sync(() => {
@@ -52,7 +52,7 @@ const makeAppsWebHandlers = (): MessageHandler.HandlersFor<(typeof AppsBridge)['
   TunnelFailed: ({ reason }) => {
     const resolver = pendingTunnelResolverRef.current
     if (resolver === null) {
-      return MessageHandler.droppedTagWarning('appsWebHandlers', 'TunnelFailed')
+      return HandlerHelpers.droppedTagWarning('appsWebHandlers', 'TunnelFailed')
     }
     pendingTunnelResolverRef.current = null
     return Effect.sync(() => {
