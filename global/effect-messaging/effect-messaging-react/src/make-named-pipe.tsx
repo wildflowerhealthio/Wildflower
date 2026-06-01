@@ -1,15 +1,7 @@
 import { Effect } from 'effect'
 import type { Bridge, BridgeTransport } from 'effect-messaging-core'
-import {
-  createContext,
-  useCallback,
-  useEffect,
-  useRef,
-  type FC as ReactFC,
-  type JSX,
-  type RefObject,
-} from 'react'
-import { useContextOrThrow } from 'react-kitchen-sink'
+import { useCallback, type FC as ReactFC, type RefObject } from 'react'
+import { makeOutlet } from './outlet.tsx'
 
 interface MadeNamedPipe<
   TName extends string,
@@ -99,41 +91,21 @@ const makeNamedPipe = <
       `[effect-messaging] no ${name}Pipe handler registered; dropping message "${JSON.stringify(msg)}"`
     )
 
-  const Context = createContext<RefObject<
-    BridgeTransport.MessageSender<TBridges, TDirection>
-  > | null>(null)
-  Context.displayName = `${name}PipeContext`
-
-  // oxlint-disable-next-line react-refresh/only-export-components
-  const Provider = ({ children }: { children: React.ReactNode }): JSX.Element => {
-    const handlerRef = useRef<BridgeTransport.MessageSender<TBridges, TDirection>>(defaultSender)
-
-    return <Context.Provider value={handlerRef}>{children}</Context.Provider>
-  }
-  Provider.displayName = `${name}PipeProvider`
+  // A named pipe is an `Outlet` specialized to a transport sender. The
+  // `Pipe` suffix keeps the historical `${name}PipeProvider` DevTools tag.
+  const outlet = makeOutlet(`${name}Pipe`, defaultSender)
 
   const useSender = (): BridgeTransport.MessageSender<TBridges, TDirection> => {
-    const handlerRef = useContextOrThrow(Context)
+    const handlerRef = outlet.useValueRef()
+    // Identity-stable across renders, and reads `.current` at suspend time
+    // so a sender registered later is seen without re-rendering.
     return useCallback((message) => Effect.suspend(() => handlerRef.current(message)), [handlerRef])
   }
 
-  const useAsOutlet = (sender: BridgeTransport.MessageSender<TBridges, TDirection>): void => {
-    const handlerRef = useContextOrThrow(Context)
-    useEffect(() => {
-      handlerRef.current = sender
-    }, [sender, handlerRef])
-  }
-
-  const useSenderRef = (): RefObject<BridgeTransport.MessageSender<TBridges, TDirection>> =>
-    useContextOrThrow(Context)
-
   return {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    Provider: Provider as ReactFC<{ children: React.ReactNode }> & {
-      displayName: `${TName}PipeProvider`
-    },
-    useSenderRef,
-    useAsOutlet,
+    Provider: outlet.Provider,
+    useSenderRef: outlet.useValueRef,
+    useAsOutlet: outlet.useRegister,
     useSender,
     defaultSender,
   }

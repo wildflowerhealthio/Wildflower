@@ -198,7 +198,7 @@ describe('Logging.installConsoleInterceptor', () => {
     expect(globalThis.console.info).toBe(originals.info)
   })
 
-  test('re-installing while a prior install is active short-circuits to a no-op teardown — the truly-original methods survive', () => {
+  test('re-installing while a prior install is active warns, returns a no-op teardown — the truly-original methods survive', () => {
     const firstSent: Schema.Schema.Type<typeof Logging.LogMessage>[] = []
     const secondSent: Schema.Schema.Type<typeof Logging.LogMessage>[] = []
     const firstTeardown = Logging.installConsoleInterceptor((msg) => {
@@ -206,18 +206,29 @@ describe('Logging.installConsoleInterceptor', () => {
     })
     // Second install without a teardown in between: short-circuited so
     // the patched methods (NOT the originals) aren't recaptured as
-    // baseline. The returned teardown must be a no-op.
+    // baseline. It warns (via console.warn, which the active first
+    // interceptor ships onward) and returns a no-op teardown.
     const secondTeardown = Logging.installConsoleInterceptor((msg) => {
       secondSent.push(msg)
     })
-    globalThis.console.info('routed-by-first')
-    expect(firstSent).toHaveLength(1)
+    expect(firstSent).toContainEqual(
+      expect.objectContaining({
+        _tag: 'Log',
+        level: 'warn',
+        // oxlint-disable-next-line typescript/no-unsafe-assignment
+        payload: expect.arrayContaining([expect.stringContaining('already active')]),
+      })
+    )
+    // The warning routed through the first (active) interceptor, never the second.
     expect(secondSent).toHaveLength(0)
+    const firstCountAfterWarn = firstSent.length
+    globalThis.console.info('routed-by-first')
+    expect(firstSent).toHaveLength(firstCountAfterWarn + 1)
     // The no-op second teardown must NOT touch console — the originals
     // would be lost if it ran a restore from the patched-as-baseline.
     secondTeardown()
     globalThis.console.info('still-routed-by-first')
-    expect(firstSent).toHaveLength(2)
+    expect(firstSent).toHaveLength(firstCountAfterWarn + 2)
     // The first teardown restores to the truly-original methods.
     firstTeardown()
     // oxlint-disable-next-line typescript-eslint/unbound-method
