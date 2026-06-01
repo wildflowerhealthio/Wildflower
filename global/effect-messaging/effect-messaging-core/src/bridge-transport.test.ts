@@ -315,7 +315,7 @@ describe('BridgeTransport.make — __Ready handshake', () => {
     )
   })
 
-  test('Web sendMessage flows without an external Ready (the web self-posts at make)', async () => {
+  test('Web sendMessage flows without an external Ready (its send gate is open from the start)', async () => {
     const { NavigationLike } = makeBridges()
     const { layer: adapterLayer, sentQueue } = TestPlatformAdapterLayer.make()
     await Effect.runPromise(

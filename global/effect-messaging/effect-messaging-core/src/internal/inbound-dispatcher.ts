@@ -31,11 +31,6 @@ interface InboundDispatcher {
  * fiber that decodes each raw string against the bridges' inbound schema
  * union and routes it to the registry's handler (logging-and-dropping
  * unknown tags / unhandled tags / decode failures).
- *
- * @remarks
- * `preDrain` strings are enqueued ahead of the platform's `drainInitial`
- * batch, preserving the legacy ordering where the web's self-posted
- * `__Ready` leads the boot URL-param messages.
  */
 const makeInboundDispatcher = <
   const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
@@ -45,10 +40,9 @@ const makeInboundDispatcher = <
   readonly inboundDirection: InDir
   readonly registry: HandlerRegistry<Bridges, InDir>
   readonly adapter: TransportAdapterService
-  readonly preDrain: ReadonlyArray<string>
 }): Effect.Effect<InboundDispatcher, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const { bridges, inboundDirection, registry, adapter, preDrain } = config
+    const { bridges, inboundDirection, registry, adapter } = config
 
     const innerSchemas: Array.NonEmptyArray<AnyTaggedSchema> = pipe(
       Array.flatMap(bridges, (bridge) => Record.values(bridge[inboundDirection])),
@@ -114,9 +108,6 @@ const makeInboundDispatcher = <
       )
     )
 
-    for (const raw of preDrain) {
-      yield* Queue.offer(inbox, raw)
-    }
     const initial = yield* adapter.drainInitial
     for (const raw of initial) {
       yield* Queue.offer(inbox, raw)

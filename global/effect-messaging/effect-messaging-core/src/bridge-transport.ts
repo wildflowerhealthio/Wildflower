@@ -2,7 +2,7 @@ import type { Scope } from 'effect'
 import { Deferred, Effect } from 'effect'
 import type * as Bridge from './bridge.ts'
 import { makeHandlerRegistry } from './internal/handler-registry.ts'
-import { READY_RAW } from './internal/handshake-message.ts'
+import { READY_RAW, READY_TAG } from './internal/handshake-message.ts'
 import { makeInboundDispatcher } from './internal/inbound-dispatcher.ts'
 import { makeOutboundPump, type MessageSender } from './internal/outbound-pump.ts'
 import type * as MessageHandler from './message-handler.ts'
@@ -34,11 +34,10 @@ interface BridgeTransport<
    *
    * @remarks
    * The send is buffered in the outbox and never suspends the caller.
-   * A pump fiber flushes the outbox once the peer has signalled `__Ready`:
-   * on the host that's when the page posts it; on the web it resolves
-   * immediately (the web self-posts `__Ready` at make). The asymmetry
-   * matches the lifecycle — the host is up before the web bundle loads,
-   * so the web never waits on anyone.
+   * A pump fiber flushes the outbox once the send gate opens: the host
+   * waits to receive the web's `__Ready`; the web's gate is open from the
+   * start. The asymmetry matches the lifecycle — the host is up before the
+   * web bundle loads, so the web never waits on anyone.
    */
   readonly sendMessage: MessageSender<Bridges, OutDir>
   /**
@@ -78,54 +77,48 @@ const make = <
   readonly handlers: Bridge.HandlersByBridge<Bridges, InDir>
   readonly inboundDirection: InDir
   readonly outboundDirection: OutDir
-  /**
-   * Whether this transport is the host endpoint. Drives the one-way
-   * `__Ready` handshake asymmetry: the web self-queues `__Ready` (so its
-   * outbox pump unblocks immediately) and posts `__Ready` to the host via
-   * {@link signalReady}; the host waits to receive it and never sends one.
-   */
-  readonly isHost: boolean
 }): Effect.Effect<BridgeTransport<Bridges, InDir, OutDir>, never, TransportAdapter | Scope.Scope> =>
   Effect.gen(function* () {
-    const {
-      bridges,
-      handlers: initialHandlers,
-      inboundDirection,
-      outboundDirection,
-      isHost,
-    } = config
+    const { bridges, handlers: initialHandlers, inboundDirection, outboundDirection } = config
     const adapter = yield* TransportAdapter
 
+    // The host endpoint is the one that *receives* `'WebToHost'` — the only
+    // bit the `__Ready` handshake asymmetry turns on, derived rather than
+    // passed so an inconsistent triple is unrepresentable.
+    const isHost = inboundDirection === 'WebToHost'
+
     /**
-     * Send-gating Deferred, resolved by the `__Ready` handler the registry
-     * installs. The host receives `__Ready` from the web peer; the web
-     * self-posts a `__Ready` (see `preDrain` below) so the same dispatch
-     * path resolves the gate on both sides.
+     * Send gate. The host buffers its outbox until it *receives* the web's
+     * `__Ready` (which resolves `peerReady` through the normal inbound →
+     * registry → handler path); the web's gate is open from the start, so
+     * its sends flow without waiting on anyone.
      */
     const peerReady = yield* Deferred.make<void>()
-    const readyTagHandler: MessageHandler.Handler = () =>
+    const readyHandler: MessageHandler.Handler = () =>
       Deferred.succeed(peerReady, undefined).pipe(Effect.asVoid)
+
+    // Only the host receives `__Ready`; injecting its handler as a control
+    // entry keeps the registry ignorant of the handshake.
+    const controlHandlers: ReadonlyArray<readonly [string, MessageHandler.Handler]> = isHost
+      ? [[READY_TAG, readyHandler]]
+      : []
 
     const registry = yield* makeHandlerRegistry<Bridges, InDir>({
       bridges,
       initialHandlers,
-      readyTagHandler,
+      controlHandlers,
     })
     const { enqueue } = yield* makeInboundDispatcher({
       bridges,
       inboundDirection,
       registry,
       adapter,
-      // The web self-posts `__Ready` ahead of the boot URL-param drain so
-      // its outbox pump unblocks immediately; the host waits to receive
-      // the web's.
-      preDrain: isHost ? [] : [READY_RAW],
     })
     const { sendMessage } = yield* makeOutboundPump({
       bridges,
       outboundDirection,
       adapter,
-      ready: Deferred.await(peerReady),
+      ready: isHost ? Deferred.await(peerReady) : Effect.void,
     })
 
     // One-way handshake: the web posts `__Ready` to the host; the host
@@ -159,14 +152,14 @@ const makeHostTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>
     handlers: config.handlers,
     inboundDirection: 'WebToHost',
     outboundDirection: 'HostToWeb',
-    isHost: true,
   })
 
 /**
  * Build the **web** endpoint of a bridge transport: it receives
  * `'HostToWeb'` messages (routed through `handlers`) and sends
- * `'WebToHost'` messages via `sendMessage`. The web self-queues `__Ready`
- * so its outbox flushes immediately, and posts `__Ready` to the host.
+ * `'WebToHost'` messages via `sendMessage`. The web's outbox flushes
+ * immediately (its send gate is open from the start); it posts `__Ready`
+ * to the host via `signalReady`.
  */
 const makeWebTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
   readonly bridges: Bridges
@@ -181,7 +174,6 @@ const makeWebTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>
     handlers: config.handlers,
     inboundDirection: 'HostToWeb',
     outboundDirection: 'WebToHost',
-    isHost: false,
   })
 
 export { makeHostTransport, makeWebTransport }

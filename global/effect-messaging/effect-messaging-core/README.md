@@ -97,12 +97,13 @@ one scoped fiber:
   via a `Ref.set` — no inbox round-trip — so the next message dispatches
   against the new records.
 
-The `__Ready` handshake is one-way and rides the same inbox dispatch
-path on both sides: the host's `peerReady` resolves when it dispatches
-the web peer's `__Ready`; the web self-queues a `__Ready` at make so its
-own gate resolves through the identical path (no parallel pre-resolve
-branch). `signalReady` posts the `__Ready` wire string on the web and is
-a no-op on the host. Scope close shuts both queues down and interrupts
+The `__Ready` handshake is one-way. The host buffers its outbox until it
+dispatches the web peer's `__Ready` — routed through the normal inbound →
+handler path, where an injected control handler resolves `peerReady`. The
+web's gate is open from the start (it never waits on anyone), so its
+sends flow immediately. `signalReady` posts the `__Ready` wire string on
+the web and is a no-op on the host. Scope close shuts both queues down and
+interrupts
 both fibers.
 
 ## Drain-then-replay

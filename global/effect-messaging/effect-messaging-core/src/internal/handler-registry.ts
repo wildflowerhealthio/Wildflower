@@ -2,7 +2,6 @@ import { Array, Effect, HashMap, type Option, pipe, Record, Ref } from 'effect'
 import type * as Bridge from '../bridge.ts'
 import type * as MessageHandler from '../message-handler.ts'
 import { assertNoDuplicateTags } from './assert-no-duplicate-tags.ts'
-import { READY_TAG } from './handshake-message.ts'
 
 /**
  * The transport's inbound handler registry: a swappable flat tag→handler
@@ -33,11 +32,11 @@ interface HandlerRegistry<
  * Build the inbound handler registry for a fixed bridges tuple.
  *
  * @remarks
- * `readyTagHandler` is injected (not owned here) so the registry stays
- * ignorant of handshake semantics — it only knows it must append one
- * extra control handler that survives every replace. **Temporary:** the
- * `__Ready` append goes away under Leap C (Phase 3), when `__Ready`
- * becomes an ordinary registered handler.
+ * `controlHandlers` are extra reserved `[tag, handler]` entries merged on
+ * top of the per-bridge records and re-applied on every replace. The
+ * transport injects the `__Ready` handshake handler this way, so the
+ * registry stays ignorant of handshake semantics — it just merges in
+ * whatever control handlers it's handed.
  */
 const makeHandlerRegistry = <
   const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
@@ -45,17 +44,17 @@ const makeHandlerRegistry = <
 >(config: {
   readonly bridges: Bridges
   readonly initialHandlers: Bridge.HandlersByBridge<Bridges, InDir>
-  readonly readyTagHandler: MessageHandler.Handler
+  readonly controlHandlers: ReadonlyArray<readonly [string, MessageHandler.Handler]>
 }): Effect.Effect<HandlerRegistry<Bridges, InDir>> =>
   Effect.gen(function* () {
-    const { bridges, readyTagHandler } = config
+    const { bridges, controlHandlers } = config
 
     /**
      * Pure tag→handler map builder. Folds the `Bridges` × handler-records
-     * parallel tuples into a flat `HashMap<tag, Handler>`, always
-     * appending the `__Ready` handler so the handshake survives every
-     * replace. Throws synchronously on duplicate inbound tags across
-     * bridges — a wiring error.
+     * parallel tuples into a flat `HashMap<tag, Handler>`, then merges the
+     * injected `controlHandlers` so they survive every replace. Throws
+     * synchronously on duplicate inbound tags across bridges (or a control
+     * tag that collides with a bridge tag) — a wiring error.
      */
     const buildHandlerByTag = (
       handlersByBridge: Bridge.HandlersByBridge<Bridges, InDir>
@@ -76,7 +75,7 @@ const makeHandlerRegistry = <
         ),
         Array.flatten,
         Array.filter((entry): entry is [string, MessageHandler.Handler] => entry[1] !== undefined),
-        Array.append([READY_TAG, readyTagHandler] as [string, MessageHandler.Handler])
+        Array.appendAll(controlHandlers)
       )
       assertNoDuplicateTags(
         Array.map(tagHandlerPairs, ([tag]) => tag),
