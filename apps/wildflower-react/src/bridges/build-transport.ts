@@ -43,7 +43,9 @@ import type { ReactTransport } from './transport-context.ts'
 const buildTransport = (navigate: (to: NavTarget) => void): Promise<ReactTransport> => {
   const navHandlers = makeNavigationWebHandlers(navigate)
   const adapter = WebPlatformAdapter.make(bridges)
-  const scope = Effect.runSync(Scope.make())
+  // Never closed — the transport lives for the page's lifetime (see the
+  // "Page lifetime" note above). The name makes that deliberate, not a leak.
+  const pageLifetimeScope = Effect.runSync(Scope.make())
   return Effect.runPromise(
     Scope.extend(
       BridgeTransport.make({
@@ -59,7 +61,7 @@ const buildTransport = (navigate: (to: NavTarget) => void): Promise<ReactTranspo
         ] as const,
         side: 'Web',
       }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter))),
-      scope
+      pageLifetimeScope
     )
   ).then(async (transport) => {
     Logging.installConsoleInterceptor((msg: Logging.LogPayload) => {

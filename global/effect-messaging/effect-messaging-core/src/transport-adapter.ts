@@ -1,11 +1,13 @@
 import { Context, type Effect, type Scope } from 'effect'
-import type { BareSenderFunction, BareSenderService } from './bare-sender.ts'
+import type { BareSenderFunction } from './bare-sender.ts'
 
 /** Wire-format constant — the RN-WebView bridge object name on `window`. */
 const REACT_NATIVE_WEBVIEW_GLOBAL = 'ReactNativeWebView' as const
 
 /** Service shape supplied at the {@link TransportAdapter} `Context.Tag`. */
-interface Service extends BareSenderService {
+interface Service {
+  /** Send one already-encoded string to the other process. */
+  readonly bareSender: BareSenderFunction
   /**
    * Encoded message strings the platform delivered at boot — e.g. the
    * web side decodes them from `window.location.search` URL params,

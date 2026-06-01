@@ -262,7 +262,7 @@ Notes that the diagram compresses:
   `TransportWebView`); there is no in-WebView JS loader. The native
   splash stays up until the SPA posts the app-layer `UIReady`
   (`navigation-core` `UIReady`, handled in `makeNavigationHostHandlers`
-  → `handleUiReady` → `SplashScreen.hideAsync`). That is a *separate*
+  → `handleUiReady` → `SplashScreen.hideAsync`). That is a _separate_
   signal from the transport's `__Ready`.
 - Host→web seeds that must never touch postMessage (the bearer token,
   the initial route) ride the **URL-param channel** instead: baked into
@@ -272,7 +272,7 @@ Notes that the diagram compresses:
   the web's self-`__Ready`. See `gatekeeper-core` (`AuthTokenIssued`
   urlParams) and `navigation-core` (`HostRequestedWebNavigation`).
 - On the host, `signalReady` is a no-op and the host's `peerReady` is
-  resolved by *dispatching the page's* `__Ready` through the same inbox
+  resolved by _dispatching the page's_ `__Ready` through the same inbox
   path — there is no parallel pre-resolve branch.
 
 ---
@@ -332,7 +332,7 @@ Notes:
   are replayed on swap (`applyRegister`).
 - `RequestTunnel` is the one true round-trip: a web→host message whose
   host handler (`makeAppsHostHandlers`) replies with `TunnelStarted` /
-  `TunnelFailed` over the *same* transport, satisfying the
+  `TunnelFailed` over the _same_ transport, satisfying the
   `TransportAdapter` requirement per-invocation in the dispatch fiber.
 
 ---
@@ -376,7 +376,7 @@ What this shows: the indirections between `transport.sendMessage` and the
 component that actually calls it, on both sides. This is the area richest
 in "could this be more direct?" The pipes/forwarders exist because the
 sender only comes into being after the transport builds (post-mount),
-but the React tree below needs *something* to call before then.
+but the React tree below needs _something_ to call before then.
 
 ```mermaid
 graph LR
@@ -414,7 +414,7 @@ Notes:
 - **Host side**, two slices (`apps`, `gatekeeper` reply path / `apps`
   `RequestTunnel`) don't need a pipe — their handlers reply via
   `bridge.send(...)` directly inside the dispatch fiber. Navigation and
-  collector *do* use a pipe because a *sibling* component (tab bar,
+  collector _do_ use a pipe because a _sibling_ component (tab bar,
   modal) — not a handler — needs to originate sends. The pattern is the
   same in both (`makeNamedPipe` + a `senderRef` written from
   `onTransportReady`).
@@ -435,11 +435,11 @@ not prescriptions.
 
 - **`makeBridgeDispatcher` (`effect-messaging-react/make-bridge-dispatcher.tsx`) appears to have no production importer.** It is exported from the package barrel and has a test, but no app/slice file in the graph imports it. The fan-out registry it provides (`useAsMessageHandlers` / `useMessageSender`) overlaps conceptually with what `BridgeTransport.registerHandlers` + the inbox parking now do. Worth confirming it's still needed, or deleting it.
 
-- **`BareSender` Tag (`bare-sender.ts`) looks redundant with `TransportAdapter`.** `TransportAdapter.Service` already `extends BareSenderService`, so every place that has the adapter already has `bareSender`. I did not find a production consumer that `yield*`s the standalone `BareSender` Tag (the doc comment describes the discharge pattern, but handlers now get `bareSender` via the adapter the dispatch fiber provides). The `BareSenderFunction` / `BareSenderService` *types* are clearly used; the *Tag* may be dead.
+- **`BareSender` Tag (`bare-sender.ts`) looks redundant with `TransportAdapter`.** `TransportAdapter.Service` already `extends BareSenderService`, so every place that has the adapter already has `bareSender`. I did not find a production consumer that `yield*`s the standalone `BareSender` Tag (the doc comment describes the discharge pattern, but handlers now get `bareSender` via the adapter the dispatch fiber provides). The `BareSenderFunction` / `BareSenderService` _types_ are clearly used; the _Tag_ may be dead.
 
 - **The two web-side `*SenderForwarder` components are near-identical boilerplate.** `apps-sender-forwarder.tsx` and `collector-sender-forwarder.tsx` differ only in which slice provider they wrap and the sender type. They could collapse into one generic `<SliceSenderForwarder provider={...} />` or a small factory, mirroring how `makeNamedPipe` already generalizes the host-side equivalent.
 
-- **`makeNamedPipe` is instantiated three times with the same shape** (collector-expo Collector pipe, collector-expo BrowserSniffer pipe, app-level navigation-pipe). They all follow the identical "ref slot written from `onTransportReady`, read by a sibling" pattern documented in each file's TSDoc. This is already a factory, so the duplication is mild — but the *navigation* pipe lives in the app while the *collector* pipes live in the slice adapter, an inconsistency worth aligning (the navigation-pipe file even notes it lives in the app "rather than navigation-expo").
+- **`makeNamedPipe` is instantiated three times with the same shape** (collector-expo Collector pipe, collector-expo BrowserSniffer pipe, app-level navigation-pipe). They all follow the identical "ref slot written from `onTransportReady`, read by a sibling" pattern documented in each file's TSDoc. This is already a factory, so the duplication is mild — but the _navigation_ pipe lives in the app while the _collector_ pipes live in the slice adapter, an inconsistency worth aligning (the navigation-pipe file even notes it lives in the app "rather than navigation-expo").
 
 - **Two parallel "handler record builder" conventions coexist.** Some slices expose a plain factory (`makeNavigationHostHandlers`, `makeAppsHostHandlers`, `makeNavigationWebHandlers`) and some expose a module-level constant closing over a mutable ref (`collectorWebHandlers` + `activeHandlerRef`, `gatekeeperWebHandlers` + `authTokenRef`). Both feed `BridgeTransport.make`'s `handlers` tuple. The ref-cell convention exists so the web transport can build outside React; the factory convention exists so host hooks can close over React state. Unifying the naming (`make*Handlers` vs `*Handlers`) would make the parallel-tuple wiring in `build-transport.ts` / `use-host-bindings.ts` easier to read.
 

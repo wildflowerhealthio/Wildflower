@@ -1,5 +1,5 @@
-import { Arbitrary, Effect, Schema } from 'effect'
-import { type Bridge, BridgeTransport, TestPlatformAdapterLayer } from 'effect-messaging-core'
+import { Arbitrary, Deferred, Effect, Schema } from 'effect'
+import { Bridge, BridgeTransport, TestPlatformAdapterLayer } from 'effect-messaging-core'
 import * as fc from 'fast-check'
 import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
@@ -66,6 +66,22 @@ const encodeWebToHost = (m: WebToHostMessage): string => {
   }
 }
 
+// Drain sentinel: a side-neutral extra bridge whose lone message, appended
+// after the real inputs, rides the FIFO inbox behind them. Its handler
+// resolving proves every message ahead of it has been dispatched — the
+// deterministic drain signal the removed `registerHandlers` barrier (and
+// before it `transport.flushed`) used to provide. A distinct tag, so it never
+// collides with a real sniffer message or pollutes the collected payloads.
+const DrainToHost = Schema.parseJson(Schema.TaggedStruct('__DrainToHost__', {}))
+const DrainToWeb = Schema.parseJson(Schema.TaggedStruct('__DrainToWeb__', {}))
+const SentinelBridge = Bridge.make({
+  name: 'DrainSentinel',
+  hostToWeb: [['__DrainToWeb__', DrainToWeb]] as const,
+  webToHost: [['__DrainToHost__', DrainToHost]] as const,
+})
+const drainToHostEncoded = Schema.encodeSync(DrainToHost)({ _tag: '__DrainToHost__' })
+const drainToWebEncoded = Schema.encodeSync(DrainToWeb)({ _tag: '__DrainToWeb__' })
+
 /**
  * Build a Host-side handler record where every webToHost handler
  * pushes the decoded payload onto a shared array. Returned alongside
@@ -96,7 +112,9 @@ const runHost = async (
   inputs: string[],
   handlers: Bridge.HalfHandlers<(typeof BrowserSnifferBridge)['Host']>
 ): Promise<void> => {
-  const { layer: adapterLayer } = TestPlatformAdapterLayer.make({ initialMessages: inputs })
+  const { layer: adapterLayer } = TestPlatformAdapterLayer.make({
+    initialMessages: [...inputs, drainToHostEncoded],
+  })
   // Negative-path tests below intentionally feed malformed wire input, which
   // the bridge logs at WARN. Capture (and discard) those logs so the test
   // output stays quiet.
@@ -104,16 +122,19 @@ const runHost = async (
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        const transport = yield* BridgeTransport.make({
-          bridges: [BrowserSnifferBridge] as const,
-          handlers: [handlers] as const,
+        const drained = yield* Deferred.make<void>()
+        yield* BridgeTransport.make({
+          bridges: [BrowserSnifferBridge, SentinelBridge] as const,
+          handlers: [
+            handlers,
+            { __DrainToHost__: () => Deferred.succeed(drained, undefined).pipe(Effect.asVoid) },
+          ] as const,
           side: 'Host',
         })
         // `make` offers every drained initial message to the inbox before
-        // returning; this `registerHandlers` rides the same FIFO inbox, so
-        // when it resolves they have all been dispatched. (Replaces the
-        // removed `transport.flushed` sentinel.)
-        yield* transport.registerHandlers([handlers])
+        // returning; the sentinel rides the same FIFO inbox behind them, so
+        // awaiting it proves they have all been dispatched.
+        yield* Deferred.await(drained)
       }).pipe(Effect.provide(adapterLayer), Effect.provide(capturingLoggerLayer))
     )
   )
@@ -179,20 +200,26 @@ describe('BrowserSnifferBridge — Host→Web round-trip', () => {
             : Schema.encodeSync(ClickMessage)(m)
         )
         const { layer: adapterLayer } = TestPlatformAdapterLayer.make({
-          initialMessages: inputs,
+          initialMessages: [...inputs, drainToWebEncoded],
         })
 
         await Effect.runPromise(
           Effect.scoped(
             Effect.gen(function* () {
-              const transport = yield* BridgeTransport.make({
-                bridges: [BrowserSnifferBridge] as const,
-                handlers: [webHandlers] as const,
+              const drained = yield* Deferred.make<void>()
+              yield* BridgeTransport.make({
+                bridges: [BrowserSnifferBridge, SentinelBridge] as const,
+                handlers: [
+                  webHandlers,
+                  {
+                    __DrainToWeb__: () => Deferred.succeed(drained, undefined).pipe(Effect.asVoid),
+                  },
+                ] as const,
                 side: 'Web',
               })
-              // FIFO inbox barrier behind the drained initial messages
-              // (replaces the removed `transport.flushed`).
-              yield* transport.registerHandlers([webHandlers])
+              // The sentinel rides the FIFO inbox behind the drained initial
+              // messages, so awaiting it proves they have all been dispatched.
+              yield* Deferred.await(drained)
             }).pipe(Effect.provide(adapterLayer))
           )
         )

@@ -53,10 +53,9 @@ type MessageSender<
  * @remarks
  * Two queues run behind the public surface: an **outbox** (sends are
  * offered immediately and a pump fiber drains them once the peer signals
- * `__Ready`) and an **inbox** (raw inbound strings plus `registerHandlers`
- * control items, processed in FIFO order by a single dispatch fiber).
- * Scope close shuts down both queues, interrupts both fibers, and
- * detaches platform listeners.
+ * `__Ready`) and an **inbox** (raw inbound strings processed in FIFO
+ * order by a single dispatch fiber). Scope close shuts down both queues,
+ * interrupts both fibers, and detaches platform listeners.
  */
 interface BridgeTransport<
   Bridges extends ReadonlyArray<Bridge.AnyBridge>,
@@ -86,18 +85,17 @@ interface BridgeTransport<
    */
   readonly signalReady: Effect.Effect<void>
   /**
-   * Replace the active per-bridge handler records. Routed through the
-   * inbox queue as a control item, so it is ordered against in-flight
-   * inbound messages: a message that arrived before its handler was
-   * registered is parked per-tag and replayed in arrival order once a
-   * covering handler lands. The returned Effect resolves after the swap
-   * (and any parked-message replay) has been applied.
+   * Replace the active per-bridge handler records with a single
+   * {@link Ref} set, applied atomically against the dispatch fiber's
+   * reads.
    *
    * @remarks
    * Pure — handlers are plain records, so there is no layer/resource
    * discharge and repeated calls don't accumulate. Replace semantics:
    * the supplied records become the whole active set; a tag absent from
-   * the new records loses its handler (future messages for it park).
+   * the new records loses its handler (future messages for it are
+   * logged-and-dropped). Throws (as a defect) on a duplicate-tag wiring
+   * error, leaving the prior map in place.
    */
   readonly registerHandlers: (
     handlers: Bridge.HandlersByBridge<Bridges, Side>
@@ -131,20 +129,6 @@ type AnyHandlers = Readonly<Record<string, Handler | undefined>>
 /** Decoded inbound message — re-narrowed to its `_tag` at the routing site. */
 type DecodedMessage = { readonly _tag: string }
 
-/**
- * Items flowing through the inbox. `message` carries a raw inbound wire
- * string; `register` swaps the active handler records (and resolves
- * `done` once applied). One consumer fiber processes both in FIFO order,
- * so a `register` is correctly sequenced against the messages around it.
- */
-type InboxItem<Bridges extends ReadonlyArray<Bridge.AnyBridge>, Side extends 'Host' | 'Web'> =
-  | { readonly kind: 'message'; readonly raw: string }
-  | {
-      readonly kind: 'register'
-      readonly handlers: Bridge.HandlersByBridge<Bridges, Side>
-      readonly done: Deferred.Deferred<void>
-    }
-
 const make = <
   const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
   const Side extends 'Host' | 'Web',
@@ -174,9 +158,9 @@ const make = <
      * `__Ready` handler so the handshake survives every replace.
      *
      * Throws synchronously on duplicate inbound tags across bridges — a
-     * wiring error. At initial `make` this fails the build loudly; on a
-     * `register` the dispatch fiber catches the defect, logs it, and
-     * keeps the prior map in place (see the consumer's `catchAllDefect`).
+     * wiring error. At initial `make` this fails the build loudly; from
+     * {@link registerHandlers} the throw surfaces as a defect and the
+     * prior map stays in place (the `Ref.set` never runs).
      */
     const buildHandlerByTag = (
       handlersByBridge: Bridge.HandlersByBridge<Bridges, Side>
@@ -228,14 +212,6 @@ const make = <
      */
     const handlersRef = yield* Ref.make(buildHandlerByTag(initialHandlers))
 
-    /**
-     * Per-tag parking lot for inbound messages whose tag has no handler
-     * yet. Schema acceptance proves the tag is a known inbound message,
-     * so it's held (not dropped) until a {@link registerHandlers} call
-     * installs a covering handler, then replayed in arrival order.
-     */
-    const parkedRef = yield* Ref.make(HashMap.empty<string, ReadonlyArray<DecodedMessage>>())
-
     const innerSchemas: Array.NonEmptyArray<AnyTaggedSchema> = pipe(
       Array.flatMap(bridges, (bridge) => Record.values(bridge[side].InboundSchemas)),
       Array.map(Schema.typeSchema),
@@ -248,8 +224,8 @@ const make = <
      * Single-pass decode for inbound dispatch. `Schema.parseJson` parses
      * the wire string once; the surrounding `Schema.Union` discriminates
      * by `_tag` and produces the typed message in one shot. Tags outside
-     * the union surface as `ParseError` and are logged-and-dropped (a
-     * known tag with no handler is parked instead — see {@link dispatchOrPark}).
+     * the union surface as `ParseError` and are logged-and-dropped; a
+     * known tag with no handler is logged-and-dropped too — see {@link dispatch}.
      *
      * Today `innerSchemas` always carries at least `ReadyMessageSchema`
      * (appended above), so the single-member branch is the floor; the
@@ -267,14 +243,12 @@ const make = <
     const decodeMessage = Schema.decode(Schema.parseJson(dispatchMessage))
 
     /**
-     * Decode one raw inbound message and route to its handler, or park
-     * it under its tag when no handler is registered yet. Schema
+     * Decode one raw inbound message and route to its handler, or
+     * log-and-drop it when no handler is registered for its tag. Schema
      * acceptance guarantees `_tag: string`; re-narrow at this single
      * boundary.
      */
-    const dispatchOrPark = (
-      raw: string
-    ): Effect.Effect<void, ParseResult.ParseError, TransportAdapter> =>
+    const dispatch = (raw: string): Effect.Effect<void, ParseResult.ParseError, TransportAdapter> =>
       Effect.gen(function* () {
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
         const decoded = (yield* decodeMessage(raw)) as DecodedMessage
@@ -282,62 +256,21 @@ const make = <
         yield* Option.match(HashMap.get(handlerByTag, decoded._tag), {
           onSome: (handler) => handler(decoded),
           onNone: () =>
-            Ref.update(parkedRef, (parked) =>
-              HashMap.set(parked, decoded._tag, [
-                ...Option.getOrElse(
-                  HashMap.get(parked, decoded._tag),
-                  (): ReadonlyArray<DecodedMessage> => []
-                ),
-                decoded,
-              ])
+            Effect.logWarning(
+              `[effect-messaging] no handler for inbound tag "${decoded._tag}"; dropping`
             ),
         })
       })
 
-    /**
-     * Apply a `register` control item: rebuild the handler map (may throw
-     * on a duplicate-tag wiring error — surfaces as a defect the consumer
-     * catches), swap the Ref, then replay every parked message whose tag
-     * the new map now covers, clearing each replayed tag.
-     */
-    const applyRegister = (
-      next: Bridge.HandlersByBridge<Bridges, Side>
-    ): Effect.Effect<void, never, TransportAdapter> =>
-      Effect.gen(function* () {
-        const nextMap = buildHandlerByTag(next)
-        yield* Ref.set(handlersRef, nextMap)
-        const parked = yield* Ref.get(parkedRef)
-        yield* Effect.forEach(
-          HashMap.toEntries(parked),
-          ([tag, messages]) =>
-            Option.match(HashMap.get(nextMap, tag), {
-              onNone: () => Effect.void,
-              onSome: (handler) =>
-                Effect.forEach(messages, (message) => handler(message), { discard: true }).pipe(
-                  Effect.andThen(Ref.update(parkedRef, (current) => HashMap.remove(current, tag)))
-                ),
-            }),
-          { discard: true }
-        )
-      })
-
-    const inbox = yield* Queue.unbounded<InboxItem<Bridges, Side>>()
-
-    const processItem = (
-      item: InboxItem<Bridges, Side>
-    ): Effect.Effect<void, ParseResult.ParseError, TransportAdapter> =>
-      item.kind === 'register'
-        ? applyRegister(item.handlers).pipe(Effect.ensuring(Deferred.succeed(item.done, undefined)))
-        : dispatchOrPark(item.raw)
+    const inbox = yield* Queue.unbounded<string>()
 
     yield* Effect.forkScoped(
-      Stream.runForEach(Stream.fromQueue(inbox, { shutdown: true }), (item) =>
-        processItem(item).pipe(
+      Stream.runForEach(Stream.fromQueue(inbox, { shutdown: true }), (raw) =>
+        dispatch(raw).pipe(
           Effect.catchAll((error) =>
             Effect.logWarning(`[effect-messaging] failed to decode message: ${String(error)}`)
           ),
-          // Handler defects (and register wiring throws) don't take the
-          // dispatch fiber down.
+          // Handler defects don't take the dispatch fiber down.
           Effect.catchAllDefect((defect) =>
             Effect.logError(`[effect-messaging] dispatch defect; continues: ${String(defect)}`)
           )
@@ -346,18 +279,18 @@ const make = <
     )
 
     if (side === 'Web') {
-      yield* Queue.offer(inbox, { kind: 'message', raw: '{"_tag":"__Ready"}' })
+      yield* Queue.offer(inbox, READY_RAW)
     }
     const initial = yield* adapter.drainInitial
     for (const raw of initial) {
-      yield* Queue.offer(inbox, { kind: 'message', raw })
+      yield* Queue.offer(inbox, raw)
     }
 
     // After scope close the queue is shut down; offering then fails with an
     // interrupt cause, which `Effect.ignore` (typed-error channel only) lets
     // through. `catchAllCause` swallows it so a late enqueue is a clean no-op.
     const enqueue = (raw: string): Effect.Effect<void> =>
-      Queue.offer(inbox, { kind: 'message', raw }).pipe(Effect.catchAllCause(() => Effect.void))
+      Queue.offer(inbox, raw).pipe(Effect.catchAllCause(() => Effect.void))
 
     if (adapter.attachBareSender !== undefined) {
       yield* adapter.attachBareSender(enqueue)
@@ -371,9 +304,13 @@ const make = <
      */
     const outbox = yield* Queue.unbounded<Bridge.SendableMessage<Bridges, Side>>()
 
+    // Mirror `enqueue`: after scope close the outbox is shut down and the
+    // offer fails with an interrupt cause. `Effect.ignore` only swallows the
+    // typed-error channel, so use `catchAllCause` to make a late send a no-op.
     const sendMessage: MessageSender<Bridges, Side> = (
       message: Bridge.SendableMessage<Bridges, Side>
-    ): Effect.Effect<void> => Queue.offer(outbox, message).pipe(Effect.ignore)
+    ): Effect.Effect<void> =>
+      Queue.offer(outbox, message).pipe(Effect.catchAllCause(() => Effect.void))
 
     yield* Effect.forkScoped(
       Deferred.await(peerReady)
@@ -398,18 +335,13 @@ const make = <
       Host: Effect.void,
     }[side]
 
+    // `Effect.suspend` defers `buildHandlerByTag` to run time: a duplicate-tag
+    // throw surfaces as a defect on the returned Effect (not at call
+    // construction), and the `Ref.set` never runs, so the prior map stays put.
     const registerHandlers = (
       handlers: Bridge.HandlersByBridge<Bridges, Side>
     ): Effect.Effect<void> =>
-      Effect.gen(function* () {
-        const done = yield* Deferred.make<void>()
-        const accepted = yield* Queue.offer(inbox, { kind: 'register', handlers, done })
-        // A shut-down inbox (post scope close) rejects the offer; skip
-        // the await so a late call can't hang on a `done` that never resolves.
-        if (accepted) {
-          yield* Deferred.await(done)
-        }
-      })
+      Effect.suspend(() => Ref.set(handlersRef, buildHandlerByTag(handlers)))
 
     return {
       sendMessage,

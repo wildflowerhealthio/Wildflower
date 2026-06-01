@@ -1,7 +1,6 @@
 import { Deferred, Effect, Layer } from 'effect'
 import {
   type BareSenderFunction,
-  type BareSenderService,
   type Bridge,
   BridgeTransport,
   HostBindings,
@@ -162,11 +161,11 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   const bareSenderDeferred = bareSenderDeferredRef.current
 
   const bareSenderRefCallback = useCallback(
-    (handle: BareSenderService | null): void => {
-      if (handle === null) return
+    (bareSender: BareSenderFunction | null): void => {
+      if (bareSender === null) return
       // Idempotent: a re-attach (same WebView instance) re-succeeds a
       // resolved Deferred, which is a no-op.
-      Effect.runSync(Deferred.succeed(bareSenderDeferred, (encoded) => handle.bareSender(encoded)))
+      Effect.runSync(Deferred.succeed(bareSenderDeferred, (encoded) => bareSender(encoded)))
     },
     [bareSenderDeferred]
   )
@@ -255,10 +254,10 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
 
   // Handler sync: when `handlers` reference flips (typically a sibling
   // binding re-rendering — token arrival, modal state, etc.), route the
-  // new records through `registerHandlers`. Ordered against in-flight
-  // inbound via the inbox queue; a message that arrived before its
-  // handler was registered is parked and replayed on swap. The two
-  // queues, both fibers, the schema union, and `peerReady` all persist.
+  // new records through `registerHandlers` — a single `Ref.set` that swaps
+  // the active map atomically against the dispatch fiber. The two queues,
+  // both fibers, the schema union, and `peerReady` all persist; a message
+  // that arrives with no covering handler is logged-and-dropped.
   useEffect(() => {
     // Skip the initial render: the first `handlers` value is already
     // baked into the transport via `BridgeTransport.make`'s initial arg.

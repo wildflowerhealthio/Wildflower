@@ -429,9 +429,8 @@ describe('BridgedWebView (multi-binding combine)', () => {
   })
 })
 
-// The `registerHandlers` semantics (handler-record swap, FIFO ordering
-// against in-flight inbound, no resource leaks) are exercised at the
-// core level in `bridge-transport.test.ts`, where the inbox barrier
-// provides a deterministic await. The BridgedWebView wiring of
+// The `registerHandlers` semantics (in-place handler-record swap via
+// `Ref.set`, no resource leaks) are exercised at the core level in
+// `bridge-transport.test.ts`. The BridgedWebView wiring of
 // `registerHandlers` into a useEffect is small enough that the existing
 // "decodes Page → Host Pong" test above pins the happy path.

@@ -14,10 +14,12 @@ type NavTarget = -1 | string
  *
  * @remarks
  * The previous implementation buffered targets in a module-level array
- * because handlers could fire before `useNavigate()` was wired. The
- * transport now parks inbound messages whose tag has no handler yet and
- * replays them in arrival order once `registerHandlers` installs a
- * covering handler, so a `navigate` is always present by dispatch time.
+ * because handlers could fire before `useNavigate()` was wired. Passing a
+ * stable proxy that always delegates to the latest `useNavigate` lets the
+ * handler register up front and resolve the current target at dispatch
+ * time, so the buffer (and its replay) is gone. A navigation message that
+ * does somehow arrive before the handler is registered is dropped by the
+ * transport, not queued.
  */
 const makeNavigationWebHandlers = (
   navigate: (target: NavTarget) => void

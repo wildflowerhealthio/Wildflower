@@ -22,8 +22,7 @@ the platform's initial messages, and forks a dispatch fiber that
 decodes inbound messages to the right bridge's handler. The transport's
 public `sendMessage` is the function-intersection of every wired
 bridge's typed sender. `registerHandlers(next)` swaps the active records
-at runtime — routed through the inbox so it sequences against in-flight
-messages (see [Two queues](#two-queues)).
+at runtime via an in-place `Ref.set` (see [Two queues](#two-queues)).
 
 ## Variance: `AnyHalf` and `AnyBridge`
 
@@ -70,14 +69,13 @@ one scoped fiber:
   Deferred once, then drains forever, routing each message through the
   `senderByTag` map. Sends issued before the peer is ready buffer in
   order and flush the moment the handshake lands.
-- **inbox** — carries two kinds of item: a `message` (raw inbound wire
-  string) and a `register` (a `registerHandlers` swap plus a `done`
-  Deferred). One dispatch fiber processes them FIFO, so a handler swap
-  is correctly sequenced against the messages around it. Each `message`
-  decodes through a single `parseJson(Union(...))`; a tag with no
-  current handler is _parked_ per-tag (not dropped — schema acceptance
-  proved it's a known inbound tag) and replayed in arrival order once a
-  `register` installs a covering handler.
+- **inbox** — carries raw inbound wire strings. One dispatch fiber
+  processes them FIFO. Each decodes through a single
+  `parseJson(Union(...))`; a tag with no current handler is
+  logged-and-dropped (even though schema acceptance proves it's a known
+  inbound tag). `registerHandlers` swaps the active handler map in place
+  via a `Ref.set` — no inbox round-trip — so the next message dispatches
+  against the new records.
 
 The `__Ready` handshake is one-way and rides the same inbox dispatch
 path on both sides: the host's `peerReady` resolves when it dispatches
@@ -91,9 +89,9 @@ both fibers.
 
 The Web platform adapter's `drainInitial` reads
 `window.__INITIAL_MESSAGES__` once, deletes the global, and returns
-the strings. The transport then offers each string into the inbox as a
-`message` item — behind the web's self-`__Ready`, so the handshake gates
-before the seeded messages dispatch.
+the strings. The transport then offers each string into the inbox —
+behind the web's self-`__Ready`, so the handshake gates before the
+seeded messages dispatch.
 
 Web consumers that need to _peek_ at the initial messages before
 mounting (e.g. to seed `<MemoryRouter initialEntries={[…]}>` at the

@@ -69,14 +69,14 @@ describe('NavigationBridgeExpo.makeHostHandlers (RouteChanged handler)', () => {
   })
 
   it('keeps the BridgeTransport dispatch fiber draining after no-op handlers run', async () => {
-    // Real `BridgeTransport.make` on the Host side with no-op handlers —
-    // `onRouteChanged` omitted, so `RouteChanged` short-circuits. We enqueue
+    // Real `BridgeTransport.make` on the Host side with a no-op RouteChanged
+    // handler (`onRouteChanged` omitted, so it short-circuits). We enqueue
     // multiple RouteChanged messages via the live bareSender (the actual
-    // dispatch path the WebView's `onMessage` exercises in prod), then issue
-    // a `registerHandlers` call: it rides the same FIFO inbox, so its
-    // resolution only happens once every message ahead of it has been
-    // processed. A fiber crash during dispatch would surface here as a
-    // rejected promise.
+    // dispatch path the WebView's `onMessage` exercises in prod), then a
+    // UIReady whose handler resolves a promise. UIReady rides the same FIFO
+    // inbox behind the RouteChanged messages, so awaiting it proves they were
+    // all dispatched first — and a fiber crash mid-dispatch would surface here
+    // as a rejected promise.
     const { layer: capturingAdapterLayer, liveBareSenderRef } = TestPlatformAdapterLayer.make({
       captureBareSenderLive: true,
     })
@@ -85,11 +85,18 @@ describe('NavigationBridgeExpo.makeHostHandlers (RouteChanged handler)', () => {
       pathname: '/a',
       canGoBack: false,
     })
+    const uiReadyEncoded = Schema.encodeSync(NavigationBridge.MessageSchemas.UIReady)({
+      _tag: 'UIReady',
+    })
+    let resolveUiReady: (() => void) | undefined
+    const uiReadyFired = new Promise<void>((resolve) => {
+      resolveUiReady = resolve
+    })
     await Effect.runPromise(
       Effect.gen(function* () {
-        const transport = yield* BridgeTransport.make({
+        yield* BridgeTransport.make({
           bridges: [NavigationBridge] as const,
-          handlers: [NavigationBridgeExpo.makeHostHandlers()],
+          handlers: [NavigationBridgeExpo.makeHostHandlers(undefined, () => resolveUiReady?.())],
           side: 'Host',
         }).pipe(Effect.provide(capturingAdapterLayer))
         if (liveBareSenderRef.current === null) {
@@ -98,9 +105,10 @@ describe('NavigationBridgeExpo.makeHostHandlers (RouteChanged handler)', () => {
         yield* liveBareSenderRef.current(routeChangedEncoded)
         yield* liveBareSenderRef.current(routeChangedEncoded)
         yield* liveBareSenderRef.current(routeChangedEncoded)
-        // Barrier: the register item sits behind the three messages in FIFO
-        // order, so when it resolves they have all been dispatched.
-        yield* transport.registerHandlers([NavigationBridgeExpo.makeHostHandlers()])
+        // Sentinel: UIReady sits behind the three RouteChanged messages in
+        // FIFO order, so its handler firing proves they were all dispatched.
+        yield* liveBareSenderRef.current(uiReadyEncoded)
+        yield* Effect.promise(() => uiReadyFired)
       }).pipe(Effect.scoped)
     )
   })

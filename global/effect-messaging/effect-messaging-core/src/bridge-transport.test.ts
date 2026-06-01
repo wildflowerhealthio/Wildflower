@@ -8,6 +8,7 @@ import * as TestPlatformAdapterLayer from './test-platform-adapter-layer.ts'
 
 const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.Number }))
 const Pong = Schema.parseJson(Schema.TaggedStruct('Pong', { reply: Schema.String }))
+const Tick = Schema.parseJson(Schema.TaggedStruct('Tick', {}))
 
 // oxlint-disable-next-line typescript-eslint/explicit-function-return-type
 const makeBridges = () => {
@@ -20,6 +21,7 @@ const makeBridges = () => {
 }
 
 const encodePing = (value: number): string => Schema.encodeSync(Ping)({ _tag: 'Ping', value })
+const encodeTick = (): string => Schema.encodeSync(Tick)({ _tag: 'Tick' })
 
 describe('BridgeTransport.make — duplicate outbound-tag throw', () => {
   test('two bridges declaring the same outbound tag fail synchronously', async () => {
@@ -45,47 +47,56 @@ describe('BridgeTransport.make — duplicate outbound-tag throw', () => {
   })
 })
 
-describe('BridgeTransport — parking, replay, and decode resilience', () => {
-  test('a message whose tag has no handler is parked, then replayed when registerHandlers covers it', async () => {
-    // Schema acceptance proves the tag is a known inbound message, so an
-    // unhandled-but-valid Ping is held — not dropped — until a covering
-    // handler lands. This is the cold-start guarantee the BridgedWebView
-    // consumer leans on: messages can arrive before React mounts the
-    // handler that owns them.
-    const { NavigationLike } = makeBridges()
+describe('BridgeTransport — unhandled-tag drop and decode resilience', () => {
+  test('a valid inbound message with no registered handler logs a warning and is dropped', async () => {
+    // Parking is gone: a schema-valid tag with no handler is logged-and-
+    // dropped, not held. A second inbound tag (Tick) with a real handler is
+    // a FIFO sentinel — once it fires we know the handler-less Ping ahead of
+    // it was already processed (and dropped).
+    const TwoInbound = Bridge.make({
+      name: 'TwoInbound',
+      hostToWeb: [
+        ['Ping', Ping],
+        ['Tick', Tick],
+      ] as const,
+      webToHost: [] as const,
+    })
     const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
-    // The typed handler record requires every inbound tag; this test
-    // deliberately registers none. TS rejects the direct assertion (the
-    // empty record and the full record don't structurally overlap), so the
-    // intentionally empty set is cast through `unknown`.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const noHandlers = [{}] as unknown as Bridge.HandlersByBridge<
-      readonly [typeof NavigationLike],
-      'Web'
-    >
     await Effect.runPromise(
       Effect.gen(function* () {
-        const results = yield* Queue.unbounded<number>()
+        const ticked = yield* Queue.unbounded<void>()
+        // Register Tick only — Ping has no handler. The typed record requires
+        // every inbound tag, so the deliberately partial set is cast through
+        // `unknown` (partial and full records don't structurally overlap).
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        const tickOnly = [
+          { Tick: () => Queue.offer(ticked, undefined).pipe(Effect.asVoid) },
+        ] as unknown as Bridge.HandlersByBridge<readonly [typeof TwoInbound], 'Web'>
         const transport = yield* BridgeTransport.make({
-          bridges: [NavigationLike] as const,
-          // No Ping handler yet — the inbound Ping has nowhere to go.
-          handlers: noHandlers,
+          bridges: [TwoInbound] as const,
+          handlers: tickOnly,
           side: 'Web',
         }).pipe(Effect.provide(adapterLayer))
 
+        // Ping has no handler → dropped. Tick rides the same FIFO inbox behind
+        // it, so taking its signal proves the Ping was processed (dropped) first.
         yield* transport.enqueue(encodePing(42))
-        // Re-registering the (still empty) handler set is a pure inbox
-        // barrier: it sits behind the Ping in FIFO order, so when it
-        // resolves the Ping has been processed — and parked.
-        yield* transport.registerHandlers(noHandlers)
-        expect(yield* Queue.poll(results)).toEqual(Option.none())
-
-        // Installing a covering handler replays the parked Ping in arrival order.
-        yield* transport.registerHandlers([
-          { Ping: ({ value }) => Queue.offer(results, value).pipe(Effect.asVoid) },
-        ])
-        expect(yield* Queue.take(results)).toBe(42)
-      }).pipe(Effect.scoped)
+        yield* transport.enqueue(encodeTick())
+        yield* Queue.take(ticked)
+      }).pipe(
+        LoggingLayerTest.expectToLog((logs) => {
+          expect(logs).toContainEqual(
+            expect.objectContaining({
+              level: 'WARN',
+              // oxlint-disable-next-line typescript/no-unsafe-assignment
+              message: expect.stringContaining(
+                '[effect-messaging] no handler for inbound tag "Ping"'
+              ),
+            })
+          )
+        }),
+        Effect.scoped
+      )
     )
   })
 
@@ -219,9 +230,10 @@ describe('BridgeTransport.registerHandlers — in-place handler swap', () => {
           side: 'Host',
         }).pipe(Effect.provide(adapterLayer))
 
-        // Open the gate via the inbound __Ready, then swap handlers. The
-        // register is a barrier behind the __Ready message, so on return
-        // `peerReady` is resolved.
+        // The inbound __Ready resolves `peerReady`; the swap is an in-place
+        // `Ref.set` that never touches the gate. The send below buffers in the
+        // outbox and drains once the dispatch fiber has processed __Ready —
+        // `Queue.take` below blocks until that flush lands.
         yield* transport.enqueue('{"_tag":"__Ready"}')
         yield* transport.registerHandlers([{ Pong: () => Effect.void }])
 
@@ -233,11 +245,11 @@ describe('BridgeTransport.registerHandlers — in-place handler swap', () => {
   })
 
   test('rapid back-to-back registerHandlers calls converge on the last set (no race, no leak)', async () => {
-    // Each `registerHandlers` awaits its `done` before the next runs, so
-    // the register items process in call order and the final handler map
-    // matches the last set. Drives a sequence of N handler records each
-    // tagged with its position, installs them sequentially, then
-    // dispatches one Ping and asserts only the last handler ran.
+    // Each `registerHandlers` is an in-place `Ref.set`; the sequential
+    // `yield*` loop runs them in call order, so the final handler map matches
+    // the last set. Drives a sequence of N handler records each tagged with
+    // its position, installs them sequentially, then dispatches one Ping and
+    // asserts only the last handler ran.
     await fc.assert(
       fc.asyncProperty(fc.integer({ min: 2, max: 8 }), async (n) => {
         const { NavigationLike } = makeBridges()
@@ -384,11 +396,43 @@ describe('BridgeTransport.make — queue lifecycle', () => {
               return transport.enqueue
             }).pipe(Effect.scoped)
           )
-          // The inbox is shut down post scope-close; each offer is dropped
-          // via `Effect.ignore`, so running every late enqueue resolves
-          // cleanly rather than throwing.
+          // The inbox is shut down post scope-close; each offer fails with an
+          // interrupt cause that `catchAllCause` swallows, so running every
+          // late enqueue resolves cleanly rather than throwing.
           for (const msg of lateMessages) {
             await Effect.runPromise(capturedEnqueue(msg))
+          }
+        }
+      ),
+      { numRuns: numRunsFor({ base: 25 }) }
+    )
+  })
+
+  test('property: late sendMessage after scope close drops without throwing', async () => {
+    const { NavigationLike } = makeBridges()
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.string(), { maxLength: 20 }),
+        async (replies: ReadonlyArray<string>) => {
+          const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
+          // Capture `sendMessage` out of the scoped program; by the time the
+          // value lands the scope (and the outbox) has closed.
+          const capturedSend = await Effect.runPromise(
+            Effect.gen(function* () {
+              const transport = yield* BridgeTransport.make({
+                bridges: [NavigationLike] as const,
+                handlers: [{ Ping: () => Effect.void }],
+                side: 'Web',
+              }).pipe(Effect.provide(adapterLayer))
+              return transport.sendMessage
+            }).pipe(Effect.scoped)
+          )
+          // The outbox is shut down post scope-close; the offer fails with an
+          // interrupt cause that `catchAllCause` swallows. A bare `Effect.ignore`
+          // touches only the typed-error channel and would let the interrupt
+          // through, rejecting here — so this guards that regression.
+          for (const reply of replies) {
+            await Effect.runPromise(capturedSend({ _tag: 'Pong', reply }))
           }
         }
       ),
