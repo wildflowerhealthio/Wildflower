@@ -17,7 +17,7 @@ import { useFhirR4ResourcesRuntimeLayer } from 'fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { clearActiveHandlerIfCurrent, setActiveHandler } from './active-handler-ref.ts'
+import { activeHandlerRef, clearActiveHandlerIfCurrent } from './active-handler-ref.ts'
 import { useCollectorSender } from './use-collector-sender.ts'
 
 /**
@@ -48,7 +48,7 @@ type RunnerState =
 
 /**
  * Hook that wires a single sync run to the module-level
- * `activeHandlerRef` (see {@link setActiveHandler}):
+ * `activeHandlerRef`:
  *
  *   - Builds the per-config `ScrapingPlan` via
  *     `makeScrapingPlanForConfig(remote.config)`.
@@ -193,7 +193,7 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
           }),
       })
     )
-    setActiveHandler(handler)
+    activeHandlerRef.current = handler
     setState({ _tag: 'running' })
 
     // Install-before-dispatch: the ref is set synchronously above, so

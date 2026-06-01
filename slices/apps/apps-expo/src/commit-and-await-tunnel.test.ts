@@ -1,6 +1,6 @@
 /**
  * Behavioral tests for {@link commitRequestedRunning} and {@link awaitTunnelOrigin}.
- * Sister file to `host-receiver-layer.test.ts`, which covers the host
+ * Sister file to `host-handlers.test.ts`, which covers the host
  * handler record that composes these helpers. Shared mocks +
  * fake store live in `__test-support__/host-receiver-test-mocks.ts`.
  */

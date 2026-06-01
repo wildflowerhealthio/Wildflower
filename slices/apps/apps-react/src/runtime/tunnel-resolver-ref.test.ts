@@ -3,8 +3,8 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import {
-  appsWebHandlers,
   clearPendingTunnelResolverIfCurrent,
+  makeAppsWebHandlers,
   setPendingTunnelResolver,
   type TunnelOutcome,
 } from './tunnel-resolver-ref.ts'
@@ -18,7 +18,7 @@ import {
  * timer fired — and a host response that arrived in the meantime would
  * land on the new request (the only one still reachable through the ref).
  *
- * `appsWebHandlers` is re-exported so a future test can drive the
+ * `makeAppsWebHandlers` is exported so a future test can drive the
  * receiver-side path; for the supersede invariant the resolver-ref API
  * is sufficient.
  */
@@ -147,14 +147,15 @@ describe('clearPendingTunnelResolverIfCurrent', () => {
   })
 })
 
-describe('appsWebHandlers', () => {
-  test('exports a handler record with TunnelStarted / TunnelFailed handlers', () => {
+describe('makeAppsWebHandlers', () => {
+  test('builds a handler record with TunnelStarted / TunnelFailed handlers', () => {
     // The handlers' interaction with the resolver-ref is exercised
     // end-to-end via the apps-react route tests; this assertion just
-    // pins that the export exists as a record keyed by the AppsBridge
+    // pins that the factory returns a record keyed by the AppsBridge
     // Host→Web tags, so a refactor that drops or renames a handler
     // surfaces here before reaching the transport build.
-    expect(typeof appsWebHandlers.TunnelStarted).toBe('function')
-    expect(typeof appsWebHandlers.TunnelFailed).toBe('function')
+    const handlers = makeAppsWebHandlers()
+    expect(typeof handlers.TunnelStarted).toBe('function')
+    expect(typeof handlers.TunnelFailed).toBe('function')
   })
 })

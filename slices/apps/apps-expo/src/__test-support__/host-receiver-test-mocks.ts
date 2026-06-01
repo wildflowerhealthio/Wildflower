@@ -1,6 +1,6 @@
 /**
  * Shared mock factories + fake-store harness used by the apps-expo host
- * receiver test split. Both `host-receiver-layer.test.ts` (handler-record
+ * receiver test split. Both `host-handlers.test.ts` (handler-record
  * dispatch) and `commit-and-await-tunnel.test.ts` (helper behavior)
  * register the same three module mocks against the same `globalThis`-
  * keyed harness; centralising the wiring keeps them in lockstep.

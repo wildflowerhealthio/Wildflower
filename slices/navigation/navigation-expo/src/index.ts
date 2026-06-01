@@ -1,4 +1,4 @@
-import { makeNavigationHostHandlers } from './host-receiver-layer.ts'
+import { makeNavigationHostHandlers } from './host-handlers.ts'
 import { useNavigationHostBinding } from './use-host-binding.ts'
 
 /**

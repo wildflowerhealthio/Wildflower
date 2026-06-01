@@ -1,6 +1,6 @@
 import type { AppsBridge } from 'apps-core/bridge'
 import { Effect } from 'effect'
-import type { Bridge } from 'effect-messaging-core'
+import { MessageHandler, type Bridge } from 'effect-messaging-core'
 
 /**
  * The tunnel-response outcomes the apps runtime resolves a pending
@@ -17,9 +17,9 @@ type PendingResolver = (outcome: TunnelOutcome) => void
  * Module-level cell holding the in-flight tunnel-request resolver (or
  * `null` when no request is pending). Mirrors the gatekeeper slice's
  * `authTokenRef` pattern: the page builds its `BridgeTransport` once at
- * boot and the `appsWebHandlers` below closes over this cell, so
- * the transport build does not depend on the React tree. Each
- * `useRequestTunnel` invocation swaps a fresh resolver in for the
+ * boot and the record {@link makeAppsWebHandlers} returns closes over
+ * this cell, so the transport build does not depend on the React tree.
+ * Each `useRequestTunnel` invocation swaps a fresh resolver in for the
  * duration of one request and clears it on settle.
  *
  * Singleton by design — the page has exactly one transport, exactly
@@ -30,19 +30,19 @@ type PendingResolver = (outcome: TunnelOutcome) => void
  */
 const pendingTunnelResolverRef: { current: PendingResolver | null } = { current: null }
 
-const droppedTagWarning = (tag: string): Effect.Effect<void> =>
-  Effect.logWarning(`appsWebHandlers: dropping ${tag} — no pending tunnel request`)
-
 /**
- * `AppsBridge.Web` inbound handler record the app's transport build
- * supplies to `BridgeTransport.make`. Reads {@link pendingTunnelResolverRef}
- * on every Host→Web tag and forwards the outcome to whichever caller is
- * waiting (or log-and-drops if no resolver is installed).
+ * Build the `AppsBridge.Web` inbound handler record the app's transport
+ * build supplies to `BridgeTransport.make`. Each per-tag handler reads
+ * {@link pendingTunnelResolverRef} on every Host→Web tag and forwards
+ * the outcome to whichever caller is waiting (or log-and-drops if no
+ * resolver is installed).
  */
-const appsWebHandlers: Bridge.HalfHandlers<(typeof AppsBridge)['Web']> = {
+const makeAppsWebHandlers = (): Bridge.HalfHandlers<(typeof AppsBridge)['Web']> => ({
   TunnelStarted: ({ origin }) => {
     const resolver = pendingTunnelResolverRef.current
-    if (resolver === null) return droppedTagWarning('TunnelStarted')
+    if (resolver === null) {
+      return MessageHandler.droppedTagWarning('appsWebHandlers', 'TunnelStarted')
+    }
     pendingTunnelResolverRef.current = null
     return Effect.sync(() => {
       resolver({ origin })
@@ -50,13 +50,15 @@ const appsWebHandlers: Bridge.HalfHandlers<(typeof AppsBridge)['Web']> = {
   },
   TunnelFailed: ({ reason }) => {
     const resolver = pendingTunnelResolverRef.current
-    if (resolver === null) return droppedTagWarning('TunnelFailed')
+    if (resolver === null) {
+      return MessageHandler.droppedTagWarning('appsWebHandlers', 'TunnelFailed')
+    }
     pendingTunnelResolverRef.current = null
     return Effect.sync(() => {
       resolver({ error: reason })
     })
   },
-}
+})
 
 /**
  * Install or clear the pending tunnel-request resolver.
@@ -99,5 +101,5 @@ const clearPendingTunnelResolverIfCurrent = (resolver: PendingResolver): void =>
   }
 }
 
-export { appsWebHandlers, clearPendingTunnelResolverIfCurrent, setPendingTunnelResolver }
+export { clearPendingTunnelResolverIfCurrent, makeAppsWebHandlers, setPendingTunnelResolver }
 export type { TunnelOutcome }

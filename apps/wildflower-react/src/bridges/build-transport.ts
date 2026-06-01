@@ -1,9 +1,9 @@
-import { appsWebHandlers } from 'apps-react'
-import { collectorWebHandlers } from 'collector-react'
+import { makeAppsWebHandlers } from 'apps-react'
+import { makeCollectorWebHandlers } from 'collector-react'
 import { Effect, Layer, Scope } from 'effect'
 import { BridgeTransport, Logging, TransportAdapter } from 'effect-messaging-core'
 import { WebPlatformAdapter } from 'effect-messaging-react'
-import { gatekeeperWebHandlers } from 'gatekeeper-react/web-bridge'
+import { makeGatekeeperWebHandlers } from 'gatekeeper-react/web-bridge'
 import { makeNavigationWebHandlers, type NavTarget } from 'navigation-react'
 
 import { bridges } from './bridges.ts'
@@ -52,9 +52,9 @@ const buildTransport = (navigate: (to: NavTarget) => void): Promise<ReactTranspo
         bridges,
         handlers: [
           navHandlers,
-          gatekeeperWebHandlers,
-          collectorWebHandlers,
-          appsWebHandlers,
+          makeGatekeeperWebHandlers(),
+          makeCollectorWebHandlers(),
+          makeAppsWebHandlers(),
           // Logging is Web→Host only on the page side; the Web half has
           // no inbound handlers, so its record is empty.
           {},

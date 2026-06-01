@@ -1,4 +1,4 @@
-import { makeAppsHostHandlers } from './host-receiver-layer.ts'
+import { makeAppsHostHandlers } from './host-handlers.ts'
 import { useAppsHostBinding } from './use-host-binding.ts'
 
 /**

@@ -21,7 +21,7 @@ export {
   type UpdateRemotePayload,
 } from './queries/index.ts'
 
-export { collectorWebHandlers } from './runtime/active-handler-ref.ts'
+export { makeCollectorWebHandlers } from './runtime/active-handler-ref.ts'
 export {
   CollectorSenderProvider,
   type CollectorSenderProviderProps,

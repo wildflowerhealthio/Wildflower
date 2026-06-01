@@ -1,7 +1,6 @@
 import type { CollectorBridge } from 'collector-fundamentals/bridge'
 import type { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
-import { Effect } from 'effect'
-import type { Bridge } from 'effect-messaging-core'
+import { MessageHandler, type Bridge } from 'effect-messaging-core'
 
 /**
  * The runtime holds the active sync's handler erased of its
@@ -19,15 +18,18 @@ type ActiveCollectorBridgeMessageHandler =
 /**
  * Module-level cell holding the active sync's handler (or `null` when
  * idle). Mirrors the gatekeeper slice's `authTokenRef` pattern: the
- * page builds its `BridgeTransport` once at boot and the
- * `collectorWebHandlers` below closes over this cell, so the
+ * page builds its `BridgeTransport` once at boot and the record
+ * {@link makeCollectorWebHandlers} returns closes over this cell, so the
  * transport build does not depend on the React tree.
  *
+ * Exported so the sole writer (`useSyncRunner`) can install its handler
+ * with a direct `activeHandlerRef.current = handler` on mount and clear
+ * it on unmount via {@link clearActiveHandlerIfCurrent} (set-if-equal),
+ * so a delayed cleanup can't blank a fresher handler that just took the
+ * slot.
+ *
  * Singleton by design — the page has exactly one transport, exactly
- * one running sync at a time. Last writer wins; `useSyncRunner`
- * installs its handler on mount and clears it on unmount via
- * {@link clearActiveHandlerIfCurrent} (set-if-equal) so a delayed
- * cleanup can't blank a fresher handler that just took the slot.
+ * one running sync at a time. Last writer wins.
  *
  * See the [Singleton Bridge Refs Explanation](../../../../../docs/Effect/Singleton%20Bridge%20Refs%20Explanation.md)
  * for the runtime-singleton invariant this enforces and its
@@ -35,53 +37,57 @@ type ActiveCollectorBridgeMessageHandler =
  */
 const activeHandlerRef: { current: ActiveCollectorBridgeMessageHandler | null } = { current: null }
 
-const droppedTagWarning = (tag: string): Effect.Effect<void> =>
-  Effect.logWarning(
-    `collectorWebHandlers: dropping ${tag} — no active CollectorBridgeMessageHandler`
-  )
-
 /**
- * `CollectorBridge.Web` inbound handler record the app's transport build
- * supplies to `BridgeTransport.make`. Reads {@link activeHandlerRef}
- * on every Host→Web tag and forwards into the installed handler's
- * matching method (or log-and-drops when nothing is installed).
+ * Build the `CollectorBridge.Web` inbound handler record the app's
+ * transport build supplies to `BridgeTransport.make`. Each per-tag
+ * handler reads {@link activeHandlerRef} on every Host→Web tag and
+ * forwards into the installed handler's matching method (or
+ * log-and-drops when nothing is installed).
  */
-const collectorWebHandlers: Bridge.HalfHandlers<(typeof CollectorBridge)['Web']> = {
+const makeCollectorWebHandlers = (): Bridge.HalfHandlers<(typeof CollectorBridge)['Web']> => ({
   ResponseStart: (event) => {
     const h = activeHandlerRef.current
-    return h === null ? droppedTagWarning('ResponseStart') : h.ResponseStart(event)
+    return h === null
+      ? MessageHandler.droppedTagWarning('collectorWebHandlers', 'ResponseStart')
+      : h.ResponseStart(event)
   },
   ResponseData: (event) => {
     const h = activeHandlerRef.current
-    return h === null ? droppedTagWarning('ResponseData') : h.ResponseData(event)
+    return h === null
+      ? MessageHandler.droppedTagWarning('collectorWebHandlers', 'ResponseData')
+      : h.ResponseData(event)
   },
   ResponseFinished: (event) => {
     const h = activeHandlerRef.current
-    return h === null ? droppedTagWarning('ResponseFinished') : h.ResponseFinished(event)
+    return h === null
+      ? MessageHandler.droppedTagWarning('collectorWebHandlers', 'ResponseFinished')
+      : h.ResponseFinished(event)
   },
   RequestError: (event) => {
     const h = activeHandlerRef.current
-    return h === null ? droppedTagWarning('RequestError') : h.RequestError(event)
+    return h === null
+      ? MessageHandler.droppedTagWarning('collectorWebHandlers', 'RequestError')
+      : h.RequestError(event)
   },
   Cancelled: (event) => {
     const h = activeHandlerRef.current
-    return h === null ? droppedTagWarning('Cancelled') : h.Cancelled(event)
+    return h === null
+      ? MessageHandler.droppedTagWarning('collectorWebHandlers', 'Cancelled')
+      : h.Cancelled(event)
   },
   PageLoaded: (event) => {
     const h = activeHandlerRef.current
-    return h === null ? droppedTagWarning('PageLoaded') : h.PageLoaded(event)
+    return h === null
+      ? MessageHandler.droppedTagWarning('collectorWebHandlers', 'PageLoaded')
+      : h.PageLoaded(event)
   },
-}
-
-const setActiveHandler = (handler: ActiveCollectorBridgeMessageHandler | null): void => {
-  activeHandlerRef.current = handler
-}
+})
 
 /**
  * Set-if-equal clear. Only blanks {@link activeHandlerRef} when it
  * still points at the supplied `handler`. Callers (cleanup paths in
- * `useSyncRunner`) use this in place of `setActiveHandler(null)` so a
- * cleanup that runs after a successor handler has already taken the
+ * `useSyncRunner`) use this in place of `activeHandlerRef.current = null`
+ * so a cleanup that runs after a successor handler has already taken the
  * slot — possible under StrictMode double-mount or any async-tinged
  * cleanup ordering — does not blank out the live handler.
  */
@@ -91,5 +97,5 @@ const clearActiveHandlerIfCurrent = (handler: ActiveCollectorBridgeMessageHandle
   }
 }
 
-export { clearActiveHandlerIfCurrent, collectorWebHandlers, setActiveHandler }
+export { activeHandlerRef, clearActiveHandlerIfCurrent, makeCollectorWebHandlers }
 export type { ActiveCollectorBridgeMessageHandler }

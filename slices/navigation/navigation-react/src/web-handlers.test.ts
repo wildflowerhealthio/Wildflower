@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { TestPlatformAdapterLayer } from 'effect-messaging-core'
 import { describe, expect, test } from 'vite-plus/test'
-import { makeNavigationWebHandlers } from './web-receiver-layer.ts'
+import { makeNavigationWebHandlers } from './web-handlers.ts'
 
 const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
 

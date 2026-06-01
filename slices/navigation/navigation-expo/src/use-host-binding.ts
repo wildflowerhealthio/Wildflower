@@ -2,7 +2,7 @@ import type { Effect } from 'effect'
 import { type BridgeTransport, HostBindings } from 'effect-messaging-core'
 import { NavigationBridge } from 'navigation-core'
 import { useMemo } from 'react'
-import { makeNavigationHostHandlers } from './host-receiver-layer.ts'
+import { makeNavigationHostHandlers } from './host-handlers.ts'
 
 interface UseNavigationHostBindingOptions {
   /** Initial SPA route; seeded via the URL-param channel. */

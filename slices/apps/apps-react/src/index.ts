@@ -1,4 +1,4 @@
-export { appsWebHandlers } from './runtime/tunnel-resolver-ref.ts'
+export { makeAppsWebHandlers } from './runtime/tunnel-resolver-ref.ts'
 export type { TunnelOutcome } from './runtime/tunnel-resolver-ref.ts'
 export {
   AppsSenderProvider,

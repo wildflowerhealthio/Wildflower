@@ -2,7 +2,7 @@ import { AppsBridge } from 'apps-core/bridge'
 import { HostBindings } from 'effect-messaging-core'
 import { useMemo } from 'react'
 import type { TunnelStore } from 'tunnel-core/livestore'
-import { makeAppsHostHandlers } from './host-receiver-layer.ts'
+import { makeAppsHostHandlers } from './host-handlers.ts'
 
 type TunnelLivestore = typeof TunnelStore.Service
 

@@ -3,9 +3,9 @@ import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import {
   type ActiveCollectorBridgeMessageHandler,
+  activeHandlerRef,
   clearActiveHandlerIfCurrent,
-  collectorWebHandlers,
-  setActiveHandler,
+  makeCollectorWebHandlers,
 } from './active-handler-ref.ts'
 
 /**
@@ -24,7 +24,7 @@ import {
  */
 
 afterEach(() => {
-  setActiveHandler(null)
+  activeHandlerRef.current = null
 })
 
 interface StubHandler {
@@ -76,18 +76,18 @@ type ForwardingHandlers = Record<
   (event: unknown) => Effect.Effect<void>
 >
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-const handlers = collectorWebHandlers as unknown as ForwardingHandlers
+const handlers = makeCollectorWebHandlers() as unknown as ForwardingHandlers
 
 describe('active-handler-ref ref operations', () => {
   test('install / re-read / clear traversal', () => {
     const { stub } = makeStubHandler()
 
-    setActiveHandler(stub)
+    activeHandlerRef.current = stub
     // The record reads activeHandlerRef.current on every dispatch, so
     // a successful re-read is observable via the routing test below;
     // here we drive the simpler shape: install then clear succeeds
     // and a later forwarded message lands on the cleared (null) state.
-    setActiveHandler(null)
+    activeHandlerRef.current = null
     expect(true).toBe(true)
   })
 
@@ -95,8 +95,8 @@ describe('active-handler-ref ref operations', () => {
     const a = makeStubHandler()
     const b = makeStubHandler()
 
-    setActiveHandler(a.stub)
-    setActiveHandler(b.stub)
+    activeHandlerRef.current = a.stub
+    activeHandlerRef.current = b.stub
     // A stale cleanup from handler-A runs after handler-B has taken
     // the slot. With set-if-equal, A's clear is a no-op; B stays
     // installed and receives subsequent forwards.
@@ -110,7 +110,7 @@ describe('active-handler-ref ref operations', () => {
 
   test('clearActiveHandlerIfCurrent on the current handler clears the ref', async () => {
     const a = makeStubHandler()
-    setActiveHandler(a.stub)
+    activeHandlerRef.current = a.stub
     clearActiveHandlerIfCurrent(a.stub)
 
     // No installed handler → log-warn-and-drop, no exception.
@@ -122,7 +122,7 @@ describe('active-handler-ref ref operations', () => {
 describe('collectorWebHandlers dispatch', () => {
   test('forwards each Host→Web tag to the installed handler', async () => {
     const { stub, calls } = makeStubHandler()
-    setActiveHandler(stub)
+    activeHandlerRef.current = stub
 
     const eventStart = { id: 'a', request: { method: 'GET', url: 'https://x' } }
     const eventData = { id: 'a', chunkBase64: 'AA==' }
@@ -154,11 +154,11 @@ describe('collectorWebHandlers dispatch', () => {
 
   test('resolves to void (log-and-drop) when no handler is installed', async () => {
     // Drives the null branch: every per-tag method returns
-    // `droppedTagWarning(tag)` when the ref is null. The assertion is
-    // "doesn't throw and resolves cleanly"; the warning itself is an
-    // `Effect.logWarning`, which surfaces via the configured logger
-    // rather than the test's return channel.
-    setActiveHandler(null)
+    // `MessageHandler.droppedTagWarning(...)` when the ref is null. The
+    // assertion is "doesn't throw and resolves cleanly"; the warning
+    // itself is an `Effect.logWarning`, which surfaces via the
+    // configured logger rather than the test's return channel.
+    activeHandlerRef.current = null
 
     await expect(Effect.runPromise(handlers.ResponseStart({ id: 'msg' }))).resolves.toBeUndefined()
   })
@@ -166,10 +166,10 @@ describe('collectorWebHandlers dispatch', () => {
   test('switching the installed handler routes subsequent tags to the new one', async () => {
     const a = makeStubHandler()
     const b = makeStubHandler()
-    setActiveHandler(a.stub)
+    activeHandlerRef.current = a.stub
 
     await Effect.runPromise(handlers.ResponseStart({ id: 'before-swap' }))
-    setActiveHandler(b.stub)
+    activeHandlerRef.current = b.stub
     await Effect.runPromise(handlers.ResponseStart({ id: 'after-swap' }))
 
     expect(a.calls).toEqual([{ method: 'ResponseStart', event: { id: 'before-swap' } }])

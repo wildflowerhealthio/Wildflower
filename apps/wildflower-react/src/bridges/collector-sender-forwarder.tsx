@@ -1,11 +1,6 @@
-import { type CollectorSender, CollectorSenderProvider } from 'collector-react'
-import { type JSX, type ReactNode, useMemo } from 'react'
+import { CollectorSenderProvider } from 'collector-react'
 
-import { useBridgeTransport } from './transport-context.ts'
-
-interface CollectorSenderForwarderProps {
-  readonly children: ReactNode
-}
+import { makeSliceSenderForwarder } from './make-sender-forwarder.tsx'
 
 /**
  * Bridges the app's `BridgeTransport.sendMessage` into the collector
@@ -14,17 +9,10 @@ interface CollectorSenderForwarderProps {
  * the app-level transport directly. Mount inside a
  * `<TransportContext.Provider>` (the `app-root.tsx` `AppRoot` component
  * supplies one above `<RouterProvider>`).
- *
- * The cast widens `transport.sendMessage` (a function-intersection over
- * every wired bridge's outbound message) to the slice's looser
- * `CollectorSender` (a single function accepting any tagged message
- * whose `_tag` is one of CollectorBridge's Web→Host tags). The dispatch
- * core routes by `_tag` at runtime regardless of the static signature.
  */
-const CollectorSenderForwarder = ({ children }: CollectorSenderForwarderProps): JSX.Element => {
-  const transport = useBridgeTransport()
-  const send = useMemo<CollectorSender>(() => transport.sendMessage, [transport])
-  return <CollectorSenderProvider send={send}>{children}</CollectorSenderProvider>
-}
+const CollectorSenderForwarder = makeSliceSenderForwarder(
+  'CollectorSenderForwarder',
+  CollectorSenderProvider
+)
 
 export { CollectorSenderForwarder }
