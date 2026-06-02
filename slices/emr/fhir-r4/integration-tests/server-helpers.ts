@@ -1,5 +1,12 @@
 import type { HttpClient } from '@effect/platform'
-import { FetchHttpClient, HttpApiBuilder, HttpApiClient, HttpServer } from '@effect/platform'
+import {
+  FetchHttpClient,
+  HttpApiBuilder,
+  HttpApiClient,
+  HttpMiddleware,
+  HttpServer,
+  HttpServerRequest,
+} from '@effect/platform'
 import { makeAdapter } from '@livestore/adapter-node'
 import { createStorePromise, type Store } from '@livestore/livestore'
 import { Effect, Layer } from 'effect'
@@ -48,6 +55,7 @@ const makePublicClient = (httpClientLayer: FetchLayer): Promise<PublicClient> =>
 interface Wired {
   readonly resources: Awaited<ReturnType<typeof makeResourcesClient>>
   readonly public: Awaited<ReturnType<typeof makePublicClient>>
+  readonly handler: (req: Request) => Promise<Response>
   readonly dispose: () => Promise<void>
   readonly store: Store<typeof schema, object>
 }
@@ -73,7 +81,22 @@ const wireServer = async (): Promise<Wired> => {
     Layer.provide(originLayer)
   )
   const merged = Layer.mergeAll(resourcesLive, publicLive, HttpServer.layerContext)
-  const { handler, dispose } = HttpApiBuilder.toWebHandler(merged)
+  // `HttpApiBuilder.toWebHandler` wraps fetch `Request`s via
+  // `HttpServerRequest.fromWeb`, which leaves `remoteAddress = None` since
+  // a fetch `Request` has no TCP socket. Production paths
+  // (`NodeHttpServer.layer`, `ExpoHttpServer.layer`) populate it from the
+  // socket. To exercise the request-origin trust gate from tests, install
+  // a middleware that reads a custom `x-test-remote-address` header (or
+  // defaults to `127.0.0.1`) and overrides the wrapper's `None`.
+  const { handler, dispose } = HttpApiBuilder.toWebHandler(merged, {
+    middleware: HttpMiddleware.make((httpApp) =>
+      Effect.updateService(httpApp, HttpServerRequest.HttpServerRequest, (request) =>
+        request.modify({
+          remoteAddress: request.headers['x-test-remote-address'] ?? '127.0.0.1',
+        })
+      )
+    ),
+  })
   const httpClientLayer = fetchLayerFor(handler)
 
   const resources = await makeResourcesClient(httpClientLayer)
@@ -82,6 +105,7 @@ const wireServer = async (): Promise<Wired> => {
   return {
     resources,
     public: publicClient,
+    handler,
     store,
     dispose: async (): Promise<void> => {
       await dispose()
