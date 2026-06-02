@@ -83,14 +83,19 @@ describe('GET /fhir-r4/.well-known/smart-configuration', () => {
       )
     ))
 
-  test('falls back to the configured Origin for untrusted Host values', () =>
+  test('falls back to the configured Origin when the peer is not loopback', () =>
     Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           const wired = yield* wireServerScoped
           const body = yield* Effect.promise(() =>
             fetchSmartConfig(wired.handler, {
-              host: 'someone-else.example.com',
+              // `x-test-remote-address` is consumed by the test middleware in
+              // `server-helpers.ts` and becomes `request.remoteAddress`. A
+              // non-loopback peer here simulates an attacker reaching an
+              // `HOSTNAME=0.0.0.0`-bound server with forged loopback headers.
+              'x-test-remote-address': '203.0.113.1',
+              host: '127.0.0.1:3000',
               'x-forwarded-host': 'evil.example.com',
               'x-forwarded-proto': 'https',
             })
