@@ -6,7 +6,7 @@
   "scripts": {
     "android": "expo start --clear --android",
     "android:build": "expo run:android",
-    "eas-build-post-install": "vp run pack",
+    "eas-build-post-install": "vp run -w pack",
     "ios": "expo start --clear --ios",
     "ios:build": "expo run:ios",
     "jest": "jest",

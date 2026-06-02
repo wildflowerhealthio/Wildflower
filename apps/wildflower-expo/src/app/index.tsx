@@ -50,6 +50,7 @@ export default function HomeScreen(): JSX.Element {
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isActive }}
                 onPress={() => {
+                  console.debug('Tab press:', tab.label)
                   Effect.runFork(
                     sendNavigation({ _tag: 'HostRequestedWebNavigation', path: tab.path })
                   )
