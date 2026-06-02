@@ -4,9 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
   test:
+    # Skip on draft PRs; `pull_request` is null on push events so the
+    # comparison is true and the job still runs on main.
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
