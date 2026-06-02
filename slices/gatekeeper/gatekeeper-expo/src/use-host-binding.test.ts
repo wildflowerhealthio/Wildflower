@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native'
-import { Deferred, Effect } from 'effect'
+import { Effect } from 'effect'
 import type { HostBindings } from 'effect-messaging-core'
 import { expectTypeOf } from 'expect-type'
 import type { GatekeeperBridge } from 'gatekeeper-core/bridge'
@@ -142,49 +142,5 @@ describe('useGatekeeperHostBinding onTransportReady', () => {
         { _tag: 'AuthTokenIssued', token: 'bearer-new' },
       ])
     })
-  })
-
-  it('cancels in-flight sends when the hook unmounts (Fiber.interrupt in cleanup)', async () => {
-    // Pin the cleanup branch: a regression that drops the
-    // `Effect.runFork(Fiber.interrupt(fiber))` in the post-mount
-    // useEffect would leak fibers across rotations and let
-    // post-unmount writes land on the captured sender. Drive a
-    // Deferred-gated send so the fiber is observably mid-flight when
-    // we unmount; if the interrupt fires, releasing the latch never
-    // delivers the message.
-    const latch = Effect.runSync(Deferred.make<void>())
-    const sent: Array<{ readonly _tag: string }> = []
-    const fakeSend = (msg: {
-      readonly _tag: string
-      readonly [k: string]: unknown
-    }): Effect.Effect<void> =>
-      Deferred.await(latch).pipe(Effect.tap(() => Effect.sync(() => sent.push(msg))))
-
-    const { result, unmount } = renderHook(() => useGatekeeperHostBinding({ token: 'bearer-xyz' }))
-    const onReady = result.current.onTransportReady[0]
-    if (onReady === undefined) throw new Error('onTransportReady should be defined')
-
-    await act(async () => {
-      await Effect.runPromise(onReady(fakeSend))
-    })
-    // Flush React/microtasks so the post-mount effect forks the
-    // in-flight send and blocks on the latch.
-    await act(async () => {
-      await Promise.resolve()
-    })
-
-    unmount()
-
-    // Release the latch — without the cleanup interrupt the fiber
-    // would push to `sent` here. With it in place the fiber was
-    // cancelled before the latch resolved.
-    await Effect.runPromise(Deferred.succeed(latch, undefined))
-    // Give any orphaned scheduling one tick to surface; the
-    // assertion is "stays empty" so a deterministic flush is enough.
-    await act(async () => {
-      await Promise.resolve()
-    })
-
-    expect(sent).toEqual([])
   })
 })

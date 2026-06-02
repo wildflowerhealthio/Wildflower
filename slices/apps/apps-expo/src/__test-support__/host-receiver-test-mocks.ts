@@ -196,11 +196,11 @@ const mockBuildLivestoreBaseFactory = (): unknown => ({ __esModule: true })
  *
  * The production handler no longer references `AppsBridge` as a runtime
  * value — `makeAppsHostHandlers` uses it in type positions only and
- * replies through the host→web sender captured via `setAppsHostSender`.
- * So this stub just satisfies the import; tests record replies by
- * installing a capturing sender (which pushes into `harness.sentMessages`)
- * rather than mocking a bridge-level `send`. Mocking still avoids pulling
- * the real cross-package `apps-core/bridge` (and its `dist`) under Jest.
+ * replies through the host→web `reply` sender passed to it. So this stub
+ * just satisfies the import; tests record replies by passing a capturing
+ * `reply` (which pushes into `harness.sentMessages`) rather than mocking a
+ * bridge-level `send`. Mocking still avoids pulling the real cross-package
+ * `apps-core/bridge` (and its `dist`) under Jest.
  */
 const mockBuildAppsCoreFactory = (): unknown => ({
   __esModule: true,

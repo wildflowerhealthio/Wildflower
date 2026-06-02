@@ -3,13 +3,13 @@
  * {@link AppsBridgeExpo.makeHostHandlers}:
  *
  *  - **Type-only**: `makeHostHandlers` takes a resolved `TunnelStore`
- *    service and returns the `Apps` host-side handler record (a pure
- *    `Effect<void>` per tag, no `TransportAdapter` requirement).
+ *    service + a host→web `reply` sender and returns the `Apps` host-side
+ *    handler record (a pure `Effect<void>` per tag, no `TransportAdapter`
+ *    requirement).
  *  - **Dispatch behavior**: `RequestTunnel` succeeds → `TunnelStarted`,
- *    fails (timeout, driven by `TestClock`) → `TunnelFailed`. Both
- *    replies ride the host→web sender installed via `setAppsHostSender`;
- *    the test installs a capturing sender that records into
- *    `harness.sentMessages`.
+ *    fails (timeout, driven by `TestClock`) → `TunnelFailed`. Both replies
+ *    ride the `reply` sender passed to `makeHostHandlers`; the test passes
+ *    a capturing reply that records into `harness.sentMessages`.
  *
  * Sister file: `commit-and-await-tunnel.test.ts` covers the
  * `commitRequestedRunning` + `awaitTunnelOrigin` helpers these handlers
@@ -36,7 +36,7 @@ jest.mock('tunnel-core/livestore', () => mockBuildTunnelCoreFactory())
 jest.mock('apps-core/bridge', () => mockBuildAppsCoreFactory())
 
 import type { TunnelStoreService } from './commit-and-await-tunnel.ts'
-import { setAppsHostSender } from './host-handlers.ts'
+import { type AppsHostSender } from './host-handlers.ts'
 import { AppsBridgeExpo } from './index.ts'
 
 /**
@@ -50,21 +50,22 @@ const asTunnelStoreService = (store: FakeStore): TunnelStoreService =>
 
 beforeEach(() => {
   resetHarness()
-  // Install a capturing host→web sender — replies the handler dispatches
-  // ride this and land in `harness.sentMessages`.
-  setAppsHostSender((message) =>
-    Effect.sync(() => {
-      harness.sentMessages.push(message)
-    })
-  )
 })
 
+// Capturing host→web reply — passed to `makeHostHandlers`; replies the
+// handler dispatches land in `harness.sentMessages`.
+const capturingReply: AppsHostSender = (message) =>
+  Effect.sync(() => {
+    harness.sentMessages.push(message)
+  })
+
 describe('AppsBridgeExpo.makeHostHandlers (type)', () => {
-  it('takes a resolved TunnelStore service and returns the Apps host handler record', () => {
+  it('takes a resolved TunnelStore service + reply sender and returns the Apps host handler record', () => {
     expectTypeOf(AppsBridgeExpo.makeHostHandlers).returns.toEqualTypeOf<
       MessageHandler.HandlersFor<AppsBridge['WebToHost']>
     >()
     expectTypeOf(AppsBridgeExpo.makeHostHandlers).parameter(0).toEqualTypeOf<TunnelStoreService>()
+    expectTypeOf(AppsBridgeExpo.makeHostHandlers).parameter(1).toEqualTypeOf<AppsHostSender>()
   })
 })
 
@@ -79,7 +80,7 @@ describe('AppsBridgeExpo.makeHostHandlers (RequestTunnel dispatch)', () => {
         error: null,
       },
     })
-    const handlers = AppsBridgeExpo.makeHostHandlers(asTunnelStoreService(store))
+    const handlers = AppsBridgeExpo.makeHostHandlers(asTunnelStoreService(store), capturingReply)
     // The snapshot fast-path resolves synchronously with
     // `https://app-1.tun.example` → onSuccess dispatches TunnelStarted.
     await Effect.runPromise(handlers.RequestTunnel({ _tag: 'RequestTunnel' }))
@@ -94,7 +95,7 @@ describe('AppsBridgeExpo.makeHostHandlers (RequestTunnel dispatch)', () => {
     // drive the timeout via `TestClock` so the test stays deterministic
     // and millisecond-fast.
     const store = makeFakeStore()
-    const handlers = AppsBridgeExpo.makeHostHandlers(asTunnelStoreService(store))
+    const handlers = AppsBridgeExpo.makeHostHandlers(asTunnelStoreService(store), capturingReply)
     await Effect.runPromise(
       Effect.gen(function* () {
         const fiber = yield* Effect.fork(handlers.RequestTunnel({ _tag: 'RequestTunnel' }))
