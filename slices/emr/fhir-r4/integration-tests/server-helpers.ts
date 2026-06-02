@@ -48,6 +48,7 @@ const makePublicClient = (httpClientLayer: FetchLayer): Promise<PublicClient> =>
 interface Wired {
   readonly resources: Awaited<ReturnType<typeof makeResourcesClient>>
   readonly public: Awaited<ReturnType<typeof makePublicClient>>
+  readonly handler: (req: Request) => Promise<Response>
   readonly dispose: () => Promise<void>
   readonly store: Store<typeof schema, object>
 }
@@ -82,6 +83,7 @@ const wireServer = async (): Promise<Wired> => {
   return {
     resources,
     public: publicClient,
+    handler,
     store,
     dispose: async (): Promise<void> => {
       await dispose()

@@ -4,7 +4,6 @@ import { Layer } from 'effect'
 import type { EmrStore } from 'emr-core/livestore'
 import type { Origin } from 'navigation-core'
 import { FhirPublicApi, FhirResourcesApi } from '../http-api-definition/index.ts'
-import { makeSmartConfiguration } from '../internal/smart-configuration-context.ts'
 import * as Binary from './binary.ts'
 import * as Observation from './observation.ts'
 import * as Patient from './patient.ts'
@@ -77,7 +76,6 @@ export {
   Observation,
   Patient,
   SmartConfiguration,
-  makeSmartConfiguration,
   FhirResourcesApiHandlersLive,
   FhirResourcesApiHandlersFor,
   FhirResourcesApiLive,

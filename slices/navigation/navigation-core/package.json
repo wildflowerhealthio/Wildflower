@@ -27,6 +27,7 @@
     "test": "vp test"
   },
   "devDependencies": {
+    "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
@@ -37,6 +38,7 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@effect/platform": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "kitchen-sink": "workspace:*"
