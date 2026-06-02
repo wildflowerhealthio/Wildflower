@@ -94,8 +94,15 @@ jest.mock('@livestore/react', () => {
 import BackgroundService from 'react-native-background-actions'
 import AppRuntimeProvider from './app-runtime-provider.tsx'
 
-const start = BackgroundService.start as jest.Mock
-const stop = BackgroundService.stop as jest.Mock
+// `jest.mocked` is the canonical typed accessor for a mocked function and
+// avoids the unsafe-narrowing `as jest.Mock` cast. The `unbound-method`
+// rule misfires here because we never invoke the method — we only read
+// `.mock.calls` / `.mockClear` off the mock state, which lives on the
+// function reference itself.
+// oxlint-disable-next-line typescript/unbound-method
+const start = jest.mocked(BackgroundService.start)
+// oxlint-disable-next-line typescript/unbound-method
+const stop = jest.mocked(BackgroundService.stop)
 
 // Flush the controller's promise-chained reconciles (one macrotask tick
 // drains the queued microtasks).

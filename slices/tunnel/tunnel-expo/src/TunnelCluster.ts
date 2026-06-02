@@ -93,12 +93,37 @@ export default class TunnelCluster extends EventEmitter {
     })
   }
 
-  close(): void {
+  /**
+   * Awaits the native module finishing its connection teardown — on iOS that
+   * includes `NWConnection.cancel()` transitioning to `.cancelled`, so the TCP
+   * FIN has actually been sent before this resolves. Required so the upstream
+   * `Effect.acquireRelease` finalizer in `startTunnel` doesn't return before
+   * the relay sees the close and releases the subdomain lease.
+   *
+   * `console.info` traces bracket the bridge call so a stuck native close can
+   * be diagnosed from JS logs without a native attach. Pair with the
+   * `[ExpoLocaltunnel]` NSLog lines on iOS.
+   */
+  async close(): Promise<void> {
+    const connCount = this.connections.size
     for (const sub of this.subscriptions) {
       sub.remove()
     }
     this.subscriptions = []
     this.connections.clear()
-    NativeModule.closeAllTunnelConnections().catch(() => {})
+    const t0 = Date.now()
+    // oxlint-disable-next-line no-console
+    console.info(`[tunnel] TunnelCluster.close → native closeAll (${connCount} conn(s))`)
+    try {
+      await NativeModule.closeAllTunnelConnections()
+      // oxlint-disable-next-line no-console
+      console.info(`[tunnel] TunnelCluster.close native closeAll done in ${Date.now() - t0}ms`)
+    } catch (err) {
+      // Don't propagate — `Effect.acquireRelease` releases must not fail, and a
+      // failure here would obscure the fiber's actual exit cause. But do surface
+      // it: a silent failure here is exactly how subdomain-lease leaks hide.
+      // oxlint-disable-next-line no-console
+      console.warn(`[tunnel] closeAllTunnelConnections failed after ${Date.now() - t0}ms`, err)
+    }
   }
 }

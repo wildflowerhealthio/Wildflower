@@ -67,7 +67,11 @@ const makeCountingRuntime = (counter: {
             counter.released += 1
           })
       )
-      yield* Effect.never
+      // Explicit `return` so the generator's return type is `never`, not
+      // `void`. Without the return, `Effect.gen` infers `Effect<void, ...>`
+      // because the generator function has no explicit return statement —
+      // even though `Effect.never` itself is `Effect<never>`.
+      return yield* Effect.never
     })
   )
 

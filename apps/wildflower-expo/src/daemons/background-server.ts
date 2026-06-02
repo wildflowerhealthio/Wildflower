@@ -1,10 +1,11 @@
-import { Effect, Fiber, Layer } from 'effect'
+import { Cause, Duration, Effect, Exit, Fiber, Layer } from 'effect'
 import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
 import { useEffect, useMemo } from 'react'
+import { AppState } from 'react-native'
 import BackgroundService, { type BackgroundTaskOptions } from 'react-native-background-actions'
 import { TunnelStore } from 'tunnel-core/livestore'
 import { TunnelDaemon } from 'tunnel-expo'
-import { useWildflowerStore, WildflowerStore } from '../livestore/livestore-store.ts'
+import { type useWildflowerStore, WildflowerStore } from '../livestore/livestore-store.ts'
 import { HttpServerDaemonLive } from './http-server.ts'
 
 /** The loaded wildflower store handle (livestore `Store` + `@livestore/react` API). */
@@ -21,16 +22,40 @@ type WildflowerStoreHandle = ReturnType<typeof useWildflowerStore>
 const STOP_POLL_INTERVAL_MS = 500
 
 /**
+ * Upper bound on how long the background task will wait for the daemon's
+ * scope teardown after a stop signal. iOS gives roughly 5s before reclaiming
+ * an expired task; 3s leaves enough margin for the tunnel FIN to flush while
+ * still settling the foreground service well inside that window. If we hit
+ * the cap something is wedged — log a warning and let `react-native-background-actions`
+ * tear the service down anyway.
+ */
+const TEARDOWN_TIMEOUT = Duration.seconds(3)
+
+/**
  * The merged on-device daemon launch as a forkable Effect — the same
  * `Layer.mergeAll(HttpServerDaemonLive, TunnelDaemon)` composition that
  * previously ran under `useComponentScopedRunner`, now hoisted here so the
  * background task can fork it. The wildflower store is provided once at the
  * outer layer; the tunnel + LHS slices get their own projections.
  *
+ * Merge order is load-bearing: `Layer.mergeAll`'s finalizers run in
+ * reverse-merge order, so `TunnelDaemon`'s finalizers (which release the
+ * relay-side subdomain lease) run **before** `HttpServerDaemonLive`'s
+ * (which closes the local HTTP listener). That order matters because the
+ * relay can still be sending bytes through to the listener until the
+ * tunnel FIN is acknowledged; swapping the args would race the lease
+ * release against the listener tear-down.
+ *
  * `Layer.launch` never returns normally — it holds the scope open until the
  * fiber is interrupted, at which point the scoped finalizers (HTTP listener
- * close, `tunnel.close()`) run. `Effect.orDie` collapses the daemon's
- * `PlatformError` channel after logging, matching the prior provider wiring.
+ * close, `tunnel.close()`) run.
+ *
+ * `Effect.onExit` distinguishes the three exit shapes so debug logs tell us
+ * **why** the runtime ended: deliberate interruption (the common case — user
+ * toggled stop, OS expiration, Metro reload) logs info, real failures log
+ * error with a pretty cause, clean success (unreachable in practice) logs
+ * debug. The previous `Effect.onError` lumped interruption and crash
+ * together and made StrictMode mount/unmount cycles look like errors.
  */
 const makeServerRuntime = (store: WildflowerStoreHandle): Effect.Effect<never, never, never> =>
   Layer.mergeAll(HttpServerDaemonLive, TunnelDaemon).pipe(
@@ -42,7 +67,15 @@ const makeServerRuntime = (store: WildflowerStoreHandle): Effect.Effect<never, n
       )
     ),
     Layer.launch,
-    Effect.onError((cause) => Effect.logError('HTTP + Tunnel Daemon failed', cause)),
+    Effect.onExit((exit) =>
+      Exit.match(exit, {
+        onSuccess: () => Effect.logDebug('Server runtime exited cleanly'),
+        onFailure: (cause) =>
+          Cause.isInterruptedOnly(cause)
+            ? Effect.logInfo('Server runtime stopped by request (interrupted)')
+            : Effect.logError(`HTTP + Tunnel Daemon failed: ${Cause.pretty(cause)}`),
+      })
+    ),
     Effect.orDie
   )
 
@@ -67,43 +100,100 @@ const SERVER_BACKGROUND_OPTIONS: BackgroundTaskOptions = {
 }
 
 /**
- * The background task body: fork the daemon launch, then resolve only once a
- * stop is signalled — at which point the launch fiber is interrupted and its
- * teardown is **awaited** before the returned promise settles, so the HTTP
- * listener and tunnel are fully closed before `react-native-background-actions`
- * tears the service down.
+ * The background task body: fork the daemon launch, await a stop signal,
+ * then interrupt the launch fiber and wait for its teardown before the
+ * returned promise settles — so the HTTP listener close and (critically)
+ * the tunnel lease release run before `react-native-background-actions`
+ * tears the foreground service down.
  *
  * Two independent stop cues are honoured: polling `BackgroundService.isRunning()`
  * (covers `stop()` from unmount / `requestedRunning` → false / Android) and the
  * iOS `'expiration'` event — which fires shortly before the OS reclaims the
  * background window and, unlike `stop()`, leaves `isRunning()` reporting `true`.
- * Whichever fires first wins; `finish` is idempotent so the loser is a no-op.
+ * Whichever fires first wins.
+ *
+ * Implemented as an `Effect.scoped` block so the listener + poll interval are
+ * acquired through the Effect scope and released compositionally — on the
+ * natural resume path, on scope close, and on interruption. The fiber is
+ * forked into the same scope, so even if this Effect itself is interrupted
+ * the daemon is torn down. The explicit `Fiber.interrupt` is bounded by
+ * {@link TEARDOWN_TIMEOUT}: in the common case the tunnel FIN flushes well
+ * inside the budget; in pathological cases we log a warning and let the
+ * background-actions library proceed rather than hang the service. Debug
+ * logs at each transition let the full shutdown narrative be reconstructed
+ * from telemetry.
  *
  * Exported for unit testing; production code reaches it via {@link reconcile}.
  */
 const runServerUntilStopped = (
   runtime: Effect.Effect<never, never, never>,
   pollIntervalMs: number = STOP_POLL_INTERVAL_MS
-): Promise<void> => {
-  const fiber = Effect.runFork(runtime)
-  return new Promise<void>((resolve) => {
-    let settled = false
-    const finish = (): void => {
-      if (settled) return
-      settled = true
-      clearInterval(poll)
-      BackgroundService.removeListener('expiration', finish)
-      Effect.runPromise(Fiber.interrupt(fiber)).then(
-        () => resolve(),
-        () => resolve()
-      )
-    }
-    BackgroundService.on('expiration', finish)
-    const poll = setInterval(() => {
-      if (!BackgroundService.isRunning()) finish()
-    }, pollIntervalMs)
-  })
-}
+): Promise<void> =>
+  Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* Effect.logInfo('Background server task starting')
+
+        // `forkDaemon` (not `Effect.fork`) so the daemon is **not** bound to
+        // this scope. With `Effect.fork`, scope close awaits the child fiber's
+        // interruption — meaning a slow finalizer (typically the HTTP listener
+        // release) makes the whole `runServerUntilStopped` promise hang past
+        // the explicit `Fiber.interrupt` timeout below. That hang leaves
+        // `BackgroundService.isRunning()` reporting `true`, so the
+        // foreground-resume path in `useBackgroundServerDaemon` sees no work
+        // to do and the user is left with a half-dead server.
+        //
+        // With `forkDaemon` the fiber runs detached; the explicit interrupt
+        // below is the orderly cleanup, and if it times out the fiber
+        // continues its finalizers in the background while `runPromise`
+        // resolves promptly so the foreground service can settle.
+        const daemonFiber = yield* Effect.forkDaemon(runtime)
+
+        const source = yield* Effect.async<'expiration' | 'isRunning-poll'>((resume) => {
+          let cleaned = false
+          // Idempotent teardown of the listener + interval. Runs once on
+          // whichever path completes first: natural resume below, or the
+          // returned `Effect.sync` if Effect.async is interrupted (scope
+          // close, parent fiber interruption).
+          const cleanup = (): void => {
+            if (cleaned) return
+            cleaned = true
+            clearInterval(poll)
+            BackgroundService.removeListener('expiration', onExpiration)
+          }
+          const finish = (s: 'expiration' | 'isRunning-poll'): void => {
+            if (cleaned) return
+            cleanup()
+            resume(Effect.succeed(s))
+          }
+          const onExpiration = (): void => finish('expiration')
+          BackgroundService.on('expiration', onExpiration)
+          const poll = setInterval(() => {
+            if (!BackgroundService.isRunning()) finish('isRunning-poll')
+          }, pollIntervalMs)
+          return Effect.sync(cleanup)
+        })
+
+        yield* Effect.logInfo(`Stop signal received from ${source}`)
+        yield* Effect.logInfo('Interrupting daemon fiber')
+        const interruptStart = yield* Effect.sync(() => Date.now())
+
+        yield* Fiber.interrupt(daemonFiber).pipe(
+          Effect.timeout(TEARDOWN_TIMEOUT),
+          Effect.tap(() =>
+            Effect.logInfo(`Daemon fiber interrupted in ${Date.now() - interruptStart}ms`)
+          ),
+          Effect.catchAll(() =>
+            Effect.logWarning(
+              `Background server teardown exceeded ${Duration.toMillis(TEARDOWN_TIMEOUT)}ms; forcing shutdown after ${Date.now() - interruptStart}ms (daemon fiber may continue running in background)`
+            )
+          )
+        )
+
+        yield* Effect.logInfo('Background server task exited')
+      })
+    )
+  )
 
 // Serialises start/stop against a single promise chain so a rapid mount →
 // unmount → mount (React StrictMode in dev, or a fast `requestedRunning`
@@ -120,8 +210,11 @@ const reconcile = (running: boolean, runtime: Effect.Effect<never, never, never>
   activeRuntime = runtime
   reconciling = reconciling.then(async () => {
     if (desiredRunning && activeRuntime !== null && !BackgroundService.isRunning()) {
-      const runtime = activeRuntime
-      await BackgroundService.start(() => runServerUntilStopped(runtime), SERVER_BACKGROUND_OPTIONS)
+      const activeAtStart = activeRuntime
+      await BackgroundService.start(
+        () => runServerUntilStopped(activeAtStart),
+        SERVER_BACKGROUND_OPTIONS
+      )
     } else if (!desiredRunning && BackgroundService.isRunning()) {
       await BackgroundService.stop()
     }
@@ -141,7 +234,11 @@ const reconcile = (running: boolean, runtime: Effect.Effect<never, never, never>
  *    toggle) and on unmount;
  *  - **stop** when the OS ends the task — `BackgroundService.stop()`
  *    (Android) or the `'expiration'` event (iOS), both observed inside
- *    {@link runServerUntilStopped}.
+ *    {@link runServerUntilStopped};
+ *  - **restart** when the app returns to the foreground after the OS
+ *    expired the task — without this hook the React state still says
+ *    `requestedRunning: true` but `BackgroundService.isRunning()` is
+ *    `false`, and nothing re-triggers `reconcile`.
  *
  * Keyed on the primitive `requestedRunning`, not the query row, so the
  * daemon-written `running` / `port` / `error` updates don't churn the
@@ -155,6 +252,23 @@ const useBackgroundServerDaemon = (store: WildflowerStoreHandle): void => {
     reconcile(requestedRunning, runtime)
     return (): void => {
       reconcile(false, runtime)
+    }
+  }, [runtime, requestedRunning])
+
+  // Foreground re-entry recovery. `reconcile` already short-circuits when
+  // its desired state matches `BackgroundService.isRunning()`, so this is a
+  // cheap "check and start if needed" — no extra plumbing required. iOS
+  // expiration silently kills the foreground service while the app sleeps;
+  // `requestedRunning` is unchanged when the user returns, so the
+  // `[runtime, requestedRunning]` effect above won't re-fire on its own.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') {
+        reconcile(requestedRunning, runtime)
+      }
+    })
+    return (): void => {
+      sub.remove()
     }
   }, [runtime, requestedRunning])
 }

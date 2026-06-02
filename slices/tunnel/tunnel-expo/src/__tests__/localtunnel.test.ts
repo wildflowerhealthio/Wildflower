@@ -85,7 +85,7 @@ describe('localtunnel() overloads', () => {
     expect(tunnel).toBeInstanceOf(Tunnel)
     expect(tunnel.url).toBe('https://tunnel-id.localtunnel.me')
     expect(tunnel.clientId).toBe('tunnel-id')
-    tunnel.close()
+    void tunnel.close()
   })
 
   test('options + callback form returns the Tunnel synchronously and invokes the callback after fetch', (done) => {
@@ -97,7 +97,7 @@ describe('localtunnel() overloads', () => {
         expect(tunnel).toBeInstanceOf(Tunnel)
         expect(tunnel).toBe(sync)
         expect(sync.url).toBe('https://cb-id.localtunnel.me')
-        sync.close()
+        void sync.close()
         done()
       } catch (assertionErr) {
         done(assertionErr)
@@ -115,7 +115,7 @@ describe('localtunnel() overloads', () => {
     expect(tunnel).toBeInstanceOf(Tunnel)
     expect(tunnel.opts.port).toBe(8000)
     expect(tunnel.opts.localHost).toBe('foo')
-    tunnel.close()
+    void tunnel.close()
   })
 
   test('port-first form + callback returns Tunnel synchronously', (done) => {
@@ -124,7 +124,7 @@ describe('localtunnel() overloads', () => {
       try {
         expect(err).toBeNull()
         expect(tunnel).toBe(sync)
-        sync.close()
+        void sync.close()
         done()
       } catch (assertionErr) {
         done(assertionErr)
@@ -143,13 +143,13 @@ describe('localtunnel() overloads', () => {
     const tunnel = await start({ port: 8000 })
     // First positional arg is the URL string.
     expect(fn.mock.calls[0]?.[0]).toBe('https://localtunnel.me/?new')
-    tunnel.close()
+    void tunnel.close()
   })
 
   test('explicit subdomain is appended to the assignment URI in place of ?new', async () => {
     const fn = mockFetchOnceWithBody(makeAssignBody())
     const tunnel = await start({ port: 8000, subdomain: 'mysub' })
     expect(fn.mock.calls[0]?.[0]).toBe('https://localtunnel.me/mysub')
-    tunnel.close()
+    void tunnel.close()
   })
 })
