@@ -39,7 +39,7 @@ const useAppsHostBinding = ({
         handlers: makeAppsHostHandlers(store, (message) => {
           const send = senderRef.current
           return send === null
-            ? HandlerHelpers.droppedTagWarning('appsHostHandlers', message._tag)
+            ? HandlerHelpers.warnAboutDroppedTag('appsHostHandlers', message._tag)
             : send(message)
         }),
         onTransportReady: (send: AppsHostSender) =>

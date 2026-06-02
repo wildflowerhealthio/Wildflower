@@ -25,7 +25,7 @@ A React context (`HandlerCoordinatorContext`, provided in `AppRootTree`) surface
 
 ## Drop-all default
 
-`registerHandlers` requires a **complete** record per bridge. A bridge with nothing registered gets a generated **drop-all** record — every inbound tag maps to `HandlerHelpers.droppedTagWarning` — so a message that arrives before (or after) a slice is mounted is log-and-dropped rather than crashing. This is the same observable behavior the old forwarder cells had on their `null` branch, now generated once by the coordinator.
+`registerHandlers` requires a **complete** record per bridge. A bridge with nothing registered gets a generated **drop-all** record — every inbound tag maps to `HandlerHelpers.warnAboutDroppedTag` — so a message that arrives before (or after) a slice is mounted is log-and-dropped rather than crashing. This is the same observable behavior the old forwarder cells had on their `null` branch, now generated once by the coordinator.
 
 ## Set-if-equal and supersede
 
@@ -39,6 +39,14 @@ Gatekeeper does **not** register on mount. `makeGatekeeperWebHandlers` is a boot
 ## Why a central coordinator, not a per-bridge merge API
 
 `registerHandlers` replaces the whole tuple. The coordinator owns _all_ slices' records and recomposes the whole tuple on every change — that's what makes independent slice registration safe without adding a per-bridge `registerHandlersFor` merge API (which would carry its own ordering/race questions). The bridges-tuple order is the single source of truth for tuple positions.
+
+## Page lifetime and boot ordering
+
+The page-side `BridgeTransport` is intentionally never torn down. `apps/wildflower-react/src/bridges/build-transport.ts` creates a `pageLifetimeScope` via `Effect.runSync(Scope.make())` and never closes it — the transport, its dispatch fiber, and the console interceptor live as long as the page does. Tests that need teardown call `BridgeTransport.makeWebTransport` directly with their own scope (see `web-transport.integration.test.ts`).
+
+The console interceptor is installed **immediately after the transport is built and before `signalReady` is awaited**, so any `console.*` emitted by Sentry init (`instrument.ts`), the transport's own internals, or the adapter's `drainInitial` rides the outbox-then-flush path. Installing later would silently drop those early lines.
+
+`navigate` is the only seam onto the router, captured behind a stable indirection (a router-instance ref the caller wires up) so the transport build can run before `createRouter` returns.
 
 ## See also
 

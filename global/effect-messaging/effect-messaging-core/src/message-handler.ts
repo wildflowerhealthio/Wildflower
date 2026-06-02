@@ -3,8 +3,9 @@ import type * as Message from './message.ts'
 
 /**
  * Per-tag handler record for one bridge side's inbound messages, passed
- * to the transport via `BridgeTransport.make`'s `handlers` tuple (or
- * swapped later through `registerHandlers`).
+ * to the transport via `BridgeTransport.makeHostTransport` /
+ * `makeWebTransport`'s `handlers` tuple (or swapped later through
+ * `registerHandlers`).
  *
  * @remarks
  * Each handler returns a pure `Effect<void>` — it acknowledges the

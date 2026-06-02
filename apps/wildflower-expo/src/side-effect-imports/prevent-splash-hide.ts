@@ -8,7 +8,9 @@ void SplashScreen.preventAutoHideAsync()
 setTimeout(() => {
   void SplashScreen.hideAsync().catch((cause) => {
     // Log, but don't crash if the splash screen API fails — the app
-    // can still function, just with a janky flash.
-    console.warn('SplashScreen.preventAutoHideAsync failed', cause)
+    // can still function, just with a janky flash. Surface at `error`:
+    // hitting this branch means `UIReady` never arrived within 10s,
+    // which is a stuck-startup signal worth telemetry attention.
+    console.error('SplashScreen.hideAsync (10s fallback) failed', cause)
   })
 }, 10_000)

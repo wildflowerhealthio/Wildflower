@@ -1,8 +1,9 @@
 import type { Scope } from 'effect'
 import { Deferred, Effect } from 'effect'
 import type * as Bridge from './bridge.ts'
+import { DuplicateTagError } from './internal/assert-no-duplicate-tags.ts'
 import { makeHandlerRegistry } from './internal/handler-registry.ts'
-import { READY_RAW, READY_TAG } from './internal/handshake-message.ts'
+import { READY_RAW, READY_TAG, ReadyMessageSchema } from './internal/handshake-message.ts'
 import { makeInboundDispatcher } from './internal/inbound-dispatcher.ts'
 import { makeOutboundPump, type MessageSender } from './internal/outbound-pump.ts'
 import type * as MessageHandler from './message-handler.ts'
@@ -60,12 +61,12 @@ interface BridgeTransport<
    * discharge and repeated calls don't accumulate. Replace semantics:
    * the supplied records become the whole active set; a tag absent from
    * the new records loses its handler (future messages for it are
-   * logged-and-dropped). Throws (as a defect) on a duplicate-tag wiring
-   * error, leaving the prior map in place.
+   * logged-and-dropped). Fails with a {@link DuplicateTagError} on a
+   * duplicate-tag wiring error, leaving the prior map in place.
    */
   readonly registerHandlers: (
     handlers: Bridge.HandlersByBridge<Bridges, InDir>
-  ) => Effect.Effect<void>
+  ) => Effect.Effect<void, DuplicateTagError>
 }
 
 const make = <
@@ -113,6 +114,10 @@ const make = <
       inboundDirection,
       registry,
       adapter,
+      // Inject the `__Ready` schema as a control message so the dispatcher
+      // can decode it without knowing handshake semantics. Pairs with the
+      // `controlHandlers` injection on the registry above.
+      extraInboundSchemas: [ReadyMessageSchema],
     })
     const { sendMessage } = yield* makeOutboundPump({
       bridges,
@@ -176,5 +181,5 @@ const makeWebTransport = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>
     outboundDirection: 'WebToHost',
   })
 
-export { makeHostTransport, makeWebTransport }
+export { DuplicateTagError, makeHostTransport, makeWebTransport }
 export type { BridgeTransport, MessageSender }

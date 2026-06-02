@@ -40,8 +40,8 @@ type OnTransportReadyByBridge<Bridges extends ReadonlyArray<Bridge.AnyBridge>> =
  *
  * Compose multiple slices via {@link combine}: the four arrays
  * concatenate index-aligned, so the result satisfies the same
- * parallel-tuple shape `BridgeTransport.make` consumes. Single-bridge
- * slices construct theirs via {@link single}.
+ * parallel-tuple shape `BridgeTransport.makeHostTransport` consumes.
+ * Single-bridge slices construct theirs via {@link single}.
  *
  * See [Host Bindings Explanation](../docs/Host%20Bindings%20Explanation.md).
  */
@@ -97,8 +97,8 @@ type CombineHostBindings<T extends ReadonlyArray<HostBindings<ReadonlyArray<Brid
  * Concatenate a tuple of {@link HostBindings} into a single bindings
  * struct. Each of the four parallel arrays concatenates in the same
  * order the inputs are passed, so the result preserves the
- * parallel-tuple invariant `BridgeTransport.make` and {@link callTransportReady}
- * consume.
+ * parallel-tuple invariant `BridgeTransport.makeHostTransport` and
+ * {@link callTransportReady} consume.
  *
  * @example
  * ```ts

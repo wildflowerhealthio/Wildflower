@@ -2,7 +2,7 @@ import type { CollectorBridge } from 'collector-fundamentals/bridge'
 import type { MessageHandler } from 'effect-messaging-core'
 import { expectTypeOf } from 'expect-type'
 
-import type { useCollectorHostHandlers } from './use-receiver-layer.ts'
+import type { useCollectorHostHandlers } from './use-host-handlers.ts'
 
 // Type-only assertions on `useCollectorHostHandlers`'s signature.
 // Hoisted to module scope so the type check fires at file load —

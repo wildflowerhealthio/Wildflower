@@ -9,10 +9,11 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, test } from 'vite-plus/test'
 
 // The `/settings` auth gate now lives in the route's `beforeLoad`
-// (`authBeforeLoad`), not inside `SettingsLayout` — so the component
-// renders its header + `<Outlet>` unconditionally. Auth gating is
-// exercised in `auth-gate.test.tsx`; mounting `SettingsLayout` directly
-// here bypasses the gate, which is exactly the unit under test.
+// (shared `authGatedRouteOptions`), not inside `SettingsLayout` — so
+// the component renders its header + `<Outlet>` unconditionally. The
+// gate's behaviour is exercised in `gatekeeper-react`'s
+// `auth-ready.test.ts`; mounting `SettingsLayout` directly here
+// bypasses the gate, which is exactly the unit under test.
 import { SettingsLayout } from './settings.tsx'
 import { SettingsIndex } from './settings/index.tsx'
 

@@ -1,6 +1,6 @@
 export { CollectorHostProvider } from './collector-host-context.tsx'
 export type { CollectorHostProviderProps } from './collector-host-context.tsx'
-export { useCollectorHostHandlers } from './use-receiver-layer.ts'
+export { useCollectorHostHandlers } from './use-host-handlers.ts'
 export { useCollectorHostBinding } from './use-host-binding.ts'
 export {
   useAsBrowserSnifferOutlet,

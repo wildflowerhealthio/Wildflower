@@ -50,7 +50,7 @@ Slice-specific policy lives next to the slice:
 
 - `useGatekeeperHostBinding({ token })` routes `AuthTokenIssued` through `onTransportReady` — never URL params, since the bearer would leak into native WebView logs.
 - `useNavigationHostBinding({ initialRoute, onRouteChanged })` seeds the URL-param channel itself.
-- `useAppsHostBinding({ tunnelStoreLayer })` discharges `TunnelStore` against a caller-supplied store layer so the slice never sees the bare livestore.
+- `useAppsHostBinding({ store })` discharges `TunnelStore` against the caller's store handle (the slice derives the layer internally via `TunnelStore.layerFrom(store)`).
 - `useCollectorHostBinding()` wraps `useCollectorHostHandlers` (which reads the host handler record from `<CollectorHostProvider>`) into the uniform shape, and installs the transport's outbound sender into the collector pipe on `onTransportReady`.
 
 ### `HostBindings.combine([...])` — tuple flat-concat
@@ -89,7 +89,7 @@ A `bindings.handlers` reference flip (typically a sibling binding re-rendering �
 
 Handlers are pure: `MessageHandler.HandlersFor<B['WebToHost']>` is one `(message) => Effect<void>` per inbound tag, with no `TransportAdapter` (or `BareSender`) in the requirement channel. The transport owns sending; a handler that only consumes an inbound message never touches the send path.
 
-The one handler that _replies_ — apps' `RequestTunnel`, which answers with `TunnelStarted` / `TunnelFailed` — reaches the transport's sender through `onTransportReady`. The apps slice stashes the transport's typed host sender into a module-level singleton ref when the binding's `onTransportReady` fires, and the `RequestTunnel` handler reads that ref to issue its reply (log-and-dropping if the transport isn't ready yet). This keeps the handler a plain `(message) => Effect<void>` while still letting it talk back, with no `Layer.succeed(BareSender, …)` fabrication at the shell.
+The one handler that _replies_ — apps' `RequestTunnel`, which answers with `TunnelStarted` / `TunnelFailed` — reaches the transport's sender through `onTransportReady`. The apps binding writes the transport's typed host sender into a **binding-scoped** `useRef` when `onTransportReady` fires (not a module-level global), and the `RequestTunnel` handler closes over that ref to issue its reply. When the ref is still `null` (transport not yet ready) the handler falls back to `HandlerHelpers.warnAboutDroppedTag`, so the message is acknowledged-and-dropped. This keeps the handler a plain `(message) => Effect<void>` while still letting it talk back, with no `Layer.succeed(BareSender, …)` fabrication at the shell and no module-level mutable state.
 
 ## Where the Casts Live
 

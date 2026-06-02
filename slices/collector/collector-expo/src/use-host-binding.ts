@@ -4,7 +4,7 @@ import { HostBindings } from 'effect-messaging-core'
 import { useMemo } from 'react'
 
 import { useCollectorSenderRef } from './message-sender-pipes.tsx'
-import { useCollectorHostHandlers } from './use-receiver-layer.ts'
+import { useCollectorHostHandlers } from './use-host-handlers.ts'
 
 /**
  * Host binding for the collector bridge.

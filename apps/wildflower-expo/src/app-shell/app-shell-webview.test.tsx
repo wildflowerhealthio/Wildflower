@@ -153,11 +153,12 @@ jest.mock('expo-splash-screen', () => ({
 }))
 
 // Capture the options gatekeeper-expo's hook receives so the wiring
-// assertions below can read what the shell passed in. The mock factory
-// itself only needs to mirror the new contract: `onTransportReady` is
-// always defined (it captures the sender), and token delivery happens
-// out-of-band via a post-mount effect in the real hook — so the mock
-// performs the conditional send inline as a faithful proxy.
+// assertions below can read what the shell passed in. The mock's
+// `onTransportReady` is a no-op: the shell only owes gatekeeper the
+// token value, and no test in this file exercises the captured
+// sender. The real token-delivery contract (capture sender →
+// post-mount send) is pinned by `gatekeeper-expo`'s own tests
+// (`use-host-binding.test.ts`).
 let mockGatekeeperOptions: { token?: string } | null = null
 jest.mock('gatekeeper-expo', () => {
   const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
@@ -171,15 +172,7 @@ jest.mock('gatekeeper-expo', () => {
           bridge: { name: 'Gatekeeper' },
           handlers: {},
           initialMessages: [],
-          onTransportReady: (
-            send: (msg: {
-              readonly _tag: string
-              readonly [k: string]: unknown
-            }) => EffectType.Effect<void>
-          ): EffectType.Effect<void> =>
-            options.token === undefined
-              ? effect.Effect.void
-              : send({ _tag: 'AuthTokenIssued', token: options.token }),
+          onTransportReady: (): EffectType.Effect<void> => effect.Effect.void,
         })
       },
     },
@@ -341,6 +334,45 @@ describe('AppShellWebView', () => {
     onUiReady()
 
     expect(mockSplashHideAsync).toHaveBeenCalledTimes(1)
+  })
+
+  it('swallows a SplashScreen.hideAsync rejection inside onUiReady so it does not escape as an unhandled promise rejection', async () => {
+    // Pins the `.catch(...)` on `SplashScreen.hideAsync()` in the
+    // shell's `handleUiReady` as load-bearing. The 10s fallback in
+    // `prevent-splash-hide.ts` can race and hide the splash first;
+    // when that happens, `hideAsync` here rejects with "already
+    // hidden" and the catch is what keeps it from surfacing.
+    mockSplashHideAsync.mockImplementationOnce(() =>
+      Promise.reject(new Error('already hidden'))
+    )
+
+    const unhandled: Array<unknown> = []
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason)
+    }
+    // Jest runs Expo packages under Node — `unhandledRejection` on
+    // `process` is the channel a `.catch`-less rejection would surface
+    // on. If the shell's `.catch(...)` is ever removed, this listener
+    // collects the rejection and the assertion below fails.
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
+      const onUiReady = mockNavigationOptions?.onUiReady
+      if (onUiReady === undefined) throw new Error('onUiReady not threaded into navigation binding')
+
+      await act(async () => {
+        onUiReady()
+        // Yield twice so the rejected promise's reaction runs and any
+        // unhandledRejection event would have fired.
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(mockSplashHideAsync).toHaveBeenCalledTimes(1)
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
   })
 
   it('seeds HostRequestedWebNavigation via the navigation binding initialMessages', () => {

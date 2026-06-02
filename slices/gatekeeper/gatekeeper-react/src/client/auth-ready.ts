@@ -1,5 +1,5 @@
 import { redirect, type AnyRedirect } from '@tanstack/react-router'
-import { Data, Duration, Effect, Option, pipe, Stream, SubscriptionRef } from 'effect'
+import { Cause, Data, Duration, Effect, Option, pipe, Runtime, Stream, SubscriptionRef } from 'effect'
 
 import { authTokenRef } from './token-storage.ts'
 
@@ -15,6 +15,50 @@ class TokenTimeout extends Data.TaggedError('TokenTimeout')<Record<string, never
 const EMBEDDED_TOKEN_TIMEOUT = Duration.seconds(5)
 
 const isPresent = (token: string | null): token is string => token !== null && token !== ''
+
+/**
+ * Reach through any `FiberFailure`-style wrapping to the underlying
+ * raised value. Returns `caught` unchanged when nothing to unwrap.
+ *
+ * Checks both the failure channel (`Cause.failureOption` — what a
+ * typed `Effect.fail(...)` rides) and the defect channel
+ * (`Cause.dieOption` — what `Effect.die(...)` / unhandled throws ride)
+ * so a `TokenTimeout` raised either way reaches the same branch
+ * downstream. Defensive against future refactors / scope-interrupt
+ * edge cases — today `embeddedAuthReadyEffect` raises `TokenTimeout`
+ * on the failure channel and `webAuthReadyEffect` raises `AnyRedirect`
+ * on the failure channel, so the typed-failure path is the common one,
+ * but the defect path stays covered.
+ *
+ * `FiberFailure` stores its cause under a unique-symbol-keyed property
+ * (`Runtime.FiberFailureCauseId`), not a string-named field, so the
+ * `Runtime.isFiberFailure` guard is the only safe way to detect and
+ * unwrap it from outside the Effect runtime.
+ */
+const unwrapFiberFailure = (caught: unknown): unknown => {
+  if (!Runtime.isFiberFailure(caught)) return caught
+  const cause = caught[Runtime.FiberFailureCauseId]
+  const failure = Cause.failureOption(cause)
+  if (failure._tag === 'Some') return failure.value
+  const die = Cause.dieOption(cause)
+  if (die._tag === 'Some') return die.value
+  return caught
+}
+
+/**
+ * Run a `Promise<void>`-producing thunk and unwrap any
+ * `FiberFailure` rejection so the downstream consumer sees the
+ * underlying typed failure (`TokenTimeout`, `AnyRedirect`, etc.)
+ * directly. Used by the `awaitAuthReady` factories below so callers
+ * (e.g. TanStack's `beforeLoad`) don't need to re-implement the unwrap.
+ */
+const withFiberFailureUnwrap = async (run: () => Promise<void>): Promise<void> => {
+  try {
+    await run()
+  } catch (caught: unknown) {
+    throw unwrapFiberFailure(caught)
+  }
+}
 
 /**
  * Web auth-readiness logic, parameterized over the token ref so it's
@@ -79,11 +123,12 @@ const embeddedAuthReadyEffect = (
  * Web (`main-web` / `main-single-web`) auth-readiness wait. Resolves
  * immediately when a token is already present (standalone web reads it
  * synchronously from `localStorage` at module load); rejects with a
- * TanStack `redirect` to the device-login route otherwise, which the
- * gate lets bubble so TanStack's routing machinery follows the
- * redirect.
+ * TanStack `redirect` to the device-login route otherwise. Any
+ * `FiberFailure` wrapping is unwrapped so callers see the raw redirect
+ * sentinel and not a runtime shell.
  */
-const awaitWebAuthReady = (): Promise<void> => Effect.runPromise(webAuthReadyEffect(authTokenRef))
+const awaitWebAuthReady = (): Promise<void> =>
+  withFiberFailureUnwrap(() => Effect.runPromise(webAuthReadyEffect(authTokenRef)))
 
 /**
  * Embedded (`main-embedded`) auth-readiness factory. The host hands the
@@ -93,26 +138,28 @@ const awaitWebAuthReady = (): Promise<void> => Effect.runPromise(webAuthReadyEff
  * ready to even receive the host's `AuthTokenIssued` message.
  *
  * Closes over the entry-supplied `transportReady` promise and returns
- * the actual `awaitAuthReady` function the `beforeLoad` gate calls.
+ * the actual `awaitAuthReady` function the route's `beforeLoad` calls.
  * The returned function awaits `transportReady` first (so the bridge
  * handshake has had a chance to flush the host's URL-param-encoded
  * token messages), then waits the ref going non-null for up to
  * {@link EMBEDDED_TOKEN_TIMEOUT}; resolves on the first present value,
- * rejects with {@link TokenTimeout} on timeout.
+ * rejects with {@link TokenTimeout} on timeout. Any `FiberFailure`
+ * wrapping is unwrapped so callers see the raw `TokenTimeout` (or a
+ * defect-routed equivalent) directly.
  *
  * @param transportReady - Promise that resolves once the page-side
  *   `BridgeTransport` has signalled the host (`signalReady`). The
- *   factory shape is what lets the gate stay
- *   environment-agnostic — the `_auth` `beforeLoad` only sees the
- *   resolved `() => Promise<void>` and doesn't have to know about the
- *   transport.
+ *   factory shape is what lets the route-level gate stay
+ *   environment-agnostic — `beforeLoad` only sees the resolved
+ *   `() => Promise<void>` and doesn't have to know about the transport.
  */
 const awaitEmbeddedAuthReady =
   (transportReady: Promise<void>): (() => Promise<void>) =>
-  async () => {
-    await transportReady
-    return Effect.runPromise(embeddedAuthReadyEffect(authTokenRef))
-  }
+  () =>
+    withFiberFailureUnwrap(async () => {
+      await transportReady
+      await Effect.runPromise(embeddedAuthReadyEffect(authTokenRef))
+    })
 
 export {
   awaitEmbeddedAuthReady,
@@ -120,5 +167,6 @@ export {
   embeddedAuthReadyEffect,
   EMBEDDED_TOKEN_TIMEOUT,
   TokenTimeout,
+  unwrapFiberFailure,
   webAuthReadyEffect,
 }

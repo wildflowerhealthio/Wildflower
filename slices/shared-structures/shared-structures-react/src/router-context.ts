@@ -29,10 +29,38 @@ type RunAuthed = <A, E>(
  */
 type AwaitAuthReady = () => Promise<void>
 
-interface RouterContext {
+/**
+ * Generic runtime-layer shape parameterised over the extra services a
+ * particular slice or app adds on top of {@link RuntimeLayer}'s base
+ * (`BearerToken | HttpClient`). A slice instantiates this with its own
+ * client (e.g. `RuntimeLayerWith<CollectorHttpApiClient>`); the host
+ * app instantiates with a union of every slice's client.
+ */
+type RuntimeLayerWith<Extra> = Layer.Layer<
+  Layer.Layer.Success<RuntimeLayer> | Extra,
+  never,
+  never
+>
+
+/**
+ * Generic `runAuthed` shape over the extra services. See
+ * {@link RuntimeLayerWith}.
+ */
+type RunAuthedWith<Extra> = <A, E>(
+  effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayerWith<Extra>>>
+) => Promise<A>
+
+/**
+ * Generic router-context shape over the extra services. Slices import
+ * this and instantiate with their own client services so the per-slice
+ * `router-context.ts` files don't redefine `RouterContext` /
+ * `RunAuthed` / `RuntimeLayer` by hand. The host app `extends` it to
+ * add app-only fields (e.g. `transport`).
+ */
+interface RouterContextWith<Extra> {
   readonly queryClient: QueryClient
-  readonly runAuthed: RunAuthed
-  readonly runtimeLayer: RuntimeLayer
+  readonly runAuthed: RunAuthedWith<Extra>
+  readonly runtimeLayer: RuntimeLayerWith<Extra>
   /**
    * Environment-specific auth-readiness wait, injected at `renderApp`
    * and consulted by the gated layouts' `beforeLoad`. Resolves when a
@@ -44,4 +72,20 @@ interface RouterContext {
   readonly awaitAuthReady: AwaitAuthReady
 }
 
-export type { AwaitAuthReady, RouterContext, RunAuthed, RuntimeLayer }
+/**
+ * Concrete base router-context — `RouterContextWith<never>`, i.e. no
+ * slice services beyond the `BearerToken | HttpClient` floor. Kept as a
+ * standalone interface so existing references (e.g.
+ * `BaseRouterContext.RouterContext`) keep working without changing.
+ */
+interface RouterContext extends RouterContextWith<never> {}
+
+export type {
+  AwaitAuthReady,
+  RouterContext,
+  RouterContextWith,
+  RunAuthed,
+  RunAuthedWith,
+  RuntimeLayer,
+  RuntimeLayerWith,
+}

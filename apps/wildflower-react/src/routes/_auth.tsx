@@ -3,11 +3,11 @@ import { appsListQueryOptions } from 'apps-react'
 import { remotesQueryOptions } from 'collector-react'
 import { Effect } from 'effect'
 import type { JSX } from 'react'
+import { Sentry } from 'telemetry-web'
 import { tunnelStateQueryOptions } from 'tunnel-react'
 
 import type { RouterContext } from '../router-context.ts'
-import { authBeforeLoad } from '../session/auth-gate.ts'
-import { TokenTimeoutRetry } from '../session/token-timeout-retry.tsx'
+import { authGatedRouteOptions } from '../session/auth-gated-route-options.ts'
 
 /**
  * Pathless `_auth` layout. Gates owner-facing routes on a live bearer
@@ -31,11 +31,12 @@ import { TokenTimeoutRetry } from '../session/token-timeout-retry.tsx'
  *      the emit to the same "post-gate, pre-render" lifecycle TanStack
  *      already provides via `loader`.
  *
- * Both halves are best-effort: a prefetch failure must not block the
- * WebView reveal (otherwise a transient HTTP miss would leave the host
- * splash up). `Promise.allSettled` lets every warm finish before the
- * `UIReady` fires, and the loader resolves `void` regardless of
- * individual warm outcomes.
+ * Both halves are best-effort: a prefetch failure or a `sendMessage`
+ * failure must not block the WebView reveal (otherwise a transient HTTP
+ * miss or a torn-down transport would leave the host splash up).
+ * `Promise.allSettled` covers the prefetches; the `UIReady` send is
+ * wrapped in a `.catch` that reports to Sentry and resolves anyway, so
+ * the loader always resolves `void`.
  */
 const authLoader = async ({ context }: { readonly context: RouterContext }): Promise<void> => {
   const transport = await context.transport
@@ -44,7 +45,9 @@ const authLoader = async ({ context }: { readonly context: RouterContext }): Pro
     context.queryClient.prefetchQuery(appsListQueryOptions(context.runAuthed)),
     context.queryClient.prefetchQuery(remotesQueryOptions(context.runAuthed)),
   ])
-  await Effect.runPromise(transport.sendMessage({ _tag: 'UIReady' }))
+  await Effect.runPromise(transport.sendMessage({ _tag: 'UIReady' })).catch((error: unknown) => {
+    Sentry.captureException(error, { tags: { source: 'authLoader.UIReady' } })
+  })
 }
 
 function AuthLayout(): JSX.Element {
@@ -52,8 +55,7 @@ function AuthLayout(): JSX.Element {
 }
 
 export const Route = createFileRoute('/_auth')({
-  beforeLoad: authBeforeLoad,
+  ...authGatedRouteOptions,
   loader: authLoader,
   component: AuthLayout,
-  errorComponent: TokenTimeoutRetry,
 })

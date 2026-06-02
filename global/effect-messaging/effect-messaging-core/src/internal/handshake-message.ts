@@ -1,25 +1,14 @@
 import { Schema } from 'effect'
 
-/**
- * The web→host `__Ready` handshake, consolidated.
- *
- * @remarks
- * Previously these constants were smeared across `bridge-transport.ts`.
- * Gathering them here lets the registry (tag), the inbound dispatcher
- * (schema), and the transport wiring (wire string) each import the one
- * they need without a `bridge-transport` → unit → `bridge-transport`
- * import cycle. **Temporary:** Leap C (Phase 3) evicts the handshake from
- * the core transport entirely, at which point this whole module is
- * deleted.
- */
+/** The web→host `__Ready` handshake constants used by the transport wiring. */
 
 /** The web→host handshake signal tag. Resolves the host's send gate. */
 const READY_TAG = '__Ready' as const
 
 /**
  * Inner (post-`parseJson`) schema for the `__Ready` control message.
- * Composed into the inbound dispatch union so `__Ready` decodes like any
- * other message.
+ * Injected into the inbound dispatcher as an extra schema so `__Ready`
+ * decodes like any other message without the dispatcher knowing the tag.
  */
 const ReadyMessageSchema = Schema.TaggedStruct(READY_TAG, {})
 

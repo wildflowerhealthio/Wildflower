@@ -48,7 +48,7 @@ let pendingSettle: ((outcome: TunnelOutcome) => void) | null = null
  */
 const useRequestTunnel = (): (() => Promise<TunnelOutcome>) => {
   const send = useAppsSender()
-  const coordinator = useHandlerCoordinator()
+  const coordinator = useHandlerCoordinator<readonly [typeof AppsBridge]>()
   return useCallback(
     () =>
       new Promise<TunnelOutcome>((resolve) => {
@@ -61,7 +61,15 @@ const useRequestTunnel = (): (() => Promise<TunnelOutcome>) => {
           // Set-if-equal: the coordinator only relinquishes the Apps slot
           // if it still holds this request's record (a supersede may have
           // already replaced it).
-          Effect.runFork(coordinator.unregister(AppsBridge.name, record))
+          Effect.runFork(
+            coordinator
+              .unregister(AppsBridge, record)
+              .pipe(
+                Effect.catchAll((error) =>
+                  Effect.logError('useRequestTunnel: handler unregistration failed', error)
+                )
+              )
+          )
           resolve(outcome)
         }
         // Supersede: settle any in-flight predecessor before this request
@@ -75,7 +83,15 @@ const useRequestTunnel = (): (() => Promise<TunnelOutcome>) => {
           TunnelStarted: ({ origin }) => Effect.sync(() => settle({ origin })),
           TunnelFailed: ({ reason }) => Effect.sync(() => settle({ error: reason })),
         }
-        Effect.runFork(coordinator.register(AppsBridge.name, record))
+        Effect.runFork(
+          coordinator
+            .register(AppsBridge, record)
+            .pipe(
+              Effect.catchAll((error) =>
+                Effect.logError('useRequestTunnel: handler registration failed', error)
+              )
+            )
+        )
 
         const timer = setTimeout(() => {
           settle({ error: 'tunnel request timed out — host unreachable' })

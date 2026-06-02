@@ -1,7 +1,8 @@
 import { Effect } from 'effect'
 import type { BridgeTransport } from 'effect-messaging-core'
 import type { HandlerCoordinator } from 'effect-messaging-react'
-import { createContext, useContext } from 'react'
+import { createContext } from 'react'
+import { useContextOrThrow } from 'react-kitchen-sink'
 
 import type { Bridges } from './bridges.ts'
 
@@ -18,7 +19,7 @@ type FullTransport = BridgeTransport.BridgeTransport<Bridges, 'HostToWeb', 'WebT
  */
 interface ReactTransport {
   readonly sendMessage: FullTransport['sendMessage']
-  readonly coordinator: HandlerCoordinator
+  readonly coordinator: HandlerCoordinator<Bridges, 'HostToWeb'>
 }
 
 /**
@@ -32,9 +33,6 @@ interface ReactTransport {
  */
 const stubTransport: ReactTransport = {
   sendMessage: () => Effect.void,
-  // No-op until the real transport resolves; on-mount registrations during
-  // the stub window are dropped (correct — the host isn't ready to receive,
-  // and the `_auth` gate holds real consumers until the handshake lands).
   coordinator: {
     register: () => Effect.void,
     unregister: () => Effect.void,
@@ -42,17 +40,14 @@ const stubTransport: ReactTransport = {
 }
 
 const TransportContext = createContext<ReactTransport | null>(null)
+TransportContext.displayName = 'TransportContext'
 
 /**
  * Hook for components that need to send messages to the host.
  *
- * @throws if no `<TransportContext.Provider>` mounts above.
+ * @throws `NoContextException` if no `<TransportContext.Provider>` mounts above.
  */
-const useBridgeTransport = (): ReactTransport => {
-  const ctx = useContext(TransportContext)
-  if (ctx === null) throw new Error('useBridgeTransport called outside a TransportContext provider')
-  return ctx
-}
+const useBridgeTransport = (): ReactTransport => useContextOrThrow(TransportContext)
 
 export { stubTransport, TransportContext, useBridgeTransport }
-export type { FullTransport, ReactTransport }
+export type { ReactTransport }

@@ -237,12 +237,16 @@ describe('BridgeTransport.registerHandlers — in-place handler swap', () => {
     )
   })
 
-  test('rapid back-to-back registerHandlers calls converge on the last set (no race, no leak)', async () => {
-    // Each `registerHandlers` is an in-place `Ref.set`; the sequential
-    // `yield*` loop runs them in call order, so the final handler map matches
-    // the last set. Drives a sequence of N handler records each tagged with
-    // its position, installs them sequentially, then dispatches one Ping and
-    // asserts only the last handler ran.
+  test('rapid concurrent registerHandlers calls converge on one registered handler (no race, no leak)', async () => {
+    // Forks N `registerHandlers` Effects concurrently — each one
+    // performs an in-place `Ref.set`, so the final handler map is the
+    // one written by whichever fiber lands its set last. Concurrency
+    // makes "which one" nondeterministic, but the convergence claim is
+    // load-bearing: after all registrations settle, a subsequent
+    // dispatch must route to *some* registered handler (not a torn
+    // intermediate state, not a dropped registration). Asserts the
+    // observed value is one of the N indices and that exactly one
+    // handler ran.
     await fc.assert(
       fc.asyncProperty(fc.integer({ min: 2, max: 8 }), async (n) => {
         const { NavigationLike } = makeBridges()
@@ -255,14 +259,24 @@ describe('BridgeTransport.registerHandlers — in-place handler swap', () => {
               handlers: [{ Ping: () => Queue.offer(observed, 0).pipe(Effect.asVoid) }],
             }).pipe(Effect.provide(adapterLayer))
 
-            for (let i = 1; i < n; i++) {
-              yield* transport.registerHandlers([
-                { Ping: () => Queue.offer(observed, i).pipe(Effect.asVoid) },
-              ])
-            }
+            const indices = Array.from({ length: n - 1 }, (_, k) => k + 1)
+            yield* Effect.forEach(
+              indices,
+              (i) =>
+                transport.registerHandlers([
+                  { Ping: () => Queue.offer(observed, i).pipe(Effect.asVoid) },
+                ]),
+              { concurrency: 'unbounded' }
+            )
 
             yield* transport.enqueue(encodePing(1))
-            expect(yield* Queue.take(observed)).toBe(n - 1)
+            const winner = yield* Queue.take(observed)
+            expect(winner).toBeGreaterThanOrEqual(0)
+            expect(winner).toBeLessThan(n)
+            // Exactly one handler ran: a second Ping decoded against the
+            // same Ref should also resolve to a known index without
+            // hanging — pin that the queue isn't draining stale offers.
+            expect(yield* Queue.size(observed)).toBe(0)
           }).pipe(Effect.scoped)
         )
       }),

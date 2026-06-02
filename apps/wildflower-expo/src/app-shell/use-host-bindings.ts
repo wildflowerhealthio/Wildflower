@@ -31,6 +31,12 @@ const useNavigationHostBinding = (
     return {
       onRouteChanged,
       onUiReady,
+      // Ref-slot last-writer-wins on a bridges rebuild: senders
+      // captured before teardown can't be reused afterward, so the
+      // latest `onTransportReady` firing replaces whatever was there.
+      // `bindings.bridges` is reference-stable from
+      // `HostBindings.combine`, so today the rebuild branch never
+      // fires in practice — the assignment runs once on mount.
       onTransportReady: (send: NavigationSender) =>
         Effect.sync(() => {
           navigationSenderRef.current = send

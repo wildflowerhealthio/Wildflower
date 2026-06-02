@@ -16,9 +16,10 @@ import { index, layout, physical, rootRoute, route } from '@tanstack/virtual-fil
  *   - `_open/`    → mounted under the pathless `_open` layout  → `/_open/…`
  *
  * Because `/settings` is a sibling of `_auth` (not a child), it is not
- * auth-gated by the `_auth` layout's `beforeLoad`. `SettingsLayout`
- * re-applies the same gate via the shared `authBeforeLoad`, so the
- * runtime behavior (settings requires auth) is preserved.
+ * auth-gated by the `_auth` layout's `beforeLoad`. The `/settings`
+ * route re-applies the same gate via the shared
+ * `authGatedRouteOptions`, so the runtime behavior (settings requires
+ * auth) is preserved.
  *
  * Paths passed to `physical()` are resolved relative to
  * `routesDirectory` (`src/routes`), so `../../../../slices` reaches the

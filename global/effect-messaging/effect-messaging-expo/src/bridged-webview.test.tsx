@@ -126,6 +126,48 @@ describe('BridgedWebView (integration)', () => {
     })
   })
 
+  it('buffers host sends issued before `__Ready` in the outbox and flushes them in order once `__Ready` arrives', async () => {
+    // Pins the new outbox-buffering contract: a host->page send issued
+    // before the page posts `__Ready` is parked in the transport's
+    // outbox (not forwarded, not dropped) and replayed in arrival order
+    // once the handshake completes. The previous "warn and drop"
+    // behaviour was deleted; this test is its positive counterpart.
+    await waitFor(() => {
+      expect(capturedSend).not.toBeNull()
+    })
+
+    const onMessage = mockWebViewState.props?.onMessage
+    if (onMessage === undefined) throw new Error('onMessage prop not captured')
+
+    // Fire two sends BEFORE `__Ready` arrives. `sendMessage` returns an
+    // Effect that suspends on the `peerReady` gate inside the outbox
+    // pump; `Effect.runFork` detaches it so the assertions below can run
+    // without awaiting. Order is preserved by the outbox queue, so we
+    // also pin first-in-first-out on flush.
+    await act(async () => {
+      const send = capturedSend
+      if (send === null) throw new Error('capturedSend not set')
+      Effect.runFork(send({ _tag: 'Ping', value: 'first' }))
+      Effect.runFork(send({ _tag: 'Ping', value: 'second' }))
+    })
+
+    // Nothing forwarded yet — the outbox pump is parked on `peerReady`.
+    expect(mockWebViewState.postMessageCalls).toEqual([])
+
+    // Deliver `__Ready` to release the gate; the outbox pump drains the
+    // two parked sends to the WebView's `postMessage` in order.
+    act(() => {
+      onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } })
+    })
+
+    await waitFor(() => {
+      expect(mockWebViewState.postMessageCalls).toEqual([
+        JSON.stringify({ _tag: 'Ping', value: 'first' }),
+        JSON.stringify({ _tag: 'Ping', value: 'second' }),
+      ])
+    })
+  })
+
   it("decodes Page → Host Pong and invokes the binding's handler record", async () => {
     await waitFor(() => {
       expect(capturedSend).not.toBeNull()

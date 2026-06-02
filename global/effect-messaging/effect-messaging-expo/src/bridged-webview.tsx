@@ -156,6 +156,7 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   // the build fiber runs — has something to resolve.
   const bareSenderDeferredRef = useRef<Deferred.Deferred<BareSenderFunction> | null>(null)
   if (bareSenderDeferredRef.current === null) {
+    // React lazy-ref-init: runs once per mount; subsequent renders see the cached Deferred.
     bareSenderDeferredRef.current = Effect.runSync(Deferred.make<BareSenderFunction>())
   }
   const bareSenderDeferred = bareSenderDeferredRef.current
@@ -163,9 +164,23 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   const bareSenderRefCallback = useCallback(
     (bareSender: BareSenderFunction | null): void => {
       if (bareSender === null) return
-      // Idempotent: a re-attach (same WebView instance) re-succeeds a
-      // resolved Deferred, which is a no-op.
-      Effect.runSync(Deferred.succeed(bareSenderDeferred, (encoded) => bareSender(encoded)))
+      // First attach resolves the Deferred so the build fiber's awaiting
+      // bareSender wakes up. `Deferred.succeed` returns `false` if the
+      // Deferred was already resolved — a same-instance re-attach is a
+      // benign no-op, but a *different* WebView instance attaching (e.g.
+      // a future remount that keeps the host shell mounted) would silently
+      // send into the void since the original sender is captured. Surface
+      // that case loudly via the Effect logger instead of dropping silently.
+      const wasFirstAttach = Effect.runSync(
+        Deferred.succeed(bareSenderDeferred, (encoded) => bareSender(encoded))
+      )
+      if (!wasFirstAttach) {
+        Effect.runFork(
+          Effect.logWarning(
+            '[effect-messaging] BridgedWebView bareSender ref re-attached after first resolve; subsequent sends still route to the original WebView handle.'
+          )
+        )
+      }
     },
     [bareSenderDeferred]
   )
@@ -198,6 +213,18 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   const buildEffect = useMemo(
     () =>
       Effect.gen(function* () {
+        // Refresh the frozen-first-render snapshot at the top of every
+        // build (initial mount AND every bridges rebuild) so the seeded
+        // `handlers`, the `onTransportReady` calls below, and the
+        // `registerHandlers` skip-check in the sibling `useEffect` all
+        // observe the *current* bindings — not the ones captured at
+        // first mount. Reading from the closure-captured `bindings`
+        // (refreshed by the `[bridges]` `useMemo` recompute) is the
+        // freshness contract; this assignment just propagates it.
+        yield* Effect.sync(() => {
+          initialBindingsRef.current = bindings
+        })
+
         // `react-native-webview`'s imperative `postMessage(string)`
         // doesn't take a `targetOrigin`. Awaiting the Deferred blocks
         // the send until the WebView handle exists; sends also gate on
@@ -214,7 +241,7 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
 
         const built = yield* BridgeTransport.makeHostTransport({
           bridges,
-          handlers: initialBindingsRef.current.handlers,
+          handlers: bindings.handlers,
         }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter)))
 
         yield* Effect.sync(() => {
@@ -228,7 +255,7 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
         // Fire each binding's `onTransportReady` once the transport
         // exists; the sender identity is stable for its lifetime, so a
         // single firing (re-fired only on a bridges rebuild) is correct.
-        yield* HostBindings.callTransportReady(initialBindingsRef.current, built.sendMessage)
+        yield* HostBindings.callTransportReady(bindings, built.sendMessage)
 
         // Park until `useComponentScopedRunner`'s cleanup interrupts —
         // closing the scope tears down both queues and both fibers.
@@ -245,6 +272,10 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
     // URL-baked at build time and can't be reapplied mid-life without a
     // remount; `handlers` flow through `registerHandlers` (the sync
     // effect below) so the transport survives sibling-binding rerenders.
+    // The build effect closure captures `bindings` fresh on every
+    // bridges-change recompute, so reading `bindings.handlers` /
+    // `bindings` directly inside the gen body picks up the current
+    // values rather than the frozen first-render snapshot.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
     [bridges]
   )
@@ -263,7 +294,18 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
     if (handlers === initialBindingsRef.current.handlers) return undefined
     const transport = transportRef.current
     if (transport === null) return undefined
-    Effect.runFork(transport.registerHandlers(handlers))
+    Effect.runFork(
+      // Surface the typed `DuplicateTagError` from `registerHandlers` to
+      // the Effect logger so a runtime wiring collision doesn't vanish
+      // behind the default forked-fiber unhandled-error reporter.
+      transport
+        .registerHandlers(handlers)
+        .pipe(
+          Effect.catchAll((error) =>
+            Effect.logError('BridgedWebView: handler registration failed', error)
+          )
+        )
+    )
     return undefined
   }, [handlers])
 

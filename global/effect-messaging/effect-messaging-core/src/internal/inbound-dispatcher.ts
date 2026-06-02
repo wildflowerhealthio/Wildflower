@@ -1,10 +1,20 @@
 import type { ParseResult, Scope } from 'effect'
-import { Array, Effect, Match, Option, pipe, Queue, Record, Schema, Stream } from 'effect'
+import {
+  Array,
+  Effect,
+  Match,
+  Option,
+  ParseResult as ParseResultMod,
+  pipe,
+  Queue,
+  Record,
+  Schema,
+  Stream,
+} from 'effect'
 import type * as Bridge from '../bridge.ts'
 import type * as MessageHandler from '../message-handler.ts'
 import type { TransportAdapterService } from '../transport-adapter.ts'
 import type { HandlerRegistry } from './handler-registry.ts'
-import { ReadyMessageSchema } from './handshake-message.ts'
 import { offerQuietly } from './offer-quietly.ts'
 
 /**
@@ -31,6 +41,12 @@ interface InboundDispatcher {
  * fiber that decodes each raw string against the bridges' inbound schema
  * union and routes it to the registry's handler (logging-and-dropping
  * unknown tags / unhandled tags / decode failures).
+ *
+ * @remarks
+ * `extraInboundSchemas` carries extra control-message schemas that get
+ * merged into the dispatch union — the transport injects the `__Ready`
+ * handshake schema this way so the dispatcher stays ignorant of
+ * handshake semantics.
  */
 const makeInboundDispatcher = <
   const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
@@ -40,27 +56,22 @@ const makeInboundDispatcher = <
   readonly inboundDirection: InDir
   readonly registry: HandlerRegistry<Bridges, InDir>
   readonly adapter: TransportAdapterService
+  readonly extraInboundSchemas: ReadonlyArray<AnyTaggedSchema>
 }): Effect.Effect<InboundDispatcher, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const { bridges, inboundDirection, registry, adapter } = config
+    const { bridges, inboundDirection, registry, adapter, extraInboundSchemas } = config
 
     const innerSchemas: Array.NonEmptyArray<AnyTaggedSchema> = pipe(
       Array.flatMap(bridges, (bridge) => Record.values(bridge[inboundDirection])),
       Array.map(Schema.typeSchema),
-      Array.append(ReadyMessageSchema)
-    )
+      Array.appendAll(extraInboundSchemas)
+    ) as Array.NonEmptyArray<AnyTaggedSchema>
 
     /**
      * Single-pass decode for inbound dispatch. `Schema.parseJson` parses
      * the wire string once; the surrounding `Schema.Union` discriminates
      * by `_tag` and produces the typed message in one shot. Tags outside
      * the union surface as `ParseError` and are logged-and-dropped.
-     *
-     * Today `innerSchemas` always carries at least `ReadyMessageSchema`
-     * (appended above), so the single-member branch is the floor; the
-     * `Schema.Union` branch covers every real transport. Under Leap C the
-     * single-member branch becomes the legitimate floor for a transport
-     * with exactly one inbound tag.
      */
     const dispatchMessage: AnyTaggedSchema = Match.value(innerSchemas).pipe(
       Match.withReturnType<AnyTaggedSchema>(),
@@ -94,20 +105,11 @@ const makeInboundDispatcher = <
 
     const inbox = yield* Queue.unbounded<string>()
 
-    yield* Effect.forkScoped(
-      Stream.runForEach(Stream.fromQueue(inbox, { shutdown: true }), (raw) =>
-        dispatch(raw).pipe(
-          Effect.catchAll((error) =>
-            Effect.logWarning(`[effect-messaging] failed to decode message: ${String(error)}`)
-          ),
-          // Handler defects don't take the dispatch fiber down.
-          Effect.catchAllDefect((defect) =>
-            Effect.logError(`[effect-messaging] dispatch defect; continues: ${String(defect)}`)
-          )
-        )
-      )
-    )
-
+    // Seed the inbox with whatever the adapter has already collected
+    // (e.g. URL-param-encoded messages on the web side). Done before
+    // the live source attaches and before the dispatch fiber starts, so
+    // initial messages always reach the dispatcher first and FIFO
+    // ordering is enforced by code rather than by author discipline.
     const initial = yield* adapter.drainInitial
     for (const raw of initial) {
       yield* Queue.offer(inbox, raw)
@@ -119,8 +121,31 @@ const makeInboundDispatcher = <
       yield* adapter.attachBareSender(enqueue)
     }
 
+    // Start the dispatch fiber last — by this point both the initial
+    // drain has been offered and the live source is wired, so the
+    // dispatcher consumes everything in arrival order.
+    yield* Effect.forkScoped(
+      Stream.runForEach(Stream.fromQueue(inbox, { shutdown: true }), (raw) =>
+        dispatch(raw).pipe(
+          Effect.catchAll((error) =>
+            // `ParseResult.TreeFormatter` renders the full `error.issue`
+            // tree, which `String(error)` would flatten to a single line.
+            // Wrapping the formatted message in `Effect.logWarning` keeps
+            // the schema-rejection detail visible in logs.
+            Effect.logWarning(
+              `[effect-messaging] failed to decode message: ${ParseResultMod.TreeFormatter.formatErrorSync(error)}`
+            )
+          ),
+          // Handler defects don't take the dispatch fiber down.
+          Effect.catchAllDefect((defect) =>
+            Effect.logError(`[effect-messaging] dispatch defect; continues: ${String(defect)}`)
+          )
+        )
+      )
+    )
+
     return { enqueue }
   })
 
 export { makeInboundDispatcher }
-export type { InboundDispatcher }
+export type { AnyTaggedSchema, InboundDispatcher }

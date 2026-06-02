@@ -1,17 +1,13 @@
 import { Effect, Record } from 'effect'
-import type { Bridge } from 'effect-messaging-core'
+import type { Bridge, BridgeTransport, MessageHandler } from 'effect-messaging-core'
 import { HandlerHelpers } from 'effect-messaging-core'
 import { createContext } from 'react'
 import { useContextOrThrow } from 'react-kitchen-sink'
 
 /**
- * Any bridge's inbound handler record, accepted structurally at the
- * coordinator boundary. The `never` parameter is the device that lets a
- * concrete `MessageHandler.HandlersFor<…>` (whose handlers take specific
- * message types) be passed without a cast — each specific message type is
- * a supertype of `never`, so the assignment holds. The coordinator only
- * stores and re-emits these records; the transport re-narrows them when it
- * dispatches.
+ * Any bridge's inbound handler record, accepted structurally for internal
+ * storage. The `never` parameter widens to any specific message type via
+ * contravariance.
  */
 type BridgeHandlerRecord = Readonly<Record<string, (message: never) => Effect.Effect<void>>>
 
@@ -28,12 +24,36 @@ type BridgeHandlerRecord = Readonly<Record<string, (message: never) => Effect.Ef
  * registered record gets a generated **drop-all** record (every inbound
  * tag warns-and-drops), exactly the behavior the old per-slice forwarder
  * cells provided before a real handler was installed.
+ *
+ * Generic over the page's `Bridges` tuple and the receiving `InDir` so
+ * `register` / `unregister` accept only a bridge from that tuple and a
+ * handler record precisely typed against that bridge's inbound schema.
+ * Slices narrow `Bridges` to their own bridge at the call site — see
+ * {@link useHandlerCoordinator}.
  */
-interface HandlerCoordinator {
-  /** Install `handlers` as bridge `bridgeName`'s active record (last writer wins) and re-register. */
-  readonly register: (bridgeName: string, handlers: BridgeHandlerRecord) => Effect.Effect<void>
-  /** Remove `handlers` if it's still the active record for `bridgeName` (set-if-equal), then re-register. */
-  readonly unregister: (bridgeName: string, handlers: BridgeHandlerRecord) => Effect.Effect<void>
+interface HandlerCoordinator<
+  Bridges extends ReadonlyArray<Bridge.AnyBridge>,
+  InDir extends Bridge.Direction,
+> {
+  /**
+   * Install `handlers` as `bridge`'s active record (last writer wins) and
+   * re-register. Fails with a `DuplicateTagError` if the combined record
+   * would collide on an inbound tag.
+   */
+  readonly register: <B extends Bridges[number]>(
+    bridge: B,
+    handlers: MessageHandler.HandlersFor<B[InDir]>
+  ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
+  /**
+   * Remove `handlers` if it's still the active record for `bridge`
+   * (set-if-equal), then re-register. Same failure channel as
+   * {@link HandlerCoordinator.register}, since re-registering is what
+   * actually surfaces a collision.
+   */
+  readonly unregister: <B extends Bridges[number]>(
+    bridge: B,
+    handlers: MessageHandler.HandlersFor<B[InDir]>
+  ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
 }
 
 /** The boot-composed handler tuple plus a way to bind the live transport. */
@@ -50,8 +70,10 @@ interface UnconnectedCoordinator<
   readonly initialHandlers: Bridge.HandlersByBridge<Bridges, InDir>
   /** Bind the live transport's `registerHandlers` and start coordinating. */
   readonly connect: (
-    registerHandlers: (handlers: Bridge.HandlersByBridge<Bridges, InDir>) => Effect.Effect<void>
-  ) => HandlerCoordinator
+    registerHandlers: (
+      handlers: Bridge.HandlersByBridge<Bridges, InDir>
+    ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
+  ) => HandlerCoordinator<Bridges, InDir>
 }
 
 /**
@@ -85,7 +107,7 @@ const makeHandlerCoordinator = <
   const dropAll = (bridge: Bridge.AnyBridge): BridgeHandlerRecord =>
     Record.map(
       bridge[config.inboundDirection],
-      (_schema, tag) => () => HandlerHelpers.droppedTagWarning(bridge.name, tag)
+      (_schema, tag) => () => HandlerHelpers.warnAboutDroppedTag(bridge.name, tag)
     )
 
   const recompose = (): Bridge.HandlersByBridge<Bridges, InDir> => {
@@ -101,19 +123,36 @@ const makeHandlerCoordinator = <
   }
 
   const connect = (
-    registerHandlers: (handlers: Bridge.HandlersByBridge<Bridges, InDir>) => Effect.Effect<void>
-  ): HandlerCoordinator => {
-    const apply: Effect.Effect<void> = Effect.suspend(() => registerHandlers(recompose()))
+    registerHandlers: (
+      handlers: Bridge.HandlersByBridge<Bridges, InDir>
+    ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
+  ): HandlerCoordinator<Bridges, InDir> => {
+    const apply: Effect.Effect<void, BridgeTransport.DuplicateTagError> = Effect.suspend(() =>
+      registerHandlers(recompose())
+    )
 
-    const register = (bridgeName: string, handlers: BridgeHandlerRecord): Effect.Effect<void> =>
+    const register = <B extends Bridges[number]>(
+      bridge: B,
+      handlers: MessageHandler.HandlersFor<B[InDir]>
+    ): Effect.Effect<void, BridgeTransport.DuplicateTagError> =>
       Effect.suspend(() => {
-        active.set(bridgeName, handlers)
+        // The active map is string-keyed; the typed handler record erases
+        // to the structural `BridgeHandlerRecord` for storage and is
+        // re-narrowed in `recompose`.
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        active.set(bridge.name, handlers as unknown as BridgeHandlerRecord)
         return apply
       })
 
-    const unregister = (bridgeName: string, handlers: BridgeHandlerRecord): Effect.Effect<void> =>
+    const unregister = <B extends Bridges[number]>(
+      bridge: B,
+      handlers: MessageHandler.HandlersFor<B[InDir]>
+    ): Effect.Effect<void, BridgeTransport.DuplicateTagError> =>
       Effect.suspend(() => {
-        if (active.get(bridgeName) === handlers) active.delete(bridgeName)
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        if (active.get(bridge.name) === (handlers as unknown as BridgeHandlerRecord)) {
+          active.delete(bridge.name)
+        }
         return apply
       })
 
@@ -123,10 +162,20 @@ const makeHandlerCoordinator = <
   return { initialHandlers: recompose(), connect }
 }
 
-const HandlerCoordinatorContext = createContext<HandlerCoordinator | null>(null)
+// The context erases the precise `Bridges` / `InDir` parameters so a
+// single React context node serves every slice. Consumers narrow at the
+// `useHandlerCoordinator` call site below — each slice declares only the
+// bridge(s) it cares about, and the coordinator's generic `register` /
+// `unregister` enforce that the handler record matches the bridge's
+// inbound schema.
+const HandlerCoordinatorContext = createContext<HandlerCoordinator<
+  ReadonlyArray<Bridge.AnyBridge>,
+  Bridge.Direction
+> | null>(null)
 
 /**
- * Read the surrounding {@link HandlerCoordinator}.
+ * Read the surrounding {@link HandlerCoordinator}, narrowed to the
+ * caller's bridge tuple and inbound direction.
  *
  * @remarks
  * Slices register their real inbound handler record through this — on
@@ -135,8 +184,27 @@ const HandlerCoordinatorContext = createContext<HandlerCoordinator | null>(null)
  * `register` / `unregister` Effects. A bridge with nothing registered
  * falls back to the coordinator's drop-all. Requires a
  * `HandlerCoordinatorContext.Provider` above.
+ *
+ * Pass the slice's bridge tuple as the type argument so the returned
+ * `register` / `unregister` are typed against that bridge's inbound
+ * schema:
+ *
+ * ```ts
+ * const coordinator = useHandlerCoordinator<readonly [typeof CollectorBridge]>()
+ * coordinator.register(CollectorBridge, collectorHandlers) // typed
+ * ```
+ *
+ * The runtime coordinator stores by bridge name, so a narrower view at
+ * the call site is sound.
  */
-const useHandlerCoordinator = (): HandlerCoordinator => useContextOrThrow(HandlerCoordinatorContext)
+const useHandlerCoordinator = <
+  const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
+  const InDir extends Bridge.Direction = 'HostToWeb',
+>(): HandlerCoordinator<Bridges, InDir> =>
+  // The runtime coordinator is bridge-name-keyed and direction-agnostic;
+  // each consumer narrows to its own bridge tuple at the call site.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  useContextOrThrow(HandlerCoordinatorContext) as unknown as HandlerCoordinator<Bridges, InDir>
 
 export { HandlerCoordinatorContext, makeHandlerCoordinator, useHandlerCoordinator }
 export type { BridgeHandlerRecord, HandlerCoordinator, UnconnectedCoordinator }

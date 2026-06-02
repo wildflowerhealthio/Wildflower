@@ -1,5 +1,5 @@
 import type { Scope } from 'effect'
-import { Effect, Layer, Logger, Queue, Schema } from 'effect'
+import { Deferred, Effect, Layer, Logger, Queue, Schema } from 'effect'
 import {
   Bridge,
   BridgeTransport,
@@ -520,13 +520,18 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const ran = yield* Queue.unbounded<void>()
+        // Replaces a wall-clock `Effect.sleep(20)`: the slow handler
+        // awaits this Deferred, and a separate fiber resolves it only
+        // after the second message has been dispatched. FIFO is proven
+        // by `order` ending in ['back', 'nav'] — no timing dependency.
+        const release = yield* Deferred.make<void>()
         yield* webTransport({
           bridges: [NavigationBridge] as const,
           handlers: [
             {
               HostBackRequested: () =>
                 Effect.gen(function* () {
-                  yield* Effect.sleep(20)
+                  yield* Deferred.await(release)
                   order.push('back')
                   yield* Queue.offer(ran, undefined)
                 }),
@@ -549,6 +554,12 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
             path: '/x',
           })
         )
+        // Both messages are queued before the slow handler is unblocked.
+        // The fiber forks so the main effect can keep going; the dispatch
+        // fiber is blocked inside `HostBackRequested`'s await, so the
+        // navigation handler will only run after `release` is fulfilled
+        // and `back` is pushed first.
+        yield* Effect.forkScoped(Deferred.succeed(release, undefined))
         yield* Queue.takeN(ran, 2)
         expect(order).toEqual(['back', 'nav'])
       }).pipe(Effect.scoped)
@@ -606,6 +617,11 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
     let started = false
     let finished = false
     const startedSignal = Effect.runSync(Queue.unbounded<void>())
+    // A Deferred that is never resolved — the handler parks here forever
+    // unless interrupted. Replaces a misleading `Effect.sleep(10_000)`:
+    // a regression that fails to interrupt now fails fast via the
+    // test-level timeout rather than waiting 10 seconds.
+    const blockForever = Effect.runSync(Deferred.make<void>())
     await Effect.runPromise(
       Effect.gen(function* () {
         yield* webTransport({
@@ -616,7 +632,7 @@ describe('BridgeTransport (Web) — concurrency / lifecycle', () => {
                 Effect.gen(function* () {
                   started = true
                   yield* Queue.offer(startedSignal, undefined)
-                  yield* Effect.sleep(10_000)
+                  yield* Deferred.await(blockForever)
                   finished = true
                 }),
               HostRequestedWebNavigation: () => Effect.void,

@@ -57,9 +57,15 @@ const AppShellWebView = ({ onRouteChanged }: AppShellWebViewProps): JSX.Element 
 
   // The WebView mounts under the native splash with no JS loader; the
   // splash stays up until the page reports its first paint via `UIReady`,
-  // avoiding a blank/loader flash during bundle load.
+  // avoiding a blank/loader flash during bundle load. Swallow the
+  // rejection so a hide failure (e.g. splash already hidden by the 10s
+  // fallback in `prevent-splash-hide.ts`) can't escape as an unhandled
+  // rejection, but log so it stays visible in telemetry.
   const handleUiReady = useCallback(() => {
-    void SplashScreen.hideAsync().catch(() => undefined)
+    void SplashScreen.hideAsync().catch((cause: unknown) => {
+      // oxlint-disable-next-line no-console
+      console.warn('SplashScreen.hideAsync failed on UIReady', cause)
+    })
   }, [])
   // Memoize the tuple so `BridgedWebView`'s transport doesn't rebuild on
   // every render — the component's contract requires stable `bindings`

@@ -1,4 +1,4 @@
-import { type JSX, type ReactNode, useMemo } from 'react'
+import { type JSX, type ReactNode } from 'react'
 
 import { type ReactTransport, useBridgeTransport } from './transport-context.ts'
 
@@ -41,8 +41,7 @@ const makeSliceSenderForwarder = (
   // oxlint-disable-next-line react/only-export-components
   const SliceSenderForwarder = ({ children }: SliceSenderForwarderProps): JSX.Element => {
     const transport = useBridgeTransport()
-    const send = useMemo<TransportSender>(() => transport.sendMessage, [transport])
-    return <Provider send={send}>{children}</Provider>
+    return <Provider send={transport.sendMessage}>{children}</Provider>
   }
   SliceSenderForwarder.displayName = displayName
   return SliceSenderForwarder

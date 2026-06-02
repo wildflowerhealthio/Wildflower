@@ -117,7 +117,7 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
     [remote]
   )
 
-  const coordinator = useHandlerCoordinator()
+  const coordinator = useHandlerCoordinator<readonly [typeof CollectorBridge]>()
 
   useEffect((): undefined | (() => void) => {
     if (remote === null || scrapingPlan === null) return undefined
@@ -211,7 +211,13 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
     // inside the transport, so by the time the host gets
     // `RequestSniffableWebView` and starts emitting sniffer events, the
     // Collector slot already points at the live handler.
-    Effect.runFork(coordinator.register(CollectorBridge.name, collectorHandlers))
+    Effect.runFork(
+      coordinator.register(CollectorBridge, collectorHandlers).pipe(
+        Effect.catchAll((error) =>
+          Effect.logError('useSyncRunner: handler registration failed', error)
+        )
+      )
+    )
     setState({ _tag: 'running' })
 
     // Defects in the send Effect are logged rather than re-thrown so a
@@ -243,7 +249,13 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
       // (StrictMode double-mount, rapid remount on remote change) may have
       // already taken the slot; unregistering unconditionally would drop a
       // fresher handler's sniffer events.
-      Effect.runFork(coordinator.unregister(CollectorBridge.name, collectorHandlers))
+      Effect.runFork(
+        coordinator.unregister(CollectorBridge, collectorHandlers).pipe(
+          Effect.catchAll((error) =>
+            Effect.logError('useSyncRunner: handler unregistration failed', error)
+          )
+        )
+      )
     }
   }, [remote, scrapingPlan, sendCollectorMessage, runFhir, coordinator])
 

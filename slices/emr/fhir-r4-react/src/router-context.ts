@@ -1,38 +1,21 @@
-import { type QueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
-import { type Effect, type Layer } from 'effect'
+import { type Layer } from 'effect'
 import { type FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { type BaseRouterContext } from 'shared-structures-react'
 
 import { buildFhirR4ResourcesClientLayer } from './client/fhir-r4-resources-client.ts'
 
-type RuntimeLayer = Layer.Layer<
-  Layer.Layer.Success<BaseRouterContext.RuntimeLayer> | FhirR4ResourcesHttpApiClient,
-  never,
-  never
->
+type RuntimeLayer = BaseRouterContext.RuntimeLayerWith<FhirR4ResourcesHttpApiClient>
+type RunAuthed = BaseRouterContext.RunAuthedWith<FhirR4ResourcesHttpApiClient>
 
 /**
- * Slice-local router-context shape — structurally a subset of the host
- * app's, but declared here so the slice doesn't import from the app.
+ * Slice-local router-context — `BaseRouterContext.RouterContextWith`
+ * narrowed to this slice's client. The FHIR slice has no
+ * routes/loaders of its own (its consumers live in other slices), so
+ * `awaitAuthReady` is inherited only to keep this structural context a
+ * faithful subset of the host app's `RouterContext`.
  */
-type RunAuthed = <A, E>(
-  effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayer>>
-) => Promise<A>
-
-interface RouterContext {
-  readonly queryClient: QueryClient
-  readonly runAuthed: RunAuthed
-  readonly runtimeLayer: RuntimeLayer
-  /**
-   * Environment-specific auth-readiness wait the app injects onto
-   * {@link BaseRouterContext.RouterContext}. The FHIR slice has no
-   * routes/loaders of its own (its consumers live in other slices), so
-   * this field is here only to keep the structural context a faithful
-   * subset of the app's `RouterContext`.
-   */
-  readonly awaitAuthReady: BaseRouterContext.AwaitAuthReady
-}
+type RouterContext = BaseRouterContext.RouterContextWith<FhirR4ResourcesHttpApiClient>
 
 /**
  * The FHIR R4 resources slice's client layer, ready for the app to merge

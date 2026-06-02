@@ -1,7 +1,7 @@
 import { Array, Effect, HashMap, type Option, pipe, Record, Ref } from 'effect'
 import type * as Bridge from '../bridge.ts'
 import type * as MessageHandler from '../message-handler.ts'
-import { assertNoDuplicateTags } from './assert-no-duplicate-tags.ts'
+import { assertNoDuplicateTags, DuplicateTagError } from './assert-no-duplicate-tags.ts'
 
 /**
  * The transport's inbound handler registry: a swappable flat tag→handler
@@ -22,10 +22,13 @@ interface HandlerRegistry<
   /**
    * Replace the active per-bridge handler records with a new set, applied
    * atomically against the dispatcher's reads. Pure (records are plain
-   * data). Throws (as a defect) on a duplicate-tag wiring error, leaving
-   * the prior map in place — the `Ref.set` never runs.
+   * data). Fails with a {@link DuplicateTagError} on a duplicate-tag
+   * wiring error, leaving the prior map in place — the `Ref.set` never
+   * runs.
    */
-  readonly register: (handlers: Bridge.HandlersByBridge<Bridges, InDir>) => Effect.Effect<void>
+  readonly register: (
+    handlers: Bridge.HandlersByBridge<Bridges, InDir>
+  ) => Effect.Effect<void, DuplicateTagError>
 }
 
 /**
@@ -91,11 +94,23 @@ const makeHandlerRegistry = <
       Effect.map(Ref.get(handlersRef), (byTag) => HashMap.get(byTag, tag))
 
     // `Effect.suspend` defers `buildHandlerByTag` to run time: a
-    // duplicate-tag throw surfaces as a defect on the returned Effect (not
-    // at call construction), and the `Ref.set` never runs, so the prior
-    // map stays put.
-    const register = (handlers: Bridge.HandlersByBridge<Bridges, InDir>): Effect.Effect<void> =>
-      Effect.suspend(() => Ref.set(handlersRef, buildHandlerByTag(handlers)))
+    // duplicate-tag throw lands inside the suspend and is re-raised on
+    // the typed failure channel, so callers can branch on
+    // {@link DuplicateTagError} rather than letting the bug fall through
+    // to the default unhandled-defect reporter. The `Ref.set` never runs
+    // on failure, so the prior map stays put.
+    const register = (
+      handlers: Bridge.HandlersByBridge<Bridges, InDir>
+    ): Effect.Effect<void, DuplicateTagError> =>
+      Effect.suspend(() => {
+        try {
+          const next = buildHandlerByTag(handlers)
+          return Ref.set(handlersRef, next)
+        } catch (caught: unknown) {
+          if (caught instanceof DuplicateTagError) return Effect.fail(caught)
+          throw caught
+        }
+      })
 
     return { lookup, register }
   })

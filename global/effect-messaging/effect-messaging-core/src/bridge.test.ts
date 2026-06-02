@@ -67,9 +67,17 @@ describe('Bridge.make — encode', () => {
   })
 })
 
-describe('Bridge.make — ValidatedPairs', () => {
-  test('compile-time: a schema whose decoded _tag does not match the declared tag is rejected', () => {
-    const bridge = Bridge.make({
+// These tests are type-only: each `@ts-expect-error` is what's actually
+// being asserted (tsc fails compilation when the offending call wouldn't
+// error). `Bridge.make` is permissive at runtime — it doesn't validate
+// pairs — so a runtime `expect(bridge.name).toBe('BadPair')` would pass
+// regardless of whether the type rejection fired, which is why the
+// previous runtime assertions were tautological. Vitest's `expectTypeOf`
+// tests type *relations* (e.g. `A extends B`), not "this call should be
+// a type error," so the directives stay as the canonical assertion.
+describe('Bridge.make — ValidatedPairs (type-only)', () => {
+  test('a schema whose decoded _tag does not match the declared tag is rejected', () => {
+    Bridge.make({
       name: 'BadPair',
       hostToWeb: [
         // @ts-expect-error — Ping schema does not encode/decode `_tag: 'Pong'`.
@@ -77,11 +85,10 @@ describe('Bridge.make — ValidatedPairs', () => {
       ] as const,
       webToHost: [] as const,
     })
-    expect(bridge.name).toBe('BadPair')
   })
 
-  test('compile-time: a non-Schema value in position 1 is rejected', () => {
-    const bridge = Bridge.make({
+  test('a non-Schema value in position 1 is rejected', () => {
+    Bridge.make({
       name: 'BadShape',
       hostToWeb: [
         // @ts-expect-error — string is not a Schema with string-encoded JSON form.
@@ -89,15 +96,17 @@ describe('Bridge.make — ValidatedPairs', () => {
       ] as const,
       webToHost: [] as const,
     })
-    expect(bridge.name).toBe('BadShape')
   })
 
-  test('compile-time: matching pairs typecheck cleanly', () => {
+  test('matching pairs typecheck cleanly', () => {
     const bridge = Bridge.make({
       name: 'GoodPair',
       hostToWeb: [['Ping', Ping]] as const,
       webToHost: [['Pong', Pong]] as const,
     })
+    // Non-tautological: the keyed access only typechecks when the
+    // schema pair shapes are accepted by `Bridge.make`'s positional
+    // validation, and the runtime identity guards against silent rewires.
     expect(bridge.HostToWeb.Ping).toBe(Ping)
   })
 })

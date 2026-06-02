@@ -14,7 +14,7 @@ import { Effect } from 'effect'
  *   prefix (e.g. `collectorWebHandlers`).
  * @param tag - The inbound message `_tag` being dropped.
  */
-const droppedTagWarning = (receiverName: string, tag: string): Effect.Effect<void> =>
+const warnAboutDroppedTag = (receiverName: string, tag: string): Effect.Effect<void> =>
   Effect.logWarning(`${receiverName}: dropping ${tag} — no receiver installed`)
 
-export { droppedTagWarning }
+export { warnAboutDroppedTag }

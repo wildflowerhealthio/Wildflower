@@ -11,37 +11,17 @@ import { TunnelRouterContext } from 'tunnel-react'
 
 import type { ReactTransport } from './bridges/transport-context.ts'
 
-type RuntimeLayer = Layer.Layer<
-  | Layer.Layer.Success<BaseRouterContext.RuntimeLayer>
+type SliceServices =
   | Layer.Layer.Success<TunnelRouterContext.RuntimeLayer>
   | Layer.Layer.Success<AppsRouterContext.RuntimeLayer>
   | Layer.Layer.Success<GatekeeperRouterContext.RuntimeLayer>
   | Layer.Layer.Success<CollectorRouterContext.RuntimeLayer>
-  | Layer.Layer.Success<FhirR4ResourcesRouterContext.RuntimeLayer>,
-  never,
-  never
->
+  | Layer.Layer.Success<FhirR4ResourcesRouterContext.RuntimeLayer>
 
-/**
- * Run an authed Effect from a non-React call site (route loaders).
- * Supplies `BearerToken | HttpClient`; the caller still provides its
- * own slice client layer.
- */
-type RunAuthed = <A, E>(
-  effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayer>>
-) => Promise<A>
+type RuntimeLayer = BaseRouterContext.RuntimeLayerWith<SliceServices>
+type RunAuthed = BaseRouterContext.RunAuthedWith<SliceServices>
 
-interface RouterContext {
-  readonly queryClient: QueryClient
-  readonly runAuthed: RunAuthed
-  readonly runtimeLayer: RuntimeLayer
-  /**
-   * Environment-specific auth-readiness wait, injected at `renderApp`
-   * and consulted by the gated layouts' `beforeLoad`. Resolves when a
-   * bearer token is present; rejects (tagged) otherwise. The gate owns
-   * this, so an authed loader that runs is guaranteed a token.
-   */
-  readonly awaitAuthReady: BaseRouterContext.AwaitAuthReady
+interface RouterContext extends BaseRouterContext.RouterContextWith<SliceServices> {
   /**
    * Resolves to the page-side `BridgeTransport` (narrowed to the React
    * surface — only `sendMessage`) once the boot-time `signalReady`

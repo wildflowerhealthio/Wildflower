@@ -55,19 +55,23 @@ let config = getDefaultConfig(projectRoot)
 config.resolver.assetExts.push('txt')
 
 // The devtools middleware boots a Vite dev server (default port 4242)
-// at metro.config.js load time. EAS evaluates this file during
-// `expo export:embed --eager`, where a dev server has no business
-// running and the bind can race / collide. Skip it whenever Metro
-// is running a one-shot export instead of serving — `expo export`
-// and `expo export:embed` both put their subcommand on argv. Also
-// honor EAS_BUILD / NODE_ENV when set.
+// at metro.config.js load time. Only attach it for the Metro
+// subcommands that actually run a dev server (`start`, `ios`,
+// `android`) — `expo export` / `export:embed` and any future
+// non-serving subcommand have no business booting another server,
+// and EAS evaluates this file during `expo export:embed --eager`
+// where the bind can race / collide. Allow-list keeps the gate
+// closed by default for unknown subcommands. EAS_BUILD / NODE_ENV
+// are belt-and-suspenders in case argv detection misses a case.
+const isDevServerSubcommand = process.argv.some(
+  (a) => a === 'start' || a === 'ios' || a === 'android'
+)
 const isProductionBundle =
-  process.argv.some((a) => a === 'export' || a === 'export:embed') ||
   process.env.EAS_BUILD === 'true' ||
   process.env.EAS_BUILD === '1' ||
   process.env.NODE_ENV === 'production'
 
-if (!isProductionBundle) {
+if (isDevServerSubcommand && !isProductionBundle) {
   addLiveStoreDevtoolsMiddleware(config, {
     schemaPath: './src/livestore/schema.ts',
     viteConfig: (viteConfig) => {

@@ -13,7 +13,7 @@ import type { JSX } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import type { RouterContext } from '../router-context.ts'
-import { authBeforeLoad } from './auth-gate.ts'
+import { authGatedRouteOptions } from './auth-gated-route-options.ts'
 import { TokenTimeoutRetry } from './token-timeout-retry.tsx'
 
 /**
@@ -38,8 +38,7 @@ const renderGate = (
   awaitAuthReady: () => Promise<void>
 ): { findRetryButton: () => Promise<HTMLElement> } => {
   const rootRoute = createRootRouteWithContext<RouterContext>()({
-    beforeLoad: authBeforeLoad,
-    errorComponent: TokenTimeoutRetry,
+    ...authGatedRouteOptions,
     component: () => <Outlet />,
   })
   const leaf = rootRoute.addChildren([])
@@ -85,6 +84,34 @@ describe('TokenTimeoutRetry', () => {
     // The second call is what pins the difference between `reset` (which
     // wouldn't re-run `beforeLoad`) and `router.invalidate()` (which
     // does). Without the switch, this would stay at 1 forever.
+    await waitFor(() => {
+      expect(awaitAuthReady).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  test('renders the generic-error branch for non-TokenTimeout failures and retry still re-fires the gate', async () => {
+    // The component's contract: "Reaching here for any other thrown
+    // error still surfaces a generic retry rather than a blank page."
+    // Drives a plain Error so `isTimeout === false` and the branch
+    // pins both halves: the "Something went wrong" heading + the raw
+    // `error.message` body, plus the Retry click still invalidating
+    // the router (so the fallback isn't a dead-end).
+    const awaitAuthReady = vi.fn(() => Promise.reject(new Error('database is down')))
+
+    const { findRetryButton } = renderGate(awaitAuthReady)
+
+    await waitFor(() => {
+      expect(awaitAuthReady).toHaveBeenCalledTimes(1)
+    })
+
+    expect(await screen.findByText('Something went wrong')).toBeDefined()
+    expect(await screen.findByText('database is down')).toBeDefined()
+
+    const button = await findRetryButton()
+    await act(async () => {
+      button.click()
+    })
+
     await waitFor(() => {
       expect(awaitAuthReady).toHaveBeenCalledTimes(2)
     })

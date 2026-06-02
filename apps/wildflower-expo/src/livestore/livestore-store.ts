@@ -80,10 +80,10 @@ const wildflowerStoreRegistry = new StoreRegistry()
 // lifetime. `retain` does both: it kicks off `makeAdapter` /
 // schema migrate / boot, and holds the entry so it isn't garbage
 // collected during the eval → first-`useStore` gap (which `preload`
-// would allow per its TSDoc). The release function is intentionally
-// discarded — the wildflower store is a singleton, so retain-forever
-// matches its real lifetime.
-wildflowerStoreRegistry.retain(wildflowerStoreOptions)
+// would allow per its TSDoc). The release function is captured so
+// `__resetForTests` can drop the retention; in app code it is
+// effectively retain-forever, matching the singleton's real lifetime.
+let releaseRetention: (() => void) | null = wildflowerStoreRegistry.retain(wildflowerStoreOptions)
 
 /**
  * Subscribe to the singleton wildflower LiveStore. Suspends until the
@@ -100,4 +100,21 @@ class WildflowerStore extends Context.Tag('wildflower-expo/WildflowerStore')<
   Store<typeof schema, object>
 >() {}
 
-export { useWildflowerStore, wildflowerStoreRegistry, WildflowerStore }
+/**
+ * Release the module-scope `retain()` so the registry can dispose
+ * the cached store, then null the local release handle so a second
+ * call is a no-op. For test setup hooks (e.g. `beforeAll`/`afterAll`)
+ * that need to import this module without keeping the real adapter
+ * alive — the app does not call this in normal operation (the
+ * wildflower store is a singleton held for the app's lifetime).
+ *
+ * @internal
+ */
+const __resetForTests = (): void => {
+  if (releaseRetention !== null) {
+    releaseRetention()
+    releaseRetention = null
+  }
+}
+
+export { useWildflowerStore, wildflowerStoreRegistry, WildflowerStore, __resetForTests }

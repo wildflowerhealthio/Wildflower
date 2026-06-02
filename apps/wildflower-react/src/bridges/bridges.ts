@@ -10,10 +10,12 @@ import { NavigationBridge } from 'navigation-core'
  * and `transport-context.ts` derives the `Bridges` type from `typeof
  * bridges`, so the runtime list and the type can't drift.
  *
- * Order is irrelevant to dispatch (the transport routes by `_tag`), but
- * the position-keyed `layers` tuple in `BridgeTransport.make` is paired
- * by index — adjusting this list means adjusting the layer list in
- * `build-transport.ts` to match.
+ * Order is irrelevant to dispatch (the transport routes by `_tag`). The
+ * position-keyed `handlers` tuple consumed by
+ * `BridgeTransport.makeWebTransport` is now reconstituted internally by
+ * `makeHandlerCoordinator`'s `recompose`, so adjusting this list no
+ * longer requires keeping a parallel list in `build-transport.ts` in
+ * sync by hand.
  */
 const bridges = [
   NavigationBridge,

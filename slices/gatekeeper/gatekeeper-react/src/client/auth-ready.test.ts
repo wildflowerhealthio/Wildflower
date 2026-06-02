@@ -1,5 +1,15 @@
 import { isRedirect } from '@tanstack/react-router'
-import { Duration, Effect, Either, Fiber, SubscriptionRef, TestClock, TestContext } from 'effect'
+import {
+  Cause,
+  Duration,
+  Effect,
+  Either,
+  Fiber,
+  Runtime,
+  SubscriptionRef,
+  TestClock,
+  TestContext,
+} from 'effect'
 import fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
@@ -8,6 +18,7 @@ import {
   EMBEDDED_TOKEN_TIMEOUT,
   embeddedAuthReadyEffect,
   TokenTimeout,
+  unwrapFiberFailure,
   webAuthReadyEffect,
 } from './auth-ready.ts'
 
@@ -108,5 +119,33 @@ describe('embeddedAuthReadyEffect', () => {
     const result = await Effect.runPromise(program)
     expect(Either.isLeft(result)).toBe(true)
     if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(TokenTimeout)
+  })
+})
+
+describe('unwrapFiberFailure', () => {
+  test('returns the underlying value when given a FiberFailure wrapping a failure-channel TokenTimeout', () => {
+    // Some Effect pipelines route a typed failure through the Cause
+    // layer (Stream operators, scope-interrupt chains) and emerge as a
+    // FiberFailure rather than the bare typed value. Construct that
+    // shape directly: a FiberFailure whose cause is `Cause.fail(...)`.
+    const tokenTimeout = new TokenTimeout({})
+    const wrapped = Runtime.makeFiberFailure(Cause.fail(tokenTimeout))
+
+    expect(unwrapFiberFailure(wrapped)).toBe(tokenTimeout)
+  })
+
+  test('returns the underlying value when given a FiberFailure wrapping a die-channel TokenTimeout', () => {
+    // The defect-channel counterpart — what `Effect.die(...)` (or an
+    // unhandled throw) produces under `Effect.runPromise`. The unwrap
+    // must reach into `Cause.dieOption` too, not just `failureOption`.
+    const tokenTimeout = new TokenTimeout({})
+    const wrapped = Runtime.makeFiberFailure(Cause.die(tokenTimeout))
+
+    expect(unwrapFiberFailure(wrapped)).toBe(tokenTimeout)
+  })
+
+  test('returns the input unchanged when nothing is wrapped', () => {
+    const plain = new Error('not a fiber failure')
+    expect(unwrapFiberFailure(plain)).toBe(plain)
   })
 })
