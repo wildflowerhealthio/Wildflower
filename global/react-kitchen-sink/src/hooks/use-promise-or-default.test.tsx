@@ -190,9 +190,13 @@ describe('usePromiseOrDefault', () => {
 
           // Drive resolutions in the chosen order. Each settles with its
           // own id as the value (so a stale leak would be observable).
+          // Sequential awaits intentional: each resolution + React flush
+          // must settle before the next, otherwise the property test's
+          // observation of intermediate state is invalid.
           for (const id of order) {
             const entry = settlers[id]
             if (entry === undefined) continue
+            // oxlint-disable-next-line no-await-in-loop -- ordering-sensitive
             await act(async () => {
               entry.resolve(id)
               await entry.promise

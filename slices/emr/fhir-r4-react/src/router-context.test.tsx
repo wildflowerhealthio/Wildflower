@@ -27,8 +27,9 @@ import {
  * payload schema requires. The decode of the canned bundle is itself
  * covered by `patients.test.ts`.
  *
- * The hook reads `runtimeLayer` via `useRouteContext({ from: '__root__',
- * select })`. fhir-r4-react has no router of its own, so rather than
+ * The hook reads `runtimeLayer` via
+ * `useRouteContext({ from: '__root__', select })`. fhir-r4-react
+ * has no router of its own, so rather than
  * mount one we mock `useRouteContext` to feed a layer through its
  * `select` — the same harness shape gatekeeper-react's mutation tests
  * use. Each test installs the layer it wants via the module-level

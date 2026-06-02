@@ -61,7 +61,14 @@ const makeInboundDispatcher = <
   Effect.gen(function* () {
     const { bridges, inboundDirection, registry, adapter, extraInboundSchemas } = config
 
-    const innerSchemas: Array.NonEmptyArray<AnyTaggedSchema> = pipe(
+    // The bridges' inbound schemas may be empty for a transport with no
+    // inbound traffic; appending `extraInboundSchemas` (the caller-injected
+    // control-message schemas — non-empty in practice) keeps the union
+    // non-empty even in that case. The cast re-imposes `NonEmptyArray`
+    // because `Array.appendAll` doesn't preserve non-emptiness when the
+    // left side's emptiness is unknown to the type system.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const innerSchemas = pipe(
       Array.flatMap(bridges, (bridge) => Record.values(bridge[inboundDirection])),
       Array.map(Schema.typeSchema),
       Array.appendAll(extraInboundSchemas)

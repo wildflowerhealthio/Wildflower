@@ -1,7 +1,7 @@
 import { Effect, Record } from 'effect'
 import type { Bridge, BridgeTransport, MessageHandler } from 'effect-messaging-core'
 import { HandlerHelpers } from 'effect-messaging-core'
-import { createContext } from 'react'
+import { createContext, useMemo } from 'react'
 import { useContextOrThrow } from 'react-kitchen-sink'
 
 /**
@@ -25,24 +25,23 @@ type BridgeHandlerRecord = Readonly<Record<string, (message: never) => Effect.Ef
  * tag warns-and-drops), exactly the behavior the old per-slice forwarder
  * cells provided before a real handler was installed.
  *
- * Generic over the page's `Bridges` tuple and the receiving `InDir` so
- * `register` / `unregister` accept only a bridge from that tuple and a
- * handler record precisely typed against that bridge's inbound schema.
- * Slices narrow `Bridges` to their own bridge at the call site — see
- * {@link useHandlerCoordinator}.
+ * The outward `register` / `unregister` API is wide on purpose: each
+ * call's `bridge` argument fixes `B`, so a slice calling
+ * `coordinator.register(CollectorBridge, handlers)` gets `handlers`
+ * typed precisely against `CollectorBridge['HostToWeb']` without the
+ * consumer needing to pre-declare the app's `Bridges` tuple. Bridges
+ * outside the app's wired tuple silently no-op (recompose only iterates
+ * the wired bridges), matching the runtime's name-keyed reality.
  */
-interface HandlerCoordinator<
-  Bridges extends ReadonlyArray<Bridge.AnyBridge>,
-  InDir extends Bridge.Direction,
-> {
+interface HandlerCoordinator {
   /**
    * Install `handlers` as `bridge`'s active record (last writer wins) and
    * re-register. Fails with a `DuplicateTagError` if the combined record
    * would collide on an inbound tag.
    */
-  readonly register: <B extends Bridges[number]>(
+  readonly register: <const B extends Bridge.AnyBridge>(
     bridge: B,
-    handlers: MessageHandler.HandlersFor<B[InDir]>
+    handlers: MessageHandler.HandlersFor<B['HostToWeb']>
   ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
   /**
    * Remove `handlers` if it's still the active record for `bridge`
@@ -50,30 +49,27 @@ interface HandlerCoordinator<
    * {@link HandlerCoordinator.register}, since re-registering is what
    * actually surfaces a collision.
    */
-  readonly unregister: <B extends Bridges[number]>(
+  readonly unregister: <const B extends Bridge.AnyBridge>(
     bridge: B,
-    handlers: MessageHandler.HandlersFor<B[InDir]>
+    handlers: MessageHandler.HandlersFor<B['HostToWeb']>
   ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
 }
 
 /** The boot-composed handler tuple plus a way to bind the live transport. */
-interface UnconnectedCoordinator<
-  Bridges extends ReadonlyArray<Bridge.AnyBridge>,
-  InDir extends Bridge.Direction,
-> {
+interface UnconnectedCoordinator<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   /**
    * The seed-composed handler tuple to pass as the transport's *initial*
    * `handlers` — boot-stable records in place, every other bridge a
    * drop-all. Lets the transport be built before {@link connect} binds
    * its `registerHandlers` back.
    */
-  readonly initialHandlers: Bridge.HandlersByBridge<Bridges, InDir>
+  readonly initialHandlers: Bridge.HandlersByBridge<Bridges, 'HostToWeb'>
   /** Bind the live transport's `registerHandlers` and start coordinating. */
   readonly connect: (
     registerHandlers: (
-      handlers: Bridge.HandlersByBridge<Bridges, InDir>
+      handlers: Bridge.HandlersByBridge<Bridges, 'HostToWeb'>
     ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
-  ) => HandlerCoordinator<Bridges, InDir>
+  ) => HandlerCoordinator
 }
 
 /**
@@ -87,30 +83,31 @@ interface UnconnectedCoordinator<
  * drop-all), the caller builds the transport with it, then
  * {@link UnconnectedCoordinator.connect} binds `registerHandlers`.
  *
+ * `Bridges` is internal-only — it parameterises `initialHandlers` and
+ * the `registerHandlers` binding (both need the tuple shape) but the
+ * returned coordinator's outward API is the bridge-wide
+ * {@link HandlerCoordinator}, so consumers (slice hooks, the React
+ * context) don't have to know the app's full tuple.
+ *
  * @param bridges - the wired bridge tuple; its order fixes tuple positions.
- * @param inboundDirection - the receiving direction (`'HostToWeb'` on the web).
  * @param initial - boot-stable records keyed by bridge name (e.g. navigation,
  *   gatekeeper). Bridges absent here start as drop-all until a slice registers.
  */
-const makeHandlerCoordinator = <
-  const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
-  const InDir extends Bridge.Direction,
->(config: {
+const makeHandlerCoordinator = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(config: {
   readonly bridges: Bridges
-  readonly inboundDirection: InDir
   readonly initial: Readonly<Record<string, BridgeHandlerRecord>>
-}): UnconnectedCoordinator<Bridges, InDir> => {
+}): UnconnectedCoordinator<Bridges> => {
   const active = new Map<string, BridgeHandlerRecord>(Object.entries(config.initial))
 
   // A complete record for a bridge with no installed handler: every
   // inbound tag warns-and-drops (the transport requires complete records).
   const dropAll = (bridge: Bridge.AnyBridge): BridgeHandlerRecord =>
     Record.map(
-      bridge[config.inboundDirection],
+      bridge['HostToWeb'],
       (_schema, tag) => () => HandlerHelpers.warnAboutDroppedTag(bridge.name, tag)
     )
 
-  const recompose = (): Bridge.HandlersByBridge<Bridges, InDir> => {
+  const recompose = (): Bridge.HandlersByBridge<Bridges, 'HostToWeb'> => {
     const tuple = config.bridges.map((bridge) => active.get(bridge.name) ?? dropAll(bridge))
     // The active map is string-keyed, so the recomposed tuple's element
     // types erase to `AnyHandlers`; re-impose the positional
@@ -119,21 +116,21 @@ const makeHandlerCoordinator = <
     // that same bridge's inbound tags — the same erasure the transport's
     // own registry performs internally.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    return tuple as unknown as Bridge.HandlersByBridge<Bridges, InDir>
+    return tuple as unknown as Bridge.HandlersByBridge<Bridges, 'HostToWeb'>
   }
 
   const connect = (
     registerHandlers: (
-      handlers: Bridge.HandlersByBridge<Bridges, InDir>
+      handlers: Bridge.HandlersByBridge<Bridges, 'HostToWeb'>
     ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
-  ): HandlerCoordinator<Bridges, InDir> => {
+  ): HandlerCoordinator => {
     const apply: Effect.Effect<void, BridgeTransport.DuplicateTagError> = Effect.suspend(() =>
       registerHandlers(recompose())
     )
 
-    const register = <B extends Bridges[number]>(
+    const register = <const B extends Bridge.AnyBridge>(
       bridge: B,
-      handlers: MessageHandler.HandlersFor<B[InDir]>
+      handlers: MessageHandler.HandlersFor<B['HostToWeb']>
     ): Effect.Effect<void, BridgeTransport.DuplicateTagError> =>
       Effect.suspend(() => {
         // The active map is string-keyed; the typed handler record erases
@@ -144,9 +141,9 @@ const makeHandlerCoordinator = <
         return apply
       })
 
-    const unregister = <B extends Bridges[number]>(
+    const unregister = <const B extends Bridge.AnyBridge>(
       bridge: B,
-      handlers: MessageHandler.HandlersFor<B[InDir]>
+      handlers: MessageHandler.HandlersFor<B['HostToWeb']>
     ): Effect.Effect<void, BridgeTransport.DuplicateTagError> =>
       Effect.suspend(() => {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -162,49 +159,67 @@ const makeHandlerCoordinator = <
   return { initialHandlers: recompose(), connect }
 }
 
-// The context erases the precise `Bridges` / `InDir` parameters so a
-// single React context node serves every slice. Consumers narrow at the
-// `useHandlerCoordinator` call site below — each slice declares only the
-// bridge(s) it cares about, and the coordinator's generic `register` /
-// `unregister` enforce that the handler record matches the bridge's
-// inbound schema.
-const HandlerCoordinatorContext = createContext<HandlerCoordinator<
-  ReadonlyArray<Bridge.AnyBridge>,
-  Bridge.Direction
-> | null>(null)
+const HandlerCoordinatorContext = createContext<HandlerCoordinator | null>(null)
+HandlerCoordinatorContext.displayName = 'HandlerCoordinatorContext'
 
 /**
- * Read the surrounding {@link HandlerCoordinator}, narrowed to the
- * caller's bridge tuple and inbound direction.
+ * Read the surrounding {@link HandlerCoordinator}.
  *
  * @remarks
- * Slices register their real inbound handler record through this — on
- * mount, when a scoped activity starts, or per-request — and unregister
- * (set-if-equal) when it ends, by `Effect.runFork`-ing the returned
- * `register` / `unregister` Effects. A bridge with nothing registered
- * falls back to the coordinator's drop-all. Requires a
- * `HandlerCoordinatorContext.Provider` above.
+ * Slices typically don't call this directly — they instantiate
+ * {@link makeUseSliceRegister} with their own bridge for a narrower,
+ * already-bound `register` / `unregister` API. Components that need the
+ * full coordinator (e.g. an app shell registering for multiple bridges)
+ * can read it here. Requires a `HandlerCoordinatorContext.Provider`
+ * above.
+ */
+const useHandlerCoordinator = (): HandlerCoordinator => useContextOrThrow(HandlerCoordinatorContext)
+
+/**
+ * Per-bridge register/unregister accessor — the typed view a slice
+ * binds once for its own bridge. The returned hook reads the surrounding
+ * {@link HandlerCoordinator} and pre-applies `bridge`, so callers see a
+ * `(handlers) => Effect` pair typed precisely to `B['HostToWeb']`.
  *
- * Pass the slice's bridge tuple as the type argument so the returned
- * `register` / `unregister` are typed against that bridge's inbound
- * schema:
+ * Intended pattern: each slice instantiates this at module scope with
+ * its own bridge and exports the resulting hook.
  *
  * ```ts
- * const coordinator = useHandlerCoordinator<readonly [typeof CollectorBridge]>()
- * coordinator.register(CollectorBridge, collectorHandlers) // typed
+ * const useCollectorRegister = makeUseSliceRegister(CollectorBridge)
+ * // …in a component:
+ * const { register, unregister } = useCollectorRegister()
+ * Effect.runFork(register(handlers))
  * ```
- *
- * The runtime coordinator stores by bridge name, so a narrower view at
- * the call site is sound.
  */
-const useHandlerCoordinator = <
-  const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
-  const InDir extends Bridge.Direction = 'HostToWeb',
->(): HandlerCoordinator<Bridges, InDir> =>
-  // The runtime coordinator is bridge-name-keyed and direction-agnostic;
-  // each consumer narrows to its own bridge tuple at the call site.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  useContextOrThrow(HandlerCoordinatorContext) as unknown as HandlerCoordinator<Bridges, InDir>
+const makeUseSliceRegister = <const B extends Bridge.AnyBridge>(
+  bridge: B
+): (() => SliceRegister<B>) => {
+  return (): SliceRegister<B> => {
+    const coordinator = useHandlerCoordinator()
+    return useMemo<SliceRegister<B>>(
+      () => ({
+        register: (handlers) => coordinator.register(bridge, handlers),
+        unregister: (handlers) => coordinator.unregister(bridge, handlers),
+      }),
+      [coordinator]
+    )
+  }
+}
 
-export { HandlerCoordinatorContext, makeHandlerCoordinator, useHandlerCoordinator }
-export type { BridgeHandlerRecord, HandlerCoordinator, UnconnectedCoordinator }
+/** The shape returned by a hook built via {@link makeUseSliceRegister}. */
+interface SliceRegister<B extends Bridge.AnyBridge> {
+  readonly register: (
+    handlers: MessageHandler.HandlersFor<B['HostToWeb']>
+  ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
+  readonly unregister: (
+    handlers: MessageHandler.HandlersFor<B['HostToWeb']>
+  ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
+}
+
+export {
+  HandlerCoordinatorContext,
+  makeHandlerCoordinator,
+  makeUseSliceRegister,
+  useHandlerCoordinator,
+}
+export type { BridgeHandlerRecord, HandlerCoordinator, SliceRegister, UnconnectedCoordinator }

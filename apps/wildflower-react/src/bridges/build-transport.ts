@@ -3,8 +3,8 @@ import { BridgeTransport, Logging, TransportAdapter } from 'effect-messaging-cor
 import { makeHandlerCoordinator, WebPlatformAdapter } from 'effect-messaging-react'
 import type { NavTarget } from 'navigation-react'
 
-import { bridges } from './bridges.ts'
 import { makeBootStableInitialHandlers } from './boot-stable-handlers.ts'
+import { bridges } from './bridges.ts'
 import type { ReactTransport } from './transport-context.ts'
 
 /**
@@ -24,7 +24,6 @@ const buildTransport = (navigate: (to: NavTarget) => void): Promise<ReactTranspo
 
   const { initialHandlers, connect } = makeHandlerCoordinator({
     bridges,
-    inboundDirection: 'HostToWeb',
     initial: makeBootStableInitialHandlers(navigate),
   })
 
@@ -47,7 +46,7 @@ const buildTransport = (navigate: (to: NavTarget) => void): Promise<ReactTranspo
     // fire-and-forget post in current adapters, so this should never
     // fire — when it does, surface it for diagnosis.
     const debugTimer = setTimeout(() => {
-      // eslint-disable-next-line no-console
+      // oxlint-disable-next-line no-console
       console.warn(
         `[bridges] transport.signalReady has not resolved after ${SIGNAL_READY_DEBUG_TIMEOUT_MS}ms — bare-sender may be wedged or peer never received __Ready`
       )

@@ -1,13 +1,17 @@
 import { renderHook } from '@testing-library/react'
 import { Effect, Schema } from 'effect'
-import { Bridge } from 'effect-messaging-core'
+import { Bridge, type MessageHandler } from 'effect-messaging-core'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
+import { createElement, type ReactNode } from 'react'
 import { NoContextException } from 'react-kitchen-sink'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import {
   type BridgeHandlerRecord,
+  HandlerCoordinatorContext,
+  type HandlerCoordinator,
   makeHandlerCoordinator,
+  makeUseSliceRegister,
   useHandlerCoordinator,
 } from './handler-coordinator.ts'
 
@@ -45,7 +49,6 @@ describe('makeHandlerCoordinator', () => {
     const seededB: BridgeHandlerRecord = { Pong: () => Effect.void }
     const { initialHandlers } = makeHandlerCoordinator({
       bridges,
-      inboundDirection: 'HostToWeb',
       initial: { B: seededB },
     })
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -59,7 +62,6 @@ describe('makeHandlerCoordinator', () => {
     const recorder = makeRecorder()
     const coordinator = makeHandlerCoordinator({
       bridges,
-      inboundDirection: 'HostToWeb',
       initial: {},
     }).connect(recorder.registerHandlers)
     const recordA = { Ping: () => Effect.void }
@@ -77,7 +79,6 @@ describe('makeHandlerCoordinator', () => {
     const recorder = makeRecorder()
     const coordinator = makeHandlerCoordinator({
       bridges,
-      inboundDirection: 'HostToWeb',
       initial: {},
     }).connect(recorder.registerHandlers)
     const recordA = { Ping: () => Effect.void }
@@ -98,7 +99,6 @@ describe('makeHandlerCoordinator', () => {
     const recorder = makeRecorder()
     const coordinator = makeHandlerCoordinator({
       bridges,
-      inboundDirection: 'HostToWeb',
       initial: {},
     }).connect(recorder.registerHandlers)
     const recordA = { Ping: () => Effect.void }
@@ -134,7 +134,6 @@ describe('makeHandlerCoordinator', () => {
         const recorder = makeRecorder()
         const coordinator = makeHandlerCoordinator({
           bridges,
-          inboundDirection: 'HostToWeb',
           initial: {},
         }).connect(recorder.registerHandlers)
 
@@ -153,16 +152,35 @@ describe('makeHandlerCoordinator', () => {
         // Drive the same sequence against the coordinator and a reference model.
         const model: [BridgeHandlerRecord | null, BridgeHandlerRecord | null] = [null, null]
         for (const op of ops) {
-          const bridge = bridges[op.bridgeIx]
           const record = recordFor(op.bridgeIx, op.id)
-          if (op.kind === 'register') {
-            Effect.runSync(coordinator.register(bridge, record))
-            model[op.bridgeIx] = record
+          // Branch on the bridge index so each call passes a concrete
+          // bridge — the coordinator's `register<B extends Bridge.AnyBridge>`
+          // infers `B` precisely and the record's structural shape matches
+          // that bridge's HandlersFor without a cast.
+          if (op.bridgeIx === 0) {
+            // Property-test plumbing: record was built from a synthetic
+            // `BridgeHandlerRecord` (the structural-acceptance shape) and
+            // is being driven through a typed `HandlersFor<A['HostToWeb']>`
+            // for the test's purposes. Cast confined to test.
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+            const typedRecord = record as MessageHandler.HandlersFor<(typeof A)['HostToWeb']>
+            if (op.kind === 'register') {
+              Effect.runSync(coordinator.register(A, typedRecord))
+              model[0] = record
+            } else {
+              Effect.runSync(coordinator.unregister(A, typedRecord))
+              if (model[0] === record) model[0] = null
+            }
           } else {
-            Effect.runSync(coordinator.unregister(bridge, record))
-            // unregister is set-if-equal: only evict when the model's
-            // active record is the same identity being unregistered.
-            if (model[op.bridgeIx] === record) model[op.bridgeIx] = null
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+            const typedRecord = record as MessageHandler.HandlersFor<(typeof B)['HostToWeb']>
+            if (op.kind === 'register') {
+              Effect.runSync(coordinator.register(B, typedRecord))
+              model[1] = record
+            } else {
+              Effect.runSync(coordinator.unregister(B, typedRecord))
+              if (model[1] === record) model[1] = null
+            }
           }
         }
 
@@ -206,5 +224,39 @@ describe('useHandlerCoordinator', () => {
     } finally {
       spy.mockRestore()
     }
+  })
+})
+
+describe('makeUseSliceRegister', () => {
+  test('pre-applies the bridge so register/unregister take only handlers', () => {
+    const recorder = makeRecorder()
+    const coordinator = makeHandlerCoordinator({ bridges, initial: {} }).connect(
+      recorder.registerHandlers
+    )
+    const useARegister = makeUseSliceRegister(A)
+    const wrapper = ({ children }: { readonly children: ReactNode }): ReactNode =>
+      createElement(HandlerCoordinatorContext.Provider, { value: coordinator }, children)
+
+    const { result } = renderHook(() => useARegister(), { wrapper })
+    const recordA = { Ping: () => Effect.void }
+    Effect.runSync(result.current.register(recordA))
+
+    expect(recorder.calls.at(-1)?.[0]).toBe(recordA)
+  })
+
+  test('returns a stable register/unregister pair across rerenders when the coordinator is identity-stable', () => {
+    const recorder = makeRecorder()
+    const coordinator: HandlerCoordinator = makeHandlerCoordinator({
+      bridges,
+      initial: {},
+    }).connect(recorder.registerHandlers)
+    const useARegister = makeUseSliceRegister(A)
+    const wrapper = ({ children }: { readonly children: ReactNode }): ReactNode =>
+      createElement(HandlerCoordinatorContext.Provider, { value: coordinator }, children)
+
+    const { result, rerender } = renderHook(() => useARegister(), { wrapper })
+    const first = result.current
+    rerender()
+    expect(result.current).toBe(first)
   })
 })

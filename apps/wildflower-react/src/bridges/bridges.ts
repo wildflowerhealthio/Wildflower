@@ -7,8 +7,8 @@ import { NavigationBridge } from 'navigation-core'
 /**
  * The tuple of slice bridges wired into the page-side `BridgeTransport`.
  * Single source of truth: `build-transport.ts` reads the runtime value
- * and `transport-context.ts` derives the `Bridges` type from `typeof
- * bridges`, so the runtime list and the type can't drift.
+ * and `transport-context.ts` derives the `Bridges` type from
+ * `typeof bridges`, so the runtime list and the type can't drift.
  *
  * Order is irrelevant to dispatch (the transport routes by `_tag`). The
  * position-keyed `handlers` tuple consumed by

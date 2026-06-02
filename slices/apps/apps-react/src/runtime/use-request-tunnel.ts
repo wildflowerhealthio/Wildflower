@@ -1,9 +1,9 @@
-import { AppsBridge } from 'apps-core/bridge'
+import type { AppsBridge } from 'apps-core/bridge'
 import { Effect } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
-import { useHandlerCoordinator } from 'effect-messaging-react'
 import { useCallback } from 'react'
 
+import { useAppsRegister } from './use-apps-register.ts'
 import { useAppsSender } from './use-apps-sender.ts'
 
 /**
@@ -48,7 +48,7 @@ let pendingSettle: ((outcome: TunnelOutcome) => void) | null = null
  */
 const useRequestTunnel = (): (() => Promise<TunnelOutcome>) => {
   const send = useAppsSender()
-  const coordinator = useHandlerCoordinator<readonly [typeof AppsBridge]>()
+  const appsRegister = useAppsRegister()
   return useCallback(
     () =>
       new Promise<TunnelOutcome>((resolve) => {
@@ -62,8 +62,8 @@ const useRequestTunnel = (): (() => Promise<TunnelOutcome>) => {
           // if it still holds this request's record (a supersede may have
           // already replaced it).
           Effect.runFork(
-            coordinator
-              .unregister(AppsBridge, record)
+            appsRegister
+              .unregister(record)
               .pipe(
                 Effect.catchAll((error) =>
                   Effect.logError('useRequestTunnel: handler unregistration failed', error)
@@ -84,8 +84,8 @@ const useRequestTunnel = (): (() => Promise<TunnelOutcome>) => {
           TunnelFailed: ({ reason }) => Effect.sync(() => settle({ error: reason })),
         }
         Effect.runFork(
-          coordinator
-            .register(AppsBridge, record)
+          appsRegister
+            .register(record)
             .pipe(
               Effect.catchAll((error) =>
                 Effect.logError('useRequestTunnel: handler registration failed', error)
@@ -107,7 +107,7 @@ const useRequestTunnel = (): (() => Promise<TunnelOutcome>) => {
           settle({ error: 'tunnel request failed to dispatch' })
         })
       }),
-    [send, coordinator]
+    [send, appsRegister]
   )
 }
 

@@ -342,9 +342,7 @@ describe('AppShellWebView', () => {
     // `prevent-splash-hide.ts` can race and hide the splash first;
     // when that happens, `hideAsync` here rejects with "already
     // hidden" and the catch is what keeps it from surfacing.
-    mockSplashHideAsync.mockImplementationOnce(() =>
-      Promise.reject(new Error('already hidden'))
-    )
+    mockSplashHideAsync.mockImplementationOnce(() => Promise.reject(new Error('already hidden')))
 
     const unhandled: Array<unknown> = []
     const onUnhandled = (reason: unknown): void => {

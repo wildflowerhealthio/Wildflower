@@ -2,13 +2,13 @@
  * The gatekeeper TanStack-Query surface, split by the resource each module
  * deals with:
  *
- *   - {@link ./grants.ts}          — access-management grants (list + detail + revoke)
- *   - {@link ./requests.ts}        — access-management HTTP requests (list + detail + decide)
- *   - {@link ./device-consent.ts}  — RFC 8628 device-authorization consent
- *   - {@link ./oauth-consent.ts}   — OAuth authorization-code consent
+ *   - {@link file://./grants.ts}          — access-management grants (list + detail + revoke)
+ *   - {@link file://./requests.ts}        — access-management HTTP requests (list + detail + decide)
+ *   - {@link file://./device-consent.ts}  — RFC 8628 device-authorization consent
+ *   - {@link file://./oauth-consent.ts}   — OAuth authorization-code consent
  *
- * Shared scaffolding lives in {@link ./keys.ts} (the query-key roots
- * mutations invalidate) and {@link ./use-run-authed.ts} (the authed-runner
+ * Shared scaffolding lives in {@link file://./keys.ts} (the query-key roots
+ * mutations invalidate) and {@link file://./use-run-authed.ts} (the authed-runner
  * hook each `queryFn` reads from router context).
  *
  * Re-exported flat so call sites import from `./queries` without caring

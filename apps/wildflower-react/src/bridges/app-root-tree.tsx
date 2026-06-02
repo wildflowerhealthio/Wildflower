@@ -1,6 +1,5 @@
 import { type AnyRouter, RouterProvider } from '@tanstack/react-router'
-import type { Bridge } from 'effect-messaging-core'
-import { type HandlerCoordinator, HandlerCoordinatorContext } from 'effect-messaging-react'
+import { HandlerCoordinatorContext } from 'effect-messaging-react'
 import { NavigationBridgeHandler } from 'navigation-react'
 import { Fragment, type JSX } from 'react'
 import { usePromiseOrDefault } from 'react-kitchen-sink'
@@ -29,19 +28,10 @@ interface AppRootTreeProps {
  */
 const AppRootTree = ({ router, transportPromise }: AppRootTreeProps): JSX.Element => {
   const transport = usePromiseOrDefault(transportPromise, stubTransport, () => stubTransport)
-  // The context is generic-erased so a single React context node serves
-  // every slice's narrowed `useHandlerCoordinator<...>()` call. The
-  // runtime coordinator is bridge-name-keyed and direction-agnostic, so
-  // widening the type for storage is sound.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const erased = transport.coordinator as unknown as HandlerCoordinator<
-    ReadonlyArray<Bridge.AnyBridge>,
-    Bridge.Direction
-  >
 
   return (
     <TransportContext.Provider value={transport}>
-      <HandlerCoordinatorContext.Provider value={erased}>
+      <HandlerCoordinatorContext.Provider value={transport.coordinator}>
         <RouterProvider
           router={router}
           InnerWrap={({ children }) => (

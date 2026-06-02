@@ -19,7 +19,7 @@ type FullTransport = BridgeTransport.BridgeTransport<Bridges, 'HostToWeb', 'WebT
  */
 interface ReactTransport {
   readonly sendMessage: FullTransport['sendMessage']
-  readonly coordinator: HandlerCoordinator<Bridges, 'HostToWeb'>
+  readonly coordinator: HandlerCoordinator
 }
 
 /**

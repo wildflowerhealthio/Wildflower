@@ -400,6 +400,7 @@ describe('BridgeTransport.make — queue lifecycle', () => {
           // interrupt cause that `catchAllCause` swallows, so running every
           // late enqueue resolves cleanly rather than throwing.
           for (const msg of lateMessages) {
+            // oxlint-disable-next-line no-await-in-loop -- per-message observation
             await Effect.runPromise(capturedEnqueue(msg))
           }
         }
@@ -431,6 +432,7 @@ describe('BridgeTransport.make — queue lifecycle', () => {
           // touches only the typed-error channel and would let the interrupt
           // through, rejecting here — so this guards that regression.
           for (const reply of replies) {
+            // oxlint-disable-next-line no-await-in-loop -- per-message observation
             await Effect.runPromise(capturedSend({ _tag: 'Pong', reply }))
           }
         }

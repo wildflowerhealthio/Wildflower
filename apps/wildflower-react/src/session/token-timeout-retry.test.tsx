@@ -14,7 +14,6 @@ import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import type { RouterContext } from '../router-context.ts'
 import { authGatedRouteOptions } from './auth-gated-route-options.ts'
-import { TokenTimeoutRetry } from './token-timeout-retry.tsx'
 
 /**
  * Pins the retry path: clicking the Retry button must re-fire the

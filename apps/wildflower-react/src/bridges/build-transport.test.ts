@@ -1,5 +1,11 @@
 import { Effect } from 'effect'
+import type * as EffectMessagingCore from 'effect-messaging-core'
+import type * as EffectMessagingReact from 'effect-messaging-react'
+import type * as GatekeeperWebBridge from 'gatekeeper-react/web-bridge'
+import type * as NavigationReact from 'navigation-react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
+
+import type { buildTransport as BuildTransportFn } from './build-transport.ts'
 
 // Build a controlled fake transport so the test can intercept
 // `signalReady` ordering against `installConsoleInterceptor`, and
@@ -16,9 +22,7 @@ const fakeSendMessage = vi.fn(() => Effect.void)
 let coordinatorConnectArg: unknown = null
 
 vi.mock('effect-messaging-core', async () => {
-  const actual = await vi.importActual<typeof import('effect-messaging-core')>(
-    'effect-messaging-core'
-  )
+  const actual = await vi.importActual<typeof EffectMessagingCore>('effect-messaging-core')
   return {
     ...actual,
     BridgeTransport: {
@@ -48,9 +52,7 @@ vi.mock('effect-messaging-core', async () => {
 })
 
 vi.mock('effect-messaging-react', async () => {
-  const actual = await vi.importActual<typeof import('effect-messaging-react')>(
-    'effect-messaging-react'
-  )
+  const actual = await vi.importActual<typeof EffectMessagingReact>('effect-messaging-react')
   return {
     ...actual,
     makeHandlerCoordinator: (config: {
@@ -70,20 +72,16 @@ vi.mock('effect-messaging-react', async () => {
 const navHandlersStub = { __mark: 'nav' as const }
 const gatekeeperHandlersStub = { __mark: 'gatekeeper' as const }
 vi.mock('navigation-react', async () => {
-  const actual =
-    await vi.importActual<typeof import('navigation-react')>('navigation-react')
+  const actual = await vi.importActual<typeof NavigationReact>('navigation-react')
   return { ...actual, makeNavigationWebHandlers: () => navHandlersStub }
 })
 vi.mock('gatekeeper-react/web-bridge', async () => {
-  const actual = await vi.importActual<typeof import('gatekeeper-react/web-bridge')>(
-    'gatekeeper-react/web-bridge'
-  )
+  const actual = await vi.importActual<typeof GatekeeperWebBridge>('gatekeeper-react/web-bridge')
   return { ...actual, makeGatekeeperWebHandlers: () => gatekeeperHandlersStub }
 })
 
-const importBuildTransport = async (): Promise<
-  typeof import('./build-transport.ts').buildTransport
-> => (await import('./build-transport.ts')).buildTransport
+const importBuildTransport = async (): Promise<typeof BuildTransportFn> =>
+  (await import('./build-transport.ts')).buildTransport
 
 beforeEach(() => {
   lastMakeWebTransportConfig = null

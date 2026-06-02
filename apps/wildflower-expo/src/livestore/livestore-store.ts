@@ -81,7 +81,7 @@ const wildflowerStoreRegistry = new StoreRegistry()
 // schema migrate / boot, and holds the entry so it isn't garbage
 // collected during the eval → first-`useStore` gap (which `preload`
 // would allow per its TSDoc). The release function is captured so
-// `__resetForTests` can drop the retention; in app code it is
+// `resetForTests` can drop the retention; in app code it is
 // effectively retain-forever, matching the singleton's real lifetime.
 let releaseRetention: (() => void) | null = wildflowerStoreRegistry.retain(wildflowerStoreOptions)
 
@@ -110,11 +110,11 @@ class WildflowerStore extends Context.Tag('wildflower-expo/WildflowerStore')<
  *
  * @internal
  */
-const __resetForTests = (): void => {
+const resetForTests = (): void => {
   if (releaseRetention !== null) {
     releaseRetention()
     releaseRetention = null
   }
 }
 
-export { useWildflowerStore, wildflowerStoreRegistry, WildflowerStore, __resetForTests }
+export { useWildflowerStore, wildflowerStoreRegistry, WildflowerStore, resetForTests }

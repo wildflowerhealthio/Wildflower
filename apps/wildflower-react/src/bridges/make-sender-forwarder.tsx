@@ -1,4 +1,4 @@
-import { type JSX, type ReactNode } from 'react'
+import { type JSX, type ReactNode, type FC as ReactFC } from 'react'
 
 import { type ReactTransport, useBridgeTransport } from './transport-context.ts'
 
@@ -37,7 +37,7 @@ type SliceSenderProvider = (props: {
 const makeSliceSenderForwarder = (
   displayName: string,
   Provider: SliceSenderProvider
-): ((props: SliceSenderForwarderProps) => JSX.Element) => {
+): ReactFC<SliceSenderForwarderProps> => {
   // oxlint-disable-next-line react/only-export-components
   const SliceSenderForwarder = ({ children }: SliceSenderForwarderProps): JSX.Element => {
     const transport = useBridgeTransport()

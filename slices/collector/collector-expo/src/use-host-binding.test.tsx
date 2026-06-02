@@ -2,10 +2,10 @@
  * Regression test for the collector sender-pipe wiring. Before this
  * binding installed `onTransportReady`, nothing populated the collector
  * pipe's sender ref, so `useCollectorSender()` always fell through to the
- * warn-and-drop default — observable in the logs as `"[effect-messaging]
- * no Collector sender registered; dropping message ..."` for every
- * sniffer event the modal forwarded. This test pins that the binding's
- * `onTransportReady` populates the pipe's sender ref so subsequent
+ * warn-and-drop default — observable in the logs as
+ * `"[effect-messaging] no Collector sender registered; dropping message ..."`
+ * for every sniffer event the modal forwarded. This test pins that the
+ * binding's`onTransportReady` populates the pipe's sender ref so subsequent
  * `useCollectorSender()` calls reach the host-built transport's outbound
  * sender.
  */

@@ -61,8 +61,8 @@ type SchemaRecord = ReadonlyRecord<string, AnyStringEncodedSchema>
  * Two extraction steps run, both load-bearing:
  *
  * 1. The mapped type pulls each schema's decoded type via `infer A`.
- * 2. The result is re-bound through `… extends infer M extends { readonly
- *    _tag: string } ? M : never`.
+ * 2. The result is re-bound through
+ * `… extends infer M extends { readonly _tag: string } ? M : never`.
  *
  * Step 2 matters because the record's value bound is
  * `Schema.Schema<any, string, never>` (the `any` absorbs `Schema`'s

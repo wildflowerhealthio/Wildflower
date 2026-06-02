@@ -1,11 +1,11 @@
 /**
  * The collector TanStack-Query surface.
  *
- *   - {@link ./remotes.ts} — collector remotes (accounts): list + detail
+ *   - {@link file://./remotes.ts} — collector remotes (accounts): list + detail
  *     reads, and create / update / delete writes.
  *
- * Shared scaffolding lives in {@link ./keys.ts} (the query-key roots
- * mutations invalidate) and {@link ./use-run-authed.ts} (the authed-runner
+ * Shared scaffolding lives in {@link file://./keys.ts} (the query-key roots
+ * mutations invalidate) and {@link file://./use-run-authed.ts} (the authed-runner
  * hook each `queryFn` reads from router context).
  *
  * Re-exported flat so call sites import from `./queries` without caring

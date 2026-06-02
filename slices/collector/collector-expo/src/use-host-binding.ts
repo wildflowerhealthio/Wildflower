@@ -15,8 +15,8 @@ import { useCollectorHostHandlers } from './use-host-handlers.ts'
  * {@link CollectorPipe} via its sender ref on `onTransportReady`.
  * Without that install, `useCollectorSender()` falls through to the
  * pipe's warn-and-drop default — observable as
- * `"[effect-messaging] no Collector sender registered; dropping
- * message ..."` for every sniffer event the modal forwards.
+ * `"[effect-messaging] no Collector sender registered; dropping message ..."`
+ * for every sniffer event the modal forwards.
  *
  * Mirrors the navigation slice's pattern
  * (`useNavigationHostBinding` → `useNavigationSenderRef` →

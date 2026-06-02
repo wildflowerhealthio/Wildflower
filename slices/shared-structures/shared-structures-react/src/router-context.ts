@@ -36,11 +36,7 @@ type AwaitAuthReady = () => Promise<void>
  * client (e.g. `RuntimeLayerWith<CollectorHttpApiClient>`); the host
  * app instantiates with a union of every slice's client.
  */
-type RuntimeLayerWith<Extra> = Layer.Layer<
-  Layer.Layer.Success<RuntimeLayer> | Extra,
-  never,
-  never
->
+type RuntimeLayerWith<Extra> = Layer.Layer<Layer.Layer.Success<RuntimeLayer> | Extra, never, never>
 
 /**
  * Generic `runAuthed` shape over the extra services. See

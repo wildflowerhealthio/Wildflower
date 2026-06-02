@@ -11,14 +11,13 @@
  */
 import type { Remote as CollectorRemote } from 'collector-core/livestore'
 import { makeScrapingPlanForConfig, type AnyCollectorResource } from 'collector-core/registry'
-import { CollectorBridge } from 'collector-fundamentals/bridge'
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import { Effect, Either, Schedule } from 'effect'
-import { useHandlerCoordinator } from 'effect-messaging-react'
 import { useFhirR4ResourcesRuntimeLayer } from 'fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { useCollectorRegister } from './use-collector-register.ts'
 import { useCollectorSender } from './use-collector-sender.ts'
 
 /**
@@ -117,7 +116,7 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
     [remote]
   )
 
-  const coordinator = useHandlerCoordinator<readonly [typeof CollectorBridge]>()
+  const collectorRegister = useCollectorRegister()
 
   useEffect((): undefined | (() => void) => {
     if (remote === null || scrapingPlan === null) return undefined
@@ -212,11 +211,13 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
     // `RequestSniffableWebView` and starts emitting sniffer events, the
     // Collector slot already points at the live handler.
     Effect.runFork(
-      coordinator.register(CollectorBridge, collectorHandlers).pipe(
-        Effect.catchAll((error) =>
-          Effect.logError('useSyncRunner: handler registration failed', error)
+      collectorRegister
+        .register(collectorHandlers)
+        .pipe(
+          Effect.catchAll((error) =>
+            Effect.logError('useSyncRunner: handler registration failed', error)
+          )
         )
-      )
     )
     setState({ _tag: 'running' })
 
@@ -250,14 +251,16 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
       // already taken the slot; unregistering unconditionally would drop a
       // fresher handler's sniffer events.
       Effect.runFork(
-        coordinator.unregister(CollectorBridge, collectorHandlers).pipe(
-          Effect.catchAll((error) =>
-            Effect.logError('useSyncRunner: handler unregistration failed', error)
+        collectorRegister
+          .unregister(collectorHandlers)
+          .pipe(
+            Effect.catchAll((error) =>
+              Effect.logError('useSyncRunner: handler unregistration failed', error)
+            )
           )
-        )
       )
     }
-  }, [remote, scrapingPlan, sendCollectorMessage, runFhir, coordinator])
+  }, [remote, scrapingPlan, sendCollectorMessage, runFhir, collectorRegister])
 
   return state
 }

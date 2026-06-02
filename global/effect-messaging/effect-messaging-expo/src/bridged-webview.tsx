@@ -94,7 +94,7 @@ interface BuiltTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   readonly onMessage: (raw: string) => Effect.Effect<void>
   readonly registerHandlers: (
     handlers: Bridge.HandlersByBridge<Bridges, 'WebToHost'>
-  ) => Effect.Effect<void>
+  ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
 }
 
 /**
