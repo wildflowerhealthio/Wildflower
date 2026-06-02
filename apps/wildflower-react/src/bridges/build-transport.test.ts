@@ -19,6 +19,7 @@ let lastMakeWebTransportConfig: {
 } | null = null
 const fakeRegisterHandlers = vi.fn(() => Effect.void)
 const fakeSendMessage = vi.fn(() => Effect.void)
+const fakeInstallConsoleInterceptor = vi.fn()
 let coordinatorConnectArg: unknown = null
 
 vi.mock('effect-messaging-core', async () => {
@@ -46,7 +47,7 @@ vi.mock('effect-messaging-core', async () => {
     },
     Logging: {
       ...actual.Logging,
-      installConsoleInterceptor: vi.fn(),
+      installConsoleInterceptor: fakeInstallConsoleInterceptor,
     },
   }
 })
@@ -89,6 +90,7 @@ beforeEach(() => {
   coordinatorConnectArg = null
   fakeRegisterHandlers.mockClear()
   fakeSendMessage.mockClear()
+  fakeInstallConsoleInterceptor.mockClear()
 })
 
 afterEach(() => {
@@ -96,12 +98,27 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+// Poll across microtasks until `predicate()` returns true or the
+// budget is exhausted. The build chain is `runPromise → .then →
+// runPromise(signalReady)` — multiple microtask hops — so a fixed
+// `await Promise.resolve()` count races the chain. Polling makes the
+// wait insensitive to the exact hop count without bringing in real
+// timers.
+const waitForMicrotask = async (predicate: () => boolean, budget = 50): Promise<void> => {
+  for (let i = 0; i < budget; i++) {
+    if (predicate()) return
+    // oxlint-disable-next-line no-await-in-loop -- polling each microtask tick
+    await Promise.resolve()
+  }
+}
+
 describe('buildTransport', () => {
   test('seeds Navigation and Gatekeeper handlers and leaves slices unseeded for the coordinator', async () => {
     const buildTransport = await importBuildTransport()
     const promise = buildTransport(() => undefined)
-    // Let the transport-build microtask land, then unblock signalReady.
-    await Promise.resolve()
+    // The build chain hops through several microtasks before
+    // `transport.signalReady` runs and our mock sets `signalReadyResolve`.
+    await waitForMicrotask(() => signalReadyResolve !== null)
     signalReadyResolve?.()
     await promise
 
@@ -115,18 +132,17 @@ describe('buildTransport', () => {
   })
 
   test('installs the console interceptor before awaiting signalReady', async () => {
-    const { Logging } = await import('effect-messaging-core')
-    const interceptorMock = vi.mocked(Logging.installConsoleInterceptor)
     const buildTransport = await importBuildTransport()
 
     const promise = buildTransport(() => undefined)
-    // Let the build microtask resolve. signalReady is still pending —
-    // if the interceptor were installed *after* the await, the spy
-    // would still be empty here.
-    await Promise.resolve()
-    await Promise.resolve()
+    // Wait until the build chain has reached `transport.signalReady`
+    // (which fires our mock's `Effect.async` and sets `signalReadyResolve`).
+    // The interceptor is installed in the same `.then` block immediately
+    // before `signalReady` runs, so by this point it must have fired —
+    // if it hadn't, the ordering contract would be broken.
+    await waitForMicrotask(() => signalReadyResolve !== null)
 
-    expect(interceptorMock).toHaveBeenCalledTimes(1)
+    expect(fakeInstallConsoleInterceptor).toHaveBeenCalledTimes(1)
     expect(signalReadyResolve).not.toBeNull()
 
     // Unblock signalReady so the returned promise can settle.
@@ -137,7 +153,7 @@ describe('buildTransport', () => {
   test('binds the coordinator to the transport.registerHandlers', async () => {
     const buildTransport = await importBuildTransport()
     const promise = buildTransport(() => undefined)
-    await Promise.resolve()
+    await waitForMicrotask(() => signalReadyResolve !== null)
     signalReadyResolve?.()
     await promise
 

@@ -77,23 +77,6 @@ const makeOutboundPump = <
       message: Bridge.SendableMessage<Bridges, OutDir>
     ): Effect.Effect<void> => offerQuietly(outbox, message)
 
-    // Surface the most operationally important failure mode of the
-    // transport: scope closed while the outbox still holds buffered
-    // messages (peer never sent `__Ready`, web bundle crashed during
-    // boot, WebView unmounted before the page parsed). Without this
-    // every queued send is silently dropped on close.
-    yield* Effect.addFinalizer(() =>
-      Queue.size(outbox).pipe(
-        Effect.flatMap((remaining) =>
-          remaining > 0
-            ? Effect.logWarning(
-                `[effect-messaging] outbound pump closed with ${remaining} buffered message(s) undelivered — peer never signalled __Ready`
-              )
-            : Effect.void
-        )
-      )
-    )
-
     yield* Effect.forkScoped(
       ready.pipe(
         Effect.andThen(
@@ -115,6 +98,29 @@ const makeOutboundPump = <
             )
           })
         )
+      )
+    )
+
+    // Surface the most operationally important failure mode of the
+    // transport: scope closed while the outbox still holds buffered
+    // messages (peer never sent `__Ready`, web bundle crashed during
+    // boot, WebView unmounted before the page parsed). Without this
+    // every queued send is silently dropped on close.
+    //
+    // Registered *after* `forkScoped` so LIFO finalizer order puts this
+    // read *before* the fiber's interrupt — otherwise `Stream.fromQueue`'s
+    // `{ shutdown: true }` would have shut the outbox down first and
+    // `Queue.size` would fail. `catchAllCause` is belt-and-suspenders.
+    yield* Effect.addFinalizer(() =>
+      Queue.size(outbox).pipe(
+        Effect.flatMap((remaining) =>
+          remaining > 0
+            ? Effect.logWarning(
+                `[effect-messaging] outbound pump closed with ${remaining} buffered message(s) undelivered — peer never signalled __Ready`
+              )
+            : Effect.void
+        ),
+        Effect.catchAllCause(() => Effect.void)
       )
     )
 
