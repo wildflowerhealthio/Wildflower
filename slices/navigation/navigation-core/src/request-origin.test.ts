@@ -10,9 +10,9 @@ const FALLBACK = 'http://server.invalid'
 
 describe('requestOriginFromConnection', () => {
   test('trusts a loopback IPv4 peer with a Host header and serves it over http', () => {
-    expect(
-      requestOriginFromConnection('127.0.0.1', { host: '127.0.0.1:3000' }, FALLBACK)
-    ).toBe('http://127.0.0.1:3000')
+    expect(requestOriginFromConnection('127.0.0.1', { host: '127.0.0.1:3000' }, FALLBACK)).toBe(
+      'http://127.0.0.1:3000'
+    )
   })
 
   test('trusts IPv6 loopback `::1`', () => {
@@ -56,9 +56,9 @@ describe('requestOriginFromConnection', () => {
     // a capitalized key here represents the test caller forgetting to
     // pre-lowercase. We pin the case-sensitive bare-function semantics so
     // callers don't accidentally bypass the trust gate.
-    expect(
-      requestOriginFromConnection('127.0.0.1', { Host: '127.0.0.1:3000' }, FALLBACK)
-    ).toBe(FALLBACK)
+    expect(requestOriginFromConnection('127.0.0.1', { Host: '127.0.0.1:3000' }, FALLBACK)).toBe(
+      FALLBACK
+    )
   })
 
   test('empty `host` falls back', () => {
@@ -66,9 +66,9 @@ describe('requestOriginFromConnection', () => {
   })
 
   test('trailing-whitespace `host` falls back', () => {
-    expect(
-      requestOriginFromConnection('127.0.0.1', { host: '127.0.0.1:3000 ' }, FALLBACK)
-    ).toBe(FALLBACK)
+    expect(requestOriginFromConnection('127.0.0.1', { host: '127.0.0.1:3000 ' }, FALLBACK)).toBe(
+      FALLBACK
+    )
   })
 
   test('comma-joined `x-forwarded-host` falls through to Host (not echoed as the tunnel URL)', () => {
@@ -131,7 +131,7 @@ describe('requestOriginFromConnection', () => {
     // forwarded headers when the peer is not loopback" example.
     fc.assert(
       fc.property(
-        fc.ipV4().filter((ip) => !/^127\./.test(ip)),
+        fc.ipV4().filter((ip) => !ip.startsWith('127.')),
         fc.option(fc.domain(), { nil: undefined }),
         fc.option(fc.constantFrom('http', 'https', 'wss', 'ftp'), { nil: undefined }),
         (remoteAddress, forwardedHost, forwardedProto) => {

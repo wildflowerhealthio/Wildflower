@@ -7,7 +7,7 @@ const LOOPBACK_REMOTE_ADDRESS_RE = /^(?:127\.\d+\.\d+\.\d+|::1|::ffff:127\.\d+\.
 // Same shape gate for `Host`, `X-Forwarded-Host`, and `X-Forwarded-Proto`:
 // reject everything that wouldn't compose into a well-formed URL (empty
 // strings, whitespace, comma-joined header lists, embedded paths, etc.).
-const HOST_RE = /^[A-Za-z0-9.\-]+(?::\d+)?$/
+const HOST_RE = /^[A-Za-z0-9.-]+(?::\d+)?$/
 const PROTO_RE = /^https?$/
 
 /**
