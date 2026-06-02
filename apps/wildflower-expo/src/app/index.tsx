@@ -1,15 +1,12 @@
 import { Effect } from 'effect'
-import * as SplashScreen from 'expo-splash-screen'
 import { Colors, Spacing, ThemedText, ThemedView, useThemeColors } from 'expo-tundraish'
-import { ServerState } from 'local-http-server-core/livestore'
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useCallback, useState, type JSX } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { AppShellWebView } from '../app-shell/app-shell-webview.tsx'
-import { useNavigationSender } from '../app-shell/navigation-pipe.ts'
+import { useNavigationSender } from '../app-shell/navigation-pipe.tsx'
 import { TABS, tabForPath, type TabKey } from '../components/tab-mapping.ts'
-import { useWildflowerStore } from '../livestore/livestore-store.ts'
 
 // Splash is suppressed by `side-effect-imports/prevent-splash-hide.ts`
 // (side-effect import in `index.ts`, before `expo-router/entry`).
@@ -17,35 +14,15 @@ import { useWildflowerStore } from '../livestore/livestore-store.ts'
 
 /** The persistent shell screen — mounts `<AppShellWebView>` and the native tab bar. */
 export default function HomeScreen(): JSX.Element {
-  const store = useWildflowerStore()
-  const { running } = store.useQuery(ServerState.queries.current$)
   const palette = useThemeColors()
   const sendNavigation = useNavigationSender()
   const insets = useSafeAreaInsets()
 
   const [activeTab, setActiveTab] = useState<TabKey | null>('apps')
-  const [shellLive, setShellLive] = useState(false)
-
-  // Hide the splash only after both the server is up AND the SPA has
-  // reported a first `RouteChanged` (which means the embedded
-  // wildflower-react has mounted + the transport has flushed).
-  useEffect(() => {
-    if (running && shellLive) {
-      Effect.runFork(
-        Effect.tryPromise({
-          try: () => SplashScreen.hideAsync(),
-          catch: (cause) => cause,
-        }).pipe(
-          Effect.catchAll((cause) => Effect.logWarning('SplashScreen.hideAsync failed', cause))
-        )
-      )
-    }
-  }, [running, shellLive])
 
   const handleRouteChanged = useCallback(
     ({ pathname }: { pathname: string; canGoBack: boolean }): void => {
       setActiveTab(tabForPath(pathname))
-      setShellLive(true)
     },
     []
   )
@@ -73,6 +50,7 @@ export default function HomeScreen(): JSX.Element {
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isActive }}
                 onPress={() => {
+                  console.debug('Tab press:', tab.label)
                   Effect.runFork(
                     sendNavigation({ _tag: 'HostRequestedWebNavigation', path: tab.path })
                   )

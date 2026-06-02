@@ -3,7 +3,6 @@ import type { JSX } from 'react'
 import { AsyncErrorView, pageLayoutStyles } from 'react-tundraish'
 
 import { grantQueryOptions, useGrantQuery } from '../../../queries/index.ts'
-import { ensureAuthedQuery } from '../../../router-loader.ts'
 import styles from './approved.$id.module.css'
 
 const ApprovedAppDetailScreen = ({ id }: { readonly id: string }): JSX.Element => {
@@ -19,8 +18,9 @@ const ApprovedAppDetailScreen = ({ id }: { readonly id: string }): JSX.Element =
 /**
  * The `/settings/gatekeeper/approved/$id` file route. Reads the typed `$id`
  * path param from the generated route via `Route.useParams()` and hands it
- * to the screen as a prop. See {@link ensureAuthedQuery} for the loader's
- * token-ready guard and error-propagation contract.
+ * to the screen as a prop. The `_auth` / `/settings` `beforeLoad` gate
+ * guarantees a token before this loader runs, so it's a plain
+ * `ensureQueryData` — failures propagate to the route's `errorComponent`.
  */
 function ApprovedAppDetailRoute(): JSX.Element {
   const { id } = Route.useParams()
@@ -29,7 +29,7 @@ function ApprovedAppDetailRoute(): JSX.Element {
 
 export const Route = createFileRoute('/settings/gatekeeper/approved/$id')({
   loader: ({ context, params }) =>
-    ensureAuthedQuery(context, grantQueryOptions(context.runAuthed, params.id)),
+    context.queryClient.ensureQueryData(grantQueryOptions(context.runAuthed, params.id)),
   component: ApprovedAppDetailRoute,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Not Found" />,
 })

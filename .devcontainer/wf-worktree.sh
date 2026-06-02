@@ -60,6 +60,29 @@ require_data_volume() {
   fi
 }
 
+# `git worktree add --relative-paths` landed in git 2.48 (Jan 2025). On
+# older git the option is rejected with an opaque "unknown option"
+# message that doesn't hint at the version requirement; detect early and
+# print something actionable instead. $1 is the minimum required
+# version, in `MAJOR.MINOR` form.
+require_git() {
+  local required="$1"
+  local actual
+  actual="$(git --version 2>/dev/null | awk '{print $3}')"
+  if [ -z "$actual" ]; then
+    echo "error: \`git\` not found on PATH." >&2
+    exit 1
+  fi
+  # Sort the two versions; if the lower of the pair isn't $required, $actual is older.
+  local lower
+  lower="$(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -n1)"
+  if [ "$lower" != "$required" ]; then
+    echo "error: git $required or newer required (found $actual)." >&2
+    echo "\`git worktree add --relative-paths\` landed in git 2.48; older git fails with an opaque \"unknown option\"." >&2
+    exit 1
+  fi
+}
+
 # Walk up from $1 (exclusive) toward $2 (exclusive), rmdir'ing empties. Used
 # after `remove` so slashed branch names (`foo/bar`) don't leave empty `foo/`
 # parents behind in either the worktrees root or the data root.
@@ -81,6 +104,7 @@ cmd_new() {
     usage
     exit 1
   fi
+  require_git 2.48
   require_data_volume
 
   local worktree_dir="$WORKTREES_ROOT/$branch"
@@ -93,10 +117,16 @@ cmd_new() {
 
   mkdir -p "$(dirname "$worktree_dir")" "$nm_dir"
 
+  # --relative-paths writes both the admin gitdir pointer and the worktree's
+  # .git file as paths relative to the workspace root. The container path
+  # `/workspaces/wildflower/...` does not exist on the host, so absolute
+  # pointers leave host-side git tooling (CLI, VSCode source control, GitLens)
+  # unable to enumerate or open the worktrees. Relative paths resolve from
+  # both views since the bind-mount preserves the layout. Requires git 2.48+.
   if git -C "$MAIN_REPO" show-ref --verify --quiet "refs/heads/$branch"; then
-    git -C "$MAIN_REPO" worktree add "$worktree_dir" "$branch"
+    git -C "$MAIN_REPO" worktree add --relative-paths "$worktree_dir" "$branch"
   else
-    git -C "$MAIN_REPO" worktree add -b "$branch" "$worktree_dir" "$base"
+    git -C "$MAIN_REPO" worktree add --relative-paths -b "$branch" "$worktree_dir" "$base"
   fi
 
   ln -sfn "$nm_dir" "$worktree_dir/node_modules"

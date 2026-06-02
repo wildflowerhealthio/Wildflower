@@ -2,7 +2,7 @@ import type { Effect } from 'effect'
 import { type BridgeTransport, HostBindings } from 'effect-messaging-core'
 import { NavigationBridge } from 'navigation-core'
 import { useMemo } from 'react'
-import { ReceiverLayer } from './host-receiver-layer.ts'
+import { makeNavigationHostHandlers } from './host-handlers.ts'
 
 interface UseNavigationHostBindingOptions {
   /** Initial SPA route; seeded via the URL-param channel. */
@@ -10,18 +10,25 @@ interface UseNavigationHostBindingOptions {
   /** Fires when the SPA emits `RouteChanged`. */
   readonly onRouteChanged?: (route: { pathname: string; canGoBack: boolean }) => void
   /**
+   * Fires once when the SPA emits `UIReady` (auth gate passed + startup
+   * prefetches settled). The host hides the native splash / reveals the
+   * WebView here. Callers must stabilise this themselves — it's in the
+   * memo's dep list.
+   */
+  readonly onUiReady?: () => void
+  /**
    * Invoked once the WebView transport has built. Receives the typed
    * sender for outbound navigation messages; the host shell typically
    * captures it so a sibling tab bar can dispatch into the same
    * transport.
    */
   readonly onTransportReady?: (
-    send: BridgeTransport.MessageSender<readonly [typeof NavigationBridge], 'Host'>
+    send: BridgeTransport.MessageSender<readonly [typeof NavigationBridge], 'HostToWeb'>
   ) => Effect.Effect<void>
 }
 
 /**
- * Host binding for the navigation bridge. Combines the receiver layer
+ * Host binding for the navigation bridge. Combines the handler record
  * with an optional `HostRequestedWebNavigation` initial message, and
  * surfaces the transport's typed sender via `onTransportReady` so a
  * sibling consumer (e.g. a native tab bar) can dispatch through it.
@@ -53,6 +60,7 @@ interface UseNavigationHostBindingOptions {
 const useNavigationHostBinding = ({
   initialRoute,
   onRouteChanged,
+  onUiReady,
   onTransportReady,
 }: UseNavigationHostBindingOptions = {}): HostBindings.HostBindings<
   readonly [typeof NavigationBridge]
@@ -61,14 +69,14 @@ const useNavigationHostBinding = ({
     () =>
       HostBindings.single({
         bridge: NavigationBridge,
-        receiverLayer: ReceiverLayer(onRouteChanged),
+        handlers: makeNavigationHostHandlers(onRouteChanged, onUiReady),
         initialMessages:
           initialRoute === undefined
             ? undefined
             : [{ _tag: 'HostRequestedWebNavigation' as const, path: initialRoute }],
         onTransportReady,
       }),
-    [initialRoute, onRouteChanged, onTransportReady]
+    [initialRoute, onRouteChanged, onUiReady, onTransportReady]
   )
 
 export { useNavigationHostBinding }

@@ -1,36 +1,50 @@
 import type { Effect, Schema } from 'effect'
 import type * as Message from './message.ts'
-import type { TransportAdapter } from './transport-adapter.ts'
 
 /**
- * Per-tag handler record consumed by `Bridge.make`'s `ReceiverLayer`.
+ * Per-tag handler record for one bridge side's inbound messages, passed
+ * to the transport via `BridgeTransport.makeHostTransport` /
+ * `makeWebTransport`'s `handlers` tuple (or swapped later through
+ * `registerHandlers`).
  *
  * @remarks
- * Each handler returns `Effect<void, never, TransportAdapter>` so a
- * handler can dispatch a reply via the same-bridge `send(...)` (which
- * requires `TransportAdapter`). The dispatch fiber satisfies the
- * requirement per-invocation by running each handler under the
- * transport's own adapter — see `bridge-transport.ts`.
+ * Each handler returns a pure `Effect<void>` — it acknowledges the
+ * inbound message and has no requirements. Handlers never reply through
+ * the bridge directly; a host slice that needs to send proactively
+ * captures its transport sender via `HostBindings`' `onTransportReady`
+ * and dispatches through that captured ref.
  *
- * Handlers that don't need a reply still typecheck: an
- * `Effect<void, never, never>` is assignable to
- * `Effect<void, never, TransportAdapter>` (`R` is covariant in
- * `Effect`).
+ * This is the fully-typed end of the handler spectrum; {@link Handler}
+ * is its routing-erased counterpart, reached once the dispatch fiber has
+ * narrowed a decoded message to its `_tag`.
  */
 type HandlersFor<R extends Message.SchemaRecord> = {
   readonly [Tag in keyof R]: R[Tag] extends Schema.Schema<infer A, string, never>
-    ? (message: A) => Effect.Effect<void, never, TransportAdapter>
+    ? (message: A) => Effect.Effect<void>
     : never
 }
 
 /**
- * String-literal identifier for a bridge half's `Context.Tag`.
- *
- * @remarks
- * Two `Bridge.make({name: 'X', …})` calls produce type-equivalent
- * `HandlerTag`s but runtime-distinct tag instances; the runtime never
- * confuses two bridges, but TS can't catch accidental name collisions.
+ * Decoded inbound message at the routing site. Schema acceptance
+ * guarantees a `_tag`; the dispatch fiber re-narrows to it for the
+ * handler lookup. The floor shape {@link Handler} accepts.
  */
-type TagId<Name extends string, Side extends 'Host' | 'Web'> = `${Name}.${Side}.HandlerTag`
+type DecodedMessage = { readonly _tag: string }
 
-export type { HandlersFor, TagId }
+/**
+ * Routing-erased handler: the shape a {@link HandlersFor} member
+ * collapses to once the transport's dispatch fiber has decoded a wire
+ * string and re-narrowed it to its `_tag`. A pure
+ * `(message) => Effect<void>` with no requirements — handlers
+ * acknowledge-and-return and never reply through the transport.
+ */
+type Handler = (message: DecodedMessage) => Effect.Effect<void>
+
+/**
+ * Flat tag→handler lookup the transport's dispatch fiber holds (in a
+ * `Ref`) and reads on every inbound message. A tag absent from the
+ * record has no installed handler — its messages are logged-and-dropped.
+ */
+type AnyHandlers = Readonly<Record<string, Handler | undefined>>
+
+export type { AnyHandlers, DecodedMessage, Handler, HandlersFor }

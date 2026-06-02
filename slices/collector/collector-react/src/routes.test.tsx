@@ -23,7 +23,7 @@ const router = createRouter({
     queryClient: new QueryClient(),
     runAuthed: stubRunAuthed,
     runtimeLayer: Layer.die('runtimeLayer not used in route tests'),
-    isTokenReady: () => false,
+    awaitAuthReady: () => Promise.resolve(),
   },
 })
 

@@ -1,48 +1,83 @@
-/* oxlint-disable react/only-export-components -- destructures Provider
-   components alongside their companion `useAs*` / `use*` hooks; the
-   pipe factory's own file already documents the rationale for keeping
-   them paired. */
-import { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
-import { CollectorBridge } from 'collector-fundamentals/bridge'
+/* oxlint-disable react/only-export-components -- a sender pipe is a
+   Provider component paired with its companion `use*` hooks; keeping them
+   in one module is the whole point of the pattern. */
+import type { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
+import type { CollectorBridge } from 'collector-fundamentals/bridge'
+import { Effect } from 'effect'
 import type { BridgeTransport } from 'effect-messaging-core'
-import { type MadeNamedPipe, makeNamedPipe } from 'effect-messaging-react'
+import { useLateBoundSender } from 'effect-messaging-react'
+import { createContext, useEffect, useRef, type JSX, type ReactNode, type RefObject } from 'react'
+import { useContextOrThrow } from 'react-kitchen-sink'
 
-// The `useAs*` / `use*` hooks below are destructured-and-renamed off the
-// `makeNamedPipe(...)` result, so tsgo re-infers each renamed binding's type
-// at the export site — where the inferred `BridgeTransport.MessageSender<...>`
-// has no nameable import path and dts emission fails with TS2883. Annotating
-// each pipe with its `MadeNamedPipe<...>` type and giving the hook bindings an
-// explicit type (with `BridgeTransport` imported, so `MessageSender` is
-// nameable) makes the emitted `.d.ts` portable.
 type BrowserSnifferSender = BridgeTransport.MessageSender<
   readonly [typeof BrowserSnifferBridge],
-  'Host'
+  'HostToWeb'
 >
-type CollectorSender = BridgeTransport.MessageSender<readonly [typeof CollectorBridge], 'Host'>
+type CollectorSender = BridgeTransport.MessageSender<readonly [typeof CollectorBridge], 'HostToWeb'>
 
-const browserSnifferPipe: MadeNamedPipe<
-  'BrowserSniffer',
-  readonly [typeof BrowserSnifferBridge],
-  'Host'
-> = makeNamedPipe('BrowserSniffer', [BrowserSnifferBridge] as const, 'Host')
+// --- BrowserSniffer pipe ---------------------------------------------------
+// Sniffer events (Click / CancelSnifferRequest) the collector forwards reach
+// a sender that only exists once the modal's `<BrowserSnifferWebView>` mounts;
+// the ref's warn-and-drop default covers the pre-mount window.
+const browserSnifferWarnAndDrop: BrowserSnifferSender = (msg) =>
+  Effect.logWarning(
+    `[effect-messaging] no BrowserSniffer sender registered; dropping message "${JSON.stringify(msg)}"`
+  )
 
-const { Provider: BrowserSnifferPipeProvider } = browserSnifferPipe
-const useAsBrowserSnifferOutlet: (sender: BrowserSnifferSender) => void =
-  browserSnifferPipe.useAsOutlet
-const useBrowserSnifferSender: () => BrowserSnifferSender = browserSnifferPipe.useSender
+const BrowserSnifferSenderContext = createContext<RefObject<BrowserSnifferSender> | null>(null)
+BrowserSnifferSenderContext.displayName = 'BrowserSnifferSenderContext'
 
-const collectorPipe: MadeNamedPipe<'Collector', readonly [typeof CollectorBridge], 'Host'> =
-  makeNamedPipe('Collector', [CollectorBridge] as const, 'Host')
+const BrowserSnifferPipeProvider = ({ children }: { children: ReactNode }): JSX.Element => {
+  const ref = useRef<BrowserSnifferSender>(browserSnifferWarnAndDrop)
 
-const { Provider: CollectorPipeProvider } = collectorPipe
-const useAsCollectorOutlet: (sender: CollectorSender) => void = collectorPipe.useAsOutlet
-const useCollectorSender: () => CollectorSender = collectorPipe.useSender
+  return (
+    <BrowserSnifferSenderContext.Provider value={ref}>
+      {children}
+    </BrowserSnifferSenderContext.Provider>
+  )
+}
+
+const useBrowserSnifferSenderRef = (): RefObject<BrowserSnifferSender> =>
+  useContextOrThrow(BrowserSnifferSenderContext)
+
+const useBrowserSnifferSender = (): BrowserSnifferSender =>
+  useLateBoundSender(useBrowserSnifferSenderRef())
+
+/** Register the active sniffer sender for the registrant's mounted lifetime. */
+const useAsBrowserSnifferOutlet = (sender: BrowserSnifferSender): void => {
+  const ref = useBrowserSnifferSenderRef()
+  useEffect(() => {
+    ref.current = sender
+  }, [ref, sender])
+}
+
+// --- Collector pipe --------------------------------------------------------
+// The collector sender is the host transport's outbound `sendMessage`,
+// installed into the ref from `onTransportReady` (see `useCollectorHostBinding`).
+const collectorWarnAndDrop: CollectorSender = (msg) =>
+  Effect.logWarning(
+    `[effect-messaging] no Collector sender registered; dropping message "${JSON.stringify(msg)}"`
+  )
+
+const CollectorSenderContext = createContext<RefObject<CollectorSender> | null>(null)
+CollectorSenderContext.displayName = 'CollectorSenderContext'
+
+const CollectorPipeProvider = ({ children }: { children: ReactNode }): JSX.Element => {
+  const ref = useRef<CollectorSender>(collectorWarnAndDrop)
+
+  return <CollectorSenderContext.Provider value={ref}>{children}</CollectorSenderContext.Provider>
+}
+
+const useCollectorSenderRef = (): RefObject<CollectorSender> =>
+  useContextOrThrow(CollectorSenderContext)
+
+const useCollectorSender = (): CollectorSender => useLateBoundSender(useCollectorSenderRef())
 
 export {
   BrowserSnifferPipeProvider,
   CollectorPipeProvider,
   useAsBrowserSnifferOutlet,
-  useAsCollectorOutlet,
   useBrowserSnifferSender,
   useCollectorSender,
+  useCollectorSenderRef,
 }

@@ -4,7 +4,7 @@ How to declare wire schemas for an `effect-messaging` `Bridge` without falling i
 
 ## The constraint
 
-`BridgeTransport.make({bridges, layers, side})` calls `Schema.typeSchema(schema)` on **every** inbound message schema before wiring it into dispatch. `typeSchema` strips transforms — it returns the _output_ (`Type`) side of the schema with any decode/encode steps removed. The result is the schema the transport expects after a single `JSON.parse` over the wire.
+`BridgeTransport.makeHostTransport({ bridges, handlers })` and `makeWebTransport({ bridges, handlers })` each call `Schema.typeSchema(schema)` on **every** inbound message schema before wiring it into dispatch. `typeSchema` strips transforms — it returns the _output_ (`Type`) side of the schema with any decode/encode steps removed. The result is the schema the transport expects after a single `JSON.parse` over the wire.
 
 Concretely, if you declare a field as:
 

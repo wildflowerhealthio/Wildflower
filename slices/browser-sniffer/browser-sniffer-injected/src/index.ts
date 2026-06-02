@@ -17,7 +17,10 @@ import { snifferScriptSource } from './sniffer-script.generated.ts'
  *
  * Why not `Function.prototype.toString()` at runtime: Hermes (RN/Expo)
  * strips function source after bytecode compilation, so the previous
- * `\`(${installSniffer.toString()})()\`` approach returned a syntactically
+ * ```
+ * `(${installSniffer.toString()})()`
+ * ```
+ *  approach returned a syntactically
  * valid no-op (`(function () { [bytecode] })()`) on-device. Build-time
  * generation sidesteps that entirely.
  *

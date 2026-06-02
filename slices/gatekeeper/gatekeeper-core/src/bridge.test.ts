@@ -4,18 +4,8 @@ import { describe, expect, test } from 'vite-plus/test'
 import { GatekeeperBridge } from './bridge.ts'
 
 describe('GatekeeperBridge', () => {
-  test('exposes both host→web tags', () => {
-    expect(Object.keys(GatekeeperBridge.Web.InboundSchemas).toSorted()).toEqual([
-      'AuthTokenIssued',
-      'WaitForToken',
-    ])
-  })
-
-  test('WaitForToken URL schema encodes to a bare flag', () => {
-    const schema = GatekeeperBridge.UrlParamSchemas.WaitForToken
-    assert(Predicate.isNotUndefined(schema), 'WaitForToken URL schema missing')
-    expect(Schema.encodeSync(schema)({ _tag: 'WaitForToken' })).toBe('')
-    expect(Schema.decodeSync(schema)('')).toEqual({ _tag: 'WaitForToken' })
+  test('exposes only the AuthTokenIssued host→web tag', () => {
+    expect(Object.keys(GatekeeperBridge.HostToWeb).toSorted()).toEqual(['AuthTokenIssued'])
   })
 
   test('AuthTokenIssued URL schema round-trips the token', () => {

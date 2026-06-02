@@ -1,9 +1,8 @@
-import { Context, Effect, Layer, Logger, LogLevel as EffectLogLevel, Schema } from 'effect'
+import { Effect, Layer, Logger, LogLevel as EffectLogLevel, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
 import * as Logging from './logging.ts'
-import type * as MessageHandler from './message-handler.ts'
 import * as TestPlatformAdapterLayer from './test-platform-adapter-layer.ts'
 
 const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
@@ -12,15 +11,8 @@ const decodeLog = Schema.decodeUnknownSync(Schema.typeSchema(Logging.LogMessage)
 
 describe('Logging — shape', () => {
   test('exposes one webToHost Log entry and an empty hostToWeb side', () => {
-    expect(Object.keys(Logging.LogBridge.Host.OutboundSchemas)).toEqual([])
-    expect(Object.keys(Logging.LogBridge.Host.InboundSchemas)).toEqual(['Log'])
-    expect(Object.keys(Logging.LogBridge.Web.OutboundSchemas)).toEqual(['Log'])
-    expect(Object.keys(Logging.LogBridge.Web.InboundSchemas)).toEqual([])
-  })
-
-  test('the HandlerTag keys reflect the bridge name and side', () => {
-    expect(Logging.LogBridge.Host.HandlerTag.key).toBe('Log.Host.HandlerTag')
-    expect(Logging.LogBridge.Web.HandlerTag.key).toBe('Log.Web.HandlerTag')
+    expect(Object.keys(Logging.LogBridge.WebToHost)).toEqual(['Log'])
+    expect(Object.keys(Logging.LogBridge.HostToWeb)).toEqual([])
   })
 })
 
@@ -69,13 +61,13 @@ describe('Logging — wire round-trip', () => {
   })
 })
 
-describe('Logging.defaultHostReceiverLayer field', () => {
-  test('is the same Layer the bridge would build for the default Log handler', () => {
-    expect(Logging.defaultHostReceiverLayer).toBeDefined()
+describe('Logging.defaultLogHostHandlers field', () => {
+  test('exposes a Log handler', () => {
+    expect(typeof Logging.defaultLogHostHandlers.Log).toBe('function')
   })
 })
 
-describe('Logging.defaultHostReceiverLayer', () => {
+describe('Logging.defaultLogHostHandlers', () => {
   interface CapturedLog {
     readonly level: string
     readonly message: unknown
@@ -90,24 +82,6 @@ describe('Logging.defaultHostReceiverLayer', () => {
       })
     )
 
-  /**
-   * Look up the `Log.Host.HandlerTag` from a built receiver layer.
-   * `Logging.Host.HandlerTag` is the same `Context.Tag` the production
-   * `ReceiverLayer` stores into, so we read from it directly — the
-   * handler-record type comes back narrowed without a local re-declaration.
-   */
-  const resolveHandlers = async (
-    layer: Layer.Layer<MessageHandler.TagId<'Log', 'Host'>>
-  ): Promise<Context.Tag.Service<typeof Logging.LogBridge.Host.HandlerTag>> =>
-    Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const ctx = yield* Layer.build(layer)
-          return Context.get(ctx, Logging.LogBridge.Host.HandlerTag)
-        })
-      )
-    )
-
   test.each([
     ['debug', 'DEBUG'],
     ['info', 'INFO'],
@@ -115,14 +89,15 @@ describe('Logging.defaultHostReceiverLayer', () => {
     ['warn', 'WARN'],
     ['error', 'ERROR'],
   ] as const)('maps wire level %s to Effect.log at %s', async (level, expectedLabel) => {
-    const handlers = await resolveHandlers(Logging.defaultHostReceiverLayer)
     const sink: CapturedLog[] = []
     await Effect.runPromise(
-      handlers.Log({ _tag: 'Log', level, payload: ['hello from the web', { extra: 1 }] }).pipe(
-        Effect.provide(Layer.mergeAll(captureLogs(sink), adapterLayer)),
-        // Default runtime minimum is INFO; lift it so DEBUG surfaces too.
-        Logger.withMinimumLogLevel(EffectLogLevel.All)
-      )
+      Logging.defaultLogHostHandlers
+        .Log({ _tag: 'Log', level, payload: ['hello from the web', { extra: 1 }] })
+        .pipe(
+          Effect.provide(Layer.mergeAll(captureLogs(sink), adapterLayer)),
+          // Default runtime minimum is INFO; lift it so DEBUG surfaces too.
+          Logger.withMinimumLogLevel(EffectLogLevel.All)
+        )
     )
     expect(sink).toHaveLength(1)
     expect(sink[0]?.level).toBe(expectedLabel)
@@ -223,7 +198,7 @@ describe('Logging.installConsoleInterceptor', () => {
     expect(globalThis.console.info).toBe(originals.info)
   })
 
-  test('re-installing while a prior install is active short-circuits to a no-op teardown — the truly-original methods survive', () => {
+  test('re-installing while a prior install is active warns, returns a no-op teardown — the truly-original methods survive', () => {
     const firstSent: Schema.Schema.Type<typeof Logging.LogMessage>[] = []
     const secondSent: Schema.Schema.Type<typeof Logging.LogMessage>[] = []
     const firstTeardown = Logging.installConsoleInterceptor((msg) => {
@@ -231,18 +206,29 @@ describe('Logging.installConsoleInterceptor', () => {
     })
     // Second install without a teardown in between: short-circuited so
     // the patched methods (NOT the originals) aren't recaptured as
-    // baseline. The returned teardown must be a no-op.
+    // baseline. It warns (via console.warn, which the active first
+    // interceptor ships onward) and returns a no-op teardown.
     const secondTeardown = Logging.installConsoleInterceptor((msg) => {
       secondSent.push(msg)
     })
-    globalThis.console.info('routed-by-first')
-    expect(firstSent).toHaveLength(1)
+    expect(firstSent).toContainEqual(
+      expect.objectContaining({
+        _tag: 'Log',
+        level: 'warn',
+        // oxlint-disable-next-line typescript/no-unsafe-assignment
+        payload: expect.arrayContaining([expect.stringContaining('already active')]),
+      })
+    )
+    // The warning routed through the first (active) interceptor, never the second.
     expect(secondSent).toHaveLength(0)
+    const firstCountAfterWarn = firstSent.length
+    globalThis.console.info('routed-by-first')
+    expect(firstSent).toHaveLength(firstCountAfterWarn + 1)
     // The no-op second teardown must NOT touch console — the originals
     // would be lost if it ran a restore from the patched-as-baseline.
     secondTeardown()
     globalThis.console.info('still-routed-by-first')
-    expect(firstSent).toHaveLength(2)
+    expect(firstSent).toHaveLength(firstCountAfterWarn + 2)
     // The first teardown restores to the truly-original methods.
     firstTeardown()
     // oxlint-disable-next-line typescript-eslint/unbound-method

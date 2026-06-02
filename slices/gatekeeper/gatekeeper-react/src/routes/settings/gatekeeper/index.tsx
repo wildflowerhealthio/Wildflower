@@ -13,7 +13,6 @@ import {
   useRevokeGrantMutation,
   type Grant,
 } from '../../../queries/index.ts'
-import { ensureAuthedQuery } from '../../../router-loader.ts'
 
 interface AccessIndexBodyProps {
   readonly grants: readonly Grant[]
@@ -117,15 +116,13 @@ const AccessIndexScreen = (): JSX.Element => {
  * The `/settings/gatekeeper/` landing file route — the owner-facing access
  * management index.
  *
- * The `/settings` gate is a React component (`RequireAuth`), not
- * `beforeLoad`, so the loader fires before auth. {@link ensureAuthedQuery}
- * skips the prefetch when the bearer token isn't ready yet (embedded first
- * paint, before `transport.flushed`) and lets the in-component
- * `useSuspenseQuery` — rendered only after `RequireAuth` passes — do the
- * real read. Genuine read failures propagate to `errorComponent`.
+ * The `/settings` `beforeLoad` gate guarantees a token before this loader
+ * runs, so it's a plain `ensureQueryData` — failures propagate to
+ * `errorComponent`.
  */
 export const Route = createFileRoute('/settings/gatekeeper/')({
-  loader: ({ context }) => ensureAuthedQuery(context, grantsQueryOptions(context.runAuthed)),
+  loader: ({ context }) =>
+    context.queryClient.ensureQueryData(grantsQueryOptions(context.runAuthed)),
   component: AccessIndexScreen,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Gatekeeper" />,
 })

@@ -12,7 +12,6 @@ import {
   FhirPublicApiHandlersLive,
   FhirResourcesApiLive,
 } from '../src/http-api-implementation/index.ts'
-import { SmartConfigurationLive } from '../src/internal/smart-configuration-context.ts'
 
 const ORIGIN = 'http://localhost:8787'
 
@@ -71,7 +70,6 @@ const wireServer = async (): Promise<Wired> => {
   )
   const publicLive = HttpApiBuilder.api(FhirPublicApi).pipe(
     Layer.provide(FhirPublicApiHandlersLive),
-    Layer.provide(SmartConfigurationLive),
     Layer.provide(originLayer)
   )
   const merged = Layer.mergeAll(resourcesLive, publicLive, HttpServer.layerContext)

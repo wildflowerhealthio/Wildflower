@@ -1,8 +1,8 @@
 import { Effect } from 'effect'
 import type { Bridge, BridgeTransport } from 'effect-messaging-core'
 
-interface RecordingSender<B extends ReadonlyArray<Bridge.AnyBridge>, S extends 'Host' | 'Web'> {
-  readonly sender: BridgeTransport.MessageSender<B, S>
+interface RecordingSender<B extends ReadonlyArray<Bridge.AnyBridge>, Dir extends Bridge.Direction> {
+  readonly sender: BridgeTransport.MessageSender<B, Dir>
   readonly received: ReadonlyArray<{ readonly _tag: string }>
 }
 
@@ -15,15 +15,15 @@ interface RecordingSender<B extends ReadonlyArray<Bridge.AnyBridge>, S extends '
  */
 const makeRecordingSender = <
   B extends ReadonlyArray<Bridge.AnyBridge>,
-  S extends 'Host' | 'Web',
->(): RecordingSender<B, S> => {
+  Dir extends Bridge.Direction,
+>(): RecordingSender<B, Dir> => {
   const received: Array<{ readonly _tag: string }> = []
   const thunk = (message: { readonly _tag: string }): Effect.Effect<void> =>
     Effect.sync(() => {
       received.push(message)
     })
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const sender = thunk as unknown as BridgeTransport.MessageSender<B, S>
+  const sender = thunk as unknown as BridgeTransport.MessageSender<B, Dir>
   return { sender, received }
 }
 

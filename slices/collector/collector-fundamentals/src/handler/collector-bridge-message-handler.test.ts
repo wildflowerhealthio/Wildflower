@@ -2,7 +2,8 @@
 
 import type { CancelSnifferRequestMessage } from 'browser-sniffer-core'
 import { Duration, Effect, Encoding, Layer, MutableHashMap, TestClock, TestContext } from 'effect'
-import { TestPlatformAdapterLayer, type TransportAdapter } from 'effect-messaging-core'
+import { type TransportAdapter } from 'effect-messaging-core'
+import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
 import { LoggingLayerTest, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 

@@ -11,7 +11,6 @@ import {
   useUpdateRemoteMutation,
   type Remote,
 } from '../../../queries/index.ts'
-import { ensureAuthedQuery } from '../../../router-loader.ts'
 import accountConfig from './account-config.module.css'
 import pageLayout from './page-layout.module.css'
 
@@ -143,15 +142,14 @@ function AccountConfigRoute(): JSX.Element {
 }
 
 /**
- * The `_auth` gate is a React component (`RequireAuth`), not `beforeLoad`,
- * so the loader fires before auth. {@link ensureAuthedQuery} skips the
- * prefetch when the bearer token isn't ready yet and lets the in-component
- * `useSuspenseQuery` do the real read; genuine read failures (including a
- * 404 `RemoteNotFound`) propagate to `errorComponent`.
+ * The `_auth` layout's `beforeLoad` gates on the bearer token, so the
+ * loader can call `ensureQueryData` directly — token is guaranteed by
+ * the time it runs. Genuine read failures (including a 404
+ * `RemoteNotFound`) propagate to `errorComponent`.
  */
 export const Route = createFileRoute('/_auth/collector/account/$id')({
   loader: ({ context, params }) =>
-    ensureAuthedQuery(context, remoteQueryOptions(context.runAuthed, params.id)),
+    context.queryClient.ensureQueryData(remoteQueryOptions(context.runAuthed, params.id)),
   component: AccountConfigRoute,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Collector" />,
 })

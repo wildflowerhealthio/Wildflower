@@ -23,7 +23,7 @@ interface UseLogHostBindingOptions {
  *
  * @remarks
  * Mirrors the shape of slice-level `use<Slice>HostBinding` hooks
- * (`useNavigationHostBinding`, etc.) — `bridge`, `receiverLayer`, no
+ * (`useNavigationHostBinding`, etc.) — `bridge`, `handlers`, no
  * `initialMessages` (the bridge is Web→Host only). The web-side wiring
  * lives in {@link Logging.installConsoleInterceptor}, called inside
  * an `onTransportReady` step at the embedded SPA's transport build
@@ -36,9 +36,7 @@ const useLogHostBinding = ({
     () =>
       HostBindings.single({
         bridge: Logging.LogBridge,
-        receiverLayer: Logging.LogBridge.Host.ReceiverLayer({
-          Log: onLog,
-        }),
+        handlers: { Log: onLog },
       }),
     [onLog]
   )

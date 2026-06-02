@@ -29,9 +29,21 @@ vi.mock('gatekeeper-react', () => ({
   authTokenRef: { get: Effect.succeed(null), changes: { pipe: () => ({}) } },
   GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
-vi.mock('react-kitchen-sink', () => ({ AuthTokenProvider: Passthrough }))
+vi.mock('react-kitchen-sink', () => ({
+  AuthTokenProvider: Passthrough,
+  // Mirror the real `cn` helper so the ErrorBoundary in `renderApp`'s
+  // tree (`react-tundraish` reads `cn` via this re-export) doesn't
+  // crash if the rendered subtree throws. Same identity-on-truthy
+  // shape as the production export.
+  cn: (
+    ...args: ReadonlyArray<string | undefined | null | false | Record<string, boolean>>
+  ): string => args.filter((a): a is string => typeof a === 'string').join(' '),
+  // Hook the prior subagent's test refactor relies on. Mock as a
+  // synchronous passthrough so the consumer subtree sees the resolved
+  // value immediately without scheduling.
+  usePromiseOrDefault: <T,>(_promise: Promise<T>, fallback: T): T => fallback,
+}))
 vi.mock('collector-react', () => ({
-  CollectorRuntimeProvider: Passthrough,
   CollectorRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 // fhir-r4-react migrated off its client provider; the app composes its
@@ -40,7 +52,6 @@ vi.mock('fhir-r4-react', () => ({
   FhirR4ResourcesRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('apps-react', () => ({
-  AppsRuntimeProvider: Passthrough,
   AppsRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 // Prefetch is gated off; these stubs just satisfy the imports.
@@ -97,11 +108,13 @@ describe('in-memory QueryClientProvider', () => {
   test('provides a single shared QueryClient to the whole tree', async () => {
     const { renderApp } = await import('../app-root.tsx')
 
+    const { stubTransport } = await import('./transport-context.ts')
     await act(async () => {
       renderApp({
         history: createMemoryHistory({ initialEntries: ['/'] }),
-        TransportProvider: Passthrough,
         entry: 'main-web',
+        awaitAuthReady: () => () => Promise.resolve(),
+        makeTransport: () => Promise.resolve(stubTransport),
       })
     })
 

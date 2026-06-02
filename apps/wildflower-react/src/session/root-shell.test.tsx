@@ -6,37 +6,28 @@ import { useEffect, type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**
- * Regression guard for the PR that migrated react-router → TanStack. After
- * every slice's client DI migrated to TanStack Query + the router-context
- * `runAuthed`/`runtimeLayer` (Issue #107), `<RootShell>` renders ONLY an
- * `<Outlet />` — no slice client providers nest there anymore. The whole
- * provider stack now lives in one home:
+ * Regression guard for the provider tier that lives above the router.
+ * `<RootShell>` renders ONLY an `<Outlet />` — no slice client providers
+ * nest there. The stack lives in two places:
  *
- *  - `app-root.tsx`'s `InnerWrap` — passed to `<RouterProvider>`. Renders
- *    the auth/runtime/transport/sender stack (AuthTokenProvider, the two
- *    RuntimeProviders, TransportProvider, the two SenderForwarders)
- *    ABOVE the router's matched routes.
+ *  - Above `<RouterProvider>`: `AuthTokenProvider` and the in-tree
+ *    `TransportContext.Provider` (the value is seeded by a promise
+ *    resolved outside React; the tree itself doesn't build the
+ *    transport).
+ *  - `InnerWrap` (passed to `<RouterProvider>`): `CollectorSenderForwarder`,
+ *    `AppsSenderForwarder` — slice senders that close over
+ *    `useBridgeTransport`.
  *
  * The invariant: TanStack's `<RouterProvider>` does NOT remount the
  * `InnerWrap` on child navigations — children mount/unmount inside the
- * `<Outlet />` — so the provider tier keeps state across nav. That's the
- * whole reason it's safe to host `BridgeTransport` (built via
- * `useNavigate()` / `useRouter()`) in the `InnerWrap`: a remount would
- * tear down and rebuild the transport on every navigation, dropping
- * pending bridge messages and breaking the `__Ready` handshake.
- *
- * The single describe block below pins that tier:
- *  - "renderApp InnerWrap lifecycle" exercises the real `renderApp`
- *    (with `InnerWrap`) and asserts the relocated auth/runtime/transport
- *    stack mounts and is left untouched by navigation.
+ * `<Outlet />` — so the provider tier keeps state across nav.
  *
  * Strategy: mock every provider/bridge as an identity passthrough that
- * records `'mount'` / `'unmount'` events into a shared `lifecycleSpy`, so
- * the test exercises only mount semantics — not the Effect runtimes,
- * BridgeTransport build, or console interceptors the real stack pulls in.
- * The recorded event log distinguishes "the provider stayed put" (its log
- * is unchanged by navigation) from "the stack rebuilt under the new route"
- * (mount + unmount appended on nav).
+ * records `'mount'` / `'unmount'` events into a shared `lifecycleSpy`,
+ * so the test exercises only mount semantics — not Effect runtimes or
+ * console interceptors. The event log distinguishes "the provider
+ * stayed put" (log unchanged by nav) from "rebuilt under the new
+ * route" (mount + unmount appended).
  */
 
 // `vi.hoisted` lifts these declarations above the `vi.mock` factory
@@ -74,6 +65,16 @@ const { lifecycleSpy, makePassthrough } = vi.hoisted(() => {
 // publishes — the mocked AuthTokenProvider doesn't use it.
 vi.mock('react-kitchen-sink', () => ({
   AuthTokenProvider: makePassthrough('AuthTokenProvider'),
+  // Mirror the real `cn` helper so the ErrorBoundary in `renderApp`'s
+  // tree (`react-tundraish` reads `cn` via this re-export) doesn't
+  // crash if the rendered subtree throws.
+  cn: (
+    ...args: ReadonlyArray<string | undefined | null | false | Record<string, boolean>>
+  ): string => args.filter((a): a is string => typeof a === 'string').join(' '),
+  // `AppRootTree` consumes the transport promise through this hook;
+  // resolve immediately to the fallback so the test renders past the
+  // suspense window.
+  usePromiseOrDefault: <T,>(_promise: Promise<T>, fallback: T): T => fallback,
 }))
 // `get` must be an Effect; null-token short-circuits the startup prefetch.
 vi.mock('gatekeeper-react', () => ({
@@ -81,7 +82,6 @@ vi.mock('gatekeeper-react', () => ({
   GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('collector-react', () => ({
-  CollectorRuntimeProvider: makePassthrough('CollectorRuntimeProvider'),
   CollectorRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 // fhir-r4-react no longer ships a client provider — the app composes its
@@ -91,7 +91,6 @@ vi.mock('fhir-r4-react', () => ({
   FhirR4ResourcesRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('apps-react', () => ({
-  AppsRuntimeProvider: makePassthrough('AppsRuntimeProvider'),
   AppsRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 // Prefetch is gated off (null token); these stubs keep the import light.
@@ -161,16 +160,13 @@ const lifecycleEventsFor = (name: string): readonly ('mount' | 'unmount')[] =>
     .map(([event]) => event)
 
 describe('renderApp InnerWrap lifecycle', () => {
-  // The six providers that moved OUT of `RootShell` and into
-  // `app-root.tsx`'s `InnerWrap` (`AuthTokenProvider` wraps
-  // `<RouterProvider>` from just above it; the rest nest inside
-  // `InnerWrap`). This is the auth/runtime/transport stack the migration
-  // relocated, and the tier this block exists to pin.
+  // The three providers that live around the router above its matched
+  // routes: `AuthTokenProvider` (just above `<RouterProvider>`) and the
+  // two slice sender-forwarders that nest inside `InnerWrap`. The
+  // `TransportContext.Provider` is also above the router (in `AppRoot`)
+  // but is a plain context provider with no React-tree work to pin.
   const INNER_WRAP_PROVIDERS = [
     'AuthTokenProvider',
-    'CollectorRuntimeProvider',
-    'AppsRuntimeProvider',
-    'TransportProvider',
     'CollectorSenderForwarder',
     'AppsSenderForwarder',
   ] as const
@@ -197,11 +193,13 @@ describe('renderApp InnerWrap lifecycle', () => {
     const { renderApp } = await import('../app-root.tsx')
     const history = createMemoryHistory({ initialEntries: ['/a'] })
 
+    const { stubTransport } = await import('../bridges/transport-context.ts')
     await act(async () => {
       renderApp({
         history,
-        TransportProvider: makePassthrough('TransportProvider'),
         entry: 'main-web',
+        awaitAuthReady: () => () => Promise.resolve(),
+        makeTransport: () => Promise.resolve(stubTransport),
       })
     })
 

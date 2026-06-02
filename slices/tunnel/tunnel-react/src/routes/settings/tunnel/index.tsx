@@ -153,28 +153,20 @@ const TunnelScreenContent = (): JSX.Element => {
 }
 
 /**
- * Loader warms the `TunnelState` cache for first paint — but only when
- * the bearer token is already available.
+ * Loader warms the `TunnelState` cache for first paint. The `/settings`
+ * layout now gates on a `beforeLoad` that `await`s the bearer token, so
+ * by the time this loader runs the token is guaranteed present —
+ * embedded waited the bridge handshake, web had it synchronously. No
+ * more first-paint skip; this is a plain `ensureQueryData`.
  *
- * The `/settings` auth gate is a React component, not a `beforeLoad`, so
- * on embedded first paint the bridge hasn't delivered the token when the
- * loader runs. We must not prefetch then (it would 401); instead we
- * return early and let the post-gate in-component `useSuspenseQuery`
- * (rendered only after the gate passes) do the first read once the token
- * lands. `context.isTokenReady()` distinguishes that case from standalone
- * web, where the token is present synchronously from localStorage.
- *
- * When the token IS ready we prefetch and deliberately do NOT swallow
- * failures: a genuine error (500, schema-invalid, network) propagates so
- * the route's `errorComponent` (`AsyncErrorView`) renders instead of
- * vanishing silently — important because `defaultPreload: 'intent'` fires
- * this loader on hover with no component mounted to surface the error.
+ * We deliberately do NOT swallow failures: a genuine error (500,
+ * schema-invalid, network) propagates so the route's `errorComponent`
+ * (`AsyncErrorView`) renders instead of vanishing silently — important
+ * because `defaultPreload: 'intent'` fires this loader on hover with no
+ * component mounted to surface the error.
  */
 export const Route = createFileRoute('/settings/tunnel/')({
   loader: async ({ context }) => {
-    // Token not yet delivered (embedded first paint): defer to the
-    // in-component read rather than 401-ing a prefetch.
-    if (!context.isTokenReady()) return
     await context.queryClient.ensureQueryData(tunnelStateQueryOptions(context.runAuthed))
   },
   component: TunnelScreenContent,

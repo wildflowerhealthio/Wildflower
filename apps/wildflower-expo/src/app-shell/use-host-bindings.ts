@@ -14,25 +14,36 @@ import { type NavigationBridge } from 'navigation-core'
 import { NavigationBridgeExpo } from 'navigation-expo'
 import { useMemo } from 'react'
 import { useWildflowerStore } from '@/src/livestore/livestore-store.ts'
-import { useNavigationSenderRef } from './navigation-pipe.ts'
+import { useNavigationSenderRef } from './navigation-pipe.tsx'
 
-type NavigationSender = BridgeTransport.MessageSender<readonly [typeof NavigationBridge], 'Host'>
+type NavigationSender = BridgeTransport.MessageSender<
+  readonly [typeof NavigationBridge],
+  'HostToWeb'
+>
 
 const useNavigationHostBinding = (
-  onRouteChanged: (event: { pathname: string; canGoBack: boolean }) => void
+  onRouteChanged: (event: { pathname: string; canGoBack: boolean }) => void,
+  onUiReady: () => void
 ): HostBindings.HostBindings<readonly [typeof NavigationBridge]> => {
   const navigationSenderRef = useNavigationSenderRef()
 
   const navigationBindingArgs = useMemo(() => {
     return {
       onRouteChanged,
+      onUiReady,
+      // Ref-slot last-writer-wins on a bridges rebuild: senders
+      // captured before teardown can't be reused afterward, so the
+      // latest `onTransportReady` firing replaces whatever was there.
+      // `bindings.bridges` is reference-stable from
+      // `HostBindings.combine`, so today the rebuild branch never
+      // fires in practice — the assignment runs once on mount.
       onTransportReady: (send: NavigationSender) =>
         Effect.sync(() => {
           navigationSenderRef.current = send
         }),
       initialRoute: '/apps',
     }
-  }, [onRouteChanged, navigationSenderRef])
+  }, [onRouteChanged, onUiReady, navigationSenderRef])
 
   const navigationBinding = NavigationBridgeExpo.useHostBinding(navigationBindingArgs)
 
@@ -41,8 +52,15 @@ const useNavigationHostBinding = (
 
 export const useHostBindings = ({
   onRouteChanged,
+  onUiReady,
 }: {
   onRouteChanged: (event: { pathname: string; canGoBack: boolean }) => void
+  /**
+   * Fires once the embedded SPA posts `UIReady` (auth gate passed +
+   * startup prefetches settled). The shell hides the native splash /
+   * reveals the WebView here.
+   */
+  onUiReady: () => void
 }): HostBindings.HostBindings<
   readonly [
     typeof NavigationBridge,
@@ -59,7 +77,7 @@ export const useHostBindings = ({
   const { value: localClientToken } = store.useQuery(LocalClientToken.queries.current$)
   const token = localClientToken ?? undefined
 
-  const navigationBinding = useNavigationHostBinding(onRouteChanged)
+  const navigationBinding = useNavigationHostBinding(onRouteChanged, onUiReady)
   const gatekeeperBinding = GatekeeperBridgeExpo.useHostBinding({ token })
   const collectorBinding = useCollectorHostBinding()
   const appsBinding = AppsBridgeExpo.useHostBinding({ store })

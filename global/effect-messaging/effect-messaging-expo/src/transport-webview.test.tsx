@@ -1,6 +1,6 @@
 import { act, render } from '@testing-library/react-native'
 import { Effect } from 'effect'
-import type { BareSenderService } from 'effect-messaging-core'
+import type { BareSenderFunction } from 'effect-messaging-core'
 import * as React from 'react'
 import { View } from 'react-native'
 import {
@@ -79,12 +79,12 @@ describe('TransportWebView (transport surface)', () => {
   })
 
   it('hands bareSender strings through to the underlying WebView ref', () => {
-    const ref = React.createRef<BareSenderService>()
+    const ref = React.createRef<BareSenderFunction>()
     render(<TransportWebView ref={ref} source={{ html: '' }} onMessage={jest.fn()} />)
     const sender = ref.current
     if (sender === null) throw new Error('ref.current not populated')
-    Effect.runSync(sender.bareSender('payload-A'))
-    Effect.runSync(sender.bareSender('payload-B'))
+    Effect.runSync(sender('payload-A'))
+    Effect.runSync(sender('payload-B'))
     expect(mockWebViewState.postMessageCalls).toEqual(['payload-A', 'payload-B'])
   })
 

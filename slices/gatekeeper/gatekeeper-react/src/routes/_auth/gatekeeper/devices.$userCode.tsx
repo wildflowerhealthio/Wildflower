@@ -17,7 +17,6 @@ import {
   useDeviceConsentQuery,
   type DeviceConsent,
 } from '../../../queries/index.ts'
-import { ensureAuthedQuery } from '../../../router-loader.ts'
 import pageLayout from '../../../styles/page-layout.module.css'
 import scopeListStyles from '../../../styles/scope-list.module.css'
 
@@ -167,8 +166,9 @@ const DeviceConsentScreen = ({ userCode }: { readonly userCode: string }): JSX.E
 /**
  * The `/gatekeeper/devices/$userCode` file route. Reads the typed
  * `$userCode` path param from the generated route via `Route.useParams()`
- * and hands it to the screen as a prop. See {@link ensureAuthedQuery} for
- * the loader's token-ready guard and error-propagation contract.
+ * and hands it to the screen as a prop. The `_auth` `beforeLoad` gate
+ * guarantees a token before this loader runs, so it's a plain
+ * `ensureQueryData` — failures propagate to `errorComponent`.
  */
 function DeviceConsentRoute(): JSX.Element {
   const { userCode } = Route.useParams()
@@ -177,7 +177,9 @@ function DeviceConsentRoute(): JSX.Element {
 
 export const Route = createFileRoute('/_auth/gatekeeper/devices/$userCode')({
   loader: ({ context, params }) =>
-    ensureAuthedQuery(context, deviceConsentQueryOptions(context.runAuthed, params.userCode)),
+    context.queryClient.ensureQueryData(
+      deviceConsentQueryOptions(context.runAuthed, params.userCode)
+    ),
   component: DeviceConsentRoute,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Device Authorization" />,
 })

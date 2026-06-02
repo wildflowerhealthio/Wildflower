@@ -16,7 +16,6 @@ import { FhirPublicApi, FhirResourcesApi } from 'fhir-r4/http-api-definition'
 import {
   FhirPublicApiHandlersFor,
   FhirResourcesApiHandlersFor,
-  SmartConfigurationLive,
 } from 'fhir-r4/http-api-implementation'
 import { GatekeeperApi } from 'gatekeeper-core/http-api-definition'
 import {
@@ -113,8 +112,7 @@ const WildflowerHttpApiLive = HttpApiBuilder.api(WildflowerHttpApi).pipe(
   Layer.provide(AppsAdminApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(TunnelAdminApiHandlersFor<'WildflowerApi'>()),
   Layer.provide(VendorAppsApiHandlersFor<'WildflowerApi'>()),
-  Layer.provide(RequireAuthMiddlewareLive),
-  Layer.provide(SmartConfigurationLive)
+  Layer.provide(RequireAuthMiddlewareLive)
 )
 
 /**

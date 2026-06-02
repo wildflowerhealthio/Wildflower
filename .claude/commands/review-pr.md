@@ -102,7 +102,9 @@ Each action item names a single specific change. It may depend on the analysis a
    - Effect idioms (generators vs pipelines, tagged errors, Layer composition)
    - Test quality (property-first, MECE, coverage of new exports)
    - Dependency rule compliance and slice layering
-   - Doc comments on new/changed exports
+   - Doc comments on new/changed exports, other agents have a tendency to over-comment rather than storing narratives in doc files. Doc comments should only be what's useful on hover in the IDE
+   - Is the coupling reasonable, are the modules cohesive?
+   - Is the state handled reasonably? Are methods and components pure whenever possible? 
    - Naming and API ergonomics
    - Security and input validation (if the diff touches boundaries)
    - Performance hot spots (if relevant)

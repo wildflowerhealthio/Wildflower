@@ -20,9 +20,9 @@ const notSupported = (method: string, path: string): PlatformError.SystemError =
 
 /**
  * The set of `FileSystem.FileSystem` methods that have no equivalent in
- * `expo-file-system`. Each fails with a typed `SystemError` (`reason:
- * 'BadResource'`); `watch` returns a `Stream` whose failure is structurally
- * separate from the `Effect.fail` path.
+ * `expo-file-system`. Each fails with a typed `SystemError`
+ * (`reason: 'BadResource'`); `watch` returns a `Stream` whose failure is
+ * structurally separate from the `Effect.fail` path.
  *
  * Transitively unsupported: `stream` and `sink` are synthesised by
  * `FileSystem.make` from `open` (which always fails here) — so

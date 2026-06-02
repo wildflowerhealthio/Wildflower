@@ -54,16 +54,35 @@ const withOverriddenModules = (config, overrides) => {
 let config = getDefaultConfig(projectRoot)
 config.resolver.assetExts.push('txt')
 
-addLiveStoreDevtoolsMiddleware(config, {
-  schemaPath: './src/livestore/schema.ts',
-  viteConfig: (viteConfig) => {
-    viteConfig.server.fs ??= {}
-    viteConfig.server.fs.strict = false
-    viteConfig.optimizeDeps ??= {}
-    viteConfig.optimizeDeps.force = true
-    return viteConfig
-  },
-})
+// The devtools middleware boots a Vite dev server (default port 4242)
+// at metro.config.js load time. Only attach it for the Metro
+// subcommands that actually run a dev server (`start`, `ios`,
+// `android`) — `expo export` / `export:embed` and any future
+// non-serving subcommand have no business booting another server,
+// and EAS evaluates this file during `expo export:embed --eager`
+// where the bind can race / collide. Allow-list keeps the gate
+// closed by default for unknown subcommands. EAS_BUILD / NODE_ENV
+// are belt-and-suspenders in case argv detection misses a case.
+const isDevServerSubcommand = process.argv.some(
+  (a) => a === 'start' || a === 'ios' || a === 'android'
+)
+const isProductionBundle =
+  process.env.EAS_BUILD === 'true' ||
+  process.env.EAS_BUILD === '1' ||
+  process.env.NODE_ENV === 'production'
+
+if (isDevServerSubcommand && !isProductionBundle) {
+  addLiveStoreDevtoolsMiddleware(config, {
+    schemaPath: './src/livestore/schema.ts',
+    viteConfig: (viteConfig) => {
+      viteConfig.server.fs ??= {}
+      viteConfig.server.fs.strict = false
+      viteConfig.optimizeDeps ??= {}
+      viteConfig.optimizeDeps.force = true
+      return viteConfig
+    },
+  })
+}
 
 // Monorepo setup — always include the workspace root so Metro can
 // resolve hoisted node_modules and watch workspace package sources.

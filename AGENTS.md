@@ -76,6 +76,8 @@ When running multiple agents in parallel inside the devcontainer, **use the help
 .devcontainer/wf-worktree.sh remove <branch>
 ```
 
+Requires **git 2.48+** — the script uses `git worktree add --relative-paths`, which landed in that release. The devcontainer image ships a newer git; on older hosts `wf-worktree.sh new` fails fast with the version requirement instead of git's opaque "unknown option" message.
+
 The script places the worktree at `${workspace}/.worktrees/<branch>` (host-visible via the existing bind mount) and symlinks its `node_modules` to `/data/worktrees/<branch>/node_modules` on the Linux-native `wf-data` volume. That keeps the source files editable from host VSCode while installs hardlink from the shared pnpm store at `/data/pnpm-store` — fast, with ~1× total disk cost across worktrees.
 
 The `node_modules/` segment in the symlink target is load-bearing: Node canonicalizes symlinks during require resolution, so the realpath chain has to contain a literal `node_modules/` ancestor — otherwise scoped optional deps like `@voidzero-dev/vite-plus-<platform>` fail to resolve and `vp install`'s postinstall crashes.

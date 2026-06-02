@@ -9,7 +9,7 @@ let mockLastBridgedWebViewProps: {
   readonly loadFrom: { readonly _tag: 'html'; readonly html: string; readonly baseUrl: string }
   readonly bindings: {
     readonly bridges: ReadonlyArray<{ readonly name?: string }>
-    readonly receiverLayers: ReadonlyArray<unknown>
+    readonly handlers: ReadonlyArray<unknown>
     readonly initialMessages: ReadonlyArray<ReadonlyArray<unknown>>
     readonly onTransportReady: ReadonlyArray<
       | ((
@@ -28,9 +28,6 @@ let mockLastBridgedWebViewProps: {
 // shape at runtime.
 jest.mock('effect-messaging-expo', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
-  )
   return {
     BridgedWebView: function MockBridgedWebView(
       props: NonNullable<typeof mockLastBridgedWebViewProps>
@@ -40,12 +37,12 @@ jest.mock('effect-messaging-expo', () => {
     },
     useLogHostBinding: (): {
       readonly bridges: ReadonlyArray<{ readonly name: string }>
-      readonly receiverLayers: ReadonlyArray<unknown>
+      readonly handlers: ReadonlyArray<unknown>
       readonly initialMessages: ReadonlyArray<ReadonlyArray<unknown>>
       readonly onTransportReady: ReadonlyArray<undefined>
     } => ({
       bridges: [{ name: 'Log' }],
-      receiverLayers: [effect.Layer.effectDiscard(effect.Effect.void)],
+      handlers: [{}],
       initialMessages: [[]],
       onTransportReady: [undefined],
     }),
@@ -59,7 +56,7 @@ jest.mock('effect-messaging-expo', () => {
  */
 type MockBindings = {
   readonly bridges: ReadonlyArray<{ readonly name: string }>
-  readonly receiverLayers: ReadonlyArray<unknown>
+  readonly handlers: ReadonlyArray<unknown>
   readonly initialMessages: ReadonlyArray<ReadonlyArray<unknown>>
   readonly onTransportReady: ReadonlyArray<
     | ((
@@ -94,7 +91,7 @@ expectTypeOf<keyof MockBindings>().toEqualTypeOf<
 // input fields and returns the same four arrays it received.
 const singleMock = (binding: {
   readonly bridge: { readonly name: string }
-  readonly receiverLayer: unknown
+  readonly handlers: unknown
   readonly initialMessages?: ReadonlyArray<unknown>
   readonly onTransportReady?: (
     send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
@@ -115,19 +112,18 @@ const singleMock = (binding: {
 let mockNavigationOptions: {
   initialRoute?: string
   onRouteChanged?: unknown
+  onUiReady?: () => void
   onTransportReady?: (
     send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
   ) => EffectType.Effect<void>
 } | null = null
 jest.mock('navigation-expo', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
-  )
   return {
     NavigationBridgeExpo: {
       useHostBinding: (options: {
         initialRoute?: string
         onRouteChanged?: unknown
+        onUiReady?: () => void
         onTransportReady?: (
           send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
         ) => EffectType.Effect<void>
@@ -135,7 +131,7 @@ jest.mock('navigation-expo', () => {
         mockNavigationOptions = options
         return singleMock({
           bridge: { name: 'Navigation' },
-          receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
+          handlers: {},
           initialMessages:
             options.initialRoute === undefined
               ? undefined
@@ -147,56 +143,61 @@ jest.mock('navigation-expo', () => {
   }
 })
 
+// Capture the splash-screen mock's `hideAsync` so the test below can
+// assert the navigation binding's `onUiReady` calls it. Returning a
+// resolved promise mirrors expo-splash-screen's real API, which the
+// shell calls inside a `void` to discard the promise.
+const mockSplashHideAsync = jest.fn<Promise<void>, []>(() => Promise.resolve())
+jest.mock('expo-splash-screen', () => ({
+  hideAsync: (): Promise<void> => mockSplashHideAsync(),
+}))
+
+// Capture the options gatekeeper-expo's hook receives so the wiring
+// assertions below can read what the shell passed in. The mock's
+// `onTransportReady` is a no-op: the shell only owes gatekeeper the
+// token value, and no test in this file exercises the captured
+// sender. The real token-delivery contract (capture sender →
+// post-mount send) is pinned by `gatekeeper-expo`'s own tests
+// (`use-host-binding.test.ts`).
+let mockGatekeeperOptions: { token?: string } | null = null
 jest.mock('gatekeeper-expo', () => {
   const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
     'effect'
   )
   return {
     GatekeeperBridgeExpo: {
-      useHostBinding: (options: { token?: string } = {}): MockBindings =>
-        singleMock({
+      useHostBinding: (options: { token?: string } = {}): MockBindings => {
+        mockGatekeeperOptions = options
+        return singleMock({
           bridge: { name: 'Gatekeeper' },
-          receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
-          initialMessages: [{ _tag: 'WaitForToken' as const }],
-          onTransportReady:
-            options.token === undefined
-              ? undefined
-              : (
-                  send: (msg: {
-                    readonly _tag: string
-                    readonly [k: string]: unknown
-                  }) => EffectType.Effect<void>
-                ) => send({ _tag: 'AuthTokenIssued', token: options.token }),
-        }),
+          handlers: {},
+          initialMessages: [],
+          onTransportReady: (): EffectType.Effect<void> => effect.Effect.void,
+        })
+      },
     },
   }
 })
 
 jest.mock('collector-expo', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
-  )
   return {
     useCollectorHostBinding: (): MockBindings =>
       singleMock({
         bridge: { name: 'Collector' },
-        receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
+        handlers: {},
       }),
   }
 })
 
 let mockAppsOptions: { store?: unknown } | null = null
 jest.mock('apps-expo', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
-  )
   return {
     AppsBridgeExpo: {
       useHostBinding: (options: { store?: unknown }): MockBindings => {
         mockAppsOptions = options
         return singleMock({
           bridge: { name: 'Apps' },
-          receiverLayer: effect.Layer.effectDiscard(effect.Effect.void),
+          handlers: {},
         })
       },
     },
@@ -264,13 +265,15 @@ jest.mock('expo-tundraish', () => {
 })
 
 import { AppShellWebView } from './app-shell-webview.tsx'
-import { NavigationPipeProvider, useNavigationSender } from './navigation-pipe.ts'
+import { NavigationPipeProvider, useNavigationSender } from './navigation-pipe.tsx'
 
 beforeEach(() => {
   mockLastBridgedWebViewProps = null
   mockNavigationOptions = null
+  mockGatekeeperOptions = null
   mockAppsOptions = null
   mockLocalClientTokenRow = { value: 'bearer-xyz' }
+  mockSplashHideAsync.mockClear()
 })
 
 const noopRouteChanged = (): void => {}
@@ -315,6 +318,59 @@ describe('AppShellWebView', () => {
     mountInPipe(<AppShellWebView onRouteChanged={onRouteChanged} />)
     expect(mockNavigationOptions?.initialRoute).toBe('/apps')
     expect(mockNavigationOptions?.onRouteChanged).toBe(onRouteChanged)
+  })
+
+  it('threads an onUiReady into the navigation binding that hides the native splash', () => {
+    // Shell-level wiring contract: the navigation binding's `UIReady`
+    // receiver runs the supplied `onUiReady` callback, which the shell
+    // wires to `SplashScreen.hideAsync()`. Without this, the embedded
+    // SPA's `UIReady` arrives but the host's splash never lifts.
+    mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
+    const onUiReady = mockNavigationOptions?.onUiReady
+    expect(typeof onUiReady).toBe('function')
+    expect(mockSplashHideAsync).not.toHaveBeenCalled()
+
+    if (onUiReady === undefined) throw new Error('onUiReady not threaded into navigation binding')
+    onUiReady()
+
+    expect(mockSplashHideAsync).toHaveBeenCalledTimes(1)
+  })
+
+  it('swallows a SplashScreen.hideAsync rejection inside onUiReady so it does not escape as an unhandled promise rejection', async () => {
+    // Pins the `.catch(...)` on `SplashScreen.hideAsync()` in the
+    // shell's `handleUiReady` as load-bearing. The 10s fallback in
+    // `prevent-splash-hide.ts` can race and hide the splash first;
+    // when that happens, `hideAsync` here rejects with "already
+    // hidden" and the catch is what keeps it from surfacing.
+    mockSplashHideAsync.mockImplementationOnce(() => Promise.reject(new Error('already hidden')))
+
+    const unhandled: Array<unknown> = []
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason)
+    }
+    // Jest runs Expo packages under Node — `unhandledRejection` on
+    // `process` is the channel a `.catch`-less rejection would surface
+    // on. If the shell's `.catch(...)` is ever removed, this listener
+    // collects the rejection and the assertion below fails.
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
+      const onUiReady = mockNavigationOptions?.onUiReady
+      if (onUiReady === undefined) throw new Error('onUiReady not threaded into navigation binding')
+
+      await act(async () => {
+        onUiReady()
+        // Yield twice so the rejected promise's reaction runs and any
+        // unhandledRejection event would have fired.
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(mockSplashHideAsync).toHaveBeenCalledTimes(1)
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
   })
 
   it('seeds HostRequestedWebNavigation via the navigation binding initialMessages', () => {
@@ -367,9 +423,8 @@ describe('AppShellWebView', () => {
       readonly [k: string]: unknown
     }): EffectType.Effect<void> => EffectType.sync(() => dispatched.push(msg))
 
-    // Fire the binding's `onTransportReady` — the shell's wrapper
-    // commits the sender into state, triggers a re-render, and
-    // `useAsNavigationOutlet` registers it in the pipe.
+    // Fire the binding's `onTransportReady` — the navigation binding
+    // writes the transport sender into the pipe's sender ref.
     await act(async () => {
       await EffectType.runPromise(navOnTransportReady(fakeTransportSender))
     })
@@ -396,24 +451,27 @@ describe('AppShellWebView', () => {
     expect(JSON.stringify(allInitial)).not.toContain('bearer-xyz')
   })
 
-  it("issues AuthTokenIssued through the gatekeeper binding's onTransportReady when a token is provided", async () => {
+  it('threads the bearer token from the local-client-token row into the gatekeeper binding hook', () => {
+    // Shell-level wiring contract: the shell reads `LocalClientToken`
+    // and hands the bearer to `GatekeeperBridgeExpo.useHostBinding`.
+    // What the binding *does* with the token (capture sender + send
+    // via post-mount effect) is covered by `gatekeeper-expo`'s own
+    // tests — the shell only owes it the value.
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
-    const bindings = expectBindings()
-    const gkIdx = indexOf(bindings, 'Gatekeeper')
-    const gkOnTransportReady = bindings.onTransportReady[gkIdx]
-    if (gkOnTransportReady === undefined) throw new Error('gatekeeper onTransportReady missing')
-
-    const sent: Array<{ readonly _tag: string }> = []
-    await EffectType.runPromise(gkOnTransportReady((msg) => EffectType.sync(() => sent.push(msg))))
-    expect(sent).toContainEqual({ _tag: 'AuthTokenIssued', token: 'bearer-xyz' })
+    expect(mockGatekeeperOptions?.token).toBe('bearer-xyz')
   })
 
-  it('omits the gatekeeper onTransportReady when no token is provided', () => {
+  it('passes undefined to the gatekeeper binding hook when no token is present in the store', () => {
     mockLocalClientTokenRow = { value: null }
+    mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
+    expect(mockGatekeeperOptions?.token).toBeUndefined()
+  })
+
+  it('always wires an onTransportReady on the gatekeeper binding (the slice captures the sender regardless of token state)', () => {
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
     const bindings = expectBindings()
     const gkIdx = indexOf(bindings, 'Gatekeeper')
-    expect(bindings.onTransportReady[gkIdx]).toBeUndefined()
+    expect(bindings.onTransportReady[gkIdx]).toBeDefined()
   })
 
   it('threads the wildflower store into the apps host binding', () => {

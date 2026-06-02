@@ -1,4 +1,12 @@
 export * as WebPlatformAdapter from './web-platform-adapter.ts'
-export { NoContextException } from 'react-kitchen-sink'
-export { makeBridgeDispatcher, type MadeBridgeDispatcher } from './make-bridge-dispatcher.tsx'
-export { makeNamedPipe, type MadeNamedPipe } from './make-named-pipe.tsx'
+export { useLateBoundSender } from './late-bound-sender.ts'
+export {
+  HandlerCoordinatorContext,
+  makeHandlerCoordinator,
+  makeUseSliceRegister,
+  useHandlerCoordinator,
+  type BridgeHandlerRecord,
+  type HandlerCoordinator,
+  type SliceRegister,
+  type UnconnectedCoordinator,
+} from './handler-coordinator.ts'

@@ -1,34 +1,20 @@
-import { Context, Effect, Layer, Schema } from 'effect'
+import type { Schema } from 'effect'
 import type * as MessageHandler from './message-handler.ts'
 import * as Message from './message.ts'
-import { TransportAdapter } from './transport-adapter.ts'
 
-/** The opposite side of a bridge: messages we receive came from this side. */
-type OppositeSide<S extends 'Host' | 'Web'> = S extends 'Host' ? 'Web' : 'Host'
-
-/** Typed sender for one side. Each call returns an Effect that requires {@link TransportAdapter}. */
-type SenderFn<R extends Message.SchemaRecord> = (
-  message: Message.Of<R>
-) => Effect.Effect<void, never, TransportAdapter>
-
-/** One side of a bridge. `Outbound` is what this side sends; `Inbound` is what it receives. */
-interface Half<
-  Name extends string,
-  Side extends 'Host' | 'Web',
-  Outbound extends Message.SchemaRecord,
-  Inbound extends Message.SchemaRecord,
-> {
-  readonly OutboundSchemas: Outbound
-  readonly InboundSchemas: Inbound
-  readonly HandlerTag: Context.Tag<
-    MessageHandler.TagId<Name, Side>,
-    MessageHandler.HandlersFor<Inbound>
-  >
-  readonly ReceiverLayer: (
-    handlers: MessageHandler.HandlersFor<Inbound>
-  ) => Layer.Layer<MessageHandler.TagId<Name, Side>>
-  readonly send: SenderFn<Outbound>
-}
+/**
+ * The two directional schema records a bridge carries. `'HostToWeb'` is
+ * what the host sends and the web receives; `'WebToHost'` is the reverse.
+ *
+ * @remarks
+ * This replaces the older endpoint-keyed `Side` (`'Host' | 'Web'`): a
+ * `Direction` names the *wire flow* directly, so a transport (or handler
+ * record) selects `bridge[direction]` without an endpoint→direction
+ * translation step. The host's inbound direction is `'WebToHost'` and its
+ * outbound is `'HostToWeb'`; the web side is the mirror — but that mapping
+ * now lives at the two transport entry points, not in these types.
+ */
+type Direction = 'HostToWeb' | 'WebToHost'
 
 /**
  * Optional per-tag schemas for encoding messages as URL query params
@@ -46,65 +32,66 @@ type UrlParamSchemas<HostToWeb extends Message.SchemaRecord> = {
     : never
 }
 
-/** A bridge's two halves plus its name. */
+/**
+ * A declared cross-process bridge: the two directional schema records
+ * plus its name. `HostToWeb` is what the host sends and the web receives;
+ * `WebToHost` is the reverse.
+ *
+ * @remarks
+ * A bridge knows only its schemas. Encoding a typed message to its wire
+ * string is {@link Message.stringifyMessage}; putting that string on the
+ * wire is the transport's job (`BridgeTransport`). The bridge itself is
+ * unaware of any sending mechanics.
+ */
 interface Bridge<
   Name extends string,
   HostToWeb extends Message.SchemaRecord,
   WebToHost extends Message.SchemaRecord,
 > {
   readonly name: Name
-  readonly Host: Half<Name, 'Host', HostToWeb, WebToHost>
-  readonly Web: Half<Name, 'Web', WebToHost, HostToWeb>
-  readonly MessageSchemas: HostToWeb & WebToHost
+  readonly HostToWeb: HostToWeb
+  readonly WebToHost: WebToHost
   readonly UrlParamSchemas: UrlParamSchemas<HostToWeb>
-}
-
-/**
- * Structural bound for "any half of a bridge a transport can drive".
- *
- * @remarks
- * `Context.Tag<any, any>` and `(m: never) => …` widen invariant
- * positions so concrete halves fit. See `README.md` for the full
- * variance write-up.
- */
-type AnyHalf = {
-  readonly InboundSchemas: Message.SchemaRecord
-  readonly OutboundSchemas: Message.SchemaRecord
-  // oxlint-disable-next-line typescript/no-explicit-any
-  readonly HandlerTag: Context.Tag<any, any>
-  readonly send: (m: never) => Effect.Effect<void, never, TransportAdapter>
 }
 
 /** Structural bound for "any wired bridge". */
 type AnyBridge = {
   readonly name: string
-  readonly Host: AnyHalf
-  readonly Web: AnyHalf
+  readonly HostToWeb: Message.SchemaRecord
+  readonly WebToHost: Message.SchemaRecord
   // oxlint-disable-next-line typescript/no-explicit-any
   readonly UrlParamSchemas: Readonly<Record<string, Schema.Schema<any, string, never> | undefined>>
 }
 
 /**
- * Union of every decoded message a wired bridge's `Side` can send.
+ * Union of every decoded message a wired bridge sends in `Dir`.
  *
  * @remarks
- * Used where {@link TransportMessageSender}'s function-intersection shape
- * is the wrong tool — `Parameters` doesn't yield a parameter union
- * over intersected functions because TS treats them as overloads.
+ * Two nested conditionals, each load-bearing:
+ *
+ * - The inner `Bridges[number] extends infer B ? (B extends AnyBridge ? …)`
+ *   distributes a naked `B` over each bridge member (the `infer B` is a
+ *   distribution *binder*, not a decoded-type extraction) and yields
+ *   `Message.Of<B[Dir]>` per bridge — extraction is delegated to
+ *   {@link Message.Of}, so `SendableMessage` keeps no decoded-type `infer`.
+ *   A naked distribution is required because indexing a tuple-mapped type
+ *   (`{ [I in keyof Bridges]: … }[number]`) over a *generic* `Bridges`
+ *   eagerly collapses `Bridges[number]` to its `AnyBridge` constraint,
+ *   breaking the sender variance check in {@link callTransportReady}; the
+ *   distributive conditional stays *deferred* over a generic `Bridges`,
+ *   preserving the symbolic relationship that lets the full-tuple sender
+ *   hand off to each narrow per-slot callback.
+ * - The outer `… extends infer M extends { readonly _tag: string } ? M`
+ *   re-pins the constraint to `{ _tag: string }`. Without it the doubly
+ *   deferred inner conditional has no apparent `_tag`, so the generic
+ *   outbound pump's `message._tag` read in `bridge-transport.ts` fails to
+ *   type-check. {@link Message.Of} applies the same re-pin internally, but
+ *   the extra distribution layer hides it — so it is reapplied here.
  */
-type SendableMessage<
-  Bridges extends ReadonlyArray<AnyBridge>,
-  Side extends 'Host' | 'Web',
-> = Bridges[number] extends infer B
-  ? B extends {
-      readonly [K in Side]: {
-        readonly send: (
-          m: infer M extends { readonly _tag: string }
-        ) => Effect.Effect<void, never, TransportAdapter>
-      }
-    }
-    ? M
-    : never
+type SendableMessage<Bridges extends ReadonlyArray<AnyBridge>, Dir extends Direction> = (
+  Bridges[number] extends infer B ? (B extends AnyBridge ? Message.Of<B[Dir]> : never) : never
+) extends infer M extends { readonly _tag: string }
+  ? M
   : never
 
 /**
@@ -113,32 +100,35 @@ type SendableMessage<
  * narrows to this so call sites can't pass a tag that has no URL form.
  *
  * @remarks
- * Each `urlParams[Tag]` is `Schema | undefined` because the field is
- * optional on `Bridge.make` config — `NonNullable` strips the
- * `undefined` so the `infer A` branch can extract the message type.
- * The `-?` mapped-type modifier strips the optional flag inherited
- * from `UrlParamSchemas`'s `?` keys; without it, the indexed access
- * would yield `MessageOf<Tag> | undefined`, breaking the slot type
- * `HostBindings<readonly [B]>['initialMessages'][0]` expects.
+ * Maps over the `Bridges` tuple and, per bridge, strips its
+ * `UrlParamSchemas` down to a plain `Message.SchemaRecord` — the `-?`
+ * modifier removes the optional flag inherited from `UrlParamSchemas`'s
+ * `?` keys and `NonNullable` drops the `| undefined` — then delegates the
+ * decoded-type extraction to {@link Message.Of}. This keeps
+ * `UrlParamableMessage` `infer`-free; the lone surviving extraction
+ * `infer` lives in `Message.Of`.
  */
-type UrlParamableMessage<Bridges extends ReadonlyArray<AnyBridge>> = Bridges[number] extends infer B
-  ? B extends { readonly UrlParamSchemas: infer UP }
-    ? {
-        [Tag in keyof UP]-?: NonNullable<UP[Tag]> extends Schema.Schema<infer A, string, never>
-          ? A extends { readonly _tag: string }
-            ? A
-            : never
-          : never
-      }[keyof UP]
-    : never
-  : never
+type UrlParamableMessage<Bridges extends ReadonlyArray<AnyBridge>> = {
+  readonly [I in keyof Bridges]: Message.Of<{
+    readonly [Tag in keyof Bridges[I]['UrlParamSchemas']]-?: NonNullable<
+      Bridges[I]['UrlParamSchemas'][Tag]
+    >
+  }>
+}[number]
 
 /**
- * Tuple-mapped layers requirement for a bridge transport. Position `I` must
- * supply position `I`'s bridge tag (for the specified side).
+ * Tuple-mapped handler requirement for a bridge transport. Position `I`
+ * carries `MessageHandler.HandlersFor` over position `I`'s schema record
+ * for the inbound `Dir` — one Effect-returning function per inbound tag.
+ *
+ * @remarks
+ * `Dir` here is the bridge's *inbound* direction for the receiving side:
+ * a host receiver passes `'WebToHost'`, a web receiver `'HostToWeb'`. The
+ * old `Side`-keyed `InboundHandlers<B, S>` indirection is gone — handler
+ * records are now `HandlersFor<Bridges[I][Dir]>` directly.
  */
-type TransportLayers<Bridges extends ReadonlyArray<AnyBridge>, Side extends 'Host' | 'Web'> = {
-  readonly [I in keyof Bridges]: Layer.Layer<Bridges[I][Side]['HandlerTag']['Identifier']>
+type HandlersByBridge<Bridges extends ReadonlyArray<AnyBridge>, Dir extends Direction> = {
+  readonly [I in keyof Bridges]: MessageHandler.HandlersFor<Bridges[I][Dir]>
 }
 
 /**
@@ -157,10 +147,10 @@ type TransportLayers<Bridges extends ReadonlyArray<AnyBridge>, Side extends 'Hos
  * ```
  *
  * @remarks
- * Each call mints fresh `Context.Tag` instances. Pair tuples are
- * validated via {@link Message.ValidatedPairs} — a mismatched
- * `[tag, schema]` fails at the call site. `urlParams` is optional;
- * tags without a urlParams schema can't ride on the WebView source URL.
+ * Pair tuples are validated via {@link Message.ValidatedPairs} — a
+ * mismatched `[tag, schema]` fails at the call site. `urlParams` is
+ * optional; tags without a urlParams schema can't ride on the WebView
+ * source URL.
  */
 const make = <
   const Name extends string,
@@ -179,75 +169,21 @@ const make = <
   const hostToWebRecord = Message.recordFromPairs<HostToWebPairs>(definition.hostToWeb)
   const webToHostRecord = Message.recordFromPairs<WebToHostPairs>(definition.webToHost)
 
-  const HostHandlerTag = Context.GenericTag<
-    MessageHandler.TagId<Name, 'Host'>,
-    MessageHandler.HandlersFor<Message.RecordFromPairs<WebToHostPairs>>
-  >(`${definition.name}.Host.HandlerTag`)
-
-  const WebHandlerTag = Context.GenericTag<
-    MessageHandler.TagId<Name, 'Web'>,
-    MessageHandler.HandlersFor<Message.RecordFromPairs<HostToWebPairs>>
-  >(`${definition.name}.Web.HandlerTag`)
-
   return {
     name: definition.name,
-    Host: {
-      OutboundSchemas: hostToWebRecord,
-      InboundSchemas: webToHostRecord,
-      HandlerTag: HostHandlerTag,
-      ReceiverLayer: (handlers) => Layer.succeed(HostHandlerTag, handlers),
-      send: (message) =>
-        // `message` is `Message.Of<...>` (abstract); runtime invariant: every value is a tagged struct.
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-        sendThrough(hostToWebRecord, message as { readonly _tag: string }),
-    },
-    Web: {
-      OutboundSchemas: webToHostRecord,
-      InboundSchemas: hostToWebRecord,
-      HandlerTag: WebHandlerTag,
-      ReceiverLayer: (handlers) => Layer.succeed(WebHandlerTag, handlers),
-      send: (message) =>
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-        sendThrough(webToHostRecord, message as { readonly _tag: string }),
-    },
-    MessageSchemas: {
-      ...hostToWebRecord,
-      ...webToHostRecord,
-    },
+    HostToWeb: hostToWebRecord,
+    WebToHost: webToHostRecord,
     UrlParamSchemas: definition.urlParams ?? {},
   }
 }
 
-/**
- * Look up a message's outbound schema by tag, encode, and forward through
- * the {@link TransportAdapter}. Unknown tags warn and drop.
- */
-const sendThrough = (
-  record: Record<string, Message.AnyStringEncodedSchema>,
-  message: { readonly _tag: string }
-): Effect.Effect<void, never, TransportAdapter> =>
-  Effect.gen(function* () {
-    const schema = record[message._tag]
-    if (schema === undefined) {
-      yield* Effect.logWarning(
-        `[effect-messaging] sendMessage: no outbound schema for "${message._tag}"; dropping`
-      )
-      return undefined
-    }
-    const adapter = yield* TransportAdapter
-    yield* adapter.bareSender(Schema.encodeSync(schema)(message))
-    return undefined
-  })
-
 export { make }
 export type {
-  OppositeSide,
   AnyBridge,
-  AnyHalf,
   Bridge,
-  Half,
+  Direction,
+  HandlersByBridge,
   SendableMessage,
-  TransportLayers,
   UrlParamableMessage,
   UrlParamSchemas,
 }

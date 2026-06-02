@@ -22,7 +22,7 @@ const router = createRouter({
     queryClient: new QueryClient(),
     runAuthed: stubRunAuthed,
     runtimeLayer: Layer.die('runtimeLayer not used in route tests'),
-    isTokenReady: () => false,
+    awaitAuthReady: () => Promise.resolve(),
   },
 })
 
@@ -114,6 +114,7 @@ describe('gatekeeper route tree', () => {
     expect(ids).toEqual([
       '/_auth/gatekeeper/devices/$userCode',
       '/_auth/gatekeeper/oauth-consent/$id',
+      '/_open/gatekeeper/device-login',
       '/_open/gatekeeper/devices',
       '/_open/gatekeeper/oauth-polling/$id',
       '/settings/gatekeeper/',
@@ -127,6 +128,7 @@ describe('gatekeeper route tree', () => {
     const paths = fullPaths(routes()).toSorted()
     expect(paths).toEqual(
       [
+        '/gatekeeper/device-login',
         '/gatekeeper/devices',
         '/gatekeeper/devices/$userCode',
         '/gatekeeper/oauth-consent/$id',

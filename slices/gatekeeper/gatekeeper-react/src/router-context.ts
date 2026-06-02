@@ -1,38 +1,21 @@
-import { type QueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
-import { type Effect, type Layer } from 'effect'
+import { type Layer } from 'effect'
 import { type GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { type BaseRouterContext } from 'shared-structures-react'
 
 import { buildGatekeeperClientLayer } from './client/gatekeeper-client.ts'
 
-type RuntimeLayer = Layer.Layer<
-  Layer.Layer.Success<BaseRouterContext.RuntimeLayer> | GatekeeperHttpApiClient,
-  never,
-  never
->
+type RuntimeLayer = BaseRouterContext.RuntimeLayerWith<GatekeeperHttpApiClient>
+type RunAuthed = BaseRouterContext.RunAuthedWith<GatekeeperHttpApiClient>
 
 /**
- * Slice-local router-context shape — structurally a subset of the host
- * app's, but declared here so the slice doesn't import from the app.
+ * Slice-local router-context — `BaseRouterContext.RouterContextWith`
+ * narrowed to this slice's client. `awaitAuthReady` is inherited only
+ * to keep this structural context a faithful subset of the host app's
+ * `RouterContext`; gatekeeper loaders don't read it — the gate
+ * guarantees the token before the loader runs.
  */
-type RunAuthed = <A, E>(
-  effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayer>>
-) => Promise<A>
-
-interface RouterContext {
-  readonly queryClient: QueryClient
-  readonly runAuthed: RunAuthed
-  readonly runtimeLayer: RuntimeLayer
-  /**
-   * Whether the bearer token is ready — the single readiness reader the
-   * app wires onto {@link BaseRouterContext.RouterContext}. Gatekeeper's
-   * {@link ensureAuthedQuery} loader consults this (rather than reading
-   * `authTokenRef` directly) so there's one source of truth for "is the
-   * bearer ready" shared with the app's `prefetchKeyRoutes`.
-   */
-  readonly isTokenReady: () => boolean
-}
+type RouterContext = BaseRouterContext.RouterContextWith<GatekeeperHttpApiClient>
 
 /**
  * The gatekeeper slice's client layer, ready for the app to merge into

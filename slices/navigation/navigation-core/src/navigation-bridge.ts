@@ -29,6 +29,20 @@ const RouteChanged = Schema.parseJson(
   })
 )
 
+/**
+ * Web → Host: the embedded SPA's first authed screen is ready to be
+ * shown — the `beforeLoad` auth gate passed (host token received) and
+ * the startup route prefetches have settled. The host reacts by hiding
+ * the native splash / revealing the WebView, so the user never sees a
+ * half-painted or unauthenticated frame.
+ *
+ * A lifecycle handshake modeled on the transport's `__Ready` control
+ * message, but at the application layer (auth + data) rather than the
+ * transport layer — `__Ready` says "the page can receive messages,"
+ * `UIReady` says "the page has something worth showing."
+ */
+const UIReady = Schema.parseJson(Schema.TaggedStruct('UIReady', {}))
+
 type NavigationBridge = Bridge.Bridge<
   'Navigation',
   {
@@ -37,6 +51,7 @@ type NavigationBridge = Bridge.Bridge<
   },
   {
     RouteChanged: typeof RouteChanged
+    UIReady: typeof UIReady
   }
 >
 
@@ -57,7 +72,10 @@ const NavigationBridge: NavigationBridge = Bridge.make({
     ['HostBackRequested', HostBackRequested],
     ['HostRequestedWebNavigation', HostRequestedWebNavigation],
   ] as const,
-  webToHost: [['RouteChanged', RouteChanged]] as const,
+  webToHost: [
+    ['RouteChanged', RouteChanged],
+    ['UIReady', UIReady],
+  ] as const,
   urlParams: {
     HostRequestedWebNavigation: UrlParamMessage.singleStringMessageSchema(
       'HostRequestedWebNavigation',

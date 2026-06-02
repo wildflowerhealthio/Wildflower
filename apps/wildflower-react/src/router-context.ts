@@ -9,39 +9,29 @@ import { BearerToken } from 'kitchen-sink/auth-token'
 import type { BaseRouterContext } from 'shared-structures-react'
 import { TunnelRouterContext } from 'tunnel-react'
 
-type RuntimeLayer = Layer.Layer<
-  | Layer.Layer.Success<BaseRouterContext.RuntimeLayer>
+import type { ReactTransport } from './bridges/transport-context.ts'
+
+type SliceServices =
   | Layer.Layer.Success<TunnelRouterContext.RuntimeLayer>
   | Layer.Layer.Success<AppsRouterContext.RuntimeLayer>
   | Layer.Layer.Success<GatekeeperRouterContext.RuntimeLayer>
   | Layer.Layer.Success<CollectorRouterContext.RuntimeLayer>
-  | Layer.Layer.Success<FhirR4ResourcesRouterContext.RuntimeLayer>,
-  never,
-  never
->
+  | Layer.Layer.Success<FhirR4ResourcesRouterContext.RuntimeLayer>
 
-/**
- * Run an authed Effect from a non-React call site (route loaders).
- * Supplies `BearerToken | HttpClient`; the caller still provides its
- * own slice client layer.
- */
-type RunAuthed = <A, E>(
-  effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayer>>
-) => Promise<A>
+type RuntimeLayer = BaseRouterContext.RuntimeLayerWith<SliceServices>
+type RunAuthed = BaseRouterContext.RunAuthedWith<SliceServices>
 
-interface RouterContext {
-  readonly queryClient: QueryClient
-  readonly runAuthed: RunAuthed
-  readonly runtimeLayer: RuntimeLayer
+interface RouterContext extends BaseRouterContext.RouterContextWith<SliceServices> {
   /**
-   * Whether the bearer token is available yet. Authed route loaders
-   * consult this to skip a first-paint prefetch that would 401 on the
-   * embedded WebView (token arrives over the gatekeeper bridge only
-   * after `transport.flushed`). Standalone web has the token
-   * synchronously from localStorage, so this is `true` immediately and
-   * loaders warm the cache for first paint.
+   * Resolves to the page-side `BridgeTransport` (narrowed to the React
+   * surface — only `sendMessage`) once the boot-time `signalReady`
+   * finishes. The `_auth` route loader awaits this
+   * before emitting the embedded `UIReady` handshake; by the time the
+   * loader runs the `beforeLoad` gate's `awaitAuthReady` has already
+   * resolved (which on embedded already waited the same promise), so
+   * the await is a microtask on every path that reaches here.
    */
-  readonly isTokenReady: () => boolean
+  readonly transport: Promise<ReactTransport>
 }
 
 /**
@@ -67,11 +57,9 @@ const buildQueryClient = (): QueryClient =>
  * token rotation surfaces without rebuilding the runtime. `dispose` is
  * for tests; the app keeps the runtime for the page's lifetime.
  *
- * `isTokenReady` reads the same `Subscribable` synchronously so authed
- * loaders can gate a first-paint prefetch on the token being present —
- * a non-empty string means standalone web (localStorage) or a
- * post-flush embedded session; `null`/`''` means the embedded bridge
- * hasn't delivered the token yet.
+ * The `beforeLoad` auth gate (not the loaders) now guarantees a token
+ * before any authed loader runs, so there's no `isTokenReady` reader
+ * here anymore — loaders are plain `ensureQueryData` again.
  */
 const buildRunAuthed = (
   tokenSubscribable: Subscribable.Subscribable<string | null>,
@@ -79,7 +67,6 @@ const buildRunAuthed = (
 ): {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
-  readonly isTokenReady: () => boolean
 } => {
   const baseRuntimeLayer = Layer.succeed(BearerToken, tokenSubscribable).pipe(
     Layer.provideMerge(httpClientLayer)
@@ -97,10 +84,6 @@ const buildRunAuthed = (
   return {
     runAuthed: (effect) => pipe(effect, Effect.provide(runtimeLayer), Effect.runPromise),
     runtimeLayer,
-    isTokenReady: () => {
-      const token = Effect.runSync(tokenSubscribable.get)
-      return token !== null && token !== ''
-    },
   }
 }
 

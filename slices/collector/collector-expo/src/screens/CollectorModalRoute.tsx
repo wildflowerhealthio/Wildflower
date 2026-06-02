@@ -21,12 +21,12 @@ const CollectorModalRoute = (): JSX.Element => {
   const { pendingSource } = useCollectorHost()
 
   if (pendingSource === null) {
-    // The route should only ever be pushed after the receiver layer's
+    // The route should only ever be pushed after the handler record's
     // `RequestSniffableWebView` handler set `pendingSource`. Fail
     // fast (matching `useCollectorHost`'s policy) rather than render
     // a misleading empty state.
     throw new Error(
-      'CollectorModalRoute mounted without pendingSource — push via the receiver layer.'
+      'CollectorModalRoute mounted without pendingSource — push via the handler record.'
     )
   }
 

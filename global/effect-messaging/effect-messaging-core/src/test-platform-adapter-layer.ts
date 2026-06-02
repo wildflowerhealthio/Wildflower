@@ -1,5 +1,5 @@
 import type { Scope } from 'effect'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Queue } from 'effect'
 import type { BareSenderFunction } from './bare-sender.ts'
 import { TransportAdapter } from './transport-adapter.ts'
 
@@ -8,19 +8,31 @@ import { TransportAdapter } from './transport-adapter.ts'
  *
  * @example
  * ```ts
- * import { TestPlatformAdapterLayer } from 'effect-messaging-core'
+ * import { Message, TransportAdapter } from 'effect-messaging-core'
+ * import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
  *
  * const { layer, sentSink } = TestPlatformAdapterLayer.make()
- * Effect.runSync(SomeBridge.Web.send({ _tag: 'X' }).pipe(Effect.provide(layer)))
+ * const send = Effect.flatMap(TransportAdapter, ({ bareSender }) =>
+ *   bareSender(Message.stringifyMessage(SomeBridge.WebToHost, { _tag: 'X' }))
+ * )
+ * Effect.runSync(send.pipe(Effect.provide(layer)))
  * expect(JSON.parse(sentSink[0])).toEqual({ _tag: 'X' })
  * ```
  *
  * @remarks
- * `bareSender` pushes every encoded outbound string into `sentSink`;
- * `drainInitial` returns `initialMessages` (default `[]`); the
- * optional `attachBareSender` capture exposes the supplied `bareSender`
- * callback through `liveBareSenderRef` so core-level transport tests can
- * exercise the live-attachment path without standing up jsdom.
+ * `bareSender` records every encoded outbound string two ways: it pushes
+ * onto the synchronous `sentSink` array — for callers that drive
+ * `bareSender` directly under `Effect.runSync` and read the array right
+ * after — and offers it to the `sentQueue` Effect queue. The queue is
+ * the deterministic seam for transport tests: a `sendMessage` rides the
+ * async outbox pump, so the array isn't populated synchronously; awaiting
+ * `Queue.take`/`takeN` blocks until the pump actually flushes, and
+ * `Queue.poll` confirms nothing flushed without a sleep.
+ *
+ * `drainInitial` returns `initialMessages` (default `[]`); the optional
+ * `attachBareSender` capture exposes the supplied `bareSender` callback
+ * through `liveBareSenderRef` so core-level transport tests can exercise
+ * the live-attachment path without standing up jsdom.
  */
 const make = (config?: {
   readonly initialMessages?: ReadonlyArray<string>
@@ -28,9 +40,11 @@ const make = (config?: {
 }): {
   readonly layer: Layer.Layer<TransportAdapter>
   readonly sentSink: string[]
+  readonly sentQueue: Queue.Queue<string>
   readonly liveBareSenderRef: { current: BareSenderFunction | null }
 } => {
   const sentSink: string[] = []
+  const sentQueue = Effect.runSync(Queue.unbounded<string>())
   const initialMessages = config?.initialMessages ?? []
   const liveBareSenderRef: { current: BareSenderFunction | null } = {
     current: null,
@@ -51,8 +65,9 @@ const make = (config?: {
 
   const adapter: TransportAdapter['Type'] = {
     bareSender: (encoded) =>
-      Effect.sync(() => {
+      Effect.suspend(() => {
         sentSink.push(encoded)
+        return Queue.offer(sentQueue, encoded).pipe(Effect.asVoid)
       }),
     drainInitial: Effect.succeed(initialMessages),
     ...(config?.captureBareSenderLive === true ? { attachBareSender: attachBareSender } : {}),
@@ -60,6 +75,7 @@ const make = (config?: {
   return {
     layer: Layer.succeed(TransportAdapter, adapter),
     sentSink,
+    sentQueue,
     liveBareSenderRef,
   }
 }

@@ -1,37 +1,20 @@
-import { type QueryClient } from '@tanstack/react-query'
 import { type CollectorHttpApiClient } from 'collector-core/clients'
-import { type Effect, type Layer } from 'effect'
+import { type Layer } from 'effect'
 import { type BaseRouterContext } from 'shared-structures-react'
 
 import { buildCollectorClientLayer } from './client/collector-client.ts'
 
-type RuntimeLayer = Layer.Layer<
-  Layer.Layer.Success<BaseRouterContext.RuntimeLayer> | CollectorHttpApiClient,
-  never,
-  never
->
+type RuntimeLayer = BaseRouterContext.RuntimeLayerWith<CollectorHttpApiClient>
+type RunAuthed = BaseRouterContext.RunAuthedWith<CollectorHttpApiClient>
 
 /**
- * Slice-local router-context shape — structurally a subset of the host
- * app's, but declared here so the slice doesn't import from the app.
+ * Slice-local router-context — `BaseRouterContext.RouterContextWith`
+ * narrowed to this slice's client. `awaitAuthReady` is inherited only
+ * to keep this structural context a faithful subset of the host app's
+ * `RouterContext`; collector loaders no longer read it — the gate
+ * guarantees the token before the loader runs.
  */
-type RunAuthed = <A, E>(
-  effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayer>>
-) => Promise<A>
-
-interface RouterContext {
-  readonly queryClient: QueryClient
-  readonly runAuthed: RunAuthed
-  readonly runtimeLayer: RuntimeLayer
-  /**
-   * Whether the bearer token is ready — the single readiness reader the
-   * app wires onto {@link BaseRouterContext.RouterContext}. Collector's
-   * {@link ensureAuthedQuery} loader consults this (rather than reading
-   * `authTokenRef` directly) so there's one source of truth for "is the
-   * bearer ready" shared with the app's `prefetchKeyRoutes`.
-   */
-  readonly isTokenReady: () => boolean
-}
+type RouterContext = BaseRouterContext.RouterContextWith<CollectorHttpApiClient>
 
 /**
  * The collector slice's client layer, ready for the app to merge into

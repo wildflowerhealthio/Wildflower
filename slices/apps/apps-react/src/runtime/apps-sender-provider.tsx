@@ -14,8 +14,8 @@ interface AppsSenderProviderProps {
 /**
  * Surfaces the app's `BridgeTransport.sendMessage` to apps-react
  * screens via {@link AppsSenderContext}. Mounted *inside* the app's
- * `<TransportProvider>` so the transport is available; apps screens
- * read it via {@link useAppsSender}.
+ * `<TransportContext.Provider>` so the transport is available; apps
+ * screens read it via {@link useAppsSender}.
  */
 const AppsSenderProvider = ({ send, children }: AppsSenderProviderProps): JSX.Element => (
   <AppsSenderContext.Provider value={send}>{children}</AppsSenderContext.Provider>

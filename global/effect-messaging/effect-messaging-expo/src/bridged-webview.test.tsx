@@ -31,7 +31,7 @@ const PingPongBridge = Bridge.make({
   webToHost: [['Pong', PongSchema]] as const,
 })
 
-type PingPongSend = BridgeTransport.MessageSender<readonly [typeof PingPongBridge], 'Host'>
+type PingPongSend = BridgeTransport.MessageSender<readonly [typeof PingPongBridge], 'HostToWeb'>
 
 describe('BridgedWebView (integration)', () => {
   // Per-test captures populated by `beforeEach`. The shared setup
@@ -48,9 +48,9 @@ describe('BridgedWebView (integration)', () => {
 
     const bindings = HostBindings.single({
       bridge: PingPongBridge,
-      receiverLayer: PingPongBridge.Host.ReceiverLayer({
+      handlers: {
         Pong: ({ reply }) => Effect.sync(() => pongCalls.push({ reply })),
-      }),
+      },
       onTransportReady: (send) =>
         Effect.sync(() => {
           capturedSend = send
@@ -126,7 +126,49 @@ describe('BridgedWebView (integration)', () => {
     })
   })
 
-  it("decodes Page → Host Pong and invokes the binding's receiver layer", async () => {
+  it('buffers host sends issued before `__Ready` in the outbox and flushes them in order once `__Ready` arrives', async () => {
+    // Pins the new outbox-buffering contract: a host->page send issued
+    // before the page posts `__Ready` is parked in the transport's
+    // outbox (not forwarded, not dropped) and replayed in arrival order
+    // once the handshake completes. The previous "warn and drop"
+    // behaviour was deleted; this test is its positive counterpart.
+    await waitFor(() => {
+      expect(capturedSend).not.toBeNull()
+    })
+
+    const onMessage = mockWebViewState.props?.onMessage
+    if (onMessage === undefined) throw new Error('onMessage prop not captured')
+
+    // Fire two sends BEFORE `__Ready` arrives. `sendMessage` returns an
+    // Effect that suspends on the `peerReady` gate inside the outbox
+    // pump; `Effect.runFork` detaches it so the assertions below can run
+    // without awaiting. Order is preserved by the outbox queue, so we
+    // also pin first-in-first-out on flush.
+    await act(async () => {
+      const send = capturedSend
+      if (send === null) throw new Error('capturedSend not set')
+      Effect.runFork(send({ _tag: 'Ping', value: 'first' }))
+      Effect.runFork(send({ _tag: 'Ping', value: 'second' }))
+    })
+
+    // Nothing forwarded yet — the outbox pump is parked on `peerReady`.
+    expect(mockWebViewState.postMessageCalls).toEqual([])
+
+    // Deliver `__Ready` to release the gate; the outbox pump drains the
+    // two parked sends to the WebView's `postMessage` in order.
+    act(() => {
+      onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } })
+    })
+
+    await waitFor(() => {
+      expect(mockWebViewState.postMessageCalls).toEqual([
+        JSON.stringify({ _tag: 'Ping', value: 'first' }),
+        JSON.stringify({ _tag: 'Ping', value: 'second' }),
+      ])
+    })
+  })
+
+  it("decodes Page → Host Pong and invokes the binding's handler record", async () => {
     await waitFor(() => {
       expect(capturedSend).not.toBeNull()
     })
@@ -177,7 +219,7 @@ describe('BridgedWebView (initial messages)', () => {
 
     const bindings = HostBindings.single({
       bridge: BootBridge,
-      receiverLayer: BootBridge.Host.ReceiverLayer({}),
+      handlers: {},
       initialMessages: [{ _tag: 'Setup', path: '/welcome' }],
     })
 
@@ -216,7 +258,7 @@ describe('BridgedWebView (initial messages)', () => {
 
     const bindings = HostBindings.single({
       bridge: BootBridge,
-      receiverLayer: BootBridge.Host.ReceiverLayer({}),
+      handlers: {},
       initialMessages: [{ _tag: 'Setup', path: '/welcome' }],
     })
 
@@ -243,7 +285,7 @@ describe('BridgedWebView (initial messages)', () => {
 
     const bindings = HostBindings.single({
       bridge: NoopBridge,
-      receiverLayer: NoopBridge.Host.ReceiverLayer({}),
+      handlers: {},
       // initialMessages intentionally omitted — defaults to [[]].
     })
 
@@ -278,7 +320,7 @@ describe('BridgedWebView (initial messages)', () => {
 
     const bindings = HostBindings.single({
       bridge: BootBridge,
-      receiverLayer: BootBridge.Host.ReceiverLayer({}),
+      handlers: {},
       initialMessages: [{ _tag: 'Setup', path: '/welcome' }],
     })
 
@@ -303,7 +345,7 @@ describe('BridgedWebView (initial messages)', () => {
 // Multi-binding combine: two distinct fixture bridges wired together.
 // The whole point of the parallel-array refactor is that each binding's
 // sender is constrained to its own tags and page-side messages decode
-// against the correct receiver layer. The single-bridge cases above
+// against the correct handler record. The single-bridge cases above
 // collapse the alignment question — these tests guard against
 // regressions that mis-align the per-binding arrays.
 // ---------------------------------------------------------------------------
@@ -324,15 +366,15 @@ const BazBridge = Bridge.make({
   webToHost: [['BarReply', BarReplySchema]] as const,
 })
 
-type FooSend = BridgeTransport.MessageSender<readonly [typeof FooBarBridge], 'Host'>
-type BarSend = BridgeTransport.MessageSender<readonly [typeof BazBridge], 'Host'>
+type FooSend = BridgeTransport.MessageSender<readonly [typeof FooBarBridge], 'HostToWeb'>
+type BarSend = BridgeTransport.MessageSender<readonly [typeof BazBridge], 'HostToWeb'>
 
 describe('BridgedWebView (multi-binding combine)', () => {
   beforeEach(() => {
     resetMockWebView()
   })
 
-  it('fires each binding onTransportReady with its own narrowly-typed sender, and routes each page message to the correct receiver layer', async () => {
+  it('fires each binding onTransportReady with its own narrowly-typed sender, and routes each page message to the correct handler record', async () => {
     const fooReplies: Array<{ reply: string }> = []
     const barReplies: Array<{ count: number }> = []
     let fooSend: FooSend | null = null
@@ -340,9 +382,9 @@ describe('BridgedWebView (multi-binding combine)', () => {
 
     const fooBindings = HostBindings.single({
       bridge: FooBarBridge,
-      receiverLayer: FooBarBridge.Host.ReceiverLayer({
+      handlers: {
         FooReply: ({ reply }) => Effect.sync(() => fooReplies.push({ reply })),
-      }),
+      },
       onTransportReady: (send) =>
         Effect.sync(() => {
           fooSend = send
@@ -351,9 +393,9 @@ describe('BridgedWebView (multi-binding combine)', () => {
 
     const barBindings = HostBindings.single({
       bridge: BazBridge,
-      receiverLayer: BazBridge.Host.ReceiverLayer({
+      handlers: {
         BarReply: ({ count }) => Effect.sync(() => barReplies.push({ count })),
-      }),
+      },
       onTransportReady: (send) =>
         Effect.sync(() => {
           barSend = send
@@ -409,9 +451,9 @@ describe('BridgedWebView (multi-binding combine)', () => {
       ])
     })
 
-    // Page-side replies decode to the matching receiver layer — Foo to
-    // Foo's handler, Bar to Bar's. A regression that swapped receiver
-    // layers across the parallel arrays would land replies in the
+    // Page-side replies decode to the matching handler record — Foo to
+    // Foo's handler, Bar to Bar's. A regression that swapped handler
+    // records across the parallel arrays would land replies in the
     // wrong sink.
     act(() => {
       onMessage({
@@ -428,3 +470,9 @@ describe('BridgedWebView (multi-binding combine)', () => {
     })
   })
 })
+
+// The `registerHandlers` semantics (in-place handler-record swap via
+// `Ref.set`, no resource leaks) are exercised at the core level in
+// `bridge-transport.test.ts`. The BridgedWebView wiring of
+// `registerHandlers` into a useEffect is small enough that the existing
+// "decodes Page → Host Pong" test above pins the happy path.

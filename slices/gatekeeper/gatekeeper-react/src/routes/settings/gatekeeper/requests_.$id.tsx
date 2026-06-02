@@ -11,7 +11,6 @@ import {
   useRequestQuery,
   type HttpRequest,
 } from '../../../queries/index.ts'
-import { ensureAuthedQuery } from '../../../router-loader.ts'
 import pageLayout from '../../../styles/page-layout.module.css'
 
 const statusTone = (status: string): StatusTone => {
@@ -113,8 +112,9 @@ const RequestDetailScreen = ({ id }: { readonly id: string }): JSX.Element => {
  * the bare `/requests/` segment — only the route id carries `requests_`.
  *
  * Reads the typed `$id` path param via `Route.useParams()` and hands it to
- * the screen as a prop. See {@link ensureAuthedQuery} for the loader's
- * token-ready guard and error-propagation contract.
+ * the screen as a prop. The `/settings` `beforeLoad` gate guarantees a
+ * token before this loader runs, so it's a plain `ensureQueryData` —
+ * failures propagate to `errorComponent`.
  */
 function RequestDetailRoute(): JSX.Element {
   const { id } = Route.useParams()
@@ -123,7 +123,7 @@ function RequestDetailRoute(): JSX.Element {
 
 export const Route = createFileRoute('/settings/gatekeeper/requests_/$id')({
   loader: ({ context, params }) =>
-    ensureAuthedQuery(context, requestQueryOptions(context.runAuthed, params.id)),
+    context.queryClient.ensureQueryData(requestQueryOptions(context.runAuthed, params.id)),
   component: RequestDetailRoute,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Not Found" />,
 })

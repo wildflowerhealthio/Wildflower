@@ -1,4 +1,4 @@
-import { Effect, type Layer, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import * as Bridge from './bridge.ts'
 import type * as MessageHandler from './message-handler.ts'
 
@@ -82,7 +82,7 @@ type LogBridge = Bridge.Bridge<'Log', Record<never, never>, { readonly Log: type
  *
  * @remarks
  * Compose into a transport tuple like any slice bridge. The default
- * host receiver lives in {@link defaultHostReceiverLayer}; the
+ * host handlers live in {@link defaultLogHostHandlers}; the
  * canonical web-side wiring is {@link installConsoleInterceptor}.
  */
 const LogBridge: LogBridge = Bridge.make({
@@ -92,13 +92,14 @@ const LogBridge: LogBridge = Bridge.make({
 })
 
 /**
- * Default host-side receiver: dispatches each `Log` via {@link defaultOnLog}.
- * Compose into the host shell via `useLogHostBinding()` from
- * `effect-messaging-expo` (or directly here if the consumer wants a
- * non-React host).
+ * Default host-side handler record: dispatches each `Log` via
+ * {@link defaultOnLog}. Compose into the host shell via
+ * `useLogHostBinding()` from `effect-messaging-expo` (or directly here
+ * if the consumer wants a non-React host).
  */
-const defaultHostReceiverLayer: Layer.Layer<MessageHandler.TagId<'Log', 'Host'>> =
-  LogBridge.Host.ReceiverLayer({ Log: defaultOnLog })
+const defaultLogHostHandlers: MessageHandler.HandlersFor<LogBridge['WebToHost']> = {
+  Log: defaultOnLog,
+}
 
 /**
  * Subset of `Console` we patch. Each method is the spread-args shape
@@ -114,8 +115,9 @@ type LogBridgeConsole = Readonly<Record<LogLevel, (...args: unknown[]) => void>>
 
 /**
  * Module-level guard pairing each successful {@link installConsoleInterceptor}
- * call with its restore. While non-null, a second install is short-circuited
- * to a no-op teardown so the truly-original console methods aren't lost.
+ * call with its restore. While non-null, a second install warns and
+ * short-circuits to a no-op teardown so the truly-original console methods
+ * aren't lost.
  */
 let activeRestore: (() => void) | null = null
 
@@ -133,12 +135,13 @@ let activeRestore: (() => void) | null = null
  * - **Teardown idempotency** — calling it twice without an intervening
  *   install is a no-op.
  * - **Install-twice protection** — a second `installConsoleInterceptor`
- *   call while a prior install is still active short-circuits and
- *   returns a no-op teardown. Without this guard, the second install
- *   would capture the already-patched methods as "originals" and the
- *   eventual teardown would restore to the patched versions, losing
- *   the truly-original references forever. Callers that want to swap
- *   the sender must teardown the first install before re-installing.
+ *   call while a prior install is still active logs a warning and
+ *   returns a no-op teardown (it does *not* re-patch). Without this
+ *   guard, the second install would capture the already-patched methods
+ *   as "originals" and the eventual teardown would restore to the
+ *   patched versions, losing the truly-original references forever.
+ *   Callers that want to swap the sender must teardown the first install
+ *   before re-installing.
  *
  * @remarks
  * Touching `globalThis.console` is universally available (Node, web,
@@ -164,8 +167,14 @@ const installConsoleInterceptor = (
   if (activeRestore !== null) {
     // A prior install is still active. Re-installing now would
     // re-capture the already-patched methods as `originals` and lose
-    // the real ones on teardown. Short-circuit to a no-op teardown
-    // and let the caller observe the JSDoc'd contract.
+    // the real ones on teardown. Warn loudly (a silent no-op hid this
+    // wiring bug) and short-circuit to a no-op teardown. The warning
+    // rides whatever `console.warn` currently is — i.e. the active
+    // interceptor — so it reaches the same log sink as everything else.
+    globalThis.console.warn(
+      '[effect-messaging] installConsoleInterceptor: an interceptor is already active; ' +
+        'returning a no-op teardown. Teardown the first install before re-installing.'
+    )
     return (): void => undefined
   }
 
@@ -214,7 +223,7 @@ const installConsoleInterceptor = (
 }
 
 export {
-  defaultHostReceiverLayer,
+  defaultLogHostHandlers,
   defaultOnLog,
   effectLogForLevel,
   installConsoleInterceptor,

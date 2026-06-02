@@ -4,14 +4,14 @@ import type { NavigationBridge } from 'navigation-core'
 import { type JSX, useEffect, useRef } from 'react'
 
 /**
- * Sender shape consumers actually have: same input as
- * `NavigationBridge.Web.send` but with `BareSender` already discharged
- * (because `transport.sendMessage` provides it internally). Keeping the
- * input typed via `Parameters` preserves `_tag`-narrowing at the call
- * site without re-deriving it from `OutboundSchemas`.
+ * Sender shape consumers actually have: the web→host `RouteChanged`
+ * message, with the transport's send mechanics already discharged
+ * (because `transport.sendMessage` handles them internally). Typing the
+ * input via the bridge's `WebToHost` record preserves `_tag`-narrowing
+ * at the call site.
  */
 type RouteChangeSender = (
-  message: typeof NavigationBridge.Web.OutboundSchemas.RouteChanged.Type
+  message: typeof NavigationBridge.WebToHost.RouteChanged.Type
 ) => Effect.Effect<void>
 
 /**
@@ -56,10 +56,10 @@ const useRouteChangeWatcher = (send: RouteChangeSender): void => {
  *
  * @remarks
  * Inbound navigation messages (`HostBackRequested`,
- * `HostRequestedWebNavigation`) are handled by the receiver Layer
- * built via {@link makeNavigationWebReceiverLayer} — call that inside
- * a component with `useNavigate()` access and pass the layer to
- * `BridgeTransport.make`.
+ * `HostRequestedWebNavigation`) are handled by the record built via
+ * {@link makeNavigationWebHandlers} — call that inside a component with
+ * `useNavigate()` access and pass the record to
+ * `BridgeTransport.makeWebTransport`'s `handlers`.
  */
 function NavigationBridgeHandler({ sender }: { sender: RouteChangeSender }): JSX.Element | null {
   useRouteChangeWatcher(sender)

@@ -1,9 +1,9 @@
 import { AppsBridge } from 'apps-core/bridge'
-import { Layer } from 'effect'
-import { HostBindings } from 'effect-messaging-core'
-import { useMemo } from 'react'
-import { TunnelStore } from 'tunnel-core/livestore'
-import { ReceiverLayer } from './host-receiver-layer.ts'
+import { Effect } from 'effect'
+import { HandlerHelpers, HostBindings } from 'effect-messaging-core'
+import { useMemo, useRef } from 'react'
+import type { TunnelStore } from 'tunnel-core/livestore'
+import { type AppsHostSender, makeAppsHostHandlers } from './host-handlers.ts'
 
 type TunnelLivestore = typeof TunnelStore.Service
 
@@ -21,22 +21,33 @@ interface UseAppsHostBindingOptions {
 /**
  * Host binding for the apps bridge.
  *
- * Pre-discharges `TunnelStore` against a layer built from the supplied
- * livestore handle; the receiver layer's `RequestTunnel` handler replies
- * via `AppsBridge.Host.send(...)` (whose `TransportAdapter` requirement
- * the bridge transport's dispatch fiber discharges per invocation).
+ * Passes the supplied livestore handle and a reply sender to
+ * {@link makeAppsHostHandlers}. The reply rides the host→web sender
+ * captured here via `onTransportReady` into a binding-scoped ref — so the
+ * `RequestTunnel` handler talks back through a closure over that ref, not
+ * a module-level global. Before the transport is ready (sender still
+ * `null`), a reply is log-and-dropped.
  */
 const useAppsHostBinding = ({
   store,
 }: UseAppsHostBindingOptions): HostBindings.HostBindings<readonly [typeof AppsBridge]> => {
-  const tunnelStoreLayer = useMemo(() => TunnelStore.layerFrom(store), [store])
+  const senderRef = useRef<AppsHostSender | null>(null)
   return useMemo(
     () =>
       HostBindings.single({
         bridge: AppsBridge,
-        receiverLayer: ReceiverLayer.pipe(Layer.provide(tunnelStoreLayer)),
+        handlers: makeAppsHostHandlers(store, (message) => {
+          const send = senderRef.current
+          return send === null
+            ? HandlerHelpers.warnAboutDroppedTag('appsHostHandlers', message._tag)
+            : send(message)
+        }),
+        onTransportReady: (send: AppsHostSender) =>
+          Effect.sync(() => {
+            senderRef.current = send
+          }),
       }),
-    [tunnelStoreLayer]
+    [store]
   )
 }
 

@@ -15,7 +15,8 @@
 import { act, render } from '@testing-library/react-native'
 import type * as EffectType from 'effect'
 import { Effect } from 'effect'
-import { TestPlatformAdapterLayer, type TransportAdapter } from 'effect-messaging-core'
+import { type TransportAdapter } from 'effect-messaging-core'
+import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
 import * as React from 'react'
 import type { ReactElement } from 'react'
 
@@ -85,7 +86,6 @@ jest.mock('../message-sender-pipes.tsx', () => {
         lastRegisteredSender = sender
       }, [sender])
     },
-    useAsCollectorOutlet: (): void => undefined,
     useBrowserSnifferSender: (): BrowserSnifferMessageSender => () => EffectInner.void,
     useCollectorSender: (): ((msg: {
       readonly _tag: string

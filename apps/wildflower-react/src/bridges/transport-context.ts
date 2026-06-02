@@ -1,31 +1,53 @@
-import type { AppsBridge } from 'apps-core/bridge'
-import type { CollectorBridge } from 'collector-fundamentals/bridge'
-import type { BridgeTransport, Logging } from 'effect-messaging-core'
-import type { GatekeeperBridge } from 'gatekeeper-core/bridge'
-import type { NavigationBridge } from 'navigation-core'
-import { createContext, useContext } from 'react'
+import { Effect } from 'effect'
+import type { BridgeTransport } from 'effect-messaging-core'
+import type { HandlerCoordinator } from 'effect-messaging-react'
+import { createContext } from 'react'
+import { useContextOrThrow } from 'react-kitchen-sink'
 
-type Bridges = readonly [
-  typeof NavigationBridge,
-  typeof GatekeeperBridge,
-  typeof CollectorBridge,
-  typeof AppsBridge,
-  typeof Logging.LogBridge,
-]
-type Transport = BridgeTransport.BridgeTransport<Bridges, 'Web'>
+import type { Bridges } from './bridges.ts'
 
-const TransportContext = createContext<Transport | null>(null)
+type FullTransport = BridgeTransport.BridgeTransport<Bridges, 'HostToWeb', 'WebToHost'>
+
+/**
+ * Narrowed view of `BridgeTransport` that React-side consumers see —
+ * `sendMessage` plus the {@link HandlerCoordinator} (so slices register
+ * their inbound handlers on mount). `signalReady`/`enqueue`/the raw
+ * `registerHandlers` stay boot-time / Effect-side concerns that
+ * {@link AppRootTree} drives off the resolved transport; the coordinator
+ * wraps `registerHandlers` with per-bridge recompose so React consumers
+ * never touch it directly.
+ */
+interface ReactTransport {
+  readonly sendMessage: FullTransport['sendMessage']
+  readonly coordinator: HandlerCoordinator
+}
+
+/**
+ * No-op transport used by standalone-web entries and as the
+ * pre-resolution placeholder for `<TransportContext>` while the real
+ * embedded transport's `signalReady` handshake is in flight. Its
+ * `sendMessage` is `Effect.void`, so emits during that window are
+ * dropped (which is correct — the host isn't ready to receive yet).
+ * The `_auth` gate's `awaitAuthReady` waits the bridge handshake before
+ * any consumer that needs a real sender renders.
+ */
+const stubTransport: ReactTransport = {
+  sendMessage: () => Effect.void,
+  coordinator: {
+    register: () => Effect.void,
+    unregister: () => Effect.void,
+  },
+}
+
+const TransportContext = createContext<ReactTransport | null>(null)
+TransportContext.displayName = 'TransportContext'
 
 /**
  * Hook for components that need to send messages to the host.
  *
- * @throws if called outside a `<TransportProvider>`.
+ * @throws `NoContextException` if no `<TransportContext.Provider>` mounts above.
  */
-const useBridgeTransport = (): Transport => {
-  const ctx = useContext(TransportContext)
-  if (ctx === null) throw new Error('useBridgeTransport called outside TransportProvider')
-  return ctx
-}
+const useBridgeTransport = (): ReactTransport => useContextOrThrow(TransportContext)
 
-export { TransportContext, useBridgeTransport }
-export type { Transport }
+export { stubTransport, TransportContext, useBridgeTransport }
+export type { ReactTransport }

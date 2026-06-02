@@ -14,13 +14,14 @@ import { routeTree } from './routeTree.gen.ts'
 // Structural-only checks; no loader runs, so the runner is unused.
 const stubRunAuthed: RunAuthed = () =>
   Promise.reject(new Error('runAuthed not used in route tests'))
+const stubAwaitAuthReady = (): Promise<void> => Promise.resolve()
 const router = createRouter({
   routeTree,
   context: {
     queryClient: new QueryClient(),
     runAuthed: stubRunAuthed,
     runtimeLayer: Layer.die('runtimeLayer not used in route tests'),
-    isTokenReady: () => false,
+    awaitAuthReady: stubAwaitAuthReady,
   },
 })
 
@@ -97,9 +98,6 @@ const makeRunAuthed = (httpLayer: Layer.Layer<HttpClient.HttpClient>): RunAuthed
 
 // `runAuthed` tripwire: fails loudly if the loader calls it. Used to
 // prove the readiness gate short-circuits before any HTTP attempt.
-const tripwireRunAuthed: RunAuthed = () =>
-  Promise.reject(new Error('runAuthed must not run when the token is not ready'))
-
 // Drives the loader through the router's real preload path (the same
 // seam `defaultPreload: 'intent'` uses in the app), so loader errors are
 // surfaced into match state exactly as the `errorComponent` would see
@@ -123,34 +121,15 @@ const preloadTunnel = async (
 }
 
 describe('tunnel route loader', () => {
-  test('skips the prefetch when the token is not ready (embedded first paint)', async () => {
-    // Arrange — token absent; `runAuthed` is a tripwire so any prefetch
-    // attempt fails the test instead of silently passing.
-    const queryClient = new QueryClient()
-    const context: RouterContext = {
-      queryClient,
-      runAuthed: tripwireRunAuthed,
-      runtimeLayer: Layer.die('runtimeLayer not used by the loader'),
-      isTokenReady: () => false,
-    }
-
-    // Act
-    const result = await preloadTunnel(context)
-
-    // Assert — loader resolved without touching the network; nothing
-    // warmed, so the post-gate in-component read handles first paint.
-    expect(result.status).toBe('success')
-    expect(queryClient.getQueryData(TUNNEL_STATE_QUERY_KEY)).toBeUndefined()
-  })
-
-  test('warms the cache when the token is ready and the read succeeds', async () => {
-    // Arrange
+  test('warms the cache when the read succeeds', async () => {
+    // Arrange — the `beforeLoad` gate guarantees a token, so the loader
+    // always prefetches now (no readiness skip).
     const queryClient = new QueryClient()
     const context: RouterContext = {
       queryClient,
       runAuthed: makeRunAuthed(stubHttpClientLayer()),
       runtimeLayer: Layer.die('runtimeLayer not used by the loader'),
-      isTokenReady: () => true,
+      awaitAuthReady: stubAwaitAuthReady,
     }
 
     // Act
@@ -165,14 +144,14 @@ describe('tunnel route loader', () => {
   })
 
   test('propagates a genuine read failure to the error component instead of swallowing it', async () => {
-    // Arrange — token ready, but the read 500s. The pre-fix loader's
-    // bare `catch {}` hid this; the match must now land in `error`.
+    // Arrange — the read 500s. The pre-fix loader's bare `catch {}` hid
+    // this; the match must now land in `error`.
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const context: RouterContext = {
       queryClient,
       runAuthed: makeRunAuthed(stubHttpClientLayer({ failing: true })),
       runtimeLayer: Layer.die('runtimeLayer not used by the loader'),
-      isTokenReady: () => true,
+      awaitAuthReady: stubAwaitAuthReady,
     }
 
     // Act

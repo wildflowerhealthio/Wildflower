@@ -11,7 +11,6 @@ import {
   useRequestsQuery,
   type HttpRequest,
 } from '../../../queries/index.ts'
-import { ensureAuthedQuery } from '../../../router-loader.ts'
 import pageLayout from '../../../styles/page-layout.module.css'
 
 interface RequestsListBodyProps {
@@ -107,11 +106,13 @@ const RequestsListScreen = (): JSX.Element => {
 
 /**
  * The `/settings/gatekeeper/requests` file route — the incoming HTTP
- * request history. See {@link ensureAuthedQuery} for the loader's
- * token-ready guard and error-propagation contract.
+ * request history. The `/settings` `beforeLoad` gate guarantees a token
+ * before this loader runs, so it's a plain `ensureQueryData` — failures
+ * propagate to `errorComponent`.
  */
 export const Route = createFileRoute('/settings/gatekeeper/requests')({
-  loader: ({ context }) => ensureAuthedQuery(context, requestsQueryOptions(context.runAuthed)),
+  loader: ({ context }) =>
+    context.queryClient.ensureQueryData(requestsQueryOptions(context.runAuthed)),
   component: RequestsListScreen,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Requests" />,
 })

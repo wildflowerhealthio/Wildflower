@@ -1,8 +1,9 @@
+import type { AppsBridge } from 'apps-core/bridge'
 import { Effect } from 'effect'
+import type { MessageHandler } from 'effect-messaging-core'
 import { useCallback } from 'react'
 
-import type { TunnelOutcome } from './apps-runtime-context.ts'
-import { useAppsRuntime } from './use-apps-runtime.ts'
+import { useAppsRegister } from './use-apps-register.ts'
 import { useAppsSender } from './use-apps-sender.ts'
 
 /**
@@ -15,22 +16,39 @@ import { useAppsSender } from './use-apps-sender.ts'
 const TUNNEL_REQUEST_TIMEOUT_MS = 8000
 
 /**
- * Convenience hook: returns a `() => Promise<TunnelOutcome>` that fires
- * `RequestTunnel` on the AppsBridge and awaits the next Host→Web
- * `TunnelStarted` / `TunnelFailed`. Resolves with `{ origin }` on
- * success or `{ error }` on failure (host-reported reason or a local
- * timeout). The caller treats the timeout as "not in a webview" — no
- * separate `isWebView()` probe is necessary; if the host isn't there,
- * no response arrives, and the timeout surfaces the same outcome.
+ * The tunnel-response outcomes a pending `useRequestTunnel` call resolves
+ * with. Mirrors the AppsBridge Host→Web messages — `TunnelStarted`
+ * carries the new origin, `TunnelFailed` a human-readable reason —
+ * flattened into the shape callers observe (`{ origin } | { error }`).
+ */
+type TunnelOutcome = { readonly origin: string } | { readonly error: string }
+
+/**
+ * The in-flight tunnel request's settle, tracked so a newer request can
+ * **supersede** it (settle the predecessor with an error before taking
+ * the slot) — otherwise the prior Promise dangles and a stale host
+ * response could resolve the new request. Module-level because the page
+ * has exactly one Apps tunnel slot.
+ */
+let pendingSettle: ((outcome: TunnelOutcome) => void) | null = null
+
+/**
+ * Convenience hook: returns a `() => Promise<TunnelOutcome>` that
+ * registers a resolver-bound `Apps` handler record, fires `RequestTunnel`,
+ * and awaits the next Host→Web `TunnelStarted` / `TunnelFailed`. Resolves
+ * with `{ origin }` on success or `{ error }` on failure (host-reported
+ * reason or a local timeout). The caller treats the timeout as "not in a
+ * webview" — if the host isn't there, no response arrives, and the
+ * timeout surfaces the same outcome.
  *
  * Defects in the underlying `send` Effect are caught and logged via
- * `Effect.logError` rather than rejecting the returned promise —
- * callers don't need a `.catch()` to keep the surrounding click
- * handler from blowing up.
+ * `Effect.logError` rather than rejecting the returned promise — callers
+ * don't need a `.catch()` to keep the surrounding click handler from
+ * blowing up.
  */
 const useRequestTunnel = (): (() => Promise<TunnelOutcome>) => {
   const send = useAppsSender()
-  const { setPendingTunnelResolver } = useAppsRuntime()
+  const appsRegister = useAppsRegister()
   return useCallback(
     () =>
       new Promise<TunnelOutcome>((resolve) => {
@@ -38,11 +56,43 @@ const useRequestTunnel = (): (() => Promise<TunnelOutcome>) => {
         const settle = (outcome: TunnelOutcome): void => {
           if (settled) return
           settled = true
-          setPendingTunnelResolver(null)
           clearTimeout(timer)
+          if (pendingSettle === settle) pendingSettle = null
+          // Set-if-equal: the coordinator only relinquishes the Apps slot
+          // if it still holds this request's record (a supersede may have
+          // already replaced it).
+          Effect.runFork(
+            appsRegister
+              .unregister(record)
+              .pipe(
+                Effect.catchAll((error) =>
+                  Effect.logError('useRequestTunnel: handler unregistration failed', error)
+                )
+              )
+          )
           resolve(outcome)
         }
-        setPendingTunnelResolver(settle)
+        // Supersede: settle any in-flight predecessor before this request
+        // takes the slot.
+        if (pendingSettle !== null) pendingSettle({ error: 'superseded by newer request' })
+        pendingSettle = settle
+
+        // The real, resolver-bound inbound handler for this request — no
+        // forwarder cell, registered straight through the coordinator.
+        const record: MessageHandler.HandlersFor<(typeof AppsBridge)['HostToWeb']> = {
+          TunnelStarted: ({ origin }) => Effect.sync(() => settle({ origin })),
+          TunnelFailed: ({ reason }) => Effect.sync(() => settle({ error: reason })),
+        }
+        Effect.runFork(
+          appsRegister
+            .register(record)
+            .pipe(
+              Effect.catchAll((error) =>
+                Effect.logError('useRequestTunnel: handler registration failed', error)
+              )
+            )
+        )
+
         const timer = setTimeout(() => {
           settle({ error: 'tunnel request timed out — host unreachable' })
         }, TUNNEL_REQUEST_TIMEOUT_MS)
@@ -52,13 +102,14 @@ const useRequestTunnel = (): (() => Promise<TunnelOutcome>) => {
           )
         ).catch(() => {
           // `runPromise` shouldn't reject here — `catchAllCause` converts
-          // defects to logged successes — but a defensive settle keeps
-          // the resolver ref clean if the runtime ever changes.
+          // defects to logged successes — but a defensive settle keeps the
+          // slot clean if the runtime ever changes.
           settle({ error: 'tunnel request failed to dispatch' })
         })
       }),
-    [send, setPendingTunnelResolver]
+    [send, appsRegister]
   )
 }
 
 export { useRequestTunnel }
+export type { TunnelOutcome }

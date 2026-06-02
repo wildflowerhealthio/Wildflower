@@ -1,12 +1,12 @@
 export { CollectorHostProvider } from './collector-host-context.tsx'
 export type { CollectorHostProviderProps } from './collector-host-context.tsx'
-export { useCollectorReceiverLayer } from './use-receiver-layer.ts'
+export { useCollectorHostHandlers } from './use-host-handlers.ts'
 export { useCollectorHostBinding } from './use-host-binding.ts'
 export {
   useAsBrowserSnifferOutlet,
-  useAsCollectorOutlet,
   useBrowserSnifferSender,
   useCollectorSender,
+  useCollectorSenderRef,
 } from './message-sender-pipes.tsx'
 export {
   CollectorModalScreen,

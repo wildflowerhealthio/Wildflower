@@ -1,14 +1,8 @@
-import { Effect, type Context, type Layer } from 'effect'
+import { Effect } from 'effect'
 import { flattenTuples } from 'kitchen-sink/types'
 import type * as BridgeTransport from './bridge-transport.ts'
 import type * as Bridge from './bridge.ts'
-
-/**
- * Host-side tag identifier for a bridge — `${B['name']}.Host.HandlerTag`,
- * extracted via `Context.Tag`'s structural slot so it resolves even when
- * `B['name']` widens to `string` under {@link Bridge.AnyBridge}.
- */
-type HostHandlerTagId<B extends Bridge.AnyBridge> = Context.Tag.Identifier<B['Host']['HandlerTag']>
+import type * as MessageHandler from './message-handler.ts'
 
 /**
  * Per-bridge initial messages, parallel-indexed against the surrounding
@@ -27,7 +21,9 @@ type InitialMessagesByBridge<Bridges extends ReadonlyArray<Bridge.AnyBridge>> = 
  */
 type OnTransportReadyByBridge<Bridges extends ReadonlyArray<Bridge.AnyBridge>> = {
   readonly [I in keyof Bridges]:
-    | ((send: BridgeTransport.MessageSender<readonly [Bridges[I]], 'Host'>) => Effect.Effect<void>)
+    | ((
+        send: BridgeTransport.MessageSender<readonly [Bridges[I]], 'HostToWeb'>
+      ) => Effect.Effect<void>)
     | undefined
 }
 
@@ -35,7 +31,7 @@ type OnTransportReadyByBridge<Bridges extends ReadonlyArray<Bridge.AnyBridge>> =
  * Uniform host-side wiring contract. Four parallel-indexed arrays:
  *
  * - `bridges[i]` is the bridge declaration.
- * - `receiverLayers[i]` discharges `bridges[i]`'s Host handler tag.
+ * - `handlers[i]` is `bridges[i]`'s Host-side inbound handler record.
  * - `initialMessages[i]` are URL-param-seeded payloads for `bridges[i]`
  *   (zero or many).
  * - `onTransportReady[i]` runs once the transport is built, with the
@@ -44,14 +40,14 @@ type OnTransportReadyByBridge<Bridges extends ReadonlyArray<Bridge.AnyBridge>> =
  *
  * Compose multiple slices via {@link combine}: the four arrays
  * concatenate index-aligned, so the result satisfies the same
- * parallel-tuple shape `BridgeTransport.make` consumes. Single-bridge
- * slices construct theirs via {@link single}.
+ * parallel-tuple shape `BridgeTransport.makeHostTransport` consumes.
+ * Single-bridge slices construct theirs via {@link single}.
  *
  * See [Host Bindings Explanation](../docs/Host%20Bindings%20Explanation.md).
  */
 interface HostBindings<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   readonly bridges: Bridges
-  readonly receiverLayers: Bridge.TransportLayers<Bridges, 'Host'>
+  readonly handlers: Bridge.HandlersByBridge<Bridges, 'WebToHost'>
   readonly initialMessages: InitialMessagesByBridge<Bridges>
   readonly onTransportReady: OnTransportReadyByBridge<Bridges>
 }
@@ -64,25 +60,23 @@ interface HostBindings<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  * @example
  * ```ts
  * const bindings = HostBindings.single({
- *   bridge: GatekeeperBridge,
- *   receiverLayer: GatekeeperBridge.Host.ReceiverLayer({}),
- *   initialMessages: [{ _tag: 'WaitForToken' }],
- *   onTransportReady: token === undefined
- *     ? undefined
- *     : (send) => send({ _tag: 'AuthTokenIssued', token }),
+ *   bridge: NavigationBridge,
+ *   handlers: { RouteChanged: onRouteChanged, UiReady: onUiReady },
+ *   initialMessages: [{ _tag: 'Setup', path: '/' }],
+ *   onTransportReady: (send) => send({ _tag: 'Greet', value: 'hello' }),
  * })
  * ```
  */
 const single = <const B extends Bridge.AnyBridge>(binding: {
   readonly bridge: B
-  readonly receiverLayer: Layer.Layer<HostHandlerTagId<B>>
+  readonly handlers: MessageHandler.HandlersFor<B['WebToHost']>
   readonly initialMessages?: ReadonlyArray<Bridge.UrlParamableMessage<readonly [B]>>
   readonly onTransportReady?: (
-    send: BridgeTransport.MessageSender<readonly [B], 'Host'>
+    send: BridgeTransport.MessageSender<readonly [B], 'HostToWeb'>
   ) => Effect.Effect<void>
 }): HostBindings<readonly [B]> => ({
   bridges: [binding.bridge] as const,
-  receiverLayers: [binding.receiverLayer],
+  handlers: [binding.handlers],
   initialMessages: [binding.initialMessages ?? []] as const,
   onTransportReady: [binding.onTransportReady] as const,
 })
@@ -103,8 +97,8 @@ type CombineHostBindings<T extends ReadonlyArray<HostBindings<ReadonlyArray<Brid
  * Concatenate a tuple of {@link HostBindings} into a single bindings
  * struct. Each of the four parallel arrays concatenates in the same
  * order the inputs are passed, so the result preserves the
- * parallel-tuple invariant `BridgeTransport.make` and {@link callTransportReady}
- * consume.
+ * parallel-tuple invariant `BridgeTransport.makeHostTransport` and
+ * {@link callTransportReady} consume.
  *
  * @example
  * ```ts
@@ -136,7 +130,7 @@ const combine = <Bs extends ReadonlyArray<ReadonlyArray<Bridge.AnyBridge>>>(bind
 }> => {
   return {
     bridges: flattenTuples(bindings.map((b) => b.bridges)),
-    receiverLayers: flattenTuples(bindings.map((b) => b.receiverLayers)),
+    handlers: flattenTuples(bindings.map((b) => b.handlers)),
     initialMessages: flattenTuples(bindings.map((b) => b.initialMessages)),
     onTransportReady: flattenTuples(bindings.map((b) => b.onTransportReady)),
   }
@@ -159,7 +153,7 @@ const combine = <Bs extends ReadonlyArray<ReadonlyArray<Bridge.AnyBridge>>>(bind
  */
 const callTransportReady = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(
   bindings: HostBindings<Bridges>,
-  send: BridgeTransport.MessageSender<Bridges, 'Host'>
+  send: BridgeTransport.MessageSender<Bridges, 'HostToWeb'>
 ): Effect.Effect<void> =>
   Effect.all(
     bindings.onTransportReady.map((callback) => {
@@ -171,10 +165,4 @@ const callTransportReady = <const Bridges extends ReadonlyArray<Bridge.AnyBridge
   )
 
 export { callTransportReady, combine, single }
-export type {
-  CombineHostBindings,
-  HostBindings,
-  HostHandlerTagId,
-  InitialMessagesByBridge,
-  OnTransportReadyByBridge,
-}
+export type { CombineHostBindings, HostBindings, InitialMessagesByBridge, OnTransportReadyByBridge }

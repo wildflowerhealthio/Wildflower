@@ -1,23 +1,18 @@
 /**
  * End-to-end smoke test for the collector-expo wiring. Uses the
- * **real** `CollectorBridge.Host.ReceiverLayer` (no `jest.mock` for
- * the bridge), the real `makeNamedPipe`-built pipes, and the real
- * `CollectorHostProvider` — only `expo-router` is stubbed because there's no
- * router stack in the test environment.
+ * **real** `useCollectorHostHandlers` record (no `jest.mock` for the
+ * bridge), the real sender-pipe contexts, and the real
+ * `CollectorHostProvider` — only `expo-router` is stubbed because
+ * there's no router stack in the test environment.
  */
 import * as React from 'react'
 
 import { act, render } from '@testing-library/react-native'
 import type { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
 import type * as BrowserSnifferExpoModule from 'browser-sniffer-expo'
-import { CollectorBridge } from 'collector-fundamentals/bridge'
-import { Effect, Layer } from 'effect'
-import {
-  BareSender,
-  TestPlatformAdapterLayer,
-  type BridgeTransport,
-  type TransportAdapter,
-} from 'effect-messaging-core'
+import type { CollectorBridge } from 'collector-fundamentals/bridge'
+import { Effect } from 'effect'
+import { type BridgeTransport, TransportAdapter } from 'effect-messaging-core'
 import type * as ExpoRouterModule from 'expo-router'
 import type * as ExpoTundraishModule from 'expo-tundraish'
 import { useEffect, type ReactElement } from 'react'
@@ -71,53 +66,60 @@ jest.mock('expo-tundraish', (): Partial<typeof ExpoTundraishModule> => {
 import {
   CollectorHostProvider,
   useAsBrowserSnifferOutlet,
-  useAsCollectorOutlet,
-  useCollectorReceiverLayer,
+  useCollectorHostHandlers,
   useCollectorSender,
+  useCollectorSenderRef,
 } from './index.ts'
 
-type SnifferSender = BridgeTransport.MessageSender<readonly [typeof BrowserSnifferBridge], 'Host'>
-type CollectorSender = BridgeTransport.MessageSender<readonly [typeof CollectorBridge], 'Host'>
-
-const noopBareSender = Layer.succeed(BareSender, { bareSender: () => Effect.void })
+type SnifferSender = BridgeTransport.MessageSender<
+  readonly [typeof BrowserSnifferBridge],
+  'HostToWeb'
+>
+type CollectorSender = BridgeTransport.MessageSender<readonly [typeof CollectorBridge], 'HostToWeb'>
+type CollectorHandlers = ReturnType<typeof useCollectorHostHandlers>
 
 const ProbeInsideProvider = ({
   snifferSender,
   collectorSender,
   onCollectorPipeRead,
-  onLayerReady,
+  onHandlersReady,
 }: {
   readonly snifferSender: SnifferSender
   readonly collectorSender: CollectorSender
   readonly onCollectorPipeRead: (send: CollectorSender) => void
-  readonly onLayerReady: (layer: ReturnType<typeof useCollectorReceiverLayer>) => void
+  readonly onHandlersReady: (handlers: CollectorHandlers) => void
 }): ReactElement | null => {
-  const layer = useCollectorReceiverLayer()
+  const handlers = useCollectorHostHandlers()
   useAsBrowserSnifferOutlet(snifferSender)
-  useAsCollectorOutlet(collectorSender)
+  // Mirror the host binding: install the collector sender by writing the
+  // pipe's sender ref directly (what `onTransportReady` does in prod).
+  const collectorSenderRef = useCollectorSenderRef()
   const collectorRead = useCollectorSender()
 
   useEffect(() => {
-    onLayerReady(layer)
+    collectorSenderRef.current = collectorSender
+    onHandlersReady(handlers)
     onCollectorPipeRead(collectorRead)
-  }, [layer, collectorRead, onLayerReady, onCollectorPipeRead])
+  }, [
+    collectorSenderRef,
+    collectorSender,
+    handlers,
+    collectorRead,
+    onHandlersReady,
+    onCollectorPipeRead,
+  ])
 
   return null
 }
 
-const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
-
-const runHandlerPromise = <A, E>(eff: Effect.Effect<A, E, TransportAdapter>): Promise<A> =>
-  Effect.runPromise(Effect.provide(eff, adapterLayer))
-
 describe('collector-expo end-to-end pipe wiring', () => {
-  it('Click decoded by the real CollectorBridge receiver layer reaches the registered BrowserSniffer sender', async () => {
+  it('Click handled by the real useCollectorHostHandlers record reaches the registered BrowserSniffer sender', async () => {
     const snifferCalls: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = []
     const snifferSender: SnifferSender = (msg) => Effect.sync(() => snifferCalls.push(msg))
     const collectorSender: CollectorSender = () => Effect.void
 
     let capturedCollectorRead: CollectorSender | null = null
-    let capturedLayer: ReturnType<typeof useCollectorReceiverLayer> | null = null
+    let capturedHandlers: CollectorHandlers | null = null
     render(
       <CollectorHostProvider>
         <ProbeInsideProvider
@@ -126,27 +128,34 @@ describe('collector-expo end-to-end pipe wiring', () => {
           onCollectorPipeRead={(s) => {
             capturedCollectorRead = s
           }}
-          onLayerReady={(l) => {
-            capturedLayer = l
+          onHandlersReady={(h) => {
+            capturedHandlers = h
           }}
         />
       </CollectorHostProvider>
     )
-    if (capturedLayer === null) {
-      throw new Error('Receiver layer was not captured')
+    if (capturedHandlers === null) {
+      throw new Error('Handler record was not captured')
     }
     if (capturedCollectorRead === null) {
       throw new Error('Collector pipe-read sender was not captured')
     }
-    const layer: ReturnType<typeof useCollectorReceiverLayer> = capturedLayer
+    const handlers: CollectorHandlers = capturedHandlers
 
-    const dispatchClick = Effect.gen(function* () {
-      const service = yield* CollectorBridge.Host.HandlerTag
-      yield* service.Click({ _tag: 'Click', querySelector: '#submit' })
-    }).pipe(Effect.provide(layer), Effect.provide(noopBareSender))
-
+    // The handler forwards `Click` straight through the BrowserSniffer
+    // pipe to the registered sender. As a `HandlersFor` member it carries a
+    // `TransportAdapter` requirement (handlers may reply via same-bridge
+    // `send`); this one never touches it, so a stub adapter discharges the
+    // requirement without affecting what the test exercises.
     await act(async () => {
-      await runHandlerPromise(dispatchClick)
+      await Effect.runPromise(
+        handlers.Click({ _tag: 'Click', querySelector: '#submit' }).pipe(
+          Effect.provideService(TransportAdapter, {
+            bareSender: () => Effect.void,
+            drainInitial: Effect.succeed([]),
+          })
+        )
+      )
     })
 
     expect(snifferCalls).toEqual([{ _tag: 'Click', querySelector: '#submit' }])
@@ -166,7 +175,7 @@ describe('collector-expo end-to-end pipe wiring', () => {
           onCollectorPipeRead={(s) => {
             capturedCollectorRead = s
           }}
-          onLayerReady={() => undefined}
+          onHandlersReady={() => undefined}
         />
       </CollectorHostProvider>
     )

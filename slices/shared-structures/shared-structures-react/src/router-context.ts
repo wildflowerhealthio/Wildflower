@@ -14,26 +14,74 @@ type RunAuthed = <A, E>(
   effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayer>>
 ) => Promise<A>
 
-interface RouterContext {
+/**
+ * Resolve once the bearer token is available, or reject with a tagged
+ * reason. Injected per entry (web vs. embedded) and threaded into the
+ * router context so the `beforeLoad` auth gate can `await` it without
+ * knowing which environment it runs in.
+ *
+ * Rejections are tagged so the gate can branch:
+ *   - a TanStack `redirect(...)` (standalone web, no token) bubbles so
+ *     the router follows the redirect into the device-login flow.
+ *   - a `TokenTimeout` (embedded, host never delivered a token in the
+ *     window) bubbles to the layout's `errorComponent`, which renders
+ *     a web-side retry screen.
+ */
+type AwaitAuthReady = () => Promise<void>
+
+/**
+ * Generic runtime-layer shape parameterised over the extra services a
+ * particular slice or app adds on top of {@link RuntimeLayer}'s base
+ * (`BearerToken | HttpClient`). A slice instantiates this with its own
+ * client (e.g. `RuntimeLayerWith<CollectorHttpApiClient>`); the host
+ * app instantiates with a union of every slice's client.
+ */
+type RuntimeLayerWith<Extra> = Layer.Layer<Layer.Layer.Success<RuntimeLayer> | Extra, never, never>
+
+/**
+ * Generic `runAuthed` shape over the extra services. See
+ * {@link RuntimeLayerWith}.
+ */
+type RunAuthedWith<Extra> = <A, E>(
+  effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayerWith<Extra>>>
+) => Promise<A>
+
+/**
+ * Generic router-context shape over the extra services. Slices import
+ * this and instantiate with their own client services so the per-slice
+ * `router-context.ts` files don't redefine `RouterContext` /
+ * `RunAuthed` / `RuntimeLayer` by hand. The host app `extends` it to
+ * add app-only fields (e.g. `transport`).
+ */
+interface RouterContextWith<Extra> {
   readonly queryClient: QueryClient
-  readonly runAuthed: RunAuthed
-  readonly runtimeLayer: RuntimeLayer
+  readonly runAuthed: RunAuthedWith<Extra>
+  readonly runtimeLayer: RuntimeLayerWith<Extra>
   /**
-   * Whether the bearer token is available yet. Authed route `loader`s
-   * consult this to decide between prefetching now and deferring to the
-   * post-gate in-component read.
-   *
-   * The `/settings` and `_auth` gates are React *component* gates
-   * (`RequireAuth`), not `beforeLoad`, so on embedded first paint the
-   * bridge hasn't delivered the token when a loader runs — prefetching
-   * then would 401. Standalone web has the token synchronously from
-   * localStorage, so this returns `true` and the loader warms the cache
-   * for first paint. The app wires the concrete reader (`gatekeeper-react`'s
-   * `authTokenRef`); slices stay decoupled from that package by reading
-   * through this context field — the single source of truth for "is the
-   * bearer ready" across every slice loader and the app's prefetch.
+   * Environment-specific auth-readiness wait, injected at `renderApp`
+   * and consulted by the gated layouts' `beforeLoad`. Resolves when a
+   * bearer token is present; rejects with a tagged reason otherwise
+   * (TanStack `redirect(...)` for standalone web, `TokenTimeout` for
+   * embedded). The gate — not the loaders — owns this, so an authed
+   * loader that runs is guaranteed a token (no more first-paint skip).
    */
-  readonly isTokenReady: () => boolean
+  readonly awaitAuthReady: AwaitAuthReady
 }
 
-export type { RouterContext, RunAuthed, RuntimeLayer }
+/**
+ * Concrete base router-context — `RouterContextWith<never>`, i.e. no
+ * slice services beyond the `BearerToken | HttpClient` floor. Kept as a
+ * standalone interface so existing references (e.g.
+ * `BaseRouterContext.RouterContext`) keep working without changing.
+ */
+interface RouterContext extends RouterContextWith<never> {}
+
+export type {
+  AwaitAuthReady,
+  RouterContext,
+  RouterContextWith,
+  RunAuthed,
+  RunAuthedWith,
+  RuntimeLayer,
+  RuntimeLayerWith,
+}

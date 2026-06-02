@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import type { BareSenderService } from 'effect-messaging-core'
+import type { BareSenderFunction } from 'effect-messaging-core'
 import * as WebBrowser from 'expo-web-browser'
 import { forwardRef, type JSX, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
@@ -56,7 +56,7 @@ interface TransportWebViewProps {
  * fetch/XHR wrappers) install via
  * `injectedJavaScriptBeforeContentLoaded`.
  */
-const TransportWebView = forwardRef<BareSenderService, TransportWebViewProps>(
+const TransportWebView = forwardRef<BareSenderFunction, TransportWebViewProps>(
   function TransportWebView(
     { source, onMessage, loader, shouldOpenInSystemBrowser, injectedJavaScriptBeforeContentLoaded },
     bareSenderServiceRef
@@ -66,8 +66,8 @@ const TransportWebView = forwardRef<BareSenderService, TransportWebViewProps>(
 
     useImperativeHandle(
       bareSenderServiceRef,
-      (): BareSenderService => ({
-        bareSender(message): Effect.Effect<void> {
+      (): BareSenderFunction =>
+        (message: string): Effect.Effect<void> => {
           return Effect.logDebug('TransportWebView: postMessage', { message }).pipe(
             Effect.andThen(
               Effect.sync(() => {
@@ -76,7 +76,6 @@ const TransportWebView = forwardRef<BareSenderService, TransportWebViewProps>(
             )
           )
         },
-      }),
       []
     )
 

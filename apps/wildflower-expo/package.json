@@ -6,6 +6,7 @@
   "scripts": {
     "android": "expo start --clear --android",
     "android:build": "expo run:android",
+    "eas-build-post-install": "vp run -w pack",
     "ios": "expo start --clear --ios",
     "ios:build": "expo run:ios",
     "jest": "jest",
@@ -61,6 +62,7 @@
     "expo-symbols": "catalog:",
     "expo-system-ui": "catalog:",
     "expo-tundraish": "workspace:*",
+    "expo-updates": "catalog:",
     "expo-web-browser": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-r4-client-collector": "workspace:*",

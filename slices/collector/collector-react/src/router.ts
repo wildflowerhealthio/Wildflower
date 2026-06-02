@@ -25,7 +25,7 @@ const router = createRouter({
     queryClient: new QueryClient(),
     runAuthed: () => Promise.reject(new Error('slice-local router is never run')),
     runtimeLayer: Layer.die('slice-local router is never run'),
-    isTokenReady: () => false,
+    awaitAuthReady: () => Promise.reject(new Error('slice-local router is never run')),
   },
 })
 

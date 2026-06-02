@@ -76,6 +76,11 @@ jest.mock('../livestore/livestore-store.ts', () => {
   >() {}
   return {
     useWildflowerStore: (): typeof mockStore => mockStore,
+    // `AppRuntimeProvider` reads the module-scope registry from this
+    // module and hands it to `<StoreRegistryProvider>`. The
+    // `@livestore/react` mock below makes that provider a passthrough,
+    // so any opaque sentinel is enough.
+    wildflowerStoreRegistry: {},
     WildflowerStore: MockWildflowerStore,
   }
 })
