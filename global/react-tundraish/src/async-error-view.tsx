@@ -9,6 +9,7 @@ interface AsyncErrorViewProps {
   readonly title?: string
   readonly className?: string
   readonly titleClassName?: string
+  readonly retry?: () => void
 }
 
 /**
@@ -22,8 +23,15 @@ const AsyncErrorView = ({
   title,
   className,
   titleClassName,
+  retry,
 }: AsyncErrorViewProps): JSX.Element => (
-  <PageError title={title} error={error} className={className} titleClassName={titleClassName} />
+  <PageError
+    title={title}
+    error={error}
+    className={className}
+    titleClassName={titleClassName}
+    retry={retry}
+  />
 )
 
 export { AsyncErrorView }

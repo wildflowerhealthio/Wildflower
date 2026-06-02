@@ -117,7 +117,7 @@ const AppsHomeBody = ({ tunnel, apps }: AppsHomeBodyProps): JSX.Element => {
   )
 }
 
-export const Route = createFileRoute('/_auth/apps/')({
+export const Route = createFileRoute('/_auth/home/')({
   loader: ({ context }) =>
     Promise.all([
       context.queryClient.ensureQueryData(appsListQueryOptions(context.runAuthed)),

@@ -94,6 +94,20 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
         />
       ) : null}
 
+      <ItemList
+        title="Devices"
+        items={[
+          {
+            id: 'devices',
+            title: 'Devices',
+            subtitle: 'View connected devices',
+            onClick: () => {
+              void navigate({ to: '/gatekeeper/devices' })
+            },
+          },
+        ]}
+      />
+
       <RevokeGrantDialog
         clientId={grantToRevoke?.clientId ?? null}
         onConfirm={() => {
@@ -124,5 +138,7 @@ export const Route = createFileRoute('/settings/gatekeeper/')({
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(grantsQueryOptions(context.runAuthed)),
   component: AccessIndexScreen,
-  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Gatekeeper" />,
+  errorComponent: ({ error, reset }) => (
+    <AsyncErrorView error={error} retry={reset} title="Gatekeeper" />
+  ),
 })

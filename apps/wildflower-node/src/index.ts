@@ -85,7 +85,7 @@ const run = Effect.gen(function* () {
     if (bootstrapToken !== null) {
       const bootOrigin = yield* Origin.get
       yield* Effect.logInfo(
-        `Bootstrap: ${bootOrigin}/gatekeeper?token=${encodeURIComponent(bootstrapToken)}`
+        `Bootstrap: ${bootOrigin}/home?token=${encodeURIComponent(bootstrapToken)}`
       )
     }
   })
