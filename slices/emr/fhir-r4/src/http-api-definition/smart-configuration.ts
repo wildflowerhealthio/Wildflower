@@ -35,4 +35,4 @@ const httpApiGroup = HttpApiGroup.make('smart-well-known', { topLevel: false })
   )
   .prefix('/.well-known')
 
-export { httpApiGroup, SmartConfigurationSchema as Schema }
+export { httpApiGroup, SmartConfigurationSchema }

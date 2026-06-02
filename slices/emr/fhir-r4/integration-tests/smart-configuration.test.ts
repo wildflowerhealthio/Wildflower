@@ -1,23 +1,24 @@
 import { Effect, Schema } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
-import * as SmartConfiguration from '../src/http-api-definition/smart-configuration.ts'
+import { SmartConfigurationSchema } from '../src/http-api-definition/smart-configuration.ts'
 import { ORIGIN, wireServerScoped } from './server-helpers.ts'
 
-const decodeConfig = Schema.decodeUnknownPromise(SmartConfiguration.Schema)
+const decodeConfig = Schema.decodeUnknownPromise(SmartConfigurationSchema)
 
 const fetchSmartConfig = async (
   handler: (req: Request) => Promise<Response>,
   headers: Record<string, string>
-): Promise<typeof SmartConfiguration.Schema.Type> => {
-  // `host` is a fetch-forbidden header name, so passing it via the
-  // `Request` constructor's `headers` option may be silently dropped in
-  // strict-spec runtimes. Building a `Headers` object and `set`-ing each
-  // entry post-construction is the documented escape hatch and preserves
-  // every header verbatim — critical for the loopback / forwarded-host
-  // cases below.
+): Promise<typeof SmartConfigurationSchema.Type> => {
+  // `host` is a fetch-forbidden header name; passing it via
+  // `new Request({ headers })` may drop it in strict runtimes. Building
+  // a `Headers` object and `set`-ing each entry works because Node's
+  // undici implementation doesn't enforce the spec's forbidden-name list
+  // — not a documented escape hatch. Pin the header round-trips so a
+  // future Node upgrade that tightens enforcement fails loudly here.
   const built = new Headers()
   for (const [name, value] of Object.entries(headers)) built.set(name, value)
+  for (const [name, value] of Object.entries(headers)) expect(built.get(name)).toBe(value)
   const response = await handler(
     new Request(`${ORIGIN}/fhir-r4/.well-known/smart-configuration`, { headers: built })
   )
@@ -34,7 +35,8 @@ describe('GET /fhir-r4/.well-known/smart-configuration', () => {
           // The typed client decodes the response body against
           // `SmartConfigurationSchema`, so a successful return value already
           // proves required fields are present and parseable. We additionally
-          // pin a few values to catch silent regressions in `SmartConfiguration.make`.
+          // pin a few values to catch silent regressions in
+          // `SmartConfigurationSchema.make`.
           const config = yield* wired.public['smart-well-known'].SmartConfiguration()
 
           expect(config.issuer).toBe(`${ORIGIN}/fhir-r4`)
@@ -79,6 +81,23 @@ describe('GET /fhir-r4/.well-known/smart-configuration', () => {
             'https://wildflower-node-dev.loca.lt/auth/authorize'
           )
           expect(body.jwks_uri).toBe('https://wildflower-node-dev.loca.lt/.well-known/jwks.json')
+        })
+      )
+    ))
+
+  test('ignores a half-forwarded pair (loopback host + only x-forwarded-host) and echoes loopback', () =>
+    Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const wired = yield* wireServerScoped
+          const body = yield* Effect.promise(() =>
+            fetchSmartConfig(wired.handler, {
+              host: '127.0.0.1:3000',
+              'x-forwarded-host': 'tunnel.example.com',
+            })
+          )
+          expect(body.issuer).toBe('http://127.0.0.1:3000/fhir-r4')
+          expect(body.jwks_uri).toBe('http://127.0.0.1:3000/.well-known/jwks.json')
         })
       )
     ))

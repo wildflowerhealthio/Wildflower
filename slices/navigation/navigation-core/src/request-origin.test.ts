@@ -4,7 +4,7 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Origin } from './origin.ts'
-import { requestOriginFromConnection, requestOriginFromRequest } from './request-origin.ts'
+import { requestOriginFromConnection, requestOriginFromHttpRequest } from './request-origin.ts'
 
 const FALLBACK = 'http://server.invalid'
 
@@ -41,20 +41,6 @@ describe('requestOriginFromConnection', () => {
     ).toBe('https://wildflower-node-dev.loca.lt')
   })
 
-  test('ignores forwarded headers when the peer is not loopback', () => {
-    expect(
-      requestOriginFromConnection(
-        '203.0.113.1',
-        {
-          host: '127.0.0.1:3000',
-          'x-forwarded-host': 'wildflower-node-dev.loca.lt',
-          'x-forwarded-proto': 'https',
-        },
-        FALLBACK
-      )
-    ).toBe(FALLBACK)
-  })
-
   test('falls back when remoteAddress is undefined', () => {
     expect(requestOriginFromConnection(undefined, { host: '127.0.0.1:3000' }, FALLBACK)).toBe(
       FALLBACK
@@ -65,28 +51,84 @@ describe('requestOriginFromConnection', () => {
     expect(requestOriginFromConnection('127.0.0.1', {}, FALLBACK)).toBe(FALLBACK)
   })
 
-  test('falls back when only one of the forwarded pair is present (loopback peer)', () => {
+  test('header lookup is case-sensitive — `Host` (capitalized) reads as absent', () => {
+    // `@effect/platform` lowercases header keys (`Headers.fromInput`), so
+    // a capitalized key here represents the test caller forgetting to
+    // pre-lowercase. We pin the case-sensitive bare-function semantics so
+    // callers don't accidentally bypass the trust gate.
+    expect(
+      requestOriginFromConnection('127.0.0.1', { Host: '127.0.0.1:3000' }, FALLBACK)
+    ).toBe(FALLBACK)
+  })
+
+  test('empty `host` falls back', () => {
+    expect(requestOriginFromConnection('127.0.0.1', { host: '' }, FALLBACK)).toBe(FALLBACK)
+  })
+
+  test('trailing-whitespace `host` falls back', () => {
+    expect(
+      requestOriginFromConnection('127.0.0.1', { host: '127.0.0.1:3000 ' }, FALLBACK)
+    ).toBe(FALLBACK)
+  })
+
+  test('comma-joined `x-forwarded-host` falls through to Host (not echoed as the tunnel URL)', () => {
+    // `Headers.fromInput` collapses multi-value `x-forwarded-host` into a
+    // comma-separated string. We don't try to parse it — anything that
+    // doesn't match the host-shape regex is ignored and we fall through.
     expect(
       requestOriginFromConnection(
         '127.0.0.1',
-        { host: '127.0.0.1:3000', 'x-forwarded-host': 'tunnel.example.com' },
-        FALLBACK
-      )
-    ).toBe('http://127.0.0.1:3000')
-    expect(
-      requestOriginFromConnection(
-        '127.0.0.1',
-        { host: '127.0.0.1:3000', 'x-forwarded-proto': 'https' },
+        {
+          host: '127.0.0.1:3000',
+          'x-forwarded-host': 'a.example.com, b.example.com',
+          'x-forwarded-proto': 'https',
+        },
         FALLBACK
       )
     ).toBe('http://127.0.0.1:3000')
   })
 
+  test('non-http/https forwarded-proto falls through to Host', () => {
+    expect(
+      requestOriginFromConnection(
+        '127.0.0.1',
+        {
+          host: '127.0.0.1:3000',
+          'x-forwarded-host': 'tunnel.example.com',
+          'x-forwarded-proto': 'javascript',
+        },
+        FALLBACK
+      )
+    ).toBe('http://127.0.0.1:3000')
+  })
+
+  test('half-forwarded pair (loopback peer): result is the tunnel URL iff both present, else loopback Host', () => {
+    // The 2×2 lattice of (forwardedHost present/absent, forwardedProto
+    // present/absent) — only the both-present cell takes the tunnel URL,
+    // every other cell echoes the loopback Host.
+    fc.assert(
+      fc.property(
+        fc.option(fc.domain(), { nil: undefined }),
+        fc.option(fc.constantFrom('http', 'https'), { nil: undefined }),
+        (fwdHost, fwdProto) => {
+          const headers: Record<string, string> = { host: '127.0.0.1:3000' }
+          if (fwdHost !== undefined) headers['x-forwarded-host'] = fwdHost
+          if (fwdProto !== undefined) headers['x-forwarded-proto'] = fwdProto
+          const expected =
+            fwdHost !== undefined && fwdProto !== undefined
+              ? `${fwdProto}://${fwdHost}`
+              : 'http://127.0.0.1:3000'
+          expect(requestOriginFromConnection('127.0.0.1', headers, FALLBACK)).toBe(expected)
+        }
+      )
+    )
+  })
+
   test('any non-loopback peer falls back regardless of header content', () => {
-    // The richer invariant: for any non-loopback peer, the result is exactly
-    // `FALLBACK` regardless of `Host` / `X-Forwarded-*`. Subsumes the
-    // "ignores forwarded headers" example above across the whole non-loopback
-    // address space.
+    // The richer invariant: for any non-loopback peer, the result is
+    // exactly `FALLBACK` — `Host`, `X-Forwarded-Host`, and
+    // `X-Forwarded-Proto` are all ignored. Subsumes the targeted "ignores
+    // forwarded headers when the peer is not loopback" example.
     fc.assert(
       fc.property(
         fc.ipV4().filter((ip) => !/^127\./.test(ip)),
@@ -103,7 +145,7 @@ describe('requestOriginFromConnection', () => {
   })
 })
 
-describe('requestOriginFromRequest', () => {
+describe('requestOriginFromHttpRequest', () => {
   const provideRequest = (
     remoteAddress: string | undefined,
     headers: Record<string, string>
@@ -121,7 +163,7 @@ describe('requestOriginFromRequest', () => {
     )
 
   test('reads remoteAddress + headers from HttpServerRequest and threads through Origin', async () => {
-    const run = requestOriginFromRequest.pipe(
+    const run = requestOriginFromHttpRequest.pipe(
       Effect.provide(provideRequest('127.0.0.1', { host: '127.0.0.1:3000' })),
       Effect.provide(Origin.layerFromLiteral(FALLBACK))
     )
@@ -129,7 +171,7 @@ describe('requestOriginFromRequest', () => {
   })
 
   test('falls back to the Origin layer when the peer is not loopback', async () => {
-    const run = requestOriginFromRequest.pipe(
+    const run = requestOriginFromHttpRequest.pipe(
       Effect.provide(provideRequest('203.0.113.1', { host: '127.0.0.1:3000' })),
       Effect.provide(Origin.layerFromLiteral(FALLBACK))
     )
@@ -137,7 +179,7 @@ describe('requestOriginFromRequest', () => {
   })
 
   test('falls back when the platform exposes no remoteAddress', async () => {
-    const run = requestOriginFromRequest.pipe(
+    const run = requestOriginFromHttpRequest.pipe(
       Effect.provide(provideRequest(undefined, { host: '127.0.0.1:3000' })),
       Effect.provide(Origin.layerFromLiteral(FALLBACK))
     )
