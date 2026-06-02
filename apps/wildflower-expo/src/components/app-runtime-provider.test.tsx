@@ -1,98 +1,84 @@
 import { render, waitFor } from '@testing-library/react-native'
-import type { Context as ContextType, Effect as EffectType, Layer as LayerType } from 'effect'
+import type { Context as ContextType, Layer as LayerType } from 'effect'
 import * as React from 'react'
 import type { ReactElement, ReactNode } from 'react'
 
-// Active-daemon counter incremented by the spy Layer's
-// `Effect.acquireRelease` on build and decremented on teardown. The
-// assertions below pin the count after mount, after unmount, and
-// across a remount cycle to prove the launch lifecycle obeys React's
-// cleanup contract.
-let mockActiveCount = 0
+// Drives the mocked store's `requestedRunning`. `mock`-prefixed so
+// babel-plugin-jest-hoist allows the `jest.mock` factories below to close
+// over it.
+let mockRequestedRunning = true
 
-jest.mock('../daemons/http-server.ts', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
-  )
+// Stateful stand-in for the native `react-native-background-actions`
+// singleton. `start`/`stop` flip `running` so `isRunning()` mirrors the
+// real module's contract, which the serialising controller reads to decide
+// whether a reconcile step should start or stop.
+jest.mock('react-native-background-actions', () => {
+  const state = { running: false }
   return {
-    // Same shape as production: a `Layer.scopedDiscard` whose body is
-    // an `acquireRelease`. Counter tracks "this Layer is currently
-    // built and not yet torn down."
-    HttpServerDaemonLive: effect.Layer.scopedDiscard(
-      effect.Effect.acquireRelease(
-        effect.Effect.sync(() => {
-          mockActiveCount += 1
-        }),
-        () =>
-          effect.Effect.sync(() => {
-            mockActiveCount -= 1
-          })
-      )
-    ),
+    __esModule: true,
+    default: {
+      isRunning: () => state.running,
+      start: jest.fn(async () => {
+        state.running = true
+      }),
+      stop: jest.fn(async () => {
+        state.running = false
+      }),
+      on: jest.fn(),
+      removeListener: jest.fn(),
+    },
   }
+})
+
+// The merged daemon layer is built inside the hook's `useMemo` but only
+// forked inside the background task — which the mocked `start` never
+// invokes — so empty layers are enough to let the build succeed.
+jest.mock('../daemons/http-server.ts', () => {
+  const effect = jest.requireActual<{ Layer: typeof LayerType }>('effect')
+  return { HttpServerDaemonLive: effect.Layer.empty }
 })
 
 jest.mock('tunnel-expo', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
-  )
-  // Empty spy — we only need to prove the merged-Layer.launch
-  // dispatches both daemons; the http-server spy above is enough to
-  // observe the lifecycle.
-  return {
-    TunnelDaemon: effect.Layer.effectDiscard(effect.Effect.void),
-  }
+  const effect = jest.requireActual<{ Layer: typeof LayerType }>('effect')
+  return { TunnelDaemon: effect.Layer.empty }
 })
 
 jest.mock('tunnel-core/livestore', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
-  )
+  const effect = jest.requireActual<{ Layer: typeof LayerType }>('effect')
   return {
-    TunnelStore: {
-      layerFrom: (_store: unknown) => effect.Layer.effectDiscard(effect.Effect.void),
-    },
+    TunnelStore: { layerFrom: (_store: unknown) => effect.Layer.empty },
   }
 })
 
 jest.mock('local-http-server-core/livestore', () => {
-  const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
-    'effect'
-  )
+  const effect = jest.requireActual<{ Layer: typeof LayerType }>('effect')
   return {
-    LocalHttpServerStore: {
-      layerFrom: (_store: unknown) => effect.Layer.effectDiscard(effect.Effect.void),
-    },
+    LocalHttpServerStore: { layerFrom: (_store: unknown) => effect.Layer.empty },
+    // The hook reads `requestedRunning` via `store.useQuery(current$)`; the
+    // mock store ignores the query arg, so any sentinel works here.
+    ServerState: { queries: { current$: { __brand: 'current$' } } },
   }
 })
-
-const mockStore = { __brand: 'mock-store' } as const
 
 jest.mock('../livestore/livestore-store.ts', () => {
   const effect = jest.requireActual<{ Context: typeof ContextType }>('effect')
   class MockWildflowerStore extends effect.Context.Tag('WildflowerStore')<
     MockWildflowerStore,
-    typeof mockStore
+    unknown
   >() {}
+  // Stable handle across rerenders so `useMemo([store])` keeps one runtime.
+  const store = { useQuery: () => ({ requestedRunning: mockRequestedRunning }) }
   return {
-    useWildflowerStore: (): typeof mockStore => mockStore,
-    // `AppRuntimeProvider` reads the module-scope registry from this
-    // module and hands it to `<StoreRegistryProvider>`. The
-    // `@livestore/react` mock below makes that provider a passthrough,
-    // so any opaque sentinel is enough.
+    useWildflowerStore: () => store,
     wildflowerStoreRegistry: {},
     WildflowerStore: MockWildflowerStore,
   }
 })
 
 // `@livestore/react` ships native runtime code; the provider tree only
-// needs the registry context to forward children, so a passthrough is
-// enough for the lifecycle assertions below.
+// needs the registry context to forward children.
 jest.mock('@livestore/react', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
-  // Declared inside the factory because babel-plugin-jest-hoist hoists
-  // `jest.mock` calls above any non-`mock`-prefixed identifier — a
-  // module-scope class would not be in scope when this body runs.
   // oxlint-disable-next-line typescript/no-extraneous-class
   class MockStoreRegistry {}
   return {
@@ -105,34 +91,77 @@ jest.mock('@livestore/react', () => {
   }
 })
 
+import BackgroundService from 'react-native-background-actions'
 import AppRuntimeProvider from './app-runtime-provider.tsx'
 
+const start = BackgroundService.start as jest.Mock
+const stop = BackgroundService.stop as jest.Mock
+
+// Flush the controller's promise-chained reconciles (one macrotask tick
+// drains the queued microtasks).
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+
 beforeEach(() => {
-  mockActiveCount = 0
+  start.mockClear()
+  stop.mockClear()
+  mockRequestedRunning = true
 })
 
-describe('AppRuntimeProvider lifecycle', () => {
-  it('mounts the merged daemon Layer exactly once on initial render', async () => {
-    render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
-    await waitFor(() => expect(mockActiveCount).toBe(1))
+afterEach(async () => {
+  // Let the unmount-driven `stop` reconcile settle so module-singleton
+  // controller state doesn't leak into the next test.
+  await flush()
+})
+
+describe('AppRuntimeProvider background-server lifecycle', () => {
+  // Declared first so it runs against pristine module-singleton reconciler
+  // state. Under StrictMode React double-invokes the effect (setup → cleanup
+  // → setup); the serialising reconciler must collapse that burst to a single
+  // start rather than launching — and binding the port — twice.
+  it('starts the service exactly once under StrictMode double-invoke', async () => {
+    render(
+      <React.StrictMode>
+        <AppRuntimeProvider>{null}</AppRuntimeProvider>
+      </React.StrictMode>
+    )
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1))
+    expect(BackgroundService.isRunning()).toBe(true)
   })
 
-  it('tears the merged daemon Layer down on unmount', async () => {
-    const { unmount } = render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
-    await waitFor(() => expect(mockActiveCount).toBe(1))
-    unmount()
-    await waitFor(() => expect(mockActiveCount).toBe(0))
+  it('starts the background service once on mount when requestedRunning is true', async () => {
+    render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1))
+    expect(BackgroundService.isRunning()).toBe(true)
   })
 
-  it('survives an unmount → remount cycle without leaking a second active daemon', async () => {
-    // Models the StrictMode mount/unmount/remount sequence: the first
-    // effect's cleanup must release the first Layer before the second
-    // mount's effect fires, so the active-daemon count never exceeds 1.
-    const { unmount } = render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
-    await waitFor(() => expect(mockActiveCount).toBe(1))
-    unmount()
-    await waitFor(() => expect(mockActiveCount).toBe(0))
+  it('does not start the service on mount when requestedRunning is false', async () => {
+    mockRequestedRunning = false
     render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
-    await waitFor(() => expect(mockActiveCount).toBe(1))
+    await flush()
+    expect(start).not.toHaveBeenCalled()
+    expect(BackgroundService.isRunning()).toBe(false)
+  })
+
+  it('stops the background service on unmount', async () => {
+    const { unmount } = render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1))
+    unmount()
+    await waitFor(() => expect(stop).toHaveBeenCalledTimes(1))
+    expect(BackgroundService.isRunning()).toBe(false)
+  })
+
+  it('stops when requestedRunning flips to false and restarts when it flips back', async () => {
+    const { rerender } = render(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1))
+
+    mockRequestedRunning = false
+    rerender(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
+    await waitFor(() => expect(stop).toHaveBeenCalledTimes(1))
+    expect(BackgroundService.isRunning()).toBe(false)
+
+    mockRequestedRunning = true
+    rerender(<AppRuntimeProvider>{null}</AppRuntimeProvider>)
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(2))
+    expect(BackgroundService.isRunning()).toBe(true)
   })
 })
