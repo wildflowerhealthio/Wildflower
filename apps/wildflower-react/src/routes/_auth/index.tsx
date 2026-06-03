@@ -12,7 +12,7 @@ function HomePage(): JSX.Element {
       <h1>Home</h1>
 
       <Link to="/home">
-        <h2>Apps</h2>
+        <h2>Home</h2>
       </Link>
 
       <Link to="/collector">

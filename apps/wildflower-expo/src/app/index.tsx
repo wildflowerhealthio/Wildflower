@@ -18,7 +18,7 @@ export default function HomeScreen(): JSX.Element {
   const sendNavigation = useNavigationSender()
   const insets = useSafeAreaInsets()
 
-  const [activeTab, setActiveTab] = useState<TabKey | null>('apps')
+  const [activeTab, setActiveTab] = useState<TabKey | null>('home')
 
   const handleRouteChanged = useCallback(
     ({ pathname }: { pathname: string; canGoBack: boolean }): void => {

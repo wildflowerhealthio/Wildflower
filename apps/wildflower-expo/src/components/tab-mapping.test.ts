@@ -11,7 +11,7 @@ describe('tabForPath', () => {
   describe('descendant match', () => {
     // A pathname is a descendant when it sits under `tab.path/`. The
     // suffix arbitrary excludes path-segment-terminating characters so
-    // we don't accidentally generate `/apps` from `/app + s` (which
+    // we don't accidentally generate `/home` from `/hom + e` (which
     // would prove the negative case instead).
     fcIt.prop({
       tab: fc.constantFrom(...TABS),
@@ -23,7 +23,7 @@ describe('tabForPath', () => {
   })
 
   describe('non-descendant prefix sibling', () => {
-    // `/appsxyz` shares `/apps` as a *string* prefix but is NOT a
+    // `/homexyz` shares `/home` as a *string* prefix but is NOT a
     // descendant. The implementation distinguishes by requiring a
     // trailing `/`.
     fcIt.prop({
