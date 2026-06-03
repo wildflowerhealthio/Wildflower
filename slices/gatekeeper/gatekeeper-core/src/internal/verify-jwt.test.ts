@@ -64,6 +64,19 @@ const signWith = async (key: SigningKey.Type, payload: jose.JWTPayload): Promise
     .sign(joseKey)
 }
 
+// Sign with `key` but stamp an arbitrary `kid` (or none) into the
+// protected header, to exercise the verifier's kid-based key selection
+// and its all-keys fallback when the header kid matches nothing.
+const signWithHeaderKid = async (
+  key: SigningKey.Type,
+  kid: string | undefined,
+  payload: jose.JWTPayload
+): Promise<string> => {
+  const joseKey = await importRsaJwk(SigningKey.privateJwk(key))
+  const header = kid === undefined ? { alg: key.alg } : { alg: key.alg, kid }
+  return await new jose.SignJWT(payload).setProtectedHeader(header).sign(joseKey)
+}
+
 const makeClient = (overrides: Partial<ClientRow> = {}): ClientRow => ({
   clientId: 'client-1',
   name: 'Test Client',
@@ -249,4 +262,40 @@ test('JWT is verified when audience is an array containing an accepted entry', a
   })
   const result = await runVerify(store, token)
   expect(Either.isRight(result)).toBe(true)
+})
+
+test('JWT verifies via all-keys fallback when the token has no kid header', async () => {
+  // Key selection finds no kid to match on, so it must fall back to
+  // trying every signing key — the legacy/rotation safety net.
+  const key = testingKey1
+  const token = await signWithHeaderKid(key, undefined, {
+    iss: ORIGIN,
+    aud: ORIGIN,
+    sub: 'client-1',
+  })
+  const store = makeStubStore({ signingKeys: [key], clients: [makeClient()] })
+  const result = await runVerify(store, token)
+  expect(Either.isRight(result)).toBe(true)
+})
+
+test('JWT verifies via all-keys fallback when the header kid matches no stored key', async () => {
+  // Header kid points at a key that isn't present; selection matches
+  // nothing and falls back to all keys, where the real signer verifies.
+  const key = testingKey1
+  const token = await signWithHeaderKid(key, 'kid-that-does-not-exist', {
+    iss: ORIGIN,
+    aud: ORIGIN,
+    sub: 'client-1',
+  })
+  const store = makeStubStore({ signingKeys: [key], clients: [makeClient()] })
+  const result = await runVerify(store, token)
+  expect(Either.isRight(result)).toBe(true)
+})
+
+test('a malformed token is rejected even when signing keys are present', async () => {
+  // Past the no-keys guard, the unverified-decode step rejects anything
+  // that isn't a parseable JWT before reaching signature verification.
+  const store = makeStubStore({ signingKeys: [testingKey1], clients: [makeClient()] })
+  const result = await runVerify(store, 'not-a-jwt')
+  expect(Either.isLeft(result)).toBe(true)
 })

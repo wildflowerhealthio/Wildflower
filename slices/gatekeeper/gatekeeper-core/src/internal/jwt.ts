@@ -2,7 +2,7 @@ import type { HttpServerRequest } from '@effect/platform'
 import { HttpApiError } from '@effect/platform'
 import { DateTime, type Duration, Effect, pipe } from 'effect'
 import type { UnknownException } from 'effect/Cause'
-import type * as jose from 'jose'
+import * as jose from 'jose'
 import type { Origin } from 'navigation-core'
 import { requestOriginFromHttpRequest } from 'navigation-core'
 import { Client, GatekeeperStore, SigningKey } from '../livestore/index.ts'
@@ -69,16 +69,25 @@ const verifyAgainstAnyKey = (
     )
   )
 
-// `jose.jwtVerify` already enforces iss/aud/exp when we pass the
-// options, but we re-check in the wrapper too. Belt and braces: any
-// custom `SigningKey` impl that bypasses jose (e.g. a test stub) still
-// gets the same gating, so wrapper-level invariants don't depend on
-// what the verifier returns.
+// Each `require*` below owns one claim's gate and logs its own specific
+// rejection reason. They're applied twice per verification (see
+// `requireValidClaims`): once on the *unverified* decoded payload as a
+// pre-signature fast-fail, and once on the jose-*verified* payload as
+// the authoritative gate. The issuer/audience *type* assertions live
+// here (not in the subject gate) so each reason is reported at its own
+// site.
+
+// Issuer must equal the expected origin. A non-string `iss` can't equal
+// a string `expectedIssuer`, so this also covers the wrong-type case.
 const requireIssuerMatches = (
   payload: jose.JWTPayload,
   expectedIssuer: string
-): Effect.Effect<void, HttpApiError.Unauthorized> =>
-  payload.iss === expectedIssuer ? Effect.void : Effect.fail(unauthorized())
+): Effect.Effect<void, HttpApiError.Unauthorized> => {
+  if (payload.iss === expectedIssuer) return Effect.void
+  return Effect.logWarning(
+    `[gatekeeper-auth] requireIssuerMatches fail: token.iss=${String(payload.iss)} expected=${expectedIssuer}`
+  ).pipe(Effect.zipRight(Effect.fail(unauthorized())))
+}
 
 const presentedAudiences = (audClaim: jose.JWTPayload['aud']): ReadonlyArray<string> => {
   if (Array.isArray(audClaim)) return audClaim
@@ -86,12 +95,18 @@ const presentedAudiences = (audClaim: jose.JWTPayload['aud']): ReadonlyArray<str
   return []
 }
 
+// Audience must intersect the accepted set, and (for the typed return)
+// be present as a string or string[]. A missing/ill-typed `aud`
+// produces an empty `presented`, so it fails the intersection too.
 const requireAudienceAccepted = (
   payload: jose.JWTPayload,
   acceptedAudiences: ReadonlyArray<string>
-): Effect.Effect<void, HttpApiError.Unauthorized> => {
-  const presented = presentedAudiences(payload.aud)
-  if (presented.some((a) => acceptedAudiences.includes(a))) return Effect.void
+): Effect.Effect<string | ReadonlyArray<string>, HttpApiError.Unauthorized> => {
+  const aud = payload.aud
+  const presented = presentedAudiences(aud)
+  if (aud !== undefined && presented.some((a) => acceptedAudiences.includes(a))) {
+    return Effect.succeed(aud)
+  }
   return Effect.logWarning(
     `[gatekeeper-auth] requireAudienceAccepted fail: token.aud=${JSON.stringify(presented)} accepted=${JSON.stringify(acceptedAudiences)}`
   ).pipe(Effect.zipRight(Effect.fail(unauthorized())))
@@ -112,46 +127,102 @@ const requireNotExpired = (
     }
   })
 
-const requirePayloadWithRegisteredEnabledSubject = (
-  payload: jose.JWTPayload
-): Effect.Effect<VerifiedPayload, HttpApiError.Unauthorized, GatekeeperStore> =>
+// Subject must be a string naming a registered, enabled client.
+// Returns the narrowed `sub` for the caller to assemble into the
+// `VerifiedPayload`; iss/aud are gated by their own `require*` above.
+const requireRegisteredEnabledSubject = (
+  payload: jose.JWTPayload,
+  store: typeof GatekeeperStore.Service
+): Effect.Effect<string, HttpApiError.Unauthorized> =>
   Effect.gen(function* () {
     if (typeof payload.sub !== 'string') {
       yield* Effect.logWarning(
-        `[gatekeeper-auth] requirePayload fail: sub is not a string (got ${typeof payload.sub})`
+        `[gatekeeper-auth] requireSubject fail: sub is not a string (got ${typeof payload.sub})`
       )
       return yield* Effect.fail(unauthorized())
     }
-    if (typeof payload.iss !== 'string') {
-      // TEMP: debugging gatekeeper unauthorized.
-      yield* Effect.logWarning(
-        `[gatekeeper-auth] requirePayload fail: iss is not a string (got ${typeof payload.iss})`
-      )
-      return yield* Effect.fail(unauthorized())
-    }
-    if (typeof payload.aud !== 'string' && !Array.isArray(payload.aud)) {
-      // TEMP: debugging gatekeeper unauthorized.
-      yield* Effect.logWarning(
-        `[gatekeeper-auth] requirePayload fail: aud is neither string nor array (got ${typeof payload.aud})`
-      )
-      return yield* Effect.fail(unauthorized())
-    }
-    const store = yield* GatekeeperStore
     const client = store.query(Client.queries.byId$(payload.sub))
     if (client == null || client.disabledAt != null) {
       const disabledAtStr =
         client?.disabledAt == null ? 'n/a' : DateTime.formatIso(client.disabledAt)
       yield* Effect.logWarning(
-        `[gatekeeper-auth] requirePayload fail: client lookup — sub=${payload.sub} found=${client != null} disabledAt=${disabledAtStr}`
+        `[gatekeeper-auth] requireSubject fail: client lookup — sub=${payload.sub} found=${client != null} disabledAt=${disabledAtStr}`
       )
       return yield* Effect.fail(unauthorized())
     }
-    return {
-      ...payload,
-      iss: payload.iss,
-      sub: payload.sub,
-      aud: payload.aud,
+    return payload.sub
+  })
+
+// Full claim gate over a payload (issuer + audience + expiry +
+// registered/enabled subject), assembling the typed `VerifiedPayload`.
+// Run twice per verification: as an *advisory* pre-signature fast-fail
+// over the unverified decoded payload (so each rejection reason gets a
+// specific log before the expensive RSA verify), and as the
+// *authoritative* gate over the jose-verified payload. Reusing one
+// function guarantees the pre-checks cover exactly the post-check
+// conditions — the parity the security posture relies on. `iss` in the
+// result is `expectedIssuer` (which `requireIssuerMatches` proved the
+// claim equals); the pre-pass result is discarded by the caller.
+const requireValidClaims = (
+  payload: jose.JWTPayload,
+  store: typeof GatekeeperStore.Service,
+  options: { expectedIssuer: string; acceptedAudiences: ReadonlyArray<string> }
+): Effect.Effect<VerifiedPayload, HttpApiError.Unauthorized> =>
+  Effect.gen(function* () {
+    yield* requireIssuerMatches(payload, options.expectedIssuer)
+    const aud = yield* requireAudienceAccepted(payload, options.acceptedAudiences)
+    yield* requireNotExpired(payload)
+    const sub = yield* requireRegisteredEnabledSubject(payload, store)
+    return { ...payload, iss: options.expectedIssuer, sub, aud }
+  })
+
+// Decode the unverified token payload for the pre-signature fast-fail.
+// Advisory only — a malformed token that `decodeJwt` can't parse is
+// rejected up front, but the accept decision still rests on jose
+// signature verification plus the authoritative `requireValidClaims`.
+const decodeUnverifiedPayload = (
+  token: string
+): Effect.Effect<jose.JWTPayload, HttpApiError.Unauthorized> =>
+  Effect.try({
+    try: () => jose.decodeJwt(token),
+    catch: () => unauthorized(),
+  }).pipe(
+    Effect.tapError(() =>
+      Effect.logWarning('[gatekeeper-auth] verifyJwt fail: malformed token (decodeJwt threw)')
+    )
+  )
+
+// Narrow the candidate signing keys to those whose `kid` matches the
+// token's protected header (mint sets `kid` via `setProtectedHeader`).
+// On no match — or a token with no `kid` — fall back to every key and
+// log it, so rotation/legacy tokens still verify by brute force. A
+// header that won't decode is treated as a malformed token.
+const selectSigningKeys = (
+  token: string,
+  keys: ReadonlyArray<SigningKey.Type>
+): Effect.Effect<ReadonlyArray<SigningKey.Type>, HttpApiError.Unauthorized> =>
+  Effect.gen(function* () {
+    const header = yield* Effect.try({
+      try: () => jose.decodeProtectedHeader(token),
+      catch: () => unauthorized(),
+    }).pipe(
+      Effect.tapError(() =>
+        Effect.logWarning('[gatekeeper-auth] verifyJwt fail: malformed protected header')
+      )
+    )
+    const kid = header.kid
+    if (typeof kid === 'string') {
+      const matched = keys.filter((k) => k.kid === kid)
+      if (matched.length > 0) return matched
+      yield* Effect.logInfo(
+        `[gatekeeper-auth] key selection: token kid=${kid} matched no signing key; falling back to all ${keys.length} key(s)`
+      )
+    } else {
+      yield* Effect.logInfo(
+        `[gatekeeper-auth] key selection: token has no kid header; trying all ${keys.length} key(s)`
+      )
     }
+    return keys
   })
 
 /**
@@ -199,14 +270,23 @@ const verifyJwt = (
     }
     const expectedIssuer = origin
     const acceptedAudiences: ReadonlyArray<string> = [`${origin}/fhir-r4`, origin]
-    const verified = yield* verifyAgainstAnyKey(token, signingKeys, {
-      expectedIssuer,
-      acceptedAudiences,
-    })
-    yield* requireIssuerMatches(verified.payload, expectedIssuer)
-    yield* requireAudienceAccepted(verified.payload, acceptedAudiences)
-    yield* requireNotExpired(verified.payload)
-    return yield* requirePayloadWithRegisteredEnabledSubject(verified.payload)
+    const options = { expectedIssuer, acceptedAudiences }
+
+    // Pre-signature fast-fail on the unverified claims: each rejected
+    // reason (issuer/audience/expiry/subject) gets a specific log before
+    // the expensive RSA verify. Advisory only — never an accept; the
+    // result is discarded.
+    const unverified = yield* decodeUnverifiedPayload(token)
+    yield* requireValidClaims(unverified, store, options)
+
+    // Authoritative signature gate: narrow to kid-matched keys, then
+    // require a jose verification to succeed.
+    const candidateKeys = yield* selectSigningKeys(token, signingKeys)
+    const verified = yield* verifyAgainstAnyKey(token, candidateKeys, options)
+
+    // Authoritative claim gate over the verified payload (belt and
+    // braces: a `SigningKey` impl that bypasses jose still gets gated).
+    return yield* requireValidClaims(verified.payload, store, options)
   })
 
 const signJwt = (
