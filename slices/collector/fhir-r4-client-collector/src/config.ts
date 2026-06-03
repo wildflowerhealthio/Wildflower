@@ -205,7 +205,7 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<AnyReso
         },
       },
     ],
-    stepDelay: Duration.seconds(2),
+    stepDelay: Duration.seconds(5),
   })
 }
 
