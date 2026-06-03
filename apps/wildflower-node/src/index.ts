@@ -47,12 +47,8 @@ const TelemetryLive = nodeTelemetryLayerFromEnv({
 })
 
 const run = Effect.gen(function* () {
-  // Fail loud before any work if the configured bind host would expose
-  // the listener beyond loopback. The app-layer `loopbackGateMiddleware`
-  // (in `wildflower-server`) rejects non-loopback peers per request, but
-  // here we refuse to even open a non-loopback socket — belt and braces.
-  // `127.x`, `::1`, and `localhost` are accepted; `0.0.0.0`, `::`, a LAN
-  // IP, or a public hostname die here at startup.
+  // Bind-side half of the `loopbackGateMiddleware` peer check in
+  // `wildflower-server`: refuse to even open a non-loopback socket.
   if (!isLoopbackBindHost(HOSTNAME)) {
     return yield* Effect.dieMessage(
       `Refusing to bind wildflower-node to non-loopback HOSTNAME=${HOSTNAME}; only loopback hosts (127.x, ::1, localhost) are permitted.`

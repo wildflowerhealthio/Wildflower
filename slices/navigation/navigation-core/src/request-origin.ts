@@ -22,9 +22,8 @@ const isLoopbackPeer = (remoteAddress: string | undefined): boolean =>
 
 // Bind hosts that expose *only* the loopback interface, so a LAN/public
 // peer can't open a TCP connection in the first place. `localhost`
-// resolves to a loopback address; the IPv4/IPv6 loopback literals bind
-// their respective stack. Everything else — `0.0.0.0`, `::`, a LAN IP,
-// a public hostname — is rejected.
+// resolves to a loopback address; `0.0.0.0`, `::`, and any routable host
+// are rejected.
 const LOOPBACK_BIND_HOST_RE = /^(?:localhost|127\.\d+\.\d+\.\d+|::1|::ffff:127\.\d+\.\d+\.\d+)$/i
 
 /**

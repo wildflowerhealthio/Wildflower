@@ -19,16 +19,10 @@ type VerifiedPayload = {
 
 const unauthorized = (): HttpApiError.Unauthorized => new HttpApiError.Unauthorized()
 
-// Try each signing key in turn; first one whose `jose.jwtVerify`
-// succeeds wins. Verification options (`expectedIssuer`,
-// `acceptedAudiences`) are validated by `jose` itself, so a key that
-// signed a token with the wrong iss/aud also fails here.
-//
-// Each attempt's failure carries the jose error `type` (its stable
-// `code`, e.g. `ERR_JWS_SIGNATURE_VERIFICATION_FAILED`) and `message`,
-// so the catch-all can log the actual reason no key verified rather
-// than a bare key count. `firstSuccessOf` surfaces the last attempt's
-// failure when every key fails.
+// jose validates `expectedIssuer`/`acceptedAudiences` internally, so a
+// key that signed a token with the wrong iss/aud fails here too. Each
+// failure carries the jose error `code` and message so the catch-all
+// can log why no key verified.
 class JoseVerifyFailure {
   readonly _tag = 'JoseVerifyFailure'
   constructor(
@@ -37,9 +31,8 @@ class JoseVerifyFailure {
   ) {}
 }
 
-// jose errors expose a stable string `code`; prefer it for the failure
-// `type`, falling back to the error's constructor name, then a generic
-// label for non-`Error` throwables.
+// jose errors expose a stable string `code`; prefer it, then the
+// constructor name, then a generic label.
 const joseErrorType = (err: unknown): string => {
   if (err instanceof Error) {
     if ('code' in err && typeof err.code === 'string') return err.code
@@ -69,16 +62,8 @@ const verifyAgainstAnyKey = (
     )
   )
 
-// Each `require*` below owns one claim's gate and logs its own specific
-// rejection reason. They're applied twice per verification (see
-// `requireValidClaims`): once on the *unverified* decoded payload as a
-// pre-signature fast-fail, and once on the jose-*verified* payload as
-// the authoritative gate. The issuer/audience *type* assertions live
-// here (not in the subject gate) so each reason is reported at its own
-// site.
-
-// Issuer must equal the expected origin. A non-string `iss` can't equal
-// a string `expectedIssuer`, so this also covers the wrong-type case.
+// A non-string `iss` can't equal the string `expectedIssuer`, so this
+// also covers the wrong-type case without a separate guard.
 const requireIssuerMatches = (
   payload: jose.JWTPayload,
   expectedIssuer: string
@@ -95,9 +80,8 @@ const presentedAudiences = (audClaim: jose.JWTPayload['aud']): ReadonlyArray<str
   return []
 }
 
-// Audience must intersect the accepted set, and (for the typed return)
-// be present as a string or string[]. A missing/ill-typed `aud`
-// produces an empty `presented`, so it fails the intersection too.
+// A missing or ill-typed `aud` yields an empty `presented`, so it fails
+// the intersection without a separate type guard.
 const requireAudienceAccepted = (
   payload: jose.JWTPayload,
   acceptedAudiences: ReadonlyArray<string>
@@ -127,9 +111,6 @@ const requireNotExpired = (
     }
   })
 
-// Subject must be a string naming a registered, enabled client.
-// Returns the narrowed `sub` for the caller to assemble into the
-// `VerifiedPayload`; iss/aud are gated by their own `require*` above.
 const requireRegisteredEnabledSubject = (
   payload: jose.JWTPayload,
   store: typeof GatekeeperStore.Service
@@ -153,16 +134,11 @@ const requireRegisteredEnabledSubject = (
     return payload.sub
   })
 
-// Full claim gate over a payload (issuer + audience + expiry +
-// registered/enabled subject), assembling the typed `VerifiedPayload`.
-// Run twice per verification: as an *advisory* pre-signature fast-fail
-// over the unverified decoded payload (so each rejection reason gets a
-// specific log before the expensive RSA verify), and as the
-// *authoritative* gate over the jose-verified payload. Reusing one
-// function guarantees the pre-checks cover exactly the post-check
-// conditions — the parity the security posture relies on. `iss` in the
-// result is `expectedIssuer` (which `requireIssuerMatches` proved the
-// claim equals); the pre-pass result is discarded by the caller.
+// Run both as the advisory pre-signature fast-fail (over the unverified
+// payload) and as the authoritative gate (over the jose-verified
+// payload). One function for both passes keeps the pre-check conditions
+// identical to the post-check — the parity the security posture relies
+// on.
 const requireValidClaims = (
   payload: jose.JWTPayload,
   store: typeof GatekeeperStore.Service,
@@ -176,10 +152,9 @@ const requireValidClaims = (
     return { ...payload, iss: options.expectedIssuer, sub, aud }
   })
 
-// Decode the unverified token payload for the pre-signature fast-fail.
-// Advisory only — a malformed token that `decodeJwt` can't parse is
-// rejected up front, but the accept decision still rests on jose
-// signature verification plus the authoritative `requireValidClaims`.
+// Advisory only: a token `decodeJwt` can't parse is rejected up front,
+// but acceptance still rests on jose signature verification plus the
+// authoritative `requireValidClaims`.
 const decodeUnverifiedPayload = (
   token: string
 ): Effect.Effect<jose.JWTPayload, HttpApiError.Unauthorized> =>
@@ -192,11 +167,10 @@ const decodeUnverifiedPayload = (
     )
   )
 
-// Narrow the candidate signing keys to those whose `kid` matches the
-// token's protected header (mint sets `kid` via `setProtectedHeader`).
-// On no match — or a token with no `kid` — fall back to every key and
-// log it, so rotation/legacy tokens still verify by brute force. A
-// header that won't decode is treated as a malformed token.
+// Prefer keys whose `kid` matches the token's protected header. On no
+// match — or a token with no `kid` — fall back to every key so
+// rotation/legacy tokens still verify. An undecodable header is a
+// malformed token.
 const selectSigningKeys = (
   token: string,
   keys: ReadonlyArray<SigningKey.Type>
@@ -272,20 +246,16 @@ const verifyJwt = (
     const acceptedAudiences: ReadonlyArray<string> = [`${origin}/fhir-r4`, origin]
     const options = { expectedIssuer, acceptedAudiences }
 
-    // Pre-signature fast-fail on the unverified claims: each rejected
-    // reason (issuer/audience/expiry/subject) gets a specific log before
-    // the expensive RSA verify. Advisory only — never an accept; the
-    // result is discarded.
+    // Advisory pre-signature pass: log a specific reason per rejected
+    // claim before the expensive RSA verify. Never an accept.
     const unverified = yield* decodeUnverifiedPayload(token)
     yield* requireValidClaims(unverified, store, options)
 
-    // Authoritative signature gate: narrow to kid-matched keys, then
-    // require a jose verification to succeed.
     const candidateKeys = yield* selectSigningKeys(token, signingKeys)
     const verified = yield* verifyAgainstAnyKey(token, candidateKeys, options)
 
-    // Authoritative claim gate over the verified payload (belt and
-    // braces: a `SigningKey` impl that bypasses jose still gets gated).
+    // Re-gate the verified payload — belt and braces against a
+    // `SigningKey` impl that bypasses jose's own checks.
     return yield* requireValidClaims(verified.payload, store, options)
   })
 

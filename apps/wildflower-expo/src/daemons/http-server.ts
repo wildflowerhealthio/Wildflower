@@ -264,11 +264,8 @@ const HttpServerDaemonLive: Layer.Layer<never, PlatformError.PlatformError, Wild
       }): Stream.Stream<void, never, Scope.Scope> =>
         Stream.unwrapScoped(
           Effect.gen(function* () {
-            // Refuse to bind beyond loopback. The per-request
-            // `loopbackGateMiddleware` in `wildflower-server` still rejects
-            // non-loopback peers, but on device we also refuse to open a
-            // non-loopback socket — belt and braces. `127.x`, `::1`, and
-            // `localhost` pass; everything else dies here at bind time.
+            // Bind-side half of the `loopbackGateMiddleware` peer check in
+            // `wildflower-server`: refuse to even open a non-loopback socket.
             if (!isLoopbackBindHost(cfg.hostname)) {
               return yield* Effect.dieMessage(
                 `Refusing to bind wildflower-expo HTTP server to non-loopback hostname=${cfg.hostname}; only loopback hosts (127.x, ::1, localhost) are permitted.`

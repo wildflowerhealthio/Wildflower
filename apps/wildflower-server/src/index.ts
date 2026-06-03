@@ -121,23 +121,17 @@ const accessLogMiddleware = HttpMiddleware.make((app) =>
 
 /**
  * Network trust gate: reject any caller whose connection-level remote
- * address isn't loopback (`127.0.0.0/8`, `::1`, IPv4-mapped
- * `::ffff:127.x`) with a bare `403`, before the request reaches CORS,
- * the API, the SPA fallback, or Swagger. The server is meant to be
- * reached only over loopback — directly by a local user/webview, or via
- * the local tunnel client (which proxies through `127.0.0.1`). Direct
- * LAN or raw-IP access is denied outright, even when the listener is
- * bound to a non-loopback interface.
+ * address isn't loopback (`127.0.0.0/8`, `::1`, `::ffff:127.x`) with a
+ * `403`. The server is meant to be reached only over loopback — directly
+ * by a local user/webview, or via the local tunnel client (which proxies
+ * through `127.0.0.1`); LAN or raw-IP access is denied even when the
+ * listener is bound to a non-loopback interface.
  *
- * This is the app-layer half of a belt-and-braces posture; the listener
- * also binds loopback-only (see the platform entrypoints'
- * `isLoopbackBindHost` guard). It backs the per-handler
- * `requestOriginFromHttpRequest` fail-closed checks, which stay in place
- * so the origin a handler echoes can never be steered by a forged
- * `Host` from a non-loopback peer.
- *
- * Sits inside {@link accessLogMiddleware} so rejected requests are still
- * logged, and outside the rest so a denied peer never reaches them.
+ * Pairs with the platform entrypoints' loopback-only bind
+ * (`isLoopbackBindHost`) and the per-handler
+ * `requestOriginFromHttpRequest` checks, so a forged `Host` from a
+ * non-loopback peer can never steer the origin a handler echoes. Sits
+ * inside {@link accessLogMiddleware} so rejected peers are still logged.
  */
 const loopbackGateMiddleware = HttpMiddleware.make((app) =>
   Effect.gen(function* () {
