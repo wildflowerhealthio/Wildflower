@@ -20,7 +20,7 @@ const PageError = ({
   className,
   titleClassName,
   retry,
-}: PageErrorProps & { readonly retry?: () => void }): JSX.Element => {
+}: PageErrorProps): JSX.Element => {
   const message = error instanceof Error ? error.message : String(error)
   return (
     <div className={cn(pageLayout['page'], className)}>
@@ -31,7 +31,7 @@ const PageError = ({
       {retry === undefined ? null : (
         <button
           type="button"
-          className="element-button button-3 filled accent-blue"
+          className="button-3 outline"
           onClick={retry}
         >
           Retry
