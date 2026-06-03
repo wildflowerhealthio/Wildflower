@@ -1,5 +1,13 @@
 import { Effect, SubscriptionRef } from 'effect'
-import { afterEach, beforeEach, describe, expect, type MockInstance, test, vi } from 'vite-plus/test'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type MockInstance,
+  test,
+  vi,
+} from 'vite-plus/test'
 import type * as TokenStorageType from './token-storage.ts'
 import { consumeUrlTokenIntoLocalStorage, TOKEN_STORAGE_KEY } from './token-storage.ts'
 

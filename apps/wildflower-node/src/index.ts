@@ -134,7 +134,7 @@ const run = Effect.gen(function* () {
     )
   )
 
-  yield* Layer.launch(FullServerLive)
+  return yield* Layer.launch(FullServerLive)
 })
 
 NodeRuntime.runMain(run)

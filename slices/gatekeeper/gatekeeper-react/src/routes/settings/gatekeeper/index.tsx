@@ -7,13 +7,13 @@ import { AsyncErrorView, ItemList, Menu, pageLayoutStyles, type MenuItem } from 
 
 import { RevokeGrantDialog } from '../../../components/RevokeGrantDialog.tsx'
 import { formatInstant } from '../../../format-date.ts'
-import type { RouterContext } from '../../../router-context.ts'
 import {
   grantsQueryOptions,
   useGrantsQuery,
   useRevokeGrantMutation,
   type Grant,
 } from '../../../queries/index.ts'
+import type { RouterContext } from '../../../router-context.ts'
 
 interface AccessIndexBodyProps {
   readonly grants: readonly Grant[]
@@ -141,10 +141,7 @@ interface AccessIndexErrorViewProps {
  * read. The annotated `select` keeps the context typed in the standalone
  * (router-not-registered) build — no cast.
  */
-export const AccessIndexErrorView = ({
-  error,
-  reset,
-}: AccessIndexErrorViewProps): JSX.Element => {
+export const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps): JSX.Element => {
   const { queryClient, runAuthed } = useRouteContext({
     from: '__root__',
     select: (context: RouterContext) => ({

@@ -151,7 +151,7 @@ const loopbackGateMiddleware = HttpMiddleware.make((app) =>
 )
 
 const middleware = HttpMiddleware.make((app) =>
-  accessLogMiddleware(loopbackGateMiddleware(stripCookiesMiddleware(corsMiddleware(app))))
+  pipe(app, corsMiddleware, stripCookiesMiddleware, loopbackGateMiddleware, accessLogMiddleware)
 )
 
 // The apps slice exposes two HttpApis: `AppsApi` (public — `ListApps`

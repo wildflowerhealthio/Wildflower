@@ -3,8 +3,8 @@ import * as jose from 'jose'
 import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
 import { Client, type ClientRow, GatekeeperStore, SigningKey } from '../livestore/index.ts'
-import { testingKey1, testingKey2 } from '../test-fixtures/signing-keys.ts'
 import { LoopbackRequestLive } from '../test-fixtures/loopback-request.ts'
+import { testingKey1, testingKey2 } from '../test-fixtures/signing-keys.ts'
 import { verifyJwt } from './jwt.ts'
 const labelOf = (q: unknown): string | undefined => {
   if (typeof q === 'object' && q !== null && 'label' in q && typeof q.label === 'string') {

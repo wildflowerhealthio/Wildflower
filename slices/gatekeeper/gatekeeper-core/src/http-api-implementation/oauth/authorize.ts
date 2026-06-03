@@ -248,16 +248,7 @@ const handleAuthorize = (
         )
       }
 
-      const pollingUrl = yield* GatekeeperPaths.oauthPollingUrl(requestId).pipe(
-        Effect.catchTag('UntrustedRemotePeer', () =>
-          Effect.fail(
-            HttpServerResponse.text('Forbidden', {
-              status: 403,
-              contentType: 'text/plain; charset=utf-8',
-            })
-          )
-        )
-      )
+      const pollingUrl = yield* GatekeeperPaths.oauthPollingUrl(requestId)
       return HttpServerResponse.redirect(pollingUrl, { status: 302 })
     }),
     // Validation failures are fully-formed responses; surface them as success.

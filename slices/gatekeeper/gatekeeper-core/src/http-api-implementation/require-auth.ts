@@ -19,9 +19,7 @@ const authenticateOwner = (
     const scope = payload.scope ?? ''
     const scopes = scope.split(' ').filter(Boolean)
     if (!scopes.includes(OWNER_SCOPE)) {
-      yield* Effect.logWarning(
-        `[gatekeeper-auth] scope-check fail: token required=${OWNER_SCOPE}`
-      )
+      yield* Effect.logWarning(`[gatekeeper-auth] scope-check fail: token required=${OWNER_SCOPE}`)
       return yield* Effect.fail(new HttpApiError.Unauthorized())
     }
     return undefined

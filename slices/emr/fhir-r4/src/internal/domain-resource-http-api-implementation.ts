@@ -177,14 +177,12 @@ export function makeDomainResourceHandlerLayer<
     params: SearchParamsType
   ): Effect.Effect<
     Schema.Schema.Type<typeof bundleSchema>,
-    HttpApiError.ServiceUnavailable | HttpApiError.Forbidden,
+    HttpApiError.ServiceUnavailable,
     EmrStore | Origin | HttpServerRequest.HttpServerRequest
   > =>
     Effect.gen(function* () {
       const req = yield* HttpServerRequest.HttpServerRequest
-      const origin = yield* requestOriginFromHttpRequest.pipe(
-        Effect.catchTag('UntrustedRemotePeer', () => Effect.fail(new HttpApiError.Forbidden()))
-      )
+      const origin = yield* requestOriginFromHttpRequest
       const requestUrl = new URL(req.url, origin)
       const where = searchBindings.buildWhere(params)
       const requestedCount = params._count ?? DEFAULT_PAGE_SIZE
@@ -290,9 +288,7 @@ export function makeDomainResourceHandlerLayer<
         const limit = urlParams._count
         return Effect.gen(function* () {
           const req = yield* HttpServerRequest.HttpServerRequest
-          const origin = yield* requestOriginFromHttpRequest.pipe(
-            Effect.catchTag('UntrustedRemotePeer', () => Effect.fail(new HttpApiError.Forbidden()))
-          )
+          const origin = yield* requestOriginFromHttpRequest
           const requestUrl = new URL(req.url, origin)
           const store = yield* EmrStore
           const primary = yield* Effect.try({

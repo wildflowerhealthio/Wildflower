@@ -1,8 +1,8 @@
-import { HttpServerRequest } from '@effect/platform'
+import type { HttpServerRequest } from '@effect/platform'
 import { Effect } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import { Origin, type UntrustedRemotePeer } from 'navigation-core'
+import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
 import { GatekeeperPaths } from './page-paths.ts'
 import { LoopbackRequestLive } from './test-fixtures/loopback-request.ts'
@@ -11,7 +11,7 @@ const ORIGIN = 'https://example.test'
 const OriginLive = Origin.layerFromLiteral(ORIGIN)
 
 const runUrl = (
-  effect: Effect.Effect<string, UntrustedRemotePeer, Origin | HttpServerRequest.HttpServerRequest>
+  effect: Effect.Effect<string, never, Origin | HttpServerRequest.HttpServerRequest>
 ): string =>
   Effect.runSync(effect.pipe(Effect.provide(LoopbackRequestLive), Effect.provide(OriginLive)))
 

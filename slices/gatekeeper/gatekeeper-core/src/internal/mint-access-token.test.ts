@@ -2,8 +2,8 @@ import { DateTime, Duration, Effect, Either } from 'effect'
 import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
 import { Client, type ClientRow, GatekeeperStore, SigningKey } from '../livestore/index.ts'
-import { testingKey1 } from '../test-fixtures/signing-keys.ts'
 import { LoopbackRequestLive } from '../test-fixtures/loopback-request.ts'
+import { testingKey1 } from '../test-fixtures/signing-keys.ts'
 import { mintAccessToken, verifyJwt } from './jwt.ts'
 
 const labelOf = (q: unknown): string | undefined => {

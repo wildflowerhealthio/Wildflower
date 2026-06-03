@@ -132,21 +132,12 @@ const issueTokenResponse = (input: {
   patient: string | null
 }): Effect.Effect<
   TokenResponse,
-  OAuthError401 | OAuthError500,
+  OAuthError500,
   GatekeeperStore | Origin | HttpServerRequest.HttpServerRequest
 > =>
   Effect.gen(function* () {
     const signingKey = yield* pickSigningKeyForMint()
-    const origin = yield* requestOriginFromHttpRequest.pipe(
-      Effect.catchTag('UntrustedRemotePeer', () =>
-        Effect.fail(
-          OAuthError401Schema.make({
-            error: 'invalid_client',
-            error_description: 'Token endpoint is restricted to loopback callers',
-          })
-        )
-      )
-    )
+    const origin = yield* requestOriginFromHttpRequest
     const signed = yield* mintAccessToken(signingKey, origin, {
       clientId: input.clientId,
       scope: input.grantedScopes,

@@ -117,16 +117,7 @@ const handleDeviceAuthorization = (
     const [verificationUri, verificationUriComplete] = yield* Effect.all([
       GatekeeperPaths.deviceEntryUrl(),
       GatekeeperPaths.deviceEntryUrlWithCode(userCode),
-    ]).pipe(
-      Effect.catchTag('UntrustedRemotePeer', () =>
-        Effect.fail(
-          OAuthError401Schema.make({
-            error: 'invalid_client',
-            error_description: 'Device authorization endpoint is restricted to loopback callers',
-          })
-        )
-      )
-    )
+    ])
     return DeviceAuthorizationResponseSchema.make({
       device_code: id,
       user_code: userCode,

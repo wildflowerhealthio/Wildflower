@@ -1,5 +1,5 @@
 import { HttpServerRequest } from '@effect/platform'
-import { Effect, Option } from 'effect'
+import { Effect } from 'effect'
 
 import { Origin } from './origin.ts'
 
@@ -36,66 +36,37 @@ const LOOPBACK_BIND_HOST_RE = /^(?:localhost|127\.\d+\.\d+\.\d+|::1|::ffff:127\.
 const isLoopbackBindHost = (host: string): boolean => LOOPBACK_BIND_HOST_RE.test(host)
 
 /**
- * Failure raised by {@link requestOriginFromHttpRequest} when the inbound
- * peer is not trusted (non-loopback / unknown transport). Carries the
- * offending `remoteAddress` for logging. Callers map this to an HTTP
- * status: the security paths (token mint/verify) to `401 Unauthorized`,
- * the echo paths (SMART discovery, FHIR self-URLs, redirects) to
- * `403 Forbidden`.
- */
-class UntrustedRemotePeer {
-  readonly _tag = 'UntrustedRemotePeer'
-  constructor(readonly remoteAddress: string | undefined) {}
-}
-
-/**
- * Compute the origin to embed in a handler response from the inbound
- * connection's remote address and request headers, falling back to the
- * configured `Origin` when we don't trust the caller.
+ * Compute the origin to embed in a handler response from the request
+ * headers, falling back to the configured `Origin` when no usable `Host`
+ * is present.
  *
- * @param remoteAddress - The peer's connection-level address as reported
- *   by the platform (`socket.remoteAddress` on Node, the native
- *   payload's `ip` on Expo). `undefined` when transport info is
- *   unavailable — treated as untrusted.
+ * Callers are assumed to already be inside the trust boundary — the
+ * loopback gate lives at the server edge ({@link isLoopbackPeer}, applied
+ * by `loopbackGateMiddleware`), so this function only derives *where* the
+ * request was targeting, never *who* is allowed to ask.
+ *
  * @param headers - Request headers with lowercased keys (the convention
  *   `@effect/platform` normalises to).
- * @param fallback - The configured `Origin` value, returned when the
- *   request can't be trusted.
+ * @param fallback - The configured `Origin` value, returned when no
+ *   `Host`/forwarded headers are usable.
  * @returns The origin URL to embed in the response.
  *
  * @remarks
- *  Trust gate is the connection's remote address, not the `Host`
- *  header. `Host` is set by the client and a public attacker against an
- *  `HOSTNAME=0.0.0.0`-bound server could forge `Host: 127.0.0.1`;
- *  `remoteAddress` is set by the kernel from the TCP peer and is
- *  unforgeable by a remote caller.
- *
- *  When the peer is loopback (`127.0.0.0/8`, `::1`, or the IPv4-mapped
- *  `::ffff:127.x.x.x`) the request was either a local user or the local
- *  tunnel client (which always proxies through `127.0.0.1`); both are
- *  inside the trust boundary, so:
- *   - if `X-Forwarded-{Host,Proto}` are both set AND each parses cleanly
- *     (host as a DNS-shape `[A-Za-z0-9.-]+(:port)?`, proto as
- *     `http`/`https`), they win — the tunnel case;
- *   - otherwise the `Host` header is echoed under `http://`, subject to
- *     the same DNS-shape check (so empty, whitespace, or comma-joined
- *     values still fall back). The local server binds plain HTTP by
- *     convention (`apps/wildflower-node/src/index.ts` uses
- *     `node:http.createServer`, and the on-device Expo server is
- *     non-TLS), so the scheme is fixed rather than derived from the
- *     request.
- *
- *  When the peer is non-loopback or unknown, the configured `Origin`
- *  is returned unchanged.
+ *  - if `X-Forwarded-{Host,Proto}` are both set AND each parses cleanly
+ *    (host as a DNS-shape `[A-Za-z0-9.-]+(:port)?`, proto as
+ *    `http`/`https`), they win — the tunnel case;
+ *  - otherwise the `Host` header is echoed under `http://`, subject to
+ *    the same DNS-shape check (so empty, whitespace, or comma-joined
+ *    values fall back). The local server binds plain HTTP by convention
+ *    (`apps/wildflower-node/src/index.ts` uses `node:http.createServer`,
+ *    and the on-device Expo server is non-TLS), so the scheme is fixed
+ *    rather than derived from the request;
+ *  - with neither usable, the configured `Origin` fallback is returned.
  */
 const requestOriginFromConnection = (
-  remoteAddress: string | undefined,
   headers: { readonly [key: string]: string },
   fallback: string
 ): string => {
-  if (!isLoopbackPeer(remoteAddress)) {
-    return fallback
-  }
   const forwardedHost = headers['x-forwarded-host']
   const forwardedProto = headers['x-forwarded-proto']
   if (
@@ -113,23 +84,15 @@ const requestOriginFromConnection = (
 
 /**
  * Request-scoped origin: the URL the inbound request was targeting,
- * derived from the connection's remote address and request headers
- * (see {@link requestOriginFromConnection} for the header-derivation
- * rules). Use this in handler responses that should echo the caller's
- * URL — e.g. SMART discovery documents — so a client that reaches the
- * server via the tunnel sees tunnel URLs, and one that reaches it via
- * loopback sees loopback URLs.
+ * derived from the request headers (see {@link requestOriginFromConnection}
+ * for the derivation rules). Use this in handler responses that should
+ * echo the caller's URL — e.g. SMART discovery documents — so a client
+ * that reaches the server via the tunnel sees tunnel URLs, and one that
+ * reaches it via loopback sees loopback URLs.
  *
- * **Fail-closed.** Only loopback peers ({@link isLoopbackPeer}) are
- * trusted to derive a per-request origin; for any other peer this
- * **fails** with {@link UntrustedRemotePeer} rather than echoing the
- * configured `Origin`. Direct-LAN access is deliberately outside the
- * trust model: the server is meant to be reached over loopback or
- * through the loopback-proxied tunnel, and a forgeable `Host` from a
- * non-loopback peer must never steer the origin we embed or the
- * issuer/audience we mint and verify against. Callers map the failure
- * to a status (401 on the mint/verify security paths, 403 on the echo
- * paths).
+ * Trust is enforced upstream by `loopbackGateMiddleware`, which rejects
+ * any non-loopback peer at the server edge before a handler runs; this
+ * effect therefore assumes a trusted caller and cannot fail.
  *
  * Distinct from {@link Origin}, which is the server's canonical served
  * origin (single Subscribable, swapped by tunnel toggles). Use `Origin`
@@ -138,20 +101,15 @@ const requestOriginFromConnection = (
  */
 const requestOriginFromHttpRequest: Effect.Effect<
   string,
-  UntrustedRemotePeer,
+  never,
   HttpServerRequest.HttpServerRequest | Origin
 > = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest
-  const remoteAddress = Option.getOrUndefined(request.remoteAddress)
-  if (!isLoopbackPeer(remoteAddress)) {
-    return yield* Effect.fail(new UntrustedRemotePeer(remoteAddress))
-  }
   const fallback = yield* Origin.get
-  return requestOriginFromConnection(remoteAddress, request.headers, fallback)
+  return requestOriginFromConnection(request.headers, fallback)
 })
 
 export {
-  UntrustedRemotePeer,
   isLoopbackBindHost,
   isLoopbackPeer,
   requestOriginFromConnection,

@@ -51,7 +51,10 @@ const verifyAgainstAnyKey = (
       Effect.tryPromise({
         try: () => SigningKey.verifyJwt(jwk, token, options),
         catch: (err) =>
-          new JoseVerifyFailure(joseErrorType(err), err instanceof Error ? err.message : String(err)),
+          new JoseVerifyFailure(
+            joseErrorType(err),
+            err instanceof Error ? err.message : String(err)
+          ),
       })
     ),
     Effect.firstSuccessOf,
@@ -62,8 +65,10 @@ const verifyAgainstAnyKey = (
     )
   )
 
-// A non-string `iss` can't equal the string `expectedIssuer`, so this
-// also covers the wrong-type case without a separate guard.
+/**
+ * A non-string `iss` can't equal the string `expectedIssuer`, so this
+ * also covers the wrong-type case without a separate guard.
+ */
 const requireIssuerMatches = (
   payload: jose.JWTPayload,
   expectedIssuer: string
@@ -80,8 +85,10 @@ const presentedAudiences = (audClaim: jose.JWTPayload['aud']): ReadonlyArray<str
   return []
 }
 
-// A missing or ill-typed `aud` yields an empty `presented`, so it fails
-// the intersection without a separate type guard.
+/**
+ * A missing or ill-typed `aud` yields an empty `presented`, so it fails
+ * the intersection without a separate type guard.
+ */
 const requireAudienceAccepted = (
   payload: jose.JWTPayload,
   acceptedAudiences: ReadonlyArray<string>
@@ -134,11 +141,13 @@ const requireRegisteredEnabledSubject = (
     return payload.sub
   })
 
-// Run both as the advisory pre-signature fast-fail (over the unverified
-// payload) and as the authoritative gate (over the jose-verified
-// payload). One function for both passes keeps the pre-check conditions
-// identical to the post-check — the parity the security posture relies
-// on.
+/**
+ * Run both as the advisory pre-signature fast-fail (over the unverified
+ * payload) and as the authoritative gate (over the jose-verified
+ * payload). One function for both passes keeps the pre-check conditions
+ * identical to the post-check — the parity the security posture relies
+ * on.
+ */
 const requireValidClaims = (
   payload: jose.JWTPayload,
   store: typeof GatekeeperStore.Service,
@@ -152,9 +161,11 @@ const requireValidClaims = (
     return { ...payload, iss: options.expectedIssuer, sub, aud }
   })
 
-// Advisory only: a token `decodeJwt` can't parse is rejected up front,
-// but acceptance still rests on jose signature verification plus the
-// authoritative `requireValidClaims`.
+/**
+ * Advisory only: a token `decodeJwt` can't parse is rejected up front,
+ * but acceptance still rests on jose signature verification plus the
+ * authoritative `requireValidClaims`.
+ */
 const decodeUnverifiedPayload = (
   token: string
 ): Effect.Effect<jose.JWTPayload, HttpApiError.Unauthorized> =>
@@ -167,10 +178,12 @@ const decodeUnverifiedPayload = (
     )
   )
 
-// Prefer keys whose `kid` matches the token's protected header. On no
-// match — or a token with no `kid` — fall back to every key so
-// rotation/legacy tokens still verify. An undecodable header is a
-// malformed token.
+/**
+ * Prefer keys whose `kid` matches the token's protected header. On no
+ * match — or a token with no `kid` — fall back to every key so
+ * rotation/legacy tokens still verify. An undecodable header is a
+ * malformed token.
+ */
 const selectSigningKeys = (
   token: string,
   keys: ReadonlyArray<SigningKey.Type>
@@ -188,11 +201,11 @@ const selectSigningKeys = (
     if (typeof kid === 'string') {
       const matched = keys.filter((k) => k.kid === kid)
       if (matched.length > 0) return matched
-      yield* Effect.logInfo(
+      yield* Effect.logDebug(
         `[gatekeeper-auth] key selection: token kid=${kid} matched no signing key; falling back to all ${keys.length} key(s)`
       )
     } else {
-      yield* Effect.logInfo(
+      yield* Effect.logWarning(
         `[gatekeeper-auth] key selection: token has no kid header; trying all ${keys.length} key(s)`
       )
     }
@@ -228,13 +241,7 @@ const verifyJwt = (
       return yield* Effect.fail(unauthorized())
     }
     const store = yield* GatekeeperStore
-    const origin = yield* requestOriginFromHttpRequest.pipe(
-      Effect.catchTag('UntrustedRemotePeer', (e) =>
-        Effect.logWarning(
-          `[gatekeeper-auth] verifyJwt fail: untrusted remote peer (remoteAddress=${String(e.remoteAddress)})`
-        ).pipe(Effect.zipRight(Effect.fail(unauthorized())))
-      )
-    )
+    const origin = yield* requestOriginFromHttpRequest
     const signingKeys = store.query(SigningKey.queries.all$)
     if (signingKeys.length === 0) {
       yield* Effect.logWarning('[gatekeeper-auth] verifyJwt fail: no signing keys configured (500)')
@@ -244,19 +251,19 @@ const verifyJwt = (
     }
     const expectedIssuer = origin
     const acceptedAudiences: ReadonlyArray<string> = [`${origin}/fhir-r4`, origin]
-    const options = { expectedIssuer, acceptedAudiences }
+    const expectedClaims = { expectedIssuer, acceptedAudiences }
 
     // Advisory pre-signature pass: log a specific reason per rejected
     // claim before the expensive RSA verify. Never an accept.
     const unverified = yield* decodeUnverifiedPayload(token)
-    yield* requireValidClaims(unverified, store, options)
+    yield* requireValidClaims(unverified, store, expectedClaims)
 
     const candidateKeys = yield* selectSigningKeys(token, signingKeys)
-    const verified = yield* verifyAgainstAnyKey(token, candidateKeys, options)
+    const verified = yield* verifyAgainstAnyKey(token, candidateKeys, expectedClaims)
 
     // Re-gate the verified payload — belt and braces against a
     // `SigningKey` impl that bypasses jose's own checks.
-    return yield* requireValidClaims(verified.payload, store, options)
+    return yield* requireValidClaims(verified.payload, store, expectedClaims)
   })
 
 const signJwt = (

@@ -29,11 +29,7 @@ const PageError = ({
       )}
       <p className={cn(pageLayout['error'], 'text-body-3')}>{message}</p>
       {retry === undefined ? null : (
-        <button
-          type="button"
-          className="button-3 outline"
-          onClick={retry}
-        >
+        <button type="button" className="button-3 outline" onClick={retry}>
           Retry
         </button>
       )}
