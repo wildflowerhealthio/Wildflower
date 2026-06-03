@@ -23,9 +23,9 @@ const PageError = ({
 }: PageErrorProps): JSX.Element => {
   const message = error instanceof Error ? error.message : String(error)
   return (
-    <div className={cn(pageLayout['page'], className)}>
+    <div className={className}>
       {title === undefined ? null : (
-        <h1 className={cn('text-heading-4', titleClassName)}>{title}</h1>
+        <h2 className={cn('text-heading-3', titleClassName)}>{title}</h2>
       )}
       <p className={cn(pageLayout['error'], 'text-body-3')}>{message}</p>
       {retry === undefined ? null : (

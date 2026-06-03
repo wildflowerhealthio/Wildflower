@@ -41,7 +41,7 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
   const grantToRevoke = grants.find((g) => g.id === confirmRevokeId) ?? null
 
   return (
-    <div className={pageLayoutStyles['page']}>
+    <>
       {errorMessage !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
           {errorMessage}
@@ -118,7 +118,7 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
           setConfirmRevokeId(null)
         }}
       />
-    </div>
+    </>
   )
 }
 
@@ -153,7 +153,7 @@ export const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps
     void queryClient.invalidateQueries({ queryKey: grantsQueryOptions(runAuthed).queryKey })
     reset()
   }
-  return <AsyncErrorView error={error} retry={retry} title="Gatekeeper" />
+  return <AsyncErrorView error={error} retry={retry} title="Error Loading Gatekeeper Settings" />
 }
 
 /**

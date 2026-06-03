@@ -61,7 +61,9 @@ const makeLiteral = <const C extends Parameters<typeof CodingSchema.make>[0]>(
   // paths. See profile/patient-search.profile.test.ts and the encode
   // microbench (`vp run profile`) for the measured cost.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `Schema.make` widens the const-narrowed `params` to the schema's full Type; the cast restores the caller-visible literal narrowing.
-  CodingSchema.make(params, { disableValidation: true }) as Schema.Schema.Type<typeof CodingSchema> &
+  CodingSchema.make(params, { disableValidation: true }) as Schema.Schema.Type<
+    typeof CodingSchema
+  > &
     C
 
 export { CodingSchema as Schema, makeLiteral, ResourceType }
