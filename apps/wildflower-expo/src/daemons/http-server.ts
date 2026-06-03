@@ -14,6 +14,7 @@ import { GatekeeperStore, LocalClientToken } from 'gatekeeper-core/livestore'
 import { type CryptoRandom, cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { runHttpServerDaemon } from 'local-http-server-core/daemon'
 import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
+import { isLoopbackBindHost } from 'navigation-core'
 import { injectActiveOtelContext, reactNativeTelemetryLayerFromEnv } from 'telemetry-react-native'
 import { OriginFromTunnelStore } from 'tunnel-core/contexts'
 import { TunnelStore } from 'tunnel-core/livestore'
@@ -263,6 +264,16 @@ const HttpServerDaemonLive: Layer.Layer<never, PlatformError.PlatformError, Wild
       }): Stream.Stream<void, never, Scope.Scope> =>
         Stream.unwrapScoped(
           Effect.gen(function* () {
+            // Refuse to bind beyond loopback. The per-request
+            // `loopbackGateMiddleware` in `wildflower-server` still rejects
+            // non-loopback peers, but on device we also refuse to open a
+            // non-loopback socket — belt and braces. `127.x`, `::1`, and
+            // `localhost` pass; everything else dies here at bind time.
+            if (!isLoopbackBindHost(cfg.hostname)) {
+              return yield* Effect.dieMessage(
+                `Refusing to bind wildflower-expo HTTP server to non-loopback hostname=${cfg.hostname}; only loopback hosts (127.x, ::1, localhost) are permitted.`
+              )
+            }
             // Bracket the listener bind so the shutdown trace makes it
             // obvious when the HTTP listener actually goes away. Finalizers
             // run LIFO, so the "released" finalizer is registered *before*

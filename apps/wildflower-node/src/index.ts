@@ -13,6 +13,7 @@ import { mintHostOwnerToken, seedFirstPartyClient, seedSigningKey } from 'gateke
 import { GatekeeperStore } from 'gatekeeper-core/livestore'
 import { cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
+import { isLoopbackBindHost } from 'navigation-core'
 import { nodeTelemetryLayerFromEnv } from 'telemetry-node'
 import { OriginFromTunnelStore } from 'tunnel-core/contexts'
 import { TunnelStore } from 'tunnel-core/livestore'
@@ -27,8 +28,10 @@ const PORT = Number(process.env['PORT'] ?? 3000)
 const HOSTNAME = process.env['HOSTNAME'] ?? '127.0.0.1'
 const IS_DEV = process.env['NODE_ENV'] !== 'production'
 
-// Bootstrap-token issuer/audience: pinned to loopback regardless of the
-// bind hostname (which may be `0.0.0.0` to accept LAN connections).
+// Bootstrap-token issuer/audience: pinned to loopback. The listener
+// binds loopback-only (the `isLoopbackBindHost(HOSTNAME)` guard in `run`
+// refuses any non-loopback bind), so this origin always matches the
+// interface we actually serve on.
 // Pairs with the verifier's `requestOriginFromHttpRequest` — the token
 // only validates when the caller actually hits the server over
 // loopback, so a leaked bootstrap token can't be used against the
@@ -44,6 +47,18 @@ const TelemetryLive = nodeTelemetryLayerFromEnv({
 })
 
 const run = Effect.gen(function* () {
+  // Fail loud before any work if the configured bind host would expose
+  // the listener beyond loopback. The app-layer `loopbackGateMiddleware`
+  // (in `wildflower-server`) rejects non-loopback peers per request, but
+  // here we refuse to even open a non-loopback socket — belt and braces.
+  // `127.x`, `::1`, and `localhost` are accepted; `0.0.0.0`, `::`, a LAN
+  // IP, or a public hostname die here at startup.
+  if (!isLoopbackBindHost(HOSTNAME)) {
+    return yield* Effect.dieMessage(
+      `Refusing to bind wildflower-node to non-loopback HOSTNAME=${HOSTNAME}; only loopback hosts (127.x, ::1, localhost) are permitted.`
+    )
+  }
+
   const store = yield* Effect.promise(() => createStore())
   const gatekeeperStoreLayer = GatekeeperStore.layerFrom(store)
   const localHttpServerStoreLayer = LocalHttpServerStore.layerFrom(store)
