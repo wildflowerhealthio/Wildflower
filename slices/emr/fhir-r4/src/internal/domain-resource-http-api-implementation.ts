@@ -302,7 +302,6 @@ export function makeDomainResourceHandlerLayer<
         )
       })
       .handle('Search', (request) => {
-        console.log('Search handler received request:', request)
         /* oxlint-disable-next-line typescript/no-unsafe-type-assertion */
         const { payload } = request as { readonly payload: SearchParamsType }
         return runSearch(payload).pipe(

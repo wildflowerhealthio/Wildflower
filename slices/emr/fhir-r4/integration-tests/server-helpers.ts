@@ -106,7 +106,19 @@ const wireServer = async (): Promise<Wired> => {
         const modifiedBag = modified as unknown as { [key: symbol]: unknown }
         /* oxlint-disable-next-line typescript/no-unsafe-type-assertion */
         const requestBag = request as unknown as { [key: symbol]: unknown }
-        modifiedBag[httpAppResolveSymbol] = requestBag[httpAppResolveSymbol]
+        const resolve = requestBag[httpAppResolveSymbol]
+        if (resolve === undefined) {
+          // Fail loudly instead of silently regressing every test into a bare
+          // 500: if @effect/platform stops attaching the resolve symbol (rename
+          // or internal change), the carry-over below is a no-op and `toHandled`
+          // can no longer fulfil the response. See the comment above.
+          throw new Error(
+            `wireServer: expected @effect/platform to attach ${String(
+              httpAppResolveSymbol
+            )} to the request, but it was missing — the resolve-symbol carry-over assumption has broken.`
+          )
+        }
+        modifiedBag[httpAppResolveSymbol] = resolve
         return modified
       })
     ),

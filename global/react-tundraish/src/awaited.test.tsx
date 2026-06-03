@@ -116,10 +116,10 @@ describe('Awaited', () => {
     expect(screen.getByText('not found')).toBeTruthy()
   }, 15_000)
 
-  it('applies errorClassName / errorTitleClassName to the default error container and heading', async () => {
+  it('applies errorTitleClassName to the default error heading', async () => {
     // Arrange — a rejected promise on the default error path, styled via
-    // both class props. `errorClassName` should land on the AsyncErrorView
-    // container and `errorTitleClassName` on its heading.
+    // `errorTitleClassName`, which should land on the heading rendered by
+    // the built-in AsyncErrorView.
     const failure = new Error('styled failure')
     const promise = Promise.reject<string>(failure)
     const settled = promise.catch(() => {})
@@ -127,23 +127,16 @@ describe('Awaited', () => {
     // Act
     await act(async () => {
       renderSuspended(
-        <Awaited
-          promise={promise}
-          errorTitle="Styled"
-          errorClassName="custom-error-container"
-          errorTitleClassName="custom-error-heading"
-        >
+        <Awaited promise={promise} errorTitle="Styled" errorTitleClassName="custom-error-heading">
           {(value) => <p>{value}</p>}
         </Awaited>
       )
       await settled
     })
 
-    // Assert — the heading carries the title class, and its containing
-    // panel carries the container class.
+    // Assert — the heading carries the title class.
     const heading = await waitFor(() => screen.getByRole('heading', { name: 'Styled' }))
     expect(heading.classList.contains('custom-error-heading')).toBe(true)
-    expect(heading.closest('.custom-error-container')).toBeTruthy()
   }, 15_000)
 
   it('renders the bare default AsyncErrorView (message, no heading) when no styling props are passed', async () => {

@@ -125,17 +125,6 @@ class EmrStore extends StoreTag<EmrStore>() {
 const SyncPayload = Schema.Struct({ authToken: Schema.String })
 
 /**
- * Touch the Patient table at boot so SQLite's per-table page cache, the
- * statement cache, and the tables-used cache are populated before the
- * first user-facing query.
- *
- * Idempotent. Safe to call repeatedly; second call hits the result
- * cache and returns immediately.
- *
- * @param store - The EMR LiveStore to issue warmup queries against.
- *
- */
-/**
  * Minimal duck-typed shape for issuing read queries. Any `Store<TSchema>`
  * satisfies this regardless of which composed slice schema it was built
  * from, so the warmup function can be called from apps that compose the
@@ -146,14 +135,24 @@ type QueryRunner = {
   readonly query: <TResult>(query: Queryable<TResult>) => TResult
 }
 
+/**
+ * Touch the Patient table at boot so SQLite's per-table page cache, the
+ * statement cache, and the tables-used cache are populated before the
+ * first user-facing query.
+ *
+ * Idempotent. Safe to call repeatedly; second call hits the result
+ * cache and returns immediately.
+ *
+ * @param store - The EMR LiveStore to issue warmup queries against.
+ *
+ */
 const warmupTable = (
   store: QueryRunner,
   options: {
     readonly Resource: {
       readonly queries: {
         readonly count$: (params: object) => Queryable<number>
-        // oxlint-disable-next-line typescript/no-explicit-any
-        readonly search$: (params: { readonly limit: number }) => Queryable<any>
+        readonly search$: (params: { readonly limit: number }) => Queryable<unknown>
       }
     }
     readonly searchLimit?: number

@@ -8,22 +8,15 @@ interface PageErrorProps {
   readonly title?: string
   /** The thrown / rejected value. `Error` instances surface their `.message`; everything else is stringified. */
   readonly error: unknown
-  readonly className?: string
   readonly titleClassName?: string
   readonly retry?: () => void
 }
 
 /** Page-level error panel with optional heading. */
-const PageError = ({
-  title,
-  error,
-  className,
-  titleClassName,
-  retry,
-}: PageErrorProps): JSX.Element => {
+const PageError = ({ title, error, titleClassName, retry }: PageErrorProps): JSX.Element => {
   const message = error instanceof Error ? error.message : String(error)
   return (
-    <div className={className}>
+    <>
       {title === undefined ? null : (
         <h2 className={cn('text-heading-3', titleClassName)}>{title}</h2>
       )}
@@ -33,7 +26,7 @@ const PageError = ({
           Retry
         </button>
       )}
-    </div>
+    </>
   )
 }
 

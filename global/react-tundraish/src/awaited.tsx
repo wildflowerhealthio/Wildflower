@@ -53,7 +53,6 @@ interface AwaitedCustomErrorProps {
    */
   readonly errorComponent: (error: unknown) => ReactNode
   readonly errorTitle?: never
-  readonly errorClassName?: never
   readonly errorTitleClassName?: never
 }
 
@@ -61,16 +60,14 @@ interface AwaitedCustomErrorProps {
  * Variant that renders the built-in {@link AsyncErrorView} on rejection.
  *
  * @remarks
- * The discriminator is the absence of `errorComponent`. All three
- * styling props are optional — supplying none renders the default
+ * The discriminator is the absence of `errorComponent`. Both styling
+ * props are optional — supplying none renders the default
  * `AsyncErrorView` with no heading.
  */
 interface AwaitedDefaultErrorProps {
   readonly errorComponent?: never
   /** Heading rendered by the default error view. */
   readonly errorTitle?: string
-  /** Class applied to the default error view's outer container. */
-  readonly errorClassName?: string
   /** Class applied to the default error view's heading. */
   readonly errorTitleClassName?: string
 }
@@ -83,10 +80,10 @@ interface AwaitedDefaultErrorProps {
  * @remarks
  * The error-handling props form a discriminated union: callers either
  * pass `errorComponent` to render their own view, or omit it and
- * (optionally) pass `errorTitle` / `errorClassName` /
- * `errorTitleClassName` to style the built-in {@link AsyncErrorView}.
- * Passing `errorComponent` alongside any styled-default prop is a type
- * error — the styled props would have been silently ignored.
+ * (optionally) pass `errorTitle` / `errorTitleClassName` to style the
+ * built-in {@link AsyncErrorView}. Passing `errorComponent` alongside
+ * any styled-default prop is a type error — the styled props would have
+ * been silently ignored.
  */
 type AwaitedProps<T> = AwaitedBaseProps<T> & (AwaitedCustomErrorProps | AwaitedDefaultErrorProps)
 
@@ -111,9 +108,8 @@ type AwaitedProps<T> = AwaitedBaseProps<T> & (AwaitedCustomErrorProps | AwaitedD
  * The error-handling props are discriminated on `errorComponent`:
  * either pass `errorComponent` to render a custom error UI, or omit it
  * and rely on the built-in {@link AsyncErrorView} (optionally styled
- * via `errorTitle` / `errorClassName` / `errorTitleClassName`). The
- * type forbids mixing the two so the styling props can't be silently
- * dropped.
+ * via `errorTitle` / `errorTitleClassName`). The type forbids mixing
+ * the two so the styling props can't be silently dropped.
  */
 const Awaited = <T,>(props: AwaitedProps<T>): JSX.Element => {
   const { promise, resetKey = 0, children } = props
@@ -127,7 +123,6 @@ const Awaited = <T,>(props: AwaitedProps<T>): JSX.Element => {
           <AsyncErrorView
             error={error}
             title={props.errorTitle}
-            className={props.errorClassName}
             titleClassName={props.errorTitleClassName}
           />
         )

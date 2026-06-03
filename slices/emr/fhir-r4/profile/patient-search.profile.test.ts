@@ -44,12 +44,12 @@ describe('Patient search profile workload', () => {
       // CPU profile reflects steady-state cost rather than concurrent fibers.
       for (let i = 0; i < SEARCH_ITERATIONS; i += 1) {
         const start = performance.now()
-        // eslint-disable-next-line no-await-in-loop
+        // oxlint-disable-next-line no-await-in-loop
         const result = await Effect.runPromise(
           wired.resources.Patient.SearchByGet({ urlParams: { _count: PAGE_SIZE } })
         )
         const ms = performance.now() - start
-        // eslint-disable-next-line no-console
+        // oxlint-disable-next-line no-console
         console.log(
           `[profile] iter=${i + 1}/${SEARCH_ITERATIONS} entries=${result.entry.length} total=${result.total} elapsed=${ms.toFixed(0)}ms`
         )

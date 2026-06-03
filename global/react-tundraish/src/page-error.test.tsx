@@ -44,15 +44,6 @@ describe('PageError', () => {
     expect(screen.getByText('raw string error')).toBeTruthy()
   })
 
-  it('merges the className prop onto the page container', () => {
-    // Arrange
-    // Act
-    const { container } = render(<PageError error="oops" className="custom-page" />)
-
-    // Assert
-    expect(container.querySelector('.custom-page')).toBeTruthy()
-  })
-
   it('merges the titleClassName prop onto the heading', () => {
     // Arrange
     // Act

@@ -7,7 +7,6 @@ interface AsyncErrorViewProps {
   readonly error: unknown
   /** Heading shown above the error message; passed straight through to `PageError`. */
   readonly title?: string
-  readonly className?: string
   readonly titleClassName?: string
   readonly retry?: () => void
 }
@@ -21,17 +20,10 @@ interface AsyncErrorViewProps {
 const AsyncErrorView = ({
   error,
   title,
-  className,
   titleClassName,
   retry,
 }: AsyncErrorViewProps): JSX.Element => (
-  <PageError
-    title={title}
-    error={error}
-    className={className}
-    titleClassName={titleClassName}
-    retry={retry}
-  />
+  <PageError title={title} error={error} titleClassName={titleClassName} retry={retry} />
 )
 
 export { AsyncErrorView }
