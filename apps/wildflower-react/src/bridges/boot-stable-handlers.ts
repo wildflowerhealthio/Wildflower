@@ -3,6 +3,7 @@ import { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { makeGatekeeperWebHandlers } from 'gatekeeper-react/web-bridge'
 import { NavigationBridge } from 'navigation-core'
 import { makeNavigationWebHandlers, type NavTarget } from 'navigation-react'
+import type { AuthTokenStore } from 'react-kitchen-sink'
 
 /**
  * The boot-stable inbound handler records, keyed by bridge name. Lives
@@ -14,12 +15,19 @@ import { makeNavigationWebHandlers, type NavTarget } from 'navigation-react'
  * through `makeHandlerCoordinator`; until then the coordinator serves
  * a drop-all record for those bridges. Logging is web→host only on the
  * page side (no inbound handlers).
+ *
+ * `setToken` is the gatekeeper bridge's only piece of state — the
+ * entry's `AuthTokenStore` constructs it (`makeWebAuthTokenStore`
+ * persists to localStorage; `makeEmbeddedAuthTokenStore` is
+ * in-memory) and the page-bridge handler writes through it on every
+ * `AuthTokenIssued`.
  */
 const makeBootStableInitialHandlers = (
-  navigate: (to: NavTarget) => void
+  navigate: (to: NavTarget) => void,
+  setToken: AuthTokenStore['setToken']
 ): Readonly<Record<string, BridgeHandlerRecord>> => ({
   [NavigationBridge.name]: makeNavigationWebHandlers(navigate),
-  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(),
+  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setToken),
 })
 
 export { makeBootStableInitialHandlers }

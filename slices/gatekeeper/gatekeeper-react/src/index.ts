@@ -37,10 +37,15 @@ export {
 export { NeedsAuthMessage } from './components/NeedsAuthMessage.tsx'
 
 export {
-  awaitEmbeddedAuthReady,
-  awaitWebAuthReady,
   EMBEDDED_TOKEN_TIMEOUT,
+  makeAwaitEmbeddedAuthReady,
+  makeAwaitWebAuthReady,
   TokenTimeout,
 } from './client/auth-ready.ts'
 
-export { TOKEN_STORAGE_KEY, authTokenRef, writeToken } from './client/token-storage.ts'
+export {
+  consumeUrlTokenIntoLocalStorage,
+  makeEmbeddedAuthTokenStore,
+  makeWebAuthTokenStore,
+  TOKEN_STORAGE_KEY,
+} from './client/token-storage.ts'

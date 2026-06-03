@@ -4,10 +4,9 @@ import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
 import { OAuth } from 'gatekeeper-core/http-api-definition'
 
 import { useEffect, useState, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
+import { cn, useAuthTokenSetter } from 'react-kitchen-sink'
 import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
-import { writeToken } from '../client/token-storage.ts'
 import { useGatekeeperRuntimeLayer } from '../router-context.ts'
 import deviceEntryStyles from '../routes/_open/gatekeeper/devices.module.css'
 import pageLayout from '../styles/page-layout.module.css'
@@ -85,8 +84,9 @@ const MOUNT_DEBOUNCE = Duration.millis(250)
 /**
  * Starts the RFC 8628 device-authorization flow, surfaces the `user_code`,
  * and polls `/oauth/token` until approval. On success writes the token via
- * {@link writeToken}, which routes through the shared `authTokenRef` so the
- * auth gate's stream subscriber picks it up.
+ * the `AuthTokenStore` provided by the surrounding `<AuthTokenProvider>`
+ * (resolved through {@link useAuthTokenSetter}), so the same write path
+ * the page-bridge `AuthTokenIssued` handler takes also flows through here.
  *
  * @remarks
  * The boot side effects are gated by a {@link MOUNT_DEBOUNCE} sleep so
@@ -98,6 +98,7 @@ const MOUNT_DEBOUNCE = Duration.millis(250)
  */
 const NeedsAuthMessage = (): JSX.Element => {
   const [state, setState] = useState<DeviceFlowState>({ tag: 'starting' })
+  const setToken = useAuthTokenSetter()
   // Long-running device flow with retry — needs a fiber handle for
   // interrupt-on-unmount, which the promise-returning `runAuthed` can't
   // give. Runs against the composed `runtimeLayer` from router context
@@ -140,7 +141,7 @@ const NeedsAuthMessage = (): JSX.Element => {
         )
 
       yield* Effect.sync(() => {
-        writeToken(tokenResponse.access_token)
+        setToken(tokenResponse.access_token)
       })
     }).pipe(
       Effect.catchAll((err) =>
@@ -155,7 +156,11 @@ const NeedsAuthMessage = (): JSX.Element => {
     return (): void => {
       void Effect.runPromise(Fiber.interrupt(fiber))
     }
-  }, [layer])
+    // `setToken`'s identity is stable for the surrounding
+    // `AuthTokenStore`'s lifetime (returned from `useAuthTokenSetter`
+    // and constructed once per `main-*` entry); including it in the
+    // dep array makes the dependency explicit without churning.
+  }, [layer, setToken])
 
   if (state.tag === 'starting') {
     return (

@@ -1,7 +1,7 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/react-router'
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, SubscriptionRef } from 'effect'
 import { useEffect, type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -76,9 +76,10 @@ vi.mock('react-kitchen-sink', () => ({
   // suspense window.
   usePromiseOrDefault: <T,>(_promise: Promise<T>, fallback: T): T => fallback,
 }))
-// `get` must be an Effect; null-token short-circuits the startup prefetch.
+// The `RootShell` lifecycle test only consumes the slice runtime
+// layer; the `AuthTokenStore` itself is constructed inline in the
+// test body below.
 vi.mock('gatekeeper-react', () => ({
-  authTokenRef: { get: Effect.succeed(null), changes: { pipe: () => ({}) } },
   GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('collector-react', () => ({
@@ -194,10 +195,18 @@ describe('renderApp InnerWrap lifecycle', () => {
     const history = createMemoryHistory({ initialEntries: ['/a'] })
 
     const { stubTransport } = await import('../bridges/transport-context.ts')
+    // Minimal in-memory `AuthTokenStore` — this test is about provider
+    // lifetimes across navigation, not the bearer itself.
+    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
+    const tokenStore = {
+      subscribable: tokenRef,
+      setToken: (t: string | null): void => Effect.runSync(SubscriptionRef.set(tokenRef, t)),
+    }
     await act(async () => {
       renderApp({
         history,
         entry: 'main-web',
+        tokenStore,
         awaitAuthReady: () => () => Promise.resolve(),
         makeTransport: () => Promise.resolve(stubTransport),
       })

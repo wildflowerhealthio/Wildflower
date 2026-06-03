@@ -1,6 +1,8 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, SubscriptionRef } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
+import type { JSX, ReactNode } from 'react'
+import { AuthTokenProvider, type AuthTokenStore } from 'react-kitchen-sink'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**
@@ -36,10 +38,21 @@ vi.mock('../router-context.ts', () => ({
   useGatekeeperRuntimeLayer: (): Layer.Layer<GatekeeperHttpApiClient> => layerHolder.current,
 }))
 
-const writeTokenMock = vi.fn<(token: string | null) => void>()
-vi.mock('../client/token-storage.ts', () => ({
-  writeToken: (token: string | null): void => writeTokenMock(token),
-}))
+// The device flow writes the issued token through the
+// `AuthTokenStore.setToken` it pulled from the surrounding
+// `<AuthTokenProvider>` (via `useAuthTokenSetter`). Tests wrap the
+// rendered subject in `withTokenStore(...)` so the assertions can
+// observe the write through `setTokenMock` without poking
+// `token-storage` directly.
+const setTokenMock = vi.fn<(token: string | null) => void>()
+const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
+const testTokenStore: AuthTokenStore = {
+  subscribable: tokenRef,
+  setToken: (token) => setTokenMock(token),
+}
+const withTokenStore = (children: ReactNode): JSX.Element => (
+  <AuthTokenProvider store={testTokenStore}>{children}</AuthTokenProvider>
+)
 
 const { NeedsAuthMessage } = await import('./NeedsAuthMessage.tsx')
 
@@ -47,7 +60,7 @@ const PENDING_FOREVER = Effect.never
 
 afterEach(() => {
   cleanup()
-  writeTokenMock.mockReset()
+  setTokenMock.mockReset()
 })
 
 describe('<NeedsAuthMessage> device flow', () => {
@@ -57,7 +70,7 @@ describe('<NeedsAuthMessage> device flow', () => {
       TokenExchange: () => PENDING_FOREVER,
     })
 
-    render(<NeedsAuthMessage />)
+    render(withTokenStore(<NeedsAuthMessage />))
 
     // The mount debounce gates I/O, so the first paint is the spinner copy.
     expect(screen.getByText('Starting sign-in…')).toBeTruthy()
@@ -77,7 +90,7 @@ describe('<NeedsAuthMessage> device flow', () => {
       TokenExchange: () => PENDING_FOREVER,
     })
 
-    render(<NeedsAuthMessage />)
+    render(withTokenStore(<NeedsAuthMessage />))
 
     await waitFor(
       () => {
@@ -94,7 +107,7 @@ describe('<NeedsAuthMessage> device flow', () => {
       TokenExchange: () => PENDING_FOREVER,
     })
 
-    render(<NeedsAuthMessage />)
+    render(withTokenStore(<NeedsAuthMessage />))
 
     await waitFor(
       () => {

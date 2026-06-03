@@ -5,20 +5,19 @@ import { AuthTokenContext } from './auth-token-context.ts'
 
 /**
  * Returns the auth-token `Subscribable<string | null>` from the
- * nearest `<AuthTokenProvider>`. Throws when no provider is in the
- * tree.
+ * nearest `<AuthTokenProvider>`'s store. Throws when no provider is
+ * in the tree.
  *
  * Use this when you need the Subscribable itself — e.g. inside a
  * per-slice runner hook that builds `Layer.succeed(BearerToken, subscribable)`
- * to feed into an Effect's layer composition. For plain "what's the
- * current token" reads,
+ * to feed into an Effect's layer composition.
  */
 const useAuthTokenSubscribable = (): Subscribable.Subscribable<string | null> => {
-  const subscribable = useContext(AuthTokenContext)
-  if (subscribable === null) {
+  const store = useContext(AuthTokenContext)
+  if (store === null) {
     throw new Error('useAuthTokenSubscribable must be used inside <AuthTokenProvider>')
   }
-  return subscribable
+  return store.subscribable
 }
 
 export { useAuthTokenSubscribable }

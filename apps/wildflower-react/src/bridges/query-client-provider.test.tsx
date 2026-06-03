@@ -2,7 +2,7 @@ import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient, useQueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/react-router'
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, SubscriptionRef } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -24,9 +24,11 @@ const { Passthrough } = vi.hoisted(() => ({
   Passthrough: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
 }))
 
-// Null-token ref short-circuits the eager startup prefetch.
+// The gatekeeper-react surface this test pokes is just the
+// `GatekeeperRouterContext.sliceRuntimeLayer` (consumed by
+// `router-context.ts`'s layer composition). The `AuthTokenStore` the
+// test renders with is constructed inline in the test body below.
 vi.mock('gatekeeper-react', () => ({
-  authTokenRef: { get: Effect.succeed(null), changes: { pipe: () => ({}) } },
   GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('react-kitchen-sink', () => ({
@@ -109,10 +111,21 @@ describe('in-memory QueryClientProvider', () => {
     const { renderApp } = await import('../app-root.tsx')
 
     const { stubTransport } = await import('./transport-context.ts')
+    // Minimal in-memory `AuthTokenStore` — this test only pins the
+    // `QueryClient` sharing contract, not anything about the bearer.
+    // Construction matches `makeEmbeddedAuthTokenStore`'s shape: a
+    // `SubscriptionRef<string | null>` starting at `null` plus a
+    // synchronous setter that writes through it.
+    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
+    const tokenStore = {
+      subscribable: tokenRef,
+      setToken: (t: string | null): void => Effect.runSync(SubscriptionRef.set(tokenRef, t)),
+    }
     await act(async () => {
       renderApp({
         history: createMemoryHistory({ initialEntries: ['/'] }),
         entry: 'main-web',
+        tokenStore,
         awaitAuthReady: () => () => Promise.resolve(),
         makeTransport: () => Promise.resolve(stubTransport),
       })
