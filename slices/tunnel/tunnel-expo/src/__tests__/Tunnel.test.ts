@@ -114,7 +114,7 @@ describe('Tunnel._init retry behavior', () => {
     expect(cb).toHaveBeenCalledWith()
     expect(tunnel.url).toBe('https://fast.localtunnel.me')
     expect(fetchFn).toHaveBeenCalledTimes(1)
-    tunnel.close()
+    void tunnel.close()
   })
 
   test('retries on transient failures with the documented backoff schedule', async () => {
@@ -142,7 +142,7 @@ describe('Tunnel._init retry behavior', () => {
     expect(cb).toHaveBeenCalledTimes(1)
     expect(cb).toHaveBeenCalledWith()
     expect(tunnel.url).toBe('https://eventually.localtunnel.me')
-    tunnel.close()
+    void tunnel.close()
   })
 
   test('after exhausting the retry budget, the callback receives an Error mentioning the underlying cause', async () => {
@@ -168,7 +168,7 @@ describe('Tunnel._init retry behavior', () => {
     expect(err.message).toMatch(new RegExp(`${TOTAL_ATTEMPT_BUDGET} attempts`))
     // The last underlying cause's message is preserved at the tail.
     expect(err.message).toContain(`boom-${TOTAL_ATTEMPT_BUDGET - 1}`)
-    tunnel.close()
+    void tunnel.close()
   })
 
   test('non-2xx response uses the response body text as the error message before retrying', async () => {
@@ -195,7 +195,7 @@ describe('Tunnel._init retry behavior', () => {
     expect(fetchFn).toHaveBeenCalledTimes(2)
     expect(cb).toHaveBeenCalledTimes(1)
     expect(cb).toHaveBeenCalledWith()
-    tunnel.close()
+    void tunnel.close()
   })
 
   test('invalid response body shape is treated as a retryable failure', async () => {
@@ -219,7 +219,7 @@ describe('Tunnel._init retry behavior', () => {
 
     expect(fetchFn).toHaveBeenCalledTimes(2)
     expect(cb).toHaveBeenCalledWith()
-    tunnel.close()
+    void tunnel.close()
   })
 })
 
@@ -259,7 +259,7 @@ describe('Tunnel._init cancellation via close()', () => {
     expect(fetchFn).toHaveBeenCalledTimes(1)
     expect(seenSignals[0]?.aborted).toBe(false)
 
-    tunnel.close()
+    void tunnel.close()
 
     expect(seenSignals[0]?.aborted).toBe(true)
     // close() rejects the open callback synchronously via the abort listener.
@@ -288,7 +288,7 @@ describe('Tunnel._init cancellation via close()', () => {
     // Advance halfway into the backoff and close; the timer should fire its
     // abort branch and the next attempt should not be made.
     jest.advanceTimersByTime(500)
-    tunnel.close()
+    void tunnel.close()
     jest.advanceTimersByTime(10_000)
     await flushMicrotasks()
 
@@ -318,7 +318,7 @@ describe('Tunnel._init cancellation via close()', () => {
     expect(seenSignals.length).toBe(2)
     // All attempts share the same controller — same signal reference.
     expect(seenSignals[0]).toBe(seenSignals[1])
-    tunnel.close()
+    void tunnel.close()
     expect(seenSignals[0]?.aborted).toBe(true)
   })
 })
@@ -362,7 +362,7 @@ describe('Tunnel._init exhausted-budget error format (property)', () => {
       const err = cb.mock.calls[0]?.[0] as Error
       expect(err.message).toContain(`${TOTAL_ATTEMPT_BUDGET} attempts`)
       expect(err.message).toContain(causeMessage)
-      tunnel.close()
+      void tunnel.close()
     }
   )
 })

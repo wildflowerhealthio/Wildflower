@@ -27,20 +27,30 @@ public class ExpoLocaltunnelModule: Module {
     )
 
     OnDestroy {
+      // OnDestroy is synchronous; we can't directly `await` the asynchronous close.
+      // Spawn an unstructured Task so each `conn.close()` (which awaits NWConnection
+      // reaching `.cancelled`) gets a chance to run before the native module is GC'd.
+      // This is the only hook we have for Metro JS-bundle reloads — the JS-side
+      // `Effect.acquireRelease` finalizer never runs across reload because the JS
+      // VM is being torn down.
       let snapshot = self.withConnectionsLock { () -> [String: TunnelConnection] in
         let snap = self.connections
         self.connections.removeAll()
         return snap
       }
-      for (_, conn) in snapshot {
-        conn.close()
+      Task {
+        await withTaskGroup(of: Void.self) { group in
+          for (_, conn) in snapshot {
+            group.addTask { await conn.close() }
+          }
+        }
       }
     }
 
     AsyncFunction("createTunnelConnection") { (connectionId: String, config: TunnelConnectionConfig) in
-      // Clean up existing connection with this ID if any
+      // Clean up existing connection with this ID if any.
       let existing = self.withConnectionsLock { self.connections[connectionId] }
-      existing?.close()
+      await existing?.close()
 
       let conn = TunnelConnection(
         id: connectionId,
@@ -55,7 +65,7 @@ public class ExpoLocaltunnelModule: Module {
 
     AsyncFunction("closeTunnelConnection") { (connectionId: String) in
       let conn = self.withConnectionsLock { self.connections.removeValue(forKey: connectionId) }
-      conn?.close()
+      await conn?.close()
     }
 
     AsyncFunction("closeAllTunnelConnections") {
@@ -64,9 +74,19 @@ public class ExpoLocaltunnelModule: Module {
         self.connections.removeAll()
         return snap
       }
-      for (_, conn) in snapshot {
-        conn.close()
+      NSLog("[ExpoLocaltunnel] closeAllTunnelConnections start (\(snapshot.count) conn(s))")
+      let startMs = Date().timeIntervalSince1970 * 1000
+      // Close all in parallel; `AsyncFunction` only resolves on the JS side once
+      // this body completes, so the JS-side `Effect.acquireRelease` release will
+      // properly await the TCP FINs being sent before the surrounding scope teardown
+      // moves on.
+      await withTaskGroup(of: Void.self) { group in
+        for (_, conn) in snapshot {
+          group.addTask { await conn.close() }
+        }
       }
+      let elapsed = Date().timeIntervalSince1970 * 1000 - startMs
+      NSLog("[ExpoLocaltunnel] closeAllTunnelConnections done in \(Int(elapsed))ms")
     }
   }
 }

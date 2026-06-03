@@ -457,7 +457,11 @@ const make = (
   Effect.gen(function* () {
     yield* Effect.acquireRelease(
       Effect.promise(() => NativeModule.startServer(port, options)),
-      () => Effect.promise(() => NativeModule.stopServer(5))
+      // `stopServer`'s argument is FlyingFox's `server.stop(timeout:)` grace
+      // window for in-flight requests. The default 5s matches a vanilla HTTP
+      // server but is the wrong shape for short-budget hosts (iOS background
+      // expiration); consumers can override via `options.stopTimeoutSeconds`.
+      () => Effect.promise(() => NativeModule.stopServer(options?.stopTimeoutSeconds ?? 5))
     )
 
     const hostname = options?.hostname ?? '127.0.0.1'

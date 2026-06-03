@@ -55,6 +55,7 @@ const requestOriginFromConnection = (
   headers: { readonly [key: string]: string },
   fallback: string
 ): string => {
+  console.debug('requestOriginFromConnection', { remoteAddress, headers, fallback })
   if (remoteAddress === undefined || !LOOPBACK_REMOTE_ADDRESS_RE.test(remoteAddress)) {
     return fallback
   }

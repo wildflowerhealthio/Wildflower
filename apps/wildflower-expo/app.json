@@ -21,7 +21,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "dev.wildflower.wildflower-expo",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "BGTaskSchedulerPermittedIdentifiers": ["$(PRODUCT_BUNDLE_IDENTIFIER)"]
       }
     },
     "android": {
@@ -33,7 +34,10 @@
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+        "android.permission.WAKE_LOCK"
       ]
     },
     "web": {
@@ -73,7 +77,8 @@
           }
         }
       ],
-      "react-native-quick-crypto"
+      "react-native-quick-crypto",
+      "./plugins/with-background-actions.js"
     ],
     "owner": "wildflower-health-informatics",
     "extra": {

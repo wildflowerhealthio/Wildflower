@@ -424,7 +424,19 @@ public class ExpoEffectPlatformModule: Module {
     for header in req.headers.keys {
       headersOut[header.rawValue] = req.headers.values(for: header)
     }
-    let ip = req.remoteAddress.map { String(describing: $0) } ?? ""
+    // `remoteAddress` is an `Address` enum — `String(describing:)` would
+    // emit the case shape (`ip4("1.2.3.4", port: 12345)`) instead of the
+    // raw IP string. Pattern-match to lift the IP out of `ip4` / `ip6`;
+    // `unix` sockets are local-only and have no remote IP, so they fall
+    // through to the empty string the consumer's `OnHttpRequestPayload.ip`
+    // already treats as "unknown".
+    let ip: String
+    switch req.remoteAddress {
+    case .ip4(let address, _), .ip6(let address, _):
+      ip = address
+    case .unix, .none:
+      ip = ""
+    }
 
     return await withCheckedContinuation { (continuation: CheckedContinuation<HTTPResponse, Never>) in
       Task {

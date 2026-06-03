@@ -169,7 +169,7 @@ describe('TunnelCluster lifecycle', () => {
     expect(config.localHostHeader).toBeUndefined()
   })
 
-  test('close() removes every native subscription and clears tracked connections', () => {
+  test('close() removes every native subscription and clears tracked connections', async () => {
     const cluster = new TunnelCluster({
       remoteHost: 'tunnel-id.localtunnel.me',
       remotePort: 12345,
@@ -181,7 +181,7 @@ describe('TunnelCluster lifecycle', () => {
     const removeCalls = subscriptions.length
     expect(removeCalls).toBeGreaterThan(0)
 
-    cluster.close()
+    await cluster.close()
 
     for (const sub of subscriptions) {
       expect(sub.remove).toHaveBeenCalledTimes(1)
@@ -201,6 +201,57 @@ describe('TunnelCluster lifecycle', () => {
     expect(onError).not.toHaveBeenCalled()
 
     expect(mockCloseAllTunnelConnections).toHaveBeenCalledTimes(2) // once at construction, once on close
+  })
+
+  test('close() awaits the native closeAllTunnelConnections before resolving', async () => {
+    const cluster = new TunnelCluster({
+      remoteHost: 'tunnel-id.localtunnel.me',
+      remotePort: 12345,
+      localPort: 8000,
+    })
+
+    let resolveNative: (() => void) | undefined
+    mockCloseAllTunnelConnections.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveNative = resolve
+        })
+    )
+
+    let resolved = false
+    const closing = cluster.close().then(() => {
+      resolved = true
+    })
+
+    // Let microtasks settle — the native call has been invoked but is parked.
+    await Promise.resolve()
+    expect(mockCloseAllTunnelConnections).toHaveBeenCalledTimes(2) // construction + close
+    expect(resolved).toBe(false)
+
+    // Now resolve the native side. close() should resolve in the next microtask.
+    expect(resolveNative).toBeDefined()
+    resolveNative?.()
+    await closing
+    expect(resolved).toBe(true)
+  })
+
+  test('close() swallows native rejection (warns, but does not throw) so finalizer chains continue', async () => {
+    const cluster = new TunnelCluster({
+      remoteHost: 'tunnel-id.localtunnel.me',
+      remotePort: 12345,
+      localPort: 8000,
+    })
+
+    mockCloseAllTunnelConnections.mockRejectedValueOnce(new Error('native bork'))
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    await expect(cluster.close()).resolves.toBeUndefined()
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[tunnel\] closeAllTunnelConnections failed after \d+ms$/),
+      expect.any(Error)
+    )
+
+    warnSpy.mockRestore()
   })
 
   test('open() forwards a native rejection as an `error` event', async () => {
@@ -223,7 +274,7 @@ describe('TunnelCluster lifecycle', () => {
     expect(onError).toHaveBeenCalledTimes(1)
     const err = onError.mock.calls[0]?.[0] as Error
     expect(err.message).toBe('native failure')
-    cluster.close()
+    void cluster.close()
   })
 })
 
@@ -248,7 +299,7 @@ describe('TunnelCluster native event mapping', () => {
     fire('onConnectionOpen', { connectionId: 'never-issued' })
     expect(onOpen).not.toHaveBeenCalled()
 
-    cluster.close()
+    void cluster.close()
   })
 
   test('onConnectionOpen for a known connectionId emits `open`', () => {
@@ -266,7 +317,7 @@ describe('TunnelCluster native event mapping', () => {
     fire('onConnectionOpen', { connectionId })
     expect(onOpen).toHaveBeenCalledTimes(1)
 
-    cluster.close()
+    void cluster.close()
   })
 
   test('ECONNREFUSED native error preserves the native error text (so the local/remote prefix survives) and emits `dead`', () => {
@@ -300,7 +351,7 @@ describe('TunnelCluster native event mapping', () => {
 
     expect(onDead).toHaveBeenCalledTimes(1)
 
-    cluster.close()
+    void cluster.close()
   })
 
   test('non-ECONNREFUSED native error uses the generic message format and attaches the code', () => {
@@ -329,7 +380,7 @@ describe('TunnelCluster native event mapping', () => {
     expect(err.message).toBe('tunnel error (ETIMEDOUT): socket hang up')
     expect(onDead).toHaveBeenCalledTimes(1)
 
-    cluster.close()
+    void cluster.close()
   })
 
   test('onConnectionClose emits `dead` and clears the connection from the tracked set', () => {
@@ -351,7 +402,7 @@ describe('TunnelCluster native event mapping', () => {
     fire('onConnectionClose', { connectionId })
     expect(onDead).toHaveBeenCalledTimes(1)
 
-    cluster.close()
+    void cluster.close()
   })
 
   test('onRequest forwards method/path under the public `request` event', () => {
@@ -369,7 +420,7 @@ describe('TunnelCluster native event mapping', () => {
     fire('onRequest', { connectionId, method: 'POST', path: '/upload' })
     expect(onRequest).toHaveBeenCalledWith({ method: 'POST', path: '/upload' })
 
-    cluster.close()
+    void cluster.close()
   })
 })
 
@@ -408,6 +459,6 @@ describe('TunnelCluster error propagation (property)', () => {
     expect(emitted.code).toBe(code)
     expect(emitted.message.length).toBeGreaterThan(0)
 
-    cluster.close()
+    void cluster.close()
   })
 })

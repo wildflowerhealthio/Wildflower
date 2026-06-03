@@ -144,7 +144,7 @@ class TunnelConnection {
       guard let data = data, !data.isEmpty else {
         if isComplete {
           self.sendEvent("onConnectionDead", ["connectionId": self.id])
-          self.close()
+          self.closeDetached()
         }
         return
       }
@@ -206,7 +206,7 @@ class TunnelConnection {
         connectLocalAndPipe(firstChunk: toForward, bodyTail: Data())
       } else {
         sendEvent("onConnectionDead", ["connectionId": id])
-        close()
+        closeDetached()
       }
       return
     }
@@ -227,7 +227,7 @@ class TunnelConnection {
             self.connectLocalAndPipe(firstChunk: toForward, bodyTail: Data())
           } else {
             self.sendEvent("onConnectionDead", ["connectionId": self.id])
-            self.close()
+            self.closeDetached()
           }
         }
         return
@@ -692,13 +692,13 @@ class TunnelConnection {
       "error": "\(side): \(error.localizedDescription)",
       "code": code
     ])
-    close()
+    closeDetached()
   }
 
   private func closeAndNotify() {
     guard !closed else { return }
     sendEvent("onConnectionClose", ["connectionId": id])
-    close()
+    closeDetached()
   }
 
   private func mapErrorCode(_ error: NWError?) -> String {
@@ -724,17 +724,98 @@ class TunnelConnection {
 
   /// Public close. Called from the JS dispatch thread (via AsyncFunction / OnDestroy in
   /// `ExpoLocaltunnelModule`), so we hop to `self.queue` to keep all writes to `closed`
-  /// (and the connection refs) serialized on a single queue. `queue.async` is used (not
-  /// `sync`) to avoid deadlock if `close()` is ever called from a callback already
-  /// running on `self.queue`.
-  func close() {
-    queue.async { [weak self] in
-      guard let self = self, !self.closed else { return }
-      self.closed = true
-      self.remoteConnection?.cancel()
-      self.localConnection?.cancel()
-      self.remoteConnection = nil
-      self.localConnection = nil
+  /// (and the connection refs) serialized on a single queue.
+  ///
+  /// Awaits each `NWConnection` actually reaching `.cancelled` (or `.failed`) before
+  /// returning — so the JS-side `Effect.acquireRelease` finalizer in `startTunnel`
+  /// only resolves once the TCP FINs have been sent. Without this await, on iOS
+  /// expiration the OS routinely reclaims the process before the cancel runs,
+  /// leaving the relay's subdomain lease in flight and forcing a fresh random
+  /// subdomain on the next launch.
+  /// Fire-and-forget wrapper around `close()` for internal teardown signals
+  /// (receive-callback `isComplete`, error handlers). The actual FIN may still be
+  /// in flight when this returns — that's fine; internal callers don't need to
+  /// block on it. External (JS) callers go through `close()` directly and await.
+  private func closeDetached() {
+    Task { [weak self] in
+      await self?.close()
     }
+  }
+
+  func close() async {
+    let startMs = Date().timeIntervalSince1970 * 1000
+    NSLog("[ExpoLocaltunnel] TunnelConnection(\(id)) close() entered")
+    await withCheckedContinuation { (outerCont: CheckedContinuation<Void, Never>) in
+      queue.async { [weak self] in
+        guard let self = self else {
+          NSLog("[ExpoLocaltunnel] TunnelConnection close() self deallocated")
+          outerCont.resume()
+          return
+        }
+        if self.closed {
+          NSLog("[ExpoLocaltunnel] TunnelConnection(\(self.id)) close() short-circuit (already closed)")
+          outerCont.resume()
+          return
+        }
+        self.closed = true
+
+        let toCancel: [NWConnection] = [self.remoteConnection, self.localConnection]
+          .compactMap { $0 }
+        self.remoteConnection = nil
+        self.localConnection = nil
+
+        if toCancel.isEmpty {
+          NSLog("[ExpoLocaltunnel] TunnelConnection(\(self.id)) close() no connections to cancel")
+          outerCont.resume()
+          return
+        }
+
+        // `pending` is mutated only from stateUpdateHandler callbacks (which fire on
+        // `self.queue`, the queue passed to `connection.start(queue:)`) and from the
+        // synchronous already-terminal check below. The enclosing block runs on
+        // `self.queue`, so this is a single-queue mutation — no lock.
+        var pending = toCancel.count
+
+        let decrement: () -> Void = {
+          pending -= 1
+          if pending == 0 {
+            NSLog("[ExpoLocaltunnel] TunnelConnection(\(self.id)) close() all connections terminal")
+            outerCont.resume()
+          }
+        }
+
+        for conn in toCancel {
+          let flag = ResumeFlag()
+          conn.stateUpdateHandler = { state in
+            switch state {
+            case .cancelled, .failed:
+              if flag.tryClaim() {
+                decrement()
+              }
+            default:
+              break
+            }
+          }
+
+          // NWConnection.stateUpdateHandler does NOT replay the current state when
+          // newly set — it only fires on subsequent transitions. If the connection
+          // has already reached `.cancelled` or `.failed` (e.g. a relay-side reset
+          // earlier in the session, or a prior `closeDetached()` already cancelled
+          // it) the handler above would never fire and we'd hang until the outer
+          // `Effect.timeout` budget expired. Check synchronously and short-circuit.
+          switch conn.state {
+          case .cancelled, .failed:
+            NSLog("[ExpoLocaltunnel] TunnelConnection(\(self.id)) close() conn already terminal")
+            if flag.tryClaim() {
+              decrement()
+            }
+          default:
+            conn.cancel()
+          }
+        }
+      }
+    }
+    let elapsed = Date().timeIntervalSince1970 * 1000 - startMs
+    NSLog("[ExpoLocaltunnel] TunnelConnection(\(id)) close() returned in \(Int(elapsed))ms")
   }
 }

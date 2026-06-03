@@ -176,7 +176,18 @@ const makeBindLive = ({
 > =>
   WildflowerServerLive.pipe(
     HttpServer.withLogAddress,
-    Layer.provide(Layer.mergeAll(ExpoHttpServer.layer({ port, hostname }), OriginFromTunnelStore)),
+    // `stopTimeoutSeconds: 0.5` keeps the listener-release inside the
+    // background-server's overall teardown budget (`TEARDOWN_TIMEOUT` in
+    // `background-server.ts`). The default 5s would consume the entire iOS
+    // expiration grace window for drain, leaving the foreground service
+    // stuck in `isRunning() === true` and blocking the foreground-resume
+    // recovery path that re-enters `reconcile` from `AppState 'active'`.
+    Layer.provide(
+      Layer.mergeAll(
+        ExpoHttpServer.layer({ port, hostname, stopTimeoutSeconds: 0.5 }),
+        OriginFromTunnelStore
+      )
+    ),
     Layer.provide(Layer.succeedContext(DefaultServices.liveServices)),
     Layer.tapErrorCause((cause) =>
       Effect.logError('[wildflower-expo] FullServerLive cause:\n' + Cause.pretty(cause))
@@ -223,7 +234,35 @@ const HttpServerDaemonLive: Layer.Layer<never, PlatformError.PlatformError, Wild
       }): Stream.Stream<void, never, Scope.Scope> =>
         Stream.unwrapScoped(
           Effect.gen(function* () {
+            // Bracket the listener bind so the shutdown trace makes it
+            // obvious when the HTTP listener actually goes away. Finalizers
+            // run LIFO, so the "released" finalizer is registered *before*
+            // `Layer.build` (runs last, after the listener has closed) and
+            // the "releasing" finalizer *after* `Layer.build` (runs first,
+            // before the listener closes). `closeStartMs` is captured at
+            // "releasing" time and read at "released" time to log elapsed
+            // close duration — invaluable when diagnosing slow shutdowns.
+            yield* Effect.logInfo(`HTTP listener binding on ${cfg.hostname}:${cfg.port}`)
+            const bindStart = yield* Effect.sync(() => Date.now())
+            const closeTiming: { startMs: number } = { startMs: 0 }
+            yield* Effect.addFinalizer(() =>
+              Effect.logInfo(
+                `HTTP listener released (${cfg.hostname}:${cfg.port}) in ${Date.now() - closeTiming.startMs}ms`
+              )
+            )
             yield* Layer.build(makeBindLive(cfg).pipe(Layer.provide(httpServerContext)))
+            yield* Effect.logInfo(
+              `HTTP listener bound on ${cfg.hostname}:${cfg.port} in ${Date.now() - bindStart}ms`
+            )
+            yield* Effect.addFinalizer(() =>
+              Effect.sync(() => {
+                closeTiming.startMs = Date.now()
+              }).pipe(
+                Effect.zipRight(
+                  Effect.logInfo(`HTTP listener releasing (${cfg.hostname}:${cfg.port})`)
+                )
+              )
+            )
             // First emit = bind signal. `Stream.never` parks the stream
             // until the daemon closes the sub-scope, releasing
             // `Layer.build`'s scoped finalizers (which tears down the

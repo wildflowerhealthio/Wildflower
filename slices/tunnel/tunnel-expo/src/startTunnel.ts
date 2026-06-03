@@ -39,11 +39,29 @@ const startTunnel = ({
 }: ResolvedConfig): Stream.Stream<DomainResult, Error, Scope.Scope> =>
   Stream.unwrapScoped(
     Effect.gen(function* () {
+      // `Effect.promise` (not `Effect.sync`) so the scope finalizer actually
+      // awaits the native FIN before declaring the resource released. Without
+      // that await the relay sees a dropped TCP socket on iOS expiration /
+      // Metro reload, keeps the subdomain lease in flight, and reassigns a
+      // random name on the next launch.
+      //
+      // Logs are info-level (not debug) so they appear in the default
+      // shutdown trace — diagnosing a stuck teardown without re-enabling
+      // debug filtering is the whole point of these breadcrumbs. The release
+      // closure measures elapsed ms across the native call so a slow FIN
+      // shows up as a number, not a guess.
       const tunnel = yield* Effect.acquireRelease(
         Effect.sync(
           () => new Tunnel({ port: localPort, host: `https://${rootDomain}`, subdomain })
-        ),
-        (t) => Effect.sync(() => t.close())
+        ).pipe(Effect.tap(() => Effect.logInfo('Tunnel acquired'))),
+        (t) =>
+          Effect.gen(function* () {
+            yield* Effect.logInfo('Tunnel release: closing')
+            const startMs = yield* Effect.sync(() => Date.now())
+            yield* Effect.promise(() => t.close())
+            const elapsed = yield* Effect.sync(() => Date.now() - startMs)
+            yield* Effect.logInfo(`Tunnel release: closed in ${elapsed}ms`)
+          })
       )
 
       // Bind phase: Effect.async wires the one-shot 'url' / 'error'

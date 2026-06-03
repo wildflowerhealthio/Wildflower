@@ -227,13 +227,21 @@ export default class Tunnel extends EventEmitter {
     })
   }
 
-  close(): void {
+  /**
+   * Awaits the underlying `TunnelCluster.close()` (which in turn awaits the
+   * native module's connection teardown) before resolving. The upstream
+   * `Effect.acquireRelease` in `startTunnel` wraps this in `Effect.promise`,
+   * so scope teardown blocks on the TCP FIN being sent — without which the
+   * relay won't release our subdomain lease in time for the next launch to
+   * reclaim it.
+   */
+  async close(): Promise<void> {
     this.closed = true
     if (this.initController) {
       this.initController.abort()
     }
     if (this.tunnelCluster) {
-      this.tunnelCluster.close()
+      await this.tunnelCluster.close()
     }
     this.emit('close')
   }

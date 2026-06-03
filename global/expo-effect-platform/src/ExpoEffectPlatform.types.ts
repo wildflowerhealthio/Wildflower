@@ -15,6 +15,15 @@ type ServerOptions = {
   bodyDiskThresholdBytes?: number
   maxConcurrentRequests?: number
   fileSandboxRoots?: ReadonlyArray<string>
+  /**
+   * Grace period passed to the underlying server's stop routine — how long
+   * to wait for in-flight requests to finish draining before closing the
+   * listener. Defaults to 5 seconds for parity with a vanilla HTTP server.
+   * Set lower (e.g. `0.5`) for hosts running inside short-budget contexts
+   * (iOS background expiration, foreground-service teardown) where a fast
+   * port release matters more than draining in-flight responses.
+   */
+  stopTimeoutSeconds?: number
 }
 
 type ExpoEffectPlatformModuleEvents = {
