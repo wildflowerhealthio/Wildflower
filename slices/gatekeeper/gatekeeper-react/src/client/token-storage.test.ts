@@ -1,5 +1,5 @@
 import { Effect, SubscriptionRef } from 'effect'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, type MockInstance, test, vi } from 'vite-plus/test'
 import type * as TokenStorageType from './token-storage.ts'
 import { consumeUrlTokenIntoLocalStorage, TOKEN_STORAGE_KEY } from './token-storage.ts'
 
@@ -19,7 +19,11 @@ const setLocation = (path: string): void => {
   window.history.replaceState(null, '', `${ORIGIN}${path}`)
 }
 
-const FRESH_TOKEN = 'fresh-bootstrap-token'
+// A valid JWT shape (three non-empty base64url segments separated by
+// dots) — `token-storage` now validates the `?token=` value against this
+// shape before persisting, so the bootstrap fixtures must look like real
+// tokens.
+const FRESH_TOKEN = 'header-segment.payload-segment.signature-segment'
 
 describe('consumeUrlTokenIntoLocalStorage', () => {
   beforeEach(() => {
@@ -80,6 +84,108 @@ describe('consumeUrlTokenIntoLocalStorage', () => {
     expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('existing-token')
     expect(window.location.href).toBe(`${ORIGIN}/home?token=`)
   })
+
+  test('rejects a malformed (non-JWT-shaped) ?token= without clobbering storage', () => {
+    // `garbage` is a single segment — not three dot-separated base64url
+    // segments — so the shape validation rejects it and the existing
+    // stored token survives. The param is still stripped from the URL so
+    // the bad value doesn't linger.
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, 'existing-token')
+    setLocation('/home?token=garbage')
+
+    consumeUrlTokenIntoLocalStorage()
+
+    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('existing-token')
+    expect(window.location.href).toBe(`${ORIGIN}/home`)
+  })
+
+  // (c.1) Encoding-sensitive but invalid-shaped token: base64url excludes
+  // `+`, `/`, `=`, and space, so `a b+c` survives the URL encode->decode
+  // round-trip but fails the JWT shape check. It must be rejected and must
+  // not clobber the existing stored token.
+  test('rejects an encoding-sensitive but malformed ?token= without clobbering storage', () => {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, 'existing-token')
+    // Build the URL via `URLSearchParams` so `a b+c` is percent-encoded in
+    // the address bar exactly as a real `?token=` would be.
+    const params = new URLSearchParams({ token: 'a b+c' })
+    setLocation(`/home?${params.toString()}`)
+
+    consumeUrlTokenIntoLocalStorage()
+
+    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('existing-token')
+    expect(window.location.href).toBe(`${ORIGIN}/home`)
+  })
+
+  // (c.2) Valid 3-segment base64url token: stresses the URL/searchParams
+  // round-trip with a value full of base64url-legal `-` and `_` chars and
+  // confirms it survives decoding and is persisted.
+  test('round-trips and persists a valid base64url-shaped ?token=', () => {
+    const validToken = 'aB-_0.cD-_1.eF-_2'
+    const params = new URLSearchParams({ token: validToken })
+    setLocation(`/home?${params.toString()}`)
+
+    consumeUrlTokenIntoLocalStorage()
+
+    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(validToken)
+    expect(window.location.href).toBe(`${ORIGIN}/home`)
+  })
+
+  // (a) `history.replaceState`-unavailable guard: with `replaceState`
+  // missing, the function must be a no-op — no throw, no storage write,
+  // no URL change.
+  test('no-op when history.replaceState is unavailable', () => {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, 'existing-token')
+    setLocation(`/home?token=${FRESH_TOKEN}`)
+    // `replaceState` is inherited from `History.prototype`, so shadow it
+    // with an own `undefined` data property to drive the guard
+    // (`typeof window.history.replaceState !== 'function'`). Restore by
+    // deleting the own shadow, re-exposing the prototype method. Defining
+    // a descriptor avoids assigning `undefined` to the typed member.
+    Object.defineProperty(window.history, 'replaceState', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    })
+
+    try {
+      expect(() => {
+        consumeUrlTokenIntoLocalStorage()
+      }).not.toThrow()
+
+      // Storage untouched and URL left intact: the function bailed early.
+      expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('existing-token')
+      expect(window.location.href).toBe(`${ORIGIN}/home?token=${FRESH_TOKEN}`)
+    } finally {
+      Reflect.deleteProperty(window.history, 'replaceState')
+    }
+  })
+
+  // (b) SSR/non-browser early-return guard. jsdom always defines a global
+  // `window`, so `typeof window === 'undefined'` is unreachable from inside
+  // a jsdom test. The sibling clause on the same guard line —
+  // `typeof window.localStorage === 'undefined'` — *is* reachable: jsdom
+  // defines `localStorage` as a configurable accessor, so we can mask it to
+  // `undefined` to drive the early return, then restore the original
+  // descriptor.
+  test('no-op when localStorage is unavailable (non-browser guard)', () => {
+    setLocation(`/home?token=${FRESH_TOKEN}`)
+    const originalDescriptor = Object.getOwnPropertyDescriptor(window, 'localStorage')
+    if (originalDescriptor === undefined) {
+      throw new Error('expected window.localStorage to be an own property in jsdom')
+    }
+    Object.defineProperty(window, 'localStorage', { value: undefined, configurable: true })
+
+    try {
+      expect(() => {
+        consumeUrlTokenIntoLocalStorage()
+      }).not.toThrow()
+
+      // URL untouched: the function bailed before stripping `?token=`.
+      expect(window.location.href).toBe(`${ORIGIN}/home?token=${FRESH_TOKEN}`)
+    } finally {
+      Object.defineProperty(window, 'localStorage', originalDescriptor)
+    }
+  })
 })
 
 /**
@@ -92,13 +198,30 @@ describe('consumeUrlTokenIntoLocalStorage', () => {
  * the URL token (so `webAuthReadyEffect` resolves instead of redirecting).
  */
 describe('token-storage module load', () => {
+  // Each `vi.resetModules()` + re-import re-runs `token-storage`'s
+  // load-time `window.addEventListener('storage', ...)`, leaking an
+  // anonymous handler. The handler isn't exported, so we spy on
+  // `addEventListener` *before* each re-import (the default `vi.spyOn`
+  // still calls through, so the real listener registers) and read the
+  // recorded `'storage'` handlers off the spy. `afterEach` detaches each
+  // one, otherwise leaked listeners fire against a torn-down ref in later
+  // tests.
+  let addEventListenerSpy: MockInstance<typeof window.addEventListener> | undefined
+
   beforeEach(() => {
     window.localStorage.clear()
     setLocation('/')
     vi.resetModules()
+    addEventListenerSpy = vi.spyOn(window, 'addEventListener')
   })
 
   afterEach(() => {
+    for (const [type, listener] of addEventListenerSpy?.mock.calls ?? []) {
+      if (type === 'storage') {
+        window.removeEventListener('storage', listener)
+      }
+    }
+    addEventListenerSpy?.mockRestore()
     window.localStorage.clear()
     setLocation('/')
     vi.resetModules()

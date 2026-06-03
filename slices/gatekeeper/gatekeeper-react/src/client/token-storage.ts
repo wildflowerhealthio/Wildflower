@@ -38,6 +38,14 @@ import { Effect, Stream, SubscriptionRef } from 'effect'
 const TOKEN_STORAGE_KEY = 'gatekeeper:token'
 
 /**
+ * A bearer token must look like a JWT before we persist it: exactly three
+ * non-empty base64url segments separated by dots. The `?token=` value is
+ * attacker-controllable, so a malformed value must not clobber a
+ * previously-valid stored token.
+ */
+const JWT_SHAPE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
+
+/**
  * Dev-mode bootstrap: if the page was opened with a `?token=<value>`
  * query parameter, write it to `localStorage` under {@link TOKEN_STORAGE_KEY}
  * and strip the parameter from the address bar via `history.replaceState`
@@ -47,6 +55,13 @@ const TOKEN_STORAGE_KEY = 'gatekeeper:token'
  * {@link writeToken} because this runs *before* `authTokenRef` is
  * constructed — the goal is for {@link readInitialToken} to pick up the
  * URL token as the ref's initial value.
+ *
+ * The URL token is validated against {@link JWT_SHAPE} before being
+ * persisted. A value that fails validation is treated as if no usable
+ * token was supplied: the existing stored token is left untouched, but
+ * the `?token=` param is still stripped from the address bar (matching
+ * the success path) so the malformed value doesn't linger in history or
+ * Referer headers.
  *
  * No-op outside the browser, when `?token=` is missing or empty, or when
  * `history.replaceState` is unavailable.
@@ -59,7 +74,9 @@ const consumeUrlTokenIntoLocalStorage = (): void => {
   const url = new URL(window.location.href)
   const tokenFromUrl = url.searchParams.get('token')
   if (tokenFromUrl === null || tokenFromUrl === '') return
-  window.localStorage.setItem(TOKEN_STORAGE_KEY, tokenFromUrl)
+  if (JWT_SHAPE.test(tokenFromUrl)) {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, tokenFromUrl)
+  }
   url.searchParams.delete('token')
   window.history.replaceState(null, '', url.toString())
 }
