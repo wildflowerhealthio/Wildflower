@@ -8,7 +8,7 @@ afterEach(() => {
 })
 
 describe('AsyncErrorView', () => {
-  it('renders the supplied error via PageError', () => {
+  it('renders the supplied error via PageBodyError', () => {
     // Arrange + Act — AsyncErrorView now takes the error as a prop, so a
     // parent `<CatchBoundary>` (e.g. via the `Awaited` wrapper) feeds it
     // the thrown value. The test renders the leaf directly to assert the

@@ -109,7 +109,7 @@ describe('Awaited', () => {
     })
 
     // Assert — the CatchBoundary renders AsyncErrorView, which surfaces
-    // the configured title and the error's message via PageError.
+    // the configured title and the error's message via PageBodyError.
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Not Found' })).toBeTruthy()
     })

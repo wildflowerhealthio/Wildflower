@@ -1,18 +1,21 @@
 import type { JSX } from 'react'
 
-import { PageError } from './page-error.tsx'
+import { PageBodyError } from './page-body-error.tsx'
 
 interface AsyncErrorViewProps {
   /** The error to render; surfaced by a parent error boundary. */
   readonly error: unknown
-  /** Heading shown above the error message; passed straight through to `PageError`. */
+  /** Sub-heading (h2) shown above the error message; passed straight through to `PageBodyError`. */
   readonly title?: string
   readonly titleClassName?: string
   readonly retry?: () => void
 }
 
 /**
- * Renders an `error` via {@link PageError}. Designed to be plugged into a
+ * Renders an `error` via {@link PageBodyError}. Like `PageBodyError`, this
+ * is an error **body** — a fragment that renders no page container, so it
+ * expects to be slotted into a surrounding page shell that supplies the
+ * page-level `h1`. Designed to be plugged into a
  * `<CatchBoundary errorComponent>` (TanStack Router) — the `Awaited`
  * wrapper in this package does exactly that for the common
  * "promise rejected → render error" path.
@@ -23,7 +26,7 @@ const AsyncErrorView = ({
   titleClassName,
   retry,
 }: AsyncErrorViewProps): JSX.Element => (
-  <PageError title={title} error={error} titleClassName={titleClassName} retry={retry} />
+  <PageBodyError title={title} error={error} titleClassName={titleClassName} retry={retry} />
 )
 
 export { AsyncErrorView }

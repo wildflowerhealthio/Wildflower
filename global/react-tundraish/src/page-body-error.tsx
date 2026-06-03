@@ -3,8 +3,8 @@ import { cn } from 'react-kitchen-sink'
 
 import pageLayout from './page-layout.module.css'
 
-interface PageErrorProps {
-  /** Heading shown above the error message; omit for a bare error panel. */
+interface PageBodyErrorProps {
+  /** Sub-heading (h2) shown above the error message; omit for a bare error body. */
   readonly title?: string
   /** The thrown / rejected value. `Error` instances surface their `.message`; everything else is stringified. */
   readonly error: unknown
@@ -12,8 +12,18 @@ interface PageErrorProps {
   readonly retry?: () => void
 }
 
-/** Page-level error panel with optional heading. */
-const PageError = ({ title, error, titleClassName, retry }: PageErrorProps): JSX.Element => {
+/**
+ * Drop-in error **body** — a fragment, not a page. It renders no container
+ * of its own and expects to be slotted into a surrounding page shell (e.g.
+ * a layout route's `.page` wrapper) that already supplies the page-level
+ * `h1`. The optional `title` renders as an `h2` sub-heading beneath that.
+ */
+const PageBodyError = ({
+  title,
+  error,
+  titleClassName,
+  retry,
+}: PageBodyErrorProps): JSX.Element => {
   const message = error instanceof Error ? error.message : String(error)
   return (
     <>
@@ -30,5 +40,5 @@ const PageError = ({ title, error, titleClassName, retry }: PageErrorProps): JSX
   )
 }
 
-export { PageError }
-export type { PageErrorProps }
+export { PageBodyError }
+export type { PageBodyErrorProps }
