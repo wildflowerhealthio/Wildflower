@@ -44,8 +44,8 @@ interface TransportWebViewProps {
 
 /**
  * WebView wrapper that hosts a single bundle's page. Pure transport
- * surface — holds the WebView ref, dismisses its loader overlay on
- * `onLoadEnd`, and keeps every navigation in-WebView by default.
+ * surface — holds the WebView ref and keeps every navigation
+ * in-WebView by default.
  *
  * @remarks
  * Callers that want cross-origin or out-of-bundle URLs to escape to

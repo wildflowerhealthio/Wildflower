@@ -173,7 +173,7 @@ describe('BridgeTransport.registerHandlers — in-place handler swap', () => {
   test('replaces per-tag handlers on the next inbound message without rebuilding the transport', async () => {
     // Cold-start regression guard: before in-place swaps, a fresh handler
     // set on the host required `BridgeTransport.make` to re-run from
-    // scratch (queues, dispatch fiber, peerReady — all torn down and
+    // scratch (queues, dispatch fiber, peerReadyGate — all torn down and
     // recreated). The BridgedWebView consumer relied on that, which tore
     // the WebView down with it and flashed the loader. `registerHandlers`
     // swaps the handler map in place via the internal `Ref`; the queues,
@@ -210,7 +210,7 @@ describe('BridgeTransport.registerHandlers — in-place handler swap', () => {
   })
 
   test('preserves the send gate across swaps (host sends still flow after a handler swap)', async () => {
-    // `peerReady` is captured once at make time and is never rebuilt by
+    // `peerReadyGate` is captured once at make time and is never rebuilt by
     // `registerHandlers` — the transport has no API to do so. A host that
     // already received `__Ready` keeps its open gate across swaps, so a
     // send issued afterwards drains rather than re-gating on a fresh deferred.
@@ -223,7 +223,7 @@ describe('BridgeTransport.registerHandlers — in-place handler swap', () => {
           handlers: [{ Pong: () => Effect.void }],
         }).pipe(Effect.provide(adapterLayer))
 
-        // The inbound __Ready resolves `peerReady`; the swap is an in-place
+        // The inbound __Ready resolves `peerReadyGate`; the swap is an in-place
         // `Ref.set` that never touches the gate. The send below buffers in the
         // outbox and drains once the dispatch fiber has processed __Ready —
         // `Queue.take` below blocks until that flush lands.
@@ -316,12 +316,12 @@ describe('BridgeTransport.make — __Ready handshake', () => {
         }).pipe(Effect.provide(adapterLayer))
 
         // sendMessage no longer suspends — it offers to the outbox and
-        // returns. The pump is gated on `peerReady`, which the host hasn't
+        // returns. The pump is gated on `peerReadyGate`, which the host hasn't
         // received, so nothing has flushed yet.
         yield* transport.sendMessage({ _tag: 'Ping', value: 1 })
         expect(yield* Queue.poll(sentQueue)).toEqual(Option.none())
 
-        // The inbound __Ready resolves `peerReady`; the buffered send drains.
+        // The inbound __Ready resolves `peerReadyGate`; the buffered send drains.
         yield* transport.enqueue('{"_tag":"__Ready"}')
         const sent = yield* Queue.take(sentQueue)
         expect(JSON.parse(sent)).toEqual({ _tag: 'Ping', value: 1 })
@@ -378,7 +378,7 @@ describe('BridgeTransport.make — __Ready handshake', () => {
 
 describe('BridgeTransport.make — onPageReady re-fire', () => {
   // The host's `onPageReady` callback runs inside the inbound dispatcher's
-  // `__Ready` control handler. The `peerReady` Deferred itself is one-shot
+  // `__Ready` control handler. The `peerReadyGate` Deferred itself is one-shot
   // (subsequent `Deferred.succeed` calls return `false` and are no-ops),
   // but the user-supplied callback runs unconditionally on every `__Ready`
   // so a freshly-reloaded SPA — second WebView mount, Metro reload, the
@@ -463,7 +463,7 @@ describe('BridgeTransport.make — onPageReady re-fire', () => {
   test('omitting onPageReady leaves the __Ready handshake itself intact', async () => {
     // Regression guard: the optional callback must not break the host's
     // outbox gate. Without onPageReady, the only observable effect of
-    // __Ready is `peerReady` resolving — exactly what the original
+    // __Ready is `peerReadyGate` resolving — exactly what the original
     // handshake test pins.
     const { NavigationLike } = makeBridges()
     const { layer: adapterLayer, sentQueue } = TestPlatformAdapterLayer.make()

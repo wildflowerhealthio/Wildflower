@@ -1,6 +1,6 @@
-import { QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { type AnyRouter, createRouter, type RouterHistory } from '@tanstack/react-router'
-import { Effect, Stream } from 'effect'
+import { Effect, type Fiber, type Subscribable, Stream } from 'effect'
 import type { NavTarget } from 'navigation-react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -46,6 +46,37 @@ type MakeTransport = (
  */
 type MakeAwaitAuthReady = (transportReady: Promise<void>) => BaseRouterContext.AwaitAuthReady
 
+/**
+ * Fork the token-rotation cache invalidator.
+ *
+ * Subscribes to the bearer token's `subscribable.changes` and calls
+ * `queryClient.invalidateQueries()` on every *post-mount* rotation, so
+ * any 401-cached entries from a previous bearer refetch with the new
+ * one (the cache is keyed on the query, not on the bearer — without
+ * this a stale-token failure pins until the user navigates away).
+ *
+ * `Stream.drop(1)` skips the `SubscriptionRef`'s replayed initial value
+ * so the first subscribe does NOT flush the cache — invalidating at
+ * boot would be a wasted full cache flush before anything is cached.
+ *
+ * Extracted from {@link renderApp} (which builds its own `QueryClient`)
+ * so the boot-skip / rotate-flush contract is unit-testable against a
+ * real `Subscribable` and a spy-able `QueryClient` without mounting the
+ * whole app. Returns the forked fiber so callers (or tests) can await /
+ * interrupt it.
+ */
+const forkTokenRotationInvalidator = (
+  subscribable: Subscribable.Subscribable<string | null>,
+  queryClient: QueryClient
+): Fiber.RuntimeFiber<void, never> =>
+  Effect.runFork(
+    Stream.runForEach(Stream.drop(subscribable.changes, 1), () =>
+      Effect.sync(() => {
+        void queryClient.invalidateQueries()
+      })
+    )
+  )
+
 interface RenderAppOptions {
   /** Browser history for web, memory history for embedded WebView. */
   readonly history: RouterHistory
@@ -89,7 +120,8 @@ interface RenderAppOptions {
  * components' `useQuery` share one cache. Cache is in-memory only —
  * no persister; warm via preloading.
  *
- * Token rotation flushes the cache: a forked fiber on
+ * Token rotation flushes the cache via
+ * {@link forkTokenRotationInvalidator}: a forked fiber on
  * `tokenStore.subscribable.changes` (after the replayed initial
  * value) calls `queryClient.invalidateQueries()` so any 401-cached
  * entries from a previous bearer refetch with the new one. Without
@@ -118,16 +150,7 @@ const renderApp = ({
 }: RenderAppOptions): void => {
   const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(tokenStore.subscribable)
 
-  // Token rotation invalidator. `Stream.drop(1)` skips the replayed
-  // initial value — invalidating on first subscribe is a wasted full
-  // cache flush at boot.
-  Effect.runFork(
-    Stream.runForEach(Stream.drop(tokenStore.subscribable.changes, 1), () =>
-      Effect.sync(() => {
-        void queryClient.invalidateQueries()
-      })
-    )
-  )
+  forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 
   const routerHandle: { current: AnyRouter | null } = { current: null }
   const navigate = (to: NavTarget): void => {
@@ -183,5 +206,5 @@ const renderApp = ({
   )
 }
 
-export { renderApp }
+export { forkTokenRotationInvalidator, renderApp }
 export type { MakeAwaitAuthReady, MakeTransport, RenderAppOptions }

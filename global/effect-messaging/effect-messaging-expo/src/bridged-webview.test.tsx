@@ -120,7 +120,7 @@ describe('BridgedWebView (integration)', () => {
     // (which returns an Effect) straight into react-native-webview's
     // sync `void` callback; every Effect was constructed and
     // discarded — including `__Ready`. Without that, the host's
-    // `peerReady` never resolves and the `sendMessage` below would
+    // `peerReadyGate` never resolves and the `sendMessage` below would
     // hang forever.
     const onMessage = mockWebViewState.props?.onMessage
     if (onMessage === undefined) throw new Error('onMessage prop not captured')
@@ -155,7 +155,7 @@ describe('BridgedWebView (integration)', () => {
   // directly at the transport level in
   // `bridge-transport.test.ts`'s "Host sends buffer in the outbox
   // until __Ready, then flush in order" — that's the narrow unit for
-  // the outbox / `peerReady` interaction, and duplicating it here
+  // the outbox / `peerReadyGate` interaction, and duplicating it here
   // through `BridgedWebView`'s extra layer of mocks adds no coverage.
 
   it("decodes Page → Host Pong and invokes the binding's handler record", async () => {
@@ -521,7 +521,7 @@ describe('BridgedWebView (pre-build buffering)', () => {
 
     // Now yield: buildEffect runs, transport builds, drain fiber pulls
     // the buffered `__Ready` and forwards it into the inbox, the
-    // dispatcher's `__Ready` control handler resolves `peerReady` and
+    // dispatcher's `__Ready` control handler resolves `peerReadyGate` and
     // invokes the binding's `onPageReady`.
     await waitFor(() => {
       expect(capturedSend).not.toBeNull()

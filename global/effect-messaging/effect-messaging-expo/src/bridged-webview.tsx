@@ -68,8 +68,6 @@ interface BridgedWebViewProps<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
    * coexist — `URLSearchParams` allows duplicates.)
    */
   readonly loadFrom: BridgedWebViewLoadFrom
-  /** Loader rendered on top of the WebView until its first `onLoadEnd`. */
-  readonly loader?: JSX.Element
   /**
    * Opt-in routing predicate forwarded to {@link TransportWebView}.
    * Return `true` to escape a URL to the system browser; omit to keep
@@ -113,11 +111,9 @@ interface BuiltTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  * `registerHandlers` without a rebuild.
  *
  * @remarks
- * There is no JS loader gate: the WebView is in the tree from the start.
- * Hosts that want a covering placeholder during page load pass `loader`
- * (overlaid by {@link TransportWebView} until its first `onLoadEnd`);
- * the app shell instead lets the native splash cover the load and hides
- * it on the page's UI-ready signal. Changing the `bindings.bridges`
+ * There is no JS loader gate: the WebView is in the tree from the start
+ * and the app shell lets the native splash cover the load, hiding it on
+ * the page's UI-ready signal. Changing the `bindings.bridges`
  * reference tears down and rebuilds the transport; `loadFrom` and each
  * binding's `initialMessages` are URL-baked at first render and don't
  * trigger a rebuild on their own.
@@ -175,9 +171,11 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   // buffered with no peer to drain it. Buffering here means every
   // page→host message is conserved regardless of build timing: the
   // `onMessage` handler offers synchronously (`Queue.unbounded` never
-  // blocks on offer), the build fiber forks a single-consumer drain
-  // that forwards in FIFO order into `built.enqueue`, and a scoped
-  // finalizer shuts the queue down on unmount so any late offer no-ops.
+  // blocks on offer) and the build fiber forks a single-consumer drain
+  // that forwards in FIFO order into `built.enqueue`. The queue itself
+  // is never shut down — it lives in a `useRef` and is GC'd with the
+  // component; only the `forkScoped` drain is interrupted on scope
+  // close (see the drain comment below).
   const pendingQueueRef = useRef<Queue.Queue<string> | null>(null)
   if (pendingQueueRef.current === null) {
     pendingQueueRef.current = Effect.runSync(Queue.unbounded<string>())
@@ -346,7 +344,7 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   // binding re-rendering — token arrival, modal state, etc.), route the
   // new records through `registerHandlers` — a single `Ref.set` that swaps
   // the active map atomically against the dispatch fiber. The two queues,
-  // both fibers, the schema union, and `peerReady` all persist; a message
+  // both fibers, the schema union, and `peerReadyGate` all persist; a message
   // that arrives with no covering handler is logged-and-dropped.
   useEffect(() => {
     // Skip the initial render: the first `handlers` value is already
@@ -384,9 +382,11 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
         // consumer that forwards every offer into the transport's
         // inbox; pre-build offers stack until the transport exists.
         // `Queue.unbounded`'s `offer` never suspends and `runSync`
-        // evaluates it inline; post-shutdown offers return `false` and
-        // no-op rather than throw, so a race with scope teardown is
-        // safe.
+        // evaluates it inline. The queue is never shut down (only GC'd
+        // with the component), so `offer` always succeeds; a late offer
+        // racing scope teardown is harmless because the WebView child
+        // unmounts with this component, so `onMessage` can't fire once
+        // the queue is gone.
         Effect.runSync(Queue.offer(pendingQueue, event.nativeEvent.data))
       }}
       shouldOpenInSystemBrowser={shouldOpenInSystemBrowser}

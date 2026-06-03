@@ -37,7 +37,7 @@ interface OutboundPump<
  * and handing the wire string to the adapter's bare sender.
  *
  * @remarks
- * `ready` is the send gate — `Deferred.await(peerReady)` on the host
+ * `ready` is the send gate — `Deferred.await(peerReadyGate)` on the host
  * (waits for the web's `__Ready`) and an already-open `Effect.void` on the
  * web. Buffered sends flush in order the moment the gate opens.
  *

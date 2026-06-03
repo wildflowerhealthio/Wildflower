@@ -48,8 +48,8 @@ interface BridgeTransport<
   readonly enqueue: (raw: string) => Effect.Effect<void>
   /**
    * Tell the peer this side is ready to receive messages. Web posts
-   * `__Ready` to the host (resolving the host's send-gating Deferred);
-   * host is a no-op (the handshake is one-way). Idempotent.
+   * `__Ready` to the host (resolving the host's `peerReadyGate`); host
+   * is a no-op (the handshake is one-way). Idempotent.
    */
   readonly signalReady: Effect.Effect<void>
   /**
@@ -96,44 +96,32 @@ const make = <
     // passed so an inconsistent triple is unrepresentable.
     const isHost = inboundDirection === 'WebToHost'
 
-    /**
-     * Send gate. The host buffers its outbox until it *receives* the web's
-     * `__Ready` (which resolves `peerReady` through the normal inbound →
-     * registry → handler path); the web's gate is open from the start, so
-     * its sends flow without waiting on anyone. `Deferred.succeed`
-     * silently no-ops on the second and subsequent `__Ready` — the
-     * underlying gate is one-shot, but the reload re-fire path runs
-     * through `config.onPageReady`, which the dispatcher invokes for
-     * every `__Ready` (see below).
-     */
-    const peerReady = yield* Deferred.make<void>()
-    // Forward-reference handle for `sendMessage`: the inbound dispatcher
-    // is constructed (and starts forwarding) before the outbound pump
-    // exists, so the `__Ready` handler — which lives in the registry the
-    // dispatcher reads — has to await the sender rather than capture it
-    // by value. The Deferred is resolved exactly once just after
-    // `makeOutboundPump` returns. Picking a Deferred (vs a `{ current }`
-    // ref) means the handler suspends cleanly until the pump is up
-    // instead of having to early-return on a transient null.
-    const sendMessageDeferred = yield* Deferred.make<MessageSender<Bridges, OutDir>>()
+    // One-shot send gate: the host buffers its outbox until this
+    // resolves on receiving the web's `__Ready`; the web's sends flow
+    // from the start. The reload re-fire path runs through
+    // `onPageReady` (invoked for every `__Ready`), not this gate.
+    const peerReadyGate = yield* Deferred.make<void>()
+    // Forward reference to `sendMessage`: the inbound dispatcher is
+    // built before the outbound pump, so the `__Ready` handler awaits
+    // the sender rather than capturing it by value. Resolved once, just
+    // after `makeOutboundPump` returns. A Deferred (vs a `{ current }`
+    // ref) lets the handler suspend cleanly until the pump is up.
+    const pendingSender = yield* Deferred.make<MessageSender<Bridges, OutDir>>()
     const onPageReady = config.onPageReady
-    // Per-handshake counter so the logs distinguish "first __Ready
-    // after build" from "re-fire after WebView reload" at a glance.
-    // Each `__Ready` the host receives bumps the counter once.
-    let pageReadyCount = 0
-    const readyHandler: MessageHandler.Handler = () =>
+    let readyHandshakeCount = 0
+    const handleReadyMessage: MessageHandler.Handler = () =>
       Effect.gen(function* () {
-        pageReadyCount += 1
-        const wasFirst = yield* Deferred.succeed(peerReady, undefined)
-        yield* Effect.logInfo(
-          `[effect-messaging] host received __Ready #${pageReadyCount} (gate ${
-            wasFirst ? 'just opened' : 'already open'
+        readyHandshakeCount += 1
+        const gateJustOpened = yield* Deferred.succeed(peerReadyGate, undefined)
+        yield* Effect.logDebug(
+          `[effect-messaging] host received __Ready #${readyHandshakeCount} (gate ${
+            gateJustOpened ? 'just opened' : 'already open'
           })`
         )
         if (onPageReady === undefined) return
-        const send = yield* Deferred.await(sendMessageDeferred)
+        const send = yield* Deferred.await(pendingSender)
         yield* Effect.logDebug(
-          `[effect-messaging] running onPageReady callbacks for __Ready #${pageReadyCount}`
+          `[effect-messaging] running onPageReady callbacks for __Ready #${readyHandshakeCount}`
         )
         yield* onPageReady(send)
       })
@@ -141,7 +129,7 @@ const make = <
     // Only the host receives `__Ready`; injecting its handler as a control
     // entry keeps the registry ignorant of the handshake.
     const controlHandlers: ReadonlyArray<readonly [string, MessageHandler.Handler]> = isHost
-      ? [[READY_TAG, readyHandler]]
+      ? [[READY_TAG, handleReadyMessage]]
       : []
 
     const registry = yield* makeHandlerRegistry<Bridges, InDir>({
@@ -163,9 +151,9 @@ const make = <
       bridges,
       outboundDirection,
       adapter,
-      ready: isHost ? Deferred.await(peerReady) : Effect.void,
+      ready: isHost ? Deferred.await(peerReadyGate) : Effect.void,
     })
-    yield* Deferred.succeed(sendMessageDeferred, sendMessage)
+    yield* Deferred.succeed(pendingSender, sendMessage)
 
     // One-way handshake: the web posts `__Ready` to the host; the host
     // never sends one (it waits to receive the web's).
@@ -192,7 +180,7 @@ const make = <
  * blank-page workaround remount, `webviewRef.current?.reload()`, …).
  * Use it to push current state (auth token, route, etc.) that a freshly
  * loaded SPA needs but won't get a second time through the one-shot
- * `peerReady` Deferred. The closure captures `sendMessage` via an
+ * `peerReadyGate` Deferred. The closure captures `sendMessage` via an
  * internal Deferred so it doesn't matter that the dispatcher is built
  * before the outbound pump.
  */
