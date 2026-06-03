@@ -20,7 +20,7 @@ type AppsHostSender = BridgeTransport.MessageSender<readonly [typeof AppsBridge]
  * Takes the resolved `TunnelStore` service and the host→web `reply`
  * sender directly — the caller (`useAppsHostBinding`) discharges the
  * store from the page's livestore handle and threads in the transport
- * sender it captured at `onTransportReady`. Handlers stay pure
+ * sender it captured at `onPageReady`. Handlers stay pure
  * `Effect<void>`; the proactive reply rides the passed-in sender rather
  * than a module-level global.
  */

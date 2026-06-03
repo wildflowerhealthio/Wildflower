@@ -17,7 +17,7 @@ import { useCallback, type RefObject } from 'react'
  * handles sends.
  *
  * Registration is the mirror half — just assign `senderRef.current`,
- * either directly (e.g. from an `onTransportReady` Effect callback) or in
+ * either directly (e.g. from an `onPageReady` Effect callback) or in
  * a mount effect.
  */
 const useLateBoundSender = <

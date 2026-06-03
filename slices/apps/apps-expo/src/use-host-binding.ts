@@ -23,10 +23,12 @@ interface UseAppsHostBindingOptions {
  *
  * Passes the supplied livestore handle and a reply sender to
  * {@link makeAppsHostHandlers}. The reply rides the host→web sender
- * captured here via `onTransportReady` into a binding-scoped ref — so the
+ * captured here via `onPageReady` into a binding-scoped ref — so the
  * `RequestTunnel` handler talks back through a closure over that ref, not
- * a module-level global. Before the transport is ready (sender still
- * `null`), a reply is log-and-dropped.
+ * a module-level global. Before the page has posted `__Ready` (sender
+ * still `null`), a reply is log-and-dropped. `onPageReady` re-fires on
+ * every WebView reload; the repeat ref write is benign (same sender
+ * identity for the transport's lifetime).
  */
 const useAppsHostBinding = ({
   store,
@@ -42,7 +44,7 @@ const useAppsHostBinding = ({
             ? HandlerHelpers.warnAboutDroppedTag('appsHostHandlers', message._tag)
             : send(message)
         }),
-        onTransportReady: (send: AppsHostSender) =>
+        onPageReady: (send: AppsHostSender) =>
           Effect.sync(() => {
             senderRef.current = send
           }),

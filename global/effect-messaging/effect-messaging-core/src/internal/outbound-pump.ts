@@ -14,7 +14,7 @@ import { offerQuietly } from './offer-quietly.ts'
  * @remarks
  * `Bridges` appears only inside `SendableMessage`, a function-parameter
  * (contravariant) position, so no variance annotation is needed — TS
- * measures the contravariance and lets `callTransportReady` hand a
+ * measures the contravariance and lets `callPageReady` hand a
  * full-tuple sender to each narrow per-slot callback structurally.
  */
 type MessageSender<

@@ -11,7 +11,7 @@ import type * as Message from './message.ts'
  * Each handler returns a pure `Effect<void>` — it acknowledges the
  * inbound message and has no requirements. Handlers never reply through
  * the bridge directly; a host slice that needs to send proactively
- * captures its transport sender via `HostBindings`' `onTransportReady`
+ * captures its transport sender via `HostBindings`' `onPageReady`
  * and dispatches through that captured ref.
  *
  * This is the fully-typed end of the handler spectrum; {@link Handler}

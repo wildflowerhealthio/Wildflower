@@ -26,7 +26,7 @@ interface UseLogHostBindingOptions {
  * (`useNavigationHostBinding`, etc.) — `bridge`, `handlers`, no
  * `initialMessages` (the bridge is Web→Host only). The web-side wiring
  * lives in {@link Logging.installConsoleInterceptor}, called inside
- * an `onTransportReady` step at the embedded SPA's transport build
+ * an `onPageReady` step at the embedded SPA's transport build
  * site, not here.
  */
 const useLogHostBinding = ({

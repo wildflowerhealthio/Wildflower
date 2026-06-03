@@ -36,7 +36,7 @@ const MOCK_LOG_BINDINGS = {
   bridges: [{ name: 'MockLog' }],
   handlers: [{}],
   initialMessages: [[]],
-  onTransportReady: [undefined],
+  onPageReady: [undefined],
 } as const
 
 jest.mock('effect-messaging-expo', () => {
@@ -180,7 +180,7 @@ describe('BrowserSnifferWebView ref-exposed MessageSender', () => {
         browserSnifferHandlers={SNIFFER_HANDLERS}
       />
     )
-    // BridgedWebView is mocked — `onTransportReady` never fires, so
+    // BridgedWebView is mocked — `onPageReady` never fires, so
     // `senderRef.current` stays null. Collect the captured log via a
     // custom logger so we can assert the error landed without
     // polluting stdout.
@@ -202,7 +202,7 @@ describe('BrowserSnifferWebView ref-exposed MessageSender', () => {
     )
   })
 
-  it('delegates to the binding-captured sender once onTransportReady fires', async () => {
+  it('delegates to the binding-captured sender once onPageReady fires', async () => {
     const ref = React.createRef<BrowserSnifferMessageSender>()
     render(
       <BrowserSnifferWebView
@@ -217,11 +217,11 @@ describe('BrowserSnifferWebView ref-exposed MessageSender', () => {
       (b) => b.name === BrowserSnifferBridge.name
     )
     if (snifferIndex < 0) throw new Error('sniffer binding missing')
-    const onTransportReady = props.bindings.onTransportReady[snifferIndex]
-    if (onTransportReady === undefined) throw new Error('sniffer onTransportReady missing')
+    const onPageReady = props.bindings.onPageReady[snifferIndex]
+    if (onPageReady === undefined) throw new Error('sniffer onPageReady missing')
 
     // Stand in for the per-binding sender the transport would supply
-    // via `HostBindings.callTransportReady`. Captures every message
+    // via `HostBindings.callPageReady`. Captures every message
     // the wrapper forwards.
     const sends: Array<{ readonly _tag: string }> = []
     const fakeSend = (msg: { readonly _tag: string }): Effect.Effect<void> =>
@@ -230,7 +230,7 @@ describe('BrowserSnifferWebView ref-exposed MessageSender', () => {
       })
 
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    await Effect.runPromise(onTransportReady(fakeSend as never))
+    await Effect.runPromise(onPageReady(fakeSend as never))
 
     if (ref.current === null) throw new Error('ref never populated')
     await Effect.runPromise(ref.current({ _tag: 'Click', querySelector: 'button.import' }))

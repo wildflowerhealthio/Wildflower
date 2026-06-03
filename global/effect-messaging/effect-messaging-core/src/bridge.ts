@@ -77,7 +77,7 @@ type AnyBridge = {
  *   A naked distribution is required because indexing a tuple-mapped type
  *   (`{ [I in keyof Bridges]: … }[number]`) over a *generic* `Bridges`
  *   eagerly collapses `Bridges[number]` to its `AnyBridge` constraint,
- *   breaking the sender variance check in {@link callTransportReady}; the
+ *   breaking the sender variance check in {@link callPageReady}; the
  *   distributive conditional stays *deferred* over a generic `Bridges`,
  *   preserving the symbolic relationship that lets the full-tuple sender
  *   hand off to each narrow per-slot callback.

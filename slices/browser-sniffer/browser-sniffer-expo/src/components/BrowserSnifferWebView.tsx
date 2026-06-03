@@ -141,7 +141,7 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferMessageSender, BrowserSni
         HostBindings.single({
           bridge: BrowserSnifferBridge,
           handlers: browserSnifferHandlers,
-          onTransportReady: (send) =>
+          onPageReady: (send) =>
             Effect.sync(() => {
               senderRef.current = send
             }),

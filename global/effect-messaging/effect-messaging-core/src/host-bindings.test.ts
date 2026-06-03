@@ -58,7 +58,7 @@ describe('HostBindings.single', () => {
       bridge: AlphaBridge,
       handlers: alphaHandlers,
       initialMessages: [{ _tag: 'Ping', value: 1 }],
-      onTransportReady: onReady,
+      onPageReady: onReady,
     })
 
     expect(bindings.bridges).toEqual([AlphaBridge])
@@ -68,7 +68,7 @@ describe('HostBindings.single', () => {
     expect(bindings.bridges[0]).toBe(AlphaBridge)
     expect(bindings.handlers[0]).toBe(alphaHandlers)
     expect(bindings.initialMessages).toEqual([[{ _tag: 'Ping', value: 1 }]])
-    expect(bindings.onTransportReady[0]).toBe(onReady)
+    expect(bindings.onPageReady[0]).toBe(onReady)
   })
 
   test('defaults initialMessages to [[]] when omitted (1-tuple of empty inner array)', () => {
@@ -80,12 +80,12 @@ describe('HostBindings.single', () => {
     expect(bindings.initialMessages).toHaveLength(1)
   })
 
-  test('defaults onTransportReady to [undefined] when omitted', () => {
+  test('defaults onPageReady to [undefined] when omitted', () => {
     const bindings = HostBindings.single({
       bridge: BetaBridge,
       handlers: betaHandlers,
     })
-    expect(bindings.onTransportReady).toEqual([undefined])
+    expect(bindings.onPageReady).toEqual([undefined])
   })
 })
 
@@ -110,7 +110,7 @@ describe('HostBindings.combine', () => {
   const gamma = HostBindings.single({
     bridge: GammaBridge,
     handlers: gammaHandlers,
-    onTransportReady: () => Effect.void,
+    onPageReady: () => Effect.void,
   })
 
   test('bridges concatenates in input order, preserving identity', () => {
@@ -142,12 +142,12 @@ describe('HostBindings.combine', () => {
     ])
   })
 
-  test('onTransportReady concatenates index-aligned, preserving undefined slots', () => {
+  test('onPageReady concatenates index-aligned, preserving undefined slots', () => {
     const merged = HostBindings.combine([alpha, beta, gamma])
-    expect(merged.onTransportReady).toHaveLength(3)
-    expect(merged.onTransportReady[0]).toBeUndefined()
-    expect(merged.onTransportReady[1]).toBeUndefined()
-    expect(merged.onTransportReady[2]).toBe(gamma.onTransportReady[0])
+    expect(merged.onPageReady).toHaveLength(3)
+    expect(merged.onPageReady[0]).toBeUndefined()
+    expect(merged.onPageReady[1]).toBeUndefined()
+    expect(merged.onPageReady[2]).toBe(gamma.onPageReady[0])
   })
 
   test('empty input produces an empty bindings struct', () => {
@@ -155,7 +155,7 @@ describe('HostBindings.combine', () => {
     expect(merged.bridges).toEqual([])
     expect(merged.handlers).toEqual([])
     expect(merged.initialMessages).toEqual([])
-    expect(merged.onTransportReady).toEqual([])
+    expect(merged.onPageReady).toEqual([])
   })
 
   // Property: `combine([combine([a, b]), c])` deep-equals `combine([a, b, c])`
@@ -196,12 +196,12 @@ describe('HostBindings.combine', () => {
           expect(leftGrouped.bridges).toEqual(flat.bridges)
           expect(leftGrouped.handlers).toEqual(flat.handlers)
           expect(leftGrouped.initialMessages).toEqual(flat.initialMessages)
-          expect(leftGrouped.onTransportReady).toEqual(flat.onTransportReady)
+          expect(leftGrouped.onPageReady).toEqual(flat.onPageReady)
 
           expect(rightGrouped.bridges).toEqual(flat.bridges)
           expect(rightGrouped.handlers).toEqual(flat.handlers)
           expect(rightGrouped.initialMessages).toEqual(flat.initialMessages)
-          expect(rightGrouped.onTransportReady).toEqual(flat.onTransportReady)
+          expect(rightGrouped.onPageReady).toEqual(flat.onPageReady)
         }
       ),
       { numRuns: numRunsFor({ base: 40 }) }
@@ -210,11 +210,11 @@ describe('HostBindings.combine', () => {
 })
 
 // ---------------------------------------------------------------------------
-// callTransportReady
+// callPageReady
 // ---------------------------------------------------------------------------
 
-describe('HostBindings.callTransportReady', () => {
-  // A no-op sender — `callTransportReady` only forwards the sender to
+describe('HostBindings.callPageReady', () => {
+  // A no-op sender — `callPageReady` only forwards the sender to
   // each slot's callback; for these tests we don't exercise the sender
   // itself, only the dispatch behaviour.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -230,21 +230,21 @@ describe('HostBindings.callTransportReady', () => {
       HostBindings.single({
         bridge: AlphaBridge,
         handlers: alphaHandlers,
-        onTransportReady: () => Effect.sync(() => calls.push('alpha')),
+        onPageReady: () => Effect.sync(() => calls.push('alpha')),
       }),
       HostBindings.single({
         bridge: BetaBridge,
         handlers: betaHandlers,
-        // intentional: no onTransportReady
+        // intentional: no onPageReady
       }),
       HostBindings.single({
         bridge: GammaBridge,
         handlers: gammaHandlers,
-        onTransportReady: () => Effect.sync(() => calls.push('gamma')),
+        onPageReady: () => Effect.sync(() => calls.push('gamma')),
       }),
     ])
 
-    await Effect.runPromise(HostBindings.callTransportReady(bindings, noopSender))
+    await Effect.runPromise(HostBindings.callPageReady(bindings, noopSender))
 
     // Concurrency is unbounded; assert membership rather than order.
     expect(calls.toSorted()).toEqual(['alpha', 'gamma'])
@@ -256,20 +256,20 @@ describe('HostBindings.callTransportReady', () => {
       HostBindings.single({
         bridge: AlphaBridge,
         handlers: alphaHandlers,
-        onTransportReady: () =>
+        onPageReady: () =>
           Effect.sync(() => calls.push('alpha-pre')).pipe(Effect.zipRight(Effect.die('boom'))),
       }),
       HostBindings.single({
         bridge: GammaBridge,
         handlers: gammaHandlers,
-        onTransportReady: () => Effect.sync(() => calls.push('gamma')),
+        onPageReady: () => Effect.sync(() => calls.push('gamma')),
       }),
     ])
 
     // The Effect resolves successfully even though Alpha's callback dies —
-    // `catchAllCause`/`logError` inside `callTransportReady` swallows the
+    // `catchAllCause`/`logError` inside `callPageReady` swallows the
     // failure into a log line.
-    await Effect.runPromise(HostBindings.callTransportReady(bindings, noopSender))
+    await Effect.runPromise(HostBindings.callPageReady(bindings, noopSender))
 
     // Alpha's body ran up to the failure; Gamma ran cleanly. The key
     // assertion is that Gamma was not blocked by Alpha's defect.
@@ -284,7 +284,7 @@ describe('HostBindings.callTransportReady', () => {
     ])
     // Smoke test: this should resolve without throwing — there's nothing
     // observable beyond "no failure" since every slot is a no-op.
-    await Expect.toResolve(Effect.runPromise(HostBindings.callTransportReady(bindings, noopSender)))
+    await Expect.toResolve(Effect.runPromise(HostBindings.callPageReady(bindings, noopSender)))
   })
 })
 

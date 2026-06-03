@@ -53,7 +53,7 @@ const useAsBrowserSnifferOutlet = (sender: BrowserSnifferSender): void => {
 
 // --- Collector pipe --------------------------------------------------------
 // The collector sender is the host transport's outbound `sendMessage`,
-// installed into the ref from `onTransportReady` (see `useCollectorHostBinding`).
+// installed into the ref from `onPageReady` (see `useCollectorHostBinding`).
 const collectorWarnAndDrop: CollectorSender = (msg) =>
   Effect.logWarning(
     `[effect-messaging] no Collector sender registered; dropping message "${JSON.stringify(msg)}"`

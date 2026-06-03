@@ -12,17 +12,18 @@ import { useCollectorHostHandlers } from './use-host-handlers.ts'
  * Wraps {@link useCollectorHostHandlers} (which reads from the
  * surrounding {@link CollectorHostProvider} context) and installs the
  * host-built transport's outbound `CollectorSender` into the
- * {@link CollectorPipe} via its sender ref on `onTransportReady`.
- * Without that install, `useCollectorSender()` falls through to the
- * pipe's warn-and-drop default — observable as
+ * {@link CollectorPipe} via its sender ref on `onPageReady`. Without
+ * that install, `useCollectorSender()` falls through to the pipe's
+ * warn-and-drop default — observable as
  * `"[effect-messaging] no Collector sender registered; dropping message ..."`
  * for every sniffer event the modal forwards.
  *
  * Mirrors the navigation slice's pattern
  * (`useNavigationHostBinding` → `useNavigationSenderRef` →
- * `onTransportReady`): writing to the ref directly avoids calling a hook
+ * `onPageReady`): writing to the ref directly avoids calling a hook
  * from inside the Effect callback the transport fires asynchronously
- * after mount.
+ * after each page `__Ready` (first load and every subsequent reload —
+ * the repeat write is benign).
  *
  * Must be called under {@link CollectorHostProvider} —
  * `useCollectorSenderRef` throws otherwise.
@@ -37,7 +38,7 @@ const useCollectorHostBinding = (): HostBindings.HostBindings<
       HostBindings.single({
         bridge: CollectorBridge,
         handlers,
-        onTransportReady: (send) =>
+        onPageReady: (send) =>
           Effect.sync(() => {
             collectorSenderRef.current = send
           }),

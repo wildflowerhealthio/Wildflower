@@ -4,7 +4,7 @@
  * `react-native-webview`. Smoke-tests that:
  *
  * - the wrapper's binding wiring captures the typed sender via
- *   `onTransportReady` (host-side `Click` reaches the WebView's
+ *   `onPageReady` (host-side `Click` reaches the WebView's
  *   `postMessage`),
  * - and an inbound `PageLoaded` wire message decodes through the real
  *   dispatch core and reaches the consumer's `browserSnifferHandlers`.
@@ -106,11 +106,19 @@ describe('BrowserSnifferWebView (e2e with real BridgedWebView)', () => {
     const onMessage = mockWebViewState.props?.onMessage
     if (onMessage === undefined) throw new Error('onMessage prop not captured')
 
-    // Page-side `__Ready` unblocks the host's sendMessage gate.
+    // Page-side `__Ready` unblocks the host's sendMessage gate AND
+    // (with the `onPageReady` rename) runs the sniffer binding's
+    // sender-capture callback inside the inbound dispatcher.
     act(() => {
       onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } })
     })
     // Inbound `PageLoaded` should reach the consumer's snifferHandler.
+    // The inbox is FIFO single-fiber, so by the time the PageLoaded
+    // handler runs, the preceding `__Ready` has fully drained through
+    // the `onPageReady` control handler — the sender ref behind
+    // `stableSender` is therefore guaranteed to be populated. Using
+    // PageLoaded as the synchronisation point avoids racing the
+    // Click against the dispatcher.
     act(() => {
       onMessage({
         nativeEvent: {
@@ -123,16 +131,18 @@ describe('BrowserSnifferWebView (e2e with real BridgedWebView)', () => {
       })
     })
 
-    // Host sends a `Click` — should reach the mocked WebView's
-    // `postMessage` after the `__Ready` gate above resolves.
+    await waitFor(() => {
+      expect(snifferEvents.map((e) => e._tag)).toContain('PageLoaded')
+    })
+
+    // Now safe: `__Ready` was processed before `PageLoaded` (FIFO),
+    // so the sniffer binding's sender ref is captured. The Click goes
+    // through the live transport to the WebView mock's postMessage log.
     await act(async () => {
       if (ref.current === null) throw new Error('ref.current not populated')
       await Effect.runPromise(ref.current({ _tag: 'Click', querySelector: '#go' }))
     })
 
-    await waitFor(() => {
-      expect(snifferEvents.map((e) => e._tag)).toContain('PageLoaded')
-    })
     await waitFor(() => {
       expect(mockWebViewState.postMessageCalls).toEqual([
         JSON.stringify({ _tag: 'Click', querySelector: '#go' }),

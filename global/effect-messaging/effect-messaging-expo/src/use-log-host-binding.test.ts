@@ -46,7 +46,7 @@ describe('useLogHostBinding — runtime', () => {
     // The Logging is web→host only; no initial-message channel.
     expect(result.current.initialMessages).toEqual([[]])
     // No post-mount work for the log binding either.
-    expect(result.current.onTransportReady).toEqual([undefined])
+    expect(result.current.onPageReady).toEqual([undefined])
   })
 
   it('memoises the binding across renders when onLog is omitted (default identity is stable)', () => {
