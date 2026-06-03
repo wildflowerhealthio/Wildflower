@@ -27,6 +27,7 @@
  *
  */
 
+import type { Queryable } from '@livestore/livestore'
 import { Schema } from 'effect'
 import { defineSliceLivestore } from 'shared-structures-core/livestore'
 
@@ -123,6 +124,47 @@ class EmrStore extends StoreTag<EmrStore>() {
 
 const SyncPayload = Schema.Struct({ authToken: Schema.String })
 
+/**
+ * Touch the Patient table at boot so SQLite's per-table page cache, the
+ * statement cache, and the tables-used cache are populated before the
+ * first user-facing query.
+ *
+ * Idempotent. Safe to call repeatedly; second call hits the result
+ * cache and returns immediately.
+ *
+ * @param store - The EMR LiveStore to issue warmup queries against.
+ *
+ */
+/**
+ * Minimal duck-typed shape for issuing read queries. Any `Store<TSchema>`
+ * satisfies this regardless of which composed slice schema it was built
+ * from, so the warmup function can be called from apps that compose the
+ * EMR slice into a larger livestore schema (e.g. wildflower-expo) without
+ * the call site having to widen schema types.
+ */
+type QueryRunner = {
+  readonly query: <TResult>(query: Queryable<TResult>) => TResult
+}
+
+const warmupTable = (
+  store: QueryRunner,
+  options: {
+    readonly Resource: {
+      readonly queries: {
+        readonly count$: (params: object) => Queryable<number>
+        // oxlint-disable-next-line typescript/no-explicit-any
+        readonly search$: (params: { readonly limit: number }) => Queryable<any>
+      }
+    }
+    readonly searchLimit?: number
+  }
+): void => {
+  const Resource = options.Resource
+  const searchLimit = options.searchLimit ?? 50
+  store.query(Resource.queries.count$({}))
+  store.query(Resource.queries.search$({ limit: searchLimit }))
+}
+
 export * as Patient from './patient.ts'
 export * as Binary from './binary.ts'
 export * as Observation from './observation.ts'
@@ -138,4 +180,5 @@ export {
   domainResources,
   SyncPayload,
   EmrStore,
+  warmupTable,
 }

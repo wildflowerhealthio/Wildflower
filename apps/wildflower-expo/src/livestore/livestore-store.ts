@@ -2,6 +2,7 @@ import { makePersistedAdapter } from '@livestore/adapter-expo'
 import type { Store } from '@livestore/livestore'
 import { type ReactApi, StoreRegistry, useStore } from '@livestore/react'
 import { Context } from 'effect'
+import { Patient, warmupTable } from 'emr-core/livestore'
 import { ServerState } from 'local-http-server-core/livestore'
 import { unstable_batchedUpdates as batchUpdates } from 'react-native'
 import { getLivestoreOtelOptions } from 'telemetry-react-native'
@@ -60,6 +61,13 @@ const wildflowerStoreOptions = {
         })
       )
     }
+    // Warm SQLite's page cache + prepared-statement cache + tables-used
+    // cache for Patient so the patient browser's first list query doesn't
+    // pay the cold full-table scan (observed 5–11s in production telemetry,
+    // vs ~40ms warm). Filtered queries (`WHERE gender = ?`) don't hit this
+    // cold path because they cover few pages, so we only need to touch the
+    // unindexed-scan path once.
+    warmupTable(store, { Resource: Patient })
   },
 } as const
 
