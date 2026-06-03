@@ -99,45 +99,58 @@ export function makeDomainResourceHandlerLayer<
     resources: readonly ResourceWithId[],
     total: number,
     link: ReadonlyArray<{ readonly relation: string; readonly url: string }>
-  ): Schema.Schema.Type<typeof bundleSchema> =>
-    bundleSchema.make({
-      resourceType: 'Bundle',
-      id: null,
-      meta: null,
-      implicitRules: null,
-      language: null,
-      type: 'searchset',
-      identifier: null,
-      link: link.map((l) => ({
-        id: null,
-        extension: [],
-        modifierExtension: [],
-        relation: l.relation,
-        url: l.url,
-      })),
-      signature: null,
-      timestamp: null,
-      total,
-      entry: resources.map((resource) =>
-        bundleEntrySchema.make({
+  ): Effect.Effect<Schema.Schema.Type<typeof bundleSchema>, HttpApiError.ServiceUnavailable> =>
+    Effect.try({
+      try: () =>
+        bundleSchema.make({
+          resourceType: 'Bundle',
           id: null,
-          extension: [],
-          modifierExtension: [],
-          fullUrl: resourceFullUrl(origin, resource.resourceType, resource.id),
-          link: [],
-          request: null,
-          resource: resource,
-          response: null,
-          search: {
+          meta: null,
+          implicitRules: null,
+          language: null,
+          type: 'searchset',
+          identifier: null,
+          link: link.map((l) => ({
             id: null,
             extension: [],
             modifierExtension: [],
-            mode: 'match',
-            score: null,
-          },
-        })
-      ),
-    })
+            relation: l.relation,
+            url: l.url,
+          })),
+          signature: null,
+          timestamp: null,
+          total,
+          entry: resources.map((resource) =>
+            bundleEntrySchema.make({
+              id: null,
+              extension: [],
+              modifierExtension: [],
+              fullUrl: resourceFullUrl(origin, resource.resourceType, resource.id),
+              link: [],
+              request: null,
+              resource: resource,
+              response: null,
+              search: {
+                id: null,
+                extension: [],
+                modifierExtension: [],
+                mode: 'match',
+                score: null,
+              },
+            })
+          ),
+        }),
+      catch: () => new HttpApiError.ServiceUnavailable(),
+    }).pipe(
+      Effect.withSpan('fhir.buildSearchsetBundle', {
+        attributes: {
+          resourceType,
+          resourceCount: resources.length,
+          total,
+          linkCount: link.length,
+        },
+      })
+    )
 
   const cursorUrl = (
     requestUrl: URL,
@@ -193,40 +206,71 @@ export function makeDomainResourceHandlerLayer<
       const offset = decoded?.offset ?? 0
       const limit = decoded?.count ?? requestedCount
       const store = yield* EmrStore
-      const { rows, total } = yield* Effect.try({
-        try: () => ({
-          rows: store.query(bindings.querySearch$({ where, limit, offset })),
-          total: store.query(bindings.queryCount$({ where })),
-        }),
+      const rows = yield* Effect.try({
+        try: () => store.query(bindings.querySearch$({ where, limit, offset })),
         catch: () => new HttpApiError.ServiceUnavailable(),
-      })
-      return buildSearchsetBundle(
+      }).pipe(
+        Effect.withSpan('fhir.runSearch.querySearch', {
+          attributes: { resourceType, limit, offset, hasWhere: where !== undefined },
+        })
+      )
+      const total = yield* Effect.try({
+        try: () => store.query(bindings.queryCount$({ where })),
+        catch: () => new HttpApiError.ServiceUnavailable(),
+      }).pipe(
+        Effect.withSpan('fhir.runSearch.queryCount', {
+          attributes: { resourceType, hasWhere: where !== undefined },
+        })
+      )
+      return yield* buildSearchsetBundle(
         origin,
         rows,
         total,
         paginationLinks(requestUrl, limit, offset, total)
       )
-    })
+    }).pipe(
+      Effect.withSpan('fhir.runSearch', {
+        attributes: {
+          resourceType,
+          hasPageToken: params._pageToken !== undefined,
+          requestedCount: params._count ?? DEFAULT_PAGE_SIZE,
+        },
+      })
+    )
 
   const upsertAndFetch = (
     resource: ResourceWithId
   ): Effect.Effect<ResourceWithId, HttpApiError.ServiceUnavailable, EmrStore> =>
-    bindings.commitUpsert(resource).pipe(
-      Effect.flatMap(() =>
-        Effect.flatMap(EmrStore, (store) =>
-          Effect.try({
-            try: () => store.query(bindings.queryGetById$(resource.id)),
-            catch: () => new HttpApiError.ServiceUnavailable(),
-          })
-        )
-      ),
-      Effect.flatMap((fetched) => {
-        if (fetched === undefined) {
-          return Effect.fail(new HttpApiError.ServiceUnavailable())
-        }
-        return Effect.succeed(fetched)
-      })
-    )
+    bindings
+      .commitUpsert(resource)
+      .pipe(
+        Effect.withSpan('fhir.upsertAndFetch.commitUpsert', {
+          attributes: { resourceType, id: resource.id },
+        })
+      )
+      .pipe(
+        Effect.flatMap(() =>
+          Effect.flatMap(EmrStore, (store) =>
+            Effect.try({
+              try: () => store.query(bindings.queryGetById$(resource.id)),
+              catch: () => new HttpApiError.ServiceUnavailable(),
+            }).pipe(
+              Effect.withSpan('fhir.upsertAndFetch.queryGetById', {
+                attributes: { resourceType, id: resource.id },
+              })
+            )
+          )
+        ),
+        Effect.flatMap((fetched) => {
+          if (fetched === undefined) {
+            return Effect.fail(new HttpApiError.ServiceUnavailable())
+          }
+          return Effect.succeed(fetched)
+        }),
+        Effect.withSpan('fhir.upsertAndFetch', {
+          attributes: { resourceType, id: resource.id },
+        })
+      )
 
   // `HttpApiBuilder.group` against a generically-built group cannot recover
   // the precise per-endpoint request shape — `request` arrives typed as the
@@ -244,12 +288,17 @@ export function makeDomainResourceHandlerLayer<
       .handle('SearchByGet', (request) => {
         /* oxlint-disable-next-line typescript/no-unsafe-type-assertion */
         const { urlParams } = request as { readonly urlParams: SearchParamsType }
-        return runSearch(urlParams)
+        return runSearch(urlParams).pipe(
+          Effect.withSpan('fhir.SearchByGet', { attributes: { resourceType } })
+        )
       })
       .handle('Search', (request) => {
+        console.log('Search handler received request:', request)
         /* oxlint-disable-next-line typescript/no-unsafe-type-assertion */
         const { payload } = request as { readonly payload: SearchParamsType }
-        return runSearch(payload)
+        return runSearch(payload).pipe(
+          Effect.withSpan('fhir.Search', { attributes: { resourceType } })
+        )
       })
       .handle('GetById', ({ path: { id } }) =>
         Effect.flatMap(EmrStore, (store) =>
@@ -257,6 +306,9 @@ export function makeDomainResourceHandlerLayer<
             try: () => store.query(bindings.queryGetById$(id)),
             catch: () => new HttpApiError.ServiceUnavailable(),
           }).pipe(
+            Effect.withSpan('fhir.GetById.queryGetById', {
+              attributes: { resourceType, id },
+            }),
             Effect.flatMap((resource) => {
               if (resource === undefined) {
                 return Effect.fail(new HttpApiError.NotFound())
@@ -264,12 +316,14 @@ export function makeDomainResourceHandlerLayer<
               return Effect.succeed(resource)
             })
           )
-        )
+        ).pipe(Effect.withSpan('fhir.GetById', { attributes: { resourceType, id } }))
       )
       .handle('Create', (request) => {
         /* oxlint-disable-next-line typescript/no-unsafe-type-assertion */
         const { payload } = request as { readonly payload: ResourceWithId }
-        return upsertAndFetch(payload)
+        return upsertAndFetch(payload).pipe(
+          Effect.withSpan('fhir.Create', { attributes: { resourceType, id: payload.id } })
+        )
       })
       .handle('Update', (request) => {
         /* oxlint-disable-next-line typescript/no-unsafe-type-assertion */
@@ -277,7 +331,9 @@ export function makeDomainResourceHandlerLayer<
           readonly path: { readonly id: string }
           readonly payload: StoreType
         }
-        return upsertAndFetch({ ...payload, id: path.id })
+        return upsertAndFetch({ ...payload, id: path.id }).pipe(
+          Effect.withSpan('fhir.Update', { attributes: { resourceType, id: path.id } })
+        )
       })
       .handle('Everything', (request) => {
         const { path, urlParams } = request as {
@@ -294,13 +350,21 @@ export function makeDomainResourceHandlerLayer<
           const primary = yield* Effect.try({
             try: () => store.query(bindings.queryGetById$(id)),
             catch: () => new HttpApiError.ServiceUnavailable(),
-          })
+          }).pipe(
+            Effect.withSpan('fhir.Everything.queryGetById', {
+              attributes: { resourceType, id },
+            })
+          )
           if (primary === undefined) {
             return yield* Effect.fail(new HttpApiError.NotFound())
           }
           let related: ReadonlyArray<{ readonly resourceType: string; readonly id: string }> = []
           if (bindings.getRelated !== undefined) {
-            related = yield* bindings.getRelated({ id, limit })
+            related = yield* bindings.getRelated({ id, limit }).pipe(
+              Effect.withSpan('fhir.Everything.getRelated', {
+                attributes: { resourceType, id, limit: limit ?? -1 },
+              })
+            )
           }
           const entries: ReadonlyArray<{
             readonly resourceType: string
@@ -346,7 +410,7 @@ export function makeDomainResourceHandlerLayer<
               })
             ),
           })
-        })
+        }).pipe(Effect.withSpan('fhir.Everything', { attributes: { resourceType, id } }))
       })
   )
 }

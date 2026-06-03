@@ -88,13 +88,27 @@ const wireServer = async (): Promise<Wired> => {
   // socket. To exercise the request-origin trust gate from tests, install
   // a middleware that reads a custom `x-test-remote-address` header (or
   // defaults to `127.0.0.1`) and overrides the wrapper's `None`.
+  //
+  // `HttpApp.toWebHandlerRuntime` attaches a `Symbol.for(...HttpApp/resolve)`
+  // property to the original `HttpServerRequest`; `toHandled` invokes it to
+  // fulfil the `Response` promise. `request.modify(...)` returns a fresh
+  // `ServerRequestImpl` instance and does NOT copy that symbol, so without
+  // the carry-over below every test request hangs into a bare 500
+  // (`TypeError: request[resolveSymbol] is not a function`).
+  const httpAppResolveSymbol = Symbol.for('@effect/platform/HttpApp/resolve')
   const { handler, dispose } = HttpApiBuilder.toWebHandler(merged, {
     middleware: HttpMiddleware.make((httpApp) =>
-      Effect.updateService(httpApp, HttpServerRequest.HttpServerRequest, (request) =>
-        request.modify({
+      Effect.updateService(httpApp, HttpServerRequest.HttpServerRequest, (request) => {
+        const modified = request.modify({
           remoteAddress: request.headers['x-test-remote-address'] ?? '127.0.0.1',
         })
-      )
+        /* oxlint-disable-next-line typescript/no-unsafe-type-assertion */
+        const modifiedBag = modified as unknown as { [key: symbol]: unknown }
+        /* oxlint-disable-next-line typescript/no-unsafe-type-assertion */
+        const requestBag = request as unknown as { [key: symbol]: unknown }
+        modifiedBag[httpAppResolveSymbol] = requestBag[httpAppResolveSymbol]
+        return modified
+      })
     ),
   })
   const httpClientLayer = fetchLayerFor(handler)

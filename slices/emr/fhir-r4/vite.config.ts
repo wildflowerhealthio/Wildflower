@@ -46,6 +46,6 @@ export default defineConfig({
     // `vp run integration` (which uses `vite.integration.config.ts`). They
     // boot a real in-memory livestore per case, so they're slower than unit
     // tests and intentionally excluded from the default `vp test`.
-    exclude: ['**/node_modules/**', '**/dist/**', '**/integration-tests/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/integration-tests/**', '**/profile/**'],
   },
 })

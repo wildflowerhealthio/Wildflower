@@ -37,6 +37,7 @@
     "dev": "vp pack --watch",
     "integration": "vp test run --config vite.integration.config.ts",
     "prepublishOnly": "vp run build",
+    "profile": "NODE_OPTIONS='--cpu-prof --cpu-prof-dir=./.profiles' vp test run --config vite.profile.config.ts",
     "test": "vp test"
   },
   "devDependencies": {

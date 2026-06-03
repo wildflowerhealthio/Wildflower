@@ -38,3 +38,7 @@ routeTree.gen.ts
 
 # In-container parallel worktrees (.devcontainer/wf-worktree.sh)
 .worktrees/
+
+# CPU/heap profiles emitted by `vp run profile` (Node --cpu-prof output)
+.profiles/
+*.cpuprofile
