@@ -316,7 +316,7 @@ describe('AppShellWebView', () => {
   it('passes initialRoute + onRouteChanged into the navigation host-binding hook', () => {
     const onRouteChanged = jest.fn()
     mountInPipe(<AppShellWebView onRouteChanged={onRouteChanged} />)
-    expect(mockNavigationOptions?.initialRoute).toBe('/apps')
+    expect(mockNavigationOptions?.initialRoute).toBe('/home')
     expect(mockNavigationOptions?.onRouteChanged).toBe(onRouteChanged)
   })
 
@@ -378,7 +378,7 @@ describe('AppShellWebView', () => {
     const bindings = expectBindings()
     const navIdx = indexOf(bindings, 'Navigation')
     expect(bindings.initialMessages[navIdx]).toEqual([
-      { _tag: 'HostRequestedWebNavigation', path: '/apps' },
+      { _tag: 'HostRequestedWebNavigation', path: '/home' },
     ])
   })
 

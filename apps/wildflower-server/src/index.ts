@@ -5,13 +5,14 @@ import {
   HttpApiBuilder,
   HttpApiSwagger,
   HttpMiddleware,
+  HttpServerRequest,
   HttpServerResponse,
 } from '@effect/platform'
 import { AppsAdminApi, AppsApi } from 'apps-core/http-api-definition'
 import { AppsAdminApiHandlersFor, AppsApiHandlersFor } from 'apps-core/http-api-implementation'
 import { CollectorApi } from 'collector-core/http-api-definition'
 import { CollectorApiHandlersFor } from 'collector-core/http-api-implementation'
-import { Effect, Layer, pipe } from 'effect'
+import { DateTime, Duration, Effect, Layer, Option, pipe } from 'effect'
 import { FhirPublicApi, FhirResourcesApi } from 'fhir-r4/http-api-definition'
 import {
   FhirPublicApiHandlersFor,
@@ -23,6 +24,7 @@ import {
   RequireAuthMiddleware,
   RequireAuthMiddlewareLive,
 } from 'gatekeeper-core/http-api-implementation'
+import { isLoopbackPeer } from 'navigation-core'
 import { TunnelAdminApi } from 'tunnel-core/http-api-definition'
 import { TunnelAdminApiHandlersFor } from 'tunnel-core/http-api-implementation'
 import { VendorAppsApi } from 'vendor-apps/http-api-definition'
@@ -85,7 +87,72 @@ const stripCookiesMiddleware = HttpMiddleware.make((app) =>
   })
 )
 
-const middleware = HttpMiddleware.make((app) => stripCookiesMiddleware(corsMiddleware(app)))
+/**
+ * Access log: one line per request, `method path -> status (Nms)`.
+ * Sits at the outermost layer of {@link middleware} so every served
+ * route is covered — HttpApi handlers, the SPA fallback, Swagger.
+ *
+ * @remarks
+ * The query string is stripped before logging — bootstrap URLs carry
+ * `?token=…` and we don't want bearer material landing in logs. If a
+ * request is needed for which the query string matters, capture it at
+ * the handler level instead.
+ *
+ * `req.url` from `@effect/platform` is path-and-query, never absolute,
+ * so the simple `indexOf('?')` split is safe — no scheme/host to
+ * accidentally swallow.
+ */
+const accessLogMiddleware = HttpMiddleware.make((app) =>
+  Effect.gen(function* () {
+    const start = yield* DateTime.now
+    const req = yield* HttpServerRequest.HttpServerRequest
+    const pathOnly = (() => {
+      const idx = req.url.indexOf('?')
+      return idx === -1 ? req.url : req.url.slice(0, idx)
+    })()
+    const response = yield* app
+    const elapsed = DateTime.distanceDuration(start, yield* DateTime.now)
+    yield* Effect.logInfo(
+      `[http] ${req.method} ${pathOnly} -> ${response.status} (${Duration.toMillis(elapsed)}ms)`
+    )
+    return response
+  })
+)
+
+/**
+ * Network trust gate: reject any caller whose connection-level remote
+ * address isn't loopback (`127.0.0.0/8`, `::1`, `::ffff:127.x`) with a
+ * `403`. The server is meant to be reached only over loopback — directly
+ * by a local user/webview, or via the local tunnel client (which proxies
+ * through `127.0.0.1`); LAN or raw-IP access is denied even when the
+ * listener is bound to a non-loopback interface.
+ *
+ * Pairs with the platform entrypoints' loopback-only bind
+ * (`isLoopbackBindHost`) and the per-handler
+ * `requestOriginFromHttpRequest` checks, so a forged `Host` from a
+ * non-loopback peer can never steer the origin a handler echoes. Sits
+ * inside {@link accessLogMiddleware} so rejected peers are still logged.
+ */
+const loopbackGateMiddleware = HttpMiddleware.make((app) =>
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest
+    const remoteAddress = Option.getOrUndefined(request.remoteAddress)
+    if (isLoopbackPeer(remoteAddress)) {
+      return yield* app
+    }
+    yield* Effect.logWarning(
+      `[http] rejected non-loopback peer (remoteAddress=${String(remoteAddress)})`
+    )
+    return HttpServerResponse.text('Forbidden', {
+      status: 403,
+      contentType: 'text/plain; charset=utf-8',
+    })
+  })
+)
+
+const middleware = HttpMiddleware.make((app) =>
+  pipe(app, corsMiddleware, stripCookiesMiddleware, loopbackGateMiddleware, accessLogMiddleware)
+)
 
 // The apps slice exposes two HttpApis: `AppsApi` (public — `ListApps`
 // + `LaunchApp`, reachable by embedded webviews / iframes without a
@@ -133,5 +200,5 @@ const WildflowerServerLive = HttpApiBuilder.serve(middleware).pipe(
   )
 )
 
-export { WildflowerHttpApi, WildflowerServerLive }
+export { WildflowerHttpApi, WildflowerServerLive, loopbackGateMiddleware }
 export { WebAssetsDir } from './static-spa.ts'

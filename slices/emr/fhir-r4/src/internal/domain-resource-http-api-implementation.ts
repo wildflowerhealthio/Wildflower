@@ -9,7 +9,7 @@ import type { Queryable, State } from '@livestore/livestore'
 import { Effect, type Layer, Schema } from 'effect'
 import { EmrStore } from 'emr-core/livestore'
 import { Bundle as StoreBundle } from 'emr-core/schemas'
-import { Origin } from 'navigation-core'
+import { type Origin, requestOriginFromHttpRequest } from 'navigation-core'
 
 import { withMandatoryId } from '../data-types/with-mandatory-id.ts'
 import { FhirResourcesApiPrefix } from '../http-api-definition/index.ts'
@@ -182,7 +182,7 @@ export function makeDomainResourceHandlerLayer<
   > =>
     Effect.gen(function* () {
       const req = yield* HttpServerRequest.HttpServerRequest
-      const origin = yield* Origin.get
+      const origin = yield* requestOriginFromHttpRequest
       const requestUrl = new URL(req.url, origin)
       const where = searchBindings.buildWhere(params)
       const requestedCount = params._count ?? DEFAULT_PAGE_SIZE
@@ -288,7 +288,7 @@ export function makeDomainResourceHandlerLayer<
         const limit = urlParams._count
         return Effect.gen(function* () {
           const req = yield* HttpServerRequest.HttpServerRequest
-          const origin = yield* Origin.get
+          const origin = yield* requestOriginFromHttpRequest
           const requestUrl = new URL(req.url, origin)
           const store = yield* EmrStore
           const primary = yield* Effect.try({

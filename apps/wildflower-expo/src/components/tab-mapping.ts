@@ -1,4 +1,4 @@
-type TabKey = 'apps' | 'collector' | 'settings'
+type TabKey = 'home' | 'collector' | 'settings'
 
 interface TabSpec {
   readonly key: TabKey
@@ -12,7 +12,7 @@ interface TabSpec {
  * Pathnames that don't match any tab return `null` from {@link tabForPath}.
  */
 const TABS: ReadonlyArray<TabSpec> = [
-  { key: 'apps', label: 'Apps', path: '/apps' },
+  { key: 'home', label: 'Home', path: '/home' },
   { key: 'collector', label: 'Collector', path: '/collector' },
   { key: 'settings', label: 'Settings', path: '/settings' },
 ]

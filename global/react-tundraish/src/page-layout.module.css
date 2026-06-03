@@ -1,5 +1,7 @@
 .page {
+  box-sizing: border-box;
   max-width: 720px;
+  width: 100%;
   margin: 0 auto;
   padding: var(--space-5);
   display: flex;

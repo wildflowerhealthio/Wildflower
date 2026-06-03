@@ -1,4 +1,4 @@
-import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
+import { HttpApiEndpoint, HttpApiError, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
 
 // Per the SMART App Launch IG (https://hl7.org/fhir/smart-app-launch/conformance.html#metadata)
@@ -29,9 +29,9 @@ const SmartConfigurationSchema = Schema.Struct({
 
 const httpApiGroup = HttpApiGroup.make('smart-well-known', { topLevel: false })
   .add(
-    HttpApiEndpoint.get('SmartConfiguration', '/smart-configuration').addSuccess(
-      SmartConfigurationSchema
-    )
+    HttpApiEndpoint.get('SmartConfiguration', '/smart-configuration')
+      .addSuccess(SmartConfigurationSchema)
+      .addError(HttpApiError.Forbidden)
   )
   .prefix('/.well-known')
 

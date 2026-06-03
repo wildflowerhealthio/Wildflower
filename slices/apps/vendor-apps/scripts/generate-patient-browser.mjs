@@ -77,10 +77,21 @@ for (const file of files) {
 }
 
 const defaultConfigSource = readFileSync(DEFAULT_CONFIG_SOURCE, 'utf8')
-const defaultConfigBody = defaultConfigSource.replace(
-  /url:\s*"https:\/\/r4\.smarthealthit\.org"/,
-  `url: ${JSON.stringify(DEFAULT_CONFIG_SERVER_URL)}`
-)
+const URL_RE = /url:\s*"https:\/\/r4\.smarthealthit\.org"/
+const TIMEOUT_RE = /timeout:\s*20000,/
+if (!URL_RE.test(defaultConfigSource)) {
+  throw new Error(
+    `generate-patient-browser: url replace did not match in ${DEFAULT_CONFIG_SOURCE} — upstream config format changed`
+  )
+}
+if (!TIMEOUT_RE.test(defaultConfigSource)) {
+  throw new Error(
+    `generate-patient-browser: timeout replace did not match in ${DEFAULT_CONFIG_SOURCE} — upstream config format changed`
+  )
+}
+const defaultConfigBody = defaultConfigSource
+  .replace(URL_RE, `url: ${JSON.stringify(DEFAULT_CONFIG_SERVER_URL)}`)
+  .replace(TIMEOUT_RE, 'timeout: 600000,')
 const defaultConfigBytes = Buffer.from(defaultConfigBody, 'utf8')
 entries.push({
   path: DEFAULT_CONFIG_PATH,

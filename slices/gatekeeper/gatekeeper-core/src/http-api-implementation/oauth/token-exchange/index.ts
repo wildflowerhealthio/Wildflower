@@ -1,3 +1,4 @@
+import type { HttpServerRequest } from '@effect/platform'
 import type { Effect, Schema } from 'effect'
 import type { Origin } from 'navigation-core'
 import type {
@@ -17,7 +18,7 @@ const handleTokenExchange = (
 ): Effect.Effect<
   TokenResponse,
   OAuthError400 | OAuthError401 | OAuthError500,
-  GatekeeperStore | Origin
+  GatekeeperStore | Origin | HttpServerRequest.HttpServerRequest
 > => {
   if (payload.grant_type === 'urn:ietf:params:oauth:grant-type:device_code') {
     return handleDeviceCodeTokenExchange(payload)

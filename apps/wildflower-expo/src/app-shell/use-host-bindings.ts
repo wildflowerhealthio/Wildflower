@@ -41,7 +41,7 @@ const useNavigationHostBinding = (
         Effect.sync(() => {
           navigationSenderRef.current = send
         }),
-      initialRoute: '/apps',
+      initialRoute: '/home',
     }
   }, [onRouteChanged, onUiReady, navigationSenderRef])
 

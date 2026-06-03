@@ -464,7 +464,7 @@ test('token exchange succeeds with valid form payload', async () => {
     const decoded = jose.decodeJwt(body.access_token)
     expect(decoded.iss).toBe('http://localhost:8787')
     expect(decoded.sub).toBe('client-1')
-    expect(decoded.aud).toBe('http://localhost:8787/fhir')
+    expect(decoded.aud).toBe('http://localhost:8787/fhir-r4')
     expect(decoded['scope']).toBe('patient/*.read')
     expect(decoded['patient']).toBe('patient-123')
     expect(typeof decoded.iat).toBe('number')

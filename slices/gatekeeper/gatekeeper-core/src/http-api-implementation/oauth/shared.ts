@@ -1,6 +1,8 @@
+import type { HttpServerRequest } from '@effect/platform'
 import { Duration, Effect, type Schema } from 'effect'
 import { UnknownException } from 'effect/Cause'
-import { Origin } from 'navigation-core'
+import type { Origin } from 'navigation-core'
+import { requestOriginFromHttpRequest } from 'navigation-core'
 import {
   type OAuthError400Schema,
   OAuthError401Schema,
@@ -113,19 +115,34 @@ const pickSigningKeyForMint = (): Effect.Effect<SigningKey.Type, OAuthError500, 
     return chosen
   })
 
+/**
+ * Mint an OAuth access token response.
+ *
+ * **Origin policy:** `iss` and `aud` are derived from
+ * `requestOriginFromHttpRequest` — the URL the *caller used to reach
+ * this server* (trust-gated; see `requestOriginFromConnection`). Pairs
+ * with the verifier (`verifyJwt`) using the same per-request
+ * derivation, so a token minted from a loopback POST only validates on
+ * loopback, and a token minted from a tunnel POST only validates over
+ * the tunnel.
+ */
 const issueTokenResponse = (input: {
   clientId: string
   grantedScopes: ReadonlyArray<string>
   patient: string | null
-}): Effect.Effect<TokenResponse, OAuthError500, GatekeeperStore | Origin> =>
+}): Effect.Effect<
+  TokenResponse,
+  OAuthError500,
+  GatekeeperStore | Origin | HttpServerRequest.HttpServerRequest
+> =>
   Effect.gen(function* () {
     const signingKey = yield* pickSigningKeyForMint()
-    const origin = yield* Origin.get
+    const origin = yield* requestOriginFromHttpRequest
     const signed = yield* mintAccessToken(signingKey, origin, {
       clientId: input.clientId,
       scope: input.grantedScopes,
       ttl: ACCESS_TOKEN_TTL,
-      audience: `${origin}/fhir`,
+      audience: `${origin}/fhir-r4`,
       patient: input.patient,
     }).pipe(
       Effect.mapError(() =>

@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useRouteContext } from '@tanstack/react-router'
 import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { useState } from 'react'
@@ -13,6 +13,7 @@ import {
   useRevokeGrantMutation,
   type Grant,
 } from '../../../queries/index.ts'
+import type { RouterContext } from '../../../router-context.ts'
 
 interface AccessIndexBodyProps {
   readonly grants: readonly Grant[]
@@ -94,6 +95,20 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
         />
       ) : null}
 
+      <ItemList
+        title="Devices"
+        items={[
+          {
+            id: 'devices',
+            title: 'Authorize a Device',
+            subtitle: 'Enter a code to authorize a device',
+            onClick: () => {
+              void navigate({ to: '/gatekeeper/devices' })
+            },
+          },
+        ]}
+      />
+
       <RevokeGrantDialog
         clientId={grantToRevoke?.clientId ?? null}
         onConfirm={() => {
@@ -112,6 +127,35 @@ const AccessIndexScreen = (): JSX.Element => {
   return <AccessIndexBody grants={grants} />
 }
 
+interface AccessIndexErrorViewProps {
+  readonly error: unknown
+  readonly reset: () => void
+}
+
+/**
+ * The route's `errorComponent`. The Retry button must do more than `reset`
+ * (which only clears the `CatchBoundary`'s local error state): it explicitly
+ * invalidates the grants query so the suspense query re-runs its `queryFn`
+ * instead of replaying the cached rejection. The grants key is derived from
+ * `grantsQueryOptions` so it can't drift from what the loader / `useGrantsQuery`
+ * read. The annotated `select` keeps the context typed in the standalone
+ * (router-not-registered) build — no cast.
+ */
+export const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps): JSX.Element => {
+  const { queryClient, runAuthed } = useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => ({
+      queryClient: context.queryClient,
+      runAuthed: context.runAuthed,
+    }),
+  })
+  const retry = (): void => {
+    void queryClient.invalidateQueries({ queryKey: grantsQueryOptions(runAuthed).queryKey })
+    reset()
+  }
+  return <AsyncErrorView error={error} retry={retry} title="Gatekeeper" />
+}
+
 /**
  * The `/settings/gatekeeper/` landing file route — the owner-facing access
  * management index.
@@ -124,5 +168,5 @@ export const Route = createFileRoute('/settings/gatekeeper/')({
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(grantsQueryOptions(context.runAuthed)),
   component: AccessIndexScreen,
-  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Gatekeeper" />,
+  errorComponent: ({ error, reset }) => <AccessIndexErrorView error={error} reset={reset} />,
 })

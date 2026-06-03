@@ -1,3 +1,4 @@
+import type { HttpServerRequest } from '@effect/platform'
 import { HttpServerResponse } from '@effect/platform'
 import { Array, DateTime, Duration, Effect, pipe, type Schema } from 'effect'
 import { CryptoRandom } from 'kitchen-sink/crypto-random'
@@ -208,7 +209,7 @@ const handleAuthorize = (
 ): Effect.Effect<
   HttpServerResponse.HttpServerResponse,
   never,
-  GatekeeperStore | Origin | CryptoRandom
+  GatekeeperStore | Origin | CryptoRandom | HttpServerRequest.HttpServerRequest
 > =>
   pipe(
     Effect.gen(function* () {

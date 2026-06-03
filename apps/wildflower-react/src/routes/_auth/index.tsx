@@ -11,8 +11,8 @@ function HomePage(): JSX.Element {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
       <h1>Home</h1>
 
-      <Link to="/apps">
-        <h2>Apps</h2>
+      <Link to="/home">
+        <h2>Home</h2>
       </Link>
 
       <Link to="/collector">

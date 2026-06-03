@@ -13,7 +13,8 @@ import { mintHostOwnerToken, seedFirstPartyClient, seedSigningKey } from 'gateke
 import { GatekeeperStore, LocalClientToken } from 'gatekeeper-core/livestore'
 import { type CryptoRandom, cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { runHttpServerDaemon } from 'local-http-server-core/daemon'
-import { LocalHttpServerStore } from 'local-http-server-core/livestore'
+import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
+import { isLoopbackBindHost } from 'navigation-core'
 import { injectActiveOtelContext, reactNativeTelemetryLayerFromEnv } from 'telemetry-react-native'
 import { OriginFromTunnelStore } from 'tunnel-core/contexts'
 import { TunnelStore } from 'tunnel-core/livestore'
@@ -111,12 +112,41 @@ const HttpServerContextLive = Layer.mergeAll(
 
       // Mint the local-client bootstrap token. On Expo the device IS the
       // owner — there's no separate developer minting it via a dev log.
-      // `OriginFromTunnelStore` reads the live origin from
-      // `servedOrigin$` (tunnel URL when up, LHS-bound loopback otherwise);
-      // at boot the tunnel isn't running and LHS state is at clientDocument
-      // defaults so the JWT iss/aud is `http://127.0.0.1:8080`.
-      const token = yield* mintHostOwnerToken({ ttl: Duration.hours(24) }).pipe(
-        Effect.provide(OriginFromTunnelStore),
+      // Pinned to `http://127.0.0.1:<port>` (port read from `ServerState`,
+      // which the daemon binds against) regardless of the bind hostname:
+      // the verifier uses `requestOriginFromHttpRequest`, so a
+      // loopback-pinned token is only valid for callers that hit the
+      // device's loopback interface — leaked bootstrap tokens can't be
+      // used against the tunnel URL.
+      //
+      // Why we can pin the port *before* the listener binds: Expo's
+      // native HTTP server binds exactly the requested port and never
+      // reports an OS-assigned port back across the JS bridge — there is
+      // no `server.address()` equivalent, so the actually-bound port is
+      // unobservable after bind. (This is why the "defer the mint until
+      // after bind" idea is infeasible — there's nothing to read.)
+      // `ServerState.current$.port` is therefore the single source of
+      // truth for the bound port: `makeBindLive` binds it and we pin the
+      // token to it here, so the two agree by construction. The only way
+      // this breaks is an ephemeral request port (0) — the real port
+      // would then be unknowable and the token audience would silently
+      // mismatch every caller. Fail loud instead of minting a token
+      // nobody can use.
+      const serverPort = store.query(ServerState.queries.current$).port
+      if (serverPort <= 0) {
+        return yield* Effect.die(
+          new Error(
+            `[wildflower-expo] bootstrap-origin mint requires a fixed, already-known bound port, ` +
+              `got ${serverPort}. Expo does not report OS-assigned ports, so an ephemeral (0) ` +
+              `port cannot be pinned into the loopback token audience.`
+          )
+        )
+      }
+      const bootstrapOrigin = `http://127.0.0.1:${serverPort}`
+      const token = yield* mintHostOwnerToken({
+        origin: bootstrapOrigin,
+        ttl: Duration.hours(24),
+      }).pipe(
         Effect.catchAllCause((cause) =>
           Effect.as(Effect.logError('Local client token unavailable.', Cause.pretty(cause)), null)
         )
@@ -234,6 +264,13 @@ const HttpServerDaemonLive: Layer.Layer<never, PlatformError.PlatformError, Wild
       }): Stream.Stream<void, never, Scope.Scope> =>
         Stream.unwrapScoped(
           Effect.gen(function* () {
+            // Bind-side half of the `loopbackGateMiddleware` peer check in
+            // `wildflower-server`: refuse to even open a non-loopback socket.
+            if (!isLoopbackBindHost(cfg.hostname)) {
+              return yield* Effect.dieMessage(
+                `Refusing to bind wildflower-expo HTTP server to non-loopback hostname=${cfg.hostname}; only loopback hosts (127.x, ::1, localhost) are permitted.`
+              )
+            }
             // Bracket the listener bind so the shutdown trace makes it
             // obvious when the HTTP listener actually goes away. Finalizers
             // run LIFO, so the "released" finalizer is registered *before*

@@ -38,6 +38,7 @@ export function buildDomainResourceHttpApiGroup<
         .setUrlParams(searchParamsSchema)
         .addSuccess(Bundle.Schema(fhirSchemaWithId))
         .addError(HttpApiError.ServiceUnavailable)
+        .addError(HttpApiError.Forbidden)
     )
     .add(
       HttpApiEndpoint.post('Create', `/`)
@@ -64,6 +65,7 @@ export function buildDomainResourceHttpApiGroup<
         .setPayload(formPayloadSchema)
         .addSuccess(Bundle.Schema(fhirSchemaWithId))
         .addError(HttpApiError.ServiceUnavailable)
+        .addError(HttpApiError.Forbidden)
     )
     .add(
       HttpApiEndpoint.get('Everything', `/:id/$everything`)
@@ -72,6 +74,7 @@ export function buildDomainResourceHttpApiGroup<
         .addSuccess(Bundle.Schema(Schema.Any))
         .addError(HttpApiError.NotFound)
         .addError(HttpApiError.ServiceUnavailable)
+        .addError(HttpApiError.Forbidden)
     )
     .prefix(`/${resourceType}`)
 }
