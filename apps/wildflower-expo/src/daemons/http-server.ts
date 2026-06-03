@@ -117,7 +117,30 @@ const HttpServerContextLive = Layer.mergeAll(
       // loopback-pinned token is only valid for callers that hit the
       // device's loopback interface — leaked bootstrap tokens can't be
       // used against the tunnel URL.
+      //
+      // Why we can pin the port *before* the listener binds: Expo's
+      // native HTTP server binds exactly the requested port and never
+      // reports an OS-assigned port back across the JS bridge — there is
+      // no `server.address()` equivalent, so the actually-bound port is
+      // unobservable after bind. (This is why the "defer the mint until
+      // after bind" idea is infeasible — there's nothing to read.)
+      // `ServerState.current$.port` is therefore the single source of
+      // truth for the bound port: `makeBindLive` binds it and we pin the
+      // token to it here, so the two agree by construction. The only way
+      // this breaks is an ephemeral request port (0) — the real port
+      // would then be unknowable and the token audience would silently
+      // mismatch every caller. Fail loud instead of minting a token
+      // nobody can use.
       const serverPort = store.query(ServerState.queries.current$).port
+      if (serverPort <= 0) {
+        return yield* Effect.die(
+          new Error(
+            `[wildflower-expo] bootstrap-origin mint requires a fixed, already-known bound port, ` +
+              `got ${serverPort}. Expo does not report OS-assigned ports, so an ephemeral (0) ` +
+              `port cannot be pinned into the loopback token audience.`
+          )
+        )
+      }
       const bootstrapOrigin = `http://127.0.0.1:${serverPort}`
       const token = yield* mintHostOwnerToken({
         origin: bootstrapOrigin,
