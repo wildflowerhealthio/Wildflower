@@ -1,4 +1,4 @@
-import { Deferred, Effect, Layer } from 'effect'
+import { Deferred, Effect, Layer, Queue, Stream } from 'effect'
 import {
   type BareSenderFunction,
   type Bridge,
@@ -40,13 +40,16 @@ interface BridgedWebViewProps<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
    * (one slice) or `HostBindings.combine(...)` (many slices).
    *
    * **Stable identity required.** The transport is rebuilt only when
-   * the `bindings.bridges` reference changes (so the dispatch fiber,
-   * the two queues, and each binding's `onTransportReady` re-fire). A
-   * `bindings.handlers` reference flip swaps the active handler records
-   * in place via `registerHandlers` — no rebuild. Pass a `useMemo`-ed
-   * value from the calling component (or a module-level constant) — a
-   * fresh literal rebuilds the transport on every render, which is
-   * almost never what you want.
+   * the `bindings.bridges` reference changes (so the dispatch fiber and
+   * the two queues are torn down and rebuilt). A `bindings.handlers`
+   * reference flip swaps the active handler records in place via
+   * `registerHandlers` — no rebuild. `bindings.onPageReady` is sampled
+   * fresh on every `__Ready` the host receives (see {@link HostBindings.callPageReady}),
+   * so token / route / state pushes ride the live transport across
+   * WebView reloads without remounting. Pass a `useMemo`-ed value from
+   * the calling component (or a module-level constant) — a fresh
+   * literal rebuilds the transport on every render, which is almost
+   * never what you want.
    */
   readonly bindings: HostBindings.HostBindings<Bridges>
   /**
@@ -103,9 +106,11 @@ interface BuiltTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  * host's native splash — so the page starts downloading immediately
  * while the bridge transport builds on a mount-bound fiber in parallel.
  * The built transport is stashed in a ref (nothing in render depends on
- * it), each binding's `onTransportReady` fires from the same build
- * fiber, and a `bindings.handlers` flip swaps the live handler records
- * through `registerHandlers` without a rebuild.
+ * it). Each binding's `onPageReady` fires inside the transport's inbound
+ * dispatcher every time the page posts `__Ready` (so the first load and
+ * every subsequent reload re-deliver each slice's initial-state push),
+ * and a `bindings.handlers` flip swaps the live handler records through
+ * `registerHandlers` without a rebuild.
  *
  * @remarks
  * There is no JS loader gate: the WebView is in the tree from the start.
@@ -159,6 +164,25 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
     bareSenderDeferredRef.current = Effect.runSync(Deferred.make<BareSenderFunction>())
   }
   const bareSenderDeferred = bareSenderDeferredRef.current
+
+  // Inbox-of-inbox for page→host messages. The `<WebView>` can fire its
+  // `onMessage` prop the moment the page is parsed, but the host
+  // transport (which owns the real inbox) is built later inside
+  // `buildEffect`'s forked fiber. Without an upstream buffer, the page's
+  // very first message — `__Ready` — drops with the
+  // `onMessage before transport built` warning, the gate stays closed
+  // forever, and every `HostToWeb` push (auth token, route, …) sits
+  // buffered with no peer to drain it. Buffering here means every
+  // page→host message is conserved regardless of build timing: the
+  // `onMessage` handler offers synchronously (`Queue.unbounded` never
+  // blocks on offer), the build fiber forks a single-consumer drain
+  // that forwards in FIFO order into `built.enqueue`, and a scoped
+  // finalizer shuts the queue down on unmount so any late offer no-ops.
+  const pendingQueueRef = useRef<Queue.Queue<string> | null>(null)
+  if (pendingQueueRef.current === null) {
+    pendingQueueRef.current = Effect.runSync(Queue.unbounded<string>())
+  }
+  const pendingQueue = pendingQueueRef.current
 
   const bareSenderRefCallback = useCallback(
     (bareSender: BareSenderFunction | null): void => {
@@ -214,12 +238,12 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
       Effect.gen(function* () {
         // Refresh the frozen-first-render snapshot at the top of every
         // build (initial mount AND every bridges rebuild) so the seeded
-        // `handlers`, the `onTransportReady` calls below, and the
-        // `registerHandlers` skip-check in the sibling `useEffect` all
-        // observe the *current* bindings — not the ones captured at
-        // first mount. Reading from the closure-captured `bindings`
-        // (refreshed by the `[bridges]` `useMemo` recompute) is the
-        // freshness contract; this assignment just propagates it.
+        // `handlers`, the `onPageReady` calls fired by the transport,
+        // and the `registerHandlers` skip-check in the sibling
+        // `useEffect` all observe the *current* bindings — not the ones
+        // captured at first mount. Reading from the closure-captured
+        // `bindings` (refreshed by the `[bridges]` `useMemo` recompute)
+        // is the freshness contract; this assignment just propagates it.
         yield* Effect.sync(() => {
           initialBindingsRef.current = bindings
         })
@@ -238,9 +262,18 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
           drainInitial: Effect.succeed([]),
         }
 
+        // Read off the frozen first-render snapshot inside `onPageReady`
+        // — `bindings` is stable for the lifetime of this build, but
+        // `bindings.onPageReady` is a fresh array per
+        // `HostBindings.combine` call upstream. Routing through the ref
+        // keeps the per-render closures honest *if* the consumer ever
+        // does flip onPageReady identity mid-life (today's bindings
+        // memoise their slot, but the transport guarantee shouldn't
+        // depend on that).
         const built = yield* BridgeTransport.makeHostTransport({
           bridges,
           handlers: bindings.handlers,
+          onPageReady: (send) => HostBindings.callPageReady(initialBindingsRef.current, send),
         }).pipe(Effect.provide(Layer.succeed(TransportAdapter, adapter)))
 
         yield* Effect.sync(() => {
@@ -251,13 +284,41 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
           }
         })
 
-        // Fire each binding's `onTransportReady` once the transport
-        // exists; the sender identity is stable for its lifetime, so a
-        // single firing (re-fired only on a bridges rebuild) is correct.
-        yield* HostBindings.callTransportReady(bindings, built.sendMessage)
+        // Diagnostic: surface how many messages were buffered before
+        // the transport caught up, so the boot timeline is visible in
+        // logs without resorting to a debugger. Zero is the steady
+        // state once the build is fast enough; a non-zero count tells
+        // us the `__Ready` (and anything behind it) arrived early and
+        // is about to drain into the dispatcher.
+        const initialBuffered = yield* Queue.size(pendingQueue)
+        if (initialBuffered > 0) {
+          yield* Effect.logInfo(
+            `[effect-messaging] BridgedWebView transport built; draining ${initialBuffered} pre-build page→host message(s) into inbox`
+          )
+        }
+
+        // Single-consumer drain: forwards every queued page→host raw
+        // string into the transport's inbox. Forked into the build
+        // scope so it's interrupted on scope close. The queue itself
+        // intentionally outlives this scope — if `bindings.bridges`
+        // ever changes (against this component's stable-identity
+        // contract), the old scope's interrupt would stop this drain
+        // and the new `buildEffect` would fork a fresh one against
+        // the same queue, so in-flight pre-build offers survive a
+        // transport rebuild. The queue is held in a `useRef` slot and
+        // GC'd with the component; `Queue.unbounded` holds no
+        // off-heap resources, so there's nothing to release on unmount
+        // beyond memory.
+        yield* Effect.forkScoped(
+          Stream.runForEach(Stream.fromQueue(pendingQueue), (raw) => built.enqueue(raw))
+        )
 
         // Park until `useComponentScopedRunner`'s cleanup interrupts —
         // closing the scope tears down both queues and both fibers.
+        // The transport fires every binding's `onPageReady` itself,
+        // synchronously inside its `__Ready` control handler, so the
+        // first page load and every subsequent reload re-deliver each
+        // slice's initial-state push without anything to drive from here.
         yield* Effect.never
       }).pipe(
         Effect.scoped,
@@ -314,23 +375,19 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
       source={source}
       onMessage={(event): void => {
         // `react-native-webview`'s `onMessage` is a synchronous `void`
-        // callback. `transport.onMessage` returns the inbox `offer`
-        // Effect; running it inline as a value would construct and drop
-        // it, silently losing every page→host message including the
-        // `__Ready` handshake. A detached fork suffices (the inbox is
-        // unbounded). The transport is built well before the page can
-        // post (its bundle has to load first), so the null branch is a
-        // loud guard rather than an expected path.
-        const transport = transportRef.current
-        if (transport === null) {
-          Effect.runFork(
-            Effect.logWarning(
-              `[effect-messaging] onMessage before transport built; dropping "${event.nativeEvent.data}".`
-            )
-          )
-          return
-        }
-        Effect.runFork(transport.onMessage(event.nativeEvent.data))
+        // callback. Offer to the upstream buffer queue rather than
+        // straight to `transportRef.current.onMessage` — the WebView
+        // can fire this callback before the build fiber has finished
+        // constructing the transport, and dropping `__Ready` there
+        // silently breaks the entire handshake. The drain stream
+        // forked at the end of `buildEffect` is the single FIFO
+        // consumer that forwards every offer into the transport's
+        // inbox; pre-build offers stack until the transport exists.
+        // `Queue.unbounded`'s `offer` never suspends and `runSync`
+        // evaluates it inline; post-shutdown offers return `false` and
+        // no-op rather than throw, so a race with scope teardown is
+        // safe.
+        Effect.runSync(Queue.offer(pendingQueue, event.nativeEvent.data))
       }}
       shouldOpenInSystemBrowser={shouldOpenInSystemBrowser}
       injectedJavaScriptBeforeContentLoaded={injectedJavaScriptBeforeContentLoaded}

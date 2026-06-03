@@ -51,7 +51,7 @@ describe('BridgedWebView (integration)', () => {
       handlers: {
         Pong: ({ reply }) => Effect.sync(() => pongCalls.push({ reply })),
       },
-      onTransportReady: (send) =>
+      onPageReady: (send) =>
         Effect.sync(() => {
           capturedSend = send
         }),
@@ -85,20 +85,37 @@ describe('BridgedWebView (integration)', () => {
     expect(mockWebViewState.props?.source?.baseUrl).toBe('https://app.test/')
   })
 
-  it("fires each binding's `onTransportReady` with the host-side sender", async () => {
-    // `BridgedWebView`'s `useEffect` (transport-ready branch) forks
-    // each binding's `onTransportReady` once the transport is
-    // non-null; ours captures the host sender.
+  it("fires each binding's `onPageReady` with the host-side sender once `__Ready` arrives", async () => {
+    // `BridgedWebView` wires `HostBindings.callPageReady` into the host
+    // transport's `onPageReady` config; the transport's `__Ready`
+    // control handler then runs each slot once per `__Ready` it
+    // receives. Until the page posts `__Ready`, the callback hasn't
+    // fired and `capturedSend` is still `null` — pre-handshake quiet
+    // is the load-bearing half of the contract.
+    expect(capturedSend).toBeNull()
+
+    const onMessage = mockWebViewState.props?.onMessage
+    if (onMessage === undefined) throw new Error('onMessage prop not captured')
+    act(() => {
+      onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } })
+    })
+
     await waitFor(() => {
       expect(capturedSend).not.toBeNull()
     })
   })
 
-  it('forwards Host → Page Ping to the WebView only after `__Ready` arrives', async () => {
-    await waitFor(() => {
-      expect(capturedSend).not.toBeNull()
-    })
+  // The N-fire (page reload re-delivery) contract is verified at the
+  // transport level in `bridge-transport.test.ts` — the
+  // `BridgedWebView` wiring just passes a `(send) => callPageReady(...)`
+  // wrapper through to `makeHostTransport`, so the single-fire test
+  // above is the necessary and sufficient surface coverage at this
+  // level. Re-checking the N-fire contract through the WebView mock
+  // would also race the transport-build useEffect against the first
+  // synthetic `__Ready` (the mock has no observable for "transport
+  // built"), adding noise without coverage.
 
+  it('forwards Host → Page Ping to the WebView only after `__Ready` arrives', async () => {
     // The production wiring previously passed `transport.onMessage`
     // (which returns an Effect) straight into react-native-webview's
     // sync `void` callback; every Effect was constructed and
@@ -109,6 +126,10 @@ describe('BridgedWebView (integration)', () => {
     if (onMessage === undefined) throw new Error('onMessage prop not captured')
     act(() => {
       onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } })
+    })
+
+    await waitFor(() => {
+      expect(capturedSend).not.toBeNull()
     })
 
     await act(async () => {
@@ -126,61 +147,31 @@ describe('BridgedWebView (integration)', () => {
     })
   })
 
-  it('buffers host sends issued before `__Ready` in the outbox and flushes them in order once `__Ready` arrives', async () => {
-    // Pins the new outbox-buffering contract: a host->page send issued
-    // before the page posts `__Ready` is parked in the transport's
-    // outbox (not forwarded, not dropped) and replayed in arrival order
-    // once the handshake completes. The previous "warn and drop"
-    // behaviour was deleted; this test is its positive counterpart.
-    await waitFor(() => {
-      expect(capturedSend).not.toBeNull()
-    })
-
-    const onMessage = mockWebViewState.props?.onMessage
-    if (onMessage === undefined) throw new Error('onMessage prop not captured')
-
-    // Fire two sends BEFORE `__Ready` arrives. `sendMessage` returns an
-    // Effect that suspends on the `peerReady` gate inside the outbox
-    // pump; `Effect.runFork` detaches it so the assertions below can run
-    // without awaiting. Order is preserved by the outbox queue, so we
-    // also pin first-in-first-out on flush.
-    await act(async () => {
-      const send = capturedSend
-      if (send === null) throw new Error('capturedSend not set')
-      Effect.runFork(send({ _tag: 'Ping', value: 'first' }))
-      Effect.runFork(send({ _tag: 'Ping', value: 'second' }))
-    })
-
-    // Nothing forwarded yet — the outbox pump is parked on `peerReady`.
-    expect(mockWebViewState.postMessageCalls).toEqual([])
-
-    // Deliver `__Ready` to release the gate; the outbox pump drains the
-    // two parked sends to the WebView's `postMessage` in order.
-    act(() => {
-      onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } })
-    })
-
-    await waitFor(() => {
-      expect(mockWebViewState.postMessageCalls).toEqual([
-        JSON.stringify({ _tag: 'Ping', value: 'first' }),
-        JSON.stringify({ _tag: 'Ping', value: 'second' }),
-      ])
-    })
-  })
+  // The pre-`__Ready` buffering contract used to be tested here by
+  // calling the captured sender before delivering `__Ready` — but the
+  // binding's `onPageReady` now fires *inside* the transport's
+  // `__Ready` control handler, so the sender doesn't reach the test
+  // until after the gate has opened. The same contract is pinned
+  // directly at the transport level in
+  // `bridge-transport.test.ts`'s "Host sends buffer in the outbox
+  // until __Ready, then flush in order" — that's the narrow unit for
+  // the outbox / `peerReady` interaction, and duplicating it here
+  // through `BridgedWebView`'s extra layer of mocks adds no coverage.
 
   it("decodes Page → Host Pong and invokes the binding's handler record", async () => {
-    await waitFor(() => {
-      expect(capturedSend).not.toBeNull()
-    })
-
     const onMessage = mockWebViewState.props?.onMessage
     if (onMessage === undefined) throw new Error('onMessage prop not captured')
 
-    // Page emits __Ready first to mirror the real handshake order
-    // (the receiver path doesn't gate on it, but the production flow
-    // always sees __Ready before any typed payload).
+    // Page emits __Ready first to mirror the real handshake order;
+    // this is also what populates `capturedSend` (the binding's
+    // `onPageReady` is now what runs that capture, and it lives
+    // inside the transport's `__Ready` control handler).
     act(() => {
       onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } })
+    })
+
+    await waitFor(() => {
+      expect(capturedSend).not.toBeNull()
     })
 
     act(() => {
@@ -374,7 +365,7 @@ describe('BridgedWebView (multi-binding combine)', () => {
     resetMockWebView()
   })
 
-  it('fires each binding onTransportReady with its own narrowly-typed sender, and routes each page message to the correct handler record', async () => {
+  it('fires each binding onPageReady with its own narrowly-typed sender, and routes each page message to the correct handler record', async () => {
     const fooReplies: Array<{ reply: string }> = []
     const barReplies: Array<{ count: number }> = []
     let fooSend: FooSend | null = null
@@ -385,7 +376,7 @@ describe('BridgedWebView (multi-binding combine)', () => {
       handlers: {
         FooReply: ({ reply }) => Effect.sync(() => fooReplies.push({ reply })),
       },
-      onTransportReady: (send) =>
+      onPageReady: (send) =>
         Effect.sync(() => {
           fooSend = send
         }),
@@ -396,7 +387,7 @@ describe('BridgedWebView (multi-binding combine)', () => {
       handlers: {
         BarReply: ({ count }) => Effect.sync(() => barReplies.push({ count })),
       },
-      onTransportReady: (send) =>
+      onPageReady: (send) =>
         Effect.sync(() => {
           barSend = send
         }),
@@ -419,18 +410,20 @@ describe('BridgedWebView (multi-binding combine)', () => {
       expect(mockWebViewState.props).not.toBeNull()
     })
 
-    // Both senders were captured — `onTransportReady` fired for both
-    // slots, not just one.
-    await waitFor(() => {
-      expect(fooSend).not.toBeNull()
-      expect(barSend).not.toBeNull()
-    })
-
-    // Deliver `__Ready` so the gated dispatch fiber unblocks.
+    // Deliver `__Ready` so the gated dispatch fiber unblocks AND each
+    // binding's `onPageReady` callback runs (sender capture is now
+    // post-handshake — see {@link callPageReady}).
     const onMessage = mockWebViewState.props?.onMessage
     if (onMessage === undefined) throw new Error('onMessage prop not captured')
     act(() => {
       onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } })
+    })
+
+    // Both senders were captured — `onPageReady` fired for both slots,
+    // not just one, once `__Ready` landed.
+    await waitFor(() => {
+      expect(fooSend).not.toBeNull()
+      expect(barSend).not.toBeNull()
     })
 
     // Each per-binding sender, narrowly typed to its own bridge, routes
@@ -467,6 +460,130 @@ describe('BridgedWebView (multi-binding combine)', () => {
     await waitFor(() => {
       expect(fooReplies).toEqual([{ reply: 'pong-foo' }])
       expect(barReplies).toEqual([{ count: 42 }])
+    })
+  })
+})
+
+describe('BridgedWebView (pre-build buffering)', () => {
+  beforeEach(() => {
+    resetMockWebView()
+  })
+
+  it('buffers a `__Ready` posted before the transport finishes building and dispatches it once the drain fiber starts', async () => {
+    // Real-device regression guard (see the
+    // "BridgedWebView bareSender ref re-attached after first resolve;
+    //  ... onMessage before transport built; dropping `__Ready`" sequence
+    // from the iOS app logs). The `<WebView>` mounts and the page can
+    // post `__Ready` *before* `buildEffect`'s forked fiber has had a
+    // chance to construct the host transport — without a buffer the
+    // single `__Ready` the page ever posts is silently dropped and the
+    // gate stays closed for the rest of the WebView's lifetime.
+    //
+    // `mockWebViewState.props` is captured synchronously inside the
+    // mock WebView's render, so it's populated as soon as `render()`
+    // returns; React doesn't run the transport-building effect until
+    // the next microtask. Firing `onMessage(__Ready)` here lands the
+    // message in the pre-build window every time. With the buffer in
+    // place, the drain fiber forwards it into the transport's inbox as
+    // soon as the build finishes; `capturedSend` going non-null is the
+    // observable signal that `onPageReady` fired downstream of the
+    // dispatcher, which in turn proves `__Ready` was conserved.
+    let capturedSend: PingPongSend | null = null
+    const bindings = HostBindings.single({
+      bridge: PingPongBridge,
+      handlers: {
+        Pong: () => Effect.void,
+      },
+      onPageReady: (send) =>
+        Effect.sync(() => {
+          capturedSend = send
+        }),
+    })
+
+    render(
+      <BridgedWebView
+        bindings={bindings}
+        loadFrom={{
+          _tag: 'html',
+          html: '<!doctype html><html></html>',
+          baseUrl: 'https://app.test/prebuild',
+        }}
+      />
+    )
+
+    // Fire `__Ready` SYNCHRONOUSLY after `render()` returns — before
+    // the build-effect microtask runs. `act()` is intentionally not
+    // wrapped around an `await` so the buildEffect doesn't get a
+    // chance to start before the offer lands in the queue.
+    const onMessage = mockWebViewState.props?.onMessage
+    if (onMessage === undefined) throw new Error('onMessage prop not captured')
+    onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } })
+
+    // Now yield: buildEffect runs, transport builds, drain fiber pulls
+    // the buffered `__Ready` and forwards it into the inbox, the
+    // dispatcher's `__Ready` control handler resolves `peerReady` and
+    // invokes the binding's `onPageReady`.
+    await waitFor(() => {
+      expect(capturedSend).not.toBeNull()
+    })
+  })
+
+  it('preserves arrival order across the build boundary (pre-build offers drain before post-build offers)', async () => {
+    // Stronger contract: the drain fiber is a single FIFO consumer, so
+    // every page→host message hits the transport's inbox in the order
+    // it was posted, regardless of which side of the build boundary it
+    // landed on. Mixed timing is the realistic case — `__Ready` lands
+    // pre-build, the first payload may straddle the build completion,
+    // and steady-state payloads land post-build.
+    const inboundSequence: Array<{ readonly reply: string }> = []
+    const bindings = HostBindings.single({
+      bridge: PingPongBridge,
+      handlers: {
+        Pong: ({ reply }) => Effect.sync(() => inboundSequence.push({ reply })),
+      },
+      onPageReady: () => Effect.void,
+    })
+
+    render(
+      <BridgedWebView
+        bindings={bindings}
+        loadFrom={{
+          _tag: 'html',
+          html: '<!doctype html><html></html>',
+          baseUrl: 'https://app.test/prebuild-order',
+        }}
+      />
+    )
+
+    const onMessage = mockWebViewState.props?.onMessage
+    if (onMessage === undefined) throw new Error('onMessage prop not captured')
+
+    // Three pre-build payloads — none of these should be observable
+    // until the dispatcher catches up.
+    onMessage({ nativeEvent: { data: '{"_tag":"__Ready"}' } })
+    onMessage({
+      nativeEvent: { data: JSON.stringify({ _tag: 'Pong', reply: 'pre-1' }) },
+    })
+    onMessage({
+      nativeEvent: { data: JSON.stringify({ _tag: 'Pong', reply: 'pre-2' }) },
+    })
+
+    // Wait for the pre-build payloads to land. waitFor is what gives
+    // the React commit + buildEffect microtask a chance to run.
+    await waitFor(() => {
+      expect(inboundSequence.map((p) => p.reply)).toEqual(['pre-1', 'pre-2'])
+    })
+
+    // A post-build payload should land after the pre-build ones,
+    // proving the single drain consumer preserves FIFO across the
+    // build transition.
+    act(() => {
+      onMessage({
+        nativeEvent: { data: JSON.stringify({ _tag: 'Pong', reply: 'post-3' }) },
+      })
+    })
+    await waitFor(() => {
+      expect(inboundSequence.map((p) => p.reply)).toEqual(['pre-1', 'pre-2', 'post-3'])
     })
   })
 })
