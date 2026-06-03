@@ -102,44 +102,53 @@ export function makeDomainResourceHandlerLayer<
   ): Effect.Effect<Schema.Schema.Type<typeof bundleSchema>, HttpApiError.ServiceUnavailable> =>
     Effect.try({
       try: () =>
-        bundleSchema.make({
-          resourceType: 'Bundle',
-          id: null,
-          meta: null,
-          implicitRules: null,
-          language: null,
-          type: 'searchset',
-          identifier: null,
-          link: link.map((l) => ({
+        bundleSchema.make(
+          {
+            resourceType: 'Bundle',
             id: null,
-            extension: [],
-            modifierExtension: [],
-            relation: l.relation,
-            url: l.url,
-          })),
-          signature: null,
-          timestamp: null,
-          total,
-          entry: resources.map((resource) =>
-            bundleEntrySchema.make({
+            meta: null,
+            implicitRules: null,
+            language: null,
+            type: 'searchset',
+            identifier: null,
+            link: link.map((l) => ({
               id: null,
               extension: [],
               modifierExtension: [],
-              fullUrl: resourceFullUrl(origin, resource.resourceType, resource.id),
-              link: [],
-              request: null,
-              resource: resource,
-              response: null,
-              search: {
-                id: null,
-                extension: [],
-                modifierExtension: [],
-                mode: 'match',
-                score: null,
-              },
-            })
-          ),
-        }),
+              relation: l.relation,
+              url: l.url,
+            })),
+            signature: null,
+            timestamp: null,
+            total,
+            entry: resources.map((resource) =>
+              bundleEntrySchema.make(
+                {
+                  id: null,
+                  extension: [],
+                  modifierExtension: [],
+                  fullUrl: resourceFullUrl(origin, resource.resourceType, resource.id),
+                  link: [],
+                  request: null,
+                  resource: resource,
+                  response: null,
+                  search: {
+                    id: null,
+                    extension: [],
+                    modifierExtension: [],
+                    mode: 'match',
+                    score: null,
+                  },
+                },
+                // Inputs are constructed in-place from values we already
+                // produced — re-validating wastes the deep Schema walk per
+                // entry on the search hot path.
+                { disableValidation: true }
+              )
+            ),
+          },
+          { disableValidation: true }
+        ),
       catch: () => new HttpApiError.ServiceUnavailable(),
     }).pipe(
       Effect.withSpan('fhir.buildSearchsetBundle', {
@@ -370,46 +379,52 @@ export function makeDomainResourceHandlerLayer<
             readonly resourceType: string
             readonly id: string
           }> = [primary, ...related]
-          return everythingBundleSchema.make({
-            resourceType: 'Bundle',
-            id: null,
-            meta: null,
-            implicitRules: null,
-            language: null,
-            type: 'searchset',
-            identifier: null,
-            link: [
-              {
-                id: null,
-                extension: [],
-                modifierExtension: [],
-                relation: 'self',
-                url: requestUrl.toString(),
-              },
-            ],
-            signature: null,
-            timestamp: null,
-            total: entries.length,
-            entry: entries.map((resource) =>
-              everythingEntrySchema.make({
-                id: null,
-                extension: [],
-                modifierExtension: [],
-                fullUrl: resourceFullUrl(origin, resource.resourceType, resource.id),
-                link: [],
-                request: null,
-                resource,
-                response: null,
-                search: {
+          return everythingBundleSchema.make(
+            {
+              resourceType: 'Bundle',
+              id: null,
+              meta: null,
+              implicitRules: null,
+              language: null,
+              type: 'searchset',
+              identifier: null,
+              link: [
+                {
                   id: null,
                   extension: [],
                   modifierExtension: [],
-                  mode: 'match',
-                  score: null,
+                  relation: 'self',
+                  url: requestUrl.toString(),
                 },
-              })
-            ),
-          })
+              ],
+              signature: null,
+              timestamp: null,
+              total: entries.length,
+              entry: entries.map((resource) =>
+                everythingEntrySchema.make(
+                  {
+                    id: null,
+                    extension: [],
+                    modifierExtension: [],
+                    fullUrl: resourceFullUrl(origin, resource.resourceType, resource.id),
+                    link: [],
+                    request: null,
+                    resource,
+                    response: null,
+                    search: {
+                      id: null,
+                      extension: [],
+                      modifierExtension: [],
+                      mode: 'match',
+                      score: null,
+                    },
+                  },
+                  { disableValidation: true }
+                )
+              ),
+            },
+            { disableValidation: true }
+          )
         }).pipe(Effect.withSpan('fhir.Everything', { attributes: { resourceType, id } }))
       })
   )
