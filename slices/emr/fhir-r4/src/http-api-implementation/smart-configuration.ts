@@ -1,4 +1,4 @@
-import { HttpApiBuilder } from '@effect/platform'
+import { HttpApiBuilder, HttpApiError } from '@effect/platform'
 import { Effect } from 'effect'
 import { requestOriginFromHttpRequest } from 'navigation-core'
 
@@ -42,7 +42,9 @@ const layer = HttpApiBuilder.group(FhirPublicApi, 'smart-well-known', (handlers)
         ],
         associated_endpoints: [],
       })
-    })
+    }).pipe(
+      Effect.catchTag('UntrustedRemotePeer', () => Effect.fail(new HttpApiError.Forbidden()))
+    )
   )
 )
 

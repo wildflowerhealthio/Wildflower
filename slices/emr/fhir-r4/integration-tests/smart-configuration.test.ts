@@ -102,25 +102,28 @@ describe('GET /fhir-r4/.well-known/smart-configuration', () => {
       )
     ))
 
-  test('falls back to the configured Origin when the peer is not loopback', () =>
+  test('rejects a non-loopback peer with 403 Forbidden', () =>
     Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           const wired = yield* wireServerScoped
-          const body = yield* Effect.promise(() =>
-            fetchSmartConfig(wired.handler, {
-              // `x-test-remote-address` is consumed by the test middleware in
-              // `server-helpers.ts` and becomes `request.remoteAddress`. A
-              // non-loopback peer here simulates an attacker reaching an
-              // `HOSTNAME=0.0.0.0`-bound server with forged loopback headers.
-              'x-test-remote-address': '203.0.113.1',
-              host: '127.0.0.1:3000',
-              'x-forwarded-host': 'evil.example.com',
-              'x-forwarded-proto': 'https',
-            })
+          // `x-test-remote-address` is consumed by the test middleware in
+          // `server-helpers.ts` and becomes `request.remoteAddress`. A
+          // non-loopback peer here simulates an attacker reaching an
+          // `HOSTNAME=0.0.0.0`-bound server with forged loopback headers.
+          // The endpoint fails closed (403) rather than echoing the forged
+          // origin or the configured fallback.
+          const headers = new Headers()
+          headers.set('x-test-remote-address', '203.0.113.1')
+          headers.set('host', '127.0.0.1:3000')
+          headers.set('x-forwarded-host', 'evil.example.com')
+          headers.set('x-forwarded-proto', 'https')
+          const response = yield* Effect.promise(() =>
+            wired.handler(
+              new Request(`${ORIGIN}/fhir-r4/.well-known/smart-configuration`, { headers })
+            )
           )
-          expect(body.issuer).toBe(`${ORIGIN}/fhir-r4`)
-          expect(body.jwks_uri).toBe(`${ORIGIN}/.well-known/jwks.json`)
+          expect(response.status).toBe(403)
         })
       )
     ))

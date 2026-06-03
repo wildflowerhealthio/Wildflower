@@ -16,6 +16,7 @@ import {
   Grant,
   SigningKey,
 } from '../livestore/index.ts'
+import { loopbackPeerMiddleware } from '../test-fixtures/loopback-web-middleware.ts'
 import { testingKey1 } from '../test-fixtures/signing-keys.ts'
 import { GatekeeperApiLive } from './index.ts'
 const sharedSigningKey = testingKey1
@@ -272,7 +273,9 @@ const createOAuthHandler = (
     Layer.provide(cryptoRandomCounter({ uuidPrefix: 'oauth' }))
   )
 
-  return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
+  return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext), {
+    middleware: loopbackPeerMiddleware,
+  })
 }
 
 test('authorize returns inline error HTML for unsupported code challenge method', async () => {
@@ -464,7 +467,7 @@ test('token exchange succeeds with valid form payload', async () => {
     const decoded = jose.decodeJwt(body.access_token)
     expect(decoded.iss).toBe('http://localhost:8787')
     expect(decoded.sub).toBe('client-1')
-    expect(decoded.aud).toBe('http://localhost:8787/fhir')
+    expect(decoded.aud).toBe('http://localhost:8787/fhir-r4')
     expect(decoded['scope']).toBe('patient/*.read')
     expect(decoded['patient']).toBe('patient-123')
     expect(typeof decoded.iat).toBe('number')

@@ -2,11 +2,7 @@ import type { HttpServerRequest } from '@effect/platform'
 import { HttpApiError } from '@effect/platform'
 import { DateTime, type Duration, Effect, pipe } from 'effect'
 import type { UnknownException } from 'effect/Cause'
-// TEMP: runtime import (was `import type * as jose`) so the debug
-// `decodeJwt` log below can read the token's actual `iss`/`aud`/`exp`
-// claims without verifying the signature. Revert to a type-only import
-// when the temp instrumentation comes out.
-import * as jose from 'jose'
+import type * as jose from 'jose'
 import type { Origin } from 'navigation-core'
 import { requestOriginFromHttpRequest } from 'navigation-core'
 import { Client, GatekeeperStore, SigningKey } from '../livestore/index.ts'
@@ -67,13 +63,8 @@ const verifyAgainstAnyKey = (
 const requireIssuerMatches = (
   payload: jose.JWTPayload,
   expectedIssuer: string
-): Effect.Effect<void, HttpApiError.Unauthorized> => {
-  if (payload.iss === expectedIssuer) return Effect.void
-  // TEMP: debugging gatekeeper unauthorized.
-  return Effect.logWarning(
-    `[gatekeeper-auth] requireIssuerMatches fail: token.iss=${String(payload.iss)} expected=${expectedIssuer}`
-  ).pipe(Effect.zipRight(Effect.fail(unauthorized())))
-}
+): Effect.Effect<void, HttpApiError.Unauthorized> =>
+  payload.iss === expectedIssuer ? Effect.void : Effect.fail(unauthorized())
 
 const presentedAudiences = (audClaim: jose.JWTPayload['aud']): ReadonlyArray<string> => {
   if (Array.isArray(audClaim)) return audClaim
@@ -178,7 +169,13 @@ const verifyJwt = (
       return yield* Effect.fail(unauthorized())
     }
     const store = yield* GatekeeperStore
-    const origin = yield* requestOriginFromHttpRequest
+    const origin = yield* requestOriginFromHttpRequest.pipe(
+      Effect.catchTag('UntrustedRemotePeer', (e) =>
+        Effect.logWarning(
+          `[gatekeeper-auth] verifyJwt fail: untrusted remote peer (remoteAddress=${String(e.remoteAddress)})`
+        ).pipe(Effect.zipRight(Effect.fail(unauthorized())))
+      )
+    )
     const signingKeys = store.query(SigningKey.queries.all$)
     if (signingKeys.length === 0) {
       yield* Effect.logWarning('[gatekeeper-auth] verifyJwt fail: no signing keys configured (500)')
@@ -187,22 +184,7 @@ const verifyJwt = (
       return yield* Effect.fail(new HttpApiError.InternalServerError())
     }
     const expectedIssuer = origin
-    const acceptedAudiences: ReadonlyArray<string> = [`${origin}/fhir`, origin]
-    yield* Effect.logWarning(
-      `[gatekeeper-auth] verifyJwt: token-len=${token.length} signingKeys=${signingKeys.length} expectedIssuer=${expectedIssuer} acceptedAudiences=${JSON.stringify(acceptedAudiences)}`
-    )
-    // TEMP: debugging gatekeeper unauthorized — decode the token without
-    // verifying the signature so the actual iss/aud/exp/sub claims show
-    // up even when jose.jwtVerify rejects early (e.g. iss mismatch).
-    const decoded = yield* Effect.try({
-      try: () => jose.decodeJwt(token),
-      catch: (err) => (err instanceof Error ? err.message : String(err)),
-    }).pipe(Effect.either)
-    yield* decoded._tag === 'Right'
-      ? Effect.logDebug(
-          `[gatekeeper-auth] verifyJwt actual claims (unverified): iss=${String(decoded.right.iss)} sub=${String(decoded.right.sub)} aud=${JSON.stringify(decoded.right.aud)} exp=${String(decoded.right.exp)} scope=${String(decoded.right.scope)}`
-        )
-      : Effect.logWarning(`[gatekeeper-auth] verifyJwt: decodeJwt threw — ${decoded.left}`)
+    const acceptedAudiences: ReadonlyArray<string> = [`${origin}/fhir-r4`, origin]
     const verified = yield* verifyAgainstAnyKey(token, signingKeys, {
       expectedIssuer,
       acceptedAudiences,

@@ -170,19 +170,25 @@ describe('requestOriginFromHttpRequest', () => {
     await expect(Effect.runPromise(run)).resolves.toBe('http://127.0.0.1:3000')
   })
 
-  test('falls back to the Origin layer when the peer is not loopback', async () => {
+  test('fails closed with UntrustedRemotePeer when the peer is not loopback', async () => {
     const run = requestOriginFromHttpRequest.pipe(
       Effect.provide(provideRequest('203.0.113.1', { host: '127.0.0.1:3000' })),
       Effect.provide(Origin.layerFromLiteral(FALLBACK))
     )
-    await expect(Effect.runPromise(run)).resolves.toBe(FALLBACK)
+    // A forged loopback `Host` from a non-loopback peer must never steer the
+    // echoed origin, so the Effect fails rather than falling back to FALLBACK.
+    const failure = await Effect.runPromise(Effect.flip(run))
+    expect(failure._tag).toBe('UntrustedRemotePeer')
+    expect(failure.remoteAddress).toBe('203.0.113.1')
   })
 
-  test('falls back when the platform exposes no remoteAddress', async () => {
+  test('fails closed with UntrustedRemotePeer when the platform exposes no remoteAddress', async () => {
     const run = requestOriginFromHttpRequest.pipe(
       Effect.provide(provideRequest(undefined, { host: '127.0.0.1:3000' })),
       Effect.provide(Origin.layerFromLiteral(FALLBACK))
     )
-    await expect(Effect.runPromise(run)).resolves.toBe(FALLBACK)
+    const failure = await Effect.runPromise(Effect.flip(run))
+    expect(failure._tag).toBe('UntrustedRemotePeer')
+    expect(failure.remoteAddress).toBeUndefined()
   })
 })

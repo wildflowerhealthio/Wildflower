@@ -1,7 +1,7 @@
 // oxlint-disable import/group-exports -- Exports are already namespaced
 import type { HttpServerRequest } from '@effect/platform'
 import { Effect } from 'effect'
-import { type Origin, requestOriginFromHttpRequest } from 'navigation-core'
+import { type Origin, type UntrustedRemotePeer, requestOriginFromHttpRequest } from 'navigation-core'
 
 /**
  * Single source of truth for the URLs the gatekeeper API redirects to.
@@ -10,19 +10,25 @@ import { type Origin, requestOriginFromHttpRequest } from 'navigation-core'
  *
  * @remarks
  * Each route exposes `*Path(...)` (absolute path) and `*Url(...)`
- * (`Effect<string, never, Origin | HttpServerRequest>` for server-side
- * redirects). Path params are percent-encoded — callers MUST NOT
- * re-encode.
+ * (`Effect<string, UntrustedRemotePeer, Origin | HttpServerRequest>` for
+ * server-side redirects). Path params are percent-encoded — callers MUST
+ * NOT re-encode.
  *
  * The `*Url` helpers derive the origin from
  * `requestOriginFromHttpRequest` so a 302 redirect back to the
  * gatekeeper UI lands on the *same URL the user-agent used to reach
  * `/oauth/authorize`* — required because a redirect to a different
  * origin breaks the in-flight session (cookies, tab, tunnel
- * reachability).
+ * reachability). That derivation is fail-closed, so the effect can fail
+ * with `UntrustedRemotePeer` when a non-loopback peer reaches the
+ * endpoint; callers map it to their endpoint's native rejection.
  */
 export namespace GatekeeperPaths {
-  type PathEffect = Effect.Effect<string, never, Origin | HttpServerRequest.HttpServerRequest>
+  type PathEffect = Effect.Effect<
+    string,
+    UntrustedRemotePeer,
+    Origin | HttpServerRequest.HttpServerRequest
+  >
 
   const withOrigin = (path: string): PathEffect =>
     Effect.map(requestOriginFromHttpRequest, (origin) => `${origin}${path}`)

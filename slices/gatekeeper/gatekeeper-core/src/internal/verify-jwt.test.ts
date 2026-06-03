@@ -1,10 +1,10 @@
-import { Headers, HttpServerRequest } from '@effect/platform'
-import { DateTime, Effect, Either, Layer } from 'effect'
+import { DateTime, Effect, Either } from 'effect'
 import * as jose from 'jose'
 import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
 import { Client, type ClientRow, GatekeeperStore, SigningKey } from '../livestore/index.ts'
 import { testingKey1, testingKey2 } from '../test-fixtures/signing-keys.ts'
+import { LoopbackRequestLive } from '../test-fixtures/loopback-request.ts'
 import { verifyJwt } from './jwt.ts'
 const labelOf = (q: unknown): string | undefined => {
   if (typeof q === 'object' && q !== null && 'label' in q && typeof q.label === 'string') {
@@ -76,19 +76,6 @@ const makeClient = (overrides: Partial<ClientRow> = {}): ClientRow => ({
   ...overrides,
 })
 
-// `verifyJwt` now derives the expected `iss`/`aud` from
-// `requestOriginFromHttpRequest`. Stubbing the request with a
-// non-loopback `remoteAddress` makes the trust gate fall through to
-// the `Origin` layer, so existing assertions against `ORIGIN` stay
-// valid without each test wiring its own header story.
-const UntrustedRequestLive: Layer.Layer<HttpServerRequest.HttpServerRequest> = Layer.succeed(
-  HttpServerRequest.HttpServerRequest,
-  HttpServerRequest.fromWeb(new Request('http://test.invalid/')).modify({
-    headers: Headers.fromInput({}),
-    remoteAddress: '203.0.113.1',
-  })
-)
-
 const runVerify = (
   store: typeof GatekeeperStore.Service,
   token: string
@@ -97,7 +84,7 @@ const runVerify = (
     verifyJwt(token).pipe(
       Effect.provide(GatekeeperStore.layerFrom(store)),
       Effect.provide(Origin.layerFromLiteral(ORIGIN)),
-      Effect.provide(UntrustedRequestLive),
+      Effect.provide(LoopbackRequestLive),
       Effect.either
     )
   )
@@ -106,7 +93,7 @@ test('JWT verifies when sub matches a registered client (no type claim)', async 
   const key = testingKey1
   const token = await signWith(key, {
     iss: ORIGIN,
-    aud: `${ORIGIN}/fhir`,
+    aud: `${ORIGIN}/fhir-r4`,
     sub: 'client-1',
   })
   const store = makeStubStore({
@@ -121,7 +108,7 @@ test('JWT is rejected when sub does not match any client', async () => {
   const key = testingKey1
   const token = await signWith(key, {
     iss: ORIGIN,
-    aud: `${ORIGIN}/fhir`,
+    aud: `${ORIGIN}/fhir-r4`,
     sub: 'unknown-client',
   })
   const store = makeStubStore({
@@ -136,7 +123,7 @@ test('JWT is rejected when client is disabled', async () => {
   const key = testingKey1
   const token = await signWith(key, {
     iss: ORIGIN,
-    aud: `${ORIGIN}/fhir`,
+    aud: `${ORIGIN}/fhir-r4`,
     sub: 'client-1',
   })
   const store = makeStubStore({
@@ -253,7 +240,7 @@ test('JWT is verified when audience is an array containing an accepted entry', a
   const key = testingKey1
   const token = await signWith(key, {
     iss: ORIGIN,
-    aud: ['https://other.example', `${ORIGIN}/fhir`],
+    aud: ['https://other.example', `${ORIGIN}/fhir-r4`],
     sub: 'client-1',
   })
   const store = makeStubStore({

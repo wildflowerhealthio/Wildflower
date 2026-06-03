@@ -5,6 +5,7 @@ import type { Observation as StoreObservation, Patient as StorePatient } from 'e
 import { Origin } from 'navigation-core'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { loopbackPeerMiddleware } from '../test-fixtures/loopback-web-middleware.ts'
 import { FhirResourcesApiLive } from './index.ts'
 
 type PatientRow = typeof StorePatient.RowSchema.Type
@@ -143,7 +144,9 @@ const createHandler = (data: MockData): ReturnType<typeof HttpApiBuilder.toWebHa
     Layer.provide(EmrStore.layerFrom(makeStore(data))),
     Layer.provide(Origin.layerFromLiteral('http://localhost:8787'))
   )
-  return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
+  return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext), {
+    middleware: loopbackPeerMiddleware,
+  })
 }
 
 interface BundleEntry {
