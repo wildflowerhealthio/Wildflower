@@ -28,7 +28,7 @@
  */
 
 import type { Queryable } from '@livestore/livestore'
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import { defineSliceLivestore } from 'shared-structures-core/livestore'
 
 import * as Binary from './binary.ts'
@@ -155,6 +155,7 @@ const warmupTable = <TSearchResult>(
   store: QueryRunner,
   options: {
     readonly Resource: {
+      readonly resourceType: string
       readonly queries: {
         readonly count$: (params: object) => Queryable<number>
         readonly search$: (params: { readonly limit: number }) => Queryable<TSearchResult>
@@ -162,12 +163,17 @@ const warmupTable = <TSearchResult>(
     }
     readonly searchLimit?: number
   }
-): void => {
-  const Resource = options.Resource
-  const searchLimit = options.searchLimit ?? 50
-  store.query(Resource.queries.count$({}))
-  store.query(Resource.queries.search$({ limit: searchLimit }))
-}
+): Effect.Effect<void, never, never> =>
+  Effect.sync(() => {
+    const Resource = options.Resource
+    const searchLimit = options.searchLimit ?? 50
+    store.query(Resource.queries.count$({}))
+    store.query(Resource.queries.search$({ limit: searchLimit }))
+  }).pipe(
+    Effect.withSpan('emr-core.warmupTable', {
+      attributes: { resourceType: options.Resource.resourceType },
+    })
+  )
 
 export * as Patient from './patient.ts'
 export * as Binary from './binary.ts'

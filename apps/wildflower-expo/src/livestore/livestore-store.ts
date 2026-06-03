@@ -1,7 +1,7 @@
 import { makePersistedAdapter } from '@livestore/adapter-expo'
 import type { Store } from '@livestore/livestore'
 import { type ReactApi, StoreRegistry, useStore } from '@livestore/react'
-import { Context } from 'effect'
+import { Context, Effect } from 'effect'
 import { Patient, warmupTable } from 'emr-core/livestore'
 import { ServerState } from 'local-http-server-core/livestore'
 import { unstable_batchedUpdates as batchUpdates } from 'react-native'
@@ -67,7 +67,8 @@ const wildflowerStoreOptions = {
     // vs ~40ms warm). Filtered queries (`WHERE gender = ?`) don't hit this
     // cold path because they cover few pages, so we only need to touch the
     // unindexed-scan path once.
-    warmupTable(store, { Resource: Patient })
+    // This can take ~10 seconds, so we fire and forget
+    Effect.runFork(warmupTable(store, { Resource: Patient }))
   },
 } as const
 
