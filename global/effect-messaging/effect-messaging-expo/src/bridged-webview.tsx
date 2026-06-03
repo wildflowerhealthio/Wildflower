@@ -133,7 +133,6 @@ interface BuiltTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  */
 const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   loadFrom,
-  loader,
   bindings,
   shouldOpenInSystemBrowser,
   injectedJavaScriptBeforeContentLoaded,
@@ -333,7 +332,6 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
         }
         Effect.runFork(transport.onMessage(event.nativeEvent.data))
       }}
-      loader={loader}
       shouldOpenInSystemBrowser={shouldOpenInSystemBrowser}
       injectedJavaScriptBeforeContentLoaded={injectedJavaScriptBeforeContentLoaded}
     />

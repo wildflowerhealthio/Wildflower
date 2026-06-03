@@ -37,10 +37,22 @@ jest.mock('tunnel-expo', () => ({ TunnelDaemon: {} }))
 jest.mock('tunnel-core/livestore', () => ({ TunnelStore: { layerFrom: () => ({}) } }))
 jest.mock('local-http-server-core/livestore', () => ({
   LocalHttpServerStore: { layerFrom: () => ({}) },
-  ServerState: { queries: { current$: {} } },
+  ServerState: {
+    queries: { current$: {} },
+    events: {
+      // The real `localHttpServerStateSet` returns an opaque livestore
+      // event object; for the foreground-nudge tests we only need to
+      // assert what payload was passed and that the resulting object
+      // ended up at `store.commit`, so a labelled wrapper is sufficient.
+      localHttpServerStateSet: (payload: { readonly requestedRunning: boolean }) => ({
+        __event: 'localHttpServerStateSet' as const,
+        payload,
+      }),
+    },
+  },
 }))
 
-import { runServerUntilStopped } from './background-server.ts'
+import { handleForegroundActive, runServerUntilStopped } from './background-server.ts'
 
 /** Drains the microtask queue (one macrotask tick flushes pending `.then`s). */
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
@@ -125,5 +137,33 @@ describe('runServerUntilStopped', () => {
 
     expect(counter.released).toBe(1)
     expect(counter.active).toBe(0)
+  })
+})
+
+describe('handleForegroundActive', () => {
+  it('commits requestedRunning: true and starts reconcile with true when paused', () => {
+    const commit = jest.fn()
+    const startReconcile = jest.fn()
+
+    handleForegroundActive(false, commit, startReconcile)
+
+    expect(commit).toHaveBeenCalledTimes(1)
+    expect(commit).toHaveBeenCalledWith({
+      __event: 'localHttpServerStateSet',
+      payload: { requestedRunning: true },
+    })
+    expect(startReconcile).toHaveBeenCalledTimes(1)
+    expect(startReconcile).toHaveBeenCalledWith(true)
+  })
+
+  it('skips the commit and starts reconcile with true when already running', () => {
+    const commit = jest.fn()
+    const startReconcile = jest.fn()
+
+    handleForegroundActive(true, commit, startReconcile)
+
+    expect(commit).not.toHaveBeenCalled()
+    expect(startReconcile).toHaveBeenCalledTimes(1)
+    expect(startReconcile).toHaveBeenCalledWith(true)
   })
 })

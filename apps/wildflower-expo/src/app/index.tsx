@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 import { Colors, Spacing, ThemedText, ThemedView, useThemeColors } from 'expo-tundraish'
 import { useCallback, useState, type JSX } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { AppShellWebView } from '../app-shell/app-shell-webview.tsx'
 import { useNavigationSender } from '../app-shell/navigation-pipe.tsx'
@@ -22,13 +22,14 @@ export default function HomeScreen(): JSX.Element {
 
   const handleRouteChanged = useCallback(
     ({ pathname }: { pathname: string; canGoBack: boolean }): void => {
+      console.debug('Route changed:', pathname)
       setActiveTab(tabForPath(pathname))
     },
     []
   )
 
   return (
-    <SafeAreaView style={styles.fill} edges={['top']}>
+    <View style={styles.fill}>
       <ThemedView style={styles.fill}>
         <View style={styles.webViewWrap}>
           <AppShellWebView onRouteChanged={handleRouteChanged} />
@@ -72,7 +73,7 @@ export default function HomeScreen(): JSX.Element {
           })}
         </View>
       </ThemedView>
-    </SafeAreaView>
+    </View>
   )
 }
 

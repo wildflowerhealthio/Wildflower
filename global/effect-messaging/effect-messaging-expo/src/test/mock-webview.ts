@@ -42,7 +42,6 @@ import type * as RNType from 'react-native'
 type MockWebViewProps = {
   readonly source?: { html?: string; baseUrl?: string; uri?: string }
   readonly onMessage?: (event: { nativeEvent: { data: string } }) => void
-  readonly onLoadEnd?: () => void
   readonly onShouldStartLoadWithRequest?: (req: { url: string }) => boolean
 }
 

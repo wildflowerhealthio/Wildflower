@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import type { BareSenderFunction } from 'effect-messaging-core'
 import * as WebBrowser from 'expo-web-browser'
-import { forwardRef, type JSX, useCallback, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, type JSX, useImperativeHandle, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 
@@ -16,8 +16,6 @@ interface TransportWebViewProps {
   readonly source: TransportWebViewSource
   /** Receives every message the page posts via `window.ReactNativeWebView.postMessage`. */
   readonly onMessage: (event: WebViewMessageEvent) => void
-  /** Element rendered on top of the WebView until its first `onLoadEnd` fires. */
-  readonly loader?: JSX.Element
   /**
    * Opt-in routing predicate. Return `true` to open the URL in the
    * system browser; return `false` (or omit the predicate entirely) to
@@ -58,11 +56,10 @@ interface TransportWebViewProps {
  */
 const TransportWebView = forwardRef<BareSenderFunction, TransportWebViewProps>(
   function TransportWebView(
-    { source, onMessage, loader, shouldOpenInSystemBrowser, injectedJavaScriptBeforeContentLoaded },
+    { source, onMessage, shouldOpenInSystemBrowser, injectedJavaScriptBeforeContentLoaded },
     bareSenderServiceRef
   ): JSX.Element {
     const webviewRef = useRef<WebView>(null)
-    const [loadEnded, setLoadEnded] = useState(false)
 
     useImperativeHandle(
       bareSenderServiceRef,
@@ -79,17 +76,12 @@ const TransportWebView = forwardRef<BareSenderFunction, TransportWebViewProps>(
       []
     )
 
-    const handleLoadEnd = useCallback(() => {
-      setLoadEnded(true)
-    }, [])
-
     return (
       <View style={styles.container}>
         <WebView
           ref={webviewRef}
           source={source}
           onMessage={onMessage}
-          onLoadEnd={handleLoadEnd}
           onShouldStartLoadWithRequest={(request) => {
             // `about:blank` and `data:` URIs are bootstrap navigations
             // the WebView fires while rendering inline HTML — always
@@ -110,7 +102,6 @@ const TransportWebView = forwardRef<BareSenderFunction, TransportWebViewProps>(
           javaScriptEnabled={true}
           domStorageEnabled={true}
         />
-        {!loadEnded && loader}
       </View>
     )
   }

@@ -222,6 +222,32 @@ const reconcile = (running: boolean, runtime: Effect.Effect<never, never, never>
 }
 
 /**
+ * Body of the AppState `'active'` handler in
+ * {@link useBackgroundServerDaemon}. Mirrors the boot-time un-pause in
+ * `wildflowerStoreOptions.boot` — committing `requestedRunning: true`
+ * iff the user paused mid-session — then asks the caller to reconcile
+ * to the known-true desired state. Passes `true` to `startReconcile`
+ * rather than the incoming `requestedRunning` so a just-emitted commit
+ * isn't masked by the listener's stale closure value.
+ *
+ * Takes `commit` and `startReconcile` as callbacks rather than a full
+ * store + runtime so the helper's surface area is exactly what it
+ * needs — making the unit tests trivial and the production call site
+ * the only place that has to know about livestore Store / Effect
+ * runtime types.
+ */
+const handleForegroundActive = (
+  requestedRunning: boolean,
+  commit: WildflowerStoreHandle['commit'],
+  startReconcile: (running: boolean) => void
+): void => {
+  if (!requestedRunning) {
+    commit(ServerState.events.localHttpServerStateSet({ requestedRunning: true }))
+  }
+  startReconcile(true)
+}
+
+/**
  * Mount-and-intent-tied background server. Replaces the prior
  * `useComponentScopedRunner` launch: the merged HTTP-server + tunnel daemon
  * now runs inside a `react-native-background-actions` foreground service so
@@ -238,7 +264,14 @@ const reconcile = (running: boolean, runtime: Effect.Effect<never, never, never>
  *  - **restart** when the app returns to the foreground after the OS
  *    expired the task — without this hook the React state still says
  *    `requestedRunning: true` but `BackgroundService.isRunning()` is
- *    `false`, and nothing re-triggers `reconcile`.
+ *    `false`, and nothing re-triggers `reconcile`;
+ *  - **unpause** when the app returns to the foreground from a paused
+ *    state — mirrors the boot-time nudge in
+ *    `wildflowerStoreOptions.boot`, so the in-app pause toggle is
+ *    per-session rather than persisted across foreground cycles. The
+ *    app is non-functional without the LHS daemon, so every app-start
+ *    path (cold start, Expo reload, foreground return) re-asserts
+ *    `requestedRunning: true`.
  *
  * Keyed on the primitive `requestedRunning`, not the query row, so the
  * daemon-written `running` / `port` / `error` updates don't churn the
@@ -255,22 +288,23 @@ const useBackgroundServerDaemon = (store: WildflowerStoreHandle): void => {
     }
   }, [runtime, requestedRunning])
 
-  // Foreground re-entry recovery. `reconcile` already short-circuits when
-  // its desired state matches `BackgroundService.isRunning()`, so this is a
-  // cheap "check and start if needed" — no extra plumbing required. iOS
-  // expiration silently kills the foreground service while the app sleeps;
-  // `requestedRunning` is unchanged when the user returns, so the
-  // `[runtime, requestedRunning]` effect above won't re-fire on its own.
+  // Foreground re-entry: nudge intent back to running and reconcile.
+  // The reconcile still has to run when `requestedRunning` was already
+  // true because iOS expiration silently kills the foreground service
+  // while the app sleeps and the `[runtime, requestedRunning]` effect
+  // above won't re-fire on its own. See {@link handleForegroundActive}.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') {
-        reconcile(requestedRunning, runtime)
+        handleForegroundActive(requestedRunning, store.commit.bind(store), (running) => {
+          reconcile(running, runtime)
+        })
       }
     })
     return (): void => {
       sub.remove()
     }
-  }, [runtime, requestedRunning])
+  }, [store, runtime, requestedRunning])
 }
 
-export { runServerUntilStopped, useBackgroundServerDaemon }
+export { handleForegroundActive, runServerUntilStopped, useBackgroundServerDaemon }
