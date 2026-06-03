@@ -22,3 +22,11 @@
   flex-direction: column;
   gap: var(--space-4);
 }
+
+/* Black drop shadows wash out on a dark surface, so deepen the elevation
+ * shadow to keep the dialog readable as a raised layer. */
+@media (prefers-color-scheme: dark) {
+  .dialog {
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  }
+}

@@ -79,3 +79,11 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Deepen the dropdown's elevation shadow so it reads against a dark
+ * surface, where a faint black shadow would disappear. */
+@media (prefers-color-scheme: dark) {
+  .menu__list {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  }
+}
