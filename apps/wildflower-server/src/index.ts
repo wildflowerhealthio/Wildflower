@@ -12,7 +12,7 @@ import { AppsAdminApi, AppsApi } from 'apps-core/http-api-definition'
 import { AppsAdminApiHandlersFor, AppsApiHandlersFor } from 'apps-core/http-api-implementation'
 import { CollectorApi } from 'collector-core/http-api-definition'
 import { CollectorApiHandlersFor } from 'collector-core/http-api-implementation'
-import { Effect, Layer, pipe } from 'effect'
+import { DateTime, Duration, Effect, Layer, pipe } from 'effect'
 import { FhirPublicApi, FhirResourcesApi } from 'fhir-r4/http-api-definition'
 import {
   FhirPublicApiHandlersFor,
@@ -103,15 +103,16 @@ const stripCookiesMiddleware = HttpMiddleware.make((app) =>
  */
 const accessLogMiddleware = HttpMiddleware.make((app) =>
   Effect.gen(function* () {
-    const startMs = Date.now()
+    const start = yield* DateTime.now
     const req = yield* HttpServerRequest.HttpServerRequest
     const pathOnly = (() => {
       const idx = req.url.indexOf('?')
       return idx === -1 ? req.url : req.url.slice(0, idx)
     })()
     const response = yield* app
+    const elapsed = DateTime.distanceDuration(start, yield* DateTime.now)
     yield* Effect.logInfo(
-      `[http] ${req.method} ${pathOnly} -> ${response.status} (${Date.now() - startMs}ms)`
+      `[http] ${req.method} ${pathOnly} -> ${response.status} (${Duration.toMillis(elapsed)}ms)`
     )
     return response
   })
