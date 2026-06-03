@@ -12,7 +12,7 @@ import { AppsAdminApi, AppsApi } from 'apps-core/http-api-definition'
 import { AppsAdminApiHandlersFor, AppsApiHandlersFor } from 'apps-core/http-api-implementation'
 import { CollectorApi } from 'collector-core/http-api-definition'
 import { CollectorApiHandlersFor } from 'collector-core/http-api-implementation'
-import { DateTime, Duration, Effect, Layer, pipe } from 'effect'
+import { DateTime, Duration, Effect, Layer, Option, pipe } from 'effect'
 import { FhirPublicApi, FhirResourcesApi } from 'fhir-r4/http-api-definition'
 import {
   FhirPublicApiHandlersFor,
@@ -24,6 +24,7 @@ import {
   RequireAuthMiddleware,
   RequireAuthMiddlewareLive,
 } from 'gatekeeper-core/http-api-implementation'
+import { isLoopbackPeer } from 'navigation-core'
 import { TunnelAdminApi } from 'tunnel-core/http-api-definition'
 import { TunnelAdminApiHandlersFor } from 'tunnel-core/http-api-implementation'
 import { VendorAppsApi } from 'vendor-apps/http-api-definition'
@@ -118,8 +119,45 @@ const accessLogMiddleware = HttpMiddleware.make((app) =>
   })
 )
 
+/**
+ * Network trust gate: reject any caller whose connection-level remote
+ * address isn't loopback (`127.0.0.0/8`, `::1`, IPv4-mapped
+ * `::ffff:127.x`) with a bare `403`, before the request reaches CORS,
+ * the API, the SPA fallback, or Swagger. The server is meant to be
+ * reached only over loopback — directly by a local user/webview, or via
+ * the local tunnel client (which proxies through `127.0.0.1`). Direct
+ * LAN or raw-IP access is denied outright, even when the listener is
+ * bound to a non-loopback interface.
+ *
+ * This is the app-layer half of a belt-and-braces posture; the listener
+ * also binds loopback-only (see the platform entrypoints'
+ * `isLoopbackBindHost` guard). It backs the per-handler
+ * `requestOriginFromHttpRequest` fail-closed checks, which stay in place
+ * so the origin a handler echoes can never be steered by a forged
+ * `Host` from a non-loopback peer.
+ *
+ * Sits inside {@link accessLogMiddleware} so rejected requests are still
+ * logged, and outside the rest so a denied peer never reaches them.
+ */
+const loopbackGateMiddleware = HttpMiddleware.make((app) =>
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest
+    const remoteAddress = Option.getOrUndefined(request.remoteAddress)
+    if (isLoopbackPeer(remoteAddress)) {
+      return yield* app
+    }
+    yield* Effect.logWarning(
+      `[http] rejected non-loopback peer (remoteAddress=${String(remoteAddress)})`
+    )
+    return HttpServerResponse.text('Forbidden', {
+      status: 403,
+      contentType: 'text/plain; charset=utf-8',
+    })
+  })
+)
+
 const middleware = HttpMiddleware.make((app) =>
-  accessLogMiddleware(stripCookiesMiddleware(corsMiddleware(app)))
+  accessLogMiddleware(loopbackGateMiddleware(stripCookiesMiddleware(corsMiddleware(app))))
 )
 
 // The apps slice exposes two HttpApis: `AppsApi` (public — `ListApps`
@@ -168,5 +206,5 @@ const WildflowerServerLive = HttpApiBuilder.serve(middleware).pipe(
   )
 )
 
-export { WildflowerHttpApi, WildflowerServerLive }
+export { WildflowerHttpApi, WildflowerServerLive, loopbackGateMiddleware }
 export { WebAssetsDir } from './static-spa.ts'

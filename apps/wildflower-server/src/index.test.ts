@@ -1,6 +1,8 @@
+import { Headers, HttpServerRequest, HttpServerResponse } from '@effect/platform'
+import { Effect } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { WildflowerHttpApi } from './index.ts'
+import { WildflowerHttpApi, loopbackGateMiddleware } from './index.ts'
 
 /**
  * Regression guard for the slice-composer contract: `CollectorApi` lives
@@ -47,5 +49,45 @@ describe('WildflowerHttpApi auth middleware regression guard', () => {
     // resources API, which was already wired before this PR. If a
     // future composer drops it, this catches the regression too.
     expect(groupHasMiddleware('Patient', 'RequireAuthMiddleware')).toBe(true)
+  })
+})
+
+describe('loopbackGateMiddleware', () => {
+  // Wrap a trivially-succeeding inner `app` (a `200`) and assert the gate
+  // either lets it through or short-circuits with `403`, keyed solely on
+  // the connection-level `remoteAddress`. The `Host` header is held at a
+  // loopback literal throughout so the gate can't be passing on header
+  // content — only the peer address decides.
+  const statusFor = (remoteAddress: string | undefined): Promise<number> => {
+    const okApp = Effect.succeed(HttpServerResponse.text('ok', { status: 200 }))
+    const request = HttpServerRequest.fromWeb(new Request('http://test.invalid/')).modify({
+      headers: Headers.fromInput({ host: '127.0.0.1:3000' }),
+      remoteAddress,
+    })
+    return Effect.runPromise(
+      loopbackGateMiddleware(okApp).pipe(
+        Effect.provideService(HttpServerRequest.HttpServerRequest, request)
+      )
+    ).then((response) => response.status)
+  }
+
+  test.each(['127.0.0.1', '127.1.2.3', '::1', '::ffff:127.0.0.1'])(
+    'admits loopback peer %s with the inner response (200)',
+    async (remoteAddress) => {
+      await expect(statusFor(remoteAddress)).resolves.toBe(200)
+    }
+  )
+
+  test.each(['203.0.113.1', '192.168.1.10', '10.0.0.5', '::2'])(
+    'rejects non-loopback peer %s with 403',
+    async (remoteAddress) => {
+      await expect(statusFor(remoteAddress)).resolves.toBe(403)
+    }
+  )
+
+  test('rejects a peer with no remoteAddress (403)', async () => {
+    // The platform leaves `remoteAddress` as `None` when transport info is
+    // unavailable; an unknown peer is untrusted and must not reach the app.
+    await expect(statusFor(undefined)).resolves.toBe(403)
   })
 })
