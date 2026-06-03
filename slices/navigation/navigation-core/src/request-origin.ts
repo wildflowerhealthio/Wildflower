@@ -20,6 +20,22 @@ const PROTO_RE = /^https?$/
 const isLoopbackPeer = (remoteAddress: string | undefined): boolean =>
   remoteAddress !== undefined && LOOPBACK_REMOTE_ADDRESS_RE.test(remoteAddress)
 
+// Bind hosts that expose *only* the loopback interface, so a LAN/public
+// peer can't open a TCP connection in the first place. `localhost`
+// resolves to a loopback address; the IPv4/IPv6 loopback literals bind
+// their respective stack. Everything else — `0.0.0.0`, `::`, a LAN IP,
+// a public hostname — is rejected.
+const LOOPBACK_BIND_HOST_RE = /^(?:localhost|127\.\d+\.\d+\.\d+|::1|::ffff:127\.\d+\.\d+\.\d+)$/i
+
+/**
+ * Bind-time guard companion to {@link isLoopbackPeer}: true when binding
+ * an HTTP listener to `host` keeps it reachable only over loopback. Use
+ * at server startup to refuse a non-loopback bind (`0.0.0.0`, `::`, a
+ * LAN address) rather than exposing the server to the network and
+ * relying solely on the per-request trust gate.
+ */
+const isLoopbackBindHost = (host: string): boolean => LOOPBACK_BIND_HOST_RE.test(host)
+
 /**
  * Failure raised by {@link requestOriginFromHttpRequest} when the inbound
  * peer is not trusted (non-loopback / unknown transport). Carries the
@@ -137,6 +153,7 @@ const requestOriginFromHttpRequest: Effect.Effect<
 
 export {
   UntrustedRemotePeer,
+  isLoopbackBindHost,
   isLoopbackPeer,
   requestOriginFromConnection,
   requestOriginFromHttpRequest,

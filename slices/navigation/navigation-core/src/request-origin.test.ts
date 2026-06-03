@@ -4,7 +4,11 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Origin } from './origin.ts'
-import { requestOriginFromConnection, requestOriginFromHttpRequest } from './request-origin.ts'
+import {
+  isLoopbackBindHost,
+  requestOriginFromConnection,
+  requestOriginFromHttpRequest,
+} from './request-origin.ts'
 
 const FALLBACK = 'http://server.invalid'
 
@@ -191,4 +195,20 @@ describe('requestOriginFromHttpRequest', () => {
     expect(failure._tag).toBe('UntrustedRemotePeer')
     expect(failure.remoteAddress).toBeUndefined()
   })
+})
+
+describe('isLoopbackBindHost', () => {
+  test.each(['localhost', 'LOCALHOST', '127.0.0.1', '127.1.2.3', '::1', '::ffff:127.0.0.1'])(
+    'accepts loopback bind host %s',
+    (host) => {
+      expect(isLoopbackBindHost(host)).toBe(true)
+    }
+  )
+
+  test.each(['0.0.0.0', '::', '', '192.168.1.10', '10.0.0.5', '203.0.113.1', 'example.com', '::2'])(
+    'rejects non-loopback bind host %s',
+    (host) => {
+      expect(isLoopbackBindHost(host)).toBe(false)
+    }
+  )
 })
