@@ -143,16 +143,21 @@ type QueryRunner = {
  * Idempotent. Safe to call repeatedly; second call hits the result
  * cache and returns immediately.
  *
+ * @typeParam TSearchResult - Row type produced by the resource's `search$`
+ *   query; inferred from the passed `Resource` so the call site never needs
+ *   to annotate it. The result is discarded, but keeping it generic lets a
+ *   concrete `Queryable<Row>` match without widening to `any` (`Queryable`
+ *   is invariant, so `unknown` would reject a concrete row type).
  * @param store - The EMR LiveStore to issue warmup queries against.
  *
  */
-const warmupTable = (
+const warmupTable = <TSearchResult>(
   store: QueryRunner,
   options: {
     readonly Resource: {
       readonly queries: {
         readonly count$: (params: object) => Queryable<number>
-        readonly search$: (params: { readonly limit: number }) => Queryable<unknown>
+        readonly search$: (params: { readonly limit: number }) => Queryable<TSearchResult>
       }
     }
     readonly searchLimit?: number
