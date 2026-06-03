@@ -18,7 +18,6 @@ import {
   GatekeeperStore,
   SigningKey,
 } from '../livestore/index.ts'
-import { loopbackPeerMiddleware } from '../test-fixtures/loopback-web-middleware.ts'
 import { testingKey1 } from '../test-fixtures/signing-keys.ts'
 import { GatekeeperApiLive } from './index.ts'
 const ORIGIN = 'http://localhost:8787'
@@ -194,9 +193,7 @@ const createHandler = (
     Layer.provide(Origin.layerFromLiteral(ORIGIN)),
     Layer.provide(cryptoRandomCounter({ uuidPrefix: 'device' }))
   )
-  return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext), {
-    middleware: loopbackPeerMiddleware,
-  })
+  return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }
 
 test('POST /oauth/device_authorization issues device_code + user_code', async () => {

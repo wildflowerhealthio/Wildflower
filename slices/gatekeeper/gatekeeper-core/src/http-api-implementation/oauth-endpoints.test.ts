@@ -16,7 +16,6 @@ import {
   Grant,
   SigningKey,
 } from '../livestore/index.ts'
-import { loopbackPeerMiddleware } from '../test-fixtures/loopback-web-middleware.ts'
 import { testingKey1 } from '../test-fixtures/signing-keys.ts'
 import { GatekeeperApiLive } from './index.ts'
 const sharedSigningKey = testingKey1
@@ -273,9 +272,7 @@ const createOAuthHandler = (
     Layer.provide(cryptoRandomCounter({ uuidPrefix: 'oauth' }))
   )
 
-  return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext), {
-    middleware: loopbackPeerMiddleware,
-  })
+  return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }
 
 test('authorize returns inline error HTML for unsupported code challenge method', async () => {

@@ -6,7 +6,6 @@ import { Origin } from 'navigation-core'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { decodePageToken } from '../internal/page-token.ts'
-import { loopbackPeerMiddleware } from '../test-fixtures/loopback-web-middleware.ts'
 import { FhirResourcesApiLive } from './index.ts'
 
 type PatientRow = typeof StorePatient.RowSchema.Type
@@ -70,9 +69,7 @@ const createHandler = (
     Layer.provide(EmrStore.layerFrom(makeStore(rows, total))),
     Layer.provide(Origin.layerFromLiteral('http://localhost:8787'))
   )
-  return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext), {
-    middleware: loopbackPeerMiddleware,
-  })
+  return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }
 
 interface BundleEntry {
