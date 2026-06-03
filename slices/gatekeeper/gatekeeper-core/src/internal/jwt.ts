@@ -23,12 +23,29 @@ const unauthorized = (): HttpApiError.Unauthorized => new HttpApiError.Unauthori
 // succeeds wins. Verification options (`expectedIssuer`,
 // `acceptedAudiences`) are validated by `jose` itself, so a key that
 // signed a token with the wrong iss/aud also fails here.
-// TEMP: debugging gatekeeper unauthorized — carries the jose error message
-// so the per-key tap below can surface it; collapsed back to a bare
-// `Unauthorized` before exiting `verifyAgainstAnyKey`.
+//
+// Each attempt's failure carries the jose error `type` (its stable
+// `code`, e.g. `ERR_JWS_SIGNATURE_VERIFICATION_FAILED`) and `message`,
+// so the catch-all can log the actual reason no key verified rather
+// than a bare key count. `firstSuccessOf` surfaces the last attempt's
+// failure when every key fails.
 class JoseVerifyFailure {
   readonly _tag = 'JoseVerifyFailure'
-  constructor(readonly message: string) {}
+  constructor(
+    readonly type: string,
+    readonly message: string
+  ) {}
+}
+
+// jose errors expose a stable string `code`; prefer it for the failure
+// `type`, falling back to the error's constructor name, then a generic
+// label for non-`Error` throwables.
+const joseErrorType = (err: unknown): string => {
+  if (err instanceof Error) {
+    if ('code' in err && typeof err.code === 'string') return err.code
+    return err.name
+  }
+  return 'UnknownError'
 }
 
 const verifyAgainstAnyKey = (
@@ -40,18 +57,15 @@ const verifyAgainstAnyKey = (
     keys.map((jwk) =>
       Effect.tryPromise({
         try: () => SigningKey.verifyJwt(jwk, token, options),
-        catch: (err) => new JoseVerifyFailure(err instanceof Error ? err.message : String(err)),
+        catch: (err) =>
+          new JoseVerifyFailure(joseErrorType(err), err instanceof Error ? err.message : String(err)),
       })
     ),
     Effect.firstSuccessOf,
-    Effect.catchAll(() =>
-      Effect.gen(function* () {
-        // TEMP: debugging gatekeeper unauthorized.
-        yield* Effect.logInfo(
-          `[gatekeeper-auth] verifyAgainstAnyKey: no key verified the token (${keys.length} key(s) tried)`
-        )
-        return yield* Effect.fail(unauthorized())
-      })
+    Effect.catchAll((failure) =>
+      Effect.logWarning(
+        `[gatekeeper-auth] verifyAgainstAnyKey: no key verified the token (${keys.length} key(s) tried); last jose error type=${failure.type} message=${failure.message}`
+      ).pipe(Effect.zipRight(Effect.fail(unauthorized())))
     )
   )
 
