@@ -28,7 +28,10 @@ const queryClient = new QueryClient()
 vi.mock('@tanstack/react-router', () => ({
   // The route module calls `createFileRoute('/settings/gatekeeper/')({...})` at
   // import time, so the stub must accept the path and return the config passthrough.
-  createFileRoute: () => (config: unknown): unknown => config,
+  createFileRoute:
+    () =>
+    (config: unknown): unknown =>
+      config,
   useNavigate: () => (): void => undefined,
   // Mirrors `useRouteContext({ from, select })`: the error view's `select`
   // pulls `{ queryClient, runAuthed }` off the context.
