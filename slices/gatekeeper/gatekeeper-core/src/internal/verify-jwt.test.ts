@@ -1,4 +1,5 @@
-import { DateTime, Effect, Either } from 'effect'
+import { Headers, HttpServerRequest } from '@effect/platform'
+import { DateTime, Effect, Either, Layer } from 'effect'
 import * as jose from 'jose'
 import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
@@ -75,6 +76,19 @@ const makeClient = (overrides: Partial<ClientRow> = {}): ClientRow => ({
   ...overrides,
 })
 
+// `verifyJwt` now derives the expected `iss`/`aud` from
+// `requestOriginFromHttpRequest`. Stubbing the request with a
+// non-loopback `remoteAddress` makes the trust gate fall through to
+// the `Origin` layer, so existing assertions against `ORIGIN` stay
+// valid without each test wiring its own header story.
+const UntrustedRequestLive: Layer.Layer<HttpServerRequest.HttpServerRequest> = Layer.succeed(
+  HttpServerRequest.HttpServerRequest,
+  HttpServerRequest.fromWeb(new Request('http://test.invalid/')).modify({
+    headers: Headers.fromInput({}),
+    remoteAddress: '203.0.113.1',
+  })
+)
+
 const runVerify = (
   store: typeof GatekeeperStore.Service,
   token: string
@@ -83,6 +97,7 @@ const runVerify = (
     verifyJwt(token).pipe(
       Effect.provide(GatekeeperStore.layerFrom(store)),
       Effect.provide(Origin.layerFromLiteral(ORIGIN)),
+      Effect.provide(UntrustedRequestLive),
       Effect.either
     )
   )

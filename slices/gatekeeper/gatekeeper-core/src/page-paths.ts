@@ -1,6 +1,7 @@
 // oxlint-disable import/group-exports -- Exports are already namespaced
+import type { HttpServerRequest } from '@effect/platform'
 import { Effect } from 'effect'
-import { Origin } from 'navigation-core'
+import { type Origin, requestOriginFromHttpRequest } from 'navigation-core'
 
 /**
  * Single source of truth for the URLs the gatekeeper API redirects to.
@@ -9,12 +10,22 @@ import { Origin } from 'navigation-core'
  *
  * @remarks
  * Each route exposes `*Path(...)` (absolute path) and `*Url(...)`
- * (`Effect<string, never, Origin>` for server-side redirects).
- * Path params are percent-encoded — callers MUST NOT re-encode.
+ * (`Effect<string, never, Origin | HttpServerRequest>` for server-side
+ * redirects). Path params are percent-encoded — callers MUST NOT
+ * re-encode.
+ *
+ * The `*Url` helpers derive the origin from
+ * `requestOriginFromHttpRequest` so a 302 redirect back to the
+ * gatekeeper UI lands on the *same URL the user-agent used to reach
+ * `/oauth/authorize`* — required because a redirect to a different
+ * origin breaks the in-flight session (cookies, tab, tunnel
+ * reachability).
  */
 export namespace GatekeeperPaths {
-  const withOrigin = (path: string): Effect.Effect<string, never, Origin> =>
-    Effect.map(Origin.get, (origin) => `${origin}${path}`)
+  type PathEffect = Effect.Effect<string, never, Origin | HttpServerRequest.HttpServerRequest>
+
+  const withOrigin = (path: string): PathEffect =>
+    Effect.map(requestOriginFromHttpRequest, (origin) => `${origin}${path}`)
 
   export const oauthPollingPath = (id: string): string =>
     `/gatekeeper/oauth-polling/${encodeURIComponent(id)}`
@@ -27,26 +38,23 @@ export namespace GatekeeperPaths {
   export const deviceConsentPath = (userCode: string): string =>
     `/gatekeeper/devices/${encodeURIComponent(userCode)}`
 
-  export const oauthPollingUrl = (id: string): Effect.Effect<string, never, Origin> =>
-    withOrigin(oauthPollingPath(id))
+  export const oauthPollingUrl = (id: string): PathEffect => withOrigin(oauthPollingPath(id))
 
-  export const oauthConsentUrl = (id: string): Effect.Effect<string, never, Origin> =>
-    withOrigin(oauthConsentPath(id))
+  export const oauthConsentUrl = (id: string): PathEffect => withOrigin(oauthConsentPath(id))
 
-  export const deviceEntryUrl = (): Effect.Effect<string, never, Origin> =>
-    withOrigin(deviceEntryPath())
+  export const deviceEntryUrl = (): PathEffect => withOrigin(deviceEntryPath())
 
   /**
    * Prefilled device-entry URL for RFC 8628's `verification_uri_complete`
    * (§3.3.1) — `/gatekeeper/devices?user_code=…` so the SPA hydrates the
    * form without re-typing.
    */
-  export const deviceEntryUrlWithCode = (userCode: string): Effect.Effect<string, never, Origin> =>
-    Effect.map(Origin.get, (origin) => {
+  export const deviceEntryUrlWithCode = (userCode: string): PathEffect =>
+    Effect.map(requestOriginFromHttpRequest, (origin) => {
       const query = new URLSearchParams({ user_code: userCode }).toString()
       return `${origin}${deviceEntryPath()}?${query}`
     })
 
-  export const deviceConsentUrl = (userCode: string): Effect.Effect<string, never, Origin> =>
+  export const deviceConsentUrl = (userCode: string): PathEffect =>
     withOrigin(deviceConsentPath(userCode))
 }

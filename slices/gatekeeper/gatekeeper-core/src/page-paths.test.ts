@@ -1,4 +1,5 @@
-import { Effect } from 'effect'
+import { Headers, HttpServerRequest } from '@effect/platform'
+import { Effect, Layer } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { Origin } from 'navigation-core'
@@ -8,8 +9,22 @@ import { GatekeeperPaths } from './page-paths.ts'
 const ORIGIN = 'https://example.test'
 const OriginLive = Origin.layerFromLiteral(ORIGIN)
 
-const runUrl = (effect: Effect.Effect<string, never, Origin>): string =>
-  Effect.runSync(Effect.provide(effect, OriginLive))
+// The `*Url` helpers now use `requestOriginFromHttpRequest`. Supply a
+// non-loopback `remoteAddress` so the trust gate falls through to the
+// `Origin` layer — keeping these tests focused on path-encoding rather
+// than the trust-gate logic (which is covered by request-origin.test.ts).
+const UntrustedRequestLive: Layer.Layer<HttpServerRequest.HttpServerRequest> = Layer.succeed(
+  HttpServerRequest.HttpServerRequest,
+  HttpServerRequest.fromWeb(new Request('http://test.invalid/')).modify({
+    headers: Headers.fromInput({}),
+    remoteAddress: '203.0.113.1',
+  })
+)
+
+const runUrl = (
+  effect: Effect.Effect<string, never, Origin | HttpServerRequest.HttpServerRequest>
+): string =>
+  Effect.runSync(effect.pipe(Effect.provide(UntrustedRequestLive), Effect.provide(OriginLive)))
 
 test('oauthPollingPath percent-encodes the request id', () => {
   expect(GatekeeperPaths.oauthPollingPath('abc')).toBe('/gatekeeper/oauth-polling/abc')

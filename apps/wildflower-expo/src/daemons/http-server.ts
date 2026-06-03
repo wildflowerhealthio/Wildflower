@@ -13,7 +13,7 @@ import { mintHostOwnerToken, seedFirstPartyClient, seedSigningKey } from 'gateke
 import { GatekeeperStore, LocalClientToken } from 'gatekeeper-core/livestore'
 import { type CryptoRandom, cryptoRandomLayerFromWebCrypto } from 'kitchen-sink/crypto-random'
 import { runHttpServerDaemon } from 'local-http-server-core/daemon'
-import { LocalHttpServerStore } from 'local-http-server-core/livestore'
+import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
 import { injectActiveOtelContext, reactNativeTelemetryLayerFromEnv } from 'telemetry-react-native'
 import { OriginFromTunnelStore } from 'tunnel-core/contexts'
 import { TunnelStore } from 'tunnel-core/livestore'
@@ -111,12 +111,18 @@ const HttpServerContextLive = Layer.mergeAll(
 
       // Mint the local-client bootstrap token. On Expo the device IS the
       // owner — there's no separate developer minting it via a dev log.
-      // `OriginFromTunnelStore` reads the live origin from
-      // `servedOrigin$` (tunnel URL when up, LHS-bound loopback otherwise);
-      // at boot the tunnel isn't running and LHS state is at clientDocument
-      // defaults so the JWT iss/aud is `http://127.0.0.1:8080`.
-      const token = yield* mintHostOwnerToken({ ttl: Duration.hours(24) }).pipe(
-        Effect.provide(OriginFromTunnelStore),
+      // Pinned to `http://127.0.0.1:<port>` (port read from `ServerState`,
+      // which the daemon binds against) regardless of the bind hostname:
+      // the verifier uses `requestOriginFromHttpRequest`, so a
+      // loopback-pinned token is only valid for callers that hit the
+      // device's loopback interface — leaked bootstrap tokens can't be
+      // used against the tunnel URL.
+      const serverPort = store.query(ServerState.queries.current$).port
+      const bootstrapOrigin = `http://127.0.0.1:${serverPort}`
+      const token = yield* mintHostOwnerToken({
+        origin: bootstrapOrigin,
+        ttl: Duration.hours(24),
+      }).pipe(
         Effect.catchAllCause((cause) =>
           Effect.as(Effect.logError('Local client token unavailable.', Cause.pretty(cause)), null)
         )

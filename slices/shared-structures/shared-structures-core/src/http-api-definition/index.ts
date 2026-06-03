@@ -104,11 +104,15 @@ const defineSliceHttpClient = <
               baseUrl: '/',
               transformClient: (c) =>
                 HttpClient.mapRequestEffect(c, (request) =>
-                  Effect.map(tokenSubscribable.get, (token) =>
-                    token === null
+                  Effect.gen(function* () {
+                    const token = yield* tokenSubscribable.get
+                    yield* Effect.logDebug(
+                      `[${input.name}] bearer-attach: ${token === null ? 'NO TOKEN' : `token len=${token.length}`} ${request.method} ${request.url}`
+                    )
+                    return token === null
                       ? request
                       : HttpClientRequest.setHeader(request, 'Authorization', `Bearer ${token}`)
-                  )
+                  })
                 ),
             })
           })

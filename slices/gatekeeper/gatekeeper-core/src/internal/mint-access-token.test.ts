@@ -1,9 +1,23 @@
-import { DateTime, Duration, Effect, Either } from 'effect'
+import { Headers, HttpServerRequest } from '@effect/platform'
+import { DateTime, Duration, Effect, Either, Layer } from 'effect'
 import { Origin } from 'navigation-core'
 import { expect, test } from 'vite-plus/test'
 import { Client, type ClientRow, GatekeeperStore, SigningKey } from '../livestore/index.ts'
 import { testingKey1 } from '../test-fixtures/signing-keys.ts'
 import { mintAccessToken, verifyJwt } from './jwt.ts'
+
+// `verifyJwt` now derives the expected `iss`/`aud` from
+// `requestOriginFromHttpRequest`. Stubbing the request with a
+// non-loopback `remoteAddress` makes the trust gate fall through to
+// the `Origin` layer, so existing assertions against `ORIGIN` stay
+// valid without each test wiring its own header story.
+const UntrustedRequestLive: Layer.Layer<HttpServerRequest.HttpServerRequest> = Layer.succeed(
+  HttpServerRequest.HttpServerRequest,
+  HttpServerRequest.fromWeb(new Request('http://test.invalid/')).modify({
+    headers: Headers.fromInput({}),
+    remoteAddress: '203.0.113.1',
+  })
+)
 const labelOf = (q: unknown): string | undefined => {
   if (typeof q === 'object' && q !== null && 'label' in q && typeof q.label === 'string') {
     return q.label
@@ -75,6 +89,7 @@ test('mintAccessToken round-trips through verifyJwt', async () => {
     verifyJwt(token).pipe(
       Effect.provide(GatekeeperStore.layerFrom(store)),
       Effect.provide(Origin.layerFromLiteral(ORIGIN)),
+      Effect.provide(UntrustedRequestLive),
       Effect.either
     )
   )
@@ -106,6 +121,7 @@ test('mintAccessToken issues a token whose verification fails when client is not
     verifyJwt(token).pipe(
       Effect.provide(GatekeeperStore.layerFrom(store)),
       Effect.provide(Origin.layerFromLiteral(ORIGIN)),
+      Effect.provide(UntrustedRequestLive),
       Effect.either
     )
   )
@@ -132,6 +148,7 @@ test('mintAccessToken issues a token that fails verification once expired', asyn
     verifyJwt(token).pipe(
       Effect.provide(GatekeeperStore.layerFrom(store)),
       Effect.provide(Origin.layerFromLiteral(ORIGIN)),
+      Effect.provide(UntrustedRequestLive),
       Effect.either
     )
   )
@@ -160,6 +177,7 @@ test('mintAccessToken includes patient claim when supplied', async () => {
     verifyJwt(token).pipe(
       Effect.provide(GatekeeperStore.layerFrom(store)),
       Effect.provide(Origin.layerFromLiteral(ORIGIN)),
+      Effect.provide(UntrustedRequestLive),
       Effect.either
     )
   )

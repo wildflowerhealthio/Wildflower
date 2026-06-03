@@ -1,3 +1,4 @@
+import type { HttpServerRequest } from '@effect/platform'
 import { DateTime, Duration, Effect, Match, type Schema } from 'effect'
 import type { Origin } from 'navigation-core'
 import { type DeviceCodePayload, OAuthError400Schema } from '../../../http-api-definition/oauth.ts'
@@ -103,7 +104,7 @@ const handleDeviceCodeTokenExchange = (
 ): Effect.Effect<
   TokenResponse,
   OAuthError400 | OAuthError401 | OAuthError500,
-  GatekeeperStore | Origin
+  GatekeeperStore | Origin | HttpServerRequest.HttpServerRequest
 > =>
   Effect.gen(function* () {
     yield* requireValidClientForToken(payload.client_id, payload.client_secret)

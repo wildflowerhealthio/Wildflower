@@ -1,3 +1,4 @@
+import type { HttpServerRequest } from '@effect/platform'
 import { HttpApiError } from '@effect/platform'
 import { Effect, Layer, Redacted } from 'effect'
 import { Origin } from 'navigation-core'
@@ -11,13 +12,16 @@ const authenticateOwner = (
 ): Effect.Effect<
   void,
   HttpApiError.Unauthorized | HttpApiError.InternalServerError,
-  GatekeeperStore | Origin
+  GatekeeperStore | Origin | HttpServerRequest.HttpServerRequest
 > =>
   Effect.gen(function* () {
     const payload = yield* verifyJwt(token.trim())
     const scope = payload.scope ?? ''
     const scopes = scope.split(' ').filter(Boolean)
     if (!scopes.includes(OWNER_SCOPE)) {
+      yield* Effect.logWarning(
+        `[gatekeeper-auth] scope-check fail: token scopes=${JSON.stringify(scopes)} required=${OWNER_SCOPE} sub=${payload.sub}`
+      )
       return yield* Effect.fail(new HttpApiError.Unauthorized())
     }
     return undefined

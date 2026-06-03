@@ -1,3 +1,4 @@
+import type { HttpServerRequest } from '@effect/platform'
 import { DateTime, Duration, Effect, type Schema } from 'effect'
 import { CryptoRandom } from 'kitchen-sink/crypto-random'
 import type { Origin } from 'navigation-core'
@@ -104,7 +105,7 @@ const handleDeviceAuthorization = (
 ): Effect.Effect<
   DeviceAuthorizationResponse,
   OAuthError400 | OAuthError401,
-  GatekeeperStore | Origin | CryptoRandom
+  GatekeeperStore | Origin | CryptoRandom | HttpServerRequest.HttpServerRequest
 > => {
   const requestedScopes = (payload.scope ?? '').split(' ').filter(Boolean)
   return Effect.gen(function* () {

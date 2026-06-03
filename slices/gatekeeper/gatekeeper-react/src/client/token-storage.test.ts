@@ -1,6 +1,6 @@
 import { Effect, SubscriptionRef } from 'effect'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
-
+import type * as TokenStorageType from './token-storage.ts'
 import { consumeUrlTokenIntoLocalStorage, TOKEN_STORAGE_KEY } from './token-storage.ts'
 
 /**
@@ -107,7 +107,7 @@ describe('token-storage module load', () => {
   test('authTokenRef is seeded from ?token= on module load', async () => {
     setLocation(`/home?token=${FRESH_TOKEN}`)
 
-    const reloaded: typeof import('./token-storage.ts') = await import('./token-storage.ts')
+    const reloaded: typeof TokenStorageType = await import('./token-storage.ts')
 
     // URL was stripped at module load
     expect(window.location.href).toBe(`${ORIGIN}/home`)
@@ -122,7 +122,7 @@ describe('token-storage module load', () => {
     window.localStorage.setItem(TOKEN_STORAGE_KEY, 'stale-token')
     setLocation(`/home?token=${FRESH_TOKEN}`)
 
-    const reloaded: typeof import('./token-storage.ts') = await import('./token-storage.ts')
+    const reloaded: typeof TokenStorageType = await import('./token-storage.ts')
 
     const initial = await Effect.runPromise(SubscriptionRef.get(reloaded.authTokenRef))
     expect(initial).toBe(FRESH_TOKEN)

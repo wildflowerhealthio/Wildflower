@@ -77,10 +77,12 @@ for (const file of files) {
 }
 
 const defaultConfigSource = readFileSync(DEFAULT_CONFIG_SOURCE, 'utf8')
-const defaultConfigBody = defaultConfigSource.replace(
-  /url:\s*"https:\/\/r4\.smarthealthit\.org"/,
-  `url: ${JSON.stringify(DEFAULT_CONFIG_SERVER_URL)}`
-)
+const defaultConfigBody = defaultConfigSource
+  .replace(
+    /url:\s*"https:\/\/r4\.smarthealthit\.org"/,
+    `url: ${JSON.stringify(DEFAULT_CONFIG_SERVER_URL)}`
+  )
+  .replace(/timeout:\s*20000,/, ' timeout: 600000,')
 const defaultConfigBytes = Buffer.from(defaultConfigBody, 'utf8')
 entries.push({
   path: DEFAULT_CONFIG_PATH,

@@ -135,10 +135,19 @@ const AccessIndexScreen = (): JSX.Element => {
  * `errorComponent`.
  */
 export const Route = createFileRoute('/settings/gatekeeper/')({
-  loader: ({ context }) =>
-    context.queryClient.ensureQueryData(grantsQueryOptions(context.runAuthed)),
+  loader: ({ context }) => {
+    return context.queryClient.ensureQueryData(grantsQueryOptions(context.runAuthed)).then(
+      (grants) => {
+        return grants
+      },
+      (error: unknown) => {
+        console.warn('[gatekeeper-settings] loader rejected', error)
+        throw error
+      }
+    )
+  },
   component: AccessIndexScreen,
-  errorComponent: ({ error, reset }) => (
-    <AsyncErrorView error={error} retry={reset} title="Gatekeeper" />
-  ),
+  errorComponent: ({ error, reset }) => {
+    return <AsyncErrorView error={error} retry={reset} title="Gatekeeper" />
+  },
 })
