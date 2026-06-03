@@ -3,29 +3,32 @@ import { cn } from 'react-kitchen-sink'
 
 import pageLayout from './page-layout.module.css'
 
-interface PageErrorProps {
-  /** Heading shown above the error message; omit for a bare error panel. */
+interface PageBodyErrorProps {
+  /** Sub-heading (h2) shown above the error message; omit for a bare error body. */
   readonly title?: string
   /** The thrown / rejected value. `Error` instances surface their `.message`; everything else is stringified. */
   readonly error: unknown
-  readonly className?: string
   readonly titleClassName?: string
   readonly retry?: () => void
 }
 
-/** Page-level error panel with optional heading. */
-const PageError = ({
+/**
+ * Drop-in error **body** — a fragment, not a page. It renders no container
+ * of its own and expects to be slotted into a surrounding page shell (e.g.
+ * a layout route's `.page` wrapper) that already supplies the page-level
+ * `h1`. The optional `title` renders as an `h2` sub-heading beneath that.
+ */
+const PageBodyError = ({
   title,
   error,
-  className,
   titleClassName,
   retry,
-}: PageErrorProps): JSX.Element => {
+}: PageBodyErrorProps): JSX.Element => {
   const message = error instanceof Error ? error.message : String(error)
   return (
-    <div className={cn(pageLayout['page'], className)}>
+    <>
       {title === undefined ? null : (
-        <h1 className={cn('text-heading-4', titleClassName)}>{title}</h1>
+        <h2 className={cn('text-heading-3', titleClassName)}>{title}</h2>
       )}
       <p className={cn(pageLayout['error'], 'text-body-3')}>{message}</p>
       {retry === undefined ? null : (
@@ -33,9 +36,9 @@ const PageError = ({
           Retry
         </button>
       )}
-    </div>
+    </>
   )
 }
 
-export { PageError }
-export type { PageErrorProps }
+export { PageBodyError }
+export type { PageBodyErrorProps }

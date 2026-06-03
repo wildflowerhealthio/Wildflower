@@ -55,7 +55,15 @@ registerDatatypeSchema(ResourceType, CodingSchema)
 const makeLiteral = <const C extends Parameters<typeof CodingSchema.make>[0]>(
   params: C
 ): Schema.Schema.Type<typeof CodingSchema> & C =>
+  // `params` is const-narrowed at the call site, so the literal shape is
+  // already proved at compile time — `disableValidation` skips the (deep,
+  // memo-rebuilding) Schema walk that otherwise dominates encode/decode hot
+  // paths. See profile/patient-search.profile.test.ts and the encode
+  // microbench (`vp run profile`) for the measured cost.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `Schema.make` widens the const-narrowed `params` to the schema's full Type; the cast restores the caller-visible literal narrowing.
-  CodingSchema.make(params) as Schema.Schema.Type<typeof CodingSchema> & C
+  CodingSchema.make(params, { disableValidation: true }) as Schema.Schema.Type<
+    typeof CodingSchema
+  > &
+    C
 
 export { CodingSchema as Schema, makeLiteral, ResourceType }

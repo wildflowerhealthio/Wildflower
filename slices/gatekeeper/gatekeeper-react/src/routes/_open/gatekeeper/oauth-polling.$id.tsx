@@ -6,7 +6,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { type AuthorizationStatus, pollAuthorizationStatus } from 'gatekeeper-core/clients'
 import { Suspense, useEffect, useMemo, type JSX } from 'react'
 import { cn, useStream } from 'react-kitchen-sink'
-import { Awaited, pageLayoutStyles } from 'react-tundraish'
+import { AsyncErrorView, Awaited, pageLayoutStyles } from 'react-tundraish'
 
 import { useGatekeeperRuntimeLayer } from '../../../router-context.ts'
 import pageLayout from '../../../styles/page-layout.module.css'
@@ -41,9 +41,15 @@ function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
       <Awaited
         promise={statusPromise}
         resetKey={id}
-        errorTitle="Authorization Error"
-        errorClassName={styles['poll']}
-        errorTitleClassName={pageLayout['poll-declined']}
+        errorComponent={(error) => (
+          <div className={cn(pageLayoutStyles['page'], styles['poll'])}>
+            <AsyncErrorView
+              error={error}
+              title="Authorization Error"
+              titleClassName={pageLayout['poll-declined']}
+            />
+          </div>
+        )}
       >
         {(status) => <PollingResult status={status} />}
       </Awaited>

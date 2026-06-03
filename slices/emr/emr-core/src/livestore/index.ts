@@ -27,6 +27,7 @@
  *
  */
 
+import type { Queryable } from '@livestore/livestore'
 import { Schema } from 'effect'
 import { defineSliceLivestore } from 'shared-structures-core/livestore'
 
@@ -123,6 +124,51 @@ class EmrStore extends StoreTag<EmrStore>() {
 
 const SyncPayload = Schema.Struct({ authToken: Schema.String })
 
+/**
+ * Minimal duck-typed shape for issuing read queries. Any `Store<TSchema>`
+ * satisfies this regardless of which composed slice schema it was built
+ * from, so the warmup function can be called from apps that compose the
+ * EMR slice into a larger livestore schema (e.g. wildflower-expo) without
+ * the call site having to widen schema types.
+ */
+type QueryRunner = {
+  readonly query: <TResult>(query: Queryable<TResult>) => TResult
+}
+
+/**
+ * Touch the Patient table at boot so SQLite's per-table page cache, the
+ * statement cache, and the tables-used cache are populated before the
+ * first user-facing query.
+ *
+ * Idempotent. Safe to call repeatedly; second call hits the result
+ * cache and returns immediately.
+ *
+ * @typeParam TSearchResult - Row type produced by the resource's `search$`
+ *   query; inferred from the passed `Resource` so the call site never needs
+ *   to annotate it. The result is discarded, but keeping it generic lets a
+ *   concrete `Queryable<Row>` match without widening to `any` (`Queryable`
+ *   is invariant, so `unknown` would reject a concrete row type).
+ * @param store - The EMR LiveStore to issue warmup queries against.
+ *
+ */
+const warmupTable = <TSearchResult>(
+  store: QueryRunner,
+  options: {
+    readonly Resource: {
+      readonly queries: {
+        readonly count$: (params: object) => Queryable<number>
+        readonly search$: (params: { readonly limit: number }) => Queryable<TSearchResult>
+      }
+    }
+    readonly searchLimit?: number
+  }
+): void => {
+  const Resource = options.Resource
+  const searchLimit = options.searchLimit ?? 50
+  store.query(Resource.queries.count$({}))
+  store.query(Resource.queries.search$({ limit: searchLimit }))
+}
+
 export * as Patient from './patient.ts'
 export * as Binary from './binary.ts'
 export * as Observation from './observation.ts'
@@ -138,4 +184,5 @@ export {
   domainResources,
   SyncPayload,
   EmrStore,
+  warmupTable,
 }

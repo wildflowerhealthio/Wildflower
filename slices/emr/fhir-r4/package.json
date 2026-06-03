@@ -37,6 +37,8 @@
     "dev": "vp pack --watch",
     "integration": "vp test run --config vite.integration.config.ts",
     "prepublishOnly": "vp run build",
+    "profile": "vp test run --config vite.profile.config.ts",
+    "profile:view": "npx --yes speedscope \"$(ls -t .profiles/*.cpuprofile | head -1)\"",
     "test": "vp test"
   },
   "devDependencies": {

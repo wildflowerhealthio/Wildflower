@@ -112,7 +112,7 @@ const accessLogMiddleware = HttpMiddleware.make((app) =>
     })()
     const response = yield* app
     const elapsed = DateTime.distanceDuration(start, yield* DateTime.now)
-    yield* Effect.logInfo(
+    yield* Effect.logDebug(
       `[http] ${req.method} ${pathOnly} -> ${response.status} (${Duration.toMillis(elapsed)}ms)`
     )
     return response
