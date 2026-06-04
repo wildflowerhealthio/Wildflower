@@ -69,10 +69,10 @@ const AppsHomeBody = ({ tunnel, apps }: AppsHomeBodyProps): JSX.Element => {
   }
 
   return (
-    <div className={pageLayout['page']}>
+    <>
       <header className={pageLayout['page__header']}>
         <h1 className={cn(pageLayout['page__title'], 'text-heading-4')}>Apps</h1>
-        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+        <div className={pageLayout['page__header-actions']}>
           {tunnel.running ? <span className="text-label-4">tunnel</span> : null}
           <button
             type="button"
@@ -113,7 +113,7 @@ const AppsHomeBody = ({ tunnel, apps }: AppsHomeBodyProps): JSX.Element => {
           setEditorOpen(false)
         }}
       />
-    </div>
+    </>
   )
 }
 

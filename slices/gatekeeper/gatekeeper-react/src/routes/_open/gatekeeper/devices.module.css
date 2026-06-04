@@ -1,7 +1,7 @@
 .pin-input {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 2rem;
-  font-weight: var(--font-weight-4, 700);
+  font-weight: var(--font-weight-4);
   letter-spacing: 0.75rem;
   text-align: center;
   border-radius: var(--radius-2);
@@ -14,5 +14,5 @@
 }
 
 .pin-input--error {
-  border-color: var(--color-red-4, #c0392b);
+  border-color: var(--color-red-4);
 }

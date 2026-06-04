@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState, type JSX } from 'react'
-import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
+import { Field, FieldDescription } from 'react-tundraish'
 
 import pageLayout from '../../../styles/page-layout.module.css'
 import styles from './devices.module.css'
@@ -26,7 +26,7 @@ function DeviceEntryScreen(): JSX.Element {
   }
 
   return (
-    <div className={pageLayoutStyles['page']}>
+    <>
       <h1 className="text-heading-4">Enter Device Code</h1>
       <FieldDescription>Enter the code shown on the device requesting access.</FieldDescription>
 
@@ -55,7 +55,7 @@ function DeviceEntryScreen(): JSX.Element {
           Continue
         </button>
       </div>
-    </div>
+    </>
   )
 }
 

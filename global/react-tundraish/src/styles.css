@@ -30,10 +30,226 @@
  * through.
  */
 
+/*
+ * Tundra-style reset. Mirrors the `@layer reset` block in joshdales'
+ * `tundra-css/www/src/app.css` so a consumer of `tundra-css` gets the same
+ * baseline whether they're rendering the tundra website or this app.
+ *
+ * - `* { margin: 0 }` zeroes browser default margins — every spacing in
+ *   the design system flows from `gap`/`padding` against tundra's
+ *   `--space-N` ramp, so leaving UA margins in place would fight the
+ *   design tokens.
+ * - `text-wrap: pretty` on headings/paragraphs is a Tundraish typography
+ *   nicety (prefers balanced line breaks where the engine supports it).
+ * - `cursor: pointer` on `a`/`label` matches Tundra's UA cleanup.
+ * - `select { appearance: none }` strips Safari's default chrome so the
+ *   tundra-css form-control rules can paint the control instead.
+ *
+ * We do NOT adopt tundra's global `a` rule (flex + `::after { content:
+ * '→' }`) — that style is opinionated for the tundra docs site and would
+ * sprout arrows on every `<ItemList>` link / OAuth link / inline anchor
+ * in this app. Text links here use tundra-css's `.text-link-N` classes
+ * when they want the underlined-link treatment.
+ */
+@layer reset {
+  * {
+    margin: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p {
+    text-wrap: pretty;
+  }
+
+  a,
+  label {
+    cursor: pointer;
+  }
+
+  select {
+    appearance: none;
+  }
+}
+
 :root {
   /* Advertise both schemes so UA-rendered chrome (scrollbars, form
    * controls, the default canvas) tracks the OS preference too. */
   color-scheme: light dark;
+
+  /*
+   * `--app-accent` token chain, adopted verbatim from
+   * joshdales' tundra `app.css`. Defaults to the neutral ramp so an
+   * un-classed surface picks up the surface palette. A surface that
+   * wants a different accent applies one of the `.app-{color}` classes
+   * below to re-point every level to that colour's ramp; tundra's
+   * filled/outline/text utilities (`.button-N filled`, `.text-link-N`)
+   * read these same custom properties, so a single class flips
+   * accent-coloured chrome across the whole subtree without any new
+   * rule.
+   */
+  --app-accent: var(--color-neutral-3);
+  --app-accent-1: var(--color-neutral-1);
+  --app-accent-2: var(--color-neutral-2);
+  --app-accent-3: var(--color-neutral-3);
+  --app-accent-4: var(--color-neutral-4);
+  --app-accent-5: var(--color-neutral-5);
+  --app-accent-6: var(--color-neutral-6);
+  --app-accent-7: var(--color-neutral-7);
+  --app-accent-8: var(--color-neutral-8);
+  --app-accent-9: var(--color-neutral-9);
+}
+
+/*
+ * Default canvas / surface — pin both the document and the body to
+ * tundra's surface palette so the dark-mode mirror (below) flips them in
+ * lockstep. Tundra's `app.css` hard-codes `html { background:
+ * --color-neutral-1 }` and `body { background: #fff }`; we use the
+ * semantic `--color-background` / `--color-foreground` aliases so the
+ * dark-mode block can re-point them without duplicating selectors.
+ */
+html {
+  color: var(--color-foreground);
+  background-color: var(--color-background);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+}
+
+/*
+ * Inline `<code>` — tundra `app.css`'s rule, adapted to use our semantic
+ * `--color-neutral-9` surface variable so dark mode flips automatically.
+ * The accent foreground reads from `--app-accent`, so a surface tagged
+ * `.app-blue` paints its inline code blue without a separate rule.
+ */
+code {
+  background-color: var(--color-neutral-9);
+  color: var(--app-accent);
+  padding-inline: var(--space-2);
+  padding-block: var(--space-1);
+  border-radius: var(--radius-1);
+}
+
+/* Tundra `app.css`'s horizontal-rule treatment. */
+hr {
+  border: 0.5px solid var(--color-neutral-8);
+}
+
+/*
+ * Per-surface accent classes. Each one re-points the `--app-accent-N`
+ * chain to one of tundra-css's colour ramps so any descendant that reads
+ * `--app-accent` (inline `<code>` here; `.button-N filled` / `.text-link-N`
+ * from tundra-css) recolors in a single rule. Adopted directly from the
+ * `.app-{red,orange,...}` block in joshdales' `app.css`.
+ */
+.app-red {
+  --app-accent: var(--color-red);
+  --app-accent-1: var(--color-red-1);
+  --app-accent-2: var(--color-red-2);
+  --app-accent-3: var(--color-red-3);
+  --app-accent-4: var(--color-red-4);
+  --app-accent-5: var(--color-red-5);
+  --app-accent-6: var(--color-red-6);
+  --app-accent-7: var(--color-red-7);
+  --app-accent-8: var(--color-red-8);
+  --app-accent-9: var(--color-red-9);
+}
+
+.app-orange {
+  --app-accent: var(--color-orange);
+  --app-accent-1: var(--color-orange-1);
+  --app-accent-2: var(--color-orange-2);
+  --app-accent-3: var(--color-orange-3);
+  --app-accent-4: var(--color-orange-4);
+  --app-accent-5: var(--color-orange-5);
+  --app-accent-6: var(--color-orange-6);
+  --app-accent-7: var(--color-orange-7);
+  --app-accent-8: var(--color-orange-8);
+  --app-accent-9: var(--color-orange-9);
+}
+
+.app-yellow {
+  --app-accent: var(--color-yellow);
+  --app-accent-1: var(--color-yellow-1);
+  --app-accent-2: var(--color-yellow-2);
+  --app-accent-3: var(--color-yellow-3);
+  --app-accent-4: var(--color-yellow-4);
+  --app-accent-5: var(--color-yellow-5);
+  --app-accent-6: var(--color-yellow-6);
+  --app-accent-7: var(--color-yellow-7);
+  --app-accent-8: var(--color-yellow-8);
+  --app-accent-9: var(--color-yellow-9);
+}
+
+.app-green {
+  --app-accent: var(--color-green);
+  --app-accent-1: var(--color-green-1);
+  --app-accent-2: var(--color-green-2);
+  --app-accent-3: var(--color-green-3);
+  --app-accent-4: var(--color-green-4);
+  --app-accent-5: var(--color-green-5);
+  --app-accent-6: var(--color-green-6);
+  --app-accent-7: var(--color-green-7);
+  --app-accent-8: var(--color-green-8);
+  --app-accent-9: var(--color-green-9);
+}
+
+.app-cyan {
+  --app-accent: var(--color-cyan);
+  --app-accent-1: var(--color-cyan-1);
+  --app-accent-2: var(--color-cyan-2);
+  --app-accent-3: var(--color-cyan-3);
+  --app-accent-4: var(--color-cyan-4);
+  --app-accent-5: var(--color-cyan-5);
+  --app-accent-6: var(--color-cyan-6);
+  --app-accent-7: var(--color-cyan-7);
+  --app-accent-8: var(--color-cyan-8);
+  --app-accent-9: var(--color-cyan-9);
+}
+
+.app-blue {
+  --app-accent: var(--color-blue);
+  --app-accent-1: var(--color-blue-1);
+  --app-accent-2: var(--color-blue-2);
+  --app-accent-3: var(--color-blue-3);
+  --app-accent-4: var(--color-blue-4);
+  --app-accent-5: var(--color-blue-5);
+  --app-accent-6: var(--color-blue-6);
+  --app-accent-7: var(--color-blue-7);
+  --app-accent-8: var(--color-blue-8);
+  --app-accent-9: var(--color-blue-9);
+}
+
+.app-purple {
+  --app-accent: var(--color-purple);
+  --app-accent-1: var(--color-purple-1);
+  --app-accent-2: var(--color-purple-2);
+  --app-accent-3: var(--color-purple-3);
+  --app-accent-4: var(--color-purple-4);
+  --app-accent-5: var(--color-purple-5);
+  --app-accent-6: var(--color-purple-6);
+  --app-accent-7: var(--color-purple-7);
+  --app-accent-8: var(--color-purple-8);
+  --app-accent-9: var(--color-purple-9);
+}
+
+.app-pink {
+  --app-accent: var(--color-pink);
+  --app-accent-1: var(--color-pink-1);
+  --app-accent-2: var(--color-pink-2);
+  --app-accent-3: var(--color-pink-3);
+  --app-accent-4: var(--color-pink-4);
+  --app-accent-5: var(--color-pink-5);
+  --app-accent-6: var(--color-pink-6);
+  --app-accent-7: var(--color-pink-7);
+  --app-accent-8: var(--color-pink-8);
+  --app-accent-9: var(--color-pink-9);
 }
 
 @media (prefers-color-scheme: dark) {

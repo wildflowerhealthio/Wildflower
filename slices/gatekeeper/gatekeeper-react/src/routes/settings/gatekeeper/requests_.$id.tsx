@@ -35,7 +35,7 @@ const RequestDetailBody = ({ request, id }: RequestDetailBodyProps): JSX.Element
   }
 
   return (
-    <div className={pageLayoutStyles['page']}>
+    <>
       <div className={pageLayout['section']}>
         <h2 className="text-label-3">{request.method}</h2>
         <h1 className="text-heading-4">{request.url}</h1>
@@ -94,7 +94,7 @@ const RequestDetailBody = ({ request, id }: RequestDetailBodyProps): JSX.Element
           {errorMessage}
         </p>
       ) : null}
-    </div>
+    </>
   )
 }
 

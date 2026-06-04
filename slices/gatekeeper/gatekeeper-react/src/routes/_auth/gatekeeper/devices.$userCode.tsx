@@ -88,7 +88,7 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
   }
 
   return (
-    <div className={pageLayoutStyles['page']}>
+    <>
       <h1 className="text-heading-4">Device Authorization</h1>
 
       <Field label="Code">
@@ -146,7 +146,7 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
           Decline
         </button>
       </div>
-    </div>
+    </>
   )
 }
 

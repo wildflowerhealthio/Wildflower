@@ -89,7 +89,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
   }
 
   return (
-    <div className={pageLayoutStyles['page']}>
+    <>
       <h1 className="text-heading-4">Authorization Request</h1>
 
       <Field label="Application">
@@ -162,7 +162,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
           Decline
         </button>
       </div>
-    </div>
+    </>
   )
 }
 

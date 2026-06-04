@@ -21,7 +21,7 @@
 }
 
 .input:focus {
-  outline: 2px solid var(--color-blue-5, #3b82f6);
+  outline: 2px solid var(--color-blue-5);
   outline-offset: 1px;
 }
 

@@ -197,15 +197,11 @@ const NeedsAuthMessage = (): JSX.Element => {
   }, [layer, setToken])
 
   if (state.tag === 'starting') {
-    return (
-      <div className={pageLayoutStyles['page']}>
-        <p className="text-body-2">Starting sign-in…</p>
-      </div>
-    )
+    return <p className="text-body-2">Starting sign-in…</p>
   }
   if (state.tag === 'pending') {
     return (
-      <div className={pageLayoutStyles['page']}>
+      <>
         <h1 className="text-heading-4">Sign in on another device</h1>
         <p className="text-body-2">
           Open <code>{state.verificationUri}</code> on a signed-in device and enter the code below.
@@ -220,32 +216,32 @@ const NeedsAuthMessage = (): JSX.Element => {
         <FieldDescription>
           Waiting for approval — this page will reload automatically once you sign in.
         </FieldDescription>
-      </div>
+      </>
     )
   }
   if (state.tag === 'denied') {
     return (
-      <div className={pageLayoutStyles['page']}>
+      <>
         <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Sign-in denied</h1>
         <p className="text-body-2">The sign-in request was denied. Refresh to try again.</p>
-      </div>
+      </>
     )
   }
   if (state.tag === 'expired') {
     return (
-      <div className={pageLayoutStyles['page']}>
+      <>
         <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Sign-in expired</h1>
         <p className="text-body-2">
           The code expired before sign-in completed. Refresh to try again.
         </p>
-      </div>
+      </>
     )
   }
   return (
-    <div className={pageLayoutStyles['page']}>
+    <>
       <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Sign-in failed</h1>
       <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{state.message}</p>
-    </div>
+    </>
   )
 }
 

@@ -55,6 +55,16 @@ function normalizeError(error: unknown): {
  * Pass {@link ErrorBoundaryProps.onError} to forward to a telemetry sink.
  * Use {@link ErrorBoundaryProps.extraContext} to inject app-specific
  * build/environment fields.
+ *
+ * @remarks
+ * Unlike most surfaces in `react-tundraish`, the rendered fallback wraps
+ * itself in `pageLayout.page`. This is a deliberate exception: the
+ * boundary mounts at the React root, above the router and above any
+ * layout-route page shell, so a render-tree crash inside a `.page`-
+ * providing layout still gets a centered, padded shell from the boundary
+ * itself. Every other surface in this package (`<PageBodyError>`,
+ * `<PageLoading>`) renders as a body and expects its caller's layout to
+ * supply the `.page` shell.
  */
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { caught: null }

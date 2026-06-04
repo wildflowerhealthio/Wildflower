@@ -6,7 +6,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { type AuthorizationStatus, pollAuthorizationStatus } from 'gatekeeper-core/clients'
 import { Suspense, useEffect, useMemo, type JSX } from 'react'
 import { cn, useStream } from 'react-kitchen-sink'
-import { AsyncErrorView, Awaited, pageLayoutStyles } from 'react-tundraish'
+import { AsyncErrorView, Awaited } from 'react-tundraish'
 
 import { useGatekeeperRuntimeLayer } from '../../../router-context.ts'
 import pageLayout from '../../../styles/page-layout.module.css'
@@ -42,7 +42,7 @@ function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
         promise={statusPromise}
         resetKey={id}
         errorComponent={(error) => (
-          <div className={cn(pageLayoutStyles['page'], styles['poll'])}>
+          <div className={styles['poll']}>
             <AsyncErrorView
               error={error}
               title="Authorization Error"
@@ -73,7 +73,7 @@ export const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
 
   if (status.status === 'denied') {
     return (
-      <div className={cn(pageLayoutStyles['page'], styles['poll'])}>
+      <div className={styles['poll']}>
         <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Request Declined</h1>
         <p className="text-body-2">The authorization request was declined.</p>
       </div>
@@ -81,7 +81,7 @@ export const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
   }
   if (status.status === 'error') {
     return (
-      <div className={cn(pageLayoutStyles['page'], styles['poll'])}>
+      <div className={styles['poll']}>
         <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Authorization Error</h1>
         <p className="text-body-2">{status.message}</p>
       </div>
@@ -92,7 +92,7 @@ export const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
 }
 
 const PollingSpinner = (): JSX.Element => (
-  <div className={cn(pageLayoutStyles['page'], styles['poll'])}>
+  <div className={styles['poll']}>
     <div className={styles['poll-spinner']} />
     <h1 className="text-heading-4">Waiting for Approval</h1>
     <p className="text-body-2">Please approve this request on your device.</p>

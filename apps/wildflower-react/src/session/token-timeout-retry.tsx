@@ -1,13 +1,17 @@
 import { useRouter } from '@tanstack/react-router'
 import { TokenTimeout } from 'gatekeeper-react'
 import { type JSX, useRef } from 'react'
-import { pageLayoutStyles } from 'react-tundraish'
 import { Sentry } from 'telemetry-web'
 
 /**
- * `errorComponent` for the auth-gated layouts; offers a retry that
+ * `errorComponent` body for the auth-gated layouts; offers a retry that
  * re-runs `awaitAuthReady` via `router.invalidate()`. Any non-timeout
  * thrown error renders a generic retry rather than a blank page.
+ *
+ * Renders as a fragment, not a page — the surrounding `.page` shell is
+ * supplied by `authGatedRouteOptions`' `errorComponent` wrapper so this
+ * stays consistent with the rest of the app (route bodies render
+ * content; layouts own the shell).
  */
 const TOKEN_TIMEOUT_RETRY_THRESHOLD = 3
 
@@ -21,7 +25,7 @@ const TokenTimeoutRetry = ({ error }: { readonly error: Error }): JSX.Element =>
   const consecutiveTimeoutsRef = useRef(0)
 
   return (
-    <div className={pageLayoutStyles['page']}>
+    <>
       <h1 className="text-heading-4">{isTimeout ? 'Still loading…' : 'Something went wrong'}</h1>
       <p className="text-body-2">
         {isTimeout
@@ -57,7 +61,7 @@ const TokenTimeoutRetry = ({ error }: { readonly error: Error }): JSX.Element =>
       >
         Retry
       </button>
-    </div>
+    </>
   )
 }
 
