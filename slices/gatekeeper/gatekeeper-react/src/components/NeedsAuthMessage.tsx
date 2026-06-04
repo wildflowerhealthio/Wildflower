@@ -1,3 +1,5 @@
+/* oxlint-disable react/only-export-components ---
+  Neither export changes often and sanitizeReturnTo is only used in tests */
 import { Duration, Effect, Either, Fiber, Match, Predicate, Schedule, Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
@@ -24,6 +26,28 @@ type DeviceFlowState =
   | { readonly tag: 'error'; readonly message: string }
 
 const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
+
+/** Where sign-in lands when no usable `returnTo` was supplied. */
+const POST_AUTH_DEFAULT_PATH = '/home'
+
+/**
+ * Resolve the post-sign-in destination from a caller-supplied
+ * `?returnTo=` value, falling back to {@link POST_AUTH_DEFAULT_PATH}.
+ *
+ * The value is attacker-controllable (it rides a query parameter), so
+ * only a **same-origin absolute path** is accepted: it must start with a
+ * single `/`. Protocol-relative (`//evil.com`) and backslash-smuggled
+ * (`/\evil.com`) forms — which a browser resolves to a *different
+ * origin* — are rejected, closing the open-redirect hole. Anything else
+ * (a full URL, a `javascript:` payload, an empty/missing value) also
+ * falls back to the default.
+ */
+const sanitizeReturnTo = (raw: string | null): string => {
+  if (raw === null || raw === '') return POST_AUTH_DEFAULT_PATH
+  if (!raw.startsWith('/')) return POST_AUTH_DEFAULT_PATH
+  if (raw.startsWith('//') || raw.startsWith('/\\')) return POST_AUTH_DEFAULT_PATH
+  return raw
+}
 
 // Decoding gives literal `error` codes so downstream `Match.when({error: '…'})` is exhaustive.
 const OAuthErrorSchema = Schema.Union(OAuth.OAuthError400Schema, OAuth.OAuthError401Schema)
@@ -86,7 +110,10 @@ const MOUNT_DEBOUNCE = Duration.millis(250)
  * and polls `/oauth/token` until approval. On success writes the token via
  * the `AuthTokenStore` provided by the surrounding `<AuthTokenProvider>`
  * (resolved through {@link useAuthTokenSetter}), so the same write path
- * the page-bridge `AuthTokenIssued` handler takes also flows through here.
+ * the page-bridge `AuthTokenIssued` handler takes also flows through here,
+ * then navigates to the sanitized `?returnTo=` path (or
+ * {@link POST_AUTH_DEFAULT_PATH}) with a full page load so the app reboots
+ * with the bearer in place.
  *
  * @remarks
  * The boot side effects are gated by a {@link MOUNT_DEBOUNCE} sleep so
@@ -142,6 +169,13 @@ const NeedsAuthMessage = (): JSX.Element => {
 
       yield* Effect.sync(() => {
         setToken(tokenResponse.access_token)
+        // Full-page navigation (not a client-side route push) so the app
+        // re-boots with the now-persisted bearer in place — matching the
+        // "this page will reload automatically once you sign in" copy.
+        const returnTo = sanitizeReturnTo(
+          new URLSearchParams(window.location.search).get('returnTo')
+        )
+        window.location.assign(returnTo)
       })
     }).pipe(
       Effect.catchAll((err) =>
@@ -215,5 +249,5 @@ const NeedsAuthMessage = (): JSX.Element => {
   )
 }
 
-export { NeedsAuthMessage }
+export { NeedsAuthMessage, sanitizeReturnTo }
 export type { DeviceFlowState }

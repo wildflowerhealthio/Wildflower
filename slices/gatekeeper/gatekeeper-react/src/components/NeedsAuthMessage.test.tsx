@@ -1,6 +1,8 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { Effect, Layer, SubscriptionRef } from 'effect'
+import fc from 'fast-check'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
+import { numRunsFor } from 'kitchen-sink/test'
 import type { JSX, ReactNode } from 'react'
 import { AuthTokenProvider, type AuthTokenStore } from 'react-kitchen-sink'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -54,7 +56,7 @@ const withTokenStore = (children: ReactNode): JSX.Element => (
   <AuthTokenProvider store={testTokenStore}>{children}</AuthTokenProvider>
 )
 
-const { NeedsAuthMessage } = await import('./NeedsAuthMessage.tsx')
+const { NeedsAuthMessage, sanitizeReturnTo } = await import('./NeedsAuthMessage.tsx')
 
 const PENDING_FOREVER = Effect.never
 
@@ -116,5 +118,78 @@ describe('<NeedsAuthMessage> device flow', () => {
       { timeout: 2000 }
     )
     expect(screen.getByText('device endpoint exploded')).toBeTruthy()
+  })
+
+  test('writes the issued token and navigates to the default path once exchange resolves', async () => {
+    // jsdom's `location.assign` isn't spy-able (non-configurable), so swap
+    // the whole `location` for a stub exposing just what the flow reads.
+    const assignMock = vi.fn<(url: string) => void>()
+    const realLocation = window.location
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { search: '', assign: assignMock },
+    })
+    try {
+      layerHolder.current = makeClientLayer({
+        DeviceAuthorization: () =>
+          Effect.succeed({
+            user_code: 'WDJB-MJHT',
+            device_code: 'dev-1',
+            verification_uri: 'https://example.com/device',
+            verification_uri_complete: 'https://example.com/device?code=WDJB-MJHT',
+            interval: 5,
+          }),
+        TokenExchange: () => Effect.succeed({ access_token: 'issued-token' }),
+      })
+
+      render(withTokenStore(<NeedsAuthMessage />))
+
+      await waitFor(
+        () => {
+          expect(setTokenMock).toHaveBeenCalledWith('issued-token')
+        },
+        { timeout: 2000 }
+      )
+      // No `?returnTo=` in the stub location, so sign-in lands on the default.
+      expect(assignMock).toHaveBeenCalledWith('/home')
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: realLocation })
+    }
+  })
+})
+
+describe('sanitizeReturnTo', () => {
+  // Open-redirect guard: every same-origin absolute path is preserved
+  // verbatim, and anything a browser would resolve to a different origin
+  // (or that lacks a usable value) collapses to the default landing path.
+  for (const [raw, expected] of [
+    [null, '/home'],
+    ['', '/home'],
+    ['/dashboard', '/dashboard'],
+    ['/patients/123?tab=meds#vitals', '/patients/123?tab=meds#vitals'],
+    ['//evil.com', '/home'],
+    ['/\\evil.com', '/home'],
+    ['https://evil.com/phish', '/home'],
+    ['javascript:alert(1)', '/home'],
+    ['relative/path', '/home'],
+  ] as const) {
+    test(`maps ${JSON.stringify(raw)} to ${expected}`, () => {
+      expect(sanitizeReturnTo(raw)).toBe(expected)
+    })
+  }
+
+  test('output is always a same-origin absolute path (no open redirect)', () => {
+    fc.assert(
+      fc.property(fc.option(fc.string(), { nil: null }), (raw) => {
+        const result = sanitizeReturnTo(raw)
+        // A leading single `/` (and never `//` or `/\`) is exactly what a
+        // browser resolves against the current origin — so the result can
+        // never escape to an attacker-controlled host.
+        expect(result.startsWith('/')).toBe(true)
+        expect(result.startsWith('//')).toBe(false)
+        expect(result.startsWith('/\\')).toBe(false)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })

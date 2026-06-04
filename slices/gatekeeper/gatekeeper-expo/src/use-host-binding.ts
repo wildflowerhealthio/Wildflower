@@ -82,7 +82,7 @@ const useGatekeeperHostBinding = ({
       return
     }
     Effect.runFork(
-      Effect.logInfo(
+      Effect.logDebug(
         '[gatekeeper-expo] pushing AuthTokenIssued via rotation effect (token changed mid-session)'
       ).pipe(Effect.zipRight(send({ _tag: 'AuthTokenIssued', token })))
     )
@@ -99,12 +99,12 @@ const useGatekeeperHostBinding = ({
             senderRef.current = send
             const current = tokenRef.current
             if (current === undefined) {
-              yield* Effect.logInfo(
+              yield* Effect.logDebug(
                 '[gatekeeper-expo] onPageReady fired; sender captured; no token to deliver yet'
               )
               return
             }
-            yield* Effect.logInfo(
+            yield* Effect.logDebug(
               '[gatekeeper-expo] onPageReady fired; pushing AuthTokenIssued to page'
             )
             yield* send({ _tag: 'AuthTokenIssued', token: current })

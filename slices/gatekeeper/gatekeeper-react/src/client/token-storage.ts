@@ -1,41 +1,28 @@
 /**
- * Per-entry {@link AuthTokenStore} factories for the gatekeeper
- * bearer token. Replaces an older module-scoped `SubscriptionRef` +
- * `writeToken` pair — the singleton couldn't honestly represent two
- * different storage policies (localStorage-persistent for standalone
- * web, in-memory-only for the embedded WebView), so the entrypoint
- * that knows which environment it's in now constructs the store and
- * threads it through `renderApp`.
+ * Per-entry {@link AuthTokenStore} factories for the gatekeeper bearer
+ * token: {@link makeWebAuthTokenStore} (`localStorage`-backed, for the
+ * standalone web entries) and {@link makeEmbeddedAuthTokenStore}
+ * (in-memory only, for the in-WebView SPA). Both return the same
+ * {@link AuthTokenStore} shape so every consumer is environment-blind;
+ * only the `main-*` entrypoint picks a factory.
  *
- * Both factories return the same {@link AuthTokenStore} shape so
- * `AuthTokenProvider`, the `BearerToken` Layer, the page-bridge
- * `AuthTokenIssued` handler, and the `auth-ready` gates are all
- * environment-blind — only the entrypoint chooses behavior.
- *
- * Storage policies:
- *
- *  - {@link makeWebAuthTokenStore} — `localStorage`-backed. Reads the
- *    initial value at construction time, persists every subsequent
- *    write back, mirrors cross-tab writes via the
- *    `'storage'` event, and consumes any `?token=…` URL bootstrap
- *    parameter into `localStorage` (the standalone dev flow
- *    `wildflower-node` logs at startup). Used by `main-web` /
- *    `main-single-web`.
- *  - {@link makeEmbeddedAuthTokenStore} — in-memory only, initial
- *    value `null`. The embedded WebView's `WKWebsiteDataStore`
- *    outlives the host's JS context (Metro reload and, depending on
- *    iOS policy, even force-kill leave the previous session's token
- *    in storage). The LHS daemon mints a fresh token and re-pushes it
- *    on every boot via the gatekeeper bridge, so a `localStorage`-
- *    cached value can only ever be stale and racing the host's fresh
- *    push leaves TanStack Query loaders pinned on 401s. Used by
- *    `main-embedded`.
+ * See `slices/gatekeeper/docs/Auth Token Storage Explanation.md` for
+ * the storage-policy rationale (why the embedded store ignores
+ * `localStorage`, and why the URL token is JWT-shape validated).
  */
 
 import { Effect, SubscriptionRef } from 'effect'
 import type { AuthTokenStore } from 'react-kitchen-sink'
 
 const TOKEN_STORAGE_KEY = 'gatekeeper:token'
+
+/**
+ * A bearer token must look like a JWT before we persist it: exactly
+ * three non-empty base64url segments separated by dots. The `?token=`
+ * value is attacker-controllable, so a malformed value must not
+ * clobber a previously-valid stored token.
+ */
+const JWT_SHAPE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
 
 /**
  * Dev-mode bootstrap: if the page was opened with a `?token=<value>`
@@ -49,6 +36,13 @@ const TOKEN_STORAGE_KEY = 'gatekeeper:token'
  * goal is for the subsequent `localStorage.getItem` call inside
  * {@link makeWebAuthTokenStore} to pick the URL token up as the
  * store's initial value.
+ *
+ * The URL token is validated against {@link JWT_SHAPE} before being
+ * persisted. A value that fails validation is treated as if no usable
+ * token was supplied: the existing stored token is left untouched, but
+ * the `?token=` param is still stripped from the address bar (matching
+ * the success path) so the malformed value doesn't linger in history
+ * or Referer headers.
  *
  * No-op outside the browser, when `?token=` is missing or empty, or
  * when `history.replaceState` is unavailable.
@@ -64,7 +58,9 @@ const consumeUrlTokenIntoLocalStorage = (): void => {
   const url = new URL(window.location.href)
   const tokenFromUrl = url.searchParams.get('token')
   if (tokenFromUrl === null || tokenFromUrl === '') return
-  window.localStorage.setItem(TOKEN_STORAGE_KEY, tokenFromUrl)
+  if (JWT_SHAPE.test(tokenFromUrl)) {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, tokenFromUrl)
+  }
   url.searchParams.delete('token')
   window.history.replaceState(null, '', url.toString())
 }
@@ -91,27 +87,13 @@ const writeTokenToLocalStorage = (token: string | null): void => {
 }
 
 /**
- * Build the standalone-web {@link AuthTokenStore}:
- *
- *  1. Consume any `?token=…` URL bootstrap into `localStorage` (see
- *     {@link consumeUrlTokenIntoLocalStorage}).
- *  2. Construct the underlying `SubscriptionRef` seeded with the
- *     current `localStorage` value.
- *  3. Returned `setToken` writes through to both the ref AND
- *     `localStorage` in one synchronous step. Anything subscribed to
- *     `subscribable.changes` sees the update; the next page load /
- *     other tab reads the new value back via
- *     `readInitialTokenFromLocalStorage`.
- *  4. Attach a `'storage'` event listener so cross-tab writes
- *     propagate into the ref; a current-value guard avoids the listener
- *     storming the ref with the same value when this tab is the writer
- *     (browsers don't fire `'storage'` on the writing tab, but the
- *     guard hardens the contract against future spec relaxations and
- *     against any future code path that calls `localStorage.setItem`
- *     outside `setToken`).
- *
- * Call once per page load (web entries do this in their `main-*`
- * entrypoint before `renderApp`).
+ * Build the standalone-web {@link AuthTokenStore}: a `SubscriptionRef`
+ * seeded from `localStorage` (after consuming any `?token=…` URL
+ * bootstrap), whose `setToken` writes through to both the ref and
+ * `localStorage`, with a `'storage'` listener mirroring cross-tab
+ * writes. Call once per page load in the `main-*` entrypoint before
+ * `renderApp`. See the Auth Token Storage Explanation for the policy
+ * details.
  */
 const makeWebAuthTokenStore = (): AuthTokenStore => {
   consumeUrlTokenIntoLocalStorage()
@@ -148,8 +130,8 @@ const makeWebAuthTokenStore = (): AuthTokenStore => {
  * `localStorage` read, no persistence subscriber, no cross-tab
  * listener. The host's `AuthTokenIssued` handler is the sole writer.
  *
- * Used by `main-embedded`; see the {@link AuthTokenStore} docstring
- * for the why.
+ * Used by `main-embedded`; see the Auth Token Storage Explanation for
+ * why this store ignores `localStorage`.
  */
 const makeEmbeddedAuthTokenStore = (): AuthTokenStore => {
   const ref = Effect.runSync(SubscriptionRef.make<string | null>(null))

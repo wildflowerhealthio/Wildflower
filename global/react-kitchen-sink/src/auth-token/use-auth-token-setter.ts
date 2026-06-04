@@ -1,5 +1,4 @@
-import { useContext } from 'react'
-
+import { useContextOrThrow } from '../hooks/use-context-or-throw.ts'
 import { AuthTokenContext } from './auth-token-context.ts'
 import type { AuthTokenStore } from './auth-token-store.ts'
 
@@ -13,12 +12,7 @@ import type { AuthTokenStore } from './auth-token-store.ts'
  * returned setter is stable for the surrounding store's lifetime, so
  * it's safe to put in a `useEffect`'s dep array.
  */
-const useAuthTokenSetter = (): AuthTokenStore['setToken'] => {
-  const store = useContext(AuthTokenContext)
-  if (store === null) {
-    throw new Error('useAuthTokenSetter must be used inside <AuthTokenProvider>')
-  }
-  return store.setToken
-}
+const useAuthTokenSetter = (): AuthTokenStore['setToken'] =>
+  useContextOrThrow(AuthTokenContext).setToken
 
 export { useAuthTokenSetter }

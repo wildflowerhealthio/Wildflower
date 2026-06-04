@@ -51,7 +51,31 @@ describe('webAuthReadyEffect', () => {
     expect(Either.isLeft(result)).toBe(true)
     if (Either.isLeft(result)) {
       expect(isRedirect(result.left)).toBe(true)
-      if (isRedirect(result.left)) expect(result.left.options.to).toBe('/gatekeeper/device-login')
+      if (isRedirect(result.left)) {
+        expect(result.left.options.to).toBe('/gatekeeper/device-login')
+        // Omitting returnTo still emits a well-formed search whose
+        // returnTo reads as absent, so the consumer falls back to its
+        // default destination rather than seeing a stray value.
+        expect(result.left.options.search).toStrictEqual({ returnTo: undefined })
+      }
+    }
+  })
+
+  test('bakes the supplied returnTo into the redirect search', async () => {
+    const returnTo = '/home?tab=labs'
+    const result = await Effect.runPromise(
+      Effect.flatMap(makeRef(null), (ref) => Effect.either(webAuthReadyEffect(ref, returnTo)))
+    )
+
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) {
+      expect(isRedirect(result.left)).toBe(true)
+      if (isRedirect(result.left)) {
+        expect(result.left.options.to).toBe('/gatekeeper/device-login')
+        // The originally-requested path rides the redirect verbatim so
+        // `NeedsAuthMessage` can return the user there post-sign-in.
+        expect(result.left.options.search).toStrictEqual({ returnTo })
+      }
     }
   })
 

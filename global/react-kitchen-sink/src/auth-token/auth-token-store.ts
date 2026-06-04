@@ -6,25 +6,16 @@ import type { Subscribable } from 'effect'
  * @remarks
  * Two halves on purpose:
  *
- *  - `subscribable` is the *read* side. Both Effect-side consumers
- *    (e.g. a `BearerToken` Layer feeding `HttpClient.mapRequestEffect`)
- *    and React-side consumers (e.g. TanStack-Query invalidators
- *    subscribed to `subscribable.changes`) read through the same
- *    surface. A `Subscribable.Subscribable<string | null>` is the
- *    narrowest shape that supports both — anything wider (a
+ *  - `subscribable` is the *read* side, shared by both Effect-side and
+ *    React-side consumers. A `Subscribable.Subscribable<string | null>`
+ *    is the narrowest shape that supports both — anything wider (a
  *    `SubscriptionRef`, the underlying store internals) leaks Effect
  *    plumbing into every consumer without any of them needing it.
- *  - `setToken` is the *write* side. The gatekeeper page-bridge
- *    handler, the device-login completion, and any future
- *    sign-out / refresh path all dispatch through this single seam.
+ *  - `setToken` is the *write* side: every token rotation, clear, or
+ *    refresh dispatches through this single seam.
  *
- * Per-entry implementations construct concrete stores in their
- * `main-*` entrypoint and pass them into `renderApp`'s
- * `RenderAppOptions`. The web entries' store is `localStorage`-backed;
- * the embedded entry's store is in-memory only (the host re-pushes the
- * token over the gatekeeper bridge every WebView session, so a
- * persisted value can only ever be stale — see
- * `gatekeeper-react`'s `token-storage.ts`).
+ * Apps construct an environment-specific store and pass it in; the
+ * concrete storage policies live with the app's store factories.
  */
 interface AuthTokenStore {
   /**

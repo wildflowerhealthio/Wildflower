@@ -528,7 +528,7 @@ describe('AppShellWebView', () => {
 
   // `BridgedWebView` keys its build effect on `[bindings.bridges]` — a
   // reference flip there tears the transport down and stands up a fresh
-  // one with a new `peerReady` Deferred, but the page only sends
+  // one with a new `peerReadyGate` Deferred, but the page only sends
   // `__Ready` once per its own lifecycle, so the rebuilt transport's
   // gate never opens and every HostToWeb push (including the gatekeeper
   // UI token) silently buffers in the closed outbox until scope close

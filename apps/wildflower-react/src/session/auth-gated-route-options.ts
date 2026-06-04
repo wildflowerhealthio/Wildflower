@@ -9,8 +9,13 @@ import { TokenTimeoutRetry } from './token-timeout-retry.tsx'
  * auth-gated sibling can't silently drop the `errorComponent` half.
  */
 const authGatedRouteOptions = {
-  beforeLoad: ({ context }: { readonly context: RouterContext }): Promise<void> =>
-    context.awaitAuthReady(),
+  beforeLoad: ({
+    context,
+    location,
+  }: {
+    readonly context: RouterContext
+    readonly location: { readonly href: string }
+  }): Promise<void> => context.awaitAuthReady(location.href),
   errorComponent: TokenTimeoutRetry,
 } as const
 

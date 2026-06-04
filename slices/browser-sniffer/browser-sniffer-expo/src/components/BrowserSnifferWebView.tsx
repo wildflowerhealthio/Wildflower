@@ -53,8 +53,6 @@ interface BrowserSnifferWebViewProps {
    * on react-native-webview's `injectedJavaScriptBeforeContentLoaded`.
    */
   readonly loadFrom: BridgedWebViewLoadFrom
-  /** Element rendered on top of the WebView until its first `onLoadEnd` fires. */
-  readonly loader?: JSX.Element
   /**
    * Handler for page-side `console.<level>(...)` calls mirrored over
    * {@link Logging.LogBridge}. Omit to fall back to
@@ -130,10 +128,7 @@ const embedSnifferIntoHtml = (html: string): string => {
  *   redirects from escaping to the system browser.
  */
 const BrowserSnifferWebView = forwardRef<BrowserSnifferMessageSender, BrowserSnifferWebViewProps>(
-  function BrowserSnifferWebView(
-    { loadFrom, loader, onLog, browserSnifferHandlers },
-    ref
-  ): JSX.Element {
+  function BrowserSnifferWebView({ loadFrom, onLog, browserSnifferHandlers }, ref): JSX.Element {
     const senderRef = useRef<BrowserSnifferMessageSender | null>(null)
 
     const snifferBindings = useMemo(
@@ -203,7 +198,6 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferMessageSender, BrowserSni
       <BridgedWebView
         bindings={bindings}
         loadFrom={sniffableLoadFrom}
-        loader={loader}
         injectedJavaScriptBeforeContentLoaded={snifferScript}
       />
     )

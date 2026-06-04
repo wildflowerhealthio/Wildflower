@@ -66,7 +66,7 @@ export const useHostBindings = ({
   // otherwise change `bindings.bridges` mid-life. `BridgedWebView`'s
   // build effect is keyed on `[bridges]`; a reference flip there tears
   // down the in-flight transport, builds a fresh one with a new
-  // `peerReady` Deferred, and silently breaks the SPA: the page sends
+  // `peerReadyGate` Deferred, and silently breaks the SPA: the page sends
   // `__Ready` exactly once per its own lifecycle, so the rebuilt
   // transport's gate never opens. Every HostToWeb push — including the
   // gatekeeper UI token — sits buffered in the closed outbox until the
@@ -77,9 +77,7 @@ export const useHostBindings = ({
   // — the tuple can't change at runtime. `handlers` deliberately stays
   // un-pinned so `BridgedWebView`'s registerHandlers path keeps slice
   // inbound logic up to date without disturbing the transport.
-  const pinnedBridgesRef = useRef<typeof combined.bridges | null>(null)
-  if (pinnedBridgesRef.current === null) pinnedBridgesRef.current = combined.bridges
-  const pinnedBridges = pinnedBridgesRef.current
+  const [pinnedBridges] = useState(() => combined.bridges)
 
   return useMemo(
     () => ({

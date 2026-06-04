@@ -78,6 +78,14 @@ const withFiberFailureUnwrap = async (run: () => Promise<void>): Promise<void> =
  * deliver a token later. See {@link makeAwaitWebAuthReady} for the
  * factory that closes over a concrete subscribable.
  *
+ * The optional `returnTo` (the originally-requested same-origin path,
+ * supplied by the gate from `location.href`) rides the redirect as a
+ * `?returnTo=` search param so `NeedsAuthMessage` can send the user
+ * back where they were headed once sign-in completes. Omitted when the
+ * gate has no path to preserve; the consumer falls back to its default
+ * destination. The raw path is sanitized at the consumer boundary
+ * (`sanitizeReturnTo`), not here.
+ *
  * @remarks
  * The redirect is constructed (not thrown) and routed through
  * `Effect.fail`, so the failure channel carries TanStack's own
@@ -88,7 +96,8 @@ const withFiberFailureUnwrap = async (run: () => Promise<void>): Promise<void> =
  * exporting a constant.
  */
 const webAuthReadyEffect = (
-  subscribable: Subscribable.Subscribable<string | null>
+  subscribable: Subscribable.Subscribable<string | null>,
+  returnTo?: string
 ): Effect.Effect<void, AnyRedirect> =>
   pipe(
     // `Subscribable.Subscribable<T>` exposes `.get` as an `Effect<T>`
@@ -98,7 +107,9 @@ const webAuthReadyEffect = (
     Effect.flatMap((token) =>
       isPresent(token)
         ? Effect.void
-        : Effect.fail<AnyRedirect>(redirect({ to: '/gatekeeper/device-login' }))
+        : Effect.fail<AnyRedirect>(
+            redirect({ to: '/gatekeeper/device-login', search: { returnTo } })
+          )
     )
   )
 
@@ -141,13 +152,17 @@ const embeddedAuthReadyEffect = (
  * immediately when a token is already present (standalone web reads
  * it synchronously from `localStorage` at store construction);
  * rejects with a TanStack `redirect` to the device-login route
- * otherwise. Any `FiberFailure` wrapping is unwrapped so callers see
- * the raw redirect sentinel and not a runtime shell.
+ * otherwise. The gate's `returnTo` (the originally-requested path)
+ * rides that redirect's `?returnTo=` so sign-in returns the user
+ * there. Any `FiberFailure` wrapping is unwrapped so callers see the
+ * raw redirect sentinel and not a runtime shell.
  */
 const makeAwaitWebAuthReady =
-  (subscribable: Subscribable.Subscribable<string | null>): (() => Promise<void>) =>
-  () =>
-    withFiberFailureUnwrap(() => Effect.runPromise(webAuthReadyEffect(subscribable)))
+  (
+    subscribable: Subscribable.Subscribable<string | null>
+  ): ((returnTo?: string) => Promise<void>) =>
+  (returnTo) =>
+    withFiberFailureUnwrap(() => Effect.runPromise(webAuthReadyEffect(subscribable, returnTo)))
 
 /**
  * Embedded (`main-embedded`) auth-readiness factory. The host hands

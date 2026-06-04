@@ -23,7 +23,9 @@ const setLocation = (path: string): void => {
   window.history.replaceState(null, '', `${ORIGIN}${path}`)
 }
 
-const FRESH_TOKEN = 'fresh-bootstrap-token'
+// JWT-shaped (three base64url segments) so it passes the `JWT_SHAPE`
+// guard inside `consumeUrlTokenIntoLocalStorage`.
+const FRESH_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.s1g-n4tur3_xyz'
 
 describe('consumeUrlTokenIntoLocalStorage', () => {
   beforeEach(() => {
@@ -83,6 +85,43 @@ describe('consumeUrlTokenIntoLocalStorage', () => {
 
     expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('existing-token')
     expect(window.location.href).toBe(`${ORIGIN}/home?token=`)
+  })
+
+  test('rejects a malformed ?token= but still strips it from the URL', () => {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, FRESH_TOKEN)
+    setLocation('/home?token=not-a-jwt')
+
+    consumeUrlTokenIntoLocalStorage()
+
+    // The attacker-controllable malformed value must not clobber the
+    // previously-valid stored token...
+    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(FRESH_TOKEN)
+    // ...but the param is still stripped so it can't linger in history.
+    expect(window.location.href).toBe(`${ORIGIN}/home`)
+  })
+
+  test('rejects a ?token= with too few segments', () => {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, FRESH_TOKEN)
+    setLocation('/home?token=only.two')
+
+    consumeUrlTokenIntoLocalStorage()
+
+    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(FRESH_TOKEN)
+    expect(window.location.href).toBe(`${ORIGIN}/home`)
+  })
+
+  test('rejects an encoding-sensitive ?token= (space/plus) but still strips it', () => {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, FRESH_TOKEN)
+    // `a b+c` carries a space and a `+` (which the query decoder turns
+    // into another space) — it can't match the three-segment base64url
+    // shape, so a crafted link with junk like this must not clobber the
+    // stored bearer.
+    setLocation('/home?token=a b+c')
+
+    consumeUrlTokenIntoLocalStorage()
+
+    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(FRESH_TOKEN)
+    expect(window.location.href).toBe(`${ORIGIN}/home`)
   })
 })
 

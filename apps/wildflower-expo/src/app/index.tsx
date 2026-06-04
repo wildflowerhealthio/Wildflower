@@ -22,7 +22,6 @@ export default function HomeScreen(): JSX.Element {
 
   const handleRouteChanged = useCallback(
     ({ pathname }: { pathname: string; canGoBack: boolean }): void => {
-      console.debug('Route changed:', pathname)
       setActiveTab(tabForPath(pathname))
     },
     []
@@ -51,7 +50,6 @@ export default function HomeScreen(): JSX.Element {
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isActive }}
                 onPress={() => {
-                  console.debug('Tab press:', tab.label)
                   Effect.runFork(
                     sendNavigation({ _tag: 'HostRequestedWebNavigation', path: tab.path })
                   )

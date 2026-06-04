@@ -27,7 +27,7 @@ renderApp({
   // {@link EMBEDDED_TOKEN_TIMEOUT} bound.
   awaitAuthReady: (transportReady) =>
     makeAwaitEmbeddedAuthReady(tokenStore.subscribable, transportReady),
-  // `setToken` flows into the gatekeeper page-bridge handler so the
-  // host's `AuthTokenIssued` push lands here.
-  makeTransport: (navigate, setToken) => buildTransport(navigate, setToken),
+  // `writeIssuedToken` flows into the gatekeeper page-bridge handler so
+  // the host's `AuthTokenIssued` push lands here.
+  makeTransport: (navigate, writeIssuedToken) => buildTransport(navigate, writeIssuedToken),
 })
