@@ -9,7 +9,7 @@ import { type GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { LocalClientToken } from 'gatekeeper-core/livestore'
 import { GatekeeperBridgeExpo } from 'gatekeeper-expo'
 import { type NavigationBridge } from 'navigation-core'
-import { useMemo, useRef } from 'react'
+import { useMemo, useState } from 'react'
 
 import { useWildflowerStore } from '@/src/livestore/livestore-store.ts'
 import { useNavigationHostBinding } from './use-navigation-host-binding.ts'

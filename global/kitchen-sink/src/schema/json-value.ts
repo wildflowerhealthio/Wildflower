@@ -37,7 +37,7 @@ const unsafeKeys = ['__proto__', 'constructor', 'prototype'] as const
 const containsUnsafeKeys = (value: JsonValue): boolean => {
   if (typeof value !== 'object') return false
   if (value === null) return false
-  if (Object.keys(value).some((key) => unsafeKeys.includes(key as any))) {
+  if (Object.keys(value).some((key) => (unsafeKeys as readonly string[]).includes(key))) {
     return true
   }
   return false
