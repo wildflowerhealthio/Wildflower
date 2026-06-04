@@ -28,6 +28,40 @@ jest.mock('./navigation-pipe.tsx', () => ({
   useNavigationSenderRef: (): typeof mockSenderRef => mockSenderRef,
 }))
 
+// The real `navigation-expo` bundle resolves `@effect/platform` →
+// `MsgPack` → `msgpackr`, which ships as native ESM and trips jest-expo's
+// default transform. We don't exercise the real slice binding here —
+// only the wrapper's rotation effect and onPageReady wiring — so a
+// shape-mock that surfaces the wrapper's `options.onPageReady` is
+// enough. Mirrors `app-shell-webview.test.tsx`'s `navigation-expo` mock.
+jest.mock('navigation-expo', () => ({
+  NavigationBridgeExpo: {
+    useHostBinding: (options: {
+      readonly onPageReady?: (
+        send: (msg: { readonly _tag: string; readonly [k: string]: unknown }) => Effect.Effect<void>
+      ) => Effect.Effect<void>
+    }): {
+      readonly bridges: ReadonlyArray<{ readonly name: string }>
+      readonly handlers: ReadonlyArray<unknown>
+      readonly initialMessages: ReadonlyArray<ReadonlyArray<unknown>>
+      readonly onPageReady: ReadonlyArray<
+        | ((
+            send: (msg: {
+              readonly _tag: string
+              readonly [k: string]: unknown
+            }) => Effect.Effect<void>
+          ) => Effect.Effect<void>)
+        | undefined
+      >
+    } => ({
+      bridges: [{ name: 'Navigation' }],
+      handlers: [{}],
+      initialMessages: [[]],
+      onPageReady: [options.onPageReady],
+    }),
+  },
+}))
+
 const noop = (): void => {}
 
 beforeEach(() => {
