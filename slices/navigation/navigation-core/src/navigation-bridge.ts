@@ -26,13 +26,25 @@ const HostRequestedWebNavigation = Schema.parseJson(
  * and whenever they change. `bottom` is always `0`: the native tab bar
  * sits below the WebView and already owns the bottom inset, so the page
  * must not pad there or it would double up.
+ *
+ * Each field is tightened from bare `Schema.Number` to
+ * `Schema.JsonNumber.pipe(Schema.nonNegative())` so the wire stays
+ * JSON-safe: bare `Schema.Number` admits `NaN`/`Infinity`, which
+ * `JSON.stringify` collapses to `null` and the decode side either
+ * rejects or silently mis-reads. `JsonNumber` rejects both at the
+ * bridge boundary (same primitive `kitchen-sink`'s `JsonValue` uses);
+ * `nonNegative` encodes the physical "insets are never negative"
+ * invariant. `Schema.Int` would be too strict — the source
+ * (`useSafeAreaInsets()` from `react-native-safe-area-context`) is
+ * typed as a plain `number`, and Android can yield density-adjusted
+ * fractional pixel insets on devices with display cutouts.
  */
 const SafeAreaInsetsChanged = Schema.parseJson(
   Schema.TaggedStruct('SafeAreaInsetsChanged', {
-    top: Schema.Number,
-    bottom: Schema.Number,
-    left: Schema.Number,
-    right: Schema.Number,
+    top: Schema.JsonNumber.pipe(Schema.nonNegative()),
+    bottom: Schema.JsonNumber.pipe(Schema.nonNegative()),
+    left: Schema.JsonNumber.pipe(Schema.nonNegative()),
+    right: Schema.JsonNumber.pipe(Schema.nonNegative()),
   })
 )
 

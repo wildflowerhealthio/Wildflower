@@ -1,4 +1,5 @@
 import { Effect, Schema } from 'effect'
+import { JsonValue } from 'kitchen-sink/schema'
 import * as Bridge from './bridge.ts'
 import type * as MessageHandler from './message-handler.ts'
 
@@ -27,7 +28,7 @@ type LogLevel = Schema.Schema.Type<typeof LogLevel>
  */
 const LogMessageBody = Schema.TaggedStruct('Log', {
   level: LogLevel,
-  payload: Schema.Array(Schema.Unknown),
+  payload: Schema.Array(JsonValue),
 })
 
 /**
@@ -193,8 +194,17 @@ const installConsoleInterceptor = (
 
   const makeForLevel =
     (level: LogLevel) =>
-    (...args: unknown[]): void => {
-      send({ _tag: 'Log', level, payload: args })
+    (...args: readonly unknown[]): void => {
+      send({
+        _tag: 'Log',
+        level,
+
+        payload: args.map((arg) =>
+          // Prefer default stringification over a failed JSON
+          // oxlint-disable-next-line typescript/no-base-to-string
+          Schema.is(JsonValue)(arg) ? arg : `JSON Unsafe: ${String(arg)}`
+        ),
+      })
     }
 
   const patched: LogBridgeConsole = {

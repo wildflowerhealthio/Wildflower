@@ -140,7 +140,13 @@ const installSniffer = function (): void {
   const makeLogForLevel =
     (level: Logging.LogLevel) =>
     (...args: unknown[]): void => {
-      post({ _tag: 'Log', level, payload: args })
+      // Try to log, but fail for unsafe payloads
+      try {
+        // oxlint-disable-next-line typescript-eslint/no-explicit-any
+        post({ _tag: 'Log', level, payload: args as any[] })
+      } catch {
+        post({ _tag: 'Log', level: 'warn', payload: ['JSON unsafe payload failed to log'] })
+      }
     }
   const logDebug = makeLogForLevel('debug')
   const logInfo = makeLogForLevel('info')

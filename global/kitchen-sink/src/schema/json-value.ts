@@ -33,6 +33,16 @@ const containsNegativeZero = (value: JsonValue): boolean => {
   return false
 }
 
+const unsafeKeys = ['__proto__', 'constructor', 'prototype'] as const
+const containsUnsafeKeys = (value: JsonValue): boolean => {
+  if (typeof value !== 'object') return false
+  if (value === null) return false
+  if (Object.keys(value).some((key) => unsafeKeys.includes(key as any))) {
+    return true
+  }
+  return false
+}
+
 const arbitraryJsonValue: LazyArbitrary<JsonValue> = (fc: typeof FastCheck) =>
   // `fc.jsonValue()` returns the same recursive union shape (mutable
   // record/array) and is structurally a `JsonValue`. Re-typing via
@@ -40,7 +50,7 @@ const arbitraryJsonValue: LazyArbitrary<JsonValue> = (fc: typeof FastCheck) =>
   // call site.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   (fc.jsonValue() as unknown as FastCheck.Arbitrary<JsonValue>).filter(
-    (v) => !containsNegativeZero(v)
+    (v) => !containsNegativeZero(v) && !containsUnsafeKeys(v)
   )
 
 /**
