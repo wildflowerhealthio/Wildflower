@@ -5,6 +5,7 @@ import { NavigationBridge } from 'navigation-core'
 import { makeNavigationWebHandlers, type NavTarget } from 'navigation-react'
 import type { AuthTokenStore } from 'react-kitchen-sink'
 
+import { applyColorScheme } from '../styles/apply-color-scheme.ts'
 import { applyRootInsets } from '../styles/apply-root-insets.ts'
 
 /**
@@ -24,17 +25,19 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  * in-memory) and the page-bridge handler writes through it on every
  * `AuthTokenIssued`.
  *
- * The navigation bridge's `SafeAreaInsetsChanged` is wired to
- * `applyRootInsets` — a stateless DOM writer, not per-entry state — so
- * it's imported here rather than threaded through `renderApp`. Standalone
- * web entries use a stub transport and never reach this seam, so they
- * keep zero padding (a browser has no notch to clear).
+ * The navigation bridge's `SafeAreaInsetsChanged` and
+ * `HostColorSchemeChanged` are wired to `applyRootInsets` and
+ * `applyColorScheme` — stateless DOM writers, not per-entry state — so
+ * they're imported here rather than threaded through `renderApp`. Standalone
+ * web entries use a stub transport and never reach this seam, so they keep
+ * zero padding (a browser has no notch to clear) and stay driven by
+ * `prefers-color-scheme` (the colour-scheme attribute is never set).
  */
 const makeBootStableInitialHandlers = (
   navigate: (to: NavTarget) => void,
   setToken: AuthTokenStore['setToken']
 ): Readonly<Record<string, BridgeHandlerRecord>> => ({
-  [NavigationBridge.name]: makeNavigationWebHandlers(navigate, applyRootInsets),
+  [NavigationBridge.name]: makeNavigationWebHandlers(navigate, applyRootInsets, applyColorScheme),
   [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setToken),
 })
 

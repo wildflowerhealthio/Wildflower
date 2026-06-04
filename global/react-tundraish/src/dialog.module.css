@@ -43,9 +43,16 @@
 }
 
 /* Black drop shadows wash out on a dark surface, so deepen the elevation
- * shadow to keep the dialog readable as a raised layer. */
+ * shadow to keep the dialog readable as a raised layer. Mirrors the
+ * authoritative-attribute / OS-fallback split in `styles.css`: the media
+ * query is gated to the OS-driven case and the host-pinned dark attribute
+ * gets its own rule. */
 @media (prefers-color-scheme: dark) {
-  .dialog {
+  :root:not([data-color-scheme]) .dialog {
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
   }
+}
+
+:root[data-color-scheme='dark'] .dialog {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
 }

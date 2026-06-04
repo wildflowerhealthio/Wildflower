@@ -7,6 +7,12 @@ import { useNavigationHostBinding } from './use-navigation-host-binding.ts'
 // here gives the bottom→0 assertions teeth.
 let mockInsets: { top: number; right: number; bottom: number; left: number }
 
+// Mutable colour-scheme source so a rerender can model the user toggling
+// the OS appearance. Typed as the wrapped hook's full return so a test can
+// feed the platform's `unspecified` default and assert it collapses to
+// `'light'`.
+let mockColorScheme: 'light' | 'dark' | 'unspecified'
+
 // The binding reads its sender through `useNavigationSenderRef` (the
 // app's navigation pipe). Mocking it to a plain ref lets us record every
 // push without standing up the real context provider; `onPageReady`
@@ -23,6 +29,9 @@ const mockSenderRef: {
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: (): { top: number; right: number; bottom: number; left: number } => mockInsets,
+}))
+jest.mock('expo-tundraish', () => ({
+  useColorScheme: (): 'light' | 'dark' | 'unspecified' => mockColorScheme,
 }))
 jest.mock('./navigation-pipe.tsx', () => ({
   useNavigationSenderRef: (): typeof mockSenderRef => mockSenderRef,
@@ -66,6 +75,7 @@ const noop = (): void => {}
 
 beforeEach(() => {
   mockInsets = { top: 10, right: 4, bottom: 20, left: 6 }
+  mockColorScheme = 'light'
   mockSent = []
   mockSenderRef.current = recordingSend
 })
@@ -95,23 +105,82 @@ describe('useNavigationHostBinding rotation effect', () => {
     if (onReady === undefined) throw new Error('navigation onPageReady should be defined')
 
     // Page becomes ready: onPageReady captures the sender and pushes the
-    // current insets once, forcing `bottom` to 0.
+    // current insets (forcing `bottom` to 0) followed by the colour scheme.
     await act(async () => {
       await Effect.runPromise(onReady(recordingSend))
     })
     expect(mockSent).toEqual([
       { _tag: 'SafeAreaInsetsChanged', top: 10, bottom: 0, left: 6, right: 4 },
+      { _tag: 'HostColorSchemeChanged', scheme: 'light' },
     ])
 
-    // Rotation: `top` changes mid-session, so the effect re-pushes.
+    // Rotation: `top` changes mid-session, so the inset effect re-pushes.
+    // The scheme is unchanged, so its effect stays quiet.
     mockInsets = { top: 30, right: 4, bottom: 20, left: 6 }
     rerender()
 
     await waitFor(() => {
       expect(mockSent).toEqual([
         { _tag: 'SafeAreaInsetsChanged', top: 10, bottom: 0, left: 6, right: 4 },
+        { _tag: 'HostColorSchemeChanged', scheme: 'light' },
         { _tag: 'SafeAreaInsetsChanged', top: 30, bottom: 0, left: 6, right: 4 },
       ])
     })
+  })
+})
+
+describe('useNavigationHostBinding colour-scheme effect', () => {
+  it('does not push the scheme before onPageReady has fired (ready gate)', () => {
+    const { rerender } = renderHook<ReturnType<typeof useNavigationHostBinding>, void>(() =>
+      useNavigationHostBinding(noop, noop)
+    )
+    expect(mockSent).toEqual([])
+
+    mockColorScheme = 'dark'
+    rerender()
+
+    expect(mockSent).toEqual([])
+  })
+
+  it('re-pushes the scheme when the OS appearance changes after the page is ready', async () => {
+    const { result, rerender } = renderHook<ReturnType<typeof useNavigationHostBinding>, void>(() =>
+      useNavigationHostBinding(noop, noop)
+    )
+    const onReady = result.current.onPageReady[0]
+    if (onReady === undefined) throw new Error('navigation onPageReady should be defined')
+
+    await act(async () => {
+      await Effect.runPromise(onReady(recordingSend))
+    })
+    expect(mockSent).toEqual([
+      { _tag: 'SafeAreaInsetsChanged', top: 10, bottom: 0, left: 6, right: 4 },
+      { _tag: 'HostColorSchemeChanged', scheme: 'light' },
+    ])
+
+    mockColorScheme = 'dark'
+    rerender()
+
+    await waitFor(() => {
+      expect(mockSent).toEqual([
+        { _tag: 'SafeAreaInsetsChanged', top: 10, bottom: 0, left: 6, right: 4 },
+        { _tag: 'HostColorSchemeChanged', scheme: 'light' },
+        { _tag: 'HostColorSchemeChanged', scheme: 'dark' },
+      ])
+    })
+  })
+
+  it("collapses the platform 'unspecified' default to 'light' on the wire", async () => {
+    mockColorScheme = 'unspecified'
+    const { result } = renderHook<ReturnType<typeof useNavigationHostBinding>, void>(() =>
+      useNavigationHostBinding(noop, noop)
+    )
+    const onReady = result.current.onPageReady[0]
+    if (onReady === undefined) throw new Error('navigation onPageReady should be defined')
+
+    await act(async () => {
+      await Effect.runPromise(onReady(recordingSend))
+    })
+
+    expect(mockSent).toContainEqual({ _tag: 'HostColorSchemeChanged', scheme: 'light' })
   })
 })

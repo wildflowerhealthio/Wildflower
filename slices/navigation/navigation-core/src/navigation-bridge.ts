@@ -42,6 +42,23 @@ const SafeAreaInsetsChanged = Schema.parseJson(
 )
 
 /**
+ * Host → Web: the OS colour scheme the embedded SPA should render in. The
+ * host reads it from `useColorScheme()` and pushes it on every page
+ * `__Ready` (so a relaunched WebView re-receives it) and whenever it
+ * changes; the page applies it as an authoritative `data-color-scheme`
+ * attribute the dark CSS keys off.
+ *
+ * Needed because WKWebView evaluates `prefers-color-scheme` as `light`
+ * for `loadHTMLString` content regardless of the device appearance, so
+ * the embedded SPA's dark-mode media query never matches on its own. The
+ * plain web build never receives this message and stays driven by
+ * `prefers-color-scheme`.
+ */
+const HostColorSchemeChanged = Schema.parseJson(
+  Schema.TaggedStruct('HostColorSchemeChanged', { scheme: Schema.Literal('light', 'dark') })
+)
+
+/**
  * Web → Host: embedded SPA router state has changed. `canGoBack` drives
  * the native header's back chevron; `pathname` is informational.
  */
@@ -72,6 +89,7 @@ type NavigationBridge = Bridge.Bridge<
     HostBackRequested: typeof HostBackRequested
     HostRequestedWebNavigation: typeof HostRequestedWebNavigation
     SafeAreaInsetsChanged: typeof SafeAreaInsetsChanged
+    HostColorSchemeChanged: typeof HostColorSchemeChanged
   },
   {
     RouteChanged: typeof RouteChanged
@@ -81,9 +99,10 @@ type NavigationBridge = Bridge.Bridge<
 
 /**
  * Slice-neutral cross-process navigation contract. Host emits
- * `HostBackRequested`, `HostRequestedWebNavigation`, and
- * `SafeAreaInsetsChanged`; web emits `RouteChanged` and `UIReady`.
- * Aggregators wire this bridge into every embedded WebView.
+ * `HostBackRequested`, `HostRequestedWebNavigation`,
+ * `SafeAreaInsetsChanged`, and `HostColorSchemeChanged`; web emits
+ * `RouteChanged` and `UIReady`. Aggregators wire this bridge into every
+ * embedded WebView.
  *
  * @remarks
  * Cross-process `console.<level>(...)` mirroring is handled by the
@@ -97,6 +116,7 @@ const NavigationBridge: NavigationBridge = Bridge.make({
     ['HostBackRequested', HostBackRequested],
     ['HostRequestedWebNavigation', HostRequestedWebNavigation],
     ['SafeAreaInsetsChanged', SafeAreaInsetsChanged],
+    ['HostColorSchemeChanged', HostColorSchemeChanged],
   ] as const,
   webToHost: [
     ['RouteChanged', RouteChanged],
@@ -107,9 +127,9 @@ const NavigationBridge: NavigationBridge = Bridge.make({
       'HostRequestedWebNavigation',
       'path'
     ),
-    // HostBackRequested and SafeAreaInsetsChanged deliberately omitted —
-    // they're runtime-only signals pushed over the live channel, never
-    // seeded through the WebView URL.
+    // HostBackRequested, SafeAreaInsetsChanged, and HostColorSchemeChanged
+    // deliberately omitted — they're runtime-only signals pushed over the
+    // live channel, never seeded through the WebView URL.
   },
 })
 

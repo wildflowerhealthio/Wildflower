@@ -261,7 +261,11 @@ jest.mock('wildflower-react/embeddable-html', () => ({ html: '<!doctype html><ht
 
 jest.mock('expo-tundraish', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
-  return { Loader: (): ReactElement => ReactInner.createElement('Loader', null, null) }
+  return {
+    Loader: (): ReactElement => ReactInner.createElement('Loader', null, null),
+    // `useNavigationHostBinding` reads this to push `HostColorSchemeChanged`.
+    useColorScheme: (): 'light' | 'dark' | 'unspecified' => 'light',
+  }
 })
 
 // `useHostBindings` reads `useSafeAreaInsets()` to push `SafeAreaInsetsChanged`
@@ -483,6 +487,30 @@ describe('AppShellWebView', () => {
       left: 8,
       right: 0,
     })
+  })
+
+  it('pushes the current OS colour scheme through the navigation onPageReady', async () => {
+    // On every page `__Ready` the navigation binding re-pushes the host's
+    // colour scheme so a relaunched SPA (where WKWebView reports
+    // `prefers-color-scheme: light` for `loadHTMLString` content) re-receives
+    // the real device appearance. The mocked `useColorScheme` reports light.
+    mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
+    const bindings = expectBindings()
+    const navIdx = indexOf(bindings, 'Navigation')
+    const navOnPageReady = bindings.onPageReady[navIdx]
+    if (navOnPageReady === undefined) throw new Error('navigation onPageReady missing')
+
+    const dispatched: Array<{ readonly _tag: string }> = []
+    const fakeTransportSender = (msg: {
+      readonly _tag: string
+      readonly [k: string]: unknown
+    }): EffectType.Effect<void> => EffectType.sync(() => dispatched.push(msg))
+
+    await act(async () => {
+      await EffectType.runPromise(navOnPageReady(fakeTransportSender))
+    })
+
+    expect(dispatched).toContainEqual({ _tag: 'HostColorSchemeChanged', scheme: 'light' })
   })
 
   it('keeps the bearer token out of every binding initialMessages', () => {

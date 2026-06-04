@@ -13,17 +13,21 @@ interface SafeAreaInsets {
   readonly right: number
 }
 
+/** OS colour scheme, as carried by `HostColorSchemeChanged`. */
+type ColorScheme = 'light' | 'dark'
+
 /**
  * Build the Web-side inbound handler record for {@link NavigationBridge},
- * closing handlers over the supplied `navigate` and `applyInsets`
- * functions. Call this inside a React component that has access to
- * `useNavigate()` (or a stable proxy that delegates to the latest
- * `useNavigate` result), then hand the resulting record to
+ * closing handlers over the supplied `navigate`, `applyInsets`, and
+ * `applyColorScheme` functions. Call this inside a React component that
+ * has access to `useNavigate()` (or a stable proxy that delegates to the
+ * latest `useNavigate` result), then hand the resulting record to
  * `BridgeTransport.makeWebTransport`'s `handlers`.
  *
- * `applyInsets` receives the host's safe-area insets; the navigation
- * slice stays DOM-agnostic, so the embedding app supplies the concrete
- * writer (e.g. padding the page's root element).
+ * `applyInsets` receives the host's safe-area insets and `applyColorScheme`
+ * the host's OS colour scheme; the navigation slice stays DOM-agnostic, so
+ * the embedding app supplies the concrete writers (e.g. padding the page's
+ * root element, or setting a `data-color-scheme` attribute).
  *
  * @remarks
  * The previous implementation buffered targets in a module-level array
@@ -36,13 +40,15 @@ interface SafeAreaInsets {
  */
 const makeNavigationWebHandlers = (
   navigate: (target: NavTarget) => void,
-  applyInsets: (insets: SafeAreaInsets) => void
+  applyInsets: (insets: SafeAreaInsets) => void,
+  applyColorScheme: (scheme: ColorScheme) => void
 ): MessageHandler.HandlersFor<(typeof NavigationBridge)['HostToWeb']> => ({
   HostBackRequested: () => Effect.sync(() => navigate(-1)),
   HostRequestedWebNavigation: ({ path }) => Effect.sync(() => navigate(path)),
   SafeAreaInsetsChanged: ({ top, bottom, left, right }) =>
     Effect.sync(() => applyInsets({ top, bottom, left, right })),
+  HostColorSchemeChanged: ({ scheme }) => Effect.sync(() => applyColorScheme(scheme)),
 })
 
 export { makeNavigationWebHandlers }
-export type { NavTarget, SafeAreaInsets }
+export type { NavTarget, SafeAreaInsets, ColorScheme }

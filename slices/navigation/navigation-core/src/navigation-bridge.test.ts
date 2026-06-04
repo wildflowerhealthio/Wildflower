@@ -95,6 +95,28 @@ describe('NavigationBridge', () => {
     )
   })
 
+  test('property: either colour scheme round-trips Host→Web', () => {
+    fc.assert(
+      fc.property(fc.constantFrom('light' as const, 'dark' as const), (scheme) => {
+        const message = { _tag: 'HostColorSchemeChanged' as const, scheme }
+        const wire = Effect.runSync(Message.stringifyMessage(NavigationBridge.HostToWeb, message))
+        const decoded = Schema.decodeSync(NavigationBridge.HostToWeb.HostColorSchemeChanged)(wire)
+        expect(decoded).toEqual(message)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  test('Host→Web decode rejects an unknown colour scheme', () => {
+    // The literal union is the contract; an out-of-band string (e.g. the
+    // platform's `unspecified`) must fail at the boundary, never silently
+    // pass through to the DOM writer.
+    const wire = JSON.stringify({ _tag: 'HostColorSchemeChanged', scheme: 'unspecified' })
+    expect(() =>
+      Schema.decodeSync(NavigationBridge.HostToWeb.HostColorSchemeChanged)(wire)
+    ).toThrow()
+  })
+
   test('Web→Host encodes a RouteChanged the Host side decodes', () => {
     const encoded = Effect.runSync(
       Message.stringifyMessage(NavigationBridge.WebToHost, {

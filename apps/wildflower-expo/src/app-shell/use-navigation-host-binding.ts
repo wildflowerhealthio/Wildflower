@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 
 import { type HostBindings, type BridgeTransport } from 'effect-messaging-core'
+import { useColorScheme } from 'expo-tundraish'
 import { type NavigationBridge } from 'navigation-core'
 import { NavigationBridgeExpo } from 'navigation-expo'
 import { useEffect, useMemo, useRef } from 'react'
@@ -26,6 +27,15 @@ export const useNavigationHostBinding = (
   const insets = useSafeAreaInsets()
   const insetsRef = useRef(insets)
   insetsRef.current = insets
+  // Same ref-mirrored delivery for the OS colour scheme: WKWebView reports
+  // `prefers-color-scheme: light` for `loadHTMLString` content regardless of
+  // the device appearance, so the page can't read it on its own — the host
+  // pushes it on every page `__Ready` and whenever it changes. `unspecified`
+  // (the platform default before the OS reports either) collapses to
+  // `'light'`, matching the bridge's `'light' | 'dark'` contract.
+  const colorScheme: 'light' | 'dark' = useColorScheme() === 'dark' ? 'dark' : 'light'
+  const colorSchemeRef = useRef(colorScheme)
+  colorSchemeRef.current = colorScheme
   // Gates the rotation effect until `onPageReady` has installed the real
   // transport sender; before that `navigationSenderRef` holds the pipe's
   // warn-and-drop default, and the next `onPageReady` re-pushes via
@@ -47,6 +57,15 @@ export const useNavigationHostBinding = (
     )
   }, [insets.top, insets.left, insets.right, navigationSenderRef])
 
+  // Push the colour scheme when it changes mid-session (user toggles the
+  // OS appearance). Mirrors the inset rotation effect above.
+  useEffect(() => {
+    if (!pageReadyRef.current) return
+    Effect.runFork(
+      navigationSenderRef.current({ _tag: 'HostColorSchemeChanged', scheme: colorScheme })
+    )
+  }, [colorScheme, navigationSenderRef])
+
   const navigationBindingArgs = useMemo(() => {
     return {
       onRouteChanged,
@@ -54,13 +73,13 @@ export const useNavigationHostBinding = (
       // Fires on every page `__Ready` — first WebView mount and every
       // subsequent reload (Metro, blank-page workaround remount, …) —
       // so the ref-slot picks up the transport-stable sender each time,
-      // and the page re-receives the current insets after a relaunch
-      // (the rotation effect above only fires on change, never on a
-      // fresh page load). The repeat write is benign because
-      // `bindings.bridges` is pinned for the component's lifetime — see
-      // the pinning rationale in `use-host-bindings.ts`. Reads insets
-      // from a ref so this callback (and the binding identity) stays
-      // stable across inset changes.
+      // and the page re-receives the current insets and colour scheme
+      // after a relaunch (the rotation/scheme effects above only fire on
+      // change, never on a fresh page load). The repeat write is benign
+      // because `bindings.bridges` is pinned for the component's lifetime
+      // — see the pinning rationale in `use-host-bindings.ts`. Reads insets
+      // and scheme from refs so this callback (and the binding identity)
+      // stays stable across their changes.
       onPageReady: (send: NavigationSender) =>
         Effect.gen(function* () {
           navigationSenderRef.current = send
@@ -73,6 +92,7 @@ export const useNavigationHostBinding = (
             left: current.left,
             right: current.right,
           })
+          yield* send({ _tag: 'HostColorSchemeChanged', scheme: colorSchemeRef.current })
         }),
       initialRoute: '/home',
     }
