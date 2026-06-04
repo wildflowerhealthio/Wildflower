@@ -25,5 +25,5 @@
 }
 
 .poll-declined {
-  color: var(--color-red-4, #c0392b);
+  color: var(--color-red-4);
 }

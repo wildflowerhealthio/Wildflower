@@ -1,8 +1,21 @@
+/*
+ * App-level globals. Layered on top of `tundra-css` and
+ * `react-tundraish/styles.css`, which already supply:
+ *   - the design tokens (`--space-N`, `--color-*`, `--radius-N`, ...)
+ *   - the dark-mode mirror
+ *   - tundra-style reset rules (`* { margin: 0 }`, `text-wrap: pretty`)
+ *   - the `<html>` / `<body>` surface colors
+ *   - tundra-style `<code>` / `<hr>` rules
+ *   - the `--app-accent` token chain and `.app-{color}` accent classes
+ *
+ * So this file only carries what those upstream stylesheets can't
+ * provide: the SPA-shell sizing (`html`/`body`/`#root` fill the viewport)
+ * and the font-family stack.
+ */
 html,
 body,
 #root {
   height: 100%;
-  margin: 0;
 }
 
 /* `#root` carries the host's safe-area insets as padding (see
@@ -14,8 +27,6 @@ body,
 }
 
 body {
-  background: var(--color-neutral-9, #fafafa);
-  color: var(--color-foreground, #111);
   font-family:
     system-ui,
     -apple-system,

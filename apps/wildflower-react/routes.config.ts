@@ -15,6 +15,19 @@ import { index, layout, physical, rootRoute, route } from '@tanstack/virtual-fil
  *   - `_auth/`    → mounted under the pathless `_auth` layout  → `/_auth/…`
  *   - `_open/`    → mounted under the pathless `_open` layout  → `/_open/…`
  *
+ * Section sub-layouts (`_auth/home.tsx`, `_auth/gatekeeper.tsx`,
+ * `_open/gatekeeper.tsx`) live in the app's own `src/routes` directory.
+ * Each wraps its slice mount in the shared `pageLayoutStyles['page']`
+ * shell so the leaves render content only. They cannot live in their
+ * source slice because `physical()` mounts compute the generated
+ * route-variable name from the in-mount path: with a slice-level
+ * `_auth/gatekeeper.tsx` AND `_open/gatekeeper.tsx`, both reduce to
+ * `Gatekeeper` and the wildflower-react `routeTree.gen.ts` ends up with a
+ * duplicate `const GatekeeperRoute = …`. Owning the section layout at the
+ * app level keeps the `/_auth/` / `/_open/` prefix in scope for the
+ * generator so it disambiguates as `AuthGatekeeperRoute` /
+ * `OpenGatekeeperRoute`.
+ *
  * Because `/settings` is a sibling of `_auth` (not a child), it is not
  * auth-gated by the `_auth` layout's `beforeLoad`. The `/settings`
  * route re-applies the same gate via the shared
@@ -39,8 +52,14 @@ export const routes = rootRoute('__root.tsx', [
   layout('_auth', '_auth.tsx', [
     index('_auth/index.tsx'),
     physical('', routesDir('collector', '_auth')),
-    physical('', routesDir('apps', '_auth')),
-    physical('', routesDir('gatekeeper', '_auth')),
+    route('/home', '_auth/home.tsx', [physical('', routesDir('apps', '_auth/home'))]),
+    route('/gatekeeper', '_auth/gatekeeper.tsx', [
+      physical('', routesDir('gatekeeper', '_auth/gatekeeper')),
+    ]),
   ]),
-  layout('_open', '_open.tsx', [physical('', routesDir('gatekeeper', '_open'))]),
+  layout('_open', '_open.tsx', [
+    route('/gatekeeper', '_open/gatekeeper.tsx', [
+      physical('', routesDir('gatekeeper', '_open/gatekeeper')),
+    ]),
+  ]),
 ])

@@ -83,7 +83,7 @@
 }
 
 .item-list__name {
-  font-weight: var(--font-weight-3, 600);
+  font-weight: var(--font-weight-3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

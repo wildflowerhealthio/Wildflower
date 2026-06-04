@@ -30,10 +30,115 @@
  * through.
  */
 
+/*
+ * Tundra-style reset. Mirrors the `@layer reset` block in joshdales'
+ * `tundra-css/www/src/app.css` so a consumer of `tundra-css` gets the same
+ * baseline whether they're rendering the tundra website or this app.
+ *
+ * - `* { margin: 0 }` zeroes browser default margins — every spacing in
+ *   the design system flows from `gap`/`padding` against tundra's
+ *   `--space-N` ramp, so leaving UA margins in place would fight the
+ *   design tokens.
+ * - `text-wrap: pretty` on headings/paragraphs is a Tundraish typography
+ *   nicety (prefers balanced line breaks where the engine supports it).
+ * - `cursor: pointer` on `a`/`label` matches Tundra's UA cleanup.
+ * - `select { appearance: none }` strips Safari's default chrome so the
+ *   tundra-css form-control rules can paint the control instead.
+ *
+ * We do NOT adopt tundra's global `a` rule (flex + `::after { content:
+ * '→' }`) — that style is opinionated for the tundra docs site and would
+ * sprout arrows on every `<ItemList>` link / OAuth link / inline anchor
+ * in this app. Text links here use tundra-css's `.text-link-N` classes
+ * when they want the underlined-link treatment.
+ */
+@layer reset {
+  * {
+    margin: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p {
+    text-wrap: pretty;
+  }
+
+  a,
+  label {
+    cursor: pointer;
+  }
+
+  select {
+    appearance: none;
+  }
+}
+
 :root {
   /* Advertise both schemes so UA-rendered chrome (scrollbars, form
    * controls, the default canvas) tracks the OS preference too. */
   color-scheme: light dark;
+
+  /*
+   * `--app-accent` token chain, adopted verbatim from
+   * joshdales' tundra `app.css`. Defaults to the neutral ramp so an
+   * un-classed surface picks up the surface palette. A surface that
+   * wants a different accent applies one of the `.app-{color}` classes
+   * below to re-point every level to that colour's ramp; tundra's
+   * filled/outline/text utilities (`.button-N filled`, `.text-link-N`)
+   * read these same custom properties, so a single class flips
+   * accent-coloured chrome across the whole subtree without any new
+   * rule.
+   */
+  --app-accent: var(--color-neutral-3);
+  --app-accent-1: var(--color-neutral-1);
+  --app-accent-2: var(--color-neutral-2);
+  --app-accent-3: var(--color-neutral-3);
+  --app-accent-4: var(--color-neutral-4);
+  --app-accent-5: var(--color-neutral-5);
+  --app-accent-6: var(--color-neutral-6);
+  --app-accent-7: var(--color-neutral-7);
+  --app-accent-8: var(--color-neutral-8);
+  --app-accent-9: var(--color-neutral-9);
+}
+
+/*
+ * Default canvas / surface — pin both the document and the body to
+ * tundra's surface palette so the dark-mode mirror (below) flips them in
+ * lockstep. Tundra's `app.css` hard-codes `html { background:
+ * --color-neutral-1 }` and `body { background: #fff }`; we use the
+ * semantic `--color-background` / `--color-foreground` aliases so the
+ * dark-mode block can re-point them without duplicating selectors.
+ */
+html {
+  color: var(--color-foreground);
+  background-color: var(--color-background);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+}
+
+/*
+ * Inline `<code>` — tundra `app.css`'s rule, adapted to use our semantic
+ * `--color-neutral-9` surface variable so dark mode flips automatically.
+ * The accent foreground reads from `--app-accent`, so a surface tagged
+ * `.app-blue` paints its inline code blue without a separate rule.
+ */
+code {
+  background-color: var(--color-neutral-9);
+  color: var(--app-accent);
+  padding-inline: var(--space-2);
+  padding-block: var(--space-1);
+  border-radius: var(--radius-1);
+}
+
+/* Tundra `app.css`'s horizontal-rule treatment. */
+hr {
+  border: 0.5px solid var(--color-neutral-8);
 }
 
 @media (prefers-color-scheme: dark) {

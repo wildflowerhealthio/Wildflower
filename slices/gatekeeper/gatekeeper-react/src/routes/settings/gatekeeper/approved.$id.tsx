@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import type { JSX } from 'react'
-import { AsyncErrorView, pageLayoutStyles } from 'react-tundraish'
+import { AsyncErrorView } from 'react-tundraish'
 
 import { grantQueryOptions, useGrantQuery } from '../../../queries/index.ts'
 import styles from './approved.$id.module.css'
@@ -8,10 +8,10 @@ import styles from './approved.$id.module.css'
 const ApprovedAppDetailScreen = ({ id }: { readonly id: string }): JSX.Element => {
   const { data: grant } = useGrantQuery(id)
   return (
-    <div className={pageLayoutStyles['page']}>
-      <h1 className="text-heading-4">{grant.clientId}</h1>
+    <>
+      <h1 className="text-heading-6">{grant.clientId}</h1>
       <pre className={styles['json']}>{JSON.stringify(grant, null, 2)}</pre>
-    </div>
+    </>
   )
 }
 

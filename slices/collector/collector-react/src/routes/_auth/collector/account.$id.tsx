@@ -54,7 +54,7 @@ function AccountConfigScreen({ existing }: { readonly existing: Remote }): JSX.E
 
   return (
     <>
-      <h2 className="text-heading-4">Edit Account</h2>
+      <h2 className="text-heading-6">Edit Account</h2>
 
       {error !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>

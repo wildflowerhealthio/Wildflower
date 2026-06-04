@@ -86,7 +86,7 @@ const RequestsListBody = ({ requests }: RequestsListBodyProps): JSX.Element => {
   const rejected = requests.filter((r) => r.status === 'rejected')
 
   return (
-    <div className={pageLayoutStyles['page']}>
+    <>
       {errorMessage !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
           {errorMessage}
@@ -95,7 +95,7 @@ const RequestsListBody = ({ requests }: RequestsListBodyProps): JSX.Element => {
       <ItemList title="In-Flight" items={pending.map((r) => toItem(r))} />
       <ItemList title="Approved" items={approved.map((r) => toItem(r))} />
       <ItemList title="Rejected" items={rejected.map((r) => toItem(r))} />
-    </div>
+    </>
   )
 }
 

@@ -72,7 +72,7 @@
 }
 
 .menu__item--destructive {
-  color: var(--color-red-4, #c0392b);
+  color: var(--color-red-4);
 }
 
 .menu__item:disabled {

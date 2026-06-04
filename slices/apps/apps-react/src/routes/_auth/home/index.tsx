@@ -69,12 +69,13 @@ const AppsHomeBody = ({ tunnel, apps }: AppsHomeBodyProps): JSX.Element => {
   }
 
   return (
-    <div className={pageLayout['page']}>
+    <>
       <header className={pageLayout['page__header']}>
-        <h1 className={cn(pageLayout['page__title'], 'text-heading-6')}>Apps</h1>
+        <h1 className="text-heading-6">Apps</h1>
+
         <button
           type="button"
-          className="button-2 blue filled"
+          className="button-2 outline"
           onClick={() => {
             setEditorOpen(true)
           }}
@@ -110,7 +111,7 @@ const AppsHomeBody = ({ tunnel, apps }: AppsHomeBodyProps): JSX.Element => {
           setEditorOpen(false)
         }}
       />
-    </div>
+    </>
   )
 }
 
