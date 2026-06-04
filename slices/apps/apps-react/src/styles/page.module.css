@@ -18,19 +18,6 @@
   gap: var(--space-3);
 }
 
-.page__header > * {
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.page__header > *:first-child {
-  margin-left: 0;
-}
-
-.page__header > *:last-child {
-  margin-right: 0;
-}
-
 .page__title {
   margin: 0;
 }

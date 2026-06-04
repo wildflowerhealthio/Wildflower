@@ -4,7 +4,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { corsMiddleware } from './corsMiddleware.ts'
+import { corsMiddleware } from './cors-middleware.ts'
 
 const okApp = Effect.succeed(HttpServerResponse.text('ok', { status: 200 }))
 

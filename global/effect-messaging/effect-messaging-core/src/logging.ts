@@ -198,7 +198,6 @@ const installConsoleInterceptor = (
       send({
         _tag: 'Log',
         level,
-
         payload: args.map((arg) =>
           // Prefer default stringification over a failed JSON
           // oxlint-disable-next-line typescript/no-base-to-string

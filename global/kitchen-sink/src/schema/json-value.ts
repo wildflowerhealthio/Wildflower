@@ -33,12 +33,18 @@ const containsNegativeZero = (value: JsonValue): boolean => {
   return false
 }
 
+// Arbitrary-only (test-data) exclusion, not a decode-time check:
+// `JsonValue` deliberately decodes "do your best" and accepts these keys
+// off the wire — only property tests trip on them, since a generated
+// prototype-polluting key breaks round-trips. So they're kept out of
+// generated samples, not rejected by the schema.
 const unsafeKeys = ['__proto__', 'constructor', 'prototype'] as const
 const containsUnsafeKeys = (value: JsonValue): boolean => {
-  if (typeof value !== 'object') return false
-  if (value === null) return false
-  if (Object.keys(value).some((key) => (unsafeKeys as readonly string[]).includes(key))) {
-    return true
+  if (Array.isArray(value)) return value.some(containsUnsafeKeys)
+  if (value !== null && typeof value === 'object') {
+    const keys = Object.keys(value)
+    if (keys.some((key) => (unsafeKeys as readonly string[]).includes(key))) return true
+    return Object.values(value).some(containsUnsafeKeys)
   }
   return false
 }

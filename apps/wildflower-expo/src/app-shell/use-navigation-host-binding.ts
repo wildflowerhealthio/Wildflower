@@ -53,14 +53,13 @@ export const useNavigationHostBinding = (
       onUiReady,
       // Fires on every page `__Ready` — first WebView mount and every
       // subsequent reload (Metro, blank-page workaround remount, …) —
-      // so the ref-slot picks up the same transport-stable sender
-      // each time, and the page re-receives the current insets after a
-      // relaunch (the rotation effect above only fires on change, never
-      // on a fresh page load). The repeat write is benign: `sendMessage`
-      // identity is fixed for the surrounding transport's lifetime, and
-      // the shell's `useHostBindings` pins `bindings.bridges` so that
-      // lifetime spans the whole component mount. Reads insets from a
-      // ref so this callback (and thus the binding identity) stays
+      // so the ref-slot picks up the transport-stable sender each time,
+      // and the page re-receives the current insets after a relaunch
+      // (the rotation effect above only fires on change, never on a
+      // fresh page load). The repeat write is benign because
+      // `bindings.bridges` is pinned for the component's lifetime — see
+      // the pinning rationale in `use-host-bindings.ts`. Reads insets
+      // from a ref so this callback (and the binding identity) stays
       // stable across inset changes.
       onPageReady: (send: NavigationSender) =>
         Effect.gen(function* () {

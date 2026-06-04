@@ -4,7 +4,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { stripCookiesMiddleware } from './stripCookiesMiddleware.ts'
+import { stripCookiesMiddleware } from './strip-cookies-middleware.ts'
 
 // The middleware doesn't actually read the request, but `HttpMiddleware.make`
 // returns an `HttpApp.Default<E, R>` which always carries `HttpServerRequest`

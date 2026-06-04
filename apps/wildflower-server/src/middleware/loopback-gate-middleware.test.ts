@@ -4,7 +4,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { loopbackGateMiddleware } from './loopbackGateMiddleware.ts'
+import { loopbackGateMiddleware } from './loopback-gate-middleware.ts'
 
 // Wrap a trivially-succeeding inner `app` (a `200`) and assert the gate
 // either lets it through or short-circuits with `403`, keyed solely on

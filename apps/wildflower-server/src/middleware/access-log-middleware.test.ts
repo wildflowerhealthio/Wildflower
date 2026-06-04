@@ -5,7 +5,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { accessLogMiddleware } from './accessLogMiddleware.ts'
+import { accessLogMiddleware } from './access-log-middleware.ts'
 
 const messageText = (message: unknown): string => {
   if (typeof message === 'string') return message
