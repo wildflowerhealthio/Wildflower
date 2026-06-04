@@ -17,16 +17,17 @@ import { routeTree } from './routeTree.gen.ts'
 /**
  * Per-entry transport factory. Receives a stable `navigate` closure
  * that delegates to the router instance (set after `createRouter`)
- * and a `setToken` writer threaded from the entry's
+ * and a `writeIssuedToken` writer threaded from the entry's
  * {@link AuthTokenStore}; returns the page's `BridgeTransport`
  * (narrowed to the React-facing `ReactTransport` surface). Web entries
  * return a pre-resolved stub and ignore the setter (no host bridge to
- * receive `AuthTokenIssued` from); embedded wires `setToken` into the
- * gatekeeper page-bridge handler.
+ * receive `AuthTokenIssued` from); embedded wires `writeIssuedToken`
+ * into the gatekeeper page-bridge handler so a host-issued bearer lands
+ * in the store.
  */
 type MakeTransport = (
   navigate: (to: NavTarget) => void,
-  setToken: AuthTokenStore['setToken']
+  writeIssuedToken: AuthTokenStore['setToken']
 ) => Promise<ReactTransport>
 
 /**

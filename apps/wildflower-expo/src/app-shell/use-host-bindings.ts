@@ -12,7 +12,7 @@ import { LocalClientToken } from 'gatekeeper-core/livestore'
 import { GatekeeperBridgeExpo } from 'gatekeeper-expo'
 import { type NavigationBridge } from 'navigation-core'
 import { NavigationBridgeExpo } from 'navigation-expo'
-import { useMemo, useRef } from 'react'
+import { useMemo, useState } from 'react'
 import { useWildflowerStore } from '@/src/livestore/livestore-store.ts'
 import { useNavigationSenderRef } from './navigation-pipe.tsx'
 
@@ -114,9 +114,7 @@ export const useHostBindings = ({
   // — the tuple can't change at runtime. `handlers` deliberately stays
   // un-pinned so `BridgedWebView`'s registerHandlers path keeps slice
   // inbound logic up to date without disturbing the transport.
-  const pinnedBridgesRef = useRef<typeof combined.bridges | null>(null)
-  if (pinnedBridgesRef.current === null) pinnedBridgesRef.current = combined.bridges
-  const pinnedBridges = pinnedBridgesRef.current
+  const [pinnedBridges] = useState(() => combined.bridges)
 
   return useMemo(
     () => ({

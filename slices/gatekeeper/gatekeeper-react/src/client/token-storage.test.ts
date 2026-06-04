@@ -109,6 +109,20 @@ describe('consumeUrlTokenIntoLocalStorage', () => {
     expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(FRESH_TOKEN)
     expect(window.location.href).toBe(`${ORIGIN}/home`)
   })
+
+  test('rejects an encoding-sensitive ?token= (space/plus) but still strips it', () => {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, FRESH_TOKEN)
+    // `a b+c` carries a space and a `+` (which the query decoder turns
+    // into another space) — it can't match the three-segment base64url
+    // shape, so a crafted link with junk like this must not clobber the
+    // stored bearer.
+    setLocation('/home?token=a b+c')
+
+    consumeUrlTokenIntoLocalStorage()
+
+    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(FRESH_TOKEN)
+    expect(window.location.href).toBe(`${ORIGIN}/home`)
+  })
 })
 
 /**

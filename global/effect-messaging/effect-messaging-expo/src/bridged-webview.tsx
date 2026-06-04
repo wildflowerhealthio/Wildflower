@@ -8,7 +8,7 @@ import {
   UrlParamMessage,
 } from 'effect-messaging-core'
 import { flattenTuples } from 'kitchen-sink/types'
-import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { useComponentScopedRunner } from 'react-kitchen-sink'
 import { TransportWebView, type TransportWebViewSource } from './transport-webview.tsx'
 
@@ -151,15 +151,11 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   // Bare-sender handle as a Deferred the build fiber's adapter awaits,
   // so a host→web send never observes a missing WebView. Resolved by
   // the WebView ref callback once react-native-webview attaches its
-  // imperative handle. Created eagerly (running `Deferred.make` only
-  // allocates) so the ref callback — which fires during commit, before
-  // the build fiber runs — has something to resolve.
-  const bareSenderDeferredRef = useRef<Deferred.Deferred<BareSenderFunction> | null>(null)
-  if (bareSenderDeferredRef.current === null) {
-    // React lazy-ref-init: runs once per mount; subsequent renders see the cached Deferred.
-    bareSenderDeferredRef.current = Effect.runSync(Deferred.make<BareSenderFunction>())
-  }
-  const bareSenderDeferred = bareSenderDeferredRef.current
+  // imperative handle. Lazy `useState` initialiser runs once per mount
+  // (running `Deferred.make` only allocates) so the ref callback — which
+  // fires during commit, before the build fiber runs — has something to
+  // resolve.
+  const [bareSenderDeferred] = useState(() => Effect.runSync(Deferred.make<BareSenderFunction>()))
 
   // Inbox-of-inbox for page→host messages. The `<WebView>` can fire its
   // `onMessage` prop the moment the page is parsed, but the host
@@ -173,14 +169,11 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   // `onMessage` handler offers synchronously (`Queue.unbounded` never
   // blocks on offer) and the build fiber forks a single-consumer drain
   // that forwards in FIFO order into `built.enqueue`. The queue itself
-  // is never shut down — it lives in a `useRef` and is GC'd with the
-  // component; only the `forkScoped` drain is interrupted on scope
-  // close (see the drain comment below).
-  const pendingQueueRef = useRef<Queue.Queue<string> | null>(null)
-  if (pendingQueueRef.current === null) {
-    pendingQueueRef.current = Effect.runSync(Queue.unbounded<string>())
-  }
-  const pendingQueue = pendingQueueRef.current
+  // is never shut down — the lazy `useState` initialiser runs once per
+  // mount and the queue is GC'd with the component; only the
+  // `forkScoped` drain is interrupted on scope close (see the drain
+  // comment below).
+  const [pendingQueue] = useState(() => Effect.runSync(Queue.unbounded<string>()))
 
   const bareSenderRefCallback = useCallback(
     (bareSender: BareSenderFunction | null): void => {
@@ -303,7 +296,7 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
         // contract), the old scope's interrupt would stop this drain
         // and the new `buildEffect` would fork a fresh one against
         // the same queue, so in-flight pre-build offers survive a
-        // transport rebuild. The queue is held in a `useRef` slot and
+        // transport rebuild. The queue is held in a `useState` slot and
         // GC'd with the component; `Queue.unbounded` holds no
         // off-heap resources, so there's nothing to release on unmount
         // beyond memory.
