@@ -17,12 +17,14 @@ interface UseNavigationHostBindingOptions {
    */
   readonly onUiReady?: () => void
   /**
-   * Invoked once the WebView transport has built. Receives the typed
-   * sender for outbound navigation messages; the host shell typically
-   * captures it so a sibling tab bar can dispatch into the same
-   * transport.
+   * Invoked every time the page posts `__Ready` — first WebView load
+   * and every subsequent reload. Receives the typed sender for outbound
+   * navigation messages; the host shell typically captures it into a
+   * ref so a sibling tab bar can dispatch into the same transport.
+   * Repeat firings re-write the same sender (its identity is stable for
+   * the transport's lifetime), so the body needs no per-load guard.
    */
-  readonly onTransportReady?: (
+  readonly onPageReady?: (
     send: BridgeTransport.MessageSender<readonly [typeof NavigationBridge], 'HostToWeb'>
   ) => Effect.Effect<void>
 }
@@ -30,8 +32,8 @@ interface UseNavigationHostBindingOptions {
 /**
  * Host binding for the navigation bridge. Combines the handler record
  * with an optional `HostRequestedWebNavigation` initial message, and
- * surfaces the transport's typed sender via `onTransportReady` so a
- * sibling consumer (e.g. a native tab bar) can dispatch through it.
+ * surfaces the transport's typed sender via `onPageReady` so a sibling
+ * consumer (e.g. a native tab bar) can dispatch through it.
  *
  * @remarks
  * Callers must stabilise `onRouteChanged` themselves (e.g. with
@@ -46,14 +48,14 @@ interface UseNavigationHostBindingOptions {
  * @example
  * ```tsx
  * const onRouteChanged = useCallback((r) => setRoute(r), [setRoute])
- * const onTransportReady = useCallback(
+ * const onPageReady = useCallback(
  *   (send) => Effect.sync(() => setNavigationSender(send)),
  *   [setNavigationSender]
  * )
  * const binding = NavigationBridgeExpo.useHostBinding({
  *   initialRoute,
  *   onRouteChanged,
- *   onTransportReady,
+ *   onPageReady,
  * })
  * ```
  */
@@ -61,7 +63,7 @@ const useNavigationHostBinding = ({
   initialRoute,
   onRouteChanged,
   onUiReady,
-  onTransportReady,
+  onPageReady,
 }: UseNavigationHostBindingOptions = {}): HostBindings.HostBindings<
   readonly [typeof NavigationBridge]
 > =>
@@ -74,9 +76,9 @@ const useNavigationHostBinding = ({
           initialRoute === undefined
             ? undefined
             : [{ _tag: 'HostRequestedWebNavigation' as const, path: initialRoute }],
-        onTransportReady,
+        onPageReady,
       }),
-    [initialRoute, onRouteChanged, onUiReady, onTransportReady]
+    [initialRoute, onRouteChanged, onUiReady, onPageReady]
   )
 
 export { useNavigationHostBinding }

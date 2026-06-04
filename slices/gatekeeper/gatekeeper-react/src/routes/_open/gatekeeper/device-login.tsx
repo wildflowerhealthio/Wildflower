@@ -14,7 +14,18 @@ import { NeedsAuthMessage } from '../../../components/NeedsAuthMessage.tsx'
  * redirect doesn't loop. Sits beside the other gatekeeper OAuth /
  * device-flow screens (`devices`, `oauth-polling`) — same RFC 8628
  * surface, conventional placement.
+ *
+ * `validateSearch` declares the optional `returnTo` the auth gate's
+ * `redirect(...)` rides (the originally-requested same-origin path) so
+ * that search param type-checks against the registered router and
+ * survives the redirect. Non-string values are dropped; the raw value
+ * is sanitized at the point of use by `NeedsAuthMessage`'s
+ * `sanitizeReturnTo`, so no open-redirect guard is needed here.
  */
 export const Route = createFileRoute('/_open/gatekeeper/device-login')({
   component: NeedsAuthMessage,
+  validateSearch: (search: Record<string, unknown>): { readonly returnTo?: string } => {
+    const returnTo = search['returnTo']
+    return typeof returnTo === 'string' ? { returnTo } : {}
+  },
 })

@@ -1,23 +1,33 @@
 import './instrument.ts'
 import { createMemoryHistory } from '@tanstack/react-router'
-import { awaitEmbeddedAuthReady } from 'gatekeeper-react'
+import { makeAwaitEmbeddedAuthReady, makeEmbeddedAuthTokenStore } from 'gatekeeper-react'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
 import './styles/global.css'
 import { renderApp } from './app-root.tsx'
 import { buildTransport } from './bridges/build-transport.ts'
 
-// Embedded WebView: the host delivers the bearer over the gatekeeper
-// bridge after `transport.signalReady`. `awaitEmbeddedAuthReady` is a
-// factory that closes over the transport's boot-time `signalReady`
-// settled promise — `renderApp` calls it once with that ready
-// promise, and the resolved `awaitAuthReady` does the wait inside
-// itself before reading the token ref. The transport is built outside
-// React; its returned promise feeds `context.transport` for the
-// `_auth` loader's `UIReady` emit.
+// Embedded `AuthTokenStore`: in-memory only, initial value `null`.
+// The host re-mints and pushes the bearer over the gatekeeper bridge
+// on every WebView session, so a `localStorage`-cached value can only
+// ever be stale and would race the host's fresh push (TanStack Query
+// loaders fire with the cached value, hit 401 against the
+// freshly-rotated LHS daemon, and pin the failure in cache). See
+// `makeEmbeddedAuthTokenStore`'s docstring.
+const tokenStore = makeEmbeddedAuthTokenStore()
+
 renderApp({
   history: createMemoryHistory(),
   entry: 'main-embedded',
-  awaitAuthReady: awaitEmbeddedAuthReady,
-  makeTransport: (navigate) => buildTransport(navigate),
+  tokenStore,
+  // Embedded auth gate: await the page transport's `signalReady`
+  // (so the bridge has had a chance to flush the host's
+  // `AuthTokenIssued`), then take the first present value from the
+  // store's subscribable. Times out with `TokenTimeout` at the
+  // {@link EMBEDDED_TOKEN_TIMEOUT} bound.
+  awaitAuthReady: (transportReady) =>
+    makeAwaitEmbeddedAuthReady(tokenStore.subscribable, transportReady),
+  // `writeIssuedToken` flows into the gatekeeper page-bridge handler so
+  // the host's `AuthTokenIssued` push lands here.
+  makeTransport: (navigate, writeIssuedToken) => buildTransport(navigate, writeIssuedToken),
 })

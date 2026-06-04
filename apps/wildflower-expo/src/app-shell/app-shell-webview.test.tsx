@@ -11,7 +11,7 @@ let mockLastBridgedWebViewProps: {
     readonly bridges: ReadonlyArray<{ readonly name?: string }>
     readonly handlers: ReadonlyArray<unknown>
     readonly initialMessages: ReadonlyArray<ReadonlyArray<unknown>>
-    readonly onTransportReady: ReadonlyArray<
+    readonly onPageReady: ReadonlyArray<
       | ((
           send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
         ) => EffectType.Effect<void>)
@@ -39,12 +39,12 @@ jest.mock('effect-messaging-expo', () => {
       readonly bridges: ReadonlyArray<{ readonly name: string }>
       readonly handlers: ReadonlyArray<unknown>
       readonly initialMessages: ReadonlyArray<ReadonlyArray<unknown>>
-      readonly onTransportReady: ReadonlyArray<undefined>
+      readonly onPageReady: ReadonlyArray<undefined>
     } => ({
       bridges: [{ name: 'Log' }],
       handlers: [{}],
       initialMessages: [[]],
-      onTransportReady: [undefined],
+      onPageReady: [undefined],
     }),
   }
 })
@@ -58,7 +58,7 @@ type MockBindings = {
   readonly bridges: ReadonlyArray<{ readonly name: string }>
   readonly handlers: ReadonlyArray<unknown>
   readonly initialMessages: ReadonlyArray<ReadonlyArray<unknown>>
-  readonly onTransportReady: ReadonlyArray<
+  readonly onPageReady: ReadonlyArray<
     | ((
         send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
       ) => EffectType.Effect<void>)
@@ -93,7 +93,7 @@ const singleMock = (binding: {
   readonly bridge: { readonly name: string }
   readonly handlers: unknown
   readonly initialMessages?: ReadonlyArray<unknown>
-  readonly onTransportReady?: (
+  readonly onPageReady?: (
     send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
   ) => EffectType.Effect<void>
 }): MockBindings => {
@@ -113,7 +113,7 @@ let mockNavigationOptions: {
   initialRoute?: string
   onRouteChanged?: unknown
   onUiReady?: () => void
-  onTransportReady?: (
+  onPageReady?: (
     send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
   ) => EffectType.Effect<void>
 } | null = null
@@ -124,7 +124,7 @@ jest.mock('navigation-expo', () => {
         initialRoute?: string
         onRouteChanged?: unknown
         onUiReady?: () => void
-        onTransportReady?: (
+        onPageReady?: (
           send: (msg: { readonly _tag: string }) => EffectType.Effect<void>
         ) => EffectType.Effect<void>
       }): MockBindings => {
@@ -136,7 +136,7 @@ jest.mock('navigation-expo', () => {
             options.initialRoute === undefined
               ? undefined
               : [{ _tag: 'HostRequestedWebNavigation' as const, path: options.initialRoute }],
-          onTransportReady: options.onTransportReady,
+          onPageReady: options.onPageReady,
         })
       },
     },
@@ -154,7 +154,7 @@ jest.mock('expo-splash-screen', () => ({
 
 // Capture the options gatekeeper-expo's hook receives so the wiring
 // assertions below can read what the shell passed in. The mock's
-// `onTransportReady` is a no-op: the shell only owes gatekeeper the
+// `onPageReady` is a no-op: the shell only owes gatekeeper the
 // token value, and no test in this file exercises the captured
 // sender. The real token-delivery contract (capture sender →
 // post-mount send) is pinned by `gatekeeper-expo`'s own tests
@@ -172,7 +172,7 @@ jest.mock('gatekeeper-expo', () => {
           bridge: { name: 'Gatekeeper' },
           handlers: {},
           initialMessages: [],
-          onTransportReady: (): EffectType.Effect<void> => effect.Effect.void,
+          onPageReady: (): EffectType.Effect<void> => effect.Effect.void,
         })
       },
     },
@@ -240,7 +240,7 @@ jest.mock('gatekeeper-core/livestore', () => ({
 }))
 
 // Per-test override slot for the local client token row. Defaults to a
-// bearer so the gatekeeper `onTransportReady` path is exercised; tests
+// bearer so the gatekeeper `onPageReady` path is exercised; tests
 // that need the absent-token branch reassign this before mounting. The
 // `mock` prefix lets the `jest.mock` factory below close over it.
 let mockLocalClientTokenRow: { readonly value: string | null } = { value: 'bearer-xyz' }
@@ -382,14 +382,14 @@ describe('AppShellWebView', () => {
     ])
   })
 
-  it('attaches an onTransportReady wrapper to the navigation binding', () => {
+  it('attaches an onPageReady wrapper to the navigation binding', () => {
     // The base `useNavigationHostBinding` doesn't ship one — the shell
     // adds it so the captured transport sender can be plugged into
     // the navigation pipe.
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
     const bindings = expectBindings()
     const navIdx = indexOf(bindings, 'Navigation')
-    expect(bindings.onTransportReady[navIdx]).toBeDefined()
+    expect(bindings.onPageReady[navIdx]).toBeDefined()
   })
 
   it('registers the captured navigation sender into the pipe so descendants resolve it', async () => {
@@ -414,8 +414,8 @@ describe('AppShellWebView', () => {
 
     const bindings = expectBindings()
     const navIdx = indexOf(bindings, 'Navigation')
-    const navOnTransportReady = bindings.onTransportReady[navIdx]
-    if (navOnTransportReady === undefined) throw new Error('navigation onTransportReady missing')
+    const navOnPageReady = bindings.onPageReady[navIdx]
+    if (navOnPageReady === undefined) throw new Error('navigation onPageReady missing')
 
     const dispatched: Array<{ readonly _tag: string }> = []
     const fakeTransportSender = (msg: {
@@ -423,10 +423,10 @@ describe('AppShellWebView', () => {
       readonly [k: string]: unknown
     }): EffectType.Effect<void> => EffectType.sync(() => dispatched.push(msg))
 
-    // Fire the binding's `onTransportReady` — the navigation binding
+    // Fire the binding's `onPageReady` — the navigation binding
     // writes the transport sender into the pipe's sender ref.
     await act(async () => {
-      await EffectType.runPromise(navOnTransportReady(fakeTransportSender))
+      await EffectType.runPromise(navOnPageReady(fakeTransportSender))
     })
 
     // The probe resolved `useNavigationSender` against the pipe's
@@ -442,7 +442,7 @@ describe('AppShellWebView', () => {
   })
 
   it('keeps the bearer token out of every binding initialMessages', () => {
-    // Token round-trips through gatekeeper's `onTransportReady`
+    // Token round-trips through gatekeeper's `onPageReady`
     // (see `useGatekeeperHostBinding`); leaking it into
     // `initialMessages` would serialize it into the WebView URL.
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
@@ -467,11 +467,11 @@ describe('AppShellWebView', () => {
     expect(mockGatekeeperOptions?.token).toBeUndefined()
   })
 
-  it('always wires an onTransportReady on the gatekeeper binding (the slice captures the sender regardless of token state)', () => {
+  it('always wires an onPageReady on the gatekeeper binding (the slice captures the sender regardless of token state)', () => {
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
     const bindings = expectBindings()
     const gkIdx = indexOf(bindings, 'Gatekeeper')
-    expect(bindings.onTransportReady[gkIdx]).toBeDefined()
+    expect(bindings.onPageReady[gkIdx]).toBeDefined()
   })
 
   it('threads the wildflower store into the apps host binding', () => {
@@ -480,5 +480,52 @@ describe('AppShellWebView', () => {
     // and internally constructs `TunnelStore.layerFrom(store)`; the shell
     // only owes it a stable store reference.
     expect(mockAppsOptions?.store).toBeDefined()
+  })
+
+  // `BridgedWebView` keys its build effect on `[bindings.bridges]` — a
+  // reference flip there tears the transport down and stands up a fresh
+  // one with a new `peerReadyGate` Deferred, but the page only sends
+  // `__Ready` once per its own lifecycle, so the rebuilt transport's
+  // gate never opens and every HostToWeb push (including the gatekeeper
+  // UI token) silently buffers in the closed outbox until scope close
+  // logs the "outbound pump closed with N buffered message(s)
+  // undelivered" warning. The slice host-binding mocks below all return
+  // a fresh `singleMock(...)` object per call, so each rerender re-runs
+  // `HostBindings.combine` and would freshly allocate `bindings.bridges`
+  // without the pinning in `useHostBindings`. Pinning makes this test
+  // pass; removing it makes it fail.
+  it('keeps bindings.bridges reference-stable across rerenders so BridgedWebView never rebuilds the transport', () => {
+    const { rerender } = mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
+    const bridgesAtMount = expectBindings().bridges
+
+    mockLastBridgedWebViewProps = null
+    rerender(
+      <NavigationPipeProvider>
+        <AppShellWebView onRouteChanged={noopRouteChanged} />
+      </NavigationPipeProvider>
+    )
+
+    expect(expectBindings().bridges).toBe(bridgesAtMount)
+  })
+
+  // The complement to the pinning above: `bindings.handlers` must keep
+  // flowing through unchanged-reference checks so `BridgedWebView`'s
+  // `[handlers]` effect re-fires `registerHandlers` and slice inbound
+  // logic updates can land on the live transport. If a future refactor
+  // accidentally pinned handlers alongside bridges, slice-side handler
+  // record swaps (the path tested by `bridged-webview.test.tsx`'s
+  // `registerHandlers` suite) would silently no-op.
+  it('lets bindings.handlers flow through across rerenders so registerHandlers can pick up slice updates', () => {
+    const { rerender } = mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
+    const handlersAtMount = expectBindings().handlers
+
+    mockLastBridgedWebViewProps = null
+    rerender(
+      <NavigationPipeProvider>
+        <AppShellWebView onRouteChanged={noopRouteChanged} />
+      </NavigationPipeProvider>
+    )
+
+    expect(expectBindings().handlers).not.toBe(handlersAtMount)
   })
 })

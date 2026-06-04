@@ -14,7 +14,7 @@ import { offerQuietly } from './offer-quietly.ts'
  * @remarks
  * `Bridges` appears only inside `SendableMessage`, a function-parameter
  * (contravariant) position, so no variance annotation is needed — TS
- * measures the contravariance and lets `callTransportReady` hand a
+ * measures the contravariance and lets `callPageReady` hand a
  * full-tuple sender to each narrow per-slot callback structurally.
  */
 type MessageSender<
@@ -37,7 +37,7 @@ interface OutboundPump<
  * and handing the wire string to the adapter's bare sender.
  *
  * @remarks
- * `ready` is the send gate — `Deferred.await(peerReady)` on the host
+ * `ready` is the send gate — `Deferred.await(peerReadyGate)` on the host
  * (waits for the web's `__Ready`) and an already-open `Effect.void` on the
  * web. Buffered sends flush in order the moment the gate opens.
  *

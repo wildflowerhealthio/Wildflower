@@ -12,7 +12,7 @@ import { LocalClientToken } from 'gatekeeper-core/livestore'
 import { GatekeeperBridgeExpo } from 'gatekeeper-expo'
 import { type NavigationBridge } from 'navigation-core'
 import { NavigationBridgeExpo } from 'navigation-expo'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useWildflowerStore } from '@/src/livestore/livestore-store.ts'
 import { useNavigationSenderRef } from './navigation-pipe.tsx'
 
@@ -31,13 +31,14 @@ const useNavigationHostBinding = (
     return {
       onRouteChanged,
       onUiReady,
-      // Ref-slot last-writer-wins on a bridges rebuild: senders
-      // captured before teardown can't be reused afterward, so the
-      // latest `onTransportReady` firing replaces whatever was there.
-      // `bindings.bridges` is reference-stable from
-      // `HostBindings.combine`, so today the rebuild branch never
-      // fires in practice — the assignment runs once on mount.
-      onTransportReady: (send: NavigationSender) =>
+      // Fires on every page `__Ready` — first WebView mount and every
+      // subsequent reload (Metro, blank-page workaround remount, …) —
+      // so the ref-slot picks up the same transport-stable sender
+      // each time. The repeat write is benign: `sendMessage` identity
+      // is fixed for the surrounding transport's lifetime, and the
+      // shell's `useHostBindings` pins `bindings.bridges` so that
+      // lifetime spans the whole component mount.
+      onPageReady: (send: NavigationSender) =>
         Effect.sync(() => {
           navigationSenderRef.current = send
         }),
@@ -83,14 +84,45 @@ export const useHostBindings = ({
   const appsBinding = AppsBridgeExpo.useHostBinding({ store })
   const logBinding = useLogHostBinding()
 
-  return useMemo(() => {
-    const bindings = HostBindings.combine([
-      navigationBinding,
-      gatekeeperBinding,
-      collectorBinding,
-      appsBinding,
-      logBinding,
-    ] as const)
-    return bindings
-  }, [navigationBinding, gatekeeperBinding, collectorBinding, appsBinding, logBinding])
+  const combined = useMemo(
+    () =>
+      HostBindings.combine([
+        navigationBinding,
+        gatekeeperBinding,
+        collectorBinding,
+        appsBinding,
+        logBinding,
+      ] as const),
+    [navigationBinding, gatekeeperBinding, collectorBinding, appsBinding, logBinding]
+  )
+
+  // Pin `bridges` to the first-render combined output. `HostBindings.combine`
+  // allocates a fresh `bridges` array on every call, so any upstream
+  // sub-binding identity flip (e.g. `useRouter()` returning a new
+  // reference, or a slice handler closing over a per-render value) would
+  // otherwise change `bindings.bridges` mid-life. `BridgedWebView`'s
+  // build effect is keyed on `[bridges]`; a reference flip there tears
+  // down the in-flight transport, builds a fresh one with a new
+  // `peerReadyGate` Deferred, and silently breaks the SPA: the page sends
+  // `__Ready` exactly once per its own lifecycle, so the rebuilt
+  // transport's gate never opens. Every HostToWeb push — including the
+  // gatekeeper UI token — sits buffered in the closed outbox until the
+  // next scope close logs
+  // `[effect-messaging] outbound pump closed with N buffered message(s)
+  // undelivered`. Pinning is correct because the bridge identities are
+  // module-level constants (`NavigationBridge`, `GatekeeperBridge`, …)
+  // — the tuple can't change at runtime. `handlers` deliberately stays
+  // un-pinned so `BridgedWebView`'s registerHandlers path keeps slice
+  // inbound logic up to date without disturbing the transport.
+  const [pinnedBridges] = useState(() => combined.bridges)
+
+  return useMemo(
+    () => ({
+      bridges: pinnedBridges,
+      handlers: combined.handlers,
+      initialMessages: combined.initialMessages,
+      onPageReady: combined.onPageReady,
+    }),
+    [combined, pinnedBridges]
+  )
 }

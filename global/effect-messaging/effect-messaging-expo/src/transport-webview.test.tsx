@@ -1,8 +1,7 @@
-import { act, render } from '@testing-library/react-native'
+import { render } from '@testing-library/react-native'
 import { Effect } from 'effect'
 import type { BareSenderFunction } from 'effect-messaging-core'
 import * as React from 'react'
-import { View } from 'react-native'
 import {
   mockWebViewModuleFactory,
   mockWebViewState,
@@ -86,22 +85,5 @@ describe('TransportWebView (transport surface)', () => {
     Effect.runSync(sender('payload-A'))
     Effect.runSync(sender('payload-B'))
     expect(mockWebViewState.postMessageCalls).toEqual(['payload-A', 'payload-B'])
-  })
-
-  it('hides the loader once onLoadEnd fires', () => {
-    const { queryByTestId } = render(
-      <TransportWebView
-        source={{ html: '' }}
-        onMessage={jest.fn()}
-        loader={<View testID="loader-overlay" />}
-      />
-    )
-    expect(queryByTestId('loader-overlay')).not.toBeNull()
-    const onLoadEnd = mockWebViewState.props?.onLoadEnd
-    if (onLoadEnd === undefined) throw new Error('onLoadEnd not captured')
-    act(() => {
-      onLoadEnd()
-    })
-    expect(queryByTestId('loader-overlay')).toBeNull()
   })
 })

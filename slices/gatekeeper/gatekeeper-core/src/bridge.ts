@@ -24,7 +24,7 @@ type GatekeeperBridge = Bridge.Bridge<
  * Slice-level bridge for the gatekeeper auth surface. Web receives
  * `AuthTokenIssued`; host sends it via URL-encoded initial messages on
  * the WebView's source URL (so the bearer never touches a postMessage
- * channel before the transport's `peerReady` gate has lifted).
+ * channel before the transport's `peerReadyGate` has lifted).
  */
 const GatekeeperBridge: GatekeeperBridge = Bridge.make({
   name: 'Gatekeeper',

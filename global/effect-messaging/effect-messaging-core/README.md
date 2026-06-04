@@ -83,7 +83,7 @@ Two unbounded `Queue`s run behind the public surface, each drained by
 one scoped fiber:
 
 - **outbox** — `sendMessage` offers here and returns immediately (it
-  never suspends the caller). A pump fiber awaits the `peerReady`
+  never suspends the caller). A pump fiber awaits the `peerReadyGate`
   Deferred once, then drains forever, encoding each message with
   `Message.stringifyMessage` against the merged outbound record and
   handing the resulting wire string to the adapter's bare sender. Sends
@@ -99,7 +99,7 @@ one scoped fiber:
 
 The `__Ready` handshake is one-way. The host buffers its outbox until it
 dispatches the web peer's `__Ready` — routed through the normal inbound →
-handler path, where an injected control handler resolves `peerReady`. The
+handler path, where an injected control handler resolves `peerReadyGate`. The
 web's gate is open from the start (it never waits on anyone), so its
 sends flow immediately. `signalReady` posts the `__Ready` wire string on
 the web and is a no-op on the host. Scope close shuts both queues down and

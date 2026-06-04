@@ -1,13 +1,19 @@
-import type { Subscribable } from 'effect'
 import { createContext } from 'react'
 
+import type { AuthTokenStore } from './auth-token-store.ts'
+
 /**
- * React context carrying the live `Subscribable<string | null>` for
- * the bearer token. Apps wire it via `<AuthTokenProvider>` with a
- * slice-supplied subscribable (typically gatekeeper-react's
- * module-scoped `authTokenRef`, which bidirectionally syncs with
- * localStorage).
+ * React context carrying the {@link AuthTokenStore} for the bearer
+ * token. Apps wire it via `<AuthTokenProvider>` with an
+ * environment-specific store the app constructs.
+ *
+ * Both halves of the store ride one context so React-side consumers
+ * never have to pair up two providers (one for read, one for write) —
+ * a missing provider on either side would silently land in the wrong
+ * code path; co-locating them makes the `useAuthTokenSetter()` /
+ * `useAuthTokenSubscribable()` hooks impossible to half-wire.
  */
-const AuthTokenContext = createContext<Subscribable.Subscribable<string | null> | null>(null)
+const AuthTokenContext = createContext<AuthTokenStore | null>(null)
+AuthTokenContext.displayName = 'AuthTokenContext'
 
 export { AuthTokenContext }

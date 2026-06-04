@@ -1,11 +1,11 @@
 /**
  * Regression test for the collector sender-pipe wiring. Before this
- * binding installed `onTransportReady`, nothing populated the collector
+ * binding installed `onPageReady`, nothing populated the collector
  * pipe's sender ref, so `useCollectorSender()` always fell through to the
  * warn-and-drop default — observable in the logs as
  * `"[effect-messaging] no Collector sender registered; dropping message ..."`
  * for every sniffer event the modal forwarded. This test pins that the
- * binding's`onTransportReady` populates the pipe's sender ref so subsequent
+ * binding's`onPageReady` populates the pipe's sender ref so subsequent
  * `useCollectorSender()` calls reach the host-built transport's outbound
  * sender.
  */
@@ -56,7 +56,7 @@ const ProbeInsideProvider = ({
   return null
 }
 
-describe('useCollectorHostBinding onTransportReady', () => {
+describe('useCollectorHostBinding onPageReady', () => {
   it('installs the host-built transport sender into the CollectorPipe so useCollectorSender reaches it', async () => {
     const collectorCalls: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = []
     const hostTransportSender: CollectorSender = (msg) =>
@@ -86,9 +86,9 @@ describe('useCollectorHostBinding onTransportReady', () => {
     const binding: CollectorBinding = capturedBinding
     const sender: CollectorSender = capturedSender
 
-    const onReady = binding.onTransportReady[0]
+    const onReady = binding.onPageReady[0]
     if (onReady === undefined) {
-      throw new Error('binding.onTransportReady[0] is undefined; expected the install callback')
+      throw new Error('binding.onPageReady[0] is undefined; expected the install callback')
     }
 
     // Wire the recording sender as the "host transport sender" — what

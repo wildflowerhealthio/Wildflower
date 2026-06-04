@@ -92,7 +92,7 @@ const ProbeInsideProvider = ({
   const handlers = useCollectorHostHandlers()
   useAsBrowserSnifferOutlet(snifferSender)
   // Mirror the host binding: install the collector sender by writing the
-  // pipe's sender ref directly (what `onTransportReady` does in prod).
+  // pipe's sender ref directly (what `onPageReady` does in prod).
   const collectorSenderRef = useCollectorSenderRef()
   const collectorRead = useCollectorSender()
 

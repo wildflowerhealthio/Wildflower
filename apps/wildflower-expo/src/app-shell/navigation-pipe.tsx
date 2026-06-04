@@ -19,11 +19,11 @@ type NavigationSender = BridgeTransport.MessageSender<
  * `HostBackRequested` messages through whatever sender the shell
  * registers — in production, the WebView transport's `sendMessage`,
  * written into the sender ref from the navigation binding's
- * `onTransportReady`.
+ * `onPageReady`.
  *
  *  - `NavigationPipeProvider` mounts the ref slot — wrap the router Stack
  *    with it so both the shell screen (which writes the sender ref via
- *    {@link useNavigationSenderRef} on `onTransportReady`) and the tab bar
+ *    {@link useNavigationSenderRef} on `onPageReady`) and the tab bar
  *    (which calls {@link useNavigationSender}) resolve to the same context.
  *  - `useNavigationSender()` returns the typed sender for descendants to
  *    call; pre-registration sends route through the warn-and-drop default.

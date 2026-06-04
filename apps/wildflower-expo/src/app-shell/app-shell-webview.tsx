@@ -35,7 +35,7 @@ const makeShouldOpenInSystemBrowser =
  * The persistent shell that hosts the wildflower-react SPA. Aggregates
  * one host binding per slice and hands the tuple to {@link BridgedWebView}.
  *
- * Wires the navigation binding's `onTransportReady` into the surrounding
+ * Wires the navigation binding's `onPageReady` into the surrounding
  * navigation pipe's sender ref, so a sibling tab bar can dispatch
  * `HostRequestedWebNavigation` through the same transport.
  *

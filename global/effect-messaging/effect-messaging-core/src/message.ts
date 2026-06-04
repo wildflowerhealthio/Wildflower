@@ -73,7 +73,7 @@ type SchemaRecord = ReadonlyRecord<string, AnyStringEncodedSchema>
  * the constrained `infer M` then pins the apparent type to
  * `{ readonly _tag: string }` rather than letting `any` leak — that's
  * what keeps `message._tag` a safe, non-`any` access in the pump and lets
- * the `callTransportReady` sender variance type-check inside generic code.
+ * the `callPageReady` sender variance type-check inside generic code.
  */
 type Of<R extends SchemaRecord> = {
   readonly [Tag in keyof R]: R[Tag] extends Schema.Schema<infer A, string, never> ? A : never

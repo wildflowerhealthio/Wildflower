@@ -1,13 +1,14 @@
+/* oxlint-disable react/only-export-components ---
+  Neither export changes often and sanitizeReturnTo is only used in tests */
 import { Duration, Effect, Either, Fiber, Match, Predicate, Schedule, Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
 import { OAuth } from 'gatekeeper-core/http-api-definition'
 
 import { useEffect, useState, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
+import { cn, useAuthTokenSetter } from 'react-kitchen-sink'
 import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
-import { writeToken } from '../client/token-storage.ts'
 import { useGatekeeperRuntimeLayer } from '../router-context.ts'
 import deviceEntryStyles from '../routes/_open/gatekeeper/devices.module.css'
 import pageLayout from '../styles/page-layout.module.css'
@@ -25,6 +26,28 @@ type DeviceFlowState =
   | { readonly tag: 'error'; readonly message: string }
 
 const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
+
+/** Where sign-in lands when no usable `returnTo` was supplied. */
+const POST_AUTH_DEFAULT_PATH = '/home'
+
+/**
+ * Resolve the post-sign-in destination from a caller-supplied
+ * `?returnTo=` value, falling back to {@link POST_AUTH_DEFAULT_PATH}.
+ *
+ * The value is attacker-controllable (it rides a query parameter), so
+ * only a **same-origin absolute path** is accepted: it must start with a
+ * single `/`. Protocol-relative (`//evil.com`) and backslash-smuggled
+ * (`/\evil.com`) forms — which a browser resolves to a *different
+ * origin* — are rejected, closing the open-redirect hole. Anything else
+ * (a full URL, a `javascript:` payload, an empty/missing value) also
+ * falls back to the default.
+ */
+const sanitizeReturnTo = (raw: string | null): string => {
+  if (raw === null || raw === '') return POST_AUTH_DEFAULT_PATH
+  if (!raw.startsWith('/')) return POST_AUTH_DEFAULT_PATH
+  if (raw.startsWith('//') || raw.startsWith('/\\')) return POST_AUTH_DEFAULT_PATH
+  return raw
+}
 
 // Decoding gives literal `error` codes so downstream `Match.when({error: '…'})` is exhaustive.
 const OAuthErrorSchema = Schema.Union(OAuth.OAuthError400Schema, OAuth.OAuthError401Schema)
@@ -85,8 +108,12 @@ const MOUNT_DEBOUNCE = Duration.millis(250)
 /**
  * Starts the RFC 8628 device-authorization flow, surfaces the `user_code`,
  * and polls `/oauth/token` until approval. On success writes the token via
- * {@link writeToken}, which routes through the shared `authTokenRef` so the
- * auth gate's stream subscriber picks it up.
+ * the `AuthTokenStore` provided by the surrounding `<AuthTokenProvider>`
+ * (resolved through {@link useAuthTokenSetter}), so the same write path
+ * the page-bridge `AuthTokenIssued` handler takes also flows through here,
+ * then navigates to the sanitized `?returnTo=` path (or
+ * {@link POST_AUTH_DEFAULT_PATH}) with a full page load so the app reboots
+ * with the bearer in place.
  *
  * @remarks
  * The boot side effects are gated by a {@link MOUNT_DEBOUNCE} sleep so
@@ -98,6 +125,7 @@ const MOUNT_DEBOUNCE = Duration.millis(250)
  */
 const NeedsAuthMessage = (): JSX.Element => {
   const [state, setState] = useState<DeviceFlowState>({ tag: 'starting' })
+  const setToken = useAuthTokenSetter()
   // Long-running device flow with retry — needs a fiber handle for
   // interrupt-on-unmount, which the promise-returning `runAuthed` can't
   // give. Runs against the composed `runtimeLayer` from router context
@@ -140,7 +168,14 @@ const NeedsAuthMessage = (): JSX.Element => {
         )
 
       yield* Effect.sync(() => {
-        writeToken(tokenResponse.access_token)
+        setToken(tokenResponse.access_token)
+        // Full-page navigation (not a client-side route push) so the app
+        // re-boots with the now-persisted bearer in place — matching the
+        // "this page will reload automatically once you sign in" copy.
+        const returnTo = sanitizeReturnTo(
+          new URLSearchParams(window.location.search).get('returnTo')
+        )
+        window.location.assign(returnTo)
       })
     }).pipe(
       Effect.catchAll((err) =>
@@ -155,7 +190,11 @@ const NeedsAuthMessage = (): JSX.Element => {
     return (): void => {
       void Effect.runPromise(Fiber.interrupt(fiber))
     }
-  }, [layer])
+    // `setToken`'s identity is stable for the surrounding
+    // `AuthTokenStore`'s lifetime (returned from `useAuthTokenSetter`
+    // and constructed once per `main-*` entry); including it in the
+    // dep array makes the dependency explicit without churning.
+  }, [layer, setToken])
 
   if (state.tag === 'starting') {
     return (
@@ -210,5 +249,5 @@ const NeedsAuthMessage = (): JSX.Element => {
   )
 }
 
-export { NeedsAuthMessage }
+export { NeedsAuthMessage, sanitizeReturnTo }
 export type { DeviceFlowState }
