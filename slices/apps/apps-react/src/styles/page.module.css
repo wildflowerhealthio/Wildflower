@@ -1,13 +1,13 @@
 .page__header {
   position: sticky;
   top: 0;
-  background: var(--color-background);
-  padding-block: var(--space-3);
+  background: inherit;
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-}
+
 
 .page__error {
   color: var(--color-red-4);

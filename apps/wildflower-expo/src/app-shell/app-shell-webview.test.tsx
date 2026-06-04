@@ -264,6 +264,19 @@ jest.mock('expo-tundraish', () => {
   return { Loader: (): ReactElement => ReactInner.createElement('Loader', null, null) }
 })
 
+// `useHostBindings` reads `useSafeAreaInsets()` to push `SafeAreaInsetsChanged`
+// to the page; outside a `SafeAreaProvider` the real hook throws. Fixed
+// non-zero values (note the non-zero `bottom: 34`) let the test below
+// assert the host forces `bottom` to `0` on the wire.
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: (): { top: number; right: number; bottom: number; left: number } => ({
+    top: 47,
+    right: 0,
+    bottom: 34,
+    left: 8,
+  }),
+}))
+
 import { AppShellWebView } from './app-shell-webview.tsx'
 import { NavigationPipeProvider, useNavigationSender } from './navigation-pipe.tsx'
 
@@ -439,6 +452,37 @@ describe('AppShellWebView', () => {
     if (sender === null) throw new Error('SenderProbe never resolved')
     await EffectType.runPromise(sender({ _tag: 'HostRequestedWebNavigation', path: '/test' }))
     expect(dispatched).toContainEqual({ _tag: 'HostRequestedWebNavigation', path: '/test' })
+  })
+
+  it('pushes the current safe-area insets through the navigation onPageReady, forcing bottom to 0', async () => {
+    // On every page `__Ready` the navigation binding re-pushes the host's
+    // insets so a relaunched SPA re-receives them. The mocked
+    // `useSafeAreaInsets` reports a non-zero `bottom` (34); the host must
+    // overwrite it with `0` because the native tab bar already owns the
+    // bottom inset below the WebView.
+    mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
+    const bindings = expectBindings()
+    const navIdx = indexOf(bindings, 'Navigation')
+    const navOnPageReady = bindings.onPageReady[navIdx]
+    if (navOnPageReady === undefined) throw new Error('navigation onPageReady missing')
+
+    const dispatched: Array<{ readonly _tag: string }> = []
+    const fakeTransportSender = (msg: {
+      readonly _tag: string
+      readonly [k: string]: unknown
+    }): EffectType.Effect<void> => EffectType.sync(() => dispatched.push(msg))
+
+    await act(async () => {
+      await EffectType.runPromise(navOnPageReady(fakeTransportSender))
+    })
+
+    expect(dispatched).toContainEqual({
+      _tag: 'SafeAreaInsetsChanged',
+      top: 47,
+      bottom: 0,
+      left: 8,
+      right: 0,
+    })
   })
 
   it('keeps the bearer token out of every binding initialMessages', () => {

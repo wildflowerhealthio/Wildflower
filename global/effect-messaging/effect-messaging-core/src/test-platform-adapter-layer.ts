@@ -13,7 +13,9 @@ import { TransportAdapter } from './transport-adapter.ts'
  *
  * const { layer, sentSink } = TestPlatformAdapterLayer.make()
  * const send = Effect.flatMap(TransportAdapter, ({ bareSender }) =>
- *   bareSender(Message.stringifyMessage(SomeBridge.WebToHost, { _tag: 'X' }))
+ *   Message.stringifyMessage(SomeBridge.WebToHost, { _tag: 'X' }).pipe(
+ *     Effect.flatMap(bareSender)
+ *   )
  * )
  * Effect.runSync(send.pipe(Effect.provide(layer)))
  * expect(JSON.parse(sentSink[0])).toEqual({ _tag: 'X' })

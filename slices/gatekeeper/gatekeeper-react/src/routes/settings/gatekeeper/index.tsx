@@ -141,7 +141,7 @@ interface AccessIndexErrorViewProps {
  * read. The annotated `select` keeps the context typed in the standalone
  * (router-not-registered) build — no cast.
  */
-export const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps): JSX.Element => {
+const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps): JSX.Element => {
   const { queryClient, runAuthed } = useRouteContext({
     from: '__root__',
     select: (context: RouterContext) => ({
@@ -164,9 +164,11 @@ export const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps
  * runs, so it's a plain `ensureQueryData` — failures propagate to
  * `errorComponent`.
  */
-export const Route = createFileRoute('/settings/gatekeeper/')({
+const Route = createFileRoute('/settings/gatekeeper/')({
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(grantsQueryOptions(context.runAuthed)),
   component: AccessIndexScreen,
   errorComponent: ({ error, reset }) => <AccessIndexErrorView error={error} reset={reset} />,
 })
+
+export { AccessIndexErrorView, Route }
