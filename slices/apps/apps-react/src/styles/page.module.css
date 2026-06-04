@@ -7,7 +7,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-
+}
 
 .page__error {
   color: var(--color-red-4);
