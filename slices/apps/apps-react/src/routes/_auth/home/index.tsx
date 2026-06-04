@@ -71,19 +71,17 @@ const AppsHomeBody = ({ tunnel, apps }: AppsHomeBodyProps): JSX.Element => {
   return (
     <>
       <header className={pageLayout['page__header']}>
-        <h1 className={cn(pageLayout['page__title'], 'text-heading-4')}>Apps</h1>
-        <div className={pageLayout['page__header-actions']}>
-          {tunnel.running ? <span className="text-label-4">tunnel</span> : null}
-          <button
-            type="button"
-            className="button-3 outline"
-            onClick={() => {
-              setEditorOpen(true)
-            }}
-          >
-            Manage
-          </button>
-        </div>
+        <h1 className="text-heading-6">Apps</h1>
+
+        <button
+          type="button"
+          className="button-2 outline"
+          onClick={() => {
+            setEditorOpen(true)
+          }}
+        >
+          Manage
+        </button>
       </header>
       {error !== null ? (
         <p className={cn(pageLayout['page__error'], 'text-body-3')} role="alert">

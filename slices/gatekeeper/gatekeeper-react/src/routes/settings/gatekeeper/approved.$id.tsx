@@ -9,7 +9,7 @@ const ApprovedAppDetailScreen = ({ id }: { readonly id: string }): JSX.Element =
   const { data: grant } = useGrantQuery(id)
   return (
     <>
-      <h1 className="text-heading-4">{grant.clientId}</h1>
+      <h1 className="text-heading-6">{grant.clientId}</h1>
       <pre className={styles['json']}>{JSON.stringify(grant, null, 2)}</pre>
     </>
   )

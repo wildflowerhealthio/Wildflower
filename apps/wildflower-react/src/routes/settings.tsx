@@ -18,7 +18,7 @@ import { authGatedRouteOptions } from '../session/auth-gated-route-options.ts'
 function SettingsLayout(): JSX.Element {
   return (
     <div className={pageLayoutStyles['page']}>
-      <h1 className="text-heading-4">Settings</h1>
+      <h1 className="text-heading-6">Settings</h1>
       <Outlet />
     </div>
   )

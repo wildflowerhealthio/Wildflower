@@ -120,7 +120,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
         role="alertdialog"
         aria-labelledby="error-boundary-heading"
       >
-        <Heading id="error-boundary-heading" className="text-heading-4">
+        <Heading id="error-boundary-heading" className="text-heading-6">
           {title}
         </Heading>
         <p className={cn(pageLayout['error'], 'text-body-3')}>

@@ -90,7 +90,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
 
   return (
     <>
-      <h1 className="text-heading-4">Authorization Request</h1>
+      <h1 className="text-heading-6">Authorization Request</h1>
 
       <Field label="Application">
         <span className="text-body-2">{consent.clientId}</span>

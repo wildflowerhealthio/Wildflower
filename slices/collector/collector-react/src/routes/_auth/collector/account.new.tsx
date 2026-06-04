@@ -55,7 +55,7 @@ function AccountNewScreen({
 
   return (
     <>
-      <h2 className="text-heading-4">Add Account</h2>
+      <h2 className="text-heading-5">Add Account</h2>
 
       {error !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>

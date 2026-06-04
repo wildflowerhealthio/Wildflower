@@ -39,7 +39,7 @@
 
 .apps-editor__row-sub {
   color: var(--color-neutral-4);
-  overflow: hidden;
+  overflow: wrap;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

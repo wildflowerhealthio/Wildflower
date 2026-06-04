@@ -26,7 +26,7 @@ const TokenTimeoutRetry = ({ error }: { readonly error: Error }): JSX.Element =>
 
   return (
     <>
-      <h1 className="text-heading-4">{isTimeout ? 'Still loading…' : 'Something went wrong'}</h1>
+      <h1 className="text-heading-6">{isTimeout ? 'Still loading…' : 'Something went wrong'}</h1>
       <p className="text-body-2">
         {isTimeout
           ? "We didn't receive your session in time. Tap retry to keep waiting."

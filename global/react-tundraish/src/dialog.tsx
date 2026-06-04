@@ -52,9 +52,16 @@ const Dialog = ({
         }
       }}
     >
-      {title !== undefined ? (
-        <h2 className={cn('text-heading-4', styles['dialog__title'])}>{title}</h2>
-      ) : null}
+      <header className={styles['dialog__header']}>
+        <h2 className="text-heading-4">{title}</h2>
+        <button
+          type="button"
+          className={styles['dialog__close']}
+          onClick={() => ref.current?.close()}
+        >
+          &#215;
+        </button>
+      </header>
       <div className={styles['dialog__body']}>{children}</div>
     </dialog>
   )

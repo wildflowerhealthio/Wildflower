@@ -89,7 +89,7 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
 
   return (
     <>
-      <h1 className="text-heading-4">Device Authorization</h1>
+      <h1 className="text-heading-6">Device Authorization</h1>
 
       <Field label="Code">
         <span className="text-body-2">

@@ -74,7 +74,7 @@ export const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
   if (status.status === 'denied') {
     return (
       <div className={styles['poll']}>
-        <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Request Declined</h1>
+        <h1 className={cn(pageLayout['poll-declined'], 'text-heading-6')}>Request Declined</h1>
         <p className="text-body-2">The authorization request was declined.</p>
       </div>
     )
@@ -82,7 +82,7 @@ export const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
   if (status.status === 'error') {
     return (
       <div className={styles['poll']}>
-        <h1 className={cn(pageLayout['poll-declined'], 'text-heading-4')}>Authorization Error</h1>
+        <h1 className={cn(pageLayout['poll-declined'], 'text-heading-6')}>Authorization Error</h1>
         <p className="text-body-2">{status.message}</p>
       </div>
     )
@@ -94,7 +94,7 @@ export const PollingResult = ({ status }: PollingResultProps): JSX.Element => {
 const PollingSpinner = (): JSX.Element => (
   <div className={styles['poll']}>
     <div className={styles['poll-spinner']} />
-    <h1 className="text-heading-4">Waiting for Approval</h1>
+    <h1 className="text-heading-6">Waiting for Approval</h1>
     <p className="text-body-2">Please approve this request on your device.</p>
   </div>
 )

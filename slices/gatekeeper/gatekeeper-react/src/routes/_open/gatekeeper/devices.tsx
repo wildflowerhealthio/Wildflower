@@ -27,7 +27,7 @@ function DeviceEntryScreen(): JSX.Element {
 
   return (
     <>
-      <h1 className="text-heading-4">Enter Device Code</h1>
+      <h1 className="text-heading-6">Enter Device Code</h1>
       <FieldDescription>Enter the code shown on the device requesting access.</FieldDescription>
 
       <Field label="Code">

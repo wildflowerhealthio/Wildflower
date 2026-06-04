@@ -58,7 +58,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
 
   return (
     <>
-      <h1 className="text-heading-4">Tunnel</h1>
+      <h1 className="text-heading-6">Tunnel</h1>
       <FieldDescription>
         Expose this device to the public Internet so apps installed on phones can reach it.
       </FieldDescription>
