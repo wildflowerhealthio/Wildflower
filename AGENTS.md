@@ -13,7 +13,7 @@ Read [AGENTS Explanation](./docs/Agents/Explanation.md) for what this file is an
 - **Slices must respect their layering** — `slices/<name>/<name>-core` is the pure layer; `-web`, `-node`, `-react-native`, `-expo` are platform adapters that may import from `-core` but not vice-versa
 - **Changes MUST include corresponding test updates**
 - **Vitest is the default; Expo packages run on Jest** — those packages expose a `vp run jest` script, the root aggregates them via `vp run jest` (`vp run -r --concurrency-limit 1 jest`), and `vp run test:all` runs both Vitest and Jest suites.
-- **Two execution modes govern autonomy** — a session is **Interactive** (human present) or **Autonomous** (dev container / triggered web session). Mode decides how you clarify, whether you push, and what counts as scope expansion. **Default to Interactive when unsure.** See [Execution Modes](#execution-modes).
+- **Two execution modes govern autonomy** — a session is **Interactive** (human present) or **Autonomous** (dev container / triggered web session), and can **switch in place** (e.g. a stuck autonomous run going interactive via `go-interactive`). Mode decides how you clarify, whether you push, and what counts as scope expansion. **Default to Interactive when unsure.** See [Execution Modes](#execution-modes).
 
 ### Agents MUST read relevant docs before certain tasks
 
@@ -67,17 +67,23 @@ There do exist some, narrow exceptions to the rule:
 
 ## Execution Modes
 
-Sessions run in one of two modes. You know your mode from how you were launched: a human typing in a terminal or paired session is **Interactive**; a trigger-spawned web session or a dev-container agent told it is running on its own is **Autonomous**. When unsure, treat yourself as Interactive.
+Sessions run in one of two modes. You know your **starting** mode from how you were launched: a human typing in a terminal or paired session is **Interactive**; a trigger-spawned web session or a dev-container agent told it is running on its own is **Autonomous**. When unsure, treat yourself as Interactive.
 
 | | **Interactive** | **Autonomous** |
 | --- | --- | --- |
 | Human reachable in real time | Yes | No (async at best) |
-| Clarify by | `AskUserQuestion`, blocking | Ticket comment; bounce to `needs-human` or block — see escalation protocol |
-| Git push | Never (SSH needs a password) — human pushes | Expected — branch, commit, push, open PR |
-| Branch/commit/stash | Ask first | The job, not scope expansion |
+| Clarify by | `AskUserQuestion`, blocking | Triage up front → bounce to `needs-human`; block on the ticket if something slips through — see escalation protocol |
+| Git push | Don't — a human shares this tree under their account | Expected — own machine account; branch, commit, push, open PR |
+| Branch/commit/stash | Ask first — don't disrupt the live collaborator's tree | The job, not scope expansion |
 | Ends a task by | Handing back in-session | Leaving a PR + status comment on the ticket |
 
-The ticket is the durable unit of work; the go-signal for an Autonomous pickup is **assignment to the machine user**, not a label. Full rationale, the ticket lifecycle, the skill catalog, and the ambiguity/escalation protocol live in [Autonomy Workflow Explanation](./docs/Agents/Autonomy%20Workflow%20Explanation.md).
+**Mode is a switchable state, not just a launch fact.** A running Autonomous session can pivot to Interactive **in place**, keeping its context — when it gets stuck, or when a human says "go interactive" during review. The `go-interactive` skill performs the switch: it promotes the dev-container worktree into the shared git root (so you can see and edit the work), posts a status comment, and shifts to chatty paired behavior.
+
+**The git rules decompose into two concerns** — don't conflate them, especially after a switch:
+1. **Whose account does git act under?** "Don't push" exists so you never act under *the human's* identity. In the dev container you hold your **own machine account**, so pushing is safe there. It's about credentials, not mode.
+2. **Is a human actively sharing this tree right now?** "Ask before branch/commit/stash" exists so you don't disrupt a live collaborator. After a pivot to Interactive, this flips on (stop disrupting) even though concern 1 is unchanged (you may still push your branch under your own account).
+
+The ticket is the durable unit of work; the go-signal for an Autonomous pickup is **assignment to the machine user**, not a label. Full rationale, the switchable-mode mechanics, the ticket lifecycle, the skill catalog, and the triage-first ambiguity/escalation protocol live in [Autonomy Workflow Explanation](./docs/Agents/Autonomy%20Workflow%20Explanation.md).
 
 ## Branch Naming
 
