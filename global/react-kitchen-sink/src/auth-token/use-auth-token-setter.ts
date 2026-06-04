@@ -1,6 +1,6 @@
+import { useContextOrThrow } from '../hooks/use-context-or-throw.ts'
 import { AuthTokenContext } from './auth-token-context.ts'
 import type { AuthTokenStore } from './auth-token-store.ts'
-import { useContextOrThrow } from '../hooks/use-context-or-throw.ts'
 
 /**
  * Returns the `setToken` function from the nearest

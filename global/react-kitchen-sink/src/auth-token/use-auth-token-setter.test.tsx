@@ -3,10 +3,10 @@ import { Effect, SubscriptionRef } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
+import { NoContextException } from '../hooks/use-context-or-throw.ts'
 import { AuthTokenProvider } from './auth-token-provider.tsx'
 import type { AuthTokenStore } from './auth-token-store.ts'
 import { useAuthTokenSetter } from './use-auth-token-setter.ts'
-import { NoContextException } from '../hooks/use-context-or-throw.ts'
 
 /**
  * Build a minimal in-memory {@link AuthTokenStore} backed by a

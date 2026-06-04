@@ -1,3 +1,5 @@
+/* oxlint-disable react/only-export-components ---
+  Neither export changes often and sanitizeReturnTo is only used in tests */
 import { Duration, Effect, Either, Fiber, Match, Predicate, Schedule, Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
@@ -170,7 +172,9 @@ const NeedsAuthMessage = (): JSX.Element => {
         // Full-page navigation (not a client-side route push) so the app
         // re-boots with the now-persisted bearer in place — matching the
         // "this page will reload automatically once you sign in" copy.
-        const returnTo = sanitizeReturnTo(new URLSearchParams(window.location.search).get('returnTo'))
+        const returnTo = sanitizeReturnTo(
+          new URLSearchParams(window.location.search).get('returnTo')
+        )
         window.location.assign(returnTo)
       })
     }).pipe(

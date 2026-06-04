@@ -20,6 +20,12 @@ type RunAuthed = <A, E>(
  * router context so the `beforeLoad` auth gate can `await` it without
  * knowing which environment it runs in.
  *
+ * The optional `returnTo` is the originally-requested same-origin path
+ * (the gate passes `location.href`). The web impl bakes it into the
+ * device-login `redirect(...)` so sign-in lands the user back where
+ * they were headed; the embedded impl ignores it (the host owns
+ * navigation there).
+ *
  * Rejections are tagged so the gate can branch:
  *   - a TanStack `redirect(...)` (standalone web, no token) bubbles so
  *     the router follows the redirect into the device-login flow.
@@ -27,7 +33,7 @@ type RunAuthed = <A, E>(
  *     window) bubbles to the layout's `errorComponent`, which renders
  *     a web-side retry screen.
  */
-type AwaitAuthReady = () => Promise<void>
+type AwaitAuthReady = (returnTo?: string) => Promise<void>
 
 /**
  * Generic runtime-layer shape parameterised over the extra services a

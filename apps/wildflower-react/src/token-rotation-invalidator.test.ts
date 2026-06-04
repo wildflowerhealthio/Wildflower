@@ -47,9 +47,7 @@ describe('forkTokenRotationInvalidator', () => {
   test('does not flush the cache on the initial subscribe (Stream.drop(1) skips the replayed value)', async () => {
     const tokenStore = makeInMemoryTokenStore()
     const queryClient = new QueryClient()
-    const invalidateSpy = vi
-      .spyOn(queryClient, 'invalidateQueries')
-      .mockResolvedValue(undefined)
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined)
 
     const fiber = forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 
@@ -72,12 +70,10 @@ describe('forkTokenRotationInvalidator', () => {
     // rotation propagating through the forked fiber deterministically,
     // rather than polling or sleeping.
     const flushed = Effect.runSync(Deferred.make<void>())
-    const invalidateSpy = vi
-      .spyOn(queryClient, 'invalidateQueries')
-      .mockImplementation(() => {
-        Effect.runSync(Deferred.succeed(flushed, undefined))
-        return Promise.resolve()
-      })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockImplementation(() => {
+      Effect.runSync(Deferred.succeed(flushed, undefined))
+      return Promise.resolve()
+    })
 
     const fiber = forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 
@@ -104,19 +100,14 @@ describe('forkTokenRotationInvalidator', () => {
 
     // Deferred per expected flush; the spy resolves them in order so the
     // test can await each rotation landing before triggering the next.
-    const flushes = [
-      Effect.runSync(Deferred.make<void>()),
-      Effect.runSync(Deferred.make<void>()),
-    ]
+    const flushes = [Effect.runSync(Deferred.make<void>()), Effect.runSync(Deferred.make<void>())]
     let flushCount = 0
-    const invalidateSpy = vi
-      .spyOn(queryClient, 'invalidateQueries')
-      .mockImplementation(() => {
-        const deferred = flushes[flushCount]
-        flushCount += 1
-        if (deferred !== undefined) Effect.runSync(Deferred.succeed(deferred, undefined))
-        return Promise.resolve()
-      })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockImplementation(() => {
+      const deferred = flushes[flushCount]
+      flushCount += 1
+      if (deferred !== undefined) Effect.runSync(Deferred.succeed(deferred, undefined))
+      return Promise.resolve()
+    })
 
     const fiber = forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 

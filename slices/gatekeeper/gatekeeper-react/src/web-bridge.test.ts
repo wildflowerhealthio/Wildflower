@@ -7,9 +7,7 @@ describe('makeGatekeeperWebHandlers', () => {
     const setToken = vi.fn<(token: string | null) => void>()
     const handlers = makeGatekeeperWebHandlers(setToken)
 
-    Effect.runSync(
-      handlers.AuthTokenIssued({ _tag: 'AuthTokenIssued', token: 'a-bearer' })
-    )
+    Effect.runSync(handlers.AuthTokenIssued({ _tag: 'AuthTokenIssued', token: 'a-bearer' }))
 
     expect(setToken).toHaveBeenCalledTimes(1)
     expect(setToken).toHaveBeenCalledWith('a-bearer')
@@ -19,9 +17,7 @@ describe('makeGatekeeperWebHandlers', () => {
     const setToken = vi.fn<(token: string | null) => void>()
     const handlers = makeGatekeeperWebHandlers(setToken)
 
-    Effect.runSync(
-      handlers.AuthTokenIssued({ _tag: 'AuthTokenIssued', token: '' })
-    )
+    Effect.runSync(handlers.AuthTokenIssued({ _tag: 'AuthTokenIssued', token: '' }))
 
     expect(setToken).not.toHaveBeenCalled()
   })
