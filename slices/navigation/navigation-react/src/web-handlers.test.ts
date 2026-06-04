@@ -53,7 +53,13 @@ describe('makeNavigationWebHandlers', () => {
     )
     Effect.runSync(
       handlers
-        .SafeAreaInsetsChanged({ _tag: 'SafeAreaInsetsChanged', top: 47, bottom: 0, left: 0, right: 12 })
+        .SafeAreaInsetsChanged({
+          _tag: 'SafeAreaInsetsChanged',
+          top: 47,
+          bottom: 0,
+          left: 0,
+          right: 12,
+        })
         .pipe(Effect.provide(adapterLayer))
     )
     expect(applied).toEqual([{ top: 47, bottom: 0, left: 0, right: 12 }])

@@ -24,7 +24,13 @@ describe('NavigationBridge', () => {
       right: 12,
     })
     const decoded = Schema.decodeSync(NavigationBridge.HostToWeb.SafeAreaInsetsChanged)(encoded)
-    expect(decoded).toEqual({ _tag: 'SafeAreaInsetsChanged', top: 47, bottom: 0, left: 0, right: 12 })
+    expect(decoded).toEqual({
+      _tag: 'SafeAreaInsetsChanged',
+      top: 47,
+      bottom: 0,
+      left: 0,
+      right: 12,
+    })
   })
 
   test('Web→Host encodes a RouteChanged the Host side decodes', () => {
