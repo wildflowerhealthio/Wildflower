@@ -5,6 +5,14 @@ body,
   margin: 0;
 }
 
+/* `#root` carries the host's safe-area insets as padding (see
+   `apply-root-insets.ts`). `border-box` keeps that padding inside the
+   100% height so the content area shrinks instead of overflowing, and
+   the inset strip shows `body`'s background below. */
+#root {
+  box-sizing: border-box;
+}
+
 body {
   background: var(--color-neutral-9, #fafafa);
   color: var(--color-foreground, #111);

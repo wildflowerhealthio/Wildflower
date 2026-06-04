@@ -1,5 +1,6 @@
-import { Effect, Layer, Logger, LogLevel as EffectLogLevel, Schema } from 'effect'
+import { Effect, Layer, Logger, LogLevel as EffectLogLevel, Schema, Arbitrary } from 'effect'
 import * as fc from 'fast-check'
+import { JsonValue } from 'kitchen-sink/schema'
 import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
 import * as Logging from './logging.ts'
@@ -17,18 +18,7 @@ describe('Logging — shape', () => {
 })
 
 describe('Logging — wire round-trip', () => {
-  const jsonSafeArb: fc.Arbitrary<unknown> = fc.letrec((tie) => ({
-    value: fc.oneof(
-      { maxDepth: 2 },
-      fc.string(),
-      fc.double({ noNaN: true, noDefaultInfinity: true }),
-      fc.integer(),
-      fc.boolean(),
-      fc.constant(null),
-      fc.array(tie('value'), { maxLength: 3 }),
-      fc.dictionary(fc.string(), tie('value'), { maxKeys: 3 })
-    ),
-  })).value
+  const jsonSafeArb = Arbitrary.make(JsonValue)
 
   test('property: every encoded { level, payload } decodes back to itself', () => {
     fc.assert(

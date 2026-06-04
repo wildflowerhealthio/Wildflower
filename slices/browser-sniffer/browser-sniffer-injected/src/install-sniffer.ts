@@ -13,6 +13,7 @@ import type {
 } from 'browser-sniffer-core'
 import type { Schema } from 'effect'
 import type { Logging } from 'effect-messaging-core'
+import type { JsonValue } from 'kitchen-sink/schema'
 
 /**
  * Browser-side sniffer installed into an arbitrary third-party page.
@@ -140,7 +141,19 @@ const installSniffer = function (): void {
   const makeLogForLevel =
     (level: Logging.LogLevel) =>
     (...args: unknown[]): void => {
-      post({ _tag: 'Log', level, payload: args })
+      // Try to log, but fail for unsafe payloads. We assert the
+      // JSON-safe shape rather than validating it: `logging.ts` narrows
+      // with `Schema.is(JsonValue)`, but that's a runtime value and only
+      // type-only imports survive this file's `Function.prototype.toString()`
+      // injection path — so the schema guard isn't available here. The
+      // `catch` below is the runtime backstop: a non-JSON-safe arg makes
+      // `post`'s encode throw and we fall through to the warn payload.
+      try {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        post({ _tag: 'Log', level, payload: args as readonly JsonValue[] })
+      } catch {
+        post({ _tag: 'Log', level: 'warn', payload: ['JSON unsafe payload failed to log'] })
+      }
     }
   const logDebug = makeLogForLevel('debug')
   const logInfo = makeLogForLevel('info')
