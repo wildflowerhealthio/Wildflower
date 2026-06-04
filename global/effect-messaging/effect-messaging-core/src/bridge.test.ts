@@ -46,12 +46,16 @@ describe('Bridge.make — encode', () => {
     const bridge = makeTestBridge()
 
     expect(
-      JSON.parse(Message.stringifyMessage(bridge.HostToWeb, { _tag: 'Ping', value: 42 }))
+      JSON.parse(
+        Effect.runSync(Message.stringifyMessage(bridge.HostToWeb, { _tag: 'Ping', value: 42 }))
+      )
     ).toEqual({
       _tag: 'Ping',
       value: 42,
     })
-    expect(JSON.parse(Message.stringifyMessage(bridge.HostToWeb, { _tag: 'Buzz' }))).toEqual({
+    expect(
+      JSON.parse(Effect.runSync(Message.stringifyMessage(bridge.HostToWeb, { _tag: 'Buzz' })))
+    ).toEqual({
       _tag: 'Buzz',
     })
   })
@@ -61,7 +65,9 @@ describe('Bridge.make — encode', () => {
     // The web side's inbound record *is* the host→web record, so encoding
     // with `HostToWeb` and decoding with the same record models the wire
     // crossing host→web.
-    const wire = Message.stringifyMessage(bridge.HostToWeb, { _tag: 'Ping', value: 99 })
+    const wire = Effect.runSync(
+      Message.stringifyMessage(bridge.HostToWeb, { _tag: 'Ping', value: 99 })
+    )
     const decoded = Schema.decodeSync(bridge.HostToWeb.Ping)(wire)
     expect(decoded).toEqual({ _tag: 'Ping', value: 99 })
   })
@@ -176,7 +182,7 @@ test('property: stringify → decodeSync round-trips identity for any wired mess
         fc.constant({ _tag: 'Buzz' as const })
       ),
       (message) => {
-        const wire = Message.stringifyMessage(bridge.HostToWeb, message)
+        const wire = Effect.runSync(Message.stringifyMessage(bridge.HostToWeb, message))
         const decoded: unknown =
           message._tag === 'Ping'
             ? Schema.decodeSync(bridge.HostToWeb.Ping)(wire)

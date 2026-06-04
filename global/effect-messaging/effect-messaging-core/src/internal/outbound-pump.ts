@@ -45,8 +45,11 @@ interface OutboundPump<
  * `SendableMessage` only admits owned tags. A type-escape (e.g. a cast)
  * lands as a loud `Effect.die`, which the per-message `catchAllDefect`
  * logs before the pump continues with the next message (mirroring the
- * inbound dispatch's defect handling) — one bad message never silently
- * stops the whole outbound path.
+ * inbound dispatch's defect handling). A message whose encode *rejects*
+ * (a `ParseError` from `stringifyMessage` — now reachable that schemas
+ * can refuse values like `NaN`/negatives) is likewise logged and
+ * skipped via `catchAll` — one bad message never silently stops the
+ * whole outbound path.
  */
 const makeOutboundPump = <
   const Bridges extends ReadonlyArray<Bridge.AnyBridge>,
@@ -88,8 +91,19 @@ const makeOutboundPump = <
                       `[effect-messaging] sendMessage: no bridge owns tag "${message._tag}"`
                     )
                   )
-                : adapter.bareSender(Message.stringifyMessage(outboundByTag, message))
+                : Message.stringifyMessage(outboundByTag, message).pipe(
+                    Effect.flatMap(adapter.bareSender)
+                  )
             return emit.pipe(
+              // A message whose encode rejects (`ParseError`) is dropped
+              // and logged so one bad message can't fail the stream and
+              // brick the whole outbound path; `catchAllDefect` covers
+              // the unowned-tag `die` and any send-side defect.
+              Effect.catchAll((error) =>
+                Effect.logError(
+                  `[effect-messaging] outbound encode rejected; message dropped, pump continues: ${String(error)}`
+                )
+              ),
               Effect.catchAllDefect((defect) =>
                 Effect.logError(
                   `[effect-messaging] outbound pump defect; continues: ${String(defect)}`

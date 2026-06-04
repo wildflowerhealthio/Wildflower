@@ -1,4 +1,5 @@
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
+import type { ParseResult } from 'effect'
 import type { ReadonlyRecord } from 'effect/Record'
 
 /**
@@ -87,24 +88,30 @@ type Of<R extends SchemaRecord> = {
  *
  * @remarks
  * A flat, transport-agnostic encode primitive: it looks up
- * `record[message._tag]` and runs `Schema.encodeSync` against it. The
- * bridge stays unaware of sending mechanics — the transport calls this
- * with the merged outbound record for the relevant side, then hands the
- * resulting string to its adapter's bare sender.
+ * `record[message._tag]` and runs `Schema.encode` against it. The bridge
+ * stays unaware of sending mechanics — the transport calls this with the
+ * merged outbound record for the relevant side, then hands the resulting
+ * string to its adapter's bare sender.
  *
- * Throws synchronously if no schema in `record` owns the message's tag —
- * a wiring error the caller is expected to have ruled out (the transport
- * checks tag ownership before calling).
+ * Effect-returning rather than throwing, because its callers are
+ * Effects: an encode that rejects (e.g. a schema that now refuses
+ * `NaN`/negatives) surfaces as a recoverable `ParseError` failure the
+ * transport can log-and-skip, instead of a synchronous throw that could
+ * escape the pump's fiber. An unowned tag is a wiring error the caller
+ * is expected to have ruled out (the transport checks ownership first),
+ * so it `die`s as a defect rather than a typed failure.
  */
 const stringifyMessage = (
   record: SchemaRecord,
   message: { readonly _tag: string } & Record<string, unknown>
-): string => {
+): Effect.Effect<string, ParseResult.ParseError> => {
   const schema = record[message._tag]
   if (schema === undefined) {
-    throw new Error(`[effect-messaging] stringifyMessage: no schema for tag "${message._tag}"`)
+    return Effect.die(
+      new Error(`[effect-messaging] stringifyMessage: no schema for tag "${message._tag}"`)
+    )
   }
-  return Schema.encodeSync(schema)(message)
+  return Schema.encode(schema)(message)
 }
 
 export { recordFromPairs, stringifyMessage }

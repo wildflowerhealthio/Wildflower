@@ -1,6 +1,4 @@
-import { Effect } from 'effect'
-
-import { HostBindings, type Logging, type BridgeTransport } from 'effect-messaging-core'
+import { HostBindings, type Logging } from 'effect-messaging-core'
 import { useLogHostBinding } from 'effect-messaging-expo'
 
 import { type AppsBridge } from 'apps-core/bridge'
@@ -11,45 +9,10 @@ import { type GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { LocalClientToken } from 'gatekeeper-core/livestore'
 import { GatekeeperBridgeExpo } from 'gatekeeper-expo'
 import { type NavigationBridge } from 'navigation-core'
-import { NavigationBridgeExpo } from 'navigation-expo'
 import { useMemo, useState } from 'react'
+
 import { useWildflowerStore } from '@/src/livestore/livestore-store.ts'
-import { useNavigationSenderRef } from './navigation-pipe.tsx'
-
-type NavigationSender = BridgeTransport.MessageSender<
-  readonly [typeof NavigationBridge],
-  'HostToWeb'
->
-
-const useNavigationHostBinding = (
-  onRouteChanged: (event: { pathname: string; canGoBack: boolean }) => void,
-  onUiReady: () => void
-): HostBindings.HostBindings<readonly [typeof NavigationBridge]> => {
-  const navigationSenderRef = useNavigationSenderRef()
-
-  const navigationBindingArgs = useMemo(() => {
-    return {
-      onRouteChanged,
-      onUiReady,
-      // Fires on every page `__Ready` — first WebView mount and every
-      // subsequent reload (Metro, blank-page workaround remount, …) —
-      // so the ref-slot picks up the same transport-stable sender
-      // each time. The repeat write is benign: `sendMessage` identity
-      // is fixed for the surrounding transport's lifetime, and the
-      // shell's `useHostBindings` pins `bindings.bridges` so that
-      // lifetime spans the whole component mount.
-      onPageReady: (send: NavigationSender) =>
-        Effect.sync(() => {
-          navigationSenderRef.current = send
-        }),
-      initialRoute: '/home',
-    }
-  }, [onRouteChanged, onUiReady, navigationSenderRef])
-
-  const navigationBinding = NavigationBridgeExpo.useHostBinding(navigationBindingArgs)
-
-  return navigationBinding
-}
+import { useNavigationHostBinding } from './use-navigation-host-binding.ts'
 
 export const useHostBindings = ({
   onRouteChanged,

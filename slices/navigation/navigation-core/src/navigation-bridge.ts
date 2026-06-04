@@ -19,6 +19,29 @@ const HostRequestedWebNavigation = Schema.parseJson(
 )
 
 /**
+ * Host → Web: the native safe-area insets (notch, status bar, rounded
+ * corners, …) the embedded SPA must inset its top-level chrome by, in
+ * CSS pixels. The host reads these from `useSafeAreaInsets()` and pushes
+ * them on every page `__Ready` (so a relaunched WebView re-receives them)
+ * and whenever they change. `bottom` is always `0`: the native tab bar
+ * sits below the WebView and already owns the bottom inset, so the page
+ * must not pad there or it would double up.
+ *
+ * Fields use `Schema.JsonNumber.pipe(Schema.nonNegative())`: `JsonNumber`
+ * rejects the `NaN`/`Infinity` values `JSON.stringify` can't round-trip,
+ * and `nonNegative` encodes the "insets are never negative" invariant.
+ * Not `Schema.Int` — `useSafeAreaInsets()` can report fractional pixels.
+ */
+const SafeAreaInsetsChanged = Schema.parseJson(
+  Schema.TaggedStruct('SafeAreaInsetsChanged', {
+    top: Schema.JsonNumber.pipe(Schema.nonNegative()),
+    bottom: Schema.JsonNumber.pipe(Schema.nonNegative()),
+    left: Schema.JsonNumber.pipe(Schema.nonNegative()),
+    right: Schema.JsonNumber.pipe(Schema.nonNegative()),
+  })
+)
+
+/**
  * Web → Host: embedded SPA router state has changed. `canGoBack` drives
  * the native header's back chevron; `pathname` is informational.
  */
@@ -48,6 +71,7 @@ type NavigationBridge = Bridge.Bridge<
   {
     HostBackRequested: typeof HostBackRequested
     HostRequestedWebNavigation: typeof HostRequestedWebNavigation
+    SafeAreaInsetsChanged: typeof SafeAreaInsetsChanged
   },
   {
     RouteChanged: typeof RouteChanged
@@ -57,8 +81,9 @@ type NavigationBridge = Bridge.Bridge<
 
 /**
  * Slice-neutral cross-process navigation contract. Host emits
- * `HostBackRequested` and `HostRequestedWebNavigation`; web emits
- * `RouteChanged`. Aggregators wire this bridge into every embedded WebView.
+ * `HostBackRequested`, `HostRequestedWebNavigation`, and
+ * `SafeAreaInsetsChanged`; web emits `RouteChanged` and `UIReady`.
+ * Aggregators wire this bridge into every embedded WebView.
  *
  * @remarks
  * Cross-process `console.<level>(...)` mirroring is handled by the
@@ -71,6 +96,7 @@ const NavigationBridge: NavigationBridge = Bridge.make({
   hostToWeb: [
     ['HostBackRequested', HostBackRequested],
     ['HostRequestedWebNavigation', HostRequestedWebNavigation],
+    ['SafeAreaInsetsChanged', SafeAreaInsetsChanged],
   ] as const,
   webToHost: [
     ['RouteChanged', RouteChanged],
@@ -81,7 +107,9 @@ const NavigationBridge: NavigationBridge = Bridge.make({
       'HostRequestedWebNavigation',
       'path'
     ),
-    // HostBackRequested deliberately omitted — it's a runtime-only signal.
+    // HostBackRequested and SafeAreaInsetsChanged deliberately omitted —
+    // they're runtime-only signals pushed over the live channel, never
+    // seeded through the WebView URL.
   },
 })
 
