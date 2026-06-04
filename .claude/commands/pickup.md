@@ -21,4 +21,4 @@ Pick up a task from a previous agent session using the Handoff.md document.
 - **Trust the handoff doc.** It was written by an agent with deep session context. Don't second-guess it or re-explore things it already covers.
 - **Read the gotchas section carefully.** This is where the previous agent's hard-won knowledge lives. Ignoring it means repeating their mistakes.
 - **If the handoff is stale or confusing, ask the user** rather than guessing. The user has context that spans across agent sessions.
-- **Never git push.** The user's SSH key requires a password. Ask them to run push manually if needed.
+- **Pushing is mode-dependent.** In Interactive mode, never push — the user's local SSH key requires a password; ask them to run push manually if needed. In Autonomous mode (dev container / triggered session), push as normal. See [Execution Modes](../../AGENTS.md#execution-modes).

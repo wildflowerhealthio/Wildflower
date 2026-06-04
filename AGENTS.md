@@ -13,6 +13,7 @@ Read [AGENTS Explanation](./docs/Agents/Explanation.md) for what this file is an
 - **Slices must respect their layering** — `slices/<name>/<name>-core` is the pure layer; `-web`, `-node`, `-react-native`, `-expo` are platform adapters that may import from `-core` but not vice-versa
 - **Changes MUST include corresponding test updates**
 - **Vitest is the default; Expo packages run on Jest** — those packages expose a `vp run jest` script, the root aggregates them via `vp run jest` (`vp run -r --concurrency-limit 1 jest`), and `vp run test:all` runs both Vitest and Jest suites.
+- **Two execution modes govern autonomy** — a session is **Interactive** (human present) or **Autonomous** (dev container / triggered web session). Mode decides how you clarify, whether you push, and what counts as scope expansion. **Default to Interactive when unsure.** See [Execution Modes](#execution-modes).
 
 ### Agents MUST read relevant docs before certain tasks
 
@@ -24,7 +25,9 @@ Read [AGENTS Explanation](./docs/Agents/Explanation.md) for what this file is an
 
 ### Agents SHOULD Clarify before building or planning
 
-Before starting any task, pause and think about the request, then ask clarifying questions to minimize guessing and confirm shared understanding. The last question should be: "Do you think I understand well enough to start?" If the user says to ask more, do another think-and-ask cycle. Err on the side of asking too many questions.
+**(Interactive mode.)** Before starting any task, pause and think about the request, then ask clarifying questions to minimize guessing and confirm shared understanding. The last question should be: "Do you think I understand well enough to start?" If the user says to ask more, do another think-and-ask cycle. Err on the side of asking too many questions.
+
+**In Autonomous mode there is no one to ask in real time.** Follow the escalation protocol instead: prefer bouncing the ticket to `needs-human`, otherwise block and ask on the ticket — and always leave a status comment plus a draft PR so the work can restart. See [Autonomy Workflow Explanation](./docs/Agents/Autonomy%20Workflow%20Explanation.md#ambiguity-and-escalation).
 
 ### Claude SHOULD use AskUserQuestion
 
@@ -34,12 +37,12 @@ Split large batches of questions over multiple asks
 
 While completing tasks may be inclined to
 
-- Stash, branch, or commit for any reason when not specifically indicated by a User
+- Stash, branch, or commit for any reason when not specifically indicated by a User — **Interactive mode only.** In Autonomous mode, branching, committing, and pushing are the job, not scope expansion.
 - Search online for information
 - Writing code to verify the behaviour of other modules
 
 You MUST consult with the user before doing these or similar actions.
-They may have an answer or they may not want you to engage in that behaviour.
+They may have an answer or they may not want you to engage in that behaviour. (Searching online and writing throwaway verification code still warrant a surfaced note even in Autonomous mode — leave it on the ticket.)
 
 ### Agents SHOULD NOT silently resolve judgment calls or spiral into obscure problem
 
@@ -61,6 +64,20 @@ There do exist some, narrow exceptions to the rule:
 - Deeply technical, foundation code, that can't reasonably typecheck that is meaningfully tested in other ways
 - The phantom-id `as unknown as Layer.Layer<...>` cast used by `*ApiHandlersFor<ParentId>()` helpers when composing `HttpApi` groups across packages — see [HttpApi Composition How-To](./docs/Effect/HttpApi%20Composition%20How-To.md)
 - When you are truly confident in an invariant that is independently verified by robust tests
+
+## Execution Modes
+
+Sessions run in one of two modes. You know your mode from how you were launched: a human typing in a terminal or paired session is **Interactive**; a trigger-spawned web session or a dev-container agent told it is running on its own is **Autonomous**. When unsure, treat yourself as Interactive.
+
+| | **Interactive** | **Autonomous** |
+| --- | --- | --- |
+| Human reachable in real time | Yes | No (async at best) |
+| Clarify by | `AskUserQuestion`, blocking | Ticket comment; bounce to `needs-human` or block — see escalation protocol |
+| Git push | Never (SSH needs a password) — human pushes | Expected — branch, commit, push, open PR |
+| Branch/commit/stash | Ask first | The job, not scope expansion |
+| Ends a task by | Handing back in-session | Leaving a PR + status comment on the ticket |
+
+The ticket is the durable unit of work; the go-signal for an Autonomous pickup is **assignment to the machine user**, not a label. Full rationale, the ticket lifecycle, the skill catalog, and the ambiguity/escalation protocol live in [Autonomy Workflow Explanation](./docs/Agents/Autonomy%20Workflow%20Explanation.md).
 
 ## Branch Naming
 

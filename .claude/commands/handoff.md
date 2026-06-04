@@ -56,4 +56,4 @@ Hand off the current task to a future agent session. Finishes immediate work, wr
 - **The Handoff.md is the deliverable.** Optimize for the next agent's cold start. What would you want to read if you were picking this up fresh?
 - **Document failure modes, not just the happy path.** The gotchas section is the most valuable part — include patterns that break, edge cases discovered, and approaches that were tried and abandoned.
 - **Overwrite, don't append.** If Handoff.md already exists, replace it entirely.
-- **Never git push.** The user's SSH key requires a password. Ask them to run push manually if needed.
+- **Pushing is mode-dependent.** In Interactive mode, never push — the user's local SSH key requires a password; ask them to run push manually if needed. In Autonomous mode (dev container / triggered session), push as normal. See [Execution Modes](../../AGENTS.md#execution-modes).

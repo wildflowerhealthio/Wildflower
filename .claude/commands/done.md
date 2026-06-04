@@ -37,7 +37,7 @@ Task wrap-up checklist — run health checks, surface next steps, and execute be
 ## Guidelines
 
 - **Be specific, not generic.** Every checklist item should reference concrete files, functions, or changes from the session.
-- **Never git push.** The user's SSH key requires a password. If a push or PR is selected, stop and ask the user to run the git command manually.
+- **Pushing is mode-dependent.** In Interactive mode, never push — the user's local SSH key requires a password; if a push or PR is selected, stop and ask the user to run the git command manually. In Autonomous mode (dev container / triggered session), push as normal. See [Execution Modes](../../AGENTS.md#execution-modes).
 - **Nothing to do is fine.** If the working tree is clean, tests pass, and there are no TODOs, say so and end.
 - **Keep output concise.** Summarize health check results rather than dumping raw command output.
 - **Trust your session context.** You've been working in this codebase all session. Use your judgment about what matters — you know what was hard, what's fragile, and what the user cares about. The examples in step 3 are just a menu of possibilities, not a template to fill in.

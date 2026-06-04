@@ -74,7 +74,7 @@ Replies inside a thread follow the same rules. A reply on an unresolved thread t
 
 ## Guidelines
 
-- **Local work only.** All fixes happen in the local working directory. Never push — the user's SSH key requires a password. Ask them to push when done.
+- **Local work; push is mode-dependent.** All fixes happen in the local working directory. In Interactive mode, never push — the user's local SSH key requires a password; ask them to push when done. In Autonomous mode (dev container / triggered session), push as normal. See [Execution Modes](../../AGENTS.md#execution-modes).
 - **Resolved threads are out of scope.** Always check `isResolved` first — a resolved thread is closed work, regardless of the reactions on it.
 - **Reactions are the go signal — on roots AND on replies.** 🚀 on a plain comment, or any of 🎉/😄/😕/🚀 on a multi-tag comment, means "address this." This applies equally to reply comments inside the thread: a reply with 🚀 on an unresolved thread is a fresh action item, often promoting a root-comment suggestion that was skipped in an earlier `/answer` pass. Comments without these reactions are ignored.
 - **Don't over-interpret.** If a comment is ambiguous about what change is needed, ask the user rather than guessing. Use `AskUserQuestion` with the comment text quoted.
