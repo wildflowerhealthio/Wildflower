@@ -81,16 +81,8 @@
 }
 
 /* Deepen the dropdown's elevation shadow so it reads against a dark
- * surface, where a faint black shadow would disappear. Mirrors the
- * authoritative-attribute / OS-fallback split in `styles.css`: the media
- * query is gated to the OS-driven case and the host-pinned dark attribute
- * gets its own rule. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-color-scheme]) .menu__list {
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
-  }
-}
-
+ * surface, where a faint black shadow would disappear. Keyed off the same
+ * `data-color-scheme='dark'` attribute as the palette in `styles.css`. */
 :root[data-color-scheme='dark'] .menu__list {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
 }

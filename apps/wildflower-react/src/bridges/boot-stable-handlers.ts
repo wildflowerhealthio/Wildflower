@@ -30,8 +30,9 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  * `applyColorScheme` — stateless DOM writers, not per-entry state — so
  * they're imported here rather than threaded through `renderApp`. Standalone
  * web entries use a stub transport and never reach this seam, so they keep
- * zero padding (a browser has no notch to clear) and stay driven by
- * `prefers-color-scheme` (the colour-scheme attribute is never set).
+ * zero padding (a browser has no notch to clear); their colour scheme comes
+ * from `addOsColorSchemeListener`, which writes the same attribute from
+ * `prefers-color-scheme` at boot.
  */
 const makeBootStableInitialHandlers = (
   navigate: (to: NavTarget) => void,

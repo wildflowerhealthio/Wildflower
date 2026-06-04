@@ -1,18 +1,17 @@
 import type { ColorScheme } from 'navigation-react'
 
 /**
- * Write the host's OS colour scheme onto the document root as an
- * authoritative `data-color-scheme` attribute. The stylesheet keys its dark
- * palette off `:root[data-color-scheme='dark']` and gates its
- * `prefers-color-scheme` fallback behind `:root:not([data-color-scheme])`,
- * so once this attribute is set it overrides the OS media query.
+ * Write a colour scheme onto the document root as the authoritative
+ * `data-color-scheme` attribute. The stylesheet keys its dark palette solely
+ * off `:root[data-color-scheme='dark']`, so this attribute is the single
+ * trigger for dark mode — there is no `prefers-color-scheme` fallback rule.
  *
- * Needed inside the embedded WebView because WKWebView evaluates
+ * Both runtimes funnel through here. The embedded WebView relays the real
+ * device scheme over the Navigation bridge — WKWebView evaluates
  * `prefers-color-scheme` as `light` for `loadHTMLString` content regardless
- * of the device appearance; the host relays the real scheme over the
- * Navigation bridge and this writer makes it stick. The plain web build
- * never receives the message, leaves the attribute unset, and stays driven
- * by `prefers-color-scheme`.
+ * of device appearance, so it can't read the OS preference itself. The plain
+ * web build derives the scheme from `prefers-color-scheme` via
+ * `addOsColorSchemeListener` and writes it through the same attribute.
  */
 const applyColorScheme = (scheme: ColorScheme): void => {
   document.documentElement.dataset.colorScheme = scheme

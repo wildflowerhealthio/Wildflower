@@ -82,6 +82,8 @@ function AccountListBody({ remotes }: AccountListBodyProps): JSX.Element {
 
   return (
     <>
+      <h1 className="text-heading-6">Collector</h1>
+
       {error !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
       ) : null}

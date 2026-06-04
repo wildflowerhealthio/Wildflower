@@ -34,16 +34,8 @@
 }
 
 /* The faint hover shadow vanishes on a dark surface; deepen it so the
- * row still lifts on hover (the brighter border already helps). Mirrors the
- * authoritative-attribute / OS-fallback split in `styles.css`: the media
- * query is gated to the OS-driven case and the host-pinned dark attribute
- * gets its own rule. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-color-scheme]) .item-list__row:hover:not(.item-list__row--disabled) {
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-  }
-}
-
+ * row still lifts on hover (the brighter border already helps). Keyed off the
+ * same `data-color-scheme='dark'` attribute as the palette in `styles.css`. */
 :root[data-color-scheme='dark'] .item-list__row:hover:not(.item-list__row--disabled) {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
