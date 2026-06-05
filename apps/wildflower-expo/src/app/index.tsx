@@ -28,56 +28,56 @@ export default function HomeScreen(): JSX.Element {
   )
 
   return (
-    <View style={styles.fill}>
-      <ThemedView style={styles.fill}>
-        <View style={styles.webViewWrap}>
-          <AppShellWebView onRouteChanged={handleRouteChanged} />
-        </View>
-        <View
-          style={[
-            styles.tabBar,
-            {
-              borderTopColor: palette.icon,
-              backgroundColor: palette.background,
-            },
-          ]}
-        >
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.key
-            return (
-              <Pressable
-                key={tab.key}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: isActive }}
-                onPress={() => {
-                  Effect.runFork(
-                    sendNavigation({ _tag: 'HostRequestedWebNavigation', path: tab.path })
-                  )
-                }}
-                style={{
-                  ...styles.tabButton,
-                  paddingBottom: Math.max(Spacing.s2, insets.bottom - 12),
-                }}
+    <ThemedView style={styles.fill}>
+      <View style={styles.webViewWrap}>
+        <AppShellWebView onRouteChanged={handleRouteChanged} />
+      </View>
+      <View
+        style={[
+          styles.tabBar,
+          {
+            borderTopColor: palette.icon,
+            backgroundColor: palette.background,
+          },
+        ]}
+      >
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.key
+          return (
+            <Pressable
+              key={tab.key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: isActive }}
+              onPress={() => {
+                Effect.runFork(
+                  sendNavigation({ _tag: 'HostRequestedWebNavigation', path: tab.path })
+                )
+              }}
+              style={{
+                ...styles.tabButton,
+                paddingBottom: Math.max(Spacing.s2, insets.bottom - 12),
+              }}
+            >
+              <ThemedText
+                type={isActive ? 'bodySemiBold' : 'body'}
+                lightTextColor={isActive ? Colors.light.accent : Colors.light.icon}
+                darkTextColor={isActive ? Colors.dark.accent : Colors.dark.icon}
               >
-                <ThemedText
-                  type={isActive ? 'bodySemiBold' : 'body'}
-                  lightTextColor={isActive ? Colors.light.accent : Colors.light.icon}
-                  darkTextColor={isActive ? Colors.dark.accent : Colors.dark.icon}
-                >
-                  {tab.label}
-                </ThemedText>
-              </Pressable>
-            )
-          })}
-        </View>
-      </ThemedView>
-    </View>
+                {tab.label}
+              </ThemedText>
+            </Pressable>
+          )
+        })}
+      </View>
+    </ThemedView>
   )
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  webViewWrap: { flex: 1 },
+  webViewWrap: {
+    flex: 1,
+  },
   tabBar: {
     flexDirection: 'row',
     borderTopWidth: StyleSheet.hairlineWidth,
