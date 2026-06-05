@@ -9,6 +9,7 @@ import { BearerToken } from 'kitchen-sink/auth-token'
 import type { BaseRouterContext } from 'shared-structures-react'
 import { TunnelRouterContext } from 'tunnel-react'
 
+import { webTelemetryLayerFromEnv } from 'telemetry-web'
 import type { ReactTransport } from './bridges/transport-context.ts'
 
 type SliceServices =
@@ -69,7 +70,7 @@ const buildRunAuthed = (
   readonly runtimeLayer: RuntimeLayer
 } => {
   const baseRuntimeLayer = Layer.succeed(BearerToken, tokenSubscribable).pipe(
-    Layer.provideMerge(httpClientLayer)
+    Layer.provideMerge(Layer.merge(httpClientLayer, webTelemetryLayerFromEnv()))
   )
   const runtimeLayer: RuntimeLayer = Layer.provideMerge(
     Layer.mergeAll(

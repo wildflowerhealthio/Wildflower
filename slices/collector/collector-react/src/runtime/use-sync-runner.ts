@@ -13,11 +13,12 @@ import type { Remote as CollectorRemote } from 'collector-core/livestore'
 import { makeScrapingPlanForConfig, type AnyCollectorResource } from 'collector-core/registry'
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import { Importing } from 'collector-fundamentals/telemetry'
-import { Effect, Either, Ref, Schedule } from 'effect'
+import { Effect, Either, type ParseResult, Ref, Schedule } from 'effect'
 import { useFhirR4ResourcesRuntimeLayer } from 'fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import type { HttpApiError, HttpClientError } from '@effect/platform'
 import { useCollectorRegister } from './use-collector-register.ts'
 import { useCollectorSender } from './use-collector-sender.ts'
 
@@ -122,90 +123,106 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
   useEffect((): undefined | (() => void) => {
     if (remote === null || scrapingPlan === null) return undefined
 
-    const handleParsedResource = (resource: AnyCollectorResource): void => {
-      // Entities filter out null-id resources before emitting (see
-      // `PatientEntity` etc.); narrow defensively for the typed `path`.
-      if (resource.id === null) return
-      const path = { id: resource.id }
-      const upsert = Effect.gen(function* () {
-        const client = yield* FhirR4ResourcesHttpApiClient
-        switch (resource.resourceType) {
-          case 'Patient': {
-            return yield* client.Patient.Update({ path, payload: { ...resource, id: path.id } })
-          }
-          case 'Observation': {
-            return yield* client.Observation.Update({ path, payload: { ...resource, id: path.id } })
-          }
-          case 'Binary': {
-            return yield* client.Binary.Update({ path, payload: { ...resource, id: path.id } })
-          }
-          default: {
-            // `AnyCollectorResource` is `Patient | Observation | Binary`. A
-            // new collector that widens the union without a matching case
-            // here is a compile error via the `never`-typed exhaustive
-            // assignment.
-            const exhaustive: never = resource
-            return yield* Effect.dieMessage(
-              `useSyncRunner: unknown resourceType ${String(exhaustive)}`
-            )
-          }
-        }
-      })
-
-      // Bounded retry: up to 3 retries with exponential backoff starting
-      // at 250ms. `Schedule.intersect` enforces "stop after N attempts"
-      // AND "exponential" — `Schedule.either` would stop on whichever
-      // schedule chose first, which is the wrong semantics. A `Ref`
-      // counts attempts so the outer span records how many writes it
-      // took (`retry.attempts`); each individual write is its own span.
-      const upsertWithRetry = Effect.gen(function* () {
-        const attempts = yield* Ref.make(0)
-        const oneAttempt = Ref.update(attempts, (n) => n + 1).pipe(
-          Effect.zipRight(
-            upsert.pipe(
-              Effect.withSpan(Importing.Update.Attempt.Span.Name, {
-                attributes: {
-                  [Importing.Update.Attempt.Span.Attributes.Method]: 'PUT',
-                  [Importing.Attributes.ResourceType]: resource.resourceType,
-                },
+    const handleParsedResource = (
+      resource: AnyCollectorResource
+    ): Effect.Effect<void, never, FhirR4ResourcesHttpApiClient> =>
+      Effect.gen(function* () {
+        // Entities filter out null-id resources before emitting (see
+        // `PatientEntity` etc.); narrow defensively for the typed `path`.
+        if (resource.id === null) return
+        const path = { id: resource.id }
+        const upsert = Effect.gen(function* () {
+          const client = yield* FhirR4ResourcesHttpApiClient
+          switch (resource.resourceType) {
+            case 'Patient': {
+              return yield* client.Patient.Update({ path, payload: { ...resource, id: path.id } })
+            }
+            case 'Observation': {
+              return yield* client.Observation.Update({
+                path,
+                payload: { ...resource, id: path.id },
               })
-            )
-          )
-        )
-        return yield* oneAttempt.pipe(
-          Effect.retry(
-            Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3)))
-          ),
-          Effect.tapError((err) =>
-            Effect.logError(
-              `useSyncRunner: upsert failed for ${resource.resourceType}/${path.id}`,
-              err
-            )
-          ),
-          Effect.onExit(() =>
-            Ref.get(attempts).pipe(
-              Effect.flatMap((n) =>
-                Effect.annotateCurrentSpan(Importing.Update.Span.Attributes.Attempts, n)
+            }
+            case 'Binary': {
+              return yield* client.Binary.Update({ path, payload: { ...resource, id: path.id } })
+            }
+            default: {
+              // `AnyCollectorResource` is `Patient | Observation | Binary`. A
+              // new collector that widens the union without a matching case
+              // here is a compile error via the `never`-typed exhaustive
+              // assignment.
+              const exhaustive: never = resource
+              return yield* Effect.dieMessage(
+                `useSyncRunner: unknown resourceType ${String(exhaustive)}`
+              )
+            }
+          }
+        })
+
+        // Bounded retry: up to 3 retries with exponential backoff starting
+        // at 250ms. `Schedule.intersect` enforces "stop after N attempts"
+        // AND "exponential" — `Schedule.either` would stop on whichever
+        // schedule chose first, which is the wrong semantics. A `Ref`
+        // counts attempts so the outer span records how many writes it
+        // took (`retry.attempts`); each individual write is its own span.
+        const upsertWithRetry = Effect.gen(function* () {
+          const attempts = yield* Ref.make(0)
+          const oneAttempt = Ref.update(attempts, (n) => n + 1).pipe(
+            Effect.zipRight(
+              upsert.pipe(
+                Effect.withSpan(Importing.Update.Attempt.Span.Name, {
+                  attributes: {
+                    [Importing.Update.Attempt.Span.Attributes.Method]: 'PUT',
+                    [Importing.Attributes.ResourceType]: resource.resourceType,
+                  },
+                })
               )
             )
-          ),
-          Effect.withSpan(Importing.Update.Span.Name, {
-            attributes: { [Importing.Attributes.ResourceType]: resource.resourceType },
-          })
+          )
+          return yield* oneAttempt.pipe(
+            Effect.retry(
+              Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3)))
+            ),
+            Effect.tapError((err) =>
+              Effect.logError(
+                `useSyncRunner: upsert failed for ${resource.resourceType}/${path.id}`,
+                err
+              )
+            ),
+            Effect.onExit(() =>
+              Ref.get(attempts).pipe(
+                Effect.flatMap((n) =>
+                  Effect.annotateCurrentSpan(Importing.Update.Span.Attributes.Attempts, n)
+                )
+              )
+            ),
+            Effect.withSpan(Importing.Update.Span.Name, {
+              attributes: { [Importing.Attributes.ResourceType]: resource.resourceType },
+            })
+          )
+        })
+
+        yield* Effect.catchAll(
+          upsertWithRetry,
+          (
+            err:
+              | HttpApiError.ServiceUnavailable
+              | HttpApiError.HttpApiDecodeError
+              | HttpClientError.HttpClientError
+              | ParseResult.ParseError
+          ) =>
+            Effect.sync(() => {
+              failedRef.current = [
+                ...failedRef.current,
+                { resourceType: resource.resourceType, id: path.id },
+              ]
+              setState({ _tag: 'partial', failed: failedRef.current })
+              // Backward-compatibility: keep firing `onError` once retries
+              // are exhausted so existing callers still see the failure.
+              onErrorRef.current?.(err)
+            })
         )
       })
-
-      runFhir(upsertWithRetry).catch((err: unknown) => {
-        failedRef.current = [
-          ...failedRef.current,
-          { resourceType: resource.resourceType, id: path.id },
-        ]
-        setState({ _tag: 'partial', failed: failedRef.current })
-        // Backward-compatibility: keep firing `onError` once retries
-        // are exhausted so existing callers still see the failure.
-        onErrorRef.current?.(err)
-      })
-    }
 
     const handler = Effect.runSync(
       CollectorBridgeMessageHandler.make<AnyCollectorResource>({
@@ -224,12 +241,10 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
               // span only times/counts the dispatch loop; the update spans
               // nest under their own traces. `runtimeLayer` carries the tracer.
               Effect.runFork(
-                Effect.sync(() => {
-                  for (const resource of parsed) handleParsedResource(resource)
-                }).pipe(
-                  Effect.withSpan(Importing.Update.Batch.Span.Name, {
+                Effect.forEach(parsed, (resource) => handleParsedResource(resource)).pipe(
+                  Effect.withSpan(Importing.Span.Name, {
                     attributes: {
-                      [Importing.Update.Batch.Span.Attributes.ResourceCount]: parsed.length,
+                      [Importing.Span.Attributes.ResourceCount]: parsed.length,
                     },
                   }),
                   Effect.provide(runtimeLayer)

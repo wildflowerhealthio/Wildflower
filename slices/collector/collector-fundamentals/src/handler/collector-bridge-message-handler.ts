@@ -22,7 +22,7 @@ import type {
 } from '../bridge.ts'
 import type * as EntityDefinition from '../model/entity-definition.ts'
 import { Response, type ScrapingPlan } from '../model/index.ts'
-import { Importing, Sniffing } from '../telemetry/index.ts'
+import * as Telemetry from '../telemetry/index.ts'
 
 type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 
@@ -123,21 +123,6 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
   ) => Effect.Effect<void, never, never>
 }
 
-/**
- * Best-effort path for the `response.url_path` span attribute: the
- * pathname when `url` parses, else the pre-query substring. Never
- * throws — a malformed URL must not crash the parse path just to
- * annotate a span, and the full URL can carry high-cardinality query
- * params we don't want on spans.
- */
-const urlPathForSpan = (url: string): string => {
-  try {
-    return new URL(url).pathname
-  } catch {
-    return url.split('?')[0] ?? url
-  }
-}
-
 const make = <TResources>({
   scrapingPlan,
   sendMessage,
@@ -187,10 +172,12 @@ const make = <TResources>({
         const fiber: RuntimeFiber<void, never> = yield* Effect.forkDaemon(
           Effect.gen(function* () {
             yield* Effect.sleep(scrapingPlan.stepDelay).pipe(
-              Effect.withSpan(Sniffing.Wait.Span.Name, {
+              Effect.withSpan(Telemetry.Sniffing.Wait.Span.Name, {
                 attributes: {
-                  [Sniffing.Attributes.StepIndex]: dispatchIndex,
-                  [Sniffing.Attributes.StepDelayMs]: Duration.toMillis(scrapingPlan.stepDelay),
+                  [Telemetry.Sniffing.Attributes.StepIndex]: dispatchIndex,
+                  [Telemetry.Sniffing.Attributes.StepDelayMs]: Duration.toMillis(
+                    scrapingPlan.stepDelay
+                  ),
                 },
               })
             )
@@ -210,10 +197,10 @@ const make = <TResources>({
                     // verbatim.
                     const link = scrapingPlan.linkSequence[dispatchIndex]
                     yield* sendMessage(link).pipe(
-                      Effect.withSpan(Sniffing.Dispatch.Span.Name, {
+                      Effect.withSpan(Telemetry.Sniffing.Dispatch.Span.Name, {
                         attributes: {
-                          [Sniffing.Attributes.StepIndex]: dispatchIndex,
-                          [Sniffing.Attributes.LinkKind]: link._tag,
+                          [Telemetry.Sniffing.Attributes.StepIndex]: dispatchIndex,
+                          [Telemetry.Sniffing.Attributes.LinkKind]: link._tag,
                         },
                       })
                     )
@@ -223,10 +210,10 @@ const make = <TResources>({
                     } as const
                   } else {
                     yield* sendMessage({ _tag: 'SniffingComplete' }).pipe(
-                      Effect.withSpan(Sniffing.Dispatch.Span.Name, {
+                      Effect.withSpan(Telemetry.Sniffing.Dispatch.Span.Name, {
                         attributes: {
-                          [Sniffing.Attributes.StepIndex]: dispatchIndex,
-                          [Sniffing.Attributes.LinkKind]: 'SniffingComplete',
+                          [Telemetry.Sniffing.Attributes.StepIndex]: dispatchIndex,
+                          [Telemetry.Sniffing.Attributes.LinkKind]: 'SniffingComplete',
                         },
                       })
                     )
@@ -310,17 +297,17 @@ const make = <TResources>({
           Effect.tap((either) =>
             Either.isLeft(either)
               ? Effect.annotateCurrentSpan(
-                  Importing.Parse.Span.Attributes.ErrorType,
+                  Telemetry.Importing.Parse.Span.Attributes.ErrorType,
                   either.left._tag
                 )
               : Effect.void
           ),
-          Effect.withSpan(Importing.Parse.Span.Name, {
+          Effect.withSpan(Telemetry.Importing.Parse.Span.Name, {
             attributes: {
-              [Importing.Parse.Span.Attributes.EntityName]: entity.name,
-              [Importing.Parse.Span.Attributes.ResponseBytes]: response.byteLength,
-              [Importing.Parse.Span.Attributes.ChunkCount]: response.chunkCount,
-              [Importing.Parse.Span.Attributes.UrlPath]: urlPathForSpan(response.url),
+              [Telemetry.Entity.Attributes.Name]: entity.name,
+              [Telemetry.Entity.Attributes.Size]: response.byteLength,
+              [Telemetry.Entity.Chunk.Attributes.ChunkCount]: response.chunkCount,
+              [Telemetry.Entity.Attributes.UrlPath]: response.url,
             },
           })
         )

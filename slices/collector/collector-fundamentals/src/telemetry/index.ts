@@ -33,26 +33,45 @@ const Sniffing = {
   },
 } as const
 
+/** A foreign entity being scraped. */
+const Entity = {
+  Attributes: {
+    /** The matched entity definition's stable name. */
+    Name: 'collector.entity.entity.name',
+    /** Decoded response body size in bytes (post base64-decode). */
+    Size: 'collector.entity.size',
+    /** Request URL path (OTel semconv). */
+    UrlPath: 'url.path',
+  },
+
+  Chunk: {
+    Attributes: {
+      /** Number of wire chunks buffered for the response. */
+      ChunkCount: 'collector.entity.chunk.count',
+    },
+  },
+}
+
 /** Turning a scraped HTTP response into FHIR resources and writing them back. */
 const Importing = {
   /** Attribute keys shared across the importing spans. */
   Attributes: {
     /** FHIR resource type being imported (`Patient` / `Observation` / `Binary`). */
-    ResourceType: 'collector.importing.resource.type',
+    ResourceType: 'collector.importing.resourceType',
+  },
+
+  Span: {
+    Name: 'collector.importing',
+    Attributes: {
+      /** Number of resources dispatched for update. */
+      ResourceCount: 'collector.importing.resource.count',
+    },
   },
   /** Decoding a completed response into the entity's resource array. */
   Parse: {
     Span: {
       Name: 'collector.importing.parse',
       Attributes: {
-        /** The matched entity definition's stable name. */
-        EntityName: 'collector.importing.entity.name',
-        /** Decoded response body size in bytes (post base64-decode). */
-        ResponseBytes: 'collector.importing.response.bytes',
-        /** Number of wire chunks buffered for the response. */
-        ChunkCount: 'collector.importing.response.chunk_count',
-        /** Request URL path (OTel semconv). */
-        UrlPath: 'url.path',
         /** Error class when the parse fails (OTel semconv); unset on success. */
         ErrorType: 'error.type',
       },
@@ -77,17 +96,7 @@ const Importing = {
         },
       },
     },
-    /** Fanning one parsed response's resources out into per-resource updates. */
-    Batch: {
-      Span: {
-        Name: 'collector.importing.update.batch',
-        Attributes: {
-          /** Number of resources dispatched for update. */
-          ResourceCount: 'collector.importing.resource.count',
-        },
-      },
-    },
   },
 } as const
 
-export { Importing, Sniffing }
+export { Entity, Importing, Sniffing }
