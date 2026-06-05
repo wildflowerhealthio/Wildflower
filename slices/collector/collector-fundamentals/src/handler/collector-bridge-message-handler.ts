@@ -22,6 +22,7 @@ import type {
 } from '../bridge.ts'
 import type * as EntityDefinition from '../model/entity-definition.ts'
 import { Response, type ScrapingPlan } from '../model/index.ts'
+import { Importing, Sniffing } from '../telemetry/index.ts'
 
 type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 
@@ -186,10 +187,10 @@ const make = <TResources>({
         const fiber: RuntimeFiber<void, never> = yield* Effect.forkDaemon(
           Effect.gen(function* () {
             yield* Effect.sleep(scrapingPlan.stepDelay).pipe(
-              Effect.withSpan('collector.step.wait', {
+              Effect.withSpan(Sniffing.Wait.Span.Name, {
                 attributes: {
-                  'step.index': dispatchIndex,
-                  'step.delay_ms': Duration.toMillis(scrapingPlan.stepDelay),
+                  [Sniffing.Attributes.StepIndex]: dispatchIndex,
+                  [Sniffing.Attributes.StepDelayMs]: Duration.toMillis(scrapingPlan.stepDelay),
                 },
               })
             )
@@ -209,8 +210,11 @@ const make = <TResources>({
                     // verbatim.
                     const link = scrapingPlan.linkSequence[dispatchIndex]
                     yield* sendMessage(link).pipe(
-                      Effect.withSpan('collector.step.dispatch', {
-                        attributes: { 'step.index': dispatchIndex, 'link.kind': link._tag },
+                      Effect.withSpan(Sniffing.Dispatch.Span.Name, {
+                        attributes: {
+                          [Sniffing.Attributes.StepIndex]: dispatchIndex,
+                          [Sniffing.Attributes.LinkKind]: link._tag,
+                        },
                       })
                     )
                     return {
@@ -219,10 +223,10 @@ const make = <TResources>({
                     } as const
                   } else {
                     yield* sendMessage({ _tag: 'SniffingComplete' }).pipe(
-                      Effect.withSpan('collector.step.dispatch', {
+                      Effect.withSpan(Sniffing.Dispatch.Span.Name, {
                         attributes: {
-                          'step.index': dispatchIndex,
-                          'link.kind': 'SniffingComplete',
+                          [Sniffing.Attributes.StepIndex]: dispatchIndex,
+                          [Sniffing.Attributes.LinkKind]: 'SniffingComplete',
                         },
                       })
                     )
@@ -300,13 +304,23 @@ const make = <TResources>({
         const { response, entity } = maybe.value
         MutableHashMap.remove(inProgressResponses, event.id)
         const result = yield* Effect.either(entity.parse(response)).pipe(
-          Effect.tap((either) => Effect.annotateCurrentSpan('result.tag', either._tag)),
-          Effect.withSpan('collector.entity.parse', {
+          // `Effect.either` always succeeds, so the span closes OK; record the
+          // OTel-standard `error.type` (the ParseError tag) only on the Left
+          // branch so failures stay queryable without flipping span status.
+          Effect.tap((either) =>
+            Either.isLeft(either)
+              ? Effect.annotateCurrentSpan(
+                  Importing.Parse.Span.Attributes.ErrorType,
+                  either.left._tag
+                )
+              : Effect.void
+          ),
+          Effect.withSpan(Importing.Parse.Span.Name, {
             attributes: {
-              'entity.name': entity.name,
-              'response.bytes': response.byteLength,
-              'response.chunk_count': response.chunkCount,
-              'response.url_path': urlPathForSpan(response.url),
+              [Importing.Parse.Span.Attributes.EntityName]: entity.name,
+              [Importing.Parse.Span.Attributes.ResponseBytes]: response.byteLength,
+              [Importing.Parse.Span.Attributes.ChunkCount]: response.chunkCount,
+              [Importing.Parse.Span.Attributes.UrlPath]: urlPathForSpan(response.url),
             },
           })
         )

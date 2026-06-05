@@ -1,0 +1,93 @@
+/**
+ * Central catalog of OpenTelemetry span names and attribute keys for the
+ * Collector hot path. Kept in one file — even for spans that fire from
+ * other packages (the FHIR write-back lives in `collector-react`) — so the
+ * naming philosophy stays coherent in a single place.
+ *
+ * Shape: `FeatureArea.Task.[Subtask].Span.{ Name, Attributes }`, with
+ * attribute keys that recur across a feature lifted to a feature-level
+ * `Attributes` namespace so they are defined once. Attribute values prefer
+ * OpenTelemetry semantic conventions where one exists (`url.path`,
+ * `error.type`, `http.request.method`); everything Collector-specific is
+ * namespaced under `collector.*`.
+ */
+
+/** The timed walk through a scraping plan's link sequence. */
+const Sniffing = {
+  /** Attribute keys shared across the sniffing spans. */
+  Attributes: {
+    /** Zero-based index of the step within the link sequence. */
+    StepIndex: 'collector.sniffing.step.index',
+    /** Configured delay before the step dispatches, in milliseconds. */
+    StepDelayMs: 'collector.sniffing.step.delay_ms',
+    /** `_tag` of the dispatched link (`Open` / `Click` / `SniffingComplete`). */
+    LinkKind: 'collector.sniffing.link.kind',
+  },
+  /** Waiting out the inter-step delay before dispatching the next link. */
+  Wait: {
+    Span: { Name: 'collector.sniffing.wait' },
+  },
+  /** Dispatching a link (or the terminal `SniffingComplete`) to the sniffer. */
+  Dispatch: {
+    Span: { Name: 'collector.sniffing.dispatch' },
+  },
+} as const
+
+/** Turning a scraped HTTP response into FHIR resources and writing them back. */
+const Importing = {
+  /** Attribute keys shared across the importing spans. */
+  Attributes: {
+    /** FHIR resource type being imported (`Patient` / `Observation` / `Binary`). */
+    ResourceType: 'collector.importing.resource.type',
+  },
+  /** Decoding a completed response into the entity's resource array. */
+  Parse: {
+    Span: {
+      Name: 'collector.importing.parse',
+      Attributes: {
+        /** The matched entity definition's stable name. */
+        EntityName: 'collector.importing.entity.name',
+        /** Decoded response body size in bytes (post base64-decode). */
+        ResponseBytes: 'collector.importing.response.bytes',
+        /** Number of wire chunks buffered for the response. */
+        ChunkCount: 'collector.importing.response.chunk_count',
+        /** Request URL path (OTel semconv). */
+        UrlPath: 'url.path',
+        /** Error class when the parse fails (OTel semconv); unset on success. */
+        ErrorType: 'error.type',
+      },
+    },
+  },
+  /** Writing one parsed resource back to the FHIR server, with retries. */
+  Update: {
+    Span: {
+      Name: 'collector.importing.update',
+      Attributes: {
+        /** Total write attempts it took (1 = first try succeeded). */
+        Attempts: 'collector.importing.update.attempts',
+      },
+    },
+    /** A single FHIR PUT — modelled as a standard OTel HTTP client request. */
+    Attempt: {
+      Span: {
+        Name: 'PUT',
+        Attributes: {
+          /** HTTP request method (OTel semconv). */
+          Method: 'http.request.method',
+        },
+      },
+    },
+    /** Fanning one parsed response's resources out into per-resource updates. */
+    Batch: {
+      Span: {
+        Name: 'collector.importing.update.batch',
+        Attributes: {
+          /** Number of resources dispatched for update. */
+          ResourceCount: 'collector.importing.resource.count',
+        },
+      },
+    },
+  },
+} as const
+
+export { Importing, Sniffing }

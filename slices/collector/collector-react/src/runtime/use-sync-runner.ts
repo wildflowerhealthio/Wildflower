@@ -12,6 +12,7 @@
 import type { Remote as CollectorRemote } from 'collector-core/livestore'
 import { makeScrapingPlanForConfig, type AnyCollectorResource } from 'collector-core/registry'
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
+import { Importing } from 'collector-fundamentals/telemetry'
 import { Effect, Either, Ref, Schedule } from 'effect'
 import { useFhirR4ResourcesRuntimeLayer } from 'fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
@@ -162,8 +163,11 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
         const oneAttempt = Ref.update(attempts, (n) => n + 1).pipe(
           Effect.zipRight(
             upsert.pipe(
-              Effect.withSpan('collector.fhir.upsert', {
-                attributes: { 'resource.type': resource.resourceType },
+              Effect.withSpan(Importing.Update.Attempt.Span.Name, {
+                attributes: {
+                  [Importing.Update.Attempt.Span.Attributes.Method]: 'PUT',
+                  [Importing.Attributes.ResourceType]: resource.resourceType,
+                },
               })
             )
           )
@@ -180,11 +184,13 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
           ),
           Effect.onExit(() =>
             Ref.get(attempts).pipe(
-              Effect.flatMap((n) => Effect.annotateCurrentSpan('retry.attempts', n))
+              Effect.flatMap((n) =>
+                Effect.annotateCurrentSpan(Importing.Update.Span.Attributes.Attempts, n)
+              )
             )
           ),
-          Effect.withSpan('collector.fhir.upsert.with_retry', {
-            attributes: { 'resource.type': resource.resourceType },
+          Effect.withSpan(Importing.Update.Span.Name, {
+            attributes: { [Importing.Attributes.ResourceType]: resource.resourceType },
           })
         )
       })
@@ -212,16 +218,19 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
               onErrorRef.current?.(err)
             },
             onRight: (parsed) => {
-              // Fire-and-forget fan-out. Each resource's upsert is its own
-              // root run (`handleParsedResource` → `runFhir`), so this span
-              // only times/counts the dispatch loop; the upsert spans nest
-              // under their own traces. `runtimeLayer` carries the tracer.
+              // Fire-and-forget dispatch of one parsed response's resources
+              // into per-resource updates. Each resource's update is its own
+              // root run (`handleParsedResource` → `runFhir`), so this batch
+              // span only times/counts the dispatch loop; the update spans
+              // nest under their own traces. `runtimeLayer` carries the tracer.
               Effect.runFork(
                 Effect.sync(() => {
                   for (const resource of parsed) handleParsedResource(resource)
                 }).pipe(
-                  Effect.withSpan('collector.fhir.fan_out', {
-                    attributes: { 'resource.count': parsed.length },
+                  Effect.withSpan(Importing.Update.Batch.Span.Name, {
+                    attributes: {
+                      [Importing.Update.Batch.Span.Attributes.ResourceCount]: parsed.length,
+                    },
                   }),
                   Effect.provide(runtimeLayer)
                 )
