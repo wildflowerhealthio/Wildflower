@@ -6,7 +6,7 @@ import { AppsBridgeExpo } from 'apps-expo'
 import { useCollectorHostBinding } from 'collector-expo'
 import { type CollectorBridge } from 'collector-fundamentals/bridge'
 import { type GatekeeperBridge } from 'gatekeeper-core/bridge'
-import { LocalClientToken } from 'gatekeeper-core/livestore'
+import { AuthorizationRequest, LocalClientToken } from 'gatekeeper-core/livestore'
 import { GatekeeperBridgeExpo } from 'gatekeeper-expo'
 import { type NavigationBridge } from 'navigation-core'
 import { useMemo, useState } from 'react'
@@ -41,8 +41,21 @@ export const useHostBindings = ({
   const { value: localClientToken } = store.useQuery(LocalClientToken.queries.current$)
   const token = localClientToken ?? undefined
 
+  // Live FIFO head of pending device-code consent requests. The query
+  // returns every pending device row (SQLite can't compare a stored
+  // `expiresAt` to "now"); `pickActiveDeviceUserCode` trims the expired
+  // ones against a real clock and returns the oldest still-valid
+  // `userCode`, or `null` when none qualifies. The primitive result is
+  // identity-stable across renders, so the gatekeeper binding's change
+  // effect only fires when the head actually moves.
+  const pendingDeviceRequests = store.useQuery(AuthorizationRequest.queries.pendingDeviceRequests$)
+  const activeDeviceUserCode = AuthorizationRequest.pickActiveDeviceUserCode(
+    pendingDeviceRequests,
+    Date.now()
+  )
+
   const navigationBinding = useNavigationHostBinding(onRouteChanged, onUiReady)
-  const gatekeeperBinding = GatekeeperBridgeExpo.useHostBinding({ token })
+  const gatekeeperBinding = GatekeeperBridgeExpo.useHostBinding({ token, activeDeviceUserCode })
   const collectorBinding = useCollectorHostBinding()
   const appsBinding = AppsBridgeExpo.useHostBinding({ store })
   const logBinding = useLogHostBinding()

@@ -159,14 +159,16 @@ jest.mock('expo-splash-screen', () => ({
 // sender. The real token-delivery contract (capture sender →
 // post-mount send) is pinned by `gatekeeper-expo`'s own tests
 // (`use-host-binding.test.ts`).
-let mockGatekeeperOptions: { token?: string } | null = null
+let mockGatekeeperOptions: { token?: string; activeDeviceUserCode?: string | null } | null = null
 jest.mock('gatekeeper-expo', () => {
   const effect = jest.requireActual<{ Effect: typeof EffectType; Layer: typeof LayerType }>(
     'effect'
   )
   return {
     GatekeeperBridgeExpo: {
-      useHostBinding: (options: { token?: string } = {}): MockBindings => {
+      useHostBinding: (
+        options: { token?: string; activeDeviceUserCode?: string | null } = {}
+      ): MockBindings => {
         mockGatekeeperOptions = options
         return singleMock({
           bridge: { name: 'Gatekeeper' },
@@ -233,9 +235,20 @@ jest.mock('local-http-server-core/livestore', () => ({
   localOrigin$: { kind: 'localOrigin$' },
 }))
 
+// Per-test override for the derived device-consent head. The mocked
+// `pickActiveDeviceUserCode` ignores its row argument and returns this
+// sentinel directly: the shell only owes the binding the *value*, and
+// the real query→picker derivation is unit-tested in `gatekeeper-core`.
+let mockActiveDeviceUserCode: string | null = null
+
 jest.mock('gatekeeper-core/livestore', () => ({
   LocalClientToken: {
     queries: { current$: { kind: 'localClientToken' } },
+  },
+  AuthorizationRequest: {
+    queries: { pendingDeviceRequests$: { kind: 'pendingDeviceRequests' } },
+    pickActiveDeviceUserCode: (_rows: unknown, _nowMillis: number): string | null =>
+      mockActiveDeviceUserCode,
   },
 }))
 
@@ -251,6 +264,8 @@ jest.mock('../livestore/livestore-store.ts', () => ({
       if (typeof q === 'object' && q !== null && 'kind' in q) {
         if (q.kind === 'localOrigin$') return 'https://example.test'
         if (q.kind === 'localClientToken') return mockLocalClientTokenRow
+        // Raw pending device-code rows; the mocked picker ignores them.
+        if (q.kind === 'pendingDeviceRequests') return []
       }
       throw new Error(`Unexpected useQuery key: ${JSON.stringify(q)}`)
     },
@@ -290,6 +305,7 @@ beforeEach(() => {
   mockGatekeeperOptions = null
   mockAppsOptions = null
   mockLocalClientTokenRow = { value: 'bearer-xyz' }
+  mockActiveDeviceUserCode = null
   mockSplashHideAsync.mockClear()
 })
 
@@ -535,6 +551,23 @@ describe('AppShellWebView', () => {
     mockLocalClientTokenRow = { value: null }
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
     expect(mockGatekeeperOptions?.token).toBeUndefined()
+  })
+
+  it('threads the derived device-consent head into the gatekeeper binding hook', () => {
+    // Shell-level wiring contract: the shell queries the pending
+    // device-code rows, derives the live head via
+    // `AuthorizationRequest.pickActiveDeviceUserCode`, and hands it to
+    // `GatekeeperBridgeExpo.useHostBinding`. The derivation itself is
+    // unit-tested in `gatekeeper-core`; here the picker is mocked to
+    // return a sentinel so we pin only the threading.
+    mockActiveDeviceUserCode = 'ABCD-1234'
+    mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
+    expect(mockGatekeeperOptions?.activeDeviceUserCode).toBe('ABCD-1234')
+  })
+
+  it('threads a null device-consent head when no request is active', () => {
+    mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
+    expect(mockGatekeeperOptions?.activeDeviceUserCode).toBeNull()
   })
 
   it('always wires an onPageReady on the gatekeeper binding (the slice captures the sender regardless of token state)', () => {

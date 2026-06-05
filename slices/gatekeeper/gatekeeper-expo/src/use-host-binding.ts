@@ -6,6 +6,16 @@ import { useEffect, useMemo, useRef } from 'react'
 
 interface UseGatekeeperHostBindingOptions {
   readonly token?: string
+  /**
+   * `userCode` of the device-authorization request the embedded SPA
+   * should currently prompt the practitioner to approve, `null` to
+   * dismiss any active prompt, or `undefined` when the host does not
+   * manage device consent (nothing is pushed). Delivered to the page on
+   * every `onPageReady` and whenever it changes mid-session, mirroring
+   * the token paths below. `null` is a meaningful value — it dismisses a
+   * stale prompt — so only `undefined` is treated as "no message".
+   */
+  readonly activeDeviceUserCode?: string | null
 }
 
 type GatekeeperSender = BridgeTransport.MessageSender<
@@ -40,6 +50,14 @@ type GatekeeperSender = BridgeTransport.MessageSender<
  *    rotations are absorbed by the `senderRef === null` short-circuit;
  *    the next `onPageReady` will pick the new value up via `tokenRef`.
  *
+ * `activeDeviceUserCode` (the live device-consent head) rides the exact
+ * same two paths through `DeviceAuthorizationActiveChanged`: re-pushed on
+ * every `onPageReady` so a fresh SPA shows the pending prompt, and pushed
+ * by a `useEffect([activeDeviceUserCode])` when the head changes
+ * mid-session. Unlike the token, `null` is a meaningful value (dismiss
+ * the prompt); only `undefined` (host doesn't manage device consent)
+ * suppresses the message.
+ *
  * Eliminates the cold-start double-build flash (transport torn down +
  * rebuilt + WebView reload) that the previous `[token]`-keyed memo
  * caused when the host's token minted after the initial render, and
@@ -55,6 +73,7 @@ type GatekeeperSender = BridgeTransport.MessageSender<
  */
 const useGatekeeperHostBinding = ({
   token,
+  activeDeviceUserCode,
 }: UseGatekeeperHostBindingOptions = {}): HostBindings.HostBindings<
   readonly [typeof GatekeeperBridge]
 > => {
@@ -64,6 +83,11 @@ const useGatekeeperHostBinding = ({
   // `onPageReady` re-fire (next WebView reload) reads the latest value
   // rather than the one captured the last time the binding was built.
   tokenRef.current = token
+
+  const activeDeviceUserCodeRef = useRef<string | null | undefined>(activeDeviceUserCode)
+  // Same ref-alignment rationale as `tokenRef`: the next `onPageReady`
+  // re-fire must replay the *current* head, not a stale capture.
+  activeDeviceUserCodeRef.current = activeDeviceUserCode
 
   // Token rotation while the page is up. The `senderRef === null`
   // short-circuit covers initial mount (the effect fires once on mount
@@ -88,6 +112,34 @@ const useGatekeeperHostBinding = ({
     )
   }, [token])
 
+  // Active device-consent head changed while the page is up. Mirrors the
+  // token rotation path: pre-page-ready changes are absorbed by the
+  // `senderRef === null` short-circuit and replayed by the next
+  // `onPageReady` via `activeDeviceUserCodeRef`. `undefined` means the
+  // host does not manage device consent — nothing to push; `null` is a
+  // real value that dismisses a stale prompt.
+  useEffect(() => {
+    if (activeDeviceUserCode === undefined) return
+    const send = senderRef.current
+    if (send === null) {
+      Effect.runFork(
+        Effect.logDebug(
+          '[gatekeeper-expo] device-consent head changed but sender not yet captured; deferring to next onPageReady'
+        )
+      )
+      return
+    }
+    Effect.runFork(
+      Effect.logDebug(
+        '[gatekeeper-expo] pushing DeviceAuthorizationActiveChanged via change effect (head changed mid-session)'
+      ).pipe(
+        Effect.zipRight(
+          send({ _tag: 'DeviceAuthorizationActiveChanged', userCode: activeDeviceUserCode })
+        )
+      )
+    )
+  }, [activeDeviceUserCode])
+
   return useMemo(
     () =>
       HostBindings.single({
@@ -97,17 +149,32 @@ const useGatekeeperHostBinding = ({
         onPageReady: (send: GatekeeperSender) =>
           Effect.gen(function* () {
             senderRef.current = send
-            const current = tokenRef.current
-            if (current === undefined) {
+
+            const currentToken = tokenRef.current
+            if (currentToken === undefined) {
               yield* Effect.logDebug(
                 '[gatekeeper-expo] onPageReady fired; sender captured; no token to deliver yet'
               )
-              return
+            } else {
+              yield* Effect.logDebug(
+                '[gatekeeper-expo] onPageReady fired; pushing AuthTokenIssued to page'
+              )
+              yield* send({ _tag: 'AuthTokenIssued', token: currentToken })
             }
-            yield* Effect.logDebug(
-              '[gatekeeper-expo] onPageReady fired; pushing AuthTokenIssued to page'
-            )
-            yield* send({ _tag: 'AuthTokenIssued', token: current })
+
+            // Re-push the live device-consent head on every page (re)load
+            // so a freshly-booted SPA (whose store starts at null) shows
+            // the prompt that is currently pending — or stays dismissed.
+            const currentUserCode = activeDeviceUserCodeRef.current
+            if (currentUserCode !== undefined) {
+              yield* Effect.logDebug(
+                '[gatekeeper-expo] onPageReady fired; pushing DeviceAuthorizationActiveChanged to page'
+              )
+              yield* send({
+                _tag: 'DeviceAuthorizationActiveChanged',
+                userCode: currentUserCode,
+              })
+            }
           }),
       }),
     []

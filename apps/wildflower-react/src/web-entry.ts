@@ -21,9 +21,10 @@ import { stubTransport } from './bridges/transport-context.ts'
  *   token resolves immediately, absent throws the device-login
  *   redirect.
  * - `makeTransport`: pre-resolved stub (no host bridge), so the
- *   `_auth` loader's `await context.transport` is a microtask. The
- *   `writeIssuedToken` setter is ignored — there's no host
- *   `AuthTokenIssued` to receive.
+ *   `_auth` loader's `await context.transport` is a microtask. Both the
+ *   `writeIssuedToken` and `setActiveDeviceRequest` setters are ignored —
+ *   there's no host `AuthTokenIssued` or `DeviceAuthorizationActiveChanged`
+ *   to receive.
  */
 const makeWebEntryOptions = (): Pick<
   RenderAppOptions,

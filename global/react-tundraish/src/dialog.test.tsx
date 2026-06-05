@@ -142,6 +142,59 @@ describe('Dialog', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
+  it('hides the close button when not dismissable', () => {
+    render(
+      <Dialog open={true} onClose={vi.fn()} dismissable={false}>
+        Body
+      </Dialog>
+    )
+    // The × button is the only <button> the dialog renders.
+    expect(document.querySelector('dialog button')).toBeNull()
+  })
+
+  it('renders the close button when dismissable (default)', () => {
+    render(
+      <Dialog open={true} onClose={vi.fn()}>
+        Body
+      </Dialog>
+    )
+    expect(document.querySelector('dialog button')).not.toBeNull()
+  })
+
+  it('ignores a backdrop click when not dismissable', () => {
+    const onClose = vi.fn()
+    render(
+      <Dialog open={true} onClose={onClose} dismissable={false}>
+        Body
+      </Dialog>
+    )
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const dialog = document.querySelector('dialog') as HTMLDialogElement
+
+    fireEvent.click(dialog, { target: dialog })
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('prevents the default on the cancel event (ESC) when not dismissable', () => {
+    const onCancel = vi.fn()
+    render(
+      <Dialog open={true} onClose={vi.fn()} onCancel={onCancel} dismissable={false}>
+        Body
+      </Dialog>
+    )
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const dialog = document.querySelector('dialog') as HTMLDialogElement
+
+    const cancelEvent = new Event('cancel', { bubbles: false, cancelable: true })
+    fireEvent(dialog, cancelEvent)
+
+    // The non-dismissable branch preventDefaults and never forwards to
+    // the caller's onCancel.
+    expect(cancelEvent.defaultPrevented).toBe(true)
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
   it('restores focus to the previously focused element on close', () => {
     // Arrange
     const opener = document.createElement('button')

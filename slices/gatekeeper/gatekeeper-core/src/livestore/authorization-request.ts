@@ -1,5 +1,5 @@
 import { Events, queryDb, State } from '@livestore/livestore'
-import { Schema } from 'effect'
+import { DateTime, Schema } from 'effect'
 
 // Maps to the OAuth `grant_type` request parameter (RFC 6749 §1.3, RFC
 // 8628 §3.4). The URN `urn:ietf:params:oauth:grant-type:device_code`
@@ -53,6 +53,42 @@ const queries = {
       map: (rows): AuthorizationRequestRow | null => rows[0] ?? null,
       label: 'authorizationRequestByUserCode',
     }),
+  // Pending device-code requests, oldest first. Expiry is NOT filtered
+  // here: SQLite can't compare a stored timestamp to "now", so the live
+  // FIFO head is derived native-side via `pickActiveDeviceUserCode`
+  // against a real clock.
+  pendingDeviceRequests$: queryDb(
+    table.where({ grantType: 'device_code', status: 'pending' }).orderBy('requestedAt', 'asc'),
+    { label: 'pendingDeviceRequests' }
+  ),
+}
+
+/**
+ * Pick the `userCode` of the FIFO-head pending device-code request: the
+ * oldest by `requestedAt` whose `expiresAt` is still in the future
+ * relative to `nowMillis`, or `null` when none qualifies.
+ *
+ * Pure so the native host binding can re-derive the active head against
+ * a live clock — a SQLite query can't compare a stored timestamp to
+ * "now", so {@link queries.pendingDeviceRequests$} returns every pending
+ * device row and this trims the expired ones. Re-sorts defensively
+ * rather than trusting the query's ordering, and skips the (impossible
+ * for device-code) `userCode === null` row so the return is a usable
+ * code or `null`.
+ */
+const pickActiveDeviceUserCode = (
+  rows: ReadonlyArray<AuthorizationRequestRow>,
+  nowMillis: number
+): string | null => {
+  const oldestFirst = [...rows].sort(
+    (a, b) => DateTime.toEpochMillis(a.requestedAt) - DateTime.toEpochMillis(b.requestedAt)
+  )
+  for (const row of oldestFirst) {
+    if (row.userCode !== null && DateTime.toEpochMillis(row.expiresAt) > nowMillis) {
+      return row.userCode
+    }
+  }
+  return null
 }
 
 const events = {
@@ -201,5 +237,6 @@ export {
   queries,
   events,
   materializers,
+  pickActiveDeviceUserCode,
 }
 export type { AuthorizationGrantType, AuthorizationRequestRow, CodeChallengeMethod }

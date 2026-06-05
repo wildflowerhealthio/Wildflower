@@ -72,13 +72,18 @@ vi.mock('effect-messaging-react', async () => {
 // without spinning up the real gatekeeper/navigation runtimes.
 const navHandlersStub = { __mark: 'nav' as const }
 const gatekeeperHandlersStub = { __mark: 'gatekeeper' as const }
+// A spy (not a bare lambda) so a test can pin that the active-device-request
+// setter is forwarded as the handlers' second argument.
+const makeGatekeeperWebHandlersSpy = vi.fn(
+  (_setToken: unknown, _setActiveDeviceUserCode: unknown) => gatekeeperHandlersStub
+)
 vi.mock('navigation-react', async () => {
   const actual = await vi.importActual<typeof NavigationReact>('navigation-react')
   return { ...actual, makeNavigationWebHandlers: () => navHandlersStub }
 })
 vi.mock('gatekeeper-react/web-bridge', async () => {
   const actual = await vi.importActual<typeof GatekeeperWebBridge>('gatekeeper-react/web-bridge')
-  return { ...actual, makeGatekeeperWebHandlers: () => gatekeeperHandlersStub }
+  return { ...actual, makeGatekeeperWebHandlers: makeGatekeeperWebHandlersSpy }
 })
 
 const importBuildTransport = async (): Promise<typeof BuildTransportFn> =>
@@ -91,6 +96,7 @@ beforeEach(() => {
   fakeRegisterHandlers.mockClear()
   fakeSendMessage.mockClear()
   fakeInstallConsoleInterceptor.mockClear()
+  makeGatekeeperWebHandlersSpy.mockClear()
 })
 
 afterEach(() => {
@@ -117,6 +123,7 @@ describe('buildTransport', () => {
     const buildTransport = await importBuildTransport()
     const promise = buildTransport(
       () => undefined,
+      () => undefined,
       () => undefined
     )
     // The build chain hops through several microtasks before
@@ -139,6 +146,7 @@ describe('buildTransport', () => {
 
     const promise = buildTransport(
       () => undefined,
+      () => undefined,
       () => undefined
     )
     // Wait until the build chain has reached `transport.signalReady`
@@ -156,9 +164,26 @@ describe('buildTransport', () => {
     await promise
   })
 
+  test('forwards the active-device-request setter as the gatekeeper handlers second arg', async () => {
+    const buildTransport = await importBuildTransport()
+    const setActiveDeviceRequest = (): void => undefined
+    const promise = buildTransport(
+      () => undefined,
+      () => undefined,
+      setActiveDeviceRequest
+    )
+    await waitForMicrotask(() => signalReadyResolve !== null)
+    signalReadyResolve?.()
+    await promise
+
+    expect(makeGatekeeperWebHandlersSpy).toHaveBeenCalledTimes(1)
+    expect(makeGatekeeperWebHandlersSpy.mock.calls[0]?.[1]).toBe(setActiveDeviceRequest)
+  })
+
   test('binds the coordinator to the transport.registerHandlers', async () => {
     const buildTransport = await importBuildTransport()
     const promise = buildTransport(
+      () => undefined,
       () => undefined,
       () => undefined
     )

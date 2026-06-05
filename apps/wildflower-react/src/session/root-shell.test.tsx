@@ -78,9 +78,15 @@ vi.mock('react-kitchen-sink', () => ({
 }))
 // The `RootShell` lifecycle test only consumes the slice runtime
 // layer; the `AuthTokenStore` itself is constructed inline in the
-// test body below.
+// test body below. The active-device-request surface is reduced to a
+// passthrough provider, a no-op store factory (`renderApp` reads its
+// `setActiveUserCode`), and a `null`-rendering modal host — none of which
+// is the thing this lifecycle test pins.
 vi.mock('gatekeeper-react', () => ({
   GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
+  ActiveDeviceRequestProvider: makePassthrough('ActiveDeviceRequestProvider'),
+  makeActiveDeviceRequestStore: () => ({ setActiveUserCode: () => undefined }),
+  DeviceAuthorizationModalHost: () => null,
 }))
 vi.mock('collector-react', () => ({
   CollectorRouterContext: { sliceRuntimeLayer: Layer.empty },

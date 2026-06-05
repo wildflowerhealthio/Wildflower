@@ -27,9 +27,15 @@ const { Passthrough } = vi.hoisted(() => ({
 // The gatekeeper-react surface this test pokes is just the
 // `GatekeeperRouterContext.sliceRuntimeLayer` (consumed by
 // `router-context.ts`'s layer composition). The `AuthTokenStore` the
-// test renders with is constructed inline in the test body below.
+// test renders with is constructed inline in the test body below. The
+// active-device-request surface is stubbed: a passthrough provider, a
+// no-op store factory (`renderApp` reads its `setActiveUserCode`), and a
+// `null`-rendering modal host — none of which this `QueryClient` test pins.
 vi.mock('gatekeeper-react', () => ({
   GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
+  ActiveDeviceRequestProvider: Passthrough,
+  makeActiveDeviceRequestStore: () => ({ setActiveUserCode: () => undefined }),
+  DeviceAuthorizationModalHost: () => null,
 }))
 vi.mock('react-kitchen-sink', () => ({
   AuthTokenProvider: Passthrough,

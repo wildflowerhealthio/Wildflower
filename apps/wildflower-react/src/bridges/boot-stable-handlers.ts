@@ -1,5 +1,6 @@
 import type { BridgeHandlerRecord } from 'effect-messaging-react'
 import { GatekeeperBridge } from 'gatekeeper-core/bridge'
+import type { ActiveDeviceRequestStore } from 'gatekeeper-react'
 import { makeGatekeeperWebHandlers } from 'gatekeeper-react/web-bridge'
 import { NavigationBridge } from 'navigation-core'
 import { makeNavigationWebHandlers, type NavTarget } from 'navigation-react'
@@ -19,11 +20,14 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  * a drop-all record for those bridges. Logging is web→host only on the
  * page side (no inbound handlers).
  *
- * `setToken` is the gatekeeper bridge's only piece of state — the
- * entry's `AuthTokenStore` constructs it (`makeWebAuthTokenStore`
- * persists to localStorage; `makeEmbeddedAuthTokenStore` is
- * in-memory) and the page-bridge handler writes through it on every
- * `AuthTokenIssued`.
+ * The gatekeeper bridge carries two pieces of page state, both supplied
+ * as writers here. `setToken` comes from the entry's `AuthTokenStore`
+ * (`makeWebAuthTokenStore` persists to localStorage;
+ * `makeEmbeddedAuthTokenStore` is in-memory) and the page-bridge handler
+ * writes through it on every `AuthTokenIssued`. `setActiveDeviceUserCode`
+ * comes from the entry's `ActiveDeviceRequestStore` and the handler
+ * writes through it on every `DeviceAuthorizationActiveChanged`, so the
+ * live device-consent head reaches the modal host.
  *
  * The navigation bridge's `SafeAreaInsetsChanged` and
  * `HostColorSchemeChanged` are wired to `applyRootInsets` and
@@ -36,14 +40,15 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  */
 const makeBootStableInitialHandlers = (
   navigate: (to: NavTarget) => void,
-  setToken: AuthTokenStore['setToken']
+  setToken: AuthTokenStore['setToken'],
+  setActiveDeviceUserCode: ActiveDeviceRequestStore['setActiveUserCode']
 ): Readonly<Record<string, BridgeHandlerRecord>> => ({
   [NavigationBridge.name]: makeNavigationWebHandlers({
     navigate,
     applyInsets: applyRootInsets,
     applyColorScheme,
   }),
-  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setToken),
+  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setToken, setActiveDeviceUserCode),
 })
 
 export { makeBootStableInitialHandlers }

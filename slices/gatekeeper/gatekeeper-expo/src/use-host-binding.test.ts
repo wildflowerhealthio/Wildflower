@@ -15,7 +15,12 @@ expectTypeOf<ReturnType<typeof useGatekeeperHostBinding>>().toEqualTypeOf<
   HostBindings.HostBindings<readonly [typeof GatekeeperBridge]>
 >()
 expectTypeOf(useGatekeeperHostBinding).parameters.toEqualTypeOf<
-  [({ readonly token?: string } | undefined)?]
+  [
+    (
+      | { readonly token?: string; readonly activeDeviceUserCode?: string | null }
+      | undefined
+    )?,
+  ]
 >()
 
 describe('useGatekeeperHostBinding handlers', () => {
@@ -208,6 +213,96 @@ describe('useGatekeeperHostBinding token-rotation effect', () => {
   })
 })
 
+describe('useGatekeeperHostBinding device-consent head', () => {
+  // The active device-consent head rides the same two delivery paths as
+  // the token via `DeviceAuthorizationActiveChanged`: re-pushed on every
+  // onPageReady, and pushed by a change effect mid-session. `null` is a
+  // real value (dismiss the prompt); only `undefined` suppresses it.
+  it('pushes the active head on page ready when a userCode is provided', async () => {
+    const { result } = renderHook(() =>
+      useGatekeeperHostBinding({ activeDeviceUserCode: 'ABCD-1234' })
+    )
+    const onReady = result.current.onPageReady[0]
+    if (onReady === undefined) throw new Error('onPageReady should be defined')
+    const { fakeSend, sent } = makeFakeSend()
+
+    await act(async () => {
+      await Effect.runPromise(onReady(fakeSend))
+    })
+    expect(sent).toEqual([{ _tag: 'DeviceAuthorizationActiveChanged', userCode: 'ABCD-1234' }])
+  })
+
+  it('pushes a null head on page ready (dismiss a stale prompt on a fresh page)', async () => {
+    const { result } = renderHook(() => useGatekeeperHostBinding({ activeDeviceUserCode: null }))
+    const onReady = result.current.onPageReady[0]
+    if (onReady === undefined) throw new Error('onPageReady should be defined')
+    const { fakeSend, sent } = makeFakeSend()
+
+    await act(async () => {
+      await Effect.runPromise(onReady(fakeSend))
+    })
+    expect(sent).toEqual([{ _tag: 'DeviceAuthorizationActiveChanged', userCode: null }])
+  })
+
+  it('pushes the token then the device head on a single page ready', async () => {
+    const { result } = renderHook(() =>
+      useGatekeeperHostBinding({ token: 'bearer-xyz', activeDeviceUserCode: 'ABCD-1234' })
+    )
+    const onReady = result.current.onPageReady[0]
+    if (onReady === undefined) throw new Error('onPageReady should be defined')
+    const { fakeSend, sent } = makeFakeSend()
+
+    await act(async () => {
+      await Effect.runPromise(onReady(fakeSend))
+    })
+    expect(sent).toEqual([
+      { _tag: 'AuthTokenIssued', token: 'bearer-xyz' },
+      { _tag: 'DeviceAuthorizationActiveChanged', userCode: 'ABCD-1234' },
+    ])
+  })
+
+  it('pushes a fresh head when it changes after the page is ready', async () => {
+    const { result, rerender } = renderHook(
+      ({ activeDeviceUserCode }: { activeDeviceUserCode: string | null }) =>
+        useGatekeeperHostBinding({ activeDeviceUserCode }),
+      { initialProps: { activeDeviceUserCode: 'FIRST-001' as string | null } }
+    )
+    const onReady = result.current.onPageReady[0]
+    if (onReady === undefined) throw new Error('onPageReady should be defined')
+    const { fakeSend, sent } = makeFakeSend()
+
+    await act(async () => {
+      await Effect.runPromise(onReady(fakeSend))
+    })
+    expect(sent).toEqual([{ _tag: 'DeviceAuthorizationActiveChanged', userCode: 'FIRST-001' }])
+
+    rerender({ activeDeviceUserCode: null })
+    await waitFor(() => {
+      expect(sent).toEqual([
+        { _tag: 'DeviceAuthorizationActiveChanged', userCode: 'FIRST-001' },
+        { _tag: 'DeviceAuthorizationActiveChanged', userCode: null },
+      ])
+    })
+  })
+
+  it('absorbs head changes before the page is ready, replaying via the next onPageReady', async () => {
+    const { result, rerender } = renderHook(
+      ({ activeDeviceUserCode }: { activeDeviceUserCode: string | null }) =>
+        useGatekeeperHostBinding({ activeDeviceUserCode }),
+      { initialProps: { activeDeviceUserCode: 'FIRST-001' as string | null } }
+    )
+    // No onPageReady fire yet — the sender is still null inside the binding.
+    rerender({ activeDeviceUserCode: 'SECOND-002' })
+    const onReady = result.current.onPageReady[0]
+    if (onReady === undefined) throw new Error('onPageReady should be defined')
+    const { fakeSend, sent } = makeFakeSend()
+    await act(async () => {
+      await Effect.runPromise(onReady(fakeSend))
+    })
+    expect(sent).toEqual([{ _tag: 'DeviceAuthorizationActiveChanged', userCode: 'SECOND-002' }])
+  })
+})
+
 describe('useGatekeeperHostBinding identity stability', () => {
   it('keeps binding identity stable across token transitions (no transport rebuild)', () => {
     // Cold-start regression guard: the previous [token]-keyed memo
@@ -222,6 +317,20 @@ describe('useGatekeeperHostBinding identity stability', () => {
     )
     const first = result.current
     rerender({ token: 'bearer-xyz' })
+    expect(result.current).toBe(first)
+  })
+
+  it('keeps binding identity stable across device-head transitions', () => {
+    // Same regression guard for the device-consent head: it rides
+    // onPageReady + a change effect, never the memo deps, so the binding
+    // reference must survive a null → string head transition.
+    const { result, rerender } = renderHook(
+      ({ activeDeviceUserCode }: { activeDeviceUserCode: string | null }) =>
+        useGatekeeperHostBinding({ activeDeviceUserCode }),
+      { initialProps: { activeDeviceUserCode: null as string | null } }
+    )
+    const first = result.current
+    rerender({ activeDeviceUserCode: 'ABCD-1234' })
     expect(result.current).toBe(first)
   })
 })

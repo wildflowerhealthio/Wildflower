@@ -1,6 +1,11 @@
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { type AnyRouter, createRouter, type RouterHistory } from '@tanstack/react-router'
 import { Effect, type Fiber, type Subscribable, Stream } from 'effect'
+import {
+  ActiveDeviceRequestProvider,
+  makeActiveDeviceRequestStore,
+  type ActiveDeviceRequestStore,
+} from 'gatekeeper-react'
 import type { NavTarget } from 'navigation-react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -16,18 +21,22 @@ import { routeTree } from './routeTree.gen.ts'
 
 /**
  * Per-entry transport factory. Receives a stable `navigate` closure
- * that delegates to the router instance (set after `createRouter`)
- * and a `writeIssuedToken` writer threaded from the entry's
- * {@link AuthTokenStore}; returns the page's `BridgeTransport`
- * (narrowed to the React-facing `ReactTransport` surface). Web entries
- * return a pre-resolved stub and ignore the setter (no host bridge to
- * receive `AuthTokenIssued` from); embedded wires `writeIssuedToken`
- * into the gatekeeper page-bridge handler so a host-issued bearer lands
- * in the store.
+ * that delegates to the router instance (set after `createRouter`), a
+ * `writeIssuedToken` writer threaded from the entry's
+ * {@link AuthTokenStore}, and a `setActiveDeviceRequest` writer threaded
+ * from the entry's {@link ActiveDeviceRequestStore}; returns the page's
+ * `BridgeTransport` (narrowed to the React-facing `ReactTransport`
+ * surface). Web entries return a pre-resolved stub and ignore both
+ * setters (no host bridge to receive `AuthTokenIssued` or
+ * `DeviceAuthorizationActiveChanged` from); embedded wires both into the
+ * gatekeeper page-bridge handler so a host-issued bearer lands in the
+ * token store and the live device-consent head lands in the
+ * active-request store the modal host observes.
  */
 type MakeTransport = (
   navigate: (to: NavTarget) => void,
-  writeIssuedToken: AuthTokenStore['setToken']
+  writeIssuedToken: AuthTokenStore['setToken'],
+  setActiveDeviceRequest: ActiveDeviceRequestStore['setActiveUserCode']
 ) => Promise<ReactTransport>
 
 /**
@@ -153,6 +162,10 @@ const renderApp = ({
 
   forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 
+  // The bridge writes the live device-consent head here; the modal host
+  // mounted in `RootShell` reads it back through `<ActiveDeviceRequestProvider>`.
+  const activeDeviceRequestStore = makeActiveDeviceRequestStore()
+
   const routerHandle: { current: AnyRouter | null } = { current: null }
   const navigate = (to: NavTarget): void => {
     const router = routerHandle.current
@@ -161,7 +174,11 @@ const renderApp = ({
     else void router.navigate({ to })
   }
 
-  const transportPromise = makeTransport(navigate, tokenStore.setToken)
+  const transportPromise = makeTransport(
+    navigate,
+    tokenStore.setToken,
+    activeDeviceRequestStore.setActiveUserCode
+  )
   const transportReady = transportPromise.then(() => undefined)
   const resolvedAwaitAuthReady = awaitAuthReady(transportReady)
 
@@ -199,7 +216,9 @@ const renderApp = ({
       >
         <QueryClientProvider client={queryClient}>
           <AuthTokenProvider store={tokenStore}>
-            <AppRootTree router={router} transportPromise={transportPromise} />
+            <ActiveDeviceRequestProvider store={activeDeviceRequestStore}>
+              <AppRootTree router={router} transportPromise={transportPromise} />
+            </ActiveDeviceRequestProvider>
           </AuthTokenProvider>
         </QueryClientProvider>
       </ErrorBoundary>
