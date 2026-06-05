@@ -83,7 +83,10 @@ const buildRunAuthed = (
     baseRuntimeLayer
   )
   return {
-    runAuthed: (effect) => pipe(effect, Effect.provide(runtimeLayer), Effect.runPromise),
+    runAuthed: (effect, options) =>
+      pipe(effect, Effect.provide(runtimeLayer), (provided) =>
+        Effect.runPromise(provided, options)
+      ),
     runtimeLayer,
   }
 }

@@ -45,13 +45,10 @@ function AccountListBody({ remotes }: AccountListBodyProps): JSX.Element {
   const deleteMutation = useDeleteRemoteMutation()
   const [importError, setImportError] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-  const [activeImportRemote, setActiveImportRemote] = useState<Remote | null>(null)
-  useSyncRunner({
-    remote: activeImportRemote,
+  const { startImport } = useSyncRunner({
     onError: (e) => {
       console.error('Error during import:', unwrapCause(e))
       setImportError(e instanceof Error ? e.message : String(e))
-      setActiveImportRemote(null)
     },
   })
 
@@ -75,7 +72,7 @@ function AccountListBody({ remotes }: AccountListBodyProps): JSX.Element {
     if (rootUrl === '') return
 
     setImportError(null)
-    setActiveImportRemote(remote)
+    startImport(remote)
   }
 
   const remoteToDelete = remotes.find((r) => r.id === confirmDeleteId)

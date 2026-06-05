@@ -99,4 +99,11 @@ const Importing = {
   },
 } as const
 
-export { Entity, Importing, Sniffing }
+const Sync = {
+  Span: {
+    Name: 'collector.sync',
+    Attributes: {},
+  },
+}
+
+export { Entity, Importing, Sniffing, Sync }

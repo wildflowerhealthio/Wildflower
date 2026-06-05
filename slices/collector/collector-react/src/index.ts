@@ -32,4 +32,10 @@ export type {
 } from './runtime/collector-sender-context.ts'
 export { useRequestSniffableWebView } from './runtime/use-request-sniffable-web-view.ts'
 
-export { useSyncRunner, type RunnerState, type SyncRunnerInput } from './runtime/use-sync-runner.ts'
+export {
+  useSyncRunner,
+  type FailedResource,
+  type RunnerState,
+  type SyncRunner,
+  type SyncRunnerInput,
+} from './runtime/use-sync-runner.ts'
