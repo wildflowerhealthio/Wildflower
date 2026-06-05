@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, type Schema } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
 import type { NavigationBridge } from 'navigation-core'
 
@@ -13,8 +13,14 @@ interface SafeAreaInsets {
   readonly right: number
 }
 
-/** OS colour scheme, as carried by `HostColorSchemeChanged`. */
-type ColorScheme = 'light' | 'dark'
+/**
+ * OS colour scheme, as carried by `HostColorSchemeChanged`. Derived from the
+ * bridge schema so it tracks `Schema.Literal('light', 'dark')` from one
+ * source rather than hand-redeclaring the wire union.
+ */
+type ColorScheme = Schema.Schema.Type<
+  (typeof NavigationBridge)['HostToWeb']['HostColorSchemeChanged']
+>['scheme']
 
 /**
  * Build the Web-side inbound handler record for {@link NavigationBridge},
@@ -38,11 +44,19 @@ type ColorScheme = 'light' | 'dark'
  * does somehow arrive before the handler is registered is dropped by the
  * transport, not queued.
  */
-const makeNavigationWebHandlers = (
-  navigate: (target: NavTarget) => void,
-  applyInsets: (insets: SafeAreaInsets) => void,
-  applyColorScheme: (scheme: ColorScheme) => void
-): MessageHandler.HandlersFor<(typeof NavigationBridge)['HostToWeb']> => ({
+interface NavigationWebHandlerDeps {
+  readonly navigate: (target: NavTarget) => void
+  readonly applyInsets: (insets: SafeAreaInsets) => void
+  readonly applyColorScheme: (scheme: ColorScheme) => void
+}
+
+const makeNavigationWebHandlers = ({
+  navigate,
+  applyInsets,
+  applyColorScheme,
+}: NavigationWebHandlerDeps): MessageHandler.HandlersFor<
+  (typeof NavigationBridge)['HostToWeb']
+> => ({
   HostBackRequested: () => Effect.sync(() => navigate(-1)),
   HostRequestedWebNavigation: ({ path }) => Effect.sync(() => navigate(path)),
   SafeAreaInsetsChanged: ({ top, bottom, left, right }) =>

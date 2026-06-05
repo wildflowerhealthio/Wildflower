@@ -38,7 +38,11 @@ const makeBootStableInitialHandlers = (
   navigate: (to: NavTarget) => void,
   setToken: AuthTokenStore['setToken']
 ): Readonly<Record<string, BridgeHandlerRecord>> => ({
-  [NavigationBridge.name]: makeNavigationWebHandlers(navigate, applyRootInsets, applyColorScheme),
+  [NavigationBridge.name]: makeNavigationWebHandlers({
+    navigate,
+    applyInsets: applyRootInsets,
+    applyColorScheme,
+  }),
   [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setToken),
 })
 

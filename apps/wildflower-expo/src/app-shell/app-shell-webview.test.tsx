@@ -490,10 +490,8 @@ describe('AppShellWebView', () => {
   })
 
   it('pushes the current OS colour scheme through the navigation onPageReady', async () => {
-    // On every page `__Ready` the navigation binding re-pushes the host's
-    // colour scheme so a relaunched SPA (where WKWebView reports
-    // `prefers-color-scheme: light` for `loadHTMLString` content) re-receives
-    // the real device appearance. The mocked `useColorScheme` reports light.
+    // `onPageReady` re-pushes the host colour scheme; mocked `useColorScheme`
+    // reports light.
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
     const bindings = expectBindings()
     const navIdx = indexOf(bindings, 'Navigation')

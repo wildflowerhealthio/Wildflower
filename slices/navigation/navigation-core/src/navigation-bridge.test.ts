@@ -95,16 +95,11 @@ describe('NavigationBridge', () => {
     )
   })
 
-  test('property: either colour scheme round-trips Host→Web', () => {
-    fc.assert(
-      fc.property(fc.constantFrom('light' as const, 'dark' as const), (scheme) => {
-        const message = { _tag: 'HostColorSchemeChanged' as const, scheme }
-        const wire = Effect.runSync(Message.stringifyMessage(NavigationBridge.HostToWeb, message))
-        const decoded = Schema.decodeSync(NavigationBridge.HostToWeb.HostColorSchemeChanged)(wire)
-        expect(decoded).toEqual(message)
-      }),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
+  test.each(['light', 'dark'] as const)('colour scheme %s round-trips Host→Web', (scheme) => {
+    const message = { _tag: 'HostColorSchemeChanged' as const, scheme }
+    const wire = Effect.runSync(Message.stringifyMessage(NavigationBridge.HostToWeb, message))
+    const decoded = Schema.decodeSync(NavigationBridge.HostToWeb.HostColorSchemeChanged)(wire)
+    expect(decoded).toEqual(message)
   })
 
   test('Host→Web decode rejects an unknown colour scheme', () => {

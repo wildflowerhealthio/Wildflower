@@ -13,6 +13,23 @@ type NavigationSender = BridgeTransport.MessageSender<
   'HostToWeb'
 >
 
+// Collapse `useColorScheme()`'s reported value to the bridge's `'light' |
+// 'dark'` contract. Exhaustive over the source union so that if a future
+// `useColorScheme()` adds an appearance value, the `satisfies never` residual
+// fails to compile and forces a deliberate mapping rather than silently
+// folding it into `'light'`.
+const coerceColorScheme = (reported: ReturnType<typeof useColorScheme>): 'light' | 'dark' => {
+  switch (reported) {
+    case 'dark':
+      return 'dark'
+    case 'light':
+    case 'unspecified':
+      return 'light'
+    default:
+      return reported satisfies never
+  }
+}
+
 export const useNavigationHostBinding = (
   onRouteChanged: (event: { pathname: string; canGoBack: boolean }) => void,
   onUiReady: () => void
@@ -27,13 +44,11 @@ export const useNavigationHostBinding = (
   const insets = useSafeAreaInsets()
   const insetsRef = useRef(insets)
   insetsRef.current = insets
-  // Same ref-mirrored delivery for the OS colour scheme: WKWebView reports
-  // `prefers-color-scheme: light` for `loadHTMLString` content regardless of
-  // the device appearance, so the page can't read it on its own — the host
-  // pushes it on every page `__Ready` and whenever it changes. `unspecified`
-  // (the platform default before the OS reports either) collapses to
-  // `'light'`, matching the bridge's `'light' | 'dark'` contract.
-  const colorScheme: 'light' | 'dark' = useColorScheme() === 'dark' ? 'dark' : 'light'
+  // Same ref-mirrored delivery for the OS colour scheme: the host pushes it on
+  // every page `__Ready` and whenever it changes (see `HostColorSchemeChanged`
+  // for why the embedded page can't read it itself). `unspecified` — the
+  // platform default before the OS reports either — collapses to `'light'`.
+  const colorScheme = coerceColorScheme(useColorScheme())
   const colorSchemeRef = useRef(colorScheme)
   colorSchemeRef.current = colorScheme
   // Gates the rotation effect until `onPageReady` has installed the real
