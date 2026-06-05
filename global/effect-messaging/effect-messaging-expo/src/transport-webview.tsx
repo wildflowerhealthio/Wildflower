@@ -4,6 +4,7 @@ import * as WebBrowser from 'expo-web-browser'
 import { forwardRef, type JSX, useImperativeHandle, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { WebView, type WebViewMessageEvent } from 'react-native-webview'
+import type { WebViewErrorEvent } from 'react-native-webview/lib/WebViewTypes'
 
 /**
  * What the embedded WebView should load. Either a URI or inline HTML
@@ -40,6 +41,13 @@ interface TransportWebViewProps {
    * page-level code (e.g. the browser-sniffer's fetch/XHR wrappers).
    */
   readonly injectedJavaScriptBeforeContentLoaded?: string
+  /**
+   * Forwarded verbatim to react-native-webview's `onError`. Fires when
+   * the page itself fails to load (DNS failure, connection refused,
+   * TLS error, …) — not for in-page fetch failures. Omit to keep the
+   * platform default (the native WebView renders its own error chrome).
+   */
+  readonly onError?: (event: WebViewErrorEvent) => void
 }
 
 /**
@@ -56,7 +64,13 @@ interface TransportWebViewProps {
  */
 const TransportWebView = forwardRef<BareSenderFunction, TransportWebViewProps>(
   function TransportWebView(
-    { source, onMessage, shouldOpenInSystemBrowser, injectedJavaScriptBeforeContentLoaded },
+    {
+      source,
+      onMessage,
+      shouldOpenInSystemBrowser,
+      injectedJavaScriptBeforeContentLoaded,
+      onError,
+    },
     bareSenderServiceRef
   ): JSX.Element {
     const webviewRef = useRef<WebView>(null)
@@ -97,6 +111,7 @@ const TransportWebView = forwardRef<BareSenderFunction, TransportWebViewProps>(
             return false
           }}
           injectedJavaScriptBeforeContentLoaded={injectedJavaScriptBeforeContentLoaded}
+          onError={onError}
           style={styles.webview}
           originWhitelist={['*']}
           javaScriptEnabled={true}

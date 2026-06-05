@@ -9,6 +9,8 @@ import { Context, Effect, Layer } from 'effect'
 import type { Simplify } from 'effect/Types'
 import { BearerToken } from 'kitchen-sink/auth-token'
 
+import { WebApiOrigin } from '../web-api-origin/index.ts'
+
 /**
  * Auth mode for {@link defineSliceHttpClient}. `'bearer'` attaches
  * `Authorization: Bearer <token>` on every request via a `BearerToken`
@@ -19,10 +21,14 @@ type SliceHttpClientAuth = 'bearer' | 'none'
 /**
  * Layer requirements that the helper-produced layer leaves unprovided,
  * keyed on the {@link SliceHttpClientAuth} mode the slice declared.
+ * Every mode requires {@link WebApiOrigin}: the layer reads it per
+ * request to prefix the API origin (so the host can point the SPA's API
+ * calls at the loopback server even when the page itself is served from
+ * a remote dev origin), the same way `'bearer'` reads {@link BearerToken}.
  */
 type LayerRequirementsFor<AuthType extends SliceHttpClientAuth> = AuthType extends 'bearer'
-  ? HttpClient.HttpClient | BearerToken
-  : HttpClient.HttpClient
+  ? HttpClient.HttpClient | BearerToken | WebApiOrigin
+  : HttpClient.HttpClient | WebApiOrigin
 
 /**
  * Bundle a slice's HTTP client boilerplate into one declaration.
@@ -100,28 +106,58 @@ const defineSliceHttpClient = <
           Tag,
           Effect.gen(function* () {
             const tokenSubscribable = yield* BearerToken
+            const originSubscribable = yield* WebApiOrigin
             return yield* HttpApiClient.make(input.api, {
-              baseUrl: '/',
+              // Empty base. The per-request transform below prepends the
+              // live origin, and its `mapRequest` runs *before* the baseUrl
+              // prepend `HttpApiClient` wraps around the client — so any
+              // non-empty base would be re-prepended onto the already-absolute
+              // URL (e.g. `/http://host/path`). With `''` the inner prepend is
+              // a no-op, and the absolute target follows the host's
+              // `WebApiOrigin`, not the page's own origin.
+              baseUrl: '',
               transformClient: (c) =>
                 HttpClient.mapRequestEffect(c, (request) =>
-                  Effect.map(tokenSubscribable.get, (token) =>
-                    token === null
-                      ? request
-                      : HttpClientRequest.setHeader(request, 'Authorization', `Bearer ${token}`)
-                  )
+                  Effect.gen(function* () {
+                    // Read both Subscribables per request: the origin so
+                    // a host re-point surfaces immediately, the token so
+                    // a rotation surfaces immediately — neither rebuilds
+                    // the layer or the client.
+                    const origin = yield* originSubscribable.get
+                    const withOrigin = HttpClientRequest.prependUrl(request, origin)
+                    const token = yield* tokenSubscribable.get
+                    return token === null
+                      ? withOrigin
+                      : HttpClientRequest.setHeader(withOrigin, 'Authorization', `Bearer ${token}`)
+                  })
                 ),
             })
           })
         )
         // The runtime branch picks between two concrete layer shapes
-        // (`Layer<Self, never, HttpClient | BearerToken>` and
-        // `Layer<Self, never, HttpClient>`); TS can't narrow
+        // (`Layer<Self, never, HttpClient | BearerToken | WebApiOrigin>` and
+        // `Layer<Self, never, HttpClient | WebApiOrigin>`); TS can't narrow
         // `LayerRequirementsFor<AuthType>` from the `input.authType === 'bearer'`
         // value check, so the single conditional cast lives here.
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         return built as unknown as Layer.Layer<Self, never, LayerRequirementsFor<AuthType>>
       }
-      const built = Layer.effect(Tag, HttpApiClient.make(input.api, { baseUrl: '/' }))
+      const built = Layer.effect(
+        Tag,
+        Effect.gen(function* () {
+          const originSubscribable = yield* WebApiOrigin
+          return yield* HttpApiClient.make(input.api, {
+            // Empty base — see the bearer branch above.
+            baseUrl: '',
+            transformClient: (c) =>
+              HttpClient.mapRequestEffect(c, (request) =>
+                Effect.map(originSubscribable.get, (origin) =>
+                  HttpClientRequest.prependUrl(request, origin)
+                )
+              ),
+          })
+        })
+      )
       // Paired with the bearer-branch cast above.
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       return built as unknown as Layer.Layer<Self, never, LayerRequirementsFor<AuthType>>

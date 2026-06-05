@@ -4,6 +4,7 @@ import { Effect, Layer, pipe, SubscriptionRef } from 'effect'
 import fc from 'fast-check'
 import { BearerToken } from 'kitchen-sink/auth-token'
 import { numRunsFor } from 'kitchen-sink/test'
+import { WebApiOrigin } from 'shared-structures-react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import type { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
@@ -65,7 +66,11 @@ afterEach(async () => {
 const makeRunAuthed = (httpLayer: Layer.Layer<HttpClient.HttpClient>): RunAuthed => {
   const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('token'))
   return <A, E>(
-    effect: Effect.Effect<A, E, BearerToken | HttpClient.HttpClient | TunnelAdminHttpApiClient>
+    effect: Effect.Effect<
+      A,
+      E,
+      BearerToken | HttpClient.HttpClient | TunnelAdminHttpApiClient | WebApiOrigin
+    >
   ): Promise<A> =>
     Effect.runPromise(
       effect.pipe(
@@ -73,7 +78,8 @@ const makeRunAuthed = (httpLayer: Layer.Layer<HttpClient.HttpClient>): RunAuthed
           pipe(
             sliceRuntimeLayer,
             Layer.provideMerge(httpLayer),
-            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef))
+            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
+            Layer.provideMerge(WebApiOrigin.layerFromLiteral('http://localhost'))
           )
         ),
         Effect.scoped

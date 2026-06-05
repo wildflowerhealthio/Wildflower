@@ -7,6 +7,7 @@ const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
 
 const noopApplyInsets = (_insets: SafeAreaInsets): void => {}
 const noopApplyColorScheme = (_scheme: ColorScheme): void => {}
+const noopApplyApiOrigin = (_apiOrigin: string): void => {}
 
 describe('makeNavigationWebHandlers', () => {
   test('HostBackRequested handler calls navigate(-1)', () => {
@@ -15,6 +16,7 @@ describe('makeNavigationWebHandlers', () => {
       navigate: (to) => calls.push(to),
       applyInsets: noopApplyInsets,
       applyColorScheme: noopApplyColorScheme,
+      applyApiOrigin: noopApplyApiOrigin,
     })
     Effect.runSync(
       handlers.HostBackRequested({ _tag: 'HostBackRequested' }).pipe(Effect.provide(adapterLayer))
@@ -28,6 +30,7 @@ describe('makeNavigationWebHandlers', () => {
       navigate: (to) => calls.push(to),
       applyInsets: noopApplyInsets,
       applyColorScheme: noopApplyColorScheme,
+      applyApiOrigin: noopApplyApiOrigin,
     })
     Effect.runSync(
       handlers
@@ -44,11 +47,13 @@ describe('makeNavigationWebHandlers', () => {
       navigate: (to) => callsA.push(to),
       applyInsets: noopApplyInsets,
       applyColorScheme: noopApplyColorScheme,
+      applyApiOrigin: noopApplyApiOrigin,
     })
     const handlersB = makeNavigationWebHandlers({
       navigate: (to) => callsB.push(to),
       applyInsets: noopApplyInsets,
       applyColorScheme: noopApplyColorScheme,
+      applyApiOrigin: noopApplyApiOrigin,
     })
     Effect.runSync(
       handlersA.HostBackRequested({ _tag: 'HostBackRequested' }).pipe(Effect.provide(adapterLayer))
@@ -68,6 +73,7 @@ describe('makeNavigationWebHandlers', () => {
       navigate: () => undefined,
       applyInsets: (insets) => applied.push(insets),
       applyColorScheme: noopApplyColorScheme,
+      applyApiOrigin: noopApplyApiOrigin,
     })
     Effect.runSync(
       handlers
@@ -89,6 +95,7 @@ describe('makeNavigationWebHandlers', () => {
       navigate: () => undefined,
       applyInsets: noopApplyInsets,
       applyColorScheme: (scheme) => applied.push(scheme),
+      applyApiOrigin: noopApplyApiOrigin,
     })
     Effect.runSync(
       handlers
@@ -96,5 +103,21 @@ describe('makeNavigationWebHandlers', () => {
         .pipe(Effect.provide(adapterLayer))
     )
     expect(applied).toEqual(['dark'])
+  })
+
+  test('HostApiOriginChanged handler forwards the origin to applyApiOrigin', () => {
+    const applied: Array<string> = []
+    const handlers = makeNavigationWebHandlers({
+      navigate: () => undefined,
+      applyInsets: noopApplyInsets,
+      applyColorScheme: noopApplyColorScheme,
+      applyApiOrigin: (apiOrigin) => applied.push(apiOrigin),
+    })
+    Effect.runSync(
+      handlers
+        .HostApiOriginChanged({ _tag: 'HostApiOriginChanged', apiOrigin: 'http://127.0.0.1:8080' })
+        .pipe(Effect.provide(adapterLayer))
+    )
+    expect(applied).toEqual(['http://127.0.0.1:8080'])
   })
 })

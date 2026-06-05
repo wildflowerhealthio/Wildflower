@@ -13,6 +13,11 @@ let mockInsets: { top: number; right: number; bottom: number; left: number }
 // `'light'`.
 let mockColorScheme: 'light' | 'dark' | 'unspecified'
 
+// Mutable loopback API origin source so a rerender can model the host
+// re-pointing the SPA's API calls (e.g. the loopback server rebinding to
+// a new port). Passed as the binding's third argument.
+let mockApiOrigin: string
+
 // The binding reads its sender through `useNavigationSenderRef` (the
 // app's navigation pipe). Mocking it to a plain ref lets us record every
 // push without standing up the real context provider; `onPageReady`
@@ -76,6 +81,7 @@ const noop = (): void => {}
 beforeEach(() => {
   mockInsets = { top: 10, right: 4, bottom: 20, left: 6 }
   mockColorScheme = 'light'
+  mockApiOrigin = 'http://127.0.0.1:8080'
   mockSent = []
   mockSenderRef.current = recordingSend
 })
@@ -87,7 +93,7 @@ describe('useNavigationHostBinding rotation effect', () => {
     // short-circuit. Otherwise a pre-ready inset change would push through
     // the pipe's warn-and-drop default.
     const { rerender } = renderHook<ReturnType<typeof useNavigationHostBinding>, void>(() =>
-      useNavigationHostBinding(noop, noop)
+      useNavigationHostBinding(noop, noop, mockApiOrigin)
     )
     expect(mockSent).toEqual([])
 
@@ -99,7 +105,7 @@ describe('useNavigationHostBinding rotation effect', () => {
 
   it('re-pushes insets (bottom forced to 0) when they change after the page is ready', async () => {
     const { result, rerender } = renderHook<ReturnType<typeof useNavigationHostBinding>, void>(() =>
-      useNavigationHostBinding(noop, noop)
+      useNavigationHostBinding(noop, noop, mockApiOrigin)
     )
     const onReady = result.current.onPageReady[0]
     if (onReady === undefined) throw new Error('navigation onPageReady should be defined')
@@ -112,6 +118,7 @@ describe('useNavigationHostBinding rotation effect', () => {
     expect(mockSent).toEqual([
       { _tag: 'SafeAreaInsetsChanged', top: 10, bottom: 0, left: 6, right: 4 },
       { _tag: 'HostColorSchemeChanged', scheme: 'light' },
+      { _tag: 'HostApiOriginChanged', apiOrigin: 'http://127.0.0.1:8080' },
     ])
 
     // Rotation: `top` changes mid-session, so the inset effect re-pushes.
@@ -123,6 +130,7 @@ describe('useNavigationHostBinding rotation effect', () => {
       expect(mockSent).toEqual([
         { _tag: 'SafeAreaInsetsChanged', top: 10, bottom: 0, left: 6, right: 4 },
         { _tag: 'HostColorSchemeChanged', scheme: 'light' },
+        { _tag: 'HostApiOriginChanged', apiOrigin: 'http://127.0.0.1:8080' },
         { _tag: 'SafeAreaInsetsChanged', top: 30, bottom: 0, left: 6, right: 4 },
       ])
     })
@@ -132,7 +140,7 @@ describe('useNavigationHostBinding rotation effect', () => {
 describe('useNavigationHostBinding colour-scheme effect', () => {
   it('does not push the scheme before onPageReady has fired (ready gate)', () => {
     const { rerender } = renderHook<ReturnType<typeof useNavigationHostBinding>, void>(() =>
-      useNavigationHostBinding(noop, noop)
+      useNavigationHostBinding(noop, noop, mockApiOrigin)
     )
     expect(mockSent).toEqual([])
 
@@ -144,7 +152,7 @@ describe('useNavigationHostBinding colour-scheme effect', () => {
 
   it('re-pushes the scheme when the OS appearance changes after the page is ready', async () => {
     const { result, rerender } = renderHook<ReturnType<typeof useNavigationHostBinding>, void>(() =>
-      useNavigationHostBinding(noop, noop)
+      useNavigationHostBinding(noop, noop, mockApiOrigin)
     )
     const onReady = result.current.onPageReady[0]
     if (onReady === undefined) throw new Error('navigation onPageReady should be defined')
@@ -155,6 +163,7 @@ describe('useNavigationHostBinding colour-scheme effect', () => {
     expect(mockSent).toEqual([
       { _tag: 'SafeAreaInsetsChanged', top: 10, bottom: 0, left: 6, right: 4 },
       { _tag: 'HostColorSchemeChanged', scheme: 'light' },
+      { _tag: 'HostApiOriginChanged', apiOrigin: 'http://127.0.0.1:8080' },
     ])
 
     mockColorScheme = 'dark'
@@ -164,6 +173,7 @@ describe('useNavigationHostBinding colour-scheme effect', () => {
       expect(mockSent).toEqual([
         { _tag: 'SafeAreaInsetsChanged', top: 10, bottom: 0, left: 6, right: 4 },
         { _tag: 'HostColorSchemeChanged', scheme: 'light' },
+        { _tag: 'HostApiOriginChanged', apiOrigin: 'http://127.0.0.1:8080' },
         { _tag: 'HostColorSchemeChanged', scheme: 'dark' },
       ])
     })
@@ -172,7 +182,7 @@ describe('useNavigationHostBinding colour-scheme effect', () => {
   it("collapses the platform 'unspecified' default to 'light' on the wire", async () => {
     mockColorScheme = 'unspecified'
     const { result } = renderHook<ReturnType<typeof useNavigationHostBinding>, void>(() =>
-      useNavigationHostBinding(noop, noop)
+      useNavigationHostBinding(noop, noop, mockApiOrigin)
     )
     const onReady = result.current.onPageReady[0]
     if (onReady === undefined) throw new Error('navigation onPageReady should be defined')
@@ -182,5 +192,49 @@ describe('useNavigationHostBinding colour-scheme effect', () => {
     })
 
     expect(mockSent).toContainEqual({ _tag: 'HostColorSchemeChanged', scheme: 'light' })
+  })
+})
+
+describe('useNavigationHostBinding API-origin effect', () => {
+  it('does not push the API origin before onPageReady has fired (ready gate)', () => {
+    const { rerender } = renderHook<ReturnType<typeof useNavigationHostBinding>, void>(() =>
+      useNavigationHostBinding(noop, noop, mockApiOrigin)
+    )
+    expect(mockSent).toEqual([])
+
+    mockApiOrigin = 'http://10.0.0.5:9090'
+    rerender()
+
+    expect(mockSent).toEqual([])
+  })
+
+  it('re-pushes the API origin when it changes after the page is ready', async () => {
+    const { result, rerender } = renderHook<ReturnType<typeof useNavigationHostBinding>, void>(() =>
+      useNavigationHostBinding(noop, noop, mockApiOrigin)
+    )
+    const onReady = result.current.onPageReady[0]
+    if (onReady === undefined) throw new Error('navigation onPageReady should be defined')
+
+    await act(async () => {
+      await Effect.runPromise(onReady(recordingSend))
+    })
+    expect(mockSent).toEqual([
+      { _tag: 'SafeAreaInsetsChanged', top: 10, bottom: 0, left: 6, right: 4 },
+      { _tag: 'HostColorSchemeChanged', scheme: 'light' },
+      { _tag: 'HostApiOriginChanged', apiOrigin: 'http://127.0.0.1:8080' },
+    ])
+
+    // The loopback server rebinds to a new port; the origin effect re-pushes.
+    mockApiOrigin = 'http://10.0.0.5:9090'
+    rerender()
+
+    await waitFor(() => {
+      expect(mockSent).toEqual([
+        { _tag: 'SafeAreaInsetsChanged', top: 10, bottom: 0, left: 6, right: 4 },
+        { _tag: 'HostColorSchemeChanged', scheme: 'light' },
+        { _tag: 'HostApiOriginChanged', apiOrigin: 'http://127.0.0.1:8080' },
+        { _tag: 'HostApiOriginChanged', apiOrigin: 'http://10.0.0.5:9090' },
+      ])
+    })
   })
 })

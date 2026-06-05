@@ -4,9 +4,18 @@ import { Bridge, HostBindings } from 'effect-messaging-core'
 import { expectTypeOf } from 'expect-type'
 import * as React from 'react'
 import type { ReactElement, ReactNode } from 'react'
+import type * as ReactNative from 'react-native'
 
 let mockLastBridgedWebViewProps: {
-  readonly loadFrom: { readonly _tag: 'html'; readonly html: string; readonly baseUrl: string }
+  readonly loadFrom:
+    | { readonly _tag: 'html'; readonly html: string; readonly baseUrl: string }
+    | { readonly _tag: 'uri'; readonly uri: string }
+  // The shell wires `onError` only in dev-SPA mode (`undefined` for the
+  // default embedded build), so its presence/absence is itself part of
+  // the contract the tests below assert. Modelled loosely as just the
+  // `nativeEvent.description` the fallback reads, not the full
+  // `WebViewErrorEvent`.
+  readonly onError?: (event: { readonly nativeEvent: { readonly description: string } }) => void
   readonly bindings: {
     readonly bridges: ReadonlyArray<{ readonly name?: string }>
     readonly handlers: ReadonlyArray<unknown>
@@ -261,10 +270,35 @@ jest.mock('wildflower-react/embeddable-html', () => ({ html: '<!doctype html><ht
 
 jest.mock('expo-tundraish', () => {
   const ReactInner = jest.requireActual<typeof React>('react')
+  const RN = jest.requireActual<typeof ReactNative>('react-native')
   return {
     Loader: (): ReactElement => ReactInner.createElement('Loader', null, null),
     // `useNavigationHostBinding` reads this to push `HostColorSchemeChanged`.
     useColorScheme: (): 'light' | 'dark' | 'unspecified' => 'light',
+    // `dev-server-unreachable.tsx` reads `Spacing.s4`/`s5` at module-eval
+    // (inside a `StyleSheet.create`), and the shell imports it eagerly — so
+    // the mock must surface numeric spacings even for tests that never
+    // render the fallback.
+    Spacing: { s1: 4, s2: 8, s3: 12, s4: 16, s5: 20 },
+    // Render real RN host components so the dev-SPA error-path test can
+    // locate the fallback's copy via React Native Testing Library's text
+    // queries; the `style` prop the fallback passes is intentionally dropped.
+    ThemedView: ({ children }: { readonly children?: ReactNode }): ReactElement =>
+      ReactInner.createElement(RN.View, null, children),
+    ThemedText: ({ children }: { readonly children?: ReactNode }): ReactElement =>
+      ReactInner.createElement(RN.Text, null, children),
+    ThemedButton: ({
+      title,
+      onPress,
+    }: {
+      readonly title?: string
+      readonly onPress?: () => void
+    }): ReactElement =>
+      ReactInner.createElement(
+        RN.Pressable,
+        { onPress },
+        ReactInner.createElement(RN.Text, null, title)
+      ),
   }
 })
 
@@ -325,9 +359,16 @@ describe('AppShellWebView', () => {
     ])
   })
 
-  it('forwards baseUrl into BridgedWebView via loadFrom', () => {
+  it('embeds the bundled HTML against the loopback origin and wires no onError (default mode)', () => {
+    // No `EXPO_PUBLIC_DEV_SPA_URL`: the shell loads the embedded bundle
+    // (`_tag: 'html'`) with `baseUrl` set to the loopback origin, and
+    // leaves `onError` unset — the failure path belongs to dev-SPA mode.
     mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
-    expect(mockLastBridgedWebViewProps?.loadFrom.baseUrl).toBe('https://example.test')
+    const loadFrom = mockLastBridgedWebViewProps?.loadFrom
+    expect(loadFrom?._tag).toBe('html')
+    if (loadFrom?._tag !== 'html') throw new Error('expected embedded-html loadFrom')
+    expect(loadFrom.baseUrl).toBe('https://example.test')
+    expect(mockLastBridgedWebViewProps?.onError).toBeUndefined()
   })
 
   it('passes initialRoute + onRouteChanged into the navigation host-binding hook', () => {
@@ -597,5 +638,54 @@ describe('AppShellWebView', () => {
     )
 
     expect(expectBindings().handlers).not.toBe(handlersAtMount)
+  })
+})
+
+describe('AppShellWebView dev-SPA mode (EXPO_PUBLIC_DEV_SPA_URL set)', () => {
+  // The shell reads `EXPO_PUBLIC_DEV_SPA_URL` from `process.env` per render
+  // (Expo inlines it at build time; jest-expo leaves it a runtime read), so
+  // setting the var before mount is enough to flip the shell into dev-SPA
+  // mode — no module re-import needed. Snapshot/restore it so the mode can't
+  // leak into the default-mode tests above or other files.
+  const DEV_SPA_URL = 'http://192.168.1.50:8081'
+  let originalDevSpaUrl: string | undefined
+
+  beforeEach(() => {
+    originalDevSpaUrl = process.env.EXPO_PUBLIC_DEV_SPA_URL
+    process.env.EXPO_PUBLIC_DEV_SPA_URL = DEV_SPA_URL
+  })
+
+  afterEach(() => {
+    if (originalDevSpaUrl === undefined) delete process.env.EXPO_PUBLIC_DEV_SPA_URL
+    else process.env.EXPO_PUBLIC_DEV_SPA_URL = originalDevSpaUrl
+  })
+
+  it('loads the SPA from EXPO_PUBLIC_DEV_SPA_URL via a uri loadFrom and wires an onError', () => {
+    mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
+
+    const loadFrom = mockLastBridgedWebViewProps?.loadFrom
+    expect(loadFrom?._tag).toBe('uri')
+    if (loadFrom?._tag !== 'uri') throw new Error('expected remote-uri loadFrom')
+    expect(loadFrom.uri).toBe(DEV_SPA_URL)
+    // Dev-SPA mode owns the load-failure path, so it must hand
+    // BridgedWebView an onError; the default embedded build leaves it unset.
+    expect(typeof mockLastBridgedWebViewProps?.onError).toBe('function')
+  })
+
+  it('renders the DevServerUnreachable fallback when the dev WebView reports a load error', () => {
+    const view = mountInPipe(<AppShellWebView onRouteChanged={noopRouteChanged} />)
+
+    const onError = mockLastBridgedWebViewProps?.onError
+    if (onError === undefined) throw new Error('dev-SPA mode must wire an onError')
+
+    // A failed load means the dev server is unreachable; the shell flips to
+    // the loud fallback instead of a blank/native-error WebView.
+    act(() => {
+      onError({ nativeEvent: { description: 'net::ERR_CONNECTION_REFUSED' } })
+    })
+
+    expect(view.getByText('Dev SPA server unreachable')).toBeTruthy()
+    expect(view.getByText(DEV_SPA_URL)).toBeTruthy()
+    expect(view.getByText('net::ERR_CONNECTION_REFUSED')).toBeTruthy()
   })
 })

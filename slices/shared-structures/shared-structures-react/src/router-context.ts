@@ -2,8 +2,9 @@ import type { HttpClient } from '@effect/platform'
 import { type QueryClient } from '@tanstack/react-query'
 import { type Effect, type Layer } from 'effect'
 import { type BearerToken } from 'kitchen-sink/auth-token'
+import type { WebApiOrigin } from 'shared-structures-core/web-api-origin'
 
-type RuntimeLayer = Layer.Layer<BearerToken | HttpClient.HttpClient, never, never>
+type RuntimeLayer = Layer.Layer<BearerToken | HttpClient.HttpClient | WebApiOrigin, never, never>
 
 /**
  * Run an authed Effect from a non-React call site (route loaders).

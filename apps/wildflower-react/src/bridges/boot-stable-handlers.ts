@@ -33,15 +33,23 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  * zero padding (a browser has no notch to clear); their colour scheme comes
  * from `addOsColorSchemeListener`, which writes the same attribute from
  * `prefers-color-scheme` at boot.
+ *
+ * `applyApiOrigin` is per-entry state (the embedded entry's
+ * `WebApiOrigin` bridge-store `set`), so it's threaded in rather than
+ * imported — it writes the host's `HostApiOriginChanged` origin into the
+ * store the runtime's HTTP clients read per request. Standalone web never
+ * reaches this seam and stays same-origin.
  */
 const makeBootStableInitialHandlers = (
   navigate: (to: NavTarget) => void,
-  setToken: AuthTokenStore['setToken']
+  setToken: AuthTokenStore['setToken'],
+  applyApiOrigin: (apiOrigin: string) => void
 ): Readonly<Record<string, BridgeHandlerRecord>> => ({
   [NavigationBridge.name]: makeNavigationWebHandlers({
     navigate,
     applyInsets: applyRootInsets,
     applyColorScheme,
+    applyApiOrigin,
   }),
   [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setToken),
 })

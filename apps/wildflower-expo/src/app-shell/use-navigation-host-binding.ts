@@ -32,7 +32,8 @@ const coerceColorScheme = (reported: ReturnType<typeof useColorScheme>): 'light'
 
 export const useNavigationHostBinding = (
   onRouteChanged: (event: { pathname: string; canGoBack: boolean }) => void,
-  onUiReady: () => void
+  onUiReady: () => void,
+  apiOrigin: string
 ): HostBindings.HostBindings<readonly [typeof NavigationBridge]> => {
   const navigationSenderRef = useNavigationSenderRef()
 
@@ -51,6 +52,14 @@ export const useNavigationHostBinding = (
   const colorScheme = coerceColorScheme(useColorScheme())
   const colorSchemeRef = useRef(colorScheme)
   colorSchemeRef.current = colorScheme
+  // Same ref-mirrored delivery for the loopback API origin: the host pushes it
+  // on every page `__Ready` and whenever it changes (see `HostApiOriginChanged`
+  // for why — a dev build can serve the SPA from a laptop dev server while its
+  // API calls must still reach the in-app loopback server). In the default
+  // build the page and the API share an origin, so the push is a harmless
+  // restatement; in dev-SPA mode it re-points the SPA's API calls.
+  const apiOriginRef = useRef(apiOrigin)
+  apiOriginRef.current = apiOrigin
   // Gates the rotation effect until `onPageReady` has installed the real
   // transport sender; before that `navigationSenderRef` holds the pipe's
   // warn-and-drop default, and the next `onPageReady` re-pushes via
@@ -81,6 +90,13 @@ export const useNavigationHostBinding = (
     )
   }, [colorScheme, navigationSenderRef])
 
+  // Push the API origin when it changes mid-session (loopback server
+  // rebound to a new port). Mirrors the colour-scheme rotation effect.
+  useEffect(() => {
+    if (!pageReadyRef.current) return
+    Effect.runFork(navigationSenderRef.current({ _tag: 'HostApiOriginChanged', apiOrigin }))
+  }, [apiOrigin, navigationSenderRef])
+
   const navigationBindingArgs = useMemo(() => {
     return {
       onRouteChanged,
@@ -108,6 +124,7 @@ export const useNavigationHostBinding = (
             right: current.right,
           })
           yield* send({ _tag: 'HostColorSchemeChanged', scheme: colorSchemeRef.current })
+          yield* send({ _tag: 'HostApiOriginChanged', apiOrigin: apiOriginRef.current })
         }),
       initialRoute: '/home',
     }

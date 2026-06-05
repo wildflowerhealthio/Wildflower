@@ -1,10 +1,16 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { Effect, Layer, SubscriptionRef } from 'effect'
 import { BearerToken } from 'kitchen-sink/auth-token'
+import { WebApiOrigin } from 'shared-structures-react'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { buildTunnelAdminClientLayer } from './tunnel-client.ts'
+
+// The hand-rolled tunnel client now reads `WebApiOrigin` per request to
+// prefix the API origin; a constant layer satisfies it. These tests
+// assert on the `Authorization` header / body, not the URL.
+const tunnelWebApiOriginLayer = WebApiOrigin.layerFromLiteral('http://localhost')
 
 // Stub the request transport with one that captures the outgoing
 // `Authorization` header and replies with a canned JSON body matching
@@ -54,6 +60,7 @@ describe('buildTunnelAdminClientLayer', () => {
 
     const layer = buildTunnelAdminClientLayer().pipe(
       Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
+      Layer.provideMerge(tunnelWebApiOriginLayer),
       Layer.provideMerge(capturingHttpClientLayer(captures))
     )
 
@@ -71,6 +78,7 @@ describe('buildTunnelAdminClientLayer', () => {
 
     const layer = buildTunnelAdminClientLayer().pipe(
       Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
+      Layer.provideMerge(tunnelWebApiOriginLayer),
       Layer.provideMerge(capturingHttpClientLayer(captures))
     )
 
@@ -92,6 +100,7 @@ describe('buildTunnelAdminClientLayer', () => {
 
     const layer = buildTunnelAdminClientLayer().pipe(
       Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
+      Layer.provideMerge(tunnelWebApiOriginLayer),
       Layer.provideMerge(capturingHttpClientLayer(captures))
     )
 
@@ -111,6 +120,7 @@ describe('buildTunnelAdminClientLayer', () => {
 
     const layer = buildTunnelAdminClientLayer().pipe(
       Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
+      Layer.provideMerge(tunnelWebApiOriginLayer),
       Layer.provideMerge(capturingHttpClientLayer(captures))
     )
 
@@ -171,6 +181,7 @@ describe('buildTunnelAdminClientLayer', () => {
 
     const layer = buildTunnelAdminClientLayer().pipe(
       Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
+      Layer.provideMerge(tunnelWebApiOriginLayer),
       Layer.provideMerge(httpClientLayer)
     )
 

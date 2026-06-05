@@ -1,4 +1,5 @@
 import { makeAwaitWebAuthReady, makeWebAuthTokenStore } from 'gatekeeper-react'
+import { webApiOriginLocationLayer } from 'shared-structures-react'
 import type { RenderAppOptions } from './app-root.tsx'
 import { stubTransport } from './bridges/transport-context.ts'
 
@@ -24,16 +25,20 @@ import { stubTransport } from './bridges/transport-context.ts'
  *   `_auth` loader's `await context.transport` is a microtask. The
  *   `writeIssuedToken` setter is ignored — there's no host
  *   `AuthTokenIssued` to receive.
+ * - `webApiOriginLayer`: `webApiOriginLocationLayer` — the SPA's HTTP
+ *   clients target `window.location.origin` (same-origin), the standalone
+ *   web default. No host `HostApiOriginChanged` ever arrives.
  */
 const makeWebEntryOptions = (): Pick<
   RenderAppOptions,
-  'tokenStore' | 'awaitAuthReady' | 'makeTransport'
+  'tokenStore' | 'awaitAuthReady' | 'makeTransport' | 'webApiOriginLayer'
 > => {
   const tokenStore = makeWebAuthTokenStore()
   return {
     tokenStore,
     awaitAuthReady: () => makeAwaitWebAuthReady(tokenStore.subscribable),
     makeTransport: () => Promise.resolve(stubTransport),
+    webApiOriginLayer: webApiOriginLocationLayer,
   }
 }
 

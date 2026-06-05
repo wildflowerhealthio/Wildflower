@@ -6,7 +6,7 @@ import { Duration, Effect, Layer, pipe, type Subscribable } from 'effect'
 import { FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { GatekeeperRouterContext } from 'gatekeeper-react'
 import { BearerToken } from 'kitchen-sink/auth-token'
-import type { BaseRouterContext } from 'shared-structures-react'
+import { type BaseRouterContext, type WebApiOrigin } from 'shared-structures-react'
 import { TunnelRouterContext } from 'tunnel-react'
 
 import type { ReactTransport } from './bridges/transport-context.ts'
@@ -63,13 +63,15 @@ const buildQueryClient = (): QueryClient =>
  */
 const buildRunAuthed = (
   tokenSubscribable: Subscribable.Subscribable<string | null>,
-  httpClientLayer: Layer.Layer<HttpClient.HttpClient>
+  httpClientLayer: Layer.Layer<HttpClient.HttpClient>,
+  webApiOriginLayer: Layer.Layer<WebApiOrigin>
 ): {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
 } => {
   const baseRuntimeLayer = Layer.succeed(BearerToken, tokenSubscribable).pipe(
-    Layer.provideMerge(httpClientLayer)
+    Layer.provideMerge(httpClientLayer),
+    Layer.provideMerge(webApiOriginLayer)
   )
   const runtimeLayer: RuntimeLayer = Layer.provideMerge(
     Layer.mergeAll(

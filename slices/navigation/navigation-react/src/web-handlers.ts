@@ -24,16 +24,18 @@ type ColorScheme = Schema.Schema.Type<
 
 /**
  * Build the Web-side inbound handler record for {@link NavigationBridge},
- * closing handlers over the supplied `navigate`, `applyInsets`, and
- * `applyColorScheme` functions. Call this inside a React component that
- * has access to `useNavigate()` (or a stable proxy that delegates to the
- * latest `useNavigate` result), then hand the resulting record to
- * `BridgeTransport.makeWebTransport`'s `handlers`.
+ * closing handlers over the supplied `navigate`, `applyInsets`,
+ * `applyColorScheme`, and `applyApiOrigin` functions. Call this inside a
+ * React component that has access to `useNavigate()` (or a stable proxy
+ * that delegates to the latest `useNavigate` result), then hand the
+ * resulting record to `BridgeTransport.makeWebTransport`'s `handlers`.
  *
- * `applyInsets` receives the host's safe-area insets and `applyColorScheme`
- * the host's OS colour scheme; the navigation slice stays DOM-agnostic, so
- * the embedding app supplies the concrete writers (e.g. padding the page's
- * root element, or setting a `data-color-scheme` attribute).
+ * `applyInsets` receives the host's safe-area insets, `applyColorScheme`
+ * the host's OS colour scheme, and `applyApiOrigin` the loopback API
+ * origin the SPA's HTTP clients should target; the navigation slice stays
+ * DOM-agnostic, so the embedding app supplies the concrete writers (e.g.
+ * padding the page's root element, setting a `data-color-scheme`
+ * attribute, or pushing the origin into the `WebApiOrigin` store).
  *
  * @remarks
  * The previous implementation buffered targets in a module-level array
@@ -48,12 +50,14 @@ interface NavigationWebHandlerDeps {
   readonly navigate: (target: NavTarget) => void
   readonly applyInsets: (insets: SafeAreaInsets) => void
   readonly applyColorScheme: (scheme: ColorScheme) => void
+  readonly applyApiOrigin: (apiOrigin: string) => void
 }
 
 const makeNavigationWebHandlers = ({
   navigate,
   applyInsets,
   applyColorScheme,
+  applyApiOrigin,
 }: NavigationWebHandlerDeps): MessageHandler.HandlersFor<
   (typeof NavigationBridge)['HostToWeb']
 > => ({
@@ -62,6 +66,7 @@ const makeNavigationWebHandlers = ({
   SafeAreaInsetsChanged: ({ top, bottom, left, right }) =>
     Effect.sync(() => applyInsets({ top, bottom, left, right })),
   HostColorSchemeChanged: ({ scheme }) => Effect.sync(() => applyColorScheme(scheme)),
+  HostApiOriginChanged: ({ apiOrigin }) => Effect.sync(() => applyApiOrigin(apiOrigin)),
 })
 
 export { makeNavigationWebHandlers }

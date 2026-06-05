@@ -20,7 +20,8 @@ const SIGNAL_READY_DEBUG_TIMEOUT_MS = 10_000
 
 const buildTransport = (
   navigate: (to: NavTarget) => void,
-  setToken: AuthTokenStore['setToken']
+  setToken: AuthTokenStore['setToken'],
+  applyApiOrigin: (apiOrigin: string) => void
 ): Promise<ReactTransport> => {
   const adapter = WebPlatformAdapter.make(bridges)
   // Never closed — see the page-lifetime note in the explanation doc.
@@ -28,7 +29,7 @@ const buildTransport = (
 
   const { initialHandlers, connect } = makeHandlerCoordinator({
     bridges,
-    initial: makeBootStableInitialHandlers(navigate, setToken),
+    initial: makeBootStableInitialHandlers(navigate, setToken, applyApiOrigin),
   })
 
   return Effect.runPromise(

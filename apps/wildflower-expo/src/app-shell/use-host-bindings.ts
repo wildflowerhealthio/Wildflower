@@ -17,6 +17,7 @@ import { useNavigationHostBinding } from './use-navigation-host-binding.ts'
 export const useHostBindings = ({
   onRouteChanged,
   onUiReady,
+  apiOrigin,
 }: {
   onRouteChanged: (event: { pathname: string; canGoBack: boolean }) => void
   /**
@@ -25,6 +26,13 @@ export const useHostBindings = ({
    * reveals the WebView here.
    */
   onUiReady: () => void
+  /**
+   * The loopback API origin (scheme + host + port) the SPA's HTTP
+   * clients should target, pushed to the page via `HostApiOriginChanged`.
+   * Lets a dev build serve the SPA from a laptop dev server while its API
+   * calls still reach the in-app loopback server.
+   */
+  apiOrigin: string
 }): HostBindings.HostBindings<
   readonly [
     typeof NavigationBridge,
@@ -41,7 +49,7 @@ export const useHostBindings = ({
   const { value: localClientToken } = store.useQuery(LocalClientToken.queries.current$)
   const token = localClientToken ?? undefined
 
-  const navigationBinding = useNavigationHostBinding(onRouteChanged, onUiReady)
+  const navigationBinding = useNavigationHostBinding(onRouteChanged, onUiReady, apiOrigin)
   const gatekeeperBinding = GatekeeperBridgeExpo.useHostBinding({ token })
   const collectorBinding = useCollectorHostBinding()
   const appsBinding = AppsBridgeExpo.useHostBinding({ store })

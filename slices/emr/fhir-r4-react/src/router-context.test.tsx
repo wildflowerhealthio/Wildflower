@@ -3,6 +3,7 @@ import { renderHook } from '@testing-library/react'
 import { Effect, Layer, pipe, SubscriptionRef } from 'effect'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { BearerToken } from 'kitchen-sink/auth-token'
+import { WebApiOrigin } from 'shared-structures-react'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
 import {
@@ -65,7 +66,8 @@ const buildRuntimeLayer = (options?: { readonly failing?: boolean }): RuntimeLay
   return pipe(
     sliceRuntimeLayer,
     Layer.provideMerge(httpLayer),
-    Layer.provideMerge(Layer.succeed(BearerToken, tokenRef))
+    Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
+    Layer.provideMerge(WebApiOrigin.layerFromLiteral('http://localhost'))
   )
 }
 

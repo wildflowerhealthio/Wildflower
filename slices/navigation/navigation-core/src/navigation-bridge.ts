@@ -59,6 +59,25 @@ const HostColorSchemeChanged = Schema.parseJson(
 )
 
 /**
+ * Host → Web: the origin (scheme + host + port, no trailing slash) the
+ * embedded SPA's HTTP API clients must target. The SPA defaults to
+ * same-origin (`baseUrl: '/'`), which is correct when the page and the
+ * loopback API server share an origin. But a dev build can load the page
+ * itself from a laptop dev server (`EXPO_PUBLIC_DEV_SPA_URL`, for hot
+ * reload) while the API still lives on the in-app loopback server — a
+ * different origin. The host pushes this so the SPA re-points its API
+ * calls back at the loopback origin; clients read it per request, so a
+ * later re-point surfaces on the next call.
+ *
+ * Pushed on every page `__Ready` (so a relaunched WebView re-receives it)
+ * and whenever the loopback origin changes. The plain web build never
+ * receives this message and stays same-origin.
+ */
+const HostApiOriginChanged = Schema.parseJson(
+  Schema.TaggedStruct('HostApiOriginChanged', { apiOrigin: Schema.String })
+)
+
+/**
  * Web → Host: embedded SPA router state has changed. `canGoBack` drives
  * the native header's back chevron; `pathname` is informational.
  */
@@ -90,6 +109,7 @@ type NavigationBridge = Bridge.Bridge<
     HostRequestedWebNavigation: typeof HostRequestedWebNavigation
     SafeAreaInsetsChanged: typeof SafeAreaInsetsChanged
     HostColorSchemeChanged: typeof HostColorSchemeChanged
+    HostApiOriginChanged: typeof HostApiOriginChanged
   },
   {
     RouteChanged: typeof RouteChanged
@@ -100,9 +120,9 @@ type NavigationBridge = Bridge.Bridge<
 /**
  * Slice-neutral cross-process navigation contract. Host emits
  * `HostBackRequested`, `HostRequestedWebNavigation`,
- * `SafeAreaInsetsChanged`, and `HostColorSchemeChanged`; web emits
- * `RouteChanged` and `UIReady`. Aggregators wire this bridge into every
- * embedded WebView.
+ * `SafeAreaInsetsChanged`, `HostColorSchemeChanged`, and
+ * `HostApiOriginChanged`; web emits `RouteChanged` and `UIReady`.
+ * Aggregators wire this bridge into every embedded WebView.
  *
  * @remarks
  * Cross-process `console.<level>(...)` mirroring is handled by the
@@ -117,6 +137,7 @@ const NavigationBridge: NavigationBridge = Bridge.make({
     ['HostRequestedWebNavigation', HostRequestedWebNavigation],
     ['SafeAreaInsetsChanged', SafeAreaInsetsChanged],
     ['HostColorSchemeChanged', HostColorSchemeChanged],
+    ['HostApiOriginChanged', HostApiOriginChanged],
   ] as const,
   webToHost: [
     ['RouteChanged', RouteChanged],
@@ -127,9 +148,10 @@ const NavigationBridge: NavigationBridge = Bridge.make({
       'HostRequestedWebNavigation',
       'path'
     ),
-    // HostBackRequested, SafeAreaInsetsChanged, and HostColorSchemeChanged
-    // deliberately omitted — they're runtime-only signals pushed over the
-    // live channel, never seeded through the WebView URL.
+    // HostBackRequested, SafeAreaInsetsChanged, HostColorSchemeChanged, and
+    // HostApiOriginChanged deliberately omitted — they're runtime-only
+    // signals pushed over the live channel, never seeded through the
+    // WebView URL.
   },
 })
 

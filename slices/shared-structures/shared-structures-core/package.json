@@ -30,6 +30,10 @@
       "source": "./src/process-daemon/index.ts",
       "default": "./dist/process-daemon/index.js"
     },
+    "./web-api-origin": {
+      "source": "./src/web-api-origin/index.ts",
+      "default": "./dist/web-api-origin/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

@@ -117,6 +117,7 @@ describe('buildTransport', () => {
     const buildTransport = await importBuildTransport()
     const promise = buildTransport(
       () => undefined,
+      () => undefined,
       () => undefined
     )
     // The build chain hops through several microtasks before
@@ -139,6 +140,7 @@ describe('buildTransport', () => {
 
     const promise = buildTransport(
       () => undefined,
+      () => undefined,
       () => undefined
     )
     // Wait until the build chain has reached `transport.signalReady`
@@ -159,6 +161,7 @@ describe('buildTransport', () => {
   test('binds the coordinator to the transport.registerHandlers', async () => {
     const buildTransport = await importBuildTransport()
     const promise = buildTransport(
+      () => undefined,
       () => undefined,
       () => undefined
     )

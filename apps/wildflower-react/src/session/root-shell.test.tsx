@@ -3,6 +3,7 @@ import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/rea
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
 import { Effect, Layer, SubscriptionRef } from 'effect'
 import { useEffect, type JSX, type ReactNode } from 'react'
+import { WebApiOrigin } from 'shared-structures-react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**
@@ -209,6 +210,7 @@ describe('renderApp InnerWrap lifecycle', () => {
         tokenStore,
         awaitAuthReady: () => () => Promise.resolve(),
         makeTransport: () => Promise.resolve(stubTransport),
+        webApiOriginLayer: WebApiOrigin.layerFromLiteral('http://localhost'),
       })
     })
 

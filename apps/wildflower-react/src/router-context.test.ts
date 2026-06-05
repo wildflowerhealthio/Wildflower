@@ -2,7 +2,7 @@ import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { Effect, Layer, SubscriptionRef } from 'effect'
 import fc from 'fast-check'
 import { BearerToken } from 'kitchen-sink/auth-token'
-import type { BaseRouterContext } from 'shared-structures-react'
+import { type BaseRouterContext, WebApiOrigin } from 'shared-structures-react'
 import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
 
 import { buildQueryClient, buildRunAuthed } from './router-context.ts'
@@ -28,12 +28,16 @@ const stubHttpClientLayer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
   )
 )
 
+// Constant origin; the runner's runtime layer needs `WebApiOrigin`, but
+// these tests exercise the token path and never make a real request.
+const stubWebApiOriginLayer = WebApiOrigin.layerFromLiteral('http://localhost')
+
 const makeRunner = (
   tokenRef: SubscriptionRef.SubscriptionRef<string | null>
 ): {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
-} => buildRunAuthed(tokenRef, stubHttpClientLayer)
+} => buildRunAuthed(tokenRef, stubHttpClientLayer, stubWebApiOriginLayer)
 
 // Requires both services so the type carries `BearerToken | HttpClient`.
 const readTokenWithHttpInScope: Effect.Effect<

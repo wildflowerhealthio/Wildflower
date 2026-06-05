@@ -10,6 +10,7 @@ import {
 import { flattenTuples } from 'kitchen-sink/types'
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { useComponentScopedRunner } from 'react-kitchen-sink'
+import type { WebViewErrorEvent } from 'react-native-webview/lib/WebViewTypes'
 import { TransportWebView, type TransportWebViewSource } from './transport-webview.tsx'
 
 /**
@@ -80,6 +81,14 @@ interface BridgedWebViewProps<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
    * instrumentation, the browser-sniffer's injected script, etc.).
    */
   readonly injectedJavaScriptBeforeContentLoaded?: string
+  /**
+   * Forwarded to {@link TransportWebView}'s `onError` — fires when the
+   * page fails to load (e.g. a remote `loadFrom.uri` whose dev server is
+   * unreachable). Omit to keep the native WebView's default error
+   * chrome. The host can use this to render its own fallback over the
+   * failed WebView.
+   */
+  readonly onError?: (event: WebViewErrorEvent) => void
 }
 
 /**
@@ -137,6 +146,7 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   bindings,
   shouldOpenInSystemBrowser,
   injectedJavaScriptBeforeContentLoaded,
+  onError,
 }: BridgedWebViewProps<Bridges>): JSX.Element => {
   const { bridges, handlers } = bindings
 
@@ -384,6 +394,7 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
       }}
       shouldOpenInSystemBrowser={shouldOpenInSystemBrowser}
       injectedJavaScriptBeforeContentLoaded={injectedJavaScriptBeforeContentLoaded}
+      onError={onError}
     />
   )
 }

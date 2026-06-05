@@ -1,12 +1,12 @@
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { type AnyRouter, createRouter, type RouterHistory } from '@tanstack/react-router'
-import { Effect, type Fiber, type Subscribable, Stream } from 'effect'
+import { Effect, type Fiber, type Layer, type Subscribable, Stream } from 'effect'
 import type { NavTarget } from 'navigation-react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AuthTokenProvider, type AuthTokenStore } from 'react-kitchen-sink'
 import { ErrorBoundary } from 'react-tundraish'
-import type { BaseRouterContext } from 'shared-structures-react'
+import type { BaseRouterContext, WebApiOrigin } from 'shared-structures-react'
 import { Sentry } from 'telemetry-web'
 
 import { buildAppQueryRuntime } from './bridges/app-query-runtime.ts'
@@ -111,6 +111,15 @@ interface RenderAppOptions {
    * seed `TransportContext`.
    */
   readonly makeTransport: MakeTransport
+  /**
+   * Per-entry `WebApiOrigin` source merged into the runtime layer.
+   * Standalone web passes `webApiOriginLocationLayer` (tracks
+   * `window.location.origin`); embedded passes its
+   * {@link makeWebApiOriginBridgeStore} `.layer` so a host
+   * `HostApiOriginChanged` re-points the SPA's API calls at the loopback
+   * origin even when the page itself is served from a remote dev server.
+   */
+  readonly webApiOriginLayer: Layer.Layer<WebApiOrigin>
 }
 
 /**
@@ -148,8 +157,12 @@ const renderApp = ({
   tokenStore,
   awaitAuthReady,
   makeTransport,
+  webApiOriginLayer,
 }: RenderAppOptions): void => {
-  const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(tokenStore.subscribable)
+  const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(
+    tokenStore.subscribable,
+    webApiOriginLayer
+  )
 
   forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 

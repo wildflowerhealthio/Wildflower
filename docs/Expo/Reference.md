@@ -63,6 +63,26 @@ const LOCAL_HOST = HOST_URI?.split(':')[0] ?? 'localhost'
 
 `hostUri` is the address the device is currently using to reach the Metro bundler — same address the dev machine listens on for everything else. Falls back cleanly in production builds.
 
+## Loading the SPA from a dev server (`EXPO_PUBLIC_DEV_SPA_URL`)
+
+By default `AppShellWebView` loads the wildflower-react SPA from the embedded HTML bundle (`wildflower-react/embeddable-html`) and points its API calls at the in-app loopback HTTP server. To iterate on the SPA with hot reload, point the WebView at a running dev server instead:
+
+```bash
+# 1. Serve the SPA on your LAN. `--host` exposes it beyond localhost so a
+#    physical device can reach it; note the URL it prints (e.g. http://192.168.1.50:5173).
+vp run dev --host
+
+# 2. Point the Expo app at that URL. `EXPO_PUBLIC_*` vars are inlined at
+#    build time, so set it before starting Metro:
+EXPO_PUBLIC_DEV_SPA_URL=http://192.168.1.50:5173 npx expo start
+```
+
+The override is opt-in and gated on `__DEV__` — release builds ignore it and always load the embedded bundle. When set, the WebView's `loadFrom` switches from `{ _tag: 'html', … }` to `{ _tag: 'uri', uri: <devSpaUrl> }`.
+
+The page is now served from your laptop, but its API calls must still reach the in-app loopback server on the device. The host bridges that gap: it relays the loopback origin to the SPA via the navigation bridge's `HostApiOriginChanged` message (alongside the existing safe-area and colour-scheme pushes, on every page `__Ready`). The SPA reads that origin through the `WebApiOrigin` Effect tag and prepends it to every request, so `127.0.0.1` stays the API target regardless of where the page itself loaded from.
+
+If the dev server is unreachable (not started, or not on the same network), the WebView's load fails and the app renders a loud full-screen `DevServerUnreachable` screen — deliberate, instead of a blank WebView or a native error page — with a Retry button that remounts the WebView. It only ever appears in `__DEV__` builds that opted into `EXPO_PUBLIC_DEV_SPA_URL`.
+
 ## `expo-doctor` checks worth understanding
 
 `npx expo-doctor` runs 18 checks. Two are load-bearing for dependency hygiene (covered in [Dependency Sync How-To](./Dependency%20Sync%20How-To.md)):

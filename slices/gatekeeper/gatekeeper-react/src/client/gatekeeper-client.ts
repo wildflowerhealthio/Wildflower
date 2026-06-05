@@ -2,14 +2,19 @@ import type { HttpClient } from '@effect/platform'
 import type { Layer } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import type { BearerToken } from 'kitchen-sink/auth-token'
+import type { WebApiOrigin } from 'shared-structures-react'
 
 /**
  * Union of services a `GatekeeperHttpApiClient` consumer needs in
- * context. The slice's layer leaves `HttpClient` and `BearerToken`
- * unprovided so apps share one of each across every slice's client
- * layer.
+ * context. The slice's layer leaves `HttpClient`, `BearerToken`, and
+ * `WebApiOrigin` unprovided so apps share one of each across every
+ * slice's client layer.
  */
-type GatekeeperClientRequirements = HttpClient.HttpClient | GatekeeperHttpApiClient | BearerToken
+type GatekeeperClientRequirements =
+  | HttpClient.HttpClient
+  | GatekeeperHttpApiClient
+  | BearerToken
+  | WebApiOrigin
 
 /**
  * Build a `GatekeeperHttpApiClient` layer that reads the bearer token
@@ -24,15 +29,15 @@ type GatekeeperClientRequirements = HttpClient.HttpClient | GatekeeperHttpApiCli
  * other migrated slices (e.g. `tunnel-react`'s
  * `buildTunnelAdminClientLayer`).
  *
- * Leaves `HttpClient` and `BearerToken` unprovided: the host app supplies
- * one of each (its `webHttpClientLayer` + the `authTokenRef` Subscribable)
- * shared across every slice's client layer via the composed
- * `runtimeLayer`.
+ * Leaves `HttpClient`, `BearerToken`, and `WebApiOrigin` unprovided: the
+ * host app supplies one of each (its `webHttpClientLayer`, the
+ * `authTokenRef` Subscribable, and the `WebApiOrigin` layer) shared
+ * across every slice's client layer via the composed `runtimeLayer`.
  */
 const buildGatekeeperClientLayer = (): Layer.Layer<
   GatekeeperHttpApiClient,
   never,
-  HttpClient.HttpClient | BearerToken
+  HttpClient.HttpClient | BearerToken | WebApiOrigin
 > => GatekeeperHttpApiClient.layer
 
 export { buildGatekeeperClientLayer, type GatekeeperClientRequirements }

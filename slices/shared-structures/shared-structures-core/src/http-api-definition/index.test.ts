@@ -11,17 +11,18 @@ import {
   HttpClient,
   HttpClientResponse,
 } from '@effect/platform'
-import { Effect, Layer, Schema, SubscriptionRef } from 'effect'
+import { Effect, Layer, Schema, Subscribable, SubscriptionRef } from 'effect'
 import fc from 'fast-check'
 import { BearerToken } from 'kitchen-sink/auth-token'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { WebApiOrigin } from '../web-api-origin/index.ts'
 import { defineSliceHttpClient } from './index.ts'
 
 // ---------------------------------------------------------------------------
 // Minimal fixture API: one GET endpoint returning a tiny body. Just
-// enough surface to exercise the layer + the per-request bearer
+// enough surface to exercise the layer + the per-request bearer/origin
 // transformer.
 // ---------------------------------------------------------------------------
 
@@ -33,16 +34,27 @@ const fixtureGroup = HttpApiGroup.make('fixture', { topLevel: false }).add(
 
 const FixtureApi = HttpApi.make('FixtureApi').add(fixtureGroup)
 
-// Stub HttpClient transport that records the outgoing `Authorization`
-// header (or `undefined` if absent) into the supplied array and
-// replies with the canned `FixtureBody`.
-const capturingHttpClientLayer = (
-  captures: Array<string | undefined>
-): Layer.Layer<HttpClient.HttpClient> =>
+// Constant `WebApiOrigin` layer every produced layer now requires (both
+// auth modes read it per request to prefix the API origin). `localhost`
+// matches the jsdom `window.location` so resolution stays well-formed.
+const TEST_ORIGIN = 'http://localhost'
+const testWebApiOriginLayer = WebApiOrigin.layerFromLiteral(TEST_ORIGIN)
+
+// What the stub transport records per request: the absolute URL the
+// client produced (origin prefix included) and the `Authorization`
+// header (`undefined` if absent).
+interface Capture {
+  readonly url: string
+  readonly authorization: string | undefined
+}
+
+// Stub HttpClient transport that records each outgoing request into the
+// supplied array and replies with the canned `FixtureBody`.
+const capturingHttpClientLayer = (captures: Array<Capture>): Layer.Layer<HttpClient.HttpClient> =>
   Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request) => {
-      captures.push(request.headers['authorization'])
+      captures.push({ url: request.url, authorization: request.headers['authorization'] })
       return Effect.succeed(
         HttpClientResponse.fromWeb(
           request,
@@ -76,7 +88,7 @@ describe('defineSliceHttpClient (authType: bearer)', () => {
       static readonly layer = sliceHc.makeLayerFactory(FixtureBearerClient)()
     }
 
-    const captures: Array<string | undefined> = []
+    const captures: Array<Capture> = []
     const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
 
     const program = Effect.gen(function* () {
@@ -86,6 +98,7 @@ describe('defineSliceHttpClient (authType: bearer)', () => {
 
     const layer = FixtureBearerClient.layer.pipe(
       Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
+      Layer.provideMerge(testWebApiOriginLayer),
       Layer.provideMerge(capturingHttpClientLayer(captures))
     )
 
@@ -105,7 +118,7 @@ describe('defineSliceHttpClient (authType: bearer)', () => {
 
     await fc.assert(
       fc.asyncProperty(fc.option(fc.string(), { nil: null }), async (token) => {
-        const captures: Array<string | undefined> = []
+        const captures: Array<Capture> = []
         const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(token))
 
         const program = Effect.gen(function* () {
@@ -118,6 +131,7 @@ describe('defineSliceHttpClient (authType: bearer)', () => {
             Effect.provide(
               FixtureBearerClient.layer.pipe(
                 Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
+                Layer.provideMerge(testWebApiOriginLayer),
                 Layer.provideMerge(capturingHttpClientLayer(captures))
               )
             ),
@@ -125,7 +139,9 @@ describe('defineSliceHttpClient (authType: bearer)', () => {
           )
         )
 
-        expect(captures).toEqual([token === null ? undefined : `Bearer ${token}`])
+        expect(captures.map((c) => c.authorization)).toEqual([
+          token === null ? undefined : `Bearer ${token}`,
+        ])
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -141,7 +157,7 @@ describe('defineSliceHttpClient (authType: bearer)', () => {
       static readonly layer = sliceHc.makeLayerFactory(FixtureBearerClient)()
     }
 
-    const captures: Array<string | undefined> = []
+    const captures: Array<Capture> = []
     const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('alpha'))
 
     const program = Effect.gen(function* () {
@@ -156,6 +172,7 @@ describe('defineSliceHttpClient (authType: bearer)', () => {
         Effect.provide(
           FixtureBearerClient.layer.pipe(
             Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
+            Layer.provideMerge(testWebApiOriginLayer),
             Layer.provideMerge(capturingHttpClientLayer(captures))
           )
         ),
@@ -163,7 +180,53 @@ describe('defineSliceHttpClient (authType: bearer)', () => {
       )
     )
 
-    expect(captures).toEqual(['Bearer alpha', 'Bearer beta'])
+    expect(captures.map((c) => c.authorization)).toEqual(['Bearer alpha', 'Bearer beta'])
+  })
+
+  test('prepends the WebApiOrigin to the request URL; origin rotation surfaces per request', async () => {
+    const sliceHc = defineSliceHttpClient({
+      name: 'FixtureBearerClient',
+      api: FixtureApi,
+      authType: 'bearer',
+    })
+    class FixtureBearerClient extends sliceHc.ClientTag<FixtureBearerClient>() {
+      static readonly layer = sliceHc.makeLayerFactory(FixtureBearerClient)()
+    }
+
+    const captures: Array<Capture> = []
+    const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>(null))
+    // A reactive origin: starts pointed at one host, gets re-pointed
+    // mid-program the way the host's `HostApiOriginChanged` push would.
+    const originRef = Effect.runSync(SubscriptionRef.make('http://first.example'))
+    const originLayer = Layer.effect(
+      WebApiOrigin,
+      Effect.succeed(Subscribable.make({ get: originRef, changes: originRef.changes }))
+    )
+
+    const program = Effect.gen(function* () {
+      const client = yield* FixtureBearerClient
+      yield* client.fixture.GetFixture()
+      yield* SubscriptionRef.set(originRef, 'http://second.example')
+      yield* client.fixture.GetFixture()
+    })
+
+    await Effect.runPromise(
+      program.pipe(
+        Effect.provide(
+          FixtureBearerClient.layer.pipe(
+            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
+            Layer.provideMerge(originLayer),
+            Layer.provideMerge(capturingHttpClientLayer(captures))
+          )
+        ),
+        Effect.scoped
+      )
+    )
+
+    expect(captures.map((c) => c.url)).toEqual([
+      'http://first.example/fixture',
+      'http://second.example/fixture',
+    ])
   })
 
   test('records `authType: "bearer"` on the result for downstream wiring', () => {
@@ -187,7 +250,7 @@ describe('defineSliceHttpClient (authType: none)', () => {
       static readonly layer = sliceHc.makeLayerFactory(FixturePublicClient)()
     }
 
-    const captures: Array<string | undefined> = []
+    const captures: Array<Capture> = []
 
     const program = Effect.gen(function* () {
       const client = yield* FixturePublicClient
@@ -197,7 +260,10 @@ describe('defineSliceHttpClient (authType: none)', () => {
     const result = await Effect.runPromise(
       program.pipe(
         Effect.provide(
-          FixturePublicClient.layer.pipe(Layer.provideMerge(capturingHttpClientLayer(captures)))
+          FixturePublicClient.layer.pipe(
+            Layer.provideMerge(testWebApiOriginLayer),
+            Layer.provideMerge(capturingHttpClientLayer(captures))
+          )
         ),
         Effect.scoped
       )
@@ -215,7 +281,7 @@ describe('defineSliceHttpClient (authType: none)', () => {
       static readonly layer = sliceHc.makeLayerFactory(FixturePublicClient)()
     }
 
-    const captures: Array<string | undefined> = []
+    const captures: Array<Capture> = []
 
     const program = Effect.gen(function* () {
       const client = yield* FixturePublicClient
@@ -226,16 +292,19 @@ describe('defineSliceHttpClient (authType: none)', () => {
     await Effect.runPromise(
       program.pipe(
         Effect.provide(
-          FixturePublicClient.layer.pipe(Layer.provideMerge(capturingHttpClientLayer(captures)))
+          FixturePublicClient.layer.pipe(
+            Layer.provideMerge(testWebApiOriginLayer),
+            Layer.provideMerge(capturingHttpClientLayer(captures))
+          )
         ),
         Effect.scoped
       )
     )
 
-    expect(captures).toEqual([undefined, undefined])
+    expect(captures.map((c) => c.authorization)).toEqual([undefined, undefined])
   })
 
-  test('layer type does not require BearerToken (type-level)', () => {
+  test('layer requires WebApiOrigin but not BearerToken (type-level)', () => {
     const sliceHc = defineSliceHttpClient({
       name: 'FixturePublicClient',
       api: FixtureApi,
@@ -245,19 +314,25 @@ describe('defineSliceHttpClient (authType: none)', () => {
       static readonly layer = sliceHc.makeLayerFactory(FixturePublicClient)()
     }
 
-    // Providing only `HttpClient` (no `BearerToken`) must satisfy the
-    // public layer's requirements — if `authType: 'none'` accidentally
-    // widened the layer to demand `BearerToken`, this would not compile.
+    // Providing `HttpClient` + `WebApiOrigin` (but no `BearerToken`) must
+    // fully satisfy the public layer's requirements — if `authType: 'none'`
+    // accidentally widened the layer to demand `BearerToken`, this would
+    // not compile.
     const provided: Layer.Layer<FixturePublicClient, never, never> = FixturePublicClient.layer.pipe(
+      Layer.provideMerge(testWebApiOriginLayer),
       Layer.provideMerge(capturingHttpClientLayer([]))
     )
     expect(Layer.isLayer(provided)).toBe(true)
 
-    // Inverse: assigning the public layer into a slot typed with only
-    // `HttpClient.HttpClient` as a requirement compiles iff the layer
-    // does NOT demand `BearerToken`.
-    const publicLayerSlot: Layer.Layer<FixturePublicClient, never, HttpClient.HttpClient> =
-      FixturePublicClient.layer
+    // Inverse: assigning the public layer into a slot typed with exactly
+    // `HttpClient.HttpClient | WebApiOrigin` as its requirements compiles
+    // iff the layer requires those two and nothing more (notably not
+    // `BearerToken`).
+    const publicLayerSlot: Layer.Layer<
+      FixturePublicClient,
+      never,
+      HttpClient.HttpClient | WebApiOrigin
+    > = FixturePublicClient.layer
     expect(Layer.isLayer(publicLayerSlot)).toBe(true)
   })
 

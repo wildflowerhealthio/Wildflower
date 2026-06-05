@@ -112,6 +112,17 @@ describe('NavigationBridge', () => {
     ).toThrow()
   })
 
+  test('Host→Web encodes a HostApiOriginChanged the Web side decodes', () => {
+    const encoded = Effect.runSync(
+      Message.stringifyMessage(NavigationBridge.HostToWeb, {
+        _tag: 'HostApiOriginChanged',
+        apiOrigin: 'http://127.0.0.1:8080',
+      })
+    )
+    const decoded = Schema.decodeSync(NavigationBridge.HostToWeb.HostApiOriginChanged)(encoded)
+    expect(decoded).toEqual({ _tag: 'HostApiOriginChanged', apiOrigin: 'http://127.0.0.1:8080' })
+  })
+
   test('Web→Host encodes a RouteChanged the Host side decodes', () => {
     const encoded = Effect.runSync(
       Message.stringifyMessage(NavigationBridge.WebToHost, {

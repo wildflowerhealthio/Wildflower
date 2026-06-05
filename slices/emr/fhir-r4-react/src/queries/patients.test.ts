@@ -3,6 +3,7 @@ import { QueryClient } from '@tanstack/react-query'
 import { Effect, Layer, pipe, SubscriptionRef } from 'effect'
 import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { BearerToken } from 'kitchen-sink/auth-token'
+import { WebApiOrigin } from 'shared-structures-react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { sliceRuntimeLayer } from '../router-context.ts'
@@ -76,7 +77,11 @@ afterEach(async () => {
 const makeRunAuthed = (httpLayer: Layer.Layer<HttpClient.HttpClient>): RunAuthed => {
   const tokenRef = Effect.runSync(SubscriptionRef.make<string | null>('token'))
   return <A, E>(
-    effect: Effect.Effect<A, E, BearerToken | HttpClient.HttpClient | FhirR4ResourcesHttpApiClient>
+    effect: Effect.Effect<
+      A,
+      E,
+      BearerToken | HttpClient.HttpClient | FhirR4ResourcesHttpApiClient | WebApiOrigin
+    >
   ): Promise<A> =>
     Effect.runPromise(
       effect.pipe(
@@ -84,7 +89,8 @@ const makeRunAuthed = (httpLayer: Layer.Layer<HttpClient.HttpClient>): RunAuthed
           pipe(
             sliceRuntimeLayer,
             Layer.provideMerge(httpLayer),
-            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef))
+            Layer.provideMerge(Layer.succeed(BearerToken, tokenRef)),
+            Layer.provideMerge(WebApiOrigin.layerFromLiteral('http://localhost'))
           )
         ),
         Effect.scoped
