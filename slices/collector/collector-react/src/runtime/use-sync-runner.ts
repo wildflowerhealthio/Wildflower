@@ -12,7 +12,7 @@
 import type { Remote as CollectorRemote } from 'collector-core/livestore'
 import { makeScrapingPlanForConfig, type AnyCollectorResource } from 'collector-core/registry'
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
-import { Effect, Either, Schedule } from 'effect'
+import { Effect, Either, Ref, Schedule } from 'effect'
 import { useFhirR4ResourcesRuntimeLayer } from 'fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -154,18 +154,40 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
       // Bounded retry: up to 3 retries with exponential backoff starting
       // at 250ms. `Schedule.intersect` enforces "stop after N attempts"
       // AND "exponential" — `Schedule.either` would stop on whichever
-      // schedule chose first, which is the wrong semantics.
-      const upsertWithRetry = upsert.pipe(
-        Effect.retry(
-          Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3)))
-        ),
-        Effect.tapError((err) =>
-          Effect.logError(
-            `useSyncRunner: upsert failed for ${resource.resourceType}/${path.id}`,
-            err
+      // schedule chose first, which is the wrong semantics. A `Ref`
+      // counts attempts so the outer span records how many writes it
+      // took (`retry.attempts`); each individual write is its own span.
+      const upsertWithRetry = Effect.gen(function* () {
+        const attempts = yield* Ref.make(0)
+        const oneAttempt = Ref.update(attempts, (n) => n + 1).pipe(
+          Effect.zipRight(
+            upsert.pipe(
+              Effect.withSpan('collector.fhir.upsert', {
+                attributes: { 'resource.type': resource.resourceType },
+              })
+            )
           )
         )
-      )
+        return yield* oneAttempt.pipe(
+          Effect.retry(
+            Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3)))
+          ),
+          Effect.tapError((err) =>
+            Effect.logError(
+              `useSyncRunner: upsert failed for ${resource.resourceType}/${path.id}`,
+              err
+            )
+          ),
+          Effect.onExit(() =>
+            Ref.get(attempts).pipe(
+              Effect.flatMap((n) => Effect.annotateCurrentSpan('retry.attempts', n))
+            )
+          ),
+          Effect.withSpan('collector.fhir.upsert.with_retry', {
+            attributes: { 'resource.type': resource.resourceType },
+          })
+        )
+      })
 
       runFhir(upsertWithRetry).catch((err: unknown) => {
         failedRef.current = [
@@ -190,7 +212,20 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
               onErrorRef.current?.(err)
             },
             onRight: (parsed) => {
-              for (const resource of parsed) handleParsedResource(resource)
+              // Fire-and-forget fan-out. Each resource's upsert is its own
+              // root run (`handleParsedResource` → `runFhir`), so this span
+              // only times/counts the dispatch loop; the upsert spans nest
+              // under their own traces. `runtimeLayer` carries the tracer.
+              Effect.runFork(
+                Effect.sync(() => {
+                  for (const resource of parsed) handleParsedResource(resource)
+                }).pipe(
+                  Effect.withSpan('collector.fhir.fan_out', {
+                    attributes: { 'resource.count': parsed.length },
+                  }),
+                  Effect.provide(runtimeLayer)
+                )
+              )
             },
           }),
       })
@@ -260,7 +295,7 @@ const useSyncRunner = ({ remote, onError }: SyncRunnerInput): RunnerState => {
           )
       )
     }
-  }, [remote, scrapingPlan, sendCollectorMessage, runFhir, collectorRegister])
+  }, [remote, scrapingPlan, sendCollectorMessage, runFhir, runtimeLayer, collectorRegister])
 
   return state
 }

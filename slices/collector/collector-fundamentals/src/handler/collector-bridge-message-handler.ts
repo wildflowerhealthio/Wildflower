@@ -1,6 +1,7 @@
 import { type CancelSnifferRequestMessage, type ClickMessage } from 'browser-sniffer-core'
 import {
   Data,
+  Duration,
   Effect,
   Either,
   Encoding,
@@ -121,6 +122,21 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
   ) => Effect.Effect<void, never, never>
 }
 
+/**
+ * Best-effort path for the `response.url_path` span attribute: the
+ * pathname when `url` parses, else the pre-query substring. Never
+ * throws — a malformed URL must not crash the parse path just to
+ * annotate a span, and the full URL can carry high-cardinality query
+ * params we don't want on spans.
+ */
+const urlPathForSpan = (url: string): string => {
+  try {
+    return new URL(url).pathname
+  } catch {
+    return url.split('?')[0] ?? url
+  }
+}
+
 const make = <TResources>({
   scrapingPlan,
   sendMessage,
@@ -169,7 +185,14 @@ const make = <TResources>({
       Effect.gen(function* () {
         const fiber: RuntimeFiber<void, never> = yield* Effect.forkDaemon(
           Effect.gen(function* () {
-            yield* Effect.sleep(scrapingPlan.stepDelay)
+            yield* Effect.sleep(scrapingPlan.stepDelay).pipe(
+              Effect.withSpan('collector.step.wait', {
+                attributes: {
+                  'step.index': dispatchIndex,
+                  'step.delay_ms': Duration.toMillis(scrapingPlan.stepDelay),
+                },
+              })
+            )
             yield* Effect.uninterruptible(
               SynchronizedRef.getAndUpdateEffect(stepStateRef, (stepState) =>
                 Effect.gen(function* () {
@@ -184,13 +207,25 @@ const make = <TResources>({
                     // `Link.Open` / `Link.Click` are structurally identical
                     // to the `Open` / `Click` bridge messages — forward
                     // verbatim.
-                    yield* sendMessage(scrapingPlan.linkSequence[dispatchIndex])
+                    const link = scrapingPlan.linkSequence[dispatchIndex]
+                    yield* sendMessage(link).pipe(
+                      Effect.withSpan('collector.step.dispatch', {
+                        attributes: { 'step.index': dispatchIndex, 'link.kind': link._tag },
+                      })
+                    )
                     return {
                       _tag: 'AwaitingPageLoaded',
                       nextIndex: dispatchIndex + 1,
                     } as const
                   } else {
-                    yield* sendMessage({ _tag: 'SniffingComplete' })
+                    yield* sendMessage({ _tag: 'SniffingComplete' }).pipe(
+                      Effect.withSpan('collector.step.dispatch', {
+                        attributes: {
+                          'step.index': dispatchIndex,
+                          'link.kind': 'SniffingComplete',
+                        },
+                      })
+                    )
                     return { _tag: 'Done' } as const
                   }
                 })
@@ -250,7 +285,7 @@ const make = <TResources>({
           })
           return
         }
-        response.appendChunk(decoded.right)
+        yield* Effect.sync(() => response.appendChunk(decoded.right))
       })
 
     const ResponseFinished: Service['ResponseFinished'] = (event) =>
@@ -264,7 +299,17 @@ const make = <TResources>({
         }
         const { response, entity } = maybe.value
         MutableHashMap.remove(inProgressResponses, event.id)
-        const result = yield* Effect.either(entity.parse(response))
+        const result = yield* Effect.either(entity.parse(response)).pipe(
+          Effect.tap((either) => Effect.annotateCurrentSpan('result.tag', either._tag)),
+          Effect.withSpan('collector.entity.parse', {
+            attributes: {
+              'entity.name': entity.name,
+              'response.bytes': response.byteLength,
+              'response.chunk_count': response.chunkCount,
+              'response.url_path': urlPathForSpan(response.url),
+            },
+          })
+        )
         handleResult({ response, result })
       })
 

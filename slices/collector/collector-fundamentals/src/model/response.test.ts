@@ -48,6 +48,24 @@ describe('RemoteResponse', () => {
     expect(response.text()).toBe('chunk1chunk2chunk3')
   })
 
+  it('reports zero byteLength and chunkCount with no chunks appended', () => {
+    const response = new RemoteResponse('https://example.com', 200, 'OK', [])
+    expect(response.byteLength).toBe(0)
+    expect(response.chunkCount).toBe(0)
+  })
+
+  it('byteLength sums chunk lengths and chunkCount counts chunks', () => {
+    fc.assert(
+      fc.property(fc.array(fc.uint8Array()), (chunks) => {
+        const response = new RemoteResponse('https://example.com', 200, 'OK', [])
+        for (const chunk of chunks) response.appendChunk(chunk)
+        expect(response.chunkCount).toBe(chunks.length)
+        expect(response.byteLength).toBe(chunks.reduce((sum, c) => sum + c.length, 0))
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
   it('preserves any HTTP status code and statusText', () => {
     fc.assert(
       fc.property(

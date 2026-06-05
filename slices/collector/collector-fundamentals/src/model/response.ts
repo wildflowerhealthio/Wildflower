@@ -22,6 +22,16 @@ class RemoteResponse {
     this.#chunks.push(chunk)
   }
 
+  /** Total decoded body size in bytes across all buffered chunks. */
+  get byteLength(): number {
+    return this.#chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+  }
+
+  /** Number of buffered chunks received over the wire. */
+  get chunkCount(): number {
+    return this.#chunks.length
+  }
+
   text(): string {
     const totalLength = this.#chunks.reduce((sum, chunk) => sum + chunk.length, 0)
     const combined = new Uint8Array(totalLength)

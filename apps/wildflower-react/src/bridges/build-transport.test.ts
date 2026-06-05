@@ -1,8 +1,9 @@
-import { Effect } from 'effect'
+import { Effect, Layer } from 'effect'
 import type * as EffectMessagingCore from 'effect-messaging-core'
 import type * as EffectMessagingReact from 'effect-messaging-react'
 import type * as GatekeeperWebBridge from 'gatekeeper-react/web-bridge'
 import type * as NavigationReact from 'navigation-react'
+import type * as TelemetryWeb from 'telemetry-web'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import type { buildTransport as BuildTransportFn } from './build-transport.ts'
@@ -20,6 +21,12 @@ let lastMakeWebTransportConfig: {
 const fakeRegisterHandlers = vi.fn(() => Effect.void)
 const fakeSendMessage = vi.fn(() => Effect.void)
 const fakeInstallConsoleInterceptor = vi.fn()
+// `buildTransport` provides the telemetry tracer layer so the
+// transport's forked dispatch fiber inherits it. The real
+// `webTelemetryLayerFromEnv` installs a global OTel context manager and
+// inits Sentry as an eager side effect; stub it to a no-op `Layer.empty`
+// so this focused wiring test stays deterministic and side-effect-free.
+const fakeWebTelemetryLayer = vi.fn(() => Layer.empty)
 let coordinatorConnectArg: unknown = null
 
 vi.mock('effect-messaging-core', async () => {
@@ -80,6 +87,10 @@ vi.mock('gatekeeper-react/web-bridge', async () => {
   const actual = await vi.importActual<typeof GatekeeperWebBridge>('gatekeeper-react/web-bridge')
   return { ...actual, makeGatekeeperWebHandlers: () => gatekeeperHandlersStub }
 })
+vi.mock('telemetry-web', async () => {
+  const actual = await vi.importActual<typeof TelemetryWeb>('telemetry-web')
+  return { ...actual, webTelemetryLayerFromEnv: fakeWebTelemetryLayer }
+})
 
 const importBuildTransport = async (): Promise<typeof BuildTransportFn> =>
   (await import('./build-transport.ts')).buildTransport
@@ -91,6 +102,7 @@ beforeEach(() => {
   fakeRegisterHandlers.mockClear()
   fakeSendMessage.mockClear()
   fakeInstallConsoleInterceptor.mockClear()
+  fakeWebTelemetryLayer.mockClear()
 })
 
 afterEach(() => {
@@ -126,6 +138,9 @@ describe('buildTransport', () => {
     await promise
 
     expect(lastMakeWebTransportConfig).not.toBeNull()
+    // The telemetry tracer layer is provided to the transport build so the
+    // forked dispatch fiber inherits the OTel tracer.
+    expect(fakeWebTelemetryLayer).toHaveBeenCalled()
     expect(lastMakeWebTransportConfig?.handlers).toContain(navHandlersStub)
     expect(lastMakeWebTransportConfig?.handlers).toContain(gatekeeperHandlersStub)
     // The coordinator's `initial` only seeds Navigation + Gatekeeper, so

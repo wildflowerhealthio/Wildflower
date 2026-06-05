@@ -3,6 +3,7 @@ import { BridgeTransport, Logging, TransportAdapter } from 'effect-messaging-cor
 import { makeHandlerCoordinator, WebPlatformAdapter } from 'effect-messaging-react'
 import type { NavTarget } from 'navigation-react'
 import type { AuthTokenStore } from 'react-kitchen-sink'
+import { webTelemetryLayerFromEnv } from 'telemetry-web'
 
 import { makeBootStableInitialHandlers } from './boot-stable-handlers.ts'
 import { bridges } from './bridges.ts'
@@ -34,7 +35,13 @@ const buildTransport = (
   return Effect.runPromise(
     Scope.extend(
       BridgeTransport.makeWebTransport({ bridges, handlers: initialHandlers }).pipe(
-        Effect.provide(Layer.succeed(TransportAdapter, adapter))
+        Effect.provide(Layer.succeed(TransportAdapter, adapter)),
+        // Set the OTel tracer FiberRef on the building fiber. The
+        // transport's `forkScoped` inbound-dispatch fiber and the bridge
+        // handlers' `forkDaemon` timers snapshot it at fork time, so the
+        // `Effect.withSpan` calls in the collector handlers emit spans to
+        // Sentry. No-op (`Layer.empty`) when telemetry is disabled.
+        Effect.provide(webTelemetryLayerFromEnv())
       ),
       pageLifetimeScope
     )
