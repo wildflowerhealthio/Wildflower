@@ -30,7 +30,6 @@
     "localtunnel": "^2.0.2"
   },
   "devDependencies": {
-    "@effect/vitest": "catalog:",
     "@types/localtunnel": "^2.0.4",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",

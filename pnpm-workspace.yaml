@@ -25,7 +25,6 @@ catalog:
   '@effect/rpc': 0.75.0
   '@effect/sql': 0.51.1
   '@effect/typeclass': 0.40.0
-  '@effect/vitest': 0.29.0
   '@effect/workflow': 0.16.0
   '@expo/dom-webview': ~0.2.8
   '@expo/metro-runtime': ~6.1.2

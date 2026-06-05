@@ -15,7 +15,6 @@ import { makeScrapingPlanForConfig, type AnyCollectorResource } from 'collector-
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import type { ScrapingPlan } from 'collector-fundamentals/model'
 import * as Telemetry from 'collector-fundamentals/telemetry'
-
 import {
   Duration,
   Effect,
@@ -26,7 +25,6 @@ import {
   Option,
   Ref,
   Schedule,
-  type Scope,
 } from 'effect'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { useCallback, useRef, useState } from 'react'
@@ -59,9 +57,9 @@ interface ImportSummary {
 /**
  * Optional hook config. `onError` notifies the screen of parse/transport
  * failures and write-retry exhaustion (fired once per failed item, after
- * retries). `idleTimeout` is the stalled-host guard: if no terminal
- * sniffer event or write settles within the window the run settles
- * anyway, so a silent host can't pin the mutation in `pending` forever.
+ * retries). `idleTimeout` is the stalled-host guard: if no sniffer event
+ * arrives within the window the run settles anyway, so a silent host
+ * can't pin the mutation in `pending` forever.
  */
 interface SyncRunnerInput {
   readonly onError?: (error: unknown) => void
@@ -83,17 +81,18 @@ interface SyncRunner {
 }
 
 /**
- * Internal events the inbound bridge handler pushes (synchronously, via
- * `Mailbox.unsafeOffer`) for the in-context consume loop to pull. The
- * loop forks FHIR writes for `parsed`, records `failure`s, notes the
- * terminal `sniffDone`, and treats `writeSettled` as a wake-up to
- * re-check completion promptly rather than waiting out a timeout.
+ * Internal events the inbound bridge handler feeds the drive loop. The
+ * handler's `onResult` pushes `parsed` / `failure` synchronously; the
+ * sender wrap pushes `sniffDone` when the step machine dispatches its
+ * terminal `SniffingComplete`, both to wake the loop and to flip the
+ * completion signal. There is no per-write event: writes are awaited
+ * inline (see {@link buildImportEffect}), so the loop needs no write
+ * bookkeeping.
  */
 type ImportEvent =
   | { readonly _tag: 'parsed'; readonly resources: ReadonlyArray<AnyCollectorResource> }
   | { readonly _tag: 'failure'; readonly error: unknown; readonly url: string }
   | { readonly _tag: 'sniffDone' }
-  | { readonly _tag: 'writeSettled' }
 
 /** Stalled-host guard window when the caller doesn't override it. */
 const DEFAULT_IDLE_TIMEOUT: Duration.DurationInput = Duration.seconds(30)
@@ -101,33 +100,112 @@ const DEFAULT_IDLE_TIMEOUT: Duration.DurationInput = Duration.seconds(30)
 /**
  * Grace window for the completion check. `ResponseFinished` removes the
  * id from `inProgressResponses` *before* it offers the `parsed` event,
- * so a "drained" observation can momentarily precede the event that
- * still needs a write. After the drained condition holds we wait this
- * long for a straggler; only a quiet window confirms completion.
+ * so a "quiescent" observation can momentarily precede the event that
+ * still needs a write. After quiescence holds we wait this long for a
+ * straggler; only a quiet window confirms completion.
  */
-const CONFIRM_WINDOW: Duration.DurationInput = Duration.millis(250)
+const SHORT_CONFIRM_WINDOW: Duration.DurationInput = Duration.millis(250)
 
 /**
- * Model the whole sync as one long, interruptible Effect:
+ * The run's mutable state behind one named surface. It owns the event
+ * mailbox plus the two facts that decide completion — whether sniffing
+ * dispatched its terminal step, and the accumulated failures — and
+ * exposes {@link RunStateMachine.isSettled} as the single place that
+ * answers "are we done?". Writes are *not* tracked here: the drive loop
+ * awaits each batch inline, so a processed event leaves its writes
+ * already settled.
+ */
+interface RunStateMachine {
+  /** Push a decoded response's resources (sync; called from `onResult`). */
+  readonly offerParsed: (resources: ReadonlyArray<AnyCollectorResource>) => void
+  /** Push a parse/transport failure (sync; called from `onResult`). */
+  readonly offerFailure: (error: unknown, url: string) => void
+  /** Mark sniffing finished and wake the loop (the sender wrap calls this). */
+  readonly signalSniffComplete: Effect.Effect<void>
+  /** Next event, or `None` once `window` elapses with nothing queued. */
+  readonly tryTakeEvent: (
+    window: Duration.DurationInput
+  ) => Effect.Effect<Option.Option<ImportEvent>>
+  /** Record a failed item: drives `partial` state and fires `onError` once. */
+  readonly handleFailure: (failed: FailedResource, error: unknown) => Effect.Effect<void>
+  /** Sniffing finished, no response mid-stream, no event queued. */
+  readonly isSettled: (
+    inProgressResponses: MutableHashMap.MutableHashMap<string, unknown>
+  ) => Effect.Effect<boolean>
+  /** Summary to resolve the mutation with (always `cancelled: false` here). */
+  readonly summary: Effect.Effect<ImportSummary>
+}
+
+const makeRunStateMachine = (
+  setFailed: (failed: ReadonlyArray<FailedResource>) => void,
+  onErrorRef: { readonly current: ((error: unknown) => void) | undefined }
+): Effect.Effect<RunStateMachine> =>
+  Effect.gen(function* () {
+    const events = yield* Mailbox.make<ImportEvent>()
+    const sniffComplete = yield* Ref.make(false)
+    const failures = yield* Ref.make<ReadonlyArray<FailedResource>>([])
+
+    const handleFailure: RunStateMachine['handleFailure'] = (failed, error) =>
+      Ref.updateAndGet(failures, (arr) => [...arr, failed]).pipe(
+        Effect.flatMap((arr) =>
+          Effect.sync(() => {
+            setFailed(arr)
+            onErrorRef.current?.(error)
+          })
+        )
+      )
+
+    const isSettled: RunStateMachine['isSettled'] = (inProgressResponses) =>
+      Effect.gen(function* () {
+        if (!(yield* Ref.get(sniffComplete))) return false
+        if (MutableHashMap.size(inProgressResponses) > 0) return false
+        const queued = yield* events.size
+        return Option.match(queued, { onNone: () => true, onSome: (n) => n === 0 })
+      })
+
+    return {
+      offerParsed: (resources) => {
+        events.unsafeOffer({ _tag: 'parsed', resources })
+      },
+      offerFailure: (error, url) => {
+        events.unsafeOffer({ _tag: 'failure', error, url })
+      },
+      signalSniffComplete: Ref.set(sniffComplete, true).pipe(
+        Effect.andThen(events.offer({ _tag: 'sniffDone' })),
+        Effect.asVoid
+      ),
+      tryTakeEvent: (window) =>
+        events.take.pipe(
+          Effect.timeoutOption(window),
+          Effect.catchTag('NoSuchElementException', () => Effect.succeedNone)
+        ),
+      handleFailure,
+      isSettled,
+      summary: Ref.get(failures).pipe(Effect.map((failed) => ({ failed, cancelled: false }))),
+    }
+  })
+
+/**
+ * Model the whole sync as one long, interruptible Effect on a single
+ * fiber:
  *
  *   - `acquire`: build the `CollectorBridgeMessageHandler`, register its
  *     bridge tags in the coordinator's `Collector` slot, then dispatch
  *     `RequestSniffableWebView`. Register-before-dispatch guarantees the
  *     host's sniffer events land on the live handler.
- *   - The handler's `onResult` pushes parsed resources / failures into a
- *     `Mailbox`. A consume loop pulls them and `forkScoped`s each FHIR
- *     write so the writes inherit this Effect's runner-provided context
- *     (`FhirR4ResourcesHttpApiClient` + tracer) and are interrupted with
- *     the scope. The write requirement bubbles up to this Effect's `R`,
- *     which the broadened collector `runAuthed` satisfies.
- *   - Completion is the composite signal the loop watches: the step
- *     machine reached `Done` (it dispatched `SniffingComplete`),
- *     `inProgressResponses` drained, and every forked write settled —
- *     confirmed against {@link CONFIRM_WINDOW}. {@link DEFAULT_IDLE_TIMEOUT}
- *     is the escape hatch for a silent host.
+ *   - The handler's `onResult` pushes parsed resources / failures into the
+ *     {@link RunStateMachine} mailbox. The drive loop pulls each event and, for
+ *     `parsed`, upserts the batch *inline* (`Effect.forEach`, awaited): the
+ *     batch is settled by the time the event finishes, so there's no
+ *     outstanding-write bookkeeping. The write requirement bubbles up to
+ *     this Effect's `R`, which the broadened collector `runAuthed` satisfies.
+ *   - Completion is `RunProgress.isSettled` — sniffing dispatched its
+ *     terminal step, no response is mid-stream, the mailbox is empty —
+ *     re-confirmed across {@link SHORT_CONFIRM_WINDOW} to absorb the handler's
+ *     remove-before-offer reorder. {@link DEFAULT_IDLE_TIMEOUT} is the
+ *     escape hatch for a silent host.
  *   - `release` (natural completion, idle settle, or explicit cancel via
- *     the run's `AbortSignal`): `cancelAllInFlight` → `clear` →
- *     set-if-equal `unregister`.
+ *     the run's `AbortSignal`): `cancelAllInFlight` → `clear` → `unregister`.
  */
 const buildImportEffect = ({
   scrapingPlan,
@@ -146,189 +224,124 @@ const buildImportEffect = ({
 }): Effect.Effect<ImportSummary, never, FhirR4ResourcesHttpApiClient> =>
   Effect.scoped(
     Effect.gen(function* () {
-      const events = yield* Mailbox.make<ImportEvent>()
-      const sniffDoneRef = yield* Ref.make(false)
-      const outstandingRef = yield* Ref.make(0)
-      const failuresRef = yield* Ref.make<ReadonlyArray<FailedResource>>([])
-
-      // Append a failure and surface it: drives the `partial` state and
-      // fires `onError` once (parity with the pre-mutation runner).
-      const recordFailure = (failed: FailedResource, error: unknown): Effect.Effect<void> =>
-        Ref.updateAndGet(failuresRef, (arr) => [...arr, failed]).pipe(
-          Effect.flatMap((arr) =>
-            Effect.sync(() => {
-              setFailed(arr)
-              onErrorRef.current?.(error)
-            })
-          )
-        )
+      const stateMachine = yield* makeRunStateMachine(setFailed, onErrorRef)
 
       // One resource's PUT, retried with bounded exponential backoff (3
-      // retries, 250ms → 1s). `Schedule.intersect` enforces both "stop
-      // after N" AND "exponential"; `either` would stop on whichever
-      // fired first. A `Ref` counts attempts for the outer span.
-      const writeOne = (
+      // retries, 250ms → 1s). Each attempt is its own `PUT` span, so the
+      // retry count reads straight off the trace — no counter needed.
+      // `Schedule.intersect` enforces both "stop after N" AND "exponential";
+      // `either` would stop on whichever fired first.
+      const writeResourceWithRetries = (
         resource: AnyCollectorResource,
         id: string
-      ): Effect.Effect<void, never, FhirR4ResourcesHttpApiClient> => {
-        const path = { id }
-        const upsert = Effect.gen(function* () {
-          const client = yield* FhirR4ResourcesHttpApiClient
-          switch (resource.resourceType) {
-            case 'Patient': {
-              return yield* client.Patient.Update({ path, payload: { ...resource, id } })
-            }
-            case 'Observation': {
-              return yield* client.Observation.Update({ path, payload: { ...resource, id } })
-            }
-            case 'Binary': {
-              return yield* client.Binary.Update({ path, payload: { ...resource, id } })
-            }
-            default: {
-              const exhaustive: never = resource
-              return yield* Effect.dieMessage(
-                `useSyncRunner: unknown resourceType ${String(exhaustive)}`
-              )
-            }
-          }
-        })
-
-        const upsertWithRetry = Effect.gen(function* () {
-          const attempts = yield* Ref.make(0)
-          const oneAttempt = Ref.update(attempts, (n) => n + 1).pipe(
-            Effect.zipRight(
-              upsert.pipe(
-                Effect.withSpan(Telemetry.Importing.Update.Attempt.Span.Name, {
-                  attributes: {
-                    [Telemetry.Importing.Update.Attempt.Span.Attributes.Method]: 'PUT',
-                    [Telemetry.Importing.Attributes.ResourceType]: resource.resourceType,
-                  },
-                })
-              )
-            )
-          )
-          return yield* oneAttempt.pipe(
-            Effect.retry(
-              Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3)))
-            ),
-            Effect.tapError((err) =>
-              Effect.logError(
-                `useSyncRunner: upsert failed for ${resource.resourceType}/${id}`,
-                err
-              )
-            ),
-            Effect.onExit(() =>
-              Ref.get(attempts).pipe(
-                Effect.flatMap((n) =>
-                  Effect.annotateCurrentSpan(Telemetry.Importing.Update.Span.Attributes.Attempts, n)
-                )
-              )
-            ),
-            Effect.withSpan(Telemetry.Importing.Update.Span.Name, {
-              attributes: { [Telemetry.Importing.Attributes.ResourceType]: resource.resourceType },
-            })
-          )
-        })
-
-        return upsertWithRetry.pipe(
-          // Retries exhausted: record + notify, but don't fail the run.
-          // Interruption (scope close) isn't a typed failure, so a
-          // cancelled write skips this and just runs the finalizer.
-          Effect.catchAll((err) => recordFailure({ resourceType: resource.resourceType, id }, err)),
-          Effect.asVoid,
-          // Always: drop the outstanding count and wake the loop so it
-          // re-checks completion without waiting out a timeout.
-          Effect.ensuring(
-            Ref.update(outstandingRef, (n) => n - 1).pipe(
-              Effect.andThen(events.offer({ _tag: 'writeSettled' }))
-            )
-          )
-        )
-      }
-
-      // Fork one parsed response's resources out as independent writes.
-      // The batch span times the dispatch loop only; each write nests
-      // under its own spans on the forked fiber.
-      const forkWrites = (
-        resources: ReadonlyArray<AnyCollectorResource>
-      ): Effect.Effect<void, never, FhirR4ResourcesHttpApiClient | Scope.Scope> =>
+      ): Effect.Effect<void, never, FhirR4ResourcesHttpApiClient> =>
         Effect.gen(function* () {
-          for (const resource of resources) {
-            // Entities filter null-id resources before emitting; narrow
-            // defensively for the typed `path`.
-            if (resource.id === null) continue
-            yield* Ref.update(outstandingRef, (n) => n + 1)
-            yield* Effect.forkScoped(writeOne(resource, resource.id))
+          const client = yield* FhirR4ResourcesHttpApiClient
+          const path = { id }
+          switch (resource.resourceType) {
+            case 'Patient':
+              return yield* client.Patient.Update({ path, payload: { ...resource, id } })
+            case 'Observation':
+              return yield* client.Observation.Update({ path, payload: { ...resource, id } })
+            case 'Binary':
+              return yield* client.Binary.Update({ path, payload: { ...resource, id } })
+            default: {
+              const unreachable: never = resource
+              return yield* Effect.dieMessage(
+                `useSyncRunner: unknown resourceType ${String(unreachable)}`
+              )
+            }
           }
         }).pipe(
-          Effect.withSpan(Telemetry.Importing.Span.Name, {
+          Effect.withSpan(Telemetry.Importing.Update.Attempt.Span.Name, {
             attributes: {
-              [Telemetry.Importing.Span.Attributes.ResourceCount]: resources.length,
+              [Telemetry.Importing.Update.Attempt.Span.Attributes.Method]: 'PUT',
+              [Telemetry.Importing.Attributes.ResourceType]: resource.resourceType,
             },
+          }),
+          Effect.retry(
+            Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3)))
+          ),
+          Effect.tapError((err) =>
+            Effect.logError(`useSyncRunner: upsert failed for ${resource.resourceType}/${id}`, err)
+          ),
+          Effect.withSpan(Telemetry.Importing.Update.Span.Name, {
+            attributes: { [Telemetry.Importing.Attributes.ResourceType]: resource.resourceType },
+          }),
+          Effect.asVoid,
+          // Retries exhausted: record + notify, but don't fail the run.
+          Effect.catchAll((err) =>
+            stateMachine.handleFailure({ resourceType: resource.resourceType, id }, err)
+          )
+        )
+
+      // Upsert a decoded response's resources — concurrent within the
+      // batch, awaited as a whole so the drive loop blocks until they
+      // settle. `discard` because failures are recorded inside `writeOne`;
+      // nothing flows back.
+      const writeBatch = (
+        resources: ReadonlyArray<AnyCollectorResource>
+      ): Effect.Effect<void, never, FhirR4ResourcesHttpApiClient> =>
+        Effect.forEach(
+          resources,
+          // Entities filter null-id resources before emitting; narrow
+          // defensively for the typed `path`.
+          (resource) =>
+            resource.id === null
+              ? Effect.logWarning(`useSyncRunner: skipping resource with null id`)
+              : writeResourceWithRetries(resource, resource.id),
+          { concurrency: 'unbounded', discard: true }
+        ).pipe(
+          Effect.withSpan(Telemetry.Importing.Span.Name, {
+            attributes: { [Telemetry.Importing.Span.Attributes.ResourceCount]: resources.length },
           })
         )
 
-      const process = (
+      const processStateEvent = (
         event: ImportEvent
-      ): Effect.Effect<void, never, FhirR4ResourcesHttpApiClient | Scope.Scope> => {
-        switch (event._tag) {
-          case 'sniffDone':
-            return Ref.set(sniffDoneRef, true)
-          case 'parsed':
-            return forkWrites(event.resources)
-          case 'failure':
-            return recordFailure({ resourceType: 'response', id: event.url }, event.error)
-          case 'writeSettled':
-            return Effect.void
-          default:
-            return Effect.logError(
-              `useSyncRunner: unknown event tag ${(event as { _tag: string })._tag}`
-            )
-        }
-      }
+      ): Effect.Effect<void, never, FhirR4ResourcesHttpApiClient> =>
+        Match.value(event).pipe(
+          Match.tag('parsed', ({ resources }) => writeBatch(resources)),
+          Match.tag('failure', ({ error, url }) =>
+            stateMachine.handleFailure({ resourceType: 'response', id: url }, error)
+          ),
+          // Wake-only: `signalSniffComplete` already flipped the flag.
+          Match.tag('sniffDone', () => Effect.void),
+          Match.exhaustive
+        )
 
       // Wrap the sender so dispatching the terminal `SniffingComplete`
-      // (the step machine's last act) flips the loop's done signal —
-      // "follow the steps and note the end" without touching the pure
-      // handler. Everything else forwards verbatim.
+      // (the step machine's last act) flips the completion signal — "follow
+      // the steps and note the end" without touching the pure handler.
       const observingSend = (
         message: CollectorBridgeMessageHandler.OutboundMessage
       ): Effect.Effect<void> =>
         message._tag === 'SniffingComplete'
-          ? sendCollectorMessage(message).pipe(
-              Effect.andThen(events.offer({ _tag: 'sniffDone' })),
-              Effect.asVoid
-            )
+          ? sendCollectorMessage(message).pipe(Effect.andThen(stateMachine.signalSniffComplete))
           : sendCollectorMessage(message)
 
-      const { handler } = yield* Effect.acquireRelease(
+      const { inProgressResponses: inProgressBridgeResponses } = yield* Effect.acquireRelease(
         Effect.gen(function* () {
-          const messageHandler = yield* CollectorBridgeMessageHandler.make<AnyCollectorResource>({
+          // Separate out the `pipeThroughHandlers` bridge tags so the handler's
+          //  `clear` / `cancelAllInFlight` don't leak into the transport's
+          // tag→handler map.
+          const {
+            inProgressResponses,
+            clear: clearMessageHandler,
+            cancelAllInFlight,
+            ...pipeThroughHandlers
+          } = yield* CollectorBridgeMessageHandler.make<AnyCollectorResource>({
             scrapingPlan,
             sendMessage: observingSend,
             onResult: ({ response, result }) =>
               Either.match(result, {
-                onLeft: (error) => {
-                  events.unsafeOffer({ _tag: 'failure', error, url: response.url })
-                },
-                onRight: (resources) => {
-                  events.unsafeOffer({ _tag: 'parsed', resources })
-                },
+                onLeft: (error) => stateMachine.offerFailure(error, response.url),
+                onRight: (resources) => stateMachine.offerParsed(resources),
               }),
           })
-          // Register only the bridge tags so the handler's `clear` /
-          // `cancelAllInFlight` don't leak into the transport's
-          // tag→handler map.
-          const messageHandlers = {
-            ResponseStart: messageHandler.ResponseStart,
-            ResponseData: messageHandler.ResponseData,
-            ResponseFinished: messageHandler.ResponseFinished,
-            RequestError: messageHandler.RequestError,
-            Cancelled: messageHandler.Cancelled,
-            PageLoaded: messageHandler.PageLoaded,
-          }
+
           yield* collectorRegister
-            .register(messageHandler)
+            .register(pipeThroughHandlers)
             .pipe(
               Effect.catchAll((error) =>
                 Effect.logError('useSyncRunner: handler registration failed', error)
@@ -342,67 +355,64 @@ const buildImportEffect = ({
               Effect.logError('useSyncRunner: failed to dispatch RequestSniffableWebView', cause)
             )
           )
-          return { handler: messageHandler, handlers: messageHandlers }
+          return {
+            inProgressResponses,
+            clearMessageHandler,
+            cancelAllInFlight,
+            pipeThroughHandlers,
+          }
         }),
-        ({ handler: messageHandler, handlers: messageHandlers }) =>
-          messageHandler
-            .cancelAllInFlight(sendCollectorMessage)
-            .pipe(
-              Effect.andThen(messageHandler.clear()),
-              Effect.andThen(
-                collectorRegister
-                  .unregister(messageHandlers)
-                  .pipe(
-                    Effect.catchAll((error) =>
-                      Effect.logError('useSyncRunner: handler unregistration failed', error)
-                    )
+        ({ clearMessageHandler, cancelAllInFlight, pipeThroughHandlers }) =>
+          cancelAllInFlight(sendCollectorMessage).pipe(
+            Effect.andThen(clearMessageHandler()),
+            Effect.andThen(
+              collectorRegister
+                .unregister(pipeThroughHandlers)
+                .pipe(
+                  Effect.catchAll((error) =>
+                    Effect.logError('useSyncRunner: handler unregistration failed', error)
                   )
-              )
+                )
             )
+          )
       )
-
-      // The composite completion signal: sniffing finished, no tracked
-      // response is mid-stream, and no forked write is outstanding.
-      const isDrained: Effect.Effect<boolean> = Effect.gen(function* () {
-        if (!(yield* Ref.get(sniffDoneRef))) return false
-        if ((yield* Ref.get(outstandingRef)) > 0) return false
-        return MutableHashMap.size(handler.inProgressResponses) === 0
-      })
-
-      const takeOption = (
-        duration: Duration.DurationInput
-      ): Effect.Effect<Option.Option<ImportEvent>> =>
-        events.take.pipe(
-          Effect.timeoutOption(duration),
-          Effect.catchTag('NoSuchElementException', () => Effect.succeedNone)
-        )
-
-      // Once drained, keep pulling within CONFIRM_WINDOW until a quiet
-      // window confirms it (absorbs the remove-before-offer reorder).
-      const confirmDrained: Effect.Effect<
-        boolean,
-        never,
-        FhirR4ResourcesHttpApiClient | Scope.Scope
-      > = Effect.gen(function* () {
-        while (true) {
-          if (!(yield* isDrained)) return false
-          const straggler = yield* takeOption(CONFIRM_WINDOW)
-          if (Option.isNone(straggler)) return yield* isDrained
-          yield* process(straggler.value)
-        }
-      })
 
       yield* Effect.gen(function* () {
         while (true) {
-          const taken = yield* takeOption(idleTimeout)
-          // Idle/hang guard: a silent window settles the run.
-          if (Option.isNone(taken)) break
-          yield* process(taken.value)
-          if ((yield* isDrained) && (yield* confirmDrained)) break
+          const currentlySettled = yield* stateMachine.isSettled(inProgressBridgeResponses)
+          const waitDuration = currentlySettled ? SHORT_CONFIRM_WINDOW : idleTimeout
+          const event = yield* stateMachine.tryTakeEvent(waitDuration)
+
+          const shouldTerminate = yield* Match.value({
+            event,
+            waitDuration,
+          }).pipe(
+            Match.withReturnType<Effect.Effect<boolean, never, FhirR4ResourcesHttpApiClient>>(),
+            Match.when({ event: Option.isSome }, ({ event: { value: takenEvent } }) =>
+              processStateEvent(takenEvent).pipe(Effect.as(false))
+            ),
+            Match.when({ event: Option.isNone, waitDuration: SHORT_CONFIRM_WINDOW }, () =>
+              // Confirm things remained settled
+              stateMachine.isSettled(inProgressBridgeResponses)
+            ),
+            // We waited the long `idleTimeout`, no event arrived, terminate now.
+            Match.when({ event: Option.isNone, waitDuration: idleTimeout }, () =>
+              Effect.succeed(true)
+            ),
+            Match.orElse(() =>
+              Effect.logError('useSyncRunner: unexpected match case in drive loop').pipe(
+                Effect.as(true)
+              )
+            )
+          )
+
+          if (shouldTerminate) {
+            break
+          }
         }
       })
 
-      return { failed: yield* Ref.get(failuresRef), cancelled: false }
+      return yield* stateMachine.summary
     })
   ).pipe(Effect.withSpan(Telemetry.Sync.Span.Name, {}))
 

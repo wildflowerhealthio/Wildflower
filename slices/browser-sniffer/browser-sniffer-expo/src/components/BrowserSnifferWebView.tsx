@@ -1,4 +1,5 @@
 import { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
+import * as Telemetry from 'browser-sniffer-core/telemetry'
 import { snifferScript } from 'browser-sniffer-injected'
 import { Effect } from 'effect'
 import {
@@ -139,7 +140,7 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferMessageSender, BrowserSni
           onPageReady: (send) =>
             Effect.sync(() => {
               senderRef.current = send
-            }),
+            }).pipe(Effect.withSpan(Telemetry.Bridge.PageReady.Span.Name)),
         }),
       [browserSnifferHandlers]
     )
@@ -166,7 +167,13 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferMessageSender, BrowserSni
               { tag: message._tag }
             )
           }
-          return send(message)
+          // Span only the live dispatch — the pre-mount drop above is a
+          // logged no-op, not a bridge hop worth timing.
+          return send(message).pipe(
+            Effect.withSpan(Telemetry.Bridge.Dispatch.Span.Name, {
+              attributes: { [Telemetry.Bridge.Attributes.MessageTag]: message._tag },
+            })
+          )
         }),
       []
     )

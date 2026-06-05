@@ -113,6 +113,7 @@ vi.mock('../bridges/apps-sender-forwarder.tsx', () => ({
 vi.mock('telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },
+  webTelemetryLayerFromEnv: () => Layer.empty,
 }))
 // Bare `HttpClient` so the authed runtime constructs without telemetry/fetch.
 vi.mock('telemetry-react', () => ({
