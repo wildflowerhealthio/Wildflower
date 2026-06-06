@@ -2,6 +2,7 @@ import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { Layer } from 'effect'
 import { EmrStore } from 'emr-core/livestore'
 import type { Patient as StorePatient } from 'emr-core/livestore'
+import { Query } from 'emr-core/telemetry'
 import { Origin } from 'navigation-core'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -50,10 +51,10 @@ const makeStore = (rows: readonly PatientRow[], total: number): typeof EmrStore.
   ({
     query: (q: { readonly label?: string }): unknown => {
       const label = q.label ?? ''
-      if (label.endsWith('.count')) {
+      if (label === Query.Count('Patient')) {
         return total
       }
-      if (label.endsWith('.getById')) {
+      if (label === Query.GetById('Patient')) {
         return rows[0]
       }
       return rows

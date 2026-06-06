@@ -2,6 +2,7 @@ import { HttpApiBuilder, HttpServer } from '@effect/platform'
 import { Layer } from 'effect'
 import { EmrStore } from 'emr-core/livestore'
 import type { Observation as StoreObservation, Patient as StorePatient } from 'emr-core/livestore'
+import { Query } from 'emr-core/telemetry'
 import { Origin } from 'navigation-core'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -112,25 +113,25 @@ interface MockData {
 }
 
 // Mock store that branches on the LiveQueryDef's `label` field. Labels are
-// produced by domain-resource-persistence as `${resourceType}.${operation}`.
+// produced by domain-resource-persistence via the emr-core telemetry catalog.
 const makeStore = (data: MockData): typeof EmrStore.Service =>
   /* oxlint-disable-next-line typescript/no-unsafe-type-assertion */
   ({
     query: (q: { readonly label?: string }): unknown => {
       const label = q.label ?? ''
-      if (label === 'Patient.getById') {
+      if (label === Query.GetById('Patient')) {
         return data.patients[0]
       }
-      if (label === 'Observation.getById') {
+      if (label === Query.GetById('Observation')) {
         return data.observations[0]
       }
-      if (label.endsWith('.count')) {
-        if (label.startsWith('Patient')) {
-          return data.patients.length
-        }
+      if (label === Query.Count('Patient')) {
+        return data.patients.length
+      }
+      if (label === Query.Count('Observation')) {
         return data.observations.length
       }
-      if (label.startsWith('Patient')) {
+      if (label === Query.Search('Patient') || label === Query.All('Patient')) {
         return data.patients
       }
       return data.observations

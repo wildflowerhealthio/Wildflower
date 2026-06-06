@@ -13,6 +13,8 @@ import type { SingleOrReadonlyArray } from '@livestore/utils'
 import { Schema } from 'effect'
 import { StructNoContext } from 'kitchen-sink/schema'
 
+import { Query } from '../telemetry/index.ts'
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -223,7 +225,7 @@ export function makeDomainResourcePersistence<
     all$: queryDb(table, {
       map: (rows): readonly Schema.Schema.Type<ExplicitRowSchema>[] =>
         rows.map((row) => validateRow(row)),
-      label: `${resourceType}.all`,
+      label: Query.All(resourceType),
     }),
     getById$: (id: string) =>
       queryDb(table.where(byId(id)), {
@@ -234,7 +236,7 @@ export function makeDomainResourcePersistence<
           }
           return validateRow(row)
         },
-        label: `${resourceType}.getById`,
+        label: Query.GetById(resourceType),
       }),
     search$: ({ where, limit, offset }) => {
       // The QueryBuilder's `.where`/`.limit`/`.offset` methods narrow the type
@@ -259,7 +261,7 @@ export function makeDomainResourcePersistence<
       return queryDb(qb, {
         map: (rows: readonly unknown[]): readonly Schema.Schema.Type<ExplicitRowSchema>[] =>
           rows.map((row) => validateRow(row)),
-        label: `${resourceType}.search`,
+        label: Query.Search(resourceType),
       })
     },
     count$: ({ where }: { readonly where?: SearchWhere }) => {
@@ -270,7 +272,7 @@ export function makeDomainResourcePersistence<
       }
       return queryDb(qb, {
         map: (n): number => n,
-        label: `${resourceType}.count`,
+        label: Query.Count(resourceType),
       })
     },
   }

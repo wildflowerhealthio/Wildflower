@@ -18,6 +18,12 @@ export default defineConfig({
       platform: 'neutral',
       entry: { 'schemas/index': 'src/schemas/index.ts' },
     },
+    {
+      dts: { tsgo: true },
+      exports: false,
+      platform: 'neutral',
+      entry: { 'telemetry/index': 'src/telemetry/index.ts' },
+    },
   ],
   test: {
     setupFiles: [

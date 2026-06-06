@@ -21,6 +21,10 @@
       "source": "./src/schemas/index.ts",
       "default": "./dist/schemas/index.js"
     },
+    "./telemetry": {
+      "source": "./src/telemetry/index.ts",
+      "default": "./dist/telemetry/index.js"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {

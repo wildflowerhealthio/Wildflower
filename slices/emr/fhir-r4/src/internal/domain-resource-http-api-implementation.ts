@@ -13,6 +13,7 @@ import { type Origin, requestOriginFromHttpRequest } from 'navigation-core'
 
 import { withMandatoryId } from '../data-types/with-mandatory-id.ts'
 import { FhirResourcesApiPrefix } from '../http-api-definition/index.ts'
+import { Everything, Read, Resource, Search, Write } from '../telemetry/index.ts'
 import { buildDomainResourceHttpApiGroup } from './domain-resource-http-api-definition.ts'
 import { decodePageToken, encodePageToken } from './page-token.ts'
 import type { BaseSearchParams, SearchParamBindings } from './search-param-bindings.ts'
@@ -151,12 +152,12 @@ export function makeDomainResourceHandlerLayer<
         ),
       catch: () => new HttpApiError.ServiceUnavailable(),
     }).pipe(
-      Effect.withSpan('fhir.buildSearchsetBundle', {
+      Effect.withSpan(Search.Bundle.Span.Name, {
         attributes: {
-          resourceType,
-          resourceCount: resources.length,
-          total,
-          linkCount: link.length,
+          [Resource.Attributes.Type]: resourceType,
+          [Search.Bundle.Span.Attributes.ResourceCount]: resources.length,
+          [Search.Bundle.Span.Attributes.Total]: total,
+          [Search.Bundle.Span.Attributes.LinkCount]: link.length,
         },
       })
     )
@@ -219,16 +220,24 @@ export function makeDomainResourceHandlerLayer<
         try: () => store.query(bindings.querySearch$({ where, limit, offset })),
         catch: () => new HttpApiError.ServiceUnavailable(),
       }).pipe(
-        Effect.withSpan('fhir.runSearch.querySearch', {
-          attributes: { resourceType, limit, offset, hasWhere: where !== undefined },
+        Effect.withSpan(Search.Query.Span.Name, {
+          attributes: {
+            [Resource.Attributes.Type]: resourceType,
+            [Search.Attributes.Limit]: limit,
+            [Search.Attributes.Offset]: offset,
+            [Search.Attributes.HasWhere]: where !== undefined,
+          },
         })
       )
       const total = yield* Effect.try({
         try: () => store.query(bindings.queryCount$({ where })),
         catch: () => new HttpApiError.ServiceUnavailable(),
       }).pipe(
-        Effect.withSpan('fhir.runSearch.queryCount', {
-          attributes: { resourceType, hasWhere: where !== undefined },
+        Effect.withSpan(Search.Count.Span.Name, {
+          attributes: {
+            [Resource.Attributes.Type]: resourceType,
+            [Search.Attributes.HasWhere]: where !== undefined,
+          },
         })
       )
       return yield* buildSearchsetBundle(
@@ -238,11 +247,11 @@ export function makeDomainResourceHandlerLayer<
         paginationLinks(requestUrl, limit, offset, total)
       )
     }).pipe(
-      Effect.withSpan('fhir.runSearch', {
+      Effect.withSpan(Search.Run.Span.Name, {
         attributes: {
-          resourceType,
-          hasPageToken: params._pageToken !== undefined,
-          requestedCount: params._count ?? DEFAULT_PAGE_SIZE,
+          [Resource.Attributes.Type]: resourceType,
+          [Search.Attributes.HasPageToken]: params._pageToken !== undefined,
+          [Search.Attributes.RequestedCount]: params._count ?? DEFAULT_PAGE_SIZE,
         },
       })
     )
@@ -253,8 +262,11 @@ export function makeDomainResourceHandlerLayer<
     bindings
       .commitUpsert(resource)
       .pipe(
-        Effect.withSpan('fhir.upsertAndFetch.commitUpsert', {
-          attributes: { resourceType, id: resource.id },
+        Effect.withSpan(Write.Commit.Span.Name, {
+          attributes: {
+            [Resource.Attributes.Type]: resourceType,
+            [Resource.Attributes.Id]: resource.id,
+          },
         })
       )
       .pipe(
@@ -264,8 +276,11 @@ export function makeDomainResourceHandlerLayer<
               try: () => store.query(bindings.queryGetById$(resource.id)),
               catch: () => new HttpApiError.ServiceUnavailable(),
             }).pipe(
-              Effect.withSpan('fhir.upsertAndFetch.queryGetById', {
-                attributes: { resourceType, id: resource.id },
+              Effect.withSpan(Write.Query.Span.Name, {
+                attributes: {
+                  [Resource.Attributes.Type]: resourceType,
+                  [Resource.Attributes.Id]: resource.id,
+                },
               })
             )
           )
@@ -276,8 +291,11 @@ export function makeDomainResourceHandlerLayer<
           }
           return Effect.succeed(fetched)
         }),
-        Effect.withSpan('fhir.upsertAndFetch', {
-          attributes: { resourceType, id: resource.id },
+        Effect.withSpan(Write.Upsert.Span.Name, {
+          attributes: {
+            [Resource.Attributes.Type]: resourceType,
+            [Resource.Attributes.Id]: resource.id,
+          },
         })
       )
 
@@ -298,14 +316,18 @@ export function makeDomainResourceHandlerLayer<
         /* oxlint-disable-next-line typescript/no-unsafe-type-assertion */
         const { urlParams } = request as { readonly urlParams: SearchParamsType }
         return runSearch(urlParams).pipe(
-          Effect.withSpan('fhir.SearchByGet', { attributes: { resourceType } })
+          Effect.withSpan(Search.ByGet.Span.Name, {
+            attributes: { [Resource.Attributes.Type]: resourceType },
+          })
         )
       })
       .handle('Search', (request) => {
         /* oxlint-disable-next-line typescript/no-unsafe-type-assertion */
         const { payload } = request as { readonly payload: SearchParamsType }
         return runSearch(payload).pipe(
-          Effect.withSpan('fhir.Search', { attributes: { resourceType } })
+          Effect.withSpan(Search.ByPost.Span.Name, {
+            attributes: { [Resource.Attributes.Type]: resourceType },
+          })
         )
       })
       .handle('GetById', ({ path: { id } }) =>
@@ -314,8 +336,11 @@ export function makeDomainResourceHandlerLayer<
             try: () => store.query(bindings.queryGetById$(id)),
             catch: () => new HttpApiError.ServiceUnavailable(),
           }).pipe(
-            Effect.withSpan('fhir.GetById.queryGetById', {
-              attributes: { resourceType, id },
+            Effect.withSpan(Read.Query.Span.Name, {
+              attributes: {
+                [Resource.Attributes.Type]: resourceType,
+                [Resource.Attributes.Id]: id,
+              },
             }),
             Effect.flatMap((resource) => {
               if (resource === undefined) {
@@ -324,13 +349,25 @@ export function makeDomainResourceHandlerLayer<
               return Effect.succeed(resource)
             })
           )
-        ).pipe(Effect.withSpan('fhir.GetById', { attributes: { resourceType, id } }))
+        ).pipe(
+          Effect.withSpan(Read.Span.Name, {
+            attributes: {
+              [Resource.Attributes.Type]: resourceType,
+              [Resource.Attributes.Id]: id,
+            },
+          })
+        )
       )
       .handle('Create', (request) => {
         /* oxlint-disable-next-line typescript/no-unsafe-type-assertion */
         const { payload } = request as { readonly payload: ResourceWithId }
         return upsertAndFetch(payload).pipe(
-          Effect.withSpan('fhir.Create', { attributes: { resourceType, id: payload.id } })
+          Effect.withSpan(Write.Create.Span.Name, {
+            attributes: {
+              [Resource.Attributes.Type]: resourceType,
+              [Resource.Attributes.Id]: payload.id,
+            },
+          })
         )
       })
       .handle('Update', (request) => {
@@ -340,7 +377,12 @@ export function makeDomainResourceHandlerLayer<
           readonly payload: StoreType
         }
         return upsertAndFetch({ ...payload, id: path.id }).pipe(
-          Effect.withSpan('fhir.Update', { attributes: { resourceType, id: path.id } })
+          Effect.withSpan(Write.Update.Span.Name, {
+            attributes: {
+              [Resource.Attributes.Type]: resourceType,
+              [Resource.Attributes.Id]: path.id,
+            },
+          })
         )
       })
       .handle('Everything', (request) => {
@@ -359,8 +401,11 @@ export function makeDomainResourceHandlerLayer<
             try: () => store.query(bindings.queryGetById$(id)),
             catch: () => new HttpApiError.ServiceUnavailable(),
           }).pipe(
-            Effect.withSpan('fhir.Everything.queryGetById', {
-              attributes: { resourceType, id },
+            Effect.withSpan(Everything.Query.Span.Name, {
+              attributes: {
+                [Resource.Attributes.Type]: resourceType,
+                [Resource.Attributes.Id]: id,
+              },
             })
           )
           if (primary === undefined) {
@@ -369,8 +414,12 @@ export function makeDomainResourceHandlerLayer<
           let related: ReadonlyArray<{ readonly resourceType: string; readonly id: string }> = []
           if (bindings.getRelated !== undefined) {
             related = yield* bindings.getRelated({ id, limit }).pipe(
-              Effect.withSpan('fhir.Everything.getRelated', {
-                attributes: { resourceType, id, limit: limit ?? -1 },
+              Effect.withSpan(Everything.GetRelated.Span.Name, {
+                attributes: {
+                  [Resource.Attributes.Type]: resourceType,
+                  [Resource.Attributes.Id]: id,
+                  [Everything.Attributes.RelatedLimit]: limit ?? -1,
+                },
               })
             )
           }
@@ -424,7 +473,14 @@ export function makeDomainResourceHandlerLayer<
             },
             { disableValidation: true }
           )
-        }).pipe(Effect.withSpan('fhir.Everything', { attributes: { resourceType, id } }))
+        }).pipe(
+          Effect.withSpan(Everything.Span.Name, {
+            attributes: {
+              [Resource.Attributes.Type]: resourceType,
+              [Resource.Attributes.Id]: id,
+            },
+          })
+        )
       })
   )
 }
