@@ -96,6 +96,18 @@ const encodeBase64 = (bytes: Uint8Array): string => {
   return globalThis.btoa(bin)
 }
 
+/**
+ * {@link encodeBase64} timed as a span — base64 of a large response body is
+ * CPU-bound and scales with size, so it's a per-request latency suspect of
+ * its own. Carries the decoded byte count as the response body size.
+ */
+const encodeBase64Spanned = (bytes: Uint8Array): Effect.Effect<string> =>
+  Effect.sync(() => encodeBase64(bytes)).pipe(
+    Effect.withSpan(Telemetry.EncodeBase64.Span.Name, {
+      attributes: { [Telemetry.Attributes.HttpResponseBodySize]: bytes.length },
+    })
+  )
+
 class ServerRequestImpl extends Inspectable.Class implements ServerRequest.HttpServerRequest {
   readonly [ServerRequest.TypeId]: ServerRequest.TypeId
   readonly [IncomingMessageTypeId]: IncomingMessage.TypeId
@@ -506,7 +518,7 @@ const handleResponse = (
           const text = new TextDecoder('utf-8').decode(body.body)
           yield* respond(requestId, response.status, headers, text, 'utf8')
         } else {
-          const b64 = encodeBase64(body.body)
+          const b64 = yield* encodeBase64Spanned(body.body)
           yield* respond(requestId, response.status, headers, b64, 'base64')
         }
         break
@@ -535,12 +547,12 @@ const handleResponse = (
           combined.set(chunk, offset)
           offset += chunk.length
         }
-        const b64 = encodeBase64(combined)
+        const b64 = yield* encodeBase64Spanned(combined)
         yield* respond(requestId, response.status, headers, b64, 'base64')
         break
       }
     }
-  })
+  }).pipe(Effect.withSpan(Telemetry.HandleResponse.Span.Name))
 
 // ---------------------------------------------------------------------------
 // make
@@ -584,7 +596,16 @@ const make = (
             )
           }
           const runFork = yield* FiberSet.makeRuntime<never>()
-          const app = App.toHandled(httpApp, handleResponse, middleware)
+          // Span the whole HttpApi pass (middleware + route + schema decode +
+          // handler + schema encode) so the trace shows "time inside HttpApi"
+          // as one span. The routed `fhir.*` / LiveStore spans nest beneath
+          // it; the remainder is the decode/encode/middleware HttpApi does
+          // internally, which this adapter can't span directly.
+          const app = App.toHandled(
+            httpApp.pipe(Effect.withSpan(Telemetry.App.Span.Name)),
+            handleResponse,
+            middleware
+          )
 
           const subscription = NativeModule.addListener(
             'onHttpRequest',

@@ -82,4 +82,36 @@ const Respond = {
   Span: { Name: 'expo_http.respond' },
 } as const
 
-export { Attributes, BodyRead, Request, Respond }
+/**
+ * The `@effect/platform` HttpApi pass over a request: app-level middleware,
+ * route match, request schema decode, the routed handler (whose own `fhir.*`
+ * / LiveStore spans nest beneath), and response schema encode. A sibling of
+ * {@link HandleResponse} under {@link Request}. HttpApi does the decode and
+ * encode internally, so this adapter can't span them directly — but
+ * subtracting the handler's own spans from this one bounds the
+ * decode + encode + middleware cost.
+ */
+const App = {
+  Span: { Name: 'expo_http.app' },
+} as const
+
+/**
+ * Turning the handler's `HttpServerResponse` into bridge arguments: cookie /
+ * header expansion, body-tag dispatch, and — for binary / stream bodies —
+ * the base64 encode (see {@link EncodeBase64}), up to the {@link Respond}
+ * write. The JS work between HttpApi and the native bridge.
+ */
+const HandleResponse = {
+  Span: { Name: 'expo_http.handle_response' },
+} as const
+
+/**
+ * Base64-encoding a binary or streamed response body before the bridge
+ * write — CPU-bound and scaling with body size, so it carries
+ * {@link Attributes.HttpResponseBodySize} (the decoded byte count).
+ */
+const EncodeBase64 = {
+  Span: { Name: 'expo_http.encode_base64' },
+} as const
+
+export { App, Attributes, BodyRead, EncodeBase64, HandleResponse, Request, Respond }
