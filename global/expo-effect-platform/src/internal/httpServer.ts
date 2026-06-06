@@ -17,10 +17,44 @@ import type {
   HttpMethod,
   HttpMiddleware,
 } from '@effect/platform'
-import { Effect, FiberSet, Inspectable, Layer, Option, Ref, Stream } from 'effect'
+import { Duration, Effect, FiberSet, Inspectable, Layer, Option, Ref, Stream, Tracer } from 'effect'
 import type { Record as RecordNS, Scope } from 'effect'
 import type { OnHttpRequestPayload, ServerOptions } from '../ExpoEffectPlatform.types.ts'
 import NativeModule from '../ExpoEffectPlatformModule.ts'
+import * as Telemetry from '../telemetry.ts'
+
+/**
+ * Parsed W3C `traceparent` fields, narrowed to what {@link Tracer.externalSpan}
+ * needs to continue the client's distributed trace on the server span.
+ */
+interface TraceParent {
+  readonly traceId: string
+  readonly spanId: string
+  readonly sampled: boolean
+}
+
+/**
+ * Parse a request's W3C `traceparent` header so the {@link Telemetry.Request}
+ * server span continues the client's trace instead of starting a fresh root.
+ * Returns `undefined` for a missing or malformed header (the request then
+ * roots its own trace). Validates per the W3C Trace Context spec: four
+ * `-`-separated fields, a non-`ff` version, a 32-hex non-zero trace id, a
+ * 16-hex non-zero span id, a 2-hex flags byte whose bit 0 is the sampled flag.
+ */
+const parseTraceParent = (header: string | undefined): TraceParent | undefined => {
+  if (header === undefined) return undefined
+  const parts = header.trim().split('-')
+  if (parts.length !== 4) return undefined
+  const [version, traceId, spanId, flags] = parts
+  if (version === undefined || !/^[0-9a-f]{2}$/.test(version) || version === 'ff') return undefined
+  if (traceId === undefined || !/^[0-9a-f]{32}$/.test(traceId) || /^0+$/.test(traceId)) {
+    return undefined
+  }
+  if (spanId === undefined || !/^[0-9a-f]{16}$/.test(spanId) || /^0+$/.test(spanId))
+    return undefined
+  if (flags === undefined || !/^[0-9a-f]{2}$/.test(flags)) return undefined
+  return { traceId, spanId, sampled: (parseInt(flags, 16) & 0x01) === 1 }
+}
 
 // ---------------------------------------------------------------------------
 // ServerRequestImpl
@@ -171,7 +205,23 @@ class ServerRequestImpl extends Inspectable.Class implements ServerRequest.HttpS
     } else {
       source = Effect.succeed(new Uint8Array(0))
     }
-    this.bytesEffect = Effect.runSync(Effect.cached(source))
+    const bodySource =
+      this.source.body != null
+        ? 'inline'
+        : this.source.bodyBase64 != null
+          ? 'base64'
+          : this.source.bodyFilePath != null
+            ? 'file'
+            : 'empty'
+    this.bytesEffect = Effect.runSync(
+      Effect.cached(
+        source.pipe(
+          Effect.withSpan(Telemetry.BodyRead.Span.Name, {
+            attributes: { [Telemetry.Attributes.BodySource]: bodySource },
+          })
+        )
+      )
+    )
     return this.bytesEffect
   }
 
@@ -331,6 +381,64 @@ const expandHeaders = (
   return out
 }
 
+/**
+ * Write a response back across the JS→native bridge, timed as a
+ * {@link Telemetry.Respond} span and a console line. This promise is the
+ * adapter's prime latency suspect: everything before it is JS, and the
+ * native server's socket flush happens after it returns — so a slow
+ * `respond` localises the cost to the bridge / native server.
+ */
+const respond = (
+  requestId: string,
+  status: number,
+  headers: Record<string, ReadonlyArray<string>>,
+  body: string,
+  encoding: 'utf8' | 'base64'
+): Effect.Effect<void> =>
+  Effect.promise(() =>
+    NativeModule.respondToRequest(requestId, status, headers, body, encoding)
+  ).pipe(
+    Effect.withSpan(Telemetry.Respond.Span.Name, {
+      attributes: {
+        [Telemetry.Attributes.HttpResponseStatusCode]: status,
+        [Telemetry.Attributes.ResponseEncoding]: encoding,
+        [Telemetry.Attributes.HttpResponseBodySize]: body.length,
+      },
+    }),
+    Effect.timed,
+    Effect.tap(([elapsed]) =>
+      Effect.logInfo(
+        `[expo_http] respond ${status} ${encoding} ${body.length}b in ${Duration.toMillis(elapsed)}ms`
+      )
+    ),
+    Effect.asVoid
+  )
+
+/** File-backed variant of {@link respond} (native streams the file). */
+const respondWithFile = (
+  requestId: string,
+  status: number,
+  headers: Record<string, ReadonlyArray<string>>,
+  filePath: string,
+  start: number | null,
+  end: number | null
+): Effect.Effect<void> =>
+  Effect.promise(() =>
+    NativeModule.respondToRequestWithFile(requestId, status, headers, filePath, start, end)
+  ).pipe(
+    Effect.withSpan(Telemetry.Respond.Span.Name, {
+      attributes: {
+        [Telemetry.Attributes.HttpResponseStatusCode]: status,
+        [Telemetry.Attributes.ResponseKind]: 'file',
+      },
+    }),
+    Effect.timed,
+    Effect.tap(([elapsed]) =>
+      Effect.logInfo(`[expo_http] respond ${status} file in ${Duration.toMillis(elapsed)}ms`)
+    ),
+    Effect.asVoid
+  )
+
 const handleResponse = (
   request: ServerRequest.HttpServerRequest,
   response: ServerResponse.HttpServerResponse
@@ -348,6 +456,10 @@ const handleResponse = (
     }
     const requestId = request.requestId
 
+    // Record the status on the server (request) span — the current span here,
+    // since the inner handler spans have already closed by response time.
+    yield* Effect.annotateCurrentSpan(Telemetry.Attributes.HttpResponseStatusCode, response.status)
+
     let setCookies: ReadonlyArray<string> = []
     if (!Cookies.isEmpty(response.cookies)) {
       setCookies = Cookies.toSetCookieHeaders(response.cookies)
@@ -355,9 +467,7 @@ const handleResponse = (
     const headers = expandHeaders(response.headers, setCookies)
 
     if (request.method === 'HEAD') {
-      yield* Effect.promise(() =>
-        NativeModule.respondToRequest(requestId, response.status, headers, '', 'utf8')
-      )
+      yield* respond(requestId, response.status, headers, '', 'utf8')
       return
     }
 
@@ -366,23 +476,19 @@ const handleResponse = (
 
     switch (body._tag) {
       case 'Empty': {
-        yield* Effect.promise(() =>
-          NativeModule.respondToRequest(requestId, response.status, headers, '', 'utf8')
-        )
+        yield* respond(requestId, response.status, headers, '', 'utf8')
         break
       }
       case 'Raw': {
         const rawBody = body.body
         if (isExpoFileBody(rawBody)) {
-          yield* Effect.promise(() =>
-            NativeModule.respondToRequestWithFile(
-              requestId,
-              response.status,
-              headers,
-              rawBody.expoFilePath,
-              rawBody.start ?? null,
-              rawBody.end ?? null
-            )
+          yield* respondWithFile(
+            requestId,
+            response.status,
+            headers,
+            rawBody.expoFilePath,
+            rawBody.start ?? null,
+            rawBody.end ?? null
           )
         } else {
           let rawText = ''
@@ -391,35 +497,27 @@ const handleResponse = (
           } else if (rawBody != null) {
             rawText = JSON.stringify(rawBody)
           }
-          yield* Effect.promise(() =>
-            NativeModule.respondToRequest(requestId, response.status, headers, rawText, 'utf8')
-          )
+          yield* respond(requestId, response.status, headers, rawText, 'utf8')
         }
         break
       }
       case 'Uint8Array': {
         if (isTextContentType(body.contentType)) {
           const text = new TextDecoder('utf-8').decode(body.body)
-          yield* Effect.promise(() =>
-            NativeModule.respondToRequest(requestId, response.status, headers, text, 'utf8')
-          )
+          yield* respond(requestId, response.status, headers, text, 'utf8')
         } else {
           const b64 = encodeBase64(body.body)
-          yield* Effect.promise(() =>
-            NativeModule.respondToRequest(requestId, response.status, headers, b64, 'base64')
-          )
+          yield* respond(requestId, response.status, headers, b64, 'base64')
         }
         break
       }
       case 'FormData': {
-        yield* Effect.promise(() =>
-          NativeModule.respondToRequest(
-            requestId,
-            response.status,
-            headers,
-            'FormData responses are not supported in expo-effect-platform v1',
-            'utf8'
-          )
+        yield* respond(
+          requestId,
+          response.status,
+          headers,
+          'FormData responses are not supported in expo-effect-platform v1',
+          'utf8'
         )
         break
       }
@@ -438,9 +536,7 @@ const handleResponse = (
           offset += chunk.length
         }
         const b64 = encodeBase64(combined)
-        yield* Effect.promise(() =>
-          NativeModule.respondToRequest(requestId, response.status, headers, b64, 'base64')
-        )
+        yield* respond(requestId, response.status, headers, b64, 'base64')
         break
       }
     }
@@ -494,7 +590,57 @@ const make = (
             'onHttpRequest',
             (payload: OnHttpRequestPayload) => {
               const request = new ServerRequestImpl(payload, payload.path)
-              runFork(Effect.provideService(app, ServerRequest.HttpServerRequest, request))
+              // Wall clock from the moment the native event lands in JS to
+              // the moment the response write-back settles — the
+              // JS-visible request time. Compare against the client's own
+              // request duration: if this is small but the client sees
+              // seconds, the cost is in the native receive/socket flush.
+              const receivedAtMs = Date.now()
+              // `originalUrl` carries the query; the server-span semconv keeps
+              // the (high-cardinality) query off the path attribute.
+              const queryIndex = request.originalUrl.indexOf('?')
+              const urlPath =
+                queryIndex === -1 ? request.originalUrl : request.originalUrl.slice(0, queryIndex)
+              const urlQuery =
+                queryIndex === -1 ? undefined : request.originalUrl.slice(queryIndex + 1)
+              const clientAddress = Option.getOrUndefined(request.remoteAddress)
+              const attributes = {
+                [Telemetry.Attributes.HttpRequestMethod]: request.method,
+                [Telemetry.Attributes.UrlPath]: urlPath,
+                ...(urlQuery === undefined ? {} : { [Telemetry.Attributes.UrlQuery]: urlQuery }),
+                ...(clientAddress === undefined
+                  ? {}
+                  : { [Telemetry.Attributes.ClientAddress]: clientAddress }),
+              }
+              // Continue the client's distributed trace when it forwarded a
+              // `traceparent`; otherwise this request roots its own trace.
+              // Either way the routed handler spans (`fhir.Update`, …) nest
+              // under this server span rather than the long-lived daemon scope.
+              const traceParent = parseTraceParent(request.headers['traceparent'])
+              const lineage =
+                traceParent === undefined
+                  ? { root: true as const }
+                  : {
+                      parent: Tracer.externalSpan({
+                        traceId: traceParent.traceId,
+                        spanId: traceParent.spanId,
+                        sampled: traceParent.sampled,
+                      }),
+                    }
+              runFork(
+                Effect.provideService(app, ServerRequest.HttpServerRequest, request).pipe(
+                  Effect.withSpan(Telemetry.Request.Span.name(request.method), {
+                    kind: Telemetry.Request.Span.Kind,
+                    ...lineage,
+                    attributes,
+                  }),
+                  Effect.onExit(() =>
+                    Effect.logInfo(
+                      `[expo_http] ${request.method} ${request.originalUrl} handled in ${Date.now() - receivedAtMs}ms`
+                    )
+                  )
+                )
+              )
             }
           )
 
