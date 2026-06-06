@@ -24,10 +24,20 @@ import { AnySchema as WebViewSourceSchema } from './model/web-view-source.ts'
  * share one definition. The schema's `Uri` variant is `https://`-only
  * (see `web-view-source.ts`) — malformed messages fail to decode at
  * the bridge boundary.
+ *
+ * `linkedSpan` is the optional OpenTelemetry span context of the trace
+ * active on the SPA when it asked for the sniffer. The host threads it
+ * to `<BrowserSnifferWebView>`, which adds it as a span *link* on every
+ * root span it opens (the initial-load span and each per-page span), so
+ * the otherwise-independent sniffer traces point back at the collector's
+ * sync trace. Omitted when no span was in scope at send time.
  */
 const RequestSniffableWebView = Schema.parseJson(
   Schema.TaggedStruct('RequestSniffableWebView', {
     source: WebViewSourceSchema,
+    linkedSpan: Schema.optional(
+      Schema.Struct({ traceId: Schema.String, spanId: Schema.String })
+    ),
   })
 )
 

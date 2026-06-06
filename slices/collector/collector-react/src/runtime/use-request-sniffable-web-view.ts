@@ -2,6 +2,7 @@ import type { WebViewSource } from 'collector-fundamentals/model'
 import { Effect } from 'effect'
 import { useCallback } from 'react'
 
+import { captureLinkedSpan } from './capture-linked-span.ts'
 import { useCollectorSender } from './use-collector-sender.ts'
 
 /**
@@ -25,7 +26,14 @@ const useRequestSniffableWebView = (): ((source: WebViewSource.Any) => Promise<v
   return useCallback(
     (source) =>
       Effect.runPromise(
-        send({ _tag: 'RequestSniffableWebView', source }).pipe(
+        captureLinkedSpan.pipe(
+          Effect.flatMap((linkedSpan) =>
+            send(
+              linkedSpan === undefined
+                ? { _tag: 'RequestSniffableWebView', source }
+                : { _tag: 'RequestSniffableWebView', source, linkedSpan }
+            )
+          ),
           Effect.catchAllCause((cause) =>
             Effect.logError('useRequestSniffableWebView: send failed', cause)
           )

@@ -1,4 +1,4 @@
-import { Bridge } from 'effect-messaging-core'
+import { Bridge, type MessageHandler } from 'effect-messaging-core'
 import {
   CancelSnifferRequestMessage,
   CancelledMessage,
@@ -67,4 +67,15 @@ const BrowserSnifferBridge: BrowserSnifferBridge = Bridge.make({
   ] as const,
 })
 
+/**
+ * Per-tag handler record a host must supply for {@link BrowserSnifferBridge}'s
+ * `Web→Host` events (`ResponseStart`, `ResponseData`, `ResponseFinished`,
+ * `RequestError`, `Cancelled`, `PageLoaded`). Each handler takes the
+ * decoded message and returns `Effect<void>`. Defined here so the host
+ * adapter (`browser-sniffer-expo`) and any wrapper around it share one
+ * definition rather than re-deriving it from the bridge.
+ */
+type SnifferHandlers = MessageHandler.HandlersFor<typeof BrowserSnifferBridge.WebToHost>
+
 export { BrowserSnifferBridge }
+export type { SnifferHandlers }

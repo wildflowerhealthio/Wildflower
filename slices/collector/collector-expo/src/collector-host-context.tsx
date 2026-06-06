@@ -2,6 +2,7 @@
    is the file's only component; `useCollectorHost` is its companion hook,
    and lifting the hook into a third file would force a cross-file
    import of the otherwise-private context. */
+import type { LinkedSpanContext } from 'browser-sniffer-expo'
 import type { WebViewSource } from 'collector-fundamentals/model'
 import { createContext, useContext, useMemo, useState, type JSX, type ReactNode } from 'react'
 
@@ -9,14 +10,21 @@ import { BrowserSnifferPipeProvider, CollectorPipeProvider } from './message-sen
 
 /**
  * Private context exposing the navigation state the modal route reads
- * (`pendingSource`) and the dispatch callback the handler record's
- * `RequestSniffableWebView` / `Open` handlers fire. Outbound
- * `Click` / `CancelSnifferRequest` route through the BrowserSniffer
- * pipe instead — no ref state lives on this context.
+ * (`pendingSource`, `pendingLinkedSpan`) and the dispatch callbacks the
+ * handler record's `RequestSniffableWebView` / `Open` handlers fire.
+ * Outbound `Click` / `CancelSnifferRequest` route through the
+ * BrowserSniffer pipe instead — no ref state lives on this context.
+ *
+ * `pendingLinkedSpan` is the span context the SPA forwarded with
+ * `RequestSniffableWebView`; it rides alongside `pendingSource` to the
+ * sniffer modal. `Open` updates only `pendingSource`, so the link
+ * persists across script-driven navigations within one sync.
  */
 interface CollectorHostContextValue {
   readonly pendingSource: WebViewSource.Any | null
   readonly setPendingSource: (source: WebViewSource.Any | null) => void
+  readonly pendingLinkedSpan: LinkedSpanContext | null
+  readonly setPendingLinkedSpan: (linkedSpan: LinkedSpanContext | null) => void
   readonly modalPath: string
 }
 
@@ -55,10 +63,17 @@ const CollectorHostProvider = ({
   children,
 }: CollectorHostProviderProps): JSX.Element => {
   const [pendingSource, setPendingSource] = useState<WebViewSource.Any | null>(null)
+  const [pendingLinkedSpan, setPendingLinkedSpan] = useState<LinkedSpanContext | null>(null)
 
   const value = useMemo<CollectorHostContextValue>(
-    () => ({ pendingSource, setPendingSource, modalPath }),
-    [pendingSource, modalPath]
+    () => ({
+      pendingSource,
+      setPendingSource,
+      pendingLinkedSpan,
+      setPendingLinkedSpan,
+      modalPath,
+    }),
+    [pendingSource, pendingLinkedSpan, modalPath]
   )
 
   return (

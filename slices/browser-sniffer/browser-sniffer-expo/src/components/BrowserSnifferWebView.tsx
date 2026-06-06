@@ -1,27 +1,24 @@
-import { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
-import * as Telemetry from 'browser-sniffer-core/telemetry'
+import { BrowserSnifferBridge, type SnifferHandlers } from 'browser-sniffer-core/bridge'
 import { snifferScript } from 'browser-sniffer-injected'
 import { Effect } from 'effect'
-import {
-  type BridgeTransport,
-  HostBindings,
-  type Logging,
-  type MessageHandler,
-} from 'effect-messaging-core'
+import { type BridgeTransport, HostBindings, type Logging } from 'effect-messaging-core'
 import {
   BridgedWebView,
   type BridgedWebViewLoadFrom,
   useLogHostBinding,
 } from 'effect-messaging-expo'
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, type JSX } from 'react'
-
-/**
- * Per-tag handler record for the `Web→Host` messages
- * {@link BrowserSnifferBridge} carries. Each handler returns an
- * `Effect<void>`; the dispatch fiber catches handler defects so a
- * throw from one handler doesn't tear down the rest.
- */
-type SnifferHandlers = MessageHandler.HandlersFor<typeof BrowserSnifferBridge.WebToHost>
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+} from 'react'
+import { reactNativeTelemetryLayerFromEnv } from 'telemetry-react-native'
+import { type LinkedSpanContext, makeSnifferTelemetry } from '../sniffer-telemetry.ts'
 
 /**
  * Typed host-side sender for {@link BrowserSnifferBridge}. The
@@ -74,6 +71,19 @@ interface BrowserSnifferWebViewProps {
    * record on every render rebuilds the transport.
    */
   readonly browserSnifferHandlers: SnifferHandlers
+  /**
+   * Optional span context of a remote trace (typically the collector's
+   * sync span, forwarded via `RequestSniffableWebView.linkedSpan`). When
+   * present, each root span this component opens — the initial-load span
+   * and every per-page span — carries a span *link* back to it, so the
+   * sniffer's independent per-page traces relate to the originating trace.
+   *
+   * Sampled once at mount: the controller that owns the span tree is
+   * created on first render, so a later identity change is ignored. The
+   * value travels with the page being sniffed, which mounts a fresh
+   * component, so this matches the intended lifetime.
+   */
+  readonly linkedSpan?: LinkedSpanContext
 }
 
 /**
@@ -129,20 +139,44 @@ const embedSnifferIntoHtml = (html: string): string => {
  *   redirects from escaping to the system browser.
  */
 const BrowserSnifferWebView = forwardRef<BrowserSnifferMessageSender, BrowserSnifferWebViewProps>(
-  function BrowserSnifferWebView({ loadFrom, onLog, browserSnifferHandlers }, ref): JSX.Element {
+  function BrowserSnifferWebView(
+    { loadFrom, onLog, browserSnifferHandlers, linkedSpan },
+    ref
+  ): JSX.Element {
     const senderRef = useRef<BrowserSnifferMessageSender | null>(null)
+
+    // One stateful span controller per mount. Owns the initial-load / page
+    // / response span tree; `wrap` decorates the consumer's handlers, and
+    // mount/unmount drive `start` / `dispose` below. `linkedSpan` is read
+    // once here (lazy init) and baked into every root span's link set.
+    const [telemetry] = useState(() => makeSnifferTelemetry(linkedSpan))
+
+    // The OTel layer is provided both to the runner (so the dispatch fiber
+    // where the wrapped handlers run sees a real `Tracer`) and to the
+    // mount-time `start` run below. Same layer object on both paths so the
+    // initial-load span and the handler-created spans share one provider.
+    const telemetryLayer = useMemo(() => reactNativeTelemetryLayerFromEnv(), [])
+
+    // Decorate the consumer's handlers with span lifecycle. Recomputed when
+    // the consumer flips `browserSnifferHandlers` (a transport
+    // `registerHandlers` swap, not a rebuild); the controller's span state
+    // persists across the swap because the controller itself is stable.
+    const tracedHandlers = useMemo(
+      () => telemetry.wrap(browserSnifferHandlers),
+      [telemetry, browserSnifferHandlers]
+    )
 
     const snifferBindings = useMemo(
       () =>
         HostBindings.single({
           bridge: BrowserSnifferBridge,
-          handlers: browserSnifferHandlers,
+          handlers: tracedHandlers,
           onPageReady: (send) =>
             Effect.sync(() => {
               senderRef.current = send
-            }).pipe(Effect.withSpan(Telemetry.Bridge.PageReady.Span.Name)),
+            }),
         }),
-      [browserSnifferHandlers]
+      [tracedHandlers]
     )
 
     const logBindings = useLogHostBinding({ onLog })
@@ -167,17 +201,26 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferMessageSender, BrowserSni
               { tag: message._tag }
             )
           }
-          // Span only the live dispatch — the pre-mount drop above is a
-          // logged no-op, not a bridge hop worth timing.
-          return send(message).pipe(
-            Effect.withSpan(Telemetry.Bridge.Dispatch.Span.Name, {
-              attributes: { [Telemetry.Bridge.Attributes.MessageTag]: message._tag },
-            })
-          )
+          // A Click is recorded as a span event on the current page (or
+          // initial-load) span; CancelSnifferRequest carries no telemetry.
+          const recordEvent =
+            message._tag === 'Click' ? telemetry.recordClick(message.querySelector) : Effect.void
+          return recordEvent.pipe(Effect.zipRight(send(message)))
         }),
-      []
+      [telemetry]
     )
     useImperativeHandle(ref, () => stableSender, [stableSender])
+
+    // Open the initial-load span on mount (under a real Tracer via the
+    // provided layer) and close the whole open span tree on unmount.
+    // `dispose` is pure span mutation, so it runs on the bare default
+    // runtime even though the runner fiber is already being interrupted.
+    useEffect(() => {
+      Effect.runFork(Effect.provide(telemetry.start, telemetryLayer))
+      return (): void => {
+        Effect.runFork(telemetry.dispose)
+      }
+    }, [telemetry, telemetryLayer])
 
     const sniffableLoadFrom = useMemo<BridgedWebViewLoadFrom>(
       () =>
@@ -206,10 +249,16 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferMessageSender, BrowserSni
         bindings={bindings}
         loadFrom={sniffableLoadFrom}
         injectedJavaScriptBeforeContentLoaded={snifferScript}
+        runnerLayer={telemetryLayer}
       />
     )
   }
 )
 
 export { BrowserSnifferWebView }
-export type { BrowserSnifferMessageSender, BrowserSnifferWebViewProps, SnifferHandlers }
+export type {
+  BrowserSnifferMessageSender,
+  BrowserSnifferWebViewProps,
+  LinkedSpanContext,
+  SnifferHandlers,
+}

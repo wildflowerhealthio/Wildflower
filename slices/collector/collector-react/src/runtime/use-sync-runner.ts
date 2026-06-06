@@ -16,6 +16,7 @@ import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import type { ScrapingPlan } from 'collector-fundamentals/model'
 import * as Telemetry from 'collector-fundamentals/telemetry'
 import {
+  Cause,
   Duration,
   Effect,
   Either,
@@ -30,6 +31,7 @@ import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from '../queries/use-run-authed.ts'
+import { captureLinkedSpan } from './capture-linked-span.ts'
 import type { CollectorSender } from './collector-sender-context.ts'
 import { useCollectorRegister } from './use-collector-register.ts'
 import { useCollectorSender } from './use-collector-sender.ts'
@@ -105,6 +107,36 @@ const DEFAULT_IDLE_TIMEOUT: Duration.DurationInput = Duration.seconds(30)
  * straggler; only a quiet window confirms completion.
  */
 const SHORT_CONFIRM_WINDOW: Duration.DurationInput = Duration.millis(250)
+
+/**
+ * TEMPORARY tunable (investigation): max concurrent resource PUTs within a
+ * single `writeBatch`. Unbounded concurrency fired hundreds of simultaneous
+ * upserts that stalled the inline-awaited drive loop, so the `Sync` span
+ * never ended and never flushed. Capped at 1 while we confirm the writes
+ * resolve/time out; widen once the stall is understood.
+ */
+const WRITE_CONCURRENCY = 1
+
+/**
+ * TEMPORARY span-parenting probe (remove once the `collector.sync` nesting
+ * is understood). Logs the active span's identity + parent so we can read,
+ * from the SPA console, whether the collector's child spans nest under
+ * `collector.sync` (same `traceId`, `parent` = Sync's `spanId`) or float as
+ * their own roots. Never fails — swallows the no-active-span case so it
+ * can't perturb the run's `never` error channel.
+ */
+const logCurrentSpan = (label: string): Effect.Effect<void> =>
+  Effect.currentSpan.pipe(
+    Effect.flatMap((span) =>
+      Effect.logInfo(
+        `[probe:${label}] traceId=${span.traceId} spanId=${span.spanId} parent=${Option.match(
+          span.parent,
+          { onNone: () => 'none', onSome: (parent) => parent.spanId }
+        )}`
+      )
+    ),
+    Effect.catchAll(() => Effect.logInfo(`[probe:${label}] no active span`))
+  )
 
 /**
  * The run's mutable state behind one named surface. It owns the event
@@ -224,6 +256,7 @@ const buildImportEffect = ({
 }): Effect.Effect<ImportSummary, never, FhirR4ResourcesHttpApiClient> =>
   Effect.scoped(
     Effect.gen(function* () {
+      yield* logCurrentSpan('sync')
       const stateMachine = yield* makeRunStateMachine(setFailed, onErrorRef)
 
       // One resource's PUT, retried with bounded exponential backoff (3
@@ -282,16 +315,24 @@ const buildImportEffect = ({
       const writeBatch = (
         resources: ReadonlyArray<AnyCollectorResource>
       ): Effect.Effect<void, never, FhirR4ResourcesHttpApiClient> =>
-        Effect.forEach(
-          resources,
-          // Entities filter null-id resources before emitting; narrow
-          // defensively for the typed `path`.
-          (resource) =>
-            resource.id === null
-              ? Effect.logWarning(`useSyncRunner: skipping resource with null id`)
-              : writeResourceWithRetries(resource, resource.id),
-          { concurrency: 'unbounded', discard: true }
-        ).pipe(
+        logCurrentSpan('importing').pipe(
+          Effect.zipRight(
+            Effect.forEach(
+              resources,
+              // Entities filter null-id resources before emitting; narrow
+              // defensively for the typed `path`.
+              (resource) =>
+                resource.id === null
+                  ? Effect.logWarning(`useSyncRunner: skipping resource with null id`)
+                  : Effect.andThen(
+                      Effect.logInfo(
+                        `useSyncRunner: upserting ${resource.resourceType}/${resource.id}`
+                      ),
+                      writeResourceWithRetries(resource, resource.id)
+                    ),
+              { concurrency: WRITE_CONCURRENCY, discard: true }
+            )
+          ),
           Effect.withSpan(Telemetry.Importing.Span.Name, {
             attributes: { [Telemetry.Importing.Span.Attributes.ResourceCount]: resources.length },
           })
@@ -347,10 +388,15 @@ const buildImportEffect = ({
                 Effect.logError('useSyncRunner: handler registration failed', error)
               )
             )
-          yield* sendCollectorMessage({
-            _tag: 'RequestSniffableWebView',
-            source: scrapingPlan.firstPage,
-          }).pipe(
+          // Captured inside the `Sync` span (see `Effect.withSpan` below),
+          // so the sniffer can link its per-page root traces back to this
+          // run's trace.
+          const linkedSpan = yield* captureLinkedSpan
+          yield* sendCollectorMessage(
+            linkedSpan === undefined
+              ? { _tag: 'RequestSniffableWebView', source: scrapingPlan.firstPage }
+              : { _tag: 'RequestSniffableWebView', source: scrapingPlan.firstPage, linkedSpan }
+          ).pipe(
             Effect.catchAllCause((cause) =>
               Effect.logError('useSyncRunner: failed to dispatch RequestSniffableWebView', cause)
             )
@@ -385,18 +431,18 @@ const buildImportEffect = ({
 
           const shouldTerminate = yield* Match.value({
             event,
-            waitDuration,
+            settledBeforeListening: currentlySettled,
           }).pipe(
             Match.withReturnType<Effect.Effect<boolean, never, FhirR4ResourcesHttpApiClient>>(),
             Match.when({ event: Option.isSome }, ({ event: { value: takenEvent } }) =>
               processStateEvent(takenEvent).pipe(Effect.as(false))
             ),
-            Match.when({ event: Option.isNone, waitDuration: SHORT_CONFIRM_WINDOW }, () =>
-              // Confirm things remained settled
+            // Confirm things remained settled after SHORT_CONFIRM_WINDOW
+            Match.when({ event: Option.isNone, settledBeforeListening: true }, () =>
               stateMachine.isSettled(inProgressBridgeResponses)
             ),
             // We waited the long `idleTimeout`, no event arrived, terminate now.
-            Match.when({ event: Option.isNone, waitDuration: idleTimeout }, () =>
+            Match.when({ event: Option.isNone, settledBeforeListening: false }, () =>
               Effect.succeed(true)
             ),
             Match.orElse(() =>
@@ -404,6 +450,13 @@ const buildImportEffect = ({
                 Effect.as(true)
               )
             )
+          )
+
+          yield* Effect.logInfo(
+            `useSyncRunner: drive loop iteration — event=${Option.match(event, {
+              onNone: () => 'none',
+              onSome: (e) => e._tag,
+            })} settledBeforeListening=${currentlySettled} shouldTerminate=${shouldTerminate}`
           )
 
           if (shouldTerminate) {
@@ -414,7 +467,22 @@ const buildImportEffect = ({
 
       return yield* stateMachine.summary
     })
-  ).pipe(Effect.withSpan(Telemetry.Sync.Span.Name, {}))
+  ).pipe(
+    Effect.withSpan(Telemetry.Sync.Span.Name, {}),
+    // TEMPORARY: log when the Sync span ends and how. A `Success` here means
+    // the span closed cleanly and *should* have flushed as a transaction;
+    // an interrupted `Failure` means teardown aborted the run (the likely
+    // "no collector.sync" cause — the root ends mid-flush).
+    Effect.onExit((exit) =>
+      exit._tag === 'Success'
+        ? Effect.logInfo('[probe:sync-exit] Sync span ended — success')
+        : Effect.logInfo(
+            `[probe:sync-exit] Sync span ended — failure interrupted=${Cause.isInterruptedOnly(
+              exit.cause
+            )} cause=${Cause.pretty(exit.cause)}`
+          )
+    )
+  )
 
 /**
  * Drives a single collector sync as a TanStack triggered mutation over

@@ -1,3 +1,4 @@
+import type { LinkedSpanContext } from 'browser-sniffer-expo'
 import type { CollectorBridge } from 'collector-fundamentals/bridge'
 import type { WebViewSource } from 'collector-fundamentals/model'
 import { Effect } from 'effect'
@@ -32,24 +33,26 @@ import { useBrowserSnifferSender } from './message-sender-pipes.tsx'
 const useCollectorHostHandlers = (): MessageHandler.HandlersFor<
   (typeof CollectorBridge)['WebToHost']
 > => {
-  const { setPendingSource, modalPath } = useCollectorHost()
+  const { setPendingSource, setPendingLinkedSpan, modalPath } = useCollectorHost()
   const router = useRouter()
   const sendToSniffer = useBrowserSnifferSender()
 
-  // `setPendingSource` and `router.push` must commit in the same React
-  // batch — `CollectorModalRoute` reads `pendingSource` on its first
-  // mount, and a render between the two writes would leave it null.
+  // `setPendingSource` / `setPendingLinkedSpan` and `router.push` must
+  // commit in the same React batch — `CollectorModalRoute` reads
+  // `pendingSource` on its first mount, and a render between the writes
+  // would leave it null. React 18 auto-batches these synchronous writes.
   const pushModal = useCallback(
-    (source: WebViewSource.Any): void => {
+    (source: WebViewSource.Any, linkedSpan: LinkedSpanContext | undefined): void => {
       setPendingSource(source)
+      setPendingLinkedSpan(linkedSpan ?? null)
       router.push(modalPath)
     },
-    [router, modalPath, setPendingSource]
+    [router, modalPath, setPendingSource, setPendingLinkedSpan]
   )
 
   return useMemo(
     () => ({
-      RequestSniffableWebView: ({ source }) =>
+      RequestSniffableWebView: ({ source, linkedSpan }) =>
         Effect.suspend(() => {
           // Defense-in-depth: refuse non-`http(s)://` URIs even
           // though the bridge schema already restricts `Uri` to
@@ -61,7 +64,7 @@ const useCollectorHostHandlers = (): MessageHandler.HandlersFor<
               'collector-expo: refusing non-http(s) RequestSniffableWebView URI'
             ).pipe(Effect.annotateLogs({ uri: source.uri }))
           }
-          return Effect.sync(() => pushModal(source))
+          return Effect.sync(() => pushModal(source, linkedSpan))
         }),
       Open: ({ source }) => Effect.sync(() => setPendingSource(source)),
       SniffingComplete: () => Effect.sync(() => router.back()),
