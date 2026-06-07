@@ -17,7 +17,18 @@ import type {
   HttpMethod,
   HttpMiddleware,
 } from '@effect/platform'
-import { Duration, Effect, FiberSet, Inspectable, Layer, Option, Ref, Stream, Tracer } from 'effect'
+import {
+  Cause,
+  Duration,
+  Effect,
+  FiberSet,
+  Inspectable,
+  Layer,
+  Option,
+  Ref,
+  Stream,
+  Tracer,
+} from 'effect'
 import type { Record as RecordNS, Scope } from 'effect'
 import type { OnHttpRequestPayload, ServerOptions } from '../ExpoEffectPlatform.types.ts'
 import NativeModule from '../ExpoEffectPlatformModule.ts'
@@ -401,18 +412,20 @@ const expandHeaders = (
  * `respond` localises the cost to the bridge / native server.
  */
 const respond = (
-  requestId: string,
-  status: number,
+  request: ServerRequestImpl,
+  response: ServerResponse.HttpServerResponse,
   headers: Record<string, ReadonlyArray<string>>,
   body: string,
   encoding: 'utf8' | 'base64'
-): Effect.Effect<void> =>
-  Effect.promise(() =>
-    NativeModule.respondToRequest(requestId, status, headers, body, encoding)
-  ).pipe(
+): Effect.Effect<void, Error.ResponseError> =>
+  Effect.tryPromise({
+    try: () =>
+      NativeModule.respondToRequest(request.requestId, response.status, headers, body, encoding),
+    catch: (cause) => new Error.ResponseError({ request, response, reason: 'Decode', cause }),
+  }).pipe(
     Effect.withSpan(Telemetry.Respond.Span.Name, {
       attributes: {
-        [Telemetry.Attributes.HttpResponseStatusCode]: status,
+        [Telemetry.Attributes.HttpResponseStatusCode]: response.status,
         [Telemetry.Attributes.ResponseEncoding]: encoding,
         [Telemetry.Attributes.HttpResponseBodySize]: body.length,
       },
@@ -420,35 +433,58 @@ const respond = (
     Effect.timed,
     Effect.tap(([elapsed]) =>
       Effect.logInfo(
-        `[expo_http] respond ${status} ${encoding} ${body.length}b in ${Duration.toMillis(elapsed)}ms`
+        `[expo_http] respond ${response.status} ${encoding} ${body.length}b in ${Duration.toMillis(elapsed)}ms`
       )
     ),
-    Effect.asVoid
+    Effect.asVoid,
+    Effect.tapErrorCause((cause) =>
+      Effect.logError(
+        `ExpoHttpServer: native respondToRequest rejected (${request.method} ${request.url}, status ${response.status}, ${body.length} ${encoding} chars)`,
+        cause
+      )
+    )
   )
 
 /** File-backed variant of {@link respond} (native streams the file). */
 const respondWithFile = (
-  requestId: string,
-  status: number,
+  request: ServerRequestImpl,
+  response: ServerResponse.HttpServerResponse,
   headers: Record<string, ReadonlyArray<string>>,
   filePath: string,
   start: number | null,
   end: number | null
-): Effect.Effect<void> =>
-  Effect.promise(() =>
-    NativeModule.respondToRequestWithFile(requestId, status, headers, filePath, start, end)
-  ).pipe(
+): Effect.Effect<void, Error.ResponseError> =>
+  Effect.tryPromise({
+    try: () =>
+      NativeModule.respondToRequestWithFile(
+        request.requestId,
+        response.status,
+        headers,
+        filePath,
+        start,
+        end
+      ),
+    catch: (cause) => new Error.ResponseError({ request, response, reason: 'Decode', cause }),
+  }).pipe(
     Effect.withSpan(Telemetry.Respond.Span.Name, {
       attributes: {
-        [Telemetry.Attributes.HttpResponseStatusCode]: status,
+        [Telemetry.Attributes.HttpResponseStatusCode]: response.status,
         [Telemetry.Attributes.ResponseKind]: 'file',
       },
     }),
     Effect.timed,
     Effect.tap(([elapsed]) =>
-      Effect.logInfo(`[expo_http] respond ${status} file in ${Duration.toMillis(elapsed)}ms`)
+      Effect.logInfo(
+        `[expo_http] respond ${response.status} file in ${Duration.toMillis(elapsed)}ms`
+      )
     ),
-    Effect.asVoid
+    Effect.asVoid,
+    Effect.tapErrorCause((cause) =>
+      Effect.logError(
+        `ExpoHttpServer: native respondToRequestWithFile rejected (${request.method} ${request.url}, status ${response.status}, file ${filePath})`,
+        cause
+      )
+    )
   )
 
 const handleResponse = (
@@ -466,8 +502,6 @@ const handleResponse = (
       )
       return
     }
-    const requestId = request.requestId
-
     // Record the status on the server (request) span — the current span here,
     // since the inner handler spans have already closed by response time.
     yield* Effect.annotateCurrentSpan(Telemetry.Attributes.HttpResponseStatusCode, response.status)
@@ -478,8 +512,16 @@ const handleResponse = (
     }
     const headers = expandHeaders(response.headers, setCookies)
 
+    // Summarise what status is about to cross the bridge. A 5xx here means the
+    // served app failed (see `loggedApp` in serve()) or toHandled derived an
+    // error response; logged at WARNING so it stands out in on-device logs.
+    const relayLog = response.status >= 500 ? Effect.logWarning : Effect.logDebug
+    yield* relayLog(
+      `ExpoHttpServer: relaying ${response.status} (${request.method} ${request.url}, body ${response.body._tag})`
+    )
+
     if (request.method === 'HEAD') {
-      yield* respond(requestId, response.status, headers, '', 'utf8')
+      yield* respond(request, response, headers, '', 'utf8')
       return
     }
 
@@ -488,15 +530,15 @@ const handleResponse = (
 
     switch (body._tag) {
       case 'Empty': {
-        yield* respond(requestId, response.status, headers, '', 'utf8')
+        yield* respond(request, response, headers, '', 'utf8')
         break
       }
       case 'Raw': {
         const rawBody = body.body
         if (isExpoFileBody(rawBody)) {
           yield* respondWithFile(
-            requestId,
-            response.status,
+            request,
+            response,
             headers,
             rawBody.expoFilePath,
             rawBody.start ?? null,
@@ -509,24 +551,24 @@ const handleResponse = (
           } else if (rawBody != null) {
             rawText = JSON.stringify(rawBody)
           }
-          yield* respond(requestId, response.status, headers, rawText, 'utf8')
+          yield* respond(request, response, headers, rawText, 'utf8')
         }
         break
       }
       case 'Uint8Array': {
         if (isTextContentType(body.contentType)) {
           const text = new TextDecoder('utf-8').decode(body.body)
-          yield* respond(requestId, response.status, headers, text, 'utf8')
+          yield* respond(request, response, headers, text, 'utf8')
         } else {
           const b64 = yield* encodeBase64Spanned(body.body)
-          yield* respond(requestId, response.status, headers, b64, 'base64')
+          yield* respond(request, response, headers, b64, 'base64')
         }
         break
       }
       case 'FormData': {
         yield* respond(
-          requestId,
-          response.status,
+          request,
+          response,
           headers,
           'FormData responses are not supported in expo-effect-platform v1',
           'utf8'
@@ -548,7 +590,7 @@ const handleResponse = (
           offset += chunk.length
         }
         const b64 = yield* encodeBase64Spanned(combined)
-        yield* respond(requestId, response.status, headers, b64, 'base64')
+        yield* respond(request, response, headers, b64, 'base64')
         break
       }
     }
@@ -564,12 +606,31 @@ const make = (
 ): Effect.Effect<Server.HttpServer, never, Scope.Scope> =>
   Effect.gen(function* () {
     yield* Effect.acquireRelease(
-      Effect.promise(() => NativeModule.startServer(port, options)),
+      // `Effect.promise` turns a rejection into a *defect* (the layer's error
+      // channel is `never`, so it can't be widened) — without this span + log
+      // a failed native bind would die silently. `tapErrorCause` runs after the
+      // span closes, matching `respond`'s pattern below.
+      Effect.promise(() => NativeModule.startServer(port, options)).pipe(
+        Effect.withSpan(Telemetry.Server.Start.Span.Name, {
+          attributes: { [Telemetry.Server.Attributes.Port]: port },
+        }),
+        Effect.tapErrorCause((cause) =>
+          Effect.logError(`ExpoHttpServer: native startServer rejected (port ${port})`, cause)
+        )
+      ),
       // `stopServer`'s argument is FlyingFox's `server.stop(timeout:)` grace
       // window for in-flight requests. The default 5s matches a vanilla HTTP
       // server but is the wrong shape for short-budget hosts (iOS background
       // expiration); consumers can override via `options.stopTimeoutSeconds`.
-      () => Effect.promise(() => NativeModule.stopServer(options?.stopTimeoutSeconds ?? 5))
+      () =>
+        Effect.promise(() => NativeModule.stopServer(options?.stopTimeoutSeconds ?? 5)).pipe(
+          Effect.withSpan(Telemetry.Server.Stop.Span.Name, {
+            attributes: { [Telemetry.Server.Attributes.Port]: port },
+          }),
+          Effect.tapErrorCause((cause) =>
+            Effect.logError(`ExpoHttpServer: native stopServer rejected (port ${port})`, cause)
+          )
+        )
     )
 
     const hostname = options?.hostname ?? '127.0.0.1'
@@ -601,11 +662,27 @@ const make = (
           // as one span. The routed `fhir.*` / LiveStore spans nest beneath
           // it; the remainder is the decode/encode/middleware HttpApi does
           // internally, which this adapter can't span directly.
-          const app = App.toHandled(
-            httpApp.pipe(Effect.withSpan(Telemetry.App.Span.Name)),
-            handleResponse,
-            middleware
+          //
+          // `tapErrorCause` logs the served app failing *before* toHandled
+          // collapses the cause into an opaque 500/empty response — that's the
+          // signal that distinguishes "the FHIR handler died" (this log fires)
+          // from "the bridge failed to relay a good response" (the native
+          // respond* rejection logs instead). Interrupts are normal teardown,
+          // so they're filtered out.
+          const loggedApp = httpApp.pipe(
+            Effect.withSpan(Telemetry.App.Span.Name),
+            Effect.tapErrorCause((cause) =>
+              Cause.isInterruptedOnly(cause)
+                ? Effect.void
+                : Effect.flatMap(ServerRequest.HttpServerRequest, (req) =>
+                    Effect.logError(
+                      `ExpoHttpServer: served app failed before response conversion (${req.method} ${req.url}); relaying a derived error response`,
+                      cause
+                    )
+                  )
+            )
           )
+          const app = App.toHandled(loggedApp, handleResponse, middleware)
 
           const subscription = NativeModule.addListener(
             'onHttpRequest',

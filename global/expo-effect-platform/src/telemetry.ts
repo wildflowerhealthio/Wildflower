@@ -114,4 +114,92 @@ const EncodeBase64 = {
   Span: { Name: 'expo_http.encode_base64' },
 } as const
 
-export { App, Attributes, BodyRead, EncodeBase64, HandleResponse, Request, Respond }
+/**
+ * The native server lifecycle behind the `HttpServer` layer: `startServer`
+ * (the `acquireRelease` acquire) and `stopServer` (its release). A rejection
+ * of either native promise surfaces as a *defect* — the layer's error channel
+ * is `never`, so the adapter can't widen it — which is why both carry a span
+ * and a log: the failure is otherwise invisible until the daemon dies.
+ * `expo_http.*` namespaced; `server.port` is the OTel network semconv key.
+ */
+const Server = {
+  Attributes: {
+    /** TCP port the native server was asked to bind (OTel semconv). */
+    Port: 'server.port',
+  },
+  /** `NativeModule.startServer` — bind the listener. */
+  Start: { Span: { Name: 'expo_http.server.start' } },
+  /** `NativeModule.stopServer` — drain in-flight requests, release the port. */
+  Stop: { Span: { Name: 'expo_http.server.stop' } },
+} as const
+
+/**
+ * The Expo-backed `FileSystem.FileSystem` operations
+ * (`internal/file-system/*`). There is no stable OpenTelemetry file-system
+ * semconv, so span names are namespaced under `expo_fs.*` (mirroring
+ * `expo_http.*`); the OTel `error.type` key carries the failing
+ * `SystemError.reason` on the failure branch, and `expo_fs.path` the target
+ * path. Each implemented op is one span; the shared `Paths.info` probe nests
+ * beneath it as {@link FileSystem.Inspect}.
+ */
+const FileSystem = {
+  Attributes: {
+    /** Absolute path the operation targeted (device-local). */
+    Path: 'expo_fs.path',
+    /**
+     * `SystemError.reason` of a failed op (`NotFound`, `PermissionDenied`,
+     * `BadResource`, `Unknown`, …), recorded on the failure branch. OTel
+     * semconv key.
+     */
+    ErrorType: 'error.type',
+  },
+  /** `Paths.info` existence/kind probe shared by `access`/`stat`/`readFile`/… */
+  Inspect: { Span: { Name: 'expo_fs.inspect' } },
+  /** `access` — existence check (also backs the derived `exists`). */
+  Access: { Span: { Name: 'expo_fs.access' } },
+  /** `stat` — file / directory metadata. */
+  Stat: { Span: { Name: 'expo_fs.stat' } },
+  /** `readFile` — read a whole file into bytes. */
+  ReadFile: { Span: { Name: 'expo_fs.read_file' } },
+  /** `writeFile` — create-or-overwrite a file. */
+  WriteFile: { Span: { Name: 'expo_fs.write_file' } },
+  /** `makeDirectory` — create a directory (optionally recursive). */
+  MakeDirectory: { Span: { Name: 'expo_fs.make_directory' } },
+  /** `remove` — delete a file or directory. */
+  Remove: { Span: { Name: 'expo_fs.remove' } },
+} as const
+
+/**
+ * `HttpPlatform.fileResponse` / `fileWebResponse`
+ * (`internal/httpPlatform.ts`): turning a file path into an
+ * `HttpServerResponse` by reading size + mtime via `expo-file-system`'s
+ * *synchronous* `File` accessors. Those accessors throw on native failure, so
+ * the span's failure branch records `error.type`. `expo_http.*` namespaced.
+ */
+const FileResponse = {
+  Attributes: {
+    /** Path of the file being served. */
+    Path: 'expo_fs.path',
+    /** Byte length advertised as `Content-Length` (OTel HTTP semconv). */
+    BodySize: 'http.response.body.size',
+    /** `SystemError.reason` recorded on the failure branch (OTel semconv). */
+    ErrorType: 'error.type',
+  },
+  /** Building a file-backed response (`fileResponse`). */
+  Span: { Name: 'expo_http.file_response' },
+  /** The unsupported `fileWebResponse` path (returns 501). */
+  Web: { Span: { Name: 'expo_http.file_web_response' } },
+} as const
+
+export {
+  App,
+  Attributes,
+  BodyRead,
+  EncodeBase64,
+  FileResponse,
+  FileSystem,
+  HandleResponse,
+  Request,
+  Respond,
+  Server,
+}

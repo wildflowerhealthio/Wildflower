@@ -127,8 +127,7 @@ const makeSnifferTelemetry = (linkedSpan?: LinkedSpanContext): SnifferTelemetry 
   // Parent for new response spans / click events: the open page span, or
   // — before the first PageLoaded — the initial-load span, falling back to
   // the session span (e.g. a click before initial-load settles).
-  const currentParent = (): Tracer.Span | null =>
-    currentPageSpan ?? initialLoadSpan ?? sessionSpan
+  const currentParent = (): Tracer.Span | null => currentPageSpan ?? initialLoadSpan ?? sessionSpan
 
   const start: Effect.Effect<void> = Effect.gen(function* () {
     const session = yield* Effect.makeSpan(Telemetry.Sniffing.Session.Span.Name, {
@@ -245,11 +244,16 @@ const makeSnifferTelemetry = (linkedSpan?: LinkedSpanContext): SnifferTelemetry 
         Effect.zipRight(handlers.ResponseFinished(message))
       ),
     RequestError: (message) =>
-      endResponse(message.id, Telemetry.Sniffing.Outcomes.Error, Exit.fail(message.message), (span) => {
-        span.attribute(Telemetry.Sniffing.Attributes.ErrorType, 'RequestError')
-        span.attribute(Telemetry.Sniffing.Attributes.ErrorMessage, message.message)
-        span.attribute(Telemetry.Sniffing.Attributes.UrlFull, message.url)
-      }).pipe(Effect.zipRight(handlers.RequestError(message))),
+      endResponse(
+        message.id,
+        Telemetry.Sniffing.Outcomes.Error,
+        Exit.fail(message.message),
+        (span) => {
+          span.attribute(Telemetry.Sniffing.Attributes.ErrorType, 'RequestError')
+          span.attribute(Telemetry.Sniffing.Attributes.ErrorMessage, message.message)
+          span.attribute(Telemetry.Sniffing.Attributes.UrlFull, message.url)
+        }
+      ).pipe(Effect.zipRight(handlers.RequestError(message))),
     Cancelled: (message) =>
       endResponse(message.id, Telemetry.Sniffing.Outcomes.Cancelled, Exit.void).pipe(
         Effect.zipRight(handlers.Cancelled(message))

@@ -35,9 +35,7 @@ import { AnySchema as WebViewSourceSchema } from './model/web-view-source.ts'
 const RequestSniffableWebView = Schema.parseJson(
   Schema.TaggedStruct('RequestSniffableWebView', {
     source: WebViewSourceSchema,
-    linkedSpan: Schema.optional(
-      Schema.Struct({ traceId: Schema.String, spanId: Schema.String })
-    ),
+    linkedSpan: Schema.optional(Schema.Struct({ traceId: Schema.String, spanId: Schema.String })),
   })
 )
 
