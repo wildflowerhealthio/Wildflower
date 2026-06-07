@@ -726,18 +726,31 @@ const make = (
                       }),
                     }
               runFork(
-                Effect.provideService(app, ServerRequest.HttpServerRequest, request).pipe(
-                  Effect.withSpan(Telemetry.Request.Span.name(request.method), {
-                    kind: Telemetry.Request.Span.Kind,
-                    ...lineage,
-                    attributes,
-                  }),
-                  Effect.onExit(() =>
-                    Effect.logInfo(
-                      `[expo_http] ${request.method} ${request.originalUrl} handled in ${Date.now() - receivedAtMs}ms`
+                // `suspend` defers to fiber-run time, so `scheduledAtMs` is when
+                // the forked fiber actually starts executing. The delta from
+                // `receivedAtMs` is fork-scheduling latency — the one segment the
+                // spans below can't see, because their clocks only start once the
+                // fiber runs. On RN's single JS thread a saturated runtime (e.g. a
+                // LiveStore commit storm) shows up here as a large `scheduled in`.
+                Effect.suspend(() => {
+                  const scheduledAtMs = Date.now()
+                  return Effect.provideService(
+                    app,
+                    ServerRequest.HttpServerRequest,
+                    request
+                  ).pipe(
+                    Effect.withSpan(Telemetry.Request.Span.name(request.method), {
+                      kind: Telemetry.Request.Span.Kind,
+                      ...lineage,
+                      attributes,
+                    }),
+                    Effect.onExit(() =>
+                      Effect.logInfo(
+                        `[expo_http] ${request.method} ${request.originalUrl} scheduled in ${scheduledAtMs - receivedAtMs}ms, handled in ${Date.now() - receivedAtMs}ms`
+                      )
                     )
                   )
-                )
+                })
               )
             }
           )

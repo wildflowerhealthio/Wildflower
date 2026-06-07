@@ -249,5 +249,6 @@ const composeLivestoreModules = <
 
 export { composeLivestoreModules, defineSliceLivestore }
 export type { ComposedLivestoreModule, InputTables, InputMaterializers, LivestoreModule }
+export { makeLoopbackSyncBackend } from './loopback-sync-backend.ts'
 export { subscribeUntil } from './subscribeUntil.ts'
 export type { QueryableSubscribableStore } from './subscribeUntil.ts'
