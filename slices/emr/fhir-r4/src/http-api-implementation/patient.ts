@@ -21,7 +21,7 @@ const layer = makeDomainResourceHandlerLayer(
         Effect.try({
           try: () =>
             store.commit(
-              { label: Commit.Upsert(domainResources.Patient.resourceType) },
+              { label: Commit.Upsert(domainResources.Patient.resourceType), skipRefresh: true },
               domainResources.Patient.events.upsert({ resource })
             ),
           catch: () => new HttpApiError.ServiceUnavailable(),

@@ -1,7 +1,7 @@
 import { makePersistedAdapter } from '@livestore/adapter-expo'
 import type { Store } from '@livestore/livestore'
 import { type ReactApi, StoreRegistry, useStore } from '@livestore/react'
-import { Context } from 'effect'
+import { Context, Effect, Logger, LogLevel } from 'effect'
 import { Patient, warmupTable } from 'emr-core/livestore'
 import { ServerState } from 'local-http-server-core/livestore'
 import { unstable_batchedUpdates as batchUpdates } from 'react-native'
@@ -69,6 +69,8 @@ const wildflowerStoreOptions = {
     // unindexed-scan path once.
     warmupTable(store, { Resource: Patient })
   },
+  logLevel: LogLevel.All,
+  logger: Logger.logFmt,
 } as const
 
 /**

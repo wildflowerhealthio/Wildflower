@@ -286,17 +286,11 @@ const buildImportEffect = ({
             }
           }
         }).pipe(
-          Effect.withSpan(Telemetry.Importing.Update.Attempt.Span.Name, {
-            attributes: {
-              [Telemetry.Importing.Update.Attempt.Span.Attributes.Method]: 'PUT',
-              [Telemetry.Importing.Attributes.ResourceType]: resource.resourceType,
-            },
-          }),
-          Effect.retry(
-            Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3)))
-          ),
           Effect.tapError((err) =>
             Effect.logError(`useSyncRunner: upsert failed for ${resource.resourceType}/${id}`, err)
+          ),
+          Effect.retry(
+            Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3)))
           ),
           Effect.withSpan(Telemetry.Importing.Update.Span.Name, {
             attributes: { [Telemetry.Importing.Attributes.ResourceType]: resource.resourceType },
