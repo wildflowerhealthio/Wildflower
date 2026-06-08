@@ -13,12 +13,15 @@ import {
   makeFakeStore,
   mockBuildAppsCoreFactory,
   mockBuildLivestoreBaseFactory,
+  mockBuildLivestoreCommonFactory,
   mockBuildTunnelCoreFactory,
   resetHarness,
   type FakeStore,
 } from './__test-support__/host-receiver-test-mocks.ts'
 
 jest.mock('@livestore/livestore', () => mockBuildLivestoreBaseFactory())
+jest.mock('@livestore/common', () => mockBuildLivestoreCommonFactory())
+jest.mock('@livestore/common/schema', () => mockBuildLivestoreCommonFactory())
 jest.mock('tunnel-core/livestore', () => mockBuildTunnelCoreFactory())
 jest.mock('apps-core/bridge', () => mockBuildAppsCoreFactory())
 

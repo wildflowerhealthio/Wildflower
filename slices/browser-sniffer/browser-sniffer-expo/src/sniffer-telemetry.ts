@@ -104,6 +104,28 @@ const makeSnifferTelemetry = (linkedSpan?: LinkedSpanContext): SnifferTelemetry 
   // In-flight response spans, keyed by the request's correlation id.
   const responseSpans = new Map<string, ResponseSpanState>()
 
+  // Set synchronously by `dispose`'s gate (see `dispose` and `BridgedWebView`'s
+  // unmount cleanup). `start` provides a Layer — an async build step — so on a
+  // fast unmount (or React StrictMode's mount→unmount→mount) the cleanup can
+  // run before `start` has assigned `sessionSpan` / `initialLoadSpan`. Gating
+  // `start` on this flag means a `start` that loses the race opens nothing,
+  // rather than opening spans that `dispose` already missed and so never ends
+  // (a leaked, never-flushed span).
+  let disposed = false
+
+  // Every span the controller opens is ended through `endSpan`, which is
+  // idempotent per span: a terminal handler running on the dispatch fiber and
+  // `dispose` running on the unmount fiber can both reach for the same span
+  // (the dispatch fiber is forked, not provably interrupted before dispose),
+  // and OTel double-ends overwrite the first status/duration with the second.
+  // `WeakSet` membership records "already ended" without retaining the spans.
+  const endedSpans = new WeakSet<Tracer.Span>()
+  const endSpan = (span: Tracer.Span, endTime: bigint, exit: Exit.Exit<unknown, unknown>): void => {
+    if (endedSpans.has(span)) return
+    endedSpans.add(span)
+    span.end(endTime, exit)
+  }
+
   // Span link back to the collector's sync trace, applied to the session
   // span only. Every other span descends from the session in-process, so
   // they share its trace and need no link of their own. (Sentry promotes a
@@ -130,14 +152,32 @@ const makeSnifferTelemetry = (linkedSpan?: LinkedSpanContext): SnifferTelemetry 
   const currentParent = (): Tracer.Span | null => currentPageSpan ?? initialLoadSpan ?? sessionSpan
 
   const start: Effect.Effect<void> = Effect.gen(function* () {
+    // `start` provides a Layer (an async build step) before this body runs, so
+    // a fast unmount can flip `disposed` while it is still building. If the
+    // gate already closed, open nothing — otherwise the session / initial-load
+    // spans would be created after `dispose` already ran and so never get
+    // ended (and never flushed). See the `disposed` declaration above.
+    if (disposed) return
     const session = yield* Effect.makeSpan(Telemetry.Sniffing.Session.Span.Name, {
       root: true,
       links: sessionLinks,
     })
-    sessionSpan = session
-    initialLoadSpan = yield* Effect.makeSpan(Telemetry.Sniffing.InitialLoad.Span.Name, {
+    const initialLoad = yield* Effect.makeSpan(Telemetry.Sniffing.InitialLoad.Span.Name, {
       parent: session,
     })
+    // `makeSpan` is a yield point, so `dispose` could have flipped `disposed`
+    // (and ended whatever it saw — nothing, since these aren't published yet)
+    // while these spans were being built. Re-check before publishing: if the
+    // gate closed mid-flight, end the freshly-opened pair here so they don't
+    // leak. `endSpan` keeps this safe even if `dispose` somehow saw them.
+    if (disposed) {
+      const now = yield* Clock.currentTimeNanos
+      endSpan(initialLoad, now, Exit.void)
+      endSpan(session, now, Exit.void)
+      return
+    }
+    sessionSpan = session
+    initialLoadSpan = initialLoad
   })
 
   const rotatePage = (message: PageLoadedMsg): Effect.Effect<void> =>
@@ -148,7 +188,7 @@ const makeSnifferTelemetry = (linkedSpan?: LinkedSpanContext): SnifferTelemetry 
       // spans are deliberately left open — they settle on their own
       // terminal event, or are aborted on unmount.
       const openChild = currentPageSpan ?? initialLoadSpan
-      if (openChild !== null) openChild.end(now, Exit.void)
+      if (openChild !== null) endSpan(openChild, now, Exit.void)
       initialLoadSpan = null
       const attributes = {
         [Telemetry.Sniffing.Attributes.UrlFull]: message.url,
@@ -202,7 +242,7 @@ const makeSnifferTelemetry = (linkedSpan?: LinkedSpanContext): SnifferTelemetry 
       const now = yield* Clock.currentTimeNanos
       entry.span.attribute(Telemetry.Sniffing.Attributes.Outcome, outcome)
       decorate?.(entry.span)
-      entry.span.end(now, exit)
+      endSpan(entry.span, now, exit)
       responseSpans.delete(id)
     })
 
@@ -217,18 +257,27 @@ const makeSnifferTelemetry = (linkedSpan?: LinkedSpanContext): SnifferTelemetry 
     })
 
   const dispose: Effect.Effect<void> = Effect.gen(function* () {
+    // Close the start-gate synchronously, as the very first action: when run
+    // via `Effect.runFork` (the unmount cleanup), the gen's synchronous prefix
+    // executes eagerly, so a `start` racing this dispose sees `disposed` and
+    // opens nothing. Set before the first yield point so no async hop can slip
+    // a span past the gate. (See `disposed` and `start`.)
+    disposed = true
     const now = yield* Clock.currentTimeNanos
     for (const { span } of responseSpans.values()) {
       span.attribute(Telemetry.Sniffing.Attributes.Outcome, Telemetry.Sniffing.Outcomes.Aborted)
-      span.end(now, Exit.void)
+      // `endSpan` (not `span.end`) so a terminal handler that closed this same
+      // response span on the dispatch fiber can't be double-ended here.
+      endSpan(span, now, Exit.void)
     }
     responseSpans.clear()
     // End inside-out: the open page/initial-load child first, then the
     // session root. The session must end last — it's the transaction Sentry
-    // sends, and ending it flushes the whole buffered subtree.
+    // sends, and ending it flushes the whole buffered subtree. `endSpan`
+    // guards each against a concurrent / re-entrant close.
     const openChild = currentPageSpan ?? initialLoadSpan
-    if (openChild !== null) openChild.end(now, Exit.void)
-    if (sessionSpan !== null) sessionSpan.end(now, Exit.void)
+    if (openChild !== null) endSpan(openChild, now, Exit.void)
+    if (sessionSpan !== null) endSpan(sessionSpan, now, Exit.void)
     currentPageSpan = null
     initialLoadSpan = null
     sessionSpan = null

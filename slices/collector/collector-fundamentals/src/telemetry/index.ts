@@ -38,8 +38,8 @@ const Entity = {
   Attributes: {
     /** The matched entity definition's stable name. */
     Name: 'collector.entity.entity.name',
-    /** Decoded response body size in bytes (post base64-decode). */
-    Size: 'collector.entity.size',
+    /** Decoded response body size in bytes (post base64-decode); OTel semconv. */
+    Size: 'http.response.body.size',
     /** Request URL path (OTel semconv). */
     UrlPath: 'url.path',
   },
@@ -50,16 +50,17 @@ const Entity = {
       ChunkCount: 'collector.entity.chunk.count',
     },
   },
-}
+} as const
+
+const FhirResource = {
+  Attributes: {
+    /** FHIR resource type (`Patient` / `Observation` / `Binary`). */
+    Type: 'fhir.resource.type',
+  },
+} as const
 
 /** Turning a scraped HTTP response into FHIR resources and writing them back. */
 const Importing = {
-  /** Attribute keys shared across the importing spans. */
-  Attributes: {
-    /** FHIR resource type being imported (`Patient` / `Observation` / `Binary`). */
-    ResourceType: 'collector.importing.resourceType',
-  },
-
   Span: {
     Name: 'collector.importing',
     Attributes: {
@@ -100,10 +101,16 @@ const Importing = {
 } as const
 
 const Sync = {
+  /** Attribute keys shared across the sync spans. */
+  Attributes: {
+    /** Sync span exit outcome: clean vs cancelled. */
+    Outcome: 'collector.sync.outcome',
+  },
+
   Span: {
     Name: 'collector.sync',
     Attributes: {},
   },
-}
+} as const
 
-export { Entity, Importing, Sniffing, Sync }
+export { Entity, Importing, Sniffing, Sync, FhirResource }

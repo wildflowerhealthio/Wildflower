@@ -5,10 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { Schema } from 'effect'
-import {
-  Observation as StoreObservation,
-  Patient as StorePatient,
-} from 'emr-core/livestore'
+import { Observation as StoreObservation, Patient as StorePatient } from 'emr-core/livestore'
 import { describe, test } from 'vite-plus/test'
 
 import { Observation as FhirObservation } from '../src/resources/observation/index.ts'
@@ -115,29 +112,17 @@ describe('Microbench: realistic Patient (SMART Health IT fixture)', () => {
 
   test(`encodeSync(StorePatient.RowSchema) ×${MICRO_ITERATIONS} — commit hot path`, async () => {
     const encode = Schema.encodeSync(StorePatient.RowSchema)
-    await runMicrobench(
-      'encode-patient-row',
-      () => void encode(patientRow),
-      'encode-patient-row'
-    )
+    await runMicrobench('encode-patient-row', () => void encode(patientRow), 'encode-patient-row')
   })
 
   test(`encodeSync(FhirPatient.Schema) ×${MICRO_ITERATIONS} — HTTP response hot path`, async () => {
     const encode = Schema.encodeSync(FhirPatient.Schema)
-    await runMicrobench(
-      'encode-patient-fhir',
-      () => void encode(patientRow),
-      'encode-patient-fhir'
-    )
+    await runMicrobench('encode-patient-fhir', () => void encode(patientRow), 'encode-patient-fhir')
   })
 
   test(`decodeUnknownSync(FhirPatient.Schema) ×${MICRO_ITERATIONS} — HTTP request hot path`, async () => {
     const decode = Schema.decodeUnknownSync(FhirPatient.Schema)
-    await runMicrobench(
-      'decode-patient-fhir',
-      () => void decode(rawPatient),
-      'decode-patient-fhir'
-    )
+    await runMicrobench('decode-patient-fhir', () => void decode(rawPatient), 'decode-patient-fhir')
   })
 })
 

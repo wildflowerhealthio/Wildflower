@@ -266,14 +266,16 @@ const make = <TResources>({
           // Decode failure on a *tracked* response: route through the
           // error channel of `onResult` (mirrors the `RequestError`
           // shape) and drop the entry. The host gets one terminal
-          // observation per id; no chunk is appended.
-          MutableHashMap.remove(inProgressResponses, event.id)
+          // observation per id; no chunk is appended. Offer the event
+          // before dropping the id — same ordering invariant as
+          // `ResponseFinished`.
           handleResult({
             response,
             result: Either.left(
               new UnknownException(decoded.left, `Failed to decode base64 response data`)
             ),
           })
+          MutableHashMap.remove(inProgressResponses, event.id)
           return
         }
         yield* Effect.sync(() => response.appendChunk(decoded.right))
@@ -289,7 +291,13 @@ const make = <TResources>({
           return
         }
         const { response, entity } = maybe.value
-        MutableHashMap.remove(inProgressResponses, event.id)
+        // `url.path` is a path-only OTel semconv key: strip scheme/host/query
+        // from the captured full URL, falling back to the raw string if it
+        // doesn't parse as an absolute URL.
+        const urlPath = Either.getOrElse(
+          Either.try(() => new URL(response.url).pathname),
+          () => response.url
+        )
         const result = yield* Effect.either(entity.parse(response)).pipe(
           // `Effect.either` always succeeds, so the span closes OK; record the
           // OTel-standard `error.type` (the ParseError tag) only on the Left
@@ -307,11 +315,19 @@ const make = <TResources>({
               [Telemetry.Entity.Attributes.Name]: entity.name,
               [Telemetry.Entity.Attributes.Size]: response.byteLength,
               [Telemetry.Entity.Chunk.Attributes.ChunkCount]: response.chunkCount,
-              [Telemetry.Entity.Attributes.UrlPath]: response.url,
+              [Telemetry.Entity.Attributes.UrlPath]: urlPath,
             },
           })
         )
         handleResult({ response, result })
+        // Drop the tracked id only *after* `handleResult` has offered the
+        // terminal event. The parse above is span-wrapped and latency-bearing;
+        // removing the id before it would let a consumer's quiescence check
+        // (sniffing done + empty mailbox + no tracked responses) observe a
+        // momentary "settled" state mid parse→offer and terminate the run while
+        // this write is still pending. Removing after the offer guarantees the
+        // consumer always sees either the tracked id or the queued event.
+        MutableHashMap.remove(inProgressResponses, event.id)
       })
 
     const RequestError: Service['RequestError'] = (event) =>
@@ -330,8 +346,11 @@ const make = <TResources>({
         // load-bearing for parsing (we never re-route here); the start
         // URL stays on `response.url` for the consumer's inspection.
         const { response } = maybe.value
-        MutableHashMap.remove(inProgressResponses, event.id)
+        // Offer the terminal event first, then drop the tracked id — same
+        // ordering invariant as `ResponseFinished`: a consumer must never see
+        // the id gone before its event is queued.
         handleResult({ response, result: Either.left(new UnknownException(event.message)) })
+        MutableHashMap.remove(inProgressResponses, event.id)
       })
 
     const Cancelled: Service['Cancelled'] = (event) =>
@@ -347,11 +366,13 @@ const make = <TResources>({
           return
         }
         const { response } = maybe.value
-        MutableHashMap.remove(inProgressResponses, event.id)
+        // Offer the terminal event first, then drop the tracked id — same
+        // ordering invariant as `ResponseFinished`.
         handleResult({
           response,
           result: Either.left(new SnifferCancelled({ id: event.id })),
         })
+        MutableHashMap.remove(inProgressResponses, event.id)
       })
 
     const warnAndDrop = (event: { readonly url: string }): Effect.Effect<void, never, never> =>

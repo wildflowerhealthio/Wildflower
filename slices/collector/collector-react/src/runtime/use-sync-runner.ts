@@ -16,7 +16,6 @@ import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import type { ScrapingPlan } from 'collector-fundamentals/model'
 import * as Telemetry from 'collector-fundamentals/telemetry'
 import {
-  Cause,
   Duration,
   Effect,
   Either,
@@ -100,11 +99,15 @@ type ImportEvent =
 const DEFAULT_IDLE_TIMEOUT: Duration.DurationInput = Duration.seconds(30)
 
 /**
- * Grace window for the completion check. `ResponseFinished` removes the
- * id from `inProgressResponses` *before* it offers the `parsed` event,
- * so a "quiescent" observation can momentarily precede the event that
- * still needs a write. After quiescence holds we wait this long for a
- * straggler; only a quiet window confirms completion.
+ * Grace window for the completion check. The handler now drops a response's
+ * id from `inProgressResponses` only *after* it offers the terminal
+ * `parsed`/`failure` event, so a "quiescent" observation can no longer
+ * precede the event that still needs a write — the parse→offer race is
+ * closed structurally in `CollectorBridgeMessageHandler`. This window
+ * remains a small belt-and-suspenders re-confirm: after quiescence first
+ * holds we wait this long for a straggler before terminating, so a late
+ * sniffer event (e.g. a `ResponseStart` that hasn't re-populated tracking
+ * yet) still gets a chance to land.
  */
 const SHORT_CONFIRM_WINDOW: Duration.DurationInput = Duration.millis(250)
 
@@ -116,27 +119,6 @@ const SHORT_CONFIRM_WINDOW: Duration.DurationInput = Duration.millis(250)
  * resolve/time out; widen once the stall is understood.
  */
 const WRITE_CONCURRENCY = 1
-
-/**
- * TEMPORARY span-parenting probe (remove once the `collector.sync` nesting
- * is understood). Logs the active span's identity + parent so we can read,
- * from the SPA console, whether the collector's child spans nest under
- * `collector.sync` (same `traceId`, `parent` = Sync's `spanId`) or float as
- * their own roots. Never fails — swallows the no-active-span case so it
- * can't perturb the run's `never` error channel.
- */
-const logCurrentSpan = (label: string): Effect.Effect<void> =>
-  Effect.currentSpan.pipe(
-    Effect.flatMap((span) =>
-      Effect.logInfo(
-        `[probe:${label}] traceId=${span.traceId} spanId=${span.spanId} parent=${Option.match(
-          span.parent,
-          { onNone: () => 'none', onSome: (parent) => parent.spanId }
-        )}`
-      )
-    ),
-    Effect.catchAll(() => Effect.logInfo(`[probe:${label}] no active span`))
-  )
 
 /**
  * The run's mutable state behind one named surface. It owns the event
@@ -231,10 +213,12 @@ const makeRunStateMachine = (
  *     batch is settled by the time the event finishes, so there's no
  *     outstanding-write bookkeeping. The write requirement bubbles up to
  *     this Effect's `R`, which the broadened collector `runAuthed` satisfies.
- *   - Completion is `RunProgress.isSettled` — sniffing dispatched its
- *     terminal step, no response is mid-stream, the mailbox is empty —
- *     re-confirmed across {@link SHORT_CONFIRM_WINDOW} to absorb the handler's
- *     remove-before-offer reorder. {@link DEFAULT_IDLE_TIMEOUT} is the
+ *   - Completion is {@link RunStateMachine.isSettled} — sniffing dispatched
+ *     its terminal step, no response is mid-stream, the mailbox is empty —
+ *     re-confirmed across {@link SHORT_CONFIRM_WINDOW}. The handler keeps a
+ *     response tracked until *after* its `parsed`/`failure` event is offered
+ *     (see {@link SHORT_CONFIRM_WINDOW}), so quiescence can't be observed while
+ *     a parse→offer is still outstanding. {@link DEFAULT_IDLE_TIMEOUT} is the
  *     escape hatch for a silent host.
  *   - `release` (natural completion, idle settle, or explicit cancel via
  *     the run's `AbortSignal`): `cancelAllInFlight` → `clear` → `unregister`.
@@ -256,7 +240,6 @@ const buildImportEffect = ({
 }): Effect.Effect<ImportSummary, never, FhirR4ResourcesHttpApiClient> =>
   Effect.scoped(
     Effect.gen(function* () {
-      yield* logCurrentSpan('sync')
       const stateMachine = yield* makeRunStateMachine(setFailed, onErrorRef)
 
       // One resource's PUT, retried with bounded exponential backoff (3
@@ -293,7 +276,7 @@ const buildImportEffect = ({
             Schedule.exponential('250 millis').pipe(Schedule.intersect(Schedule.recurs(3)))
           ),
           Effect.withSpan(Telemetry.Importing.Update.Span.Name, {
-            attributes: { [Telemetry.Importing.Attributes.ResourceType]: resource.resourceType },
+            attributes: { [Telemetry.FhirResource.Attributes.Type]: resource.resourceType },
           }),
           Effect.asVoid,
           // Retries exhausted: record + notify, but don't fail the run.
@@ -304,29 +287,26 @@ const buildImportEffect = ({
 
       // Upsert a decoded response's resources — concurrent within the
       // batch, awaited as a whole so the drive loop blocks until they
-      // settle. `discard` because failures are recorded inside `writeOne`;
-      // nothing flows back.
+      // settle. `discard` because failures are recorded inside
+      // `writeResourceWithRetries`; nothing flows back.
       const writeBatch = (
         resources: ReadonlyArray<AnyCollectorResource>
       ): Effect.Effect<void, never, FhirR4ResourcesHttpApiClient> =>
-        logCurrentSpan('importing').pipe(
-          Effect.zipRight(
-            Effect.forEach(
-              resources,
-              // Entities filter null-id resources before emitting; narrow
-              // defensively for the typed `path`.
-              (resource) =>
-                resource.id === null
-                  ? Effect.logWarning(`useSyncRunner: skipping resource with null id`)
-                  : Effect.andThen(
-                      Effect.logInfo(
-                        `useSyncRunner: upserting ${resource.resourceType}/${resource.id}`
-                      ),
-                      writeResourceWithRetries(resource, resource.id)
-                    ),
-              { concurrency: WRITE_CONCURRENCY, discard: true }
-            )
-          ),
+        Effect.forEach(
+          resources,
+          // Entities filter null-id resources before emitting; narrow
+          // defensively for the typed `path`.
+          (resource) =>
+            resource.id === null
+              ? Effect.logWarning(`useSyncRunner: skipping resource with null id`)
+              : Effect.andThen(
+                  Effect.logDebug(
+                    `useSyncRunner: upserting ${resource.resourceType}/${resource.id}`
+                  ),
+                  writeResourceWithRetries(resource, resource.id)
+                ),
+          { concurrency: WRITE_CONCURRENCY, discard: true }
+        ).pipe(
           Effect.withSpan(Telemetry.Importing.Span.Name, {
             attributes: { [Telemetry.Importing.Span.Attributes.ResourceCount]: resources.length },
           })
@@ -417,6 +397,26 @@ const buildImportEffect = ({
           )
       )
 
+      // Idle-timeout escape hatch when responses are still mid-stream.
+      // `ResponseData` chunks don't produce a mailbox event, so a large/slow
+      // download still streaming after `idleTimeout` would otherwise be
+      // silently abandoned by a hard terminate. Instead, settle every still
+      // tracked id as a failure (surfacing them in the `partial` summary) so
+      // the run reports the loss rather than dropping it on the floor.
+      const settleInFlightAsFailures: Effect.Effect<void> = Effect.suspend(() =>
+        Effect.forEach(
+          MutableHashMap.values(inProgressBridgeResponses),
+          ({ response }) =>
+            stateMachine.handleFailure(
+              { resourceType: 'response', id: response.url },
+              new Error(
+                `useSyncRunner: response for ${response.url} still in-flight at idle timeout; abandoning`
+              )
+            ),
+          { discard: true }
+        )
+      )
+
       yield* Effect.gen(function* () {
         while (true) {
           const currentlySettled = yield* stateMachine.isSettled(inProgressBridgeResponses)
@@ -435,9 +435,20 @@ const buildImportEffect = ({
             Match.when({ event: Option.isNone, settledBeforeListening: true }, () =>
               stateMachine.isSettled(inProgressBridgeResponses)
             ),
-            // We waited the long `idleTimeout`, no event arrived, terminate now.
+            // We waited the long `idleTimeout` with no mailbox event. If
+            // nothing is tracked, the host has gone quiet — terminate. But a
+            // response can still be mid-stream here (chunks don't wake the
+            // loop), so only terminate when `inProgressResponses` is empty;
+            // otherwise warn and settle the stalled responses as failures so
+            // they surface in `partial`, then terminate.
             Match.when({ event: Option.isNone, settledBeforeListening: false }, () =>
-              Effect.succeed(true)
+              MutableHashMap.size(inProgressBridgeResponses) === 0
+                ? Effect.succeed(true)
+                : Effect.logWarning(
+                    `useSyncRunner: idle timeout with ${MutableHashMap.size(
+                      inProgressBridgeResponses
+                    )} response(s) still in-flight; settling as failures`
+                  ).pipe(Effect.andThen(settleInFlightAsFailures), Effect.as(true))
             ),
             Match.orElse(() =>
               Effect.logError('useSyncRunner: unexpected match case in drive loop').pipe(
@@ -446,7 +457,7 @@ const buildImportEffect = ({
             )
           )
 
-          yield* Effect.logInfo(
+          yield* Effect.logDebug(
             `useSyncRunner: drive loop iteration — event=${Option.match(event, {
               onNone: () => 'none',
               onSome: (e) => e._tag,
@@ -462,20 +473,18 @@ const buildImportEffect = ({
       return yield* stateMachine.summary
     })
   ).pipe(
-    Effect.withSpan(Telemetry.Sync.Span.Name, {}),
-    // TEMPORARY: log when the Sync span ends and how. A `Success` here means
-    // the span closed cleanly and *should* have flushed as a transaction;
-    // an interrupted `Failure` means teardown aborted the run (the likely
-    // "no collector.sync" cause — the root ends mid-flush).
+    // Record how the run ended as a permanent attribute on the `Sync` span:
+    // a clean success vs a cancelled/interrupted teardown. `onExit` is applied
+    // *inside* `withSpan` (before it in the pipe), so `annotateCurrentSpan`
+    // targets the `Sync` span while it is still the active span — annotating
+    // after `withSpan` would tag the parent span instead.
     Effect.onExit((exit) =>
-      exit._tag === 'Success'
-        ? Effect.logInfo('[probe:sync-exit] Sync span ended — success')
-        : Effect.logInfo(
-            `[probe:sync-exit] Sync span ended — failure interrupted=${Cause.isInterruptedOnly(
-              exit.cause
-            )} cause=${Cause.pretty(exit.cause)}`
-          )
-    )
+      Effect.annotateCurrentSpan(
+        Telemetry.Sync.Attributes.Outcome,
+        exit._tag === 'Success' ? 'clean' : 'cancelled'
+      )
+    ),
+    Effect.withSpan(Telemetry.Sync.Span.Name, {})
   )
 
 /**

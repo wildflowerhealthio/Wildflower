@@ -24,7 +24,9 @@ import {
   FiberSet,
   Inspectable,
   Layer,
+  Match,
   Option,
+  Predicate,
   Ref,
   Stream,
   Tracer,
@@ -45,12 +47,20 @@ interface TraceParent {
 }
 
 /**
- * Parse a request's W3C `traceparent` header so the {@link Telemetry.Request}
- * server span continues the client's trace instead of starting a fresh root.
+ * Parse a request's W3C `traceparent` header so the `expo_http.request`
+ * envelope span continues the client's trace instead of starting a fresh root.
  * Returns `undefined` for a missing or malformed header (the request then
  * roots its own trace). Validates per the W3C Trace Context spec: four
  * `-`-separated fields, a non-`ff` version, a 32-hex non-zero trace id, a
  * 16-hex non-zero span id, a 2-hex flags byte whose bit 0 is the sampled flag.
+ *
+ * This intentionally reimplements `@effect/platform`'s
+ * `HttpTraceContext.fromHeaders`: `App.toHandled` always wraps the served app
+ * in the platform tracer middleware, which runs that same parser to set the
+ * W3C parent on its own `http.server` span. Re-parsing here lets the envelope
+ * span share that parent, so both server-ish spans (this adapter's
+ * `expo_http.request` envelope and the platform's nested `http.server`)
+ * continue the *same* client trace. See the call site in `serve()`.
  */
 const parseTraceParent = (header: string | undefined): TraceParent | undefined => {
   if (header === undefined) return undefined
@@ -66,6 +76,53 @@ const parseTraceParent = (header: string | undefined): TraceParent | undefined =
   if (flags === undefined || !/^[0-9a-f]{2}$/.test(flags)) return undefined
   return { traceId, spanId, sampled: (parseInt(flags, 16) & 0x01) === 1 }
 }
+
+/**
+ * Name of the bridge-envelope span opened per request in `serve()`. Shared by
+ * the span's creation site and {@link annotateEnvelopeStatus}, which walks the
+ * span tree by this name from inside {@link handleResponse}.
+ *
+ * NOTE: the `Telemetry.Request` catalog entry still describes this as a
+ * method-named SERVER span (its prior shape). This name + the `internal` kind
+ * at the creation site reflect this fix; the catalog should be updated to match
+ * — out of scope for this file's edit.
+ */
+const EnvelopeSpanName = 'expo_http.request'
+
+/**
+ * Record `http.response.status_code` on the `expo_http.request` envelope span.
+ *
+ * The status is only known inside {@link handleResponse}, but the *current*
+ * span there is `expo_http.handle_response`, nested below the platform tracer's
+ * `http.server` span, which is itself nested below the envelope span. So this
+ * walks up the parent chain from the current span to the one named
+ * {@link EnvelopeSpanName} and annotates it directly. Walking the live span
+ * tree (rather than stashing on the request) is robust to router middleware
+ * swapping the request instance via `HttpServerRequest.modify` — e.g. a
+ * prefixed `HttpRouter` rewrites the URL on a *fresh* `ServerRequestImpl`.
+ *
+ * A no-op if the envelope span isn't found in the chain (e.g. the served app
+ * failed before the envelope, or this handler runs outside `serve()`); the
+ * platform's own `http.server` span still records the status independently.
+ */
+const annotateEnvelopeStatus = (status: number): Effect.Effect<void> =>
+  Effect.currentSpan.pipe(
+    Effect.flatMap((span) =>
+      Effect.sync(() => {
+        let current: Tracer.AnySpan | undefined = span
+        while (current !== undefined && current._tag === 'Span') {
+          if (current.name === EnvelopeSpanName) {
+            current.attribute(Telemetry.Attributes.HttpResponseStatusCode, status)
+            return
+          }
+          current = Option.getOrUndefined(current.parent)
+        }
+      })
+    ),
+    // `currentSpan` fails with NoSuchElementException when no span is active;
+    // that just means there's nothing to annotate, so swallow it.
+    Effect.catchAll(() => Effect.void)
+  )
 
 // ---------------------------------------------------------------------------
 // ServerRequestImpl
@@ -117,6 +174,17 @@ const encodeBase64Spanned = (bytes: Uint8Array): Effect.Effect<string> =>
     Effect.withSpan(Telemetry.EncodeBase64.Span.Name, {
       attributes: { [Telemetry.Attributes.HttpResponseBodySize]: bytes.length },
     })
+  )
+
+/** Which native payload field carried the request body, for the `BodyRead` span. */
+type BodySource = 'inline' | 'base64' | 'file' | 'empty'
+
+const bodySourceOf: (source: OnHttpRequestPayload) => BodySource =
+  Match.type<OnHttpRequestPayload>().pipe(
+    Match.when({ body: Predicate.isNotNullable }, () => 'inline' as const),
+    Match.when({ bodyBase64: Predicate.isNotNullable }, () => 'base64' as const),
+    Match.when({ bodyFilePath: Predicate.isNotNullable }, () => 'file' as const),
+    Match.orElse(() => 'empty' as const)
   )
 
 class ServerRequestImpl extends Inspectable.Class implements ServerRequest.HttpServerRequest {
@@ -228,14 +296,7 @@ class ServerRequestImpl extends Inspectable.Class implements ServerRequest.HttpS
     } else {
       source = Effect.succeed(new Uint8Array(0))
     }
-    const bodySource =
-      this.source.body != null
-        ? 'inline'
-        : this.source.bodyBase64 != null
-          ? 'base64'
-          : this.source.bodyFilePath != null
-            ? 'file'
-            : 'empty'
+    const bodySource = bodySourceOf(this.source)
     this.bytesEffect = Effect.runSync(
       Effect.cached(
         source.pipe(
@@ -416,7 +477,16 @@ const respond = (
   response: ServerResponse.HttpServerResponse,
   headers: Record<string, ReadonlyArray<string>>,
   body: string,
-  encoding: 'utf8' | 'base64'
+  encoding: 'utf8' | 'base64',
+  /**
+   * Decoded body size in bytes — what the `http.response.body.size` semconv
+   * attribute wants (the size the client receives after any base64 decode).
+   * NOT `body.length`, which is base64 char count (~4/3 the real size) for
+   * base64 bodies and UTF-16 code units (wrong for multi-byte chars) for utf8.
+   * Callers compute it from the source bytes (`bytes.length`) or
+   * `new TextEncoder().encode(text).length` for text.
+   */
+  rawBodySizeBytes: number
 ): Effect.Effect<void, Error.ResponseError> =>
   Effect.tryPromise({
     try: () =>
@@ -427,19 +497,19 @@ const respond = (
       attributes: {
         [Telemetry.Attributes.HttpResponseStatusCode]: response.status,
         [Telemetry.Attributes.ResponseEncoding]: encoding,
-        [Telemetry.Attributes.HttpResponseBodySize]: body.length,
+        [Telemetry.Attributes.HttpResponseBodySize]: rawBodySizeBytes,
       },
     }),
     Effect.timed,
     Effect.tap(([elapsed]) =>
       Effect.logInfo(
-        `[expo_http] respond ${response.status} ${encoding} ${body.length}b in ${Duration.toMillis(elapsed)}ms`
+        `[expo_http] respond ${response.status} ${encoding} ${rawBodySizeBytes}b in ${Duration.toMillis(elapsed)}ms`
       )
     ),
     Effect.asVoid,
     Effect.tapErrorCause((cause) =>
       Effect.logError(
-        `ExpoHttpServer: native respondToRequest rejected (${request.method} ${request.url}, status ${response.status}, ${body.length} ${encoding} chars)`,
+        `ExpoHttpServer: native respondToRequest rejected (${request.method} ${request.url}, status ${response.status}, ${rawBodySizeBytes} bytes ${encoding})`,
         cause
       )
     )
@@ -502,9 +572,12 @@ const handleResponse = (
       )
       return
     }
-    // Record the status on the server (request) span — the current span here,
-    // since the inner handler spans have already closed by response time.
-    yield* Effect.annotateCurrentSpan(Telemetry.Attributes.HttpResponseStatusCode, response.status)
+    // Record the status on the `expo_http.request` envelope span. We can't use
+    // `annotateCurrentSpan` here: this runs inside the `expo_http.handle_response`
+    // span (nested below the platform tracer's `http.server` span, itself nested
+    // below the envelope), so the *current* span is `expo_http.handle_response`.
+    // `annotateEnvelopeStatus` walks up to the envelope span instead.
+    yield* annotateEnvelopeStatus(response.status)
 
     let setCookies: ReadonlyArray<string> = []
     if (!Cookies.isEmpty(response.cookies)) {
@@ -521,7 +594,7 @@ const handleResponse = (
     )
 
     if (request.method === 'HEAD') {
-      yield* respond(request, response, headers, '', 'utf8')
+      yield* respond(request, response, headers, '', 'utf8', 0)
       return
     }
 
@@ -530,7 +603,7 @@ const handleResponse = (
 
     switch (body._tag) {
       case 'Empty': {
-        yield* respond(request, response, headers, '', 'utf8')
+        yield* respond(request, response, headers, '', 'utf8', 0)
         break
       }
       case 'Raw': {
@@ -551,27 +624,36 @@ const handleResponse = (
           } else if (rawBody != null) {
             rawText = JSON.stringify(rawBody)
           }
-          yield* respond(request, response, headers, rawText, 'utf8')
+          yield* respond(
+            request,
+            response,
+            headers,
+            rawText,
+            'utf8',
+            new TextEncoder().encode(rawText).length
+          )
         }
         break
       }
       case 'Uint8Array': {
         if (isTextContentType(body.contentType)) {
           const text = new TextDecoder('utf-8').decode(body.body)
-          yield* respond(request, response, headers, text, 'utf8')
+          yield* respond(request, response, headers, text, 'utf8', body.body.length)
         } else {
           const b64 = yield* encodeBase64Spanned(body.body)
-          yield* respond(request, response, headers, b64, 'base64')
+          yield* respond(request, response, headers, b64, 'base64', body.body.length)
         }
         break
       }
       case 'FormData': {
+        const formDataMessage = 'FormData responses are not supported in expo-effect-platform v1'
         yield* respond(
           request,
           response,
           headers,
-          'FormData responses are not supported in expo-effect-platform v1',
-          'utf8'
+          formDataMessage,
+          'utf8',
+          new TextEncoder().encode(formDataMessage).length
         )
         break
       }
@@ -590,7 +672,7 @@ const handleResponse = (
           offset += chunk.length
         }
         const b64 = yield* encodeBase64Spanned(combined)
-        yield* respond(request, response, headers, b64, 'base64')
+        yield* respond(request, response, headers, b64, 'base64', combined.length)
         break
       }
     }
@@ -713,7 +795,17 @@ const make = (
               // Continue the client's distributed trace when it forwarded a
               // `traceparent`; otherwise this request roots its own trace.
               // Either way the routed handler spans (`fhir.Update`, …) nest
-              // under this server span rather than the long-lived daemon scope.
+              // under the `expo_http.request` envelope span rather than the
+              // long-lived daemon scope.
+              //
+              // This `parseTraceParent` intentionally mirrors `@effect/platform`'s
+              // `HttpTraceContext.fromHeaders`: `App.toHandled` always wraps the
+              // app in the platform tracer middleware, which runs that same parser
+              // to set the W3C parent on its `http.server` span. We re-parse here
+              // so the envelope span shares that parent — both server-ish spans
+              // (this `expo_http.request` envelope and the platform's `http.server`
+              // nested beneath it) continue the *same* client trace rather than the
+              // envelope rooting a fresh trace that orphans the platform span.
               const traceParent = parseTraceParent(request.headers['traceparent'])
               const lineage =
                 traceParent === undefined
@@ -734,13 +826,23 @@ const make = (
                 // LiveStore commit storm) shows up here as a large `scheduled in`.
                 Effect.suspend(() => {
                   const scheduledAtMs = Date.now()
-                  return Effect.provideService(
-                    app,
-                    ServerRequest.HttpServerRequest,
-                    request
-                  ).pipe(
-                    Effect.withSpan(Telemetry.Request.Span.name(request.method), {
-                      kind: Telemetry.Request.Span.Kind,
+                  // The bridge envelope span: the whole JS-visible request
+                  // lifetime, from this listener firing to the response
+                  // write-back. `kind: 'internal'` and a distinct name
+                  // (`expo_http.request`) so it does NOT compete as a second
+                  // `http.server` span — `App.toHandled` always wraps the app in
+                  // the platform tracer middleware, which opens its own
+                  // `http.server {method}` span (kind=server) carrying the same
+                  // method / url / client / status attributes. Two nested server
+                  // spans would confuse trace UIs and double-count url/client
+                  // cardinality. Here we own the envelope; the platform's
+                  // `http.server` and the routed handler spans (`fhir.*`,
+                  // LiveStore) nest beneath it. `handleResponse` records
+                  // `http.response.status_code` on this span via
+                  // `annotateEnvelopeStatus`, which finds it by name.
+                  return Effect.provideService(app, ServerRequest.HttpServerRequest, request).pipe(
+                    Effect.withSpan(EnvelopeSpanName, {
+                      kind: 'internal',
                       ...lineage,
                       attributes,
                     }),

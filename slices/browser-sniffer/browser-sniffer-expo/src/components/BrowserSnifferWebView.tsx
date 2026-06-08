@@ -215,6 +215,15 @@ const BrowserSnifferWebView = forwardRef<BrowserSnifferMessageSender, BrowserSni
     // provided layer) and close the whole open span tree on unmount.
     // `dispose` is pure span mutation, so it runs on the bare default
     // runtime even though the runner fiber is already being interrupted.
+    //
+    // Both runs are unsynchronised forks, and `start` provides a Layer (an
+    // async build step), so on a fast unmount — or React StrictMode's
+    // mount→unmount→mount — the cleanup can fire before `start` has opened its
+    // spans. `dispose` guards against that by closing a synchronous start-gate
+    // as its first action: `Effect.runFork` executes the gen's synchronous
+    // prefix eagerly, so by the time this cleanup returns the gate is shut and
+    // a `start` that loses the race opens nothing (it would otherwise leak an
+    // unended, never-flushed span). See `makeSnifferTelemetry`'s `disposed`.
     useEffect(() => {
       Effect.runFork(Effect.provide(telemetry.start, telemetryLayer))
       return (): void => {

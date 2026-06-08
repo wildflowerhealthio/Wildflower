@@ -141,12 +141,8 @@
     {
       "use": "official",
       "family": "Runte",
-      "given": [
-        "Matt"
-      ],
-      "prefix": [
-        "Mr."
-      ]
+      "given": ["Matt"],
+      "prefix": ["Mr."]
     }
   ],
   "telecom": [
@@ -175,9 +171,7 @@
           ]
         }
       ],
-      "line": [
-        "576 Harris Loaf Unit 40"
-      ],
+      "line": ["576 Harris Loaf Unit 40"],
       "city": "Westport",
       "state": "Massachusetts",
       "postalCode": "02790",

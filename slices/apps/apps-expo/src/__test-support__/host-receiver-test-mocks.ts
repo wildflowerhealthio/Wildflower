@@ -192,6 +192,20 @@ const mockBuildTunnelCoreFactory = (): unknown => {
 const mockBuildLivestoreBaseFactory = (): unknown => ({ __esModule: true })
 
 /**
+ * Factory for `jest.mock('@livestore/common', mockBuildLivestoreCommonFactory)`
+ * — and its `@livestore/common/schema` subpath.
+ *
+ * The barrel also re-exports `makeLoopbackSyncBackend`, whose module pulls
+ * `SyncBackend` / `validatePushPayload` from `@livestore/common` and
+ * `EventSequenceNumber` from `@livestore/common/schema` as runtime values.
+ * Stubbing both to `{}` lets Jest load the barrel without evaluating their
+ * ESM output — same rationale as {@link mockBuildLivestoreBaseFactory}; the
+ * code under test never calls `makeLoopbackSyncBackend`, so the real values
+ * are never dereferenced.
+ */
+const mockBuildLivestoreCommonFactory = (): unknown => ({ __esModule: true })
+
+/**
  * Factory for `jest.mock('apps-core/bridge', mockBuildAppsCoreFactory)`.
  *
  * The production handler no longer references `AppsBridge` as a runtime
@@ -229,6 +243,7 @@ export {
   makeFakeStore,
   mockBuildAppsCoreFactory,
   mockBuildLivestoreBaseFactory,
+  mockBuildLivestoreCommonFactory,
   mockBuildTunnelCoreFactory,
   requireTunnelStoreTag,
   resetHarness,

@@ -1,5 +1,5 @@
 import { HttpApiError } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, pipe } from 'effect'
 import { domainResources, EmrStore, Patient as StorePatient } from 'emr-core/livestore'
 import { Commit } from 'emr-core/telemetry'
 
@@ -17,15 +17,20 @@ const layer = makeDomainResourceHandlerLayer(
   { SearchParams: PatientSearchParams, buildWhere: buildPatientWhere },
   {
     commitUpsert: (resource) =>
-      Effect.flatMap(EmrStore, (store) =>
-        Effect.try({
-          try: () =>
-            store.commit(
-              { label: Commit.Upsert(domainResources.Patient.resourceType), skipRefresh: true },
-              domainResources.Patient.events.upsert({ resource })
-            ),
-          catch: () => new HttpApiError.ServiceUnavailable(),
-        })
+      pipe(
+        EmrStore,
+        Effect.flatMap((store) =>
+          Effect.try({
+            try: () =>
+              store.commit(
+                { label: Commit.Upsert(domainResources.Patient.resourceType), skipRefresh: true },
+                domainResources.Patient.events.upsert({ resource })
+              ),
+            catch: (err): unknown => err,
+          })
+        ),
+        Effect.tapError((err: unknown) => Effect.logError('Failed to commit Patient upsert', err)),
+        Effect.mapError(() => new HttpApiError.ServiceUnavailable())
       ),
     queryGetById$: domainResources.Patient.queries.getById$,
     querySearch$: domainResources.Patient.queries.search$,

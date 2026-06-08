@@ -57,6 +57,13 @@ const makeLoopbackSyncBackend = (): SyncBackend.SyncBackendConstructor => () =>
     // always > ROOT, so `validatePushPayload`'s ascending-order guard
     // still holds against this fresh head.
     const headRef = yield* Ref.make(EventSequenceNumber.Client.ROOT.global)
+    // Serializes the validate → offer → advance critical section in `push`
+    // so the head can't be advanced from a stale read. The leader already
+    // serializes its own pushes, but this makes the invariant intrinsic to
+    // the backend rather than relying on a caller-side contract: a future
+    // concurrent pusher could otherwise validate/offer/set against the same
+    // old head and leave `headRef` stale or events offered out of order.
+    const pushLock = yield* Effect.makeSemaphore(1)
     const isConnectedRef = yield* SubscriptionRef.make(true)
     // Unbounded so a push that races ahead of the live consumer subscribing
     // is buffered rather than lost; the single live pull drains it.
@@ -83,18 +90,25 @@ const makeLoopbackSyncBackend = (): SyncBackend.SyncBackendConstructor => () =>
       pull: (_cursor, options) =>
         options?.live === true ? pullLive : Stream.make(SyncBackend.pullResItemEmpty()),
       push: (batch) =>
-        Effect.gen(function* () {
-          const currentHead = yield* Ref.get(headRef)
-          yield* validatePushPayload(batch, currentHead)
-          yield* Queue.offerAll(liveQueue, batch)
-          // `validatePushPayload` already rejects an empty batch (it reads
-          // `batch[0]`), so `last` is defined in practice; guard rather than
-          // assert to keep the lint surface clean.
-          const last = batch.at(-1)
-          if (last !== undefined) {
-            yield* Ref.set(headRef, last.seqNum)
-          }
-        }),
+        // One permit serializes the whole read-modify-write so `validate →
+        // offer → advance` is atomic w.r.t. any other concurrent `push`,
+        // regardless of caller serialization. `Ref.modify` alone can't cover
+        // this: the stale-head risk spans the queue offer and validation, not
+        // just the bare `Ref.set`.
+        pushLock.withPermits(1)(
+          Effect.gen(function* () {
+            const currentHead = yield* Ref.get(headRef)
+            yield* validatePushPayload(batch, currentHead)
+            yield* Queue.offerAll(liveQueue, batch)
+            // `validatePushPayload` already rejects an empty batch (it reads
+            // `batch[0]`), so `last` is defined in practice; guard rather than
+            // assert to keep the lint surface clean.
+            const last = batch.at(-1)
+            if (last !== undefined) {
+              yield* Ref.set(headRef, last.seqNum)
+            }
+          })
+        ),
       metadata: {
         name: 'loopback-sync-backend',
         description:
