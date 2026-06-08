@@ -9,7 +9,14 @@ jest.mock('../ExpoEffectPlatformModule', () => ({
 }))
 
 // jest.mock is hoisted above imports, so per-test state lives on this module-level map (reset in beforeEach).
-type MockEntry = { exists: boolean; size: number; modificationTime: number | null }
+type MockEntry = {
+  exists: boolean
+  size: number
+  modificationTime: number | null
+  // When set, the synchronous `size` getter throws — modelling a native
+  // `expo-file-system` read failure so the typed-error wrapping can be tested.
+  failRead?: boolean
+}
 const MOCK_FS = new Map<string, MockEntry>()
 
 jest.mock('expo-file-system', () => {
@@ -23,7 +30,9 @@ jest.mock('expo-file-system', () => {
       return MOCK_FS.get(this.uri)?.exists ?? false
     }
     get size(): number {
-      return MOCK_FS.get(this.uri)?.size ?? 0
+      const entry = MOCK_FS.get(this.uri)
+      if (entry?.failRead === true) throw new Error('native read failed')
+      return entry?.size ?? 0
     }
     get modificationTime(): number | null {
       return MOCK_FS.get(this.uri)?.modificationTime ?? null
@@ -226,6 +235,38 @@ describe('ExpoHttpPlatform', () => {
       _tag: 'SystemError',
       reason: 'NotFound',
       pathOrDescriptor: '/data/missing.bin',
+    })
+  })
+
+  test('fileResponse maps a synchronous native read throw to a typed SystemError (not a defect)', async () => {
+    // `exists` is true, but reading `size` throws — modelling a native
+    // accessor failure. The wrapping must route it into the typed failure
+    // channel; before the fix the throw escaped as an unhandled defect (Die).
+    MOCK_FS.set('file:///data/unreadable.bin', {
+      exists: true,
+      size: 0,
+      modificationTime: null,
+      failRead: true,
+    })
+
+    const program = Effect.gen(function* () {
+      const platform = yield* HttpPlatform.HttpPlatform
+      yield* platform.fileResponse('/data/unreadable.bin')
+    }).pipe(Effect.provide(platformLayer))
+
+    const exit = await Effect.runPromiseExit(program)
+    // `Cause.failureOption` is `Some` only for a typed `Fail` — a `Die`
+    // (the pre-fix behaviour) yields `None` and fails the test here.
+    const error = pipe(
+      exit,
+      Exit.causeOption,
+      Option.flatMap(Cause.failureOption),
+      Option.getOrThrow
+    )
+    expect(error).toMatchObject({
+      _tag: 'SystemError',
+      reason: 'Unknown',
+      pathOrDescriptor: '/data/unreadable.bin',
     })
   })
 

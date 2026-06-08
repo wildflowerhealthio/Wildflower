@@ -1,7 +1,8 @@
 import { type FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
 import { Directory, File } from 'expo-file-system'
-import { fileUri, inspect, systemError, trySystem } from './helpers.ts'
+import * as Telemetry from '../../telemetry.ts'
+import { fileUri, inspect, instrument, systemError, trySystem } from './helpers.ts'
 
 const remove: FileSystem.FileSystem['remove'] = (path, options) =>
   Effect.flatMap(inspect('remove', path), (info) => {
@@ -20,6 +21,6 @@ const remove: FileSystem.FileSystem['remove'] = (path, options) =>
         new File(uri).delete()
       }
     })
-  })
+  }).pipe(instrument('remove', Telemetry.FileSystem.Remove.Span.Name, path))
 
 export { remove }

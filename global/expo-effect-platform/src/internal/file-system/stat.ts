@@ -1,7 +1,8 @@
 import { FileSystem } from '@effect/platform'
 import { Effect, Option } from 'effect'
 import { Directory, File } from 'expo-file-system'
-import { fileUri, inspect, systemError, trySystem } from './helpers.ts'
+import * as Telemetry from '../../telemetry.ts'
+import { fileUri, inspect, instrument, systemError, trySystem } from './helpers.ts'
 
 /**
  * `stat` on a `Directory` returns `size` as the recursive byte sum of the
@@ -70,6 +71,6 @@ const stat: FileSystem.FileSystem['stat'] = (path) =>
         }
       })
     )
-  })
+  }).pipe(instrument('stat', Telemetry.FileSystem.Stat.Span.Name, path))
 
 export { stat }

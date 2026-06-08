@@ -70,6 +70,7 @@ vi.mock('./apps-sender-forwarder.tsx', () => ({
 vi.mock('telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },
+  webTelemetryLayerFromEnv: () => Layer.empty,
 }))
 // Bare `HttpClient` so the authed runtime constructs offline.
 vi.mock('telemetry-react', () => ({

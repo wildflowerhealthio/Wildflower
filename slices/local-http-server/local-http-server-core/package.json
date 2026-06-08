@@ -31,7 +31,6 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "@effect/vitest": "catalog:",
     "@livestore/adapter-node": "catalog:",
     "@livestore/common": "catalog:",
     "@livestore/livestore": "catalog:",

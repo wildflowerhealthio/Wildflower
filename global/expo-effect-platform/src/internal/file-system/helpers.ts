@@ -1,6 +1,7 @@
 import { Error as PlatformError } from '@effect/platform'
 import { Effect } from 'effect'
 import { Paths } from 'expo-file-system'
+import * as Telemetry from '../../telemetry.ts'
 
 /**
  * Strip the `file://` URI scheme so a bare absolute path can be handed to
@@ -75,6 +76,58 @@ const inspect = (
   method: string,
   path: string
 ): Effect.Effect<{ exists: boolean; isDirectory: boolean | null }, PlatformError.SystemError> =>
-  trySystem(method, path, 'Unknown', () => Paths.info(fileUri(path)))
+  trySystem(method, path, 'Unknown', () => Paths.info(fileUri(path))).pipe(
+    Effect.withSpan(Telemetry.FileSystem.Inspect.Span.Name, {
+      attributes: { [Telemetry.FileSystem.Attributes.Path]: path },
+    })
+  )
 
-export { fileUri, describeCause, systemError, trySystem, inspect }
+/**
+ * `SystemError` reasons that are normal control flow a caller branches on
+ * (`exists` → `false`, `mkdir` racing an extant dir) rather than operational
+ * faults. Logged at `Debug` so the hot `exists` path stays quiet while genuine
+ * faults (`Unknown` / `PermissionDenied` / `BadResource`) surface at `Warning`.
+ */
+const expectedReasons: ReadonlySet<PlatformError.SystemErrorReason> =
+  new Set<PlatformError.SystemErrorReason>(['NotFound', 'AlreadyExists'])
+
+/**
+ * Pipeable wrapper that gives a `FileSystem` op its OTel span and one-shot
+ * failure logging. On failure it records the `error.type` (the
+ * `SystemError.reason`) on the op span and logs once — at the severity
+ * {@link expectedReasons} selects — so a native failure can never pass
+ * silently while routine existence probes don't spam the on-device log. The
+ * span's `expo_fs.path` attribute carries the target path.
+ *
+ * Defects (a thrown value that escaped {@link trySystem}) are deliberately
+ * left to propagate untouched: every reachable op failure is already a typed
+ * `SystemError`, so a defect here is a programmer error that should crash the
+ * fiber loudly rather than be folded into the same log line.
+ *
+ * @example
+ * ```ts
+ * Effect.flatMap(inspect('stat', path), …).pipe(instrument('stat', Span.Name, path))
+ * ```
+ */
+const instrument =
+  (method: string, spanName: string, path: string) =>
+  <A>(
+    effect: Effect.Effect<A, PlatformError.SystemError>
+  ): Effect.Effect<A, PlatformError.SystemError> =>
+    effect.pipe(
+      Effect.tapError((error) =>
+        Effect.annotateCurrentSpan(Telemetry.FileSystem.Attributes.ErrorType, error.reason).pipe(
+          Effect.zipRight(
+            (expectedReasons.has(error.reason) ? Effect.logDebug : Effect.logWarning)(
+              `ExpoFileSystem.${method} failed: ${error.reason} (${path})`,
+              error
+            )
+          )
+        )
+      ),
+      Effect.withSpan(spanName, {
+        attributes: { [Telemetry.FileSystem.Attributes.Path]: path },
+      })
+    )
+
+export { fileUri, describeCause, systemError, trySystem, inspect, instrument }

@@ -18,7 +18,7 @@ import { CollectorModalScreen } from './CollectorModalScreen.tsx'
  * ```
  */
 const CollectorModalRoute = (): JSX.Element => {
-  const { pendingSource } = useCollectorHost()
+  const { pendingSource, pendingLinkedSpan } = useCollectorHost()
 
   if (pendingSource === null) {
     // The route should only ever be pushed after the handler record's
@@ -30,7 +30,7 @@ const CollectorModalRoute = (): JSX.Element => {
     )
   }
 
-  return <CollectorModalScreen source={pendingSource} />
+  return <CollectorModalScreen source={pendingSource} linkedSpan={pendingLinkedSpan ?? undefined} />
 }
 
 export { CollectorModalRoute }

@@ -80,6 +80,25 @@ interface BridgedWebViewProps<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
    * instrumentation, the browser-sniffer's injected script, etc.).
    */
   readonly injectedJavaScriptBeforeContentLoaded?: string
+  /**
+   * Optional Effect `Layer` provided to the transport build effect
+   * before it is handed to {@link useComponentScopedRunner}. The build
+   * fiber — and every fiber it forks, including the dispatch fiber where
+   * inbound `handlers` and `onPageReady` run — inherits whatever services
+   * this layer supplies. The canonical use is a real OpenTelemetry
+   * `Tracer`, so spans opened inside slice handlers record against a live
+   * exporter instead of the default runtime's no-op tracer.
+   *
+   * Kept telemetry-agnostic (`Layer<unknown, never, never>`) so this
+   * global shell takes no telemetry dependency — the slice supplies the
+   * concrete layer. Omit it and the runner runs on the bare default
+   * runtime exactly as before.
+   *
+   * **Stable identity required.** The `runnable` memo re-provides (and so
+   * re-forks the runner) when this reference changes; pass a `useMemo`-ed
+   * value or a module-level constant.
+   */
+  readonly runnerLayer?: Layer.Layer<never, never, never>
 }
 
 /**
@@ -137,6 +156,7 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
   bindings,
   shouldOpenInSystemBrowser,
   injectedJavaScriptBeforeContentLoaded,
+  runnerLayer,
 }: BridgedWebViewProps<Bridges>): JSX.Element => {
   const { bridges, handlers } = bindings
 
@@ -331,7 +351,17 @@ const BridgedWebView = <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>({
     [bridges]
   )
 
-  useComponentScopedRunner(buildEffect)
+  // Provide the optional runner layer (a real `Tracer`, typically) to the
+  // build effect before forking it, so the dispatch fiber and everything
+  // it forks resolve their services against it. Identity-stable in both
+  // branches so the runner only re-forks when `buildEffect` (bridges) or
+  // `runnerLayer` actually change.
+  const runnable = useMemo(
+    () => (runnerLayer === undefined ? buildEffect : Effect.provide(buildEffect, runnerLayer)),
+    [buildEffect, runnerLayer]
+  )
+
+  useComponentScopedRunner(runnable)
 
   // Handler sync: when `handlers` reference flips (typically a sibling
   // binding re-rendering — token arrival, modal state, etc.), route the

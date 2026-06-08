@@ -1,5 +1,5 @@
 import {
-  Error as PlatformError,
+  type Error as PlatformError,
   type FileSystem,
   Headers,
   HttpPlatform,
@@ -7,6 +7,8 @@ import {
 } from '@effect/platform'
 import { Effect, Layer } from 'effect'
 import { File } from 'expo-file-system'
+import * as Telemetry from '../telemetry.ts'
+import { systemError, trySystem } from './file-system/helpers.ts'
 import type { ExpoFileBody } from './httpServer.ts'
 
 /**
@@ -61,19 +63,23 @@ const buildFileResponse = (
 ): Effect.Effect<ServerResponse.HttpServerResponse, PlatformError.SystemError> =>
   Effect.gen(function* () {
     const file = fileFromPath(path)
-    if (!file.exists) {
+    // `expo-file-system`'s `File` accessors are synchronous getters that throw
+    // on native failure. Read them through `trySystem` so a throw lands in the
+    // typed `SystemError` channel instead of escaping as an unhandled defect
+    // (which would otherwise reject the response with no trace and no log).
+    const exists = yield* trySystem('stat', path, 'Unknown', () => file.exists)
+    if (!exists) {
       return yield* Effect.fail(
-        new PlatformError.SystemError({
-          module: 'FileSystem',
-          method: 'stat',
-          reason: 'NotFound',
-          description: 'No such file or directory',
-          pathOrDescriptor: path,
-        })
+        systemError('stat', path, 'NotFound', null, 'No such file or directory')
       )
     }
-    const size = file.size
-    const mtimeMs: number | null = file.modificationTime ?? null
+    const size = yield* trySystem('stat', path, 'Unknown', () => file.size)
+    const mtimeMs: number | null = yield* trySystem(
+      'stat',
+      path,
+      'Unknown',
+      () => file.modificationTime ?? null
+    )
     const start = Number(options?.offset ?? 0)
     const end = options?.bytesToRead !== undefined ? start + Number(options.bytesToRead) : undefined
 
@@ -91,6 +97,7 @@ const buildFileResponse = (
     // response as a download instead of rendering an SPA shell.
     const contentType = headers['content-type'] ?? mimeForPath(path) ?? 'application/octet-stream'
     const contentLength = end !== undefined ? end - start : size - start
+    yield* Effect.annotateCurrentSpan(Telemetry.FileResponse.Attributes.BodySize, contentLength)
     const body: ExpoFileBody = { expoFilePath: path, start, end }
     return ServerResponse.raw(body, {
       status: options?.status ?? 200,
@@ -99,7 +106,23 @@ const buildFileResponse = (
       contentType,
       contentLength,
     })
-  })
+  }).pipe(
+    Effect.tapError((error) =>
+      Effect.annotateCurrentSpan(Telemetry.FileResponse.Attributes.ErrorType, error.reason).pipe(
+        Effect.zipRight(
+          // A missing file is the routine 404-asset case (logged at Debug); a
+          // native read failure is operational and surfaces at Warning.
+          (error.reason === 'NotFound' ? Effect.logDebug : Effect.logWarning)(
+            `ExpoHttpPlatform.fileResponse failed: ${error.reason} (${path})`,
+            error
+          )
+        )
+      )
+    ),
+    Effect.withSpan(Telemetry.FileResponse.Span.Name, {
+      attributes: { [Telemetry.FileResponse.Attributes.Path]: path },
+    })
+  )
 
 /**
  * `HttpPlatform` implementation built directly against `expo-file-system`'s
@@ -124,12 +147,17 @@ const make = HttpPlatform.HttpPlatform.of({
   [HttpPlatform.TypeId]: HttpPlatform.TypeId,
   fileResponse: buildFileResponse,
   fileWebResponse(_file, options) {
-    return Effect.succeed(
-      ServerResponse.raw('fileWebResponse is not supported in expo-effect-platform v1', {
-        status: 501,
-        statusText: options?.statusText ?? 'Not Implemented',
-        headers: options?.headers ? Headers.fromInput(options.headers) : Headers.empty,
-      })
+    return Effect.logWarning(
+      'ExpoHttpPlatform.fileWebResponse: not supported in expo-effect-platform v1; returning 501'
+    ).pipe(
+      Effect.as(
+        ServerResponse.raw('fileWebResponse is not supported in expo-effect-platform v1', {
+          status: 501,
+          statusText: options?.statusText ?? 'Not Implemented',
+          headers: options?.headers ? Headers.fromInput(options.headers) : Headers.empty,
+        })
+      ),
+      Effect.withSpan(Telemetry.FileResponse.Web.Span.Name)
     )
   },
 })

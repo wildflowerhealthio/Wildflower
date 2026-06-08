@@ -6,12 +6,24 @@ import { type BearerToken } from 'kitchen-sink/auth-token'
 type RuntimeLayer = Layer.Layer<BearerToken | HttpClient.HttpClient, never, never>
 
 /**
+ * Optional knobs for a `runAuthed` call. `signal` mirrors
+ * `Effect.runPromise`'s own `{ signal }` option: aborting it interrupts
+ * the running Effect (its release/finalizers run) and rejects the
+ * promise. Long-lived authed Effects (e.g. the collector import) thread
+ * a per-run `AbortController` through here for explicit cancellation.
+ */
+interface RunAuthedOptions {
+  readonly signal?: AbortSignal
+}
+
+/**
  * Run an authed Effect from a non-React call site (route loaders).
  * Supplies `BearerToken | HttpClient`; the caller still provides its
  * own slice client layer.
  */
 type RunAuthed = <A, E>(
-  effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayer>>
+  effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayer>>,
+  options?: RunAuthedOptions
 ) => Promise<A>
 
 /**
@@ -49,7 +61,8 @@ type RuntimeLayerWith<Extra> = Layer.Layer<Layer.Layer.Success<RuntimeLayer> | E
  * {@link RuntimeLayerWith}.
  */
 type RunAuthedWith<Extra> = <A, E>(
-  effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayerWith<Extra>>>
+  effect: Effect.Effect<A, E, Layer.Layer.Success<RuntimeLayerWith<Extra>>>,
+  options?: RunAuthedOptions
 ) => Promise<A>
 
 /**
@@ -87,6 +100,7 @@ export type {
   RouterContext,
   RouterContextWith,
   RunAuthed,
+  RunAuthedOptions,
   RunAuthedWith,
   RuntimeLayer,
   RuntimeLayerWith,

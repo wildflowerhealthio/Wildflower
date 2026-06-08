@@ -36,6 +36,12 @@ export default defineConfig({
       platform: 'neutral',
       entry: { 'http-api-implementation/index': 'src/http-api-implementation/index.ts' },
     },
+    {
+      dts: { tsgo: true },
+      exports: false,
+      platform: 'neutral',
+      entry: { 'telemetry/index': 'src/telemetry/index.ts' },
+    },
   ],
   test: {
     setupFiles: [

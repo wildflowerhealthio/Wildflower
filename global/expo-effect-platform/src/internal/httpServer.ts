@@ -17,10 +17,101 @@ import type {
   HttpMethod,
   HttpMiddleware,
 } from '@effect/platform'
-import { Effect, FiberSet, Inspectable, Layer, Option, Ref, Stream } from 'effect'
+import {
+  Cause,
+  Duration,
+  Effect,
+  FiberSet,
+  Inspectable,
+  Layer,
+  Match,
+  Option,
+  Predicate,
+  Ref,
+  Stream,
+  Tracer,
+} from 'effect'
 import type { Record as RecordNS, Scope } from 'effect'
 import type { OnHttpRequestPayload, ServerOptions } from '../ExpoEffectPlatform.types.ts'
 import NativeModule from '../ExpoEffectPlatformModule.ts'
+import * as Telemetry from '../telemetry.ts'
+
+/**
+ * Parsed W3C `traceparent` fields, narrowed to what {@link Tracer.externalSpan}
+ * needs to continue the client's distributed trace on the server span.
+ */
+interface TraceParent {
+  readonly traceId: string
+  readonly spanId: string
+  readonly sampled: boolean
+}
+
+/**
+ * Parse a request's W3C `traceparent` header so the `expo_http.request`
+ * envelope span continues the client's trace instead of starting a fresh root.
+ * Returns `undefined` for a missing or malformed header (the request then
+ * roots its own trace). Validates per the W3C Trace Context spec: four
+ * `-`-separated fields, a non-`ff` version, a 32-hex non-zero trace id, a
+ * 16-hex non-zero span id, a 2-hex flags byte whose bit 0 is the sampled flag.
+ *
+ * This intentionally reimplements `@effect/platform`'s
+ * `HttpTraceContext.fromHeaders`: `App.toHandled` always wraps the served app
+ * in the platform tracer middleware, which runs that same parser to set the
+ * W3C parent on its own `http.server` span. Re-parsing here lets the envelope
+ * span share that parent, so both server-ish spans (this adapter's
+ * `expo_http.request` envelope and the platform's nested `http.server`)
+ * continue the *same* client trace. See the call site in `serve()`.
+ */
+const parseTraceParent = (header: string | undefined): TraceParent | undefined => {
+  if (header === undefined) return undefined
+  const parts = header.trim().split('-')
+  if (parts.length !== 4) return undefined
+  const [version, traceId, spanId, flags] = parts
+  if (version === undefined || !/^[0-9a-f]{2}$/.test(version) || version === 'ff') return undefined
+  if (traceId === undefined || !/^[0-9a-f]{32}$/.test(traceId) || /^0+$/.test(traceId)) {
+    return undefined
+  }
+  if (spanId === undefined || !/^[0-9a-f]{16}$/.test(spanId) || /^0+$/.test(spanId))
+    return undefined
+  if (flags === undefined || !/^[0-9a-f]{2}$/.test(flags)) return undefined
+  return { traceId, spanId, sampled: (parseInt(flags, 16) & 0x01) === 1 }
+}
+
+/**
+ * Record `http.response.status_code` on the `expo_http.request` envelope span.
+ *
+ * The status is only known inside {@link handleResponse}, but the *current*
+ * span there is `expo_http.handle_response`, nested below the platform tracer's
+ * `http.server` span, which is itself nested below the envelope span. So this
+ * walks up the parent chain from the current span to the one named
+ * `Telemetry.Request.Span.Name` (`expo_http.request`) and annotates it
+ * directly. Walking the live span
+ * tree (rather than stashing on the request) is robust to router middleware
+ * swapping the request instance via `HttpServerRequest.modify` — e.g. a
+ * prefixed `HttpRouter` rewrites the URL on a *fresh* `ServerRequestImpl`.
+ *
+ * A no-op if the envelope span isn't found in the chain (e.g. the served app
+ * failed before the envelope, or this handler runs outside `serve()`); the
+ * platform's own `http.server` span still records the status independently.
+ */
+const annotateEnvelopeStatus = (status: number): Effect.Effect<void> =>
+  Effect.currentSpan.pipe(
+    Effect.flatMap((span) =>
+      Effect.sync(() => {
+        let current: Tracer.AnySpan | undefined = span
+        while (current !== undefined && current._tag === 'Span') {
+          if (current.name === Telemetry.Request.Span.Name) {
+            current.attribute(Telemetry.Attributes.HttpResponseStatusCode, status)
+            return
+          }
+          current = Option.getOrUndefined(current.parent)
+        }
+      })
+    ),
+    // `currentSpan` fails with NoSuchElementException when no span is active;
+    // that just means there's nothing to annotate, so swallow it.
+    Effect.catchAll(() => Effect.void)
+  )
 
 // ---------------------------------------------------------------------------
 // ServerRequestImpl
@@ -61,6 +152,29 @@ const encodeBase64 = (bytes: Uint8Array): string => {
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
   return globalThis.btoa(bin)
 }
+
+/**
+ * {@link encodeBase64} timed as a span — base64 of a large response body is
+ * CPU-bound and scales with size, so it's a per-request latency suspect of
+ * its own. Carries the decoded byte count as the response body size.
+ */
+const encodeBase64Spanned = (bytes: Uint8Array): Effect.Effect<string> =>
+  Effect.sync(() => encodeBase64(bytes)).pipe(
+    Effect.withSpan(Telemetry.EncodeBase64.Span.Name, {
+      attributes: { [Telemetry.Attributes.HttpResponseBodySize]: bytes.length },
+    })
+  )
+
+/** Which native payload field carried the request body, for the `BodyRead` span. */
+type BodySource = 'inline' | 'base64' | 'file' | 'empty'
+
+const bodySourceOf: (source: OnHttpRequestPayload) => BodySource =
+  Match.type<OnHttpRequestPayload>().pipe(
+    Match.when({ body: Predicate.isNotNullable }, () => 'inline' as const),
+    Match.when({ bodyBase64: Predicate.isNotNullable }, () => 'base64' as const),
+    Match.when({ bodyFilePath: Predicate.isNotNullable }, () => 'file' as const),
+    Match.orElse(() => 'empty' as const)
+  )
 
 class ServerRequestImpl extends Inspectable.Class implements ServerRequest.HttpServerRequest {
   readonly [ServerRequest.TypeId]: ServerRequest.TypeId
@@ -171,7 +285,16 @@ class ServerRequestImpl extends Inspectable.Class implements ServerRequest.HttpS
     } else {
       source = Effect.succeed(new Uint8Array(0))
     }
-    this.bytesEffect = Effect.runSync(Effect.cached(source))
+    const bodySource = bodySourceOf(this.source)
+    this.bytesEffect = Effect.runSync(
+      Effect.cached(
+        source.pipe(
+          Effect.withSpan(Telemetry.BodyRead.Span.Name, {
+            attributes: { [Telemetry.Attributes.BodySource]: bodySource },
+          })
+        )
+      )
+    )
     return this.bytesEffect
   }
 
@@ -331,6 +454,98 @@ const expandHeaders = (
   return out
 }
 
+/**
+ * Write a response back across the JS→native bridge, timed as a
+ * {@link Telemetry.Respond} span and a console line. This promise is the
+ * adapter's prime latency suspect: everything before it is JS, and the
+ * native server's socket flush happens after it returns — so a slow
+ * `respond` localises the cost to the bridge / native server.
+ */
+const respond = (
+  request: ServerRequestImpl,
+  response: ServerResponse.HttpServerResponse,
+  headers: Record<string, ReadonlyArray<string>>,
+  body: string,
+  encoding: 'utf8' | 'base64',
+  /**
+   * Decoded body size in bytes — what the `http.response.body.size` semconv
+   * attribute wants (the size the client receives after any base64 decode).
+   * NOT `body.length`, which is base64 char count (~4/3 the real size) for
+   * base64 bodies and UTF-16 code units (wrong for multi-byte chars) for utf8.
+   * Callers compute it from the source bytes (`bytes.length`) or
+   * `new TextEncoder().encode(text).length` for text.
+   */
+  rawBodySizeBytes: number
+): Effect.Effect<void, Error.ResponseError> =>
+  Effect.tryPromise({
+    try: () =>
+      NativeModule.respondToRequest(request.requestId, response.status, headers, body, encoding),
+    catch: (cause) => new Error.ResponseError({ request, response, reason: 'Decode', cause }),
+  }).pipe(
+    Effect.withSpan(Telemetry.Respond.Span.Name, {
+      attributes: {
+        [Telemetry.Attributes.HttpResponseStatusCode]: response.status,
+        [Telemetry.Attributes.ResponseEncoding]: encoding,
+        [Telemetry.Attributes.HttpResponseBodySize]: rawBodySizeBytes,
+      },
+    }),
+    Effect.timed,
+    Effect.tap(([elapsed]) =>
+      Effect.logInfo(
+        `[expo_http] respond ${response.status} ${encoding} ${rawBodySizeBytes}b in ${Duration.toMillis(elapsed)}ms`
+      )
+    ),
+    Effect.asVoid,
+    Effect.tapErrorCause((cause) =>
+      Effect.logError(
+        `ExpoHttpServer: native respondToRequest rejected (${request.method} ${request.url}, status ${response.status}, ${rawBodySizeBytes} bytes ${encoding})`,
+        cause
+      )
+    )
+  )
+
+/** File-backed variant of {@link respond} (native streams the file). */
+const respondWithFile = (
+  request: ServerRequestImpl,
+  response: ServerResponse.HttpServerResponse,
+  headers: Record<string, ReadonlyArray<string>>,
+  filePath: string,
+  start: number | null,
+  end: number | null
+): Effect.Effect<void, Error.ResponseError> =>
+  Effect.tryPromise({
+    try: () =>
+      NativeModule.respondToRequestWithFile(
+        request.requestId,
+        response.status,
+        headers,
+        filePath,
+        start,
+        end
+      ),
+    catch: (cause) => new Error.ResponseError({ request, response, reason: 'Decode', cause }),
+  }).pipe(
+    Effect.withSpan(Telemetry.Respond.Span.Name, {
+      attributes: {
+        [Telemetry.Attributes.HttpResponseStatusCode]: response.status,
+        [Telemetry.Attributes.ResponseKind]: 'file',
+      },
+    }),
+    Effect.timed,
+    Effect.tap(([elapsed]) =>
+      Effect.logInfo(
+        `[expo_http] respond ${response.status} file in ${Duration.toMillis(elapsed)}ms`
+      )
+    ),
+    Effect.asVoid,
+    Effect.tapErrorCause((cause) =>
+      Effect.logError(
+        `ExpoHttpServer: native respondToRequestWithFile rejected (${request.method} ${request.url}, status ${response.status}, file ${filePath})`,
+        cause
+      )
+    )
+  )
+
 const handleResponse = (
   request: ServerRequest.HttpServerRequest,
   response: ServerResponse.HttpServerResponse
@@ -346,7 +561,12 @@ const handleResponse = (
       )
       return
     }
-    const requestId = request.requestId
+    // Record the status on the `expo_http.request` envelope span. We can't use
+    // `annotateCurrentSpan` here: this runs inside the `expo_http.handle_response`
+    // span (nested below the platform tracer's `http.server` span, itself nested
+    // below the envelope), so the *current* span is `expo_http.handle_response`.
+    // `annotateEnvelopeStatus` walks up to the envelope span instead.
+    yield* annotateEnvelopeStatus(response.status)
 
     let setCookies: ReadonlyArray<string> = []
     if (!Cookies.isEmpty(response.cookies)) {
@@ -354,10 +574,16 @@ const handleResponse = (
     }
     const headers = expandHeaders(response.headers, setCookies)
 
+    // Summarise what status is about to cross the bridge. A 5xx here means the
+    // served app failed (see `loggedApp` in serve()) or toHandled derived an
+    // error response; logged at WARNING so it stands out in on-device logs.
+    const relayLog = response.status >= 500 ? Effect.logWarning : Effect.logDebug
+    yield* relayLog(
+      `ExpoHttpServer: relaying ${response.status} (${request.method} ${request.url}, body ${response.body._tag})`
+    )
+
     if (request.method === 'HEAD') {
-      yield* Effect.promise(() =>
-        NativeModule.respondToRequest(requestId, response.status, headers, '', 'utf8')
-      )
+      yield* respond(request, response, headers, '', 'utf8', 0)
       return
     }
 
@@ -366,23 +592,19 @@ const handleResponse = (
 
     switch (body._tag) {
       case 'Empty': {
-        yield* Effect.promise(() =>
-          NativeModule.respondToRequest(requestId, response.status, headers, '', 'utf8')
-        )
+        yield* respond(request, response, headers, '', 'utf8', 0)
         break
       }
       case 'Raw': {
         const rawBody = body.body
         if (isExpoFileBody(rawBody)) {
-          yield* Effect.promise(() =>
-            NativeModule.respondToRequestWithFile(
-              requestId,
-              response.status,
-              headers,
-              rawBody.expoFilePath,
-              rawBody.start ?? null,
-              rawBody.end ?? null
-            )
+          yield* respondWithFile(
+            request,
+            response,
+            headers,
+            rawBody.expoFilePath,
+            rawBody.start ?? null,
+            rawBody.end ?? null
           )
         } else {
           let rawText = ''
@@ -391,8 +613,13 @@ const handleResponse = (
           } else if (rawBody != null) {
             rawText = JSON.stringify(rawBody)
           }
-          yield* Effect.promise(() =>
-            NativeModule.respondToRequest(requestId, response.status, headers, rawText, 'utf8')
+          yield* respond(
+            request,
+            response,
+            headers,
+            rawText,
+            'utf8',
+            new TextEncoder().encode(rawText).length
           )
         }
         break
@@ -400,26 +627,22 @@ const handleResponse = (
       case 'Uint8Array': {
         if (isTextContentType(body.contentType)) {
           const text = new TextDecoder('utf-8').decode(body.body)
-          yield* Effect.promise(() =>
-            NativeModule.respondToRequest(requestId, response.status, headers, text, 'utf8')
-          )
+          yield* respond(request, response, headers, text, 'utf8', body.body.length)
         } else {
-          const b64 = encodeBase64(body.body)
-          yield* Effect.promise(() =>
-            NativeModule.respondToRequest(requestId, response.status, headers, b64, 'base64')
-          )
+          const b64 = yield* encodeBase64Spanned(body.body)
+          yield* respond(request, response, headers, b64, 'base64', body.body.length)
         }
         break
       }
       case 'FormData': {
-        yield* Effect.promise(() =>
-          NativeModule.respondToRequest(
-            requestId,
-            response.status,
-            headers,
-            'FormData responses are not supported in expo-effect-platform v1',
-            'utf8'
-          )
+        const formDataMessage = 'FormData responses are not supported in expo-effect-platform v1'
+        yield* respond(
+          request,
+          response,
+          headers,
+          formDataMessage,
+          'utf8',
+          new TextEncoder().encode(formDataMessage).length
         )
         break
       }
@@ -437,14 +660,12 @@ const handleResponse = (
           combined.set(chunk, offset)
           offset += chunk.length
         }
-        const b64 = encodeBase64(combined)
-        yield* Effect.promise(() =>
-          NativeModule.respondToRequest(requestId, response.status, headers, b64, 'base64')
-        )
+        const b64 = yield* encodeBase64Spanned(combined)
+        yield* respond(request, response, headers, b64, 'base64', combined.length)
         break
       }
     }
-  })
+  }).pipe(Effect.withSpan(Telemetry.HandleResponse.Span.Name))
 
 // ---------------------------------------------------------------------------
 // make
@@ -456,12 +677,31 @@ const make = (
 ): Effect.Effect<Server.HttpServer, never, Scope.Scope> =>
   Effect.gen(function* () {
     yield* Effect.acquireRelease(
-      Effect.promise(() => NativeModule.startServer(port, options)),
+      // `Effect.promise` turns a rejection into a *defect* (the layer's error
+      // channel is `never`, so it can't be widened) — without this span + log
+      // a failed native bind would die silently. `tapErrorCause` runs after the
+      // span closes, matching `respond`'s pattern below.
+      Effect.promise(() => NativeModule.startServer(port, options)).pipe(
+        Effect.withSpan(Telemetry.Server.Start.Span.Name, {
+          attributes: { [Telemetry.Server.Attributes.Port]: port },
+        }),
+        Effect.tapErrorCause((cause) =>
+          Effect.logError(`ExpoHttpServer: native startServer rejected (port ${port})`, cause)
+        )
+      ),
       // `stopServer`'s argument is FlyingFox's `server.stop(timeout:)` grace
       // window for in-flight requests. The default 5s matches a vanilla HTTP
       // server but is the wrong shape for short-budget hosts (iOS background
       // expiration); consumers can override via `options.stopTimeoutSeconds`.
-      () => Effect.promise(() => NativeModule.stopServer(options?.stopTimeoutSeconds ?? 5))
+      () =>
+        Effect.promise(() => NativeModule.stopServer(options?.stopTimeoutSeconds ?? 5)).pipe(
+          Effect.withSpan(Telemetry.Server.Stop.Span.Name, {
+            attributes: { [Telemetry.Server.Attributes.Port]: port },
+          }),
+          Effect.tapErrorCause((cause) =>
+            Effect.logError(`ExpoHttpServer: native stopServer rejected (port ${port})`, cause)
+          )
+        )
     )
 
     const hostname = options?.hostname ?? '127.0.0.1'
@@ -488,13 +728,121 @@ const make = (
             )
           }
           const runFork = yield* FiberSet.makeRuntime<never>()
-          const app = App.toHandled(httpApp, handleResponse, middleware)
+          // Span the whole HttpApi pass (middleware + route + schema decode +
+          // handler + schema encode) so the trace shows "time inside HttpApi"
+          // as one span. The routed `fhir.*` / LiveStore spans nest beneath
+          // it; the remainder is the decode/encode/middleware HttpApi does
+          // internally, which this adapter can't span directly.
+          //
+          // `tapErrorCause` logs the served app failing *before* toHandled
+          // collapses the cause into an opaque 500/empty response — that's the
+          // signal that distinguishes "the FHIR handler died" (this log fires)
+          // from "the bridge failed to relay a good response" (the native
+          // respond* rejection logs instead). Interrupts are normal teardown,
+          // so they're filtered out.
+          const loggedApp = httpApp.pipe(
+            Effect.withSpan(Telemetry.App.Span.Name),
+            Effect.tapErrorCause((cause) =>
+              Cause.isInterruptedOnly(cause)
+                ? Effect.void
+                : Effect.flatMap(ServerRequest.HttpServerRequest, (req) =>
+                    Effect.logError(
+                      `ExpoHttpServer: served app failed before response conversion (${req.method} ${req.url}); relaying a derived error response`,
+                      cause
+                    )
+                  )
+            )
+          )
+          const app = App.toHandled(loggedApp, handleResponse, middleware)
 
           const subscription = NativeModule.addListener(
             'onHttpRequest',
             (payload: OnHttpRequestPayload) => {
               const request = new ServerRequestImpl(payload, payload.path)
-              runFork(Effect.provideService(app, ServerRequest.HttpServerRequest, request))
+              // Wall clock from the moment the native event lands in JS to
+              // the moment the response write-back settles — the
+              // JS-visible request time. Compare against the client's own
+              // request duration: if this is small but the client sees
+              // seconds, the cost is in the native receive/socket flush.
+              const receivedAtMs = Date.now()
+              // `originalUrl` carries the query; the server-span semconv keeps
+              // the (high-cardinality) query off the path attribute.
+              const queryIndex = request.originalUrl.indexOf('?')
+              const urlPath =
+                queryIndex === -1 ? request.originalUrl : request.originalUrl.slice(0, queryIndex)
+              const urlQuery =
+                queryIndex === -1 ? undefined : request.originalUrl.slice(queryIndex + 1)
+              const clientAddress = Option.getOrUndefined(request.remoteAddress)
+              const attributes = {
+                [Telemetry.Attributes.HttpRequestMethod]: request.method,
+                [Telemetry.Attributes.UrlPath]: urlPath,
+                ...(urlQuery === undefined ? {} : { [Telemetry.Attributes.UrlQuery]: urlQuery }),
+                ...(clientAddress === undefined
+                  ? {}
+                  : { [Telemetry.Attributes.ClientAddress]: clientAddress }),
+              }
+              // Continue the client's distributed trace when it forwarded a
+              // `traceparent`; otherwise this request roots its own trace.
+              // Either way the routed handler spans (`fhir.Update`, …) nest
+              // under the `expo_http.request` envelope span rather than the
+              // long-lived daemon scope.
+              //
+              // This `parseTraceParent` intentionally mirrors `@effect/platform`'s
+              // `HttpTraceContext.fromHeaders`: `App.toHandled` always wraps the
+              // app in the platform tracer middleware, which runs that same parser
+              // to set the W3C parent on its `http.server` span. We re-parse here
+              // so the envelope span shares that parent — both server-ish spans
+              // (this `expo_http.request` envelope and the platform's `http.server`
+              // nested beneath it) continue the *same* client trace rather than the
+              // envelope rooting a fresh trace that orphans the platform span.
+              const traceParent = parseTraceParent(request.headers['traceparent'])
+              const lineage =
+                traceParent === undefined
+                  ? { root: true as const }
+                  : {
+                      parent: Tracer.externalSpan({
+                        traceId: traceParent.traceId,
+                        spanId: traceParent.spanId,
+                        sampled: traceParent.sampled,
+                      }),
+                    }
+              runFork(
+                // `suspend` defers to fiber-run time, so `scheduledAtMs` is when
+                // the forked fiber actually starts executing. The delta from
+                // `receivedAtMs` is fork-scheduling latency — the one segment the
+                // spans below can't see, because their clocks only start once the
+                // fiber runs. On RN's single JS thread a saturated runtime (e.g. a
+                // LiveStore commit storm) shows up here as a large `scheduled in`.
+                Effect.suspend(() => {
+                  const scheduledAtMs = Date.now()
+                  // The bridge envelope span: the whole JS-visible request
+                  // lifetime, from this listener firing to the response
+                  // write-back. `kind: 'internal'` and a distinct name
+                  // (`expo_http.request`) so it does NOT compete as a second
+                  // `http.server` span — `App.toHandled` always wraps the app in
+                  // the platform tracer middleware, which opens its own
+                  // `http.server {method}` span (kind=server) carrying the same
+                  // method / url / client / status attributes. Two nested server
+                  // spans would confuse trace UIs and double-count url/client
+                  // cardinality. Here we own the envelope; the platform's
+                  // `http.server` and the routed handler spans (`fhir.*`,
+                  // LiveStore) nest beneath it. `handleResponse` records
+                  // `http.response.status_code` on this span via
+                  // `annotateEnvelopeStatus`, which finds it by name.
+                  return Effect.provideService(app, ServerRequest.HttpServerRequest, request).pipe(
+                    Effect.withSpan(Telemetry.Request.Span.Name, {
+                      kind: Telemetry.Request.Span.Kind,
+                      ...lineage,
+                      attributes,
+                    }),
+                    Effect.onExit(() =>
+                      Effect.logInfo(
+                        `[expo_http] ${request.method} ${request.originalUrl} scheduled in ${scheduledAtMs - receivedAtMs}ms, handled in ${Date.now() - receivedAtMs}ms`
+                      )
+                    )
+                  )
+                })
+              )
             }
           )
 

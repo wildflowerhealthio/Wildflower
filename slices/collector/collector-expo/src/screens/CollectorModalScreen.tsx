@@ -1,6 +1,7 @@
 import {
   BrowserSnifferWebView,
   type BrowserSnifferMessageSender,
+  type LinkedSpanContext,
   type SnifferHandlers,
 } from 'browser-sniffer-expo'
 import type { WebViewSource } from 'collector-fundamentals/model'
@@ -21,6 +22,12 @@ interface CollectorModalScreenProps {
    * `BridgedWebViewLoadFrom` shape by {@link toLoadFrom}.
    */
   readonly source: WebViewSource.Any
+  /**
+   * Optional span context forwarded with `RequestSniffableWebView`.
+   * Passed straight to `<BrowserSnifferWebView>`, which span-links each
+   * root span it opens back to the collector's originating trace.
+   */
+  readonly linkedSpan?: LinkedSpanContext
   /**
    * Optional error sink for non-decode failures the bridge would
    * otherwise log. Receives the decoded `RequestError` event verbatim.
@@ -45,7 +52,11 @@ const fallbackWarningSnifferSender: BrowserSnifferMessageSender = (msg) =>
  * pipe so the handler record's `Click` / `CancelSnifferRequest`
  * handlers can drive the sniffer page.
  */
-const CollectorModalScreen = ({ source, onError }: CollectorModalScreenProps): JSX.Element => {
+const CollectorModalScreen = ({
+  source,
+  linkedSpan,
+  onError,
+}: CollectorModalScreenProps): JSX.Element => {
   // `BrowserSnifferWebView`'s ref imperative value is itself a
   // function; `useFunctionSafeState` stores it without React treating
   // it as a state updater.
@@ -88,6 +99,7 @@ const CollectorModalScreen = ({ source, onError }: CollectorModalScreenProps): J
         ref={setSnifferSender}
         loadFrom={loadFrom}
         browserSnifferHandlers={handlers}
+        linkedSpan={linkedSpan}
       />
     </ThemedView>
   )

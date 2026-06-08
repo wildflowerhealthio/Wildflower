@@ -1,10 +1,11 @@
 import { makePersistedAdapter } from '@livestore/adapter-expo'
 import type { Store } from '@livestore/livestore'
 import { type ReactApi, StoreRegistry, useStore } from '@livestore/react'
-import { Context } from 'effect'
+import { Context, Logger, LogLevel } from 'effect'
 import { Patient, warmupTable } from 'emr-core/livestore'
 import { ServerState } from 'local-http-server-core/livestore'
 import { unstable_batchedUpdates as batchUpdates } from 'react-native'
+import { makeLoopbackSyncBackend } from 'shared-structures-core/livestore'
 import { getLivestoreOtelOptions } from 'telemetry-react-native'
 import { TunnelConfig } from 'tunnel-core/livestore'
 import { DEFAULT_TUNNEL_ROOT_DOMAIN, DEFAULT_TUNNEL_SUBDOMAIN, SERVICE_NAME } from '../constants.ts'
@@ -14,6 +15,10 @@ const adapter = makePersistedAdapter({
   storage: {
     subDirectory: 'wildflower-db',
   },
+  // An in-memory loopback backend drains LiveStore's `pending` array, which
+  // otherwise grows to the size of the whole eventlog on a local-only store
+  // and makes every `store.commit` O(eventlog). See `makeLoopbackSyncBackend`.
+  sync: { backend: makeLoopbackSyncBackend() },
 })
 
 /**
@@ -69,6 +74,8 @@ const wildflowerStoreOptions = {
     // unindexed-scan path once.
     warmupTable(store, { Resource: Patient })
   },
+  logLevel: LogLevel.All,
+  logger: Logger.logFmt,
 } as const
 
 /**

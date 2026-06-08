@@ -1,6 +1,7 @@
 import { HttpApiError } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, pipe } from 'effect'
 import { Binary as StoreBinary, domainResources, EmrStore } from 'emr-core/livestore'
+import { Commit } from 'emr-core/telemetry'
 
 import { makeDomainResourceHandlerLayer } from '../internal/domain-resource-http-api-implementation.ts'
 import { Binary } from '../resources/binary/index.ts'
@@ -16,11 +17,23 @@ const layer = makeDomainResourceHandlerLayer(
   { SearchParams: BinarySearchParams, buildWhere: buildBinaryWhere },
   {
     commitUpsert: (resource) =>
-      Effect.flatMap(EmrStore, (store) =>
-        Effect.try({
-          try: () => store.commit(domainResources.Binary.events.upsert({ resource })),
-          catch: () => new HttpApiError.ServiceUnavailable(),
-        })
+      pipe(
+        EmrStore,
+        Effect.flatMap((store) =>
+          Effect.try({
+            try: () =>
+              store.commit(
+                {
+                  label: Commit.Upsert(domainResources.Binary.resourceType),
+                  skipRefresh: true,
+                },
+                domainResources.Binary.events.upsert({ resource })
+              ),
+            catch: (err): unknown => err,
+          })
+        ),
+        Effect.tapError((err: unknown) => Effect.logError('Failed to commit Binary upsert', err)),
+        Effect.mapError(() => new HttpApiError.ServiceUnavailable())
       ),
     queryGetById$: domainResources.Binary.queries.getById$,
     querySearch$: domainResources.Binary.queries.search$,

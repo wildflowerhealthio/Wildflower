@@ -48,7 +48,6 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
-    "@effect/vitest": "catalog:",
     "@fast-check/vitest": "catalog:",
     "@livestore/adapter-node": "catalog:",
     "@livestore/common": "catalog:",

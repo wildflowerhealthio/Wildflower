@@ -3,6 +3,7 @@ import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livest
 import { useEffect, useMemo } from 'react'
 import { AppState } from 'react-native'
 import BackgroundService, { type BackgroundTaskOptions } from 'react-native-background-actions'
+import { reactNativeTelemetryLayerFromEnv } from 'telemetry-react-native'
 import { TunnelStore } from 'tunnel-core/livestore'
 import { TunnelDaemon } from 'tunnel-expo'
 import { type useWildflowerStore, WildflowerStore } from '../livestore/livestore-store.ts'
@@ -66,6 +67,7 @@ const makeServerRuntime = (store: WildflowerStoreHandle): Effect.Effect<never, n
         LocalHttpServerStore.layerFrom(store)
       )
     ),
+    Layer.provide(reactNativeTelemetryLayerFromEnv()),
     Layer.launch,
     Effect.onExit((exit) =>
       Exit.match(exit, {

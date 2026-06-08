@@ -27,7 +27,6 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "@effect/vitest": "catalog:",
     "@fast-check/vitest": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",

@@ -30,6 +30,10 @@
       "source": "./src/model/index.ts",
       "default": "./dist/model/index.js"
     },
+    "./telemetry": {
+      "source": "./src/telemetry/index.ts",
+      "default": "./dist/telemetry/index.js"
+    },
     "./test-helpers": {
       "source": "./src/test-helpers.ts",
       "default": "./dist/test-helpers.js"
@@ -43,7 +47,6 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "@effect/vitest": "catalog:",
     "@fast-check/vitest": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
