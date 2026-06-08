@@ -17,8 +17,7 @@
       "channel": "preview",
       "env": {
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
-      },
-      "ios": { "simulator": true }
+      }
     },
     "production": {
       "autoIncrement": true,

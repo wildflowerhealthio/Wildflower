@@ -195,7 +195,16 @@ public class ExpoEffectPlatformModule: Module {
       let hostname = options?.hostname ?? "127.0.0.1"
       let server: HTTPServer
       let address = try sockaddr_in.inet(ip4: hostname, port: port)
-      server = HTTPServer(address: address)
+      // FlyingFox's default `timeout: 15` wraps each handler in
+      // `withThrowingTimeout` and returns a 500 if the JS handler hasn't
+      // resumed the continuation in time — short enough to break ordinary
+      // requests (e.g. LiveStore commits on cold start). The JS-side
+      // `handlerTimeoutSeconds` watchdog is the authoritative request budget,
+      // so we hand FlyingFox a sentinel large enough to be effectively
+      // unbounded. Can't use `.infinity`: `withThrowingTimeout` does
+      // `UInt64(seconds * 1e9)` for `Task.sleep` and a non-finite Double traps.
+      let unboundedTimeout: TimeInterval = 60 * 60 * 24 * 365
+      server = HTTPServer(address: address, timeout: unboundedTimeout)
 
       let task = Task { [weak self] in
         guard let self else { return }
