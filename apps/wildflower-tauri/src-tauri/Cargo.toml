@@ -22,7 +22,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-helios-rest = { version = "0.1.47", features = ["R4", "sqlite"] }
+helios-rest = { version = "=0.1.47", features = ["R4", "sqlite"] }
 helios-persistence = { version = "=0.1.47", features = ["R4", "sqlite"] }
 anyhow = "1.0.102"
 axum = { version = "0.8", features = ["json", "query", "matched-path", "ws"] }

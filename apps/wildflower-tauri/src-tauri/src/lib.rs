@@ -53,7 +53,11 @@ pub fn run() {
             std::fs::create_dir_all(&db_dir)?;
 
             let db_file_path = db_dir.join("helios.sqlite");
-            tauri::async_runtime::spawn(hfs_server(db_file_path));
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = hfs_server(db_file_path).await {
+                    tauri_plugin_log::log::error!("Helios server stopped: {error:?}");
+                }
+            });
             Ok(())
         })
         .run(tauri::generate_context!())
