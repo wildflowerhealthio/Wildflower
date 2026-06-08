@@ -17,7 +17,11 @@ export default defineConfig({
     dts: { tsgo: true, tsconfig: './tsconfig.pack.json' },
     platform: 'browser',
     exports: false,
-    entry: { 'app-root': 'src/app-root.tsx', 'web-entry': 'src/web-entry.ts' },
+    entry: {
+      'app-root': 'src/app-root.tsx',
+      'web-entry': 'src/web-entry.ts',
+      'os-color-scheme-listener': 'src/styles/add-os-color-scheme-listener.ts',
+    },
   },
   test: {
     environment: 'jsdom',

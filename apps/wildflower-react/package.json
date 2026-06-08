@@ -19,6 +19,11 @@
       "types": "./dist/web-entry.d.ts",
       "default": "./dist/web-entry.js"
     },
+    "./os-color-scheme-listener": {
+      "source": "./src/styles/add-os-color-scheme-listener.ts",
+      "types": "./dist/os-color-scheme-listener.d.ts",
+      "default": "./dist/os-color-scheme-listener.js"
+    },
     "./single-web-html": {
       "source": "./src/single-web-html-stub.ts",
       "types": "./dist-single-web/html.d.ts",
