@@ -1,4 +1,4 @@
-// import './instrument.ts'
+import './instrument.ts'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
 import { createBrowserHistory } from '@tanstack/react-router'

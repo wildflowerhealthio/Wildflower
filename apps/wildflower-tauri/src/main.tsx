@@ -1,7 +1,7 @@
 import { createBrowserHistory } from '@tanstack/react-router'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
-// import './instrument.ts'
+import 'wildflower-react/instrument'
 import { attachConsole } from '@tauri-apps/plugin-log'
 import 'wildflower-react/global.css'
 import { renderApp } from 'wildflower-react/app-root'
