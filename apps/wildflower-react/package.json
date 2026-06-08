@@ -9,6 +9,16 @@
       "types": "./dist-embedded/html.d.ts",
       "default": "./dist-embedded/html.js"
     },
+    "./app-root": {
+      "source": "./src/app-root.tsx",
+      "types": "./dist/app-root.d.ts",
+      "default": "./dist/app-root.js"
+    },
+    "./web-entry": {
+      "source": "./src/web-entry.ts",
+      "types": "./dist/web-entry.d.ts",
+      "default": "./dist/web-entry.js"
+    },
     "./single-web-html": {
       "source": "./src/single-web-html-stub.ts",
       "types": "./dist-single-web/html.d.ts",
@@ -16,6 +26,9 @@
     },
     "./web-assets": {
       "source": "./src/web-assets.ts"
+    },
+    "./global.css": {
+      "source": "./src/styles/global.css"
     },
     "./package.json": "./package.json"
   },
