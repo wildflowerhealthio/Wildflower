@@ -9,6 +9,9 @@ import { makeWebEntryOptions } from 'wildflower-react/web-entry'
 // import { addOsColorSchemeListener } from './styles/add-os-color-scheme-listener.ts'
 // addOsColorSchemeListener()
 
+import { attachConsole } from '@tauri-apps/plugin-log'
+await attachConsole()
+
 // Same standalone-web wiring as `main-web` (see `makeWebEntryOptions`);
 // differs only in `entry` and the commented-out `instrument.ts` import.
 renderApp({

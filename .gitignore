@@ -42,3 +42,6 @@ routeTree.gen.ts
 # CPU/heap profiles emitted by `vp run profile` (Node --cpu-prof output)
 .profiles/
 *.cpuprofile
+
+# Rust target directory
+target/
