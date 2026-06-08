@@ -78,25 +78,14 @@ const parseTraceParent = (header: string | undefined): TraceParent | undefined =
 }
 
 /**
- * Name of the bridge-envelope span opened per request in `serve()`. Shared by
- * the span's creation site and {@link annotateEnvelopeStatus}, which walks the
- * span tree by this name from inside {@link handleResponse}.
- *
- * NOTE: the `Telemetry.Request` catalog entry still describes this as a
- * method-named SERVER span (its prior shape). This name + the `internal` kind
- * at the creation site reflect this fix; the catalog should be updated to match
- * — out of scope for this file's edit.
- */
-const EnvelopeSpanName = 'expo_http.request'
-
-/**
  * Record `http.response.status_code` on the `expo_http.request` envelope span.
  *
  * The status is only known inside {@link handleResponse}, but the *current*
  * span there is `expo_http.handle_response`, nested below the platform tracer's
  * `http.server` span, which is itself nested below the envelope span. So this
  * walks up the parent chain from the current span to the one named
- * {@link EnvelopeSpanName} and annotates it directly. Walking the live span
+ * `Telemetry.Request.Span.Name` (`expo_http.request`) and annotates it
+ * directly. Walking the live span
  * tree (rather than stashing on the request) is robust to router middleware
  * swapping the request instance via `HttpServerRequest.modify` — e.g. a
  * prefixed `HttpRouter` rewrites the URL on a *fresh* `ServerRequestImpl`.
@@ -111,7 +100,7 @@ const annotateEnvelopeStatus = (status: number): Effect.Effect<void> =>
       Effect.sync(() => {
         let current: Tracer.AnySpan | undefined = span
         while (current !== undefined && current._tag === 'Span') {
-          if (current.name === EnvelopeSpanName) {
+          if (current.name === Telemetry.Request.Span.Name) {
             current.attribute(Telemetry.Attributes.HttpResponseStatusCode, status)
             return
           }
@@ -841,8 +830,8 @@ const make = (
                   // `http.response.status_code` on this span via
                   // `annotateEnvelopeStatus`, which finds it by name.
                   return Effect.provideService(app, ServerRequest.HttpServerRequest, request).pipe(
-                    Effect.withSpan(EnvelopeSpanName, {
-                      kind: 'internal',
+                    Effect.withSpan(Telemetry.Request.Span.Name, {
+                      kind: Telemetry.Request.Span.Kind,
                       ...lineage,
                       attributes,
                     }),

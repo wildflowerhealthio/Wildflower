@@ -7,11 +7,12 @@
  * Most of this is standard HTTP-server instrumentation, so span and
  * attribute names follow OpenTelemetry semantic conventions:
  *
- *  - {@link Request} is a SERVER span named by HTTP method. The semconv
- *    server-span name is `{method} {route}`, but there is no route at the
- *    native adapter layer (routing happens later, inside the `@effect/platform`
- *    router), so the name is just the method — a low-cardinality value —
- *    and the (high-cardinality) path rides the `url.path` attribute.
+ *  - {@link Request} is an INTERNAL bridge-envelope span (`expo_http.request`),
+ *    not a `http.server` span. `@effect/platform`'s tracer middleware (always
+ *    applied by `App.toHandled`) opens its own `http.server {method}` server
+ *    span nested directly beneath it, so the envelope avoids competing as a
+ *    second server span; the (high-cardinality) path rides the `url.path`
+ *    attribute on the platform's span.
  *  - Attribute keys use the stable HTTP / URL / network semconv keys
  *    (`http.request.method`, `http.response.status_code`, `url.path`, …).
  *
@@ -52,18 +53,22 @@ const Attributes = {
 
 /**
  * The whole JS-visible request lifetime: native `onHttpRequest` event →
- * response write-back. A SERVER-kind span that continues the client's W3C
- * trace when the request carries a `traceparent` header (otherwise a new
- * root). The routed handler's own spans (e.g. `fhir.Update`) nest beneath
- * it, so the gap between this span's start and the first handler span is
- * the middleware / routing cost.
+ * response write-back. An INTERNAL-kind bridge-envelope span named
+ * `expo_http.request`. It deliberately is NOT the `http.server` server span:
+ * `@effect/platform`'s tracer middleware (always applied by `App.toHandled`)
+ * opens its own `http.server {method}` server span nested directly beneath
+ * this one. The envelope continues the client's W3C trace when the request
+ * carries a `traceparent` header (otherwise a new root), so both spans share
+ * the same client-trace parent. The routed handler's own spans (e.g.
+ * `fhir.Update`) nest beneath, so the gap between this span's start and the
+ * first handler span is the middleware / routing cost.
  */
 const Request = {
   Span: {
-    /** OTel server span name: the HTTP method (no route at this layer). */
-    name: (method: string): string => method,
-    /** OTel span kind for an inbound server request. */
-    Kind: 'server',
+    /** Bridge-envelope span name — not the semconv `http.server` span. */
+    Name: 'expo_http.request',
+    /** Internal kind: the platform tracer owns the nested `http.server` span. */
+    Kind: 'internal',
   },
 } as const
 

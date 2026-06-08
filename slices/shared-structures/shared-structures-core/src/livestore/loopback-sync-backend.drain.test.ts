@@ -67,6 +67,7 @@ const waitForLeaderPending = async (
   timeoutMs = 10_000
 ): Promise<number> => {
   const start = Date.now()
+  // oxlint-disable no-await-in-loop
   for (;;) {
     // `_dev` is LiveStore's @internal-but-public introspection handle; the
     // leader's `pending.length` is the queue this backend exists to drain.
@@ -82,6 +83,7 @@ const waitForLeaderPending = async (
     }
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
+  // oxlint-enable no-await-in-loop
 }
 
 const EVENT_COUNT = 50

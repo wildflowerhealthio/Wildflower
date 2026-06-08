@@ -1,6 +1,6 @@
 import { type SnifferHandlers } from 'browser-sniffer-core/bridge'
 import * as Telemetry from 'browser-sniffer-core/telemetry'
-import { Clock, Effect, Exit, Tracer } from 'effect'
+import { Clock, Effect, Exit, Match, Tracer } from 'effect'
 
 /**
  * Span context of a remote trace to link the sniffer's root spans back
@@ -88,7 +88,17 @@ interface SnifferTelemetry {
  */
 const base64ByteLength = (data: string): number => {
   if (data.length === 0) return 0
-  const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0
+  const padding = Match.value(data).pipe(
+    Match.when(
+      (s) => s.endsWith('=='),
+      () => 2
+    ),
+    Match.when(
+      (s) => s.endsWith('='),
+      () => 1
+    ),
+    Match.orElse(() => 0)
+  )
   return Math.floor((data.length * 3) / 4) - padding
 }
 
