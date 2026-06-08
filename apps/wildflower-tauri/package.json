@@ -22,7 +22,7 @@
     "@tauri-apps/cli": "^2",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:"
   }

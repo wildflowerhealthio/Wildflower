@@ -75,6 +75,7 @@ catalog:
   '@types/node': ^24
   '@types/react': 19.1.0
   '@types/react-dom': 19.1.0
+  '@vitejs/plugin-react': ^5.0.4
   '@typescript/native-preview': 7.0.0-dev.20260429.1
   babel-preset-expo: ~54.0.10
   effect: 3.21.2
