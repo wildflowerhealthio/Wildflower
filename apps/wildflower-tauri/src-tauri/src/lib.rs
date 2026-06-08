@@ -28,11 +28,6 @@ async fn hfs_server(db_file_path: std::path::PathBuf) -> anyhow::Result<()> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .level(tauri_plugin_log::log::LevelFilter::Info)
-                .build(),
-        )
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -43,7 +38,6 @@ pub fn run() {
                 .level(tauri_plugin_log::log::LevelFilter::Trace)
                 .build(),
         )
-        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let db_dir = app
                 .path()
@@ -53,7 +47,9 @@ pub fn run() {
             // allowed the given directory
             let scope = app.fs_scope();
             scope.allow_directory(db_dir.clone(), false)?;
-            dbg!(scope.is_allowed(db_dir.clone()));
+            if !(scope.is_allowed(db_dir.clone())) {
+                panic!("Failed to allow access to the database directory");
+            }
             std::fs::create_dir_all(&db_dir)?;
 
             let db_file_path = db_dir.join("helios.sqlite");
