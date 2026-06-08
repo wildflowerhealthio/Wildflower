@@ -9,7 +9,7 @@ type PageLayoutClassName = 'page' | 'error'
  * panel rendered by `<PageBodyError>`. Re-exported so slices can build their
  * own screens with the same baseline without re-declaring the CSS rules.
  */
-const pageLayoutStyles: Readonly<Record<PageLayoutClassName, string>> = styles
+const pageLayoutStyles = styles as Readonly<Record<PageLayoutClassName, string>>
 
 export { pageLayoutStyles }
 export type { PageLayoutClassName }

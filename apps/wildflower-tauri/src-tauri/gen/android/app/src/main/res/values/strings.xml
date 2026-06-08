@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">wildflower-tauri</string>
+    <string name="main_activity_title">wildflower-tauri</string>
+</resources>
