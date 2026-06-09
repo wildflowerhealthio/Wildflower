@@ -1,34 +1,53 @@
-use rusqlite::{params, OptionalExtension, Row};
+use chrono::{DateTime, Utc};
+use rusqlite::{params, OptionalExtension, Row, ToSql};
 
+use super::types::Json;
 use super::GatekeeperStore;
 
 #[derive(Debug, Clone)]
-pub struct AuthorizationCodeRow {
+pub struct AuthorizationCode {
     pub code: String,
     pub request_id: String,
     pub client_id: String,
     pub redirect_uri: String,
     pub code_challenge: String,
-    pub granted_scopes: Vec<String>,
+    pub granted_scopes: Json<Vec<String>>,
     pub patient: Option<String>,
-    pub issued_at: String,
-    pub expires_at: String,
+    pub issued_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
 }
 
-fn row_to_code(row: &Row) -> rusqlite::Result<AuthorizationCodeRow> {
-    let granted_scopes_json: String = row.get("grantedScopes")?;
-    Ok(AuthorizationCodeRow {
-        code: row.get("code")?,
-        request_id: row.get("requestId")?,
-        client_id: row.get("clientId")?,
-        redirect_uri: row.get("redirectUri")?,
-        code_challenge: row.get("codeChallenge")?,
-        granted_scopes: serde_json::from_str(&granted_scopes_json)
-            .map_err(|_| rusqlite::Error::InvalidQuery)?,
-        patient: row.get("patient")?,
-        issued_at: row.get("issuedAt")?,
-        expires_at: row.get("expiresAt")?,
-    })
+impl AuthorizationCode {
+    pub fn as_named_sql_params(&self) -> [(&str, &dyn ToSql); 9] {
+        [
+            (":code", &self.code),
+            (":requestId", &self.request_id),
+            (":clientId", &self.client_id),
+            (":redirectUri", &self.redirect_uri),
+            (":codeChallenge", &self.code_challenge),
+            (":grantedScopes", &self.granted_scopes),
+            (":patient", &self.patient),
+            (":issuedAt", &self.issued_at),
+            (":expiresAt", &self.expires_at),
+        ]
+    }
+}
+
+impl TryFrom<&Row<'_>> for AuthorizationCode {
+    type Error = rusqlite::Error;
+    fn try_from(row: &Row<'_>) -> rusqlite::Result<Self> {
+        Ok(AuthorizationCode {
+            code: row.get("code")?,
+            request_id: row.get("requestId")?,
+            client_id: row.get("clientId")?,
+            redirect_uri: row.get("redirectUri")?,
+            code_challenge: row.get("codeChallenge")?,
+            granted_scopes: row.get("grantedScopes")?,
+            patient: row.get("patient")?,
+            issued_at: row.get("issuedAt")?,
+            expires_at: row.get("expiresAt")?,
+        })
+    }
 }
 
 const ALL_COLS: &str =
@@ -38,13 +57,13 @@ impl GatekeeperStore {
     pub fn authorization_code_by_code(
         &self,
         code: &str,
-    ) -> crate::store::DbResult<Option<AuthorizationCodeRow>> {
+    ) -> crate::store::DbResult<Option<AuthorizationCode>> {
         self.conn()
             .lock()
             .query_row(
                 &format!("SELECT {ALL_COLS} FROM authorizationCodes WHERE code = ?1"),
                 params![code],
-                row_to_code,
+                |row| AuthorizationCode::try_from(row),
             )
             .optional()
     }
@@ -52,37 +71,23 @@ impl GatekeeperStore {
     pub fn authorization_code_by_request_id(
         &self,
         request_id: &str,
-    ) -> crate::store::DbResult<Option<AuthorizationCodeRow>> {
+    ) -> crate::store::DbResult<Option<AuthorizationCode>> {
         self.conn()
             .lock()
             .query_row(
                 &format!("SELECT {ALL_COLS} FROM authorizationCodes WHERE requestId = ?1"),
                 params![request_id],
-                row_to_code,
+                |row| AuthorizationCode::try_from(row),
             )
             .optional()
     }
 
-    pub fn issue_authorization_code(
-        &self,
-        row: AuthorizationCodeRow,
-    ) -> crate::store::DbResult<()> {
-        let scopes = serde_json::to_string(&row.granted_scopes).unwrap();
+    pub fn issue_authorization_code(&self, code: &AuthorizationCode) -> crate::store::DbResult<()> {
         self.conn().lock().execute(
             "INSERT INTO authorizationCodes
              (code, requestId, clientId, redirectUri, codeChallenge, grantedScopes, patient, issuedAt, expiresAt)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![
-                row.code,
-                row.request_id,
-                row.client_id,
-                row.redirect_uri,
-                row.code_challenge,
-                scopes,
-                row.patient,
-                row.issued_at,
-                row.expires_at,
-            ],
+             VALUES (:code, :requestId, :clientId, :redirectUri, :codeChallenge, :grantedScopes, :patient, :issuedAt, :expiresAt)",
+            &code.as_named_sql_params(),
         )?;
         Ok(())
     }

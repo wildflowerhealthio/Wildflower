@@ -6,8 +6,10 @@ pub mod grant;
 pub mod local_client_token;
 pub mod migrations;
 pub mod signing_key;
+pub mod types;
 
 pub use db::DbResult;
+pub use types::Json;
 
 use std::path::Path;
 

@@ -1,5 +1,6 @@
 use anyhow::Context;
 use axum::Router;
+use chrono::Duration;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{gate, mint_host_owner_token, setup_gatekeeper, GatekeeperConfig};
 use shared_structures_rust::ServerRuntimeConfig;
@@ -49,7 +50,7 @@ fn ensure_local_owner_token(gatekeeper: &gatekeeper_rust::Gatekeeper, runtime: S
     // TODO(transport): ship this token to the WebView via the navigation
     // bridge (today only logged for debugging).
     let mint_origin = format!("http://127.0.0.1:{}", runtime.port);
-    match mint_host_owner_token(&gatekeeper.state, &mint_origin, 60 * 60 * 24) {
+    match mint_host_owner_token(&gatekeeper.state, &mint_origin, Duration::hours(24)) {
         Ok(token) => {
             tauri_plugin_log::log::info!(
                 "Local client token minted (prefix: {}…)",

@@ -1,14 +1,15 @@
+use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::crypto::jwt::{mint_access_token, MintArgs};
 use crate::crypto::pkce::sha256_hex;
 use crate::crypto::timing_safe::timing_safe_eq;
-use crate::store::client::{ClientKind, ClientRow};
+use crate::store::client::{Client, ClientKind};
 use crate::store::GatekeeperStore;
 
-pub const ACCESS_TOKEN_TTL_SECS: i64 = 60 * 60;
-pub const DEVICE_CODE_POLL_INTERVAL_SECS: i64 = 5;
+pub const ACCESS_TOKEN_TTL: Duration = Duration::hours(1);
+pub const DEVICE_CODE_POLL_INTERVAL: Duration = Duration::seconds(5);
 
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {
@@ -36,11 +37,7 @@ impl OAuthError {
     }
 }
 
-pub fn build_client_redirect_url(
-    redirect_uri: &str,
-    code: &str,
-    client_state: &str,
-) -> String {
+pub fn build_client_redirect_url(redirect_uri: &str, code: &str, client_state: &str) -> String {
     let mut url = Url::parse(redirect_uri).expect("redirect_uri parsed before");
     url.query_pairs_mut()
         .append_pair("code", code)
@@ -58,7 +55,7 @@ pub fn require_valid_client_for_token(
     store: &GatekeeperStore,
     client_id: &str,
     client_secret: Option<&str>,
-) -> Result<ClientRow, ValidateClientError> {
+) -> Result<Client, ValidateClientError> {
     let client = store
         .client_by_id(client_id)
         .map_err(|_| ValidateClientError::Internal(OAuthError::new("server_error", None)))?;
@@ -139,7 +136,7 @@ pub fn issue_token_response(
         MintArgs {
             client_id: input.client_id,
             scope: input.granted_scopes,
-            ttl_secs: ACCESS_TOKEN_TTL_SECS,
+            ttl: ACCESS_TOKEN_TTL,
             origin: input.origin,
             audience: Some(&audience),
             patient: input.patient,
@@ -149,7 +146,7 @@ pub fn issue_token_response(
     Ok(TokenResponse {
         access_token: signed,
         token_type: "Bearer".to_string(),
-        expires_in: ACCESS_TOKEN_TTL_SECS,
+        expires_in: ACCESS_TOKEN_TTL.num_seconds(),
         scope: input.granted_scopes.join(" "),
         patient: input.patient.map(str::to_string),
     })

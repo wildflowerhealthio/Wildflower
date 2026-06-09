@@ -4226,6 +4226,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c6d5e5acb6f6129fe3f7ba0a7fc77bca1942cb568535e18e7bc40262baf3110"
 dependencies = [
  "bitflags 2.9.4",
+ "chrono",
  "fallible-iterator",
  "fallible-streaming-iterator",
  "hashlink",
@@ -6294,6 +6295,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "chrono",
  "emr-rust",
  "gatekeeper-rust",
  "serde",

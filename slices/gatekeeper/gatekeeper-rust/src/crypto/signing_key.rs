@@ -7,6 +7,8 @@ use rsa::{BigUint, RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::store::types::Json;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SigningKeyValues {
     pub d: String,
@@ -16,12 +18,13 @@ pub struct SigningKeyValues {
     pub q: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SigningKey {
     pub kid: String,
     pub kty: String,
     pub alg: String,
-    pub values: SigningKeyValues,
+    pub values: Json<SigningKeyValues>,
+    pub is_active: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,13 +62,14 @@ pub fn from_rsa_private(private: &RsaPrivateKey) -> SigningKey {
         kid: Uuid::new_v4().to_string(),
         kty: "RSA".to_string(),
         alg: "RS256".to_string(),
-        values: SigningKeyValues {
+        values: Json(SigningKeyValues {
             n: b64u(&private.n().to_bytes_be()),
             e: b64u(&private.e().to_bytes_be()),
             d: b64u(&private.d().to_bytes_be()),
             p: b64u(&p.to_bytes_be()),
             q: b64u(&q.to_bytes_be()),
-        },
+        }),
+        is_active: false,
     }
 }
 

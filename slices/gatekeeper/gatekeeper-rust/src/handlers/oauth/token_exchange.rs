@@ -2,17 +2,19 @@ use axum::extract::Extension;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use chrono::Utc;
 use serde::Deserialize;
 
 use super::shared::{
     issue_token_response, require_valid_client_for_token, IssueTokenInput, OAuthError,
-    ValidateClientError, DEVICE_CODE_POLL_INTERVAL_SECS,
+    ValidateClientError, DEVICE_CODE_POLL_INTERVAL,
 };
 use crate::crypto::pkce::compute_code_challenge;
 use crate::crypto::timing_safe::timing_safe_eq;
 use crate::require_auth::AppState;
+use crate::store::authorization_code::AuthorizationCode;
 use crate::store::authorization_request::{GrantType, RequestStatus};
-use crate::time;
+use crate::store::types::Json as JsonWrap;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "grant_type")]
@@ -56,30 +58,26 @@ pub async fn handle(
             code,
             code_verifier,
             redirect_uri,
-        } => {
-            handle_authorization_code(
-                &state,
-                &origin,
-                &client_id,
-                client_secret.as_deref(),
-                &code,
-                &code_verifier,
-                &redirect_uri,
-            )
-        }
+        } => handle_authorization_code(
+            &state,
+            &origin,
+            &client_id,
+            client_secret.as_deref(),
+            &code,
+            &code_verifier,
+            &redirect_uri,
+        ),
         TokenPayload::DeviceCode {
             client_id,
             client_secret,
             device_code,
-        } => {
-            handle_device_code(
-                &state,
-                &origin,
-                &client_id,
-                client_secret.as_deref(),
-                &device_code,
-            )
-        }
+        } => handle_device_code(
+            &state,
+            &origin,
+            &client_id,
+            client_secret.as_deref(),
+            &device_code,
+        ),
     }
 }
 
@@ -106,7 +104,8 @@ fn handle_authorization_code(
         }
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
-    let response = validate_and_issue_code(state, origin, &issued, client_id, redirect_uri, code_verifier);
+    let response =
+        validate_and_issue_code(state, origin, &issued, client_id, redirect_uri, code_verifier);
     // Whether valid or not, burn the code (replay protection).
     let _ = state.store.consume_authorization_code(&issued.code);
     response
@@ -115,7 +114,7 @@ fn handle_authorization_code(
 fn validate_and_issue_code(
     state: &AppState,
     origin: &str,
-    issued: &crate::store::authorization_code::AuthorizationCodeRow,
+    issued: &AuthorizationCode,
     client_id: &str,
     redirect_uri: &str,
     code_verifier: &str,
@@ -126,12 +125,8 @@ fn validate_and_issue_code(
     if issued.redirect_uri != redirect_uri {
         return bad_request("invalid_request", "Invalid redirect_uri parameter");
     }
-    if let Some(expires) = time::from_iso(&issued.expires_at) {
-        if expires < time::now() {
-            return bad_request("invalid_request", "Code has expired");
-        }
-    } else {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    if issued.expires_at < Utc::now() {
+        return bad_request("invalid_request", "Code has expired");
     }
     let computed = compute_code_challenge(code_verifier);
     if !timing_safe_eq(&issued.code_challenge, &computed) {
@@ -145,8 +140,7 @@ fn validate_and_issue_code(
             patient: issued.patient.as_deref(),
             origin,
         },
-    )
-    {
+    ) {
         Ok(token) => Json(token).into_response(),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err)).into_response(),
     }
@@ -163,32 +157,22 @@ fn handle_device_code(
         return validate_client_error(err);
     }
     let pending = match state.store.authorization_request_by_id(device_code) {
-        Ok(Some(p))
-            if p.grant_type == GrantType::DeviceCode && p.client_id == client_id =>
-        {
-            p
-        }
+        Ok(Some(p)) if p.grant_type == GrantType::DeviceCode && p.client_id == client_id => p,
         Ok(_) => return bad_request("invalid_grant", "Unknown device_code"),
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
-    if let Some(expires) = time::from_iso(&pending.expires_at) {
-        if expires < time::now() {
-            return bad_request_err("expired_token");
-        }
-    } else {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    if pending.expires_at < Utc::now() {
+        return bad_request_err("expired_token");
     }
     if pending.status == RequestStatus::Pending {
-        if let Some(last_polled_at) = pending.last_polled_at.as_deref() {
-            if let Some(last) = time::from_iso(last_polled_at) {
-                if (time::now() - last).num_seconds() < DEVICE_CODE_POLL_INTERVAL_SECS {
-                    return bad_request_err("slow_down");
-                }
+        if let Some(last_polled) = pending.last_polled_at {
+            if Utc::now() - last_polled < DEVICE_CODE_POLL_INTERVAL {
+                return bad_request_err("slow_down");
             }
         }
         if state
             .store
-            .record_device_poll(&pending.id, &time::to_iso(time::now()))
+            .record_device_poll(&pending.id, Utc::now())
             .is_err()
         {
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -204,7 +188,7 @@ fn handle_device_code(
     if state.store.expire_authorization_request(&pending.id).is_err() {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
-    let granted = pending.granted_scopes.unwrap_or_default();
+    let granted = pending.granted_scopes.unwrap_or_else(|| JsonWrap(vec![]));
     match issue_token_response(
         &state.store,
         IssueTokenInput {
@@ -213,8 +197,7 @@ fn handle_device_code(
             patient: pending.patient.as_deref(),
             origin,
         },
-    )
-    {
+    ) {
         Ok(token) => Json(token).into_response(),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err)).into_response(),
     }

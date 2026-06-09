@@ -2,17 +2,18 @@ use axum::extract::Extension;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use chrono::Duration;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use uuid::Uuid;
 
-use super::shared::{OAuthError, DEVICE_CODE_POLL_INTERVAL_SECS};
+use super::shared::{OAuthError, DEVICE_CODE_POLL_INTERVAL};
 use crate::crypto::user_code::generate_user_code;
 use crate::page_paths;
 use crate::require_auth::AppState;
-use crate::store::authorization_request::{RequestStatus, StartDeviceRequest};
-use crate::time;
+use crate::store::authorization_request::{AuthorizationRequest, NewDeviceFlow, RequestStatus};
 
-const DEVICE_AUTHORIZATION_TTL_SECS: i64 = 60 * 5;
+const DEVICE_AUTHORIZATION_TTL: Duration = Duration::minutes(5);
 
 #[derive(Debug, Deserialize)]
 pub struct DeviceAuthorizationPayload {
@@ -67,8 +68,7 @@ pub async fn handle(
         }
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
-    let allowed: std::collections::HashSet<&str> =
-        client.allowed_scopes.iter().map(String::as_str).collect();
+    let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
     if !requested_scopes.iter().all(|s| allowed.contains(s.as_str())) {
         return (
             StatusCode::BAD_REQUEST,
@@ -84,20 +84,14 @@ pub async fn handle(
         Ok(c) => c,
         Err(()) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
-    let requested_at = time::now();
-    let expires_at = time::add_seconds(requested_at, DEVICE_AUTHORIZATION_TTL_SECS);
-    if state
-        .store
-        .start_device_authorization_request(StartDeviceRequest {
-            request_id: id.clone(),
-            client_id: payload.client_id.clone(),
-            requested_scopes,
-            user_code: user_code.clone(),
-            requested_at: time::to_iso(requested_at),
-            expires_at: time::to_iso(expires_at),
-        })
-        .is_err()
-    {
+    let request = AuthorizationRequest::new_device_flow(NewDeviceFlow {
+        id: id.clone(),
+        client_id: payload.client_id.clone(),
+        requested_scopes,
+        user_code: user_code.clone(),
+        ttl: DEVICE_AUTHORIZATION_TTL,
+    });
+    if state.store.insert_authorization_request(&request).is_err() {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
     Json(DeviceAuthorizationResponse {
@@ -105,8 +99,8 @@ pub async fn handle(
         user_code: user_code.clone(),
         verification_uri: page_paths::device_entry_url(&origin),
         verification_uri_complete: page_paths::device_entry_url_with_code(&origin, &user_code),
-        expires_in: DEVICE_AUTHORIZATION_TTL_SECS,
-        interval: DEVICE_CODE_POLL_INTERVAL_SECS,
+        expires_in: DEVICE_AUTHORIZATION_TTL.num_seconds(),
+        interval: DEVICE_CODE_POLL_INTERVAL.num_seconds(),
     })
     .into_response()
 }
@@ -117,10 +111,7 @@ fn generate_unique_user_code(state: &AppState) -> Result<String, ()> {
             let mut rng = rand::thread_rng();
             generate_user_code(&mut rng)
         };
-        match state
-            .store
-            .authorization_request_by_user_code(&candidate)
-        {
+        match state.store.authorization_request_by_user_code(&candidate) {
             Ok(None) => return Ok(candidate),
             Ok(Some(row)) if row.status != RequestStatus::Pending => return Ok(candidate),
             Ok(Some(_)) => continue,

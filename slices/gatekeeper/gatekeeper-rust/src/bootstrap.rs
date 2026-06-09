@@ -1,11 +1,12 @@
 use anyhow::Context;
+use chrono::{Duration, Utc};
 
 use crate::crypto::jwt::{mint_access_token, MintArgs};
 use crate::crypto::signing_key;
 use crate::error::MintError;
-use crate::store::client::{ClientKind, ClientRow};
+use crate::store::client::{Client, ClientKind};
+use crate::store::types::Json;
 use crate::store::GatekeeperStore;
-use crate::time;
 
 pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";
 pub const OWNER_SCOPE: &str = "owner";
@@ -15,9 +16,10 @@ pub fn seed_signing_key(store: &GatekeeperStore) -> anyhow::Result<()> {
     if !existing.is_empty() {
         return Ok(());
     }
-    let key = signing_key::generate().context("generate signing key")?;
+    let mut key = signing_key::generate().context("generate signing key")?;
+    key.is_active = true;
     store
-        .insert_signing_key(key, true)
+        .insert_signing_key(&key)
         .context("insert signing key")?;
     Ok(())
 }
@@ -30,18 +32,18 @@ pub fn seed_first_party_client(store: &GatekeeperStore) -> anyhow::Result<()> {
     {
         return Ok(());
     }
-    let registered_at = time::to_iso(time::now());
+    let client = Client {
+        client_id: FIRST_PARTY_CLIENT_ID.to_string(),
+        name: "Wildflower (host)".to_string(),
+        kind: ClientKind::Public,
+        redirect_uris: Json(vec![]),
+        allowed_scopes: Json(vec![OWNER_SCOPE.to_string()]),
+        secret_hash: None,
+        registered_at: Utc::now(),
+        disabled_at: None,
+    };
     store
-        .register_client(ClientRow {
-            client_id: FIRST_PARTY_CLIENT_ID.to_string(),
-            name: "Wildflower (host)".to_string(),
-            kind: ClientKind::Public,
-            redirect_uris: vec![],
-            allowed_scopes: vec![OWNER_SCOPE.to_string()],
-            secret_hash: None,
-            registered_at,
-            disabled_at: None,
-        })
+        .register_client(&client)
         .context("register first-party client")?;
     Ok(())
 }
@@ -49,7 +51,7 @@ pub fn seed_first_party_client(store: &GatekeeperStore) -> anyhow::Result<()> {
 pub fn mint_host_owner_token(
     store: &GatekeeperStore,
     origin: &str,
-    ttl_secs: i64,
+    ttl: Duration,
 ) -> Result<String, MintError> {
     let active = store.active_signing_key()?;
     let all = store.all_signing_keys()?;
@@ -62,7 +64,7 @@ pub fn mint_host_owner_token(
         MintArgs {
             client_id: FIRST_PARTY_CLIENT_ID,
             scope: &scope,
-            ttl_secs,
+            ttl,
             origin,
             audience: None,
             patient: None,

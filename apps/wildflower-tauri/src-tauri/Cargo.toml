@@ -29,5 +29,6 @@ shared-structures-rust = { path = "../../../slices/shared-structures/shared-stru
 anyhow.workspace = true
 axum.workspace = true
 tokio = { workspace = true, features = ["full"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"

@@ -3,13 +3,14 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::require_auth::AppState;
 use crate::store::authorization_request::{GrantType, RequestStatus};
-use crate::store::grant::GrantRow;
-use crate::time;
+use crate::store::grant::Grant;
+use crate::store::types::Json as JsonWrap;
 
 #[derive(Debug, Serialize)]
 pub struct OAuthConsent {
@@ -67,9 +68,9 @@ async fn get_consent(Extension(state): Extension<AppState>, Path(id): Path<Strin
     Json(OAuthConsent {
         id: id.clone(),
         client_id: request.client_id,
-        scopes: request.requested_scopes,
+        scopes: request.requested_scopes.0,
         redirect_uri: request.redirect_uri.unwrap(),
-        pre_approved_scopes: request.pre_approved_scopes.unwrap_or_default(),
+        pre_approved_scopes: request.pre_approved_scopes.map(|j| j.0).unwrap_or_default(),
         patient: request.patient,
     })
     .into_response()
@@ -99,8 +100,14 @@ async fn approve_consent(
     {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
-    if upsert_grant(&state, &request.client_id, &redirect_uri, &body.approved_scopes, body.patient.as_deref())
-        .is_err()
+    if upsert_grant(
+        &state,
+        &request.client_id,
+        &redirect_uri,
+        &body.approved_scopes,
+        body.patient.as_deref(),
+    )
+    .is_err()
     {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
@@ -133,25 +140,23 @@ fn upsert_grant(
     scopes: &[String],
     patient: Option<&str>,
 ) -> crate::store::DbResult<()> {
-    let now = time::to_iso(time::now());
+    let now = Utc::now();
     if let Some(existing) = state
         .store
         .grant_by_client_and_redirect(client_id, redirect_uri)?
     {
-        state
-            .store
-            .update_grant(&existing.id, scopes, &now, patient)
+        state.store.update_grant(&existing.id, scopes, now, patient)
     } else {
-        let row = GrantRow {
+        let grant = Grant {
             id: Uuid::new_v4().to_string(),
             client_id: client_id.to_string(),
-            scopes: scopes.to_vec(),
+            scopes: JsonWrap(scopes.to_vec()),
             redirect_uri: redirect_uri.to_string(),
             granted_at: now,
             last_used_at: None,
             patient: patient.map(str::to_string),
         };
-        state.store.create_grant(row)
+        state.store.create_grant(&grant)
     }
 }
 

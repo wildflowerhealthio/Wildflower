@@ -68,7 +68,7 @@ async fn get_consent(
         user_code,
         client_id: pending.client_id,
         client_name,
-        requested_scopes: pending.requested_scopes,
+        requested_scopes: pending.requested_scopes.0,
     })
     .into_response()
 }

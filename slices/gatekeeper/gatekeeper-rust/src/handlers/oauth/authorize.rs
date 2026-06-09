@@ -1,7 +1,9 @@
 use axum::extract::{Extension, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
+use chrono::{Duration, Utc};
 use serde::Deserialize;
+use std::collections::HashSet;
 use url::Url;
 use uuid::Uuid;
 
@@ -9,13 +11,12 @@ use super::shared::build_client_redirect_url;
 use crate::error_pages::{oauth_error_html, OAuthErrorKind};
 use crate::page_paths;
 use crate::require_auth::AppState;
-use crate::store::authorization_code::AuthorizationCodeRow;
-use crate::store::authorization_request::StartCodeRequest;
-use crate::store::client::ClientRow;
-use crate::time;
+use crate::store::authorization_code::AuthorizationCode;
+use crate::store::authorization_request::{AuthorizationRequest, NewCodeFlow};
+use crate::store::types::Json;
 
-const AUTHORIZATION_CODE_TTL_SECS: i64 = 60;
-const AUTHORIZATION_REQUEST_TTL_SECS: i64 = 60 * 5;
+const AUTHORIZATION_CODE_TTL: Duration = Duration::seconds(60);
+const AUTHORIZATION_REQUEST_TTL: Duration = Duration::minutes(5);
 
 #[derive(Debug, Deserialize)]
 pub struct AuthorizeParams {
@@ -81,8 +82,7 @@ pub async fn handle(
         .split_whitespace()
         .map(str::to_string)
         .collect();
-    let allowed: std::collections::HashSet<&str> =
-        client.allowed_scopes.iter().map(String::as_str).collect();
+    let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
     if !requested_scopes.iter().all(|s| allowed.contains(s.as_str())) {
         return html_bad_request(oauth_error_html(OAuthErrorKind::ScopeNotAllowed, None));
     }
@@ -95,7 +95,7 @@ pub async fn handle(
         Ok(g) => g,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
-    let previously_approved: std::collections::HashSet<&str> = approved_grant
+    let previously_approved: HashSet<&str> = approved_grant
         .as_ref()
         .map(|g| g.scopes.iter().map(String::as_str).collect())
         .unwrap_or_default();
@@ -112,43 +112,36 @@ pub async fn handle(
 
     // 8. Persist the pending authorization request.
     let request_id = Uuid::new_v4().to_string();
-    let now = time::now();
-    let expires_at = time::add_seconds(now, AUTHORIZATION_REQUEST_TTL_SECS);
-    let pre_approved_opt = if pre_approved.is_empty() { None } else { Some(pre_approved) };
-    if let Err(_) = state
-        .store
-        .start_code_authorization_request(StartCodeRequest {
-            request_id: request_id.clone(),
-            client_id: params.client_id.clone(),
-            requested_scopes: requested_scopes.clone(),
-            code_challenge: params.code_challenge.clone(),
-            redirect_uri: params.redirect_uri.clone(),
-            client_state: params.state.clone(),
-            pre_approved_scopes: pre_approved_opt,
-            requested_at: time::to_iso(now),
-            expires_at: time::to_iso(expires_at),
-        })
-    {
+    let request = AuthorizationRequest::new_code_flow(NewCodeFlow {
+        id: request_id.clone(),
+        client_id: params.client_id.clone(),
+        requested_scopes: requested_scopes.clone(),
+        code_challenge: params.code_challenge.clone(),
+        redirect_uri: params.redirect_uri.clone(),
+        client_state: params.state.clone(),
+        pre_approved_scopes: if pre_approved.is_empty() { None } else { Some(pre_approved) },
+        ttl: AUTHORIZATION_REQUEST_TTL,
+    });
+    if state.store.insert_authorization_request(&request).is_err() {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
     // 9. If all scopes are pre-approved, auto-issue the code and 302 to the client.
     if all_pre_approved {
         let code = Uuid::new_v4().to_string();
-        let issued_at = time::now();
-        let code_expires_at = time::add_seconds(issued_at, AUTHORIZATION_CODE_TTL_SECS);
-        let row = AuthorizationCodeRow {
+        let issued_at = Utc::now();
+        let authorization_code = AuthorizationCode {
             code: code.clone(),
             request_id: request_id.clone(),
             client_id: params.client_id.clone(),
             redirect_uri: params.redirect_uri.clone(),
             code_challenge: params.code_challenge.clone(),
-            granted_scopes: requested_scopes.clone(),
+            granted_scopes: Json(requested_scopes.clone()),
             patient: patient_from_grant.clone(),
-            issued_at: time::to_iso(issued_at),
-            expires_at: time::to_iso(code_expires_at),
+            issued_at,
+            expires_at: issued_at + AUTHORIZATION_CODE_TTL,
         };
-        if state.store.issue_authorization_code(row).is_err()
+        if state.store.issue_authorization_code(&authorization_code).is_err()
             || state
                 .store
                 .approve_authorization_request(
@@ -166,7 +159,6 @@ pub async fn handle(
 
     // 10. Otherwise redirect to the polling URL for the Owner UI to drive.
     let polling_url = page_paths::oauth_polling_url(&origin, &request_id);
-    let _ = client_unused(&client);
     Redirect::to(&polling_url).into_response()
 }
 
@@ -178,5 +170,3 @@ fn html_bad_request(html: String) -> Response {
     )
         .into_response()
 }
-
-fn client_unused(_: &ClientRow) {}

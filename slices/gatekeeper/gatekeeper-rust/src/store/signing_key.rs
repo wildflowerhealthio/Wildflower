@@ -1,55 +1,68 @@
-use rusqlite::{params, Row};
+use rusqlite::{Row, ToSql};
 
 use super::GatekeeperStore;
-use crate::crypto::signing_key::{SigningKey, SigningKeyValues};
+use crate::crypto::signing_key::SigningKey;
 
-fn row_to_signing_key(row: &Row) -> rusqlite::Result<SigningKey> {
-    let values_json: String = row.get("values_json")?;
-    let values: SigningKeyValues =
-        serde_json::from_str(&values_json).map_err(|_| rusqlite::Error::InvalidQuery)?;
-    Ok(SigningKey {
-        kid: row.get("kid")?,
-        kty: row.get("kty")?,
-        alg: row.get("alg")?,
-        values,
-    })
+impl SigningKey {
+    pub fn as_named_sql_params(&self) -> [(&str, &dyn ToSql); 5] {
+        [
+            (":kid", &self.kid),
+            (":kty", &self.kty),
+            (":alg", &self.alg),
+            (":values", &self.values),
+            (":isActive", &self.is_active),
+        ]
+    }
+}
+
+impl TryFrom<&Row<'_>> for SigningKey {
+    type Error = rusqlite::Error;
+    fn try_from(row: &Row<'_>) -> rusqlite::Result<Self> {
+        Ok(SigningKey {
+            kid: row.get("kid")?,
+            kty: row.get("kty")?,
+            alg: row.get("alg")?,
+            values: row.get("values_json")?,
+            is_active: row.get("isActive")?,
+        })
+    }
 }
 
 impl GatekeeperStore {
     pub fn all_signing_keys(&self) -> crate::store::DbResult<Vec<SigningKey>> {
         let conn = self.conn().lock();
         let mut stmt = conn.prepare(
-            "SELECT kid, kty, alg, values_json FROM signingKeys ORDER BY isActive DESC, kid",
+            "SELECT kid, kty, alg, values_json, isActive FROM signingKeys ORDER BY isActive DESC, kid",
         )?;
-        let rows = stmt
-            .query_map([], row_to_signing_key)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(rows)
+        let rows: rusqlite::Result<Vec<_>> = stmt
+            .query_map([], |row| SigningKey::try_from(row))?
+            .collect();
+        rows
     }
 
     pub fn active_signing_key(&self) -> crate::store::DbResult<Option<SigningKey>> {
         let conn = self.conn().lock();
         let mut stmt = conn.prepare(
-            "SELECT kid, kty, alg, values_json FROM signingKeys WHERE isActive = 1 LIMIT 1",
+            "SELECT kid, kty, alg, values_json, isActive FROM signingKeys WHERE isActive = 1 LIMIT 1",
         )?;
         let mut rows = stmt.query([])?;
-        let result = match rows.next()? {
-            Some(row) => Some(row_to_signing_key(row)?),
-            None => None,
-        };
-        Ok(result)
+        match rows.next()? {
+            Some(row) => Ok(Some(SigningKey::try_from(row)?)),
+            None => Ok(None),
+        }
     }
 
-    pub fn insert_signing_key(
-        &self,
-        key: SigningKey,
-        is_active: bool,
-    ) -> crate::store::DbResult<()> {
-        let values_json = serde_json::to_string(&key.values).unwrap();
+    pub fn insert_signing_key(&self, key: &SigningKey) -> crate::store::DbResult<()> {
+        // The schema column is `values_json`; the named param is `:values`.
+        // Map via a positional ordering in a single execute that uses
+        // `as_named_sql_params` to keep the field/value mapping
+        // co-located with the domain object.
         self.conn().lock().execute(
-            "INSERT INTO signingKeys (kid, kty, alg, values_json, isActive) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![key.kid, key.kty, key.alg, values_json, is_active as i64],
+            "INSERT INTO signingKeys (kid, kty, alg, values_json, isActive)
+             VALUES (:kid, :kty, :alg, :values, :isActive)",
+            &key.as_named_sql_params(),
         )?;
         Ok(())
     }
 }
+

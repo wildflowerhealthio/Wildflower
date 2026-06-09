@@ -81,7 +81,7 @@ async fn access_grants_without_auth_returns_401() {
 #[tokio::test]
 async fn access_grants_with_owner_token_returns_empty_list() {
     let (g, _tmp) = spin_up();
-    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, 60).expect("mint");
+    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, chrono::Duration::seconds(60)).expect("mint");
     let req = loopback_request(
         Request::get("/access/grants")
             .header("host", "127.0.0.1")
@@ -97,7 +97,7 @@ async fn access_grants_with_owner_token_returns_empty_list() {
 #[tokio::test]
 async fn get_unknown_grant_returns_404() {
     let (g, _tmp) = spin_up();
-    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, 60).expect("mint");
+    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, chrono::Duration::seconds(60)).expect("mint");
     let req = loopback_request(
         Request::get("/access/grants/nope")
             .header("host", "127.0.0.1")
@@ -193,7 +193,7 @@ async fn token_exchange_unknown_code_returns_400() {
 #[tokio::test]
 async fn mint_host_owner_token_is_owner_scoped() {
     let (g, _tmp) = spin_up();
-    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, 60).expect("mint");
+    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, chrono::Duration::seconds(60)).expect("mint");
     // header.payload.sig
     let parts: Vec<&str> = token.split('.').collect();
     assert_eq!(parts.len(), 3);

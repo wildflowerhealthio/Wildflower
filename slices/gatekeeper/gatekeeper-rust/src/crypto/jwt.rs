@@ -1,8 +1,8 @@
+use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 
 use super::signing_key::{decoding_key, encoding_key, SigningKey};
-use crate::time;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccessTokenClaims {
@@ -19,7 +19,7 @@ pub struct AccessTokenClaims {
 pub struct MintArgs<'a> {
     pub client_id: &'a str,
     pub scope: &'a [String],
-    pub ttl_secs: i64,
+    pub ttl: Duration,
     pub origin: &'a str,
     pub audience: Option<&'a str>,
     pub patient: Option<&'a str>,
@@ -37,14 +37,14 @@ pub fn mint_access_token(
     signing_key: &SigningKey,
     args: MintArgs<'_>,
 ) -> Result<String, MintError> {
-    let now = time::now();
-    let exp = time::add_seconds(now, args.ttl_secs);
+    let now = Utc::now();
+    let exp = now + args.ttl;
     let claims = AccessTokenClaims {
         iss: args.origin.to_string(),
         sub: args.client_id.to_string(),
         aud: args.audience.unwrap_or(args.origin).to_string(),
-        exp: time::to_epoch_seconds(exp),
-        iat: time::to_epoch_seconds(now),
+        exp: exp.timestamp(),
+        iat: now.timestamp(),
         scope: args.scope.join(" "),
         patient: args.patient.map(str::to_string),
     };
@@ -138,7 +138,7 @@ mod tests {
             MintArgs {
                 client_id: "wildflower-host",
                 scope: &["owner".to_string()],
-                ttl_secs: 60,
+                ttl: Duration::seconds(60),
                 origin: "tauri://localhost",
                 audience: Some("tauri://localhost/fhir-r4"),
                 patient: None,
@@ -167,7 +167,7 @@ mod tests {
             MintArgs {
                 client_id: "c",
                 scope: &[],
-                ttl_secs: 60,
+                ttl: Duration::seconds(60),
                 origin: "tauri://localhost",
                 audience: None,
                 patient: None,

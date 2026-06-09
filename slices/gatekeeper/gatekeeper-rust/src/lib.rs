@@ -10,7 +10,6 @@ pub mod origin;
 pub mod page_paths;
 pub mod require_auth;
 pub mod store;
-pub mod time;
 
 use std::sync::Arc;
 
@@ -18,6 +17,7 @@ use anyhow::Context;
 use axum::extract::Extension;
 use axum::middleware;
 use axum::Router;
+use chrono::Duration;
 
 pub use config::GatekeeperConfig;
 pub use error::MintError;
@@ -83,7 +83,7 @@ pub fn setup_gatekeeper(config: &GatekeeperConfig) -> anyhow::Result<Gatekeeper>
 pub fn mint_host_owner_token(
     state: &AppState,
     origin: &str,
-    ttl_secs: i64,
+    ttl: Duration,
 ) -> Result<String, MintError> {
-    bootstrap::mint_host_owner_token(&state.store, origin, ttl_secs)
+    bootstrap::mint_host_owner_token(&state.store, origin, ttl)
 }
