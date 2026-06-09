@@ -1250,9 +1250,11 @@ checksum = "4ef6b89e5b37196644d8796de5268852ff179b44e96276cf4290264843743bb7"
 name = "emr-rust"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "axum",
  "helios-persistence",
  "helios-rest",
+ "shared-structures-rust",
 ]
 
 [[package]]
@@ -4471,6 +4473,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "shared-structures-rust"
+version = "0.0.0"
+
+[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6009,6 +6015,7 @@ dependencies = [
  "emr-rust",
  "serde",
  "serde_json",
+ "shared-structures-rust",
  "tauri",
  "tauri-build",
  "tauri-plugin-fs",

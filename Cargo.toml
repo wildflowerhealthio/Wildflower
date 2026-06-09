@@ -1,3 +1,15 @@
 [workspace]
 resolver = "2"
-members = ["apps/wildflower-tauri/src-tauri", "slices/emr/emr-rust"]
+members = [
+    "apps/wildflower-tauri/src-tauri",
+    "slices/emr/emr-rust",
+    "slices/shared-structures/shared-structures-rust",
+]
+
+[workspace.package]
+edition = "2021"
+publish = false
+
+[workspace.dependencies]
+anyhow = "1.0.102"
+axum = { version = "0.8", features = ["json", "query", "matched-path", "ws"] }
