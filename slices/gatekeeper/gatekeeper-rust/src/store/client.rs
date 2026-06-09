@@ -45,8 +45,7 @@ fn row_to_client(row: &Row) -> rusqlite::Result<ClientRow> {
     Ok(ClientRow {
         client_id: row.get("clientId")?,
         name: row.get("name")?,
-        kind: ClientKind::parse(&kind_str)
-            .ok_or_else(|| rusqlite::Error::InvalidQuery)?,
+        kind: ClientKind::parse(&kind_str).ok_or(rusqlite::Error::InvalidQuery)?,
         redirect_uris: serde_json::from_str(&redirect_uris_json)
             .map_err(|_| rusqlite::Error::InvalidQuery)?,
         allowed_scopes: serde_json::from_str(&allowed_scopes_json)
@@ -58,43 +57,34 @@ fn row_to_client(row: &Row) -> rusqlite::Result<ClientRow> {
 }
 
 impl GatekeeperStore {
-    pub async fn client_by_id(&self, client_id: &str) -> crate::store::DbResult<Option<ClientRow>> {
-        let id = client_id.to_string();
+    pub fn client_by_id(&self, client_id: &str) -> crate::store::DbResult<Option<ClientRow>> {
         self.conn()
-            .call(move |c| {
-                let row = c
-                    .query_row(
-                        "SELECT clientId, name, kind, redirectUris, allowedScopes, secretHash, registeredAt, disabledAt
-                         FROM clients WHERE clientId = ?1",
-                        params![id],
-                        row_to_client,
-                    )
-                    .optional()?;
-                Ok(row)
-            })
-            .await
+            .lock()
+            .query_row(
+                "SELECT clientId, name, kind, redirectUris, allowedScopes, secretHash, registeredAt, disabledAt
+                 FROM clients WHERE clientId = ?1",
+                params![client_id],
+                row_to_client,
+            )
+            .optional()
     }
 
-    pub async fn register_client(&self, row: ClientRow) -> crate::store::DbResult<()> {
-        self.conn()
-            .call(move |c| {
-                c.execute(
-                    "INSERT INTO clients
-                     (clientId, name, kind, redirectUris, allowedScopes, secretHash, registeredAt, disabledAt)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                    params![
-                        row.client_id,
-                        row.name,
-                        row.kind.as_str(),
-                        serde_json::to_string(&row.redirect_uris).unwrap(),
-                        serde_json::to_string(&row.allowed_scopes).unwrap(),
-                        row.secret_hash,
-                        row.registered_at,
-                        row.disabled_at,
-                    ],
-                )?;
-                Ok(())
-            })
-            .await
+    pub fn register_client(&self, row: ClientRow) -> crate::store::DbResult<()> {
+        self.conn().lock().execute(
+            "INSERT INTO clients
+             (clientId, name, kind, redirectUris, allowedScopes, secretHash, registeredAt, disabledAt)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                row.client_id,
+                row.name,
+                row.kind.as_str(),
+                serde_json::to_string(&row.redirect_uris).unwrap(),
+                serde_json::to_string(&row.allowed_scopes).unwrap(),
+                row.secret_hash,
+                row.registered_at,
+                row.disabled_at,
+            ],
+        )?;
+        Ok(())
     }
 }

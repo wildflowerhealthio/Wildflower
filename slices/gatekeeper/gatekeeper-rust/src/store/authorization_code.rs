@@ -35,82 +35,63 @@ const ALL_COLS: &str =
     "code, requestId, clientId, redirectUri, codeChallenge, grantedScopes, patient, issuedAt, expiresAt";
 
 impl GatekeeperStore {
-    pub async fn authorization_code_by_code(
+    pub fn authorization_code_by_code(
         &self,
         code: &str,
     ) -> crate::store::DbResult<Option<AuthorizationCodeRow>> {
-        let code = code.to_string();
         self.conn()
-            .call(move |c| {
-                let row = c
-                    .query_row(
-                        &format!("SELECT {ALL_COLS} FROM authorizationCodes WHERE code = ?1"),
-                        params![code],
-                        row_to_code,
-                    )
-                    .optional()?;
-                Ok(row)
-            })
-            .await
+            .lock()
+            .query_row(
+                &format!("SELECT {ALL_COLS} FROM authorizationCodes WHERE code = ?1"),
+                params![code],
+                row_to_code,
+            )
+            .optional()
     }
 
-    pub async fn authorization_code_by_request_id(
+    pub fn authorization_code_by_request_id(
         &self,
         request_id: &str,
     ) -> crate::store::DbResult<Option<AuthorizationCodeRow>> {
-        let rid = request_id.to_string();
         self.conn()
-            .call(move |c| {
-                let row = c
-                    .query_row(
-                        &format!("SELECT {ALL_COLS} FROM authorizationCodes WHERE requestId = ?1"),
-                        params![rid],
-                        row_to_code,
-                    )
-                    .optional()?;
-                Ok(row)
-            })
-            .await
+            .lock()
+            .query_row(
+                &format!("SELECT {ALL_COLS} FROM authorizationCodes WHERE requestId = ?1"),
+                params![request_id],
+                row_to_code,
+            )
+            .optional()
     }
 
-    pub async fn issue_authorization_code(
+    pub fn issue_authorization_code(
         &self,
         row: AuthorizationCodeRow,
     ) -> crate::store::DbResult<()> {
-        self.conn()
-            .call(move |c| {
-                let scopes = serde_json::to_string(&row.granted_scopes).unwrap();
-                c.execute(
-                    "INSERT INTO authorizationCodes
-                     (code, requestId, clientId, redirectUri, codeChallenge, grantedScopes, patient, issuedAt, expiresAt)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                    params![
-                        row.code,
-                        row.request_id,
-                        row.client_id,
-                        row.redirect_uri,
-                        row.code_challenge,
-                        scopes,
-                        row.patient,
-                        row.issued_at,
-                        row.expires_at,
-                    ],
-                )?;
-                Ok(())
-            })
-            .await
+        let scopes = serde_json::to_string(&row.granted_scopes).unwrap();
+        self.conn().lock().execute(
+            "INSERT INTO authorizationCodes
+             (code, requestId, clientId, redirectUri, codeChallenge, grantedScopes, patient, issuedAt, expiresAt)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                row.code,
+                row.request_id,
+                row.client_id,
+                row.redirect_uri,
+                row.code_challenge,
+                scopes,
+                row.patient,
+                row.issued_at,
+                row.expires_at,
+            ],
+        )?;
+        Ok(())
     }
 
-    pub async fn consume_authorization_code(&self, code: &str) -> crate::store::DbResult<()> {
-        let code = code.to_string();
-        self.conn()
-            .call(move |c| {
-                c.execute(
-                    "DELETE FROM authorizationCodes WHERE code = ?1",
-                    params![code],
-                )?;
-                Ok(())
-            })
-            .await
+    pub fn consume_authorization_code(&self, code: &str) -> crate::store::DbResult<()> {
+        self.conn().lock().execute(
+            "DELETE FROM authorizationCodes WHERE code = ?1",
+            params![code],
+        )?;
+        Ok(())
     }
 }

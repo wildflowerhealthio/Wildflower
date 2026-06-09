@@ -10,12 +10,12 @@ use serde_json::Value;
 use tempfile::TempDir;
 use tower::ServiceExt;
 
-async fn spin_up() -> (Gatekeeper, TempDir) {
+fn spin_up() -> (Gatekeeper, TempDir) {
     let tmp = TempDir::new().expect("tmp dir");
     let config = GatekeeperConfig {
         db_file_path: tmp.path().join("gatekeeper.sqlite"),
     };
-    let g = setup_gatekeeper(&config).await.expect("setup");
+    let g = setup_gatekeeper(&config).expect("setup");
     (g, tmp)
 }
 
@@ -39,7 +39,7 @@ async fn body_string(body: Body) -> String {
 
 #[tokio::test]
 async fn jwks_endpoint_returns_seeded_key() {
-    let (g, _tmp) = spin_up().await;
+    let (g, _tmp) = spin_up();
     let req = loopback_request(
         Request::get("/.well-known/jwks.json"),
         Body::empty(),
@@ -59,7 +59,7 @@ async fn jwks_endpoint_returns_seeded_key() {
 
 #[tokio::test]
 async fn loopback_gate_rejects_non_loopback_peer() {
-    let (g, _tmp) = spin_up().await;
+    let (g, _tmp) = spin_up();
     let mut req = Request::get("/.well-known/jwks.json")
         .body(Body::empty())
         .unwrap();
@@ -72,7 +72,7 @@ async fn loopback_gate_rejects_non_loopback_peer() {
 
 #[tokio::test]
 async fn access_grants_without_auth_returns_401() {
-    let (g, _tmp) = spin_up().await;
+    let (g, _tmp) = spin_up();
     let req = loopback_request(Request::get("/access/grants"), Body::empty());
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -80,10 +80,8 @@ async fn access_grants_without_auth_returns_401() {
 
 #[tokio::test]
 async fn access_grants_with_owner_token_returns_empty_list() {
-    let (g, _tmp) = spin_up().await;
-    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, 60)
-        .await
-        .expect("mint");
+    let (g, _tmp) = spin_up();
+    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, 60).expect("mint");
     let req = loopback_request(
         Request::get("/access/grants")
             .header("host", "127.0.0.1")
@@ -98,10 +96,8 @@ async fn access_grants_with_owner_token_returns_empty_list() {
 
 #[tokio::test]
 async fn get_unknown_grant_returns_404() {
-    let (g, _tmp) = spin_up().await;
-    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, 60)
-        .await
-        .expect("mint");
+    let (g, _tmp) = spin_up();
+    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, 60).expect("mint");
     let req = loopback_request(
         Request::get("/access/grants/nope")
             .header("host", "127.0.0.1")
@@ -116,7 +112,7 @@ async fn get_unknown_grant_returns_404() {
 
 #[tokio::test]
 async fn authorize_unknown_client_returns_html_bad_request() {
-    let (g, _tmp) = spin_up().await;
+    let (g, _tmp) = spin_up();
     let query = "code_challenge_method=S256&client_id=ghost&scope=read&\
                  code_challenge=abc&redirect_uri=http%3A%2F%2Fexample.com%2Fcb&state=xyz";
     let req = loopback_request(
@@ -131,7 +127,7 @@ async fn authorize_unknown_client_returns_html_bad_request() {
 
 #[tokio::test]
 async fn authorize_unsupported_pkce_method() {
-    let (g, _tmp) = spin_up().await;
+    let (g, _tmp) = spin_up();
     let query = "code_challenge_method=plain&client_id=wildflower-host&scope=owner&\
                  code_challenge=abc&redirect_uri=http%3A%2F%2Fexample.com%2Fcb&state=xyz";
     let req = loopback_request(
@@ -146,7 +142,7 @@ async fn authorize_unsupported_pkce_method() {
 
 #[tokio::test]
 async fn device_authorization_happy_path() {
-    let (g, _tmp) = spin_up().await;
+    let (g, _tmp) = spin_up();
     let body = "client_id=wildflower-host&scope=owner";
     let req = loopback_request(
         Request::post("/oauth/device_authorization")
@@ -164,7 +160,7 @@ async fn device_authorization_happy_path() {
 
 #[tokio::test]
 async fn device_authorization_unknown_client_returns_401() {
-    let (g, _tmp) = spin_up().await;
+    let (g, _tmp) = spin_up();
     let body = "client_id=ghost&scope=owner";
     let req = loopback_request(
         Request::post("/oauth/device_authorization")
@@ -179,7 +175,7 @@ async fn device_authorization_unknown_client_returns_401() {
 
 #[tokio::test]
 async fn token_exchange_unknown_code_returns_400() {
-    let (g, _tmp) = spin_up().await;
+    let (g, _tmp) = spin_up();
     let body = "grant_type=authorization_code&client_id=wildflower-host&\
                 code=missing&code_verifier=verifierverifierverifierverifierverifierverifierverifier&\
                 redirect_uri=http%3A%2F%2Fexample.com%2Fcb";
@@ -196,10 +192,8 @@ async fn token_exchange_unknown_code_returns_400() {
 
 #[tokio::test]
 async fn mint_host_owner_token_is_owner_scoped() {
-    let (g, _tmp) = spin_up().await;
-    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, 60)
-        .await
-        .expect("mint");
+    let (g, _tmp) = spin_up();
+    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, 60).expect("mint");
     // header.payload.sig
     let parts: Vec<&str> = token.split('.').collect();
     assert_eq!(parts.len(), 3);

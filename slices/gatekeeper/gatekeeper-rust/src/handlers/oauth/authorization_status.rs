@@ -24,7 +24,7 @@ pub struct NotFound {
 }
 
 pub async fn handle(Extension(state): Extension<AppState>, Path(id): Path<String>) -> Response {
-    let request = match state.store.authorization_request_by_id(&id).await {
+    let request = match state.store.authorization_request_by_id(&id) {
         Ok(Some(r)) => r,
         Ok(None) => {
             return (
@@ -59,7 +59,7 @@ pub async fn handle(Extension(state): Extension<AppState>, Path(id): Path<String
                         .into_response()
                 }
             };
-            let code = match state.store.authorization_code_by_request_id(&id).await {
+            let code = match state.store.authorization_code_by_request_id(&id) {
                 Ok(Some(c)) => c,
                 Ok(None) => {
                     return (

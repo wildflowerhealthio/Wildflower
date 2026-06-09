@@ -34,109 +34,82 @@ fn row_to_grant(row: &Row) -> rusqlite::Result<GrantRow> {
 const ALL_COLS: &str = "id, clientId, scopes, redirectUri, grantedAt, lastUsedAt, patient";
 
 impl GatekeeperStore {
-    pub async fn all_grants(&self) -> crate::store::DbResult<Vec<GrantRow>> {
-        self.conn()
-            .call(|c| {
-                let mut stmt =
-                    c.prepare(&format!("SELECT {ALL_COLS} FROM grants ORDER BY grantedAt"))?;
-                let rows = stmt
-                    .query_map([], row_to_grant)?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
-                Ok(rows)
-            })
-            .await
+    pub fn all_grants(&self) -> crate::store::DbResult<Vec<GrantRow>> {
+        let conn = self.conn().lock();
+        let mut stmt =
+            conn.prepare(&format!("SELECT {ALL_COLS} FROM grants ORDER BY grantedAt"))?;
+        let rows = stmt
+            .query_map([], row_to_grant)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
     }
 
-    pub async fn grant_by_id(&self, id: &str) -> crate::store::DbResult<Option<GrantRow>> {
-        let id = id.to_string();
+    pub fn grant_by_id(&self, id: &str) -> crate::store::DbResult<Option<GrantRow>> {
         self.conn()
-            .call(move |c| {
-                let row = c
-                    .query_row(
-                        &format!("SELECT {ALL_COLS} FROM grants WHERE id = ?1"),
-                        params![id],
-                        row_to_grant,
-                    )
-                    .optional()?;
-                Ok(row)
-            })
-            .await
+            .lock()
+            .query_row(
+                &format!("SELECT {ALL_COLS} FROM grants WHERE id = ?1"),
+                params![id],
+                row_to_grant,
+            )
+            .optional()
     }
 
-    pub async fn grant_by_client_and_redirect(
+    pub fn grant_by_client_and_redirect(
         &self,
         client_id: &str,
         redirect_uri: &str,
     ) -> crate::store::DbResult<Option<GrantRow>> {
-        let cid = client_id.to_string();
-        let ru = redirect_uri.to_string();
         self.conn()
-            .call(move |c| {
-                let row = c
-                    .query_row(
-                        &format!(
-                            "SELECT {ALL_COLS} FROM grants WHERE clientId = ?1 AND redirectUri = ?2"
-                        ),
-                        params![cid, ru],
-                        row_to_grant,
-                    )
-                    .optional()?;
-                Ok(row)
-            })
-            .await
+            .lock()
+            .query_row(
+                &format!(
+                    "SELECT {ALL_COLS} FROM grants WHERE clientId = ?1 AND redirectUri = ?2"
+                ),
+                params![client_id, redirect_uri],
+                row_to_grant,
+            )
+            .optional()
     }
 
-    pub async fn create_grant(&self, row: GrantRow) -> crate::store::DbResult<()> {
-        self.conn()
-            .call(move |c| {
-                let scopes = serde_json::to_string(&row.scopes).unwrap();
-                c.execute(
-                    "INSERT INTO grants (id, clientId, scopes, redirectUri, grantedAt, lastUsedAt, patient)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                    params![
-                        row.id,
-                        row.client_id,
-                        scopes,
-                        row.redirect_uri,
-                        row.granted_at,
-                        row.last_used_at,
-                        row.patient,
-                    ],
-                )?;
-                Ok(())
-            })
-            .await
+    pub fn create_grant(&self, row: GrantRow) -> crate::store::DbResult<()> {
+        let scopes = serde_json::to_string(&row.scopes).unwrap();
+        self.conn().lock().execute(
+            "INSERT INTO grants (id, clientId, scopes, redirectUri, grantedAt, lastUsedAt, patient)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                row.id,
+                row.client_id,
+                scopes,
+                row.redirect_uri,
+                row.granted_at,
+                row.last_used_at,
+                row.patient,
+            ],
+        )?;
+        Ok(())
     }
 
-    pub async fn update_grant(
+    pub fn update_grant(
         &self,
         id: &str,
         scopes: &[String],
         granted_at: &str,
         patient: Option<&str>,
     ) -> crate::store::DbResult<()> {
-        let id = id.to_string();
         let scopes_json = serde_json::to_string(scopes).unwrap();
-        let granted_at = granted_at.to_string();
-        let patient = patient.map(str::to_string);
-        self.conn()
-            .call(move |c| {
-                c.execute(
-                    "UPDATE grants SET scopes = ?2, grantedAt = ?3, patient = ?4 WHERE id = ?1",
-                    params![id, scopes_json, granted_at, patient],
-                )?;
-                Ok(())
-            })
-            .await
+        self.conn().lock().execute(
+            "UPDATE grants SET scopes = ?2, grantedAt = ?3, patient = ?4 WHERE id = ?1",
+            params![id, scopes_json, granted_at, patient],
+        )?;
+        Ok(())
     }
 
-    pub async fn revoke_grant(&self, id: &str) -> crate::store::DbResult<bool> {
-        let id = id.to_string();
-        self.conn()
-            .call(move |c| {
-                let affected = c.execute("DELETE FROM grants WHERE id = ?1", params![id])?;
-                Ok(affected > 0)
-            })
-            .await
+    pub fn revoke_grant(&self, id: &str) -> crate::store::DbResult<bool> {
+        let affected = self
+            .conn()
+            .lock()
+            .execute("DELETE FROM grants WHERE id = ?1", params![id])?;
+        Ok(affected > 0)
     }
 }

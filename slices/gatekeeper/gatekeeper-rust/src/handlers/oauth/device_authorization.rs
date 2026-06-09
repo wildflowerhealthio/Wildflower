@@ -53,7 +53,7 @@ pub async fn handle(
         .split_whitespace()
         .map(str::to_string)
         .collect();
-    let client = match state.store.client_by_id(&payload.client_id).await {
+    let client = match state.store.client_by_id(&payload.client_id) {
         Ok(Some(c)) if c.disabled_at.is_none() => c,
         Ok(_) => {
             return (
@@ -80,7 +80,7 @@ pub async fn handle(
             .into_response();
     }
     let id = Uuid::new_v4().to_string();
-    let user_code = match generate_unique_user_code(&state).await {
+    let user_code = match generate_unique_user_code(&state) {
         Ok(c) => c,
         Err(()) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
@@ -96,7 +96,6 @@ pub async fn handle(
             requested_at: time::to_iso(requested_at),
             expires_at: time::to_iso(expires_at),
         })
-        .await
         .is_err()
     {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -112,7 +111,7 @@ pub async fn handle(
     .into_response()
 }
 
-async fn generate_unique_user_code(state: &AppState) -> Result<String, ()> {
+fn generate_unique_user_code(state: &AppState) -> Result<String, ()> {
     for _ in 0..10 {
         let candidate = {
             let mut rng = rand::thread_rng();
@@ -121,7 +120,6 @@ async fn generate_unique_user_code(state: &AppState) -> Result<String, ()> {
         match state
             .store
             .authorization_request_by_user_code(&candidate)
-            .await
         {
             Ok(None) => return Ok(candidate),
             Ok(Some(row)) if row.status != RequestStatus::Pending => return Ok(candidate),

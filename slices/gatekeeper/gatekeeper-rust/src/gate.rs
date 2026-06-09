@@ -21,7 +21,7 @@ async fn gate_middleware(
         Some(t) => t,
         None => return unauthorized(),
     };
-    let claims = match verify_any_token(&state, &headers, &token).await {
+    let claims = match verify_any_token(&state, &headers, &token) {
         Ok(c) => c,
         Err(VerifyError::NoSigningKeys) => return internal_error(),
         Err(_) => return unauthorized(),

@@ -53,7 +53,7 @@ pub fn router() -> Router {
 }
 
 async fn get_consent(Extension(state): Extension<AppState>, Path(id): Path<String>) -> Response {
-    let request = match state.store.authorization_request_by_id(&id).await {
+    let request = match state.store.authorization_request_by_id(&id) {
         Ok(Some(r))
             if r.status == RequestStatus::Pending
                 && r.grant_type == GrantType::AuthorizationCode
@@ -80,7 +80,7 @@ async fn approve_consent(
     Path(id): Path<String>,
     Json(body): Json<ApproveBody>,
 ) -> Response {
-    let request = match state.store.authorization_request_by_id(&id).await {
+    let request = match state.store.authorization_request_by_id(&id) {
         Ok(Some(r))
             if r.status == RequestStatus::Pending
                 && r.grant_type == GrantType::AuthorizationCode
@@ -95,13 +95,11 @@ async fn approve_consent(
     if state
         .store
         .approve_authorization_request(&id, &body.approved_scopes, body.patient.as_deref())
-        .await
         .is_err()
     {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
     if upsert_grant(&state, &request.client_id, &redirect_uri, &body.approved_scopes, body.patient.as_deref())
-        .await
         .is_err()
     {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -110,7 +108,7 @@ async fn approve_consent(
 }
 
 async fn deny_consent(Extension(state): Extension<AppState>, Path(id): Path<String>) -> Response {
-    let request = match state.store.authorization_request_by_id(&id).await {
+    let request = match state.store.authorization_request_by_id(&id) {
         Ok(Some(r))
             if r.status == RequestStatus::Pending
                 && r.grant_type == GrantType::AuthorizationCode
@@ -122,13 +120,13 @@ async fn deny_consent(Extension(state): Extension<AppState>, Path(id): Path<Stri
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
     let _ = request;
-    if state.store.deny_authorization_request(&id).await.is_err() {
+    if state.store.deny_authorization_request(&id).is_err() {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
     Json(ConsentResult::Denied).into_response()
 }
 
-async fn upsert_grant(
+fn upsert_grant(
     state: &AppState,
     client_id: &str,
     redirect_uri: &str,
@@ -138,13 +136,11 @@ async fn upsert_grant(
     let now = time::to_iso(time::now());
     if let Some(existing) = state
         .store
-        .grant_by_client_and_redirect(client_id, redirect_uri)
-        .await?
+        .grant_by_client_and_redirect(client_id, redirect_uri)?
     {
         state
             .store
             .update_grant(&existing.id, scopes, &now, patient)
-            .await
     } else {
         let row = GrantRow {
             id: Uuid::new_v4().to_string(),
@@ -155,7 +151,7 @@ async fn upsert_grant(
             last_used_at: None,
             patient: patient.map(str::to_string),
         };
-        state.store.create_grant(row).await
+        state.store.create_grant(row)
     }
 }
 

@@ -35,7 +35,7 @@ pub async fn handle(
     let origin = state.origin.origin_for(&headers);
 
     // 1. Signing key must exist (503 if not).
-    let signing_keys = match state.store.all_signing_keys().await {
+    let signing_keys = match state.store.all_signing_keys() {
         Ok(k) => k,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
@@ -61,7 +61,7 @@ pub async fn handle(
     }
 
     // 4. Client must exist and be enabled.
-    let client = match state.store.client_by_id(&params.client_id).await {
+    let client = match state.store.client_by_id(&params.client_id) {
         Ok(Some(c)) => c,
         Ok(None) => return html_bad_request(oauth_error_html(OAuthErrorKind::UnknownClient, None)),
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
@@ -91,7 +91,6 @@ pub async fn handle(
     let approved_grant = match state
         .store
         .grant_by_client_and_redirect(&params.client_id, &params.redirect_uri)
-        .await
     {
         Ok(g) => g,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
@@ -129,7 +128,6 @@ pub async fn handle(
             requested_at: time::to_iso(now),
             expires_at: time::to_iso(expires_at),
         })
-        .await
     {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
@@ -150,7 +148,7 @@ pub async fn handle(
             issued_at: time::to_iso(issued_at),
             expires_at: time::to_iso(code_expires_at),
         };
-        if state.store.issue_authorization_code(row).await.is_err()
+        if state.store.issue_authorization_code(row).is_err()
             || state
                 .store
                 .approve_authorization_request(
@@ -158,7 +156,6 @@ pub async fn handle(
                     &requested_scopes,
                     patient_from_grant.as_deref(),
                 )
-                .await
                 .is_err()
         {
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();

@@ -54,14 +54,13 @@ pub enum ValidateClientError {
     Internal(OAuthError),
 }
 
-pub async fn require_valid_client_for_token(
+pub fn require_valid_client_for_token(
     store: &GatekeeperStore,
     client_id: &str,
     client_secret: Option<&str>,
 ) -> Result<ClientRow, ValidateClientError> {
     let client = store
         .client_by_id(client_id)
-        .await
         .map_err(|_| ValidateClientError::Internal(OAuthError::new("server_error", None)))?;
     let client = match client {
         Some(c) => c,
@@ -116,18 +115,17 @@ pub struct IssueTokenInput<'a> {
     pub origin: &'a str,
 }
 
-pub async fn issue_token_response(
+pub fn issue_token_response(
     store: &GatekeeperStore,
     input: IssueTokenInput<'_>,
 ) -> Result<TokenResponse, OAuthError> {
     let active = store
         .active_signing_key()
-        .await
         .map_err(|_| OAuthError::new("server_error", Some("No JSON Web Keys available to sign token")))?;
     let key = match active {
         Some(k) => k,
         None => {
-            let all = store.all_signing_keys().await.map_err(|_| {
+            let all = store.all_signing_keys().map_err(|_| {
                 OAuthError::new("server_error", Some("No JSON Web Keys available to sign token"))
             })?;
             all.into_iter().next().ok_or_else(|| {

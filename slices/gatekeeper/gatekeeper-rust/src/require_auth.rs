@@ -29,7 +29,7 @@ pub async fn require_owner_auth(
         Some(t) => t,
         None => return unauthorized(),
     };
-    let claims = match verify_owner_token(&state, &headers, &token).await {
+    let claims = match verify_owner_token(&state, &headers, &token) {
         Ok(c) => c,
         Err(VerifyError::NoSigningKeys) => return internal_error(),
         Err(_) => return unauthorized(),
@@ -48,12 +48,12 @@ pub fn bearer_token(headers: &HeaderMap) -> Option<String> {
     Some(value[prefix.len()..].trim().to_string())
 }
 
-pub async fn verify_owner_token(
+pub fn verify_owner_token(
     state: &AppState,
     headers: &HeaderMap,
     token: &str,
 ) -> Result<VerifiedClaims, VerifyError> {
-    let claims = verify_any_token(state, headers, token).await?;
+    let claims = verify_any_token(state, headers, token)?;
     let scopes = claims
         .scope
         .as_deref()
@@ -66,7 +66,7 @@ pub async fn verify_owner_token(
     Ok(claims)
 }
 
-pub async fn verify_any_token(
+pub fn verify_any_token(
     state: &AppState,
     headers: &HeaderMap,
     token: &str,
@@ -74,7 +74,6 @@ pub async fn verify_any_token(
     let keys = state
         .store
         .all_signing_keys()
-        .await
         .map_err(|_| VerifyError::KeyMaterial)?;
     let origin = state.origin.origin_for(headers);
     let accepted = vec![format!("{origin}/fhir-r4"), origin.clone()];

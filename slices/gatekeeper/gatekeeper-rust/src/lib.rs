@@ -46,16 +46,11 @@ pub struct Gatekeeper {
 ///
 /// The whole surface is gated by the loopback middleware — non-loopback
 /// peers receive 403 before any handler runs.
-pub async fn setup_gatekeeper(config: &GatekeeperConfig) -> anyhow::Result<Gatekeeper> {
+pub fn setup_gatekeeper(config: &GatekeeperConfig) -> anyhow::Result<Gatekeeper> {
     let store = GatekeeperStore::open(&config.db_file_path)
-        .await
         .with_context(|| format!("failed to open gatekeeper sqlite at {:?}", config.db_file_path))?;
-    bootstrap::seed_signing_key(&store)
-        .await
-        .context("failed to seed signing key")?;
-    bootstrap::seed_first_party_client(&store)
-        .await
-        .context("failed to seed first-party client")?;
+    bootstrap::seed_signing_key(&store).context("failed to seed signing key")?;
+    bootstrap::seed_first_party_client(&store).context("failed to seed first-party client")?;
 
     let origin: SharedOriginProvider = Arc::new(RequestOriginProvider);
     let state = AppState {
@@ -85,10 +80,10 @@ pub async fn setup_gatekeeper(config: &GatekeeperConfig) -> anyhow::Result<Gatek
 /// first-party client. The Tauri host calls this after `setup_gatekeeper`
 /// and hands the resulting token to the WebView via the navigation
 /// bridge so the Owner UI can call `/access/*` endpoints.
-pub async fn mint_host_owner_token(
+pub fn mint_host_owner_token(
     state: &AppState,
     origin: &str,
     ttl_secs: i64,
 ) -> Result<String, MintError> {
-    bootstrap::mint_host_owner_token(&state.store, origin, ttl_secs).await
+    bootstrap::mint_host_owner_token(&state.store, origin, ttl_secs)
 }

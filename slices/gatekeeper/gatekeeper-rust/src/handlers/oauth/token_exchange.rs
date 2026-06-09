@@ -66,7 +66,6 @@ pub async fn handle(
                 &code_verifier,
                 &redirect_uri,
             )
-            .await
         }
         TokenPayload::DeviceCode {
             client_id,
@@ -80,12 +79,11 @@ pub async fn handle(
                 client_secret.as_deref(),
                 &device_code,
             )
-            .await
         }
     }
 }
 
-async fn handle_authorization_code(
+fn handle_authorization_code(
     state: &AppState,
     origin: &str,
     client_id: &str,
@@ -94,10 +92,10 @@ async fn handle_authorization_code(
     code_verifier: &str,
     redirect_uri: &str,
 ) -> Response {
-    if let Err(err) = require_valid_client_for_token(&state.store, client_id, client_secret).await {
+    if let Err(err) = require_valid_client_for_token(&state.store, client_id, client_secret) {
         return validate_client_error(err);
     }
-    let issued = match state.store.authorization_code_by_code(code).await {
+    let issued = match state.store.authorization_code_by_code(code) {
         Ok(Some(r)) => r,
         Ok(None) => {
             return (
@@ -108,13 +106,13 @@ async fn handle_authorization_code(
         }
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
-    let response = validate_and_issue_code(state, origin, &issued, client_id, redirect_uri, code_verifier).await;
+    let response = validate_and_issue_code(state, origin, &issued, client_id, redirect_uri, code_verifier);
     // Whether valid or not, burn the code (replay protection).
-    let _ = state.store.consume_authorization_code(&issued.code).await;
+    let _ = state.store.consume_authorization_code(&issued.code);
     response
 }
 
-async fn validate_and_issue_code(
+fn validate_and_issue_code(
     state: &AppState,
     origin: &str,
     issued: &crate::store::authorization_code::AuthorizationCodeRow,
@@ -148,24 +146,23 @@ async fn validate_and_issue_code(
             origin,
         },
     )
-    .await
     {
         Ok(token) => Json(token).into_response(),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err)).into_response(),
     }
 }
 
-async fn handle_device_code(
+fn handle_device_code(
     state: &AppState,
     origin: &str,
     client_id: &str,
     client_secret: Option<&str>,
     device_code: &str,
 ) -> Response {
-    if let Err(err) = require_valid_client_for_token(&state.store, client_id, client_secret).await {
+    if let Err(err) = require_valid_client_for_token(&state.store, client_id, client_secret) {
         return validate_client_error(err);
     }
-    let pending = match state.store.authorization_request_by_id(device_code).await {
+    let pending = match state.store.authorization_request_by_id(device_code) {
         Ok(Some(p))
             if p.grant_type == GrantType::DeviceCode && p.client_id == client_id =>
         {
@@ -192,7 +189,6 @@ async fn handle_device_code(
         if state
             .store
             .record_device_poll(&pending.id, &time::to_iso(time::now()))
-            .await
             .is_err()
         {
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -205,7 +201,7 @@ async fn handle_device_code(
         RequestStatus::Expired => return bad_request_err("expired_token"),
     }
     // single-use per RFC 8628 §3.4
-    if state.store.expire_authorization_request(&pending.id).await.is_err() {
+    if state.store.expire_authorization_request(&pending.id).is_err() {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
     let granted = pending.granted_scopes.unwrap_or_default();
@@ -218,7 +214,6 @@ async fn handle_device_code(
             origin,
         },
     )
-    .await
     {
         Ok(token) => Json(token).into_response(),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err)).into_response(),

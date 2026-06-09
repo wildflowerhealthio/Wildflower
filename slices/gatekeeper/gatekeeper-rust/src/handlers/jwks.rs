@@ -18,7 +18,7 @@ pub fn router() -> Router {
 }
 
 async fn handle(Extension(state): Extension<AppState>) -> Response {
-    match state.store.all_signing_keys().await {
+    match state.store.all_signing_keys() {
         Ok(keys) => Json(Jwks {
             keys: keys.iter().map(public_jwk).collect(),
         })

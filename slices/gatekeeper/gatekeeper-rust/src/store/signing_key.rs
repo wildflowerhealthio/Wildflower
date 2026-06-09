@@ -16,50 +16,40 @@ fn row_to_signing_key(row: &Row) -> rusqlite::Result<SigningKey> {
 }
 
 impl GatekeeperStore {
-    pub async fn all_signing_keys(&self) -> crate::store::DbResult<Vec<SigningKey>> {
-        self.conn()
-            .call(|c| {
-                let mut stmt = c.prepare(
-                    "SELECT kid, kty, alg, values_json FROM signingKeys ORDER BY isActive DESC, kid",
-                )?;
-                let rows = stmt
-                    .query_map([], row_to_signing_key)?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
-                Ok(rows)
-            })
-            .await
+    pub fn all_signing_keys(&self) -> crate::store::DbResult<Vec<SigningKey>> {
+        let conn = self.conn().lock();
+        let mut stmt = conn.prepare(
+            "SELECT kid, kty, alg, values_json FROM signingKeys ORDER BY isActive DESC, kid",
+        )?;
+        let rows = stmt
+            .query_map([], row_to_signing_key)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
     }
 
-    pub async fn active_signing_key(&self) -> crate::store::DbResult<Option<SigningKey>> {
-        self.conn()
-            .call(|c| {
-                let mut stmt = c.prepare(
-                    "SELECT kid, kty, alg, values_json FROM signingKeys WHERE isActive = 1 LIMIT 1",
-                )?;
-                let mut rows = stmt.query([])?;
-                let result = match rows.next()? {
-                    Some(row) => Some(row_to_signing_key(row)?),
-                    None => None,
-                };
-                Ok(result)
-            })
-            .await
+    pub fn active_signing_key(&self) -> crate::store::DbResult<Option<SigningKey>> {
+        let conn = self.conn().lock();
+        let mut stmt = conn.prepare(
+            "SELECT kid, kty, alg, values_json FROM signingKeys WHERE isActive = 1 LIMIT 1",
+        )?;
+        let mut rows = stmt.query([])?;
+        let result = match rows.next()? {
+            Some(row) => Some(row_to_signing_key(row)?),
+            None => None,
+        };
+        Ok(result)
     }
 
-    pub async fn insert_signing_key(
+    pub fn insert_signing_key(
         &self,
         key: SigningKey,
         is_active: bool,
     ) -> crate::store::DbResult<()> {
-        self.conn()
-            .call(move |c| {
-                let values_json = serde_json::to_string(&key.values).unwrap();
-                c.execute(
-                    "INSERT INTO signingKeys (kid, kty, alg, values_json, isActive) VALUES (?1, ?2, ?3, ?4, ?5)",
-                    params![key.kid, key.kty, key.alg, values_json, is_active as i64],
-                )?;
-                Ok(())
-            })
-            .await
+        let values_json = serde_json::to_string(&key.values).unwrap();
+        self.conn().lock().execute(
+            "INSERT INTO signingKeys (kid, kty, alg, values_json, isActive) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![key.kid, key.kty, key.alg, values_json, is_active as i64],
+        )?;
+        Ok(())
     }
 }

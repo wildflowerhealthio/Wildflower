@@ -7,11 +7,12 @@ publish.workspace = true
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace"] }
-tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
-rusqlite = { version = "0.33", features = ["bundled"] }
 parking_lot = "0.12"
 jsonwebtoken = "9"
 rsa = { version = "0.9", features = ["sha2"] }
@@ -19,8 +20,6 @@ sha2 = "0.10"
 rand = "0.8"
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 serde_urlencoded = "0.7"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 tracing = "0.1"
@@ -28,7 +27,7 @@ url = "2"
 thiserror = "1"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 proptest = "1"
 http = "1"
 http-body-util = "0.1"

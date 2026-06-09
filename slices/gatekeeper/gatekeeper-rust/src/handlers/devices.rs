@@ -51,7 +51,7 @@ async fn get_consent(
     Extension(state): Extension<AppState>,
     Path(user_code): Path<String>,
 ) -> Response {
-    let pending = match state.store.authorization_request_by_user_code(&user_code).await {
+    let pending = match state.store.authorization_request_by_user_code(&user_code) {
         Ok(Some(r))
             if r.grant_type == GrantType::DeviceCode && r.status == RequestStatus::Pending =>
         {
@@ -60,7 +60,7 @@ async fn get_consent(
         Ok(_) => return not_found(&user_code),
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
-    let client_name = match state.store.client_by_id(&pending.client_id).await {
+    let client_name = match state.store.client_by_id(&pending.client_id) {
         Ok(Some(c)) => c.name,
         _ => pending.client_id.clone(),
     };
@@ -78,7 +78,7 @@ async fn approve_consent(
     Path(user_code): Path<String>,
     Json(body): Json<ApproveBody>,
 ) -> Response {
-    let pending = match state.store.authorization_request_by_user_code(&user_code).await {
+    let pending = match state.store.authorization_request_by_user_code(&user_code) {
         Ok(Some(r))
             if r.grant_type == GrantType::DeviceCode && r.status == RequestStatus::Pending =>
         {
@@ -95,7 +95,7 @@ async fn approve_consent(
         .filter(|s| requested.contains(s.as_str()))
         .collect();
     if granted.is_empty() {
-        if state.store.deny_authorization_request(&pending.id).await.is_err() {
+        if state.store.deny_authorization_request(&pending.id).is_err() {
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
         return Json(ConsentResult::Denied).into_response();
@@ -103,7 +103,6 @@ async fn approve_consent(
     if state
         .store
         .approve_authorization_request(&pending.id, &granted, None)
-        .await
         .is_err()
     {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -115,7 +114,7 @@ async fn deny_consent(
     Extension(state): Extension<AppState>,
     Path(user_code): Path<String>,
 ) -> Response {
-    let pending = match state.store.authorization_request_by_user_code(&user_code).await {
+    let pending = match state.store.authorization_request_by_user_code(&user_code) {
         Ok(Some(r))
             if r.grant_type == GrantType::DeviceCode && r.status == RequestStatus::Pending =>
         {
@@ -124,7 +123,7 @@ async fn deny_consent(
         Ok(_) => return not_found(&user_code),
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
-    if state.store.deny_authorization_request(&pending.id).await.is_err() {
+    if state.store.deny_authorization_request(&pending.id).is_err() {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
     Json(ConsentResult::Denied).into_response()

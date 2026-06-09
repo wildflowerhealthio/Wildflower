@@ -1,6 +1,8 @@
+use anyhow::Context;
+
 use crate::crypto::jwt::{mint_access_token, MintArgs};
 use crate::crypto::signing_key;
-use crate::error::{MintError, SetupError};
+use crate::error::MintError;
 use crate::store::client::{ClientKind, ClientRow};
 use crate::store::GatekeeperStore;
 use crate::time;
@@ -8,18 +10,24 @@ use crate::time;
 pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";
 pub const OWNER_SCOPE: &str = "owner";
 
-pub async fn seed_signing_key(store: &GatekeeperStore) -> Result<(), SetupError> {
-    let existing = store.all_signing_keys().await?;
+pub fn seed_signing_key(store: &GatekeeperStore) -> anyhow::Result<()> {
+    let existing = store.all_signing_keys().context("read signing keys")?;
     if !existing.is_empty() {
         return Ok(());
     }
-    let key = signing_key::generate()?;
-    store.insert_signing_key(key, true).await?;
+    let key = signing_key::generate().context("generate signing key")?;
+    store
+        .insert_signing_key(key, true)
+        .context("insert signing key")?;
     Ok(())
 }
 
-pub async fn seed_first_party_client(store: &GatekeeperStore) -> Result<(), SetupError> {
-    if store.client_by_id(FIRST_PARTY_CLIENT_ID).await?.is_some() {
+pub fn seed_first_party_client(store: &GatekeeperStore) -> anyhow::Result<()> {
+    if store
+        .client_by_id(FIRST_PARTY_CLIENT_ID)
+        .context("read first-party client")?
+        .is_some()
+    {
         return Ok(());
     }
     let registered_at = time::to_iso(time::now());
@@ -34,18 +42,20 @@ pub async fn seed_first_party_client(store: &GatekeeperStore) -> Result<(), Setu
             registered_at,
             disabled_at: None,
         })
-        .await?;
+        .context("register first-party client")?;
     Ok(())
 }
 
-pub async fn mint_host_owner_token(
+pub fn mint_host_owner_token(
     store: &GatekeeperStore,
     origin: &str,
     ttl_secs: i64,
 ) -> Result<String, MintError> {
-    let active = store.active_signing_key().await?;
-    let all = store.all_signing_keys().await?;
-    let key = active.or_else(|| all.into_iter().next()).ok_or(MintError::NoSigningKeys)?;
+    let active = store.active_signing_key()?;
+    let all = store.all_signing_keys()?;
+    let key = active
+        .or_else(|| all.into_iter().next())
+        .ok_or(MintError::NoSigningKeys)?;
     let scope = vec![OWNER_SCOPE.to_string()];
     mint_access_token(
         &key,

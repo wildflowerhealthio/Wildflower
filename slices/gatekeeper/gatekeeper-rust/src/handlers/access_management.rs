@@ -20,14 +20,14 @@ pub fn router() -> Router {
 }
 
 async fn list_grants(Extension(state): Extension<AppState>) -> Response {
-    match state.store.all_grants().await {
+    match state.store.all_grants() {
         Ok(rows) => Json(rows).into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
 
 async fn get_grant(Extension(state): Extension<AppState>, Path(id): Path<String>) -> Response {
-    match state.store.grant_by_id(&id).await {
+    match state.store.grant_by_id(&id) {
         Ok(Some(row)) => Json(row).into_response(),
         Ok(None) => not_found(&id),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
@@ -35,7 +35,7 @@ async fn get_grant(Extension(state): Extension<AppState>, Path(id): Path<String>
 }
 
 async fn revoke_grant(Extension(state): Extension<AppState>, Path(id): Path<String>) -> Response {
-    match state.store.revoke_grant(&id).await {
+    match state.store.revoke_grant(&id) {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
         Ok(false) => not_found(&id),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
