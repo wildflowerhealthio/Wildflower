@@ -6,7 +6,7 @@ name: Rust Advisories
 # unnoticed until the next Rust PR; this weekly run closes that gap.
 on:
   schedule:
-    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC
   workflow_dispatch:
 
 permissions:
