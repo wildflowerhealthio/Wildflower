@@ -28,7 +28,10 @@ jobs:
         with:
           filters: .github/path-filters.yml
 
-  test:
+  # Named for the tool it runs (like the `deny`/`lint` jobs in rust-lint.yml) so
+  # it doesn't collide with the `test` gate in test.yml — two jobs named `test`
+  # would both surface as a check literally called "test".
+  nextest:
     needs: changes
     if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true') }}
     runs-on: ubuntu-latest
@@ -45,26 +48,26 @@ jobs:
         # yet (nextest 0.9.85+ fails on zero tests by default). Switch to
         # --no-tests=fail once Rust tests exist to guard against an empty run.
         # wildflower-tauri is excluded — see rust-lint.yml for why.
-        run: cargo nextest run --workspace --exclude wildflower-tauri --no-tests=warn
+        run: cargo nextest run --workspace --exclude wildflower-tauri --all-features --no-tests=warn
       - name: Run doctests
         # nextest does not execute doctests, so cover them with cargo test.
-        run: cargo test --doc --workspace --exclude wildflower-tauri
+        run: cargo test --doc --workspace --exclude wildflower-tauri --all-features
 
   # Always-runs summary job — the check to require in branch protection.
   rust-test:
-    needs: [changes, test]
+    needs: [changes, nextest]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
       - name: Verify test results
         run: |
           changes='${{ needs.changes.result }}'
-          test='${{ needs.test.result }}'
-          echo "changes=$changes test=$test"
+          nextest='${{ needs.nextest.result }}'
+          echo "changes=$changes nextest=$nextest"
           if [[ "$changes" != 'success' && "$changes" != 'skipped' ]]; then
             echo '::error::changes job did not succeed'; exit 1
           fi
-          if [[ "$test" == 'failure' || "$test" == 'cancelled' ]]; then
+          if [[ "$nextest" == 'failure' || "$nextest" == 'cancelled' ]]; then
             echo '::error::rust test job failed'; exit 1
           fi
           echo 'rust-test OK'

@@ -14,6 +14,15 @@ rust:
   - '.github/workflows/rust-lint.yml'
   - '.github/workflows/rust-test.yml'
 
+# Subset of `rust`: just the Tauri desktop app. Gates the rust-lint `tauri`
+# job, which installs GTK/webkit system libs to compile + lint that crate (the
+# regular `lint`/`nextest` jobs exclude it). A tauri change matches both `rust`
+# and `tauri`, so it runs the normal Rust jobs AND the tauri job.
+tauri:
+  - 'apps/wildflower-tauri/**'
+  - '.github/path-filters.yml'
+  - '.github/workflows/rust-lint.yml'
+
 ts:
   - '**/*.ts'
   - '**/*.tsx'

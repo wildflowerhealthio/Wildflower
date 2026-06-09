@@ -19,14 +19,15 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Detect whether this change touches Rust. Cheap (checkout + diff only); its
-  # output gates the heavy jobs below so a TS-only PR doesn't spend a runner
+  # Detect which parts of the tree changed. Cheap (checkout + diff only); the
+  # outputs gate the heavy jobs so an unrelated PR doesn't spend runners
   # compiling Rust.
   changes:
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
+      tauri: ${{ steps.filter.outputs.tauri }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -49,16 +50,36 @@ jobs:
       - name: rustfmt
         run: cargo fmt --all --check
       - name: clippy (deny warnings)
-        # The wildflower-tauri crate is excluded everywhere in CI: linting it
-        # would require installing webkit2gtk/gtk system libraries. It's thin
-        # glue and is built by Tauri's own tooling.
-        run: cargo clippy --workspace --exclude wildflower-tauri --all-targets -- -D warnings
+        # wildflower-tauri is excluded here: linting it needs the webkit2gtk/gtk
+        # system libraries, so it gets its own `tauri` job below.
+        run: cargo clippy --workspace --exclude wildflower-tauri --all-targets --all-features -- -D warnings
       - name: clippy pedantic (informational)
         # Pedantic findings are surfaced as annotations but do not fail the job
         # yet. Once the codebase is clean against them, promote this by folding
         # `-W clippy::pedantic` into the deny-warnings step above.
         continue-on-error: true
-        run: cargo clippy --workspace --exclude wildflower-tauri --all-targets -- -W clippy::pedantic
+        run: cargo clippy --workspace --exclude wildflower-tauri --all-targets --all-features -- -W clippy::pedantic
+
+  # Compiles + lints the tauri crate, which `lint` excludes because its deps
+  # need GTK/webkit system libraries. Without this the crate is only
+  # fmt-checked, so a change that breaks its build would otherwise pass CI. Runs
+  # only when the tauri app changes, or on push to main, to bound the cost.
+  tauri:
+    needs: changes
+    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.tauri == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: clippy (wildflower-tauri)
+        run: cargo clippy -p wildflower-tauri --all-targets --all-features -- -D warnings
 
   deny:
     needs: changes
@@ -66,17 +87,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: cargo-deny — advisories + sources (blocking)
-        # Security advisories (RustSec) and source pinning (crates.io only) are
-        # high-signal and gate merges.
+      - name: cargo-deny — advisories + sources
+        # Security advisories (RustSec) and source pinning (crates.io only).
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check advisories sources
-      - name: cargo-deny — licenses + bans (informational)
-        # The license allowlist in deny.toml may need tuning against the real
-        # dependency tree, so start non-blocking. Remove continue-on-error once
-        # you've confirmed it's green to make license policy enforcing.
-        continue-on-error: true
+      - name: cargo-deny — licenses + bans
+        # License allowlist + duplicate/banned-crate policy from deny.toml.
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check licenses bans
@@ -86,7 +103,7 @@ jobs:
   # skipped (e.g. a TS-only PR), so path filtering can never block a merge, and
   # goes red only on a genuine lint or supply-chain failure.
   rust-lint:
-    needs: [changes, lint, deny]
+    needs: [changes, lint, tauri, deny]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -94,12 +111,13 @@ jobs:
         run: |
           changes='${{ needs.changes.result }}'
           lint='${{ needs.lint.result }}'
+          tauri='${{ needs.tauri.result }}'
           deny='${{ needs.deny.result }}'
-          echo "changes=$changes lint=$lint deny=$deny"
+          echo "changes=$changes lint=$lint tauri=$tauri deny=$deny"
           if [[ "$changes" != 'success' && "$changes" != 'skipped' ]]; then
             echo '::error::changes job did not succeed'; exit 1
           fi
-          for result in "$lint" "$deny"; do
+          for result in "$lint" "$tauri" "$deny"; do
             if [[ "$result" == 'failure' || "$result" == 'cancelled' ]]; then
               echo '::error::a rust-lint job failed'; exit 1
             fi
