@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/wildflower-tauri/src-tauri",
-    "slices/emr/emr-rust",
-    "slices/shared-structures/shared-structures-rust",
+  "apps/wildflower-tauri/src-tauri",
+  "slices/emr/emr-rust",
+  "slices/shared-structures/shared-structures-rust",
 ]
 
 [workspace.package]
@@ -13,3 +13,10 @@ publish = false
 [workspace.dependencies]
 anyhow = "1.0.102"
 axum = { version = "0.8", features = ["json", "query", "matched-path", "ws"] }
+
+# Lints shared by every crate that opts in with `[lints] workspace = true`.
+# Forbidding unsafe makes any `unsafe` block a compile error (not just a lint),
+# across local builds and CI alike. The default clippy groups are enforced
+# separately as hard errors by the rust-lint workflow's deny-warnings run.
+[workspace.lints.rust]
+unsafe_code = "forbid"

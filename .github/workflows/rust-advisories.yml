@@ -1,0 +1,23 @@
+name: Rust Advisories
+
+# Catches newly-published RustSec advisories against dependencies even when no
+# code changes. The rust-lint workflow only runs cargo-deny on Rust-touching
+# PRs, so an advisory filed against an otherwise-unchanged dependency would go
+# unnoticed until the next Rust PR; this weekly run closes that gap.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  advisories:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo-deny — advisories
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories

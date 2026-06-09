@@ -14,10 +14,7 @@ pub struct EmrConfig {
     pub db_file_path: PathBuf,
 }
 
-pub fn setup_fhir_r4(
-    runtime: &ServerRuntimeConfig,
-    config: &EmrConfig,
-) -> anyhow::Result<Router> {
+pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyhow::Result<Router> {
     let sqlite_backend = SqliteBackend::open(&config.db_file_path)
         .with_context(|| format!("failed to open sqlite backend at {:?}", config.db_file_path))?;
     sqlite_backend

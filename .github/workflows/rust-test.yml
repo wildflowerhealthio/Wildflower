@@ -1,0 +1,73 @@
+name: Rust Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  # dorny/paths-filter reads the PR's changed-file list from the GitHub API.
+  pull-requests: read
+
+concurrency:
+  group: rust-test-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: .github/path-filters.yml
+
+  # Named for the tool it runs (like the `deny`/`lint` jobs in rust-lint.yml) so
+  # it doesn't collide with the `test` gate in test.yml — two jobs named `test`
+  # would both surface as a check literally called "test".
+  nextest:
+    needs: changes
+    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - name: Run tests (nextest)
+        # --no-tests=warn keeps the run green while these crates have no tests
+        # yet (nextest 0.9.85+ fails on zero tests by default). Switch to
+        # --no-tests=fail once Rust tests exist to guard against an empty run.
+        # wildflower-tauri is excluded — see rust-lint.yml for why.
+        run: cargo nextest run --workspace --exclude wildflower-tauri --all-features --no-tests=warn
+      - name: Run doctests
+        # nextest does not execute doctests, so cover them with cargo test.
+        run: cargo test --doc --workspace --exclude wildflower-tauri --all-features
+
+  # Always-runs summary job — the check to require in branch protection.
+  rust-test:
+    needs: [changes, nextest]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify test results
+        run: |
+          changes='${{ needs.changes.result }}'
+          nextest='${{ needs.nextest.result }}'
+          echo "changes=$changes nextest=$nextest"
+          if [[ "$changes" != 'success' && "$changes" != 'skipped' ]]; then
+            echo '::error::changes job did not succeed'; exit 1
+          fi
+          if [[ "$nextest" == 'failure' || "$nextest" == 'cancelled' ]]; then
+            echo '::error::rust test job failed'; exit 1
+          fi
+          echo 'rust-test OK'

@@ -7,13 +7,19 @@
         "streetsidesoftware.code-spell-checker",
         "oxc.oxc-vscode",
         "vitest.explorer",
-        "YoavBls.pretty-ts-errors"
+        "YoavBls.pretty-ts-errors",
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml"
       ]
     }
   },
   "features": {
     "ghcr.io/anthropics/devcontainer-features/claude-code:1": {},
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "1.95.0",
+      "profile": "default"
+    }
   },
   "mounts": [
     "source=claude-config,target=/node/.claude,type=volume",

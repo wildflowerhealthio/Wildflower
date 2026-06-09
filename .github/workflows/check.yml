@@ -11,11 +11,32 @@ permissions:
   pull-requests: write
   checks: write
 
+# Cancel superseded PR runs to save the actions budget; pushes to main always
+# run to completion.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  check:
-    # Skip on draft PRs; `pull_request` is null on push events so the
-    # comparison is true and the job still runs on main.
+  # Detect whether this change touches TS/JS. A Rust-only PR skips the heavy
+  # `vp-check` job below; every push to main runs it regardless.
+  changes:
     if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    outputs:
+      ts: ${{ steps.filter.outputs.ts }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: .github/path-filters.yml
+
+  vp-check:
+    needs: changes
+    # Skip on draft PRs; `pull_request` is null on push events so the draft
+    # comparison is true and the job still runs on main.
+    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.ts == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -36,3 +57,25 @@ jobs:
 
       - name: Run vp check (format, lint, typecheck)
         run: vp check
+
+  # Always-runs summary that keeps the existing "check" status name green/red.
+  # It is intentionally left without a `name:` so the required-check context
+  # stays "check" — make THIS the required check, not vp-check, so a Rust-only
+  # PR (where vp-check is skipped) is never blocked by a stuck pending check.
+  check:
+    needs: [changes, vp-check]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify vp check result
+        run: |
+          changes='${{ needs.changes.result }}'
+          vp_check='${{ needs.vp-check.result }}'
+          echo "changes=$changes vp-check=$vp_check"
+          if [[ "$changes" != 'success' && "$changes" != 'skipped' ]]; then
+            echo '::error::changes job did not succeed'; exit 1
+          fi
+          if [[ "$vp_check" == 'failure' || "$vp_check" == 'cancelled' ]]; then
+            echo '::error::vp check failed'; exit 1
+          fi
+          echo 'check OK'

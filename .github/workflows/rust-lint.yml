@@ -1,0 +1,125 @@
+name: Rust Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  # dorny/paths-filter reads the PR's changed-file list from the GitHub API.
+  pull-requests: read
+
+# Cancel an in-flight run when a PR is pushed again, to save the actions
+# budget. Pushes to main keep cancel-in-progress off so every main commit gets
+# a complete run.
+concurrency:
+  group: rust-lint-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Detect which parts of the tree changed. Cheap (checkout + diff only); the
+  # outputs gate the heavy jobs so an unrelated PR doesn't spend runners
+  # compiling Rust.
+  changes:
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      tauri: ${{ steps.filter.outputs.tauri }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: .github/path-filters.yml
+
+  lint:
+    needs: changes
+    # Full run on every push to main; on PRs only when Rust files changed.
+    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust toolchain
+        # Reads rust-toolchain.toml (channel + rustfmt/clippy), caches build
+        # artifacts, and registers clippy/rustfmt problem matchers so findings
+        # surface as inline PR annotations.
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: rustfmt
+        run: cargo fmt --all --check
+      - name: clippy (deny warnings)
+        # wildflower-tauri is excluded here: linting it needs the webkit2gtk/gtk
+        # system libraries, so it gets its own `tauri` job below.
+        run: cargo clippy --workspace --exclude wildflower-tauri --all-targets --all-features -- -D warnings
+      - name: clippy pedantic (informational)
+        # Pedantic findings are surfaced as annotations but do not fail the job
+        # yet. Once the codebase is clean against them, promote this by folding
+        # `-W clippy::pedantic` into the deny-warnings step above.
+        continue-on-error: true
+        run: cargo clippy --workspace --exclude wildflower-tauri --all-targets --all-features -- -W clippy::pedantic
+
+  # Compiles + lints the tauri crate, which `lint` excludes because its deps
+  # need GTK/webkit system libraries. Without this the crate is only
+  # fmt-checked, so a change that breaks its build would otherwise pass CI. Runs
+  # only when the tauri app changes, or on push to main, to bound the cost.
+  tauri:
+    needs: changes
+    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.tauri == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: clippy (wildflower-tauri)
+        run: cargo clippy -p wildflower-tauri --all-targets --all-features -- -D warnings
+
+  deny:
+    needs: changes
+    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo-deny — advisories + sources
+        # Security advisories (RustSec) and source pinning (crates.io only).
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories sources
+      - name: cargo-deny — licenses + bans
+        # License allowlist + duplicate/banned-crate policy from deny.toml.
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans
+
+  # Always-runs summary job. This is the check to mark required in branch
+  # protection — never the heavy jobs above. It stays green when they're
+  # skipped (e.g. a TS-only PR), so path filtering can never block a merge, and
+  # goes red only on a genuine lint or supply-chain failure.
+  rust-lint:
+    needs: [changes, lint, tauri, deny]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify lint + deny results
+        run: |
+          changes='${{ needs.changes.result }}'
+          lint='${{ needs.lint.result }}'
+          tauri='${{ needs.tauri.result }}'
+          deny='${{ needs.deny.result }}'
+          echo "changes=$changes lint=$lint tauri=$tauri deny=$deny"
+          if [[ "$changes" != 'success' && "$changes" != 'skipped' ]]; then
+            echo '::error::changes job did not succeed'; exit 1
+          fi
+          for result in "$lint" "$tauri" "$deny"; do
+            if [[ "$result" == 'failure' || "$result" == 'cancelled' ]]; then
+              echo '::error::a rust-lint job failed'; exit 1
+            fi
+          done
+          echo 'rust-lint OK'
