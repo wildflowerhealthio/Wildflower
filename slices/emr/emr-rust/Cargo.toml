@@ -1,0 +1,12 @@
+[package]
+name = "emr-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+helios-rest = { version = "=0.1.47", features = ["R4", "sqlite"] }
+helios-persistence = { version = "=0.1.47", features = ["R4", "sqlite"] }
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
