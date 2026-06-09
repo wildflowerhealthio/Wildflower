@@ -16,6 +16,20 @@ updates:
           - minor
           - patch
 
+  # JS/TS dependencies across the pnpm workspace, including the catalog in
+  # pnpm-workspace.yaml. Dependabot's `npm` ecosystem handles pnpm + catalogs
+  # (GA Feb 2025); a single root entry covers every workspace package.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      js-minor-patch:
+        update-types:
+          - minor
+          - patch
+
   # The versions of the GitHub Actions used by every workflow in .github/.
   - package-ecosystem: github-actions
     directory: /
