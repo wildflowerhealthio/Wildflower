@@ -68,6 +68,10 @@ catalog:
   '@tanstack/react-router': ^1.170.9
   '@tanstack/router-plugin': ^1.168.12
   '@tanstack/virtual-file-routes': ^1.162.0
+  '@tauri-apps/api': ^2
+  '@tauri-apps/plugin-fs': ~2.5.1
+  '@tauri-apps/plugin-log': ~2.8.0
+  '@tauri-apps/plugin-opener': ^2
   '@testing-library/react-native': ^13.3.3
   '@tsdown/css': ^0.21.10
   '@types/fhir': ^0.0.41
