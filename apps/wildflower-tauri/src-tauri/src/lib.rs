@@ -1,7 +1,9 @@
 use anyhow::Context;
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
+use gatekeeper_rust::{gate, mint_host_owner_token, setup_gatekeeper, GatekeeperConfig};
 use shared_structures_rust::ServerRuntimeConfig;
+use std::net::SocketAddr;
 use tauri::Manager;
 use tokio::net::TcpListener;
 
@@ -10,15 +12,50 @@ async fn run_server(runtime: ServerRuntimeConfig) -> anyhow::Result<()> {
         log_level: "debug".to_string(),
         db_file_path: runtime.app_data_dir.join("health-data.sqlite"),
     };
+    let gatekeeper_config = GatekeeperConfig {
+        db_file_path: runtime.app_data_dir.join("gatekeeper.sqlite"),
+    };
 
     let addr = format!("{}:{}", runtime.host, runtime.port);
+
+    let fhir_r4_router =
+        setup_fhir_r4(&runtime, &emr_config).context("failed to set up FHIR R4 router")?;
+    let gatekeeper = setup_gatekeeper(&gatekeeper_config)
+        .await
+        .context("failed to set up gatekeeper")?;
+
+    // Pin the host owner token to the loopback origin the WebView uses.
+    // We bind 0.0.0.0 (any interface) but every reachable client we accept
+    // is loopback (the loopback gate rejects the rest), so the WebView's
+    // `Host:` header is `127.0.0.1:<port>` — the verifier derives the
+    // expected issuer/audience from that header, so the token has to be
+    // minted against the same canonical form.
+    // TODO(transport): ship this token to the WebView via the navigation
+    // bridge (today only logged for debugging).
+    let mint_origin = format!("http://127.0.0.1:{}", runtime.port);
+    match mint_host_owner_token(&gatekeeper.state, &mint_origin, 60 * 60 * 24).await {
+        Ok(token) => {
+            tauri_plugin_log::log::info!(
+                "Local client token minted (prefix: {}…)",
+                &token[..token.len().min(8)]
+            );
+        }
+        Err(error) => {
+            tauri_plugin_log::log::error!("Local client token unavailable: {error:?}");
+        }
+    }
+
+    let gated_fhir_r4 = gate(fhir_r4_router, gatekeeper.state.clone());
+    let router = Router::new().merge(gatekeeper.router).merge(gated_fhir_r4);
+
     let listener = TcpListener::bind(&addr)
         .await
         .with_context(|| format!("failed to bind to {addr}"))?;
-    let fhir_r4_router =
-        setup_fhir_r4(&runtime, &emr_config).context("failed to set up FHIR R4 router")?;
-    let router = Router::new().merge(fhir_r4_router);
-    axum::serve(listener, router.into_make_service()).await?;
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 

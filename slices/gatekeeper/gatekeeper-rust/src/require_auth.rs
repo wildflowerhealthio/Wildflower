@@ -1,0 +1,97 @@
+use axum::body::Body;
+use axum::extract::{Extension, Request};
+use axum::http::{HeaderMap, StatusCode};
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Response};
+use std::sync::Arc;
+
+use crate::bootstrap::OWNER_SCOPE;
+use crate::crypto::jwt::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
+use crate::origin::SharedOriginProvider;
+use crate::store::GatekeeperStore;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub store: GatekeeperStore,
+    pub origin: SharedOriginProvider,
+}
+
+#[derive(Clone)]
+pub struct AuthedClaims(pub Arc<VerifiedClaims>);
+
+pub async fn require_owner_auth(
+    Extension(state): Extension<AppState>,
+    headers: HeaderMap,
+    mut req: Request<Body>,
+    next: Next,
+) -> Response {
+    let token = match bearer_token(&headers) {
+        Some(t) => t,
+        None => return unauthorized(),
+    };
+    let claims = match verify_owner_token(&state, &headers, &token).await {
+        Ok(c) => c,
+        Err(VerifyError::NoSigningKeys) => return internal_error(),
+        Err(_) => return unauthorized(),
+    };
+    req.extensions_mut().insert(AuthedClaims(Arc::new(claims)));
+    next.run(req).await
+}
+
+pub fn bearer_token(headers: &HeaderMap) -> Option<String> {
+    let value = headers.get("authorization")?.to_str().ok()?;
+    let lower = value.to_ascii_lowercase();
+    let prefix = "bearer ";
+    if !lower.starts_with(prefix) {
+        return None;
+    }
+    Some(value[prefix.len()..].trim().to_string())
+}
+
+pub async fn verify_owner_token(
+    state: &AppState,
+    headers: &HeaderMap,
+    token: &str,
+) -> Result<VerifiedClaims, VerifyError> {
+    let claims = verify_any_token(state, headers, token).await?;
+    let scopes = claims
+        .scope
+        .as_deref()
+        .unwrap_or("")
+        .split_whitespace()
+        .collect::<Vec<_>>();
+    if !scopes.contains(&OWNER_SCOPE) {
+        return Err(VerifyError::Unauthorized);
+    }
+    Ok(claims)
+}
+
+pub async fn verify_any_token(
+    state: &AppState,
+    headers: &HeaderMap,
+    token: &str,
+) -> Result<VerifiedClaims, VerifyError> {
+    let keys = state
+        .store
+        .all_signing_keys()
+        .await
+        .map_err(|_| VerifyError::KeyMaterial)?;
+    let origin = state.origin.origin_for(headers);
+    let accepted = vec![format!("{origin}/fhir-r4"), origin.clone()];
+    verify_jwt(
+        token,
+        &keys,
+        VerifyOptions {
+            expected_issuer: &origin,
+            accepted_audiences: &accepted,
+        },
+    )
+}
+
+fn unauthorized() -> Response {
+    (StatusCode::UNAUTHORIZED, "unauthorized").into_response()
+}
+
+fn internal_error() -> Response {
+    (StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error").into_response()
+}
