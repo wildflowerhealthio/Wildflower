@@ -6,6 +6,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
+permissions:
+  contents: read
+  # dorny/paths-filter reads the PR's changed-file list from the GitHub API.
+  pull-requests: read
+
 # Cancel superseded PR runs to save the actions budget; pushes to main always
 # run to completion.
 concurrency:

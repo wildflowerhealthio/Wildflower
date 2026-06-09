@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: read
+  # dorny/paths-filter reads the PR's changed-file list from the GitHub API.
+  pull-requests: read
 
 # Cancel an in-flight run when a PR is pushed again, to save the actions
 # budget. Pushes to main keep cancel-in-progress off so every main commit gets

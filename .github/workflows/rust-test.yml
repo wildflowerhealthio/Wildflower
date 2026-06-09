@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: read
+  # dorny/paths-filter reads the PR's changed-file list from the GitHub API.
+  pull-requests: read
 
 concurrency:
   group: rust-test-${{ github.ref }}
