@@ -27,7 +27,7 @@ catalog:
   '@effect/typeclass': 0.40.0
   '@effect/workflow': 0.16.0
   '@expo/dom-webview': ~0.2.8
-  '@expo/metro-runtime': ~6.1.2
+  '@expo/metro-runtime': ~56.0.14
   '@expo/ui': 0.2.0-beta.6
   '@expo/vector-icons': ^15.0.3
   '@fast-check/jest': ^2.2.0
