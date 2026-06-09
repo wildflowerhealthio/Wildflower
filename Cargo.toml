@@ -1,3 +1,3 @@
 [workspace]
 resolver = "2"
-members = ["apps/wildflower-tauri/src-tauri"]
+members = ["apps/wildflower-tauri/src-tauri", "slices/emr/emr-rust"]

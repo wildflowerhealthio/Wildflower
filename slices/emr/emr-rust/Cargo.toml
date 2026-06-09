@@ -1,0 +1,10 @@
+[package]
+name = "emr-rust"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+axum = { version = "0.8", features = ["json", "query", "matched-path", "ws"] }
+helios-rest = { version = "=0.1.47", features = ["R4", "sqlite"] }
+helios-persistence = { version = "=0.1.47", features = ["R4", "sqlite"] }

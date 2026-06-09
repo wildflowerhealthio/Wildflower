@@ -1,24 +1,12 @@
-use helios_persistence::backends::sqlite::SqliteBackend;
-use helios_rest::{create_app_with_config, ServerConfig};
+use axum::Router;
+use emr_rust::{setup_fhir_r4, EmrConfig};
 use tauri::Manager;
-use tauri_plugin_fs::FsExt;
 use tokio::net::TcpListener;
 
-async fn hfs_server(db_file_path: std::path::PathBuf) -> anyhow::Result<()> {
-    let backend = SqliteBackend::open(db_file_path)?;
-    backend.init_schema()?;
-
-    let mut config = ServerConfig::default();
-    config.base_url = "http://0.0.0.0:8080".to_string();
-    config.host = "0.0.0.0".to_string();
-    config.log_level = "debug".to_string();
-    let addr = config.socket_addr();
-    let app = create_app_with_config(backend, config);
-
-    // Start the server
-    let listener = TcpListener::bind(addr).await?;
-    axum::serve(listener, app.into_make_service()).await?;
-
+async fn serve(addr: String, fhir_r4_router: Router) -> anyhow::Result<()> {
+    let listener = TcpListener::bind(&addr).await?;
+    let router = Router::new().nest("/fhir-r4", fhir_r4_router);
+    axum::serve(listener, router.into_make_service()).await?;
     Ok(())
 }
 
@@ -40,9 +28,19 @@ pub fn run() {
             let db_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&db_dir)?;
 
-            let db_file_path = db_dir.join("helios.sqlite");
+            let config = EmrConfig {
+                host: "0.0.0.0".to_string(),
+                log_level: "debug".to_string(),
+                path: "/fhir-r4".to_string(),
+                port: 8080,
+                db_file_path: db_dir.join("helios.sqlite"),
+            };
+
+            let addr = format!("{}:{}", config.host, config.port);
+            let fhir_r4_router = setup_fhir_r4(config)?;
+
             tauri::async_runtime::spawn(async move {
-                if let Err(error) = hfs_server(db_file_path).await {
+                if let Err(error) = serve(addr, fhir_r4_router).await {
                     tauri_plugin_log::log::error!("Helios server stopped: {error:?}");
                 }
             });
