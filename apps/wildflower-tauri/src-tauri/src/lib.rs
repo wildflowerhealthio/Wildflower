@@ -5,20 +5,18 @@ use tauri_plugin_fs::FsExt;
 use tokio::net::TcpListener;
 
 async fn hfs_server(db_file_path: std::path::PathBuf) -> anyhow::Result<()> {
-    // Create a storage backend
     let backend = SqliteBackend::open(db_file_path)?;
     backend.init_schema()?;
 
-    // Configure the server
     let mut config = ServerConfig::default();
     config.base_url = "http://0.0.0.0:8080".to_string();
     config.host = "0.0.0.0".to_string();
-    config.log_level = "trace".to_string();
-    // Create the Axum application
-    let app = create_app_with_config(backend, config.clone());
+    config.log_level = "debug".to_string();
+    let addr = config.socket_addr();
+    let app = create_app_with_config(backend, config);
 
     // Start the server
-    let listener = TcpListener::bind(config.socket_addr()).await?;
+    let listener = TcpListener::bind(addr).await?;
     axum::serve(listener, app.into_make_service()).await?;
 
     Ok(())
@@ -35,21 +33,11 @@ pub fn run() {
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
                 ])
-                .level(tauri_plugin_log::log::LevelFilter::Trace)
+                .level(tauri_plugin_log::log::LevelFilter::Debug)
                 .build(),
         )
         .setup(|app| {
-            let db_dir = app
-                .path()
-                .app_data_dir()
-                .expect("Failed to get app data directory");
-
-            // allowed the given directory
-            let scope = app.fs_scope();
-            scope.allow_directory(db_dir.clone(), false)?;
-            if !(scope.is_allowed(db_dir.clone())) {
-                panic!("Failed to allow access to the database directory");
-            }
+            let db_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&db_dir)?;
 
             let db_file_path = db_dir.join("helios.sqlite");
