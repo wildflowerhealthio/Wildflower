@@ -1,0 +1,105 @@
+name: Rust Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+# Cancel an in-flight run when a PR is pushed again, to save the actions
+# budget. Pushes to main keep cancel-in-progress off so every main commit gets
+# a complete run.
+concurrency:
+  group: rust-lint-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Detect whether this change touches Rust. Cheap (checkout + diff only); its
+  # output gates the heavy jobs below so a TS-only PR doesn't spend a runner
+  # compiling Rust.
+  changes:
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: .github/path-filters.yml
+
+  lint:
+    needs: changes
+    # Full run on every push to main; on PRs only when Rust files changed.
+    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust toolchain
+        # Reads rust-toolchain.toml (channel + rustfmt/clippy), caches build
+        # artifacts, and registers clippy/rustfmt problem matchers so findings
+        # surface as inline PR annotations.
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: rustfmt
+        run: cargo fmt --all --check
+      - name: clippy (deny warnings)
+        # The wildflower-tauri crate is excluded everywhere in CI: linting it
+        # would require installing webkit2gtk/gtk system libraries. It's thin
+        # glue and is built by Tauri's own tooling.
+        run: cargo clippy --workspace --exclude wildflower-tauri --all-targets -- -D warnings
+      - name: clippy pedantic (informational)
+        # Pedantic findings are surfaced as annotations but do not fail the job
+        # yet. Once the codebase is clean against them, promote this by folding
+        # `-W clippy::pedantic` into the deny-warnings step above.
+        continue-on-error: true
+        run: cargo clippy --workspace --exclude wildflower-tauri --all-targets -- -W clippy::pedantic
+
+  deny:
+    needs: changes
+    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo-deny — advisories + sources (blocking)
+        # Security advisories (RustSec) and source pinning (crates.io only) are
+        # high-signal and gate merges.
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories sources
+      - name: cargo-deny — licenses + bans (informational)
+        # The license allowlist in deny.toml may need tuning against the real
+        # dependency tree, so start non-blocking. Remove continue-on-error once
+        # you've confirmed it's green to make license policy enforcing.
+        continue-on-error: true
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans
+
+  # Always-runs summary job. This is the check to mark required in branch
+  # protection — never the heavy jobs above. It stays green when they're
+  # skipped (e.g. a TS-only PR), so path filtering can never block a merge, and
+  # goes red only on a genuine lint or supply-chain failure.
+  rust-lint:
+    needs: [changes, lint, deny]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify lint + deny results
+        run: |
+          changes='${{ needs.changes.result }}'
+          lint='${{ needs.lint.result }}'
+          deny='${{ needs.deny.result }}'
+          echo "changes=$changes lint=$lint deny=$deny"
+          if [[ "$changes" != 'success' && "$changes" != 'skipped' ]]; then
+            echo '::error::changes job did not succeed'; exit 1
+          fi
+          for result in "$lint" "$deny"; do
+            if [[ "$result" == 'failure' || "$result" == 'cancelled' ]]; then
+              echo '::error::a rust-lint job failed'; exit 1
+            fi
+          done
+          echo 'rust-lint OK'

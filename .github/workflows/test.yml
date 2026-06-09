@@ -6,11 +6,32 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
+# Cancel superseded PR runs to save the actions budget; pushes to main always
+# run to completion.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  test:
-    # Skip on draft PRs; `pull_request` is null on push events so the
-    # comparison is true and the job still runs on main.
+  # Detect whether this change touches TS/JS. A Rust-only PR skips the heavy
+  # `vp-test` job below; every push to main runs it regardless.
+  changes:
     if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    outputs:
+      ts: ${{ steps.filter.outputs.ts }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: .github/path-filters.yml
+
+  vp-test:
+    needs: changes
+    # Skip on draft PRs; `pull_request` is null on push events so the draft
+    # comparison is true and the job still runs on main.
+    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.ts == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -37,3 +58,25 @@ jobs:
       - name: Run tests (reduced for unchanged on PR)
         if: github.event_name == 'pull_request'
         run: vp run test:changed
+
+  # Always-runs summary that keeps the existing "test" status name green/red.
+  # Left without a `name:` so the required-check context stays "test" — make
+  # THIS the required check, not vp-test, so a Rust-only PR (where vp-test is
+  # skipped) is never blocked by a stuck pending check.
+  test:
+    needs: [changes, vp-test]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify vp test result
+        run: |
+          changes='${{ needs.changes.result }}'
+          vp_test='${{ needs.vp-test.result }}'
+          echo "changes=$changes vp-test=$vp_test"
+          if [[ "$changes" != 'success' && "$changes" != 'skipped' ]]; then
+            echo '::error::changes job did not succeed'; exit 1
+          fi
+          if [[ "$vp_test" == 'failure' || "$vp_test" == 'cancelled' ]]; then
+            echo '::error::vp test failed'; exit 1
+          fi
+          echo 'test OK'

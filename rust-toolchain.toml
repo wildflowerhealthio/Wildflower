@@ -1,0 +1,10 @@
+# Pins the exact Rust toolchain for both local dev (rustup reads this file when
+# you run cargo inside the repo) and CI (actions-rust-lang/setup-rust-toolchain
+# reads it too). Bumping `channel` here is the single, deliberate way to move
+# every contributor and the CI lint/test gates onto a new compiler + clippy at
+# once — so a freshly released Rust can't silently turn the deny-warnings gate
+# red on code you didn't touch.
+[toolchain]
+channel = "1.95.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

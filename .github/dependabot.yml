@@ -1,0 +1,28 @@
+# Dependabot keeps dependencies and pinned action versions current, so security
+# patches land promptly and the tag pins in our workflows don't drift stale.
+# Docs: https://docs.github.com/code-security/dependabot
+version: 2
+updates:
+  # Rust crates across the Cargo workspace.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Bundle routine version bumps into one PR to cut review noise.
+      cargo-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # The versions of the GitHub Actions used by every workflow in .github/.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"

@@ -10,3 +10,6 @@ axum.workspace = true
 helios-rest = { version = "=0.1.47", features = ["R4", "sqlite"] }
 helios-persistence = { version = "=0.1.47", features = ["R4", "sqlite"] }
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
+
+[lints]
+workspace = true

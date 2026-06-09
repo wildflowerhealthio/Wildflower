@@ -1,0 +1,32 @@
+# Shared path filters consumed by dorny/paths-filter in the lint/test
+# workflows (rust-lint, rust-test, check, test). A pull request that touches
+# only `rust` paths skips the JS jobs and vice versa; a PR touching both runs
+# everything, and every push to main runs everything regardless. Keep these
+# lists aligned with where source actually lives.
+
+rust:
+  - '**/*.rs'
+  - '**/Cargo.toml'
+  - 'Cargo.lock'
+  - 'rust-toolchain.toml'
+  - 'deny.toml'
+  - '.github/path-filters.yml'
+  - '.github/workflows/rust-lint.yml'
+  - '.github/workflows/rust-test.yml'
+
+ts:
+  - '**/*.ts'
+  - '**/*.tsx'
+  - '**/*.cts'
+  - '**/*.mts'
+  - '**/*.js'
+  - '**/*.jsx'
+  - '**/*.cjs'
+  - '**/*.mjs'
+  - '**/package.json'
+  - '**/tsconfig*.json'
+  - 'pnpm-lock.yaml'
+  - 'pnpm-workspace.yaml'
+  - '.github/path-filters.yml'
+  - '.github/workflows/check.yml'
+  - '.github/workflows/test.yml'
