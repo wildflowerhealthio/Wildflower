@@ -199,8 +199,8 @@ catalogs:
       specifier: ~31.0.13
       version: 31.0.13
     expo-sqlite:
-      specifier: ^16.0.10
-      version: 16.0.10
+      specifier: ^56.0.4
+      version: 56.0.4
     expo-status-bar:
       specifier: ~3.0.9
       version: 3.0.9
@@ -391,7 +391,7 @@ importers:
         version: 15.1.1(expo-font@14.0.11(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.1.0)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.1.0)(react@19.1.0))(react@19.1.0)
       '@livestore/adapter-expo':
         specifier: 'catalog:'
-        version: 0.4.0-dev.26(ed809043d65c19077f702076d74873a3)
+        version: 0.4.0-dev.26(78f85d3efeebfb9a1c7a36e9fddc0d74)
       '@livestore/devtools-expo':
         specifier: 'catalog:'
         version: 0.4.0-dev.26(4df092a6fe6f01e1cb169eae0a732266)
@@ -505,7 +505,7 @@ importers:
         version: 31.0.13(expo@54.0.34)(typescript@5.9.3)
       expo-sqlite:
         specifier: 'catalog:'
-        version: 16.0.10(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.1.0)(react@19.1.0))(react@19.1.0)
+        version: 56.0.4(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.1.0)(react@19.1.0))(react@19.1.0)
       expo-status-bar:
         specifier: 'catalog:'
         version: 3.0.9(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.1.0)(react@19.1.0))(react@19.1.0)
@@ -8985,8 +8985,8 @@ packages:
     peerDependencies:
       expo: '*'
 
-  expo-sqlite@16.0.10:
-    resolution: {integrity: sha512-tUOKxE9TpfneRG3eOfbNfhN9236SJ7IiUnP8gCqU7umd9DtgDGB/5PhYVVfl+U7KskgolgNoB9v9OZ9iwXN8Eg==}
+  expo-sqlite@56.0.4:
+    resolution: {integrity: sha512-Ak8TUyrvK7C/J4BHBfcb8BacFrH8I+b+zqeSTKg5B02Z13lxljvuqI8UvKbRNa5BKprlxrqabZickGwacRkM9g==}
     peerDependencies:
       expo: '*'
       react: '*'
@@ -14521,7 +14521,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@livestore/adapter-expo@0.4.0-dev.26(ed809043d65c19077f702076d74873a3)':
+  '@livestore/adapter-expo@0.4.0-dev.26(78f85d3efeebfb9a1c7a36e9fddc0d74)':
     dependencies:
       '@effect/ai': 0.35.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
       '@effect/cli': 0.75.1(@effect/platform@0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)))(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
@@ -14546,7 +14546,7 @@ snapshots:
       '@standard-schema/spec': 1.1.0
       effect: 3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
       expo-application: 7.0.8(expo@54.0.34)
-      expo-sqlite: 16.0.10(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.1.0)(react@19.1.0))(react@19.1.0)
+      expo-sqlite: 56.0.4(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.1.0)(react@19.1.0))(react@19.1.0)
 
   '@livestore/adapter-node@0.4.0-dev.26(3044d9b588ef2ab19243335a2ade1802)':
     dependencies:
@@ -19175,7 +19175,7 @@ snapshots:
       - supports-color
       - typescript
 
-  expo-sqlite@16.0.10(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.1.0)(react@19.1.0))(react@19.1.0):
+  expo-sqlite@56.0.4(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.1.0)(react@19.1.0))(react@19.1.0):
     dependencies:
       await-lock: 2.2.2
       expo: 54.0.34(@babel/core@7.29.0)(@expo/dom-webview@0.2.8)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native-webview@13.15.0(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.1.0)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.1.0)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
