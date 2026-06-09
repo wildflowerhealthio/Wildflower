@@ -1,162 +1,277 @@
-use chrono::{Duration, Utc};
-use jsonwebtoken::{Algorithm, DecodingKey, Header, Validation};
-use serde::{Deserialize, Serialize};
+use chrono::serde::{ts_seconds, ts_seconds_option};
+use chrono::{DateTime, Duration, Utc};
+use jsonwebtoken::{Algorithm, Header, Validation};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use super::signing_key::{decoding_key, encoding_key, SigningKey};
 
+/// Normalize the `aud` claim — RFC 7519 lets it be a string or an array of
+/// strings — into a single canonical `Vec<String>` so downstream code has one
+/// shape to consume.
+fn deserialize_audience<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrVec {
+        One(String),
+        Many(Vec<String>),
+    }
+    match StringOrVec::deserialize(deserializer)? {
+        StringOrVec::One(s) => Ok(vec![s]),
+        StringOrVec::Many(v) => Ok(v),
+    }
+}
+
+/// Claims encoded in an access token minted by the gatekeeper.
+///
+/// Field names are expanded for readability; serde renames them back to the
+/// RFC 7519 short forms on the wire.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccessTokenClaims {
-    pub iss: String,
-    pub sub: String,
-    pub aud: String,
-    pub exp: i64,
-    pub iat: i64,
+    /// Origin that issued the token.
+    #[serde(rename = "iss")]
+    pub issuer: String,
+    /// `client_id` the token is bound to.
+    #[serde(rename = "sub")]
+    pub subject: String,
+    /// Resource server the token is intended for.
+    #[serde(rename = "aud")]
+    pub audience: String,
+    /// Instant at which the token stops being valid.
+    #[serde(rename = "exp", with = "ts_seconds")]
+    pub expires_at: DateTime<Utc>,
+    /// Instant at which the token was minted.
+    #[serde(rename = "iat", with = "ts_seconds")]
+    pub issued_at: DateTime<Utc>,
+    /// Space-separated OAuth scopes granted by this token.
     pub scope: String,
+    /// Optional SMART-on-FHIR patient context.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub patient: Option<String>,
 }
 
-pub struct MintArgs<'a> {
+/// Inputs required to mint a new JWT access token.
+pub struct NewJwtArgs<'a> {
+    /// OAuth client requesting the token.
     pub client_id: &'a str,
+    /// Scopes to embed in the token.
     pub scope: &'a [String],
+    /// Duration the token should remain valid from `now`.
     pub ttl: Duration,
+    /// Origin minting the token; becomes the `iss` claim and the default `aud`.
     pub origin: &'a str,
+    /// Optional explicit audience override; falls back to `origin` when `None`.
     pub audience: Option<&'a str>,
+    /// Optional SMART-on-FHIR patient context.
     pub patient: Option<&'a str>,
 }
 
+/// Failures while minting an access token.
 #[derive(Debug, thiserror::Error)]
 pub enum MintError {
-    #[error("key material: {0}")]
-    KeyMaterial(String),
-    #[error("jwt encode: {0}")]
-    Encode(#[from] jsonwebtoken::errors::Error),
+    /// The signing key's PEM material could not be loaded.
+    #[error("signing key material could not be loaded: {0}")]
+    SigningKeyUnreadable(String),
+    /// `jsonwebtoken` failed to encode the JWS.
+    #[error("jws encode failed: {0}")]
+    JwsEncodeFailed(#[from] jsonwebtoken::errors::Error),
 }
 
+/// Mint a signed access token using `signing_key` and the supplied claim inputs.
 pub fn mint_access_token(
     signing_key: &SigningKey,
-    args: MintArgs<'_>,
+    args: NewJwtArgs<'_>,
 ) -> Result<String, MintError> {
     let now = Utc::now();
-    let exp = now + args.ttl;
     let claims = AccessTokenClaims {
-        iss: args.origin.to_string(),
-        sub: args.client_id.to_string(),
-        aud: args.audience.unwrap_or(args.origin).to_string(),
-        exp: exp.timestamp(),
-        iat: now.timestamp(),
+        issuer: args.origin.to_string(),
+        subject: args.client_id.to_string(),
+        audience: args.audience.unwrap_or(args.origin).to_string(),
+        expires_at: now + args.ttl,
+        issued_at: now,
         scope: args.scope.join(" "),
         patient: args.patient.map(str::to_string),
     };
     let mut header = Header::new(Algorithm::RS256);
     header.kid = Some(signing_key.kid.clone());
-    let enc = encoding_key(signing_key).map_err(|e| MintError::KeyMaterial(e.to_string()))?;
-    Ok(jsonwebtoken::encode(&header, &claims, &enc)?)
+    let enc =
+        encoding_key(signing_key).map_err(|e| MintError::SigningKeyUnreadable(e.to_string()))?;
+    jsonwebtoken::encode(&header, &claims, &enc).map_err(MintError::JwsEncodeFailed)
 }
 
-#[derive(Debug, Clone, Deserialize)]
+/// Claims successfully verified from an incoming JWT.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct VerifiedClaims {
-    pub iss: String,
-    pub sub: String,
-    pub aud: serde_json::Value,
-    pub exp: Option<i64>,
-    pub iat: Option<i64>,
+    /// Origin that issued the token (`iss`).
+    #[serde(rename = "iss")]
+    pub issuer: String,
+    /// `client_id` the token is bound to (`sub`).
+    #[serde(rename = "sub")]
+    pub subject: String,
+    /// Audience(s) the token is intended for (`aud`). Normalized at parse time —
+    /// a wire-level string is wrapped into a one-element vector.
+    #[serde(rename = "aud", deserialize_with = "deserialize_audience")]
+    pub audience: Vec<String>,
+    /// Expiration instant, if present (`exp`).
+    #[serde(rename = "exp", default, with = "ts_seconds_option")]
+    pub expires_at: Option<DateTime<Utc>>,
+    /// Time the token was minted, if present (`iat`).
+    #[serde(rename = "iat", default, with = "ts_seconds_option")]
+    pub issued_at: Option<DateTime<Utc>>,
+    /// Space-separated scope list, if present.
     #[serde(default)]
     pub scope: Option<String>,
+    /// SMART-on-FHIR patient context, if present.
     #[serde(default)]
     pub patient: Option<String>,
 }
 
+/// Policy applied to incoming tokens during verification.
 pub struct VerifyOptions<'a> {
+    /// Required `iss` value.
     pub expected_issuer: &'a str,
+    /// Set of `aud` values that pass verification.
     pub accepted_audiences: &'a [String],
 }
 
+/// Failures while verifying an access token.
 #[derive(Debug, thiserror::Error)]
 pub enum VerifyError {
-    #[error("unauthorized")]
-    Unauthorized,
-    #[error("server error: no signing keys")]
-    NoSigningKeys,
-    #[error("server error: key material")]
-    KeyMaterial,
+    /// Token did not pass cryptographic or claim validation; surface as 401.
+    #[error("token rejected")]
+    TokenRejected,
+    /// No signing keys are configured — operator misconfiguration, surface as 500.
+    #[error("no signing keys configured")]
+    NoSigningKeysConfigured,
+    /// A configured signing key's PEM material could not be loaded.
+    #[error("signing key material could not be loaded")]
+    SigningKeyUnreadable,
 }
 
+/// Verify a JWT against `possible_signing_keys`, returning the decoded claims
+/// on success.
+///
+/// If the header carries a `kid` that matches any of the supplied keys, only
+/// those keys are tried; otherwise every key is attempted (allowing for
+/// rotation overlap).
 pub fn verify_jwt(
     token: &str,
-    keys: &[SigningKey],
+    possible_signing_keys: &[SigningKey],
     opts: VerifyOptions<'_>,
 ) -> Result<VerifiedClaims, VerifyError> {
     let token = token.trim();
     if token.is_empty() {
-        return Err(VerifyError::Unauthorized);
+        return Err(VerifyError::TokenRejected);
     }
-    if keys.is_empty() {
-        return Err(VerifyError::NoSigningKeys);
+    if possible_signing_keys.is_empty() {
+        return Err(VerifyError::NoSigningKeysConfigured);
     }
-    let header = jsonwebtoken::decode_header(token).map_err(|_| VerifyError::Unauthorized)?;
-    let candidates: Vec<&SigningKey> = match &header.kid {
-        Some(kid) => {
-            let matched: Vec<&SigningKey> = keys.iter().filter(|k| &k.kid == kid).collect();
-            if matched.is_empty() {
-                keys.iter().collect()
-            } else {
-                matched
-            }
-        }
-        None => keys.iter().collect(),
+    let header = jsonwebtoken::decode_header(token).map_err(|_| VerifyError::TokenRejected)?;
+
+    let kid = header.kid.as_deref();
+    let mut kid_matched = possible_signing_keys
+        .iter()
+        .filter(move |k| kid.is_some_and(|target| k.kid == target))
+        .peekable();
+    let mut candidates: Box<dyn Iterator<Item = &SigningKey> + '_> = if kid_matched.peek().is_some()
+    {
+        Box::new(kid_matched)
+    } else {
+        Box::new(possible_signing_keys.iter())
     };
+
     let mut validation = Validation::new(Algorithm::RS256);
     validation.set_issuer(&[opts.expected_issuer]);
     let audiences: Vec<&str> = opts.accepted_audiences.iter().map(String::as_str).collect();
     validation.set_audience(&audiences);
     validation.validate_exp = true;
-    for key in candidates {
-        let dec: DecodingKey = match decoding_key(key) {
-            Ok(d) => d,
-            Err(_) => return Err(VerifyError::KeyMaterial),
-        };
-        if let Ok(decoded) =
+
+    let try_verifying_with = |key: &SigningKey| -> Result<Option<VerifiedClaims>, VerifyError> {
+        let dec = decoding_key(key).map_err(|_| VerifyError::SigningKeyUnreadable)?;
+        Ok(
             jsonwebtoken::decode::<VerifiedClaims>(token, &dec, &validation)
-        {
-            return Ok(decoded.claims);
-        }
-    }
-    Err(VerifyError::Unauthorized)
+                .ok()
+                .map(|d| d.claims),
+        )
+    };
+
+    candidates
+        .find_map(|key| try_verifying_with(key).transpose())
+        .unwrap_or(Err(VerifyError::TokenRejected))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::crypto::signing_key::generate;
+    use proptest::prelude::*;
+    use std::sync::OnceLock;
 
-    #[test]
-    fn mint_and_verify_round_trip() {
-        let key = generate().expect("gen");
-        let token = mint_access_token(
-            &key,
-            MintArgs {
-                client_id: "wildflower-host",
-                scope: &["owner".to_string()],
-                ttl: Duration::seconds(60),
-                origin: "tauri://localhost",
-                audience: Some("tauri://localhost/fhir-r4"),
-                patient: None,
-            },
-        )
-        .expect("mint");
-        let claims = verify_jwt(
-            &token,
-            &[key.clone()],
-            VerifyOptions {
-                expected_issuer: "tauri://localhost",
-                accepted_audiences: &["tauri://localhost/fhir-r4".to_string()],
-            },
-        )
-        .expect("verify");
-        assert_eq!(claims.iss, "tauri://localhost");
-        assert_eq!(claims.sub, "wildflower-host");
-        assert_eq!(claims.scope.as_deref(), Some("owner"));
+    fn shared_key() -> &'static SigningKey {
+        static KEY: OnceLock<SigningKey> = OnceLock::new();
+        KEY.get_or_init(|| generate().expect("gen"))
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        #[test]
+        fn mint_and_verify_round_trip(
+            client_id in "[a-zA-Z0-9_-]{1,32}",
+            scopes in prop::collection::vec("[a-z][a-z0-9_]{0,15}", 0..5),
+            ttl_seconds in 1i64..=3600,
+            origin in "https://[a-z]{3,16}\\.[a-z]{2,8}",
+            audience_suffix in prop::option::of("/[a-z]{2,16}"),
+            patient in prop::option::of("[a-zA-Z0-9-]{1,32}"),
+        ) {
+            let key = shared_key();
+            let audience: Option<String> = audience_suffix.map(|s| format!("{origin}{s}"));
+            let expected_aud = audience.clone().unwrap_or_else(|| origin.clone());
+
+            let before = Utc::now();
+            let token = mint_access_token(
+                key,
+                NewJwtArgs {
+                    client_id: &client_id,
+                    scope: &scopes,
+                    ttl: Duration::seconds(ttl_seconds),
+                    origin: &origin,
+                    audience: audience.as_deref(),
+                    patient: patient.as_deref(),
+                },
+            ).expect("mint");
+
+            let verified_claims = verify_jwt(
+                &token,
+                std::slice::from_ref(key),
+                VerifyOptions {
+                    expected_issuer: &origin,
+                    accepted_audiences: &[expected_aud.clone()],
+                },
+            ).expect("verify");
+
+            // Compare the whole struct so a Debug diff names every wrong field at once.
+            let expected = VerifiedClaims {
+                issuer: origin.clone(),
+                subject: client_id.clone(),
+                audience: vec![expected_aud],
+                scope: Some(scopes.join(" ")),
+                patient: patient.clone(),
+                // Spread verified_claims for timestamps through —
+                // they come from `Utc::now()` so we can't predict them
+                ..verified_claims
+            };
+            prop_assert_eq!(&verified_claims, &expected);
+
+            let iat = verified_claims.issued_at.expect("iat present");
+            let exp = verified_claims.expires_at.expect("exp present");
+            prop_assert_eq!(exp - iat, Duration::seconds(ttl_seconds));
+            // JWT timestamps are second-precision; allow a small slack window
+            // around the wall-clock `before`/`now` envelope.
+            prop_assert!((iat - before).num_seconds().abs() <= 2);
+        }
     }
 
     #[test]
@@ -164,7 +279,7 @@ mod tests {
         let key = generate().expect("gen");
         let token = mint_access_token(
             &key,
-            MintArgs {
+            NewJwtArgs {
                 client_id: "c",
                 scope: &[],
                 ttl: Duration::seconds(60),
@@ -183,7 +298,7 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert!(matches!(err, VerifyError::Unauthorized));
+        assert!(matches!(err, VerifyError::TokenRejected));
     }
 
     #[test]
@@ -198,7 +313,7 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert!(matches!(err, VerifyError::Unauthorized));
+        assert!(matches!(err, VerifyError::TokenRejected));
     }
 
     #[test]
@@ -212,6 +327,6 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert!(matches!(err, VerifyError::NoSigningKeys));
+        assert!(matches!(err, VerifyError::NoSigningKeysConfigured));
     }
 }

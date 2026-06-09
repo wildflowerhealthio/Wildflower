@@ -2,7 +2,7 @@ use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::crypto::jwt::{mint_access_token, MintArgs};
+use crate::crypto::jwt::{mint_access_token, NewJwtArgs};
 use crate::crypto::pkce::sha256_hex;
 use crate::crypto::timing_safe::timing_safe_eq;
 use crate::store::client::{Client, ClientKind};
@@ -133,7 +133,7 @@ pub fn issue_token_response(
     let audience = format!("{}/fhir-r4", input.origin);
     let signed = mint_access_token(
         &key,
-        MintArgs {
+        NewJwtArgs {
             client_id: input.client_id,
             scope: input.granted_scopes,
             ttl: ACCESS_TOKEN_TTL,

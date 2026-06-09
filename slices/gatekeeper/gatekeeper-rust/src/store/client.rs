@@ -1,3 +1,4 @@
+use anyhow::Context;
 use chrono::{DateTime, Utc};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
 use rusqlite::{params, OptionalExtension, Row, ToSql};
@@ -5,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::types::Json;
 use super::GatekeeperStore;
+use crate::{FIRST_PARTY_CLIENT_ID, OWNER_SCOPE};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -105,6 +107,31 @@ impl GatekeeperStore {
              VALUES (:clientId, :name, :kind, :redirectUris, :allowedScopes, :secretHash, :registeredAt, :disabledAt)",
             &client.as_named_sql_params(),
         )?;
+        Ok(())
+    }
+
+    /// Register the `wildflower-host` first-party client if it isn't already
+    /// in the store. Idempotent — safe to call on every boot.
+    pub fn ensure_first_party_client(&self) -> anyhow::Result<()> {
+        if self
+            .client_by_id(FIRST_PARTY_CLIENT_ID)
+            .context("read first-party client")?
+            .is_some()
+        {
+            return Ok(());
+        }
+        let client = Client {
+            client_id: FIRST_PARTY_CLIENT_ID.to_string(),
+            name: "Wildflower (host)".to_string(),
+            kind: ClientKind::Public,
+            redirect_uris: Json(vec![]),
+            allowed_scopes: Json(vec![OWNER_SCOPE.to_string()]),
+            secret_hash: None,
+            registered_at: Utc::now(),
+            disabled_at: None,
+        };
+        self.register_client(&client)
+            .context("register first-party client")?;
         Ok(())
     }
 }

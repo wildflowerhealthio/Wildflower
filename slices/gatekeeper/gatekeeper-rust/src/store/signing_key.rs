@@ -1,7 +1,8 @@
+use anyhow::Context;
 use rusqlite::{Row, ToSql};
 
 use super::GatekeeperStore;
-use crate::crypto::signing_key::SigningKey;
+use crate::crypto::signing_key::{generate as generate_signing_key, SigningKey};
 
 impl SigningKey {
     pub fn as_named_sql_params(&self) -> [(&str, &dyn ToSql); 5] {
@@ -64,5 +65,19 @@ impl GatekeeperStore {
         )?;
         Ok(())
     }
-}
 
+    /// Generate and insert an active signing key if the table is empty;
+    /// otherwise leave the existing keys alone. Idempotent — safe to call on
+    /// every boot.
+    pub fn ensure_some_active_signing_key(&self) -> anyhow::Result<()> {
+        let existing = self.active_signing_key().context("read signing keys")?;
+        if existing.is_some() {
+            return Ok(());
+        }
+        let mut key = generate_signing_key().context("generate signing key")?;
+        key.is_active = true;
+        self.insert_signing_key(&key)
+            .context("insert signing key")?;
+        Ok(())
+    }
+}

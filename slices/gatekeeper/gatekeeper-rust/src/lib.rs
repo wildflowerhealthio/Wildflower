@@ -1,4 +1,3 @@
-pub mod bootstrap;
 pub mod config;
 pub mod crypto;
 pub mod error;
@@ -20,11 +19,22 @@ use axum::Router;
 use chrono::Duration;
 
 pub use config::GatekeeperConfig;
-pub use error::MintError;
+pub use error::HostTokenError;
 pub use gate::gate;
 pub use origin::{OriginProvider, RequestOriginProvider, SharedOriginProvider, DEFAULT_ORIGIN};
 pub use require_auth::AppState;
 pub use store::GatekeeperStore;
+
+use crate::crypto::jwt::{mint_access_token, NewJwtArgs};
+
+/// `client_id` of the host application's first-party OAuth client. The host
+/// uses this identity to mint Owner tokens for itself and to recognise its
+/// own client registration during bootstrap.
+pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";
+
+/// OAuth scope that grants full Owner-level access to the gatekeeper's
+/// `/access/*` admin surface.
+pub const OWNER_SCOPE: &str = "owner";
 
 /// Result of `setup_gatekeeper`: the public router that should be merged
 /// into the app's root router plus the shared `AppState` needed to gate
@@ -47,10 +57,18 @@ pub struct Gatekeeper {
 /// The whole surface is gated by the loopback middleware — non-loopback
 /// peers receive 403 before any handler runs.
 pub fn setup_gatekeeper(config: &GatekeeperConfig) -> anyhow::Result<Gatekeeper> {
-    let store = GatekeeperStore::open(&config.db_file_path)
-        .with_context(|| format!("failed to open gatekeeper sqlite at {:?}", config.db_file_path))?;
-    bootstrap::seed_signing_key(&store).context("failed to seed signing key")?;
-    bootstrap::seed_first_party_client(&store).context("failed to seed first-party client")?;
+    let store = GatekeeperStore::open(&config.db_file_path).with_context(|| {
+        format!(
+            "failed to open gatekeeper sqlite at {:?}",
+            config.db_file_path
+        )
+    })?;
+    store
+        .ensure_some_active_signing_key()
+        .context("failed to seed signing key")?;
+    store
+        .ensure_first_party_client()
+        .context("failed to seed first-party client")?;
 
     let origin: SharedOriginProvider = Arc::new(RequestOriginProvider);
     let state = AppState {
@@ -84,6 +102,19 @@ pub fn mint_host_owner_token(
     state: &AppState,
     origin: &str,
     ttl: Duration,
-) -> Result<String, MintError> {
-    bootstrap::mint_host_owner_token(&state.store, origin, ttl)
+) -> Result<String, HostTokenError> {
+    let active = state.store.active_signing_key()?;
+    let key = active.ok_or(HostTokenError::NoSigningKeys)?;
+    let scope = [OWNER_SCOPE.to_string()];
+    Ok(mint_access_token(
+        &key,
+        NewJwtArgs {
+            client_id: FIRST_PARTY_CLIENT_ID,
+            scope: &scope,
+            ttl,
+            origin,
+            audience: None,
+            patient: None,
+        },
+    )?)
 }

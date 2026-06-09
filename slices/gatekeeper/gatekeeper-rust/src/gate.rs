@@ -23,7 +23,7 @@ async fn gate_middleware(
     };
     let claims = match verify_any_token(&state, &headers, &token) {
         Ok(c) => c,
-        Err(VerifyError::NoSigningKeys) => return internal_error(),
+        Err(VerifyError::NoSigningKeysConfigured) => return internal_error(),
         Err(_) => return unauthorized(),
     };
     req.extensions_mut().insert(AuthedClaims(Arc::new(claims)));

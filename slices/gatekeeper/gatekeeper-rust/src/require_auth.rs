@@ -5,10 +5,10 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use std::sync::Arc;
 
-use crate::bootstrap::OWNER_SCOPE;
 use crate::crypto::jwt::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
 use crate::origin::SharedOriginProvider;
 use crate::store::GatekeeperStore;
+use crate::OWNER_SCOPE;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -31,7 +31,7 @@ pub async fn require_owner_auth(
     };
     let claims = match verify_owner_token(&state, &headers, &token) {
         Ok(c) => c,
-        Err(VerifyError::NoSigningKeys) => return internal_error(),
+        Err(VerifyError::NoSigningKeysConfigured) => return internal_error(),
         Err(_) => return unauthorized(),
     };
     req.extensions_mut().insert(AuthedClaims(Arc::new(claims)));
@@ -61,7 +61,7 @@ pub fn verify_owner_token(
         .split_whitespace()
         .collect::<Vec<_>>();
     if !scopes.contains(&OWNER_SCOPE) {
-        return Err(VerifyError::Unauthorized);
+        return Err(VerifyError::TokenRejected);
     }
     Ok(claims)
 }
@@ -74,7 +74,7 @@ pub fn verify_any_token(
     let keys = state
         .store
         .all_signing_keys()
-        .map_err(|_| VerifyError::KeyMaterial)?;
+        .map_err(|_| VerifyError::SigningKeyUnreadable)?;
     let origin = state.origin.origin_for(headers);
     let accepted = vec![format!("{origin}/fhir-r4"), origin.clone()];
     verify_jwt(
