@@ -2,27 +2,27 @@ pub mod config;
 pub mod crypto;
 pub mod error;
 pub mod error_pages;
+pub mod extensions;
 pub mod gate;
 pub mod handlers;
-pub mod loopback_gate;
+pub mod middleware;
 pub mod origin;
 pub mod page_paths;
-pub mod require_auth;
 pub mod store;
 
 use std::sync::Arc;
 
 use anyhow::Context;
 use axum::extract::Extension;
-use axum::middleware;
+use axum::middleware as axum_middleware;
 use axum::Router;
 use chrono::Duration;
 
 pub use config::GatekeeperConfig;
 pub use error::HostTokenError;
+use extensions::AppState;
 pub use gate::gate;
 pub use origin::{OriginProvider, RequestOriginProvider, SharedOriginProvider, DEFAULT_ORIGIN};
-pub use require_auth::AppState;
 pub use store::GatekeeperStore;
 
 use crate::crypto::jwt::{mint_access_token, NewJwtArgs};
@@ -82,13 +82,13 @@ pub fn setup_gatekeeper(config: &GatekeeperConfig) -> anyhow::Result<Gatekeeper>
         .merge(handlers::access_management::router())
         .merge(handlers::oauth_consent::router())
         .merge(handlers::devices::router())
-        .layer(middleware::from_fn(require_auth::require_owner_auth));
+        .layer(axum_middleware::from_fn(middleware::require_owner_auth));
 
     let router = Router::new()
         .merge(well_known)
         .nest("/oauth", oauth)
         .nest("/access", access)
-        .layer(middleware::from_fn(loopback_gate::loopback_gate))
+        .layer(axum_middleware::from_fn(middleware::loopback_gate))
         .layer(Extension(state.clone()));
 
     Ok(Gatekeeper { router, state })

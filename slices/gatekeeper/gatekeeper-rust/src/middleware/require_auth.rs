@@ -6,15 +6,8 @@ use axum::response::{IntoResponse, Response};
 use std::sync::Arc;
 
 use crate::crypto::jwt::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
-use crate::origin::SharedOriginProvider;
-use crate::store::GatekeeperStore;
+use crate::extensions::AppState;
 use crate::OWNER_SCOPE;
-
-#[derive(Clone)]
-pub struct AppState {
-    pub store: GatekeeperStore,
-    pub origin: SharedOriginProvider,
-}
 
 #[derive(Clone)]
 pub struct AuthedClaims(pub Arc<VerifiedClaims>);

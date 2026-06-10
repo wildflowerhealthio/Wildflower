@@ -248,7 +248,7 @@ mod tests {
                 std::slice::from_ref(key),
                 VerifyOptions {
                     expected_issuer: &origin,
-                    accepted_audiences: &[expected_aud.clone()],
+                    accepted_audiences: std::slice::from_ref(&expected_aud),
                 },
             ).expect("verify");
 

@@ -7,11 +7,13 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::require_auth::AppState;
-use crate::store::authorization_request::{GrantType, RequestStatus};
+use crate::extensions::AppState;
+use crate::store::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::store::grant::Grant;
 use crate::store::types::Json as JsonWrap;
 
+/// Body returned to the Owner UI when it loads an authorization-code consent
+/// prompt — describes the client, scopes, and any pre-approved subset.
 #[derive(Debug, Serialize)]
 pub struct OAuthConsent {
     pub id: String,
@@ -25,6 +27,7 @@ pub struct OAuthConsent {
     pub patient: Option<String>,
 }
 
+/// Body posted by the Owner UI to approve a consent prompt.
 #[derive(Debug, Deserialize)]
 pub struct ApproveBody {
     #[serde(rename = "approvedScopes")]
@@ -32,6 +35,7 @@ pub struct ApproveBody {
     pub patient: Option<String>,
 }
 
+/// Result the Owner UI sees after approving or denying a consent prompt.
 #[derive(Debug, Serialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub enum ConsentResult {
@@ -54,22 +58,18 @@ pub fn router() -> Router {
 }
 
 async fn get_consent(Extension(state): Extension<AppState>, Path(id): Path<String>) -> Response {
-    let request = match state.store.authorization_request_by_id(&id) {
-        Ok(Some(r))
-            if r.status == RequestStatus::Pending
-                && r.grant_type == GrantType::AuthorizationCode
-                && r.redirect_uri.is_some() =>
-        {
-            r
-        }
-        Ok(_) => return not_found(&id),
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    let request = match load_pending_authorization_code_request(&state, &id) {
+        Ok(r) => r,
+        Err(response) => return *response,
     };
+    let redirect_uri = request
+        .redirect_uri
+        .expect("load_pending_authorization_code_request guarantees Some(redirect_uri)");
     Json(OAuthConsent {
         id: id.clone(),
         client_id: request.client_id,
         scopes: request.requested_scopes.0,
-        redirect_uri: request.redirect_uri.unwrap(),
+        redirect_uri,
         pre_approved_scopes: request.pre_approved_scopes.map(|j| j.0).unwrap_or_default(),
         patient: request.patient,
     })
@@ -81,56 +81,64 @@ async fn approve_consent(
     Path(id): Path<String>,
     Json(body): Json<ApproveBody>,
 ) -> Response {
-    let request = match state.store.authorization_request_by_id(&id) {
-        Ok(Some(r))
-            if r.status == RequestStatus::Pending
-                && r.grant_type == GrantType::AuthorizationCode
-                && r.redirect_uri.is_some() =>
-        {
-            r
-        }
-        Ok(_) => return not_found(&id),
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    let request = match load_pending_authorization_code_request(&state, &id) {
+        Ok(r) => r,
+        Err(response) => return *response,
     };
-    let redirect_uri = request.redirect_uri.clone().unwrap();
-    if state
-        .store
-        .approve_authorization_request(&id, &body.approved_scopes, body.patient.as_deref())
-        .is_err()
-    {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    let redirect_uri = request
+        .redirect_uri
+        .expect("load_pending_authorization_code_request guarantees Some(redirect_uri)");
+    if let Err(e) = state.store.approve_authorization_request(
+        &id,
+        &body.approved_scopes,
+        body.patient.as_deref(),
+    ) {
+        return internal_error("approve_authorization_request failed", e);
     }
-    if upsert_grant(
+    if let Err(e) = upsert_grant(
         &state,
         &request.client_id,
         &redirect_uri,
         &body.approved_scopes,
         body.patient.as_deref(),
-    )
-    .is_err()
-    {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    ) {
+        return internal_error("upsert_grant failed", e);
     }
     Json(ConsentResult::Approved).into_response()
 }
 
 async fn deny_consent(Extension(state): Extension<AppState>, Path(id): Path<String>) -> Response {
-    let request = match state.store.authorization_request_by_id(&id) {
+    if let Err(response) = load_pending_authorization_code_request(&state, &id) {
+        return *response;
+    }
+    if let Err(e) = state.store.deny_authorization_request(&id) {
+        return internal_error("deny_authorization_request failed", e);
+    }
+    Json(ConsentResult::Denied).into_response()
+}
+
+/// Load the authorization request for `id` and verify it's a pending
+/// authorization-code flow with a `redirect_uri`. Returns a ready-to-use
+/// `Response` for both "not found" and "internal error" outcomes so each
+/// handler can `match` once and move on.
+fn load_pending_authorization_code_request(
+    state: &AppState,
+    id: &str,
+) -> Result<AuthorizationRequest, Box<Response>> {
+    match state.store.authorization_request_by_id(id) {
         Ok(Some(r))
             if r.status == RequestStatus::Pending
                 && r.grant_type == GrantType::AuthorizationCode
                 && r.redirect_uri.is_some() =>
         {
-            r
+            Ok(r)
         }
-        Ok(_) => return not_found(&id),
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-    };
-    let _ = request;
-    if state.store.deny_authorization_request(&id).is_err() {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        Ok(_) => Err(Box::new(not_found(id))),
+        Err(e) => Err(Box::new(internal_error(
+            "authorization_request_by_id lookup failed",
+            e,
+        ))),
     }
-    Json(ConsentResult::Denied).into_response()
 }
 
 fn upsert_grant(
@@ -169,4 +177,9 @@ fn not_found(id: &str) -> Response {
         }),
     )
         .into_response()
+}
+
+fn internal_error(context: &str, err: impl std::fmt::Display) -> Response {
+    tracing::error!(error = %err, "{context}");
+    StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }

@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Context};
 use axum::extract::Extension;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -9,18 +10,26 @@ use uuid::Uuid;
 
 use super::shared::{OAuthError, DEVICE_CODE_POLL_INTERVAL};
 use crate::crypto::user_code::generate_user_code;
+use crate::extensions::AppState;
 use crate::page_paths;
-use crate::require_auth::AppState;
 use crate::store::authorization_request::{AuthorizationRequest, NewDeviceFlow, RequestStatus};
 
+/// Lifetime of a device-flow authorization request — the user has this long
+/// to enter their `user_code` before the flow expires.
 const DEVICE_AUTHORIZATION_TTL: Duration = Duration::minutes(5);
 
+/// How many random `user_code` candidates we try before giving up. Generous
+/// because the alphabet/length make collisions astronomically rare.
+const MAX_USER_CODE_GENERATION_ATTEMPTS: usize = 10;
+
+/// Body of an RFC 8628 device authorization request.
 #[derive(Debug, Deserialize)]
 pub struct DeviceAuthorizationPayload {
     pub client_id: String,
     pub scope: Option<String>,
 }
 
+/// Body returned by `/oauth/device_authorization` per RFC 8628 §3.2.
 #[derive(Debug, Serialize)]
 pub struct DeviceAuthorizationResponse {
     pub device_code: String,
@@ -31,7 +40,9 @@ pub struct DeviceAuthorizationResponse {
     pub interval: i64,
 }
 
-pub async fn handle(
+/// `POST /oauth/device_authorization` — issue a `(device_code, user_code)`
+/// pair for the client to poll on while the user pairs the device.
+pub async fn handle_device_authorization_request(
     Extension(state): Extension<AppState>,
     headers: HeaderMap,
     body: String,
@@ -39,11 +50,11 @@ pub async fn handle(
     let payload: DeviceAuthorizationPayload = match serde_urlencoded::from_str(&body) {
         Ok(p) => p,
         Err(_) => {
-            return (
+            return oauth_error(
                 StatusCode::BAD_REQUEST,
-                Json(OAuthError::new("invalid_request", Some("Malformed payload"))),
+                "invalid_request",
+                "Malformed payload",
             )
-                .into_response()
         }
     };
     let origin = state.origin.origin_for(&headers);
@@ -57,45 +68,42 @@ pub async fn handle(
     let client = match state.store.client_by_id(&payload.client_id) {
         Ok(Some(c)) if c.disabled_at.is_none() => c,
         Ok(_) => {
-            return (
+            return oauth_error(
                 StatusCode::UNAUTHORIZED,
-                Json(OAuthError::new(
-                    "invalid_client",
-                    Some("Unknown or disabled client_id"),
-                )),
+                "invalid_client",
+                "Unknown or disabled client_id",
             )
-                .into_response()
         }
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Err(e) => return internal_error("client_by_id lookup failed", e),
     };
     let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
-    if !requested_scopes.iter().all(|s| allowed.contains(s.as_str())) {
-        return (
+    if !requested_scopes
+        .iter()
+        .all(|s| allowed.contains(s.as_str()))
+    {
+        return oauth_error(
             StatusCode::BAD_REQUEST,
-            Json(OAuthError::new(
-                "invalid_scope",
-                Some("Scope not allowed for client"),
-            )),
-        )
-            .into_response();
+            "invalid_scope",
+            "Scope not allowed for client",
+        );
     }
-    let id = Uuid::new_v4().to_string();
+    let device_code = Uuid::new_v4().to_string();
     let user_code = match generate_unique_user_code(&state) {
         Ok(c) => c,
-        Err(()) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Err(e) => return internal_error("user_code generation failed", e),
     };
     let request = AuthorizationRequest::new_device_flow(NewDeviceFlow {
-        id: id.clone(),
+        id: device_code.clone(),
         client_id: payload.client_id.clone(),
         requested_scopes,
         user_code: user_code.clone(),
         ttl: DEVICE_AUTHORIZATION_TTL,
     });
-    if state.store.insert_authorization_request(&request).is_err() {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    if let Err(e) = state.store.insert_authorization_request(&request) {
+        return internal_error("insert_authorization_request failed", e);
     }
     Json(DeviceAuthorizationResponse {
-        device_code: id,
+        device_code,
         user_code: user_code.clone(),
         verification_uri: page_paths::device_entry_url(&origin),
         verification_uri_complete: page_paths::device_entry_url_with_code(&origin, &user_code),
@@ -105,18 +113,35 @@ pub async fn handle(
     .into_response()
 }
 
-fn generate_unique_user_code(state: &AppState) -> Result<String, ()> {
-    for _ in 0..10 {
+/// Try up to `MAX_USER_CODE_GENERATION_ATTEMPTS` random user codes until one
+/// doesn't collide with an existing pending request. Returns an error that
+/// preserves cause information for logging.
+fn generate_unique_user_code(state: &AppState) -> anyhow::Result<String> {
+    for _ in 0..MAX_USER_CODE_GENERATION_ATTEMPTS {
         let candidate = {
             let mut rng = rand::thread_rng();
             generate_user_code(&mut rng)
         };
-        match state.store.authorization_request_by_user_code(&candidate) {
-            Ok(None) => return Ok(candidate),
-            Ok(Some(row)) if row.status != RequestStatus::Pending => return Ok(candidate),
-            Ok(Some(_)) => continue,
-            Err(_) => return Err(()),
+        match state
+            .store
+            .authorization_request_by_user_code(&candidate)
+            .context("authorization_request_by_user_code lookup failed")?
+        {
+            None => return Ok(candidate),
+            Some(existing) if existing.status != RequestStatus::Pending => return Ok(candidate),
+            Some(_) => continue,
         }
     }
-    Err(())
+    Err(anyhow!(
+        "exhausted {MAX_USER_CODE_GENERATION_ATTEMPTS} user_code generation attempts"
+    ))
+}
+
+fn oauth_error(status: StatusCode, error: &str, description: &str) -> Response {
+    (status, Json(OAuthError::new(error, Some(description)))).into_response()
+}
+
+fn internal_error(context: &str, err: impl std::fmt::Display) -> Response {
+    tracing::error!(error = %err, "{context}");
+    StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }

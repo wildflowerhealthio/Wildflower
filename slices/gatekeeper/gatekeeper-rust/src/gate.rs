@@ -7,7 +7,9 @@ use axum::Router;
 use std::sync::Arc;
 
 use crate::crypto::jwt::VerifyError;
-use crate::require_auth::{bearer_token, verify_any_token, AppState, AuthedClaims};
+use crate::extensions::AppState;
+
+use crate::middleware::require_auth::{bearer_token, verify_any_token, AuthedClaims};
 
 async fn gate_middleware(
     Extension(state): Extension<AppState>,

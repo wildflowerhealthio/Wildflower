@@ -5,6 +5,9 @@ use serde::Serialize;
 use super::types::Json;
 use super::GatekeeperStore;
 
+/// A previously-approved consent — when the same (client, redirect_uri) pair
+/// re-authorizes, the gatekeeper can skip the consent prompt for any scopes
+/// already in `scopes`.
 #[derive(Debug, Clone, Serialize)]
 pub struct Grant {
     pub id: String,
@@ -52,6 +55,7 @@ impl TryFrom<&Row<'_>> for Grant {
 const ALL_COLS: &str = "id, clientId, scopes, redirectUri, grantedAt, lastUsedAt, patient";
 
 impl GatekeeperStore {
+    /// All grants in `grantedAt` order — backs the Owner UI's grant list page.
     pub fn all_grants(&self) -> crate::store::DbResult<Vec<Grant>> {
         let conn = self.conn().lock();
         let mut stmt =
@@ -62,6 +66,7 @@ impl GatekeeperStore {
         rows
     }
 
+    /// Load a single grant by primary id.
     pub fn grant_by_id(&self, id: &str) -> crate::store::DbResult<Option<Grant>> {
         self.conn()
             .lock()
@@ -73,6 +78,8 @@ impl GatekeeperStore {
             .optional()
     }
 
+    /// Find an existing grant for the (client_id, redirect_uri) pair so
+    /// `/authorize` can decide whether to short-circuit the consent prompt.
     pub fn grant_by_client_and_redirect(
         &self,
         client_id: &str,
@@ -90,6 +97,7 @@ impl GatekeeperStore {
             .optional()
     }
 
+    /// Insert a brand-new grant row.
     pub fn create_grant(&self, grant: &Grant) -> crate::store::DbResult<()> {
         self.conn().lock().execute(
             "INSERT INTO grants (id, clientId, scopes, redirectUri, grantedAt, lastUsedAt, patient)
@@ -99,6 +107,8 @@ impl GatekeeperStore {
         Ok(())
     }
 
+    /// Replace an existing grant's scopes (and patient context) on
+    /// re-approval, bumping `granted_at` to `now`.
     pub fn update_grant(
         &self,
         id: &str,
@@ -114,6 +124,8 @@ impl GatekeeperStore {
         Ok(())
     }
 
+    /// Delete a grant; returns `true` if a row was actually removed so the
+    /// caller can distinguish "revoked" from "no such grant".
     pub fn revoke_grant(&self, id: &str) -> crate::store::DbResult<bool> {
         let affected = self
             .conn()

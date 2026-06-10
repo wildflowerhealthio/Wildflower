@@ -4,6 +4,10 @@ use rusqlite::{params, OptionalExtension, Row, ToSql};
 use super::types::Json;
 use super::GatekeeperStore;
 
+/// A short-lived single-use authorization code issued at `/authorize` and
+/// redeemed at `/token` (RFC 6749 §4.1.2). The PKCE `code_challenge` is
+/// stashed here so the redeemer can prove possession of the matching
+/// verifier.
 #[derive(Debug, Clone)]
 pub struct AuthorizationCode {
     pub code: String,
@@ -54,6 +58,7 @@ const ALL_COLS: &str =
     "code, requestId, clientId, redirectUri, codeChallenge, grantedScopes, patient, issuedAt, expiresAt";
 
 impl GatekeeperStore {
+    /// Look up an authorization code at `/token` redemption time.
     pub fn authorization_code_by_code(
         &self,
         code: &str,
@@ -68,6 +73,8 @@ impl GatekeeperStore {
             .optional()
     }
 
+    /// Look up the code that was issued for a given `request_id`, used by the
+    /// Owner UI's polling endpoint to build the final redirect URL.
     pub fn authorization_code_by_request_id(
         &self,
         request_id: &str,
@@ -82,6 +89,7 @@ impl GatekeeperStore {
             .optional()
     }
 
+    /// Persist a freshly-minted authorization code.
     pub fn issue_authorization_code(&self, code: &AuthorizationCode) -> crate::store::DbResult<()> {
         self.conn().lock().execute(
             "INSERT INTO authorizationCodes
@@ -92,6 +100,9 @@ impl GatekeeperStore {
         Ok(())
     }
 
+    /// Delete a code at `/token` redemption time. Called whether the
+    /// redemption succeeded or failed — codes are single-use either way (RFC
+    /// 6749 §10.5 replay protection).
     pub fn consume_authorization_code(&self, code: &str) -> crate::store::DbResult<()> {
         self.conn().lock().execute(
             "DELETE FROM authorizationCodes WHERE code = ?1",

@@ -5,9 +5,13 @@ use rusqlite::{params, OptionalExtension, Row, ToSql};
 use super::types::Json;
 use super::GatekeeperStore;
 
+/// Which OAuth grant flow an `AuthorizationRequest` represents. Stored as the
+/// wire-level RFC string in the `grantType` column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GrantType {
+    /// RFC 6749 §4.1 authorization-code flow.
     AuthorizationCode,
+    /// RFC 8628 device-code flow.
     DeviceCode,
 }
 
@@ -40,11 +44,17 @@ impl FromSql for GrantType {
     }
 }
 
+/// Current state of an `AuthorizationRequest` as it moves from creation to
+/// terminal outcome.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestStatus {
+    /// Awaiting user (or pre-approved grant) decision.
     Pending,
+    /// User approved; `granted_scopes` is populated.
     Approved,
+    /// User denied.
     Denied,
+    /// Either timed out or was consumed (device-flow single-use).
     Expired,
 }
 
@@ -81,6 +91,10 @@ impl FromSql for RequestStatus {
     }
 }
 
+/// Persisted in-flight OAuth authorization request — used to track both
+/// authorization-code and device-code flows from creation through approval,
+/// denial, or expiry. The optional fields are populated only for the flow
+/// they apply to (e.g. `code_challenge` for auth-code, `user_code` for device).
 #[derive(Debug, Clone)]
 pub struct AuthorizationRequest {
     pub id: String,
@@ -101,6 +115,7 @@ pub struct AuthorizationRequest {
     pub patient: Option<String>,
 }
 
+/// Inputs to start an authorization-code flow request.
 pub struct NewCodeFlow {
     pub id: String,
     pub client_id: String,
@@ -112,6 +127,7 @@ pub struct NewCodeFlow {
     pub ttl: Duration,
 }
 
+/// Inputs to start a device-code flow request.
 pub struct NewDeviceFlow {
     pub id: String,
     pub client_id: String,
@@ -217,6 +233,8 @@ const ALL_COLS: &str =
      grantedScopes, patient";
 
 impl GatekeeperStore {
+    /// Load an authorization request by its primary id (the `device_code` for
+    /// device-flow, otherwise an internal UUID).
     pub fn authorization_request_by_id(
         &self,
         id: &str,
@@ -231,6 +249,8 @@ impl GatekeeperStore {
             .optional()
     }
 
+    /// Load an authorization request by the human-typed `user_code` that the
+    /// device-flow handed to the user.
     pub fn authorization_request_by_user_code(
         &self,
         user_code: &str,
@@ -245,6 +265,7 @@ impl GatekeeperStore {
             .optional()
     }
 
+    /// Persist a freshly-constructed `AuthorizationRequest`.
     pub fn insert_authorization_request(
         &self,
         request: &AuthorizationRequest,
@@ -262,6 +283,7 @@ impl GatekeeperStore {
         Ok(())
     }
 
+    /// Mark `id` approved with `granted_scopes` and an optional patient context.
     pub fn approve_authorization_request(
         &self,
         id: &str,
@@ -278,6 +300,7 @@ impl GatekeeperStore {
         Ok(())
     }
 
+    /// Mark `id` denied.
     pub fn deny_authorization_request(&self, id: &str) -> crate::store::DbResult<()> {
         self.conn().lock().execute(
             "UPDATE authorizationRequests SET status = 'denied' WHERE id = ?1",
@@ -286,6 +309,8 @@ impl GatekeeperStore {
         Ok(())
     }
 
+    /// Mark `id` expired — used both for genuine timeouts and to enforce the
+    /// device-flow single-use rule after a successful token exchange.
     pub fn expire_authorization_request(&self, id: &str) -> crate::store::DbResult<()> {
         self.conn().lock().execute(
             "UPDATE authorizationRequests SET status = 'expired' WHERE id = ?1",
@@ -294,6 +319,8 @@ impl GatekeeperStore {
         Ok(())
     }
 
+    /// Stamp `last_polled_at` so the next device-flow poll can be slow-down
+    /// rate-limited.
     pub fn record_device_poll(
         &self,
         id: &str,

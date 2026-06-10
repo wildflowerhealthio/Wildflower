@@ -7,18 +7,21 @@ use serde::Deserialize;
 
 use super::shared::{
     issue_token_response, require_valid_client_for_token, IssueTokenInput, OAuthError,
-    ValidateClientError, DEVICE_CODE_POLL_INTERVAL,
+    DEVICE_CODE_POLL_INTERVAL,
 };
 use crate::crypto::pkce::compute_code_challenge;
 use crate::crypto::timing_safe::timing_safe_eq;
-use crate::require_auth::AppState;
+use crate::extensions::AppState;
 use crate::store::authorization_code::AuthorizationCode;
 use crate::store::authorization_request::{GrantType, RequestStatus};
-use crate::store::types::Json as JsonWrap;
 
+/// Body of an RFC 6749 / RFC 8628 token endpoint request, dispatched by the
+/// wire-level `grant_type` field.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "grant_type")]
 pub enum TokenPayload {
+    /// Authorization-code grant — the client redeems a previously-issued
+    /// `code` (RFC 6749 §4.1.3) along with the PKCE verifier.
     #[serde(rename = "authorization_code")]
     AuthorizationCode {
         client_id: String,
@@ -27,6 +30,8 @@ pub enum TokenPayload {
         code_verifier: String,
         redirect_uri: String,
     },
+    /// Device-code grant — the client polls with the `device_code` it was
+    /// handed at `/device_authorization` (RFC 8628 §3.4).
     #[serde(rename = "urn:ietf:params:oauth:grant-type:device_code")]
     DeviceCode {
         client_id: String,
@@ -35,7 +40,9 @@ pub enum TokenPayload {
     },
 }
 
-pub async fn handle(
+/// `POST /oauth/token` — accept either grant type and either return a signed
+/// token response or an OAuth error.
+pub async fn handle_token_request(
     Extension(state): Extension<AppState>,
     headers: HeaderMap,
     body: String,
@@ -43,11 +50,7 @@ pub async fn handle(
     let payload: TokenPayload = match serde_urlencoded::from_str(&body) {
         Ok(p) => p,
         Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(OAuthError::new("invalid_request", Some("Malformed payload"))),
-            )
-                .into_response()
+            return bad_request("invalid_request", Some("Malformed payload"));
         }
     };
     let origin = state.origin.origin_for(&headers);
@@ -58,7 +61,7 @@ pub async fn handle(
             code,
             code_verifier,
             redirect_uri,
-        } => handle_authorization_code(
+        } => exchange_authorization_code(
             &state,
             &origin,
             &client_id,
@@ -71,7 +74,7 @@ pub async fn handle(
             client_id,
             client_secret,
             device_code,
-        } => handle_device_code(
+        } => exchange_device_code(
             &state,
             &origin,
             &client_id,
@@ -81,7 +84,7 @@ pub async fn handle(
     }
 }
 
-fn handle_authorization_code(
+fn exchange_authorization_code(
     state: &AppState,
     origin: &str,
     client_id: &str,
@@ -91,53 +94,59 @@ fn handle_authorization_code(
     redirect_uri: &str,
 ) -> Response {
     if let Err(err) = require_valid_client_for_token(&state.store, client_id, client_secret) {
-        return validate_client_error(err);
+        return err.into_response();
     }
-    let issued = match state.store.authorization_code_by_code(code) {
+    let code_record = match state.store.authorization_code_by_code(code) {
         Ok(Some(r)) => r,
         Ok(None) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(OAuthError::new("invalid_request", Some("Invalid code parameter"))),
-            )
-                .into_response()
+            return bad_request("invalid_request", Some("Invalid code parameter"));
         }
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Err(e) => return internal_error("authorization_code lookup failed", e),
     };
-    let response =
-        validate_and_issue_code(state, origin, &issued, client_id, redirect_uri, code_verifier);
+    let response = validate_code_and_issue_token(
+        state,
+        origin,
+        &code_record,
+        client_id,
+        redirect_uri,
+        code_verifier,
+    );
     // Whether valid or not, burn the code (replay protection).
-    let _ = state.store.consume_authorization_code(&issued.code);
+    if let Err(e) = state.store.consume_authorization_code(&code_record.code) {
+        // The token has already been minted (or rejected) at this point; we
+        // can't undo it. Log and keep going.
+        tracing::error!(error = %e, "failed to consume authorization_code after token exchange");
+    }
     response
 }
 
-fn validate_and_issue_code(
+fn validate_code_and_issue_token(
     state: &AppState,
     origin: &str,
-    issued: &AuthorizationCode,
+    code_record: &AuthorizationCode,
     client_id: &str,
     redirect_uri: &str,
     code_verifier: &str,
 ) -> Response {
-    if issued.client_id != client_id {
-        return bad_request("invalid_request", "Invalid client_id parameter");
+    if code_record.client_id != client_id {
+        return bad_request("invalid_request", Some("Invalid client_id parameter"));
     }
-    if issued.redirect_uri != redirect_uri {
-        return bad_request("invalid_request", "Invalid redirect_uri parameter");
+    if code_record.redirect_uri != redirect_uri {
+        return bad_request("invalid_request", Some("Invalid redirect_uri parameter"));
     }
-    if issued.expires_at < Utc::now() {
-        return bad_request("invalid_request", "Code has expired");
+    if code_record.expires_at < Utc::now() {
+        return bad_request("invalid_request", Some("Code has expired"));
     }
     let computed = compute_code_challenge(code_verifier);
-    if !timing_safe_eq(&issued.code_challenge, &computed) {
-        return bad_request("invalid_request", "Invalid code_verifier parameter");
+    if !timing_safe_eq(&code_record.code_challenge, &computed) {
+        return bad_request("invalid_request", Some("Invalid code_verifier parameter"));
     }
     match issue_token_response(
         &state.store,
         IssueTokenInput {
             client_id,
-            granted_scopes: &issued.granted_scopes,
-            patient: issued.patient.as_deref(),
+            granted_scopes: &code_record.granted_scopes,
+            patient: code_record.patient.as_deref(),
             origin,
         },
     ) {
@@ -146,7 +155,7 @@ fn validate_and_issue_code(
     }
 }
 
-fn handle_device_code(
+fn exchange_device_code(
     state: &AppState,
     origin: &str,
     client_id: &str,
@@ -154,47 +163,50 @@ fn handle_device_code(
     device_code: &str,
 ) -> Response {
     if let Err(err) = require_valid_client_for_token(&state.store, client_id, client_secret) {
-        return validate_client_error(err);
+        return err.into_response();
     }
-    let pending = match state.store.authorization_request_by_id(device_code) {
+    let request_record = match state.store.authorization_request_by_id(device_code) {
         Ok(Some(p)) if p.grant_type == GrantType::DeviceCode && p.client_id == client_id => p,
-        Ok(_) => return bad_request("invalid_grant", "Unknown device_code"),
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Ok(_) => return bad_request("invalid_grant", Some("Unknown device_code")),
+        Err(e) => return internal_error("authorization_request lookup failed", e),
     };
-    if pending.expires_at < Utc::now() {
-        return bad_request_err("expired_token");
+    if request_record.expires_at < Utc::now() {
+        return bad_request("expired_token", None);
     }
-    if pending.status == RequestStatus::Pending {
-        if let Some(last_polled) = pending.last_polled_at {
+    if request_record.status == RequestStatus::Pending {
+        if let Some(last_polled) = request_record.last_polled_at {
             if Utc::now() - last_polled < DEVICE_CODE_POLL_INTERVAL {
-                return bad_request_err("slow_down");
+                return bad_request("slow_down", None);
             }
         }
-        if state
+        if let Err(e) = state
             .store
-            .record_device_poll(&pending.id, Utc::now())
-            .is_err()
+            .record_device_poll(&request_record.id, Utc::now())
         {
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            return internal_error("record_device_poll failed", e);
         }
     }
-    match pending.status {
+    match request_record.status {
         RequestStatus::Approved => {}
-        RequestStatus::Pending => return bad_request_err("authorization_pending"),
-        RequestStatus::Denied => return bad_request_err("access_denied"),
-        RequestStatus::Expired => return bad_request_err("expired_token"),
+        RequestStatus::Pending => return bad_request("authorization_pending", None),
+        RequestStatus::Denied => return bad_request("access_denied", None),
+        RequestStatus::Expired => return bad_request("expired_token", None),
     }
     // single-use per RFC 8628 §3.4
-    if state.store.expire_authorization_request(&pending.id).is_err() {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    if let Err(e) = state.store.expire_authorization_request(&request_record.id) {
+        return internal_error("expire_authorization_request failed", e);
     }
-    let granted = pending.granted_scopes.unwrap_or_else(|| JsonWrap(vec![]));
+    let granted_scopes: &[String] = request_record
+        .granted_scopes
+        .as_deref()
+        .map(|v| v.as_slice())
+        .unwrap_or(&[]);
     match issue_token_response(
         &state.store,
         IssueTokenInput {
-            client_id: &pending.client_id,
-            granted_scopes: &granted,
-            patient: pending.patient.as_deref(),
+            client_id: &request_record.client_id,
+            granted_scopes,
+            patient: request_record.patient.as_deref(),
             origin,
         },
     ) {
@@ -203,25 +215,15 @@ fn handle_device_code(
     }
 }
 
-fn validate_client_error(err: ValidateClientError) -> Response {
-    match err {
-        ValidateClientError::Unauthorized(e) => (StatusCode::UNAUTHORIZED, Json(e)).into_response(),
-        ValidateClientError::Internal(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(e)).into_response(),
-    }
-}
-
-fn bad_request(error: &str, description: &str) -> Response {
+fn bad_request(error: &str, description: Option<&str>) -> Response {
     (
         StatusCode::BAD_REQUEST,
-        Json(OAuthError::new(error, Some(description))),
+        Json(OAuthError::new(error, description)),
     )
         .into_response()
 }
 
-fn bad_request_err(error: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        Json(OAuthError::new(error, None)),
-    )
-        .into_response()
+fn internal_error(context: &str, err: impl std::fmt::Display) -> Response {
+    tracing::error!(error = %err, "{context}");
+    StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }

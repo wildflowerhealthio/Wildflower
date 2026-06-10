@@ -152,7 +152,7 @@ async fn device_authorization_happy_path() {
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res.into_body()).await;
-    assert!(body["device_code"].as_str().unwrap().len() > 0);
+    assert!(!body["device_code"].as_str().unwrap().is_empty());
     let user_code = body["user_code"].as_str().unwrap();
     assert!(gatekeeper_rust::crypto::user_code::is_valid_user_code(user_code));
     assert_eq!(body["interval"], 5);
