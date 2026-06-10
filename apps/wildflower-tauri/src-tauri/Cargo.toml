@@ -31,3 +31,8 @@ axum.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
+tower-http.workspace = true
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }

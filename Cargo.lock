@@ -6298,6 +6298,7 @@ dependencies = [
  "axum",
  "emr-rust",
  "gatekeeper-rust",
+ "http-body-util",
  "serde",
  "serde_json",
  "shared-structures-rust",
@@ -6307,6 +6308,8 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-opener",
  "tokio",
+ "tower",
+ "tower-http 0.6.11",
 ]
 
 [[package]]

@@ -12,8 +12,12 @@
   "dependencies": {
     "@tauri-apps/api": "catalog:",
     "@tauri-apps/plugin-fs": "catalog:",
-    "@tauri-apps/plugin-log": "catalog:",
     "@tauri-apps/plugin-opener": "catalog:",
+    "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "effect-messaging-tauri": "workspace:*",
+    "gatekeeper-core": "workspace:*",
+    "gatekeeper-react": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-tundraish": "workspace:*",

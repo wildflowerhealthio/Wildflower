@@ -1,3 +1,4 @@
+pub mod bridge;
 pub mod config;
 pub mod crypto_util;
 pub mod db;
@@ -8,6 +9,7 @@ pub mod seeding;
 
 use anyhow::Context;
 use chrono::Duration;
+use tokio::sync::watch;
 
 pub use config::GatekeeperConfig;
 pub use db::GatekeeperStore;
@@ -26,25 +28,26 @@ pub const OWNER_SCOPE: &str = "owner";
 const HOST_OWNER_TOKEN_TTL: Duration = Duration::hours(24);
 
 /// Result of `setup_gatekeeper`: the public router that should be merged
-/// into the app's root router, the shared `AppState` needed to gate
-/// emr-rust traffic, and the host owner token bound to `origin`.
+/// into the app's root router and the shared `AppState` needed to gate
+/// emr-rust traffic. The host owner token is published to the caller's
+/// `watch::Sender` rather than returned, so the token never sits in a
+/// field the caller might forward by accident.
 pub struct Gatekeeper {
     pub router: axum::Router,
     pub state: AppState,
-    pub host_owner_token: String,
 }
 
 /// Build the gatekeeper-rust HTTP surface. Runs idempotent bootstrap
 /// (schema migrations, signing-key seed, first-party client seed), mints
-/// the boot-time host owner token against `origin`, and returns:
+/// the boot-time host owner token against `origin`, and:
 ///
-///  - a `Router` whose routes are at `/.well-known/jwks.json`,
+///  - publishes the host owner token on `token_tx` so subscribers (e.g.
+///    the WebView bridge listener) observe it the moment it exists;
+///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
 ///    `/oauth/*`, and `/access/*` (Owner-only via bearer JWT) — the
 ///    slice owns its mount paths so the caller just `.merge()`s;
-///  - the `AppState` the caller passes to
-///    [`layer_router_with_gatekeeper_auth_gating`] to wrap emr-rust;
-///  - the host owner token the caller ships to the WebView so the Owner
-///    UI can call `/access/*` endpoints.
+///  - returns the `AppState` the caller passes to
+///    [`layer_router_with_gatekeeper_auth_gating`] to wrap emr-rust.
 ///
 /// `origin` must match the issuer/audience the verifier derives from the
 /// `Host:` header on loopback requests, e.g. `http://127.0.0.1:<port>`.
@@ -54,18 +57,18 @@ pub struct Gatekeeper {
 pub fn setup_gatekeeper(
     config: &GatekeeperConfig,
     origin: &str,
+    token_tx: &watch::Sender<Option<String>>,
 ) -> anyhow::Result<Gatekeeper> {
     let store = seeding::open_and_seed_store(config)?;
     let host_owner_token =
         seeding::mint_host_owner_token(&store, origin, HOST_OWNER_TOKEN_TTL)
             .context("failed to mint host owner token")?;
+    token_tx
+        .send(Some(host_owner_token))
+        .context("token channel receiver dropped before host owner token issuance")?;
     let state = AppState {
         store: store.clone(),
     };
     let router = http::router(state.clone());
-    Ok(Gatekeeper {
-        router,
-        state,
-        host_owner_token,
-    })
+    Ok(Gatekeeper { router, state })
 }
