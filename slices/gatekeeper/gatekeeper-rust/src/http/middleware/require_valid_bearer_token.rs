@@ -1,9 +1,8 @@
 use axum::body::Body;
 use axum::extract::{Extension, Request};
 use axum::http::{HeaderMap, StatusCode};
-use axum::middleware::{self, Next};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::Router;
 use std::sync::Arc;
 
 use crate::domain::token::VerifyError;
@@ -11,7 +10,7 @@ use crate::http::state::AppState;
 
 use crate::http::middleware::require_auth::{bearer_token, verify_any_token, AuthedClaims};
 
-async fn gate_middleware(
+pub async fn require_valid_bearer_token(
     Extension(state): Extension<AppState>,
     headers: HeaderMap,
     mut req: Request<Body>,
@@ -30,15 +29,6 @@ async fn gate_middleware(
     };
     req.extensions_mut().insert(AuthedClaims(Arc::new(claims)));
     next.run(req).await
-}
-
-/// Wrap a router (e.g. emr-rust's FHIR router) with JWT verification
-/// against the gatekeeper's signing keys. Any request missing or
-/// presenting an invalid bearer token gets 401.
-pub fn gate(router: Router, state: AppState) -> Router {
-    router
-        .layer(middleware::from_fn(gate_middleware))
-        .layer(Extension(state))
 }
 
 fn unauthorized() -> Response {

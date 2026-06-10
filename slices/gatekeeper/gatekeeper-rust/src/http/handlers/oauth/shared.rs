@@ -3,10 +3,10 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
+use subtle::ConstantTimeEq;
 use url::Url;
 
-use crate::crypto_util::pkce::sha256_hex;
-use crate::crypto_util::timing_safe::timing_safe_eq;
+use crate::crypto_util::pkce::sha256_as_hex;
 use crate::db::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
 use crate::domain::token::{mint_access_token, NewJwtArgs};
@@ -117,7 +117,7 @@ pub fn require_valid_client_for_token(
             Some("Client secret required"),
         ))
     })?;
-    if !timing_safe_eq(&sha256_hex(presented), stored_hash) {
+    if !bool::from(sha256_as_hex(presented).as_bytes().ct_eq(stored_hash.as_bytes())) {
         return Err(ValidateClientError::Unauthorized(OAuthError::new(
             "invalid_client",
             Some("Invalid client_secret"),

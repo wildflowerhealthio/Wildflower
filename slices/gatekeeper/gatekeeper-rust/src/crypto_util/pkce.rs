@@ -1,14 +1,21 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use sha2::{Digest, Sha256};
 
+/// Derive the PKCE S256 `code_challenge` from a `code_verifier` (RFC 7636 §4.2).
 pub fn compute_code_challenge(code_verifier: &str) -> String {
+    sha256_as_base64_no_padding(code_verifier)
+}
+
+/// SHA-256 hash of `input` as a URL-safe base64 string without padding.
+fn sha256_as_base64_no_padding(input: &str) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(code_verifier.as_bytes());
+    hasher.update(input.as_bytes());
     let digest = hasher.finalize();
     URL_SAFE_NO_PAD.encode(digest)
 }
 
-pub fn sha256_hex(input: &str) -> String {
+/// SHA-256 hash of `input` as a lowercase hex string.
+pub fn sha256_as_hex(input: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(input.as_bytes());
     let digest = hasher.finalize();
@@ -34,7 +41,7 @@ mod tests {
     #[test]
     fn sha256_hex_known_vector() {
         assert_eq!(
-            sha256_hex("abc"),
+            sha256_as_hex("abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
     }

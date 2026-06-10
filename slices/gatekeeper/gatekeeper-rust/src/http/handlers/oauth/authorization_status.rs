@@ -3,11 +3,11 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
-use url::Url;
 
 use super::shared::{build_client_redirect_url, OAuthError};
 use crate::domain::authorization_request::RequestStatus;
 use crate::http::state::AppState;
+use crate::db_utils::UriColumn;
 
 /// Polling response for the Owner UI watching an authorization request as it
 /// moves from `Pending` toward approval or denial.
@@ -54,12 +54,15 @@ pub async fn handle_authorization_status_request(
         })
         .into_response(),
         RequestStatus::Approved => {
-            let (redirect_uri, client_state) = match (request.redirect_uri, request.client_state) {
-                (Some(r), Some(s)) => (r, s),
-                _ => {
-                    return oauth_internal_error("Authorization request is not a code-flow request")
-                }
-            };
+            let (UriColumn(redirect_uri), client_state) =
+                match (request.redirect_uri, request.client_state) {
+                    (Some(r), Some(s)) => (r, s),
+                    _ => {
+                        return oauth_internal_error(
+                            "Authorization request is not a code-flow request",
+                        )
+                    }
+                };
             let code = match state.store.authorization_code_by_request_id(&id) {
                 Ok(Some(c)) => c,
                 Ok(None) => return oauth_internal_error("Authorization code missing"),
@@ -67,20 +70,8 @@ pub async fn handle_authorization_status_request(
                     return internal_error("authorization_code_by_request_id lookup failed", e)
                 }
             };
-            // The stored redirect_uri was validated against the client's
-            // allowlist before persistence, but Url::parse can still fail if
-            // the row was corrupted out-of-band — surface that as 500.
-            let parsed_redirect = match Url::parse(&redirect_uri) {
-                Ok(u) => u,
-                Err(e) => {
-                    return internal_error(
-                        "authorization request's stored redirect_uri is not a valid URL",
-                        e,
-                    )
-                }
-            };
             Json(AuthorizationStatus::Approved {
-                redirect: build_client_redirect_url(&parsed_redirect, &code.code, &client_state),
+                redirect: build_client_redirect_url(&redirect_uri, &code.code, &client_state),
             })
             .into_response()
         }

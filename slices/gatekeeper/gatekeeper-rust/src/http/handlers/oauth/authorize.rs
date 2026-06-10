@@ -9,11 +9,12 @@ use uuid::Uuid;
 
 use super::shared::build_client_redirect_url;
 use crate::domain::authorization_code::AuthorizationCode;
-use crate::domain::authorization_request::{AuthorizationRequest, NewCodeFlow};
+use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
 use crate::http::error_pages::{oauth_error_html, OAuthErrorKind};
+use crate::http::origin::origin_for;
 use crate::http::page_paths;
 use crate::http::state::AppState;
-use crate::json::Json;
+use crate::db_utils::{JsonColumn, UriColumn};
 
 /// Lifetime of an authorization_code from issuance to the client redeeming it
 /// at `/token` (RFC 6749 §4.1.2 — "MUST be short lived").
@@ -42,7 +43,7 @@ pub async fn handle_authorize_request(
     headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Response {
-    let origin = state.origin.origin_for(&headers);
+    let origin = origin_for(&headers);
 
     // Signing keys must exist — we have no token-mint capability otherwise.
     let signing_keys = match state.store.all_signing_keys() {
@@ -81,12 +82,9 @@ pub async fn handle_authorize_request(
         return html_bad_request(oauth_error_html(OAuthErrorKind::DisabledClient, None));
     }
 
-    // redirect_uri must be on the client's allowlist (exact match).
-    if !client
-        .redirect_uris
-        .iter()
-        .any(|u| u == &params.redirect_uri)
-    {
+    // redirect_uri must be on the client's allowlist (exact match against the
+    // already-parsed `Url` — both sides go through the same normalizer).
+    if !client.redirect_uris.iter().any(|u| u == &parsed_redirect) {
         return html_bad_request(oauth_error_html(
             OAuthErrorKind::RedirectUriNotAllowed,
             None,
@@ -111,7 +109,7 @@ pub async fn handle_authorize_request(
     // this (client, redirect_uri) pair.
     let existing_grant = match state
         .store
-        .grant_by_client_and_redirect(&params.client_id, &params.redirect_uri)
+        .grant_by_client_and_redirect(&params.client_id, &parsed_redirect)
     {
         Ok(g) => g,
         Err(e) => return internal_error("grant_by_client_and_redirect lookup failed", e),
@@ -136,12 +134,12 @@ pub async fn handle_authorize_request(
     // Persist the pending request — every path from here on out references
     // it by `request_id`.
     let request_id = Uuid::new_v4().to_string();
-    let request = AuthorizationRequest::new_code_flow(NewCodeFlow {
+    let request = AuthorizationRequest::new_code_authorization(StartCodeAuthorizationArgs {
         id: request_id.clone(),
         client_id: params.client_id.clone(),
         requested_scopes: requested_scopes.clone(),
         code_challenge: params.code_challenge.clone(),
-        redirect_uri: params.redirect_uri.clone(),
+        redirect_uri: parsed_redirect.clone(),
         client_state: params.state.clone(),
         pre_approved_scopes: if pre_approved_scopes.is_empty() {
             None
@@ -163,9 +161,9 @@ pub async fn handle_authorize_request(
             code: code.clone(),
             request_id: request_id.clone(),
             client_id: params.client_id.clone(),
-            redirect_uri: params.redirect_uri.clone(),
+            redirect_uri: UriColumn(parsed_redirect.clone()),
             code_challenge: params.code_challenge.clone(),
-            granted_scopes: Json(requested_scopes.clone()),
+            granted_scopes: JsonColumn(requested_scopes.clone()),
             patient: patient_from_grant.clone(),
             issued_at,
             expires_at: issued_at + AUTHORIZATION_CODE_TTL,

@@ -15,7 +15,7 @@ fn spin_up() -> (Gatekeeper, TempDir) {
     let config = GatekeeperConfig {
         db_file_path: tmp.path().join("gatekeeper.sqlite"),
     };
-    let g = setup_gatekeeper(&config).expect("setup");
+    let g = setup_gatekeeper(&config, LOOPBACK_ORIGIN).expect("setup");
     (g, tmp)
 }
 
@@ -77,16 +77,10 @@ async fn access_grants_without_auth_returns_401() {
 #[tokio::test]
 async fn access_grants_with_owner_token_returns_empty_list() {
     let (g, _tmp) = spin_up();
-    let token = gatekeeper_rust::mint_host_owner_token(
-        &g.state,
-        LOOPBACK_ORIGIN,
-        chrono::Duration::seconds(60),
-    )
-    .expect("mint");
     let req = loopback_request(
         Request::get("/access/grants")
             .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {}", token)),
+            .header("authorization", format!("Bearer {}", g.host_owner_token)),
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -98,16 +92,10 @@ async fn access_grants_with_owner_token_returns_empty_list() {
 #[tokio::test]
 async fn get_unknown_grant_returns_404() {
     let (g, _tmp) = spin_up();
-    let token = gatekeeper_rust::mint_host_owner_token(
-        &g.state,
-        LOOPBACK_ORIGIN,
-        chrono::Duration::seconds(60),
-    )
-    .expect("mint");
     let req = loopback_request(
         Request::get("/access/grants/nope")
             .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {}", token)),
+            .header("authorization", format!("Bearer {}", g.host_owner_token)),
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -163,9 +151,9 @@ async fn device_authorization_happy_path() {
     let body = body_json(res.into_body()).await;
     assert!(!body["device_code"].as_str().unwrap().is_empty());
     let user_code = body["user_code"].as_str().unwrap();
-    assert!(gatekeeper_rust::crypto_util::user_code::is_valid_user_code(
-        user_code
-    ));
+    assert!(
+        gatekeeper_rust::crypto_util::oauth_user_code::is_valid_oauth_user_code(user_code)
+    );
     assert_eq!(body["interval"], 5);
 }
 
@@ -201,14 +189,9 @@ async fn token_exchange_unknown_code_returns_400() {
 }
 
 #[tokio::test]
-async fn mint_host_owner_token_is_owner_scoped() {
+async fn host_owner_token_is_owner_scoped() {
     let (g, _tmp) = spin_up();
-    let token = gatekeeper_rust::mint_host_owner_token(
-        &g.state,
-        LOOPBACK_ORIGIN,
-        chrono::Duration::seconds(60),
-    )
-    .expect("mint");
+    let token = &g.host_owner_token;
     // header.payload.sig
     let parts: Vec<&str> = token.split('.').collect();
     assert_eq!(parts.len(), 3);

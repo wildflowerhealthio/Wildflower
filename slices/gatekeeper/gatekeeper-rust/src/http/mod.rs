@@ -1,18 +1,15 @@
 //! The gatekeeper's HTTP layer — everything axum-shaped lives under this
-//! module. The only crate-facing surface is [`router`], [`gate`],
-//! [`AppState`], and the origin-resolution types; the handler and
-//! middleware files are private implementation detail behind the route
-//! table.
+//! module. The only crate-facing surface is [`router`], [`gate`], and
+//! [`AppState`]; the handler and middleware files are private
+//! implementation detail behind the route table.
 
 mod error_pages;
-mod gate;
 mod handlers;
 mod middleware;
-pub mod origin;
+mod origin;
 mod page_paths;
 mod state;
 
-pub use gate::gate;
 pub use middleware::require_auth::AuthedClaims;
 pub use state::AppState;
 
@@ -39,5 +36,16 @@ pub fn router(state: AppState) -> Router {
         .nest("/oauth", oauth)
         .nest("/access", access)
         .layer(axum_middleware::from_fn(middleware::loopback_gate))
+        .layer(Extension(state))
+}
+
+/// Wrap a router (e.g. emr-rust's FHIR router) with JWT verification
+/// against the gatekeeper's signing keys. Any request missing or
+/// presenting an invalid bearer token gets 401.
+pub fn layer_router_with_gatekeeper_auth_gating(router: Router, state: AppState) -> Router {
+    router
+        .layer(axum_middleware::from_fn(
+            middleware::require_valid_bearer_token,
+        ))
         .layer(Extension(state))
 }

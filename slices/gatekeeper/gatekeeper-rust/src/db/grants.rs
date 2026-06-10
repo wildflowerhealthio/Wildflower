@@ -1,22 +1,22 @@
 use chrono::{DateTime, Utc};
 use rusqlite::{params, OptionalExtension, Row, ToSql};
+use url::Url;
 
 use super::GatekeeperStore;
+use crate::db_utils::sql_builder::build_insert_sql;
+use crate::db_utils::JsonColumn;
 use crate::domain::grant::Grant;
-use crate::json::Json;
 
-impl Grant {
-    pub(in crate::db) fn as_named_sql_params(&self) -> [(&str, &dyn ToSql); 7] {
-        [
-            (":id", &self.id),
-            (":clientId", &self.client_id),
-            (":scopes", &self.scopes),
-            (":redirectUri", &self.redirect_uri),
-            (":grantedAt", &self.granted_at),
-            (":lastUsedAt", &self.last_used_at),
-            (":patient", &self.patient),
-        ]
-    }
+fn make_named_sql_params(grant: &Grant) -> [(&str, &dyn ToSql); 7] {
+    [
+        (":id", &grant.id),
+        (":client_id", &grant.client_id),
+        (":scopes", &grant.scopes),
+        (":redirect_uri", &grant.redirect_uri),
+        (":granted_at", &grant.granted_at),
+        (":last_used_at", &grant.last_used_at),
+        (":patient", &grant.patient),
+    ]
 }
 
 impl TryFrom<&Row<'_>> for Grant {
@@ -24,24 +24,25 @@ impl TryFrom<&Row<'_>> for Grant {
     fn try_from(row: &Row<'_>) -> rusqlite::Result<Self> {
         Ok(Grant {
             id: row.get("id")?,
-            client_id: row.get("clientId")?,
+            client_id: row.get("client_id")?,
             scopes: row.get("scopes")?,
-            redirect_uri: row.get("redirectUri")?,
-            granted_at: row.get("grantedAt")?,
-            last_used_at: row.get("lastUsedAt")?,
+            redirect_uri: row.get("redirect_uri")?,
+            granted_at: row.get("granted_at")?,
+            last_used_at: row.get("last_used_at")?,
             patient: row.get("patient")?,
         })
     }
 }
 
-const ALL_COLS: &str = "id, clientId, scopes, redirectUri, grantedAt, lastUsedAt, patient";
+const ALL_COLS: &str = "id, client_id, scopes, redirect_uri, granted_at, last_used_at, patient";
 
 impl GatekeeperStore {
-    /// All grants in `grantedAt` order — backs the Owner UI's grant list page.
+    /// All grants in `granted_at` order — backs the Owner UI's grant list page.
     pub fn all_grants(&self) -> crate::db::DbResult<Vec<Grant>> {
         let conn = self.conn().lock();
-        let mut stmt =
-            conn.prepare(&format!("SELECT {ALL_COLS} FROM grants ORDER BY grantedAt"))?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {ALL_COLS} FROM grants ORDER BY granted_at"
+        ))?;
         let rows: rusqlite::Result<Vec<_>> =
             stmt.query_map([], |row| Grant::try_from(row))?.collect();
         rows
@@ -64,13 +65,15 @@ impl GatekeeperStore {
     pub fn grant_by_client_and_redirect(
         &self,
         client_id: &str,
-        redirect_uri: &str,
+        redirect_uri: &Url,
     ) -> crate::db::DbResult<Option<Grant>> {
         self.conn()
             .lock()
             .query_row(
-                &format!("SELECT {ALL_COLS} FROM grants WHERE clientId = ?1 AND redirectUri = ?2"),
-                params![client_id, redirect_uri],
+                &format!(
+                    "SELECT {ALL_COLS} FROM grants WHERE client_id = ?1 AND redirect_uri = ?2"
+                ),
+                params![client_id, redirect_uri.as_str()],
                 |row| Grant::try_from(row),
             )
             .optional()
@@ -78,11 +81,13 @@ impl GatekeeperStore {
 
     /// Insert a brand-new grant row.
     pub fn create_grant(&self, grant: &Grant) -> crate::db::DbResult<()> {
-        self.conn().lock().execute(
-            "INSERT INTO grants (id, clientId, scopes, redirectUri, grantedAt, lastUsedAt, patient)
-             VALUES (:id, :clientId, :scopes, :redirectUri, :grantedAt, :lastUsedAt, :patient)",
-            &grant.as_named_sql_params(),
-        )?;
+        let params = make_named_sql_params(grant);
+        self.conn()
+            .lock()
+            .execute(
+                &build_insert_sql("grants", &params),
+                &params,
+            )?;
         Ok(())
     }
 
@@ -95,9 +100,9 @@ impl GatekeeperStore {
         granted_at: DateTime<Utc>,
         patient: Option<&str>,
     ) -> crate::db::DbResult<()> {
-        let scopes_json = Json(scopes.to_vec());
+        let scopes_json = JsonColumn(scopes.to_vec());
         self.conn().lock().execute(
-            "UPDATE grants SET scopes = ?2, grantedAt = ?3, patient = ?4 WHERE id = ?1",
+            "UPDATE grants SET scopes = ?2, granted_at = ?3, patient = ?4 WHERE id = ?1",
             params![id, scopes_json, granted_at, patient],
         )?;
         Ok(())

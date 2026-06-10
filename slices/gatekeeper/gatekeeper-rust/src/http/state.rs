@@ -1,5 +1,4 @@
 use crate::db::GatekeeperStore;
-use crate::http::origin::SharedOriginProvider;
 
 /// Shared state threaded through every gatekeeper handler. Opaque to
 /// callers outside the crate — the host receives one from
@@ -8,5 +7,4 @@ use crate::http::origin::SharedOriginProvider;
 #[derive(Clone)]
 pub struct AppState {
     pub(crate) store: GatekeeperStore,
-    pub(crate) origin: SharedOriginProvider,
 }

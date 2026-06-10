@@ -7,4 +7,5 @@ pub mod authorization_code;
 pub mod authorization_request;
 pub mod client;
 pub mod grant;
+pub mod signing_key;
 pub mod token;

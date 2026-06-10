@@ -7,22 +7,22 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use url::Url;
+
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::grant::Grant;
 use crate::http::state::AppState;
-use crate::json::Json as JsonWrap;
+use crate::db_utils::{JsonColumn, UriColumn};
 
 /// Body returned to the Owner UI when it loads an authorization-code consent
 /// prompt — describes the client, scopes, and any pre-approved subset.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OAuthConsent {
     pub id: String,
-    #[serde(rename = "clientId")]
     pub client_id: String,
     pub scopes: Vec<String>,
-    #[serde(rename = "redirectUri")]
-    pub redirect_uri: String,
-    #[serde(rename = "preApprovedScopes")]
+    pub redirect_uri: Url,
     pub pre_approved_scopes: Vec<String>,
     pub patient: Option<String>,
 }
@@ -61,7 +61,7 @@ async fn get_consent(Extension(state): Extension<AppState>, Path(id): Path<Strin
         Ok(r) => r,
         Err(response) => return *response,
     };
-    let redirect_uri = request
+    let UriColumn(redirect_uri) = request
         .redirect_uri
         .expect("load_pending_authorization_code_request guarantees Some(redirect_uri)");
     Json(OAuthConsent {
@@ -84,7 +84,7 @@ async fn approve_consent(
         Ok(r) => r,
         Err(response) => return *response,
     };
-    let redirect_uri = request
+    let UriColumn(redirect_uri) = request
         .redirect_uri
         .expect("load_pending_authorization_code_request guarantees Some(redirect_uri)");
     if let Err(e) = state.store.approve_authorization_request(
@@ -143,7 +143,7 @@ fn load_pending_authorization_code_request(
 fn upsert_grant(
     state: &AppState,
     client_id: &str,
-    redirect_uri: &str,
+    redirect_uri: &Url,
     scopes: &[String],
     patient: Option<&str>,
 ) -> crate::db::DbResult<()> {
@@ -157,8 +157,8 @@ fn upsert_grant(
         let grant = Grant {
             id: Uuid::new_v4().to_string(),
             client_id: client_id.to_string(),
-            scopes: JsonWrap(scopes.to_vec()),
-            redirect_uri: redirect_uri.to_string(),
+            scopes: JsonColumn(scopes.to_vec()),
+            redirect_uri: UriColumn(redirect_uri.clone()),
             granted_at: now,
             last_used_at: None,
             patient: patient.map(str::to_string),

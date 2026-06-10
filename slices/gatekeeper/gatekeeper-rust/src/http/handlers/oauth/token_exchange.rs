@@ -4,15 +4,17 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::Utc;
 use serde::Deserialize;
+use subtle::ConstantTimeEq;
+use url::Url;
 
 use super::shared::{
     issue_token_response, require_valid_client_for_token, IssueTokenInput, OAuthError,
     DEVICE_CODE_POLL_INTERVAL,
 };
 use crate::crypto_util::pkce::compute_code_challenge;
-use crate::crypto_util::timing_safe::timing_safe_eq;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
+use crate::http::origin::origin_for;
 use crate::http::state::AppState;
 
 /// Body of an RFC 6749 / RFC 8628 token endpoint request, dispatched by the
@@ -53,7 +55,7 @@ pub async fn handle_token_request(
             return bad_request("invalid_request", Some("Malformed payload"));
         }
     };
-    let origin = state.origin.origin_for(&headers);
+    let origin = origin_for(&headers);
     match payload {
         TokenPayload::AuthorizationCode {
             client_id,
@@ -96,28 +98,28 @@ fn exchange_authorization_code(
     if let Err(err) = require_valid_client_for_token(&state.store, client_id, client_secret) {
         return err.into_response();
     }
-    let code_record = match state.store.authorization_code_by_code(code) {
+    let parsed_redirect = match Url::parse(redirect_uri) {
+        Ok(u) => u,
+        Err(_) => return bad_request("invalid_request", Some("Invalid redirect_uri parameter")),
+    };
+    // Atomically read-and-consume the code: a concurrent redemption of the
+    // same code can only succeed once, so any racer past this point sees
+    // `Ok(None)` and is rejected before a token is minted (RFC 6749 §10.5).
+    let code_record = match state.store.redeem_authorization_code(code) {
         Ok(Some(r)) => r,
         Ok(None) => {
             return bad_request("invalid_request", Some("Invalid code parameter"));
         }
-        Err(e) => return internal_error("authorization_code lookup failed", e),
+        Err(e) => return internal_error("authorization_code redemption failed", e),
     };
-    let response = validate_code_and_issue_token(
+    validate_code_and_issue_token(
         state,
         origin,
         &code_record,
         client_id,
-        redirect_uri,
+        &parsed_redirect,
         code_verifier,
-    );
-    // Whether valid or not, burn the code (replay protection).
-    if let Err(e) = state.store.consume_authorization_code(&code_record.code) {
-        // The token has already been minted (or rejected) at this point; we
-        // can't undo it. Log and keep going.
-        tracing::error!(error = %e, "failed to consume authorization_code after token exchange");
-    }
-    response
+    )
 }
 
 fn validate_code_and_issue_token(
@@ -125,20 +127,20 @@ fn validate_code_and_issue_token(
     origin: &str,
     code_record: &AuthorizationCode,
     client_id: &str,
-    redirect_uri: &str,
+    redirect_uri: &Url,
     code_verifier: &str,
 ) -> Response {
     if code_record.client_id != client_id {
         return bad_request("invalid_request", Some("Invalid client_id parameter"));
     }
-    if code_record.redirect_uri != redirect_uri {
+    if code_record.redirect_uri.0 != *redirect_uri {
         return bad_request("invalid_request", Some("Invalid redirect_uri parameter"));
     }
     if code_record.expires_at < Utc::now() {
         return bad_request("invalid_request", Some("Code has expired"));
     }
     let computed = compute_code_challenge(code_verifier);
-    if !timing_safe_eq(&code_record.code_challenge, &computed) {
+    if !bool::from(code_record.code_challenge.as_bytes().ct_eq(computed.as_bytes())) {
         return bad_request("invalid_request", Some("Invalid code_verifier parameter"));
     }
     match issue_token_response(

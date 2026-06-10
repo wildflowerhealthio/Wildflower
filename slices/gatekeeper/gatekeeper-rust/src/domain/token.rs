@@ -1,9 +1,9 @@
 use chrono::serde::{ts_seconds, ts_seconds_option};
 use chrono::{DateTime, Duration, Utc};
-use jsonwebtoken::{Algorithm, Header, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::crypto_util::signing_key::{decoding_key, encoding_key, SigningKey};
+use crate::domain::signing_key::SigningKey;
 
 /// Normalize the `aud` claim — RFC 7519 lets it be a string or an array of
 /// strings — into a single canonical `Vec<String>` so downstream code has one
@@ -96,8 +96,8 @@ pub fn mint_access_token(
     };
     let mut header = Header::new(Algorithm::RS256);
     header.kid = Some(signing_key.kid.clone());
-    let enc =
-        encoding_key(signing_key).map_err(|e| MintError::SigningKeyUnreadable(e.to_string()))?;
+    let enc = EncodingKey::try_from(signing_key)
+        .map_err(|e| MintError::SigningKeyUnreadable(e.to_string()))?;
     jsonwebtoken::encode(&header, &claims, &enc).map_err(MintError::JwsEncodeFailed)
 }
 
@@ -189,7 +189,7 @@ pub fn verify_jwt(
     validation.validate_exp = true;
 
     let try_verifying_with = |key: &SigningKey| -> Result<Option<VerifiedClaims>, VerifyError> {
-        let dec = decoding_key(key).map_err(|_| VerifyError::SigningKeyUnreadable)?;
+        let dec = DecodingKey::try_from(key).map_err(|_| VerifyError::SigningKeyUnreadable)?;
         Ok(
             jsonwebtoken::decode::<VerifiedClaims>(token, &dec, &validation)
                 .ok()
@@ -205,13 +205,13 @@ pub fn verify_jwt(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto_util::signing_key::generate;
+    use crate::domain::signing_key::SigningKey;
     use proptest::prelude::*;
     use std::sync::OnceLock;
 
     fn shared_key() -> &'static SigningKey {
         static KEY: OnceLock<SigningKey> = OnceLock::new();
-        KEY.get_or_init(|| generate().expect("gen"))
+        KEY.get_or_init(|| SigningKey::generate().expect("gen"))
     }
 
     proptest! {
@@ -276,7 +276,7 @@ mod tests {
 
     #[test]
     fn verify_rejects_wrong_issuer() {
-        let key = generate().expect("gen");
+        let key = SigningKey::generate().expect("gen");
         let token = mint_access_token(
             &key,
             NewJwtArgs {
@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn verify_rejects_empty_token() {
-        let key = generate().expect("gen");
+        let key = SigningKey::generate().expect("gen");
         let err = verify_jwt(
             "",
             &[key],

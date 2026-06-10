@@ -9,8 +9,11 @@ use std::collections::HashSet;
 use uuid::Uuid;
 
 use super::shared::{OAuthError, DEVICE_CODE_POLL_INTERVAL};
-use crate::crypto_util::user_code::generate_user_code;
-use crate::domain::authorization_request::{AuthorizationRequest, NewDeviceFlow, RequestStatus};
+use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
+use crate::domain::authorization_request::{
+    AuthorizationRequest, RequestStatus, StartDeviceAuthorizationArgs,
+};
+use crate::http::origin::origin_for;
 use crate::http::page_paths;
 use crate::http::state::AppState;
 
@@ -57,7 +60,7 @@ pub async fn handle_device_authorization_request(
             )
         }
     };
-    let origin = state.origin.origin_for(&headers);
+    let origin = origin_for(&headers);
     let requested_scopes: Vec<String> = payload
         .scope
         .as_deref()
@@ -92,7 +95,7 @@ pub async fn handle_device_authorization_request(
         Ok(c) => c,
         Err(e) => return internal_error("user_code generation failed", e),
     };
-    let request = AuthorizationRequest::new_device_flow(NewDeviceFlow {
+    let request = AuthorizationRequest::new_device_authorization(StartDeviceAuthorizationArgs {
         id: device_code.clone(),
         client_id: payload.client_id.clone(),
         requested_scopes,
@@ -120,7 +123,7 @@ fn generate_unique_user_code(state: &AppState) -> anyhow::Result<String> {
     for _ in 0..MAX_USER_CODE_GENERATION_ATTEMPTS {
         let candidate = {
             let mut rng = rand::thread_rng();
-            generate_user_code(&mut rng)
+            generate_oauth_user_code(&mut rng)
         };
         match state
             .store

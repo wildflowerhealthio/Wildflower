@@ -6,6 +6,7 @@ use axum::response::{IntoResponse, Response};
 use std::sync::Arc;
 
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
+use crate::http::origin::origin_for;
 use crate::http::state::AppState;
 use crate::OWNER_SCOPE;
 
@@ -68,7 +69,7 @@ pub fn verify_any_token(
         .store
         .all_signing_keys()
         .map_err(|_| VerifyError::SigningKeyUnreadable)?;
-    let origin = state.origin.origin_for(headers);
+    let origin = origin_for(headers);
     let accepted = vec![format!("{origin}/fhir-r4"), origin.clone()];
     verify_jwt(
         token,

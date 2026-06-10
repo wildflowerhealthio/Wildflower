@@ -5,7 +5,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
 
-use crate::crypto_util::signing_key::{public_jwk, PublicJwk};
+use crate::crypto_util::public_jwk::PublicJwk;
 use crate::http::state::AppState;
 
 /// RFC 7517 JSON Web Key Set body served at `/.well-known/jwks.json`.
@@ -21,7 +21,7 @@ pub fn router() -> Router {
 async fn handle_jwks_request(Extension(state): Extension<AppState>) -> Response {
     match state.store.all_signing_keys() {
         Ok(keys) => Json(Jwks {
-            keys: keys.iter().map(public_jwk).collect(),
+            keys: keys.iter().map(PublicJwk::from).collect(),
         })
         .into_response(),
         Err(e) => {

@@ -17,13 +17,14 @@ parking_lot = "0.12"
 jsonwebtoken = "9"
 rsa = { version = "0.9", features = ["sha2"] }
 sha2 = "0.10"
+subtle = "2"
 rand = "0.8"
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 serde_urlencoded = "0.7"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 tracing = "0.1"
-url = "2"
+url = { version = "2", features = ["serde"] }
 thiserror = "1"
 
 [dev-dependencies]

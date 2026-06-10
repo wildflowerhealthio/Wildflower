@@ -1,17 +1,14 @@
-use anyhow::Context;
-use chrono::Utc;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 
 use super::GatekeeperStore;
+use crate::db_utils::sql_builder::build_insert_sql;
 use crate::domain::client::{Client, ClientKind};
-use crate::json::Json;
-use crate::{FIRST_PARTY_CLIENT_ID, OWNER_SCOPE};
 
 impl ToSql for ClientKind {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         Ok(ToSqlOutput::Borrowed(ValueRef::Text(
-            self.as_str().as_bytes(),
+            <&str>::from(self).as_bytes(),
         )))
     }
 }
@@ -19,8 +16,8 @@ impl ToSql for ClientKind {
 impl FromSql for ClientKind {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         let s = value.as_str()?;
-        ClientKind::parse(s)
-            .ok_or_else(|| FromSqlError::Other(format!("unknown client kind {s}").into()))
+        s.parse::<ClientKind>()
+            .map_err(|_| FromSqlError::Other(format!("unknown client kind {s}").into()))
     }
 }
 
@@ -28,31 +25,29 @@ impl TryFrom<&Row<'_>> for Client {
     type Error = rusqlite::Error;
     fn try_from(row: &Row<'_>) -> rusqlite::Result<Self> {
         Ok(Client {
-            client_id: row.get("clientId")?,
+            client_id: row.get("client_id")?,
             name: row.get("name")?,
             kind: row.get("kind")?,
-            redirect_uris: row.get("redirectUris")?,
-            allowed_scopes: row.get("allowedScopes")?,
-            secret_hash: row.get("secretHash")?,
-            registered_at: row.get("registeredAt")?,
-            disabled_at: row.get("disabledAt")?,
+            redirect_uris: row.get("redirect_uris")?,
+            allowed_scopes: row.get("allowed_scopes")?,
+            secret_hash: row.get("secret_hash")?,
+            registered_at: row.get("registered_at")?,
+            disabled_at: row.get("disabled_at")?,
         })
     }
 }
 
-impl Client {
-    pub(in crate::db) fn as_named_sql_params(&self) -> [(&str, &dyn ToSql); 8] {
-        [
-            (":clientId", &self.client_id),
-            (":name", &self.name),
-            (":kind", &self.kind),
-            (":redirectUris", &self.redirect_uris),
-            (":allowedScopes", &self.allowed_scopes),
-            (":secretHash", &self.secret_hash),
-            (":registeredAt", &self.registered_at),
-            (":disabledAt", &self.disabled_at),
-        ]
-    }
+fn make_named_sql_params(client: &Client) -> [(&str, &dyn ToSql); 8] {
+    [
+        (":client_id", &client.client_id),
+        (":name", &client.name),
+        (":kind", &client.kind),
+        (":redirect_uris", &client.redirect_uris),
+        (":allowed_scopes", &client.allowed_scopes),
+        (":secret_hash", &client.secret_hash),
+        (":registered_at", &client.registered_at),
+        (":disabled_at", &client.disabled_at),
+    ]
 }
 
 impl GatekeeperStore {
@@ -60,8 +55,8 @@ impl GatekeeperStore {
         self.conn()
             .lock()
             .query_row(
-                "SELECT clientId, name, kind, redirectUris, allowedScopes, secretHash, registeredAt, disabledAt
-                 FROM clients WHERE clientId = ?1",
+                "SELECT client_id, name, kind, redirect_uris, allowed_scopes, secret_hash, registered_at, disabled_at
+                 FROM clients WHERE client_id = ?1",
                 params![client_id],
                 |row| Client::try_from(row),
             )
@@ -69,37 +64,13 @@ impl GatekeeperStore {
     }
 
     pub fn register_client(&self, client: &Client) -> crate::db::DbResult<()> {
-        self.conn().lock().execute(
-            "INSERT INTO clients
-             (clientId, name, kind, redirectUris, allowedScopes, secretHash, registeredAt, disabledAt)
-             VALUES (:clientId, :name, :kind, :redirectUris, :allowedScopes, :secretHash, :registeredAt, :disabledAt)",
-            &client.as_named_sql_params(),
-        )?;
-        Ok(())
-    }
-
-    /// Register the `wildflower-host` first-party client if it isn't already
-    /// in the store. Idempotent — safe to call on every boot.
-    pub fn ensure_first_party_client(&self) -> anyhow::Result<()> {
-        if self
-            .client_by_id(FIRST_PARTY_CLIENT_ID)
-            .context("read first-party client")?
-            .is_some()
-        {
-            return Ok(());
-        }
-        let client = Client {
-            client_id: FIRST_PARTY_CLIENT_ID.to_string(),
-            name: "Wildflower (host)".to_string(),
-            kind: ClientKind::Public,
-            redirect_uris: Json(vec![]),
-            allowed_scopes: Json(vec![OWNER_SCOPE.to_string()]),
-            secret_hash: None,
-            registered_at: Utc::now(),
-            disabled_at: None,
-        };
-        self.register_client(&client)
-            .context("register first-party client")?;
+        let params = make_named_sql_params(client);
+        self.conn()
+            .lock()
+            .execute(
+                &build_insert_sql("clients", &params),
+                &params,
+            )?;
         Ok(())
     }
 }

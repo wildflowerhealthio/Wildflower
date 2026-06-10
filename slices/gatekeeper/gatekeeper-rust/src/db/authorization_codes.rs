@@ -1,22 +1,21 @@
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 
 use super::GatekeeperStore;
+use crate::db_utils::sql_builder::build_insert_sql;
 use crate::domain::authorization_code::AuthorizationCode;
 
-impl AuthorizationCode {
-    pub(in crate::db) fn as_named_sql_params(&self) -> [(&str, &dyn ToSql); 9] {
-        [
-            (":code", &self.code),
-            (":requestId", &self.request_id),
-            (":clientId", &self.client_id),
-            (":redirectUri", &self.redirect_uri),
-            (":codeChallenge", &self.code_challenge),
-            (":grantedScopes", &self.granted_scopes),
-            (":patient", &self.patient),
-            (":issuedAt", &self.issued_at),
-            (":expiresAt", &self.expires_at),
-        ]
-    }
+fn make_named_sql_params(code: &AuthorizationCode) -> [(&str, &dyn ToSql); 9] {
+    [
+        (":code", &code.code),
+        (":request_id", &code.request_id),
+        (":client_id", &code.client_id),
+        (":redirect_uri", &code.redirect_uri),
+        (":code_challenge", &code.code_challenge),
+        (":granted_scopes", &code.granted_scopes),
+        (":patient", &code.patient),
+        (":issued_at", &code.issued_at),
+        (":expires_at", &code.expires_at),
+    ]
 }
 
 impl TryFrom<&Row<'_>> for AuthorizationCode {
@@ -24,31 +23,35 @@ impl TryFrom<&Row<'_>> for AuthorizationCode {
     fn try_from(row: &Row<'_>) -> rusqlite::Result<Self> {
         Ok(AuthorizationCode {
             code: row.get("code")?,
-            request_id: row.get("requestId")?,
-            client_id: row.get("clientId")?,
-            redirect_uri: row.get("redirectUri")?,
-            code_challenge: row.get("codeChallenge")?,
-            granted_scopes: row.get("grantedScopes")?,
+            request_id: row.get("request_id")?,
+            client_id: row.get("client_id")?,
+            redirect_uri: row.get("redirect_uri")?,
+            code_challenge: row.get("code_challenge")?,
+            granted_scopes: row.get("granted_scopes")?,
             patient: row.get("patient")?,
-            issued_at: row.get("issuedAt")?,
-            expires_at: row.get("expiresAt")?,
+            issued_at: row.get("issued_at")?,
+            expires_at: row.get("expires_at")?,
         })
     }
 }
 
 const ALL_COLS: &str =
-    "code, requestId, clientId, redirectUri, codeChallenge, grantedScopes, patient, issuedAt, expiresAt";
+    "code, request_id, client_id, redirect_uri, code_challenge, granted_scopes, patient, issued_at, expires_at";
 
 impl GatekeeperStore {
-    /// Look up an authorization code at `/token` redemption time.
-    pub fn authorization_code_by_code(
+    /// Atomically read-and-delete the authorization code so a `/token`
+    /// redemption either gets the row exactly once or sees `None`. Wins the
+    /// RFC 6749 §10.5 single-use race against any concurrent redeemer of the
+    /// same code — `DELETE ... RETURNING` runs under SQLite's write lock, so
+    /// only one caller's `Ok(Some)` lands and any racer sees `Ok(None)`.
+    pub fn redeem_authorization_code(
         &self,
         code: &str,
     ) -> crate::db::DbResult<Option<AuthorizationCode>> {
         self.conn()
             .lock()
             .query_row(
-                &format!("SELECT {ALL_COLS} FROM authorizationCodes WHERE code = ?1"),
+                &format!("DELETE FROM authorization_codes WHERE code = ?1 RETURNING {ALL_COLS}"),
                 params![code],
                 |row| AuthorizationCode::try_from(row),
             )
@@ -64,7 +67,7 @@ impl GatekeeperStore {
         self.conn()
             .lock()
             .query_row(
-                &format!("SELECT {ALL_COLS} FROM authorizationCodes WHERE requestId = ?1"),
+                &format!("SELECT {ALL_COLS} FROM authorization_codes WHERE request_id = ?1"),
                 params![request_id],
                 |row| AuthorizationCode::try_from(row),
             )
@@ -73,22 +76,10 @@ impl GatekeeperStore {
 
     /// Persist a freshly-minted authorization code.
     pub fn issue_authorization_code(&self, code: &AuthorizationCode) -> crate::db::DbResult<()> {
+        let params = make_named_sql_params(code);
         self.conn().lock().execute(
-            "INSERT INTO authorizationCodes
-             (code, requestId, clientId, redirectUri, codeChallenge, grantedScopes, patient, issuedAt, expiresAt)
-             VALUES (:code, :requestId, :clientId, :redirectUri, :codeChallenge, :grantedScopes, :patient, :issuedAt, :expiresAt)",
-            &code.as_named_sql_params(),
-        )?;
-        Ok(())
-    }
-
-    /// Delete a code at `/token` redemption time. Called whether the
-    /// redemption succeeded or failed — codes are single-use either way (RFC
-    /// 6749 §10.5 replay protection).
-    pub fn consume_authorization_code(&self, code: &str) -> crate::db::DbResult<()> {
-        self.conn().lock().execute(
-            "DELETE FROM authorizationCodes WHERE code = ?1",
-            params![code],
+            &build_insert_sql("authorization_codes", &params),
+            &params,
         )?;
         Ok(())
     }
