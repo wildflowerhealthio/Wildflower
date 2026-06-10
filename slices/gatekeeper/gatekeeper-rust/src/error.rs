@@ -13,5 +13,5 @@ pub enum HostTokenError {
     /// `crypto::jwt` failed to sign the token; the wrapped error preserves
     /// whether it was a key-material or encoding failure.
     #[error("jws sign: {0}")]
-    JwsSignFailed(#[from] crate::crypto::jwt::MintError),
+    JwsSignFailed(#[from] crate::domain::token::MintError),
 }

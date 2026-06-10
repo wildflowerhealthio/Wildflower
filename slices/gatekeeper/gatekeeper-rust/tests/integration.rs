@@ -40,10 +40,7 @@ async fn body_string(body: Body) -> String {
 #[tokio::test]
 async fn jwks_endpoint_returns_seeded_key() {
     let (g, _tmp) = spin_up();
-    let req = loopback_request(
-        Request::get("/.well-known/jwks.json"),
-        Body::empty(),
-    );
+    let req = loopback_request(Request::get("/.well-known/jwks.json"), Body::empty());
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res.into_body()).await;
@@ -63,9 +60,8 @@ async fn loopback_gate_rejects_non_loopback_peer() {
     let mut req = Request::get("/.well-known/jwks.json")
         .body(Body::empty())
         .unwrap();
-    req.extensions_mut().insert(ConnectInfo::<SocketAddr>(
-        "10.0.0.5:54321".parse().unwrap(),
-    ));
+    req.extensions_mut()
+        .insert(ConnectInfo::<SocketAddr>("10.0.0.5:54321".parse().unwrap()));
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::FORBIDDEN);
 }
@@ -81,7 +77,12 @@ async fn access_grants_without_auth_returns_401() {
 #[tokio::test]
 async fn access_grants_with_owner_token_returns_empty_list() {
     let (g, _tmp) = spin_up();
-    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, chrono::Duration::seconds(60)).expect("mint");
+    let token = gatekeeper_rust::mint_host_owner_token(
+        &g.state,
+        LOOPBACK_ORIGIN,
+        chrono::Duration::seconds(60),
+    )
+    .expect("mint");
     let req = loopback_request(
         Request::get("/access/grants")
             .header("host", "127.0.0.1")
@@ -97,7 +98,12 @@ async fn access_grants_with_owner_token_returns_empty_list() {
 #[tokio::test]
 async fn get_unknown_grant_returns_404() {
     let (g, _tmp) = spin_up();
-    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, chrono::Duration::seconds(60)).expect("mint");
+    let token = gatekeeper_rust::mint_host_owner_token(
+        &g.state,
+        LOOPBACK_ORIGIN,
+        chrono::Duration::seconds(60),
+    )
+    .expect("mint");
     let req = loopback_request(
         Request::get("/access/grants/nope")
             .header("host", "127.0.0.1")
@@ -137,7 +143,10 @@ async fn authorize_unsupported_pkce_method() {
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     let body = body_string(res.into_body()).await;
-    assert!(body.contains("Unsupported code challenge method"), "body = {body}");
+    assert!(
+        body.contains("Unsupported code challenge method"),
+        "body = {body}"
+    );
 }
 
 #[tokio::test]
@@ -154,7 +163,9 @@ async fn device_authorization_happy_path() {
     let body = body_json(res.into_body()).await;
     assert!(!body["device_code"].as_str().unwrap().is_empty());
     let user_code = body["user_code"].as_str().unwrap();
-    assert!(gatekeeper_rust::crypto::user_code::is_valid_user_code(user_code));
+    assert!(gatekeeper_rust::crypto_util::user_code::is_valid_user_code(
+        user_code
+    ));
     assert_eq!(body["interval"], 5);
 }
 
@@ -180,8 +191,7 @@ async fn token_exchange_unknown_code_returns_400() {
                 code=missing&code_verifier=verifierverifierverifierverifierverifierverifierverifier&\
                 redirect_uri=http%3A%2F%2Fexample.com%2Fcb";
     let req = loopback_request(
-        Request::post("/oauth/token")
-            .header("content-type", "application/x-www-form-urlencoded"),
+        Request::post("/oauth/token").header("content-type", "application/x-www-form-urlencoded"),
         Body::from(body),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -193,7 +203,12 @@ async fn token_exchange_unknown_code_returns_400() {
 #[tokio::test]
 async fn mint_host_owner_token_is_owner_scoped() {
     let (g, _tmp) = spin_up();
-    let token = gatekeeper_rust::mint_host_owner_token(&g.state, LOOPBACK_ORIGIN, chrono::Duration::seconds(60)).expect("mint");
+    let token = gatekeeper_rust::mint_host_owner_token(
+        &g.state,
+        LOOPBACK_ORIGIN,
+        chrono::Duration::seconds(60),
+    )
+    .expect("mint");
     // header.payload.sig
     let parts: Vec<&str> = token.split('.').collect();
     assert_eq!(parts.len(), 3);

@@ -1,31 +1,25 @@
 pub mod config;
-pub mod crypto;
+pub mod crypto_util;
+pub mod db;
+pub mod domain;
 pub mod error;
-pub mod error_pages;
-pub mod extensions;
-pub mod gate;
-pub mod handlers;
-pub mod middleware;
-pub mod origin;
-pub mod page_paths;
-pub mod store;
+pub mod http;
+pub mod json;
 
 use std::sync::Arc;
 
 use anyhow::Context;
-use axum::extract::Extension;
-use axum::middleware as axum_middleware;
-use axum::Router;
 use chrono::Duration;
 
 pub use config::GatekeeperConfig;
+pub use db::GatekeeperStore;
 pub use error::HostTokenError;
-use extensions::AppState;
-pub use gate::gate;
-pub use origin::{OriginProvider, RequestOriginProvider, SharedOriginProvider, DEFAULT_ORIGIN};
-pub use store::GatekeeperStore;
+pub use http::origin::{
+    OriginProvider, RequestOriginProvider, SharedOriginProvider, DEFAULT_ORIGIN,
+};
+pub use http::{gate, AppState};
 
-use crate::crypto::jwt::{mint_access_token, NewJwtArgs};
+use crate::domain::token::{mint_access_token, NewJwtArgs};
 
 /// `client_id` of the host application's first-party OAuth client. The host
 /// uses this identity to mint Owner tokens for itself and to recognise its
@@ -40,7 +34,7 @@ pub const OWNER_SCOPE: &str = "owner";
 /// into the app's root router plus the shared `AppState` needed to gate
 /// emr-rust traffic and mint owner tokens.
 pub struct Gatekeeper {
-    pub router: Router,
+    pub router: axum::Router,
     pub state: AppState,
 }
 
@@ -76,20 +70,7 @@ pub fn setup_gatekeeper(config: &GatekeeperConfig) -> anyhow::Result<Gatekeeper>
         origin,
     };
 
-    let well_known = Router::new().nest("/.well-known", handlers::jwks::router());
-    let oauth = handlers::oauth::router();
-    let access = Router::new()
-        .merge(handlers::access_management::router())
-        .merge(handlers::oauth_consent::router())
-        .merge(handlers::devices::router())
-        .layer(axum_middleware::from_fn(middleware::require_owner_auth));
-
-    let router = Router::new()
-        .merge(well_known)
-        .nest("/oauth", oauth)
-        .nest("/access", access)
-        .layer(axum_middleware::from_fn(middleware::loopback_gate))
-        .layer(Extension(state.clone()));
+    let router = http::router(state.clone());
 
     Ok(Gatekeeper { router, state })
 }

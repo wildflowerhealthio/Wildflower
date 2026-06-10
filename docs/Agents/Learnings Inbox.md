@@ -4,6 +4,12 @@ A running log of non-obvious insights discovered during agent sessions. Triage i
 
 <!-- Append new entries below this line -->
 
+## Privatizing Rust modules doubles as a dead-code detector; `pub(in crate::x)` seals cross-module inherent impls
+
+**Discovered during**: ruthmarks/add-gatekeeper-rust — reorganizing gatekeeper-rust into domain/db/http/crypto_util layers
+**Learning**: Two Rust mechanics that made the layered reorg work. (1) `rustc`'s `dead_code` lint only fires on items that aren't pub-reachable from the crate root — so flipping a `pub mod` to a private `mod` behind re-exports (e.g. `http/page_paths.rs`, handler files behind `http::router()`) instantly surfaced genuinely-dead functions and enum variants that had been invisible for the module's whole life. Expect new warnings when tightening visibility; they're findings, not regressions. (2) Splitting a domain type from its persistence is clean within one crate because trait impls (`ToSql`/`FromSql`/`TryFrom<&Row>`) AND inherent impls on a type can live in a different module than the type's definition — and inherent methods take their own visibility, so `impl Client { pub(in crate::db) fn as_named_sql_params(...) }` inside `db/clients.rs` gives the SQL-mapping helper a db-only surface while `Client` itself stays a pub domain type. One trap: a borrowed-params array (`[(&str, &dyn ToSql); N]`) can't include a field that needs an owned wrapper (e.g. wrapping `SigningKeyValues` in the `Json` newtype at persist time creates a temporary) — bind the wrapper to a local and use `rusqlite::named_params!` in the query fn instead.
+**Suggested destination**: stays inbox-only (Rust is new here); revisit if a Rust patterns doc emerges
+
 ## Slice-standalone route files: `Route.useRouteContext()` widens to `any` without a registered Router; annotate `select`
 
 **Discovered during**: ruthmarks/tanstack-inmemory-foundation — tunnel/apps migration onto router-context `runAuthed`
