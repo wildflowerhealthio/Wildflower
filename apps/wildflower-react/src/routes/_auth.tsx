@@ -8,6 +8,7 @@ import { tunnelStateQueryOptions } from 'tunnel-react'
 
 import type { RouterContext } from '../router-context.ts'
 import { authGatedRouteOptions } from '../session/auth-gated-route-options.ts'
+import { AppTabShell } from '../session/tab-bar.tsx'
 
 /**
  * Pathless `_auth` layout. Gates owner-facing routes on a live bearer
@@ -51,7 +52,11 @@ const authLoader = async ({ context }: { readonly context: RouterContext }): Pro
 }
 
 function AuthLayout(): JSX.Element {
-  return <Outlet />
+  return (
+    <AppTabShell>
+      <Outlet />
+    </AppTabShell>
+  )
 }
 
 export const Route = createFileRoute('/_auth')({

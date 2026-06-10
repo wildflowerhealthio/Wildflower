@@ -282,7 +282,7 @@ jest.mock('react-native-safe-area-context', () => ({
 }))
 
 import { AppShellWebView } from './app-shell-webview.tsx'
-import { NavigationPipeProvider, useNavigationSender } from './navigation-pipe.tsx'
+import { NavigationPipeProvider, useNavigationSenderRef } from './navigation-pipe.tsx'
 
 beforeEach(() => {
   mockLastBridgedWebViewProps = null
@@ -409,16 +409,16 @@ describe('AppShellWebView', () => {
     expect(bindings.onPageReady[navIdx]).toBeDefined()
   })
 
-  it('registers the captured navigation sender into the pipe so descendants resolve it', async () => {
+  it('registers the captured transport sender into the pipe ref so host pushes reach the SPA', async () => {
     // Wrap in a single-slot tuple so the closure assignment survives
-    // TS's `let` widening across async boundaries — `senderBox.current`
+    // TS's `let` widening across async boundaries — `refBox.current`
     // narrows cleanly after a null check, whereas a `let` declared
     // outside the closure re-widens to `T | null` at the call site.
-    type NavSender = ReturnType<typeof useNavigationSender>
-    const senderBox: { current: NavSender | null } = { current: null }
+    type NavSenderRef = ReturnType<typeof useNavigationSenderRef>
+    const refBox: { current: NavSenderRef | null } = { current: null }
 
     function SenderProbe(): null {
-      senderBox.current = useNavigationSender()
+      refBox.current = useNavigationSenderRef()
       return null
     }
 
@@ -446,15 +446,18 @@ describe('AppShellWebView', () => {
       await EffectType.runPromise(navOnPageReady(fakeTransportSender))
     })
 
-    // The probe resolved `useNavigationSender` against the pipe's
-    // stable proxy; calling it routes through the now-registered
-    // fake transport sender.
+    // The probe resolved the same pipe ref the binding wrote into;
+    // reading `.current` after `onPageReady` routes through the
+    // now-registered fake transport — the path the host's inset /
+    // colour-scheme pushes take. A distinct `HostRequestedWebNavigation`
+    // message (one `onPageReady` itself never sends) keeps the assertion
+    // unambiguous against the inset/scheme messages it does push.
     await waitFor(() => {
-      expect(senderBox.current).not.toBeNull()
+      expect(refBox.current).not.toBeNull()
     })
-    const sender = senderBox.current
-    if (sender === null) throw new Error('SenderProbe never resolved')
-    await EffectType.runPromise(sender({ _tag: 'HostRequestedWebNavigation', path: '/test' }))
+    const ref = refBox.current
+    if (ref === null) throw new Error('SenderProbe never resolved')
+    await EffectType.runPromise(ref.current({ _tag: 'HostRequestedWebNavigation', path: '/test' }))
     expect(dispatched).toContainEqual({ _tag: 'HostRequestedWebNavigation', path: '/test' })
   })
 

@@ -1,9 +1,8 @@
 /* oxlint-disable react/only-export-components -- a sender pipe is a
-   Provider component paired with its companion `use*` hooks; keeping them
+   Provider component paired with its companion `use*` hook; keeping them
    in one module is the whole point of the pattern. */
 import { Effect } from 'effect'
 import type { BridgeTransport } from 'effect-messaging-core'
-import { useLateBoundSender } from 'effect-messaging-react'
 import type { NavigationBridge } from 'navigation-core'
 import { createContext, useRef, type JSX, type ReactNode, type RefObject } from 'react'
 import { useContextOrThrow } from 'react-kitchen-sink'
@@ -14,22 +13,25 @@ type NavigationSender = BridgeTransport.MessageSender<
 >
 
 /**
- * App-local navigation pipe: lets the native tab bar (sibling of the
- * shell WebView) dispatch typed `HostRequestedWebNavigation` /
- * `HostBackRequested` messages through whatever sender the shell
- * registers — in production, the WebView transport's `sendMessage`,
- * written into the sender ref from the navigation binding's
- * `onPageReady`.
+ * App-local navigation pipe: a ref slot holding the shell WebView's
+ * `HostToWeb` sender, so the navigation host binding can push host-owned
+ * state — `SafeAreaInsetsChanged` and `HostColorSchemeChanged` — into the
+ * embedded SPA across reloads.
  *
  *  - `NavigationPipeProvider` mounts the ref slot — wrap the router Stack
- *    with it so both the shell screen (which writes the sender ref via
- *    {@link useNavigationSenderRef} on `onPageReady`) and the tab bar
- *    (which calls {@link useNavigationSender}) resolve to the same context.
- *  - `useNavigationSender()` returns the typed sender for descendants to
- *    call; pre-registration sends route through the warn-and-drop default.
+ *    with it so the shell screen and its navigation host binding resolve
+ *    the same context.
+ *  - `useNavigationSenderRef()` returns the ref; the navigation binding's
+ *    `onPageReady` writes the WebView transport's `sendMessage` into it on
+ *    every page `__Ready`, and the inset / colour-scheme effects read
+ *    `.current` to push updates. Before registration the slot holds the
+ *    warn-and-drop default.
  *
- * Lives in the app rather than `navigation-expo` because the
- * sibling-tab-bar layout is wildflower-specific and host-shell
+ * (Top-level navigation itself moved into the SPA's own web tab bar, so
+ * the host no longer dispatches `HostRequestedWebNavigation` from a native
+ * tab bar — only the inset / colour-scheme pushes remain.)
+ *
+ * Lives in the app rather than `navigation-expo` because the host-shell
  * dispatchers are wildflower-shaped (the four-bridge tuple).
  */
 const navigationWarnAndDrop: NavigationSender = (msg) =>
@@ -49,6 +51,4 @@ const NavigationPipeProvider = ({ children }: { children: ReactNode }): JSX.Elem
 const useNavigationSenderRef = (): RefObject<NavigationSender> =>
   useContextOrThrow(NavigationSenderContext)
 
-const useNavigationSender = (): NavigationSender => useLateBoundSender(useNavigationSenderRef())
-
-export { NavigationPipeProvider, useNavigationSender, useNavigationSenderRef }
+export { NavigationPipeProvider, useNavigationSenderRef }
