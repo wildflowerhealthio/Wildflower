@@ -28,4 +28,33 @@ describe('AsyncErrorView', () => {
     expect(screen.getByText('boom')).toBeTruthy()
     expect(screen.queryByRole('heading')).toBeNull()
   })
+
+  it('renders multi-line messages in a <pre> with the lines preserved', () => {
+    // Arrange — the shape Effect Schema ParseErrors take: a type header
+    // followed by a box-drawing tree whose alignment depends on the
+    // message's own whitespace surviving rendering.
+    const message = [
+      '(JsonString <-> ReadonlyArray<AppEntry>)',
+      '└─ Encoded side transformation failure',
+      '   └─ Transformation process failure',
+      '      └─ Could not parse JSON',
+    ].join('\n')
+
+    // Act
+    render(<AsyncErrorView error={new Error(message)} />)
+
+    // Assert — a `<pre>` (monospace, `pre-wrap` via its module class)
+    // carrying the message verbatim, newlines and indentation intact.
+    const pre = document.querySelector('pre')
+    expect(pre?.textContent).toBe(message)
+  })
+
+  it('keeps single-line messages in a <p>, not a <pre>', () => {
+    // Arrange + Act
+    render(<AsyncErrorView error={new Error('fetch failed')} />)
+
+    // Assert
+    expect(screen.getByText('fetch failed').tagName).toBe('P')
+    expect(document.querySelector('pre')).toBeNull()
+  })
 })

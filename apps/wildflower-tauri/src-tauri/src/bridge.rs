@@ -45,17 +45,71 @@ impl LogLevel {
     }
 }
 
-/// Render a console-args array the way devtools would: bare strings
-/// as-is, everything else as compact JSON, space-separated.
+/// One console argument as text: bare strings as-is, everything else
+/// as compact JSON.
+fn render_value(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// Render a console-args array the way devtools would.
+///
+/// When the first argument is a string containing `%`-specifiers
+/// (React and friends log `console.error("%o\n\n%s", error, stack)`),
+/// substitute the remaining arguments in order: `%s`/`%d`/`%i`/`%f`
+/// render like a bare value, `%o`/`%O`/`%j` render as compact JSON
+/// (strings quoted, as devtools' object formatter would), `%c`
+/// consumes its CSS argument and renders nothing, and `%%` is a
+/// literal `%`. A specifier with no argument left stays literal.
+/// Arguments beyond the specifiers — and all arguments when the first
+/// isn't a format string — are appended space-separated.
 fn format_log_payload(payload: &[serde_json::Value]) -> String {
-    payload
-        .iter()
-        .map(|value| match value {
-            serde_json::Value::String(s) => s.clone(),
-            other => other.to_string(),
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+    let mut parts: Vec<String> = Vec::new();
+    let mut args = payload.iter();
+    if let Some(serde_json::Value::String(template)) = payload.first() {
+        if template.contains('%') {
+            args.next(); // the template itself
+            let mut out = String::new();
+            let mut chars = template.chars();
+            while let Some(c) = chars.next() {
+                if c != '%' {
+                    out.push(c);
+                    continue;
+                }
+                match chars.next() {
+                    Some('%') => out.push('%'),
+                    Some(spec @ ('s' | 'd' | 'i' | 'f')) => match args.next() {
+                        Some(value) => out.push_str(&render_value(value)),
+                        None => {
+                            out.push('%');
+                            out.push(spec);
+                        }
+                    },
+                    Some(spec @ ('o' | 'O' | 'j')) => match args.next() {
+                        Some(value) => out.push_str(&value.to_string()),
+                        None => {
+                            out.push('%');
+                            out.push(spec);
+                        }
+                    },
+                    Some('c') => {
+                        // CSS styling — meaningless in a text log.
+                        args.next();
+                    }
+                    Some(other) => {
+                        out.push('%');
+                        out.push(other);
+                    }
+                    None => out.push('%'),
+                }
+            }
+            parts.push(out);
+        }
+    }
+    parts.extend(args.map(render_value));
+    parts.join(" ")
 }
 
 /// Senders for server-originated host→web state. The bridge constructs
@@ -187,5 +241,50 @@ mod tests {
             format_log_payload(&payload),
             r#"request failed {"status":401} 3"#
         );
+    }
+
+    /// React's error-boundary log shape: a `%o`/`%s` template followed
+    /// by the error object and stack strings.
+    #[test]
+    fn log_payload_interpolates_console_format_specifiers() {
+        let payload = vec![
+            serde_json::Value::String("%o\n\n%s — retry %d".to_string()),
+            serde_json::json!({"_id": "ParseError"}),
+            serde_json::Value::String("in <MatchInnerImpl>".to_string()),
+            serde_json::json!(2),
+        ];
+        assert_eq!(
+            format_log_payload(&payload),
+            "{\"_id\":\"ParseError\"}\n\nin <MatchInnerImpl> — retry 2"
+        );
+    }
+
+    #[test]
+    fn log_payload_appends_args_beyond_the_specifiers() {
+        let payload = vec![
+            serde_json::Value::String("count: %i".to_string()),
+            serde_json::json!(7),
+            serde_json::Value::String("extra".to_string()),
+            serde_json::json!({"k": true}),
+        ];
+        assert_eq!(format_log_payload(&payload), r#"count: 7 extra {"k":true}"#);
+    }
+
+    #[test]
+    fn log_payload_consumes_css_args_and_keeps_literal_percents() {
+        let payload = vec![
+            serde_json::Value::String("%cstyled%% %s %q".to_string()),
+            serde_json::Value::String("color: red".to_string()),
+            serde_json::Value::String("done".to_string()),
+        ];
+        assert_eq!(format_log_payload(&payload), "styled% done %q");
+    }
+
+    /// A specifier with no argument left stays literal instead of
+    /// vanishing — `console.log("100%s")` with no args prints `100%s`.
+    #[test]
+    fn log_payload_keeps_dangling_specifiers_literal() {
+        let payload = vec![serde_json::Value::String("100%s and 100%".to_string())];
+        assert_eq!(format_log_payload(&payload), "100%s and 100%");
     }
 }

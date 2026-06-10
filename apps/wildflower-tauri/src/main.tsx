@@ -25,6 +25,13 @@ renderApp({
   history: createBrowserHistory(),
   entry: 'main-tauri',
   tokenStore,
+  // The page is served from the Vite dev server (dev) or Tauri's asset
+  // protocol (build) — NOT from the Rust API server — so relative API
+  // paths must be pinned to the host's loopback origin. The port is
+  // pinned in `src-tauri/src/lib.rs` (`ServerRuntimeConfig`), and
+  // 127.0.0.1 matches the canonical `Host:` form the gatekeeper's
+  // token verifier expects.
+  apiBaseUrl: 'http://127.0.0.1:8080',
   // Same gate as embedded: wait for the transport's readiness signal
   // (so the host has had its chance to push `AuthTokenIssued`), then
   // take the first present token from the store.

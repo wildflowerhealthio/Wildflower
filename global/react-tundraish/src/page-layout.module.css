@@ -33,3 +33,19 @@
   border: 1px solid var(--color-red-7);
   border-radius: var(--radius-2);
 }
+
+/*
+ * Companion to `.error` for multi-line messages rendered in a `<pre>`
+ * (e.g. Effect Schema ParseError trees). Preserves the message's own
+ * line structure and indentation; the `<pre>` element's monospace
+ * default keeps the tree's `└─` arms aligned. Long single lines (a
+ * schema type rendered on one line) soft-wrap instead of forcing a
+ * horizontal scroll.
+ */
+.error--multiline {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  font-size: var(--font-size-1);
+  line-height: 1.4;
+}

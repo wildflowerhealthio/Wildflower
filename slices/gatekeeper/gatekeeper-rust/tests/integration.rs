@@ -194,6 +194,28 @@ async fn token_exchange_unknown_code_returns_400() {
     assert_eq!(body["error"], "invalid_request");
 }
 
+/// The device-code grant's `grant_type` tag is the RFC 8628 URN, which
+/// arrives percent-encoded (`urn%3Aietf%3A...`) — pins that the
+/// form-urlencoded parse decodes it into the right enum variant (a
+/// `Malformed payload` here would mean the parse, not the lookup,
+/// failed; the TS client's wire format is pinned by
+/// gatekeeper-core's oauth.test.ts).
+#[tokio::test]
+async fn token_exchange_unknown_device_code_returns_400_invalid_grant() {
+    let (g, _host_owner_token, _tmp) = spin_up();
+    let body = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&\
+                client_id=wildflower-host&device_code=missing";
+    let req = loopback_request(
+        Request::post("/oauth/token").header("content-type", "application/x-www-form-urlencoded"),
+        Body::from(body),
+    );
+    let res = g.router.oneshot(req).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(res.into_body()).await;
+    assert_eq!(body["error"], "invalid_grant");
+    assert_eq!(body["error_description"], "Unknown device_code");
+}
+
 #[tokio::test]
 async fn host_owner_token_is_owner_scoped() {
     let (_g, host_owner_token, _tmp) = spin_up();

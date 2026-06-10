@@ -67,9 +67,20 @@ const AuthorizationStatusNotFoundSchema = Schema.Struct({
 
 // `/oauth/token` payload: discriminated union on `grant_type` between
 // the authorization-code path and the RFC 8628 device-code path. The
-// `withEncoding({ kind: 'UrlParams' })` pipe means the body is parsed
-// from `application/x-www-form-urlencoded`; both members of the union
-// have a string-only encoded shape.
+// `withEncoding({ kind: 'UrlParams' })` pipe means the body is
+// `application/x-www-form-urlencoded` (RFC 6749 §3.2); both members
+// of the union have a string-only encoded shape.
+//
+// The encoding annotation MUST sit on each union member, not on the
+// union wrapper: `HttpApiClient`'s encoder resolves payload encodings
+// per member (a union may mix content types), so a wrapper-level
+// annotation is honored by the server's decoder but silently ignored
+// by the client — which then sends JSON that strict form-only servers
+// (the Rust gatekeeper) reject as a malformed payload. Pinned by
+// oauth.test.ts. The `withEncoding` calls are written out per member
+// (not hoisted into a shared const) because the helper is generic per
+// schema — a hoisted const pins its type parameters to `unknown`,
+// which leaks into the whole API's requirements channel.
 const AuthorizationCodePayload = Schema.Struct({
   grant_type: Schema.Literal('authorization_code'),
   client_id: Schema.NonEmptyString,
@@ -77,21 +88,26 @@ const AuthorizationCodePayload = Schema.Struct({
   code: Schema.NonEmptyString,
   code_verifier: Schema.String.pipe(Schema.minLength(43), Schema.maxLength(128)),
   redirect_uri: Schema.NonEmptyString,
-})
+}).pipe(
+  HttpApiSchema.withEncoding({
+    kind: 'UrlParams',
+    contentType: 'application/x-www-form-urlencoded',
+  })
+)
 
 const DeviceCodePayload = Schema.Struct({
   grant_type: Schema.Literal('urn:ietf:params:oauth:grant-type:device_code'),
   client_id: Schema.NonEmptyString,
   client_secret: Schema.optional(Schema.String),
   device_code: Schema.NonEmptyString,
-})
-
-const TokenExchangePayloadSchema = Schema.Union(AuthorizationCodePayload, DeviceCodePayload).pipe(
+}).pipe(
   HttpApiSchema.withEncoding({
     kind: 'UrlParams',
     contentType: 'application/x-www-form-urlencoded',
   })
 )
+
+const TokenExchangePayloadSchema = Schema.Union(AuthorizationCodePayload, DeviceCodePayload)
 
 const DeviceAuthorizationPayloadSchema = Schema.Struct({
   client_id: Schema.NonEmptyString,
