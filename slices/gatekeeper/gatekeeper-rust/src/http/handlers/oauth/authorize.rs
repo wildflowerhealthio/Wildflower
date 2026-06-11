@@ -1,5 +1,5 @@
 use axum::extract::{Extension, Query};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use chrono::{Duration, Utc};
 use serde::Deserialize;
@@ -15,6 +15,7 @@ use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthor
 use crate::http::error_pages::{oauth_error_html, OAuthErrorKind};
 use crate::http::page_paths;
 use crate::http::responses::internal_error;
+use crate::http::served_origin_for;
 use crate::http::state::AppState;
 
 /// A `code_challenge` for the S256 method is the base64url SHA-256 digest:
@@ -92,9 +93,11 @@ pub struct AuthorizeParams {
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
 pub async fn handle_authorize_request(
     Extension(state): Extension<AppState>,
+    headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Response {
-    let origin = state.origin.as_ref();
+    let origin = served_origin_for(&headers, &state.loopback_origin);
+    let origin = origin.as_str();
 
     // An active signing key must exist — without it we have no token-mint
     // capability. Probe presence directly rather than loading every key's

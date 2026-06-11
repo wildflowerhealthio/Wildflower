@@ -13,17 +13,18 @@ use tauri::Manager;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
-// Loopback host/port for the embedded API server, derived at compile
-// time from the SINGLE SOURCE OF TRUTH `apps/wildflower-tauri/api-origin.json`.
-// `build.rs` reads that file and re-emits these as `rustc-env` vars; the
-// TS shell injects the same file as `__API_ORIGIN__` (see `vite.config.ts`
-// and `src/main.tsx`). Changing the JSON updates both sides — they can't
-// drift. A non-numeric port in the JSON fails this `const` parse at compile
-// time rather than at bind time.
-const API_HOST: &str = env!("WILDFLOWER_API_HOST");
-const API_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_API_PORT"), 10) {
+// Loopback hostname/port for the embedded API server, derived at compile time
+// from the SINGLE SOURCE OF TRUTH
+// `apps/wildflower-tauri/tauri-shared-config.json`. `build.rs` reads that file
+// and re-emits these as `rustc-env` vars; the TS shell injects the same file
+// as `WILDFLOWER_LOOPBACK_ORIGIN` (see `vite.config.ts` and `src/main.tsx`).
+// Changing the JSON updates both sides — they can't drift. A non-numeric port
+// in the JSON fails this `const` parse at compile time rather than at bind
+// time.
+const LOOPBACK_HOSTNAME: &str = env!("WILDFLOWER_LOOPBACK_HOSTNAME");
+const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_PORT"), 10) {
     Ok(port) => port,
-    Err(_) => panic!("WILDFLOWER_API_PORT (from api-origin.json) must be a u16"),
+    Err(_) => panic!("WILDFLOWER_LOOPBACK_PORT (from tauri-shared-config.json) must be a u16"),
 };
 
 // Embedded at compile time so the bundle ships inside the binary: a
@@ -50,20 +51,21 @@ async fn run_server(
         log_level: "debug".to_string(),
         db_file_path: runtime.app_data_dir.join("health-data.sqlite"),
     };
+    let loopback_host = format!("{}:{}", runtime.loopback_hostname, runtime.loopback_port);
+    let loopback_origin = format!(
+        "http://{}:{}",
+        runtime.loopback_hostname, runtime.loopback_port
+    );
+    // The host owner token is minted against this loopback origin (the
+    // WebView reaches the API over loopback). We bind 127.0.0.1 explicitly
+    // (the OS enforces loopback-only at the socket, so LAN peers can't reach
+    // the surface even before the loopback gate runs), so the WebView's
+    // `Host:` header is `127.0.0.1:<port>` — the same canonical form
+    // `served_origin_for` falls back to for un-forwarded requests.
     let gatekeeper_config = GatekeeperConfig {
         db_file_path: runtime.app_data_dir.join("gatekeeper.sqlite"),
+        loopback_origin: loopback_origin.clone(),
     };
-
-    let addr = format!("{}:{}", runtime.host, runtime.port);
-
-    // Pin the host owner token to the loopback origin the WebView uses.
-    // We bind 127.0.0.1 explicitly (the OS enforces loopback-only at the
-    // socket, so LAN peers can't reach the surface even before the
-    // loopback gate runs), so the WebView's `Host:` header is
-    // `127.0.0.1:<port>` — the verifier derives the expected
-    // issuer/audience from that header, so the token has to be minted
-    // against the same canonical form.
-    let token_origin = format!("http://127.0.0.1:{}", runtime.port);
 
     // Bind BEFORE minting/publishing the Owner token: `setup_gatekeeper`
     // pushes the freshly-minted token onto the bridge publisher, and the
@@ -72,9 +74,9 @@ async fn run_server(
     // webview while a *foreign* process owns `127.0.0.1:<port>`. Binding
     // first guarantees the token is only ever minted once this process
     // owns the port.
-    let listener = TcpListener::bind(&addr)
+    let listener = TcpListener::bind(&loopback_host)
         .await
-        .with_context(|| format!("failed to bind to {addr}"))?;
+        .with_context(|| format!("failed to bind to {loopback_host}"))?;
 
     let fhir_r4_router =
         setup_fhir_r4(&runtime, &emr_config).context("failed to set up FHIR R4 router")?;
@@ -82,18 +84,14 @@ async fn run_server(
     // through the bridge's publisher; the bridge's resident task emits
     // `AuthTokenIssued` to the webview on every page load and on every
     // token change (see `bridge::attach_bridge`).
-    let gatekeeper = setup_gatekeeper(
-        &gatekeeper_config,
-        &token_origin,
-        &publishers.host_owner_token_sender,
-    )
-    .context("failed to set up gatekeeper")?;
+    let gatekeeper = setup_gatekeeper(&gatekeeper_config, &publishers.host_owner_token_sender)
+        .context("failed to set up gatekeeper")?;
 
     let gated_fhir_r4 =
         layer_router_with_gatekeeper_auth_gating(fhir_r4_router, gatekeeper.state.clone());
 
     let gated_stubs = layer_router_with_gatekeeper_auth_gating(
-        api_stubs::app_shell_stub_router(runtime.port),
+        api_stubs::app_shell_stub_router(loopback_origin),
         gatekeeper.state.clone(),
     );
     // The webview page is NOT served from this origin — it loads from
@@ -155,11 +153,12 @@ pub fn run() {
                 let runtime = ServerRuntimeConfig {
                     // Loopback-only: the OS rejects non-local peers at the
                     // socket, so the bearer secret is never the only thing
-                    // between LAN peers and FHIR health data. Host/port come
-                    // from the shared `api-origin.json` (see `API_HOST`/
-                    // `API_PORT`), the same file the TS `apiBaseUrl` reads.
-                    host: API_HOST.to_string(),
-                    port: API_PORT,
+                    // between LAN peers and FHIR health data. Hostname/port
+                    // come from the shared `tauri-shared-config.json` (see
+                    // `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`), the same file the
+                    // TS `apiBaseUrl` reads.
+                    loopback_hostname: LOOPBACK_HOSTNAME.to_string(),
+                    loopback_port: LOOPBACK_PORT,
                     app_data_dir,
                 };
 

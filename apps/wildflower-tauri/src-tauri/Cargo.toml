@@ -17,8 +17,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
-# Parses the shared `api-origin.json` (single source of truth for the
-# loopback host/port) in `build.rs`, re-emitting it as compile-time env
+# Parses the shared `tauri-shared-config.json` (single source of truth for
+# the loopback hostname/port) in `build.rs`, re-emitting it as compile-time env
 # vars for `src/lib.rs`.
 serde = { workspace = true }
 serde_json = { workspace = true }

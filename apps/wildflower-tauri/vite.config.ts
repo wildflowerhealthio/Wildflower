@@ -5,40 +5,41 @@ import { defineConfig } from 'vite-plus'
 
 const host = process.env.TAURI_DEV_HOST
 
-// SINGLE SOURCE OF TRUTH: `api-origin.json` pins the loopback host/port the
-// embedded API server binds to. The Rust side reads the same file in
-// `src-tauri/build.rs`; injecting `WILDFLOWER_API_ORIGIN` here lets
-// `src/main.tsx` derive `apiBaseUrl` from it instead of hardcoding the
-// origin, so the two
-// languages can't drift. Read at config-eval time (Node), baked in as a
-// compile-time constant by Vite's `define`.
-const apiOriginPath = fileURLToPath(new URL('./api-origin.json', import.meta.url))
+// SINGLE SOURCE OF TRUTH: `tauri-shared-config.json` pins the loopback
+// hostname/port the embedded API server binds to. The Rust side reads the same
+// file in `src-tauri/build.rs`; injecting `WILDFLOWER_LOOPBACK_ORIGIN` here
+// lets `src/main.tsx` derive `apiBaseUrl` from it instead of hardcoding the
+// origin, so the two languages can't drift. Read at config-eval time (Node),
+// baked in as a compile-time constant by Vite's `define`.
+const sharedConfigPath = fileURLToPath(new URL('./tauri-shared-config.json', import.meta.url))
 
-const isApiOrigin = (value: unknown): value is { host: string; port: number } =>
+const isSharedConfig = (
+  value: unknown
+): value is { loopback_hostname: string; loopback_port: number } =>
   typeof value === 'object' &&
   value !== null &&
-  'host' in value &&
-  typeof value.host === 'string' &&
-  'port' in value &&
-  typeof value.port === 'number'
+  'loopback_hostname' in value &&
+  typeof value.loopback_hostname === 'string' &&
+  'loopback_port' in value &&
+  typeof value.loopback_port === 'number'
 
-const parsedOrigin: unknown = JSON.parse(readFileSync(apiOriginPath, 'utf8'))
-if (!isApiOrigin(parsedOrigin)) {
+const parsedConfig: unknown = JSON.parse(readFileSync(sharedConfigPath, 'utf8'))
+if (!isSharedConfig(parsedConfig)) {
   throw new Error(
-    `api-origin.json must declare string "host" and number "port" (at ${apiOriginPath})`
+    `tauri-shared-config.json must declare string "loopback_hostname" and number "loopback_port" (at ${sharedConfigPath})`
   )
 }
-const apiBaseUrl = `http://${parsedOrigin.host}:${parsedOrigin.port}`
+const apiBaseUrl = `http://${parsedConfig.loopback_hostname}:${parsedConfig.loopback_port}`
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
 
   // Bake the shared loopback origin in at build time so `src/main.tsx`
-  // reads `WILDFLOWER_API_ORIGIN` rather than hardcoding it. Kept in sync
-  // with the Rust binding via `api-origin.json` (see above).
+  // reads `WILDFLOWER_LOOPBACK_ORIGIN` rather than hardcoding it. Kept in
+  // sync with the Rust binding via `tauri-shared-config.json` (see above).
   define: {
-    WILDFLOWER_API_ORIGIN: JSON.stringify(apiBaseUrl),
+    WILDFLOWER_LOOPBACK_ORIGIN: JSON.stringify(apiBaseUrl),
   },
 
   // Match the rest of the monorepo (`vite.config.base.ts`): resolve

@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context};
 use axum::extract::Extension;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::Duration;
@@ -15,6 +15,7 @@ use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authorization_request::{AuthorizationRequest, StartDeviceAuthorizationArgs};
 use crate::http::page_paths;
 use crate::http::responses::internal_error;
+use crate::http::served_origin_for;
 use crate::http::state::AppState;
 
 /// Lifetime of a device-flow authorization request — the user has this long
@@ -50,6 +51,7 @@ pub struct DeviceAuthorizationResponse {
 /// pair for the client to poll on while the user pairs the device.
 pub async fn handle_device_authorization_request(
     Extension(state): Extension<AppState>,
+    headers: HeaderMap,
     body: String,
 ) -> Response {
     let payload: DeviceAuthorizationPayload = match serde_urlencoded::from_str(&body) {
@@ -62,7 +64,8 @@ pub async fn handle_device_authorization_request(
             )
         }
     };
-    let origin = state.origin.as_ref();
+    let origin = served_origin_for(&headers, &state.loopback_origin);
+    let origin = origin.as_str();
     let requested_scopes: Vec<String> = payload
         .scope
         .as_deref()

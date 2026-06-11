@@ -60,7 +60,7 @@ pub struct Gatekeeper {
 
 /// Build the gatekeeper-rust HTTP surface. Runs idempotent bootstrap
 /// (schema migrations, signing-key seed, first-party client seed), mints
-/// the boot-time host owner token against `origin`, and:
+/// the boot-time host owner token against `config.loopback_origin`, and:
 ///
 ///  - publishes the host owner token on `token_tx` so subscribers (e.g.
 ///    the WebView bridge listener) observe it the moment it exists;
@@ -70,30 +70,29 @@ pub struct Gatekeeper {
 ///  - returns the `AppState` the caller passes to
 ///    [`layer_router_with_gatekeeper_auth_gating`] to wrap emr-rust.
 ///
-/// `origin` is pinned into the returned `AppState` and used as the JWT
-/// `iss`/`aud` at mint and the expected issuer/audience at verify, e.g.
-/// `http://127.0.0.1:<port>`. It is deliberately *not* re-derived per
-/// request from `Host`/`x-forwarded-host` headers — those are
-/// attacker-controllable, which would make the issuer/audience check
-/// self-referential and worthless.
+/// The boot-time host owner token is *always* minted against
+/// `config.loopback_origin`, because the host WebView reaches the API over
+/// loopback. Per-request handlers, by contrast, derive their `iss`/`aud`
+/// from [`served_origin_for`](crate::http::served_origin_for) — the origin
+/// the inbound request says it was targeting — falling back to
+/// `loopback_origin` when no public-origin header is present.
 ///
 /// The whole surface is gated by the loopback middleware — non-loopback
 /// peers receive 403 before any handler runs.
 pub fn setup_gatekeeper(
     config: &GatekeeperConfig,
-    origin: &str,
     token_tx: &watch::Sender<Option<String>>,
 ) -> anyhow::Result<Gatekeeper> {
     let store = seeding::open_and_seed_store(config)?;
     let host_owner_token =
-        seeding::mint_host_owner_token(&store, origin, HOST_OWNER_TOKEN_TTL)
+        seeding::mint_host_owner_token(&store, &config.loopback_origin, HOST_OWNER_TOKEN_TTL)
             .context("failed to mint host owner token")?;
     token_tx
         .send(Some(host_owner_token))
         .context("token channel receiver dropped before host owner token issuance")?;
     let state = AppState {
         store: store.clone(),
-        origin: Arc::from(origin),
+        loopback_origin: Arc::from(config.loopback_origin.as_str()),
     };
     let router = http::router(state.clone());
     Ok(Gatekeeper { router, state })

@@ -25,9 +25,10 @@ fn spin_up() -> (Gatekeeper, String, TempDir) {
     let tmp = TempDir::new().expect("tmp dir");
     let config = GatekeeperConfig {
         db_file_path: tmp.path().join("gatekeeper.sqlite"),
+        loopback_origin: LOOPBACK_ORIGIN.to_string(),
     };
     let (token_tx, token_rx) = watch::channel::<Option<String>>(None);
-    let g = setup_gatekeeper(&config, LOOPBACK_ORIGIN, &token_tx).expect("setup");
+    let g = setup_gatekeeper(&config, &token_tx).expect("setup");
     let host_owner_token = token_rx
         .borrow()
         .clone()

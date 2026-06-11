@@ -13,6 +13,7 @@ mod responses;
 mod state;
 
 pub use middleware::require_auth::AuthedClaims;
+pub(crate) use origin::served_origin_for;
 pub use state::AppState;
 
 use axum::extract::Extension;

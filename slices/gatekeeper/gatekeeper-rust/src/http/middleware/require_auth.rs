@@ -6,6 +6,7 @@ use axum::response::Response;
 use std::sync::Arc;
 
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
+use crate::http::served_origin_for;
 use crate::http::responses::{unauthorized, verify_error_response};
 use crate::http::state::AppState;
 use crate::OWNER_SCOPE;
@@ -72,22 +73,24 @@ pub fn verify_owner_token(
 // drop it together when that file is in scope.
 pub fn verify_any_token(
     state: &AppState,
-    _headers: &HeaderMap,
+    headers: &HeaderMap,
     token: &str,
 ) -> Result<VerifiedClaims, VerifyError> {
     let keys = state
         .store
         .all_signing_keys()
         .map_err(VerifyError::KeyStoreUnavailable)?;
-    // Pinned at boot, not derived from the request's `Host` header — see
-    // [`crate::setup_gatekeeper`].
-    let origin = &state.origin;
-    let accepted = vec![format!("{origin}/fhir-r4"), origin.to_string()];
+    // Verify against the origin the request says it was targeting — loopback
+    // for a direct hit, the public origin when forwarded by the tunnel — so a
+    // token's `iss`/`aud` are checked against the same surface it was minted
+    // for. `loopback_origin` is the fallback for un-forwarded requests.
+    let origin = served_origin_for(headers, &state.loopback_origin);
+    let accepted = vec![format!("{origin}/fhir-r4"), origin.clone()];
     verify_jwt(
         token,
         &keys,
         VerifyOptions {
-            expected_issuer: origin,
+            expected_issuer: &origin,
             accepted_audiences: &accepted,
         },
     )

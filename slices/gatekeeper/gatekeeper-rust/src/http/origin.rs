@@ -1,16 +1,19 @@
 use axum::http::HeaderMap;
 
-const DEFAULT_ORIGIN: &str = "tauri://localhost";
-
-pub fn origin_for(headers: &HeaderMap) -> String {
-    if let Some(forwarded_host) = header_str(headers, "x-forwarded-host") {
-        let scheme = header_str(headers, "x-forwarded-proto").unwrap_or("http");
-        return format!("{scheme}://{forwarded_host}");
+/// The origin a given request expects its answer to come from.
+///
+/// When a trusted front (e.g. the reverse-proxy tunnel) forwards a request it
+/// sets `x-public-origin` to the public host the client actually used, and
+/// `x-forwarded-proto` to that scheme; we echo those back so discovery
+/// documents and minted tokens reference the URL the caller really reached.
+/// With no such header the request came in over loopback, so we fall back to
+/// `loopback_origin` (the value pinned in [`GatekeeperConfig`](crate::GatekeeperConfig)).
+pub fn served_origin_for(headers: &HeaderMap, loopback_origin: &str) -> String {
+    if let Some(public_origin) = header_str(headers, "x-public-origin") {
+        let public_scheme = header_str(headers, "x-forwarded-proto").unwrap_or("https");
+        return format!("{public_scheme}://{public_origin}");
     }
-    if let Some(host) = header_str(headers, "host") {
-        return format!("http://{host}");
-    }
-    DEFAULT_ORIGIN.to_string()
+    loopback_origin.to_string()
 }
 
 fn header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {

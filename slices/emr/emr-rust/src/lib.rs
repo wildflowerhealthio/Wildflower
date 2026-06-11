@@ -22,8 +22,12 @@ pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyho
         .context("failed to init sqlite schema")?;
 
     let server_config = ServerConfig {
-        base_url: format!("http://{}:{}{}", runtime.host, runtime.port, FHIR_R4_PATH),
-        host: runtime.host.clone(),
+        base_url: format!(
+            "http://{}:{}{}",
+            runtime.loopback_hostname, runtime.loopback_port, FHIR_R4_PATH
+        ),
+        // The host param only expects the ip to bind to
+        host: runtime.loopback_hostname.clone(),
         log_level: config.log_level.clone(),
         ..ServerConfig::default()
     };

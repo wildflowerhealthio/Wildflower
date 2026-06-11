@@ -14,7 +14,7 @@ use super::shared::{
 use crate::crypto_util::pkce::compute_code_challenge;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
-use crate::http::origin::origin_for;
+use crate::http::served_origin_for;
 use crate::http::responses::internal_error;
 use crate::http::state::AppState;
 
@@ -61,7 +61,7 @@ pub async fn handle_token_request(
             return bad_request("invalid_request", Some("Malformed payload"));
         }
     };
-    let origin = origin_for(&headers);
+    let origin = served_origin_for(&headers, &state.loopback_origin);
     match payload {
         TokenPayload::AuthorizationCode {
             client_id,

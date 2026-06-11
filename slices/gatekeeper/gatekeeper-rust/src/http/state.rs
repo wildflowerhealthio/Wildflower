@@ -10,9 +10,12 @@ use crate::db_utils::GatekeeperStore;
 #[derive(Clone)]
 pub struct AppState {
     pub(crate) store: GatekeeperStore,
-    /// Configured origin, pinned at [`crate::setup_gatekeeper`]. Used as
-    /// the JWT `iss`/`aud` at mint and the expected issuer/audience at
-    /// verify — never re-derived per-request from attacker-controllable
-    /// `Host`/`x-forwarded-host` headers.
-    pub(crate) origin: Arc<str>,
+    /// The HTTP-only loopback origin (e.g. `http://127.0.0.1:8080`), pinned
+    /// from [`GatekeeperConfig`](crate::GatekeeperConfig) at
+    /// [`crate::setup_gatekeeper`]. This is *only* the fallback that
+    /// [`served_origin_for`](crate::http::served_origin_for) returns for a
+    /// loopback request — handlers derive the per-request `iss`/`aud` from
+    /// `served_origin_for(&headers, &state.loopback_origin)`, never from this
+    /// value directly.
+    pub(crate) loopback_origin: Arc<str>,
 }

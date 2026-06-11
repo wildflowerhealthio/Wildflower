@@ -4,7 +4,7 @@ use axum::{routing::get, Json, Router};
 /// `slices/tunnel/tunnel-core/src/http-api-definition/tunnel.ts`: no
 /// tunnel configured or running, with `servedOrigin` pointing back at
 /// the loopback server itself.
-fn stub_tunnel_state(port: u16) -> serde_json::Value {
+fn stub_tunnel_state(loopback_origin: String) -> serde_json::Value {
     serde_json::json!({
         "subdomain": null,
         "rootDomain": null,
@@ -14,7 +14,7 @@ fn stub_tunnel_state(port: u16) -> serde_json::Value {
         "currentRootDomain": null,
         "currentLocalPort": null,
         "error": null,
-        "servedOrigin": format!("http://localhost:{port}"),
+        "servedOrigin": loopback_origin,
     })
 }
 
@@ -24,7 +24,7 @@ fn stub_tunnel_state(port: u16) -> serde_json::Value {
 /// counterpart yet. Without these routes the requests fell through to
 /// the SPA fallback, whose `200` HTML body failed the client's JSON
 /// decode (`ParseError: Could not parse JSON`).
-pub fn app_shell_stub_router(port: u16) -> Router {
+pub fn app_shell_stub_router(loopback_origin: String) -> Router {
     Router::new()
         .route("/apps", get(|| async { Json(serde_json::json!([])) }))
         .route(
@@ -33,7 +33,7 @@ pub fn app_shell_stub_router(port: u16) -> Router {
         )
         .route(
             "/tunnel",
-            get(move || async move { Json(stub_tunnel_state(port)) }),
+            get(move || async move { Json(stub_tunnel_state(loopback_origin)) }),
         )
 }
 
@@ -46,7 +46,7 @@ mod tests {
     use super::*;
 
     async fn get_json(path: &str) -> (StatusCode, serde_json::Value) {
-        let response = app_shell_stub_router(8080)
+        let response = app_shell_stub_router("http://localhost:8080".to_string())
             .oneshot(
                 Request::builder()
                     .uri(path)
