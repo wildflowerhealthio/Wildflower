@@ -1,7 +1,7 @@
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 
-use super::GatekeeperStore;
+use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::db_utils::sql_builder::build_insert_sql;
 use crate::domain::client::{Client, ClientKind};
 
@@ -51,7 +51,7 @@ fn make_named_sql_params(client: &Client) -> [(&str, &dyn ToSql); 8] {
 }
 
 impl GatekeeperStore {
-    pub fn client_by_id(&self, client_id: &str) -> crate::db::DbResult<Option<Client>> {
+    pub fn client_by_id(&self, client_id: &str) -> DbResult<Option<Client>> {
         self.conn()
             .lock()
             .query_row(
@@ -63,7 +63,7 @@ impl GatekeeperStore {
             .optional()
     }
 
-    pub fn register_client(&self, client: &Client) -> crate::db::DbResult<()> {
+    pub fn register_client(&self, client: &Client) -> DbResult<()> {
         let params = make_named_sql_params(client);
         self.conn()
             .lock()

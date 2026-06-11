@@ -11,6 +11,3 @@ mod grants;
 mod signing_keys;
 #[cfg(test)]
 mod test_support;
-
-pub use crate::db_utils::connection::DbResult;
-pub use crate::db_utils::gatekeeper_store::GatekeeperStore;

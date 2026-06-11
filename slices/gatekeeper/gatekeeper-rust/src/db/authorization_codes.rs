@@ -1,6 +1,6 @@
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 
-use super::GatekeeperStore;
+use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::db_utils::sql_builder::build_insert_sql;
 use crate::domain::authorization_code::AuthorizationCode;
 
@@ -47,7 +47,7 @@ impl GatekeeperStore {
     pub fn redeem_authorization_code(
         &self,
         code: &str,
-    ) -> crate::db::DbResult<Option<AuthorizationCode>> {
+    ) -> DbResult<Option<AuthorizationCode>> {
         self.conn()
             .lock()
             .query_row(
@@ -63,7 +63,7 @@ impl GatekeeperStore {
     pub fn authorization_code_by_request_id(
         &self,
         request_id: &str,
-    ) -> crate::db::DbResult<Option<AuthorizationCode>> {
+    ) -> DbResult<Option<AuthorizationCode>> {
         self.conn()
             .lock()
             .query_row(
@@ -75,7 +75,7 @@ impl GatekeeperStore {
     }
 
     /// Persist a freshly-minted authorization code.
-    pub fn issue_authorization_code(&self, code: &AuthorizationCode) -> crate::db::DbResult<()> {
+    pub fn issue_authorization_code(&self, code: &AuthorizationCode) -> DbResult<()> {
         let params = make_named_sql_params(code);
         self.conn().lock().execute(
             &build_insert_sql("authorization_codes", &params),

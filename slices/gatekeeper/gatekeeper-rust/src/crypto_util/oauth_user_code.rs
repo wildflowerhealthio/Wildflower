@@ -64,15 +64,48 @@ mod tests {
     }
 
     proptest! {
+        /// `[a-z]` and `ALPHABET` (uppercase consonants) are disjoint, so the
+        /// per-block alphabet check can never pass
         #[test]
         fn rejects_codes_with_wrong_alphabet(c in "[a-z]{4}-[a-z]{4}") {
             prop_assert!(!is_valid_oauth_user_code(&c));
         }
 
+        /// A dash-less run of valid chars is a single block, so it fails on
+        /// block *count* (`blocks_seen == BLOCK_COUNT` is `1 == 2`) regardless
+        /// of length — this pins the block-count path, not block-length.
         #[test]
-        fn rejects_codes_with_wrong_block_length(s in "[BCDFGHJKLMNPQRSTVWXZ]{3,7}") {
-            // Length without a dash is invalid in all of [3..7].
+        fn rejects_dashless_codes_on_block_count(s in "[BCDFGHJKLMNPQRSTVWXZ]{3,7}") {
             prop_assert!(!is_valid_oauth_user_code(&s));
+        }
+
+        /// Well-formed `BLOCK-BLOCK` shape where at least one block has
+        /// the wrong length — the only way to exercise the per-block
+        /// `part.len() != BLOCK_LENGTH` check in isolation.
+        #[test]
+        fn rejects_codes_with_one_wrong_length_block(
+            (a, b) in (
+                "[BCDFGHJKLMNPQRSTVWXZ]{1,7}",
+                "[BCDFGHJKLMNPQRSTVWXZ]{1,7}",
+            ).prop_filter(
+                "at least one block must differ from BLOCK_LENGTH",
+                |(a, b)| a.len() != BLOCK_LENGTH || b.len() != BLOCK_LENGTH,
+            )
+        ) {
+            let code = format!("{a}-{b}");
+            prop_assert!(!is_valid_oauth_user_code(&code));
+        }
+
+        /// Three well-formed blocks — pins the `blocks_seen >= BLOCK_COUNT`
+        /// early return that rejects too many blocks.
+        #[test]
+        fn rejects_codes_with_too_many_blocks(
+            a in "[BCDFGHJKLMNPQRSTVWXZ]{4}",
+            b in "[BCDFGHJKLMNPQRSTVWXZ]{4}",
+            c in "[BCDFGHJKLMNPQRSTVWXZ]{4}",
+        ) {
+            let code = format!("{a}-{b}-{c}");
+            prop_assert!(!is_valid_oauth_user_code(&code));
         }
     }
 }

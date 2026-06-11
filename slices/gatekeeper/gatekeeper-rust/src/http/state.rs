@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::db::GatekeeperStore;
+use crate::db_utils::GatekeeperStore;
 
 /// Shared state threaded through every gatekeeper handler. Opaque to
 /// callers outside the crate — the host receives one from

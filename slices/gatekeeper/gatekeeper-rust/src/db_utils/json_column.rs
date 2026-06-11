@@ -16,6 +16,14 @@ impl<T> From<T> for JsonColumn<T> {
     }
 }
 
+impl<T> JsonColumn<T> {
+    /// Consume the wrapper and return the inner `T`. The orphan rule blocks a
+    /// `From<JsonColumn<T>> for T` impl (foreign `T`), so this is the unwrap.
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
+
 impl<T> Deref for JsonColumn<T> {
     type Target = T;
     fn deref(&self) -> &T {

@@ -16,7 +16,7 @@ use crate::domain::authorization_request::{AuthorizationRequest, GrantType, Requ
 use crate::domain::grant::Grant;
 use crate::http::responses::{internal_error, not_found};
 use crate::http::state::AppState;
-use crate::db_utils::{JsonColumn, UriColumn};
+use crate::db_utils::{DbResult, JsonColumn, UriColumn};
 
 /// Lifetime of the authorization_code minted when an Owner approves a
 /// code-flow consent, from issuance to the client redeeming it at `/token`
@@ -232,7 +232,7 @@ fn upsert_grant(
     redirect_uri: &Url,
     scopes: &[String],
     patient: Option<&str>,
-) -> crate::db::DbResult<()> {
+) -> DbResult<()> {
     let now = Utc::now();
     if let Some(existing) = state
         .store

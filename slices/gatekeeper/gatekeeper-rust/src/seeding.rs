@@ -7,7 +7,7 @@ use chrono::{Duration, Utc};
 use thiserror::Error;
 
 use crate::config::GatekeeperConfig;
-use crate::db::GatekeeperStore;
+use crate::db_utils::GatekeeperStore;
 use crate::db_utils::JsonColumn;
 use crate::domain::client::{Client, ClientKind};
 use crate::domain::signing_key::SigningKey;

@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 use url::Url;
 
-use super::GatekeeperStore;
+use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::db_utils::sql_builder::build_insert_sql;
 use crate::db_utils::JsonColumn;
 use crate::domain::grant::Grant;
@@ -38,7 +38,7 @@ const ALL_COLS: &str = "id, client_id, scopes, redirect_uri, granted_at, last_us
 
 impl GatekeeperStore {
     /// All grants in `granted_at` order — backs the Owner UI's grant list page.
-    pub fn all_grants(&self) -> crate::db::DbResult<Vec<Grant>> {
+    pub fn all_grants(&self) -> DbResult<Vec<Grant>> {
         let conn = self.conn().lock();
         let mut stmt = conn.prepare(&format!(
             "SELECT {ALL_COLS} FROM grants ORDER BY granted_at"
@@ -49,7 +49,7 @@ impl GatekeeperStore {
     }
 
     /// Load a single grant by primary id.
-    pub fn grant_by_id(&self, id: &str) -> crate::db::DbResult<Option<Grant>> {
+    pub fn grant_by_id(&self, id: &str) -> DbResult<Option<Grant>> {
         self.conn()
             .lock()
             .query_row(
@@ -66,7 +66,7 @@ impl GatekeeperStore {
         &self,
         client_id: &str,
         redirect_uri: &Url,
-    ) -> crate::db::DbResult<Option<Grant>> {
+    ) -> DbResult<Option<Grant>> {
         self.conn()
             .lock()
             .query_row(
@@ -80,7 +80,7 @@ impl GatekeeperStore {
     }
 
     /// Insert a brand-new grant row.
-    pub fn create_grant(&self, grant: &Grant) -> crate::db::DbResult<()> {
+    pub fn create_grant(&self, grant: &Grant) -> DbResult<()> {
         let params = make_named_sql_params(grant);
         self.conn()
             .lock()
@@ -99,7 +99,7 @@ impl GatekeeperStore {
         scopes: &[String],
         granted_at: DateTime<Utc>,
         patient: Option<&str>,
-    ) -> crate::db::DbResult<()> {
+    ) -> DbResult<()> {
         let scopes_json = JsonColumn(scopes.to_vec());
         self.conn().lock().execute(
             "UPDATE grants SET scopes = ?2, granted_at = ?3, patient = ?4 WHERE id = ?1",
@@ -110,7 +110,7 @@ impl GatekeeperStore {
 
     /// Delete a grant; returns `true` if a row was actually removed so the
     /// caller can distinguish "revoked" from "no such grant".
-    pub fn revoke_grant(&self, id: &str) -> crate::db::DbResult<bool> {
+    pub fn revoke_grant(&self, id: &str) -> DbResult<bool> {
         let affected = self
             .conn()
             .lock()

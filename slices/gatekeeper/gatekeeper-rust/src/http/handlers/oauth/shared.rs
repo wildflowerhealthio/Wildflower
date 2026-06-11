@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::crypto_util::client_secret::verify_client_secret;
-use crate::db::GatekeeperStore;
+use crate::db_utils::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
 use crate::domain::token::{mint_access_token, NewJwtArgs};
 

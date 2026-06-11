@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 
-use super::GatekeeperStore;
+use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::db_utils::sql_builder::build_insert_sql;
 use crate::db_utils::JsonColumn;
@@ -95,7 +95,7 @@ impl GatekeeperStore {
     pub fn authorization_request_by_id(
         &self,
         id: &str,
-    ) -> crate::db::DbResult<Option<AuthorizationRequest>> {
+    ) -> DbResult<Option<AuthorizationRequest>> {
         self.conn()
             .lock()
             .query_row(
@@ -117,7 +117,7 @@ impl GatekeeperStore {
     pub fn authorization_request_by_user_code(
         &self,
         user_code: &str,
-    ) -> crate::db::DbResult<Option<AuthorizationRequest>> {
+    ) -> DbResult<Option<AuthorizationRequest>> {
         self.conn()
             .lock()
             .query_row(
@@ -134,7 +134,7 @@ impl GatekeeperStore {
     pub fn pending_authorization_request_by_user_code(
         &self,
         user_code: &str,
-    ) -> crate::db::DbResult<Option<AuthorizationRequest>> {
+    ) -> DbResult<Option<AuthorizationRequest>> {
         self.conn()
             .lock()
             .query_row(
@@ -152,7 +152,7 @@ impl GatekeeperStore {
     pub fn insert_authorization_request(
         &self,
         request: &AuthorizationRequest,
-    ) -> crate::db::DbResult<()> {
+    ) -> DbResult<()> {
         let params = make_named_sql_params(request);
         self.conn().lock().execute(
             &build_insert_sql("authorization_requests", &params),
@@ -167,7 +167,7 @@ impl GatekeeperStore {
         id: &str,
         granted_scopes: &[String],
         patient: Option<&str>,
-    ) -> crate::db::DbResult<()> {
+    ) -> DbResult<()> {
         let granted = JsonColumn(granted_scopes.to_vec());
         self.conn().lock().execute(
             "UPDATE authorization_requests
@@ -183,7 +183,7 @@ impl GatekeeperStore {
     }
 
     /// Mark `id` denied.
-    pub fn deny_authorization_request(&self, id: &str) -> crate::db::DbResult<()> {
+    pub fn deny_authorization_request(&self, id: &str) -> DbResult<()> {
         self.conn().lock().execute(
             "UPDATE authorization_requests SET status = 'denied' WHERE id = ?1",
             params![id],
@@ -193,7 +193,7 @@ impl GatekeeperStore {
 
     /// Mark `id` expired — used both for genuine timeouts and to enforce the
     /// device-flow single-use rule after a successful token exchange.
-    pub fn expire_authorization_request(&self, id: &str) -> crate::db::DbResult<()> {
+    pub fn expire_authorization_request(&self, id: &str) -> DbResult<()> {
         self.conn().lock().execute(
             "UPDATE authorization_requests SET status = 'expired' WHERE id = ?1",
             params![id],
@@ -207,7 +207,7 @@ impl GatekeeperStore {
         &self,
         id: &str,
         polled_at: DateTime<Utc>,
-    ) -> crate::db::DbResult<()> {
+    ) -> DbResult<()> {
         self.conn().lock().execute(
             "UPDATE authorization_requests SET last_polled_at = ?2 WHERE id = ?1",
             params![id, polled_at],

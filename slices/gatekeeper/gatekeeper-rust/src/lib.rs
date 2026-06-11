@@ -35,7 +35,7 @@ use chrono::Duration;
 use tokio::sync::watch;
 
 pub use config::GatekeeperConfig;
-pub use db::GatekeeperStore;
+pub use db_utils::GatekeeperStore;
 pub use http::{layer_router_with_gatekeeper_auth_gating, AppState, AuthedClaims};
 
 /// `client_id` of the host application's first-party OAuth client. The host

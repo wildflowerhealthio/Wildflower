@@ -1,6 +1,6 @@
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 
-use super::GatekeeperStore;
+use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::db_utils::sql_builder::build_insert_sql;
 use crate::db_utils::JsonColumn;
 use crate::domain::signing_key::{SigningKey, SigningKeyValues};
@@ -12,7 +12,9 @@ impl TryFrom<&Row<'_>> for SigningKey {
             kid: row.get("kid")?,
             kty: row.get("kty")?,
             alg: row.get("alg")?,
-            values: row.get::<_, JsonColumn<SigningKeyValues>>("values_json")?.0,
+            values: row
+                .get::<_, JsonColumn<SigningKeyValues>>("values_json")?
+                .into_inner(),
             is_active: row.get("is_active")?,
         })
     }
@@ -35,7 +37,7 @@ fn make_named_sql_params<'a>(
 }
 
 impl GatekeeperStore {
-    pub fn all_signing_keys(&self) -> crate::db::DbResult<Vec<SigningKey>> {
+    pub fn all_signing_keys(&self) -> DbResult<Vec<SigningKey>> {
         let conn = self.conn().lock();
         let mut stmt = conn.prepare(
             "SELECT kid, kty, alg, values_json, is_active FROM signing_keys ORDER BY is_active DESC, kid",
@@ -45,7 +47,7 @@ impl GatekeeperStore {
         rows
     }
 
-    pub fn active_signing_key(&self) -> crate::db::DbResult<Option<SigningKey>> {
+    pub fn active_signing_key(&self) -> DbResult<Option<SigningKey>> {
         self.conn()
             .lock()
             .query_row(
@@ -56,7 +58,7 @@ impl GatekeeperStore {
             .optional()
     }
 
-    pub fn insert_signing_key(&self, key: &SigningKey) -> crate::db::DbResult<()> {
+    pub fn insert_signing_key(&self, key: &SigningKey) -> DbResult<()> {
         let values_json = JsonColumn(&key.values);
         let params = make_named_sql_params(key, &values_json);
         self.conn()
