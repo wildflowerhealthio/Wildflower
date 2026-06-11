@@ -7,8 +7,13 @@ use gatekeeper_rust::{setup_gatekeeper, Gatekeeper, GatekeeperConfig};
 use tokio::sync::watch;
 
 const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
-use chrono::Utc;
-use gatekeeper_rust::db_utils::JsonColumn;
+use chrono::{Duration, Utc};
+use gatekeeper_rust::crypto_util::pkce::compute_code_challenge;
+use gatekeeper_rust::db_utils::{JsonColumn, UriColumn};
+use gatekeeper_rust::domain::authorization_code::AuthorizationCode;
+use gatekeeper_rust::domain::authorization_request::{
+    AuthorizationRequest, GrantType, RequestStatus,
+};
 use gatekeeper_rust::domain::client::{Client, ClientKind};
 use gatekeeper_rust::GatekeeperStore;
 use serde_json::Value;
@@ -30,13 +35,21 @@ fn spin_up() -> (Gatekeeper, String, TempDir) {
     (g, host_owner_token, tmp)
 }
 
+/// Open a second `GatekeeperStore` handle on the same SQLite file the running
+/// router uses. Tests reach through this to seed clients and to plant rows
+/// (e.g. an already-expired authorization request) that the public HTTP
+/// surface can't construct directly — preferred over real-time sleeps so the
+/// expiry paths stay deterministic.
+fn store_handle(tmp: &TempDir) -> GatekeeperStore {
+    GatekeeperStore::open(&tmp.path().join("gatekeeper.sqlite")).expect("open second handle")
+}
+
 /// Register an OAuth client with an allowlisted `redirect_uri` through a
 /// second store handle on the same SQLite file. The redirect-back error
 /// tests (RFC 6749 §4.1.2.1) need a client whose redirect_uri validates,
 /// which the seeded first-party client (empty allowlist) cannot provide.
 fn seed_client_with_redirect(tmp: &TempDir, client_id: &str, redirect_uri: &str, scopes: &[&str]) {
-    let store =
-        GatekeeperStore::open(&tmp.path().join("gatekeeper.sqlite")).expect("open second handle");
+    let store = store_handle(tmp);
     store
         .register_client(&Client {
             client_id: client_id.to_string(),
@@ -76,14 +89,27 @@ async fn jwks_endpoint_returns_seeded_key() {
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res.into_body()).await;
-    let keys = body["keys"].as_array().expect("keys array");
-    assert_eq!(keys.len(), 1);
-    assert_eq!(keys[0]["kty"], "RSA");
-    assert_eq!(keys[0]["alg"], "RS256");
-    assert!(keys[0]["n"].is_string());
-    assert!(keys[0]["e"].is_string());
-    // private fields must not be exposed.
-    assert!(keys[0].get("d").is_none());
+    // The kid/n/e are key-material-derived, so thread them through from the
+    // actual key; everything else (kty/alg/key_ops and — crucially — the
+    // *absence* of any private field like d/p/q) is pinned by comparing the
+    // entire body against one literal.
+    let key = &body["keys"][0];
+    let kid = key["kid"].clone();
+    let n = key["n"].clone();
+    let e = key["e"].clone();
+    assert_eq!(
+        body,
+        serde_json::json!({
+            "keys": [{
+                "kid": kid,
+                "kty": "RSA",
+                "alg": "RS256",
+                "key_ops": ["verify"],
+                "n": n,
+                "e": e,
+            }]
+        })
+    );
 }
 
 #[tokio::test]
@@ -250,10 +276,26 @@ async fn device_authorization_happy_path() {
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res.into_body()).await;
-    assert!(!body["device_code"].as_str().unwrap().is_empty());
-    let user_code = body["user_code"].as_str().unwrap();
-    assert!(gatekeeper_rust::crypto_util::oauth_user_code::is_valid_oauth_user_code(user_code));
-    assert_eq!(body["interval"], 5);
+    // device_code/user_code are random, so thread them through; the rest of
+    // the RFC 8628 §3.2 body (verification_uri, verification_uri_complete,
+    // expires_in, interval) is pinned by the whole-value comparison.
+    let device_code = body["device_code"].clone();
+    let user_code = body["user_code"].as_str().expect("user_code").to_string();
+    assert_eq!(
+        body,
+        serde_json::json!({
+            "device_code": device_code,
+            "user_code": user_code,
+            "verification_uri": format!("{LOOPBACK_ORIGIN}/gatekeeper/devices"),
+            "verification_uri_complete":
+                format!("{LOOPBACK_ORIGIN}/gatekeeper/devices?user_code={user_code}"),
+            "expires_in": 300,
+            "interval": 5,
+        })
+    );
+    // The user_code is also a well-formed, human-typeable pairing code — a
+    // relationship the opaque whole-value comparison above can't express.
+    assert!(gatekeeper_rust::crypto_util::oauth_user_code::is_valid_oauth_user_code(&user_code));
 }
 
 #[tokio::test]
@@ -357,6 +399,7 @@ async fn token_exchange_unknown_device_code_returns_400_invalid_grant() {
 
 #[tokio::test]
 async fn host_owner_token_is_owner_scoped() {
+    let before = Utc::now().timestamp();
     let (_g, host_owner_token, _tmp) = spin_up();
     // header.payload.sig
     let parts: Vec<&str> = host_owner_token.split('.').collect();
@@ -365,7 +408,412 @@ async fn host_owner_token_is_owner_scoped() {
     use base64::Engine as _;
     let payload_bytes = URL_SAFE_NO_PAD.decode(parts[1]).expect("payload");
     let payload: Value = serde_json::from_slice(&payload_bytes).expect("json");
-    assert_eq!(payload["sub"], "wildflower-host");
-    assert_eq!(payload["iss"], LOOPBACK_ORIGIN);
-    assert_eq!(payload["scope"], "owner");
+    // iat/exp are wall-clock-derived; thread them through and check their
+    // *relationship* separately (below) rather than pinning absolute instants.
+    let iat = payload["iat"].as_i64().expect("iat");
+    let exp = payload["exp"].as_i64().expect("exp");
+    assert_eq!(
+        payload,
+        serde_json::json!({
+            "iss": LOOPBACK_ORIGIN,
+            "sub": "wildflower-host",
+            "aud": LOOPBACK_ORIGIN,
+            "scope": "owner",
+            "iat": iat,
+            "exp": exp,
+        })
+    );
+    // The owner-token TTL is 24h; allow a couple seconds of slack on the
+    // second-precision, wall-clock-derived timestamps (the reviewer asked us
+    // to "allow for some uncertainty in the timing-dependent values").
+    const OWNER_TOKEN_TTL_SECS: i64 = 24 * 60 * 60;
+    assert!(
+        (exp - iat - OWNER_TOKEN_TTL_SECS).abs() <= 2,
+        "exp - iat = {} should be ~{OWNER_TOKEN_TTL_SECS}",
+        exp - iat
+    );
+    // `before` is captured ahead of `spin_up`, which generates an RSA key —
+    // slow and variable under parallel test load — so this window is generous.
+    // It only pins that `iat` is a *recent* wall-clock instant (not 0, not far
+    // future); the exp - iat relationship above carries the precise check.
+    let now = Utc::now().timestamp();
+    assert!(
+        (before..=now).contains(&iat),
+        "iat = {iat} should fall within the test's wall-clock envelope [{before}, {now}]"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// End-to-end grant flows
+// ---------------------------------------------------------------------------
+
+/// A `code_verifier`/`code_challenge` pair used across the auth-code tests.
+/// The verifier is 43 unreserved chars (RFC 7636 §4.1 minimum) and the
+/// challenge is its real S256 digest, so the `/token` PKCE check passes.
+const CODE_VERIFIER: &str = "verifierverifierverifierverifierverifierabc";
+
+/// POST a form-urlencoded body to `path` on a fresh oneshot of `router`.
+async fn post_form(router: &axum::Router, path: &str, body: &'static str) -> axum::response::Response {
+    let req = loopback_request(
+        Request::post(path).header("content-type", "application/x-www-form-urlencoded"),
+        Body::from(body),
+    );
+    router.clone().oneshot(req).await.expect("oneshot")
+}
+
+/// Plant an `Approved` code-flow request plus its redeemable
+/// `AuthorizationCode` straight in the store, returning the `code`. `expires_at`
+/// (shared by both rows) lets a caller force an already-expired code without
+/// sleeping. The challenge is the real S256 digest of [`CODE_VERIFIER`].
+fn plant_authorization_code(
+    store: &GatekeeperStore,
+    client_id: &str,
+    redirect_uri: &Url,
+    scopes: &[&str],
+    code: &str,
+    expires_at: chrono::DateTime<Utc>,
+) {
+    let request_id = format!("req-{code}");
+    let scope_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
+    let challenge = compute_code_challenge(CODE_VERIFIER);
+    let now = Utc::now();
+    store
+        .insert_authorization_request(&AuthorizationRequest {
+            id: request_id.clone(),
+            grant_type: GrantType::AuthorizationCode,
+            client_id: client_id.to_string(),
+            requested_scopes: JsonColumn(scope_vec.clone()),
+            code_challenge: Some(challenge.clone()),
+            code_challenge_method: Some("S256".to_string()),
+            redirect_uri: Some(UriColumn(redirect_uri.clone())),
+            client_state: Some("state".to_string()),
+            user_code: None,
+            pre_approved_scopes: None,
+            requested_at: now,
+            expires_at,
+            last_polled_at: None,
+            status: RequestStatus::Approved,
+            granted_scopes: Some(JsonColumn(scope_vec.clone())),
+            patient: None,
+        })
+        .expect("insert request");
+    store
+        .issue_authorization_code(&AuthorizationCode {
+            code: code.to_string(),
+            request_id,
+            client_id: client_id.to_string(),
+            redirect_uri: UriColumn(redirect_uri.clone()),
+            code_challenge: challenge,
+            granted_scopes: JsonColumn(scope_vec),
+            patient: None,
+            issued_at: now,
+            expires_at,
+        })
+        .expect("issue code");
+}
+
+/// Plant a device-flow request directly, returning its `device_code`. `status`
+/// and `expires_at` are caller-controlled so the device state-machine tests can
+/// stand up Approved/expired rows the public surface can't mint on demand.
+fn plant_device_request(
+    store: &GatekeeperStore,
+    client_id: &str,
+    device_code: &str,
+    scopes: &[&str],
+    status: RequestStatus,
+    expires_at: chrono::DateTime<Utc>,
+) {
+    let scope_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
+    let granted = matches!(status, RequestStatus::Approved).then(|| JsonColumn(scope_vec.clone()));
+    store
+        .insert_authorization_request(&AuthorizationRequest {
+            id: device_code.to_string(),
+            grant_type: GrantType::DeviceCode,
+            client_id: client_id.to_string(),
+            requested_scopes: JsonColumn(scope_vec),
+            code_challenge: None,
+            code_challenge_method: None,
+            redirect_uri: None,
+            client_state: None,
+            user_code: Some("WILD-FLWR".to_string()),
+            pre_approved_scopes: None,
+            requested_at: Utc::now(),
+            expires_at,
+            last_polled_at: None,
+            status,
+            granted_scopes: granted,
+            patient: None,
+        })
+        .expect("insert device request");
+}
+
+/// Drive the full auth-code grant: `/authorize` → owner consent approve →
+/// status poll → `/token`. The core happy path; nothing else here exercises it
+/// end-to-end. Asserts a signed bearer token comes back with the granted scope.
+#[tokio::test]
+async fn auth_code_grant_happy_path_end_to_end() {
+    let (g, host_owner_token, tmp) = spin_up();
+    seed_client_with_redirect(&tmp, "test-app", "https://app.example/cb", &["read"]);
+    let challenge = compute_code_challenge(CODE_VERIFIER);
+
+    // 1. /authorize parks a pending request and 302s to the owner polling page.
+    let query = format!(
+        "response_type=code&code_challenge_method=S256&client_id=test-app&scope=read&\
+         code_challenge={challenge}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
+    );
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize?{query}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let polling = res
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .expect("location")
+        .to_string();
+    let request_id = polling.rsplit('/').next().expect("request id").to_string();
+
+    // 2. Owner approves the requested scope via the consent endpoint.
+    let approve = loopback_request(
+        Request::post(format!("/access/oauth-consents/{request_id}/approve"))
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("content-type", "application/json"),
+        Body::from(r#"{"approvedScopes":["read"]}"#),
+    );
+    let res = g.router.clone().oneshot(approve).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({ "status": "approved" })
+    );
+
+    // 3. The status poll now reports Approved and hands back the client
+    //    redirect carrying the redeemable `code`.
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize/{request_id}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let status = body_json(res.into_body()).await;
+    assert_eq!(status["status"], "approved");
+    let redirect = status["redirect"].as_str().expect("redirect");
+    let code = Url::parse(redirect)
+        .expect("redirect url")
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .map(|(_, v)| v.into_owned())
+        .expect("code param");
+
+    // 4. /token redeems the code with the matching PKCE verifier.
+    let body = format!(
+        "grant_type=authorization_code&client_id=test-app&code={code}&\
+         code_verifier={CODE_VERIFIER}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb"
+    );
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::post("/oauth/token")
+                .header("content-type", "application/x-www-form-urlencoded"),
+            Body::from(body),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let token = body_json(res.into_body()).await;
+    assert_eq!(token["token_type"], "Bearer");
+    assert_eq!(token["scope"], "read");
+    assert!(!token["access_token"].as_str().expect("access_token").is_empty());
+}
+
+/// Redeeming with a verifier that doesn't hash to the stored challenge is an
+/// `invalid_grant` PKCE failure (RFC 7636 §4.6 / RFC 6749 §5.2).
+#[tokio::test]
+async fn auth_code_grant_wrong_verifier_rejected() {
+    let (g, _host_owner_token, tmp) = spin_up();
+    seed_client_with_redirect(&tmp, "test-app", "https://app.example/cb", &["read"]);
+    let redirect = Url::parse("https://app.example/cb").unwrap();
+    plant_authorization_code(
+        &store_handle(&tmp),
+        "test-app",
+        &redirect,
+        &["read"],
+        "good-code",
+        Utc::now() + Duration::minutes(1),
+    );
+    // A well-formed (length-valid) but wrong verifier reaches the PKCE check.
+    let body = "grant_type=authorization_code&client_id=test-app&code=good-code&\
+                code_verifier=wrongwrongwrongwrongwrongwrongwrongwrongwro&\
+                redirect_uri=https%3A%2F%2Fapp.example%2Fcb";
+    let res = post_form(&g.router, "/oauth/token", body).await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({
+            "error": "invalid_grant",
+            "error_description": "Invalid code_verifier parameter",
+        })
+    );
+}
+
+/// A code past its `expires_at` is rejected as `invalid_grant` even with the
+/// correct verifier (RFC 6749 §4.1.2 short-lived codes). Forced via a
+/// store-level insert of an already-expired row rather than a real-time sleep.
+#[tokio::test]
+async fn auth_code_grant_expired_code_rejected() {
+    let (g, _host_owner_token, tmp) = spin_up();
+    seed_client_with_redirect(&tmp, "test-app", "https://app.example/cb", &["read"]);
+    let redirect = Url::parse("https://app.example/cb").unwrap();
+    plant_authorization_code(
+        &store_handle(&tmp),
+        "test-app",
+        &redirect,
+        &["read"],
+        "stale-code",
+        Utc::now() - Duration::seconds(1),
+    );
+    let body = "grant_type=authorization_code&client_id=test-app&code=stale-code&\
+                code_verifier=verifierverifierverifierverifierverifierabc&\
+                redirect_uri=https%3A%2F%2Fapp.example%2Fcb";
+    let res = post_form(&g.router, "/oauth/token", body).await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({
+            "error": "invalid_grant",
+            "error_description": "Code has expired",
+        })
+    );
+}
+
+/// A code is single-use: the first `/token` redemption succeeds, the second
+/// (with the same code) fails — the code is consumed atomically on redeem
+/// (RFC 6749 §10.5).
+#[tokio::test]
+async fn auth_code_grant_replay_rejected() {
+    let (g, _host_owner_token, tmp) = spin_up();
+    seed_client_with_redirect(&tmp, "test-app", "https://app.example/cb", &["read"]);
+    let redirect = Url::parse("https://app.example/cb").unwrap();
+    plant_authorization_code(
+        &store_handle(&tmp),
+        "test-app",
+        &redirect,
+        &["read"],
+        "once-code",
+        Utc::now() + Duration::minutes(1),
+    );
+    let body = "grant_type=authorization_code&client_id=test-app&code=once-code&\
+                code_verifier=verifierverifierverifierverifierverifierabc&\
+                redirect_uri=https%3A%2F%2Fapp.example%2Fcb";
+    let first = post_form(&g.router, "/oauth/token", body).await;
+    assert_eq!(first.status(), StatusCode::OK);
+    let second = post_form(&g.router, "/oauth/token", body).await;
+    assert_eq!(second.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(second.into_body()).await,
+        serde_json::json!({
+            "error": "invalid_grant",
+            "error_description": "Invalid code parameter",
+        })
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Device-code grant state machine (RFC 8628 §3.4/§3.5)
+// ---------------------------------------------------------------------------
+
+/// First poll on a still-pending request returns `authorization_pending`; an
+/// immediate second poll trips the slow-down rate limit
+/// (`last_polled_at` is within `DEVICE_CODE_POLL_INTERVAL`).
+#[tokio::test]
+async fn device_grant_pending_then_slow_down() {
+    let (g, _host_owner_token, tmp) = spin_up();
+    plant_device_request(
+        &store_handle(&tmp),
+        "wildflower-host",
+        "dev-pending",
+        &["owner"],
+        RequestStatus::Pending,
+        Utc::now() + Duration::minutes(5),
+    );
+    let body = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&\
+                client_id=wildflower-host&device_code=dev-pending";
+    let first = post_form(&g.router, "/oauth/token", body).await;
+    assert_eq!(first.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(first.into_body()).await,
+        serde_json::json!({ "error": "authorization_pending" })
+    );
+    let second = post_form(&g.router, "/oauth/token", body).await;
+    assert_eq!(second.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(second.into_body()).await,
+        serde_json::json!({ "error": "slow_down" })
+    );
+}
+
+/// An approved device request mints a token exactly once: the first exchange
+/// succeeds and expires the request, so a second exchange sees `expired_token`
+/// (single-use, RFC 8628 §3.4).
+#[tokio::test]
+async fn device_grant_single_use_then_expired_token() {
+    let (g, _host_owner_token, tmp) = spin_up();
+    plant_device_request(
+        &store_handle(&tmp),
+        "wildflower-host",
+        "dev-approved",
+        &["owner"],
+        RequestStatus::Approved,
+        Utc::now() + Duration::minutes(5),
+    );
+    let body = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&\
+                client_id=wildflower-host&device_code=dev-approved";
+    let first = post_form(&g.router, "/oauth/token", body).await;
+    assert_eq!(first.status(), StatusCode::OK);
+    let token = body_json(first.into_body()).await;
+    assert_eq!(token["token_type"], "Bearer");
+    assert_eq!(token["scope"], "owner");
+
+    let second = post_form(&g.router, "/oauth/token", body).await;
+    assert_eq!(second.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(second.into_body()).await,
+        serde_json::json!({ "error": "expired_token" })
+    );
+}
+
+/// RFC 6749 §5.1/§5.2 (inherited by RFC 8628 §3.4): the
+/// `/oauth/device_authorization` response must suppress caching just like the
+/// token endpoint — the token-endpoint case is already covered, this pins the
+/// device endpoint.
+#[tokio::test]
+async fn device_authorization_sets_cache_suppression_headers() {
+    let (g, _host_owner_token, _tmp) = spin_up();
+    let res = post_form(
+        &g.router,
+        "/oauth/device_authorization",
+        "client_id=wildflower-host&scope=owner",
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        res.headers().get("cache-control").map(|v| v.to_str().unwrap()),
+        Some("no-store")
+    );
+    assert_eq!(
+        res.headers().get("pragma").map(|v| v.to_str().unwrap()),
+        Some("no-cache")
+    );
 }

@@ -10,9 +10,6 @@ axum.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
-tower = "0.5"
-tower-http = { version = "0.6", features = ["trace"] }
 parking_lot = "0.12"
 jsonwebtoken = "9"
 rsa = { version = "0.9", features = ["sha2"] }
