@@ -45,8 +45,13 @@ jobs:
       - name: Set up Rust toolchain
         # Reads rust-toolchain.toml (channel + rustfmt/clippy), caches build
         # artifacts, and registers clippy/rustfmt problem matchers so findings
-        # surface as inline PR annotations.
+        # surface as inline PR annotations. `cache-shared-key` joins this
+        # job's cache namespace with rust-test/nextest, since both compile the
+        # same workspace (everything except wildflower-tauri) — without it the
+        # two jobs warm separate caches from cold despite identical inputs.
         uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-shared-key: rust-workspace-excl-tauri
       - name: rustfmt
         run: cargo fmt --all --check
       - name: clippy (deny warnings)

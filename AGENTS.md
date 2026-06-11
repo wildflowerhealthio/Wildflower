@@ -82,7 +82,9 @@ The script places the worktree at `${workspace}/.worktrees/<branch>` (host-visib
 
 The `node_modules/` segment in the symlink target is load-bearing: Node canonicalizes symlinks during require resolution, so the realpath chain has to contain a literal `node_modules/` ancestor — otherwise scoped optional deps like `@voidzero-dev/vite-plus-<platform>` fail to resolve and `vp install`'s postinstall crashes.
 
-Calling `git worktree add` directly will either dump dependencies onto the slow macOS↔Linux bind mount or skip the shared-store hardlinking. The host's `node_modules` for the main checkout is unaffected — it stays in its own Docker volume.
+Cargo's `target/` is redirected per-checkout to `/data/cargo-target/main` (for the main checkout, set up by `postCreateCommand.sh`) or `/data/cargo-target/worktrees/<branch>` (for worktrees, set up by `wf-worktree.sh`) via a generated `.cargo/config.toml`. Same volume, same rationale as `node_modules`: keep the thousands of small files cargo writes during `cargo check`/`cargo build` off the slow macOS↔Linux bind mount. The `.cargo/` directory is gitignored; rebuilding the container regenerates the config. Host-side `cargo` (run from macOS directly) is unaffected — no `.cargo/config.toml` is written on the host.
+
+Calling `git worktree add` directly will either dump dependencies onto the slow macOS↔Linux bind mount or skip the shared-store hardlinking, and it will not set up the per-worktree cargo target dir. The host's `node_modules` for the main checkout is unaffected — it stays in its own Docker volume.
 
 ## Documentation
 
