@@ -3,7 +3,7 @@ use chrono::{DateTime, Duration, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::domain::signing_key::SigningKey;
+use crate::domain::signing_key::{KeyMaterialError, SigningKey};
 
 /// Normalize the `aud` claim — RFC 7519 lets it be a string or an array of
 /// strings — into a single canonical `Vec<String>` so downstream code has one
@@ -71,9 +71,9 @@ pub struct NewJwtArgs<'a> {
 /// Failures while minting an access token.
 #[derive(Debug, thiserror::Error)]
 pub enum MintError {
-    /// The signing key's PEM material could not be loaded.
-    #[error("signing key material could not be loaded: {0}")]
-    SigningKeyUnreadable(String),
+    /// The signing key's material could not be turned into an `EncodingKey`.
+    #[error("signing key material could not be loaded")]
+    SigningKeyUnreadable(#[source] KeyMaterialError),
     /// `jsonwebtoken` failed to encode the JWS.
     #[error("jws encode failed: {0}")]
     JwsEncodeFailed(#[from] jsonwebtoken::errors::Error),
@@ -96,8 +96,7 @@ pub fn mint_access_token(
     };
     let mut header = Header::new(Algorithm::RS256);
     header.kid = Some(signing_key.kid.clone());
-    let enc = EncodingKey::try_from(signing_key)
-        .map_err(|e| MintError::SigningKeyUnreadable(e.to_string()))?;
+    let enc = EncodingKey::try_from(signing_key).map_err(MintError::SigningKeyUnreadable)?;
     jsonwebtoken::encode(&header, &claims, &enc).map_err(MintError::JwsEncodeFailed)
 }
 
@@ -145,9 +144,14 @@ pub enum VerifyError {
     /// No signing keys are configured — operator misconfiguration, surface as 500.
     #[error("no signing keys configured")]
     NoSigningKeysConfigured,
-    /// A configured signing key's PEM material could not be loaded.
+    /// The signing-key store could not be read (e.g. the database query
+    /// failed) — distinct from a key whose material is corrupt. Surface as 500.
+    #[error("signing-key store unavailable")]
+    KeyStoreUnavailable(#[source] rusqlite::Error),
+    /// A configured signing key's material could not be turned into a
+    /// `DecodingKey`.
     #[error("signing key material could not be loaded")]
-    SigningKeyUnreadable,
+    SigningKeyUnreadable(#[source] KeyMaterialError),
 }
 
 /// Verify a JWT against `possible_signing_keys`, returning the decoded claims
@@ -189,7 +193,7 @@ pub fn verify_jwt(
     validation.validate_exp = true;
 
     let try_verifying_with = |key: &SigningKey| -> Result<Option<VerifiedClaims>, VerifyError> {
-        let dec = DecodingKey::try_from(key).map_err(|_| VerifyError::SigningKeyUnreadable)?;
+        let dec = DecodingKey::try_from(key).map_err(VerifyError::SigningKeyUnreadable)?;
         Ok(
             jsonwebtoken::decode::<VerifiedClaims>(token, &dec, &validation)
                 .ok()

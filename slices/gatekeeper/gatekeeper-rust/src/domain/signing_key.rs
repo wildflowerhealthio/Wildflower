@@ -43,7 +43,7 @@ impl SigningKey {
     /// Generate a fresh 2048-bit RSA `SigningKey` with a new random `kid` (inactive by default).
     pub fn generate() -> Result<SigningKey, KeyMaterialError> {
         let mut rng = rand::thread_rng();
-        let private = RsaPrivateKey::new(&mut rng, 2048)?;
+        let private = RsaPrivateKey::new(&mut rng, 2048).map_err(KeyMaterialError::Generate)?;
         Ok(SigningKey::from(&private))
     }
 }
@@ -90,9 +90,7 @@ impl TryFrom<&SigningKey> for EncodingKey {
 
     fn try_from(key: &SigningKey) -> Result<Self, Self::Error> {
         let private = RsaPrivateKey::try_from(key)?;
-        let der = private
-            .to_pkcs1_der()
-            .map_err(|e| KeyMaterialError::Encode(e.to_string()))?;
+        let der = private.to_pkcs1_der().map_err(KeyMaterialError::Encode)?;
         Ok(EncodingKey::from_rsa_der(der.as_bytes()))
     }
 }
@@ -103,9 +101,7 @@ impl TryFrom<&SigningKey> for DecodingKey {
 
     fn try_from(key: &SigningKey) -> Result<Self, Self::Error> {
         let public = RsaPublicKey::try_from(key)?;
-        let der = public
-            .to_pkcs1_der()
-            .map_err(|e| KeyMaterialError::Encode(e.to_string()))?;
+        let der = public.to_pkcs1_der().map_err(KeyMaterialError::Encode)?;
         Ok(DecodingKey::from_rsa_der(der.as_bytes()))
     }
 }
@@ -120,8 +116,7 @@ impl TryFrom<&SigningKey> for RsaPrivateKey {
         let d = base64_url_to_biguint(&key.values.d)?;
         let p = base64_url_to_biguint(&key.values.p)?;
         let q = base64_url_to_biguint(&key.values.q)?;
-        RsaPrivateKey::from_components(n, e, d, vec![p, q])
-            .map_err(|e| KeyMaterialError::Compose(e.to_string()))
+        RsaPrivateKey::from_components(n, e, d, vec![p, q]).map_err(KeyMaterialError::Compose)
     }
 }
 
@@ -132,7 +127,7 @@ impl TryFrom<&SigningKey> for RsaPublicKey {
     fn try_from(key: &SigningKey) -> Result<Self, Self::Error> {
         let n = base64_url_to_biguint(&key.values.n)?;
         let e = base64_url_to_biguint(&key.values.e)?;
-        RsaPublicKey::new(n, e).map_err(|e| KeyMaterialError::Compose(e.to_string()))
+        RsaPublicKey::new(n, e).map_err(KeyMaterialError::Compose)
     }
 }
 
@@ -145,21 +140,27 @@ fn base64_url_no_padding(bytes: &[u8]) -> String {
 fn base64_url_to_biguint(s: &str) -> Result<BigUint, KeyMaterialError> {
     let bytes = URL_SAFE_NO_PAD
         .decode(s)
-        .map_err(|e| KeyMaterialError::Decode(e.to_string()))?;
+        .map_err(KeyMaterialError::Decode)?;
     Ok(BigUint::from_bytes_be(&bytes))
 }
 
 /// Failure modes when round-tripping a `SigningKey` through `jsonwebtoken`/`rsa` — bad JWK components, DER encode, RSA composition, or fresh-key generation.
+///
+/// Each variant keeps the original source error (`#[source]`) so the full
+/// cause chain survives for logging rather than being flattened to a string.
+/// `Compose` and `Generate` both wrap `rsa::Error`, so neither uses `#[from]`
+/// (two `From<rsa::Error>` impls would conflict) — call sites construct them
+/// explicitly to keep the two failure modes distinct.
 #[derive(Debug, thiserror::Error)]
 pub enum KeyMaterialError {
-    #[error("decode JWK component: {0}")]
-    Decode(String),
-    #[error("compose RSA key: {0}")]
-    Compose(String),
-    #[error("encode DER: {0}")]
-    Encode(String),
-    #[error("generate RSA key: {0}")]
-    Generate(#[from] rsa::Error),
+    #[error("decode JWK component")]
+    Decode(#[source] base64::DecodeError),
+    #[error("compose RSA key")]
+    Compose(#[source] rsa::Error),
+    #[error("encode Distinguished Encoding Rules (DER)")]
+    Encode(#[source] rsa::pkcs1::Error),
+    #[error("generate RSA key")]
+    Generate(#[source] rsa::Error),
 }
 
 #[cfg(test)]

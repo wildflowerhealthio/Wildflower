@@ -6,7 +6,7 @@ use axum::response::Response;
 use std::sync::Arc;
 
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
-use crate::http::responses::{internal_error, unauthorized};
+use crate::http::responses::{unauthorized, verify_error_response};
 use crate::http::state::AppState;
 use crate::OWNER_SCOPE;
 
@@ -25,10 +25,7 @@ pub async fn require_owner_auth(
     };
     let claims = match verify_owner_token(&state, &headers, &token) {
         Ok(c) => c,
-        Err(e @ VerifyError::NoSigningKeysConfigured) => {
-            return internal_error("verify_owner_token failed", e)
-        }
-        Err(_) => return unauthorized(),
+        Err(e) => return verify_error_response("verify_owner_token failed", e),
     };
     req.extensions_mut().insert(AuthedClaims(Arc::new(claims)));
     next.run(req).await
@@ -81,7 +78,7 @@ pub fn verify_any_token(
     let keys = state
         .store
         .all_signing_keys()
-        .map_err(|_| VerifyError::SigningKeyUnreadable)?;
+        .map_err(VerifyError::KeyStoreUnavailable)?;
     // Pinned at boot, not derived from the request's `Host` header — see
     // [`crate::setup_gatekeeper`].
     let origin = &state.origin;
