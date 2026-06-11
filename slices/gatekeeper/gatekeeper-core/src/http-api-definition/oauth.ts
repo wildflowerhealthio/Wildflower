@@ -25,7 +25,20 @@ const DeviceAuthorizationResponseSchema = Schema.Struct({
   interval: Schema.Int,
 })
 
+/**
+ * Query parameters accepted at `/oauth/authorize` per RFC 6749 §4.1.1 +
+ * RFC 7636 (PKCE).
+ *
+ * @remarks
+ * Stricter than the base spec: `state` is required (the spec merely
+ * recommends it), and PKCE with S256 is mandatory — both matching the
+ * OAuth 2.1 direction. `response_type` stays `NonEmptyString` rather than
+ * `Literal('code')` so a wrong value reaches the handler and renders the
+ * human-readable `unsupported_response_type` error page instead of a
+ * generic schema-decode 400.
+ */
 const AuthorizeUrlParamsSchema = Schema.Struct({
+  response_type: Schema.NonEmptyString,
   code_challenge_method: Schema.NonEmptyString,
   client_id: Schema.NonEmptyString,
   scope: Schema.NonEmptyString,

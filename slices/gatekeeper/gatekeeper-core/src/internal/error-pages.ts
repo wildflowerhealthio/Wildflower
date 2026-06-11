@@ -1,4 +1,5 @@
 type OAuthErrorKind =
+  | 'unsupported_response_type'
   | 'unsupported_code_challenge'
   | 'invalid_redirect_uri'
   | 'invalid_scheme'
@@ -11,6 +12,10 @@ const escape = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 const oauthErrorMessage: Record<OAuthErrorKind, { title: string; body: string }> = {
+  unsupported_response_type: {
+    title: 'Unsupported response type',
+    body: 'Only the authorization code flow (response_type=code) is supported',
+  },
   unsupported_code_challenge: {
     title: 'Unsupported code challenge method',
     body: 'Only S256 code_challenge_method is supported',
@@ -54,11 +59,14 @@ const renderErrorHtml = (title: string, body: string): string =>
 </body>
 </html>`
 
-const oauthErrorHtml = (kind: OAuthErrorKind, method?: string): string => {
+const oauthErrorHtml = (kind: OAuthErrorKind, received?: string): string => {
   const { title, body } = oauthErrorMessage[kind]
   let suffix = ''
-  if (kind === 'unsupported_code_challenge' && method != null) {
-    suffix = ` (received: ${escape(method)})`
+  if (
+    (kind === 'unsupported_code_challenge' || kind === 'unsupported_response_type') &&
+    received != null
+  ) {
+    suffix = ` (received: ${escape(received)})`
   }
   return renderErrorHtml(title, `${body}${suffix}.`)
 }

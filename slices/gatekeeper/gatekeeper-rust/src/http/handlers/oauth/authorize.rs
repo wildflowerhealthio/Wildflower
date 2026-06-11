@@ -24,9 +24,12 @@ const AUTHORIZATION_CODE_TTL: Duration = Duration::seconds(60);
 const AUTHORIZATION_REQUEST_TTL: Duration = Duration::minutes(5);
 
 /// Query parameters accepted at `/oauth/authorize` per RFC 6749 §4.1.1 +
-/// RFC 7636 (PKCE).
+/// RFC 7636 (PKCE). Stricter than the base spec: `state` is required (the
+/// spec merely recommends it), and PKCE with S256 is mandatory — both
+/// matching the OAuth 2.1 direction.
 #[derive(Debug, Deserialize)]
 pub struct AuthorizeParams {
+    pub response_type: String,
     pub code_challenge_method: String,
     pub client_id: String,
     pub scope: String,
@@ -35,9 +38,31 @@ pub struct AuthorizeParams {
     pub state: String,
 }
 
-/// `GET /oauth/authorize` — validate the request, either auto-issue an
-/// authorization code (when an existing grant pre-approves every requested
-/// scope) or redirect the user-agent to the Owner UI to drive the approval.
+/// `GET /oauth/authorize` — the authorization endpoint (RFC 6749 §3.1), the
+/// public front door of the OAuth flow. Validates the request, then either
+/// auto-issues an authorization code (when an existing grant pre-approves
+/// every requested scope) or redirects the user-agent to the Owner UI to
+/// drive the approval.
+///
+/// Nothing in-process calls this route. Registered clients (e.g.
+/// SMART-on-FHIR apps) discover it via the FHIR server's
+/// `.well-known/smart-configuration` (`authorization_endpoint`) and send the
+/// *user's browser* here with PKCE params to start an authorization-code
+/// flow:
+///
+/// 1. Browser lands here; the request is parked as an `AuthorizationRequest`
+///    (5-minute TTL).
+/// 2. Unless every requested scope is pre-approved by an existing grant for
+///    this (client, redirect_uri) pair, the browser is 302'd to the Owner
+///    UI's polling page, which polls `GET /oauth/authorize/{id}` (a custom
+///    extension, not part of any RFC) until the Owner decides. RFC 6749
+///    leaves the owner-interaction mechanism unspecified, so the polling
+///    page is spec-legal; likewise §4.1 explicitly allows skipping consent
+///    on a previously established authorization decision, which is what the
+///    grant fast path implements.
+/// 3. Approval 302s the browser back to the client's `redirect_uri` with
+///    `code` + `state` (§4.1.2); the client then redeems the short-lived
+///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
 pub async fn handle_authorize_request(
     Extension(state): Extension<AppState>,
     headers: HeaderMap,
@@ -52,6 +77,15 @@ pub async fn handle_authorize_request(
     };
     if signing_keys.is_empty() {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+
+    // Only the authorization-code grant is implemented (RFC 6749 §4.1.1
+    // makes response_type REQUIRED; `code` is its only supported value).
+    if params.response_type != "code" {
+        return html_bad_request(oauth_error_html(
+            OAuthErrorKind::UnsupportedResponseType,
+            Some(&params.response_type),
+        ));
     }
 
     if params.code_challenge_method != "S256" {

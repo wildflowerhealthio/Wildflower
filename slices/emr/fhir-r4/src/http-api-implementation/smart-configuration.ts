@@ -13,8 +13,12 @@ const layer = HttpApiBuilder.group(FhirPublicApi, 'smart-well-known', (handlers)
         {
           issuer: host,
           jwks_uri: `${origin}/.well-known/jwks.json`,
-          authorization_endpoint: `${origin}/auth/authorize`,
-          token_endpoint: `${origin}/auth/token`,
+          // These must match the gatekeeper HttpApi group's `/oauth` prefix
+          // (gatekeeper-core http-api-definition/oauth.ts) — SMART clients
+          // follow this discovery document verbatim to start the
+          // authorization-code + PKCE flow.
+          authorization_endpoint: `${origin}/oauth/authorize`,
+          token_endpoint: `${origin}/oauth/token`,
           token_endpoint_auth_methods_supported: ['client_secret_basic', 'private_key_jwt'],
           grant_types_supported: ['authorization_code', 'client_credentials'],
           registration_endpoint: `${host}/auth/register`,

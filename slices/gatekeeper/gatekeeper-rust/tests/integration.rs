@@ -113,7 +113,7 @@ async fn get_unknown_grant_returns_404() {
 #[tokio::test]
 async fn authorize_unknown_client_returns_html_bad_request() {
     let (g, _host_owner_token, _tmp) = spin_up();
-    let query = "code_challenge_method=S256&client_id=ghost&scope=read&\
+    let query = "response_type=code&code_challenge_method=S256&client_id=ghost&scope=read&\
                  code_challenge=abc&redirect_uri=http%3A%2F%2Fexample.com%2Fcb&state=xyz";
     let req = loopback_request(
         Request::get(format!("/oauth/authorize?{}", query)),
@@ -128,7 +128,8 @@ async fn authorize_unknown_client_returns_html_bad_request() {
 #[tokio::test]
 async fn authorize_unsupported_pkce_method() {
     let (g, _host_owner_token, _tmp) = spin_up();
-    let query = "code_challenge_method=plain&client_id=wildflower-host&scope=owner&\
+    let query =
+        "response_type=code&code_challenge_method=plain&client_id=wildflower-host&scope=owner&\
                  code_challenge=abc&redirect_uri=http%3A%2F%2Fexample.com%2Fcb&state=xyz";
     let req = loopback_request(
         Request::get(format!("/oauth/authorize?{}", query)),
@@ -139,6 +140,25 @@ async fn authorize_unsupported_pkce_method() {
     let body = body_string(res.into_body()).await;
     assert!(
         body.contains("Unsupported code challenge method"),
+        "body = {body}"
+    );
+}
+
+#[tokio::test]
+async fn authorize_unsupported_response_type() {
+    let (g, _host_owner_token, _tmp) = spin_up();
+    let query =
+        "response_type=token&code_challenge_method=S256&client_id=wildflower-host&scope=owner&\
+                 code_challenge=abc&redirect_uri=http%3A%2F%2Fexample.com%2Fcb&state=xyz";
+    let req = loopback_request(
+        Request::get(format!("/oauth/authorize?{}", query)),
+        Body::empty(),
+    );
+    let res = g.router.oneshot(req).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let body = body_string(res.into_body()).await;
+    assert!(
+        body.contains("Unsupported response type") && body.contains("(received: token)"),
         "body = {body}"
     );
 }

@@ -37,6 +37,17 @@ const requireSigningKey = (): Effect.Effect<
     }
   })
 
+// Only the authorization-code grant is implemented (RFC 6749 §4.1.1 makes
+// response_type REQUIRED; `code` is its only supported value).
+const requireCodeResponseType = (
+  responseType: string
+): Effect.Effect<void, HttpServerResponse.HttpServerResponse> => {
+  if (responseType === 'code') return Effect.void
+  return Effect.fail(
+    htmlBadRequestResponse(oauthErrorHtml('unsupported_response_type', responseType))
+  )
+}
+
 const requireS256ChallengeMethod = (
   method: string
 ): Effect.Effect<void, HttpServerResponse.HttpServerResponse> => {
@@ -204,6 +215,34 @@ const getAuthorizationRequestParameters = (
     }
   })
 
+/**
+ * `GET /oauth/authorize` — the authorization endpoint (RFC 6749 §3.1), the
+ * public front door of the OAuth flow. Validates the request, then either
+ * auto-issues an authorization code (when an existing grant pre-approves
+ * every requested scope) or redirects the user-agent to the Owner UI to
+ * drive the approval.
+ *
+ * @remarks
+ * Nothing in-process calls this route. Registered clients (e.g.
+ * SMART-on-FHIR apps) discover it via the FHIR server's
+ * `.well-known/smart-configuration` (`authorization_endpoint`) and send the
+ * *user's browser* here with PKCE params to start an authorization-code
+ * flow:
+ *
+ * 1. Browser lands here; the request is parked as an `AuthorizationRequest`
+ *    (5-minute TTL).
+ * 2. Unless every requested scope is pre-approved by an existing grant for
+ *    this (client, redirect_uri) pair, the browser is 302'd to the Owner
+ *    UI's polling page, which polls `GET /oauth/authorize/:id` (a custom
+ *    extension, not part of any RFC) until the Owner decides. RFC 6749
+ *    leaves the owner-interaction mechanism unspecified, so the polling
+ *    page is spec-legal; likewise §4.1 explicitly allows skipping consent
+ *    on a previously established authorization decision, which is what the
+ *    grant fast path implements.
+ * 3. Approval 302s the browser back to the client's `redirect_uri` with
+ *    `code` + `state` (§4.1.2); the client then redeems the short-lived
+ *    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
+ */
 const handleAuthorize = (
   urlParams: AuthorizeParams
 ): Effect.Effect<
@@ -215,6 +254,7 @@ const handleAuthorize = (
     Effect.gen(function* () {
       yield* requireSigningKey()
       const { scopes, launchContext } = yield* getAuthorizationRequestParameters(urlParams)
+      yield* requireCodeResponseType(urlParams.response_type)
       yield* requireS256ChallengeMethod(urlParams.code_challenge_method)
       yield* parseRedirectUri(urlParams.redirect_uri)
       const client = yield* getEnabledClient(urlParams.client_id)

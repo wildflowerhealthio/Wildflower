@@ -1,4 +1,5 @@
 pub enum OAuthErrorKind {
+    UnsupportedResponseType,
     UnsupportedCodeChallenge,
     InvalidRedirectUri,
     InvalidScheme,
@@ -18,6 +19,10 @@ fn escape(value: &str) -> String {
 
 fn title_and_body(kind: &OAuthErrorKind) -> (&'static str, &'static str) {
     match kind {
+        OAuthErrorKind::UnsupportedResponseType => (
+            "Unsupported response type",
+            "Only the authorization code flow (response_type=code) is supported",
+        ),
         OAuthErrorKind::UnsupportedCodeChallenge => (
             "Unsupported code challenge method",
             "Only S256 code_challenge_method is supported",
@@ -49,11 +54,14 @@ fn title_and_body(kind: &OAuthErrorKind) -> (&'static str, &'static str) {
     }
 }
 
-pub fn oauth_error_html(kind: OAuthErrorKind, method: Option<&str>) -> String {
+pub fn oauth_error_html(kind: OAuthErrorKind, received: Option<&str>) -> String {
     let (title, body) = title_and_body(&kind);
-    let suffix = match (&kind, method) {
-        (OAuthErrorKind::UnsupportedCodeChallenge, Some(m)) => {
-            format!(" (received: {})", escape(m))
+    let suffix = match (&kind, received) {
+        (
+            OAuthErrorKind::UnsupportedCodeChallenge | OAuthErrorKind::UnsupportedResponseType,
+            Some(value),
+        ) => {
+            format!(" (received: {})", escape(value))
         }
         _ => String::new(),
     };
