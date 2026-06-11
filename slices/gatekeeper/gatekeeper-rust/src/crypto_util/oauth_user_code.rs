@@ -2,9 +2,9 @@ use rand::distributions::{Distribution, Uniform};
 use rand::RngCore;
 
 /// Unambiguous consonants used in device-flow user codes — no vowels, no Y, no 0/1/I/O confusables.
-pub const ALPHABET: &[u8] = "BCDFGHJKLMNPQRSTVWXZ".as_bytes();
-pub const BLOCK_LENGTH: usize = 4;
-pub const BLOCK_COUNT: usize = 2;
+pub(crate) const ALPHABET: &[u8] = "BCDFGHJKLMNPQRSTVWXZ".as_bytes();
+pub(crate) const BLOCK_LENGTH: usize = 4;
+pub(crate) const BLOCK_COUNT: usize = 2;
 
 /// Generate a device-flow user code (e.g. `BCDF-GHJK`) using the unambiguous consonant alphabet.
 pub fn generate_oauth_user_code<R: RngCore>(rng: &mut R) -> String {

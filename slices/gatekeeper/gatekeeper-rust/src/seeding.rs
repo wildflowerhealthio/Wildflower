@@ -80,8 +80,8 @@ pub(crate) enum HostTokenError {
     /// the database has been tampered with.
     #[error("no signing keys in store")]
     NoSigningKeys,
-    /// `crypto::jwt` failed to sign the token; the wrapped error preserves
-    /// whether it was a key-material or encoding failure.
+    /// [`crate::domain::token`] failed to sign the token; the wrapped error
+    /// preserves whether it was a key-material or encoding failure.
     #[error("jws sign: {0}")]
     JwsSignFailed(#[from] MintError),
 }

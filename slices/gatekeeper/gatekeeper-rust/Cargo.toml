@@ -17,6 +17,7 @@ parking_lot = "0.12"
 jsonwebtoken = "9"
 rsa = { version = "0.9", features = ["sha2"] }
 sha2 = "0.10"
+argon2 = "0.5"
 subtle = "2"
 rand = "0.8"
 uuid = { version = "1", features = ["v4"] }

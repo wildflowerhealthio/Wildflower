@@ -8,14 +8,20 @@ use subtle::ConstantTimeEq;
 use url::Url;
 
 use super::shared::{
-    issue_token_response, require_valid_client_for_token, IssueTokenInput, OAuthError,
-    DEVICE_CODE_POLL_INTERVAL,
+    cache_suppressed, issue_token_response, require_valid_client_for_token, IssueTokenInput,
+    OAuthError, DEVICE_CODE_POLL_INTERVAL,
 };
 use crate::crypto_util::pkce::compute_code_challenge;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
 use crate::http::origin::origin_for;
+use crate::http::responses::internal_error;
 use crate::http::state::AppState;
+
+/// RFC 7636 §4.1 bounds on the `code_verifier`: 43–128 characters drawn from
+/// the unreserved set. We enforce the length here before hashing.
+const CODE_VERIFIER_MIN_LEN: usize = 43;
+const CODE_VERIFIER_MAX_LEN: usize = 128;
 
 /// Body of an RFC 6749 / RFC 8628 token endpoint request, dispatched by the
 /// wire-level `grant_type` field.
@@ -66,11 +72,13 @@ pub async fn handle_token_request(
         } => exchange_authorization_code(
             &state,
             &origin,
-            &client_id,
-            client_secret.as_deref(),
-            &code,
-            &code_verifier,
-            &redirect_uri,
+            AuthorizationCodeGrant {
+                client_id: &client_id,
+                client_secret: client_secret.as_deref(),
+                code: &code,
+                code_verifier: &code_verifier,
+                redirect_uri: &redirect_uri,
+            },
         ),
         TokenPayload::DeviceCode {
             client_id,
@@ -86,39 +94,55 @@ pub async fn handle_token_request(
     }
 }
 
+/// Destructured fields of the `authorization_code` grant request, bundled into
+/// a named struct so the redemption helpers take one self-describing argument
+/// instead of a run of same-typed `&str` positionals (a transposition hazard).
+struct AuthorizationCodeGrant<'a> {
+    client_id: &'a str,
+    client_secret: Option<&'a str>,
+    code: &'a str,
+    code_verifier: &'a str,
+    redirect_uri: &'a str,
+}
+
 fn exchange_authorization_code(
     state: &AppState,
     origin: &str,
-    client_id: &str,
-    client_secret: Option<&str>,
-    code: &str,
-    code_verifier: &str,
-    redirect_uri: &str,
+    grant: AuthorizationCodeGrant<'_>,
 ) -> Response {
-    if let Err(err) = require_valid_client_for_token(&state.store, client_id, client_secret) {
-        return err.into_response();
+    if let Err(err) =
+        require_valid_client_for_token(&state.store, grant.client_id, grant.client_secret)
+    {
+        return cache_suppressed(err.into_response());
     }
-    let parsed_redirect = match Url::parse(redirect_uri) {
+    // RFC 7636 §4.1: the verifier is 43–128 chars. Reject out-of-range values
+    // before hashing — an unusable verifier is a grant failure, not a
+    // malformed request (RFC 6749 §5.2).
+    let verifier_len = grant.code_verifier.chars().count();
+    if !(CODE_VERIFIER_MIN_LEN..=CODE_VERIFIER_MAX_LEN).contains(&verifier_len) {
+        return bad_request("invalid_grant", Some("Invalid code_verifier parameter"));
+    }
+    let parsed_redirect = match Url::parse(grant.redirect_uri) {
         Ok(u) => u,
         Err(_) => return bad_request("invalid_request", Some("Invalid redirect_uri parameter")),
     };
     // Atomically read-and-consume the code: a concurrent redemption of the
     // same code can only succeed once, so any racer past this point sees
     // `Ok(None)` and is rejected before a token is minted (RFC 6749 §10.5).
-    let code_record = match state.store.redeem_authorization_code(code) {
+    let code_record = match state.store.redeem_authorization_code(grant.code) {
         Ok(Some(r)) => r,
         Ok(None) => {
-            return bad_request("invalid_request", Some("Invalid code parameter"));
+            return bad_request("invalid_grant", Some("Invalid code parameter"));
         }
-        Err(e) => return internal_error("authorization_code redemption failed", e),
+        Err(e) => return cache_suppressed(internal_error("authorization_code redemption failed", e)),
     };
     validate_code_and_issue_token(
         state,
         origin,
         &code_record,
-        client_id,
+        grant.client_id,
         &parsed_redirect,
-        code_verifier,
+        grant.code_verifier,
     )
 }
 
@@ -130,31 +154,30 @@ fn validate_code_and_issue_token(
     redirect_uri: &Url,
     code_verifier: &str,
 ) -> Response {
+    // RFC 6749 §5.2: code/redirect/client-binding and PKCE failures are all
+    // `invalid_grant` — the request is well-formed, the grant is not.
     if code_record.client_id != client_id {
-        return bad_request("invalid_request", Some("Invalid client_id parameter"));
+        return bad_request("invalid_grant", Some("Invalid client_id parameter"));
     }
     if code_record.redirect_uri.0 != *redirect_uri {
-        return bad_request("invalid_request", Some("Invalid redirect_uri parameter"));
+        return bad_request("invalid_grant", Some("Invalid redirect_uri parameter"));
     }
     if code_record.expires_at < Utc::now() {
-        return bad_request("invalid_request", Some("Code has expired"));
+        return bad_request("invalid_grant", Some("Code has expired"));
     }
     let computed = compute_code_challenge(code_verifier);
     if !bool::from(code_record.code_challenge.as_bytes().ct_eq(computed.as_bytes())) {
-        return bad_request("invalid_request", Some("Invalid code_verifier parameter"));
+        return bad_request("invalid_grant", Some("Invalid code_verifier parameter"));
     }
-    match issue_token_response(
-        &state.store,
+    issue_token(
+        state,
         IssueTokenInput {
             client_id,
             granted_scopes: &code_record.granted_scopes,
             patient: code_record.patient.as_deref(),
             origin,
         },
-    ) {
-        Ok(token) => Json(token).into_response(),
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err)).into_response(),
-    }
+    )
 }
 
 fn exchange_device_code(
@@ -165,12 +188,14 @@ fn exchange_device_code(
     device_code: &str,
 ) -> Response {
     if let Err(err) = require_valid_client_for_token(&state.store, client_id, client_secret) {
-        return err.into_response();
+        return cache_suppressed(err.into_response());
     }
     let request_record = match state.store.authorization_request_by_id(device_code) {
         Ok(Some(p)) if p.grant_type == GrantType::DeviceCode && p.client_id == client_id => p,
         Ok(_) => return bad_request("invalid_grant", Some("Unknown device_code")),
-        Err(e) => return internal_error("authorization_request lookup failed", e),
+        Err(e) => {
+            return cache_suppressed(internal_error("authorization_request lookup failed", e))
+        }
     };
     if request_record.expires_at < Utc::now() {
         return bad_request("expired_token", None);
@@ -185,7 +210,7 @@ fn exchange_device_code(
             .store
             .record_device_poll(&request_record.id, Utc::now())
         {
-            return internal_error("record_device_poll failed", e);
+            return cache_suppressed(internal_error("record_device_poll failed", e));
         }
     }
     match request_record.status {
@@ -196,36 +221,41 @@ fn exchange_device_code(
     }
     // single-use per RFC 8628 §3.4
     if let Err(e) = state.store.expire_authorization_request(&request_record.id) {
-        return internal_error("expire_authorization_request failed", e);
+        return cache_suppressed(internal_error("expire_authorization_request failed", e));
     }
     let granted_scopes: &[String] = request_record
         .granted_scopes
         .as_deref()
         .map(|v| v.as_slice())
         .unwrap_or(&[]);
-    match issue_token_response(
-        &state.store,
+    issue_token(
+        state,
         IssueTokenInput {
             client_id: &request_record.client_id,
             granted_scopes,
             patient: request_record.patient.as_deref(),
             origin,
         },
-    ) {
-        Ok(token) => Json(token).into_response(),
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err)).into_response(),
+    )
+}
+
+/// Mint a token for `input` and render it as a cache-suppressed JSON response,
+/// or a cache-suppressed 500 if signing fails.
+fn issue_token(state: &AppState, input: IssueTokenInput<'_>) -> Response {
+    match issue_token_response(&state.store, input) {
+        Ok(token) => cache_suppressed(Json(token).into_response()),
+        Err(err) => {
+            cache_suppressed((StatusCode::INTERNAL_SERVER_ERROR, Json(err)).into_response())
+        }
     }
 }
 
 fn bad_request(error: &str, description: Option<&str>) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        Json(OAuthError::new(error, description)),
+    cache_suppressed(
+        (
+            StatusCode::BAD_REQUEST,
+            Json(OAuthError::new(error, description)),
+        )
+            .into_response(),
     )
-        .into_response()
-}
-
-fn internal_error(context: &str, err: impl std::fmt::Display) -> Response {
-    tracing::error!(error = %err, "{context}");
-    StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }

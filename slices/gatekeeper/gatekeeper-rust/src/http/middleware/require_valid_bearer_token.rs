@@ -1,11 +1,12 @@
 use axum::body::Body;
 use axum::extract::{Extension, Request};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::HeaderMap;
 use axum::middleware::Next;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use std::sync::Arc;
 
 use crate::domain::token::VerifyError;
+use crate::http::responses::{internal_error, unauthorized};
 use crate::http::state::AppState;
 
 use crate::http::middleware::require_auth::{bearer_token, verify_any_token, AuthedClaims};
@@ -24,17 +25,11 @@ pub async fn require_valid_bearer_token(
     };
     let claims = match verify_any_token(&state, &headers, &token) {
         Ok(c) => c,
-        Err(VerifyError::NoSigningKeysConfigured) => return internal_error(),
+        Err(e @ VerifyError::NoSigningKeysConfigured) => {
+            return internal_error("verify_any_token failed", e)
+        }
         Err(_) => return unauthorized(),
     };
     req.extensions_mut().insert(AuthedClaims(Arc::new(claims)));
     next.run(req).await
-}
-
-fn unauthorized() -> Response {
-    (StatusCode::UNAUTHORIZED, "unauthorized").into_response()
-}
-
-fn internal_error() -> Response {
-    (StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error").into_response()
 }

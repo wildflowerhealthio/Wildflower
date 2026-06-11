@@ -135,16 +135,66 @@ describe('makeTauriTransport', () => {
     // Arrange
     const fake = makeFakeApi()
     const transport = await makeTauriTransport({ bridges, api: fake.api })
-    const { handlers, tokens } = makeTokenCapture()
-    await Effect.runPromise(transport.coordinator.register(AuthBridge, handlers))
+    const stale = makeTokenCapture()
+    await Effect.runPromise(transport.coordinator.register(AuthBridge, stale.handlers))
 
-    // Act
-    await Effect.runPromise(transport.coordinator.unregister(AuthBridge, handlers))
+    // Act — unregister, then fire the now-orphaned token at no one.
+    await Effect.runPromise(transport.coordinator.unregister(AuthBridge, stale.handlers))
     fake.fire('bridge:TokenIssued', { _tag: 'TokenIssued', token: 'bearer-orphaned' })
 
-    // Assert
-    await settle()
-    expect(tokens).toEqual([])
+    // Assert — anchor the absence to a presence instead of a fixed settle.
+    // Register a FRESH record on a *different* bridge (Theme, so it can't
+    // recapture Auth's orphaned token), fire a second event on it, and await
+    // *that* delivery. Both events ride the same single-consumer queue and
+    // the orphaned one was offered first, so by the time the Theme delivery
+    // resolves the orphaned Auth dispatch has provably run (and found no
+    // handler). Auth's stale record staying empty therefore means unregister
+    // actually evicted it — not that the pipeline simply hadn't reached the
+    // orphaned event yet.
+    const anchor = makeThemeCapture()
+    await Effect.runPromise(transport.coordinator.register(ThemeBridge, anchor.handlers))
+    fake.fire('bridge:ThemeChanged', { _tag: 'ThemeChanged', theme: 'dark' })
+
+    await anchor.delivery.opened
+    expect(anchor.themes).toEqual(['dark'])
+    expect(stale.tokens).toEqual([])
+  })
+
+  it('should deliver two rapid same-tag events in order even when the first handler suspends', async () => {
+    // Arrange — the first token's handler suspends on a macrotask before
+    // recording; the second's is immediate. Under per-event fibers the
+    // immediate second would overtake the suspended first. The single
+    // consumer queue forbids that: the second program isn't even taken
+    // until the first resolves.
+    const fake = makeFakeApi()
+    const order: Array<string> = []
+    let delivered!: () => void
+    const bothDelivered = new Promise<void>((resolve) => {
+      delivered = resolve
+    })
+    const handlers: MessageHandler.HandlersFor<(typeof AuthBridge)['HostToWeb']> = {
+      TokenIssued: ({ token }) =>
+        Effect.gen(function* () {
+          // First event suspends across a macrotask; the second does not.
+          // A fiber-per-event design would let the second land first.
+          if (token === 'first') yield* Effect.promise(() => settle())
+          order.push(token)
+          if (order.length === 2) delivered()
+        }),
+    }
+    await makeTauriTransport({
+      bridges,
+      initial: { [AuthBridge.name]: handlers },
+      api: fake.api,
+    })
+
+    // Act — fire both back-to-back, same tag, same macrotask.
+    fake.fire('bridge:TokenIssued', { _tag: 'TokenIssued', token: 'first' })
+    fake.fire('bridge:TokenIssued', { _tag: 'TokenIssued', token: 'second' })
+
+    // Assert — FIFO held across the suspension.
+    await bothDelivered
+    expect(order).toEqual(['first', 'second'])
   })
 
   it('should emit outbound messages on their per-tag event', async () => {
@@ -317,6 +367,27 @@ const makeTokenCapture = (): {
       }),
   }
   return { handlers, tokens, delivery: { opened } }
+}
+
+/** A typed Theme handler record that records themes and opens a one-shot delivery gate. */
+const makeThemeCapture = (): {
+  readonly handlers: MessageHandler.HandlersFor<(typeof ThemeBridge)['HostToWeb']>
+  readonly themes: ReadonlyArray<string>
+  readonly delivery: { readonly opened: Promise<void> }
+} => {
+  const themes: Array<string> = []
+  let open!: () => void
+  const opened = new Promise<void>((resolve) => {
+    open = resolve
+  })
+  const handlers: MessageHandler.HandlersFor<(typeof ThemeBridge)['HostToWeb']> = {
+    ThemeChanged: ({ theme }) =>
+      Effect.sync(() => {
+        themes.push(theme)
+        open()
+      }),
+  }
+  return { handlers, themes, delivery: { opened } }
 }
 
 /** One macrotask — long enough for a forked all-sync dispatch fiber to finish. */

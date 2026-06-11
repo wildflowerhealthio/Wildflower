@@ -6,7 +6,7 @@ use crate::db_utils::{JsonColumn, UriColumn};
 /// A previously-approved consent — when the same (client, redirect_uri) pair
 /// re-authorizes, the gatekeeper can skip the consent prompt for any scopes
 /// already in `scopes`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Grant {
     /// Primary key — internal UUID for the grant row.

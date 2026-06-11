@@ -8,8 +8,9 @@ mod authorization_codes;
 mod authorization_requests;
 mod clients;
 mod grants;
-mod local_client_token;
 mod signing_keys;
+#[cfg(test)]
+mod test_support;
 
 pub use crate::db_utils::connection::DbResult;
 pub use crate::db_utils::gatekeeper_store::GatekeeperStore;

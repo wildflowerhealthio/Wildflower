@@ -24,14 +24,13 @@
     "build": "vp pack",
     "check": "vp check",
     "dev": "vp pack --watch",
-    "test": "vp test --passWithNoTests"
+    "test": "vp test"
   },
   "devDependencies": {
     "@tauri-apps/api": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
-    "effect-messaging-react": "workspace:*",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
@@ -40,7 +39,6 @@
   "peerDependencies": {
     "@tauri-apps/api": "catalog:",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
-    "effect-messaging-react": "workspace:*"
+    "effect-messaging-core": "workspace:*"
   }
 }

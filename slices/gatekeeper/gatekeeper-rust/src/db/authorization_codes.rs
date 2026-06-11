@@ -84,3 +84,63 @@ impl GatekeeperStore {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_support::{arb_timestamp, arb_url};
+    use crate::db_utils::{JsonColumn, UriColumn};
+    use proptest::prelude::*;
+
+    fn arb_authorization_code() -> impl Strategy<Value = AuthorizationCode> {
+        (
+            "[a-zA-Z0-9_-]{1,40}",
+            "[a-zA-Z0-9_-]{1,32}",
+            "[a-zA-Z0-9_-]{1,32}",
+            arb_url(),
+            "[A-Za-z0-9_-]{43}",
+            prop::collection::vec("[a-z][a-z0-9_]{0,15}", 0..5),
+            prop::option::of("[a-zA-Z0-9-]{1,32}"),
+            arb_timestamp(),
+            arb_timestamp(),
+        )
+            .prop_map(
+                |(
+                    code,
+                    request_id,
+                    client_id,
+                    redirect_uri,
+                    code_challenge,
+                    granted_scopes,
+                    patient,
+                    issued_at,
+                    expires_at,
+                )| AuthorizationCode {
+                    code,
+                    request_id,
+                    client_id,
+                    redirect_uri: UriColumn(redirect_uri),
+                    code_challenge,
+                    granted_scopes: JsonColumn(granted_scopes),
+                    patient,
+                    issued_at,
+                    expires_at,
+                },
+            )
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(48))]
+
+        #[test]
+        fn issue_and_fetch_round_trip(code in arb_authorization_code()) {
+            let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+            store.issue_authorization_code(&code).expect("issue");
+            let fetched = store
+                .authorization_code_by_request_id(&code.request_id)
+                .expect("query")
+                .expect("row present");
+            prop_assert_eq!(fetched, code);
+        }
+    }
+}

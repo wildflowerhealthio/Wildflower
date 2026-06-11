@@ -1,12 +1,11 @@
-use axum::http::StatusCode;
+use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
-use subtle::ConstantTimeEq;
 use url::Url;
 
-use crate::crypto_util::pkce::sha256_as_hex;
+use crate::crypto_util::client_secret::verify_client_secret;
 use crate::db::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
 use crate::domain::token::{mint_access_token, NewJwtArgs};
@@ -45,6 +44,21 @@ impl OAuthError {
     }
 }
 
+/// RFC 6749 §5.1/§5.2 (inherited by RFC 8628 §3.4/§3.5): every token- and
+/// device-authorization-endpoint response — success or error — must carry
+/// `Cache-Control: no-store` and `Pragma: no-cache` so credentials are never
+/// cached.
+pub fn cache_suppressed(response: Response) -> Response {
+    (
+        [
+            (header::CACHE_CONTROL, "no-store"),
+            (header::PRAGMA, "no-cache"),
+        ],
+        response,
+    )
+        .into_response()
+}
+
 /// Build the URL that closes the authorization-code flow by redirecting the
 /// user-agent back to the client's already-parsed `redirect_uri` with `code`
 /// and `state` appended.
@@ -52,6 +66,21 @@ pub fn build_client_redirect_url(redirect_uri: &Url, code: &str, client_state: &
     let mut url = redirect_uri.clone();
     url.query_pairs_mut()
         .append_pair("code", code)
+        .append_pair("state", client_state);
+    url.to_string()
+}
+
+/// Build the URL that closes the authorization-code flow with a failure by
+/// redirecting the user-agent back to the client's already-parsed
+/// `redirect_uri` with `error` and `state` appended (RFC 6749 §4.1.2.1).
+pub fn build_client_error_redirect_url(
+    redirect_uri: &Url,
+    error: &str,
+    client_state: &str,
+) -> String {
+    let mut url = redirect_uri.clone();
+    url.query_pairs_mut()
+        .append_pair("error", error)
         .append_pair("state", client_state);
     url.to_string()
 }
@@ -78,8 +107,9 @@ impl IntoResponse for ValidateClientError {
     }
 }
 
-/// Look up the client by `client_id` and authenticate it (timing-safe secret
-/// comparison for confidential clients). Returns the loaded `Client` if both
+/// Look up the client by `client_id` and authenticate it. For confidential
+/// clients the presented secret is verified against the stored argon2id PHC
+/// string (constant-time internally). Returns the loaded `Client` if both
 /// checks pass.
 pub fn require_valid_client_for_token(
     store: &GatekeeperStore,
@@ -117,7 +147,11 @@ pub fn require_valid_client_for_token(
             Some("Client secret required"),
         ))
     })?;
-    if !bool::from(sha256_as_hex(presented).as_bytes().ct_eq(stored_hash.as_bytes())) {
+    let secret_matches = verify_client_secret(presented, stored_hash).map_err(|e| {
+        tracing::error!(error = %e, "client secret verification failed");
+        ValidateClientError::Internal(OAuthError::new("server_error", None))
+    })?;
+    if !secret_matches {
         return Err(ValidateClientError::Unauthorized(OAuthError::new(
             "invalid_client",
             Some("Invalid client_secret"),

@@ -15,14 +15,19 @@ pub enum GrantType {
     DeviceCode,
 }
 
+/// Returned when a string doesn't match any [`GrantType`] wire value.
+#[derive(Debug, thiserror::Error)]
+#[error("unknown grant_type {0}")]
+pub struct ParseGrantTypeError(String);
+
 impl FromStr for GrantType {
-    type Err = ();
+    type Err = ParseGrantTypeError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "authorization_code" => Ok(GrantType::AuthorizationCode),
             "device_code" => Ok(GrantType::DeviceCode),
-            _ => Err(()),
+            _ => Err(ParseGrantTypeError(s.to_string())),
         }
     }
 }
@@ -61,8 +66,13 @@ impl From<&RequestStatus> for &'static str {
     }
 }
 
+/// Returned when a string doesn't match any [`RequestStatus`] wire value.
+#[derive(Debug, thiserror::Error)]
+#[error("unknown status {0}")]
+pub struct ParseRequestStatusError(String);
+
 impl FromStr for RequestStatus {
-    type Err = ();
+    type Err = ParseRequestStatusError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -70,7 +80,7 @@ impl FromStr for RequestStatus {
             "approved" => Ok(RequestStatus::Approved),
             "denied" => Ok(RequestStatus::Denied),
             "expired" => Ok(RequestStatus::Expired),
-            _ => Err(()),
+            _ => Err(ParseRequestStatusError(s.to_string())),
         }
     }
 }
@@ -79,7 +89,7 @@ impl FromStr for RequestStatus {
 /// authorization-code and device-code flows from creation through approval,
 /// denial, or expiry. The optional fields are populated only for the flow
 /// they apply to (e.g. `code_challenge` for auth-code, `user_code` for device).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthorizationRequest {
     /// Primary key — the device-flow `device_code` for that flow, otherwise an internal UUID.
     pub id: String,

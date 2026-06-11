@@ -118,3 +118,49 @@ impl GatekeeperStore {
         Ok(affected > 0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
+    use crate::db_utils::{JsonColumn, UriColumn};
+    use proptest::prelude::*;
+
+    fn arb_grant() -> impl Strategy<Value = Grant> {
+        (
+            "[a-zA-Z0-9_-]{1,32}",
+            "[a-zA-Z0-9_-]{1,32}",
+            prop::collection::vec("[a-z][a-z0-9_]{0,15}", 0..5),
+            arb_url(),
+            arb_timestamp(),
+            arb_opt_timestamp(),
+            prop::option::of("[a-zA-Z0-9-]{1,32}"),
+        )
+            .prop_map(
+                |(id, client_id, scopes, redirect_uri, granted_at, last_used_at, patient)| Grant {
+                    id,
+                    client_id,
+                    scopes: JsonColumn(scopes),
+                    redirect_uri: UriColumn(redirect_uri),
+                    granted_at,
+                    last_used_at,
+                    patient,
+                },
+            )
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(48))]
+
+        #[test]
+        fn create_and_fetch_round_trip(grant in arb_grant()) {
+            let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+            store.create_grant(&grant).expect("create");
+            let fetched = store
+                .grant_by_id(&grant.id)
+                .expect("query")
+                .expect("row present");
+            prop_assert_eq!(fetched, grant);
+        }
+    }
+}

@@ -1,12 +1,12 @@
 use axum::body::Body;
 use axum::extract::{Extension, Request};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::HeaderMap;
 use axum::middleware::Next;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use std::sync::Arc;
 
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
-use crate::http::origin::origin_for;
+use crate::http::responses::{internal_error, unauthorized};
 use crate::http::state::AppState;
 use crate::OWNER_SCOPE;
 
@@ -25,7 +25,9 @@ pub async fn require_owner_auth(
     };
     let claims = match verify_owner_token(&state, &headers, &token) {
         Ok(c) => c,
-        Err(VerifyError::NoSigningKeysConfigured) => return internal_error(),
+        Err(e @ VerifyError::NoSigningKeysConfigured) => {
+            return internal_error("verify_owner_token failed", e)
+        }
         Err(_) => return unauthorized(),
     };
     req.extensions_mut().insert(AuthedClaims(Arc::new(claims)));
@@ -34,9 +36,14 @@ pub async fn require_owner_auth(
 
 pub fn bearer_token(headers: &HeaderMap) -> Option<String> {
     let value = headers.get("authorization")?.to_str().ok()?;
-    let lower = value.to_ascii_lowercase();
     let prefix = "bearer ";
-    if !lower.starts_with(prefix) {
+    // Case-insensitive prefix check against just the scheme bytes — avoids
+    // lowercasing (and reallocating) the whole header, which carries the
+    // full JWT.
+    if !value
+        .get(..prefix.len())
+        .is_some_and(|p| p.eq_ignore_ascii_case(prefix))
+    {
         return None;
     }
     Some(value[prefix.len()..].trim().to_string())
@@ -48,43 +55,43 @@ pub fn verify_owner_token(
     token: &str,
 ) -> Result<VerifiedClaims, VerifyError> {
     let claims = verify_any_token(state, headers, token)?;
-    let scopes = claims
+    let has_owner_scope = claims
         .scope
         .as_deref()
         .unwrap_or("")
         .split_whitespace()
-        .collect::<Vec<_>>();
-    if !scopes.contains(&OWNER_SCOPE) {
+        .any(|s| s == OWNER_SCOPE);
+    if !has_owner_scope {
         return Err(VerifyError::TokenRejected);
     }
     Ok(claims)
 }
 
+// `_headers` is now vestigial: the issuer/audience is pinned to the
+// configured origin in `AppState`, not derived from the request. The
+// parameter is retained only because the sibling
+// `require_valid_bearer_token` middleware (outside this change's file
+// boundary) still calls `verify_any_token(&state, &headers, &token)`;
+// drop it together when that file is in scope.
 pub fn verify_any_token(
     state: &AppState,
-    headers: &HeaderMap,
+    _headers: &HeaderMap,
     token: &str,
 ) -> Result<VerifiedClaims, VerifyError> {
     let keys = state
         .store
         .all_signing_keys()
         .map_err(|_| VerifyError::SigningKeyUnreadable)?;
-    let origin = origin_for(headers);
-    let accepted = vec![format!("{origin}/fhir-r4"), origin.clone()];
+    // Pinned at boot, not derived from the request's `Host` header — see
+    // [`crate::setup_gatekeeper`].
+    let origin = &state.origin;
+    let accepted = vec![format!("{origin}/fhir-r4"), origin.to_string()];
     verify_jwt(
         token,
         &keys,
         VerifyOptions {
-            expected_issuer: &origin,
+            expected_issuer: origin,
             accepted_audiences: &accepted,
         },
     )
-}
-
-fn unauthorized() -> Response {
-    (StatusCode::UNAUTHORIZED, "unauthorized").into_response()
-}
-
-fn internal_error() -> Response {
-    (StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error").into_response()
 }

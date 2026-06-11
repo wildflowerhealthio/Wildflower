@@ -180,6 +180,8 @@ mod tests {
         validation.validate_aud = false;
         let decoded =
             jsonwebtoken::decode::<serde_json::Value>(&token, &dec, &validation).expect("decode");
-        assert_eq!(decoded.claims["sub"], "alice");
+        // Assert the whole round trip in one line so every claim is checked,
+        // not just `sub`.
+        assert_eq!(decoded.claims, claims);
     }
 }

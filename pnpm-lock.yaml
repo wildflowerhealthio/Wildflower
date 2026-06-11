@@ -1164,9 +1164,6 @@ importers:
       effect-messaging-core:
         specifier: workspace:*
         version: link:../effect-messaging-core
-      effect-messaging-react:
-        specifier: workspace:*
-        version: link:../effect-messaging-react
       fast-check:
         specifier: 'catalog:'
         version: 3.23.1

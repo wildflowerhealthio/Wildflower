@@ -6,7 +6,7 @@ use crate::db_utils::{JsonColumn, UriColumn};
 /// redeemed at `/token` (RFC 6749 §4.1.2). The PKCE `code_challenge` is
 /// stashed here so the redeemer can prove possession of the matching
 /// verifier.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthorizationCode {
     /// Opaque single-use token the client presents at `/token` to redeem.
     pub code: String,

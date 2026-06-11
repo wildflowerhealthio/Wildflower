@@ -4,6 +4,8 @@
 //! rules) lives in [`crate::domain::token`]. Constant-time comparison is
 //! delegated to the `subtle` crate at call sites.
 
+pub mod client_secret;
 pub mod oauth_user_code;
 pub mod pkce;
 pub mod public_jwk;
+pub mod random_token;

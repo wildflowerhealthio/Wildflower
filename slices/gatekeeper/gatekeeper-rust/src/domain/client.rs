@@ -23,20 +23,25 @@ impl From<&ClientKind> for &'static str {
     }
 }
 
+/// Returned when a string doesn't match any [`ClientKind`] wire value.
+#[derive(Debug, thiserror::Error)]
+#[error("unknown client kind {0}")]
+pub struct ParseClientKindError(String);
+
 impl FromStr for ClientKind {
-    type Err = ();
+    type Err = ParseClientKindError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "public" => Ok(ClientKind::Public),
             "confidential" => Ok(ClientKind::Confidential),
-            _ => Err(()),
+            _ => Err(ParseClientKindError(s.to_string())),
         }
     }
 }
 
 /// A registered OAuth client — the identity and policy bundle that `/authorize` and `/token` look up by `client_id`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Client {
     /// Primary key — the public client identifier the client supplies on every request.
     pub client_id: String,
@@ -48,7 +53,7 @@ pub struct Client {
     pub redirect_uris: JsonColumn<Vec<Url>>,
     /// Scopes the client is permitted to request; any scope outside this set is rejected.
     pub allowed_scopes: JsonColumn<Vec<String>>,
-    /// SHA-256 hex of the client secret for `Confidential` clients; `None` for `Public`.
+    /// argon2id PHC string of the client secret for `Confidential` clients; `None` for `Public`.
     pub secret_hash: Option<String>,
     /// When the client was registered.
     pub registered_at: DateTime<Utc>,

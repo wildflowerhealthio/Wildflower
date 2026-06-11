@@ -1,11 +1,34 @@
 pub mod bridge;
 pub mod config;
+// NOTE: the modules below are NOT part of the host contract — the only
+// external consumer (the Tauri host) imports the curated crate-root
+// re-exports plus `bridge`. They would ideally all be `pub(crate)`, but a
+// web of module-level intra-doc links keeps most of them public:
+//
+//   * `crypto_util` (pub): tests/integration.rs reaches into
+//     `crypto_util::oauth_user_code::is_valid_oauth_user_code`, and its
+//     doc links to `[crate::domain::token]`.
+//   * `domain` (pub): its doc links to `[crate::db]` and `[crate::http]`.
+//   * `db` / `db_utils` (pub): their docs link to each other and to
+//     `[crate::domain]`.
+//
+// Making any link *target* `pub(crate)` while a `pub` module's doc links
+// into it turns rustdoc's `private_intra_doc_links` warning on (and fails
+// `cargo doc -D warnings`). Narrowing these further means rephrasing those
+// doc links in crypto_util/mod.rs, domain/mod.rs, db/mod.rs and
+// db_utils/gatekeeper_store.rs — all outside this change's file boundary.
+//   * `http` (pub): `domain`'s doc links to `[crate::http]`.
+//
+// Flagged for the orchestrator. `seeding` carries no inbound pub doc
+// links, so it is the one module narrowed here.
 pub mod crypto_util;
 pub mod db;
 pub mod db_utils;
 pub mod domain;
 pub mod http;
-pub mod seeding;
+pub(crate) mod seeding;
+
+use std::sync::Arc;
 
 use anyhow::Context;
 use chrono::Duration;
@@ -13,7 +36,7 @@ use tokio::sync::watch;
 
 pub use config::GatekeeperConfig;
 pub use db::GatekeeperStore;
-pub use http::{layer_router_with_gatekeeper_auth_gating, AppState};
+pub use http::{layer_router_with_gatekeeper_auth_gating, AppState, AuthedClaims};
 
 /// `client_id` of the host application's first-party OAuth client. The host
 /// uses this identity to mint Owner tokens for itself and to recognise its
@@ -29,9 +52,7 @@ const HOST_OWNER_TOKEN_TTL: Duration = Duration::hours(24);
 
 /// Result of `setup_gatekeeper`: the public router that should be merged
 /// into the app's root router and the shared `AppState` needed to gate
-/// emr-rust traffic. The host owner token is published to the caller's
-/// `watch::Sender` rather than returned, so the token never sits in a
-/// field the caller might forward by accident.
+/// emr-rust traffic.
 pub struct Gatekeeper {
     pub router: axum::Router,
     pub state: AppState,
@@ -49,8 +70,12 @@ pub struct Gatekeeper {
 ///  - returns the `AppState` the caller passes to
 ///    [`layer_router_with_gatekeeper_auth_gating`] to wrap emr-rust.
 ///
-/// `origin` must match the issuer/audience the verifier derives from the
-/// `Host:` header on loopback requests, e.g. `http://127.0.0.1:<port>`.
+/// `origin` is pinned into the returned `AppState` and used as the JWT
+/// `iss`/`aud` at mint and the expected issuer/audience at verify, e.g.
+/// `http://127.0.0.1:<port>`. It is deliberately *not* re-derived per
+/// request from `Host`/`x-forwarded-host` headers — those are
+/// attacker-controllable, which would make the issuer/audience check
+/// self-referential and worthless.
 ///
 /// The whole surface is gated by the loopback middleware — non-loopback
 /// peers receive 403 before any handler runs.
@@ -68,6 +93,7 @@ pub fn setup_gatekeeper(
         .context("token channel receiver dropped before host owner token issuance")?;
     let state = AppState {
         store: store.clone(),
+        origin: Arc::from(origin),
     };
     let router = http::router(state.clone());
     Ok(Gatekeeper { router, state })

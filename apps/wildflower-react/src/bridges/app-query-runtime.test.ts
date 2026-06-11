@@ -30,6 +30,23 @@ describe('prependApiBaseUrl', () => {
     expect(seenUrls).toEqual(['http://127.0.0.1:8080/apps'])
   })
 
+  test('leaves an already-absolute request URL unprefixed', async () => {
+    // Arrange
+    const seenUrls: string[] = []
+    const innerClient = capturingClientLayer(seenUrls)
+
+    // Act
+    await Effect.flatMap(HttpClient.HttpClient, (client) =>
+      client.get('https://example.test/apps')
+    ).pipe(
+      Effect.provide(prependApiBaseUrl(innerClient, 'http://127.0.0.1:8080')),
+      Effect.runPromise
+    )
+
+    // Assert — the base URL is not glued onto the absolute URL
+    expect(seenUrls).toEqual(['https://example.test/apps'])
+  })
+
   test('hands back the inner client response unchanged', async () => {
     // Arrange
     const innerClient = capturingClientLayer([])

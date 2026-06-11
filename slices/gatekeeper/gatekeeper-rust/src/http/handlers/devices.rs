@@ -1,32 +1,30 @@
 use axum::extract::{Extension, Path};
-use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
+use crate::http::responses::{internal_error, not_found};
 use crate::http::state::AppState;
 
 /// Body returned to the Owner UI when it loads a pending device-code consent
 /// prompt — describes the requesting client and its requested scopes.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceConsent {
-    #[serde(rename = "userCode")]
     pub user_code: String,
-    #[serde(rename = "clientId")]
     pub client_id: String,
-    #[serde(rename = "clientName")]
     pub client_name: String,
-    #[serde(rename = "requestedScopes")]
     pub requested_scopes: Vec<String>,
 }
 
 /// Body posted by the Owner UI to approve a device-code consent prompt.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApproveBody {
-    #[serde(rename = "approvedScopes")]
     pub approved_scopes: Vec<String>,
 }
 
@@ -36,13 +34,6 @@ pub struct ApproveBody {
 pub enum ConsentResult {
     Approved,
     Denied,
-}
-
-#[derive(Debug, Serialize)]
-struct NotFound {
-    error: &'static str,
-    #[serde(rename = "userCode")]
-    user_code: String,
 }
 
 pub fn router() -> Router {
@@ -132,32 +123,21 @@ fn load_pending_device_request(
     state: &AppState,
     user_code: &str,
 ) -> Result<AuthorizationRequest, Box<Response>> {
-    match state.store.authorization_request_by_user_code(user_code) {
+    match state
+        .store
+        .pending_authorization_request_by_user_code(user_code)
+    {
         Ok(Some(r))
-            if r.grant_type == GrantType::DeviceCode && r.status == RequestStatus::Pending =>
+            if r.grant_type == GrantType::DeviceCode
+                && r.status == RequestStatus::Pending
+                && r.expires_at > Utc::now() =>
         {
             Ok(r)
         }
-        Ok(_) => Err(Box::new(not_found(user_code))),
+        Ok(_) => Err(Box::new(not_found("DeviceConsentNotFound", "userCode", user_code))),
         Err(e) => Err(Box::new(internal_error(
-            "authorization_request_by_user_code lookup failed",
+            "pending_authorization_request_by_user_code lookup failed",
             e,
         ))),
     }
-}
-
-fn not_found(user_code: &str) -> Response {
-    (
-        StatusCode::NOT_FOUND,
-        Json(NotFound {
-            error: "DeviceConsentNotFound",
-            user_code: user_code.to_string(),
-        }),
-    )
-        .into_response()
-}
-
-fn internal_error(context: &str, err: impl std::fmt::Display) -> Response {
-    tracing::error!(error = %err, "{context}");
-    StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }

@@ -1,9 +1,15 @@
 import { emit, listen } from '@tauri-apps/api/event'
 import type { ParseResult } from 'effect'
-import { Cause, Effect, Schema } from 'effect'
-import type { Bridge, BridgeTransport, Message, MessageHandler } from 'effect-messaging-core'
+import { Cause, Effect, Queue, Schema, Stream } from 'effect'
+import type {
+  Bridge,
+  BridgeHandlerRecord,
+  BridgeTransport,
+  HandlerCoordinator,
+  Message,
+  MessageHandler,
+} from 'effect-messaging-core'
 import { HandlerHelpers } from 'effect-messaging-core'
-import type { BridgeHandlerRecord, HandlerCoordinator } from 'effect-messaging-react'
 
 import { eventNameForTag, READY_EVENT, READY_TAG } from './event-names.ts'
 
@@ -113,7 +119,11 @@ const assertUniqueTags = (bridges: ReadonlyArray<Bridge.AnyBridge>): void => {
  * bridge schemas stay the wire authority even though no JSON string
  * crosses this transport) and routed to the bridge's *current* handler
  * record. Undecodable payloads and handler defects are logged and
- * dropped; the next event dispatches normally.
+ * dropped; the next event dispatches normally. Every inbound event is
+ * funnelled through one unbounded queue drained by a single fiber (as in
+ * core's `makeInboundDispatcher`), so same-tag events apply in arrival
+ * order even when a handler suspends — no per-event fiber can overtake an
+ * earlier one.
  *
  * Readiness: once **all** listeners have attached, `bridge:__Ready` is
  * emitted — only then may the host respond, so its first message (e.g.
@@ -199,12 +209,28 @@ const makeTauriTransport = async <const Bridges extends ReadonlyArray<Bridge.Any
       )
   }
 
+  // Single-consumer inbox, mirroring the core transport's inbound
+  // dispatcher (`makeInboundDispatcher`): every Tauri event offers its
+  // already-bound dispatch program onto one unbounded queue, drained by a
+  // single forked fiber. Forking a fiber *per event* would let an async
+  // handler on an earlier event be overtaken by a later event's fiber, so
+  // two rapid pushes on the same tag could apply out of order; funnelling
+  // through one consumer pins FIFO across handler suspensions, matching the
+  // postMessage transports. Each queued program carries its own
+  // error/defect handling (see `dispatchFor`), so a bad message never
+  // takes the consumer down.
+  const inbox = Queue.unbounded<Effect.Effect<void>>().pipe(Effect.runSync)
+  Effect.runFork(Stream.runForEach(Stream.fromQueue(inbox), (program) => program))
+
   await Promise.all(
     config.bridges.flatMap((bridge) =>
       Object.entries(bridge.HostToWeb).map(([tag, schema]) => {
         const dispatch = dispatchFor(bridge.name, tag, schema)
         return api.listen(eventNameForTag(tag), (event) => {
-          Effect.runFork(dispatch(event.payload))
+          // Synchronous, order-preserving handoff: the listener fires on
+          // the JS event loop, so unsafe-offering in call order is what
+          // makes the single consumer FIFO.
+          inbox.unsafeOffer(dispatch(event.payload))
         })
       })
     )

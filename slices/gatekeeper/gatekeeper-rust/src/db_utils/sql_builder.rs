@@ -1,5 +1,3 @@
-use std::fmt::Write;
-
 use rusqlite::ToSql;
 
 /// Build an `INSERT INTO {table} (cols) VALUES (placeholders)` statement
@@ -7,8 +5,7 @@ use rusqlite::ToSql;
 /// `make_named_sql_params` returns — keeps the column list and the named
 /// placeholders from drifting.
 pub(crate) fn build_insert_sql(table: &str, params: &[(&str, &dyn ToSql)]) -> String {
-    let mut sql = String::with_capacity(64 + table.len() + params.len() * 32);
-    write!(sql, "INSERT INTO {table} (").unwrap();
+    let mut sql = format!("INSERT INTO {table} (");
     for (i, (placeholder, _)) in params.iter().enumerate() {
         if i > 0 {
             sql.push_str(", ");

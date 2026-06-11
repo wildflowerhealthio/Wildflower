@@ -1,11 +1,30 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite-plus'
 
 const host = process.env.TAURI_DEV_HOST
 
+// SINGLE SOURCE OF TRUTH: `api-origin.json` pins the loopback host/port the
+// embedded API server binds to. The Rust side reads the same file in
+// `src-tauri/build.rs`; injecting `__API_ORIGIN__` here lets `src/main.tsx`
+// derive `apiBaseUrl` from it instead of hardcoding the origin, so the two
+// languages can't drift. Read at config-eval time (Node), baked in as a
+// compile-time constant by Vite's `define`.
+const apiOriginPath = fileURLToPath(new URL('./api-origin.json', import.meta.url))
+const apiOrigin: { host: string; port: number } = JSON.parse(readFileSync(apiOriginPath, 'utf8'))
+const apiBaseUrl = `http://${apiOrigin.host}:${apiOrigin.port}`
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+
+  // Bake the shared loopback origin in at build time so `src/main.tsx`
+  // reads `__API_ORIGIN__` rather than hardcoding it. Kept in sync with the
+  // Rust binding via `api-origin.json` (see above).
+  define: {
+    __API_ORIGIN__: JSON.stringify(apiBaseUrl),
+  },
 
   // Match the rest of the monorepo (`vite.config.base.ts`): resolve
   // workspace imports through each package's `source` export so this app

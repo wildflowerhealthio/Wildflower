@@ -56,7 +56,6 @@ mod tests {
             "authorization_requests",
             "clients",
             "grants",
-            "local_client_tokens",
             "signing_keys",
         ] {
             assert!(names.iter().any(|n| n == expected), "missing {expected}");

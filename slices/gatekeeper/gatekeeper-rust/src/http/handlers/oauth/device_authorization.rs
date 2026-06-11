@@ -1,20 +1,20 @@
 use anyhow::{anyhow, Context};
 use axum::extract::Extension;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use uuid::Uuid;
 
-use super::shared::{OAuthError, DEVICE_CODE_POLL_INTERVAL};
-use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
-use crate::domain::authorization_request::{
-    AuthorizationRequest, RequestStatus, StartDeviceAuthorizationArgs,
+use super::shared::{
+    cache_suppressed, require_valid_client_for_token, OAuthError, DEVICE_CODE_POLL_INTERVAL,
 };
-use crate::http::origin::origin_for;
+use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
+use crate::crypto_util::random_token::generate_authorization_code;
+use crate::domain::authorization_request::{AuthorizationRequest, StartDeviceAuthorizationArgs};
 use crate::http::page_paths;
+use crate::http::responses::internal_error;
 use crate::http::state::AppState;
 
 /// Lifetime of a device-flow authorization request — the user has this long
@@ -29,6 +29,9 @@ const MAX_USER_CODE_GENERATION_ATTEMPTS: usize = 10;
 #[derive(Debug, Deserialize)]
 pub struct DeviceAuthorizationPayload {
     pub client_id: String,
+    /// Confidential-client secret. RFC 8628 §3.1 requires that RFC 6749 §3.2.1
+    /// client authentication apply here; public clients omit it.
+    pub client_secret: Option<String>,
     pub scope: Option<String>,
 }
 
@@ -47,7 +50,6 @@ pub struct DeviceAuthorizationResponse {
 /// pair for the client to poll on while the user pairs the device.
 pub async fn handle_device_authorization_request(
     Extension(state): Extension<AppState>,
-    headers: HeaderMap,
     body: String,
 ) -> Response {
     let payload: DeviceAuthorizationPayload = match serde_urlencoded::from_str(&body) {
@@ -60,7 +62,7 @@ pub async fn handle_device_authorization_request(
             )
         }
     };
-    let origin = origin_for(&headers);
+    let origin = state.origin.as_ref();
     let requested_scopes: Vec<String> = payload
         .scope
         .as_deref()
@@ -68,16 +70,16 @@ pub async fn handle_device_authorization_request(
         .split_whitespace()
         .map(str::to_string)
         .collect();
-    let client = match state.store.client_by_id(&payload.client_id) {
-        Ok(Some(c)) if c.disabled_at.is_none() => c,
-        Ok(_) => {
-            return oauth_error(
-                StatusCode::UNAUTHORIZED,
-                "invalid_client",
-                "Unknown or disabled client_id",
-            )
-        }
-        Err(e) => return internal_error("client_by_id lookup failed", e),
+    // RFC 8628 §3.1: authenticate confidential clients exactly as the token
+    // endpoint does (timing-safe secret check); public clients pass through
+    // without a secret.
+    let client = match require_valid_client_for_token(
+        &state.store,
+        &payload.client_id,
+        payload.client_secret.as_deref(),
+    ) {
+        Ok(c) => c,
+        Err(err) => return cache_suppressed(err.into_response()),
     };
     let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
     if !requested_scopes
@@ -90,10 +92,12 @@ pub async fn handle_device_authorization_request(
             "Scope not allowed for client",
         );
     }
-    let device_code = Uuid::new_v4().to_string();
+    // 256-bit CSPRNG opaque token per RFC 6749 §10.10, consistent with the
+    // authorization_code minting in `authorize.rs`.
+    let device_code = generate_authorization_code();
     let user_code = match generate_unique_user_code(&state) {
         Ok(c) => c,
-        Err(e) => return internal_error("user_code generation failed", e),
+        Err(e) => return cache_suppressed(internal_error("user_code generation failed", e)),
     };
     let request = AuthorizationRequest::new_device_authorization(StartDeviceAuthorizationArgs {
         id: device_code.clone(),
@@ -103,22 +107,29 @@ pub async fn handle_device_authorization_request(
         ttl: DEVICE_AUTHORIZATION_TTL,
     });
     if let Err(e) = state.store.insert_authorization_request(&request) {
-        return internal_error("insert_authorization_request failed", e);
+        return cache_suppressed(internal_error("insert_authorization_request failed", e));
     }
-    Json(DeviceAuthorizationResponse {
-        device_code,
-        user_code: user_code.clone(),
-        verification_uri: page_paths::device_entry_url(&origin),
-        verification_uri_complete: page_paths::device_entry_url_with_code(&origin, &user_code),
-        expires_in: DEVICE_AUTHORIZATION_TTL.num_seconds(),
-        interval: DEVICE_CODE_POLL_INTERVAL.num_seconds(),
-    })
-    .into_response()
+    cache_suppressed(
+        Json(DeviceAuthorizationResponse {
+            device_code,
+            user_code: user_code.clone(),
+            verification_uri: page_paths::device_entry_url(origin),
+            verification_uri_complete: page_paths::device_entry_url_with_code(origin, &user_code),
+            expires_in: DEVICE_AUTHORIZATION_TTL.num_seconds(),
+            interval: DEVICE_CODE_POLL_INTERVAL.num_seconds(),
+        })
+        .into_response(),
+    )
 }
 
 /// Try up to `MAX_USER_CODE_GENERATION_ATTEMPTS` random user codes until one
-/// doesn't collide with an existing pending request. Returns an error that
-/// preserves cause information for logging.
+/// collides with *no* existing request. Returns an error that preserves cause
+/// information for logging.
+///
+/// Any existing row — pending or terminal — counts as a collision: reusing a
+/// `user_code` already attached to a denied/expired row lets that stale row
+/// shadow the new pending request at the consent-side lookup (`user_code` is
+/// not unique once reused), so we regenerate instead.
 fn generate_unique_user_code(state: &AppState) -> anyhow::Result<String> {
     for _ in 0..MAX_USER_CODE_GENERATION_ATTEMPTS {
         let candidate = {
@@ -131,7 +142,6 @@ fn generate_unique_user_code(state: &AppState) -> anyhow::Result<String> {
             .context("authorization_request_by_user_code lookup failed")?
         {
             None => return Ok(candidate),
-            Some(existing) if existing.status != RequestStatus::Pending => return Ok(candidate),
             Some(_) => continue,
         }
     }
@@ -141,10 +151,5 @@ fn generate_unique_user_code(state: &AppState) -> anyhow::Result<String> {
 }
 
 fn oauth_error(status: StatusCode, error: &str, description: &str) -> Response {
-    (status, Json(OAuthError::new(error, Some(description)))).into_response()
-}
-
-fn internal_error(context: &str, err: impl std::fmt::Display) -> Response {
-    tracing::error!(error = %err, "{context}");
-    StatusCode::INTERNAL_SERVER_ERROR.into_response()
+    cache_suppressed((status, Json(OAuthError::new(error, Some(description)))).into_response())
 }

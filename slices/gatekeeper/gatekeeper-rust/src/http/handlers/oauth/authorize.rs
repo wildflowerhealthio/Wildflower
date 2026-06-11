@@ -1,5 +1,5 @@
 use axum::extract::{Extension, Query};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use chrono::{Duration, Utc};
 use serde::Deserialize;
@@ -8,13 +8,40 @@ use url::Url;
 use uuid::Uuid;
 
 use super::shared::build_client_redirect_url;
+use crate::crypto_util::random_token::generate_authorization_code;
+use crate::db_utils::{JsonColumn, UriColumn};
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
 use crate::http::error_pages::{oauth_error_html, OAuthErrorKind};
-use crate::http::origin::origin_for;
 use crate::http::page_paths;
+use crate::http::responses::internal_error;
 use crate::http::state::AppState;
-use crate::db_utils::{JsonColumn, UriColumn};
+
+/// A `code_challenge` for the S256 method is the base64url SHA-256 digest:
+/// exactly 43 unpadded base64url characters (RFC 7636 §4.2).
+const S256_CODE_CHALLENGE_LEN: usize = 43;
+
+/// True when `s` is a syntactically valid S256 `code_challenge`: exactly 43
+/// base64url characters (`[A-Za-z0-9-_]`, no padding) per RFC 7636 §4.2/§4.3.
+/// RFC 7636's ABNF also lists `.` and `~`, but the SHA-256/base64url form the
+/// only supported method (S256) produces never contains them.
+fn is_valid_s256_code_challenge(s: &str) -> bool {
+    s.len() == S256_CODE_CHALLENGE_LEN
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// Redirect a spec'd post-validation error back to the *validated*
+/// `redirect_uri` with `error` and `state` query params (RFC 6749 §4.1.2.1).
+/// Only callable once `redirect_uri` and `client_id` have been validated —
+/// errors before that point must render a local page instead.
+fn redirect_oauth_error(redirect_uri: &Url, error: &str, client_state: &str) -> Response {
+    let mut url = redirect_uri.clone();
+    url.query_pairs_mut()
+        .append_pair("error", error)
+        .append_pair("state", client_state);
+    Redirect::to(url.as_str()).into_response()
+}
 
 /// Lifetime of an authorization_code from issuance to the client redeeming it
 /// at `/token` (RFC 6749 §4.1.2 — "MUST be short lived").
@@ -65,67 +92,74 @@ pub struct AuthorizeParams {
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
 pub async fn handle_authorize_request(
     Extension(state): Extension<AppState>,
-    headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Response {
-    let origin = origin_for(&headers);
+    let origin = state.origin.as_ref();
 
-    // Signing keys must exist — we have no token-mint capability otherwise.
-    let signing_keys = match state.store.all_signing_keys() {
-        Ok(k) => k,
-        Err(e) => return internal_error("all_signing_keys lookup failed", e),
-    };
-    if signing_keys.is_empty() {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    // An active signing key must exist — without it we have no token-mint
+    // capability. Probe presence directly rather than loading every key's
+    // private material just to test emptiness; the mint path fetches
+    // `active_signing_key()` anyway.
+    match state.store.active_signing_key() {
+        Ok(Some(_)) => {}
+        Ok(None) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        Err(e) => return internal_error("active_signing_key lookup failed", e),
     }
 
-    // Only the authorization-code grant is implemented (RFC 6749 §4.1.1
-    // makes response_type REQUIRED; `code` is its only supported value).
-    if params.response_type != "code" {
-        return html_bad_request(oauth_error_html(
-            OAuthErrorKind::UnsupportedResponseType,
-            Some(&params.response_type),
-        ));
-    }
-
-    if params.code_challenge_method != "S256" {
-        return html_bad_request(oauth_error_html(
-            OAuthErrorKind::UnsupportedCodeChallenge,
-            Some(&params.code_challenge_method),
-        ));
-    }
+    // ---- Local-page validations (RFC 6749 §4.1.2.1): only redirect_uri and
+    // client_id failures may NOT be redirected back to the client, so they
+    // render a local HTML page. These run first so that everything after has
+    // a trusted redirect target. ----
 
     // redirect_uri must be a well-formed http/https URL.
     let parsed_redirect = match Url::parse(&params.redirect_uri) {
         Ok(u) => u,
-        Err(_) => {
-            return html_bad_request(oauth_error_html(OAuthErrorKind::InvalidRedirectUri, None))
-        }
+        Err(_) => return html_bad_request(oauth_error_html(OAuthErrorKind::InvalidRedirectUri)),
     };
     if parsed_redirect.scheme() != "http" && parsed_redirect.scheme() != "https" {
-        return html_bad_request(oauth_error_html(OAuthErrorKind::InvalidScheme, None));
+        return html_bad_request(oauth_error_html(OAuthErrorKind::InvalidScheme));
     }
 
     // Client must exist and be enabled.
     let client = match state.store.client_by_id(&params.client_id) {
         Ok(Some(c)) => c,
-        Ok(None) => return html_bad_request(oauth_error_html(OAuthErrorKind::UnknownClient, None)),
+        Ok(None) => return html_bad_request(oauth_error_html(OAuthErrorKind::UnknownClient)),
         Err(e) => return internal_error("client_by_id lookup failed", e),
     };
     if client.disabled_at.is_some() {
-        return html_bad_request(oauth_error_html(OAuthErrorKind::DisabledClient, None));
+        return html_bad_request(oauth_error_html(OAuthErrorKind::DisabledClient));
     }
 
     // redirect_uri must be on the client's allowlist (exact match against the
     // already-parsed `Url` — both sides go through the same normalizer).
     if !client.redirect_uris.iter().any(|u| u == &parsed_redirect) {
-        return html_bad_request(oauth_error_html(
-            OAuthErrorKind::RedirectUriNotAllowed,
-            None,
-        ));
+        return html_bad_request(oauth_error_html(OAuthErrorKind::RedirectUriNotAllowed));
     }
 
-    // Requested scope must be a subset of the client's allowed scopes.
+    // ---- Redirectable validations: `redirect_uri` + `client_id` are now
+    // validated, so spec'd errors past this point go back to the client per
+    // RFC 6749 §4.1.2.1 with `error` + `state`. ----
+
+    // Only the authorization-code grant is implemented; any other value is
+    // `unsupported_response_type` (RFC 6749 §4.1.1 makes the parameter
+    // REQUIRED, §4.1.2.1 names the error code).
+    if params.response_type != "code" {
+        return redirect_oauth_error(&parsed_redirect, "unsupported_response_type", &params.state);
+    }
+
+    // Only S256 PKCE is supported. An unsupported `code_challenge_method` is
+    // `invalid_request` (RFC 7636 §4.4.1).
+    if params.code_challenge_method != "S256" {
+        return redirect_oauth_error(&parsed_redirect, "invalid_request", &params.state);
+    }
+    // The `code_challenge` must be a well-formed S256 challenge (RFC 7636
+    // §4.3); a malformed one is `invalid_request` (RFC 7636 §4.4.1).
+    if !is_valid_s256_code_challenge(&params.code_challenge) {
+        return redirect_oauth_error(&parsed_redirect, "invalid_request", &params.state);
+    }
+
+    // Requested scope must be a subset of the client's allowed scopes;
+    // otherwise `invalid_scope` (RFC 6749 §4.1.2.1).
     let requested_scopes: Vec<String> = params
         .scope
         .split_whitespace()
@@ -136,7 +170,7 @@ pub async fn handle_authorize_request(
         .iter()
         .all(|s| allowed.contains(s.as_str()))
     {
-        return html_bad_request(oauth_error_html(OAuthErrorKind::ScopeNotAllowed, None));
+        return redirect_oauth_error(&parsed_redirect, "invalid_scope", &params.state);
     }
 
     // Check for an existing grant that pre-approves some or all scopes for
@@ -189,7 +223,7 @@ pub async fn handle_authorize_request(
     // Fully-pre-approved fast path: skip the Owner UI and 302 the user-agent
     // straight back to the client with a fresh code.
     if all_scopes_pre_approved {
-        let code = Uuid::new_v4().to_string();
+        let code = generate_authorization_code();
         let issued_at = Utc::now();
         let authorization_code = AuthorizationCode {
             code: code.clone(),
@@ -217,7 +251,7 @@ pub async fn handle_authorize_request(
     }
 
     // Otherwise redirect to the Owner UI's polling page so a human can approve.
-    let polling_url = page_paths::oauth_polling_url(&origin, &request_id);
+    let polling_url = page_paths::oauth_polling_url(origin, &request_id);
     Redirect::to(&polling_url).into_response()
 }
 
@@ -228,9 +262,4 @@ fn html_bad_request(html: String) -> Response {
         html,
     )
         .into_response()
-}
-
-fn internal_error(context: &str, err: impl std::fmt::Display) -> Response {
-    tracing::error!(error = %err, "{context}");
-    StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }

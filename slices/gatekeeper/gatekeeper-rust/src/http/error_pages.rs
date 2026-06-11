@@ -1,32 +1,19 @@
+//! Local HTML error pages for `/oauth/authorize` failures that may NOT be
+//! redirected back to the client. RFC 6749 §4.1.2.1 restricts these to
+//! `redirect_uri`/`client_id` validation failures — every other spec'd
+//! error is delivered by redirecting to the (already validated)
+//! `redirect_uri` with `error` + `state` query params instead.
+
 pub enum OAuthErrorKind {
-    UnsupportedResponseType,
-    UnsupportedCodeChallenge,
     InvalidRedirectUri,
     InvalidScheme,
     UnknownClient,
     DisabledClient,
     RedirectUriNotAllowed,
-    ScopeNotAllowed,
-}
-
-fn escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 fn title_and_body(kind: &OAuthErrorKind) -> (&'static str, &'static str) {
     match kind {
-        OAuthErrorKind::UnsupportedResponseType => (
-            "Unsupported response type",
-            "Only the authorization code flow (response_type=code) is supported",
-        ),
-        OAuthErrorKind::UnsupportedCodeChallenge => (
-            "Unsupported code challenge method",
-            "Only S256 code_challenge_method is supported",
-        ),
         OAuthErrorKind::InvalidRedirectUri => (
             "Invalid redirect URI",
             "The supplied redirect_uri is not a well-formed URL.",
@@ -47,24 +34,11 @@ fn title_and_body(kind: &OAuthErrorKind) -> (&'static str, &'static str) {
             "Redirect URI not allowed",
             "The supplied redirect_uri is not registered for this client.",
         ),
-        OAuthErrorKind::ScopeNotAllowed => (
-            "Scope not allowed",
-            "One or more requested scopes are not permitted for this client.",
-        ),
     }
 }
 
-pub fn oauth_error_html(kind: OAuthErrorKind, received: Option<&str>) -> String {
+pub fn oauth_error_html(kind: OAuthErrorKind) -> String {
     let (title, body) = title_and_body(&kind);
-    let suffix = match (&kind, received) {
-        (
-            OAuthErrorKind::UnsupportedCodeChallenge | OAuthErrorKind::UnsupportedResponseType,
-            Some(value),
-        ) => {
-            format!(" (received: {})", escape(value))
-        }
-        _ => String::new(),
-    };
     format!(
         "<!doctype html>\n\
 <html lang=\"en\">\n\
@@ -74,7 +48,7 @@ pub fn oauth_error_html(kind: OAuthErrorKind, received: Option<&str>) -> String 
 </head>\n\
 <body>\n\
   <h1>{title}</h1>\n\
-  <p>{body}{suffix}.</p>\n\
+  <p>{body}</p>\n\
 </body>\n\
 </html>"
     )

@@ -1,0 +1,5 @@
+{
+  "_comment": "SINGLE SOURCE OF TRUTH for the embedded API server's loopback origin. BOTH languages derive from this file at compile time, so the port/host can never silently drift: Rust reads it in `src-tauri/build.rs` (which re-emits `WILDFLOWER_API_HOST`/`WILDFLOWER_API_PORT` for `src-tauri/src/lib.rs` to read via `env!`), and TS reads it in `vite.config.ts` (which injects `__API_ORIGIN__` for `src/main.tsx`). Change the values here and rebuild — both sides follow. 127.0.0.1 is the canonical `Host:` form the gatekeeper's token verifier expects (see lib.rs `token_origin`).",
+  "host": "127.0.0.1",
+  "port": 8080
+}

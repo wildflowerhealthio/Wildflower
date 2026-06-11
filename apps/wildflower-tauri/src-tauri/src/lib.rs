@@ -13,22 +13,33 @@ use tauri::Manager;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
-// Resolved at compile time from this crate's manifest dir; the file itself
-// is read per request so a missing bundle degrades to the failure page
-// instead of refusing to boot.
-const SPA_INDEX_PATH: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../wildflower-react/dist-single-web/index-single-web.html"
-);
+// Loopback host/port for the embedded API server, derived at compile
+// time from the SINGLE SOURCE OF TRUTH `apps/wildflower-tauri/api-origin.json`.
+// `build.rs` reads that file and re-emits these as `rustc-env` vars; the
+// TS shell injects the same file as `__API_ORIGIN__` (see `vite.config.ts`
+// and `src/main.tsx`). Changing the JSON updates both sides — they can't
+// drift. A non-numeric port in the JSON fails this `const` parse at compile
+// time rather than at bind time.
+const API_HOST: &str = env!("WILDFLOWER_API_HOST");
+const API_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_API_PORT"), 10) {
+    Ok(port) => port,
+    Err(_) => panic!("WILDFLOWER_API_PORT (from api-origin.json) must be a u16"),
+};
 
-const SPA_FAILURE_HTML: &str =
-    "<!doctype html><title>Wildflower</title><h1>SPA bundle not found</h1>";
+// Embedded at compile time so the bundle ships inside the binary: a
+// runtime file read keyed off `CARGO_MANIFEST_DIR` resolves to the
+// build machine's absolute path, which doesn't exist on an installed
+// app, so external-browser OAuth/consent flows (served the `/_auth/*`
+// shell) would degrade to the failure page in every production build.
+// `include_str!` resolves relative to this source file; the single-file
+// `build:single-web` bundle is produced before the crate compiles, so
+// one embedded string covers the whole shell. A build that skipped the
+// bundle step fails to compile here rather than shipping a broken app.
+const SPA_INDEX_HTML: &str =
+    include_str!("../../../wildflower-react/dist-single-web/index-single-web.html");
 
-async fn serve_spa_fallback() -> Html<String> {
-    match tokio::fs::read_to_string(SPA_INDEX_PATH).await {
-        Ok(html) => Html(html),
-        Err(_) => Html(SPA_FAILURE_HTML.to_string()),
-    }
+async fn serve_spa_fallback() -> Html<&'static str> {
+    Html(SPA_INDEX_HTML)
 }
 
 async fn run_server(
@@ -46,12 +57,24 @@ async fn run_server(
     let addr = format!("{}:{}", runtime.host, runtime.port);
 
     // Pin the host owner token to the loopback origin the WebView uses.
-    // We bind 0.0.0.0 (any interface) but every reachable client we accept
-    // is loopback (the loopback gate rejects the rest), so the WebView's
-    // `Host:` header is `127.0.0.1:<port>` — the verifier derives the
-    // expected issuer/audience from that header, so the token has to be
-    // minted against the same canonical form.
+    // We bind 127.0.0.1 explicitly (the OS enforces loopback-only at the
+    // socket, so LAN peers can't reach the surface even before the
+    // loopback gate runs), so the WebView's `Host:` header is
+    // `127.0.0.1:<port>` — the verifier derives the expected
+    // issuer/audience from that header, so the token has to be minted
+    // against the same canonical form.
     let token_origin = format!("http://127.0.0.1:{}", runtime.port);
+
+    // Bind BEFORE minting/publishing the Owner token: `setup_gatekeeper`
+    // pushes the freshly-minted token onto the bridge publisher, and the
+    // bridge emits `AuthTokenIssued` to the webview. If the port were
+    // already taken, minting first would hand a full-Owner bearer to the
+    // webview while a *foreign* process owns `127.0.0.1:<port>`. Binding
+    // first guarantees the token is only ever minted once this process
+    // owns the port.
+    let listener = TcpListener::bind(&addr)
+        .await
+        .with_context(|| format!("failed to bind to {addr}"))?;
 
     let fhir_r4_router =
         setup_fhir_r4(&runtime, &emr_config).context("failed to set up FHIR R4 router")?;
@@ -91,9 +114,6 @@ async fn run_server(
         .fallback(serve_spa_fallback)
         .layer(CorsLayer::very_permissive());
 
-    let listener = TcpListener::bind(&addr)
-        .await
-        .with_context(|| format!("failed to bind to {addr}"))?;
     axum::serve(
         listener,
         router.into_make_service_with_connect_info::<SocketAddr>(),
@@ -130,15 +150,31 @@ pub fn run() {
             // channel plumbing; the server task gets the publishers.
             let publishers = bridge::attach_bridge(app.handle());
 
+            let error_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let runtime = ServerRuntimeConfig {
-                    host: "0.0.0.0".to_string(),
-                    port: 8080,
+                    // Loopback-only: the OS rejects non-local peers at the
+                    // socket, so the bearer secret is never the only thing
+                    // between LAN peers and FHIR health data. Host/port come
+                    // from the shared `api-origin.json` (see `API_HOST`/
+                    // `API_PORT`), the same file the TS `apiBaseUrl` reads.
+                    host: API_HOST.to_string(),
+                    port: API_PORT,
                     app_data_dir,
                 };
 
                 if let Err(error) = run_server(runtime, publishers).await {
                     tauri_plugin_log::log::error!("Wildflower server stopped: {error:?}");
+                    // A failed/stopped server leaves the webview unable to
+                    // reach the API at all (no token, no FHIR) — surface it
+                    // to the user instead of dying silently in the logs.
+                    // `bridge::FATAL_ERROR_EVENT` carries a human-readable
+                    // message the shell renders; we emit an event rather
+                    // than add a dialog-plugin dependency.
+                    bridge::emit_fatal_error(
+                        &error_handle,
+                        &format!("Wildflower server stopped: {error:#}"),
+                    );
                 }
             });
             Ok(())

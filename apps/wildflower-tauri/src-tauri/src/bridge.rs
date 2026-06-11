@@ -11,6 +11,19 @@ use tokio::sync::{watch, Notify};
 pub const READY_EVENT: &str = "bridge:__Ready";
 pub const AUTH_TOKEN_ISSUED_EVENT: &str = "bridge:AuthTokenIssued";
 pub const LOG_EVENT: &str = "bridge:Log";
+/// Fatal host-side failure (e.g. the API server stopped) surfaced to the
+/// webview so the user sees something other than a wedged app. Not part
+/// of a typed slice bridge — it carries a bare human-readable string the
+/// shell renders; emitting an event avoids pulling in a dialog plugin.
+pub const FATAL_ERROR_EVENT: &str = "bridge:FatalError";
+
+/// Emit a fatal-error message to the webview. Best-effort: if the emit
+/// itself fails there is nowhere left to surface it but the host log.
+pub fn emit_fatal_error(app: &AppHandle, message: &str) {
+    if let Err(error) = app.emit(FATAL_ERROR_EVENT, message) {
+        log::error!("[bridge] failed to emit FatalError: {error}");
+    }
+}
 
 /// Wire shape of a `bridge:Log` payload, pinned by
 /// `effect-messaging-core/src/logging.ts` (`LogMessageBody`). The
@@ -202,6 +215,7 @@ mod tests {
         assert_eq!(READY_EVENT, "bridge:__Ready");
         assert_eq!(AUTH_TOKEN_ISSUED_EVENT, "bridge:AuthTokenIssued");
         assert_eq!(LOG_EVENT, "bridge:Log");
+        assert_eq!(FATAL_ERROR_EVENT, "bridge:FatalError");
     }
 
     #[test]

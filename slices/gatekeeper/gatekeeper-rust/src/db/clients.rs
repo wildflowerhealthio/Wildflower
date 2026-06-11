@@ -17,7 +17,7 @@ impl FromSql for ClientKind {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         let s = value.as_str()?;
         s.parse::<ClientKind>()
-            .map_err(|_| FromSqlError::Other(format!("unknown client kind {s}").into()))
+            .map_err(|e| FromSqlError::Other(Box::new(e)))
     }
 }
 
@@ -72,5 +72,63 @@ impl GatekeeperStore {
                 &params,
             )?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
+    use crate::db_utils::JsonColumn;
+    use crate::domain::client::ClientKind;
+    use proptest::prelude::*;
+
+    fn arb_client() -> impl Strategy<Value = Client> {
+        (
+            "[a-zA-Z0-9_-]{1,32}",
+            "[ -~]{0,48}",
+            prop_oneof![Just(ClientKind::Public), Just(ClientKind::Confidential)],
+            prop::collection::vec(arb_url(), 1..4),
+            prop::collection::vec("[a-z][a-z0-9_]{0,15}", 0..5),
+            prop::option::of("[0-9a-f]{64}"),
+            arb_timestamp(),
+            arb_opt_timestamp(),
+        )
+            .prop_map(
+                |(
+                    client_id,
+                    name,
+                    kind,
+                    redirect_uris,
+                    allowed_scopes,
+                    secret_hash,
+                    registered_at,
+                    disabled_at,
+                )| Client {
+                    client_id,
+                    name,
+                    kind,
+                    redirect_uris: JsonColumn(redirect_uris),
+                    allowed_scopes: JsonColumn(allowed_scopes),
+                    secret_hash,
+                    registered_at,
+                    disabled_at,
+                },
+            )
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(48))]
+
+        #[test]
+        fn register_and_fetch_round_trip(client in arb_client()) {
+            let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+            store.register_client(&client).expect("register");
+            let fetched = store
+                .client_by_id(&client.client_id)
+                .expect("query")
+                .expect("row present");
+            prop_assert_eq!(fetched, client);
+        }
     }
 }

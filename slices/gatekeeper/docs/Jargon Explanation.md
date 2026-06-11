@@ -313,8 +313,8 @@ is enforced by `jose.jwtVerify`'s default behavior.
 
 The standard OAuth 2.0 grant for browser-redirect flows. `/oauth/authorize`
 requires `response_type=code` (RFC 6749 §4.1.1 makes the parameter
-REQUIRED; `code` is the only value we implement — anything else gets the
-`unsupported_response_type` error page). The `/oauth/token`
+REQUIRED; `code` is the only value we implement — anything else is
+rejected as `unsupported_response_type`). The `/oauth/token`
 endpoint dispatches on `grant_type`; the `authorization_code` branch
 verifies PKCE + redirect_uri + client_id match the issued code, then
 mints a JWT.

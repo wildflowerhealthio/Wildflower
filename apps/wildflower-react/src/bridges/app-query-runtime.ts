@@ -17,9 +17,11 @@ import {
  * the API lives on the host's loopback server), relative client paths
  * like `/apps` would otherwise resolve against the page origin.
  *
- * Prefix-only: requests must use the relative paths from the HttpApi
- * definitions (an absolute URL would be corrupted by the prepend —
- * no slice client does that today).
+ * Prefix-only for *relative* URLs: an already-absolute URL is left
+ * untouched. Prepending `baseUrl` unconditionally would produce
+ * `http://127.0.0.1:8080http://…`, which `fetch` then resolves against
+ * the page origin — silent corruption. So an already-scheme-prefixed
+ * URL passes through unchanged (the wrapper is a no-op for it).
  *
  * Non-JSON responses are logged with the final URL: every HttpApi
  * response on this client should be JSON, and the alternative is the
@@ -27,6 +29,14 @@ import {
  * fallback answering an API path with `200` + HTML carries no URL or
  * status in the failure it causes).
  */
+/**
+ * URL is absolute when it leads with a scheme (`http:`, `https:`,
+ * `tauri:`, …). Matches RFC 3986's `scheme = ALPHA *( ALPHA / DIGIT /
+ * "+" / "-" / "." )` so the prepend is skipped only for genuinely
+ * absolute URLs, never for relative paths like `/apps`.
+ */
+const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/i.test(url)
+
 const prependApiBaseUrl = (
   httpClientLayer: Layer.Layer<HttpClient.HttpClient>,
   baseUrl: string
@@ -35,7 +45,9 @@ const prependApiBaseUrl = (
     HttpClient.HttpClient,
     Effect.map(HttpClient.HttpClient, (client) =>
       client.pipe(
-        HttpClient.mapRequest(HttpClientRequest.prependUrl(baseUrl)),
+        HttpClient.mapRequest((request) =>
+          hasAbsoluteScheme(request.url) ? request : HttpClientRequest.prependUrl(baseUrl)(request)
+        ),
         HttpClient.tap((response) =>
           Effect.sync(() => {
             const contentType = response.headers['content-type'] ?? '(none)'

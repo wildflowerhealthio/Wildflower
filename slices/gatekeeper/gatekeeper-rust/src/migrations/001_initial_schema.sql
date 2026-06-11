@@ -66,8 +66,3 @@ CREATE TABLE grants (
 
 CREATE INDEX grants_client_id_redirect_uri_idx
     ON grants(client_id, redirect_uri);
-
-CREATE TABLE local_client_tokens (
-    id TEXT PRIMARY KEY NOT NULL,
-    value TEXT
-);
