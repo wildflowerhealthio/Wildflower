@@ -7,11 +7,12 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import type { JSX } from 'react'
+import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
-import { TabBar } from './tab-bar.tsx'
-import { TABS } from './tab-mapping.ts'
+import { Route as OpenRoute } from '../routes/_open.tsx'
+import { AppTabShell, TabBar } from './tab-bar.tsx'
+import { TABS } from './tabs.ts'
 
 const Stub = (): JSX.Element => <div>stub</div>
 
@@ -94,5 +95,62 @@ describe('TabBar', () => {
       )
     })
     expect(screen.getByRole('link', { name: 'Home' }).getAttribute('aria-current')).toBeNull()
+  })
+})
+
+/** Mount `<AppTabShell>` (which renders `<TabBar>`, so it needs a router) at `/`. */
+const renderShell = (child: ReactNode): void => {
+  const rootRoute = createRootRoute()
+  const indexRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/',
+    component: (): JSX.Element => <AppTabShell>{child}</AppTabShell>,
+  })
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([indexRoute]),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  render(<RouterProvider router={router} />)
+}
+
+describe('AppTabShell', () => {
+  test('renders children in the content region with the Primary bar as a content-then-bar sibling', async () => {
+    renderShell(<p data-testid="shell-child">hello</p>)
+    const child = await screen.findByTestId('shell-child')
+    // `getByRole` throws on multiple, so this also pins that exactly one
+    // Primary nav renders.
+    const nav = screen.getByRole('navigation', { name: 'Primary' })
+    // The child lives in the content column, not inside the nav.
+    expect(nav.contains(child)).toBe(false)
+    // DOM order is content-then-bar — the responsive `order: -1` flip
+    // relies on this so tab/a11y order stays correct on narrow screens.
+    expect(child.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+describe('tab bar scope', () => {
+  test('the public _open subtree mounts no Primary tab bar', async () => {
+    // Guards the scope boundary: the device-login surface must stay
+    // unauthenticated-clean. Renders the real `_open` layout component
+    // (a bare passthrough) over a stub device route — if a future edit
+    // wraps `_open` in `AppTabShell`, the Primary nav would leak here.
+    const rootRoute = createRootRoute()
+    const openRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      id: '_open',
+      component: OpenRoute.options.component,
+    })
+    const deviceRoute = createRoute({
+      getParentRoute: () => openRoute,
+      path: '/device',
+      component: (): JSX.Element => <div>device login</div>,
+    })
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([openRoute.addChildren([deviceRoute])]),
+      history: createMemoryHistory({ initialEntries: ['/device'] }),
+    })
+    render(<RouterProvider router={router} />)
+    await screen.findByText('device login')
+    expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull()
   })
 })

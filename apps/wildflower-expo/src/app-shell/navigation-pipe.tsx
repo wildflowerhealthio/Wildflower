@@ -27,10 +27,6 @@ type NavigationSender = BridgeTransport.MessageSender<
  *    `.current` to push updates. Before registration the slot holds the
  *    warn-and-drop default.
  *
- * (Top-level navigation itself moved into the SPA's own web tab bar, so
- * the host no longer dispatches `HostRequestedWebNavigation` from a native
- * tab bar — only the inset / colour-scheme pushes remain.)
- *
  * Lives in the app rather than `navigation-expo` because the host-shell
  * dispatchers are wildflower-shaped (the four-bridge tuple).
  */

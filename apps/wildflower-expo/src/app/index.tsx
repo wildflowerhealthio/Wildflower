@@ -1,5 +1,5 @@
 import { ThemedView } from 'expo-tundraish'
-import { useCallback, type JSX } from 'react'
+import { type JSX } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import { AppShellWebView } from '../app-shell/app-shell-webview.tsx'
@@ -12,19 +12,14 @@ import { AppShellWebView } from '../app-shell/app-shell-webview.tsx'
  * The persistent shell screen — mounts the full-bleed `<AppShellWebView>`.
  *
  * Top-level navigation now lives inside the embedded SPA (the web tab bar
- * in `wildflower-react`), so the host no longer paints a native tab bar;
- * the WebView fills the whole screen.
+ * in `wildflower-react`), so the host no longer paints a native tab bar
+ * and no longer tracks route changes; the WebView fills the whole screen.
  */
 export default function HomeScreen(): JSX.Element {
-  // The navigation binding requires a `RouteChanged` sink. Nothing on the
-  // host consumes route changes now that the native tab bar's active-tab
-  // tracking is gone, so swallow them.
-  const handleRouteChanged = useCallback((): void => {}, [])
-
   return (
     <ThemedView style={styles.fill}>
       <View style={styles.webViewWrap}>
-        <AppShellWebView onRouteChanged={handleRouteChanged} />
+        <AppShellWebView />
       </View>
     </ThemedView>
   )
