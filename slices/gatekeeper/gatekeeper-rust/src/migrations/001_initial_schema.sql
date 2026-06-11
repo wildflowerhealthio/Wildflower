@@ -27,7 +27,7 @@ CREATE TABLE authorization_requests (
     redirect_uri TEXT,
     client_state TEXT,
     user_code TEXT,
-    pre_approved_scopes TEXT,
+    pre_approved_scopes TEXT NOT NULL DEFAULT '[]',
     requested_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     last_polled_at TEXT,

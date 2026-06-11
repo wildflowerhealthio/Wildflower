@@ -53,3 +53,41 @@ impl<T: serde::de::DeserializeOwned> FromSql for JsonColumn<T> {
             .map_err(|e| FromSqlError::Other(Box::new(e)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    /// Round-trip a `JsonColumn<Vec<String>>` through a real SQLite TEXT column
+    /// and assert both the decoded value and the raw stored JSON. An empty
+    /// `Vec` is the case the `pre_approved_scopes` `Option` -> `Vec` collapse
+    /// relies on: it must store the bare array `[]` (matching the column's
+    /// `NOT NULL DEFAULT '[]'`) and read back as empty, never as SQL NULL.
+    fn round_trip(value: Vec<String>) -> (String, Vec<String>) {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("CREATE TABLE t (scopes TEXT NOT NULL)", []).unwrap();
+        conn.execute("INSERT INTO t (scopes) VALUES (?1)", [JsonColumn(value)])
+            .unwrap();
+        conn.query_row("SELECT scopes FROM t", [], |row| {
+            let raw: String = row.get(0)?;
+            let decoded: JsonColumn<Vec<String>> = row.get(0)?;
+            Ok((raw, decoded.into_inner()))
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn empty_vec_stores_as_bare_array_and_reads_back_empty() {
+        let (raw, decoded) = round_trip(Vec::new());
+        assert_eq!(raw, "[]");
+        assert_eq!(decoded, Vec::<String>::new());
+    }
+
+    #[test]
+    fn populated_vec_round_trips() {
+        let (raw, decoded) = round_trip(vec!["openid".to_string(), "profile".to_string()]);
+        assert_eq!(raw, r#"["openid","profile"]"#);
+        assert_eq!(decoded, vec!["openid".to_string(), "profile".to_string()]);
+    }
+}

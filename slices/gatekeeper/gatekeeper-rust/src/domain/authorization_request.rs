@@ -109,8 +109,10 @@ pub struct AuthorizationRequest {
     pub client_state: Option<String>,
     /// Human-typed pairing code shown to the user on the device (device-code flow only, RFC 8628).
     pub user_code: Option<String>,
-    /// Subset of `requested_scopes` already covered by an existing `Grant`; the consent UI marks these as pre-approved.
-    pub pre_approved_scopes: Option<JsonColumn<Vec<String>>>,
+    /// Subset of `requested_scopes` already covered by an existing `Grant`; the
+    /// consent UI marks these as pre-approved. Empty means nothing was
+    /// pre-approved — there is no distinct "absent" state.
+    pub pre_approved_scopes: JsonColumn<Vec<String>>,
     /// When `/authorize` or `/device_authorization` created the request.
     pub requested_at: DateTime<Utc>,
     /// Instant after which the request stops accepting approval.
@@ -139,8 +141,9 @@ pub struct StartCodeAuthorizationArgs {
     pub redirect_uri: Url,
     /// Opaque `state` value to echo back to the client in the redirect.
     pub client_state: String,
-    /// Subset of `requested_scopes` already covered by an existing `Grant`, when applicable.
-    pub pre_approved_scopes: Option<Vec<String>>,
+    /// Subset of `requested_scopes` already covered by an existing `Grant`;
+    /// empty when nothing is pre-approved.
+    pub pre_approved_scopes: Vec<String>,
     /// How long the new request stays pending before expiring.
     pub ttl: Duration,
 }
@@ -172,7 +175,7 @@ impl AuthorizationRequest {
             redirect_uri: Some(UriColumn(input.redirect_uri)),
             client_state: Some(input.client_state),
             user_code: None,
-            pre_approved_scopes: input.pre_approved_scopes.map(JsonColumn),
+            pre_approved_scopes: JsonColumn(input.pre_approved_scopes),
             requested_at: now,
             expires_at: now + input.ttl,
             last_polled_at: None,
@@ -194,7 +197,7 @@ impl AuthorizationRequest {
             redirect_uri: None,
             client_state: None,
             user_code: Some(input.user_code),
-            pre_approved_scopes: None,
+            pre_approved_scopes: JsonColumn(Vec::new()),
             requested_at: now,
             expires_at: now + input.ttl,
             last_polled_at: None,

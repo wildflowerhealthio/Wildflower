@@ -85,7 +85,7 @@ async fn get_consent(Extension(state): Extension<AppState>, Path(id): Path<Strin
         client_id: request.client_id,
         scopes: request.requested_scopes.0,
         redirect_uri,
-        pre_approved_scopes: request.pre_approved_scopes.map(|j| j.0).unwrap_or_default(),
+        pre_approved_scopes: request.pre_approved_scopes.into_inner(),
         patient: request.patient,
     })
     .into_response()

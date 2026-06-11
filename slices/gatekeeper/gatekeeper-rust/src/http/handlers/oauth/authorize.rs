@@ -209,11 +209,7 @@ pub async fn handle_authorize_request(
         code_challenge: params.code_challenge.clone(),
         redirect_uri: parsed_redirect.clone(),
         client_state: params.state.clone(),
-        pre_approved_scopes: if pre_approved_scopes.is_empty() {
-            None
-        } else {
-            Some(pre_approved_scopes)
-        },
+        pre_approved_scopes,
         ttl: AUTHORIZATION_REQUEST_TTL,
     });
     if let Err(e) = state.store.insert_authorization_request(&request) {
