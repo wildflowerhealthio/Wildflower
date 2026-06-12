@@ -79,11 +79,15 @@ pub struct AuthorizeParams {
     pub state: String,
 }
 
-/// `GET /oauth/authorize` — the authorization endpoint (RFC 6749 §3.1), the
-/// public front door of the OAuth flow. Validates the request, then either
-/// auto-issues an authorization code (when an existing grant pre-approves
-/// every requested scope) or redirects the user-agent to the Owner UI to
-/// drive the approval.
+/// `GET /oauth/authorize` route.
+pub(super) fn route() -> MethodRouter {
+    get(handle_authorize_request)
+}
+
+/// The authorization endpoint (RFC 6749 §3.1), the public front door of the
+/// OAuth flow. Validates the request, then either auto-issues an authorization
+/// code (when an existing grant pre-approves every requested scope) or
+/// redirects the user-agent to the Owner UI to drive the approval.
 ///
 /// Nothing in-process calls this route. Registered clients (e.g.
 /// SMART-on-FHIR apps) discover it via the FHIR server's
@@ -104,11 +108,6 @@ pub struct AuthorizeParams {
 /// 3. Approval 302s the browser back to the client's `redirect_uri` with
 ///    `code` + `state` (§4.1.2); the client then redeems the short-lived
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
-/// `GET /oauth/authorize` route.
-pub(super) fn route() -> MethodRouter {
-    get(handle_authorize_request)
-}
-
 async fn handle_authorize_request(
     Extension(state): Extension<AppState>,
     headers: HeaderMap,
@@ -131,18 +130,18 @@ async fn handle_authorize_request(
     // phase returns the values the rest of the flow needs or an error response.
     let client = match validate_and_load_client(&state, &params) {
         Ok(c) => c,
-        Err(error_response) => return error_response,
+        Err(error_response) => return *error_response,
     };
     let parsed_redirect = match validate_redirect_url(&params, &client) {
         Ok(url) => url,
-        Err(error_response) => return error_response,
+        Err(error_response) => return *error_response,
     };
     if let Err(error_response) = validate_code(&params, &parsed_redirect) {
-        return error_response;
+        return *error_response;
     }
     let requested_scopes = match validate_requested_scopes(&params, &client, &parsed_redirect) {
         Ok(scopes) => scopes,
-        Err(error_response) => return error_response,
+        Err(error_response) => return *error_response,
     };
 
     // Check for an existing grant that pre-approves some or all scopes for
@@ -151,7 +150,7 @@ async fn handle_authorize_request(
         match resolve_existing_grant_coverage(&state, &params, &parsed_redirect, &requested_scopes)
         {
             Ok(c) => c,
-            Err(error_response) => return error_response,
+            Err(error_response) => return *error_response,
         };
 
     // Persist the pending request — every path from here on out references
@@ -183,7 +182,7 @@ async fn handle_authorize_request(
             grant_coverage.patient.as_deref(),
         ) {
             Ok(code) => code,
-            Err(error_response) => return error_response,
+            Err(error_response) => return *error_response,
         };
         return redirect_to_client(&parsed_redirect, &code, &params.state);
     }
@@ -199,25 +198,25 @@ async fn handle_authorize_request(
 fn validate_and_load_client(
     state: &AppState,
     params: &AuthorizeParams,
-) -> Result<Client, Response> {
+) -> Result<Client, Box<Response>> {
     let client = match state.store.client_by_id(&params.client_id) {
         Ok(Some(c)) => c,
         Ok(None) => {
-            return Err(html_bad_request(oauth_error_html(
+            return Err(Box::new(html_bad_request(oauth_error_html(
                 OAuthErrorKind::UnknownClient,
-            )))
+            ))))
         }
         Err(e) => {
-            return Err(response_templates::internal_error(
+            return Err(Box::new(response_templates::internal_error(
                 "client_by_id lookup failed",
                 e,
-            ))
+            )))
         }
     };
     if client.disabled_at.is_some() {
-        return Err(html_bad_request(oauth_error_html(
+        return Err(Box::new(html_bad_request(oauth_error_html(
             OAuthErrorKind::DisabledClient,
-        )));
+        ))));
     }
     Ok(client)
 }
@@ -226,20 +225,23 @@ fn validate_and_load_client(
 /// (RFC 6749 §4.1.2.1) that is on the client's allowlist. A `redirect_uri` that
 /// isn't trusted can't be used as a redirect target, so failures render a local
 /// HTML page. Returns the parsed URL the redirect flow uses thereafter.
-fn validate_redirect_url(params: &AuthorizeParams, client: &Client) -> Result<Url, Response> {
-    let parsed_redirect = Url::parse(&params.redirect_uri)
-        .map_err(|_| html_bad_request(oauth_error_html(OAuthErrorKind::InvalidRedirectUri)))?;
+fn validate_redirect_url(params: &AuthorizeParams, client: &Client) -> Result<Url, Box<Response>> {
+    let parsed_redirect = Url::parse(&params.redirect_uri).map_err(|_| {
+        Box::new(html_bad_request(oauth_error_html(
+            OAuthErrorKind::InvalidRedirectUri,
+        )))
+    })?;
     if parsed_redirect.scheme() != "http" && parsed_redirect.scheme() != "https" {
-        return Err(html_bad_request(oauth_error_html(
+        return Err(Box::new(html_bad_request(oauth_error_html(
             OAuthErrorKind::InvalidScheme,
-        )));
+        ))));
     }
     // Exact match against the already-parsed `Url` — both sides go through the
     // same normalizer.
     if !client.redirect_uris.iter().any(|u| u == &parsed_redirect) {
-        return Err(html_bad_request(oauth_error_html(
+        return Err(Box::new(html_bad_request(oauth_error_html(
             OAuthErrorKind::RedirectUriNotAllowed,
-        )));
+        ))));
     }
     Ok(parsed_redirect)
 }
@@ -247,35 +249,35 @@ fn validate_redirect_url(params: &AuthorizeParams, client: &Client) -> Result<Ur
 /// Validate the response type and PKCE challenge. With `redirect_uri` +
 /// `client_id` already validated, these spec'd errors go back to the client
 /// per RFC 6749 §4.1.2.1 with `error` + `state`.
-fn validate_code(params: &AuthorizeParams, parsed_redirect: &Url) -> Result<(), Response> {
+fn validate_code(params: &AuthorizeParams, parsed_redirect: &Url) -> Result<(), Box<Response>> {
     // Only the authorization-code grant is implemented; any other value is
     // `unsupported_response_type` (RFC 6749 §4.1.1 makes the parameter
     // REQUIRED, §4.1.2.1 names the error code).
     if params.response_type != "code" {
-        return Err(redirect_oauth_error(
+        return Err(Box::new(redirect_oauth_error(
             parsed_redirect,
             "unsupported_response_type",
             &params.state,
-        ));
+        )));
     }
 
     // Only S256 PKCE is supported. An unsupported `code_challenge_method` is
     // `invalid_request` (RFC 7636 §4.4.1).
     if params.code_challenge_method != "S256" {
-        return Err(redirect_oauth_error(
+        return Err(Box::new(redirect_oauth_error(
             parsed_redirect,
             "invalid_request",
             &params.state,
-        ));
+        )));
     }
     // The `code_challenge` must be a well-formed S256 challenge (RFC 7636
     // §4.3); a malformed one is `invalid_request` (RFC 7636 §4.4.1).
     if !is_valid_s256_code_challenge(&params.code_challenge) {
-        return Err(redirect_oauth_error(
+        return Err(Box::new(redirect_oauth_error(
             parsed_redirect,
             "invalid_request",
             &params.state,
-        ));
+        )));
     }
 
     Ok(())
@@ -287,7 +289,7 @@ fn validate_requested_scopes(
     params: &AuthorizeParams,
     client: &Client,
     parsed_redirect: &Url,
-) -> Result<Vec<String>, Response> {
+) -> Result<Vec<String>, Box<Response>> {
     let requested_scopes: Vec<String> = params
         .scope
         .split_whitespace()
@@ -298,11 +300,11 @@ fn validate_requested_scopes(
         .iter()
         .all(|s| allowed.contains(s.as_str()))
     {
-        return Err(redirect_oauth_error(
+        return Err(Box::new(redirect_oauth_error(
             parsed_redirect,
             "invalid_scope",
             &params.state,
-        ));
+        )));
     }
 
     Ok(requested_scopes)
@@ -335,12 +337,15 @@ fn resolve_existing_grant_coverage(
     params: &AuthorizeParams,
     parsed_redirect: &Url,
     requested_scopes: &[String],
-) -> Result<ExistingGrantCoverage, Response> {
+) -> Result<ExistingGrantCoverage, Box<Response>> {
     let Some(existing_grant) = state
         .store
         .grant_by_client_and_redirect(&params.client_id, parsed_redirect)
         .map_err(|e| {
-            response_templates::internal_error("grant_by_client_and_redirect lookup failed", e)
+            Box::new(response_templates::internal_error(
+                "grant_by_client_and_redirect lookup failed",
+                e,
+            ))
         })?
     else {
         return Ok(ExistingGrantCoverage::none());
@@ -374,7 +379,7 @@ fn issue_code(
     parsed_redirect: &Url,
     requested_scopes: &[String],
     patient: Option<&str>,
-) -> Result<String, Response> {
+) -> Result<String, Box<Response>> {
     let code = generate_authorization_code();
     let issued_at = Utc::now();
     let authorization_code = AuthorizationCode {
@@ -391,12 +396,20 @@ fn issue_code(
     state
         .store
         .issue_authorization_code(&authorization_code)
-        .map_err(|e| response_templates::internal_error("issue_authorization_code failed", e))?;
+        .map_err(|e| {
+            Box::new(response_templates::internal_error(
+                "issue_authorization_code failed",
+                e,
+            ))
+        })?;
     state
         .store
         .approve_authorization_request(request_id, requested_scopes, patient)
         .map_err(|e| {
-            response_templates::internal_error("approve_authorization_request failed", e)
+            Box::new(response_templates::internal_error(
+                "approve_authorization_request failed",
+                e,
+            ))
         })?;
     Ok(code)
 }
