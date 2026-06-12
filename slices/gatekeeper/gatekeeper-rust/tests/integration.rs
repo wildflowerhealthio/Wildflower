@@ -216,7 +216,7 @@ async fn authorize_unsupported_response_type_redirects_back() {
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
-    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res.status(), StatusCode::FOUND);
     let location = res.headers().get("location").expect("location header");
     assert_eq!(
         location,
@@ -235,7 +235,7 @@ async fn authorize_unsupported_pkce_method_redirects_invalid_request() {
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
-    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res.status(), StatusCode::FOUND);
     let location = res.headers().get("location").expect("location header");
     assert_eq!(
         location,
@@ -257,7 +257,7 @@ async fn authorize_disallowed_scope_redirects_invalid_scope() {
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
-    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res.status(), StatusCode::FOUND);
     let location = res.headers().get("location").expect("location header");
     assert_eq!(
         location,
@@ -454,7 +454,11 @@ async fn host_owner_token_is_owner_scoped() {
 const CODE_VERIFIER: &str = "verifierverifierverifierverifierverifierabc";
 
 /// POST a form-urlencoded body to `path` on a fresh oneshot of `router`.
-async fn post_form(router: &axum::Router, path: &str, body: &'static str) -> axum::response::Response {
+async fn post_form(
+    router: &axum::Router,
+    path: &str,
+    body: &'static str,
+) -> axum::response::Response {
     let req = loopback_request(
         Request::post(path).header("content-type", "application/x-www-form-urlencoded"),
         Body::from(body),
@@ -571,7 +575,7 @@ async fn auth_code_grant_happy_path_end_to_end() {
         ))
         .await
         .expect("oneshot");
-    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res.status(), StatusCode::FOUND);
     let polling = res
         .headers()
         .get("location")
@@ -636,7 +640,10 @@ async fn auth_code_grant_happy_path_end_to_end() {
     let token = body_json(res.into_body()).await;
     assert_eq!(token["token_type"], "Bearer");
     assert_eq!(token["scope"], "read");
-    assert!(!token["access_token"].as_str().expect("access_token").is_empty());
+    assert!(!token["access_token"]
+        .as_str()
+        .expect("access_token")
+        .is_empty());
 }
 
 /// Redeeming with a verifier that doesn't hash to the stored challenge is an
@@ -810,7 +817,9 @@ async fn device_authorization_sets_cache_suppression_headers() {
     .await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(
-        res.headers().get("cache-control").map(|v| v.to_str().unwrap()),
+        res.headers()
+            .get("cache-control")
+            .map(|v| v.to_str().unwrap()),
         Some("no-store")
     );
     assert_eq!(

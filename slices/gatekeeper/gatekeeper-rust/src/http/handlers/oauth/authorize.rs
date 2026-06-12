@@ -1,6 +1,6 @@
 use axum::extract::{Extension, Query};
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Response};
 use chrono::{Duration, Utc};
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -32,6 +32,17 @@ fn is_valid_s256_code_challenge(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
+/// `302 Found` redirect. RFC 6749's examples use 302 and the TypeScript
+/// implementation emits 302, so all `/oauth/authorize` redirects use it for
+/// parity — axum's `Redirect` helpers only offer 303/307/308.
+fn found_redirect(location: &str) -> Response {
+    (
+        StatusCode::FOUND,
+        [(axum::http::header::LOCATION, location.to_string())],
+    )
+        .into_response()
+}
+
 /// Redirect a spec'd post-validation error back to the *validated*
 /// `redirect_uri` with `error` and `state` query params (RFC 6749 §4.1.2.1).
 /// Only callable once `redirect_uri` and `client_id` have been validated —
@@ -41,7 +52,7 @@ fn redirect_oauth_error(redirect_uri: &Url, error: &str, client_state: &str) -> 
     url.query_pairs_mut()
         .append_pair("error", error)
         .append_pair("state", client_state);
-    Redirect::to(url.as_str()).into_response()
+    found_redirect(url.as_str())
 }
 
 /// Lifetime of an authorization_code from issuance to the client redeeming it
@@ -246,12 +257,12 @@ pub async fn handle_authorize_request(
             return internal_error("approve_authorization_request failed", e);
         }
         let redirect_url = build_client_redirect_url(&parsed_redirect, &code, &params.state);
-        return Redirect::to(&redirect_url).into_response();
+        return found_redirect(&redirect_url);
     }
 
     // Otherwise redirect to the Owner UI's polling page so a human can approve.
     let polling_url = page_paths::oauth_polling_url(origin, &request_id);
-    Redirect::to(&polling_url).into_response()
+    found_redirect(&polling_url)
 }
 
 fn html_bad_request(html: String) -> Response {
