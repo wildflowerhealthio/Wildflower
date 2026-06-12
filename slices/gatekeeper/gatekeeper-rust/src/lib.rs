@@ -62,7 +62,7 @@ pub struct Gatekeeper {
 /// (schema migrations, signing-key seed, first-party client seed), mints
 /// the boot-time host owner token against `config.loopback_origin`, and:
 ///
-///  - publishes the host owner token on `token_tx` so subscribers (e.g.
+///  - publishes the host owner token on `local_owner_token_tx` so subscribers (e.g.
 ///    the WebView bridge listener) observe it the moment it exists;
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
 ///    `/oauth/*`, and `/access/*` (Owner-only via bearer JWT) — the
@@ -81,13 +81,13 @@ pub struct Gatekeeper {
 /// peers receive 403 before any handler runs.
 pub fn setup_gatekeeper(
     config: &GatekeeperConfig,
-    token_tx: &watch::Sender<Option<String>>,
+    local_owner_token_tx: &watch::Sender<Option<String>>,
 ) -> anyhow::Result<Gatekeeper> {
     let store = seeding::open_and_seed_store(config)?;
     let host_owner_token =
         seeding::mint_host_owner_token(&store, &config.loopback_origin, HOST_OWNER_TOKEN_TTL)
             .context("failed to mint host owner token")?;
-    token_tx
+    local_owner_token_tx
         .send(Some(host_owner_token))
         .context("token channel receiver dropped before host owner token issuance")?;
     let state = AppState {

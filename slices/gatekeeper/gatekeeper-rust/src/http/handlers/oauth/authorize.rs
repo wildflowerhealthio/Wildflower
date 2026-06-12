@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use url::Url;
 use uuid::Uuid;
 
-use super::shared::build_client_redirect_url;
+use super::internal::build_client_redirect_url;
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::db_utils::{JsonColumn, UriColumn};
 use crate::domain::authorization_code::AuthorizationCode;

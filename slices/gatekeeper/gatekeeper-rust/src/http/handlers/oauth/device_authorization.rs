@@ -7,7 +7,7 @@ use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-use super::shared::{
+use super::internal::{
     cache_suppressed, require_valid_client_for_token, OAuthError, DEVICE_CODE_POLL_INTERVAL,
 };
 use crate::crypto_util::oauth_user_code::generate_oauth_user_code;

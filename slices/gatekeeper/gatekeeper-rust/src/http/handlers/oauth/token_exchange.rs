@@ -9,7 +9,7 @@ use url::Url;
 
 use uuid::Uuid;
 
-use super::shared::{
+use super::internal::{
     cache_suppressed, issue_token_response, require_valid_client_for_token, IssueTokenInput,
     OAuthError, DEVICE_CODE_POLL_INTERVAL, OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
 };

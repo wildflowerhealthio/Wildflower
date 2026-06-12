@@ -6,9 +6,12 @@ use axum::response::Response;
 use std::sync::Arc;
 
 use crate::http::responses::{unauthorized, verify_error_response};
+use crate::http::served_origin_for;
 use crate::http::state::AppState;
 
-use crate::http::middleware::require_auth::{bearer_token, verify_any_token, AuthedClaims};
+use crate::http::middleware::require_auth::{
+    try_bearer_token_from_headers, verify_auth_token_claims, AuthedClaims,
+};
 
 pub async fn require_valid_bearer_token(
     Extension(state): Extension<AppState>,
@@ -18,13 +21,14 @@ pub async fn require_valid_bearer_token(
 ) -> Response {
     // TODO(transport): assumes the WebView reaches us over loopback HTTP; if
     // it switches to tauri:// IPC, this gate must move.
-    let token = match bearer_token(&headers) {
+    let token = match try_bearer_token_from_headers(&headers) {
         Some(t) => t,
         None => return unauthorized(),
     };
-    let claims = match verify_any_token(&state, &headers, &token) {
+    let origin = served_origin_for(&headers, &state.loopback_origin);
+    let claims = match verify_auth_token_claims(&state, &origin, &token) {
         Ok(c) => c,
-        Err(e) => return verify_error_response("verify_any_token failed", e),
+        Err(e) => return verify_error_response("verify_auth_token_claims failed", e),
     };
     req.extensions_mut().insert(AuthedClaims(Arc::new(claims)));
     next.run(req).await

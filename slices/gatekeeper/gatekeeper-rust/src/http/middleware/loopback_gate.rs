@@ -5,11 +5,6 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use std::net::{IpAddr, SocketAddr};
 
-// TODO(transport): once we know whether the Tauri WebView reaches the
-// Rust server over loopback TCP or the `tauri://` IPC scheme, revisit
-// whether this middleware is in the right place (and whether the
-// WebView even traverses it).
-
 pub async fn loopback_gate(req: Request<Body>, next: Next) -> Response {
     let peer = req
         .extensions()

@@ -6,8 +6,8 @@ use axum::response::Response;
 use std::sync::Arc;
 
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
-use crate::http::served_origin_for;
 use crate::http::responses::{unauthorized, verify_error_response};
+use crate::http::served_origin_for;
 use crate::http::state::AppState;
 use crate::OWNER_SCOPE;
 
@@ -20,11 +20,16 @@ pub async fn require_owner_auth(
     mut req: Request<Body>,
     next: Next,
 ) -> Response {
-    let token = match bearer_token(&headers) {
+    let token = match try_bearer_token_from_headers(&headers) {
         Some(t) => t,
         None => return unauthorized(),
     };
-    let claims = match verify_owner_token(&state, &headers, &token) {
+    // Verify against the origin the request says it was targeting — loopback
+    // for a direct hit, the public origin when forwarded by the tunnel — so a
+    // token's `iss`/`aud` are checked against the same surface it was minted
+    // for. `loopback_origin` is the fallback for un-forwarded requests.
+    let origin = served_origin_for(&headers, &state.loopback_origin);
+    let claims = match verify_owner_token(&state, &origin, &token) {
         Ok(c) => c,
         Err(e) => return verify_error_response("verify_owner_token failed", e),
     };
@@ -32,7 +37,7 @@ pub async fn require_owner_auth(
     next.run(req).await
 }
 
-pub fn bearer_token(headers: &HeaderMap) -> Option<String> {
+pub fn try_bearer_token_from_headers(headers: &HeaderMap) -> Option<String> {
     let value = headers.get("authorization")?.to_str().ok()?;
     let prefix = "bearer ";
     // Case-insensitive prefix check against just the scheme bytes — avoids
@@ -49,10 +54,10 @@ pub fn bearer_token(headers: &HeaderMap) -> Option<String> {
 
 pub fn verify_owner_token(
     state: &AppState,
-    headers: &HeaderMap,
+    origin: &str,
     token: &str,
 ) -> Result<VerifiedClaims, VerifyError> {
-    let claims = verify_any_token(state, headers, token)?;
+    let claims = verify_auth_token_claims(state, origin, token)?;
     let has_owner_scope = claims
         .scope
         .as_deref()
@@ -65,27 +70,16 @@ pub fn verify_owner_token(
     Ok(claims)
 }
 
-// `_headers` is now vestigial: the issuer/audience is pinned to the
-// configured origin in `AppState`, not derived from the request. The
-// parameter is retained only because the sibling
-// `require_valid_bearer_token` middleware (outside this change's file
-// boundary) still calls `verify_any_token(&state, &headers, &token)`;
-// drop it together when that file is in scope.
-pub fn verify_any_token(
+pub fn verify_auth_token_claims(
     state: &AppState,
-    headers: &HeaderMap,
+    origin: &str,
     token: &str,
 ) -> Result<VerifiedClaims, VerifyError> {
     let keys = state
         .store
         .all_signing_keys()
         .map_err(VerifyError::KeyStoreUnavailable)?;
-    // Verify against the origin the request says it was targeting — loopback
-    // for a direct hit, the public origin when forwarded by the tunnel — so a
-    // token's `iss`/`aud` are checked against the same surface it was minted
-    // for. `loopback_origin` is the fallback for un-forwarded requests.
-    let origin = served_origin_for(headers, &state.loopback_origin);
-    let accepted = vec![format!("{origin}/fhir-r4"), origin.clone()];
+    let accepted = vec![format!("{origin}/fhir-r4"), origin.to_string()];
     verify_jwt(
         token,
         &keys,

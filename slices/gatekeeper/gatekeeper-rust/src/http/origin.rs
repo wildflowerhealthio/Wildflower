@@ -9,13 +9,13 @@ use axum::http::HeaderMap;
 /// With no such header the request came in over loopback, so we fall back to
 /// `loopback_origin` (the value pinned in [`GatekeeperConfig`](crate::GatekeeperConfig)).
 pub fn served_origin_for(headers: &HeaderMap, loopback_origin: &str) -> String {
-    if let Some(public_origin) = header_str(headers, "x-public-origin") {
-        let public_scheme = header_str(headers, "x-forwarded-proto").unwrap_or("https");
+    if let Some(public_origin) = try_get_header_str(headers, "x-public-origin") {
+        let public_scheme = try_get_header_str(headers, "x-forwarded-proto").unwrap_or("https");
         return format!("{public_scheme}://{public_origin}");
     }
     loopback_origin.to_string()
 }
 
-fn header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+fn try_get_header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers.get(name).and_then(|v| v.to_str().ok())
 }

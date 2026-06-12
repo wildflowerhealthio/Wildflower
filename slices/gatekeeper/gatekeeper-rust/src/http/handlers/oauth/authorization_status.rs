@@ -5,7 +5,7 @@ use axum::Json;
 use chrono::Utc;
 use serde::Serialize;
 
-use super::shared::{build_client_error_redirect_url, build_client_redirect_url, OAuthError};
+use super::internal::{build_client_error_redirect_url, build_client_redirect_url, OAuthError};
 use crate::domain::authorization_request::RequestStatus;
 use crate::http::responses::{internal_error, not_found};
 use crate::http::state::AppState;

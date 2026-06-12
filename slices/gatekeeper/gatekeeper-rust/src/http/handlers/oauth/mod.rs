@@ -1,7 +1,7 @@
 mod authorization_status;
 mod authorize;
 mod device_authorization;
-mod shared;
+mod internal;
 mod token_exchange;
 
 use axum::routing::{get, post};
