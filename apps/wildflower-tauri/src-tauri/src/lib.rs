@@ -1,8 +1,9 @@
 mod api_stubs;
 mod bridge;
+mod spa;
 
 use anyhow::Context;
-use axum::{response::Html, Router};
+use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
     layer_router_with_gatekeeper_auth_gating, setup_gatekeeper, GatekeeperConfig,
@@ -26,22 +27,6 @@ const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_P
     Ok(port) => port,
     Err(_) => panic!("WILDFLOWER_LOOPBACK_PORT (from tauri-shared-config.json) must be a u16"),
 };
-
-// Embedded at compile time so the bundle ships inside the binary: a
-// runtime file read keyed off `CARGO_MANIFEST_DIR` resolves to the
-// build machine's absolute path, which doesn't exist on an installed
-// app, so external-browser OAuth/consent flows (served the `/_auth/*`
-// shell) would degrade to the failure page in every production build.
-// `include_str!` resolves relative to this source file; the single-file
-// `build:single-web` bundle is produced before the crate compiles, so
-// one embedded string covers the whole shell. A build that skipped the
-// bundle step fails to compile here rather than shipping a broken app.
-const SPA_INDEX_HTML: &str =
-    include_str!("../../../wildflower-react/dist-single-web/index-single-web.html");
-
-async fn serve_spa_fallback() -> Html<&'static str> {
-    Html(SPA_INDEX_HTML)
-}
 
 async fn run_server(
     runtime: ServerRuntimeConfig,
@@ -109,7 +94,7 @@ async fn run_server(
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
         .merge(gated_stubs)
-        .fallback(serve_spa_fallback)
+        .fallback(spa::handle_serving_spa_html)
         .layer(CorsLayer::very_permissive());
 
     axum::serve(
