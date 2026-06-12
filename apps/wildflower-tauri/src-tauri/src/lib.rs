@@ -11,6 +11,7 @@ use gatekeeper_rust::{
 use shared_structures_rust::ServerRuntimeConfig;
 use std::net::SocketAddr;
 use tauri::Manager;
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
@@ -110,6 +111,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 // Stdout only — no Webview target, so host logs never
@@ -151,14 +153,16 @@ pub fn run() {
                     tauri_plugin_log::log::error!("Wildflower server stopped: {error:?}");
                     // A failed/stopped server leaves the webview unable to
                     // reach the API at all (no token, no FHIR) — surface it
-                    // to the user instead of dying silently in the logs.
-                    // `bridge::FATAL_ERROR_EVENT` carries a human-readable
-                    // message the shell renders; we emit an event rather
-                    // than add a dialog-plugin dependency.
-                    bridge::emit_fatal_error(
-                        &error_handle,
-                        &format!("Wildflower server stopped: {error:#}"),
-                    );
+                    // with a native dialog instead of dying silently in the
+                    // logs. A native dialog (not a webview message) is used
+                    // deliberately: it shows even when the webview itself can't
+                    // load. Blocking is fine here — the server is already dead.
+                    error_handle
+                        .dialog()
+                        .message(format!("Wildflower server stopped: {error:#}"))
+                        .kind(MessageDialogKind::Error)
+                        .title("Wildflower")
+                        .blocking_show();
                 }
             });
             Ok(())

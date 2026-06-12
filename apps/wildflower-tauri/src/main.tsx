@@ -1,5 +1,4 @@
 import { createBrowserHistory } from '@tanstack/react-router'
-import { listen } from '@tauri-apps/api/event'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
 import 'wildflower-react/instrument'
@@ -15,18 +14,6 @@ import { bridges } from 'wildflower-react/bridges'
 import { addOsColorSchemeListener } from 'wildflower-react/os-color-scheme-listener'
 
 addOsColorSchemeListener()
-
-// Fatal host-side failures (e.g. the API server failed to bind/stopped)
-// arrive on `bridge:FatalError` — pinned by `src-tauri/src/bridge.rs`
-// (`FATAL_ERROR_EVENT`). Without the server the app can't reach the API
-// at all, so surface the message rather than leave the user staring at a
-// wedged shell. Registered before any async boot so a fast bind failure
-// can't beat the listener. Rendering a banner would need a UI surface
-// the shell doesn't expose yet; for now an `alert` makes the failure
-// unmissable instead of invisible.
-void listen<string>('bridge:FatalError', (event) => {
-  globalThis.alert(event.payload)
-})
 
 // Embedded-style store: in-memory, initial value `null`. The Rust host
 // re-delivers the bearer over the bridge on every page load (it replies
