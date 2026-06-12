@@ -1,37 +1,23 @@
 use axum::extract::{Extension, Path};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
-use axum::{Json, Router};
+use axum::routing::{delete, MethodRouter};
 use chrono::Utc;
 
 use crate::http::response_templates;
 use crate::http::state::AppState;
 
-/// Owner-scoped `/grants` management API — list, fetch, and revoke previously
-/// granted client consents.
-pub fn router() -> Router {
-    Router::new()
-        .route("/grants", get(list_grants))
-        .route("/grants/{id}", get(get_grant).delete(revoke_grant))
+/// `DELETE /grants/{id}` — revoke a grant and expire the refresh-token families
+/// minted under its client, so `offline_access` clients can't outlive the
+/// revocation.
+pub(super) fn route() -> MethodRouter {
+    delete(handle_revoke_grant)
 }
 
-async fn list_grants(Extension(state): Extension<AppState>) -> Response {
-    match state.store.all_grants() {
-        Ok(rows) => Json(rows).into_response(),
-        Err(e) => response_templates::internal_error("all_grants lookup failed", e),
-    }
-}
-
-async fn get_grant(Extension(state): Extension<AppState>, Path(id): Path<String>) -> Response {
-    match state.store.grant_by_id(&id) {
-        Ok(Some(row)) => Json(row).into_response(),
-        Ok(None) => response_templates::not_found("GrantNotFound", "id", &id),
-        Err(e) => response_templates::internal_error("grant_by_id lookup failed", e),
-    }
-}
-
-async fn revoke_grant(Extension(state): Extension<AppState>, Path(id): Path<String>) -> Response {
+async fn handle_revoke_grant(
+    Extension(state): Extension<AppState>,
+    Path(id): Path<String>,
+) -> Response {
     // Load before deleting so the client_id is still known afterwards —
     // revoking consent must also kill the standing credentials minted under
     // it, or `offline_access` clients would outlive their revocation.

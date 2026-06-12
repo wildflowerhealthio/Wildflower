@@ -1,6 +1,7 @@
 use axum::extract::Extension;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
+use axum::routing::{post, MethodRouter};
 use axum::Json;
 use chrono::Utc;
 use serde::Deserialize;
@@ -57,9 +58,14 @@ pub enum TokenPayload {
     },
 }
 
-/// `POST /oauth/token` — accept either grant type and either return a signed
-/// token response or an OAuth error.
-pub async fn handle_token_request(
+/// `POST /oauth/token` route.
+pub(super) fn route() -> MethodRouter {
+    post(handle_token_request)
+}
+
+/// Accept either grant type and either return a signed token response or an
+/// OAuth error.
+async fn handle_token_request(
     Extension(state): Extension<AppState>,
     headers: HeaderMap,
     body: String,

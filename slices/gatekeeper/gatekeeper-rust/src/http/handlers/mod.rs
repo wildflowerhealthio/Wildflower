@@ -1,5 +1,5 @@
-pub mod access_management;
 pub mod devices;
+pub mod grants;
 pub mod jwks;
 pub mod oauth;
-pub mod oauth_consent;
+pub mod oauth_consents;

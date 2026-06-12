@@ -27,8 +27,8 @@ use axum::Router;
 pub fn router(state: AppState) -> Router {
     let oauth = handlers::oauth::router();
     let access = Router::new()
-        .merge(handlers::access_management::router())
-        .merge(handlers::oauth_consent::router())
+        .merge(handlers::grants::router())
+        .merge(handlers::oauth_consents::router())
         .merge(handlers::devices::router())
         .layer(axum_middleware::from_fn(middleware::require_owner_auth));
 

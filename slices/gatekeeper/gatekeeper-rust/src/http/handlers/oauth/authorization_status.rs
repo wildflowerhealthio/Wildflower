@@ -1,6 +1,7 @@
 use axum::extract::{Extension, Path};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use axum::routing::{get, MethodRouter};
 use axum::Json;
 use chrono::Utc;
 use serde::Serialize;
@@ -33,9 +34,14 @@ pub enum AuthorizationStatus {
     },
 }
 
-/// `GET /oauth/authorize/{id}` — return the current status of the pending
-/// authorization request, including the final redirect URL once approved.
-pub async fn handle_authorization_status_request(
+/// `GET /oauth/authorize/{id}` route.
+pub(super) fn route() -> MethodRouter {
+    get(handle_authorization_status_request)
+}
+
+/// Return the current status of the pending authorization request, including
+/// the final redirect URL once approved.
+async fn handle_authorization_status_request(
     Extension(state): Extension<AppState>,
     Path(id): Path<String>,
 ) -> Response {

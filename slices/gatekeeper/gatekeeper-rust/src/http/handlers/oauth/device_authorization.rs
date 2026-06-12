@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context};
 use axum::extract::Extension;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
+use axum::routing::{post, MethodRouter};
 use axum::Json;
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
@@ -47,9 +48,14 @@ pub struct DeviceAuthorizationResponse {
     pub interval: i64,
 }
 
-/// `POST /oauth/device_authorization` — issue a `(device_code, user_code)`
-/// pair for the client to poll on while the user pairs the device.
-pub async fn handle_device_authorization_request(
+/// `POST /oauth/device_authorization` route.
+pub(super) fn route() -> MethodRouter {
+    post(handle_device_authorization_request)
+}
+
+/// Issue a `(device_code, user_code)` pair for the client to poll on while the
+/// user pairs the device.
+async fn handle_device_authorization_request(
     Extension(state): Extension<AppState>,
     headers: HeaderMap,
     body: String,

@@ -1,6 +1,7 @@
 use axum::extract::{Extension, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
+use axum::routing::{get, MethodRouter};
 use chrono::{Duration, Utc};
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -103,7 +104,12 @@ pub struct AuthorizeParams {
 /// 3. Approval 302s the browser back to the client's `redirect_uri` with
 ///    `code` + `state` (§4.1.2); the client then redeems the short-lived
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
-pub async fn handle_authorize_request(
+/// `GET /oauth/authorize` route.
+pub(super) fn route() -> MethodRouter {
+    get(handle_authorize_request)
+}
+
+async fn handle_authorize_request(
     Extension(state): Extension<AppState>,
     headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
