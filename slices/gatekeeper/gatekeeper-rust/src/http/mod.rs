@@ -26,7 +26,6 @@ use axum::Router;
 /// `.merge()`s. The whole surface is gated by the loopback middleware —
 /// non-loopback peers receive 403 before any handler runs.
 pub fn router(state: AppState) -> Router {
-    let well_known = Router::new().nest("/.well-known", handlers::jwks::router());
     let oauth = handlers::oauth::router();
     let access = Router::new()
         .merge(handlers::access_management::router())
@@ -35,7 +34,10 @@ pub fn router(state: AppState) -> Router {
         .layer(axum_middleware::from_fn(middleware::require_owner_auth));
 
     Router::new()
-        .merge(well_known)
+        .route(
+            "/.well-known/jwks.json",
+            handlers::jwks::handle_get_jwks_request(),
+        )
         .nest("/oauth", oauth)
         .nest("/access", access)
         .layer(axum_middleware::from_fn(middleware::loopback_gate))

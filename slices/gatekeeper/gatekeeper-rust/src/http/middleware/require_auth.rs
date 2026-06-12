@@ -84,7 +84,7 @@ pub fn verify_auth_token_claims(
         token,
         &keys,
         VerifyOptions {
-            expected_issuer: &origin,
+            expected_issuer: origin,
             accepted_audiences: &accepted,
         },
     )

@@ -12,6 +12,7 @@ use crate::crypto_util::random_token::generate_authorization_code;
 use crate::db_utils::{JsonColumn, UriColumn};
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
+use crate::domain::client::Client;
 use crate::http::error_pages::{oauth_error_html, OAuthErrorKind};
 use crate::http::page_paths;
 use crate::http::responses::internal_error;
@@ -108,7 +109,6 @@ pub async fn handle_authorize_request(
     Query(params): Query<AuthorizeParams>,
 ) -> Response {
     let origin = served_origin_for(&headers, &state.loopback_origin);
-    let origin = origin.as_str();
 
     // An active signing key must exist — without it we have no token-mint
     // capability. Probe presence directly rather than loading every key's
@@ -120,98 +120,33 @@ pub async fn handle_authorize_request(
         Err(e) => return internal_error("active_signing_key lookup failed", e),
     }
 
-    // ---- Local-page validations (RFC 6749 §4.1.2.1): only redirect_uri and
-    // client_id failures may NOT be redirected back to the client, so they
-    // render a local HTML page. These run first so that everything after has
-    // a trusted redirect target. ----
-
-    // redirect_uri must be a well-formed http/https URL.
-    let parsed_redirect = match Url::parse(&params.redirect_uri) {
-        Ok(u) => u,
-        Err(_) => return html_bad_request(oauth_error_html(OAuthErrorKind::InvalidRedirectUri)),
+    // Validate in two phases: client/redirect_uri first (failures render a
+    // local page), then the redirectable params (failures 302 back). Each
+    // phase returns the values the rest of the flow needs or an error response.
+    let client = match validate_and_load_client(&state, &params) {
+        Ok(c) => c,
+        Err(error_response) => return error_response,
     };
-    if parsed_redirect.scheme() != "http" && parsed_redirect.scheme() != "https" {
-        return html_bad_request(oauth_error_html(OAuthErrorKind::InvalidScheme));
-    }
-
-    // Client must exist and be enabled.
-    let client = match state.store.client_by_id(&params.client_id) {
-        Ok(Some(c)) => c,
-        Ok(None) => return html_bad_request(oauth_error_html(OAuthErrorKind::UnknownClient)),
-        Err(e) => return internal_error("client_by_id lookup failed", e),
+    let parsed_redirect = match validate_redirect_url(&params, &client) {
+        Ok(url) => url,
+        Err(error_response) => return error_response,
     };
-    if client.disabled_at.is_some() {
-        return html_bad_request(oauth_error_html(OAuthErrorKind::DisabledClient));
+    if let Err(error_response) = validate_code(&params, &parsed_redirect) {
+        return error_response;
     }
-
-    // redirect_uri must be on the client's allowlist (exact match against the
-    // already-parsed `Url` — both sides go through the same normalizer).
-    if !client.redirect_uris.iter().any(|u| u == &parsed_redirect) {
-        return html_bad_request(oauth_error_html(OAuthErrorKind::RedirectUriNotAllowed));
-    }
-
-    // ---- Redirectable validations: `redirect_uri` + `client_id` are now
-    // validated, so spec'd errors past this point go back to the client per
-    // RFC 6749 §4.1.2.1 with `error` + `state`. ----
-
-    // Only the authorization-code grant is implemented; any other value is
-    // `unsupported_response_type` (RFC 6749 §4.1.1 makes the parameter
-    // REQUIRED, §4.1.2.1 names the error code).
-    if params.response_type != "code" {
-        return redirect_oauth_error(&parsed_redirect, "unsupported_response_type", &params.state);
-    }
-
-    // Only S256 PKCE is supported. An unsupported `code_challenge_method` is
-    // `invalid_request` (RFC 7636 §4.4.1).
-    if params.code_challenge_method != "S256" {
-        return redirect_oauth_error(&parsed_redirect, "invalid_request", &params.state);
-    }
-    // The `code_challenge` must be a well-formed S256 challenge (RFC 7636
-    // §4.3); a malformed one is `invalid_request` (RFC 7636 §4.4.1).
-    if !is_valid_s256_code_challenge(&params.code_challenge) {
-        return redirect_oauth_error(&parsed_redirect, "invalid_request", &params.state);
-    }
-
-    // Requested scope must be a subset of the client's allowed scopes;
-    // otherwise `invalid_scope` (RFC 6749 §4.1.2.1).
-    let requested_scopes: Vec<String> = params
-        .scope
-        .split_whitespace()
-        .map(str::to_string)
-        .collect();
-    let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
-    if !requested_scopes
-        .iter()
-        .all(|s| allowed.contains(s.as_str()))
-    {
-        return redirect_oauth_error(&parsed_redirect, "invalid_scope", &params.state);
-    }
+    let requested_scopes = match validate_requested_scopes(&params, &client, &parsed_redirect) {
+        Ok(scopes) => scopes,
+        Err(error_response) => return error_response,
+    };
 
     // Check for an existing grant that pre-approves some or all scopes for
     // this (client, redirect_uri) pair.
-    let existing_grant = match state
-        .store
-        .grant_by_client_and_redirect(&params.client_id, &parsed_redirect)
-    {
-        Ok(g) => g,
-        Err(e) => return internal_error("grant_by_client_and_redirect lookup failed", e),
-    };
-    let previously_approved: HashSet<&str> = existing_grant
-        .as_ref()
-        .map(|g| g.scopes.iter().map(String::as_str).collect())
-        .unwrap_or_default();
-    let pre_approved_scopes: Vec<String> = requested_scopes
-        .iter()
-        .filter(|s| previously_approved.contains(s.as_str()))
-        .cloned()
-        .collect();
-    // Guard with `existing_grant.is_some()` so empty requested_scopes don't
-    // satisfy `all()` vacuously when there's no grant.
-    let all_scopes_pre_approved = existing_grant.is_some()
-        && requested_scopes
-            .iter()
-            .all(|s| previously_approved.contains(s.as_str()));
-    let patient_from_grant = existing_grant.and_then(|g| g.patient);
+    let grant_coverage =
+        match resolve_existing_grant_coverage(&state, &params, &parsed_redirect, &requested_scopes)
+        {
+            Ok(c) => c,
+            Err(error_response) => return error_response,
+        };
 
     // Persist the pending request — every path from here on out references
     // it by `request_id`.
@@ -223,7 +158,7 @@ pub async fn handle_authorize_request(
         code_challenge: params.code_challenge.clone(),
         redirect_uri: parsed_redirect.clone(),
         client_state: params.state.clone(),
-        pre_approved_scopes,
+        pre_approved_scopes: grant_coverage.pre_approved_scopes,
         ttl: AUTHORIZATION_REQUEST_TTL,
     });
     if let Err(e) = state.store.insert_authorization_request(&request) {
@@ -232,37 +167,230 @@ pub async fn handle_authorize_request(
 
     // Fully-pre-approved fast path: skip the Owner UI and 302 the user-agent
     // straight back to the client with a fresh code.
-    if all_scopes_pre_approved {
-        let code = generate_authorization_code();
-        let issued_at = Utc::now();
-        let authorization_code = AuthorizationCode {
-            code: code.clone(),
-            request_id: request_id.clone(),
-            client_id: params.client_id.clone(),
-            redirect_uri: UriColumn(parsed_redirect.clone()),
-            code_challenge: params.code_challenge.clone(),
-            granted_scopes: JsonColumn(requested_scopes.clone()),
-            patient: patient_from_grant.clone(),
-            issued_at,
-            expires_at: issued_at + AUTHORIZATION_CODE_TTL,
-        };
-        if let Err(e) = state.store.issue_authorization_code(&authorization_code) {
-            return internal_error("issue_authorization_code failed", e);
-        }
-        if let Err(e) = state.store.approve_authorization_request(
+    if grant_coverage.all_scopes_pre_approved {
+        let code = match issue_code(
+            &state,
             &request_id,
+            &params,
+            &parsed_redirect,
             &requested_scopes,
-            patient_from_grant.as_deref(),
+            grant_coverage.patient.as_deref(),
         ) {
-            return internal_error("approve_authorization_request failed", e);
-        }
-        let redirect_url = build_client_redirect_url(&parsed_redirect, &code, &params.state);
-        return found_redirect(&redirect_url);
+            Ok(code) => code,
+            Err(error_response) => return error_response,
+        };
+        return redirect_to_client(&parsed_redirect, &code, &params.state);
     }
 
     // Otherwise redirect to the Owner UI's polling page so a human can approve.
-    let polling_url = page_paths::oauth_polling_url(origin, &request_id);
+    let polling_url = page_paths::oauth_polling_url(&origin, &request_id);
     found_redirect(&polling_url)
+}
+
+/// Load the client and validate it exists and is enabled (RFC 6749 §4.1.2.1).
+/// An unknown or disabled client can't be trusted as a redirect target, so the
+/// failure renders a local HTML page rather than a redirect.
+fn validate_and_load_client(
+    state: &AppState,
+    params: &AuthorizeParams,
+) -> Result<Client, Response> {
+    let client = match state.store.client_by_id(&params.client_id) {
+        Ok(Some(c)) => c,
+        Ok(None) => {
+            return Err(html_bad_request(oauth_error_html(
+                OAuthErrorKind::UnknownClient,
+            )))
+        }
+        Err(e) => return Err(internal_error("client_by_id lookup failed", e)),
+    };
+    if client.disabled_at.is_some() {
+        return Err(html_bad_request(oauth_error_html(
+            OAuthErrorKind::DisabledClient,
+        )));
+    }
+    Ok(client)
+}
+
+/// Validate the `redirect_uri` against `client`: a well-formed http/https URL
+/// (RFC 6749 §4.1.2.1) that is on the client's allowlist. A `redirect_uri` that
+/// isn't trusted can't be used as a redirect target, so failures render a local
+/// HTML page. Returns the parsed URL the redirect flow uses thereafter.
+fn validate_redirect_url(params: &AuthorizeParams, client: &Client) -> Result<Url, Response> {
+    let parsed_redirect = Url::parse(&params.redirect_uri)
+        .map_err(|_| html_bad_request(oauth_error_html(OAuthErrorKind::InvalidRedirectUri)))?;
+    if parsed_redirect.scheme() != "http" && parsed_redirect.scheme() != "https" {
+        return Err(html_bad_request(oauth_error_html(
+            OAuthErrorKind::InvalidScheme,
+        )));
+    }
+    // Exact match against the already-parsed `Url` — both sides go through the
+    // same normalizer.
+    if !client.redirect_uris.iter().any(|u| u == &parsed_redirect) {
+        return Err(html_bad_request(oauth_error_html(
+            OAuthErrorKind::RedirectUriNotAllowed,
+        )));
+    }
+    Ok(parsed_redirect)
+}
+
+/// Validate the response type and PKCE challenge. With `redirect_uri` +
+/// `client_id` already validated, these spec'd errors go back to the client
+/// per RFC 6749 §4.1.2.1 with `error` + `state`.
+fn validate_code(params: &AuthorizeParams, parsed_redirect: &Url) -> Result<(), Response> {
+    // Only the authorization-code grant is implemented; any other value is
+    // `unsupported_response_type` (RFC 6749 §4.1.1 makes the parameter
+    // REQUIRED, §4.1.2.1 names the error code).
+    if params.response_type != "code" {
+        return Err(redirect_oauth_error(
+            parsed_redirect,
+            "unsupported_response_type",
+            &params.state,
+        ));
+    }
+
+    // Only S256 PKCE is supported. An unsupported `code_challenge_method` is
+    // `invalid_request` (RFC 7636 §4.4.1).
+    if params.code_challenge_method != "S256" {
+        return Err(redirect_oauth_error(
+            parsed_redirect,
+            "invalid_request",
+            &params.state,
+        ));
+    }
+    // The `code_challenge` must be a well-formed S256 challenge (RFC 7636
+    // §4.3); a malformed one is `invalid_request` (RFC 7636 §4.4.1).
+    if !is_valid_s256_code_challenge(&params.code_challenge) {
+        return Err(redirect_oauth_error(
+            parsed_redirect,
+            "invalid_request",
+            &params.state,
+        ));
+    }
+
+    Ok(())
+}
+
+/// Validate that every requested scope is on the client's allowlist
+/// (`invalid_scope`, RFC 6749 §4.1.2.1). Returns the whitespace-split scopes.
+fn validate_requested_scopes(
+    params: &AuthorizeParams,
+    client: &Client,
+    parsed_redirect: &Url,
+) -> Result<Vec<String>, Response> {
+    let requested_scopes: Vec<String> = params
+        .scope
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
+    let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
+    if !requested_scopes
+        .iter()
+        .all(|s| allowed.contains(s.as_str()))
+    {
+        return Err(redirect_oauth_error(
+            parsed_redirect,
+            "invalid_scope",
+            &params.state,
+        ));
+    }
+
+    Ok(requested_scopes)
+}
+
+/// The subset of requested scopes an existing grant already covers, plus
+/// whether *every* requested scope is covered (the fast-path trigger) and the
+/// grant's patient context. All-empty when no grant exists for the pair.
+struct ExistingGrantCoverage {
+    pre_approved_scopes: Vec<String>,
+    all_scopes_pre_approved: bool,
+    patient: Option<String>,
+}
+
+impl ExistingGrantCoverage {
+    /// Coverage when no grant exists: nothing pre-approved, no fast path.
+    fn none() -> Self {
+        ExistingGrantCoverage {
+            pre_approved_scopes: Vec::new(),
+            all_scopes_pre_approved: false,
+            patient: None,
+        }
+    }
+}
+
+/// Look up an existing grant for this (client, redirect_uri) pair and compute
+/// which requested scopes it already covers.
+fn resolve_existing_grant_coverage(
+    state: &AppState,
+    params: &AuthorizeParams,
+    parsed_redirect: &Url,
+    requested_scopes: &[String],
+) -> Result<ExistingGrantCoverage, Response> {
+    let Some(existing_grant) = state
+        .store
+        .grant_by_client_and_redirect(&params.client_id, parsed_redirect)
+        .map_err(|e| internal_error("grant_by_client_and_redirect lookup failed", e))?
+    else {
+        return Ok(ExistingGrantCoverage::none());
+    };
+
+    let previously_approved: HashSet<&str> =
+        existing_grant.scopes.iter().map(String::as_str).collect();
+    let pre_approved_scopes: Vec<String> = requested_scopes
+        .iter()
+        .filter(|s| previously_approved.contains(s.as_str()))
+        .cloned()
+        .collect();
+    let all_scopes_pre_approved = requested_scopes
+        .iter()
+        .all(|s| previously_approved.contains(s.as_str()));
+    Ok(ExistingGrantCoverage {
+        pre_approved_scopes,
+        all_scopes_pre_approved,
+        patient: existing_grant.patient,
+    })
+}
+
+/// Mint a fresh authorization code, persist it, and mark the request approved
+/// — the storage half of the fully-pre-approved fast path (RFC 6749 §4.1
+/// permits skipping consent on a prior decision). Returns the issued `code`,
+/// or an error `Response` if either store write fails.
+fn issue_code(
+    state: &AppState,
+    request_id: &str,
+    params: &AuthorizeParams,
+    parsed_redirect: &Url,
+    requested_scopes: &[String],
+    patient: Option<&str>,
+) -> Result<String, Response> {
+    let code = generate_authorization_code();
+    let issued_at = Utc::now();
+    let authorization_code = AuthorizationCode {
+        code: code.clone(),
+        request_id: request_id.to_string(),
+        client_id: params.client_id.clone(),
+        redirect_uri: UriColumn(parsed_redirect.clone()),
+        code_challenge: params.code_challenge.clone(),
+        granted_scopes: JsonColumn(requested_scopes.to_vec()),
+        patient: patient.map(str::to_string),
+        issued_at,
+        expires_at: issued_at + AUTHORIZATION_CODE_TTL,
+    };
+    state
+        .store
+        .issue_authorization_code(&authorization_code)
+        .map_err(|e| internal_error("issue_authorization_code failed", e))?;
+    state
+        .store
+        .approve_authorization_request(request_id, requested_scopes, patient)
+        .map_err(|e| internal_error("approve_authorization_request failed", e))?;
+    Ok(code)
+}
+
+/// 302 the user-agent back to the client's `redirect_uri` with `code` + `state`
+/// (RFC 6749 §4.1.2).
+fn redirect_to_client(parsed_redirect: &Url, code: &str, client_state: &str) -> Response {
+    let redirect_url = build_client_redirect_url(parsed_redirect, code, client_state);
+    found_redirect(&redirect_url)
 }
 
 fn html_bad_request(html: String) -> Response {
