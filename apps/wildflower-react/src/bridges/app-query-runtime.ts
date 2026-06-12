@@ -29,12 +29,9 @@ import {
  * fallback answering an API path with `200` + HTML carries no URL or
  * status in the failure it causes).
  */
-/**
- * URL is absolute when it leads with a scheme (`http:`, `https:`,
- * `tauri:`, …). Matches RFC 3986's `scheme = ALPHA *( ALPHA / DIGIT /
- * "+" / "-" / "." )` so the prepend is skipped only for genuinely
- * absolute URLs, never for relative paths like `/apps`.
- */
+// URL is absolute when it leads with a scheme (`http:`, `https:`, `tauri:`, …).
+// Matches RFC 3986's `scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )` so the
+// prepend is skipped only for genuinely absolute URLs, never for relative paths like `/apps`.
 const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/i.test(url)
 
 const prependApiBaseUrl = (

@@ -104,8 +104,8 @@ const defineSliceHttpClient = <
             // relative (`/x`), so a `'/'` base is a no-op at best — and
             // `HttpApiClient`'s base prepend runs *after* any transform
             // the app layered onto the context `HttpClient`, so it
-            // corrupts URLs an app-level origin prepend (e.g. the Tauri
-            // entry's `apiBaseUrl`) already made absolute
+            // corrupts URLs when an app-level origin prepend (e.g. the Tauri
+            // entry's `apiBaseUrl`) already made them absolute
             // (`/http://127.0.0.1:8080/x`).
             return yield* HttpApiClient.make(input.api, {
               transformClient: (c) =>

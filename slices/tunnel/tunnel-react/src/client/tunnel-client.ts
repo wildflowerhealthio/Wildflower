@@ -34,8 +34,8 @@ const buildTunnelAdminClientLayer = (): Layer.Layer<
     Effect.gen(function* () {
       const tokenSubscribable = yield* BearerToken
       // No `baseUrl`: a `'/'` base is prepended *after* app-level
-      // request transforms and corrupts URLs an origin prepend (the
-      // Tauri entry's `apiBaseUrl`) already made absolute.
+      // request transforms and corrupts URLs when an origin prepend (the
+      // Tauri entry's `apiBaseUrl`) already made them absolute.
       return yield* HttpApiClient.make(TunnelAdminApi, {
         transformClient: (c) =>
           HttpClient.mapRequestEffect(c, (request) =>

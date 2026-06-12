@@ -59,6 +59,7 @@ mod tests {
             "authorization_requests",
             "clients",
             "grants",
+            "refresh_token_families",
             "refresh_tokens",
             "signing_keys",
         ] {

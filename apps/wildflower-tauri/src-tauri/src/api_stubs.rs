@@ -33,7 +33,13 @@ pub fn app_shell_stub_router(loopback_origin: String) -> Router {
         )
         .route(
             "/tunnel",
-            get(move || async move { Json(stub_tunnel_state(loopback_origin)) }),
+            get({
+                let origin = loopback_origin.clone();
+                move || {
+                    let origin = origin.clone();
+                    async move { Json(stub_tunnel_state(origin)) }
+                }
+            }),
         )
 }
 
