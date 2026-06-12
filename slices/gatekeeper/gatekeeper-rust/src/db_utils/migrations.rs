@@ -23,7 +23,10 @@ pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
 /// `PRAGMA user_version` — append-only; never reorder or rewrite an
 /// already-shipped entry. New migrations land as a sibling `.sql` file
 /// under `src/migrations/` plus one new `include_str!` line below.
-const MIGRATIONS: &[&str] = &[include_str!("../migrations/001_initial_schema.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/001_initial_schema.sql"),
+    include_str!("../migrations/002_refresh_tokens.sql"),
+];
 
 #[cfg(test)]
 mod tests {
@@ -56,6 +59,7 @@ mod tests {
             "authorization_requests",
             "clients",
             "grants",
+            "refresh_tokens",
             "signing_keys",
         ] {
             assert!(names.iter().any(|n| n == expected), "missing {expected}");

@@ -6,6 +6,7 @@
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::RngCore;
+use sha2::{Digest, Sha256};
 
 /// Number of CSPRNG bytes backing each generated token. 32 bytes = 256 bits
 /// of entropy.
@@ -19,6 +20,24 @@ pub(crate) fn generate_authorization_code() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];
     rand::thread_rng().fill_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
+}
+
+/// Generate an opaque refresh token — same construction as
+/// [`generate_authorization_code`]; the two differ only in where they're
+/// stored and how long they live (RFC 6749 §10.4 wants the same
+/// unguessability bar).
+pub(crate) fn generate_refresh_token() -> String {
+    generate_authorization_code()
+}
+
+/// SHA-256 digest of an opaque token, base64url-encoded without padding —
+/// the at-rest form for refresh tokens, so a stolen database never yields a
+/// presentable credential. Public so integration tests can plant rows with
+/// known plaintexts.
+pub fn token_storage_hash(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    URL_SAFE_NO_PAD.encode(hasher.finalize())
 }
 
 #[cfg(test)]

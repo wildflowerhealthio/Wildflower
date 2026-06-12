@@ -1,7 +1,7 @@
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 
-use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::db_utils::sql_builder::build_insert_sql;
+use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::domain::authorization_code::AuthorizationCode;
 
 fn make_named_sql_params(code: &AuthorizationCode) -> [(&str, &dyn ToSql); 9] {
@@ -44,10 +44,7 @@ impl GatekeeperStore {
     /// RFC 6749 §10.5 single-use race against any concurrent redeemer of the
     /// same code — `DELETE ... RETURNING` runs under SQLite's write lock, so
     /// only one caller's `Ok(Some)` lands and any racer sees `Ok(None)`.
-    pub fn redeem_authorization_code(
-        &self,
-        code: &str,
-    ) -> DbResult<Option<AuthorizationCode>> {
+    pub fn redeem_authorization_code(&self, code: &str) -> DbResult<Option<AuthorizationCode>> {
         self.conn()
             .lock()
             .query_row(
@@ -77,10 +74,9 @@ impl GatekeeperStore {
     /// Persist a freshly-minted authorization code.
     pub fn issue_authorization_code(&self, code: &AuthorizationCode) -> DbResult<()> {
         let params = make_named_sql_params(code);
-        self.conn().lock().execute(
-            &build_insert_sql("authorization_codes", &params),
-            &params,
-        )?;
+        self.conn()
+            .lock()
+            .execute(&build_insert_sql("authorization_codes", &params), &params)?;
         Ok(())
     }
 }

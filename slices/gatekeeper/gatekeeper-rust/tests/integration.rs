@@ -9,12 +9,14 @@ use tokio::sync::watch;
 const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
 use chrono::{Duration, Utc};
 use gatekeeper_rust::crypto_util::pkce::compute_code_challenge;
+use gatekeeper_rust::crypto_util::random_token::token_storage_hash;
 use gatekeeper_rust::db_utils::{JsonColumn, UriColumn};
 use gatekeeper_rust::domain::authorization_code::AuthorizationCode;
 use gatekeeper_rust::domain::authorization_request::{
     AuthorizationRequest, GrantType, RequestStatus,
 };
 use gatekeeper_rust::domain::client::{Client, ClientKind};
+use gatekeeper_rust::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use gatekeeper_rust::GatekeeperStore;
 use serde_json::Value;
 use tempfile::TempDir;
@@ -644,6 +646,200 @@ async fn auth_code_grant_happy_path_end_to_end() {
         .as_str()
         .expect("access_token")
         .is_empty());
+    // No `offline_access` in the grant → no standing credential.
+    assert!(token.get("refresh_token").is_none());
+}
+
+/// Drive `/authorize` → Owner consent approve for one request, returning the
+/// pending request id. Callers assert on the *consequences* (grant rows,
+/// fast-path behaviour, refresh issuance); the flow itself is proven by
+/// `auth_code_grant_happy_path_end_to_end`. Uses the shared
+/// `https://app.example/cb` redirect and [`CODE_VERIFIER`]'s challenge.
+async fn authorize_and_approve(
+    g: &Gatekeeper,
+    host_owner_token: &str,
+    client_id: &str,
+    scope_query: &str,
+    approve_body: &'static str,
+) -> String {
+    let challenge = compute_code_challenge(CODE_VERIFIER);
+    let query = format!(
+        "response_type=code&code_challenge_method=S256&client_id={client_id}&scope={scope_query}&\
+         code_challenge={challenge}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
+    );
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize?{query}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let polling = res
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .expect("location")
+        .to_string();
+    let request_id = polling.rsplit('/').next().expect("request id").to_string();
+    let approve = loopback_request(
+        Request::post(format!("/access/oauth-consents/{request_id}/approve"))
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("content-type", "application/json"),
+        Body::from(approve_body),
+    );
+    let res = g.router.clone().oneshot(approve).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    request_id
+}
+
+/// Consent approval persists a `Grant` row visible on the Owner surface —
+/// the standing-consent record that powers the `/authorize` fast path.
+#[tokio::test]
+async fn consent_approval_persists_grant() {
+    let (g, host_owner_token, tmp) = spin_up();
+    seed_client_with_redirect(&tmp, "test-app", "https://app.example/cb", &["read"]);
+    authorize_and_approve(
+        &g,
+        &host_owner_token,
+        "test-app",
+        "read",
+        r#"{"approvedScopes":["read"]}"#,
+    )
+    .await;
+
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get("/access/grants")
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {host_owner_token}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res.into_body()).await;
+    // `id` and `grantedAt` are runtime-generated; thread them through and
+    // pin everything else by comparing the whole body against one literal.
+    let id = body[0]["id"].clone();
+    let granted_at = body[0]["grantedAt"].clone();
+    assert_eq!(
+        body,
+        serde_json::json!([{
+            "id": id,
+            "clientId": "test-app",
+            "scopes": ["read"],
+            "redirectUri": "https://app.example/cb",
+            "grantedAt": granted_at,
+            "lastUsedAt": null,
+            "patient": null,
+        }])
+    );
+}
+
+/// Once a grant covers every requested scope, re-authorizing skips the Owner
+/// UI entirely: `/authorize` 302s straight back to the client with a fresh
+/// `code` (RFC 6749 §4.1 — a previously established authorization decision).
+#[tokio::test]
+async fn pre_approved_scopes_skip_consent_on_reauthorize() {
+    let (g, host_owner_token, tmp) = spin_up();
+    seed_client_with_redirect(&tmp, "test-app", "https://app.example/cb", &["read"]);
+    authorize_and_approve(
+        &g,
+        &host_owner_token,
+        "test-app",
+        "read",
+        r#"{"approvedScopes":["read"]}"#,
+    )
+    .await;
+
+    let challenge = compute_code_challenge(CODE_VERIFIER);
+    let query = format!(
+        "response_type=code&code_challenge_method=S256&client_id=test-app&scope=read&\
+         code_challenge={challenge}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=second"
+    );
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize?{query}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let location = res
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .expect("location");
+    // Straight back to the client — not the polling page.
+    let url = Url::parse(location).expect("location url");
+    assert_eq!(
+        url.as_str().split('?').next(),
+        Some("https://app.example/cb")
+    );
+    let code = url
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .map(|(_, v)| v.into_owned())
+        .expect("code param");
+    assert!(!code.is_empty());
+    assert!(url
+        .query_pairs()
+        .any(|(k, v)| k == "state" && v == "second"));
+}
+
+/// Approvals union into the standing grant: consenting to `write` later must
+/// not un-approve the previously consented `read`.
+#[tokio::test]
+async fn consent_approvals_union_scopes_into_grant() {
+    let (g, host_owner_token, tmp) = spin_up();
+    seed_client_with_redirect(
+        &tmp,
+        "test-app",
+        "https://app.example/cb",
+        &["read", "write"],
+    );
+    authorize_and_approve(
+        &g,
+        &host_owner_token,
+        "test-app",
+        "read",
+        r#"{"approvedScopes":["read"]}"#,
+    )
+    .await;
+    // Second request asks for both, but the Owner only approves `write` —
+    // the grant must still cover both afterwards.
+    authorize_and_approve(
+        &g,
+        &host_owner_token,
+        "test-app",
+        "read%20write",
+        r#"{"approvedScopes":["write"]}"#,
+    )
+    .await;
+
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get("/access/grants")
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {host_owner_token}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res.into_body()).await;
+    assert_eq!(body[0]["scopes"], serde_json::json!(["read", "write"]));
+    assert_eq!(body.as_array().map(Vec::len), Some(1), "body = {body}");
 }
 
 /// Redeeming with a verifier that doesn't hash to the stored challenge is an
@@ -825,5 +1021,324 @@ async fn device_authorization_sets_cache_suppression_headers() {
     assert_eq!(
         res.headers().get("pragma").map(|v| v.to_str().unwrap()),
         Some("no-cache")
+    );
+}
+
+/// Granting `offline_access` issues a rotating refresh token, and the full
+/// rotation contract holds: redeeming swaps generations, replaying a consumed
+/// generation revokes the whole family (OAuth 2.1 rotation semantics), so the
+/// rotated-to token dies with it.
+#[tokio::test]
+async fn offline_access_issues_rotating_refresh_token() {
+    let (g, host_owner_token, tmp) = spin_up();
+    seed_client_with_redirect(
+        &tmp,
+        "test-app",
+        "https://app.example/cb",
+        &["read", "offline_access"],
+    );
+    let request_id = authorize_and_approve(
+        &g,
+        &host_owner_token,
+        "test-app",
+        "read%20offline_access",
+        r#"{"approvedScopes":["read","offline_access"]}"#,
+    )
+    .await;
+
+    // Pull the redeemable code off the status poll, then redeem it.
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize/{request_id}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let status = body_json(res.into_body()).await;
+    let redirect = status["redirect"].as_str().expect("redirect");
+    let code = Url::parse(redirect)
+        .expect("redirect url")
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .map(|(_, v)| v.into_owned())
+        .expect("code param");
+    let body = format!(
+        "grant_type=authorization_code&client_id=test-app&code={code}&\
+         code_verifier={CODE_VERIFIER}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb"
+    );
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::post("/oauth/token")
+                .header("content-type", "application/x-www-form-urlencoded"),
+            Body::from(body),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let token = body_json(res.into_body()).await;
+    assert_eq!(token["scope"], "read offline_access");
+    let first_refresh = token["refresh_token"]
+        .as_str()
+        .expect("refresh_token present with offline_access")
+        .to_string();
+
+    // Redeem the refresh token: fresh access token + the next generation.
+    let body = format!("grant_type=refresh_token&client_id=test-app&refresh_token={first_refresh}");
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::post("/oauth/token")
+                .header("content-type", "application/x-www-form-urlencoded"),
+            Body::from(body.clone()),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let refreshed = body_json(res.into_body()).await;
+    assert_eq!(refreshed["token_type"], "Bearer");
+    assert_eq!(refreshed["scope"], "read offline_access");
+    assert!(!refreshed["access_token"]
+        .as_str()
+        .expect("access_token")
+        .is_empty());
+    let second_refresh = refreshed["refresh_token"]
+        .as_str()
+        .expect("rotated refresh_token")
+        .to_string();
+    assert_ne!(second_refresh, first_refresh);
+
+    // Replaying the consumed generation is treated as theft …
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::post("/oauth/token")
+                .header("content-type", "application/x-www-form-urlencoded"),
+            Body::from(body),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({
+            "error": "invalid_grant",
+            "error_description": "Refresh token has been revoked",
+        })
+    );
+
+    // … which kills the whole family: the rotated-to token is dead too. The
+    // family is expired in place (not deleted), so it reports as expired.
+    let body =
+        format!("grant_type=refresh_token&client_id=test-app&refresh_token={second_refresh}");
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::post("/oauth/token")
+                .header("content-type", "application/x-www-form-urlencoded"),
+            Body::from(body),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({
+            "error": "invalid_grant",
+            "error_description": "Refresh token has expired",
+        })
+    );
+}
+
+/// Plant a refresh-token family with one live token directly in the store,
+/// with a caller-controlled family deadline so expiry tests don't sleep.
+fn plant_refresh_token(
+    store: &GatekeeperStore,
+    plaintext: &str,
+    client_id: &str,
+    family_expires_at: chrono::DateTime<Utc>,
+) {
+    let now = Utc::now();
+    store
+        .insert_refresh_token_family(
+            &RefreshTokenFamily {
+                family_id: format!("family-{plaintext}"),
+                client_id: client_id.to_string(),
+                scopes: JsonColumn(vec!["read".to_string(), "offline_access".to_string()]),
+                patient: None,
+                issued_at: now,
+                expires_at: family_expires_at,
+            },
+            &RefreshToken {
+                token_hash: token_storage_hash(plaintext),
+                family_id: format!("family-{plaintext}"),
+                issued_at: now,
+                consumed_at: None,
+            },
+        )
+        .expect("insert refresh token family");
+}
+
+/// A refresh token past its family's absolute deadline is `invalid_grant`.
+/// The rows survive the attempt — natural deadline passage writes nothing.
+#[tokio::test]
+async fn expired_refresh_token_family_is_rejected() {
+    let (g, _host_owner_token, tmp) = spin_up();
+    seed_client_with_redirect(
+        &tmp,
+        "test-app",
+        "https://app.example/cb",
+        &["read", "offline_access"],
+    );
+    let store = store_handle(&tmp);
+    plant_refresh_token(
+        &store,
+        "stale-token",
+        "test-app",
+        Utc::now() - Duration::days(1),
+    );
+
+    let res = post_form(
+        &g.router,
+        "/oauth/token",
+        "grant_type=refresh_token&client_id=test-app&refresh_token=stale-token",
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({
+            "error": "invalid_grant",
+            "error_description": "Refresh token has expired",
+        })
+    );
+    let row = store
+        .refresh_token_by_hash(&token_storage_hash("stale-token"))
+        .expect("query")
+        .expect("row kept");
+    assert_eq!(row.consumed_at, None);
+}
+
+/// A refresh token presented by a different registered client is rejected
+/// exactly like an unknown token (RFC 6749 §6 client binding) — and the
+/// mismatch does NOT revoke the rightful owner's family.
+#[tokio::test]
+async fn refresh_token_is_bound_to_issuing_client() {
+    let (g, _host_owner_token, tmp) = spin_up();
+    seed_client_with_redirect(&tmp, "owner-app", "https://app.example/cb", &["read"]);
+    seed_client_with_redirect(&tmp, "other-app", "https://other.example/cb", &["read"]);
+    let store = store_handle(&tmp);
+    plant_refresh_token(
+        &store,
+        "owned-token",
+        "owner-app",
+        Utc::now() + Duration::days(30),
+    );
+
+    let res = post_form(
+        &g.router,
+        "/oauth/token",
+        "grant_type=refresh_token&client_id=other-app&refresh_token=owned-token",
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({
+            "error": "invalid_grant",
+            "error_description": "Invalid refresh_token parameter",
+        })
+    );
+    // The rightful owner's token is untouched — still live.
+    let row = store
+        .refresh_token_by_hash(&token_storage_hash("owned-token"))
+        .expect("query")
+        .expect("row present");
+    assert_eq!(row.consumed_at, None);
+}
+
+/// Revoking a grant on the Owner surface also kills the client's refresh
+/// tokens — standing consent and standing credentials die together.
+#[tokio::test]
+async fn revoking_grant_revokes_refresh_tokens() {
+    let (g, host_owner_token, tmp) = spin_up();
+    seed_client_with_redirect(
+        &tmp,
+        "test-app",
+        "https://app.example/cb",
+        &["read", "offline_access"],
+    );
+    authorize_and_approve(
+        &g,
+        &host_owner_token,
+        "test-app",
+        "read",
+        r#"{"approvedScopes":["read"]}"#,
+    )
+    .await;
+    let store = store_handle(&tmp);
+    plant_refresh_token(
+        &store,
+        "standing-token",
+        "test-app",
+        Utc::now() + Duration::days(30),
+    );
+
+    // Find the grant id on the Owner surface, then revoke it.
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get("/access/grants")
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {host_owner_token}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    let grants = body_json(res.into_body()).await;
+    let grant_id = grants[0]["id"].as_str().expect("grant id").to_string();
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::delete(format!("/access/grants/{grant_id}"))
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {host_owner_token}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+
+    // Soft-revoked: the rows survive for audit, but the family's deadline is
+    // pulled back and the live token is stamped consumed — and redeeming it
+    // reports the family as expired.
+    let (token, family) = store
+        .refresh_token_with_family_by_hash(&token_storage_hash("standing-token"))
+        .expect("query")
+        .expect("rows kept");
+    assert!(family.expires_at <= Utc::now());
+    assert!(token.consumed_at.is_some());
+    let res = post_form(
+        &g.router,
+        "/oauth/token",
+        "grant_type=refresh_token&client_id=test-app&refresh_token=standing-token",
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({
+            "error": "invalid_grant",
+            "error_description": "Refresh token has expired",
+        })
     );
 }

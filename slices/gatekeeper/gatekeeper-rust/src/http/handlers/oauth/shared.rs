@@ -13,6 +13,16 @@ use crate::domain::token::{mint_access_token, NewJwtArgs};
 /// Lifetime of access tokens minted by the gatekeeper.
 pub const ACCESS_TOKEN_TTL: Duration = Duration::hours(1);
 
+/// Absolute lifetime of a refresh-token family, measured from the original
+/// authorization. Rotation swaps generations but never extends this
+/// deadline — past it the client re-runs the authorization flow.
+pub const REFRESH_TOKEN_FAMILY_TTL: Duration = Duration::days(90);
+
+/// Scope that opts a grant into refresh-token issuance (SMART on FHIR's
+/// `offline_access` convention). Without it `/token` responses carry no
+/// `refresh_token`.
+pub const OFFLINE_ACCESS_SCOPE: &str = "offline_access";
+
 /// Minimum polling interval the device-code flow enforces (RFC 8628 §3.5).
 pub const DEVICE_CODE_POLL_INTERVAL: Duration = Duration::seconds(5);
 
@@ -23,6 +33,11 @@ pub struct TokenResponse {
     pub token_type: String,
     pub expires_in: i64,
     pub scope: String,
+    /// Present only when the grant carries [`OFFLINE_ACCESS_SCOPE`] — the
+    /// plaintext of the freshly-minted refresh-token generation (RFC 6749
+    /// §5.1; only its hash is persisted).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub patient: Option<String>,
 }
@@ -216,6 +231,7 @@ pub fn issue_token_response(
         token_type: "Bearer".to_string(),
         expires_in: ACCESS_TOKEN_TTL.num_seconds(),
         scope: input.granted_scopes.join(" "),
+        refresh_token: None,
         patient: input.patient.map(str::to_string),
     })
 }

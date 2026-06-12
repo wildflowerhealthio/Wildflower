@@ -1,8 +1,8 @@
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 
-use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::db_utils::sql_builder::build_insert_sql;
+use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::domain::client::{Client, ClientKind};
 
 impl ToSql for ClientKind {
@@ -67,10 +67,7 @@ impl GatekeeperStore {
         let params = make_named_sql_params(client);
         self.conn()
             .lock()
-            .execute(
-                &build_insert_sql("clients", &params),
-                &params,
-            )?;
+            .execute(&build_insert_sql("clients", &params), &params)?;
         Ok(())
     }
 }

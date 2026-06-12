@@ -11,12 +11,12 @@ use uuid::Uuid;
 use url::Url;
 
 use crate::crypto_util::random_token::generate_authorization_code;
+use crate::db_utils::{DbResult, JsonColumn, UriColumn};
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::grant::Grant;
 use crate::http::responses::{internal_error, not_found};
 use crate::http::state::AppState;
-use crate::db_utils::{DbResult, JsonColumn, UriColumn};
 
 /// Lifetime of the authorization_code minted when an Owner approves a
 /// code-flow consent, from issuance to the client redeeming it at `/token`
@@ -238,7 +238,19 @@ fn upsert_grant(
         .store
         .grant_by_client_and_redirect(client_id, redirect_uri)?
     {
-        state.store.update_grant(&existing.id, scopes, now, patient)
+        // Union with the standing grant: consent is cumulative, so approving
+        // a narrower request never un-approves scopes the Owner previously
+        // consented to. (Revoking the grant is the way to withdraw consent.)
+        let mut merged = existing.scopes.into_inner().clone();
+        let additions: Vec<String> = scopes
+            .iter()
+            .filter(|s| !merged.contains(s))
+            .cloned()
+            .collect();
+        merged.extend(additions);
+        state
+            .store
+            .update_grant(&existing.id, &merged, now, patient)
     } else {
         let grant = Grant {
             id: Uuid::new_v4().to_string(),

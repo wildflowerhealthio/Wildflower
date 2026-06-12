@@ -2,10 +2,10 @@ use chrono::{DateTime, Utc};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 
-use crate::db_utils::{DbResult, GatekeeperStore};
-use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::db_utils::sql_builder::build_insert_sql;
 use crate::db_utils::JsonColumn;
+use crate::db_utils::{DbResult, GatekeeperStore};
+use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 
 impl ToSql for GrantType {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
@@ -92,10 +92,7 @@ const ALL_COLS: &str =
 impl GatekeeperStore {
     /// Load an authorization request by its primary id (the `device_code` for
     /// device-flow, otherwise an internal UUID).
-    pub fn authorization_request_by_id(
-        &self,
-        id: &str,
-    ) -> DbResult<Option<AuthorizationRequest>> {
+    pub fn authorization_request_by_id(&self, id: &str) -> DbResult<Option<AuthorizationRequest>> {
         self.conn()
             .lock()
             .query_row(
@@ -149,10 +146,7 @@ impl GatekeeperStore {
     }
 
     /// Persist a freshly-constructed `AuthorizationRequest`.
-    pub fn insert_authorization_request(
-        &self,
-        request: &AuthorizationRequest,
-    ) -> DbResult<()> {
+    pub fn insert_authorization_request(&self, request: &AuthorizationRequest) -> DbResult<()> {
         let params = make_named_sql_params(request);
         self.conn().lock().execute(
             &build_insert_sql("authorization_requests", &params),
@@ -203,11 +197,7 @@ impl GatekeeperStore {
 
     /// Stamp `last_polled_at` so the next device-flow poll can be slow-down
     /// rate-limited.
-    pub fn record_device_poll(
-        &self,
-        id: &str,
-        polled_at: DateTime<Utc>,
-    ) -> DbResult<()> {
+    pub fn record_device_poll(&self, id: &str, polled_at: DateTime<Utc>) -> DbResult<()> {
         self.conn().lock().execute(
             "UPDATE authorization_requests SET last_polled_at = ?2 WHERE id = ?1",
             params![id, polled_at],

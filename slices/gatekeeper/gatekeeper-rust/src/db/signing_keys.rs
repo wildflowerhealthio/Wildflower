@@ -1,8 +1,8 @@
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 
-use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::db_utils::sql_builder::build_insert_sql;
 use crate::db_utils::JsonColumn;
+use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::domain::signing_key::{SigningKey, SigningKeyValues};
 
 impl TryFrom<&Row<'_>> for SigningKey {
@@ -42,8 +42,9 @@ impl GatekeeperStore {
         let mut stmt = conn.prepare(
             "SELECT kid, kty, alg, values_json, is_active FROM signing_keys ORDER BY is_active DESC, kid",
         )?;
-        let rows: rusqlite::Result<Vec<_>> =
-            stmt.query_map([], |row| SigningKey::try_from(row))?.collect();
+        let rows: rusqlite::Result<Vec<_>> = stmt
+            .query_map([], |row| SigningKey::try_from(row))?
+            .collect();
         rows
     }
 
@@ -78,22 +79,15 @@ mod tests {
     /// real RSA material.
     fn arb_signing_key() -> impl Strategy<Value = SigningKey> {
         let b64 = "[A-Za-z0-9_-]{1,64}";
-        (
-            "[a-zA-Z0-9-]{1,40}",
-            b64,
-            b64,
-            b64,
-            b64,
-            b64,
-            any::<bool>(),
-        )
-            .prop_map(|(kid, n, d, e, p, q, is_active)| SigningKey {
+        ("[a-zA-Z0-9-]{1,40}", b64, b64, b64, b64, b64, any::<bool>()).prop_map(
+            |(kid, n, d, e, p, q, is_active)| SigningKey {
                 kid,
                 kty: "RSA".to_string(),
                 alg: "RS256".to_string(),
                 values: SigningKeyValues { n, d, e, p, q },
                 is_active,
-            })
+            },
+        )
     }
 
     proptest! {

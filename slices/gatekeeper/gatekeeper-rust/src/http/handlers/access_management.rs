@@ -3,6 +3,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
+use chrono::Utc;
 
 use crate::http::responses::{internal_error, not_found};
 use crate::http::state::AppState;
@@ -31,9 +32,29 @@ async fn get_grant(Extension(state): Extension<AppState>, Path(id): Path<String>
 }
 
 async fn revoke_grant(Extension(state): Extension<AppState>, Path(id): Path<String>) -> Response {
+    // Load before deleting so the client_id is still known afterwards —
+    // revoking consent must also kill the standing credentials minted under
+    // it, or `offline_access` clients would outlive their revocation.
+    let grant = match state.store.grant_by_id(&id) {
+        Ok(Some(g)) => g,
+        Ok(None) => return not_found("GrantNotFound", "id", &id),
+        Err(e) => return internal_error("grant_by_id lookup failed", e),
+    };
     match state.store.revoke_grant(&id) {
-        Ok(true) => StatusCode::NO_CONTENT.into_response(),
-        Ok(false) => not_found("GrantNotFound", "id", &id),
-        Err(e) => internal_error("revoke_grant failed", e),
+        Ok(true) => {}
+        Ok(false) => return not_found("GrantNotFound", "id", &id),
+        Err(e) => return internal_error("revoke_grant failed", e),
     }
+    // Refresh-token families don't record a redirect_uri, so revocation is
+    // keyed by client_id — deliberately broader than the single grant (a
+    // revoked client re-earns credentials by re-running the auth flow). The
+    // families are expired in place, not deleted, so the lineage stays
+    // auditable.
+    if let Err(e) = state
+        .store
+        .expire_refresh_token_families_for_client(&grant.client_id, Utc::now())
+    {
+        return internal_error("expire_refresh_token_families_for_client failed", e);
+    }
+    StatusCode::NO_CONTENT.into_response()
 }

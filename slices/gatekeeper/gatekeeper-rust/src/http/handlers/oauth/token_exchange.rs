@@ -7,15 +7,21 @@ use serde::Deserialize;
 use subtle::ConstantTimeEq;
 use url::Url;
 
+use uuid::Uuid;
+
 use super::shared::{
     cache_suppressed, issue_token_response, require_valid_client_for_token, IssueTokenInput,
-    OAuthError, DEVICE_CODE_POLL_INTERVAL,
+    OAuthError, DEVICE_CODE_POLL_INTERVAL, OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
 };
 use crate::crypto_util::pkce::compute_code_challenge;
+use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
+use crate::db::RefreshTokenConsumeOutcome;
+use crate::db_utils::JsonColumn;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
-use crate::http::served_origin_for;
+use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::http::responses::internal_error;
+use crate::http::served_origin_for;
 use crate::http::state::AppState;
 
 /// RFC 7636 §4.1 bounds on the `code_verifier`: 43–128 characters drawn from
@@ -45,6 +51,14 @@ pub enum TokenPayload {
         client_id: String,
         client_secret: Option<String>,
         device_code: String,
+    },
+    /// Refresh-token grant — the client trades its live refresh token for a
+    /// fresh access token plus the refresh token's successor (RFC 6749 §6).
+    #[serde(rename = "refresh_token")]
+    RefreshToken {
+        client_id: String,
+        client_secret: Option<String>,
+        refresh_token: String,
     },
 }
 
@@ -91,6 +105,17 @@ pub async fn handle_token_request(
             client_secret.as_deref(),
             &device_code,
         ),
+        TokenPayload::RefreshToken {
+            client_id,
+            client_secret,
+            refresh_token,
+        } => exchange_refresh_token(
+            &state,
+            &origin,
+            &client_id,
+            client_secret.as_deref(),
+            &refresh_token,
+        ),
     }
 }
 
@@ -134,7 +159,9 @@ fn exchange_authorization_code(
         Ok(None) => {
             return bad_request("invalid_grant", Some("Invalid code parameter"));
         }
-        Err(e) => return cache_suppressed(internal_error("authorization_code redemption failed", e)),
+        Err(e) => {
+            return cache_suppressed(internal_error("authorization_code redemption failed", e))
+        }
     };
     validate_code_and_issue_token(
         state,
@@ -166,9 +193,23 @@ fn validate_code_and_issue_token(
         return bad_request("invalid_grant", Some("Code has expired"));
     }
     let computed = compute_code_challenge(code_verifier);
-    if !bool::from(code_record.code_challenge.as_bytes().ct_eq(computed.as_bytes())) {
+    if !bool::from(
+        code_record
+            .code_challenge
+            .as_bytes()
+            .ct_eq(computed.as_bytes()),
+    ) {
         return bad_request("invalid_grant", Some("Invalid code_verifier parameter"));
     }
+    let refresh_token = match start_refresh_token_family_if_granted(
+        state,
+        client_id,
+        &code_record.granted_scopes,
+        code_record.patient.as_deref(),
+    ) {
+        Ok(t) => t,
+        Err(response) => return *response,
+    };
     issue_token(
         state,
         IssueTokenInput {
@@ -177,6 +218,7 @@ fn validate_code_and_issue_token(
             patient: code_record.patient.as_deref(),
             origin,
         },
+        refresh_token,
     )
 }
 
@@ -228,6 +270,15 @@ fn exchange_device_code(
         .as_deref()
         .map(|v| v.as_slice())
         .unwrap_or(&[]);
+    let refresh_token = match start_refresh_token_family_if_granted(
+        state,
+        &request_record.client_id,
+        granted_scopes,
+        request_record.patient.as_deref(),
+    ) {
+        Ok(t) => t,
+        Err(response) => return *response,
+    };
     issue_token(
         state,
         IssueTokenInput {
@@ -236,14 +287,146 @@ fn exchange_device_code(
             patient: request_record.patient.as_deref(),
             origin,
         },
+        refresh_token,
     )
 }
 
-/// Mint a token for `input` and render it as a cache-suppressed JSON response,
-/// or a cache-suppressed 500 if signing fails.
-fn issue_token(state: &AppState, input: IssueTokenInput<'_>) -> Response {
+/// When the grant carries [`OFFLINE_ACCESS_SCOPE`], mint a new refresh-token
+/// family with its first token and return the token's plaintext for the
+/// response body. Grants without the scope get `Ok(None)` — no standing
+/// credential is created. The error response is boxed to keep the `Result`
+/// small (clippy::result_large_err), mirroring
+/// `load_pending_authorization_code_request`.
+fn start_refresh_token_family_if_granted(
+    state: &AppState,
+    client_id: &str,
+    granted_scopes: &[String],
+    patient: Option<&str>,
+) -> Result<Option<String>, Box<Response>> {
+    if !granted_scopes.iter().any(|s| s == OFFLINE_ACCESS_SCOPE) {
+        return Ok(None);
+    }
+    let plaintext = generate_refresh_token();
+    let now = Utc::now();
+    let family = RefreshTokenFamily {
+        family_id: Uuid::new_v4().to_string(),
+        client_id: client_id.to_string(),
+        scopes: JsonColumn(granted_scopes.to_vec()),
+        patient: patient.map(str::to_string),
+        issued_at: now,
+        expires_at: now + REFRESH_TOKEN_FAMILY_TTL,
+    };
+    let first_token = RefreshToken {
+        token_hash: token_storage_hash(&plaintext),
+        family_id: family.family_id.clone(),
+        issued_at: now,
+        consumed_at: None,
+    };
+    if let Err(e) = state
+        .store
+        .insert_refresh_token_family(&family, &first_token)
+    {
+        return Err(Box::new(cache_suppressed(internal_error(
+            "insert_refresh_token_family failed",
+            e,
+        ))));
+    }
+    Ok(Some(plaintext))
+}
+
+/// Redeem a refresh token (RFC 6749 §6) with rotation semantics: the
+/// presented token is consumed and its successor returned. Presenting an
+/// already-consumed token is treated as theft — the whole family is revoked
+/// (OAuth 2.1 refresh-token rotation).
+fn exchange_refresh_token(
+    state: &AppState,
+    origin: &str,
+    client_id: &str,
+    client_secret: Option<&str>,
+    presented: &str,
+) -> Response {
+    if let Err(err) = require_valid_client_for_token(&state.store, client_id, client_secret) {
+        return cache_suppressed(err.into_response());
+    }
+    let hash = token_storage_hash(presented);
+    let (_, family) = match state.store.refresh_token_with_family_by_hash(&hash) {
+        Ok(Some(pair)) => pair,
+        Ok(None) => return bad_request("invalid_grant", Some("Invalid refresh_token parameter")),
+        Err(e) => return cache_suppressed(internal_error("refresh_token lookup failed", e)),
+    };
+    // Token–client binding (RFC 6749 §6): a valid token presented by the
+    // wrong client is a grant failure; answer exactly as if it didn't exist.
+    // Checked before consuming so a stranger can't burn the rightful
+    // client's live token.
+    if family.client_id != client_id {
+        return bad_request("invalid_grant", Some("Invalid refresh_token parameter"));
+    }
+    let now = Utc::now();
+    // Covers both natural deadline passage and prior revocation — revoking
+    // pulls `expires_at` back to the revocation instant rather than deleting
+    // rows, so the lineage stays auditable.
+    if family.expires_at <= now {
+        return bad_request("invalid_grant", Some("Refresh token has expired"));
+    }
+    match state.store.consume_refresh_token(&hash, now) {
+        Ok(RefreshTokenConsumeOutcome::Consumed) => {}
+        // A consumed token can only reappear if it leaked (or the client is
+        // badly broken) — also where a concurrent redeemer of the same
+        // plaintext lands. Either way the lineage is unsafe: end the family
+        // by expiring it at this instant.
+        Ok(RefreshTokenConsumeOutcome::Replayed) => {
+            if let Err(e) = state
+                .store
+                .expire_refresh_token_family(&family.family_id, now)
+            {
+                return cache_suppressed(internal_error("expire_refresh_token_family failed", e));
+            }
+            return bad_request("invalid_grant", Some("Refresh token has been revoked"));
+        }
+        // Vanished between lookup and consume — a failed decode, nothing
+        // left to revoke.
+        Ok(RefreshTokenConsumeOutcome::NotFound) => {
+            return bad_request("invalid_grant", Some("Invalid refresh_token parameter"))
+        }
+        Err(e) => return cache_suppressed(internal_error("consume_refresh_token failed", e)),
+    }
+    // Mint the successor in the same family — the family keeps the scopes
+    // and the absolute deadline (rotation never extends its life).
+    let next_plaintext = generate_refresh_token();
+    let next = RefreshToken {
+        token_hash: token_storage_hash(&next_plaintext),
+        family_id: family.family_id.clone(),
+        issued_at: now,
+        consumed_at: None,
+    };
+    if let Err(e) = state.store.insert_refresh_token(&next) {
+        return cache_suppressed(internal_error("insert_refresh_token failed", e));
+    }
+    issue_token(
+        state,
+        IssueTokenInput {
+            client_id: &family.client_id,
+            granted_scopes: &family.scopes,
+            patient: family.patient.as_deref(),
+            origin,
+        },
+        Some(next_plaintext),
+    )
+}
+
+/// Mint a token for `input`, attach `refresh_token` (if the grant earned
+/// one), and render it as a cache-suppressed JSON response, or a
+/// cache-suppressed 500 if signing fails.
+fn issue_token(
+    state: &AppState,
+    input: IssueTokenInput<'_>,
+    refresh_token: Option<String>,
+) -> Response {
     match issue_token_response(&state.store, input) {
-        Ok(token) => cache_suppressed(Json(token).into_response()),
+        Ok(mut token) => {
+            token.refresh_token = refresh_token;
+            cache_suppressed(Json(token).into_response())
+        }
         Err(err) => {
             cache_suppressed((StatusCode::INTERNAL_SERVER_ERROR, Json(err)).into_response())
         }

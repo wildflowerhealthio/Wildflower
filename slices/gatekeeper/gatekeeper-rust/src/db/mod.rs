@@ -8,6 +8,9 @@ mod authorization_codes;
 mod authorization_requests;
 mod clients;
 mod grants;
+mod refresh_tokens;
 mod signing_keys;
 #[cfg(test)]
 mod test_support;
+
+pub use refresh_tokens::RefreshTokenConsumeOutcome;

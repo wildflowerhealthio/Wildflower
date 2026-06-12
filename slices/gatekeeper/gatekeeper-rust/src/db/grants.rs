@@ -2,9 +2,9 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 use url::Url;
 
-use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::db_utils::sql_builder::build_insert_sql;
 use crate::db_utils::JsonColumn;
+use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::domain::grant::Grant;
 
 fn make_named_sql_params(grant: &Grant) -> [(&str, &dyn ToSql); 7] {
@@ -84,10 +84,7 @@ impl GatekeeperStore {
         let params = make_named_sql_params(grant);
         self.conn()
             .lock()
-            .execute(
-                &build_insert_sql("grants", &params),
-                &params,
-            )?;
+            .execute(&build_insert_sql("grants", &params), &params)?;
         Ok(())
     }
 

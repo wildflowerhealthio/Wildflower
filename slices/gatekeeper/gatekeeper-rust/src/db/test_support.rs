@@ -11,13 +11,26 @@ use chrono::{DateTime, TimeZone, Utc};
 use proptest::prelude::*;
 use url::Url;
 
-/// A `DateTime<Utc>` drawn from a plausible recent epoch window. Built from a
-/// whole millisecond count so the value round-trips through SQLite's text
-/// timestamp encoding without precision loss.
+/// A `DateTime<Utc>` drawn from a plausible recent epoch window
+/// (2000-01-01 to 2065-01-01). Built from a whole millisecond count so the
+/// value round-trips through SQLite's text timestamp encoding without
+/// precision loss.
 pub fn arb_timestamp() -> impl Strategy<Value = DateTime<Utc>> {
-    // 2000-01-01 .. ~2065 in milliseconds.
-    (946_684_800_000i64..3_000_000_000_000i64)
-        .prop_map(|millis| Utc.timestamp_millis_opt(millis).single().expect("valid epoch ms"))
+    let window_start = Utc
+        .with_ymd_and_hms(2000, 1, 1, 0, 0, 0)
+        .single()
+        .expect("valid window start")
+        .timestamp_millis();
+    let window_end = Utc
+        .with_ymd_and_hms(2065, 1, 1, 0, 0, 0)
+        .single()
+        .expect("valid window end")
+        .timestamp_millis();
+    (window_start..window_end).prop_map(|millis| {
+        Utc.timestamp_millis_opt(millis)
+            .single()
+            .expect("valid epoch ms")
+    })
 }
 
 /// An optional timestamp — covers both the present and absent branches of a
