@@ -13,7 +13,7 @@ use super::internal::{
     cache_suppressed, issue_token_response, require_valid_client_for_token, IssueTokenInput,
     OAuthError, DEVICE_CODE_POLL_INTERVAL, OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
 };
-use crate::crypto_util::pkce::compute_code_challenge;
+use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
 use crate::db::RefreshTokenConsumeOutcome;
 use crate::db_utils::JsonColumn;
@@ -23,11 +23,6 @@ use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::http::responses::internal_error;
 use crate::http::served_origin_for;
 use crate::http::state::AppState;
-
-/// RFC 7636 §4.1 bounds on the `code_verifier`: 43–128 characters drawn from
-/// the unreserved set. We enforce the length here before hashing.
-const CODE_VERIFIER_MIN_LEN: usize = 43;
-const CODE_VERIFIER_MAX_LEN: usize = 128;
 
 /// Body of an RFC 6749 / RFC 8628 token endpoint request, dispatched by the
 /// wire-level `grant_type` field.
@@ -143,8 +138,7 @@ fn exchange_authorization_code(
     // RFC 7636 §4.1: the verifier is 43–128 chars. Reject out-of-range values
     // before hashing — an unusable verifier is a grant failure, not a
     // malformed request (RFC 6749 §5.2).
-    let verifier_len = grant.code_verifier.chars().count();
-    if !(CODE_VERIFIER_MIN_LEN..=CODE_VERIFIER_MAX_LEN).contains(&verifier_len) {
+    if !is_valid_code_verifier_length(grant.code_verifier) {
         return bad_request("invalid_grant", Some("Invalid code_verifier parameter"));
     }
     let parsed_redirect = match Url::parse(grant.redirect_uri) {
