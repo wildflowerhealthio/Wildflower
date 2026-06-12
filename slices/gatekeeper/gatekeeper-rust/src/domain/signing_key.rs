@@ -41,6 +41,10 @@ pub struct SigningKey {
 
 impl SigningKey {
     /// Generate a fresh 2048-bit RSA `SigningKey` with a new random `kid` (inactive by default).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KeyMaterialError::Generate`] if RSA key generation fails.
     pub fn generate() -> Result<SigningKey, KeyMaterialError> {
         let mut rng = rand::thread_rng();
         let private = RsaPrivateKey::new(&mut rng, 2048).map_err(KeyMaterialError::Generate)?;
@@ -110,6 +114,7 @@ impl TryFrom<&SigningKey> for DecodingKey {
 impl TryFrom<&SigningKey> for RsaPrivateKey {
     type Error = KeyMaterialError;
 
+    #[allow(clippy::many_single_char_names)]
     fn try_from(key: &SigningKey) -> Result<Self, Self::Error> {
         let n = base64_url_to_biguint(&key.values.n)?;
         let e = base64_url_to_biguint(&key.values.e)?;

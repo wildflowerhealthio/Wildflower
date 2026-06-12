@@ -77,7 +77,7 @@ async fn run_server(
         layer_router_with_gatekeeper_auth_gating(fhir_r4_router, gatekeeper.state.clone());
 
     let gated_stubs = layer_router_with_gatekeeper_auth_gating(
-        api_stubs::app_shell_stub_router(loopback_origin),
+        api_stubs::app_shell_stub_router(&loopback_origin),
         gatekeeper.state.clone(),
     );
     // The webview page is NOT served from this origin — it loads from
@@ -106,6 +106,15 @@ async fn run_server(
     Ok(())
 }
 
+/// Build and run the Tauri application.
+///
+/// # Panics
+///
+/// Panics if the Tauri runtime fails to start — an unrecoverable
+/// windowing/context failure with no app handle through which to surface a
+/// dialog, so dying with the error is the honest outcome. Recoverable startup
+/// failures (e.g. the app-data directory) are handled inside `.setup()` where a
+/// handle still exists.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()

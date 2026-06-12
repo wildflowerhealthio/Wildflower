@@ -38,7 +38,7 @@ fn spin_up() -> (Gatekeeper, String, TempDir) {
     (g, host_owner_token, tmp)
 }
 
-/// Open a second `GatekeeperStore` handle on the same SQLite file the running
+/// Open a second `GatekeeperStore` handle on the same `SQLite` file the running
 /// router uses. Tests reach through this to seed clients and to plant rows
 /// (e.g. an already-expired authorization request) that the public HTTP
 /// surface can't construct directly — preferred over real-time sleeps so the
@@ -48,8 +48,8 @@ fn store_handle(tmp: &TempDir) -> GatekeeperStore {
 }
 
 /// Register an OAuth client with an allowlisted `redirect_uri` through a
-/// second store handle on the same SQLite file. The redirect-back error
-/// tests (RFC 6749 §4.1.2.1) need a client whose redirect_uri validates,
+/// second store handle on the same `SQLite` file. The redirect-back error
+/// tests (RFC 6749 §4.1.2.1) need a client whose `redirect_uri` validates,
 /// which the seeded first-party client (empty allowlist) cannot provide.
 fn seed_client_with_redirect(tmp: &TempDir, client_id: &str, redirect_uri: &str, scopes: &[&str]) {
     let store = store_handle(tmp);
@@ -59,7 +59,7 @@ fn seed_client_with_redirect(tmp: &TempDir, client_id: &str, redirect_uri: &str,
             name: "Integration Test Client".to_string(),
             kind: ClientKind::Public,
             redirect_uris: JsonColumn(vec![Url::parse(redirect_uri).expect("redirect url")]),
-            allowed_scopes: JsonColumn(scopes.iter().map(|s| s.to_string()).collect()),
+            allowed_scopes: JsonColumn(scopes.iter().map(ToString::to_string).collect()),
             secret_hash: None,
             registered_at: Utc::now(),
             disabled_at: None,
@@ -171,7 +171,7 @@ async fn authorize_unknown_client_returns_html_bad_request() {
     let query = "response_type=code&code_challenge_method=S256&client_id=ghost&scope=read&\
                  code_challenge=abc&redirect_uri=http%3A%2F%2Fexample.com%2Fcb&state=xyz";
     let req = loopback_request(
-        Request::get(format!("/oauth/authorize?{}", query)),
+        Request::get(format!("/oauth/authorize?{query}")),
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -195,7 +195,7 @@ async fn authorize_validates_redirect_uri_before_pkce_method() {
         "response_type=code&code_challenge_method=plain&client_id=wildflower-host&scope=owner&\
                  code_challenge=abc&redirect_uri=http%3A%2F%2Fexample.com%2Fcb&state=xyz";
     let req = loopback_request(
-        Request::get(format!("/oauth/authorize?{}", query)),
+        Request::get(format!("/oauth/authorize?{query}")),
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -214,7 +214,7 @@ async fn authorize_unsupported_response_type_redirects_back() {
     let query = "response_type=token&code_challenge_method=S256&client_id=test-app&scope=read&\
                  code_challenge=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz";
     let req = loopback_request(
-        Request::get(format!("/oauth/authorize?{}", query)),
+        Request::get(format!("/oauth/authorize?{query}")),
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -233,7 +233,7 @@ async fn authorize_unsupported_pkce_method_redirects_invalid_request() {
     let query = "response_type=code&code_challenge_method=plain&client_id=test-app&scope=read&\
                  code_challenge=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz";
     let req = loopback_request(
-        Request::get(format!("/oauth/authorize?{}", query)),
+        Request::get(format!("/oauth/authorize?{query}")),
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -255,7 +255,7 @@ async fn authorize_disallowed_scope_redirects_invalid_scope() {
                  code_challenge=abcdefghijklmnopqrstuvwxyzABCDEF0123456789-&\
                  redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz";
     let req = loopback_request(
-        Request::get(format!("/oauth/authorize?{}", query)),
+        Request::get(format!("/oauth/authorize?{query}")),
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -402,13 +402,19 @@ async fn token_exchange_unknown_device_code_returns_400_invalid_grant() {
 
 #[tokio::test]
 async fn host_owner_token_is_owner_scoped() {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine as _;
+
+    // The owner-token TTL is 24h; allow a couple seconds of slack on the
+    // second-precision, wall-clock-derived timestamps (the reviewer asked us
+    // to "allow for some uncertainty in the timing-dependent values").
+    const OWNER_TOKEN_TTL_SECS: i64 = 24 * 60 * 60;
+
     let before = Utc::now().timestamp();
     let (_g, host_owner_token, _tmp) = spin_up();
     // header.payload.sig
     let parts: Vec<&str> = host_owner_token.split('.').collect();
     assert_eq!(parts.len(), 3);
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-    use base64::Engine as _;
     let payload_bytes = URL_SAFE_NO_PAD.decode(parts[1]).expect("payload");
     let payload: Value = serde_json::from_slice(&payload_bytes).expect("json");
     // iat/exp are wall-clock-derived; thread them through and check their
@@ -426,10 +432,6 @@ async fn host_owner_token_is_owner_scoped() {
             "exp": exp,
         })
     );
-    // The owner-token TTL is 24h; allow a couple seconds of slack on the
-    // second-precision, wall-clock-derived timestamps (the reviewer asked us
-    // to "allow for some uncertainty in the timing-dependent values").
-    const OWNER_TOKEN_TTL_SECS: i64 = 24 * 60 * 60;
     assert!(
         (exp - iat - OWNER_TOKEN_TTL_SECS).abs() <= 2,
         "exp - iat = {} should be ~{OWNER_TOKEN_TTL_SECS}",
@@ -481,7 +483,7 @@ fn plant_authorization_code(
     expires_at: chrono::DateTime<Utc>,
 ) {
     let request_id = format!("req-{code}");
-    let scope_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
+    let scope_vec: Vec<String> = scopes.iter().map(ToString::to_string).collect();
     let challenge = compute_code_challenge(CODE_VERIFIER);
     let now = Utc::now();
     store
@@ -530,7 +532,7 @@ fn plant_device_request(
     status: RequestStatus,
     expires_at: chrono::DateTime<Utc>,
 ) {
-    let scope_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
+    let scope_vec: Vec<String> = scopes.iter().map(ToString::to_string).collect();
     let granted = matches!(status, RequestStatus::Approved).then(|| JsonColumn(scope_vec.clone()));
     store
         .insert_authorization_request(&AuthorizationRequest {
@@ -1029,6 +1031,7 @@ async fn device_authorization_sets_cache_suppression_headers() {
 /// generation revokes the whole family (OAuth 2.1 rotation semantics), so the
 /// rotated-to token dies with it.
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn offline_access_issues_rotating_refresh_token() {
     let (g, host_owner_token, tmp) = spin_up();
     seed_client_with_redirect(

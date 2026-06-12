@@ -3,7 +3,7 @@ use rusqlite::ToSql;
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
 
-/// Newtype that stores a `T` as a JSON string in SQLite. `Deref<Target =
+/// Newtype that stores a `T` as a JSON string in `SQLite`. `Deref<Target =
 /// T>` keeps callers ergonomic: `req.requested_scopes.iter()` still
 /// works without unwrapping the inner value.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,7 +59,7 @@ mod tests {
     use super::*;
     use rusqlite::Connection;
 
-    /// Round-trip a `JsonColumn<Vec<String>>` through a real SQLite TEXT column
+    /// Round-trip a `JsonColumn<Vec<String>>` through a real `SQLite` TEXT column
     /// and assert both the decoded value and the raw stored JSON. An empty
     /// `Vec` is the case the `pre_approved_scopes` `Option` -> `Vec` collapse
     /// relies on: it must store the bare array `[]` (matching the column's

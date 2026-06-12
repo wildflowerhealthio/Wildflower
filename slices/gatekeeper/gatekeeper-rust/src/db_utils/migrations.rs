@@ -1,4 +1,4 @@
-//! Tiny PRAGMA user_version migration runner. Each entry of
+//! Tiny `PRAGMA user_version` migration runner. Each entry of
 //! [`MIGRATIONS`] runs at most once, in order; the index of the highest
 //! applied entry is persisted in `PRAGMA user_version`. Reproduces what
 //! we'd get from `rusqlite_migration` — we hand-roll it because no
@@ -12,7 +12,11 @@ pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
     let tx = conn.transaction()?;
     for (idx, sql) in MIGRATIONS.iter().enumerate().skip(current as usize) {
         tx.execute_batch(sql)?;
-        let next = (idx + 1) as u32;
+        // `idx` is an index into the compile-time `MIGRATIONS` array, so this
+        // conversion never actually overflows; fold the impossible case into
+        // the existing `rusqlite::Result` rather than panicking.
+        let next = u32::try_from(idx + 1)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         // The literal is index-derived, not user input.
         tx.execute_batch(&format!("PRAGMA user_version = {next}"))?;
     }

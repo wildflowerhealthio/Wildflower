@@ -79,21 +79,25 @@ fn format_log_payload(payload: &[serde_json::Value]) -> String {
                     continue;
                 }
                 match chars.next() {
-                    Some('%') => out.push('%'),
-                    Some(spec @ ('s' | 'd' | 'i' | 'f')) => match args.next() {
-                        Some(value) => out.push_str(&render_value(value)),
-                        None => {
+                    // An escaped `%%`, or a dangling `%` at end of template —
+                    // both render as a single literal percent.
+                    Some('%') | None => out.push('%'),
+                    Some(spec @ ('s' | 'd' | 'i' | 'f')) => {
+                        if let Some(value) = args.next() {
+                            out.push_str(&render_value(value));
+                        } else {
                             out.push('%');
                             out.push(spec);
                         }
-                    },
-                    Some(spec @ ('o' | 'O' | 'j')) => match args.next() {
-                        Some(value) => out.push_str(&value.to_string()),
-                        None => {
+                    }
+                    Some(spec @ ('o' | 'O' | 'j')) => {
+                        if let Some(value) = args.next() {
+                            out.push_str(&value.to_string());
+                        } else {
                             out.push('%');
                             out.push(spec);
                         }
-                    },
+                    }
                     Some('c') => {
                         // CSS styling — meaningless in a text log.
                         args.next();
@@ -102,7 +106,6 @@ fn format_log_payload(payload: &[serde_json::Value]) -> String {
                         out.push('%');
                         out.push(other);
                     }
-                    None => out.push('%'),
                 }
             }
             parts.push(out);
@@ -150,7 +153,7 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::select! {
-                _ = ready.notified() => {}
+                () = ready.notified() => {}
                 changed = token_rx.changed() => {
                     if changed.is_err() {
                         log::error!("[bridge] token channel closed; token delivery stopped");

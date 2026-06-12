@@ -193,7 +193,7 @@ pub struct IssueTokenInput<'a> {
 /// JWS encode fails.
 pub fn issue_token_response(
     store: &GatekeeperStore,
-    input: IssueTokenInput<'_>,
+    input: &IssueTokenInput<'_>,
 ) -> Result<TokenResponse, OAuthError> {
     let signing_key = store
         .active_signing_key()
@@ -213,7 +213,7 @@ pub fn issue_token_response(
     let audience = format!("{}/fhir-r4", input.origin);
     let signed = mint_access_token(
         &signing_key,
-        NewJwtArgs {
+        &NewJwtArgs {
             client_id: input.client_id,
             scope: input.granted_scopes,
             ttl: ACCESS_TOKEN_TTL,

@@ -16,9 +16,8 @@ pub async fn require_owner_auth(
     req: Request<Body>,
     next: Next,
 ) -> Response {
-    let token = match try_bearer_token_from_headers(&headers) {
-        Some(t) => t,
-        None => return response_templates::unauthorized(),
+    let Some(token) = try_bearer_token_from_headers(&headers) else {
+        return response_templates::unauthorized();
     };
     // Verify against the origin the request says it was targeting — loopback
     // for a direct hit, the public origin when forwarded by the tunnel — so a
@@ -77,7 +76,7 @@ pub fn verify_auth_token_claims(
     verify_jwt(
         token,
         &keys,
-        VerifyOptions {
+        &VerifyOptions {
             expected_issuer: origin,
             accepted_audiences: &accepted,
         },

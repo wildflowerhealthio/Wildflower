@@ -38,6 +38,11 @@ const ALL_COLS: &str = "id, client_id, scopes, redirect_uri, granted_at, last_us
 
 impl GatekeeperStore {
     /// All grants in `granted_at` order — backs the Owner UI's grant list page.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if preparing or running the select query fails
+    /// or any returned row cannot be mapped to a [`Grant`].
     pub fn all_grants(&self) -> DbResult<Vec<Grant>> {
         let conn = self.conn().lock();
         let mut stmt = conn.prepare(&format!(
@@ -49,6 +54,11 @@ impl GatekeeperStore {
     }
 
     /// Load a single grant by primary id.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the select query fails or a returned row
+    /// cannot be mapped to a [`Grant`].
     pub fn grant_by_id(&self, id: &str) -> DbResult<Option<Grant>> {
         self.conn()
             .lock()
@@ -60,8 +70,13 @@ impl GatekeeperStore {
             .optional()
     }
 
-    /// Find an existing grant for the (client_id, redirect_uri) pair so
+    /// Find an existing grant for the (`client_id`, `redirect_uri`) pair so
     /// `/authorize` can decide whether to short-circuit the consent prompt.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the select query fails or a returned row
+    /// cannot be mapped to a [`Grant`].
     pub fn grant_by_client_and_redirect(
         &self,
         client_id: &str,
@@ -80,6 +95,11 @@ impl GatekeeperStore {
     }
 
     /// Insert a brand-new grant row.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the insert fails (for example a
+    /// unique-constraint violation on the id).
     pub fn create_grant(&self, grant: &Grant) -> DbResult<()> {
         let params = make_named_sql_params(grant);
         self.conn()
@@ -90,6 +110,10 @@ impl GatekeeperStore {
 
     /// Replace an existing grant's scopes (and patient context) on
     /// re-approval, bumping `granted_at` to `now`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the update statement fails.
     pub fn update_grant(
         &self,
         id: &str,
@@ -107,6 +131,10 @@ impl GatekeeperStore {
 
     /// Delete a grant; returns `true` if a row was actually removed so the
     /// caller can distinguish "revoked" from "no such grant".
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the delete statement fails.
     pub fn revoke_grant(&self, id: &str) -> DbResult<bool> {
         let affected = self
             .conn()

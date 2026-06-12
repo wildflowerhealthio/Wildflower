@@ -80,9 +80,15 @@ pub enum MintError {
 }
 
 /// Mint a signed access token using `signing_key` and the supplied claim inputs.
+///
+/// # Errors
+///
+/// Returns [`MintError::SigningKeyUnreadable`] if `signing_key`'s material
+/// cannot be turned into an `EncodingKey`, or [`MintError::JwsEncodeFailed`]
+/// if encoding the JWS fails.
 pub fn mint_access_token(
     signing_key: &SigningKey,
-    args: NewJwtArgs<'_>,
+    args: &NewJwtArgs<'_>,
 ) -> Result<String, MintError> {
     let now = Utc::now();
     let claims = AccessTokenClaims {
@@ -160,10 +166,18 @@ pub enum VerifyError {
 /// If the header carries a `kid` that matches any of the supplied keys, only
 /// those keys are tried; otherwise every key is attempted (allowing for
 /// rotation overlap).
+///
+/// # Errors
+///
+/// Returns [`VerifyError::NoSigningKeysConfigured`] if `possible_signing_keys`
+/// is empty, [`VerifyError::SigningKeyUnreadable`] if a candidate key's
+/// material cannot be turned into a `DecodingKey`, or
+/// [`VerifyError::TokenRejected`] if the token is empty, its header cannot be
+/// decoded, or no candidate key validates it.
 pub fn verify_jwt(
     token: &str,
     possible_signing_keys: &[SigningKey],
-    opts: VerifyOptions<'_>,
+    opts: &VerifyOptions<'_>,
 ) -> Result<VerifiedClaims, VerifyError> {
     let token = token.trim();
     if token.is_empty() {
@@ -237,7 +251,7 @@ mod tests {
             let before = Utc::now();
             let token = mint_access_token(
                 key,
-                NewJwtArgs {
+                &NewJwtArgs {
                     client_id: &client_id,
                     scope: &scopes,
                     ttl: Duration::seconds(ttl_seconds),
@@ -250,7 +264,7 @@ mod tests {
             let verified_claims = verify_jwt(
                 &token,
                 std::slice::from_ref(key),
-                VerifyOptions {
+                &VerifyOptions {
                     expected_issuer: &origin,
                     accepted_audiences: std::slice::from_ref(&expected_aud),
                 },
@@ -283,7 +297,7 @@ mod tests {
         let key = SigningKey::generate().expect("gen");
         let token = mint_access_token(
             &key,
-            NewJwtArgs {
+            &NewJwtArgs {
                 client_id: "c",
                 scope: &[],
                 ttl: Duration::seconds(60),
@@ -296,7 +310,7 @@ mod tests {
         let err = verify_jwt(
             &token,
             &[key],
-            VerifyOptions {
+            &VerifyOptions {
                 expected_issuer: "tauri://elsewhere",
                 accepted_audiences: &["tauri://elsewhere".to_string()],
             },
@@ -311,7 +325,7 @@ mod tests {
         let err = verify_jwt(
             "",
             &[key],
-            VerifyOptions {
+            &VerifyOptions {
                 expected_issuer: "tauri://localhost",
                 accepted_audiences: &["tauri://localhost".to_string()],
             },
@@ -325,7 +339,7 @@ mod tests {
         let err = verify_jwt(
             "a.b.c",
             &[],
-            VerifyOptions {
+            &VerifyOptions {
                 expected_issuer: "tauri://localhost",
                 accepted_audiences: &["tauri://localhost".to_string()],
             },

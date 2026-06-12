@@ -8,11 +8,13 @@ const CODE_VERIFIER_MAX_LEN: usize = 128;
 
 /// True when `code_verifier` has an RFC 7636 §4.1-legal length (43–128 chars).
 /// Counts Unicode scalar values, matching how the verifier arrives on the wire.
+#[must_use]
 pub fn is_valid_code_verifier_length(code_verifier: &str) -> bool {
     (CODE_VERIFIER_MIN_LEN..=CODE_VERIFIER_MAX_LEN).contains(&code_verifier.chars().count())
 }
 
 /// Derive the PKCE S256 `code_challenge` from a `code_verifier` (RFC 7636 §4.2).
+#[must_use]
 pub fn compute_code_challenge(code_verifier: &str) -> String {
     sha256_as_base64_no_padding(code_verifier)
 }

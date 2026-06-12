@@ -163,6 +163,7 @@ pub struct StartDeviceAuthorizationArgs {
 }
 
 impl AuthorizationRequest {
+    #[must_use]
     pub fn new_code_authorization(input: StartCodeAuthorizationArgs) -> Self {
         let now = Utc::now();
         AuthorizationRequest {
@@ -185,6 +186,7 @@ impl AuthorizationRequest {
         }
     }
 
+    #[must_use]
     pub fn new_device_authorization(input: StartDeviceAuthorizationArgs) -> Self {
         let now = Utc::now();
         AuthorizationRequest {

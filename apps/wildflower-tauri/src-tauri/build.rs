@@ -45,5 +45,5 @@ fn main() {
         config.loopback_port
     );
 
-    tauri_build::build()
+    tauri_build::build();
 }

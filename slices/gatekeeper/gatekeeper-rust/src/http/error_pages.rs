@@ -37,8 +37,8 @@ fn title_and_body(kind: &OAuthErrorKind) -> (&'static str, &'static str) {
     }
 }
 
-pub fn oauth_error_html(kind: OAuthErrorKind) -> String {
-    let (title, body) = title_and_body(&kind);
+pub fn oauth_error_html(kind: &OAuthErrorKind) -> String {
+    let (title, body) = title_and_body(kind);
     format!(
         "<!doctype html>\n\
 <html lang=\"en\">\n\

@@ -57,7 +57,7 @@ fn redirect_oauth_error(redirect_uri: &Url, error: &str, client_state: &str) -> 
     found_redirect(url.as_str())
 }
 
-/// Lifetime of an authorization_code from issuance to the client redeeming it
+/// Lifetime of an `authorization_code` from issuance to the client redeeming it
 /// at `/token` (RFC 6749 §4.1.2 — "MUST be short lived").
 const AUTHORIZATION_CODE_TTL: Duration = Duration::seconds(60);
 
@@ -98,7 +98,7 @@ pub(super) fn route() -> MethodRouter {
 /// 1. Browser lands here; the request is parked as an `AuthorizationRequest`
 ///    (5-minute TTL).
 /// 2. Unless every requested scope is pre-approved by an existing grant for
-///    this (client, redirect_uri) pair, the browser is 302'd to the Owner
+///    this (client, `redirect_uri`) pair, the browser is 302'd to the Owner
 ///    UI's polling page, which polls `GET /oauth/authorize/{id}` (a custom
 ///    extension, not part of any RFC) until the Owner decides. RFC 6749
 ///    leaves the owner-interaction mechanism unspecified, so the polling
@@ -203,7 +203,7 @@ fn validate_and_load_client(
         Ok(Some(c)) => c,
         Ok(None) => {
             return Err(Box::new(html_bad_request(oauth_error_html(
-                OAuthErrorKind::UnknownClient,
+                &OAuthErrorKind::UnknownClient,
             ))))
         }
         Err(e) => {
@@ -215,7 +215,7 @@ fn validate_and_load_client(
     };
     if client.disabled_at.is_some() {
         return Err(Box::new(html_bad_request(oauth_error_html(
-            OAuthErrorKind::DisabledClient,
+            &OAuthErrorKind::DisabledClient,
         ))));
     }
     Ok(client)
@@ -228,19 +228,19 @@ fn validate_and_load_client(
 fn validate_redirect_url(params: &AuthorizeParams, client: &Client) -> Result<Url, Box<Response>> {
     let parsed_redirect = Url::parse(&params.redirect_uri).map_err(|_| {
         Box::new(html_bad_request(oauth_error_html(
-            OAuthErrorKind::InvalidRedirectUri,
+            &OAuthErrorKind::InvalidRedirectUri,
         )))
     })?;
     if parsed_redirect.scheme() != "http" && parsed_redirect.scheme() != "https" {
         return Err(Box::new(html_bad_request(oauth_error_html(
-            OAuthErrorKind::InvalidScheme,
+            &OAuthErrorKind::InvalidScheme,
         ))));
     }
     // Exact match against the already-parsed `Url` — both sides go through the
     // same normalizer.
     if !client.redirect_uris.iter().any(|u| u == &parsed_redirect) {
         return Err(Box::new(html_bad_request(oauth_error_html(
-            OAuthErrorKind::RedirectUriNotAllowed,
+            &OAuthErrorKind::RedirectUriNotAllowed,
         ))));
     }
     Ok(parsed_redirect)
@@ -330,7 +330,7 @@ impl ExistingGrantCoverage {
     }
 }
 
-/// Look up an existing grant for this (client, redirect_uri) pair and compute
+/// Look up an existing grant for this (client, `redirect_uri`) pair and compute
 /// which requested scopes it already covers.
 fn resolve_existing_grant_coverage(
     state: &AppState,

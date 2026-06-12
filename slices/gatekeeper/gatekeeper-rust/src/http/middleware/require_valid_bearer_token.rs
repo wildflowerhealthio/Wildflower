@@ -20,9 +20,8 @@ pub async fn require_valid_bearer_token(
 ) -> Response {
     // TODO(transport): assumes the WebView reaches us over loopback HTTP; if
     // it switches to tauri:// IPC, this gate must move.
-    let token = match try_bearer_token_from_headers(&headers) {
-        Some(t) => t,
-        None => return response_templates::unauthorized(),
+    let Some(token) = try_bearer_token_from_headers(&headers) else {
+        return response_templates::unauthorized();
     };
     let origin = served_origin_for(&headers, &state.loopback_origin);
     if let Err(e) = verify_auth_token_claims(&state, &origin, &token) {

@@ -51,6 +51,12 @@ fn make_named_sql_params(client: &Client) -> [(&str, &dyn ToSql); 8] {
 }
 
 impl GatekeeperStore {
+    /// Look up a registered client by its `client_id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the select query fails or a returned row
+    /// cannot be mapped to a [`Client`].
     pub fn client_by_id(&self, client_id: &str) -> DbResult<Option<Client>> {
         self.conn()
             .lock()
@@ -63,6 +69,12 @@ impl GatekeeperStore {
             .optional()
     }
 
+    /// Persist a new OAuth client.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the insert fails (for example a
+    /// unique-constraint violation on the `client_id`).
     pub fn register_client(&self, client: &Client) -> DbResult<()> {
         let params = make_named_sql_params(client);
         self.conn()

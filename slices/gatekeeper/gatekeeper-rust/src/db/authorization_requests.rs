@@ -92,6 +92,11 @@ const ALL_COLS: &str =
 impl GatekeeperStore {
     /// Load an authorization request by its primary id (the `device_code` for
     /// device-flow, otherwise an internal UUID).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the select query fails or a returned row cannot be
+    /// mapped to an [`AuthorizationRequest`].
     pub fn authorization_request_by_id(&self, id: &str) -> DbResult<Option<AuthorizationRequest>> {
         self.conn()
             .lock()
@@ -111,6 +116,11 @@ impl GatekeeperStore {
     /// [`Self::pending_authorization_request_by_user_code`] instead, since
     /// `user_code` is not unique across terminal rows and a stale denied/expired
     /// row could otherwise shadow a fresh pending one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the select query fails or a returned row cannot be
+    /// mapped to an [`AuthorizationRequest`].
     pub fn authorization_request_by_user_code(
         &self,
         user_code: &str,
@@ -128,6 +138,11 @@ impl GatekeeperStore {
     /// Load the *pending* authorization request for `user_code`. Filtering on
     /// `status = 'pending'` ensures a stale denied/expired row sharing the same
     /// `user_code` can't shadow a live request and 404 the consent flow.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the select query fails or a returned row cannot be
+    /// mapped to an [`AuthorizationRequest`].
     pub fn pending_authorization_request_by_user_code(
         &self,
         user_code: &str,
@@ -146,6 +161,11 @@ impl GatekeeperStore {
     }
 
     /// Persist a freshly-constructed `AuthorizationRequest`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the insert fails (for example a unique-constraint
+    /// violation on the id).
     pub fn insert_authorization_request(&self, request: &AuthorizationRequest) -> DbResult<()> {
         let params = make_named_sql_params(request);
         self.conn().lock().execute(
@@ -156,6 +176,10 @@ impl GatekeeperStore {
     }
 
     /// Mark `id` approved with `granted_scopes` and an optional patient context.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the update statement fails.
     pub fn approve_authorization_request(
         &self,
         id: &str,
@@ -177,6 +201,10 @@ impl GatekeeperStore {
     }
 
     /// Mark `id` denied.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the update statement fails.
     pub fn deny_authorization_request(&self, id: &str) -> DbResult<()> {
         self.conn().lock().execute(
             "UPDATE authorization_requests SET status = 'denied' WHERE id = ?1",
@@ -187,6 +215,10 @@ impl GatekeeperStore {
 
     /// Mark `id` expired — used both for genuine timeouts and to enforce the
     /// device-flow single-use rule after a successful token exchange.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the update statement fails.
     pub fn expire_authorization_request(&self, id: &str) -> DbResult<()> {
         self.conn().lock().execute(
             "UPDATE authorization_requests SET status = 'expired' WHERE id = ?1",
@@ -197,6 +229,10 @@ impl GatekeeperStore {
 
     /// Stamp `last_polled_at` so the next device-flow poll can be slow-down
     /// rate-limited.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the update statement fails.
     pub fn record_device_poll(&self, id: &str, polled_at: DateTime<Utc>) -> DbResult<()> {
         self.conn().lock().execute(
             "UPDATE authorization_requests SET last_polled_at = ?2 WHERE id = ?1",

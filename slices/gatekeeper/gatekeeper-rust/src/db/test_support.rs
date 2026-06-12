@@ -1,6 +1,6 @@
 //! Shared proptest strategies for the per-table store round-trip tests.
 //!
-//! Every generated value must survive a SQLite write/read unchanged, so the
+//! Every generated value must survive a `SQLite` write/read unchanged, so the
 //! generators are deliberately conservative: timestamps come from whole
 //! millisecond epochs (rusqlite stores `DateTime<Utc>` as `%F %T%.f%:z`, which
 //! round-trips sub-second digits exactly, but bounding the range keeps the
@@ -13,7 +13,7 @@ use url::Url;
 
 /// A `DateTime<Utc>` drawn from a plausible recent epoch window
 /// (2000-01-01 to 2065-01-01). Built from a whole millisecond count so the
-/// value round-trips through SQLite's text timestamp encoding without
+/// value round-trips through `SQLite`'s text timestamp encoding without
 /// precision loss.
 pub fn arb_timestamp() -> impl Strategy<Value = DateTime<Utc>> {
     let window_start = Utc
@@ -40,7 +40,7 @@ pub fn arb_opt_timestamp() -> impl Strategy<Value = Option<DateTime<Utc>>> {
 }
 
 /// A syntactically valid `https`/`http` `Url`, assembled from safe components
-/// so the parse never fails and the canonical form matches what SQLite stores.
+/// so the parse never fails and the canonical form matches what `SQLite` stores.
 pub fn arb_url() -> impl Strategy<Value = Url> {
     (
         prop_oneof![Just("https"), Just("http")],

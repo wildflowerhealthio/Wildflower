@@ -14,13 +14,18 @@ use crate::domain::signing_key::SigningKey;
 use crate::domain::token::{mint_access_token, MintError, NewJwtArgs};
 use crate::{FIRST_PARTY_CLIENT_ID, OWNER_SCOPE};
 
-/// Open the gatekeeper SQLite store at the configured path and run every
+/// Open the gatekeeper `SQLite` store at the configured path and run every
 /// idempotent first-boot seeding step — signing key, first-party client.
+///
+/// # Errors
+///
+/// Returns an error if the sqlite store cannot be opened or if seeding the
+/// signing key or first-party client fails.
 pub fn open_and_seed_store(config: &GatekeeperConfig) -> anyhow::Result<GatekeeperStore> {
     let store = GatekeeperStore::open(&config.db_file_path).with_context(|| {
         format!(
-            "failed to open gatekeeper sqlite at {:?}",
-            config.db_file_path
+            "failed to open gatekeeper sqlite at {}",
+            config.db_file_path.display()
         )
     })?;
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
@@ -88,7 +93,7 @@ pub(crate) enum HostTokenError {
 
 /// Mint an Owner-scoped access token for `wildflower-host`, the
 /// first-party client. Called once during [`crate::setup_gatekeeper`] so
-/// the host can hand the resulting token to the WebView via the
+/// the host can hand the resulting token to the `WebView` via the
 /// navigation bridge and let the Owner UI call `/access/*` endpoints.
 pub(crate) fn mint_host_owner_token(
     store: &GatekeeperStore,
@@ -101,7 +106,7 @@ pub(crate) fn mint_host_owner_token(
     let scope = [OWNER_SCOPE.to_string()];
     Ok(mint_access_token(
         &key,
-        NewJwtArgs {
+        &NewJwtArgs {
             client_id: FIRST_PARTY_CLIENT_ID,
             scope: &scope,
             ttl,

@@ -153,13 +153,13 @@ fn generate_unique_user_code(state: &AppState) -> anyhow::Result<String> {
             let mut rng = rand::thread_rng();
             generate_oauth_user_code(&mut rng)
         };
-        match state
+        if state
             .store
             .authorization_request_by_user_code(&candidate)
             .context("authorization_request_by_user_code lookup failed")?
+            .is_none()
         {
-            None => return Ok(candidate),
-            Some(_) => continue,
+            return Ok(candidate);
         }
     }
     Err(anyhow!(

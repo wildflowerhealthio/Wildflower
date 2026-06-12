@@ -86,15 +86,11 @@ async fn handle_authorization_status_request(
         })
         .into_response(),
         RequestStatus::Approved => {
-            let (UriColumn(redirect_uri), client_state) =
-                match (request.redirect_uri, request.client_state) {
-                    (Some(r), Some(s)) => (r, s),
-                    _ => {
-                        return oauth_internal_error(
-                            "Authorization request is not a code-flow request",
-                        )
-                    }
-                };
+            let (Some(UriColumn(redirect_uri)), Some(client_state)) =
+                (request.redirect_uri, request.client_state)
+            else {
+                return oauth_internal_error("Authorization request is not a code-flow request");
+            };
             let code = match state.store.authorization_code_by_request_id(&id) {
                 Ok(Some(c)) => c,
                 Ok(None) => return oauth_internal_error("Authorization code missing"),

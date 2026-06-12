@@ -61,7 +61,7 @@ pub struct Gatekeeper {
 /// the boot-time host owner token against `config.loopback_origin`, and:
 ///
 ///  - publishes the host owner token on `local_owner_token_tx` so subscribers (e.g.
-///    the WebView bridge listener) observe it the moment it exists;
+///    the `WebView` bridge listener) observe it the moment it exists;
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
 ///    `/oauth/*`, and `/access/*` (Owner-only via bearer JWT) — the
 ///    slice owns its mount paths so the caller just `.merge()`s;
@@ -69,7 +69,7 @@ pub struct Gatekeeper {
 ///    [`layer_router_with_gatekeeper_auth_gating`] to wrap emr-rust.
 ///
 /// The boot-time host owner token is *always* minted against
-/// `config.loopback_origin`, because the host WebView reaches the API over
+/// `config.loopback_origin`, because the host `WebView` reaches the API over
 /// loopback. Per-request handlers, by contrast, derive their `iss`/`aud`
 /// from [`served_origin_for`](crate::http::served_origin_for) — the origin
 /// the inbound request says it was targeting — falling back to
@@ -77,6 +77,12 @@ pub struct Gatekeeper {
 ///
 /// The whole surface is gated by the loopback middleware — non-loopback
 /// peers receive 403 before any handler runs.
+///
+/// # Errors
+///
+/// Returns an error if opening and seeding the store fails, minting the
+/// host owner token fails, or the `local_owner_token_tx` receiver has already
+/// been dropped when publishing the token.
 pub fn setup_gatekeeper(
     config: &GatekeeperConfig,
     local_owner_token_tx: &watch::Sender<Option<String>>,

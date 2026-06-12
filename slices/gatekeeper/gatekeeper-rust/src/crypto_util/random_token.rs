@@ -34,6 +34,7 @@ pub(crate) fn generate_refresh_token() -> String {
 /// the at-rest form for refresh tokens, so a stolen database never yields a
 /// presentable credential. Public so integration tests can plant rows with
 /// known plaintexts.
+#[must_use]
 pub fn token_storage_hash(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use url::Url;
 
-/// Newtype that stores a parsed `Url` in a TEXT SQLite column. Construction
+/// Newtype that stores a parsed `Url` in a TEXT `SQLite` column. Construction
 /// goes through `Url::parse`, so anything held by the type has already
 /// passed wire-format validation — downstream code can trust the shape
 /// without re-parsing.
@@ -22,6 +22,7 @@ impl UriColumn {
     /// Consume the wrapper and return the inner [`Url`]. Mirrors
     /// [`JsonColumn::into_inner`](crate::db_utils::JsonColumn::into_inner) so
     /// both column newtypes unwrap the same way.
+    #[must_use]
     pub fn into_inner(self) -> Url {
         self.0
     }

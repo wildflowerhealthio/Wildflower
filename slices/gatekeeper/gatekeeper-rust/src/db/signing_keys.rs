@@ -37,6 +37,12 @@ fn make_named_sql_params<'a>(
 }
 
 impl GatekeeperStore {
+    /// Load every signing key, active keys first then by `kid`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if preparing or running the select query
+    /// fails or any returned row cannot be mapped to a [`SigningKey`].
     pub fn all_signing_keys(&self) -> DbResult<Vec<SigningKey>> {
         let conn = self.conn().lock();
         let mut stmt = conn.prepare(
@@ -48,6 +54,12 @@ impl GatekeeperStore {
         rows
     }
 
+    /// Load the active signing key, if one exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the select query fails or a returned row
+    /// cannot be mapped to a [`SigningKey`].
     pub fn active_signing_key(&self) -> DbResult<Option<SigningKey>> {
         self.conn()
             .lock()
@@ -59,6 +71,12 @@ impl GatekeeperStore {
             .optional()
     }
 
+    /// Persist a signing key.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the insert fails (for example a
+    /// unique-constraint violation on the `kid`).
     pub fn insert_signing_key(&self, key: &SigningKey) -> DbResult<()> {
         let values_json = JsonColumn(&key.values);
         let params = make_named_sql_params(key, &values_json);

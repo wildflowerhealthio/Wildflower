@@ -16,7 +16,7 @@ use crate::domain::grant::Grant;
 use crate::http::response_templates;
 use crate::http::state::AppState;
 
-/// Lifetime of the authorization_code minted when an Owner approves a
+/// Lifetime of the `authorization_code` minted when an Owner approves a
 /// code-flow consent, from issuance to the client redeeming it at `/token`
 /// (RFC 6749 §4.1.2 — "MUST be short lived"). Mirrors the fast-path TTL in
 /// `authorize.rs`.
@@ -68,7 +68,7 @@ pub enum ConsentResult {
 /// into the returned [`PendingCodeConsent`] so callers never re-prove them
 /// (parse-don't-validate). Returns a ready-to-use `Response` for both "not
 /// found" and "internal error" outcomes so each handler can `match` once and
-/// move on. A request whose `expires_at` has passed (AUTHORIZATION_REQUEST_TTL,
+/// move on. A request whose `expires_at` has passed (`AUTHORIZATION_REQUEST_TTL`,
 /// 5 min) is treated as not found — nothing actively transitions code-flow
 /// requests to `Expired`, so the deadline is enforced here at read time.
 pub(super) fn load_pending_authorization_code_request(

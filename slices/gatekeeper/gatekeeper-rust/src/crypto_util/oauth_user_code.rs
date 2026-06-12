@@ -23,6 +23,7 @@ pub fn generate_oauth_user_code<R: RngCore>(rng: &mut R) -> String {
 }
 
 /// Return true if `s` matches the user-code shape: `BLOCK_COUNT` blocks of `BLOCK_LENGTH` `ALPHABET` chars joined by `-`.
+#[must_use]
 pub fn is_valid_oauth_user_code(s: &str) -> bool {
     let mut blocks_seen = 0usize;
     for part in s.split('-') {

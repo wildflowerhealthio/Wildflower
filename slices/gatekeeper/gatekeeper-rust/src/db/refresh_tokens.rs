@@ -54,6 +54,11 @@ impl GatekeeperStore {
     /// Persist a new refresh-token family alongside its first token — one
     /// transaction, since a family with no token (or a token with no family)
     /// is unrepresentable on purpose.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if opening the transaction, either insert,
+    /// or the commit fails.
     pub fn insert_refresh_token_family(
         &self,
         family: &RefreshTokenFamily,
@@ -77,6 +82,11 @@ impl GatekeeperStore {
     }
 
     /// Persist the successor token in an existing family's rotation.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the insert fails (for example a
+    /// unique-constraint violation on the token hash).
     pub fn insert_refresh_token(&self, token: &RefreshToken) -> DbResult<()> {
         let params = token_named_sql_params(token);
         self.conn()
@@ -88,6 +98,11 @@ impl GatekeeperStore {
     /// Resolve a presented token hash to its row plus the owning family in
     /// one JOIN. Consumed tokens resolve too — the caller distinguishes a
     /// live token from a replayed one via `consumed_at`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the join query fails or a returned row
+    /// cannot be mapped to a [`RefreshToken`]/[`RefreshTokenFamily`] pair.
     pub fn refresh_token_with_family_by_hash(
         &self,
         token_hash: &str,
@@ -120,6 +135,11 @@ impl GatekeeperStore {
 
     /// Look up a single token by hash — enough for callers that don't need
     /// the family facts.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the select query fails or a returned row
+    /// cannot be mapped to a [`RefreshToken`].
     pub fn refresh_token_by_hash(&self, token_hash: &str) -> DbResult<Option<RefreshToken>> {
         self.conn()
             .lock()
@@ -137,6 +157,11 @@ impl GatekeeperStore {
     /// UPDATE's `consumed_at IS NULL` guard and the fallback existence probe
     /// run in one transaction, so a concurrent redeemer of the same token
     /// sees `Replayed`, never a torn state.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if opening the transaction, the update, the
+    /// existence probe, or the commit fails.
     pub fn consume_refresh_token(
         &self,
         token_hash: &str,
@@ -173,6 +198,11 @@ impl GatekeeperStore {
     /// deleted) so the lineage stays auditable and replayed tokens still
     /// resolve to their dead family. The `consumed_at IS NULL` guard keeps
     /// genuine consumption stamps intact.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if opening the transaction, either update,
+    /// or the commit fails.
     pub fn expire_refresh_token_family(&self, family_id: &str, now: DateTime<Utc>) -> DbResult<()> {
         let mut guard = self.conn().lock();
         let tx = guard.transaction()?;
@@ -192,6 +222,11 @@ impl GatekeeperStore {
     /// expire-and-stamp semantics as [`Self::expire_refresh_token_family`] —
     /// used when the Owner revokes a grant, so standing consent and standing
     /// credentials die together.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if opening the transaction, either update,
+    /// or the commit fails.
     pub fn expire_refresh_token_families_for_client(
         &self,
         client_id: &str,

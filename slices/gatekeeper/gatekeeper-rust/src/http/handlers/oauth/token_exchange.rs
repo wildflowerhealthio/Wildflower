@@ -87,7 +87,7 @@ async fn handle_token_request(
         } => exchange_authorization_code(
             &state,
             &origin,
-            AuthorizationCodeGrant {
+            &AuthorizationCodeGrant {
                 client_id: &client_id,
                 client_secret: client_secret.as_deref(),
                 code: &code,
@@ -134,7 +134,7 @@ struct AuthorizationCodeGrant<'a> {
 fn exchange_authorization_code(
     state: &AppState,
     origin: &str,
-    grant: AuthorizationCodeGrant<'_>,
+    grant: &AuthorizationCodeGrant<'_>,
 ) -> Response {
     if let Err(err) =
         require_valid_client_for_token(&state.store, grant.client_id, grant.client_secret)
@@ -147,9 +147,8 @@ fn exchange_authorization_code(
     if !is_valid_code_verifier_length(grant.code_verifier) {
         return bad_request("invalid_grant", Some("Invalid code_verifier parameter"));
     }
-    let parsed_redirect = match Url::parse(grant.redirect_uri) {
-        Ok(u) => u,
-        Err(_) => return bad_request("invalid_request", Some("Invalid redirect_uri parameter")),
+    let Ok(parsed_redirect) = Url::parse(grant.redirect_uri) else {
+        return bad_request("invalid_request", Some("Invalid redirect_uri parameter"));
     };
     // Atomically read-and-consume the code: a concurrent redemption of the
     // same code can only succeed once, so any racer past this point sees
@@ -215,7 +214,7 @@ fn validate_code_and_issue_token(
     };
     issue_token(
         state,
-        IssueTokenInput {
+        &IssueTokenInput {
             client_id,
             granted_scopes: &code_record.granted_scopes,
             patient: code_record.patient.as_deref(),
@@ -280,8 +279,7 @@ fn exchange_device_code(
     let granted_scopes: &[String] = request_record
         .granted_scopes
         .as_deref()
-        .map(|v| v.as_slice())
-        .unwrap_or(&[]);
+        .map_or(&[], Vec::as_slice);
     let refresh_token = match start_refresh_token_family_if_granted(
         state,
         &request_record.client_id,
@@ -293,7 +291,7 @@ fn exchange_device_code(
     };
     issue_token(
         state,
-        IssueTokenInput {
+        &IssueTokenInput {
             client_id: &request_record.client_id,
             granted_scopes,
             patient: request_record.patient.as_deref(),
@@ -307,7 +305,7 @@ fn exchange_device_code(
 /// family with its first token and return the token's plaintext for the
 /// response body. Grants without the scope get `Ok(None)` — no standing
 /// credential is created. The error response is boxed to keep the `Result`
-/// small (clippy::result_large_err), mirroring
+/// small (`clippy::result_large_err`), mirroring
 /// `load_pending_authorization_code_request`.
 fn start_refresh_token_family_if_granted(
     state: &AppState,
@@ -431,7 +429,7 @@ fn exchange_refresh_token(
     }
     issue_token(
         state,
-        IssueTokenInput {
+        &IssueTokenInput {
             client_id: &family.client_id,
             granted_scopes: &family.scopes,
             patient: family.patient.as_deref(),
@@ -446,7 +444,7 @@ fn exchange_refresh_token(
 /// cache-suppressed 500 if signing fails.
 fn issue_token(
     state: &AppState,
-    input: IssueTokenInput<'_>,
+    input: &IssueTokenInput<'_>,
     refresh_token: Option<String>,
 ) -> Response {
     match issue_token_response(&state.store, input) {

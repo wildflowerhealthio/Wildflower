@@ -42,8 +42,13 @@ impl GatekeeperStore {
     /// Atomically read-and-delete the authorization code so a `/token`
     /// redemption either gets the row exactly once or sees `None`. Wins the
     /// RFC 6749 §10.5 single-use race against any concurrent redeemer of the
-    /// same code — `DELETE ... RETURNING` runs under SQLite's write lock, so
+    /// same code — `DELETE ... RETURNING` runs under `SQLite`'s write lock, so
     /// only one caller's `Ok(Some)` lands and any racer sees `Ok(None)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the delete-returning query fails or a returned row
+    /// cannot be mapped to an [`AuthorizationCode`].
     pub fn redeem_authorization_code(&self, code: &str) -> DbResult<Option<AuthorizationCode>> {
         self.conn()
             .lock()
@@ -57,6 +62,11 @@ impl GatekeeperStore {
 
     /// Look up the code that was issued for a given `request_id`, used by the
     /// Owner UI's polling endpoint to build the final redirect URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the select query fails or a returned row cannot be
+    /// mapped to an [`AuthorizationCode`].
     pub fn authorization_code_by_request_id(
         &self,
         request_id: &str,
@@ -72,6 +82,11 @@ impl GatekeeperStore {
     }
 
     /// Persist a freshly-minted authorization code.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the insert fails (for example a unique-constraint
+    /// violation on the code).
     pub fn issue_authorization_code(&self, code: &AuthorizationCode) -> DbResult<()> {
         let params = make_named_sql_params(code);
         self.conn()

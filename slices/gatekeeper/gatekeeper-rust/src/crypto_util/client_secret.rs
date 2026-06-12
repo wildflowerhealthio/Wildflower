@@ -25,6 +25,10 @@ pub enum ClientSecretError {
 /// Hash a plaintext client secret into an argon2id PHC string suitable for
 /// storage in `clients.secret_hash`. Each call uses a fresh random salt, so the
 /// same secret hashes to a different string every time.
+///
+/// # Errors
+///
+/// Returns [`ClientSecretError::Hash`] if the argon2id hashing step fails.
 pub fn hash_client_secret(secret: &str) -> Result<String, ClientSecretError> {
     let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
@@ -38,6 +42,11 @@ pub fn hash_client_secret(secret: &str) -> Result<String, ClientSecretError> {
 /// Returns `Ok(true)` on a match, `Ok(false)` on a mismatch, and `Err` only if
 /// the stored value cannot be parsed as a PHC hash. The comparison is
 /// constant-time internally.
+///
+/// # Errors
+///
+/// Returns [`ClientSecretError::MalformedHash`] if `stored_phc` is not a
+/// parseable PHC hash string (or verification fails for a non-mismatch reason).
 pub fn verify_client_secret(presented: &str, stored_phc: &str) -> Result<bool, ClientSecretError> {
     let parsed = PasswordHash::new(stored_phc).map_err(ClientSecretError::MalformedHash)?;
     match Argon2::default().verify_password(presented.as_bytes(), &parsed) {

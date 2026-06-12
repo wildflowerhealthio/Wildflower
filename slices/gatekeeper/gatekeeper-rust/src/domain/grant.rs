@@ -3,7 +3,7 @@ use serde::Serialize;
 
 use crate::db_utils::{JsonColumn, UriColumn};
 
-/// A previously-approved consent — when the same (client, redirect_uri) pair
+/// A previously-approved consent — when the same (client, `redirect_uri`) pair
 /// re-authorizes, the gatekeeper can skip the consent prompt for any scopes
 /// already in `scopes`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

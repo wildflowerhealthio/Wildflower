@@ -14,9 +14,20 @@ pub struct EmrConfig {
     pub db_file_path: PathBuf,
 }
 
+/// Build the FHIR R4 [`Router`], opening the sqlite backend and initializing
+/// its schema.
+///
+/// # Errors
+///
+/// Returns an error if the sqlite backend cannot be opened at the configured
+/// path or if initializing its schema fails.
 pub fn setup_fhir_r4(runtime: &ServerRuntimeConfig, config: &EmrConfig) -> anyhow::Result<Router> {
-    let sqlite_backend = SqliteBackend::open(&config.db_file_path)
-        .with_context(|| format!("failed to open sqlite backend at {:?}", config.db_file_path))?;
+    let sqlite_backend = SqliteBackend::open(&config.db_file_path).with_context(|| {
+        format!(
+            "failed to open sqlite backend at {}",
+            config.db_file_path.display()
+        )
+    })?;
     sqlite_backend
         .init_schema()
         .context("failed to init sqlite schema")?;
