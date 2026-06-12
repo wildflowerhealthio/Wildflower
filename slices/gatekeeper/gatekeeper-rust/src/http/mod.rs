@@ -1,8 +1,8 @@
 //! The gatekeeper's HTTP layer — everything axum-shaped lives under this
 //! module. The only crate-facing surface is [`router`],
-//! [`layer_router_with_gatekeeper_auth_gating`], [`AppState`], and
-//! [`AuthedClaims`]; the handler and middleware files are private
-//! implementation detail behind the route table.
+//! [`layer_router_with_gatekeeper_auth_gating`], and [`AppState`]; the handler
+//! and middleware files are private implementation detail behind the route
+//! table.
 
 mod error_pages;
 mod handlers;
@@ -12,7 +12,6 @@ mod page_paths;
 mod responses;
 mod state;
 
-pub use middleware::require_auth::AuthedClaims;
 pub(crate) use origin::served_origin_for;
 pub use state::AppState;
 

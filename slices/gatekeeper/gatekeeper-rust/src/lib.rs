@@ -28,15 +28,13 @@ pub mod domain;
 pub mod http;
 pub(crate) mod seeding;
 
-use std::sync::Arc;
-
 use anyhow::Context;
 use chrono::Duration;
 use tokio::sync::watch;
 
 pub use config::GatekeeperConfig;
 pub use db_utils::GatekeeperStore;
-pub use http::{layer_router_with_gatekeeper_auth_gating, AppState, AuthedClaims};
+pub use http::{layer_router_with_gatekeeper_auth_gating, AppState};
 
 /// `client_id` of the host application's first-party OAuth client. The host
 /// uses this identity to mint Owner tokens for itself and to recognise its
@@ -92,7 +90,7 @@ pub fn setup_gatekeeper(
         .context("token channel receiver dropped before host owner token issuance")?;
     let state = AppState {
         store: store.clone(),
-        loopback_origin: Arc::from(config.loopback_origin.as_str()),
+        loopback_origin: config.loopback_origin.clone(),
     };
     let router = http::router(state.clone());
     Ok(Gatekeeper { router, state })

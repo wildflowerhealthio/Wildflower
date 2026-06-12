@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::db_utils::GatekeeperStore;
 
 /// Shared state threaded through every gatekeeper handler. Opaque to
@@ -17,5 +15,5 @@ pub struct AppState {
     /// loopback request — handlers derive the per-request `iss`/`aud` from
     /// `served_origin_for(&headers, &state.loopback_origin)`, never from this
     /// value directly.
-    pub(crate) loopback_origin: Arc<str>,
+    pub(crate) loopback_origin: String,
 }

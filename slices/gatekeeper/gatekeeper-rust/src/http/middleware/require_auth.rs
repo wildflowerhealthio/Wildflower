@@ -3,7 +3,6 @@ use axum::extract::{Extension, Request};
 use axum::http::HeaderMap;
 use axum::middleware::Next;
 use axum::response::Response;
-use std::sync::Arc;
 
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
 use crate::http::responses::{unauthorized, verify_error_response};
@@ -11,13 +10,10 @@ use crate::http::served_origin_for;
 use crate::http::state::AppState;
 use crate::OWNER_SCOPE;
 
-#[derive(Clone)]
-pub struct AuthedClaims(pub Arc<VerifiedClaims>);
-
 pub async fn require_owner_auth(
     Extension(state): Extension<AppState>,
     headers: HeaderMap,
-    mut req: Request<Body>,
+    req: Request<Body>,
     next: Next,
 ) -> Response {
     let token = match try_bearer_token_from_headers(&headers) {
@@ -29,11 +25,9 @@ pub async fn require_owner_auth(
     // token's `iss`/`aud` are checked against the same surface it was minted
     // for. `loopback_origin` is the fallback for un-forwarded requests.
     let origin = served_origin_for(&headers, &state.loopback_origin);
-    let claims = match verify_owner_token(&state, &origin, &token) {
-        Ok(c) => c,
-        Err(e) => return verify_error_response("verify_owner_token failed", e),
-    };
-    req.extensions_mut().insert(AuthedClaims(Arc::new(claims)));
+    if let Err(e) = verify_owner_token(&state, &origin, &token) {
+        return verify_error_response("verify_owner_token failed", e);
+    }
     next.run(req).await
 }
 

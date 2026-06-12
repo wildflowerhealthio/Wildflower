@@ -3,20 +3,19 @@ use axum::extract::{Extension, Request};
 use axum::http::HeaderMap;
 use axum::middleware::Next;
 use axum::response::Response;
-use std::sync::Arc;
 
 use crate::http::responses::{unauthorized, verify_error_response};
 use crate::http::served_origin_for;
 use crate::http::state::AppState;
 
 use crate::http::middleware::require_auth::{
-    try_bearer_token_from_headers, verify_auth_token_claims, AuthedClaims,
+    try_bearer_token_from_headers, verify_auth_token_claims,
 };
 
 pub async fn require_valid_bearer_token(
     Extension(state): Extension<AppState>,
     headers: HeaderMap,
-    mut req: Request<Body>,
+    req: Request<Body>,
     next: Next,
 ) -> Response {
     // TODO(transport): assumes the WebView reaches us over loopback HTTP; if
@@ -26,10 +25,8 @@ pub async fn require_valid_bearer_token(
         None => return unauthorized(),
     };
     let origin = served_origin_for(&headers, &state.loopback_origin);
-    let claims = match verify_auth_token_claims(&state, &origin, &token) {
-        Ok(c) => c,
-        Err(e) => return verify_error_response("verify_auth_token_claims failed", e),
-    };
-    req.extensions_mut().insert(AuthedClaims(Arc::new(claims)));
+    if let Err(e) = verify_auth_token_claims(&state, &origin, &token) {
+        return verify_error_response("verify_auth_token_claims failed", e);
+    }
     next.run(req).await
 }
