@@ -127,7 +127,6 @@ const defineSliceHttpClient = <
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         return built as unknown as Layer.Layer<Self, never, LayerRequirementsFor<AuthType>>
       }
-      // No `baseUrl` — see the bearer branch.
       const built = Layer.effect(Tag, HttpApiClient.make(input.api))
       // Paired with the bearer-branch cast above.
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
