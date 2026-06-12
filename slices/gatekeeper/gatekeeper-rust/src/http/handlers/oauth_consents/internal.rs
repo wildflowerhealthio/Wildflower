@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::db_utils::{DbResult, JsonColumn, UriColumn};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::grant::Grant;
-use crate::http::response_templates;
+use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 
 /// Lifetime of the `authorization_code` minted when an Owner approves a
@@ -66,22 +66,16 @@ pub enum ConsentResult {
 /// unexpired authorization-code flow carrying both a `redirect_uri` and a
 /// PKCE `code_challenge`. On success the two optional fields are unwrapped
 /// into the returned [`PendingCodeConsent`] so callers never re-prove them
-/// (parse-don't-validate). Returns a ready-to-use `Response` for both "not
-/// found" and "internal error" outcomes so each handler can `match` once and
-/// move on. A request whose `expires_at` has passed (`AUTHORIZATION_REQUEST_TTL`,
+/// (parse-don't-validate). The error side is a [`HandlerError`] ("not found"
+/// or "internal error"), so each handler can bail with `?` and move on. A
+/// request whose `expires_at` has passed (`AUTHORIZATION_REQUEST_TTL`,
 /// 5 min) is treated as not found — nothing actively transitions code-flow
 /// requests to `Expired`, so the deadline is enforced here at read time.
 pub(super) fn load_pending_authorization_code_request(
     state: &AppState,
     id: &str,
-) -> Result<PendingCodeConsent, Box<axum::response::Response>> {
-    let not_found_response = || {
-        Box::new(response_templates::not_found(
-            "OAuthConsentNotFound",
-            "id",
-            id,
-        ))
-    };
+) -> Result<PendingCodeConsent, HandlerError> {
+    let consent_not_found = || HandlerError::not_found("OAuthConsentNotFound", "id", id);
     match state.store.authorization_request_by_id(id) {
         Ok(Some(r))
             if r.status == RequestStatus::Pending
@@ -97,14 +91,14 @@ pub(super) fn load_pending_authorization_code_request(
                     redirect_uri,
                     code_challenge,
                 }),
-                _ => Err(not_found_response()),
+                _ => Err(consent_not_found()),
             }
         }
-        Ok(_) => Err(not_found_response()),
-        Err(e) => Err(Box::new(response_templates::internal_error(
+        Ok(_) => Err(consent_not_found()),
+        Err(e) => Err(HandlerError::internal(
             "authorization_request_by_id lookup failed",
             e,
-        ))),
+        )),
     }
 }
 

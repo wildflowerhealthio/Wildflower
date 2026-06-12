@@ -7,7 +7,9 @@ use gatekeeper_rust::{setup_gatekeeper, Gatekeeper, GatekeeperConfig};
 use tokio::sync::watch;
 
 const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
+use base64::Engine;
 use chrono::{Duration, Utc};
+use gatekeeper_rust::crypto_util::client_secret::hash_client_secret;
 use gatekeeper_rust::crypto_util::pkce::compute_code_challenge;
 use gatekeeper_rust::crypto_util::random_token::token_storage_hash;
 use gatekeeper_rust::db_utils::{JsonColumn, UriColumn};
@@ -1342,6 +1344,321 @@ async fn revoking_grant_revokes_refresh_tokens() {
         serde_json::json!({
             "error": "invalid_grant",
             "error_description": "Refresh token has expired",
+        })
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Confidential-client authentication (RFC 6749 §2.3.1 client_secret_basic /
+// client_secret_post)
+// ---------------------------------------------------------------------------
+
+/// Register a confidential client whose argon2id `secret_hash` matches
+/// `client_secret_plaintext`, through a second store handle — mirrors
+/// `seed_client_with_redirect`, which can only seed public clients.
+fn seed_confidential_client(
+    tmp: &TempDir,
+    client_id: &str,
+    client_secret_plaintext: &str,
+    scopes: &[&str],
+) {
+    let store = store_handle(tmp);
+    store
+        .register_client(&Client {
+            client_id: client_id.to_string(),
+            name: "Integration Test Confidential Client".to_string(),
+            kind: ClientKind::Confidential,
+            redirect_uris: JsonColumn(vec![]),
+            allowed_scopes: JsonColumn(scopes.iter().map(ToString::to_string).collect()),
+            secret_hash: Some(hash_client_secret(client_secret_plaintext).expect("hash secret")),
+            registered_at: Utc::now(),
+            disabled_at: None,
+        })
+        .expect("register confidential client");
+}
+
+/// `post_form` plus an `Authorization` header; takes an owned body since the
+/// Basic-auth tests build it with `format!`.
+async fn post_form_with_authorization(
+    router: &axum::Router,
+    path: &str,
+    body: String,
+    authorization: &str,
+) -> axum::response::Response {
+    let req = loopback_request(
+        Request::post(path)
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("authorization", authorization),
+        Body::from(body),
+    );
+    router.clone().oneshot(req).await.expect("oneshot")
+}
+
+/// `Authorization` header value for `client_secret_basic` (RFC 6749 §2.3.1).
+/// Callers that need percent-encoded halves pre-encode them and call
+/// `base64` directly instead.
+fn basic_authorization(client_id: &str, client_secret: &str) -> String {
+    format!(
+        "Basic {}",
+        base64::engine::general_purpose::STANDARD.encode(format!("{client_id}:{client_secret}"))
+    )
+}
+
+const CONFIDENTIAL_CLIENT_ID: &str = "conf-app";
+const CONFIDENTIAL_CLIENT_SECRET: &str = "shhh-integration-secret";
+
+/// Spin up a gatekeeper with a seeded confidential client and a live planted
+/// refresh token — the cheapest real grant to exercise client auth against.
+fn spin_up_with_confidential_client() -> (Gatekeeper, TempDir) {
+    let (g, _host_owner_token, tmp) = spin_up();
+    seed_confidential_client(
+        &tmp,
+        CONFIDENTIAL_CLIENT_ID,
+        CONFIDENTIAL_CLIENT_SECRET,
+        &["read", "offline_access"],
+    );
+    plant_refresh_token(
+        &store_handle(&tmp),
+        "conf-token",
+        CONFIDENTIAL_CLIENT_ID,
+        Utc::now() + Duration::days(30),
+    );
+    (g, tmp)
+}
+
+/// Happy path for `client_secret_basic`: credentials only in the header, the
+/// grant redeems and mints a token (RFC 6749 §2.3.1).
+#[tokio::test]
+async fn token_exchange_with_basic_auth_redeems_refresh_token() {
+    let (g, _tmp) = spin_up_with_confidential_client();
+    let res = post_form_with_authorization(
+        &g.router,
+        "/oauth/token",
+        "grant_type=refresh_token&refresh_token=conf-token".to_string(),
+        &basic_authorization(CONFIDENTIAL_CLIENT_ID, CONFIDENTIAL_CLIENT_SECRET),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res.into_body()).await;
+    assert_eq!(body["token_type"], "Bearer");
+    assert!(!body["access_token"].as_str().expect("access_token").is_empty());
+}
+
+/// A failed Basic attempt answers 401 with a matching `WWW-Authenticate:
+/// Basic` challenge (RFC 6749 §5.2) — and stays cache-suppressed.
+#[tokio::test]
+async fn token_exchange_wrong_basic_secret_returns_401_with_basic_challenge() {
+    let (g, _tmp) = spin_up_with_confidential_client();
+    let res = post_form_with_authorization(
+        &g.router,
+        "/oauth/token",
+        "grant_type=refresh_token&refresh_token=conf-token".to_string(),
+        &basic_authorization(CONFIDENTIAL_CLIENT_ID, "not-the-secret"),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        res.headers().get("www-authenticate").map(|v| v.to_str().unwrap()),
+        Some(r#"Basic realm="gatekeeper""#)
+    );
+    assert_eq!(
+        res.headers().get("cache-control").map(|v| v.to_str().unwrap()),
+        Some("no-store")
+    );
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({
+            "error": "invalid_client",
+            "error_description": "Invalid client_secret",
+        })
+    );
+}
+
+/// A failed `client_secret_post` attempt is still 401 but carries NO Basic
+/// challenge — the client never used the Authorization header (RFC 6749 §5.2
+/// only mandates the challenge for header-based attempts).
+#[tokio::test]
+async fn token_exchange_body_secret_failure_has_no_basic_challenge() {
+    let (g, _tmp) = spin_up_with_confidential_client();
+    let res = post_form(
+        &g.router,
+        "/oauth/token",
+        "grant_type=refresh_token&client_id=conf-app&client_secret=not-the-secret&refresh_token=conf-token",
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(res.headers().get("www-authenticate"), None);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({
+            "error": "invalid_client",
+            "error_description": "Invalid client_secret",
+        })
+    );
+}
+
+/// Presenting a secret via Basic AND the body is two authentication methods
+/// in one request — rejected per RFC 6749 §2.3, even when both are correct.
+#[tokio::test]
+async fn token_exchange_basic_plus_body_secret_returns_400_invalid_request() {
+    let (g, _tmp) = spin_up_with_confidential_client();
+    let res = post_form_with_authorization(
+        &g.router,
+        "/oauth/token",
+        format!(
+            "grant_type=refresh_token&client_secret={CONFIDENTIAL_CLIENT_SECRET}&refresh_token=conf-token"
+        ),
+        &basic_authorization(CONFIDENTIAL_CLIENT_ID, CONFIDENTIAL_CLIENT_SECRET),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({
+            "error": "invalid_request",
+            "error_description": "Multiple client authentication methods presented",
+        })
+    );
+}
+
+/// A body `client_id` contradicting the Basic userid is `invalid_request`.
+#[tokio::test]
+async fn token_exchange_basic_with_mismatched_body_client_id_returns_400_invalid_request() {
+    let (g, _tmp) = spin_up_with_confidential_client();
+    let res = post_form_with_authorization(
+        &g.router,
+        "/oauth/token",
+        "grant_type=refresh_token&client_id=other-app&refresh_token=conf-token".to_string(),
+        &basic_authorization(CONFIDENTIAL_CLIENT_ID, CONFIDENTIAL_CLIENT_SECRET),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({
+            "error": "invalid_request",
+            "error_description": "client_id does not match Basic authorization header",
+        })
+    );
+}
+
+/// A body `client_id` that matches the Basic userid is tolerated — common
+/// client-library behavior, and not a second authentication method.
+#[tokio::test]
+async fn token_exchange_basic_with_matching_body_client_id_succeeds() {
+    let (g, _tmp) = spin_up_with_confidential_client();
+    let res = post_form_with_authorization(
+        &g.router,
+        "/oauth/token",
+        format!("grant_type=refresh_token&client_id={CONFIDENTIAL_CLIENT_ID}&refresh_token=conf-token"),
+        &basic_authorization(CONFIDENTIAL_CLIENT_ID, CONFIDENTIAL_CLIENT_SECRET),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+/// `client_secret_post` keeps working for confidential clients (RFC 6749
+/// §2.3.1 "MAY support including the client credentials in the request-body").
+#[tokio::test]
+async fn token_exchange_client_secret_post_still_authenticates_confidential_client() {
+    let (g, _tmp) = spin_up_with_confidential_client();
+    let res = post_form(
+        &g.router,
+        "/oauth/token",
+        "grant_type=refresh_token&client_id=conf-app&client_secret=shhh-integration-secret&refresh_token=conf-token",
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+/// No Basic header and no body `client_id` — there is no client to
+/// authenticate, so the request itself is malformed.
+#[tokio::test]
+async fn token_exchange_missing_client_id_returns_400_invalid_request() {
+    let (g, _tmp) = spin_up_with_confidential_client();
+    let res = post_form(
+        &g.router,
+        "/oauth/token",
+        "grant_type=refresh_token&refresh_token=conf-token",
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({
+            "error": "invalid_request",
+            "error_description": "Missing client_id",
+        })
+    );
+}
+
+/// RFC 6749 §2.3.1 form-urlencodes each Basic half before base64: a secret
+/// full of reserved characters survives the encode/decode round trip.
+#[tokio::test]
+async fn token_exchange_basic_secret_with_reserved_characters_round_trips() {
+    let (g, _host_owner_token, tmp) = spin_up();
+    seed_confidential_client(&tmp, "conf-app", "p@ss word:100%&yes", &["read", "offline_access"]);
+    plant_refresh_token(
+        &store_handle(&tmp),
+        "conf-token",
+        "conf-app",
+        Utc::now() + Duration::days(30),
+    );
+    // "p@ss word:100%&yes" form-urlencoded → "p%40ss+word%3A100%25%26yes"
+    let authorization = format!(
+        "Basic {}",
+        base64::engine::general_purpose::STANDARD.encode("conf-app:p%40ss+word%3A100%25%26yes")
+    );
+    let res = post_form_with_authorization(
+        &g.router,
+        "/oauth/token",
+        "grant_type=refresh_token&refresh_token=conf-token".to_string(),
+        &authorization,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+/// RFC 8628 §3.1 inherits token-endpoint client authentication: Basic works
+/// at `/oauth/device_authorization` too.
+#[tokio::test]
+async fn device_authorization_with_basic_auth_issues_device_code() {
+    let (g, _tmp) = spin_up_with_confidential_client();
+    let res = post_form_with_authorization(
+        &g.router,
+        "/oauth/device_authorization",
+        "scope=read".to_string(),
+        &basic_authorization(CONFIDENTIAL_CLIENT_ID, CONFIDENTIAL_CLIENT_SECRET),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_json(res.into_body()).await;
+    assert!(!body["device_code"].as_str().expect("device_code").is_empty());
+    assert!(!body["user_code"].as_str().expect("user_code").is_empty());
+}
+
+/// The device endpoint answers a failed Basic attempt exactly like the token
+/// endpoint: 401 with a `WWW-Authenticate: Basic` challenge.
+#[tokio::test]
+async fn device_authorization_wrong_basic_secret_returns_401_with_basic_challenge() {
+    let (g, _tmp) = spin_up_with_confidential_client();
+    let res = post_form_with_authorization(
+        &g.router,
+        "/oauth/device_authorization",
+        "scope=read".to_string(),
+        &basic_authorization(CONFIDENTIAL_CLIENT_ID, "not-the-secret"),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        res.headers().get("www-authenticate").map(|v| v.to_str().unwrap()),
+        Some(r#"Basic realm="gatekeeper""#)
+    );
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({
+            "error": "invalid_client",
+            "error_description": "Invalid client_secret",
         })
     );
 }

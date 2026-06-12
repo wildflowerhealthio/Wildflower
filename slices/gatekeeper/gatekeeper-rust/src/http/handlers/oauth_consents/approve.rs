@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use axum::extract::{Extension, Path};
-use axum::response::{IntoResponse, Response};
 use axum::routing::{post, MethodRouter};
 use axum::Json;
 use chrono::Utc;
@@ -13,7 +12,7 @@ use super::internal::{
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::db_utils::{JsonColumn, UriColumn};
 use crate::domain::authorization_code::AuthorizationCode;
-use crate::http::response_templates;
+use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 
 /// `POST /oauth-consents/{id}/approve` — the Owner approves a consent prompt,
@@ -27,15 +26,12 @@ async fn handle_approve_oauth_consent(
     Extension(state): Extension<AppState>,
     Path(id): Path<String>,
     Json(body): Json<ApproveBody>,
-) -> Response {
+) -> Result<Json<ConsentResult>, HandlerError> {
     let PendingCodeConsent {
         request,
         redirect_uri,
         code_challenge,
-    } = match load_pending_authorization_code_request(&state, &id) {
-        Ok(c) => c,
-        Err(response) => return *response,
-    };
+    } = load_pending_authorization_code_request(&state, &id)?;
 
     // The Owner can only narrow, never widen: intersect what they approved
     // with what the client requested (mirrors `devices.rs`), then clamp the
@@ -46,30 +42,28 @@ async fn handle_approve_oauth_consent(
         .iter()
         .map(String::as_str)
         .collect();
-    let client = match state.store.client_by_id(&request.client_id) {
-        Ok(Some(c)) => c,
+    let client = state
+        .store
+        .client_by_id(&request.client_id)
+        .map_err(|e| HandlerError::internal("client_by_id lookup failed", e))?
         // The request can't be approved against a client that no longer
         // exists — treat it as gone.
-        Ok(None) => return response_templates::not_found("OAuthConsentNotFound", "id", &id),
-        Err(e) => return response_templates::internal_error("client_by_id lookup failed", e),
-    };
+        .ok_or_else(|| HandlerError::not_found("OAuthConsentNotFound", "id", &id))?;
     let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
     let granted_scopes = grantable_scopes(body.approved_scopes, &requested, &allowed);
     if granted_scopes.is_empty() {
         // No requested-and-allowed scopes were approved — treat as a deny.
-        if let Err(e) = state.store.deny_authorization_request(&id) {
-            return response_templates::internal_error("deny_authorization_request failed", e);
-        }
-        return Json(ConsentResult::Denied).into_response();
-    }
-
-    if let Err(e) =
         state
             .store
-            .approve_authorization_request(&id, &granted_scopes, body.patient.as_deref())
-    {
-        return response_templates::internal_error("approve_authorization_request failed", e);
+            .deny_authorization_request(&id)
+            .map_err(|e| HandlerError::internal("deny_authorization_request failed", e))?;
+        return Ok(Json(ConsentResult::Denied));
     }
+
+    state
+        .store
+        .approve_authorization_request(&id, &granted_scopes, body.patient.as_deref())
+        .map_err(|e| HandlerError::internal("approve_authorization_request failed", e))?;
 
     // Mint and persist the authorization code so the polling endpoint's
     // `Approved` arm can hand the client back a redeemable `code`. Without
@@ -88,18 +82,18 @@ async fn handle_approve_oauth_consent(
         issued_at,
         expires_at: issued_at + AUTHORIZATION_CODE_TTL,
     };
-    if let Err(e) = state.store.issue_authorization_code(&authorization_code) {
-        return response_templates::internal_error("issue_authorization_code failed", e);
-    }
+    state
+        .store
+        .issue_authorization_code(&authorization_code)
+        .map_err(|e| HandlerError::internal("issue_authorization_code failed", e))?;
 
-    if let Err(e) = upsert_grant(
+    upsert_grant(
         &state,
         &request.client_id,
         &redirect_uri,
         &granted_scopes,
         body.patient.as_deref(),
-    ) {
-        return response_templates::internal_error("upsert_grant failed", e);
-    }
-    Json(ConsentResult::Approved).into_response()
+    )
+    .map_err(|e| HandlerError::internal("upsert_grant failed", e))?;
+    Ok(Json(ConsentResult::Approved))
 }

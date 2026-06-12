@@ -55,6 +55,57 @@ pub(crate) fn not_found(error: &'static str, field: &'static str, value: &str) -
         .into_response()
 }
 
+/// Error half of a `Result`-returning handler. Each variant renders one of
+/// the canned shapes above through `IntoResponse`, so a fallible step bails
+/// with `?` instead of a `match` + `return` at every call site.
+#[derive(Debug)]
+pub(crate) enum HandlerError {
+    /// Logged, opaque 500 — rendered by [`internal_error`], which logs
+    /// `source` against `context` at conversion time.
+    Internal {
+        context: &'static str,
+        source: String,
+    },
+    /// JSON 404 — rendered by [`not_found`].
+    NotFound {
+        error: &'static str,
+        field: &'static str,
+        value: String,
+    },
+}
+
+impl HandlerError {
+    /// A server-side failure (e.g. a store read): logs and 500s opaquely.
+    pub(crate) fn internal(context: &'static str, source: impl std::fmt::Display) -> Self {
+        HandlerError::Internal {
+            context,
+            source: source.to_string(),
+        }
+    }
+
+    /// A missing resource: JSON 404 keyed by the resource's identifying field.
+    pub(crate) fn not_found(error: &'static str, field: &'static str, value: &str) -> Self {
+        HandlerError::NotFound {
+            error,
+            field,
+            value: value.to_string(),
+        }
+    }
+}
+
+impl IntoResponse for HandlerError {
+    fn into_response(self) -> Response {
+        match self {
+            HandlerError::Internal { context, source } => internal_error(context, source),
+            HandlerError::NotFound {
+                error,
+                field,
+                value,
+            } => not_found(error, field, &value),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

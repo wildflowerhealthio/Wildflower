@@ -6,10 +6,12 @@ use axum::Json;
 use chrono::Utc;
 use serde::Serialize;
 
-use super::internal::{build_client_error_redirect_url, build_client_redirect_url, OAuthError};
+use super::internal::{
+    build_client_error_redirect_url, build_client_redirect_url, OAuthErrorResponse,
+};
 use crate::db_utils::UriColumn;
 use crate::domain::authorization_request::RequestStatus;
-use crate::http::response_templates;
+use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 
 /// Polling response for the Owner UI watching an authorization request as it
@@ -34,6 +36,12 @@ pub enum AuthorizationStatus {
     },
 }
 
+impl IntoResponse for AuthorizationStatus {
+    fn into_response(self) -> Response {
+        Json(self).into_response()
+    }
+}
+
 /// `GET /oauth/authorize/{id}` route.
 pub(super) fn route() -> MethodRouter {
     get(handle_authorization_status_request)
@@ -41,33 +49,30 @@ pub(super) fn route() -> MethodRouter {
 
 /// Return the current status of the pending authorization request, including
 /// the final redirect URL once approved.
+///
+/// The error side is `axum::response::ErrorResponse` because two error shapes
+/// share the handler: the Owner-surface [`HandlerError`] (404/logged 500) and
+/// the OAuth-shaped [`OAuthErrorResponse`] `server_error` — `?` converts
+/// either through its `IntoResponse`.
 async fn handle_authorization_status_request(
     Extension(state): Extension<AppState>,
     Path(id): Path<String>,
-) -> Response {
-    let request = match state.store.authorization_request_by_id(&id) {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            return response_templates::not_found("AuthorizationRequestNotFound", "id", &id)
-        }
-        Err(e) => {
-            return response_templates::internal_error(
-                "authorization_request_by_id lookup failed",
-                e,
-            )
-        }
-    };
+) -> axum::response::Result<AuthorizationStatus> {
+    let request = state
+        .store
+        .authorization_request_by_id(&id)
+        .map_err(|e| HandlerError::internal("authorization_request_by_id lookup failed", e))?
+        .ok_or_else(|| HandlerError::not_found("AuthorizationRequestNotFound", "id", &id))?;
     // Nothing actively transitions code-flow requests from Pending to Expired,
     // so a Pending request past its TTL must be reported as expired here rather
     // than left polling forever.
     if request.status == RequestStatus::Pending && request.expires_at < Utc::now() {
-        return Json(AuthorizationStatus::Error {
+        return Ok(AuthorizationStatus::Error {
             message: "Authorization request expired".to_string(),
-        })
-        .into_response();
+        });
     }
-    match request.status {
-        RequestStatus::Pending => Json(AuthorizationStatus::Pending).into_response(),
+    Ok(match request.status {
+        RequestStatus::Pending => AuthorizationStatus::Pending,
         RequestStatus::Denied => {
             // Build the client callback so the user-agent waiting at the
             // client's redirect_uri receives `error=access_denied&state=...`
@@ -79,40 +84,39 @@ async fn handle_authorization_status_request(
                 ),
                 _ => None,
             };
-            Json(AuthorizationStatus::Denied { redirect }).into_response()
+            AuthorizationStatus::Denied { redirect }
         }
-        RequestStatus::Expired => Json(AuthorizationStatus::Error {
+        RequestStatus::Expired => AuthorizationStatus::Error {
             message: "Authorization request expired".to_string(),
-        })
-        .into_response(),
+        },
         RequestStatus::Approved => {
             let (Some(UriColumn(redirect_uri)), Some(client_state)) =
                 (request.redirect_uri, request.client_state)
             else {
-                return oauth_internal_error("Authorization request is not a code-flow request");
+                return Err(
+                    server_error("Authorization request is not a code-flow request").into(),
+                );
             };
-            let code = match state.store.authorization_code_by_request_id(&id) {
-                Ok(Some(c)) => c,
-                Ok(None) => return oauth_internal_error("Authorization code missing"),
-                Err(e) => {
-                    return response_templates::internal_error(
-                        "authorization_code_by_request_id lookup failed",
-                        e,
-                    )
-                }
-            };
-            Json(AuthorizationStatus::Approved {
+            let code = state
+                .store
+                .authorization_code_by_request_id(&id)
+                .map_err(|e| {
+                    HandlerError::internal("authorization_code_by_request_id lookup failed", e)
+                })?
+                .ok_or_else(|| server_error("Authorization code missing"))?;
+            AuthorizationStatus::Approved {
                 redirect: build_client_redirect_url(&redirect_uri, &code.code, &client_state),
-            })
-            .into_response()
+            }
         }
-    }
+    })
 }
 
-fn oauth_internal_error(description: &str) -> Response {
-    (
+/// OAuth-shaped `server_error` 500 — this endpoint serves the polling page
+/// that closes an OAuth flow, so its failures keep the RFC 6749 §5.2 body.
+fn server_error(description: &str) -> OAuthErrorResponse {
+    OAuthErrorResponse::new(
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(OAuthError::new("server_error", Some(description))),
+        "server_error",
+        Some(description),
     )
-        .into_response()
 }

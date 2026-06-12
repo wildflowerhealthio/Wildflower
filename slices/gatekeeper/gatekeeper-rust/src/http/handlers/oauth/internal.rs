@@ -5,6 +5,7 @@ use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use super::client_auth::{ClientAuthenticationMethod, ClientCredentials, BASIC_AUTH_CHALLENGE};
 use crate::crypto_util::client_secret::verify_client_secret;
 use crate::db_utils::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
@@ -26,6 +27,49 @@ pub const OFFLINE_ACCESS_SCOPE: &str = "offline_access";
 /// Minimum polling interval the device-code flow enforces (RFC 8628 §3.5).
 pub const DEVICE_CODE_POLL_INTERVAL: Duration = Duration::seconds(5);
 
+/// Wrapper that stamps the RFC 6749 §5.1/§5.2 cache-suppression headers
+/// (`Cache-Control: no-store`, `Pragma: no-cache`) onto the wrapped response.
+/// Token- and device-authorization-endpoint responses — success or error —
+/// must never be cached; wrapping makes that part of the value instead of a
+/// step a call site can forget.
+pub struct CacheSuppressed<T>(pub T);
+
+impl<T: IntoResponse> IntoResponse for CacheSuppressed<T> {
+    fn into_response(self) -> Response {
+        (
+            [
+                (header::CACHE_CONTROL, "no-store"),
+                (header::PRAGMA, "no-cache"),
+            ],
+            self.0,
+        )
+            .into_response()
+    }
+}
+
+/// An [`OAuthError`] paired with the HTTP status it renders at — the
+/// `(status, JSON body)` shape every OAuth-surface error response shares.
+#[derive(Debug)]
+pub struct OAuthErrorResponse {
+    pub status: StatusCode,
+    pub error: OAuthError,
+}
+
+impl OAuthErrorResponse {
+    pub fn new(status: StatusCode, error: &str, description: Option<&str>) -> Self {
+        Self {
+            status,
+            error: OAuthError::new(error, description),
+        }
+    }
+}
+
+impl IntoResponse for OAuthErrorResponse {
+    fn into_response(self) -> Response {
+        (self.status, Json(self.error)).into_response()
+    }
+}
+
 /// RFC 6749 §5.1 successful token-endpoint response.
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {
@@ -40,6 +84,14 @@ pub struct TokenResponse {
     pub refresh_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub patient: Option<String>,
+}
+
+impl IntoResponse for TokenResponse {
+    /// RFC 6749 §5.1: a token response MUST carry `Cache-Control: no-store` —
+    /// rendering through [`CacheSuppressed`] makes that unforgettable.
+    fn into_response(self) -> Response {
+        CacheSuppressed(Json(self)).into_response()
+    }
 }
 
 /// RFC 6749 §5.2 token-endpoint error body.
@@ -57,21 +109,6 @@ impl OAuthError {
             error_description: description.map(str::to_string),
         }
     }
-}
-
-/// RFC 6749 §5.1/§5.2 (inherited by RFC 8628 §3.4/§3.5): every token- and
-/// device-authorization-endpoint response — success or error — must carry
-/// `Cache-Control: no-store` and `Pragma: no-cache` so credentials are never
-/// cached.
-pub fn cache_suppressed(response: Response) -> Response {
-    (
-        [
-            (header::CACHE_CONTROL, "no-store"),
-            (header::PRAGMA, "no-cache"),
-        ],
-        response,
-    )
-        .into_response()
 }
 
 /// Build the URL that closes the authorization-code flow by redirecting the
@@ -103,8 +140,13 @@ pub fn build_client_error_redirect_url(
 /// Reasons that client authentication at the token endpoint can fail.
 #[derive(Debug)]
 pub enum ValidateClientError {
-    /// Client identification or secret check failed — surface as 401.
-    Unauthorized(OAuthError),
+    /// Client identification or secret check failed — surface as 401. RFC
+    /// 6749 §5.2: the response to a Basic-authentication attempt carries a
+    /// matching `WWW-Authenticate: Basic` challenge.
+    Unauthorized {
+        error: OAuthError,
+        attempted_via: ClientAuthenticationMethod,
+    },
     /// Server-side failure (e.g. database read) — surface as 500.
     Internal(OAuthError),
 }
@@ -112,65 +154,76 @@ pub enum ValidateClientError {
 impl IntoResponse for ValidateClientError {
     fn into_response(self) -> Response {
         match self {
-            ValidateClientError::Unauthorized(e) => {
-                (StatusCode::UNAUTHORIZED, Json(e)).into_response()
+            ValidateClientError::Unauthorized {
+                error,
+                attempted_via: ClientAuthenticationMethod::HttpBasic,
+            } => (
+                [(header::WWW_AUTHENTICATE, BASIC_AUTH_CHALLENGE)],
+                OAuthErrorResponse {
+                    status: StatusCode::UNAUTHORIZED,
+                    error,
+                },
+            )
+                .into_response(),
+            ValidateClientError::Unauthorized {
+                error,
+                attempted_via: ClientAuthenticationMethod::RequestBody,
+            } => OAuthErrorResponse {
+                status: StatusCode::UNAUTHORIZED,
+                error,
             }
-            ValidateClientError::Internal(e) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(e)).into_response()
+            .into_response(),
+            ValidateClientError::Internal(error) => OAuthErrorResponse {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                error,
             }
+            .into_response(),
         }
     }
 }
 
-/// Look up the client by `client_id` and authenticate it. For confidential
-/// clients the presented secret is verified against the stored argon2id PHC
-/// string (constant-time internally). Returns the loaded `Client` if both
-/// checks pass.
+/// Look up the client named by the resolved credentials and authenticate it.
+/// For confidential clients the presented secret is verified against the
+/// stored argon2id PHC string (constant-time internally). Returns the loaded
+/// `Client` if both checks pass.
 pub fn require_valid_client_for_token(
     store: &GatekeeperStore,
-    client_id: &str,
-    client_secret: Option<&str>,
+    presented_credentials: &ClientCredentials,
 ) -> Result<Client, ValidateClientError> {
-    let client = store.client_by_id(client_id).map_err(|e| {
-        tracing::error!(error = %e, "client_by_id lookup failed");
-        ValidateClientError::Internal(OAuthError::new("server_error", None))
-    })?;
-    let client = client.ok_or_else(|| {
-        ValidateClientError::Unauthorized(OAuthError::new(
-            "invalid_client",
-            Some("Unknown client_id"),
-        ))
-    })?;
+    // Every authentication failure records how the client authenticated, so
+    // 401s answer Basic attempts with a matching `WWW-Authenticate` header
+    // (RFC 6749 §5.2).
+    let unauthorized = |description: &str| ValidateClientError::Unauthorized {
+        error: OAuthError::new("invalid_client", Some(description)),
+        attempted_via: presented_credentials.presented_via,
+    };
+    let client = store
+        .client_by_id(&presented_credentials.client_id)
+        .map_err(|e| {
+            tracing::error!(error = %e, "client_by_id lookup failed");
+            ValidateClientError::Internal(OAuthError::new("server_error", None))
+        })?;
+    let client = client.ok_or_else(|| unauthorized("Unknown client_id"))?;
     if client.disabled_at.is_some() {
-        return Err(ValidateClientError::Unauthorized(OAuthError::new(
-            "invalid_client",
-            Some("Client is disabled"),
-        )));
+        return Err(unauthorized("Client is disabled"));
     }
     if matches!(client.kind, ClientKind::Public) {
         return Ok(client);
     }
-    let stored_hash = client.secret_hash.as_deref().ok_or_else(|| {
-        ValidateClientError::Unauthorized(OAuthError::new(
-            "invalid_client",
-            Some("Client secret not configured"),
-        ))
-    })?;
-    let presented = client_secret.ok_or_else(|| {
-        ValidateClientError::Unauthorized(OAuthError::new(
-            "invalid_client",
-            Some("Client secret required"),
-        ))
-    })?;
+    let stored_hash = client
+        .secret_hash
+        .as_deref()
+        .ok_or_else(|| unauthorized("Client secret not configured"))?;
+    let presented = presented_credentials
+        .client_secret
+        .as_deref()
+        .ok_or_else(|| unauthorized("Client secret required"))?;
     let secret_matches = verify_client_secret(presented, stored_hash).map_err(|e| {
         tracing::error!(error = %e, "client secret verification failed");
         ValidateClientError::Internal(OAuthError::new("server_error", None))
     })?;
     if !secret_matches {
-        return Err(ValidateClientError::Unauthorized(OAuthError::new(
-            "invalid_client",
-            Some("Invalid client_secret"),
-        )));
+        return Err(unauthorized("Invalid client_secret"));
     }
     Ok(client)
 }

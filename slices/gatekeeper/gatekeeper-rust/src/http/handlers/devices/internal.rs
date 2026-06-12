@@ -2,12 +2,11 @@
 //! device-flow consent routes. The per-route handlers (`get`, `approve`,
 //! `deny`) live in sibling modules and pull what they need from here.
 
-use axum::response::Response;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
-use crate::http::response_templates;
+use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 
 /// Body returned to the Owner UI when it loads a pending device-code consent
@@ -37,12 +36,12 @@ pub enum ConsentResult {
 }
 
 /// Load the authorization request for `user_code` and verify it's a pending
-/// device-code flow. Returns a ready-to-use `Response` for "not found" or
-/// "internal error" outcomes so each handler can `match` once and move on.
+/// device-code flow. The error side is a [`HandlerError`] ("not found" or
+/// "internal error"), so each handler can bail with `?` and move on.
 pub(super) fn load_pending_device_request(
     state: &AppState,
     user_code: &str,
-) -> Result<AuthorizationRequest, Box<Response>> {
+) -> Result<AuthorizationRequest, HandlerError> {
     match state
         .store
         .pending_authorization_request_by_user_code(user_code)
@@ -54,14 +53,14 @@ pub(super) fn load_pending_device_request(
         {
             Ok(r)
         }
-        Ok(_) => Err(Box::new(response_templates::not_found(
+        Ok(_) => Err(HandlerError::not_found(
             "DeviceConsentNotFound",
             "userCode",
             user_code,
-        ))),
-        Err(e) => Err(Box::new(response_templates::internal_error(
+        )),
+        Err(e) => Err(HandlerError::internal(
             "pending_authorization_request_by_user_code lookup failed",
             e,
-        ))),
+        )),
     }
 }

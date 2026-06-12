@@ -2,7 +2,6 @@ use axum::extract::Extension;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{post, MethodRouter};
-use axum::Json;
 use chrono::Utc;
 use serde::Deserialize;
 use subtle::ConstantTimeEq;
@@ -10,9 +9,10 @@ use url::Url;
 
 use uuid::Uuid;
 
+use super::client_auth::{resolve_client_credentials, ClientCredentials};
 use super::internal::{
-    cache_suppressed, issue_token_response, require_valid_client_for_token, IssueTokenInput,
-    OAuthError, DEVICE_CODE_POLL_INTERVAL, OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
+    issue_token_response, require_valid_client_for_token, CacheSuppressed, IssueTokenInput,
+    OAuthErrorResponse, DEVICE_CODE_POLL_INTERVAL, OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
 };
 use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
@@ -26,7 +26,10 @@ use crate::http::served_origin_for;
 use crate::http::state::AppState;
 
 /// Body of an RFC 6749 / RFC 8628 token endpoint request, dispatched by the
-/// wire-level `grant_type` field.
+/// wire-level `grant_type` field. Client credentials are not parsed here —
+/// they may also arrive via the `Authorization: Basic` header, so
+/// [`resolve_client_credentials`] owns both sources (any body
+/// `client_id`/`client_secret` fields are simply ignored by this enum).
 #[derive(Debug, Deserialize)]
 #[serde(tag = "grant_type")]
 pub enum TokenPayload {
@@ -34,8 +37,6 @@ pub enum TokenPayload {
     /// `code` (RFC 6749 §4.1.3) along with the PKCE verifier.
     #[serde(rename = "authorization_code")]
     AuthorizationCode {
-        client_id: String,
-        client_secret: Option<String>,
         code: String,
         code_verifier: String,
         redirect_uri: String,
@@ -43,19 +44,11 @@ pub enum TokenPayload {
     /// Device-code grant — the client polls with the `device_code` it was
     /// handed at `/device_authorization` (RFC 8628 §3.4).
     #[serde(rename = "urn:ietf:params:oauth:grant-type:device_code")]
-    DeviceCode {
-        client_id: String,
-        client_secret: Option<String>,
-        device_code: String,
-    },
+    DeviceCode { device_code: String },
     /// Refresh-token grant — the client trades its live refresh token for a
     /// fresh access token plus the refresh token's successor (RFC 6749 §6).
     #[serde(rename = "refresh_token")]
-    RefreshToken {
-        client_id: String,
-        client_secret: Option<String>,
-        refresh_token: String,
-    },
+    RefreshToken { refresh_token: String },
 }
 
 /// `POST /oauth/token` route.
@@ -70,53 +63,42 @@ async fn handle_token_request(
     headers: HeaderMap,
     body: String,
 ) -> Response {
+    // Parse the grant payload before resolving credentials so a structurally
+    // malformed body still reads as such, not as "Missing client_id".
     let payload: TokenPayload = match serde_urlencoded::from_str(&body) {
         Ok(p) => p,
         Err(_) => {
             return bad_request("invalid_request", Some("Malformed payload"));
         }
     };
+    // RFC 6749 §2.3.1: Basic header first, body params as fallback; a secret
+    // presented both ways is rejected before any grant work happens.
+    let presented_credentials = match resolve_client_credentials(&headers, &body) {
+        Ok(c) => c,
+        Err(err) => return CacheSuppressed(err).into_response(),
+    };
     let origin = served_origin_for(&headers, &state.loopback_origin);
     match payload {
         TokenPayload::AuthorizationCode {
-            client_id,
-            client_secret,
             code,
             code_verifier,
             redirect_uri,
         } => exchange_authorization_code(
             &state,
             &origin,
+            &presented_credentials,
             &AuthorizationCodeGrant {
-                client_id: &client_id,
-                client_secret: client_secret.as_deref(),
                 code: &code,
                 code_verifier: &code_verifier,
                 redirect_uri: &redirect_uri,
             },
         ),
-        TokenPayload::DeviceCode {
-            client_id,
-            client_secret,
-            device_code,
-        } => exchange_device_code(
-            &state,
-            &origin,
-            &client_id,
-            client_secret.as_deref(),
-            &device_code,
-        ),
-        TokenPayload::RefreshToken {
-            client_id,
-            client_secret,
-            refresh_token,
-        } => exchange_refresh_token(
-            &state,
-            &origin,
-            &client_id,
-            client_secret.as_deref(),
-            &refresh_token,
-        ),
+        TokenPayload::DeviceCode { device_code } => {
+            exchange_device_code(&state, &origin, &presented_credentials, &device_code)
+        }
+        TokenPayload::RefreshToken { refresh_token } => {
+            exchange_refresh_token(&state, &origin, &presented_credentials, &refresh_token)
+        }
     }
 }
 
@@ -124,8 +106,6 @@ async fn handle_token_request(
 /// a named struct so the redemption helpers take one self-describing argument
 /// instead of a run of same-typed `&str` positionals (a transposition hazard).
 struct AuthorizationCodeGrant<'a> {
-    client_id: &'a str,
-    client_secret: Option<&'a str>,
     code: &'a str,
     code_verifier: &'a str,
     redirect_uri: &'a str,
@@ -134,12 +114,11 @@ struct AuthorizationCodeGrant<'a> {
 fn exchange_authorization_code(
     state: &AppState,
     origin: &str,
+    presented_credentials: &ClientCredentials,
     grant: &AuthorizationCodeGrant<'_>,
 ) -> Response {
-    if let Err(err) =
-        require_valid_client_for_token(&state.store, grant.client_id, grant.client_secret)
-    {
-        return cache_suppressed(err.into_response());
+    if let Err(err) = require_valid_client_for_token(&state.store, presented_credentials) {
+        return CacheSuppressed(err).into_response();
     }
     // RFC 7636 §4.1: the verifier is 43–128 chars. Reject out-of-range values
     // before hashing — an unusable verifier is a grant failure, not a
@@ -159,17 +138,18 @@ fn exchange_authorization_code(
             return bad_request("invalid_grant", Some("Invalid code parameter"));
         }
         Err(e) => {
-            return cache_suppressed(response_templates::internal_error(
+            return CacheSuppressed(response_templates::internal_error(
                 "authorization_code redemption failed",
                 e,
             ))
+            .into_response()
         }
     };
     validate_code_and_issue_token(
         state,
         origin,
         &code_record,
-        grant.client_id,
+        &presented_credentials.client_id,
         &parsed_redirect,
         grant.code_verifier,
     )
@@ -227,21 +207,26 @@ fn validate_code_and_issue_token(
 fn exchange_device_code(
     state: &AppState,
     origin: &str,
-    client_id: &str,
-    client_secret: Option<&str>,
+    presented_credentials: &ClientCredentials,
     device_code: &str,
 ) -> Response {
-    if let Err(err) = require_valid_client_for_token(&state.store, client_id, client_secret) {
-        return cache_suppressed(err.into_response());
+    if let Err(err) = require_valid_client_for_token(&state.store, presented_credentials) {
+        return CacheSuppressed(err).into_response();
     }
     let request_record = match state.store.authorization_request_by_id(device_code) {
-        Ok(Some(p)) if p.grant_type == GrantType::DeviceCode && p.client_id == client_id => p,
+        Ok(Some(p))
+            if p.grant_type == GrantType::DeviceCode
+                && p.client_id == presented_credentials.client_id =>
+        {
+            p
+        }
         Ok(_) => return bad_request("invalid_grant", Some("Unknown device_code")),
         Err(e) => {
-            return cache_suppressed(response_templates::internal_error(
+            return CacheSuppressed(response_templates::internal_error(
                 "authorization_request lookup failed",
                 e,
             ))
+            .into_response()
         }
     };
     if request_record.expires_at < Utc::now() {
@@ -257,10 +242,11 @@ fn exchange_device_code(
             .store
             .record_device_poll(&request_record.id, Utc::now())
         {
-            return cache_suppressed(response_templates::internal_error(
+            return CacheSuppressed(response_templates::internal_error(
                 "record_device_poll failed",
                 e,
-            ));
+            ))
+            .into_response();
         }
     }
     match request_record.status {
@@ -271,10 +257,11 @@ fn exchange_device_code(
     }
     // single-use per RFC 8628 §3.4
     if let Err(e) = state.store.expire_authorization_request(&request_record.id) {
-        return cache_suppressed(response_templates::internal_error(
+        return CacheSuppressed(response_templates::internal_error(
             "expire_authorization_request failed",
             e,
-        ));
+        ))
+        .into_response();
     }
     let granted_scopes: &[String] = request_record
         .granted_scopes
@@ -336,9 +323,13 @@ fn start_refresh_token_family_if_granted(
         .store
         .insert_refresh_token_family(&family, &first_token)
     {
-        return Err(Box::new(cache_suppressed(
-            response_templates::internal_error("insert_refresh_token_family failed", e),
-        )));
+        return Err(Box::new(
+            CacheSuppressed(response_templates::internal_error(
+                "insert_refresh_token_family failed",
+                e,
+            ))
+            .into_response(),
+        ));
     }
     Ok(Some(plaintext))
 }
@@ -350,29 +341,29 @@ fn start_refresh_token_family_if_granted(
 fn exchange_refresh_token(
     state: &AppState,
     origin: &str,
-    client_id: &str,
-    client_secret: Option<&str>,
-    presented: &str,
+    presented_credentials: &ClientCredentials,
+    presented_refresh_token: &str,
 ) -> Response {
-    if let Err(err) = require_valid_client_for_token(&state.store, client_id, client_secret) {
-        return cache_suppressed(err.into_response());
+    if let Err(err) = require_valid_client_for_token(&state.store, presented_credentials) {
+        return CacheSuppressed(err).into_response();
     }
-    let hash = token_storage_hash(presented);
+    let hash = token_storage_hash(presented_refresh_token);
     let (_, family) = match state.store.refresh_token_with_family_by_hash(&hash) {
         Ok(Some(pair)) => pair,
         Ok(None) => return bad_request("invalid_grant", Some("Invalid refresh_token parameter")),
         Err(e) => {
-            return cache_suppressed(response_templates::internal_error(
+            return CacheSuppressed(response_templates::internal_error(
                 "refresh_token lookup failed",
                 e,
             ))
+            .into_response()
         }
     };
     // Token–client binding (RFC 6749 §6): a valid token presented by the
     // wrong client is a grant failure; answer exactly as if it didn't exist.
     // Checked before consuming so a stranger can't burn the rightful
     // client's live token.
-    if family.client_id != client_id {
+    if family.client_id != presented_credentials.client_id {
         return bad_request("invalid_grant", Some("Invalid refresh_token parameter"));
     }
     let now = Utc::now();
@@ -393,10 +384,11 @@ fn exchange_refresh_token(
                 .store
                 .expire_refresh_token_family(&family.family_id, now)
             {
-                return cache_suppressed(response_templates::internal_error(
+                return CacheSuppressed(response_templates::internal_error(
                     "expire_refresh_token_family failed",
                     e,
-                ));
+                ))
+                .into_response();
             }
             return bad_request("invalid_grant", Some("Refresh token has been revoked"));
         }
@@ -406,10 +398,11 @@ fn exchange_refresh_token(
             return bad_request("invalid_grant", Some("Invalid refresh_token parameter"))
         }
         Err(e) => {
-            return cache_suppressed(response_templates::internal_error(
+            return CacheSuppressed(response_templates::internal_error(
                 "consume_refresh_token failed",
                 e,
             ))
+            .into_response()
         }
     }
     // Mint the successor in the same family — the family keeps the scopes
@@ -422,10 +415,11 @@ fn exchange_refresh_token(
         consumed_at: None,
     };
     if let Err(e) = state.store.insert_refresh_token(&next) {
-        return cache_suppressed(response_templates::internal_error(
+        return CacheSuppressed(response_templates::internal_error(
             "insert_refresh_token failed",
             e,
-        ));
+        ))
+        .into_response();
     }
     issue_token(
         state,
@@ -450,20 +444,42 @@ fn issue_token(
     match issue_token_response(&state.store, input) {
         Ok(mut token) => {
             token.refresh_token = refresh_token;
-            cache_suppressed(Json(token).into_response())
+            // `TokenResponse: IntoResponse` carries the §5.1 cache suppression.
+            token.into_response()
         }
-        Err(err) => {
-            cache_suppressed((StatusCode::INTERNAL_SERVER_ERROR, Json(err)).into_response())
-        }
+        Err(error) => CacheSuppressed(OAuthErrorResponse {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error,
+        })
+        .into_response(),
     }
 }
 
 fn bad_request(error: &str, description: Option<&str>) -> Response {
-    cache_suppressed(
-        (
-            StatusCode::BAD_REQUEST,
-            Json(OAuthError::new(error, description)),
+    CacheSuppressed(OAuthErrorResponse::new(
+        StatusCode::BAD_REQUEST,
+        error,
+        description,
+    ))
+    .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Clients using `client_secret_post` keep their credentials in the form
+    /// body; the grant enum no longer parses them, so it must tolerate the
+    /// extra fields rather than reject the request.
+    #[test]
+    fn token_payload_tolerates_unparsed_client_credential_fields() {
+        let payload: TokenPayload = serde_urlencoded::from_str(
+            "grant_type=refresh_token&client_id=app&client_secret=s3cret&refresh_token=tok",
         )
-            .into_response(),
-    )
+        .expect("unknown fields are ignored");
+        let TokenPayload::RefreshToken { refresh_token } = payload else {
+            panic!("expected RefreshToken variant, got {payload:?}");
+        };
+        assert_eq!(refresh_token, "tok");
+    }
 }

@@ -1,9 +1,9 @@
 use axum::extract::{Extension, Path};
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 
-use crate::http::response_templates;
+use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 
 /// `GET /grants/{id}` — fetch a single grant by id.
@@ -14,10 +14,11 @@ pub(super) fn route() -> MethodRouter {
 async fn handle_get_grant(
     Extension(state): Extension<AppState>,
     Path(id): Path<String>,
-) -> Response {
-    match state.store.grant_by_id(&id) {
-        Ok(Some(row)) => Json(row).into_response(),
-        Ok(None) => response_templates::not_found("GrantNotFound", "id", &id),
-        Err(e) => response_templates::internal_error("grant_by_id lookup failed", e),
-    }
+) -> Result<impl IntoResponse, HandlerError> {
+    let grant = state
+        .store
+        .grant_by_id(&id)
+        .map_err(|e| HandlerError::internal("grant_by_id lookup failed", e))?
+        .ok_or_else(|| HandlerError::not_found("GrantNotFound", "id", &id))?;
+    Ok(Json(grant))
 }

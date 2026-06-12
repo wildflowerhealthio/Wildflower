@@ -1634,6 +1634,7 @@ dependencies = [
  "http-body-util",
  "jsonwebtoken",
  "parking_lot",
+ "percent-encoding",
  "proptest",
  "rand 0.8.6",
  "rsa",

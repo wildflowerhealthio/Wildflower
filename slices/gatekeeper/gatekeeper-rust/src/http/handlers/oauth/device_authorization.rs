@@ -8,8 +8,10 @@ use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+use super::client_auth::resolve_client_credentials;
 use super::internal::{
-    cache_suppressed, require_valid_client_for_token, OAuthError, DEVICE_CODE_POLL_INTERVAL,
+    require_valid_client_for_token, CacheSuppressed, OAuthErrorResponse,
+    DEVICE_CODE_POLL_INTERVAL,
 };
 use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
 use crate::crypto_util::random_token::generate_authorization_code;
@@ -27,13 +29,12 @@ const DEVICE_AUTHORIZATION_TTL: Duration = Duration::minutes(5);
 /// because the alphabet/length make collisions astronomically rare.
 const MAX_USER_CODE_GENERATION_ATTEMPTS: usize = 10;
 
-/// Body of an RFC 8628 device authorization request.
+/// Body of an RFC 8628 device authorization request. Client credentials are
+/// not parsed here — RFC 8628 §3.1 inherits RFC 6749 §3.2.1 client
+/// authentication, so [`resolve_client_credentials`] owns both the Basic
+/// header and the body `client_id`/`client_secret` fields.
 #[derive(Debug, Deserialize)]
 pub struct DeviceAuthorizationPayload {
-    pub client_id: String,
-    /// Confidential-client secret. RFC 8628 §3.1 requires that RFC 6749 §3.2.1
-    /// client authentication apply here; public clients omit it.
-    pub client_secret: Option<String>,
     pub scope: Option<String>,
 }
 
@@ -46,6 +47,14 @@ pub struct DeviceAuthorizationResponse {
     pub verification_uri_complete: String,
     pub expires_in: i64,
     pub interval: i64,
+}
+
+impl IntoResponse for DeviceAuthorizationResponse {
+    /// RFC 8628 §3.2 inherits RFC 6749 §5.1's no-store requirement —
+    /// rendering through [`CacheSuppressed`] makes that unforgettable.
+    fn into_response(self) -> Response {
+        CacheSuppressed(Json(self)).into_response()
+    }
 }
 
 /// `POST /oauth/device_authorization` route.
@@ -80,15 +89,15 @@ async fn handle_device_authorization_request(
         .map(str::to_string)
         .collect();
     // RFC 8628 §3.1: authenticate confidential clients exactly as the token
-    // endpoint does (timing-safe secret check); public clients pass through
-    // without a secret.
-    let client = match require_valid_client_for_token(
-        &state.store,
-        &payload.client_id,
-        payload.client_secret.as_deref(),
-    ) {
+    // endpoint does — Basic header first, body fallback, timing-safe secret
+    // check; public clients pass through without a secret.
+    let presented_credentials = match resolve_client_credentials(&headers, &body) {
         Ok(c) => c,
-        Err(err) => return cache_suppressed(err.into_response()),
+        Err(err) => return CacheSuppressed(err).into_response(),
+    };
+    let client = match require_valid_client_for_token(&state.store, &presented_credentials) {
+        Ok(c) => c,
+        Err(err) => return CacheSuppressed(err).into_response(),
     };
     let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
     if !requested_scopes
@@ -107,36 +116,36 @@ async fn handle_device_authorization_request(
     let user_code = match generate_unique_user_code(&state) {
         Ok(c) => c,
         Err(e) => {
-            return cache_suppressed(response_templates::internal_error(
+            return CacheSuppressed(response_templates::internal_error(
                 "user_code generation failed",
                 e,
             ))
+            .into_response()
         }
     };
     let request = AuthorizationRequest::new_device_authorization(StartDeviceAuthorizationArgs {
         id: device_code.clone(),
-        client_id: payload.client_id.clone(),
+        client_id: presented_credentials.client_id.clone(),
         requested_scopes,
         user_code: user_code.clone(),
         ttl: DEVICE_AUTHORIZATION_TTL,
     });
     if let Err(e) = state.store.insert_authorization_request(&request) {
-        return cache_suppressed(response_templates::internal_error(
+        return CacheSuppressed(response_templates::internal_error(
             "insert_authorization_request failed",
             e,
-        ));
+        ))
+        .into_response();
     }
-    cache_suppressed(
-        Json(DeviceAuthorizationResponse {
-            device_code,
-            user_code: user_code.clone(),
-            verification_uri: page_paths::device_entry_url(origin),
-            verification_uri_complete: page_paths::device_entry_url_with_code(origin, &user_code),
-            expires_in: DEVICE_AUTHORIZATION_TTL.num_seconds(),
-            interval: DEVICE_CODE_POLL_INTERVAL.num_seconds(),
-        })
-        .into_response(),
-    )
+    DeviceAuthorizationResponse {
+        device_code,
+        user_code: user_code.clone(),
+        verification_uri: page_paths::device_entry_url(origin),
+        verification_uri_complete: page_paths::device_entry_url_with_code(origin, &user_code),
+        expires_in: DEVICE_AUTHORIZATION_TTL.num_seconds(),
+        interval: DEVICE_CODE_POLL_INTERVAL.num_seconds(),
+    }
+    .into_response()
 }
 
 /// Try up to `MAX_USER_CODE_GENERATION_ATTEMPTS` random user codes until one
@@ -168,5 +177,5 @@ fn generate_unique_user_code(state: &AppState) -> anyhow::Result<String> {
 }
 
 fn oauth_error(status: StatusCode, error: &str, description: &str) -> Response {
-    cache_suppressed((status, Json(OAuthError::new(error, Some(description)))).into_response())
+    CacheSuppressed(OAuthErrorResponse::new(status, error, Some(description))).into_response()
 }

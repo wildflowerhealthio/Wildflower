@@ -1,11 +1,10 @@
 use axum::extract::Extension;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
 
 use crate::crypto_util::public_jwk::PublicJwk;
+use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 
 /// RFC 7517 JSON Web Key Set body served at `/.well-known/jwks.json`.
@@ -20,15 +19,14 @@ pub fn handle_get_jwks_request() -> MethodRouter {
     get(handle_jwks_request)
 }
 
-async fn handle_jwks_request(Extension(state): Extension<AppState>) -> Response {
-    match state.store.all_signing_keys() {
-        Ok(keys) => Json(Jwks {
-            keys: keys.iter().map(PublicJwk::from).collect(),
-        })
-        .into_response(),
-        Err(e) => {
-            tracing::error!(error = %e, "all_signing_keys lookup failed");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
-    }
+async fn handle_jwks_request(
+    Extension(state): Extension<AppState>,
+) -> Result<Json<Jwks>, HandlerError> {
+    let keys = state
+        .store
+        .all_signing_keys()
+        .map_err(|e| HandlerError::internal("all_signing_keys lookup failed", e))?;
+    Ok(Json(Jwks {
+        keys: keys.iter().map(PublicJwk::from).collect(),
+    }))
 }

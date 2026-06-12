@@ -70,6 +70,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Stub the embedded SPA bundle
+        # `spa.rs` `include_str!`s the single-file web bundle
+        # (`dist-single-web/index-single-web.html`), which is produced by the
+        # `build:single-web` step and gitignored — so it's absent in a fresh
+        # checkout and the crate won't compile. CI only lints/compiles the Rust,
+        # not the served HTML, so a placeholder file is enough to satisfy the
+        # `include_str!`. Real builds run `build:single-web` first.
+        run: |
+          mkdir -p apps/wildflower-react/dist-single-web
+          echo '<!doctype html><title>stub</title>' \
+            > apps/wildflower-react/dist-single-web/index-single-web.html
       - name: Install Tauri system dependencies
         run: |
           sudo apt-get update
