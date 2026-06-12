@@ -15,7 +15,7 @@ use crate::db_utils::{DbResult, JsonColumn, UriColumn};
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::grant::Grant;
-use crate::http::responses::{internal_error, not_found};
+use crate::http::response_templates;
 use crate::http::state::AppState;
 
 /// Lifetime of the authorization_code minted when an Owner approves a
@@ -118,8 +118,8 @@ async fn approve_consent(
         Ok(Some(c)) => c,
         // The request can't be approved against a client that no longer
         // exists — treat it as gone.
-        Ok(None) => return not_found("OAuthConsentNotFound", "id", &id),
-        Err(e) => return internal_error("client_by_id lookup failed", e),
+        Ok(None) => return response_templates::not_found("OAuthConsentNotFound", "id", &id),
+        Err(e) => return response_templates::internal_error("client_by_id lookup failed", e),
     };
     let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
     let granted_scopes: Vec<String> = body
@@ -130,7 +130,7 @@ async fn approve_consent(
     if granted_scopes.is_empty() {
         // No requested-and-allowed scopes were approved — treat as a deny.
         if let Err(e) = state.store.deny_authorization_request(&id) {
-            return internal_error("deny_authorization_request failed", e);
+            return response_templates::internal_error("deny_authorization_request failed", e);
         }
         return Json(ConsentResult::Denied).into_response();
     }
@@ -140,7 +140,7 @@ async fn approve_consent(
             .store
             .approve_authorization_request(&id, &granted_scopes, body.patient.as_deref())
     {
-        return internal_error("approve_authorization_request failed", e);
+        return response_templates::internal_error("approve_authorization_request failed", e);
     }
 
     // Mint and persist the authorization code so the polling endpoint's
@@ -161,7 +161,7 @@ async fn approve_consent(
         expires_at: issued_at + AUTHORIZATION_CODE_TTL,
     };
     if let Err(e) = state.store.issue_authorization_code(&authorization_code) {
-        return internal_error("issue_authorization_code failed", e);
+        return response_templates::internal_error("issue_authorization_code failed", e);
     }
 
     if let Err(e) = upsert_grant(
@@ -171,7 +171,7 @@ async fn approve_consent(
         &granted_scopes,
         body.patient.as_deref(),
     ) {
-        return internal_error("upsert_grant failed", e);
+        return response_templates::internal_error("upsert_grant failed", e);
     }
     Json(ConsentResult::Approved).into_response()
 }
@@ -181,7 +181,7 @@ async fn deny_consent(Extension(state): Extension<AppState>, Path(id): Path<Stri
         return *response;
     }
     if let Err(e) = state.store.deny_authorization_request(&id) {
-        return internal_error("deny_authorization_request failed", e);
+        return response_templates::internal_error("deny_authorization_request failed", e);
     }
     Json(ConsentResult::Denied).into_response()
 }
@@ -199,7 +199,13 @@ fn load_pending_authorization_code_request(
     state: &AppState,
     id: &str,
 ) -> Result<PendingCodeConsent, Box<Response>> {
-    let not_found_response = || Box::new(not_found("OAuthConsentNotFound", "id", id));
+    let not_found_response = || {
+        Box::new(response_templates::not_found(
+            "OAuthConsentNotFound",
+            "id",
+            id,
+        ))
+    };
     match state.store.authorization_request_by_id(id) {
         Ok(Some(r))
             if r.status == RequestStatus::Pending
@@ -219,7 +225,7 @@ fn load_pending_authorization_code_request(
             }
         }
         Ok(_) => Err(not_found_response()),
-        Err(e) => Err(Box::new(internal_error(
+        Err(e) => Err(Box::new(response_templates::internal_error(
             "authorization_request_by_id lookup failed",
             e,
         ))),

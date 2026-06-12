@@ -5,7 +5,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
-use crate::http::responses::{unauthorized, verify_error_response};
+use crate::http::response_templates;
 use crate::http::served_origin_for;
 use crate::http::state::AppState;
 use crate::OWNER_SCOPE;
@@ -18,7 +18,7 @@ pub async fn require_owner_auth(
 ) -> Response {
     let token = match try_bearer_token_from_headers(&headers) {
         Some(t) => t,
-        None => return unauthorized(),
+        None => return response_templates::unauthorized(),
     };
     // Verify against the origin the request says it was targeting — loopback
     // for a direct hit, the public origin when forwarded by the tunnel — so a
@@ -26,7 +26,7 @@ pub async fn require_owner_auth(
     // for. `loopback_origin` is the fallback for un-forwarded requests.
     let origin = served_origin_for(&headers, &state.loopback_origin);
     if let Err(e) = verify_owner_token(&state, &origin, &token) {
-        return verify_error_response("verify_owner_token failed", e);
+        return response_templates::verify_error_response("verify_owner_token failed", e);
     }
     next.run(req).await
 }

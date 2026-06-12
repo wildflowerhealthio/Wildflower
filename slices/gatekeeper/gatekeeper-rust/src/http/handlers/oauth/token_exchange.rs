@@ -20,7 +20,7 @@ use crate::db_utils::JsonColumn;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
-use crate::http::responses::internal_error;
+use crate::http::response_templates;
 use crate::http::served_origin_for;
 use crate::http::state::AppState;
 
@@ -154,7 +154,10 @@ fn exchange_authorization_code(
             return bad_request("invalid_grant", Some("Invalid code parameter"));
         }
         Err(e) => {
-            return cache_suppressed(internal_error("authorization_code redemption failed", e))
+            return cache_suppressed(response_templates::internal_error(
+                "authorization_code redemption failed",
+                e,
+            ))
         }
     };
     validate_code_and_issue_token(
@@ -230,7 +233,10 @@ fn exchange_device_code(
         Ok(Some(p)) if p.grant_type == GrantType::DeviceCode && p.client_id == client_id => p,
         Ok(_) => return bad_request("invalid_grant", Some("Unknown device_code")),
         Err(e) => {
-            return cache_suppressed(internal_error("authorization_request lookup failed", e))
+            return cache_suppressed(response_templates::internal_error(
+                "authorization_request lookup failed",
+                e,
+            ))
         }
     };
     if request_record.expires_at < Utc::now() {
@@ -246,7 +252,10 @@ fn exchange_device_code(
             .store
             .record_device_poll(&request_record.id, Utc::now())
         {
-            return cache_suppressed(internal_error("record_device_poll failed", e));
+            return cache_suppressed(response_templates::internal_error(
+                "record_device_poll failed",
+                e,
+            ));
         }
     }
     match request_record.status {
@@ -257,7 +266,10 @@ fn exchange_device_code(
     }
     // single-use per RFC 8628 §3.4
     if let Err(e) = state.store.expire_authorization_request(&request_record.id) {
-        return cache_suppressed(internal_error("expire_authorization_request failed", e));
+        return cache_suppressed(response_templates::internal_error(
+            "expire_authorization_request failed",
+            e,
+        ));
     }
     let granted_scopes: &[String] = request_record
         .granted_scopes
@@ -320,10 +332,9 @@ fn start_refresh_token_family_if_granted(
         .store
         .insert_refresh_token_family(&family, &first_token)
     {
-        return Err(Box::new(cache_suppressed(internal_error(
-            "insert_refresh_token_family failed",
-            e,
-        ))));
+        return Err(Box::new(cache_suppressed(
+            response_templates::internal_error("insert_refresh_token_family failed", e),
+        )));
     }
     Ok(Some(plaintext))
 }
@@ -346,7 +357,12 @@ fn exchange_refresh_token(
     let (_, family) = match state.store.refresh_token_with_family_by_hash(&hash) {
         Ok(Some(pair)) => pair,
         Ok(None) => return bad_request("invalid_grant", Some("Invalid refresh_token parameter")),
-        Err(e) => return cache_suppressed(internal_error("refresh_token lookup failed", e)),
+        Err(e) => {
+            return cache_suppressed(response_templates::internal_error(
+                "refresh_token lookup failed",
+                e,
+            ))
+        }
     };
     // Token–client binding (RFC 6749 §6): a valid token presented by the
     // wrong client is a grant failure; answer exactly as if it didn't exist.
@@ -373,7 +389,10 @@ fn exchange_refresh_token(
                 .store
                 .expire_refresh_token_family(&family.family_id, now)
             {
-                return cache_suppressed(internal_error("expire_refresh_token_family failed", e));
+                return cache_suppressed(response_templates::internal_error(
+                    "expire_refresh_token_family failed",
+                    e,
+                ));
             }
             return bad_request("invalid_grant", Some("Refresh token has been revoked"));
         }
@@ -382,7 +401,12 @@ fn exchange_refresh_token(
         Ok(RefreshTokenConsumeOutcome::NotFound) => {
             return bad_request("invalid_grant", Some("Invalid refresh_token parameter"))
         }
-        Err(e) => return cache_suppressed(internal_error("consume_refresh_token failed", e)),
+        Err(e) => {
+            return cache_suppressed(response_templates::internal_error(
+                "consume_refresh_token failed",
+                e,
+            ))
+        }
     }
     // Mint the successor in the same family — the family keeps the scopes
     // and the absolute deadline (rotation never extends its life).
@@ -394,7 +418,10 @@ fn exchange_refresh_token(
         consumed_at: None,
     };
     if let Err(e) = state.store.insert_refresh_token(&next) {
-        return cache_suppressed(internal_error("insert_refresh_token failed", e));
+        return cache_suppressed(response_templates::internal_error(
+            "insert_refresh_token failed",
+            e,
+        ));
     }
     issue_token(
         state,

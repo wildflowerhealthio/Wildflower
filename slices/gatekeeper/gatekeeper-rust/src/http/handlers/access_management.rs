@@ -5,7 +5,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use chrono::Utc;
 
-use crate::http::responses::{internal_error, not_found};
+use crate::http::response_templates;
 use crate::http::state::AppState;
 
 /// Owner-scoped `/grants` management API — list, fetch, and revoke previously
@@ -19,15 +19,15 @@ pub fn router() -> Router {
 async fn list_grants(Extension(state): Extension<AppState>) -> Response {
     match state.store.all_grants() {
         Ok(rows) => Json(rows).into_response(),
-        Err(e) => internal_error("all_grants lookup failed", e),
+        Err(e) => response_templates::internal_error("all_grants lookup failed", e),
     }
 }
 
 async fn get_grant(Extension(state): Extension<AppState>, Path(id): Path<String>) -> Response {
     match state.store.grant_by_id(&id) {
         Ok(Some(row)) => Json(row).into_response(),
-        Ok(None) => not_found("GrantNotFound", "id", &id),
-        Err(e) => internal_error("grant_by_id lookup failed", e),
+        Ok(None) => response_templates::not_found("GrantNotFound", "id", &id),
+        Err(e) => response_templates::internal_error("grant_by_id lookup failed", e),
     }
 }
 
@@ -37,13 +37,13 @@ async fn revoke_grant(Extension(state): Extension<AppState>, Path(id): Path<Stri
     // it, or `offline_access` clients would outlive their revocation.
     let grant = match state.store.grant_by_id(&id) {
         Ok(Some(g)) => g,
-        Ok(None) => return not_found("GrantNotFound", "id", &id),
-        Err(e) => return internal_error("grant_by_id lookup failed", e),
+        Ok(None) => return response_templates::not_found("GrantNotFound", "id", &id),
+        Err(e) => return response_templates::internal_error("grant_by_id lookup failed", e),
     };
     match state.store.revoke_grant(&id) {
         Ok(true) => {}
-        Ok(false) => return not_found("GrantNotFound", "id", &id),
-        Err(e) => return internal_error("revoke_grant failed", e),
+        Ok(false) => return response_templates::not_found("GrantNotFound", "id", &id),
+        Err(e) => return response_templates::internal_error("revoke_grant failed", e),
     }
     // Refresh-token families don't record a redirect_uri, so revocation is
     // keyed by client_id — deliberately broader than the single grant (a
@@ -54,7 +54,10 @@ async fn revoke_grant(Extension(state): Extension<AppState>, Path(id): Path<Stri
         .store
         .expire_refresh_token_families_for_client(&grant.client_id, Utc::now())
     {
-        return internal_error("expire_refresh_token_families_for_client failed", e);
+        return response_templates::internal_error(
+            "expire_refresh_token_families_for_client failed",
+            e,
+        );
     }
     StatusCode::NO_CONTENT.into_response()
 }

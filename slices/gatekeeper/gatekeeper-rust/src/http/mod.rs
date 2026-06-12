@@ -9,7 +9,7 @@ mod handlers;
 mod middleware;
 mod origin;
 mod page_paths;
-mod responses;
+mod response_templates;
 mod state;
 
 pub(crate) use origin::served_origin_for;

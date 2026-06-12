@@ -66,7 +66,8 @@ mod tests {
     /// `NOT NULL DEFAULT '[]'`) and read back as empty, never as SQL NULL.
     fn round_trip(value: Vec<String>) -> (String, Vec<String>) {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute("CREATE TABLE t (scopes TEXT NOT NULL)", []).unwrap();
+        conn.execute("CREATE TABLE t (scopes TEXT NOT NULL)", [])
+            .unwrap();
         conn.execute("INSERT INTO t (scopes) VALUES (?1)", [JsonColumn(value)])
             .unwrap();
         conn.query_row("SELECT scopes FROM t", [], |row| {

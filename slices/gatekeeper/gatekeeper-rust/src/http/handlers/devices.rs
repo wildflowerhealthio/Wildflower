@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
-use crate::http::responses::{internal_error, not_found};
+use crate::http::response_templates;
 use crate::http::state::AppState;
 
 /// Body returned to the Owner UI when it loads a pending device-code consent
@@ -88,7 +88,7 @@ async fn approve_consent(
     if granted_scopes.is_empty() {
         // No requested scopes were approved — treat as a deny.
         if let Err(e) = state.store.deny_authorization_request(&device_request.id) {
-            return internal_error("deny_authorization_request failed", e);
+            return response_templates::internal_error("deny_authorization_request failed", e);
         }
         return Json(ConsentResult::Denied).into_response();
     }
@@ -97,7 +97,7 @@ async fn approve_consent(
             .store
             .approve_authorization_request(&device_request.id, &granted_scopes, None)
     {
-        return internal_error("approve_authorization_request failed", e);
+        return response_templates::internal_error("approve_authorization_request failed", e);
     }
     Json(ConsentResult::Approved).into_response()
 }
@@ -111,7 +111,7 @@ async fn deny_consent(
         Err(response) => return *response,
     };
     if let Err(e) = state.store.deny_authorization_request(&device_request.id) {
-        return internal_error("deny_authorization_request failed", e);
+        return response_templates::internal_error("deny_authorization_request failed", e);
     }
     Json(ConsentResult::Denied).into_response()
 }
@@ -134,8 +134,12 @@ fn load_pending_device_request(
         {
             Ok(r)
         }
-        Ok(_) => Err(Box::new(not_found("DeviceConsentNotFound", "userCode", user_code))),
-        Err(e) => Err(Box::new(internal_error(
+        Ok(_) => Err(Box::new(response_templates::not_found(
+            "DeviceConsentNotFound",
+            "userCode",
+            user_code,
+        ))),
+        Err(e) => Err(Box::new(response_templates::internal_error(
             "pending_authorization_request_by_user_code lookup failed",
             e,
         ))),

@@ -6,10 +6,10 @@ use chrono::Utc;
 use serde::Serialize;
 
 use super::internal::{build_client_error_redirect_url, build_client_redirect_url, OAuthError};
-use crate::domain::authorization_request::RequestStatus;
-use crate::http::responses::{internal_error, not_found};
-use crate::http::state::AppState;
 use crate::db_utils::UriColumn;
+use crate::domain::authorization_request::RequestStatus;
+use crate::http::response_templates;
+use crate::http::state::AppState;
 
 /// Polling response for the Owner UI watching an authorization request as it
 /// moves from `Pending` toward approval or denial.
@@ -25,8 +25,12 @@ pub enum AuthorizationStatus {
         #[serde(skip_serializing_if = "Option::is_none")]
         redirect: Option<String>,
     },
-    Approved { redirect: String },
-    Error { message: String },
+    Approved {
+        redirect: String,
+    },
+    Error {
+        message: String,
+    },
 }
 
 /// `GET /oauth/authorize/{id}` — return the current status of the pending
@@ -37,8 +41,15 @@ pub async fn handle_authorization_status_request(
 ) -> Response {
     let request = match state.store.authorization_request_by_id(&id) {
         Ok(Some(r)) => r,
-        Ok(None) => return not_found("AuthorizationRequestNotFound", "id", &id),
-        Err(e) => return internal_error("authorization_request_by_id lookup failed", e),
+        Ok(None) => {
+            return response_templates::not_found("AuthorizationRequestNotFound", "id", &id)
+        }
+        Err(e) => {
+            return response_templates::internal_error(
+                "authorization_request_by_id lookup failed",
+                e,
+            )
+        }
     };
     // Nothing actively transitions code-flow requests from Pending to Expired,
     // so a Pending request past its TTL must be reported as expired here rather
@@ -82,7 +93,10 @@ pub async fn handle_authorization_status_request(
                 Ok(Some(c)) => c,
                 Ok(None) => return oauth_internal_error("Authorization code missing"),
                 Err(e) => {
-                    return internal_error("authorization_code_by_request_id lookup failed", e)
+                    return response_templates::internal_error(
+                        "authorization_code_by_request_id lookup failed",
+                        e,
+                    )
                 }
             };
             Json(AuthorizationStatus::Approved {

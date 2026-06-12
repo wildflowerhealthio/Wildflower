@@ -38,10 +38,7 @@ pub fn hash_client_secret(secret: &str) -> Result<String, ClientSecretError> {
 /// Returns `Ok(true)` on a match, `Ok(false)` on a mismatch, and `Err` only if
 /// the stored value cannot be parsed as a PHC hash. The comparison is
 /// constant-time internally.
-pub fn verify_client_secret(
-    presented: &str,
-    stored_phc: &str,
-) -> Result<bool, ClientSecretError> {
+pub fn verify_client_secret(presented: &str, stored_phc: &str) -> Result<bool, ClientSecretError> {
     let parsed = PasswordHash::new(stored_phc).map_err(ClientSecretError::MalformedHash)?;
     match Argon2::default().verify_password(presented.as_bytes(), &parsed) {
         Ok(()) => Ok(true),
@@ -58,7 +55,10 @@ mod tests {
     fn hash_then_verify_roundtrips() {
         let phc = hash_client_secret("correct horse battery staple").unwrap();
         // A PHC string self-describes as argon2id.
-        assert!(phc.starts_with("$argon2id$"), "unexpected PHC prefix: {phc}");
+        assert!(
+            phc.starts_with("$argon2id$"),
+            "unexpected PHC prefix: {phc}"
+        );
         assert!(verify_client_secret("correct horse battery staple", &phc).unwrap());
     }
 

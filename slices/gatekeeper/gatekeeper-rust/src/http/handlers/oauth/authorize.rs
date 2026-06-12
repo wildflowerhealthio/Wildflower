@@ -15,7 +15,7 @@ use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthor
 use crate::domain::client::Client;
 use crate::http::error_pages::{oauth_error_html, OAuthErrorKind};
 use crate::http::page_paths;
-use crate::http::responses::internal_error;
+use crate::http::response_templates;
 use crate::http::served_origin_for;
 use crate::http::state::AppState;
 
@@ -117,7 +117,7 @@ pub async fn handle_authorize_request(
     match state.store.active_signing_key() {
         Ok(Some(_)) => {}
         Ok(None) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
-        Err(e) => return internal_error("active_signing_key lookup failed", e),
+        Err(e) => return response_templates::internal_error("active_signing_key lookup failed", e),
     }
 
     // Validate in two phases: client/redirect_uri first (failures render a
@@ -162,7 +162,7 @@ pub async fn handle_authorize_request(
         ttl: AUTHORIZATION_REQUEST_TTL,
     });
     if let Err(e) = state.store.insert_authorization_request(&request) {
-        return internal_error("insert_authorization_request failed", e);
+        return response_templates::internal_error("insert_authorization_request failed", e);
     }
 
     // Fully-pre-approved fast path: skip the Owner UI and 302 the user-agent
@@ -201,7 +201,12 @@ fn validate_and_load_client(
                 OAuthErrorKind::UnknownClient,
             )))
         }
-        Err(e) => return Err(internal_error("client_by_id lookup failed", e)),
+        Err(e) => {
+            return Err(response_templates::internal_error(
+                "client_by_id lookup failed",
+                e,
+            ))
+        }
     };
     if client.disabled_at.is_some() {
         return Err(html_bad_request(oauth_error_html(
@@ -328,7 +333,9 @@ fn resolve_existing_grant_coverage(
     let Some(existing_grant) = state
         .store
         .grant_by_client_and_redirect(&params.client_id, parsed_redirect)
-        .map_err(|e| internal_error("grant_by_client_and_redirect lookup failed", e))?
+        .map_err(|e| {
+            response_templates::internal_error("grant_by_client_and_redirect lookup failed", e)
+        })?
     else {
         return Ok(ExistingGrantCoverage::none());
     };
@@ -378,11 +385,13 @@ fn issue_code(
     state
         .store
         .issue_authorization_code(&authorization_code)
-        .map_err(|e| internal_error("issue_authorization_code failed", e))?;
+        .map_err(|e| response_templates::internal_error("issue_authorization_code failed", e))?;
     state
         .store
         .approve_authorization_request(request_id, requested_scopes, patient)
-        .map_err(|e| internal_error("approve_authorization_request failed", e))?;
+        .map_err(|e| {
+            response_templates::internal_error("approve_authorization_request failed", e)
+        })?;
     Ok(code)
 }
 

@@ -1,4 +1,7 @@
-//! Shared HTTP response helpers for the gatekeeper's handlers and middleware.
+//! Shared HTTP response templates for the gatekeeper's handlers and
+//! middleware. Callers invoke these through the module namespace
+//! (`response_templates::internal_error(..)`) so a reader sees at the call
+//! site that a canned response shape is being produced.
 //!
 //! These factor out the error-response shapes that were previously
 //! copy-pasted across nearly every handler and middleware file: a logged
@@ -45,7 +48,11 @@ pub(crate) fn unauthorized() -> Response {
 /// identifying field name varies by resource (`id` for grants/consents,
 /// `userCode` for device prompts), so callers pass it explicitly.
 pub(crate) fn not_found(error: &'static str, field: &'static str, value: &str) -> Response {
-    (StatusCode::NOT_FOUND, Json(json!({ "error": error, field: value }))).into_response()
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({ "error": error, field: value })),
+    )
+        .into_response()
 }
 
 #[cfg(test)]
