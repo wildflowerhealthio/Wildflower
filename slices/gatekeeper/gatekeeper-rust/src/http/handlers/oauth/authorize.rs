@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use url::Url;
 use uuid::Uuid;
 
-use super::internal::build_client_redirect_url;
+use super::internal::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::db_utils::{JsonColumn, UriColumn};
 use crate::domain::authorization_code::AuthorizationCode;
@@ -50,11 +50,11 @@ fn found_redirect(location: &str) -> Response {
 /// Only callable once `redirect_uri` and `client_id` have been validated —
 /// errors before that point must render a local page instead.
 fn redirect_oauth_error(redirect_uri: &Url, error: &str, client_state: &str) -> Response {
-    let mut url = redirect_uri.clone();
-    url.query_pairs_mut()
-        .append_pair("error", error)
-        .append_pair("state", client_state);
-    found_redirect(url.as_str())
+    found_redirect(&build_client_error_redirect_url(
+        redirect_uri,
+        error,
+        client_state,
+    ))
 }
 
 /// Lifetime of an `authorization_code` from issuance to the client redeeming it
