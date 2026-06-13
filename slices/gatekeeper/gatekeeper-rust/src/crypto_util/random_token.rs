@@ -4,9 +4,9 @@
 //! of entropy, comfortably exceeding the §10.10 ≤ 2^-128 guess-probability
 //! target, and base64url (no padding) keeps the result URL-safe.
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::RngCore;
-use sha2::{Digest, Sha256};
+
+use crate::crypto_util::{base64url, sha256_base64url};
 
 /// Number of CSPRNG bytes backing each generated token. 32 bytes = 256 bits
 /// of entropy.
@@ -19,7 +19,7 @@ const TOKEN_BYTES: usize = 32;
 pub(crate) fn generate_authorization_code() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];
     rand::thread_rng().fill_bytes(&mut bytes);
-    URL_SAFE_NO_PAD.encode(bytes)
+    base64url(&bytes)
 }
 
 /// Generate an opaque refresh token — same construction as
@@ -36,14 +36,13 @@ pub(crate) fn generate_refresh_token() -> String {
 /// known plaintexts.
 #[must_use]
 pub fn token_storage_hash(token: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    URL_SAFE_NO_PAD.encode(hasher.finalize())
+    sha256_base64url(token.as_bytes())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
     #[test]
     fn encodes_32_bytes_as_unpadded_base64url() {

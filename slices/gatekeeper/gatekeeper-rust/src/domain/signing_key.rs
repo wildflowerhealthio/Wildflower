@@ -63,11 +63,11 @@ impl From<&RsaPrivateKey> for SigningKey {
             kty: "RSA".to_string(),
             alg: "RS256".to_string(),
             values: SigningKeyValues {
-                n: base64_url_no_padding(&private.n().to_bytes_be()),
-                e: base64_url_no_padding(&private.e().to_bytes_be()),
-                d: base64_url_no_padding(&private.d().to_bytes_be()),
-                p: base64_url_no_padding(&p.to_bytes_be()),
-                q: base64_url_no_padding(&q.to_bytes_be()),
+                n: crate::crypto_util::base64url(&private.n().to_bytes_be()),
+                e: crate::crypto_util::base64url(&private.e().to_bytes_be()),
+                d: crate::crypto_util::base64url(&private.d().to_bytes_be()),
+                p: crate::crypto_util::base64url(&p.to_bytes_be()),
+                q: crate::crypto_util::base64url(&q.to_bytes_be()),
             },
             is_active: false,
         }
@@ -134,11 +134,6 @@ impl TryFrom<&SigningKey> for RsaPublicKey {
         let e = base64_url_to_biguint(&key.values.e)?;
         RsaPublicKey::new(n, e).map_err(KeyMaterialError::Compose)
     }
-}
-
-/// Base64url encode bytes without padding (the encoding used for JWK components).
-fn base64_url_no_padding(bytes: &[u8]) -> String {
-    URL_SAFE_NO_PAD.encode(bytes)
 }
 
 /// Decode a base64url JWK component into a big-endian `BigUint`.

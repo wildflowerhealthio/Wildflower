@@ -1,5 +1,4 @@
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use sha2::{Digest, Sha256};
+use crate::crypto_util::sha256_base64url;
 
 /// RFC 7636 §4.1 bounds on the `code_verifier`: 43–128 characters drawn from
 /// the unreserved set.
@@ -16,15 +15,7 @@ pub fn is_valid_code_verifier_length(code_verifier: &str) -> bool {
 /// Derive the PKCE S256 `code_challenge` from a `code_verifier` (RFC 7636 §4.2).
 #[must_use]
 pub fn compute_code_challenge(code_verifier: &str) -> String {
-    sha256_as_base64_no_padding(code_verifier)
-}
-
-/// SHA-256 hash of `input` as a URL-safe base64 string without padding.
-fn sha256_as_base64_no_padding(input: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(input.as_bytes());
-    let digest = hasher.finalize();
-    URL_SAFE_NO_PAD.encode(digest)
+    sha256_base64url(code_verifier.as_bytes())
 }
 
 #[cfg(test)]
