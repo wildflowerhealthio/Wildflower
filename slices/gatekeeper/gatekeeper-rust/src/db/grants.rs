@@ -2,9 +2,10 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 use url::Url;
 
+use uuid::Uuid;
+
 use crate::db_utils::sql_builder::build_insert_sql;
-use crate::db_utils::JsonColumn;
-use crate::db_utils::{DbResult, GatekeeperStore};
+use crate::db_utils::{DbResult, GatekeeperStore, JsonColumn, UriColumn};
 use crate::domain::grant::Grant;
 
 fn make_named_sql_params(grant: &Grant) -> [(&str, &dyn ToSql); 7] {
@@ -176,6 +177,65 @@ impl GatekeeperStore {
         )?;
         tx.commit()?;
         Ok(affected > 0)
+    }
+
+    /// Insert or update the standing grant for `(client_id, redirect_uri)` in a
+    /// single transaction. Consent is cumulative: an existing grant's scopes
+    /// are unioned with `scopes` (approving a narrower request never withdraws
+    /// previously-consented scopes — revocation is the way to withdraw), and
+    /// `granted_at`/`patient` are refreshed. Doing the read-merge-write under
+    /// one transaction (paired with the UNIQUE index on the pair) means two
+    /// concurrent approvals can't both insert a duplicate grant.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if opening the transaction, the read, the
+    /// insert/update, or the commit fails.
+    pub fn upsert_grant(
+        &self,
+        client_id: &str,
+        redirect_uri: &Url,
+        scopes: &[String],
+        patient: Option<&str>,
+        now: DateTime<Utc>,
+    ) -> DbResult<()> {
+        let mut guard = self.conn().lock();
+        let tx = guard.transaction()?;
+        let existing: Option<(String, JsonColumn<Vec<String>>)> = tx
+            .query_row(
+                "SELECT id, scopes FROM grants WHERE client_id = ?1 AND redirect_uri = ?2",
+                params![client_id, redirect_uri.as_str()],
+                |row| Ok((row.get("id")?, row.get("scopes")?)),
+            )
+            .optional()?;
+        match existing {
+            Some((id, JsonColumn(mut merged))) => {
+                for scope in scopes {
+                    if !merged.contains(scope) {
+                        merged.push(scope.clone());
+                    }
+                }
+                let scopes_json = JsonColumn(merged);
+                tx.execute(
+                    "UPDATE grants SET scopes = ?2, granted_at = ?3, patient = ?4 WHERE id = ?1",
+                    params![id, scopes_json, now, patient],
+                )?;
+            }
+            None => {
+                let grant = Grant {
+                    id: Uuid::new_v4().to_string(),
+                    client_id: client_id.to_string(),
+                    scopes: JsonColumn(scopes.to_vec()),
+                    redirect_uri: UriColumn(redirect_uri.clone()),
+                    granted_at: now,
+                    last_used_at: None,
+                    patient: patient.map(str::to_string),
+                };
+                let params = make_named_sql_params(&grant);
+                tx.execute(&build_insert_sql("grants", &params), &params)?;
+            }
+        }
+        tx.commit()
     }
 }
 

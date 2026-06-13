@@ -8,11 +8,9 @@ use std::collections::HashSet;
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use url::Url;
-use uuid::Uuid;
 
-use crate::db_utils::{DbResult, JsonColumn, UriColumn};
+use crate::db_utils::{DbResult, UriColumn};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
-use crate::domain::grant::Grant;
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 
@@ -109,36 +107,13 @@ pub(super) fn upsert_grant(
     scopes: &[String],
     patient: Option<&str>,
 ) -> DbResult<()> {
-    let now = Utc::now();
-    if let Some(existing) = state
+    // The read-merge-write (scope union with any standing grant) now lives in a
+    // single store transaction, paired with a UNIQUE index on
+    // (client_id, redirect_uri), so two concurrent approvals can't each insert
+    // a duplicate grant that would then survive revocation.
+    state
         .store
-        .grant_by_client_and_redirect(client_id, redirect_uri)?
-    {
-        // Union with the standing grant: consent is cumulative, so approving
-        // a narrower request never un-approves scopes the Owner previously
-        // consented to. (Revoking the grant is the way to withdraw consent.)
-        let mut merged = existing.scopes.into_inner().clone();
-        let additions: Vec<String> = scopes
-            .iter()
-            .filter(|s| !merged.contains(s))
-            .cloned()
-            .collect();
-        merged.extend(additions);
-        state
-            .store
-            .update_grant(&existing.id, &merged, now, patient)
-    } else {
-        let grant = Grant {
-            id: Uuid::new_v4().to_string(),
-            client_id: client_id.to_string(),
-            scopes: JsonColumn(scopes.to_vec()),
-            redirect_uri: UriColumn(redirect_uri.clone()),
-            granted_at: now,
-            last_used_at: None,
-            patient: patient.map(str::to_string),
-        };
-        state.store.create_grant(&grant)
-    }
+        .upsert_grant(client_id, redirect_uri, scopes, patient, Utc::now())
 }
 
 /// True when at least one of `approved` is both requested and allowed — the
