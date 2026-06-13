@@ -11,8 +11,9 @@ use uuid::Uuid;
 
 use super::client_auth::{resolve_client_credentials, ClientCredentials};
 use super::internal::{
-    issue_token_response, require_valid_client_for_token, CacheSuppressed, IssueTokenInput,
-    OAuthErrorResponse, DEVICE_CODE_POLL_INTERVAL, OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
+    cache_suppressed_internal_error, issue_token_response, require_valid_client_for_token,
+    CacheSuppressed, IssueTokenInput, OAuthErrorResponse, DEVICE_CODE_POLL_INTERVAL,
+    OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
 };
 use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
@@ -22,7 +23,6 @@ use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
 use crate::domain::client::AllowedGrantType;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
-use crate::http::response_templates;
 use crate::http::served_origin_for;
 use crate::http::state::AppState;
 
@@ -159,20 +159,12 @@ fn exchange_authorization_code(
                     Utc::now(),
                 )
             {
-                return CacheSuppressed(response_templates::internal_error(
-                    "expire_refresh_token_families_for_authorization_code failed",
-                    e,
-                ))
-                .into_response();
+                return cache_suppressed_internal_error("expire_refresh_token_families_for_authorization_code failed", e);
             }
             return bad_request("invalid_grant", Some("Invalid code parameter"));
         }
         Err(e) => {
-            return CacheSuppressed(response_templates::internal_error(
-                "authorization_code redemption failed",
-                e,
-            ))
-            .into_response()
+            return cache_suppressed_internal_error("authorization_code redemption failed", e)
         }
     };
     validate_code_and_issue_token(
@@ -263,11 +255,7 @@ fn exchange_device_code(
         }
         Ok(_) => return bad_request("invalid_grant", Some("Unknown device_code")),
         Err(e) => {
-            return CacheSuppressed(response_templates::internal_error(
-                "authorization_request lookup failed",
-                e,
-            ))
-            .into_response()
+            return cache_suppressed_internal_error("authorization_request lookup failed", e)
         }
     };
     if request_record.expires_at < Utc::now() {
@@ -283,11 +271,7 @@ fn exchange_device_code(
             .store
             .record_device_poll(&request_record.id, Utc::now())
         {
-            return CacheSuppressed(response_templates::internal_error(
-                "record_device_poll failed",
-                e,
-            ))
-            .into_response();
+            return cache_suppressed_internal_error("record_device_poll failed", e);
         }
     }
     match request_record.status {
@@ -308,11 +292,7 @@ fn exchange_device_code(
         Ok(true) => {}
         Ok(false) => return bad_request("invalid_grant", Some("Device code already redeemed")),
         Err(e) => {
-            return CacheSuppressed(response_templates::internal_error(
-                "consume_approved_authorization_request failed",
-                e,
-            ))
-            .into_response();
+            return cache_suppressed_internal_error("consume_approved_authorization_request failed", e);
         }
     }
     let granted_scopes: &[String] = request_record
@@ -384,11 +364,7 @@ fn start_refresh_token_family_if_granted(
         .insert_refresh_token_family(&family, &first_token)
     {
         return Err(Box::new(
-            CacheSuppressed(response_templates::internal_error(
-                "insert_refresh_token_family failed",
-                e,
-            ))
-            .into_response(),
+            cache_suppressed_internal_error("insert_refresh_token_family failed", e),
         ));
     }
     Ok(Some(plaintext))
@@ -422,11 +398,7 @@ fn exchange_refresh_token(
         Ok(Some(pair)) => pair,
         Ok(None) => return bad_request("invalid_grant", Some("Invalid refresh_token parameter")),
         Err(e) => {
-            return CacheSuppressed(response_templates::internal_error(
-                "refresh_token lookup failed",
-                e,
-            ))
-            .into_response()
+            return cache_suppressed_internal_error("refresh_token lookup failed", e)
         }
     };
     // Token–client binding (RFC 6749 §6): a valid token presented by the
@@ -486,11 +458,7 @@ fn exchange_refresh_token(
                 .store
                 .expire_refresh_token_family(&family.family_id, now)
             {
-                return CacheSuppressed(response_templates::internal_error(
-                    "expire_refresh_token_family failed",
-                    e,
-                ))
-                .into_response();
+                return cache_suppressed_internal_error("expire_refresh_token_family failed", e);
             }
             return bad_request("invalid_grant", Some("Refresh token has been revoked"));
         }
@@ -500,11 +468,7 @@ fn exchange_refresh_token(
             return bad_request("invalid_grant", Some("Invalid refresh_token parameter"))
         }
         Err(e) => {
-            return CacheSuppressed(response_templates::internal_error(
-                "rotate_refresh_token failed",
-                e,
-            ))
-            .into_response()
+            return cache_suppressed_internal_error("rotate_refresh_token failed", e)
         }
     }
     token.refresh_token = Some(next_plaintext);

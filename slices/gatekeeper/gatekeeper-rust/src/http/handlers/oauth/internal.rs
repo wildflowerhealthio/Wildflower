@@ -10,6 +10,7 @@ use crate::crypto_util::client_secret::verify_client_secret;
 use crate::db_utils::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
 use crate::domain::token::{mint_access_token, NewJwtArgs};
+use crate::http::response_templates;
 
 /// Lifetime of access tokens minted by the gatekeeper.
 pub const ACCESS_TOKEN_TTL: Duration = Duration::hours(1);
@@ -45,6 +46,14 @@ impl<T: IntoResponse> IntoResponse for CacheSuppressed<T> {
         )
             .into_response()
     }
+}
+
+/// A cache-suppressed (`no-store`) 500 wrapping an internal error — the
+/// token / device-authorization endpoints' standard server-failure response.
+/// Centralised so a call site can't return one of those §5.1 responses
+/// without the cache suppression those endpoints require.
+pub fn cache_suppressed_internal_error(context: &str, err: impl std::fmt::Display) -> Response {
+    CacheSuppressed(response_templates::internal_error(context, err)).into_response()
 }
 
 /// An [`OAuthError`] paired with the HTTP status it renders at — the

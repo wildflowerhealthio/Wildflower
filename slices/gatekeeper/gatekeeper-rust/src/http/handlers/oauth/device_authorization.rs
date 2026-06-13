@@ -10,14 +10,13 @@ use std::collections::HashSet;
 
 use super::client_auth::resolve_client_credentials;
 use super::internal::{
-    require_valid_client_for_token, CacheSuppressed, OAuthErrorResponse,
-    DEVICE_CODE_POLL_INTERVAL,
+    cache_suppressed_internal_error, require_valid_client_for_token, CacheSuppressed,
+    OAuthErrorResponse, DEVICE_CODE_POLL_INTERVAL,
 };
 use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authorization_request::{AuthorizationRequest, StartDeviceAuthorizationArgs};
 use crate::http::page_paths;
-use crate::http::response_templates;
 use crate::http::served_origin_for;
 use crate::http::state::AppState;
 
@@ -116,11 +115,7 @@ async fn handle_device_authorization_request(
     let user_code = match generate_unique_user_code(&state) {
         Ok(c) => c,
         Err(e) => {
-            return CacheSuppressed(response_templates::internal_error(
-                "user_code generation failed",
-                e,
-            ))
-            .into_response()
+            return cache_suppressed_internal_error("user_code generation failed", e)
         }
     };
     let request = AuthorizationRequest::new_device_authorization(StartDeviceAuthorizationArgs {
@@ -131,11 +126,7 @@ async fn handle_device_authorization_request(
         ttl: DEVICE_AUTHORIZATION_TTL,
     });
     if let Err(e) = state.store.insert_authorization_request(&request) {
-        return CacheSuppressed(response_templates::internal_error(
-            "insert_authorization_request failed",
-            e,
-        ))
-        .into_response();
+        return cache_suppressed_internal_error("insert_authorization_request failed", e);
     }
     DeviceAuthorizationResponse {
         device_code,
