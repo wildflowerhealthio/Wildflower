@@ -20,6 +20,7 @@ use crate::db::RefreshTokenConsumeOutcome;
 use crate::db_utils::JsonColumn;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
+use crate::domain::client::AllowedGrantType;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::http::response_templates;
 use crate::http::served_origin_for;
@@ -117,8 +118,18 @@ fn exchange_authorization_code(
     presented_credentials: &ClientCredentials,
     grant: &AuthorizationCodeGrant<'_>,
 ) -> Response {
-    if let Err(err) = require_valid_client_for_token(&state.store, presented_credentials) {
-        return CacheSuppressed(err).into_response();
+    let client = match require_valid_client_for_token(&state.store, presented_credentials) {
+        Ok(c) => c,
+        Err(err) => return CacheSuppressed(err).into_response(),
+    };
+    if !client
+        .allowed_grant_types
+        .contains(&AllowedGrantType::AuthorizationCode)
+    {
+        return bad_request(
+            "unauthorized_client",
+            Some("Client may not use this grant type"),
+        );
     }
     // RFC 7636 §4.1: the verifier is 43–128 chars. Reject out-of-range values
     // before hashing — an unusable verifier is a grant failure, not a
@@ -230,8 +241,18 @@ fn exchange_device_code(
     presented_credentials: &ClientCredentials,
     device_code: &str,
 ) -> Response {
-    if let Err(err) = require_valid_client_for_token(&state.store, presented_credentials) {
-        return CacheSuppressed(err).into_response();
+    let client = match require_valid_client_for_token(&state.store, presented_credentials) {
+        Ok(c) => c,
+        Err(err) => return CacheSuppressed(err).into_response(),
+    };
+    if !client
+        .allowed_grant_types
+        .contains(&AllowedGrantType::DeviceCode)
+    {
+        return bad_request(
+            "unauthorized_client",
+            Some("Client may not use this grant type"),
+        );
     }
     let request_record = match state.store.authorization_request_by_id(device_code) {
         Ok(Some(p))
@@ -383,8 +404,18 @@ fn exchange_refresh_token(
     presented_credentials: &ClientCredentials,
     presented_refresh_token: &str,
 ) -> Response {
-    if let Err(err) = require_valid_client_for_token(&state.store, presented_credentials) {
-        return CacheSuppressed(err).into_response();
+    let client = match require_valid_client_for_token(&state.store, presented_credentials) {
+        Ok(c) => c,
+        Err(err) => return CacheSuppressed(err).into_response(),
+    };
+    if !client
+        .allowed_grant_types
+        .contains(&AllowedGrantType::RefreshToken)
+    {
+        return bad_request(
+            "unauthorized_client",
+            Some("Client may not use this grant type"),
+        );
     }
     let hash = token_storage_hash(presented_refresh_token);
     let (_, family) = match state.store.refresh_token_with_family_by_hash(&hash) {

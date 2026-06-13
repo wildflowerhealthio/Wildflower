@@ -5,6 +5,9 @@ use crate::db_utils::sql_builder::build_insert_sql;
 use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::domain::client::{Client, ClientKind};
 
+const ALL_COLS: &str = "client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, \
+     secret_hash, registered_at, disabled_at";
+
 impl ToSql for ClientKind {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         Ok(ToSqlOutput::Borrowed(ValueRef::Text(
@@ -30,6 +33,7 @@ impl TryFrom<&Row<'_>> for Client {
             kind: row.get("kind")?,
             redirect_uris: row.get("redirect_uris")?,
             allowed_scopes: row.get("allowed_scopes")?,
+            allowed_grant_types: row.get("allowed_grant_types")?,
             secret_hash: row.get("secret_hash")?,
             registered_at: row.get("registered_at")?,
             disabled_at: row.get("disabled_at")?,
@@ -37,13 +41,14 @@ impl TryFrom<&Row<'_>> for Client {
     }
 }
 
-fn make_named_sql_params(client: &Client) -> [(&str, &dyn ToSql); 8] {
+fn make_named_sql_params(client: &Client) -> [(&str, &dyn ToSql); 9] {
     [
         (":client_id", &client.client_id),
         (":name", &client.name),
         (":kind", &client.kind),
         (":redirect_uris", &client.redirect_uris),
         (":allowed_scopes", &client.allowed_scopes),
+        (":allowed_grant_types", &client.allowed_grant_types),
         (":secret_hash", &client.secret_hash),
         (":registered_at", &client.registered_at),
         (":disabled_at", &client.disabled_at),
@@ -61,8 +66,7 @@ impl GatekeeperStore {
         self.conn()
             .lock()
             .query_row(
-                "SELECT client_id, name, kind, redirect_uris, allowed_scopes, secret_hash, registered_at, disabled_at
-                 FROM clients WHERE client_id = ?1",
+                &format!("SELECT {ALL_COLS} FROM clients WHERE client_id = ?1"),
                 params![client_id],
                 |row| Client::try_from(row),
             )
@@ -89,7 +93,7 @@ mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
     use crate::db_utils::JsonColumn;
-    use crate::domain::client::ClientKind;
+    use crate::domain::client::{AllowedGrantType, ClientKind};
     use proptest::prelude::*;
 
     fn arb_client() -> impl Strategy<Value = Client> {
@@ -119,6 +123,7 @@ mod tests {
                     kind,
                     redirect_uris: JsonColumn(redirect_uris),
                     allowed_scopes: JsonColumn(allowed_scopes),
+                    allowed_grant_types: JsonColumn(AllowedGrantType::ALL.to_vec()),
                     secret_hash,
                     registered_at,
                     disabled_at,

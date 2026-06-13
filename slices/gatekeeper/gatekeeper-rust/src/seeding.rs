@@ -9,7 +9,7 @@ use thiserror::Error;
 use crate::config::GatekeeperConfig;
 use crate::db_utils::GatekeeperStore;
 use crate::db_utils::JsonColumn;
-use crate::domain::client::{Client, ClientKind};
+use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::token::{mint_access_token, MintError, NewJwtArgs};
 use crate::{FIRST_PARTY_CLIENT_ID, OWNER_SCOPE};
@@ -65,6 +65,7 @@ fn ensure_first_party_client(store: &GatekeeperStore) -> anyhow::Result<()> {
         kind: ClientKind::Public,
         redirect_uris: JsonColumn(vec![]),
         allowed_scopes: JsonColumn(vec![OWNER_SCOPE.to_string()]),
+        allowed_grant_types: JsonColumn(AllowedGrantType::ALL.to_vec()),
         secret_hash: None,
         registered_at: Utc::now(),
         disabled_at: None,

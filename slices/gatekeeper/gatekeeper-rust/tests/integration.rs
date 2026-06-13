@@ -17,7 +17,7 @@ use gatekeeper_rust::domain::authorization_code::AuthorizationCode;
 use gatekeeper_rust::domain::authorization_request::{
     AuthorizationRequest, GrantType, RequestStatus,
 };
-use gatekeeper_rust::domain::client::{Client, ClientKind};
+use gatekeeper_rust::domain::client::{AllowedGrantType, Client, ClientKind};
 use gatekeeper_rust::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use gatekeeper_rust::GatekeeperStore;
 use serde_json::Value;
@@ -62,6 +62,7 @@ fn seed_client_with_redirect(tmp: &TempDir, client_id: &str, redirect_uri: &str,
             kind: ClientKind::Public,
             redirect_uris: JsonColumn(vec![Url::parse(redirect_uri).expect("redirect url")]),
             allowed_scopes: JsonColumn(scopes.iter().map(ToString::to_string).collect()),
+            allowed_grant_types: JsonColumn(AllowedGrantType::ALL.to_vec()),
             secret_hash: None,
             registered_at: Utc::now(),
             disabled_at: None,
@@ -1102,6 +1103,39 @@ async fn device_consent_clamps_granted_scopes_to_client_allowed() {
     assert_eq!(token["scope"], "read");
 }
 
+/// A client restricted to a grant-type subset is refused a grant outside it
+/// (RFC 6749 §5.2 `unauthorized_client`). Here a code-only client is rejected
+/// at the refresh-token grant before any token lookup.
+#[tokio::test]
+async fn token_endpoint_rejects_grant_outside_client_allow_list() {
+    let (g, _host_owner_token, tmp) = spin_up();
+    store_handle(&tmp)
+        .register_client(&Client {
+            client_id: "code-only".to_string(),
+            name: "Code-only client".to_string(),
+            kind: ClientKind::Public,
+            redirect_uris: JsonColumn(vec![Url::parse("https://app.example/cb").unwrap()]),
+            allowed_scopes: JsonColumn(vec!["read".to_string(), "offline_access".to_string()]),
+            allowed_grant_types: JsonColumn(vec![AllowedGrantType::AuthorizationCode]),
+            secret_hash: None,
+            registered_at: Utc::now(),
+            disabled_at: None,
+        })
+        .expect("register code-only client");
+
+    let res = post_form(
+        &g.router,
+        "/oauth/token",
+        "grant_type=refresh_token&client_id=code-only&refresh_token=whatever",
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(res.into_body()).await["error"],
+        "unauthorized_client"
+    );
+}
+
 /// RFC 6749 §5.1/§5.2 (inherited by RFC 8628 §3.4): the
 /// `/oauth/device_authorization` response must suppress caching just like the
 /// token endpoint — the token-endpoint case is already covered, this pins the
@@ -1471,6 +1505,7 @@ fn seed_confidential_client(
             kind: ClientKind::Confidential,
             redirect_uris: JsonColumn(vec![]),
             allowed_scopes: JsonColumn(scopes.iter().map(ToString::to_string).collect()),
+            allowed_grant_types: JsonColumn(AllowedGrantType::ALL.to_vec()),
             secret_hash: Some(hash_client_secret(client_secret_plaintext).expect("hash secret")),
             registered_at: Utc::now(),
             disabled_at: None,

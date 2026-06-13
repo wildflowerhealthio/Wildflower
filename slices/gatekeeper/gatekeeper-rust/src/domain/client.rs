@@ -40,6 +40,30 @@ impl FromStr for ClientKind {
     }
 }
 
+/// A grant type the token endpoint supports, used for the per-client
+/// allow-list. Wire values match the `grant_type` parameter (RFC 6749 / RFC
+/// 8628) so the stored JSON reads like the request.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum AllowedGrantType {
+    #[serde(rename = "authorization_code")]
+    AuthorizationCode,
+    #[serde(rename = "refresh_token")]
+    RefreshToken,
+    #[serde(rename = "urn:ietf:params:oauth:grant-type:device_code")]
+    DeviceCode,
+}
+
+impl AllowedGrantType {
+    /// Every grant the token endpoint supports — the backward-compatible
+    /// default for clients registered before per-client restrictions existed
+    /// (and the value migration 007 backfills onto existing rows).
+    pub const ALL: [AllowedGrantType; 3] = [
+        AllowedGrantType::AuthorizationCode,
+        AllowedGrantType::RefreshToken,
+        AllowedGrantType::DeviceCode,
+    ];
+}
+
 /// A registered OAuth client — the identity and policy bundle that `/authorize` and `/token` look up by `client_id`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Client {
@@ -53,6 +77,9 @@ pub struct Client {
     pub redirect_uris: JsonColumn<Vec<Url>>,
     /// Scopes the client is permitted to request; any scope outside this set is rejected.
     pub allowed_scopes: JsonColumn<Vec<String>>,
+    /// Grant types the client may use at `/token`; a grant outside this set is
+    /// rejected with `unauthorized_client` (RFC 6749 §5.2).
+    pub allowed_grant_types: JsonColumn<Vec<AllowedGrantType>>,
     /// argon2id PHC string of the client secret for `Confidential` clients; `None` for `Public`.
     pub secret_hash: Option<String>,
     /// When the client was registered.
