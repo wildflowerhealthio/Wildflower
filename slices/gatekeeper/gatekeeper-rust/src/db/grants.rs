@@ -142,6 +142,41 @@ impl GatekeeperStore {
             .execute("DELETE FROM grants WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
+
+    /// Revoke a grant and expire the refresh-token families of its client in a
+    /// single transaction, returning `true` if the grant existed. Doing both in
+    /// one transaction means a partial failure can't leave the grant deleted
+    /// while `offline_access` refresh tokens stay live (up to 90 days) —
+    /// standing consent and standing credentials die together or not at all.
+    /// Families are expired in place (deadline pulled to `now`, live tokens
+    /// stamped consumed), not deleted, so the lineage stays auditable.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if opening the transaction, any statement, or
+    /// the commit fails.
+    pub fn revoke_grant_and_expire_client_families(
+        &self,
+        grant_id: &str,
+        client_id: &str,
+        now: DateTime<Utc>,
+    ) -> DbResult<bool> {
+        let mut guard = self.conn().lock();
+        let tx = guard.transaction()?;
+        let affected = tx.execute("DELETE FROM grants WHERE id = ?1", params![grant_id])?;
+        tx.execute(
+            "UPDATE refresh_tokens SET consumed_at = ?2
+             WHERE consumed_at IS NULL AND family_id IN
+                 (SELECT family_id FROM refresh_token_families WHERE client_id = ?1)",
+            params![client_id, now],
+        )?;
+        tx.execute(
+            "UPDATE refresh_token_families SET expires_at = ?2 WHERE client_id = ?1",
+            params![client_id, now],
+        )?;
+        tx.commit()?;
+        Ok(affected > 0)
+    }
 }
 
 #[cfg(test)]
