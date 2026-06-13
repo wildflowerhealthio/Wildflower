@@ -1,5 +1,4 @@
 use axum::extract::State;
-use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{post, MethodRouter};
 use chrono::Utc;
@@ -9,12 +8,13 @@ use url::Url;
 
 use uuid::Uuid;
 
-use super::client_auth::{resolve_client_credentials, ClientCredentials};
+use super::client_auth::ClientCredentials;
 use super::error_codes;
 use super::internal::{
     issue_token_response, require_valid_client_for_token, IssueTokenInput, TokenError,
     TokenResponse, DEVICE_CODE_POLL_INTERVAL, OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
 };
+use super::token_request::TokenRequest;
 use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
 use crate::db::RefreshTokenConsumeOutcome;
@@ -62,10 +62,9 @@ pub(super) fn route() -> MethodRouter<AppState> {
 async fn handle_token_request(
     State(state): State<AppState>,
     origin: ServedOrigin,
-    headers: HeaderMap,
-    body: String,
+    request: TokenRequest<TokenPayload>,
 ) -> Response {
-    dispatch_token_request(&state, &origin, &headers, &body).into_response()
+    dispatch_token_request(&state, &origin, request).into_response()
 }
 
 /// Parse the grant, resolve client credentials, and dispatch on `grant_type`,
@@ -73,17 +72,12 @@ async fn handle_token_request(
 fn dispatch_token_request(
     state: &AppState,
     origin: &ServedOrigin,
-    headers: &HeaderMap,
-    body: &str,
+    request: TokenRequest<TokenPayload>,
 ) -> Result<TokenResponse, TokenError> {
-    // Parse the grant payload before resolving credentials so a structurally
-    // malformed body still reads as such, not as "Missing client_id".
-    let payload: TokenPayload = serde_urlencoded::from_str(body).map_err(|_| {
-        TokenError::bad_request(error_codes::INVALID_REQUEST, Some("Malformed payload"))
-    })?;
-    // RFC 6749 §2.3.1: Basic header first, body params as fallback; a secret
-    // presented both ways is rejected before any grant work happens.
-    let presented_credentials = resolve_client_credentials(headers, body)?;
+    let TokenRequest {
+        payload,
+        credentials: presented_credentials,
+    } = request;
     let origin = origin.as_str();
     match payload {
         TokenPayload::AuthorizationCode {

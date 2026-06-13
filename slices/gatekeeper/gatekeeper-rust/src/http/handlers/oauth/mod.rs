@@ -5,6 +5,7 @@ mod device_authorization;
 mod error_codes;
 mod internal;
 mod token_exchange;
+mod token_request;
 
 use axum::Router;
 

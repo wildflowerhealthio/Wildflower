@@ -381,6 +381,30 @@ async fn token_exchange_error_sets_cache_suppression_headers() {
     );
 }
 
+/// RFC 6749 §3.2: the token endpoint requires a form-urlencoded body. The
+/// `TokenRequest` extractor rejects any other `Content-Type` with a
+/// cache-suppressed 400 `invalid_request` before any grant work happens.
+#[tokio::test]
+async fn token_exchange_rejects_non_form_content_type() {
+    let (g, _host_owner_token, _tmp) = spin_up();
+    let body = "grant_type=refresh_token&client_id=wildflower-host&refresh_token=whatever";
+    let req = loopback_request(
+        Request::post("/oauth/token").header("content-type", "application/json"),
+        Body::from(body),
+    );
+    let res = g.router.oneshot(req).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    // The rejection path must still be cache-suppressed (RFC 6749 §5.1).
+    assert_eq!(
+        res.headers()
+            .get("cache-control")
+            .map(|v| v.to_str().unwrap()),
+        Some("no-store")
+    );
+    let body = body_json(res.into_body()).await;
+    assert_eq!(body["error"], "invalid_request");
+}
+
 /// The device-code grant's `grant_type` tag is the RFC 8628 URN, which
 /// arrives percent-encoded (`urn%3Aietf%3A...`) — pins that the
 /// form-urlencoded parse decodes it into the right enum variant (a

@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Context};
 use axum::extract::State;
-use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{post, MethodRouter};
 use axum::Json;
@@ -8,11 +7,11 @@ use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-use super::client_auth::resolve_client_credentials;
 use super::error_codes;
 use super::internal::{
     require_valid_client_for_token, CacheSuppressed, TokenError, DEVICE_CODE_POLL_INTERVAL,
 };
+use super::token_request::TokenRequest;
 use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authorization_request::{AuthorizationRequest, StartDeviceAuthorizationArgs};
@@ -67,10 +66,9 @@ pub(super) fn route() -> MethodRouter<AppState> {
 async fn handle_device_authorization_request(
     State(state): State<AppState>,
     origin: ServedOrigin,
-    headers: HeaderMap,
-    body: String,
+    request: TokenRequest<DeviceAuthorizationPayload>,
 ) -> Response {
-    device_authorization(&state, &origin, &headers, &body).into_response()
+    device_authorization(&state, &origin, request).into_response()
 }
 
 /// Validate the request, authenticate the client, and mint a
@@ -78,12 +76,12 @@ async fn handle_device_authorization_request(
 fn device_authorization(
     state: &AppState,
     origin: &ServedOrigin,
-    headers: &HeaderMap,
-    body: &str,
+    request: TokenRequest<DeviceAuthorizationPayload>,
 ) -> Result<DeviceAuthorizationResponse, TokenError> {
-    let payload: DeviceAuthorizationPayload = serde_urlencoded::from_str(body).map_err(|_| {
-        TokenError::bad_request(error_codes::INVALID_REQUEST, Some("Malformed payload"))
-    })?;
+    let TokenRequest {
+        payload,
+        credentials: presented_credentials,
+    } = request;
     let origin = origin.as_str();
     let requested_scopes: Vec<String> = payload
         .scope
@@ -92,10 +90,10 @@ fn device_authorization(
         .split_whitespace()
         .map(str::to_string)
         .collect();
-    // RFC 8628 §3.1: authenticate confidential clients exactly as the token
-    // endpoint does — Basic header first, body fallback, timing-safe secret
-    // check; public clients pass through without a secret.
-    let presented_credentials = resolve_client_credentials(headers, body)?;
+    // RFC 8628 §3.1 inherits RFC 6749 §3.2.1 client authentication, already
+    // resolved by the `TokenRequest` extractor (Basic header first, body
+    // fallback); confidential clients are verified here with a timing-safe
+    // secret check, public clients pass through without a secret.
     let client = require_valid_client_for_token(&state.store, &presented_credentials)?;
     let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
     if !requested_scopes
