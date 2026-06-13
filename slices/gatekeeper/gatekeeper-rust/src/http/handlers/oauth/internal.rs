@@ -51,14 +51,6 @@ impl<T: IntoResponse> IntoResponse for CacheSuppressed<T> {
     }
 }
 
-/// A cache-suppressed (`no-store`) 500 wrapping an internal error — the
-/// token / device-authorization endpoints' standard server-failure response.
-/// Centralised so a call site can't return one of those §5.1 responses
-/// without the cache suppression those endpoints require.
-pub fn cache_suppressed_internal_error(context: &str, err: impl std::fmt::Display) -> Response {
-    CacheSuppressed(response_templates::internal_error(context, err)).into_response()
-}
-
 /// An [`OAuthError`] paired with the HTTP status it renders at — the
 /// `(status, JSON body)` shape every OAuth-surface error response shares.
 #[derive(Debug)]
@@ -196,7 +188,7 @@ impl IntoResponse for TokenError {
             TokenError::ResolveCredentials(error) => CacheSuppressed(error).into_response(),
             TokenError::ClientAuth(error) => CacheSuppressed(error).into_response(),
             TokenError::Internal { context, source } => {
-                cache_suppressed_internal_error(context, source)
+                CacheSuppressed(response_templates::internal_error(context, source)).into_response()
             }
         }
     }
