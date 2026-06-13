@@ -1002,6 +1002,51 @@ async fn device_grant_single_use_then_expired_token() {
     );
 }
 
+/// Device-flow consent clamps the granted scopes to the client's *current*
+/// `allowed_scopes`, not just what the (possibly stale) request asked for: a
+/// request that asked for `write` while it was permitted must not grant `write`
+/// after the client's policy no longer allows it. Regression guard for the
+/// device path, which previously intersected only with `requested_scopes` (the
+/// code-flow path already clamped to `allowed_scopes`).
+#[tokio::test]
+async fn device_consent_clamps_granted_scopes_to_client_allowed() {
+    let (g, host_owner_token, tmp) = spin_up();
+    // The client currently permits only `read` — `write` is no longer allowed.
+    seed_client_with_redirect(&tmp, "device-client", "https://app.example/cb", &["read"]);
+    // A pending device request that still asks for the now-disallowed `write`.
+    plant_device_request(
+        &store_handle(&tmp),
+        "device-client",
+        "dev-clamp",
+        &["read", "write"],
+        RequestStatus::Pending,
+        Utc::now() + Duration::minutes(5),
+    );
+
+    // The Owner approves both scopes; the handler must drop `write`.
+    let approve = loopback_request(
+        Request::post("/access/devices/WILD-FLWR/approve")
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("content-type", "application/json"),
+        Body::from(r#"{"approvedScopes":["read","write"]}"#),
+    );
+    let res = g.router.clone().oneshot(approve).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({ "status": "approved" })
+    );
+
+    // The issued token carries only the still-allowed `read`, never `write`.
+    let body = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&\
+                client_id=device-client&device_code=dev-clamp";
+    let res = post_form(&g.router, "/oauth/token", body).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let token = body_json(res.into_body()).await;
+    assert_eq!(token["scope"], "read");
+}
+
 /// RFC 6749 §5.1/§5.2 (inherited by RFC 8628 §3.4): the
 /// `/oauth/device_authorization` response must suppress caching just like the
 /// token endpoint — the token-endpoint case is already covered, this pins the
