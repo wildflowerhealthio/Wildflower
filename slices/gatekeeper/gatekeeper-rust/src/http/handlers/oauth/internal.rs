@@ -5,7 +5,10 @@ use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use super::client_auth::{ClientAuthenticationMethod, ClientCredentials, BASIC_AUTH_CHALLENGE};
+use super::client_auth::{
+    ClientAuthenticationMethod, ClientCredentials, ResolveClientCredentialsError,
+    BASIC_AUTH_CHALLENGE,
+};
 use crate::crypto_util::client_secret::verify_client_secret;
 use crate::db_utils::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
@@ -116,6 +119,85 @@ impl OAuthError {
         Self {
             error: error.to_string(),
             error_description: description.map(str::to_string),
+        }
+    }
+}
+
+/// Error half of the token / device-authorization endpoints' `Result`-returning
+/// handlers (the OAuth-surface analogue of
+/// [`HandlerError`](crate::http::response_templates::HandlerError)). Every
+/// variant renders the matching RFC 6749 §5.2 response, cache-suppressed per
+/// §5.1, through `IntoResponse` — so a fallible step bails with `?` instead of
+/// a `match` + `return` at each call site. Kept small (no embedded `Response`)
+/// so `Result<_, TokenError>` doesn't trip `clippy::result_large_err`.
+pub enum TokenError {
+    /// An OAuth error body at its status: the §5.2 400s (`invalid_grant`,
+    /// `unauthorized_client`, `invalid_request`, `invalid_scope`, `slow_down`,
+    /// …) and the JSON-bodied 500 from a token-mint failure.
+    Oauth(OAuthErrorResponse),
+    /// Client-credential resolution failure (RFC 6749 §2.3) — renders its own
+    /// response, possibly with a `WWW-Authenticate: Basic` challenge.
+    ResolveCredentials(ResolveClientCredentialsError),
+    /// Client-authentication failure — renders its own response, possibly with
+    /// a `WWW-Authenticate: Basic` challenge.
+    ClientAuth(ValidateClientError),
+    /// A logged, opaque, cache-suppressed 500 (e.g. a store read failed).
+    Internal {
+        context: &'static str,
+        source: String,
+    },
+}
+
+impl TokenError {
+    /// A 400 OAuth error: the `error` code plus an optional human-readable
+    /// `description` (RFC 6749 §5.2).
+    pub fn bad_request(error: &str, description: Option<&str>) -> Self {
+        TokenError::Oauth(OAuthErrorResponse::new(
+            StatusCode::BAD_REQUEST,
+            error,
+            description,
+        ))
+    }
+
+    /// An OAuth `server_error` 500 with a JSON body — used when token minting
+    /// fails after the request was otherwise valid.
+    pub fn server_error(error: OAuthError) -> Self {
+        TokenError::Oauth(OAuthErrorResponse {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error,
+        })
+    }
+
+    /// A server-side failure: logs `source` against `context` and 500s opaquely.
+    pub fn internal(context: &'static str, source: impl std::fmt::Display) -> Self {
+        TokenError::Internal {
+            context,
+            source: source.to_string(),
+        }
+    }
+}
+
+impl From<ResolveClientCredentialsError> for TokenError {
+    fn from(error: ResolveClientCredentialsError) -> Self {
+        TokenError::ResolveCredentials(error)
+    }
+}
+
+impl From<ValidateClientError> for TokenError {
+    fn from(error: ValidateClientError) -> Self {
+        TokenError::ClientAuth(error)
+    }
+}
+
+impl IntoResponse for TokenError {
+    fn into_response(self) -> Response {
+        match self {
+            TokenError::Oauth(response) => CacheSuppressed(response).into_response(),
+            TokenError::ResolveCredentials(error) => CacheSuppressed(error).into_response(),
+            TokenError::ClientAuth(error) => CacheSuppressed(error).into_response(),
+            TokenError::Internal { context, source } => {
+                cache_suppressed_internal_error(context, source)
+            }
         }
     }
 }

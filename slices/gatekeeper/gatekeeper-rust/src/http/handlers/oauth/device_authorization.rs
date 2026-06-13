@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context};
 use axum::extract::Extension;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{post, MethodRouter};
 use axum::Json;
@@ -10,8 +10,7 @@ use std::collections::HashSet;
 
 use super::client_auth::resolve_client_credentials;
 use super::internal::{
-    cache_suppressed_internal_error, require_valid_client_for_token, CacheSuppressed,
-    OAuthErrorResponse, DEVICE_CODE_POLL_INTERVAL,
+    require_valid_client_for_token, CacheSuppressed, TokenError, DEVICE_CODE_POLL_INTERVAL,
 };
 use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
 use crate::crypto_util::random_token::generate_authorization_code;
@@ -62,23 +61,26 @@ pub(super) fn route() -> MethodRouter {
 }
 
 /// Issue a `(device_code, user_code)` pair for the client to poll on while the
-/// user pairs the device.
+/// user pairs the device. `Ok` carries the §5.1 cache suppression via
+/// [`DeviceAuthorizationResponse`], `Err` via [`TokenError`].
 async fn handle_device_authorization_request(
     Extension(state): Extension<AppState>,
     headers: HeaderMap,
     body: String,
 ) -> Response {
-    let payload: DeviceAuthorizationPayload = match serde_urlencoded::from_str(&body) {
-        Ok(p) => p,
-        Err(_) => {
-            return oauth_error(
-                StatusCode::BAD_REQUEST,
-                "invalid_request",
-                "Malformed payload",
-            )
-        }
-    };
-    let origin = served_origin_for(&headers, &state.loopback_origin);
+    device_authorization(&state, &headers, &body).into_response()
+}
+
+/// Validate the request, authenticate the client, and mint a
+/// `(device_code, user_code)` pair, surfacing every failure as a [`TokenError`].
+fn device_authorization(
+    state: &AppState,
+    headers: &HeaderMap,
+    body: &str,
+) -> Result<DeviceAuthorizationResponse, TokenError> {
+    let payload: DeviceAuthorizationPayload = serde_urlencoded::from_str(body)
+        .map_err(|_| TokenError::bad_request("invalid_request", Some("Malformed payload")))?;
+    let origin = served_origin_for(headers, &state.loopback_origin);
     let origin = origin.as_str();
     let requested_scopes: Vec<String> = payload
         .scope
@@ -90,32 +92,23 @@ async fn handle_device_authorization_request(
     // RFC 8628 §3.1: authenticate confidential clients exactly as the token
     // endpoint does — Basic header first, body fallback, timing-safe secret
     // check; public clients pass through without a secret.
-    let presented_credentials = match resolve_client_credentials(&headers, &body) {
-        Ok(c) => c,
-        Err(err) => return CacheSuppressed(err).into_response(),
-    };
-    let client = match require_valid_client_for_token(&state.store, &presented_credentials) {
-        Ok(c) => c,
-        Err(err) => return CacheSuppressed(err).into_response(),
-    };
+    let presented_credentials = resolve_client_credentials(headers, body)?;
+    let client = require_valid_client_for_token(&state.store, &presented_credentials)?;
     let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
     if !requested_scopes
         .iter()
         .all(|s| allowed.contains(s.as_str()))
     {
-        return oauth_error(
-            StatusCode::BAD_REQUEST,
+        return Err(TokenError::bad_request(
             "invalid_scope",
-            "Scope not allowed for client",
-        );
+            Some("Scope not allowed for client"),
+        ));
     }
     // 256-bit CSPRNG opaque token per RFC 6749 §10.10, consistent with the
     // authorization_code minting in `authorize.rs`.
     let device_code = generate_authorization_code();
-    let user_code = match generate_unique_user_code(&state) {
-        Ok(c) => c,
-        Err(e) => return cache_suppressed_internal_error("user_code generation failed", e),
-    };
+    let user_code = generate_unique_user_code(state)
+        .map_err(|e| TokenError::internal("user_code generation failed", e))?;
     let request = AuthorizationRequest::new_device_authorization(StartDeviceAuthorizationArgs {
         id: device_code.clone(),
         client_id: presented_credentials.client_id.clone(),
@@ -123,18 +116,18 @@ async fn handle_device_authorization_request(
         user_code: user_code.clone(),
         ttl: DEVICE_AUTHORIZATION_TTL,
     });
-    if let Err(e) = state.store.insert_authorization_request(&request) {
-        return cache_suppressed_internal_error("insert_authorization_request failed", e);
-    }
-    DeviceAuthorizationResponse {
+    state
+        .store
+        .insert_authorization_request(&request)
+        .map_err(|e| TokenError::internal("insert_authorization_request failed", e))?;
+    Ok(DeviceAuthorizationResponse {
         device_code,
         user_code: user_code.clone(),
         verification_uri: page_paths::device_entry_url(origin),
         verification_uri_complete: page_paths::device_entry_url_with_code(origin, &user_code),
         expires_in: DEVICE_AUTHORIZATION_TTL.num_seconds(),
         interval: DEVICE_CODE_POLL_INTERVAL.num_seconds(),
-    }
-    .into_response()
+    })
 }
 
 /// Try up to `MAX_USER_CODE_GENERATION_ATTEMPTS` random user codes until one
@@ -163,8 +156,4 @@ fn generate_unique_user_code(state: &AppState) -> anyhow::Result<String> {
     Err(anyhow!(
         "exhausted {MAX_USER_CODE_GENERATION_ATTEMPTS} user_code generation attempts"
     ))
-}
-
-fn oauth_error(status: StatusCode, error: &str, description: &str) -> Response {
-    CacheSuppressed(OAuthErrorResponse::new(status, error, Some(description))).into_response()
 }

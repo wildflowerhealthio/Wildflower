@@ -1,5 +1,5 @@
 use axum::extract::Extension;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{post, MethodRouter};
 use chrono::Utc;
@@ -9,13 +9,10 @@ use url::Url;
 
 use uuid::Uuid;
 
-use super::client_auth::{
-    resolve_client_credentials, ClientCredentials, ResolveClientCredentialsError,
-};
+use super::client_auth::{resolve_client_credentials, ClientCredentials};
 use super::internal::{
-    cache_suppressed_internal_error, issue_token_response, require_valid_client_for_token,
-    CacheSuppressed, IssueTokenInput, OAuthErrorResponse, TokenResponse, ValidateClientError,
-    DEVICE_CODE_POLL_INTERVAL, OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
+    issue_token_response, require_valid_client_for_token, IssueTokenInput, TokenError,
+    TokenResponse, DEVICE_CODE_POLL_INTERVAL, OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
 };
 use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
@@ -57,76 +54,6 @@ pub enum TokenPayload {
 /// `POST /oauth/token` route.
 pub(super) fn route() -> MethodRouter {
     post(handle_token_request)
-}
-
-/// Error half of the token endpoint's `Result`-returning grant handlers
-/// (the OAuth-surface analogue of
-/// [`HandlerError`](crate::http::response_templates::HandlerError)). Every
-/// variant renders the matching RFC 6749 §5.2 response, cache-suppressed per
-/// §5.1, through `IntoResponse` — so a fallible step bails with `?` instead of
-/// a `match` + `return` at each call site. Kept small (no embedded `Response`)
-/// so `Result<_, TokenError>` doesn't trip `clippy::result_large_err`.
-enum TokenError {
-    /// An OAuth error body at its status: the §5.2 400s (`invalid_grant`,
-    /// `unauthorized_client`, `invalid_request`, `slow_down`, …) and the
-    /// JSON-bodied 500 from a token-mint failure.
-    Oauth(OAuthErrorResponse),
-    /// Client-credential resolution failure (RFC 6749 §2.3) — renders its own
-    /// response, possibly with a `WWW-Authenticate: Basic` challenge.
-    ResolveCredentials(ResolveClientCredentialsError),
-    /// Client-authentication failure — renders its own response, possibly with
-    /// a `WWW-Authenticate: Basic` challenge.
-    ClientAuth(ValidateClientError),
-    /// A logged, opaque, cache-suppressed 500 (e.g. a store read failed).
-    Internal {
-        context: &'static str,
-        source: String,
-    },
-}
-
-impl TokenError {
-    /// A 400 OAuth error: the `error` code plus an optional human-readable
-    /// `description` (RFC 6749 §5.2).
-    fn bad_request(error: &str, description: Option<&str>) -> Self {
-        TokenError::Oauth(OAuthErrorResponse::new(
-            StatusCode::BAD_REQUEST,
-            error,
-            description,
-        ))
-    }
-
-    /// A server-side failure: logs `source` against `context` and 500s opaquely.
-    fn internal(context: &'static str, source: impl std::fmt::Display) -> Self {
-        TokenError::Internal {
-            context,
-            source: source.to_string(),
-        }
-    }
-}
-
-impl From<ResolveClientCredentialsError> for TokenError {
-    fn from(error: ResolveClientCredentialsError) -> Self {
-        TokenError::ResolveCredentials(error)
-    }
-}
-
-impl From<ValidateClientError> for TokenError {
-    fn from(error: ValidateClientError) -> Self {
-        TokenError::ClientAuth(error)
-    }
-}
-
-impl IntoResponse for TokenError {
-    fn into_response(self) -> Response {
-        match self {
-            TokenError::Oauth(response) => CacheSuppressed(response).into_response(),
-            TokenError::ResolveCredentials(error) => CacheSuppressed(error).into_response(),
-            TokenError::ClientAuth(error) => CacheSuppressed(error).into_response(),
-            TokenError::Internal { context, source } => {
-                cache_suppressed_internal_error(context, source)
-            }
-        }
-    }
 }
 
 /// Render the dispatch outcome — `Ok` carries the §5.1 cache suppression via
@@ -567,12 +494,7 @@ fn exchange_refresh_token(
             origin,
         },
     )
-    .map_err(|error| {
-        TokenError::Oauth(OAuthErrorResponse {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            error,
-        })
-    })?;
+    .map_err(TokenError::server_error)?;
     let next_plaintext = generate_refresh_token();
     let next = RefreshToken {
         token_hash: token_storage_hash(&next_plaintext),
@@ -629,12 +551,7 @@ fn issue_token(
     input: &IssueTokenInput<'_>,
     refresh_token: Option<String>,
 ) -> Result<TokenResponse, TokenError> {
-    let mut token = issue_token_response(&state.store, input).map_err(|error| {
-        TokenError::Oauth(OAuthErrorResponse {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            error,
-        })
-    })?;
+    let mut token = issue_token_response(&state.store, input).map_err(TokenError::server_error)?;
     token.refresh_token = refresh_token;
     Ok(token)
 }
