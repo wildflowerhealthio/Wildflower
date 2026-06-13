@@ -159,7 +159,10 @@ fn exchange_authorization_code(
                     Utc::now(),
                 )
             {
-                return cache_suppressed_internal_error("expire_refresh_token_families_for_authorization_code failed", e);
+                return cache_suppressed_internal_error(
+                    "expire_refresh_token_families_for_authorization_code failed",
+                    e,
+                );
             }
             return bad_request("invalid_grant", Some("Invalid authorization grant"));
         }
@@ -258,9 +261,7 @@ fn exchange_device_code(
             p
         }
         Ok(_) => return bad_request("invalid_grant", Some("Unknown device_code")),
-        Err(e) => {
-            return cache_suppressed_internal_error("authorization_request lookup failed", e)
-        }
+        Err(e) => return cache_suppressed_internal_error("authorization_request lookup failed", e),
     };
     if request_record.expires_at < Utc::now() {
         return bad_request("expired_token", None);
@@ -296,7 +297,10 @@ fn exchange_device_code(
         Ok(true) => {}
         Ok(false) => return bad_request("invalid_grant", Some("Device code already redeemed")),
         Err(e) => {
-            return cache_suppressed_internal_error("consume_approved_authorization_request failed", e);
+            return cache_suppressed_internal_error(
+                "consume_approved_authorization_request failed",
+                e,
+            );
         }
     }
     let granted_scopes: &[String] = request_record
@@ -367,9 +371,10 @@ fn start_refresh_token_family_if_granted(
         .store
         .insert_refresh_token_family(&family, &first_token)
     {
-        return Err(Box::new(
-            cache_suppressed_internal_error("insert_refresh_token_family failed", e),
-        ));
+        return Err(Box::new(cache_suppressed_internal_error(
+            "insert_refresh_token_family failed",
+            e,
+        )));
     }
     Ok(Some(plaintext))
 }
@@ -401,9 +406,7 @@ fn exchange_refresh_token(
     let (_, family) = match state.store.refresh_token_with_family_by_hash(&hash) {
         Ok(Some(pair)) => pair,
         Ok(None) => return bad_request("invalid_grant", Some("Invalid refresh_token parameter")),
-        Err(e) => {
-            return cache_suppressed_internal_error("refresh_token lookup failed", e)
-        }
+        Err(e) => return cache_suppressed_internal_error("refresh_token lookup failed", e),
     };
     // Token–client binding (RFC 6749 §6): a valid token presented by the
     // wrong client is a grant failure; answer exactly as if it didn't exist.
@@ -471,9 +474,7 @@ fn exchange_refresh_token(
         Ok(RefreshTokenConsumeOutcome::NotFound) => {
             return bad_request("invalid_grant", Some("Invalid refresh_token parameter"))
         }
-        Err(e) => {
-            return cache_suppressed_internal_error("rotate_refresh_token failed", e)
-        }
+        Err(e) => return cache_suppressed_internal_error("rotate_refresh_token failed", e),
     }
     token.refresh_token = Some(next_plaintext);
     token.into_response()

@@ -1577,7 +1577,10 @@ async fn token_exchange_with_basic_auth_redeems_refresh_token() {
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res.into_body()).await;
     assert_eq!(body["token_type"], "Bearer");
-    assert!(!body["access_token"].as_str().expect("access_token").is_empty());
+    assert!(!body["access_token"]
+        .as_str()
+        .expect("access_token")
+        .is_empty());
 }
 
 /// A failed Basic attempt answers 401 with a matching `WWW-Authenticate:
@@ -1594,11 +1597,15 @@ async fn token_exchange_wrong_basic_secret_returns_401_with_basic_challenge() {
     .await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(
-        res.headers().get("www-authenticate").map(|v| v.to_str().unwrap()),
+        res.headers()
+            .get("www-authenticate")
+            .map(|v| v.to_str().unwrap()),
         Some(r#"Basic realm="gatekeeper""#)
     );
     assert_eq!(
-        res.headers().get("cache-control").map(|v| v.to_str().unwrap()),
+        res.headers()
+            .get("cache-control")
+            .map(|v| v.to_str().unwrap()),
         Some("no-store")
     );
     assert_eq!(
@@ -1686,7 +1693,9 @@ async fn token_exchange_basic_with_matching_body_client_id_succeeds() {
     let res = post_form_with_authorization(
         &g.router,
         "/oauth/token",
-        format!("grant_type=refresh_token&client_id={CONFIDENTIAL_CLIENT_ID}&refresh_token=conf-token"),
+        format!(
+            "grant_type=refresh_token&client_id={CONFIDENTIAL_CLIENT_ID}&refresh_token=conf-token"
+        ),
         &basic_authorization(CONFIDENTIAL_CLIENT_ID, CONFIDENTIAL_CLIENT_SECRET),
     )
     .await;
@@ -1733,7 +1742,12 @@ async fn token_exchange_missing_client_id_returns_400_invalid_request() {
 #[tokio::test]
 async fn token_exchange_basic_secret_with_reserved_characters_round_trips() {
     let (g, _host_owner_token, tmp) = spin_up();
-    seed_confidential_client(&tmp, "conf-app", "p@ss word:100%&yes", &["read", "offline_access"]);
+    seed_confidential_client(
+        &tmp,
+        "conf-app",
+        "p@ss word:100%&yes",
+        &["read", "offline_access"],
+    );
     plant_refresh_token(
         &store_handle(&tmp),
         "conf-token",
@@ -1769,7 +1783,10 @@ async fn device_authorization_with_basic_auth_issues_device_code() {
     .await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res.into_body()).await;
-    assert!(!body["device_code"].as_str().expect("device_code").is_empty());
+    assert!(!body["device_code"]
+        .as_str()
+        .expect("device_code")
+        .is_empty());
     assert!(!body["user_code"].as_str().expect("user_code").is_empty());
 }
 
@@ -1787,7 +1804,9 @@ async fn device_authorization_wrong_basic_secret_returns_401_with_basic_challeng
     .await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(
-        res.headers().get("www-authenticate").map(|v| v.to_str().unwrap()),
+        res.headers()
+            .get("www-authenticate")
+            .map(|v| v.to_str().unwrap()),
         Some(r#"Basic realm="gatekeeper""#)
     );
     assert_eq!(

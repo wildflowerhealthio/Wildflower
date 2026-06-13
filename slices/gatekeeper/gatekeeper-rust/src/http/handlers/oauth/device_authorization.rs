@@ -114,9 +114,7 @@ async fn handle_device_authorization_request(
     let device_code = generate_authorization_code();
     let user_code = match generate_unique_user_code(&state) {
         Ok(c) => c,
-        Err(e) => {
-            return cache_suppressed_internal_error("user_code generation failed", e)
-        }
+        Err(e) => return cache_suppressed_internal_error("user_code generation failed", e),
     };
     let request = AuthorizationRequest::new_device_authorization(StartDeviceAuthorizationArgs {
         id: device_code.clone(),

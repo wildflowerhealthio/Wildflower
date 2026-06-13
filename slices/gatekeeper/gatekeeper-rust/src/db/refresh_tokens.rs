@@ -463,7 +463,10 @@ mod tests {
     fn rotate_consumes_presented_and_inserts_successor_atomically() {
         let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
         store
-            .insert_refresh_token_family(&sample_family("fam", "client"), &sample_token("live", "fam"))
+            .insert_refresh_token_family(
+                &sample_family("fam", "client"),
+                &sample_token("live", "fam"),
+            )
             .expect("insert family");
         let now = Utc::now();
 
@@ -473,7 +476,10 @@ mod tests {
                 .expect("rotate"),
             RefreshTokenConsumeOutcome::Consumed
         ));
-        let presented = store.refresh_token_by_hash("live").expect("q").expect("row");
+        let presented = store
+            .refresh_token_by_hash("live")
+            .expect("q")
+            .expect("row");
         assert_eq!(presented.consumed_at, Some(now));
         let successor = store
             .refresh_token_by_hash("successor")

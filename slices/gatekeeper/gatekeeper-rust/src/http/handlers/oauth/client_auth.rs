@@ -125,14 +125,13 @@ pub fn resolve_client_credentials(
     // A structurally unparseable body simply contributes no credentials; the
     // grant-payload parse is responsible for rejecting malformed bodies.
     let body: BodyClientCredentials = serde_urlencoded::from_str(form_body).unwrap_or_default();
-    let basic = decode_basic_authorization_header(request_headers).map_err(
-        |MalformedBasicHeader| {
+    let basic =
+        decode_basic_authorization_header(request_headers).map_err(|MalformedBasicHeader| {
             ResolveClientCredentialsError::MalformedBasic(OAuthError::new(
                 "invalid_client",
                 Some("Malformed Basic authorization header"),
             ))
-        },
-    )?;
+        })?;
     match basic {
         Some(basic) => {
             if body.client_secret.is_some() {
@@ -204,7 +203,9 @@ fn decode_basic_authorization_header(
 
 /// The fallible tail of [`decode_basic_authorization_header`], split out so
 /// every decode failure collapses to the same [`MalformedBasicHeader`].
-fn try_decode_basic_payload(encoded_payload: &str) -> Result<BasicCredentials, MalformedBasicHeader> {
+fn try_decode_basic_payload(
+    encoded_payload: &str,
+) -> Result<BasicCredentials, MalformedBasicHeader> {
     let decoded_bytes = BASE64_STANDARD
         .decode(encoded_payload)
         .map_err(|_| MalformedBasicHeader)?;
@@ -244,7 +245,10 @@ mod tests {
     }
 
     fn basic_authorization(userid: &str, password: &str) -> String {
-        format!("Basic {}", BASE64_STANDARD.encode(format!("{userid}:{password}")))
+        format!(
+            "Basic {}",
+            BASE64_STANDARD.encode(format!("{userid}:{password}"))
+        )
     }
 
     #[test]
@@ -285,7 +289,10 @@ mod tests {
         let encoded = BASE64_STANDARD.encode("app:s3cret");
         let headers = headers_with_authorization(&format!("bASIC {encoded}"));
         let resolved = resolve_client_credentials(&headers, "").unwrap();
-        assert_eq!(resolved.presented_via, ClientAuthenticationMethod::HttpBasic);
+        assert_eq!(
+            resolved.presented_via,
+            ClientAuthenticationMethod::HttpBasic
+        );
         assert_eq!(resolved.client_id, "app");
     }
 
@@ -342,7 +349,10 @@ mod tests {
         let headers = headers_with_authorization(&basic_authorization("app", "s3cret"));
         let resolved = resolve_client_credentials(&headers, "client_id=app").unwrap();
         assert_eq!(resolved.client_id, "app");
-        assert_eq!(resolved.presented_via, ClientAuthenticationMethod::HttpBasic);
+        assert_eq!(
+            resolved.presented_via,
+            ClientAuthenticationMethod::HttpBasic
+        );
     }
 
     #[test]
