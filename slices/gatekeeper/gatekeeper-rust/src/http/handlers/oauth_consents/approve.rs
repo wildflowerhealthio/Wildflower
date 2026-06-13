@@ -60,10 +60,15 @@ async fn handle_approve_oauth_consent(
         return Ok(Json(ConsentResult::Denied));
     }
 
-    state
+    let approved = state
         .store
         .approve_authorization_request(&id, &granted_scopes, body.patient.as_deref())
         .map_err(|e| HandlerError::internal("approve_authorization_request failed", e))?;
+    if !approved {
+        // No longer pending (concurrently consumed/denied/expired) — treat the
+        // consent as gone rather than minting a code against a stale request.
+        return Err(HandlerError::not_found("OAuthConsentNotFound", "id", &id));
+    }
 
     // Mint and persist the authorization code so the polling endpoint's
     // `Approved` arm can hand the client back a redeemable `code`. Without

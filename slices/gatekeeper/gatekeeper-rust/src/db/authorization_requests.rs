@@ -175,7 +175,14 @@ impl GatekeeperStore {
         Ok(())
     }
 
-    /// Mark `id` approved with `granted_scopes` and an optional patient context.
+    /// Mark a *pending* `id` approved with `granted_scopes` and an optional
+    /// patient context, returning `true` iff a pending row was actually
+    /// transitioned.
+    ///
+    /// The `status = 'pending'` guard means a request already in a terminal
+    /// state (denied/expired) can't be flipped back to approved, and the
+    /// affected-row check lets the caller detect a no-op (e.g. the request was
+    /// consumed concurrently between its read and this update).
     ///
     /// # Errors
     ///
@@ -185,19 +192,19 @@ impl GatekeeperStore {
         id: &str,
         granted_scopes: &[String],
         patient: Option<&str>,
-    ) -> DbResult<()> {
+    ) -> DbResult<bool> {
         let granted = JsonColumn(granted_scopes.to_vec());
-        self.conn().lock().execute(
+        let affected = self.conn().lock().execute(
             "UPDATE authorization_requests
              SET status = 'approved', granted_scopes = :granted_scopes, patient = :patient
-             WHERE id = :id",
+             WHERE id = :id AND status = 'pending'",
             rusqlite::named_params! {
                 ":id": id,
                 ":granted_scopes": granted,
                 ":patient": patient,
             },
         )?;
-        Ok(())
+        Ok(affected == 1)
     }
 
     /// Mark `id` denied.

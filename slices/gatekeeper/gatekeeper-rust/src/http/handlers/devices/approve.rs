@@ -51,9 +51,17 @@ async fn handle_approve_device_consent(
             .map_err(|e| HandlerError::internal("deny_authorization_request failed", e))?;
         return Ok(Json(ConsentResult::Denied));
     }
-    state
+    let approved = state
         .store
         .approve_authorization_request(&device_request.id, &granted_scopes, None)
         .map_err(|e| HandlerError::internal("approve_authorization_request failed", e))?;
+    if !approved {
+        // No longer pending (concurrently consumed/denied/expired) — treat as gone.
+        return Err(HandlerError::not_found(
+            "DeviceConsentNotFound",
+            "userCode",
+            &user_code,
+        ));
+    }
     Ok(Json(ConsentResult::Approved))
 }

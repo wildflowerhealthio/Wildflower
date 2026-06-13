@@ -402,7 +402,7 @@ fn issue_code(
                 e,
             ))
         })?;
-    state
+    let approved = state
         .store
         .approve_authorization_request(request_id, requested_scopes, patient)
         .map_err(|e| {
@@ -411,6 +411,14 @@ fn issue_code(
                 e,
             ))
         })?;
+    if !approved {
+        // The request was just inserted as pending in this same handler, so a
+        // non-pending row here is an unexpected concurrent transition.
+        return Err(Box::new(response_templates::internal_error(
+            "approve_authorization_request",
+            "authorization request was not pending",
+        )));
+    }
     Ok(code)
 }
 
