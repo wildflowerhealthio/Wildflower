@@ -6,7 +6,7 @@
 
 use rand::RngCore;
 
-use crate::crypto_util::{base64url, sha256_base64url};
+use crate::crypto_util::{base64url, sha256};
 
 /// Number of CSPRNG bytes backing each generated token. 32 bytes = 256 bits
 /// of entropy.
@@ -19,7 +19,7 @@ const TOKEN_BYTES: usize = 32;
 pub(crate) fn generate_authorization_code() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];
     rand::thread_rng().fill_bytes(&mut bytes);
-    base64url(&bytes)
+    base64url::encode(&bytes)
 }
 
 /// Generate an opaque refresh token — same construction as
@@ -36,13 +36,12 @@ pub(crate) fn generate_refresh_token() -> String {
 /// known plaintexts.
 #[must_use]
 pub fn token_storage_hash(token: &str) -> String {
-    sha256_base64url(token.as_bytes())
+    sha256::as_base64url(token.as_bytes())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
     #[test]
     fn encodes_32_bytes_as_unpadded_base64url() {
@@ -54,7 +53,7 @@ mod tests {
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'));
         // Round-trips back to exactly 32 bytes.
-        let decoded = URL_SAFE_NO_PAD.decode(&code).expect("valid base64url");
+        let decoded = base64url::decode(&code).expect("valid base64url");
         assert_eq!(decoded.len(), TOKEN_BYTES);
     }
 

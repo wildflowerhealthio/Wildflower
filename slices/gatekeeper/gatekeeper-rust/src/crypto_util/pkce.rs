@@ -1,4 +1,4 @@
-use crate::crypto_util::sha256_base64url;
+use crate::crypto_util::sha256;
 
 /// RFC 7636 §4.1 bounds on the `code_verifier`: 43–128 characters drawn from
 /// the unreserved set.
@@ -15,7 +15,7 @@ pub fn is_valid_code_verifier_length(code_verifier: &str) -> bool {
 /// Derive the PKCE S256 `code_challenge` from a `code_verifier` (RFC 7636 §4.2).
 #[must_use]
 pub fn compute_code_challenge(code_verifier: &str) -> String {
-    sha256_base64url(code_verifier.as_bytes())
+    sha256::as_base64url(code_verifier.as_bytes())
 }
 
 #[cfg(test)]
