@@ -37,6 +37,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/002_refresh_tokens.sql"),
     include_str!("../migrations/003_refresh_family_authorization_code.sql"),
     include_str!("../migrations/004_unique_authorization_code_request_id.sql"),
+    include_str!("../migrations/005_unique_pending_user_code.sql"),
 ];
 
 #[cfg(test)]
