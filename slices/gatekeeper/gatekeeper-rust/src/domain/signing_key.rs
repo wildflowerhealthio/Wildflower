@@ -6,7 +6,7 @@ use rsa::{BigUint, RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::crypto_util::base64url;
+use crate::crypto_util::base64;
 use crate::crypto_util::public_jwk::PublicJwk;
 
 /// The base64url-encoded RSA key components stored in the `values_json` column of a `signing_keys` row.
@@ -63,11 +63,11 @@ impl From<&RsaPrivateKey> for SigningKey {
             kty: "RSA".to_string(),
             alg: "RS256".to_string(),
             values: SigningKeyValues {
-                n: base64url::encode(&private.n().to_bytes_be()),
-                e: base64url::encode(&private.e().to_bytes_be()),
-                d: base64url::encode(&private.d().to_bytes_be()),
-                p: base64url::encode(&p.to_bytes_be()),
-                q: base64url::encode(&q.to_bytes_be()),
+                n: base64::url_safe_no_pad_encode(&private.n().to_bytes_be()),
+                e: base64::url_safe_no_pad_encode(&private.e().to_bytes_be()),
+                d: base64::url_safe_no_pad_encode(&private.d().to_bytes_be()),
+                p: base64::url_safe_no_pad_encode(&p.to_bytes_be()),
+                q: base64::url_safe_no_pad_encode(&q.to_bytes_be()),
             },
             is_active: false,
         }
@@ -138,7 +138,7 @@ impl TryFrom<&SigningKey> for RsaPublicKey {
 
 /// Decode a base64url JWK component into a big-endian `BigUint`.
 fn base64_url_to_biguint(s: &str) -> Result<BigUint, KeyMaterialError> {
-    let bytes = base64url::decode(s).map_err(KeyMaterialError::Decode)?;
+    let bytes = base64::url_safe_no_pad_decode(s).map_err(KeyMaterialError::Decode)?;
     Ok(BigUint::from_bytes_be(&bytes))
 }
 

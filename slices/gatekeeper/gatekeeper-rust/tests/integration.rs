@@ -7,8 +7,8 @@ use gatekeeper_rust::{setup_gatekeeper, Gatekeeper, GatekeeperConfig};
 use tokio::sync::watch;
 
 const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
-use base64::Engine;
 use chrono::{Duration, Utc};
+use gatekeeper_rust::crypto_util::base64;
 use gatekeeper_rust::crypto_util::client_secret::hash_client_secret;
 use gatekeeper_rust::crypto_util::pkce::compute_code_challenge;
 use gatekeeper_rust::crypto_util::random_token::token_storage_hash;
@@ -405,9 +405,6 @@ async fn token_exchange_unknown_device_code_returns_400_invalid_grant() {
 
 #[tokio::test]
 async fn host_owner_token_is_owner_scoped() {
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-    use base64::Engine as _;
-
     // The owner-token TTL is 24h; allow a couple seconds of slack on the
     // second-precision, wall-clock-derived timestamps (the reviewer asked us
     // to "allow for some uncertainty in the timing-dependent values").
@@ -418,7 +415,7 @@ async fn host_owner_token_is_owner_scoped() {
     // header.payload.sig
     let parts: Vec<&str> = host_owner_token.split('.').collect();
     assert_eq!(parts.len(), 3);
-    let payload_bytes = URL_SAFE_NO_PAD.decode(parts[1]).expect("payload");
+    let payload_bytes = base64::url_safe_no_pad_decode(parts[1]).expect("payload");
     let payload: Value = serde_json::from_slice(&payload_bytes).expect("json");
     // iat/exp are wall-clock-derived; thread them through and check their
     // *relationship* separately (below) rather than pinning absolute instants.
@@ -1536,7 +1533,7 @@ async fn post_form_with_authorization(
 fn basic_authorization(client_id: &str, client_secret: &str) -> String {
     format!(
         "Basic {}",
-        base64::engine::general_purpose::STANDARD.encode(format!("{client_id}:{client_secret}"))
+        base64::standard_encode(format!("{client_id}:{client_secret}").as_bytes())
     )
 }
 
@@ -1757,7 +1754,7 @@ async fn token_exchange_basic_secret_with_reserved_characters_round_trips() {
     // "p@ss word:100%&yes" form-urlencoded → "p%40ss+word%3A100%25%26yes"
     let authorization = format!(
         "Basic {}",
-        base64::engine::general_purpose::STANDARD.encode("conf-app:p%40ss+word%3A100%25%26yes")
+        base64::standard_encode("conf-app:p%40ss+word%3A100%25%26yes".as_bytes())
     );
     let res = post_form_with_authorization(
         &g.router,

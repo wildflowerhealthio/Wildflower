@@ -11,11 +11,10 @@
 
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use base64::Engine;
 use serde::Deserialize;
 
 use super::internal::{OAuthError, OAuthErrorResponse};
+use crate::crypto_util::base64;
 
 /// `WWW-Authenticate` challenge attached to 401 responses when the client
 /// attempted Basic authentication (RFC 6749 §5.2: the response "MUST include
@@ -206,9 +205,7 @@ fn decode_basic_authorization_header(
 fn try_decode_basic_payload(
     encoded_payload: &str,
 ) -> Result<BasicCredentials, MalformedBasicHeader> {
-    let decoded_bytes = BASE64_STANDARD
-        .decode(encoded_payload)
-        .map_err(|_| MalformedBasicHeader)?;
+    let decoded_bytes = base64::standard_decode(encoded_payload).map_err(|_| MalformedBasicHeader)?;
     let decoded_pair = String::from_utf8(decoded_bytes).map_err(|_| MalformedBasicHeader)?;
     let (encoded_client_id, encoded_client_secret) =
         decoded_pair.split_once(':').ok_or(MalformedBasicHeader)?;
@@ -247,7 +244,7 @@ mod tests {
     fn basic_authorization(userid: &str, password: &str) -> String {
         format!(
             "Basic {}",
-            BASE64_STANDARD.encode(format!("{userid}:{password}"))
+            base64::standard_encode(format!("{userid}:{password}").as_bytes())
         )
     }
 
@@ -286,7 +283,7 @@ mod tests {
 
     #[test]
     fn basic_scheme_match_is_case_insensitive() {
-        let encoded = BASE64_STANDARD.encode("app:s3cret");
+        let encoded = base64::standard_encode("app:s3cret".as_bytes());
         let headers = headers_with_authorization(&format!("bASIC {encoded}"));
         let resolved = resolve_client_credentials(&headers, "").unwrap();
         assert_eq!(
@@ -314,7 +311,7 @@ mod tests {
     #[test]
     fn basic_halves_are_form_urlencoded_decoded() {
         // userid "app+one" → "app%2Bone"; password "p@ss word%" → "p%40ss+word%25"
-        let encoded = BASE64_STANDARD.encode("app%2Bone:p%40ss+word%25");
+        let encoded = base64::standard_encode("app%2Bone:p%40ss+word%25".as_bytes());
         let headers = headers_with_authorization(&format!("Basic {encoded}"));
         let resolved = resolve_client_credentials(&headers, "").unwrap();
         assert_eq!(
@@ -383,11 +380,11 @@ mod tests {
         let malformed_payloads = [
             "Basic !!!not-base64!!!".to_string(),
             // valid base64 of a colon-less payload
-            format!("Basic {}", BASE64_STANDARD.encode("no-colon-here")),
+            format!("Basic {}", base64::standard_encode("no-colon-here".as_bytes())),
             // valid base64 of invalid UTF-8 bytes
-            format!("Basic {}", BASE64_STANDARD.encode([0xff, 0xfe, b':', b'x'])),
+            format!("Basic {}", base64::standard_encode(&[0xff, 0xfe, b':', b'x'])),
             // a percent-escape that decodes to an invalid UTF-8 byte
-            format!("Basic {}", BASE64_STANDARD.encode("app%ff:secret")),
+            format!("Basic {}", base64::standard_encode("app%ff:secret".as_bytes())),
         ];
         for authorization in malformed_payloads {
             let headers = headers_with_authorization(&authorization);
