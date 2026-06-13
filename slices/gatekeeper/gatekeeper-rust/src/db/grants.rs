@@ -208,32 +208,29 @@ impl GatekeeperStore {
                 |row| Ok((row.get("id")?, row.get("scopes")?)),
             )
             .optional()?;
-        match existing {
-            Some((id, JsonColumn(mut merged))) => {
-                for scope in scopes {
-                    if !merged.contains(scope) {
-                        merged.push(scope.clone());
-                    }
+        if let Some((id, JsonColumn(mut merged))) = existing {
+            for scope in scopes {
+                if !merged.contains(scope) {
+                    merged.push(scope.clone());
                 }
-                let scopes_json = JsonColumn(merged);
-                tx.execute(
-                    "UPDATE grants SET scopes = ?2, granted_at = ?3, patient = ?4 WHERE id = ?1",
-                    params![id, scopes_json, now, patient],
-                )?;
             }
-            None => {
-                let grant = Grant {
-                    id: Uuid::new_v4().to_string(),
-                    client_id: client_id.to_string(),
-                    scopes: JsonColumn(scopes.to_vec()),
-                    redirect_uri: UriColumn(redirect_uri.clone()),
-                    granted_at: now,
-                    last_used_at: None,
-                    patient: patient.map(str::to_string),
-                };
-                let params = make_named_sql_params(&grant);
-                tx.execute(&build_insert_sql("grants", &params), &params)?;
-            }
+            let scopes_json = JsonColumn(merged);
+            tx.execute(
+                "UPDATE grants SET scopes = ?2, granted_at = ?3, patient = ?4 WHERE id = ?1",
+                params![id, scopes_json, now, patient],
+            )?;
+        } else {
+            let grant = Grant {
+                id: Uuid::new_v4().to_string(),
+                client_id: client_id.to_string(),
+                scopes: JsonColumn(scopes.to_vec()),
+                redirect_uri: UriColumn(redirect_uri.clone()),
+                granted_at: now,
+                last_used_at: None,
+                patient: patient.map(str::to_string),
+            };
+            let params = make_named_sql_params(&grant);
+            tx.execute(&build_insert_sql("grants", &params), &params)?;
         }
         tx.commit()
     }
