@@ -4,7 +4,8 @@ use axum::extract::{Extension, Path};
 use axum::routing::{post, MethodRouter};
 use axum::Json;
 
-use super::internal::{load_pending_device_request, ApproveBody, ConsentResult};
+use super::internal::load_pending_device_request;
+use crate::http::handlers::consent::{deny_consent, grantable_scopes, ApproveBody, ConsentResult};
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 
@@ -39,24 +40,18 @@ async fn handle_approve_device_consent(
         .ok_or_else(|| HandlerError::not_found("DeviceConsentNotFound", "userCode", &user_code))?;
     let client_allowed_scopes: HashSet<&str> =
         client.allowed_scopes.iter().map(String::as_str).collect();
-    let granted_scopes: Vec<String> = body
-        .approved_scopes
-        .into_iter()
-        .filter(|s| {
-            requested_scopes.contains(s.as_str()) && client_allowed_scopes.contains(s.as_str())
-        })
-        .collect();
+    let granted_scopes = grantable_scopes(
+        body.approved_scopes,
+        &requested_scopes,
+        &client_allowed_scopes,
+    );
     if granted_scopes.is_empty() {
-        // No requested scopes were approved — treat as a deny.
-        state
-            .store
-            .deny_authorization_request(&device_request.id)
-            .map_err(|e| HandlerError::internal("deny_authorization_request failed", e))?;
-        return Ok(Json(ConsentResult::Denied));
+        // No requested-and-allowed scopes were approved — treat as a deny.
+        return deny_consent(&state, &device_request.id);
     }
     let approved = state
         .store
-        .approve_authorization_request(&device_request.id, &granted_scopes, None)
+        .approve_authorization_request(&device_request.id, &granted_scopes, body.patient.as_deref())
         .map_err(|e| HandlerError::internal("approve_authorization_request failed", e))?;
     if !approved {
         // No longer pending (concurrently consumed/denied/expired) — treat as gone.

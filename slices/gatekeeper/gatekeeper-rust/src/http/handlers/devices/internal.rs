@@ -3,7 +3,7 @@
 //! `deny`) live in sibling modules and pull what they need from here.
 
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::http::response_templates::HandlerError;
@@ -18,21 +18,6 @@ pub struct DeviceConsent {
     pub client_id: String,
     pub client_name: String,
     pub requested_scopes: Vec<String>,
-}
-
-/// Body posted by the Owner UI to approve a device-code consent prompt.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApproveBody {
-    pub approved_scopes: Vec<String>,
-}
-
-/// Result the Owner UI sees after approving or denying a device-code consent.
-#[derive(Debug, Serialize)]
-#[serde(tag = "status", rename_all = "lowercase")]
-pub enum ConsentResult {
-    Approved,
-    Denied,
 }
 
 /// Load the authorization request for `user_code` and verify it's a pending

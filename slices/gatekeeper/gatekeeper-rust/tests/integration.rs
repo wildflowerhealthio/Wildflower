@@ -1100,6 +1100,49 @@ async fn device_consent_clamps_granted_scopes_to_client_allowed() {
     assert_eq!(token["scope"], "read");
 }
 
+/// Device-flow consent now threads an optional `patient` from the approve body
+/// onto the approved request (the code flow already did). Locks in the one live
+/// behavior change of the consent-dedup refactor: with the shared `ApproveBody`
+/// the device endpoint *honors* a posted `patient`, so a device UI that selects
+/// a patient binds it to the grant. The device UI doesn't send `patient` yet,
+/// so this is the only test that exercises the wired-through path.
+#[tokio::test]
+async fn device_consent_threads_patient_onto_request() {
+    let (g, host_owner_token, tmp) = spin_up();
+    seed_client_with_redirect(&tmp, "device-client", "https://app.example/cb", &["read"]);
+    plant_device_request(
+        &store_handle(&tmp),
+        "device-client",
+        "dev-patient",
+        &["read"],
+        RequestStatus::Pending,
+        Utc::now() + Duration::minutes(5),
+    );
+
+    // The Owner approves and selects a patient context.
+    let approve = loopback_request(
+        Request::post("/access/devices/WILD-FLWR/approve")
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("content-type", "application/json"),
+        Body::from(r#"{"approvedScopes":["read"],"patient":"Patient/123"}"#),
+    );
+    let res = g.router.clone().oneshot(approve).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({ "status": "approved" })
+    );
+
+    // The posted patient is persisted onto the now-approved request.
+    let request = store_handle(&tmp)
+        .authorization_request_by_id("dev-patient")
+        .expect("query request")
+        .expect("request present");
+    assert_eq!(request.status, RequestStatus::Approved);
+    assert_eq!(request.patient.as_deref(), Some("Patient/123"));
+}
+
 /// A client restricted to a grant-type subset is refused a grant outside it
 /// (RFC 6749 §5.2 `unauthorized_client`). Here a code-only client is rejected
 /// at the refresh-token grant before any token lookup.
