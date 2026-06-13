@@ -71,6 +71,21 @@ impl GatekeeperStore {
             .optional()
     }
 
+    /// Whether an active signing key exists, without loading its (private) key
+    /// material — a cheap presence probe for callers that only need to know a
+    /// token *can* be minted (the mint path loads the key itself).
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if the query fails.
+    pub fn has_active_signing_key(&self) -> DbResult<bool> {
+        self.conn().lock().query_row(
+            "SELECT EXISTS(SELECT 1 FROM signing_keys WHERE is_active = 1)",
+            params![],
+            |row| row.get(0),
+        )
+    }
+
     /// Persist a signing key.
     ///
     /// # Errors

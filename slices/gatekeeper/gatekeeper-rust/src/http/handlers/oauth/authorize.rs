@@ -119,10 +119,12 @@ async fn handle_authorize_request(
     // capability. Probe presence directly rather than loading every key's
     // private material just to test emptiness; the mint path fetches
     // `active_signing_key()` anyway.
-    match state.store.active_signing_key() {
-        Ok(Some(_)) => {}
-        Ok(None) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
-        Err(e) => return response_templates::internal_error("active_signing_key lookup failed", e),
+    match state.store.has_active_signing_key() {
+        Ok(true) => {}
+        Ok(false) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        Err(e) => {
+            return response_templates::internal_error("has_active_signing_key probe failed", e)
+        }
     }
 
     // Validate in two phases: client/redirect_uri first (failures render a
