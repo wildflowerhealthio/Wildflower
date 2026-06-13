@@ -167,8 +167,19 @@ impl GatekeeperStore {
     /// Returns an error if the insert fails (for example a unique-constraint
     /// violation on the id).
     pub fn insert_authorization_request(&self, request: &AuthorizationRequest) -> DbResult<()> {
+        let guard = self.conn().lock();
+        // Opportunistically prune expired requests before inserting, so a
+        // caller hitting /authorize or /device_authorization can't grow the
+        // table without bound — nothing else transitions abandoned rows out,
+        // and there is no background reaper. Best-effort cleanup keyed on the
+        // 5-minute request TTL; the prune runs first so it also clears a stale
+        // row that would otherwise collide on the pending-user_code index.
+        guard.execute(
+            "DELETE FROM authorization_requests WHERE expires_at < ?1",
+            params![Utc::now()],
+        )?;
         let params = make_named_sql_params(request);
-        self.conn().lock().execute(
+        guard.execute(
             &build_insert_sql("authorization_requests", &params),
             &params,
         )?;
@@ -353,7 +364,9 @@ mod tests {
             code_challenge_method: None,
             redirect_uri: None,
             client_state: None,
-            user_code: Some("WILD-FLWR".to_string()),
+            // Distinct per id so two pending rows don't collide on the
+            // pending-user_code partial unique index in multi-row tests.
+            user_code: Some(format!("UC-{id}")),
             pre_approved_scopes: JsonColumn(vec![]),
             requested_at: now,
             expires_at: now + chrono::Duration::minutes(5),
@@ -362,6 +375,34 @@ mod tests {
             granted_scopes: Some(JsonColumn(vec!["openid".to_string()])),
             patient: None,
         }
+    }
+
+    // insert_authorization_request opportunistically prunes expired rows, so a
+    // caller hitting /authorize or /device_authorization can't grow the table
+    // without bound (C16).
+    #[test]
+    fn insert_prunes_expired_authorization_requests() {
+        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let mut expired = device_request_with_status("expired-1", RequestStatus::Pending);
+        expired.expires_at = Utc::now() - chrono::Duration::minutes(1);
+        store
+            .insert_authorization_request(&expired)
+            .expect("insert expired");
+        // The next insert prunes the now-expired row.
+        store
+            .insert_authorization_request(&device_request_with_status(
+                "fresh-1",
+                RequestStatus::Pending,
+            ))
+            .expect("insert fresh");
+        assert!(store
+            .authorization_request_by_id("expired-1")
+            .expect("query")
+            .is_none());
+        assert!(store
+            .authorization_request_by_id("fresh-1")
+            .expect("query")
+            .is_some());
     }
 
     // Single-use enforcement for the device-code grant (RFC 8628 §3.4): the
