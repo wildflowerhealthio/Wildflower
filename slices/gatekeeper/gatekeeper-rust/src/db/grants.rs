@@ -1,39 +1,22 @@
 use chrono::{DateTime, Utc};
-use rusqlite::{params, OptionalExtension, Row, ToSql};
+use rusqlite::{params, OptionalExtension};
 use url::Url;
 
 use uuid::Uuid;
 
 use crate::db_utils::sql_builder::build_insert_sql;
-use crate::db_utils::{DbResult, GatekeeperStore, JsonColumn, UriColumn};
+use crate::db_utils::{sql_row, DbResult, GatekeeperStore, JsonColumn, UriColumn};
 use crate::domain::grant::Grant;
 
-fn make_named_sql_params(grant: &Grant) -> [(&str, &dyn ToSql); 7] {
-    [
-        (":id", &grant.id),
-        (":client_id", &grant.client_id),
-        (":scopes", &grant.scopes),
-        (":redirect_uri", &grant.redirect_uri),
-        (":granted_at", &grant.granted_at),
-        (":last_used_at", &grant.last_used_at),
-        (":patient", &grant.patient),
-    ]
-}
-
-impl TryFrom<&Row<'_>> for Grant {
-    type Error = rusqlite::Error;
-    fn try_from(row: &Row<'_>) -> rusqlite::Result<Self> {
-        Ok(Grant {
-            id: row.get("id")?,
-            client_id: row.get("client_id")?,
-            scopes: row.get("scopes")?,
-            redirect_uri: row.get("redirect_uri")?,
-            granted_at: row.get("granted_at")?,
-            last_used_at: row.get("last_used_at")?,
-            patient: row.get("patient")?,
-        })
-    }
-}
+sql_row!(Grant {
+    id,
+    client_id,
+    scopes,
+    redirect_uri,
+    granted_at,
+    last_used_at,
+    patient,
+});
 
 const ALL_COLS: &str = "id, client_id, scopes, redirect_uri, granted_at, last_used_at, patient";
 

@@ -1,10 +1,13 @@
 use chrono::{DateTime, Utc};
-use rusqlite::{params, OptionalExtension, Row, ToSql};
+use rusqlite::{params, OptionalExtension, ToSql};
 
 use crate::db_utils::sql_builder::build_insert_sql;
-use crate::db_utils::{DbResult, GatekeeperStore};
+use crate::db_utils::{sql_row, DbResult, GatekeeperStore};
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 
+// `RefreshTokenFamily` is mapped by hand: its read path is a JOIN aliasing
+// `f.issued_at AS family_issued_at` (see `refresh_token_with_family_by_hash`),
+// columns the field-name-keyed `sql_row!` `TryFrom` couldn't read.
 fn family_named_sql_params(family: &RefreshTokenFamily) -> [(&str, &dyn ToSql); 7] {
     [
         (":family_id", &family.family_id),
@@ -17,26 +20,18 @@ fn family_named_sql_params(family: &RefreshTokenFamily) -> [(&str, &dyn ToSql); 
     ]
 }
 
-fn token_named_sql_params(token: &RefreshToken) -> [(&str, &dyn ToSql); 4] {
-    [
-        (":token_hash", &token.token_hash),
-        (":family_id", &token.family_id),
-        (":issued_at", &token.issued_at),
-        (":consumed_at", &token.consumed_at),
-    ]
-}
-
-impl TryFrom<&Row<'_>> for RefreshToken {
-    type Error = rusqlite::Error;
-    fn try_from(row: &Row<'_>) -> rusqlite::Result<Self> {
-        Ok(RefreshToken {
-            token_hash: row.get("token_hash")?,
-            family_id: row.get("family_id")?,
-            issued_at: row.get("issued_at")?,
-            consumed_at: row.get("consumed_at")?,
-        })
-    }
-}
+// `RefreshToken` is uniform; its params builder keeps the `token_named_sql_params`
+// name (the module also owns the hand-written family builder above, so the
+// default `make_named_sql_params` name would collide).
+sql_row!(
+    RefreshToken {
+        token_hash,
+        family_id,
+        issued_at,
+        consumed_at,
+    },
+    token_named_sql_params
+);
 
 /// Outcome of attempting to consume a refresh token.
 pub enum RefreshTokenConsumeOutcome {

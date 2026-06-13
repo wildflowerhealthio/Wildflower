@@ -1,39 +1,20 @@
-use rusqlite::{params, OptionalExtension, Row, ToSql};
+use rusqlite::{params, OptionalExtension};
 
 use crate::db_utils::sql_builder::build_insert_sql;
-use crate::db_utils::{DbResult, GatekeeperStore};
+use crate::db_utils::{sql_row, DbResult, GatekeeperStore};
 use crate::domain::authorization_code::AuthorizationCode;
 
-fn make_named_sql_params(code: &AuthorizationCode) -> [(&str, &dyn ToSql); 9] {
-    [
-        (":code", &code.code),
-        (":request_id", &code.request_id),
-        (":client_id", &code.client_id),
-        (":redirect_uri", &code.redirect_uri),
-        (":code_challenge", &code.code_challenge),
-        (":granted_scopes", &code.granted_scopes),
-        (":patient", &code.patient),
-        (":issued_at", &code.issued_at),
-        (":expires_at", &code.expires_at),
-    ]
-}
-
-impl TryFrom<&Row<'_>> for AuthorizationCode {
-    type Error = rusqlite::Error;
-    fn try_from(row: &Row<'_>) -> rusqlite::Result<Self> {
-        Ok(AuthorizationCode {
-            code: row.get("code")?,
-            request_id: row.get("request_id")?,
-            client_id: row.get("client_id")?,
-            redirect_uri: row.get("redirect_uri")?,
-            code_challenge: row.get("code_challenge")?,
-            granted_scopes: row.get("granted_scopes")?,
-            patient: row.get("patient")?,
-            issued_at: row.get("issued_at")?,
-            expires_at: row.get("expires_at")?,
-        })
-    }
-}
+sql_row!(AuthorizationCode {
+    code,
+    request_id,
+    client_id,
+    redirect_uri,
+    code_challenge,
+    granted_scopes,
+    patient,
+    issued_at,
+    expires_at,
+});
 
 const ALL_COLS: &str =
     "code, request_id, client_id, redirect_uri, code_challenge, granted_scopes, patient, issued_at, expires_at";

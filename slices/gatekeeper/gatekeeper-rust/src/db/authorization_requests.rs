@@ -1,10 +1,10 @@
 use chrono::{DateTime, Utc};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
-use rusqlite::{params, OptionalExtension, Row, ToSql};
+use rusqlite::{params, OptionalExtension, ToSql};
 
 use crate::db_utils::sql_builder::build_insert_sql;
 use crate::db_utils::JsonColumn;
-use crate::db_utils::{DbResult, GatekeeperStore};
+use crate::db_utils::{sql_row, DbResult, GatekeeperStore};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 
 impl ToSql for GrantType {
@@ -39,50 +39,24 @@ impl FromSql for RequestStatus {
     }
 }
 
-fn make_named_sql_params(request: &AuthorizationRequest) -> [(&str, &dyn ToSql); 16] {
-    [
-        (":id", &request.id),
-        (":grant_type", &request.grant_type),
-        (":client_id", &request.client_id),
-        (":requested_scopes", &request.requested_scopes),
-        (":code_challenge", &request.code_challenge),
-        (":code_challenge_method", &request.code_challenge_method),
-        (":redirect_uri", &request.redirect_uri),
-        (":client_state", &request.client_state),
-        (":user_code", &request.user_code),
-        (":pre_approved_scopes", &request.pre_approved_scopes),
-        (":requested_at", &request.requested_at),
-        (":expires_at", &request.expires_at),
-        (":last_polled_at", &request.last_polled_at),
-        (":status", &request.status),
-        (":granted_scopes", &request.granted_scopes),
-        (":patient", &request.patient),
-    ]
-}
-
-impl TryFrom<&Row<'_>> for AuthorizationRequest {
-    type Error = rusqlite::Error;
-    fn try_from(row: &Row<'_>) -> rusqlite::Result<Self> {
-        Ok(AuthorizationRequest {
-            id: row.get("id")?,
-            grant_type: row.get("grant_type")?,
-            client_id: row.get("client_id")?,
-            requested_scopes: row.get("requested_scopes")?,
-            code_challenge: row.get("code_challenge")?,
-            code_challenge_method: row.get("code_challenge_method")?,
-            redirect_uri: row.get("redirect_uri")?,
-            client_state: row.get("client_state")?,
-            user_code: row.get("user_code")?,
-            pre_approved_scopes: row.get("pre_approved_scopes")?,
-            requested_at: row.get("requested_at")?,
-            expires_at: row.get("expires_at")?,
-            last_polled_at: row.get("last_polled_at")?,
-            status: row.get("status")?,
-            granted_scopes: row.get("granted_scopes")?,
-            patient: row.get("patient")?,
-        })
-    }
-}
+sql_row!(AuthorizationRequest {
+    id,
+    grant_type,
+    client_id,
+    requested_scopes,
+    code_challenge,
+    code_challenge_method,
+    redirect_uri,
+    client_state,
+    user_code,
+    pre_approved_scopes,
+    requested_at,
+    expires_at,
+    last_polled_at,
+    status,
+    granted_scopes,
+    patient,
+});
 
 const ALL_COLS: &str =
     "id, grant_type, client_id, requested_scopes, code_challenge, code_challenge_method, redirect_uri, \
