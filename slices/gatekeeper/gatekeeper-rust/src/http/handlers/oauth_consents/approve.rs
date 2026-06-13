@@ -6,12 +6,13 @@ use axum::Json;
 use chrono::Utc;
 
 use super::internal::{
-    grantable_scopes, load_pending_authorization_code_request, upsert_grant, ApproveBody,
-    ConsentResult, PendingCodeConsent, AUTHORIZATION_CODE_TTL,
+    load_pending_authorization_code_request, upsert_grant, PendingCodeConsent,
+    AUTHORIZATION_CODE_TTL,
 };
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::db_utils::{JsonColumn, UriColumn};
 use crate::domain::authorization_code::AuthorizationCode;
+use crate::http::handlers::consent::{deny_consent, grantable_scopes, ApproveBody, ConsentResult};
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 
@@ -53,11 +54,7 @@ async fn handle_approve_oauth_consent(
     let granted_scopes = grantable_scopes(body.approved_scopes, &requested, &allowed);
     if granted_scopes.is_empty() {
         // No requested-and-allowed scopes were approved — treat as a deny.
-        state
-            .store
-            .deny_authorization_request(&id)
-            .map_err(|e| HandlerError::internal("deny_authorization_request failed", e))?;
-        return Ok(Json(ConsentResult::Denied));
+        return deny_consent(&state, &id);
     }
 
     let approved = state

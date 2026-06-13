@@ -2,7 +2,8 @@ use axum::extract::{Extension, Path};
 use axum::routing::{post, MethodRouter};
 use axum::Json;
 
-use super::internal::{load_pending_authorization_code_request, ConsentResult};
+use super::internal::load_pending_authorization_code_request;
+use crate::http::handlers::consent::{deny_consent, ConsentResult};
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 
@@ -16,9 +17,5 @@ async fn handle_deny_oauth_consent(
     Path(id): Path<String>,
 ) -> Result<Json<ConsentResult>, HandlerError> {
     load_pending_authorization_code_request(&state, &id)?;
-    state
-        .store
-        .deny_authorization_request(&id)
-        .map_err(|e| HandlerError::internal("deny_authorization_request failed", e))?;
-    Ok(Json(ConsentResult::Denied))
+    deny_consent(&state, &id)
 }

@@ -3,10 +3,8 @@
 //! per-route handlers (`get`, `approve`, `deny`) live in sibling modules and
 //! pull what they need from here.
 
-use std::collections::HashSet;
-
 use chrono::{Duration, Utc};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use url::Url;
 
 use crate::db_utils::{DbResult, UriColumn};
@@ -42,22 +40,6 @@ pub struct OAuthConsent {
     pub redirect_uri: Url,
     pub pre_approved_scopes: Vec<String>,
     pub patient: Option<String>,
-}
-
-/// Body posted by the Owner UI to approve a consent prompt.
-#[derive(Debug, Deserialize)]
-pub struct ApproveBody {
-    #[serde(rename = "approvedScopes")]
-    pub approved_scopes: Vec<String>,
-    pub patient: Option<String>,
-}
-
-/// Result the Owner UI sees after approving or denying a consent prompt.
-#[derive(Debug, Serialize)]
-#[serde(tag = "status", rename_all = "lowercase")]
-pub enum ConsentResult {
-    Approved,
-    Denied,
 }
 
 /// Load the authorization request for `id` and verify it's a pending,
@@ -114,18 +96,4 @@ pub(super) fn upsert_grant(
     state
         .store
         .upsert_grant(client_id, redirect_uri, scopes, patient, Utc::now())
-}
-
-/// True when at least one of `approved` is both requested and allowed — the
-/// scopes an Owner approval can actually grant. Used by the `approve` handler
-/// to clamp the Owner's selection (they can only narrow, never widen).
-pub(super) fn grantable_scopes(
-    approved: Vec<String>,
-    requested: &HashSet<&str>,
-    allowed: &HashSet<&str>,
-) -> Vec<String> {
-    approved
-        .into_iter()
-        .filter(|s| requested.contains(s.as_str()) && allowed.contains(s.as_str()))
-        .collect()
 }
