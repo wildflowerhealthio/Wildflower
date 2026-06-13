@@ -17,8 +17,8 @@ use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authorization_request::{AuthorizationRequest, StartDeviceAuthorizationArgs};
 use crate::http::page_paths;
-use crate::http::served_origin_for;
 use crate::http::state::AppState;
+use crate::http::ServedOrigin;
 
 /// Lifetime of a device-flow authorization request — the user has this long
 /// to enter their `user_code` before the flow expires.
@@ -66,23 +66,24 @@ pub(super) fn route() -> MethodRouter<AppState> {
 /// [`DeviceAuthorizationResponse`], `Err` via [`TokenError`].
 async fn handle_device_authorization_request(
     State(state): State<AppState>,
+    origin: ServedOrigin,
     headers: HeaderMap,
     body: String,
 ) -> Response {
-    device_authorization(&state, &headers, &body).into_response()
+    device_authorization(&state, &origin, &headers, &body).into_response()
 }
 
 /// Validate the request, authenticate the client, and mint a
 /// `(device_code, user_code)` pair, surfacing every failure as a [`TokenError`].
 fn device_authorization(
     state: &AppState,
+    origin: &ServedOrigin,
     headers: &HeaderMap,
     body: &str,
 ) -> Result<DeviceAuthorizationResponse, TokenError> {
     let payload: DeviceAuthorizationPayload = serde_urlencoded::from_str(body).map_err(|_| {
         TokenError::bad_request(error_codes::INVALID_REQUEST, Some("Malformed payload"))
     })?;
-    let origin = served_origin_for(headers, &state.loopback_origin);
     let origin = origin.as_str();
     let requested_scopes: Vec<String> = payload
         .scope

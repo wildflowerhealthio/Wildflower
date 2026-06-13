@@ -23,8 +23,8 @@ use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
 use crate::domain::client::AllowedGrantType;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
-use crate::http::served_origin_for;
 use crate::http::state::AppState;
+use crate::http::ServedOrigin;
 
 /// Body of an RFC 6749 / RFC 8628 token endpoint request, dispatched by the
 /// wire-level `grant_type` field. Client credentials are not parsed here —
@@ -61,16 +61,18 @@ pub(super) fn route() -> MethodRouter<AppState> {
 /// [`TokenResponse`], `Err` via [`TokenError`].
 async fn handle_token_request(
     State(state): State<AppState>,
+    origin: ServedOrigin,
     headers: HeaderMap,
     body: String,
 ) -> Response {
-    dispatch_token_request(&state, &headers, &body).into_response()
+    dispatch_token_request(&state, &origin, &headers, &body).into_response()
 }
 
 /// Parse the grant, resolve client credentials, and dispatch on `grant_type`,
 /// surfacing every failure as a [`TokenError`].
 fn dispatch_token_request(
     state: &AppState,
+    origin: &ServedOrigin,
     headers: &HeaderMap,
     body: &str,
 ) -> Result<TokenResponse, TokenError> {
@@ -82,7 +84,7 @@ fn dispatch_token_request(
     // RFC 6749 §2.3.1: Basic header first, body params as fallback; a secret
     // presented both ways is rejected before any grant work happens.
     let presented_credentials = resolve_client_credentials(headers, body)?;
-    let origin = served_origin_for(headers, &state.loopback_origin);
+    let origin = origin.as_str();
     match payload {
         TokenPayload::AuthorizationCode {
             code,
@@ -90,7 +92,7 @@ fn dispatch_token_request(
             redirect_uri,
         } => exchange_authorization_code(
             state,
-            &origin,
+            origin,
             &presented_credentials,
             &AuthorizationCodeGrant {
                 code: &code,
@@ -99,10 +101,10 @@ fn dispatch_token_request(
             },
         ),
         TokenPayload::DeviceCode { device_code } => {
-            exchange_device_code(state, &origin, &presented_credentials, &device_code)
+            exchange_device_code(state, origin, &presented_credentials, &device_code)
         }
         TokenPayload::RefreshToken { refresh_token } => {
-            exchange_refresh_token(state, &origin, &presented_credentials, &refresh_token)
+            exchange_refresh_token(state, origin, &presented_credentials, &refresh_token)
         }
     }
 }

@@ -12,7 +12,7 @@ mod page_paths;
 mod response_templates;
 mod state;
 
-pub(crate) use origin::served_origin_for;
+pub(crate) use origin::{served_origin_for, ServedOrigin};
 pub use state::AppState;
 
 use axum::middleware as axum_middleware;

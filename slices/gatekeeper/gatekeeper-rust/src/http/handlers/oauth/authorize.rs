@@ -1,5 +1,5 @@
 use axum::extract::{Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, MethodRouter};
 use chrono::{Duration, Utc};
@@ -17,8 +17,8 @@ use crate::domain::client::Client;
 use crate::http::error_pages::{oauth_error_html, OAuthErrorKind};
 use crate::http::page_paths;
 use crate::http::response_templates;
-use crate::http::served_origin_for;
 use crate::http::state::AppState;
+use crate::http::ServedOrigin;
 
 /// A `code_challenge` for the S256 method is the base64url SHA-256 digest:
 /// exactly 43 unpadded base64url characters (RFC 7636 §4.2).
@@ -160,10 +160,9 @@ pub(super) fn route() -> MethodRouter<AppState> {
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
 async fn handle_authorize_request(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    origin: ServedOrigin,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
-    let origin = served_origin_for(&headers, &state.loopback_origin);
     ensure_active_signing_key(&state)?;
 
     // Validate in two phases: client/redirect_uri first (failures render a
@@ -213,7 +212,7 @@ async fn handle_authorize_request(
     }
 
     // Otherwise redirect to the Owner UI's polling page so a human can approve.
-    let polling_url = page_paths::oauth_polling_url(&origin, &request_id);
+    let polling_url = page_paths::oauth_polling_url(origin.as_str(), &request_id);
     Ok(found_redirect(&polling_url))
 }
 
