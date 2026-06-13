@@ -20,7 +20,7 @@ async fn handle_approve_device_consent(
     Json(body): Json<ApproveBody>,
 ) -> Result<Json<ConsentResult>, HandlerError> {
     let device_request = load_pending_device_request(&state, &user_code)?;
-    let requested: HashSet<&str> = device_request
+    let requested_scopes: HashSet<&str> = device_request
         .requested_scopes
         .iter()
         .map(String::as_str)
@@ -37,11 +37,14 @@ async fn handle_approve_device_consent(
         // The request can't be approved against a client that no longer
         // exists — treat it as gone.
         .ok_or_else(|| HandlerError::not_found("DeviceConsentNotFound", "userCode", &user_code))?;
-    let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
+    let client_allowed_scopes: HashSet<&str> =
+        client.allowed_scopes.iter().map(String::as_str).collect();
     let granted_scopes: Vec<String> = body
         .approved_scopes
         .into_iter()
-        .filter(|s| requested.contains(s.as_str()) && allowed.contains(s.as_str()))
+        .filter(|s| {
+            requested_scopes.contains(s.as_str()) && client_allowed_scopes.contains(s.as_str())
+        })
         .collect();
     if granted_scopes.is_empty() {
         // No requested scopes were approved — treat as a deny.
