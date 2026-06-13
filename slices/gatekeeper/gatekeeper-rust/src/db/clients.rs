@@ -1,8 +1,8 @@
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
-use rusqlite::{params, OptionalExtension, Row, ToSql};
+use rusqlite::{params, OptionalExtension, ToSql};
 
 use crate::db_utils::sql_builder::build_insert_sql;
-use crate::db_utils::{DbResult, GatekeeperStore};
+use crate::db_utils::{sql_row, DbResult, GatekeeperStore};
 use crate::domain::client::{Client, ClientKind};
 
 const ALL_COLS: &str =
@@ -25,36 +25,17 @@ impl FromSql for ClientKind {
     }
 }
 
-impl TryFrom<&Row<'_>> for Client {
-    type Error = rusqlite::Error;
-    fn try_from(row: &Row<'_>) -> rusqlite::Result<Self> {
-        Ok(Client {
-            client_id: row.get("client_id")?,
-            name: row.get("name")?,
-            kind: row.get("kind")?,
-            redirect_uris: row.get("redirect_uris")?,
-            allowed_scopes: row.get("allowed_scopes")?,
-            allowed_grant_types: row.get("allowed_grant_types")?,
-            secret_hash: row.get("secret_hash")?,
-            registered_at: row.get("registered_at")?,
-            disabled_at: row.get("disabled_at")?,
-        })
-    }
-}
-
-fn make_named_sql_params(client: &Client) -> [(&str, &dyn ToSql); 9] {
-    [
-        (":client_id", &client.client_id),
-        (":name", &client.name),
-        (":kind", &client.kind),
-        (":redirect_uris", &client.redirect_uris),
-        (":allowed_scopes", &client.allowed_scopes),
-        (":allowed_grant_types", &client.allowed_grant_types),
-        (":secret_hash", &client.secret_hash),
-        (":registered_at", &client.registered_at),
-        (":disabled_at", &client.disabled_at),
-    ]
-}
+sql_row!(Client {
+    client_id,
+    name,
+    kind,
+    redirect_uris,
+    allowed_scopes,
+    allowed_grant_types,
+    secret_hash,
+    registered_at,
+    disabled_at,
+});
 
 impl GatekeeperStore {
     /// Look up a registered client by its `client_id`.
