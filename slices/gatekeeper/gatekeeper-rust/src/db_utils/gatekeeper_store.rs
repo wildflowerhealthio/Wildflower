@@ -49,6 +49,15 @@ impl GatekeeperStore {
     /// in the shared `Connection` mutex. Shared tail of `open` /
     /// `open_in_memory`.
     fn migrate_and_wrap(mut conn: rusqlite::Connection) -> anyhow::Result<Self> {
+        // Enforce declared foreign keys (e.g. refresh_tokens.family_id ->
+        // refresh_token_families). SQLite defaults this OFF *per connection* and
+        // rusqlite does not enable it, so the `REFERENCES` clauses were
+        // previously decorative — an orphaned refresh token could be inserted
+        // and would then read as "not found" instead of resolving to its
+        // family. Set it before migrations and outside any transaction (the
+        // pragma is a no-op inside one).
+        conn.pragma_update(None, "foreign_keys", true)
+            .context("failed to enable foreign_keys pragma")?;
         migrations::migrate(&mut conn).context("failed to apply gatekeeper migrations")?;
         Ok(Self {
             conn: Connection::from_inner(conn),

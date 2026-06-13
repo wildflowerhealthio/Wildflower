@@ -390,6 +390,26 @@ mod tests {
         ));
     }
 
+    // Foreign-key enforcement (`PRAGMA foreign_keys = ON`): a refresh token
+    // whose family does not exist is rejected at insert time instead of
+    // becoming an orphan that later reads as "not found" (so a genuine replay
+    // of such a token would fail to revoke anything).
+    #[test]
+    fn insert_refresh_token_rejects_orphan_without_family() {
+        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let err = store
+            .insert_refresh_token(&sample_token("orphan", "no-such-family"))
+            .expect_err("orphan insert must violate the foreign key");
+        assert!(
+            matches!(
+                err,
+                rusqlite::Error::SqliteFailure(e, _)
+                    if e.code == rusqlite::ErrorCode::ConstraintViolation
+            ),
+            "expected a foreign-key constraint violation, got {err:?}"
+        );
+    }
+
     fn sample_family(family_id: &str, client_id: &str) -> RefreshTokenFamily {
         RefreshTokenFamily {
             family_id: family_id.to_string(),
