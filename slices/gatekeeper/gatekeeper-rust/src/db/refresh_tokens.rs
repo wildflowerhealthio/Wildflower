@@ -216,12 +216,12 @@ impl GatekeeperStore {
     ) -> DbResult<RefreshTokenConsumeOutcome> {
         let mut guard = self.conn().lock();
         let tx = guard.transaction()?;
-        let affected = tx.execute(
+        let consumed_refresh_token_count = tx.execute(
             "UPDATE refresh_tokens SET consumed_at = ?2
              WHERE token_hash = ?1 AND consumed_at IS NULL",
             params![presented_hash, now],
         )?;
-        let outcome = if affected == 1 {
+        let outcome = if consumed_refresh_token_count == 1 {
             let params = token_named_sql_params(successor);
             tx.execute(&build_insert_sql("refresh_tokens", &params), &params)?;
             RefreshTokenConsumeOutcome::Consumed
