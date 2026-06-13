@@ -213,18 +213,28 @@ impl GatekeeperStore {
         Ok(())
     }
 
-    /// Mark `id` expired — used both for genuine timeouts and to enforce the
-    /// device-flow single-use rule after a successful token exchange.
+    /// Atomically claim an `approved` request for single-use redemption,
+    /// transitioning `approved` → `expired` only if it is still `approved`, and
+    /// return `true` iff this call won the race.
+    ///
+    /// The `status = 'approved'` guard plus the affected-row check are what make
+    /// device-flow redemption single-use (RFC 8628 §3.4) even under concurrent
+    /// polls: `SQLite`'s write lock serialises the two `UPDATE`s, so exactly one
+    /// sees a row to change (`true`) and any racer sees zero rows (`false`) and
+    /// must be rejected before a token is minted. A plain unguarded `UPDATE …
+    /// SET status='expired'` (the previous implementation) could not detect that
+    /// another poll had already redeemed the request.
     ///
     /// # Errors
     ///
     /// Returns a `rusqlite::Error` if the update statement fails.
-    pub fn expire_authorization_request(&self, id: &str) -> DbResult<()> {
-        self.conn().lock().execute(
-            "UPDATE authorization_requests SET status = 'expired' WHERE id = ?1",
+    pub fn consume_approved_authorization_request(&self, id: &str) -> DbResult<bool> {
+        let affected = self.conn().lock().execute(
+            "UPDATE authorization_requests SET status = 'expired' \
+             WHERE id = ?1 AND status = 'approved'",
             params![id],
         )?;
-        Ok(())
+        Ok(affected == 1)
     }
 
     /// Stamp `last_polled_at` so the next device-flow poll can be slow-down
@@ -323,5 +333,78 @@ mod tests {
                 .expect("row present");
             prop_assert_eq!(fetched, request);
         }
+    }
+
+    fn device_request_with_status(id: &str, status: RequestStatus) -> AuthorizationRequest {
+        let now = Utc::now();
+        AuthorizationRequest {
+            id: id.to_string(),
+            grant_type: GrantType::DeviceCode,
+            client_id: "device-client".to_string(),
+            requested_scopes: JsonColumn(vec!["openid".to_string()]),
+            code_challenge: None,
+            code_challenge_method: None,
+            redirect_uri: None,
+            client_state: None,
+            user_code: Some("WILD-FLWR".to_string()),
+            pre_approved_scopes: JsonColumn(vec![]),
+            requested_at: now,
+            expires_at: now + chrono::Duration::minutes(5),
+            last_polled_at: None,
+            status,
+            granted_scopes: Some(JsonColumn(vec!["openid".to_string()])),
+            patient: None,
+        }
+    }
+
+    // Single-use enforcement for the device-code grant (RFC 8628 §3.4): the
+    // first claim of an approved request wins and transitions it out of
+    // `approved`; a second (the racing/duplicate poll) loses. This is the
+    // atomicity that stops two concurrent polls both minting tokens.
+    #[test]
+    fn consume_approved_authorization_request_is_single_use() {
+        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        store
+            .insert_authorization_request(&device_request_with_status(
+                "dev-1",
+                RequestStatus::Approved,
+            ))
+            .expect("insert");
+
+        assert!(store
+            .consume_approved_authorization_request("dev-1")
+            .expect("first claim query"));
+        assert!(!store
+            .consume_approved_authorization_request("dev-1")
+            .expect("second claim query"));
+
+        let after = store
+            .authorization_request_by_id("dev-1")
+            .expect("query")
+            .expect("row present");
+        assert_eq!(after.status, RequestStatus::Expired);
+    }
+
+    // A request that is not `approved` is never claimable and is left untouched
+    // — the guard transitions only `approved` → `expired`.
+    #[test]
+    fn consume_approved_authorization_request_ignores_non_approved() {
+        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        store
+            .insert_authorization_request(&device_request_with_status(
+                "dev-2",
+                RequestStatus::Pending,
+            ))
+            .expect("insert");
+
+        assert!(!store
+            .consume_approved_authorization_request("dev-2")
+            .expect("pending is not claimable"));
+
+        let after = store
+            .authorization_request_by_id("dev-2")
+            .expect("query")
+            .expect("row present");
+        assert_eq!(after.status, RequestStatus::Pending);
     }
 }

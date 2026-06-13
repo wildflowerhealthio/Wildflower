@@ -255,13 +255,24 @@ fn exchange_device_code(
         RequestStatus::Denied => return bad_request("access_denied", None),
         RequestStatus::Expired => return bad_request("expired_token", None),
     }
-    // single-use per RFC 8628 §3.4
-    if let Err(e) = state.store.expire_authorization_request(&request_record.id) {
-        return CacheSuppressed(response_templates::internal_error(
-            "expire_authorization_request failed",
-            e,
-        ))
-        .into_response();
+    // Single-use per RFC 8628 §3.4. The status read above is advisory; this
+    // atomic `approved` → `expired` claim is the real gate, so two concurrent
+    // polls of the same approved request can't both mint — the loser sees
+    // `Ok(false)` and is rejected before any token (or refresh family) is
+    // issued.
+    match state
+        .store
+        .consume_approved_authorization_request(&request_record.id)
+    {
+        Ok(true) => {}
+        Ok(false) => return bad_request("invalid_grant", Some("Device code already redeemed")),
+        Err(e) => {
+            return CacheSuppressed(response_templates::internal_error(
+                "consume_approved_authorization_request failed",
+                e,
+            ))
+            .into_response();
+        }
     }
     let granted_scopes: &[String] = request_record
         .granted_scopes
