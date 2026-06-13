@@ -872,7 +872,7 @@ async fn auth_code_grant_wrong_verifier_rejected() {
         body_json(res.into_body()).await,
         serde_json::json!({
             "error": "invalid_grant",
-            "error_description": "Invalid code_verifier parameter",
+            "error_description": "Invalid authorization grant",
         })
     );
 }
@@ -902,7 +902,7 @@ async fn auth_code_grant_expired_code_rejected() {
         body_json(res.into_body()).await,
         serde_json::json!({
             "error": "invalid_grant",
-            "error_description": "Code has expired",
+            "error_description": "Invalid authorization grant",
         })
     );
 }
@@ -934,7 +934,7 @@ async fn auth_code_grant_replay_rejected() {
         body_json(second.into_body()).await,
         serde_json::json!({
             "error": "invalid_grant",
-            "error_description": "Invalid code parameter",
+            "error_description": "Invalid authorization grant",
         })
     );
 }

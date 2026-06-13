@@ -161,7 +161,7 @@ fn exchange_authorization_code(
             {
                 return cache_suppressed_internal_error("expire_refresh_token_families_for_authorization_code failed", e);
             }
-            return bad_request("invalid_grant", Some("Invalid code parameter"));
+            return bad_request("invalid_grant", Some("Invalid authorization grant"));
         }
         Err(e) => {
             return cache_suppressed_internal_error("authorization_code redemption failed", e)
@@ -186,15 +186,19 @@ fn validate_code_and_issue_token(
     code_verifier: &str,
 ) -> Response {
     // RFC 6749 §5.2: code/redirect/client-binding and PKCE failures are all
-    // `invalid_grant` — the request is well-formed, the grant is not.
+    // `invalid_grant`. They share ONE generic description so the response
+    // doesn't reveal which check failed — distinguishing "wrong client" from
+    // "wrong redirect_uri" from "expired" from "bad PKCE verifier" would leak
+    // facts about a code that may belong to another client.
+    let invalid_grant = || bad_request("invalid_grant", Some("Invalid authorization grant"));
     if code_record.client_id != client_id {
-        return bad_request("invalid_grant", Some("Invalid client_id parameter"));
+        return invalid_grant();
     }
     if code_record.redirect_uri.0 != *redirect_uri {
-        return bad_request("invalid_grant", Some("Invalid redirect_uri parameter"));
+        return invalid_grant();
     }
     if code_record.expires_at < Utc::now() {
-        return bad_request("invalid_grant", Some("Code has expired"));
+        return invalid_grant();
     }
     let computed = compute_code_challenge(code_verifier);
     if !bool::from(
@@ -203,7 +207,7 @@ fn validate_code_and_issue_token(
             .as_bytes()
             .ct_eq(computed.as_bytes()),
     ) {
-        return bad_request("invalid_grant", Some("Invalid code_verifier parameter"));
+        return invalid_grant();
     }
     let refresh_token = match start_refresh_token_family_if_granted(
         state,
