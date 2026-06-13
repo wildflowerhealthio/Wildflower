@@ -316,16 +316,16 @@ impl GatekeeperStore {
         let mut guard = self.conn().lock();
         let tx = guard.transaction()?;
         tx.execute(
-            "UPDATE refresh_tokens SET consumed_at = ?2
+            "UPDATE refresh_tokens SET consumed_at = ?1
              WHERE consumed_at IS NULL AND family_id IN
                  (SELECT family_id FROM refresh_token_families
-                  WHERE authorization_code_hash = ?1)",
-            params![authorization_code_hash, now],
+                  WHERE authorization_code_hash = ?2)",
+            params![now, authorization_code_hash],
         )?;
         tx.execute(
-            "UPDATE refresh_token_families SET expires_at = ?2
-             WHERE authorization_code_hash = ?1",
-            params![authorization_code_hash, now],
+            "UPDATE refresh_token_families SET expires_at = ?1
+             WHERE authorization_code_hash = ?2",
+            params![now, authorization_code_hash],
         )?;
         tx.commit()
     }
