@@ -39,6 +39,10 @@ tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 tower-http.workspace = true
 
+# Opt the host into the workspace lints (notably `unsafe_code = "forbid"`).
+[lints]
+workspace = true
+
 [dev-dependencies]
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }

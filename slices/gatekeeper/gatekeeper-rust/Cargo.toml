@@ -27,6 +27,11 @@ url = { version = "2", features = ["serde"] }
 thiserror = "1"
 tokio = { workspace = true, features = ["sync"] }
 
+# Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`),
+# so a future `unsafe` block in the crypto/OAuth code is a compile error.
+[lints]
+workspace = true
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 proptest = "1"
