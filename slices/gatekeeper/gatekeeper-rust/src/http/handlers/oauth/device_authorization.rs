@@ -82,7 +82,6 @@ fn device_authorization(
         payload,
         credentials: presented_credentials,
     } = request;
-    let origin = origin.as_str();
     let requested_scopes: Vec<String> = payload
         .scope
         .as_deref()

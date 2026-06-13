@@ -33,8 +33,12 @@ fn try_get_header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str>
 /// forwarding headers falls back to `loopback_origin`.
 pub(crate) struct ServedOrigin(pub String);
 
-impl ServedOrigin {
-    pub(crate) fn as_str(&self) -> &str {
+impl std::ops::Deref for ServedOrigin {
+    type Target = str;
+
+    /// Lets a `ServedOrigin` flow straight into the `&str` the origin-consuming
+    /// helpers take (`&origin`), with no `as_str()` unwrap at each call site.
+    fn deref(&self) -> &Self::Target {
         &self.0
     }
 }

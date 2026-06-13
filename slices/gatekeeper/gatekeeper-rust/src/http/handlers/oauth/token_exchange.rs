@@ -78,7 +78,6 @@ fn dispatch_token_request(
         payload,
         credentials: presented_credentials,
     } = request;
-    let origin = origin.as_str();
     match payload {
         TokenPayload::AuthorizationCode {
             code,

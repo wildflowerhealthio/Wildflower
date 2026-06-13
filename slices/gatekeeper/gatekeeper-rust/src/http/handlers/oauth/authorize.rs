@@ -212,7 +212,7 @@ async fn handle_authorize_request(
     }
 
     // Otherwise redirect to the Owner UI's polling page so a human can approve.
-    let polling_url = page_paths::oauth_polling_url(origin.as_str(), &request_id);
+    let polling_url = page_paths::oauth_polling_url(&origin, &request_id);
     Ok(found_redirect(&polling_url))
 }
 
