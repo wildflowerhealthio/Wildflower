@@ -135,6 +135,25 @@ fn exchange_authorization_code(
     let code_record = match state.store.redeem_authorization_code(grant.code) {
         Ok(Some(r)) => r,
         Ok(None) => {
+            // The code is gone — either already redeemed or never issued. If a
+            // prior redemption minted a refresh-token family from this code,
+            // the reuse is a theft signal (RFC 6749 §4.1.2 / OAuth 2.1
+            // §4.1.2.1): revoke that lineage. A code that never existed, or one
+            // whose grant carried no `offline_access`, matches no family and
+            // this is a no-op.
+            if let Err(e) = state
+                .store
+                .expire_refresh_token_families_for_authorization_code(
+                    &token_storage_hash(grant.code),
+                    Utc::now(),
+                )
+            {
+                return CacheSuppressed(response_templates::internal_error(
+                    "expire_refresh_token_families_for_authorization_code failed",
+                    e,
+                ))
+                .into_response();
+            }
             return bad_request("invalid_grant", Some("Invalid code parameter"));
         }
         Err(e) => {
@@ -188,6 +207,7 @@ fn validate_code_and_issue_token(
         client_id,
         &code_record.granted_scopes,
         code_record.patient.as_deref(),
+        Some(code_record.code.as_str()),
     ) {
         Ok(t) => t,
         Err(response) => return *response,
@@ -283,6 +303,9 @@ fn exchange_device_code(
         &request_record.client_id,
         granted_scopes,
         request_record.patient.as_deref(),
+        // The device-code grant has no authorization code; its single-use is
+        // enforced by `consume_approved_authorization_request` above.
+        None,
     ) {
         Ok(t) => t,
         Err(response) => return *response,
@@ -310,6 +333,7 @@ fn start_refresh_token_family_if_granted(
     client_id: &str,
     granted_scopes: &[String],
     patient: Option<&str>,
+    authorization_code: Option<&str>,
 ) -> Result<Option<String>, Box<Response>> {
     if !granted_scopes.iter().any(|s| s == OFFLINE_ACCESS_SCOPE) {
         return Ok(None);
@@ -323,6 +347,10 @@ fn start_refresh_token_family_if_granted(
         patient: patient.map(str::to_string),
         issued_at: now,
         expires_at: now + REFRESH_TOKEN_FAMILY_TTL,
+        // Bind the family to the originating authorization code so a later
+        // replay of that code can revoke this lineage (RFC 6749 §4.1.2). The
+        // device-code grant carries no code and passes `None`.
+        authorization_code_hash: authorization_code.map(token_storage_hash),
     };
     let first_token = RefreshToken {
         token_hash: token_storage_hash(&plaintext),

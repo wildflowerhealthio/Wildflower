@@ -5,7 +5,7 @@ use crate::db_utils::sql_builder::build_insert_sql;
 use crate::db_utils::{DbResult, GatekeeperStore};
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 
-fn family_named_sql_params(family: &RefreshTokenFamily) -> [(&str, &dyn ToSql); 6] {
+fn family_named_sql_params(family: &RefreshTokenFamily) -> [(&str, &dyn ToSql); 7] {
     [
         (":family_id", &family.family_id),
         (":client_id", &family.client_id),
@@ -13,6 +13,7 @@ fn family_named_sql_params(family: &RefreshTokenFamily) -> [(&str, &dyn ToSql); 
         (":patient", &family.patient),
         (":issued_at", &family.issued_at),
         (":expires_at", &family.expires_at),
+        (":authorization_code_hash", &family.authorization_code_hash),
     ]
 }
 
@@ -112,7 +113,8 @@ impl GatekeeperStore {
             .query_row(
                 "SELECT t.token_hash, t.family_id, t.issued_at, t.consumed_at,
                         f.client_id, f.scopes, f.patient,
-                        f.issued_at AS family_issued_at, f.expires_at
+                        f.issued_at AS family_issued_at, f.expires_at,
+                        f.authorization_code_hash
                  FROM refresh_tokens t
                  JOIN refresh_token_families f ON f.family_id = t.family_id
                  WHERE t.token_hash = ?1",
@@ -126,6 +128,7 @@ impl GatekeeperStore {
                         patient: row.get("patient")?,
                         issued_at: row.get("family_issued_at")?,
                         expires_at: row.get("expires_at")?,
+                        authorization_code_hash: row.get("authorization_code_hash")?,
                     };
                     Ok((token, family))
                 },
@@ -246,6 +249,40 @@ impl GatekeeperStore {
         )?;
         tx.commit()
     }
+
+    /// End every refresh-token family minted from a given authorization code
+    /// (identified by the code's hash), with the same expire-and-stamp
+    /// semantics as [`Self::expire_refresh_token_family`]. Used by
+    /// authorization-code reuse detection (RFC 6749 §4.1.2): a detectably
+    /// replayed code revokes the refresh lineage its first redemption produced.
+    /// A code that never minted a family (no `offline_access`, or never
+    /// existed) matches no row and the call is a no-op.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if opening the transaction, either update,
+    /// or the commit fails.
+    pub fn expire_refresh_token_families_for_authorization_code(
+        &self,
+        authorization_code_hash: &str,
+        now: DateTime<Utc>,
+    ) -> DbResult<()> {
+        let mut guard = self.conn().lock();
+        let tx = guard.transaction()?;
+        tx.execute(
+            "UPDATE refresh_tokens SET consumed_at = ?2
+             WHERE consumed_at IS NULL AND family_id IN
+                 (SELECT family_id FROM refresh_token_families
+                  WHERE authorization_code_hash = ?1)",
+            params![authorization_code_hash, now],
+        )?;
+        tx.execute(
+            "UPDATE refresh_token_families SET expires_at = ?2
+             WHERE authorization_code_hash = ?1",
+            params![authorization_code_hash, now],
+        )?;
+        tx.commit()
+    }
 }
 
 #[cfg(test)]
@@ -263,9 +300,18 @@ mod tests {
             prop::option::of("[a-zA-Z0-9-]{1,32}"),
             arb_timestamp(),
             arb_timestamp(),
+            prop::option::of("[A-Za-z0-9_-]{43}"),
         )
             .prop_map(
-                |(family_id, client_id, scopes, patient, issued_at, expires_at)| {
+                |(
+                    family_id,
+                    client_id,
+                    scopes,
+                    patient,
+                    issued_at,
+                    expires_at,
+                    authorization_code_hash,
+                )| {
                     RefreshTokenFamily {
                         family_id,
                         client_id,
@@ -273,6 +319,7 @@ mod tests {
                         patient,
                         issued_at,
                         expires_at,
+                        authorization_code_hash,
                     }
                 },
             )
@@ -351,6 +398,7 @@ mod tests {
             patient: None,
             issued_at: Utc::now(),
             expires_at: Utc::now() + chrono::Duration::days(90),
+            authorization_code_hash: None,
         }
     }
 

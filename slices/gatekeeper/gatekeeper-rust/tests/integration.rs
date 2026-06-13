@@ -938,6 +938,61 @@ async fn auth_code_grant_replay_rejected() {
     );
 }
 
+/// Replaying a consumed authorization code revokes the refresh-token family it
+/// minted (RFC 6749 §4.1.2 / OAuth 2.1 §4.1.2.1): the first redemption returns
+/// a rotating refresh token; replaying the same code is rejected AND kills that
+/// lineage, so the previously-issued refresh token can no longer be rotated.
+#[tokio::test]
+async fn auth_code_replay_revokes_issued_refresh_family() {
+    let (g, _host_owner_token, tmp) = spin_up();
+    seed_client_with_redirect(
+        &tmp,
+        "test-app",
+        "https://app.example/cb",
+        &["read", "offline_access"],
+    );
+    plant_authorization_code(
+        &store_handle(&tmp),
+        "test-app",
+        &Url::parse("https://app.example/cb").unwrap(),
+        &["read", "offline_access"],
+        "reuse-code",
+        Utc::now() + Duration::minutes(1),
+    );
+    let redeem = "grant_type=authorization_code&client_id=test-app&code=reuse-code&\
+                  code_verifier=verifierverifierverifierverifierverifierabc&\
+                  redirect_uri=https%3A%2F%2Fapp.example%2Fcb";
+
+    // First redemption succeeds and hands back a rotating refresh token.
+    let first = post_form(&g.router, "/oauth/token", redeem).await;
+    assert_eq!(first.status(), StatusCode::OK);
+    let refresh_token = body_json(first.into_body())
+        .await
+        .get("refresh_token")
+        .and_then(Value::as_str)
+        .expect("refresh_token issued with offline_access")
+        .to_string();
+
+    // Replaying the same code is rejected.
+    let replay = post_form(&g.router, "/oauth/token", redeem).await;
+    assert_eq!(replay.status(), StatusCode::BAD_REQUEST);
+
+    // The refresh token from the first redemption is now revoked — rotating it
+    // fails because the replay killed its family.
+    let rotate_req = loopback_request(
+        Request::post("/oauth/token").header("content-type", "application/x-www-form-urlencoded"),
+        Body::from(format!(
+            "grant_type=refresh_token&client_id=test-app&refresh_token={refresh_token}"
+        )),
+    );
+    let rotate = g.router.clone().oneshot(rotate_req).await.expect("oneshot");
+    assert_eq!(rotate.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body_json(rotate.into_body()).await["error"],
+        "invalid_grant"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Device-code grant state machine (RFC 8628 §3.4/§3.5)
 // ---------------------------------------------------------------------------
@@ -1225,6 +1280,7 @@ fn plant_refresh_token(
                 patient: None,
                 issued_at: now,
                 expires_at: family_expires_at,
+                authorization_code_hash: None,
             },
             &RefreshToken {
                 token_hash: token_storage_hash(plaintext),

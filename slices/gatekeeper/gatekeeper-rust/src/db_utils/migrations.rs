@@ -30,6 +30,7 @@ pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/001_initial_schema.sql"),
     include_str!("../migrations/002_refresh_tokens.sql"),
+    include_str!("../migrations/003_refresh_family_authorization_code.sql"),
 ];
 
 #[cfg(test)]

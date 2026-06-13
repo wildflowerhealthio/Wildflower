@@ -22,6 +22,12 @@ pub struct RefreshTokenFamily {
     /// Absolute deadline for the whole family — rotation never extends it;
     /// past this the client must re-run the authorization flow.
     pub expires_at: DateTime<Utc>,
+    /// SHA-256 base64url hash of the authorization `code` that minted this
+    /// family, or `None` for grants with no authorization code (the
+    /// device-code flow). On a detected code replay the family is revoked via
+    /// this hash (RFC 6749 §4.1.2 / OAuth 2.1 §4.1.2.1). The plaintext code is
+    /// never stored.
+    pub authorization_code_hash: Option<String>,
 }
 
 /// One rotation of a refresh token. Presenting the plaintext at `/token`
