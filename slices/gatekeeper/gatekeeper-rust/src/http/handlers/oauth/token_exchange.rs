@@ -164,6 +164,11 @@ fn exchange_authorization_code(
                     e,
                 );
             }
+            // Consolidated under the generic `invalid_grant` response (C13);
+            // log the specific reason for operator debuggability.
+            tracing::warn!(
+                "authorization_code grant rejected: code not found or already redeemed (possible replay)"
+            );
             return bad_request("invalid_grant", Some("Invalid authorization grant"));
         }
         Err(e) => {
@@ -193,14 +198,31 @@ fn validate_code_and_issue_token(
     // doesn't reveal which check failed — distinguishing "wrong client" from
     // "wrong redirect_uri" from "expired" from "bad PKCE verifier" would leak
     // facts about a code that may belong to another client.
+    // These cases share the generic `invalid_grant` response (C13) so the
+    // client can't tell them apart; each logs its specific reason (no secrets —
+    // never the code, verifier, or challenge) so the operator can.
     let invalid_grant = || bad_request("invalid_grant", Some("Invalid authorization grant"));
     if code_record.client_id != client_id {
+        tracing::warn!(
+            code_client_id = %code_record.client_id,
+            presented_client_id = %client_id,
+            "authorization_code grant rejected: client_id does not match the code"
+        );
         return invalid_grant();
     }
     if code_record.redirect_uri.0 != *redirect_uri {
+        tracing::warn!(
+            code_redirect_uri = %code_record.redirect_uri.0,
+            presented_redirect_uri = %redirect_uri,
+            "authorization_code grant rejected: redirect_uri does not match the code"
+        );
         return invalid_grant();
     }
     if code_record.expires_at < Utc::now() {
+        tracing::warn!(
+            expires_at = %code_record.expires_at,
+            "authorization_code grant rejected: code expired"
+        );
         return invalid_grant();
     }
     let computed = compute_code_challenge(code_verifier);
@@ -210,6 +232,10 @@ fn validate_code_and_issue_token(
             .as_bytes()
             .ct_eq(computed.as_bytes()),
     ) {
+        tracing::warn!(
+            client_id = %client_id,
+            "authorization_code grant rejected: PKCE code_verifier does not match code_challenge"
+        );
         return invalid_grant();
     }
     let refresh_token = match start_refresh_token_family_if_granted(
@@ -260,7 +286,15 @@ fn exchange_device_code(
         {
             p
         }
-        Ok(_) => return bad_request("invalid_grant", Some("Unknown device_code")),
+        Ok(_) => {
+            // One response collapses "no such device_code", "wrong client", and
+            // "not a device request"; log which (no device_code — it's a secret).
+            tracing::warn!(
+                presented_client_id = %presented_credentials.client_id,
+                "device_code grant rejected: no matching pending/approved device request for this client"
+            );
+            return bad_request("invalid_grant", Some("Unknown device_code"));
+        }
         Err(e) => return cache_suppressed_internal_error("authorization_request lookup failed", e),
     };
     if request_record.expires_at < Utc::now() {
@@ -295,7 +329,13 @@ fn exchange_device_code(
         .consume_approved_authorization_request(&request_record.id)
     {
         Ok(true) => {}
-        Ok(false) => return bad_request("invalid_grant", Some("Device code already redeemed")),
+        Ok(false) => {
+            tracing::warn!(
+                client_id = %request_record.client_id,
+                "device_code grant rejected: request already redeemed (lost the single-use race)"
+            );
+            return bad_request("invalid_grant", Some("Device code already redeemed"));
+        }
         Err(e) => {
             return cache_suppressed_internal_error(
                 "consume_approved_authorization_request failed",
@@ -405,7 +445,10 @@ fn exchange_refresh_token(
     let hash = token_storage_hash(presented_refresh_token);
     let (_, family) = match state.store.refresh_token_with_family_by_hash(&hash) {
         Ok(Some(pair)) => pair,
-        Ok(None) => return bad_request("invalid_grant", Some("Invalid refresh_token parameter")),
+        Ok(None) => {
+            tracing::warn!("refresh_token grant rejected: token not found");
+            return bad_request("invalid_grant", Some("Invalid refresh_token parameter"));
+        }
         Err(e) => return cache_suppressed_internal_error("refresh_token lookup failed", e),
     };
     // Token–client binding (RFC 6749 §6): a valid token presented by the
@@ -413,6 +456,13 @@ fn exchange_refresh_token(
     // Checked before consuming so a stranger can't burn the rightful
     // client's live token.
     if family.client_id != presented_credentials.client_id {
+        // Deliberately answered exactly like "not found" (RFC 6749 §6) so a
+        // stranger can't probe token validity; log the real reason.
+        tracing::warn!(
+            family_client_id = %family.client_id,
+            presented_client_id = %presented_credentials.client_id,
+            "refresh_token grant rejected: token belongs to a different client"
+        );
         return bad_request("invalid_grant", Some("Invalid refresh_token parameter"));
     }
     let now = Utc::now();
@@ -461,6 +511,11 @@ fn exchange_refresh_token(
         // plaintext lands. Either way the lineage is unsafe: end the family
         // by expiring it at this instant.
         Ok(RefreshTokenConsumeOutcome::Replayed) => {
+            tracing::warn!(
+                family_id = %family.family_id,
+                client_id = %family.client_id,
+                "refresh_token grant rejected: replay of a consumed token — revoking the whole family (possible theft)"
+            );
             if let Err(e) = state
                 .store
                 .expire_refresh_token_family(&family.family_id, now)
@@ -472,7 +527,11 @@ fn exchange_refresh_token(
         // Vanished between lookup and rotate — a failed decode, nothing left
         // to revoke.
         Ok(RefreshTokenConsumeOutcome::NotFound) => {
-            return bad_request("invalid_grant", Some("Invalid refresh_token parameter"))
+            tracing::warn!(
+                family_id = %family.family_id,
+                "refresh_token grant rejected: token vanished between lookup and rotate"
+            );
+            return bad_request("invalid_grant", Some("Invalid refresh_token parameter"));
         }
         Err(e) => return cache_suppressed_internal_error("rotate_refresh_token failed", e),
     }
