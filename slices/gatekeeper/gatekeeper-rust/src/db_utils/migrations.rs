@@ -9,8 +9,12 @@ use rusqlite::Connection;
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
     let current: u32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    let tx = conn.transaction()?;
     for (idx, sql) in MIGRATIONS.iter().enumerate().skip(current as usize) {
+        // One transaction per migration so each lands (and bumps
+        // `user_version`) atomically and independently: a failure in a later
+        // migration can't roll back an already-validated earlier one, and the
+        // version always reflects exactly what is committed.
+        let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
         // `idx` is an index into the compile-time `MIGRATIONS` array, so this
         // conversion never actually overflows; fold the impossible case into
@@ -19,8 +23,9 @@ pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         // The literal is index-derived, not user input.
         tx.execute_batch(&format!("PRAGMA user_version = {next}"))?;
+        tx.commit()?;
     }
-    tx.commit()
+    Ok(())
 }
 
 /// Ordered list of schema migrations. The array index is the persisted
