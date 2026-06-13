@@ -9,6 +9,7 @@ use super::client_auth::{
     ClientAuthenticationMethod, ClientCredentials, ResolveClientCredentialsError,
     BASIC_AUTH_CHALLENGE,
 };
+use super::error_codes;
 use crate::crypto_util::client_secret::verify_client_secret;
 use crate::db_utils::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
@@ -65,6 +66,19 @@ impl OAuthErrorResponse {
             status,
             error: OAuthError::new(error, description),
         }
+    }
+
+    /// A `server_error` 500 carrying the RFC 6749 §5.2 body — the shape every
+    /// "the server failed mid-flow" OAuth response shares. Shared so a surface
+    /// like the Owner-UI polling page (which mixes `HandlerError` with a
+    /// non-cache-suppressed `OAuthErrorResponse`, so it can't use `TokenError`)
+    /// doesn't hand-roll the status + code each time.
+    pub fn server_error(description: &str) -> Self {
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            error_codes::SERVER_ERROR,
+            Some(description),
+        )
     }
 }
 
@@ -277,14 +291,14 @@ pub fn require_valid_client_for_token(
     // 401s answer Basic attempts with a matching `WWW-Authenticate` header
     // (RFC 6749 §5.2).
     let unauthorized = |description: &str| ValidateClientError::Unauthorized {
-        error: OAuthError::new("invalid_client", Some(description)),
+        error: OAuthError::new(error_codes::INVALID_CLIENT, Some(description)),
         attempted_via: presented_credentials.presented_via,
     };
     let client = store
         .client_by_id(&presented_credentials.client_id)
         .map_err(|e| {
             tracing::error!(error = %e, "client_by_id lookup failed");
-            ValidateClientError::Internal(OAuthError::new("server_error", None))
+            ValidateClientError::Internal(OAuthError::new(error_codes::SERVER_ERROR, None))
         })?;
     let client = client.ok_or_else(|| unauthorized("Unknown client_id"))?;
     if client.disabled_at.is_some() {
@@ -303,7 +317,7 @@ pub fn require_valid_client_for_token(
         .ok_or_else(|| unauthorized("Client secret required"))?;
     let secret_matches = verify_client_secret(presented, stored_hash).map_err(|e| {
         tracing::error!(error = %e, "client secret verification failed");
-        ValidateClientError::Internal(OAuthError::new("server_error", None))
+        ValidateClientError::Internal(OAuthError::new(error_codes::SERVER_ERROR, None))
     })?;
     if !secret_matches {
         return Err(unauthorized("Invalid client_secret"));
@@ -336,13 +350,13 @@ pub fn issue_token_response(
         .map_err(|e| {
             tracing::error!(error = %e, "active_signing_key lookup failed");
             OAuthError::new(
-                "server_error",
+                error_codes::SERVER_ERROR,
                 Some("No JSON Web Keys available to sign token"),
             )
         })?
         .ok_or_else(|| {
             OAuthError::new(
-                "server_error",
+                error_codes::SERVER_ERROR,
                 Some("No JSON Web Keys available to sign token"),
             )
         })?;
@@ -360,7 +374,7 @@ pub fn issue_token_response(
     )
     .map_err(|e| {
         tracing::error!(error = %e, "mint_access_token failed");
-        OAuthError::new("server_error", Some("Failed to sign JWT"))
+        OAuthError::new(error_codes::SERVER_ERROR, Some("Failed to sign JWT"))
     })?;
     Ok(TokenResponse {
         access_token: signed,

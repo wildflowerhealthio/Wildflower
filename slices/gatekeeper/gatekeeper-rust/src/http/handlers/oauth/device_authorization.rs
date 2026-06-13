@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 use super::client_auth::resolve_client_credentials;
+use super::error_codes;
 use super::internal::{
     require_valid_client_for_token, CacheSuppressed, TokenError, DEVICE_CODE_POLL_INTERVAL,
 };
@@ -78,8 +79,9 @@ fn device_authorization(
     headers: &HeaderMap,
     body: &str,
 ) -> Result<DeviceAuthorizationResponse, TokenError> {
-    let payload: DeviceAuthorizationPayload = serde_urlencoded::from_str(body)
-        .map_err(|_| TokenError::bad_request("invalid_request", Some("Malformed payload")))?;
+    let payload: DeviceAuthorizationPayload = serde_urlencoded::from_str(body).map_err(|_| {
+        TokenError::bad_request(error_codes::INVALID_REQUEST, Some("Malformed payload"))
+    })?;
     let origin = served_origin_for(headers, &state.loopback_origin);
     let origin = origin.as_str();
     let requested_scopes: Vec<String> = payload
@@ -100,7 +102,7 @@ fn device_authorization(
         .all(|s| allowed.contains(s.as_str()))
     {
         return Err(TokenError::bad_request(
-            "invalid_scope",
+            error_codes::INVALID_SCOPE,
             Some("Scope not allowed for client"),
         ));
     }

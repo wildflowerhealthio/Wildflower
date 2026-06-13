@@ -1,11 +1,11 @@
 use axum::extract::{Extension, Path};
-use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 use chrono::Utc;
 use serde::Serialize;
 
+use super::error_codes;
 use super::internal::{
     build_client_error_redirect_url, build_client_redirect_url, OAuthErrorResponse,
 };
@@ -79,9 +79,13 @@ async fn handle_authorization_status_request(
             // and stops hanging. Device-flow denials have no redirect_uri /
             // client_state, so they fall back to a bare `denied`.
             let redirect = match (&request.redirect_uri, &request.client_state) {
-                (Some(UriColumn(redirect_uri)), Some(client_state)) => Some(
-                    build_client_error_redirect_url(redirect_uri, "access_denied", client_state),
-                ),
+                (Some(UriColumn(redirect_uri)), Some(client_state)) => {
+                    Some(build_client_error_redirect_url(
+                        redirect_uri,
+                        error_codes::ACCESS_DENIED,
+                        client_state,
+                    ))
+                }
                 _ => None,
             };
             AuthorizationStatus::Denied { redirect }
@@ -93,9 +97,10 @@ async fn handle_authorization_status_request(
             let (Some(UriColumn(redirect_uri)), Some(client_state)) =
                 (request.redirect_uri, request.client_state)
             else {
-                return Err(
-                    server_error("Authorization request is not a code-flow request").into(),
-                );
+                return Err(OAuthErrorResponse::server_error(
+                    "Authorization request is not a code-flow request",
+                )
+                .into());
             };
             let code = state
                 .store
@@ -103,20 +108,10 @@ async fn handle_authorization_status_request(
                 .map_err(|e| {
                     HandlerError::internal("authorization_code_by_request_id lookup failed", e)
                 })?
-                .ok_or_else(|| server_error("Authorization code missing"))?;
+                .ok_or_else(|| OAuthErrorResponse::server_error("Authorization code missing"))?;
             AuthorizationStatus::Approved {
                 redirect: build_client_redirect_url(&redirect_uri, &code.code, &client_state),
             }
         }
     })
-}
-
-/// OAuth-shaped `server_error` 500 — this endpoint serves the polling page
-/// that closes an OAuth flow, so its failures keep the RFC 6749 §5.2 body.
-fn server_error(description: &str) -> OAuthErrorResponse {
-    OAuthErrorResponse::new(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "server_error",
-        Some(description),
-    )
 }

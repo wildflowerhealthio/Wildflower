@@ -2,6 +2,7 @@ mod authorization_status;
 mod authorize;
 mod client_auth;
 mod device_authorization;
+mod error_codes;
 mod internal;
 mod token_exchange;
 

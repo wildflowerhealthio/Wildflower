@@ -10,6 +10,7 @@ use url::Url;
 use uuid::Uuid;
 
 use super::client_auth::{resolve_client_credentials, ClientCredentials};
+use super::error_codes;
 use super::internal::{
     issue_token_response, require_valid_client_for_token, IssueTokenInput, TokenError,
     TokenResponse, DEVICE_CODE_POLL_INTERVAL, OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
@@ -75,8 +76,9 @@ fn dispatch_token_request(
 ) -> Result<TokenResponse, TokenError> {
     // Parse the grant payload before resolving credentials so a structurally
     // malformed body still reads as such, not as "Missing client_id".
-    let payload: TokenPayload = serde_urlencoded::from_str(body)
-        .map_err(|_| TokenError::bad_request("invalid_request", Some("Malformed payload")))?;
+    let payload: TokenPayload = serde_urlencoded::from_str(body).map_err(|_| {
+        TokenError::bad_request(error_codes::INVALID_REQUEST, Some("Malformed payload"))
+    })?;
     // RFC 6749 §2.3.1: Basic header first, body params as fallback; a secret
     // presented both ways is rejected before any grant work happens.
     let presented_credentials = resolve_client_credentials(headers, body)?;
@@ -126,7 +128,7 @@ fn exchange_authorization_code(
         .contains(&AllowedGrantType::AuthorizationCode)
     {
         return Err(TokenError::bad_request(
-            "unauthorized_client",
+            error_codes::UNAUTHORIZED_CLIENT,
             Some("Client may not use this grant type"),
         ));
     }
@@ -135,12 +137,15 @@ fn exchange_authorization_code(
     // malformed request (RFC 6749 §5.2).
     if !is_valid_code_verifier_length(grant.code_verifier) {
         return Err(TokenError::bad_request(
-            "invalid_grant",
+            error_codes::INVALID_GRANT,
             Some("Invalid code_verifier parameter"),
         ));
     }
     let parsed_redirect = Url::parse(grant.redirect_uri).map_err(|_| {
-        TokenError::bad_request("invalid_request", Some("Invalid redirect_uri parameter"))
+        TokenError::bad_request(
+            error_codes::INVALID_REQUEST,
+            Some("Invalid redirect_uri parameter"),
+        )
     })?;
     // Atomically read-and-consume the code: a concurrent redemption of the
     // same code can only succeed once, so any racer past this point sees
@@ -172,7 +177,7 @@ fn exchange_authorization_code(
                 "authorization_code grant rejected: code not found or already redeemed (possible replay)"
             );
             return Err(TokenError::bad_request(
-                "invalid_grant",
+                error_codes::INVALID_GRANT,
                 Some("Invalid authorization grant"),
             ));
         }
@@ -208,8 +213,12 @@ fn validate_code_and_issue_token(
     // facts about a code that may belong to another client. Each logs its
     // specific reason (no secrets — never the code, verifier, or challenge) so
     // the operator can still tell them apart.
-    let invalid_grant =
-        || TokenError::bad_request("invalid_grant", Some("Invalid authorization grant"));
+    let invalid_grant = || {
+        TokenError::bad_request(
+            error_codes::INVALID_GRANT,
+            Some("Invalid authorization grant"),
+        )
+    };
     if code_record.client_id != client_id {
         tracing::warn!(
             code_client_id = %code_record.client_id,
@@ -265,6 +274,23 @@ fn validate_code_and_issue_token(
     )
 }
 
+/// Map a device request's current status to its RFC 8628 §3.4/§3.5 poll
+/// outcome: `Approved` lets the caller proceed, every other state is the
+/// matching `bad_request` the polling client should see. This status read is
+/// advisory only — the real single-use gate is the atomic
+/// `consume_approved_authorization_request` claim the caller makes next.
+fn ensure_device_request_approved(status: RequestStatus) -> Result<(), TokenError> {
+    match status {
+        RequestStatus::Approved => Ok(()),
+        RequestStatus::Pending => Err(TokenError::bad_request(
+            error_codes::AUTHORIZATION_PENDING,
+            None,
+        )),
+        RequestStatus::Denied => Err(TokenError::bad_request(error_codes::ACCESS_DENIED, None)),
+        RequestStatus::Expired => Err(TokenError::bad_request(error_codes::EXPIRED_TOKEN, None)),
+    }
+}
+
 fn exchange_device_code(
     state: &AppState,
     origin: &str,
@@ -277,7 +303,7 @@ fn exchange_device_code(
         .contains(&AllowedGrantType::DeviceCode)
     {
         return Err(TokenError::bad_request(
-            "unauthorized_client",
+            error_codes::UNAUTHORIZED_CLIENT,
             Some("Client may not use this grant type"),
         ));
     }
@@ -296,7 +322,7 @@ fn exchange_device_code(
                 "device_code grant rejected: no matching pending/approved device request for this client"
             );
             return Err(TokenError::bad_request(
-                "invalid_grant",
+                error_codes::INVALID_GRANT,
                 Some("Unknown device_code"),
             ));
         }
@@ -308,12 +334,12 @@ fn exchange_device_code(
         }
     };
     if request_record.expires_at < Utc::now() {
-        return Err(TokenError::bad_request("expired_token", None));
+        return Err(TokenError::bad_request(error_codes::EXPIRED_TOKEN, None));
     }
     if request_record.status == RequestStatus::Pending {
         if let Some(last_polled) = request_record.last_polled_at {
             if Utc::now() - last_polled < DEVICE_CODE_POLL_INTERVAL {
-                return Err(TokenError::bad_request("slow_down", None));
+                return Err(TokenError::bad_request(error_codes::SLOW_DOWN, None));
             }
         }
         state
@@ -321,14 +347,7 @@ fn exchange_device_code(
             .record_device_poll(&request_record.id, Utc::now())
             .map_err(|e| TokenError::internal("record_device_poll failed", e))?;
     }
-    match request_record.status {
-        RequestStatus::Approved => {}
-        RequestStatus::Pending => {
-            return Err(TokenError::bad_request("authorization_pending", None))
-        }
-        RequestStatus::Denied => return Err(TokenError::bad_request("access_denied", None)),
-        RequestStatus::Expired => return Err(TokenError::bad_request("expired_token", None)),
-    }
+    ensure_device_request_approved(request_record.status)?;
     // Single-use per RFC 8628 §3.4. The status read above is advisory; this
     // atomic `approved` → `expired` claim is the real gate, so two concurrent
     // polls of the same approved request can't both mint — the loser sees
@@ -345,7 +364,7 @@ fn exchange_device_code(
                 "device_code grant rejected: request already redeemed (lost the single-use race)"
             );
             return Err(TokenError::bad_request(
-                "invalid_grant",
+                error_codes::INVALID_GRANT,
                 Some("Device code already redeemed"),
             ));
         }
@@ -438,7 +457,7 @@ fn exchange_refresh_token(
         .contains(&AllowedGrantType::RefreshToken)
     {
         return Err(TokenError::bad_request(
-            "unauthorized_client",
+            error_codes::UNAUTHORIZED_CLIENT,
             Some("Client may not use this grant type"),
         ));
     }
@@ -448,7 +467,7 @@ fn exchange_refresh_token(
         Ok(None) => {
             tracing::warn!("refresh_token grant rejected: token not found");
             return Err(TokenError::bad_request(
-                "invalid_grant",
+                error_codes::INVALID_GRANT,
                 Some("Invalid refresh_token parameter"),
             ));
         }
@@ -467,7 +486,7 @@ fn exchange_refresh_token(
             "refresh_token grant rejected: token belongs to a different client"
         );
         return Err(TokenError::bad_request(
-            "invalid_grant",
+            error_codes::INVALID_GRANT,
             Some("Invalid refresh_token parameter"),
         ));
     }
@@ -477,7 +496,7 @@ fn exchange_refresh_token(
     // rows, so the lineage stays auditable.
     if family.expires_at <= now {
         return Err(TokenError::bad_request(
-            "invalid_grant",
+            error_codes::INVALID_GRANT,
             Some("Refresh token has expired"),
         ));
     }
@@ -522,7 +541,7 @@ fn exchange_refresh_token(
                 .expire_refresh_token_family(&family.family_id, now)
                 .map_err(|e| TokenError::internal("expire_refresh_token_family failed", e))?;
             return Err(TokenError::bad_request(
-                "invalid_grant",
+                error_codes::INVALID_GRANT,
                 Some("Refresh token has been revoked"),
             ));
         }
@@ -534,7 +553,7 @@ fn exchange_refresh_token(
                 "refresh_token grant rejected: token vanished between lookup and rotate"
             );
             return Err(TokenError::bad_request(
-                "invalid_grant",
+                error_codes::INVALID_GRANT,
                 Some("Invalid refresh_token parameter"),
             ));
         }

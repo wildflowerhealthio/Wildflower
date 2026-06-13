@@ -13,6 +13,7 @@ use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 
+use super::error_codes;
 use super::internal::{OAuthError, OAuthErrorResponse};
 use crate::crypto_util::base64;
 
@@ -127,7 +128,7 @@ pub fn resolve_client_credentials(
     let basic =
         decode_basic_authorization_header(request_headers).map_err(|MalformedBasicHeader| {
             ResolveClientCredentialsError::MalformedBasic(OAuthError::new(
-                "invalid_client",
+                error_codes::INVALID_CLIENT,
                 Some("Malformed Basic authorization header"),
             ))
         })?;
@@ -136,7 +137,7 @@ pub fn resolve_client_credentials(
             if body.client_secret.is_some() {
                 return Err(ResolveClientCredentialsError::InvalidRequest(
                     OAuthError::new(
-                        "invalid_request",
+                        error_codes::INVALID_REQUEST,
                         Some("Multiple client authentication methods presented"),
                     ),
                 ));
@@ -148,7 +149,7 @@ pub fn resolve_client_credentials(
             {
                 return Err(ResolveClientCredentialsError::InvalidRequest(
                     OAuthError::new(
-                        "invalid_request",
+                        error_codes::INVALID_REQUEST,
                         Some("client_id does not match Basic authorization header"),
                     ),
                 ));
@@ -166,7 +167,7 @@ pub fn resolve_client_credentials(
                 presented_via: ClientAuthenticationMethod::RequestBody,
             }),
             None => Err(ResolveClientCredentialsError::InvalidRequest(
-                OAuthError::new("invalid_request", Some("Missing client_id")),
+                OAuthError::new(error_codes::INVALID_REQUEST, Some("Missing client_id")),
             )),
         },
     }
@@ -205,7 +206,8 @@ fn decode_basic_authorization_header(
 fn try_decode_basic_payload(
     encoded_payload: &str,
 ) -> Result<BasicCredentials, MalformedBasicHeader> {
-    let decoded_bytes = base64::standard_decode(encoded_payload).map_err(|_| MalformedBasicHeader)?;
+    let decoded_bytes =
+        base64::standard_decode(encoded_payload).map_err(|_| MalformedBasicHeader)?;
     let decoded_pair = String::from_utf8(decoded_bytes).map_err(|_| MalformedBasicHeader)?;
     let (encoded_client_id, encoded_client_secret) =
         decoded_pair.split_once(':').ok_or(MalformedBasicHeader)?;
@@ -380,11 +382,20 @@ mod tests {
         let malformed_payloads = [
             "Basic !!!not-base64!!!".to_string(),
             // valid base64 of a colon-less payload
-            format!("Basic {}", base64::standard_encode("no-colon-here".as_bytes())),
+            format!(
+                "Basic {}",
+                base64::standard_encode("no-colon-here".as_bytes())
+            ),
             // valid base64 of invalid UTF-8 bytes
-            format!("Basic {}", base64::standard_encode(&[0xff, 0xfe, b':', b'x'])),
+            format!(
+                "Basic {}",
+                base64::standard_encode(&[0xff, 0xfe, b':', b'x'])
+            ),
             // a percent-escape that decodes to an invalid UTF-8 byte
-            format!("Basic {}", base64::standard_encode("app%ff:secret".as_bytes())),
+            format!(
+                "Basic {}",
+                base64::standard_encode("app%ff:secret".as_bytes())
+            ),
         ];
         for authorization in malformed_payloads {
             let headers = headers_with_authorization(&authorization);
