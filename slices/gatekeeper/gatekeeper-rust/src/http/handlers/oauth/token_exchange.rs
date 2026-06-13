@@ -412,7 +412,39 @@ fn exchange_refresh_token(
     if family.expires_at <= now {
         return bad_request("invalid_grant", Some("Refresh token has expired"));
     }
-    match state.store.consume_refresh_token(&hash, now) {
+    // Mint the access token BEFORE mutating any state: a signing failure then
+    // returns 500 without burning the presented token, so the client can
+    // safely retry. The family keeps its scopes and absolute deadline
+    // (rotation never extends its life).
+    let mut token = match issue_token_response(
+        &state.store,
+        &IssueTokenInput {
+            client_id: &family.client_id,
+            granted_scopes: &family.scopes,
+            patient: family.patient.as_deref(),
+            origin,
+        },
+    ) {
+        Ok(t) => t,
+        Err(error) => {
+            return CacheSuppressed(OAuthErrorResponse {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                error,
+            })
+            .into_response()
+        }
+    };
+    let next_plaintext = generate_refresh_token();
+    let next = RefreshToken {
+        token_hash: token_storage_hash(&next_plaintext),
+        family_id: family.family_id.clone(),
+        issued_at: now,
+        consumed_at: None,
+    };
+    // Consume the presented token and persist its successor in one
+    // transaction, so a crash or error can't burn the presented token while
+    // leaving the family with no live successor (a permanent lockout).
+    match state.store.rotate_refresh_token(&hash, &next, now) {
         Ok(RefreshTokenConsumeOutcome::Consumed) => {}
         // A consumed token can only reappear if it leaked (or the client is
         // badly broken) — also where a concurrent redeemer of the same
@@ -431,45 +463,21 @@ fn exchange_refresh_token(
             }
             return bad_request("invalid_grant", Some("Refresh token has been revoked"));
         }
-        // Vanished between lookup and consume — a failed decode, nothing
-        // left to revoke.
+        // Vanished between lookup and rotate — a failed decode, nothing left
+        // to revoke.
         Ok(RefreshTokenConsumeOutcome::NotFound) => {
             return bad_request("invalid_grant", Some("Invalid refresh_token parameter"))
         }
         Err(e) => {
             return CacheSuppressed(response_templates::internal_error(
-                "consume_refresh_token failed",
+                "rotate_refresh_token failed",
                 e,
             ))
             .into_response()
         }
     }
-    // Mint the successor in the same family — the family keeps the scopes
-    // and the absolute deadline (rotation never extends its life).
-    let next_plaintext = generate_refresh_token();
-    let next = RefreshToken {
-        token_hash: token_storage_hash(&next_plaintext),
-        family_id: family.family_id.clone(),
-        issued_at: now,
-        consumed_at: None,
-    };
-    if let Err(e) = state.store.insert_refresh_token(&next) {
-        return CacheSuppressed(response_templates::internal_error(
-            "insert_refresh_token failed",
-            e,
-        ))
-        .into_response();
-    }
-    issue_token(
-        state,
-        &IssueTokenInput {
-            client_id: &family.client_id,
-            granted_scopes: &family.scopes,
-            patient: family.patient.as_deref(),
-            origin,
-        },
-        Some(next_plaintext),
-    )
+    token.refresh_token = Some(next_plaintext);
+    token.into_response()
 }
 
 /// Mint a token for `input`, attach `refresh_token` (if the grant earned

@@ -195,6 +195,52 @@ impl GatekeeperStore {
         Ok(result)
     }
 
+    /// Atomically rotate a refresh token: consume the presented token and, only
+    /// if that succeeded, insert its successor — both in one transaction.
+    /// Doing the consume and the successor-insert together means a crash or
+    /// error can't burn the presented token while leaving the family with no
+    /// live successor (a permanent lockout). The three-state outcome mirrors
+    /// [`Self::consume_refresh_token`]: `Consumed` means the successor is now
+    /// the family's live token; `Replayed`/`NotFound` leave the family
+    /// untouched (no successor inserted) for the caller to handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `rusqlite::Error` if opening the transaction, the update, the
+    /// existence probe, the successor insert, or the commit fails.
+    pub fn rotate_refresh_token(
+        &self,
+        presented_hash: &str,
+        successor: &RefreshToken,
+        now: DateTime<Utc>,
+    ) -> DbResult<RefreshTokenConsumeOutcome> {
+        let mut guard = self.conn().lock();
+        let tx = guard.transaction()?;
+        let affected = tx.execute(
+            "UPDATE refresh_tokens SET consumed_at = ?2
+             WHERE token_hash = ?1 AND consumed_at IS NULL",
+            params![presented_hash, now],
+        )?;
+        let outcome = if affected == 1 {
+            let params = token_named_sql_params(successor);
+            tx.execute(&build_insert_sql("refresh_tokens", &params), &params)?;
+            RefreshTokenConsumeOutcome::Consumed
+        } else {
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM refresh_tokens WHERE token_hash = ?1)",
+                params![presented_hash],
+                |row| row.get(0),
+            )?;
+            if exists {
+                RefreshTokenConsumeOutcome::Replayed
+            } else {
+                RefreshTokenConsumeOutcome::NotFound
+            }
+        };
+        tx.commit()?;
+        Ok(outcome)
+    }
+
     /// End a token family by pulling its `expires_at` back to `now`, and
     /// stamp its still-live token consumed at the same instant so no row in
     /// a dead family looks live. Used by reuse detection. Rows are kept (not
@@ -408,6 +454,43 @@ mod tests {
             ),
             "expected a foreign-key constraint violation, got {err:?}"
         );
+    }
+
+    // Rotation consumes the presented token and inserts its successor in one
+    // transaction; a replay of the presented token is detected and inserts no
+    // further successor.
+    #[test]
+    fn rotate_consumes_presented_and_inserts_successor_atomically() {
+        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        store
+            .insert_refresh_token_family(&sample_family("fam", "client"), &sample_token("live", "fam"))
+            .expect("insert family");
+        let now = Utc::now();
+
+        assert!(matches!(
+            store
+                .rotate_refresh_token("live", &sample_token("successor", "fam"), now)
+                .expect("rotate"),
+            RefreshTokenConsumeOutcome::Consumed
+        ));
+        let presented = store.refresh_token_by_hash("live").expect("q").expect("row");
+        assert_eq!(presented.consumed_at, Some(now));
+        let successor = store
+            .refresh_token_by_hash("successor")
+            .expect("q")
+            .expect("row");
+        assert_eq!(successor.consumed_at, None);
+
+        assert!(matches!(
+            store
+                .rotate_refresh_token("live", &sample_token("successor2", "fam"), now)
+                .expect("rotate replay"),
+            RefreshTokenConsumeOutcome::Replayed
+        ));
+        assert!(store
+            .refresh_token_by_hash("successor2")
+            .expect("q")
+            .is_none());
     }
 
     fn sample_family(family_id: &str, client_id: &str) -> RefreshTokenFamily {
