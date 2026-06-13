@@ -1,4 +1,4 @@
-use axum::extract::{Extension, Query};
+use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, MethodRouter};
@@ -80,7 +80,7 @@ pub struct AuthorizeParams {
 }
 
 /// `GET /oauth/authorize` route.
-pub(super) fn route() -> MethodRouter {
+pub(super) fn route() -> MethodRouter<AppState> {
     get(handle_authorize_request)
 }
 
@@ -109,7 +109,7 @@ pub(super) fn route() -> MethodRouter {
 ///    `code` + `state` (§4.1.2); the client then redeems the short-lived
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
 async fn handle_authorize_request(
-    Extension(state): Extension<AppState>,
+    State(state): State<AppState>,
     headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Response {

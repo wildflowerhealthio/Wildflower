@@ -1,4 +1,4 @@
-use axum::extract::{Extension, Path};
+use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, MethodRouter};
 use axum::Json;
@@ -43,7 +43,7 @@ impl IntoResponse for AuthorizationStatus {
 }
 
 /// `GET /oauth/authorize/{id}` route.
-pub(super) fn route() -> MethodRouter {
+pub(super) fn route() -> MethodRouter<AppState> {
     get(handle_authorization_status_request)
 }
 
@@ -55,7 +55,7 @@ pub(super) fn route() -> MethodRouter {
 /// the OAuth-shaped [`OAuthErrorResponse`] `server_error` — `?` converts
 /// either through its `IntoResponse`.
 async fn handle_authorization_status_request(
-    Extension(state): Extension<AppState>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> axum::response::Result<AuthorizationStatus> {
     let request = state

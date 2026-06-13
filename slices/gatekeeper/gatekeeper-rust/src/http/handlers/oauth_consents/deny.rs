@@ -1,4 +1,4 @@
-use axum::extract::{Extension, Path};
+use axum::extract::{Path, State};
 use axum::routing::{post, MethodRouter};
 use axum::Json;
 
@@ -8,12 +8,12 @@ use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 
 /// `POST /oauth-consents/{id}/deny` — the Owner declines a consent prompt.
-pub(super) fn route() -> MethodRouter {
+pub(super) fn route() -> MethodRouter<AppState> {
     post(handle_deny_oauth_consent)
 }
 
 async fn handle_deny_oauth_consent(
-    Extension(state): Extension<AppState>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ConsentResult>, HandlerError> {
     load_pending_authorization_code_request(&state, &id)?;

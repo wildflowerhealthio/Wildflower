@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Context};
-use axum::extract::Extension;
+use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{post, MethodRouter};
@@ -57,7 +57,7 @@ impl IntoResponse for DeviceAuthorizationResponse {
 }
 
 /// `POST /oauth/device_authorization` route.
-pub(super) fn route() -> MethodRouter {
+pub(super) fn route() -> MethodRouter<AppState> {
     post(handle_device_authorization_request)
 }
 
@@ -65,7 +65,7 @@ pub(super) fn route() -> MethodRouter {
 /// user pairs the device. `Ok` carries the §5.1 cache suppression via
 /// [`DeviceAuthorizationResponse`], `Err` via [`TokenError`].
 async fn handle_device_authorization_request(
-    Extension(state): Extension<AppState>,
+    State(state): State<AppState>,
     headers: HeaderMap,
     body: String,
 ) -> Response {

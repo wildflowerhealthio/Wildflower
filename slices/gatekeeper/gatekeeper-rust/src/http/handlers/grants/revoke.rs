@@ -1,4 +1,4 @@
-use axum::extract::{Extension, Path};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, MethodRouter};
 use chrono::Utc;
@@ -9,12 +9,12 @@ use crate::http::state::AppState;
 /// `DELETE /grants/{id}` — revoke a grant and expire the refresh-token families
 /// minted under its client, so `offline_access` clients can't outlive the
 /// revocation.
-pub(super) fn route() -> MethodRouter {
+pub(super) fn route() -> MethodRouter<AppState> {
     delete(handle_revoke_grant)
 }
 
 async fn handle_revoke_grant(
-    Extension(state): Extension<AppState>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, HandlerError> {
     // Load before deleting so the client_id is still known afterwards —

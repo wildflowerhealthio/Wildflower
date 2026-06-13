@@ -1,4 +1,4 @@
-use axum::extract::Extension;
+use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{post, MethodRouter};
@@ -53,14 +53,14 @@ pub enum TokenPayload {
 }
 
 /// `POST /oauth/token` route.
-pub(super) fn route() -> MethodRouter {
+pub(super) fn route() -> MethodRouter<AppState> {
     post(handle_token_request)
 }
 
 /// Render the dispatch outcome — `Ok` carries the §5.1 cache suppression via
 /// [`TokenResponse`], `Err` via [`TokenError`].
 async fn handle_token_request(
-    Extension(state): Extension<AppState>,
+    State(state): State<AppState>,
     headers: HeaderMap,
     body: String,
 ) -> Response {

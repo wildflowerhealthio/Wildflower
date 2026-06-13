@@ -10,7 +10,9 @@ mod revoke;
 
 use axum::Router;
 
-pub fn router() -> Router {
+use crate::http::state::AppState;
+
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/grants", list::route())
         .route("/grants/{id}", get::route().merge(revoke::route()))

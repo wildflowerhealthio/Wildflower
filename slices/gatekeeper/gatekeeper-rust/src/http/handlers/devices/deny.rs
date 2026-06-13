@@ -1,4 +1,4 @@
-use axum::extract::{Extension, Path};
+use axum::extract::{Path, State};
 use axum::routing::{post, MethodRouter};
 use axum::Json;
 
@@ -9,12 +9,12 @@ use crate::http::state::AppState;
 
 /// `POST /devices/{userCode}/deny` — the Owner declines a device-code consent
 /// prompt.
-pub(super) fn route() -> MethodRouter {
+pub(super) fn route() -> MethodRouter<AppState> {
     post(handle_deny_device_consent)
 }
 
 async fn handle_deny_device_consent(
-    Extension(state): Extension<AppState>,
+    State(state): State<AppState>,
     Path(user_code): Path<String>,
 ) -> Result<Json<ConsentResult>, HandlerError> {
     let device_request = load_pending_device_request(&state, &user_code)?;

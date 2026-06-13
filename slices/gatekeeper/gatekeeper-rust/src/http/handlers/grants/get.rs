@@ -1,4 +1,4 @@
-use axum::extract::{Extension, Path};
+use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use axum::routing::{get, MethodRouter};
 use axum::Json;
@@ -7,12 +7,12 @@ use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 
 /// `GET /grants/{id}` — fetch a single grant by id.
-pub(super) fn route() -> MethodRouter {
+pub(super) fn route() -> MethodRouter<AppState> {
     get(handle_get_grant)
 }
 
 async fn handle_get_grant(
-    Extension(state): Extension<AppState>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, HandlerError> {
     let grant = state

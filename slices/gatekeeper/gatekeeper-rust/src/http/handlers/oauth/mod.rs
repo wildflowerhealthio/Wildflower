@@ -8,7 +8,9 @@ mod token_exchange;
 
 use axum::Router;
 
-pub fn router() -> Router {
+use crate::http::state::AppState;
+
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/authorize", authorize::route())
         .route("/authorize/{id}", authorization_status::route())

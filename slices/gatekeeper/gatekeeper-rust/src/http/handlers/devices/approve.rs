@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use axum::extract::{Extension, Path};
+use axum::extract::{Path, State};
 use axum::routing::{post, MethodRouter};
 use axum::Json;
 
@@ -11,12 +11,12 @@ use crate::http::state::AppState;
 
 /// `POST /devices/{userCode}/approve` — the Owner approves a device-code
 /// consent prompt, granting the (narrowed) scope set.
-pub(super) fn route() -> MethodRouter {
+pub(super) fn route() -> MethodRouter<AppState> {
     post(handle_approve_device_consent)
 }
 
 async fn handle_approve_device_consent(
-    Extension(state): Extension<AppState>,
+    State(state): State<AppState>,
     Path(user_code): Path<String>,
     Json(body): Json<ApproveBody>,
 ) -> Result<Json<ConsentResult>, HandlerError> {

@@ -1,4 +1,4 @@
-use axum::extract::{Extension, Path};
+use axum::extract::{Path, State};
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 
@@ -8,12 +8,12 @@ use crate::http::state::AppState;
 
 /// `GET /oauth-consents/{id}` — load a pending authorization-code consent
 /// prompt for the Owner UI to render.
-pub(super) fn route() -> MethodRouter {
+pub(super) fn route() -> MethodRouter<AppState> {
     get(handle_get_oauth_consent)
 }
 
 async fn handle_get_oauth_consent(
-    Extension(state): Extension<AppState>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<OAuthConsent>, HandlerError> {
     let PendingCodeConsent {

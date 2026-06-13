@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use axum::extract::{Extension, Path};
+use axum::extract::{Path, State};
 use axum::routing::{post, MethodRouter};
 use axum::Json;
 use chrono::Utc;
@@ -19,12 +19,12 @@ use crate::http::state::AppState;
 /// `POST /oauth-consents/{id}/approve` — the Owner approves a consent prompt,
 /// granting a (narrowed) scope set and minting the authorization code the
 /// polling endpoint hands back to the client.
-pub(super) fn route() -> MethodRouter {
+pub(super) fn route() -> MethodRouter<AppState> {
     post(handle_approve_oauth_consent)
 }
 
 async fn handle_approve_oauth_consent(
-    Extension(state): Extension<AppState>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(body): Json<ApproveBody>,
 ) -> Result<Json<ConsentResult>, HandlerError> {

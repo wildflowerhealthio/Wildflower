@@ -1,4 +1,4 @@
-use axum::extract::Extension;
+use axum::extract::State;
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
@@ -15,13 +15,11 @@ pub struct Jwks {
 
 /// `GET` handler for `/.well-known/jwks.json`, as a `MethodRouter` the caller
 /// mounts at the full path — avoids wrapping a whole `Router` for one route.
-pub fn handle_get_jwks_request() -> MethodRouter {
+pub fn handle_get_jwks_request() -> MethodRouter<AppState> {
     get(handle_jwks_request)
 }
 
-async fn handle_jwks_request(
-    Extension(state): Extension<AppState>,
-) -> Result<Json<Jwks>, HandlerError> {
+async fn handle_jwks_request(State(state): State<AppState>) -> Result<Json<Jwks>, HandlerError> {
     let keys = state
         .store
         .all_signing_keys()

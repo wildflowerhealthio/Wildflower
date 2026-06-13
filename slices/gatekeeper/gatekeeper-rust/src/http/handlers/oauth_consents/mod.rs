@@ -10,7 +10,9 @@ mod internal;
 
 use axum::Router;
 
-pub fn router() -> Router {
+use crate::http::state::AppState;
+
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/oauth-consents/{id}", get::route())
         .route("/oauth-consents/{id}/approve", approve::route())

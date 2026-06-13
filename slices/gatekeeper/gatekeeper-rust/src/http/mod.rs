@@ -15,7 +15,6 @@ mod state;
 pub(crate) use origin::served_origin_for;
 pub use state::AppState;
 
-use axum::extract::Extension;
 use axum::middleware as axum_middleware;
 use axum::Router;
 
@@ -30,7 +29,10 @@ pub fn router(state: AppState) -> Router {
         .merge(handlers::grants::router())
         .merge(handlers::oauth_consents::router())
         .merge(handlers::devices::router())
-        .layer(axum_middleware::from_fn(middleware::require_owner_auth));
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::require_owner_auth,
+        ));
 
     Router::new()
         .route(
@@ -40,16 +42,15 @@ pub fn router(state: AppState) -> Router {
         .nest("/oauth", oauth)
         .nest("/access", access)
         .layer(axum_middleware::from_fn(middleware::loopback_gate))
-        .layer(Extension(state))
+        .with_state(state)
 }
 
 /// Wrap a router (e.g. emr-rust's FHIR router) with JWT verification
 /// against the gatekeeper's signing keys. Any request missing or
 /// presenting an invalid bearer token gets 401.
 pub fn layer_router_with_gatekeeper_auth_gating(router: Router, state: AppState) -> Router {
-    router
-        .layer(axum_middleware::from_fn(
-            middleware::require_valid_bearer_token,
-        ))
-        .layer(Extension(state))
+    router.layer(axum_middleware::from_fn_with_state(
+        state,
+        middleware::require_valid_bearer_token,
+    ))
 }

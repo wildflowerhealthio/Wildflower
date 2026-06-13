@@ -1,4 +1,4 @@
-use axum::extract::{Extension, Path};
+use axum::extract::{Path, State};
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 
@@ -8,12 +8,12 @@ use crate::http::state::AppState;
 
 /// `GET /devices/{userCode}` — load a pending device-code consent prompt for
 /// the Owner UI to render.
-pub(super) fn route() -> MethodRouter {
+pub(super) fn route() -> MethodRouter<AppState> {
     get(handle_get_device_consent)
 }
 
 async fn handle_get_device_consent(
-    Extension(state): Extension<AppState>,
+    State(state): State<AppState>,
     Path(user_code): Path<String>,
 ) -> Result<Json<DeviceConsent>, HandlerError> {
     let device_request = load_pending_device_request(&state, &user_code)?;

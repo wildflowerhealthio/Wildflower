@@ -1,5 +1,5 @@
 use axum::body::Body;
-use axum::extract::{Extension, Request};
+use axum::extract::{Request, State};
 use axum::http::HeaderMap;
 use axum::middleware::Next;
 use axum::response::Response;
@@ -11,7 +11,7 @@ use crate::http::state::AppState;
 use crate::OWNER_SCOPE;
 
 pub async fn require_owner_auth(
-    Extension(state): Extension<AppState>,
+    State(state): State<AppState>,
     headers: HeaderMap,
     req: Request<Body>,
     next: Next,

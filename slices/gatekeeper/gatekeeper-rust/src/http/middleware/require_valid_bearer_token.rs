@@ -1,5 +1,5 @@
 use axum::body::Body;
-use axum::extract::{Extension, Request};
+use axum::extract::{Request, State};
 use axum::http::HeaderMap;
 use axum::middleware::Next;
 use axum::response::Response;
@@ -13,7 +13,7 @@ use crate::http::middleware::require_auth::{
 };
 
 pub async fn require_valid_bearer_token(
-    Extension(state): Extension<AppState>,
+    State(state): State<AppState>,
     headers: HeaderMap,
     req: Request<Body>,
     next: Next,
