@@ -38,17 +38,18 @@
 /// for a `TryFrom` keyed on JOIN-aliased columns (`RefreshTokenFamily`) — those
 /// stay hand-written.
 ///
-/// Consumers bring it in with `use persistence_rust::sql_row;`. That import is
-/// also what resolves the macro's own recursive calls, so the body uses a plain
-/// `sql_row!` rather than a `$crate::` qualifier — invoke it via an import, not
-/// a fully-qualified path.
+/// The macro's recursive expansions self-qualify with `$crate::sql_row!`, so it
+/// resolves back to this crate no matter how a consumer brings it into scope:
+/// both `use persistence_rust::sql_row;` then `sql_row!(...)` and a
+/// fully-qualified `persistence_rust::sql_row!(...)` work, and a same-named
+/// macro in the caller's scope can't capture the recursion.
 #[macro_export]
 macro_rules! sql_row {
     // Default builder name; also emits the `ALL_COLS` SELECT/RETURNING column
     // list from the same field list.
     ($struct:path { $($field:ident),+ $(,)? }) => {
-        sql_row!($struct { $($field),+ }, make_named_sql_params);
-        const ALL_COLS: &str = sql_row!(@cols $($field)+);
+        $crate::sql_row!($struct { $($field),+ }, make_named_sql_params);
+        const ALL_COLS: &str = $crate::sql_row!(@cols $($field)+);
     };
     // Explicit builder name.
     ($struct:path { $($field:ident),+ $(,)? }, $params_fn:ident) => {
@@ -61,7 +62,7 @@ macro_rules! sql_row {
 
         fn $params_fn(
             value: &$struct,
-        ) -> [(&str, &dyn ::rusqlite::ToSql); { sql_row!(@count $($field)+) }] {
+        ) -> [(&str, &dyn ::rusqlite::ToSql); { $crate::sql_row!(@count $($field)+) }] {
             [ $( (concat!(":", stringify!($field)), &value.$field) ),+ ]
         }
     };
@@ -69,7 +70,7 @@ macro_rules! sql_row {
     // ident base case avoids a trailing `+ 0usize` (which `clippy::identity_op`
     // would reject under `-D warnings`).
     (@count $field:ident) => { 1usize };
-    (@count $field:ident $($rest:ident)+) => { 1usize + sql_row!(@count $($rest)+) };
+    (@count $field:ident $($rest:ident)+) => { 1usize + $crate::sql_row!(@count $($rest)+) };
     // Comma-join the field names into the `SELECT`/`RETURNING` column list at
     // compile time: `concat!("a", ", ", "b", ", ", "c")`. Splitting the first
     // field from the rest keeps the separator *between* fields (no trailing

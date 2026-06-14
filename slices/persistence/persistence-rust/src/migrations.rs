@@ -34,7 +34,13 @@ pub fn run_migrations(
         )
         .optional()?
         .unwrap_or(0);
-    let current = usize::try_from(current).unwrap_or(0);
+    // A missing row means a fresh namespace (version 0, handled above). A row
+    // that's present but negative/out-of-range means `schema_migrations` was
+    // corrupted or hand-edited; fail loudly rather than silently restarting
+    // from 0, which would replay migrations against an already-populated schema
+    // and error on the first `CREATE TABLE`.
+    let current = usize::try_from(current)
+        .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(0, current))?;
 
     for (idx, sql) in migrations.iter().enumerate().skip(current) {
         // One transaction per migration so each lands (and bumps the recorded
@@ -90,6 +96,25 @@ mod tests {
         // error if the skip guard regressed).
         run_migrations(&mut conn, "x", A).unwrap();
         assert_eq!(version(&conn, "x") as usize, A.len());
+    }
+
+    #[test]
+    fn errors_on_corrupt_negative_version_rather_than_restarting() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        run_migrations(&mut conn, "x", A).unwrap();
+        // Corrupt the recorded version to a negative value, as a hand-edit or
+        // on-disk corruption might. The runner must surface an error, not
+        // silently treat it as version 0 and replay `CREATE TABLE a`.
+        conn.execute(
+            "UPDATE schema_migrations SET version = -1 WHERE namespace = ?1",
+            ["x"],
+        )
+        .unwrap();
+        let err = run_migrations(&mut conn, "x", A).unwrap_err();
+        assert!(
+            matches!(err, rusqlite::Error::IntegralValueOutOfRange(_, -1)),
+            "expected out-of-range error, got {err:?}"
+        );
     }
 
     #[test]
