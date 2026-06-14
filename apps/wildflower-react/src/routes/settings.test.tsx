@@ -5,8 +5,8 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, test } from 'vite-plus/test'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 // The `/settings` auth gate now lives in the route's `beforeLoad`
 // (shared `authGatedRouteOptions`), not inside `SettingsLayout` — so
@@ -36,7 +36,36 @@ const renderSettingsScreen = (): void => {
   render(<RouterProvider router={router} />)
 }
 
+/**
+ * Links contributed by the slice rows only — the `SettingsLayout` now
+ * also renders the persistent `<TabBar>` (a `Primary` navigation), whose
+ * Home/Collector/Settings links would otherwise pollute the
+ * "/settings/<slice>" assertions below.
+ */
+const sliceRowLinks = (): readonly HTMLAnchorElement[] => {
+  const tabBar = screen.getByRole('navigation', { name: 'Primary' })
+  return screen
+    .getAllByRole('link')
+    .filter((link): link is HTMLAnchorElement => !tabBar.contains(link))
+}
+
+// The screen now renders the persistent tab bar (a `Primary`
+// navigation); clear each mounted tree so the single-match `getByRole`
+// lookups in `sliceRowLinks` don't see duplicates across tests.
+afterEach(() => {
+  cleanup()
+})
+
 describe('SettingsScreen', () => {
+  test('renders the persistent tab bar alongside the page heading', async () => {
+    renderSettingsScreen()
+    await waitFor(() => {
+      const tabBar = screen.getByRole('navigation', { name: 'Primary' })
+      expect(within(tabBar).getByRole('link', { name: 'Home' })).toBeDefined()
+      expect(within(tabBar).getByRole('link', { name: 'Collector' })).toBeDefined()
+    })
+  })
+
   test('renders the page heading', async () => {
     renderSettingsScreen()
     await waitFor(() => {
@@ -55,7 +84,8 @@ describe('SettingsScreen', () => {
 
   test('every row links into /settings/<slice>/', async () => {
     renderSettingsScreen()
-    const links = await screen.findAllByRole('link')
+    await screen.findByRole('navigation', { name: 'Primary' })
+    const links = sliceRowLinks()
     expect(links.length).toBeGreaterThanOrEqual(2)
     for (const link of links) {
       const href = link.getAttribute('href') ?? ''
@@ -66,8 +96,7 @@ describe('SettingsScreen', () => {
   test('each slice item links to its declared href', async () => {
     renderSettingsScreen()
     await waitFor(() => {
-      const links = screen.getAllByRole('link')
-      const hrefs = new Set(links.map((l) => l.getAttribute('href') ?? ''))
+      const hrefs = new Set(sliceRowLinks().map((l) => l.getAttribute('href') ?? ''))
       expect(hrefs.has('/settings/tunnel')).toBe(true)
       expect(hrefs.has('/settings/gatekeeper')).toBe(true)
     })

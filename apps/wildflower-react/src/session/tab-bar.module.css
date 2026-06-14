@@ -1,0 +1,71 @@
+/*
+ * Authed shell + primary tab bar.
+ *
+ * The web equivalent of the Expo app's former native tab bar: a row of
+ * text-label tabs whose active entry takes the `--app-accent` colour.
+ * On phone-width viewports the bar pins to the bottom (thumb reach,
+ * matching the Expo placement); at >=768px it flips to the top of the
+ * page via flex `order`, swapping its divider edge with it.
+ *
+ * Classes follow BEM: `tab-shell` (block) wraps the scroll column
+ * (`tab-shell__content`) and the `tab-bar` block; each `tab` carries the
+ * `tab--active` modifier when selected.
+ */
+
+.tab-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* The matched route renders here. `min-height: 0` lets the flex child
+ * shrink so its own scroll container (not the page) handles overflow. */
+.tab-shell__content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.tab-bar {
+  display: flex;
+  flex-direction: row;
+  background-color: var(--color-background);
+  border-top: 1px solid var(--color-neutral-7);
+}
+
+.tab {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3) var(--space-2);
+  color: var(--color-neutral-4);
+  font-weight: 400;
+  text-decoration: none;
+}
+
+.tab:hover {
+  color: var(--color-foreground);
+}
+
+/* The active modifier is concatenated onto `.tab` by TanStack's
+ * `activeProps`. The compound `.tab.tab--active` selector raises
+ * specificity so the override wins regardless of source order (no
+ * reliance on rule ordering within or across stylesheets). */
+.tab.tab--active {
+  color: var(--app-accent);
+  font-weight: 600;
+}
+
+/* Tablet and wider: the bar moves above the content and its divider
+ * flips to the bottom edge. `order: -1` reorders the flex children
+ * without touching the DOM order (so tab order / a11y stay top-to-bottom
+ * = bar-then-content on narrow screens). */
+@media (min-width: 768px) {
+  .tab-bar {
+    order: -1;
+    border-top: none;
+    border-bottom: 1px solid var(--color-neutral-7);
+  }
+}

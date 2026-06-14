@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { pageLayoutStyles } from 'react-tundraish'
 
 import { authGatedRouteOptions } from '../session/auth-gated-route-options.ts'
+import { AppTabShell } from '../session/tab-bar.tsx'
 
 /**
  * `/settings` layout — persistent "Settings" header that stays visible
@@ -17,10 +18,12 @@ import { authGatedRouteOptions } from '../session/auth-gated-route-options.ts'
  */
 function SettingsLayout(): JSX.Element {
   return (
-    <div className={pageLayoutStyles['page']}>
-      <h1 className="text-heading-6">Settings</h1>
-      <Outlet />
-    </div>
+    <AppTabShell>
+      <div className={pageLayoutStyles['page']}>
+        <h1 className="text-heading-6">Settings</h1>
+        <Outlet />
+      </div>
+    </AppTabShell>
   )
 }
 
