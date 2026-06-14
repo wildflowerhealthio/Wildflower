@@ -112,7 +112,7 @@ catalog:
   jest-environment-jsdom: ~29.7.0
   jest-expo: ~54.0.12
   jose: ^6.2.2
-  jsdom: ^26.1.0
+  jsdom: ^29.1.1
   nanoid: ^5.1.11
   qrcode-generator: 2.0.4
   react: 19.1.0

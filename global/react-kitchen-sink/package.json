@@ -36,7 +36,7 @@
     "@types/react-dom": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "jsdom": "^26.0.0",
+    "jsdom": "^29.1.1",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
