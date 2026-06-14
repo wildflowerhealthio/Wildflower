@@ -38,6 +38,36 @@ pub(crate) fn internal_error(context: &str, err: impl std::fmt::Display) -> Resp
     StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }
 
+/// The "a server-side step failed" payload shared by every surface's error enum
+/// (`HandlerError` here, plus the OAuth `TokenError` and `AuthorizeError`): an
+/// operator-facing `context` and the `source` detail, rendered through
+/// [`internal_error`] (logs `source` against `context`, returns an opaque 500).
+/// Each enum holds this in its `Internal` variant instead of re-declaring the
+/// same fields, constructor, and render call three times. (`TokenError`
+/// additionally cache-suppresses the rendered 500 per RFC 6749 §5.1 by wrapping
+/// it.)
+#[derive(Debug)]
+pub(crate) struct InternalError {
+    context: &'static str,
+    source: String,
+}
+
+impl InternalError {
+    /// Capture an operator `context` and the `source` detail to log at render.
+    pub(crate) fn new(context: &'static str, source: impl std::fmt::Display) -> Self {
+        Self {
+            context,
+            source: source.to_string(),
+        }
+    }
+}
+
+impl IntoResponse for InternalError {
+    fn into_response(self) -> Response {
+        internal_error(self.context, self.source)
+    }
+}
+
 /// Plain 401 used by the auth middleware when a request lacks a valid bearer
 /// token.
 pub(crate) fn unauthorized() -> Response {
@@ -60,12 +90,8 @@ pub(crate) fn not_found(error: &'static str, field: &'static str, value: &str) -
 /// with `?` instead of a `match` + `return` at every call site.
 #[derive(Debug)]
 pub(crate) enum HandlerError {
-    /// Logged, opaque 500 — rendered by [`internal_error`], which logs
-    /// `source` against `context` at conversion time.
-    Internal {
-        context: &'static str,
-        source: String,
-    },
+    /// Logged, opaque 500 — see [`InternalError`].
+    Internal(InternalError),
     /// JSON 404 — rendered by [`not_found`].
     NotFound {
         error: &'static str,
@@ -77,10 +103,7 @@ pub(crate) enum HandlerError {
 impl HandlerError {
     /// A server-side failure (e.g. a store read): logs and 500s opaquely.
     pub(crate) fn internal(context: &'static str, source: impl std::fmt::Display) -> Self {
-        HandlerError::Internal {
-            context,
-            source: source.to_string(),
-        }
+        HandlerError::Internal(InternalError::new(context, source))
     }
 
     /// A missing resource: JSON 404 keyed by the resource's identifying field.
@@ -96,7 +119,7 @@ impl HandlerError {
 impl IntoResponse for HandlerError {
     fn into_response(self) -> Response {
         match self {
-            HandlerError::Internal { context, source } => internal_error(context, source),
+            HandlerError::Internal(error) => error.into_response(),
             HandlerError::NotFound {
                 error,
                 field,

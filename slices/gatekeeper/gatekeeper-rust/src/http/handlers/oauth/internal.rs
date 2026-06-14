@@ -14,7 +14,7 @@ use crate::crypto_util::client_secret::verify_client_secret;
 use crate::db_utils::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
 use crate::domain::token::{mint_access_token, NewJwtArgs};
-use crate::http::response_templates;
+use crate::http::response_templates::InternalError;
 
 /// Lifetime of access tokens minted by the gatekeeper.
 pub const ACCESS_TOKEN_TTL: Duration = Duration::hours(1);
@@ -147,11 +147,9 @@ pub enum TokenError {
     /// Client-authentication failure — renders its own response, possibly with
     /// a `WWW-Authenticate: Basic` challenge.
     ClientAuth(ValidateClientError),
-    /// A logged, opaque, cache-suppressed 500 (e.g. a store read failed).
-    Internal {
-        context: &'static str,
-        source: String,
-    },
+    /// A logged, opaque, cache-suppressed 500 (e.g. a store read failed) —
+    /// see [`InternalError`].
+    Internal(InternalError),
 }
 
 impl TokenError {
@@ -176,10 +174,7 @@ impl TokenError {
 
     /// A server-side failure: logs `source` against `context` and 500s opaquely.
     pub fn internal(context: &'static str, source: impl std::fmt::Display) -> Self {
-        TokenError::Internal {
-            context,
-            source: source.to_string(),
-        }
+        TokenError::Internal(InternalError::new(context, source))
     }
 }
 
@@ -201,9 +196,7 @@ impl IntoResponse for TokenError {
             TokenError::Oauth(response) => CacheSuppressed(response).into_response(),
             TokenError::ResolveCredentials(error) => CacheSuppressed(error).into_response(),
             TokenError::ClientAuth(error) => CacheSuppressed(error).into_response(),
-            TokenError::Internal { context, source } => {
-                CacheSuppressed(response_templates::internal_error(context, source)).into_response()
-            }
+            TokenError::Internal(error) => CacheSuppressed(error).into_response(),
         }
     }
 }

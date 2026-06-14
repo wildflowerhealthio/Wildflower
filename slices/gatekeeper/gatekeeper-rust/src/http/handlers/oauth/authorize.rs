@@ -16,7 +16,7 @@ use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthor
 use crate::domain::client::Client;
 use crate::http::error_pages::{oauth_error_html, OAuthErrorKind};
 use crate::http::page_paths;
-use crate::http::response_templates;
+use crate::http::response_templates::InternalError;
 use crate::http::state::AppState;
 use crate::http::ServedOrigin;
 
@@ -67,11 +67,8 @@ enum AuthorizeError {
     /// No active signing key: without token-mint capability the endpoint can't
     /// proceed, so it 503s rather than parking a request it can never complete.
     ServiceUnavailable,
-    /// A logged, opaque 500 (e.g. a store read failed).
-    Internal {
-        context: &'static str,
-        source: String,
-    },
+    /// A logged, opaque 500 (e.g. a store read failed) — see [`InternalError`].
+    Internal(InternalError),
 }
 
 impl AuthorizeError {
@@ -87,10 +84,7 @@ impl AuthorizeError {
 
     /// A server-side failure: logs `source` against `context` and 500s opaquely.
     fn internal(context: &'static str, source: impl std::fmt::Display) -> Self {
-        AuthorizeError::Internal {
-            context,
-            source: source.to_string(),
-        }
+        AuthorizeError::Internal(InternalError::new(context, source))
     }
 }
 
@@ -100,9 +94,7 @@ impl IntoResponse for AuthorizeError {
             AuthorizeError::LocalPage(kind) => html_bad_request(oauth_error_html(&kind)),
             AuthorizeError::Redirect { location } => found_redirect(&location),
             AuthorizeError::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE.into_response(),
-            AuthorizeError::Internal { context, source } => {
-                response_templates::internal_error(context, source)
-            }
+            AuthorizeError::Internal(error) => error.into_response(),
         }
     }
 }
