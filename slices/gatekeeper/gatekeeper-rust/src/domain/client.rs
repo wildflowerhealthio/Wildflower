@@ -1,3 +1,4 @@
+use std::fmt;
 use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
@@ -14,12 +15,20 @@ pub enum ClientKind {
     Confidential,
 }
 
-impl From<&ClientKind> for &'static str {
-    fn from(val: &ClientKind) -> Self {
-        match val {
+impl ClientKind {
+    /// The wire string this kind is stored and serialized as.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
             ClientKind::Public => "public",
             ClientKind::Confidential => "confidential",
         }
+    }
+}
+
+impl fmt::Display for ClientKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 

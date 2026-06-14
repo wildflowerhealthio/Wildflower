@@ -80,7 +80,7 @@ fn ensure_first_party_client(store: &GatekeeperStore) -> anyhow::Result<()> {
 #[derive(Debug, Error)]
 pub(crate) enum HostTokenError {
     /// Reading signing keys from the store failed.
-    #[error("sqlite: {0}")]
+    #[error("read signing keys from store")]
     Sqlite(#[from] rusqlite::Error),
     /// No signing keys are present in the store — bootstrap has not run, or
     /// the database has been tampered with.
@@ -88,7 +88,7 @@ pub(crate) enum HostTokenError {
     NoSigningKeys,
     /// [`crate::domain::token`] failed to sign the token; the wrapped error
     /// preserves whether it was a key-material or encoding failure.
-    #[error("jws sign: {0}")]
+    #[error("sign host owner token")]
     JwsSignFailed(#[from] MintError),
 }
 

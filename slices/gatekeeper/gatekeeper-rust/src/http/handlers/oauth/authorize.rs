@@ -1,6 +1,6 @@
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, MethodRouter};
 use chrono::{Duration, Utc};
 use serde::Deserialize;
@@ -431,10 +431,5 @@ fn redirect_to_client(parsed_redirect: &Url, code: &str, client_state: &str) -> 
 }
 
 fn html_bad_request(html: String) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        [("content-type", "text/html; charset=utf-8")],
-        html,
-    )
-        .into_response()
+    (StatusCode::BAD_REQUEST, Html(html)).into_response()
 }

@@ -35,10 +35,7 @@ pub fn router(state: AppState) -> Router {
         ));
 
     Router::new()
-        .route(
-            "/.well-known/jwks.json",
-            handlers::jwks::handle_get_jwks_request(),
-        )
+        .route("/.well-known/jwks.json", handlers::jwks::route())
         .nest("/oauth", oauth)
         .nest("/access", access)
         .layer(axum_middleware::from_fn(middleware::loopback_gate))

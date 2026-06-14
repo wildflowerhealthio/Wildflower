@@ -75,7 +75,7 @@ pub enum MintError {
     #[error("signing key material could not be loaded")]
     SigningKeyUnreadable(#[source] KeyMaterialError),
     /// `jsonwebtoken` failed to encode the JWS.
-    #[error("jws encode failed: {0}")]
+    #[error("jws encode failed")]
     JwsEncodeFailed(#[from] jsonwebtoken::errors::Error),
 }
 

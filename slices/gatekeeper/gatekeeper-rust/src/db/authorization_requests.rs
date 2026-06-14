@@ -10,7 +10,7 @@ use crate::domain::authorization_request::{AuthorizationRequest, GrantType, Requ
 impl ToSql for GrantType {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         Ok(ToSqlOutput::Borrowed(ValueRef::Text(
-            <&str>::from(self).as_bytes(),
+            self.as_str().as_bytes(),
         )))
     }
 }
@@ -26,7 +26,7 @@ impl FromSql for GrantType {
 impl ToSql for RequestStatus {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         Ok(ToSqlOutput::Borrowed(ValueRef::Text(
-            <&str>::from(self).as_bytes(),
+            self.as_str().as_bytes(),
         )))
     }
 }
