@@ -76,7 +76,7 @@ When running multiple agents in parallel inside the devcontainer, **use the help
 .devcontainer/wf-worktree.sh remove <branch>
 ```
 
-Requires **git 2.48+** — the script uses `git worktree add --relative-paths`, which landed in that release. The devcontainer image ships a newer git; on older hosts `wf-worktree.sh new` fails fast with the version requirement instead of git's opaque "unknown option" message.
+Requires **git 2.48+** — the script uses `git worktree add --relative-paths`, which landed in that release. The devcontainer image ships a newer git; on older hosts `wf-worktree.sh new` fails fast with the version requirement instead of git's opaque "unknown option" message. The **host** git must also be **2.48+**: the first `--relative-paths` worktree writes `extensions.relativeWorktrees = true` into the shared `.git/config`, after which older git refuses to operate on the repo at all (`fatal: unknown repository extension found: relativeworktrees`) — even after the worktree is removed.
 
 The script places the worktree at `${workspace}/.worktrees/<branch>` (host-visible via the existing bind mount) and symlinks its `node_modules` to `/data/worktrees/<branch>/node_modules` on the Linux-native `wf-data` volume. That keeps the source files editable from host VSCode while installs hardlink from the shared pnpm store at `/data/pnpm-store` — fast, with ~1× total disk cost across worktrees.
 
