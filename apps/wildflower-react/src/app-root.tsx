@@ -111,6 +111,14 @@ interface RenderAppOptions {
    * seed `TransportContext`.
    */
   readonly makeTransport: MakeTransport
+  /**
+   * Absolute API origin for entries whose page is not served by the
+   * API server (the Tauri webview loads from the dev server / asset
+   * protocol while the API lives on the host's loopback server).
+   * Omitted, HTTP clients resolve their relative paths against the
+   * page origin, as on web/embedded.
+   */
+  readonly apiBaseUrl?: string
 }
 
 /**
@@ -148,8 +156,12 @@ const renderApp = ({
   tokenStore,
   awaitAuthReady,
   makeTransport,
+  apiBaseUrl,
 }: RenderAppOptions): void => {
-  const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(tokenStore.subscribable)
+  const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(
+    tokenStore.subscribable,
+    apiBaseUrl
+  )
 
   forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 

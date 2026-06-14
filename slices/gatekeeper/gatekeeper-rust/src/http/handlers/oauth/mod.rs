@@ -1,0 +1,20 @@
+mod authorization_status;
+mod authorize;
+mod client_auth;
+mod device_authorization;
+mod error_codes;
+mod internal;
+mod token_exchange;
+mod token_request;
+
+use axum::Router;
+
+use crate::http::state::AppState;
+
+pub fn router() -> Router<AppState> {
+    Router::new()
+        .route("/authorize", authorize::route())
+        .route("/authorize/{id}", authorization_status::route())
+        .route("/token", token_exchange::route())
+        .route("/device_authorization", device_authorization::route())
+}

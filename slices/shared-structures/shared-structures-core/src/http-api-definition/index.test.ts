@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
-// HttpApiClient builds requests with relative URLs (`'/fixture'`)
-// against the helper's hardcoded `baseUrl: '/'`. Node's default URL
-// parser rejects relative URLs without a base; jsdom provides
-// `window.location.href` (`http://localhost/`) so resolution works.
-// The package's other suites run on the Node default.
+// HttpApiClient builds requests with relative URLs (`'/fixture'` —
+// the helper passes no `baseUrl`). Node's default URL parser rejects
+// relative URLs without a base; jsdom provides `window.location.href`
+// (`http://localhost/`) so resolution works. The package's other
+// suites run on the Node default.
 import {
   HttpApi,
   HttpApiEndpoint,
   HttpApiGroup,
   HttpClient,
+  HttpClientRequest,
   HttpClientResponse,
 } from '@effect/platform'
 import { Effect, Layer, Schema, SubscriptionRef } from 'effect'
@@ -268,6 +269,86 @@ describe('defineSliceHttpClient (authType: none)', () => {
       authType: 'none',
     })
     expect(sliceHc.authType).toBe('none')
+  })
+})
+
+// Stub HttpClient transport that records each outgoing request URL and
+// replies with the canned `FixtureBody`.
+const urlCapturingHttpClientLayer = (urls: string[]): Layer.Layer<HttpClient.HttpClient> =>
+  Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request) => {
+      urls.push(request.url)
+      return Effect.succeed(
+        HttpClientResponse.fromWeb(
+          request,
+          new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        )
+      )
+    })
+  )
+
+describe('defineSliceHttpClient (request URLs)', () => {
+  test('requests carry the endpoint path verbatim', async () => {
+    const sliceHc = defineSliceHttpClient({
+      name: 'FixturePublicClient',
+      api: FixtureApi,
+      authType: 'none',
+    })
+    class FixturePublicClient extends sliceHc.ClientTag<FixturePublicClient>() {
+      static readonly layer = sliceHc.makeLayerFactory(FixturePublicClient)()
+    }
+
+    const urls: string[] = []
+
+    await Effect.runPromise(
+      Effect.flatMap(FixturePublicClient, (client) => client.fixture.GetFixture()).pipe(
+        Effect.provide(
+          FixturePublicClient.layer.pipe(Layer.provideMerge(urlCapturingHttpClientLayer(urls)))
+        ),
+        Effect.scoped
+      )
+    )
+
+    expect(urls).toEqual(['/fixture'])
+  })
+
+  // Regression: the helper used to pass `baseUrl: '/'`, and
+  // `HttpApiClient`'s base prepend runs *after* transforms the app
+  // layered onto the context `HttpClient` — an app-level origin
+  // prepend (the Tauri entry's `apiBaseUrl`) produced
+  // `/http://127.0.0.1:8080/fixture`, which fetch then resolved
+  // against the page origin.
+  test('composes with an app-level origin prepend into an absolute URL', async () => {
+    const sliceHc = defineSliceHttpClient({
+      name: 'FixturePublicClient',
+      api: FixtureApi,
+      authType: 'none',
+    })
+    class FixturePublicClient extends sliceHc.ClientTag<FixturePublicClient>() {
+      static readonly layer = sliceHc.makeLayerFactory(FixturePublicClient)()
+    }
+
+    const urls: string[] = []
+    const prependingClientLayer = Layer.effect(
+      HttpClient.HttpClient,
+      Effect.map(
+        HttpClient.HttpClient,
+        HttpClient.mapRequest(HttpClientRequest.prependUrl('http://127.0.0.1:8080'))
+      )
+    ).pipe(Layer.provide(urlCapturingHttpClientLayer(urls)))
+
+    await Effect.runPromise(
+      Effect.flatMap(FixturePublicClient, (client) => client.fixture.GetFixture()).pipe(
+        Effect.provide(FixturePublicClient.layer.pipe(Layer.provideMerge(prependingClientLayer))),
+        Effect.scoped
+      )
+    )
+
+    expect(urls).toEqual(['http://127.0.0.1:8080/fixture'])
   })
 })
 

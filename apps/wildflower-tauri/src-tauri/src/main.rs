@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    wildflower_tauri_lib::run()
+    wildflower_tauri_lib::run();
 }

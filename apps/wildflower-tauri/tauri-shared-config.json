@@ -1,0 +1,5 @@
+{
+  "_comment": "BOTH languages derive from this file at compile time, so the config can never silently drift: Rust reads it in `src-tauri/build.rs` (which re-emits environment variables for `src-tauri/src/lib.rs` to read via `env!`), and TS reads it in `vite.config.ts` (which injects values in `src/main.tsx`). Change the values here and rebuild — both sides follow.",
+  "loopback_hostname": "127.0.0.1",
+  "loopback_port": 8080
+}

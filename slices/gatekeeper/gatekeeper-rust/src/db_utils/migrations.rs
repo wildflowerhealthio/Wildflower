@@ -1,0 +1,83 @@
+//! Tiny `PRAGMA user_version` migration runner. Each entry of
+//! [`MIGRATIONS`] runs at most once, in order; the index of the highest
+//! applied entry is persisted in `PRAGMA user_version`. Reproduces what
+//! we'd get from `rusqlite_migration` — we hand-roll it because no
+//! published `rusqlite_migration` version targets rusqlite 0.33 (the
+//! version helios-persistence pins).
+
+use rusqlite::Connection;
+
+pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
+    let current: u32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    for (idx, sql) in MIGRATIONS.iter().enumerate().skip(current as usize) {
+        // One transaction per migration so each lands (and bumps
+        // `user_version`) atomically and independently: a failure in a later
+        // migration can't roll back an already-validated earlier one, and the
+        // version always reflects exactly what is committed.
+        let tx = conn.transaction()?;
+        tx.execute_batch(sql)?;
+        // `idx` is an index into the compile-time `MIGRATIONS` array, so this
+        // conversion never actually overflows; fold the impossible case into
+        // the existing `rusqlite::Result` rather than panicking.
+        let next = u32::try_from(idx + 1)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        // The literal is index-derived, not user input.
+        tx.execute_batch(&format!("PRAGMA user_version = {next}"))?;
+        tx.commit()?;
+    }
+    Ok(())
+}
+
+/// Ordered list of schema migrations. The array index is the persisted
+/// `PRAGMA user_version` — append-only; never reorder or rewrite an
+/// already-shipped entry. New migrations land as a sibling `.sql` file
+/// under `src/migrations/` plus one new `include_str!` line below.
+const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/001_initial_schema.sql"),
+    include_str!("../migrations/002_refresh_tokens.sql"),
+    include_str!("../migrations/003_refresh_family_authorization_code.sql"),
+    include_str!("../migrations/004_unique_authorization_code_request_id.sql"),
+    include_str!("../migrations/005_unique_pending_user_code.sql"),
+    include_str!("../migrations/006_unique_grant_client_redirect.sql"),
+    include_str!("../migrations/007_client_allowed_grant_types.sql"),
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migrate_is_idempotent() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        migrate(&mut conn).unwrap();
+        let v: u32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(v as usize, MIGRATIONS.len());
+    }
+
+    #[test]
+    fn migrate_creates_expected_tables() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        let names: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        for expected in [
+            "authorization_codes",
+            "authorization_requests",
+            "clients",
+            "grants",
+            "refresh_token_families",
+            "refresh_tokens",
+            "signing_keys",
+        ] {
+            assert!(names.iter().any(|n| n == expected), "missing {expected}");
+        }
+    }
+}

@@ -111,6 +111,11 @@ re-authorizations.
 - **Indexed by:** `(clientId, redirectUri)` pair, queried via
   `byClientIdAndRedirectUri$`. Re-approval updates via `grantUpdated`
   rather than minting a duplicate row.
+- **Scopes union across approvals** (gatekeeper-rust): a later approval
+  merges its scopes into the standing grant — approving a narrower
+  request never un-approves earlier consent. Revoking the grant is the
+  way to withdraw consent (and also revokes the client's refresh
+  tokens).
 - **Key fields:** `clientId`, `scopes`, `redirectUri`, `grantedAt`,
   `lastUsedAt` (event slot reserved, materializer present, but **no
   consumer commits `clientAccessRecorded` yet**), `patient`
@@ -311,7 +316,10 @@ is enforced by `jose.jwtVerify`'s default behavior.
 
 ### Authorization code flow / `grant_type=authorization_code`
 
-The standard OAuth 2.0 grant for browser-redirect flows. The `/oauth/token`
+The standard OAuth 2.0 grant for browser-redirect flows. `/oauth/authorize`
+requires `response_type=code` (RFC 6749 §4.1.1 makes the parameter
+REQUIRED; `code` is the only value we implement — anything else is
+rejected as `unsupported_response_type`). The `/oauth/token`
 endpoint dispatches on `grant_type`; the `authorization_code` branch
 verifies PKCE + redirect_uri + client_id match the issued code, then
 mints a JWT.
@@ -321,6 +329,28 @@ mints a JWT.
 RFC 8628. The grant type used by `wildflower-host` (and any other
 no-redirect-capable OAuth client) to bootstrap onto a deployment. See
 the [Device flow](#device-flow-rfc-8628) section above.
+
+### Refresh token / `grant_type=refresh_token`
+
+RFC 6749 §6, implemented in gatekeeper-rust with OAuth 2.1 rotation
+semantics. Issued at `/oauth/token` only when the granted scopes include
+`offline_access` (the SMART on FHIR convention).
+
+- **Tables:** `refresh_token_families` holds the per-authorization facts
+  (client, scopes, patient, deadline) exactly once; `refresh_tokens` holds
+  one row per rotation, storing the SHA-256 base64url digest — never the
+  plaintext.
+- **Rotation:** each redemption consumes the presented token and returns
+  its successor in the same family. Replaying a consumed token is treated
+  as theft and revokes the whole family.
+- **Lifetime:** the family has an absolute 90-day deadline
+  (`REFRESH_TOKEN_FAMILY_TTL`) measured from the original authorization;
+  rotation never extends it.
+- **Revocation:** soft — killing a family (replay detection, or
+  `DELETE /access/grants/{id}` revoking the client's standing consent)
+  pulls the family's `expires_at` back to the revocation instant and
+  stamps its live token consumed. Rows are never deleted, so the lineage
+  stays auditable.
 
 ### Bearer token / `token_type=Bearer`
 

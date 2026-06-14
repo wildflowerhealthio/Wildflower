@@ -275,6 +275,29 @@ const createOAuthHandler = (
   return HttpApiBuilder.toWebHandler(Layer.merge(apiLive, HttpServer.layerContext))
 }
 
+test('authorize returns inline error HTML for unsupported response type', async () => {
+  const { handler, dispose } = createOAuthHandler(
+    makeStore({
+      signingKeys: [sharedSigningKey],
+    })
+  )
+
+  try {
+    const response = await handler(
+      new Request(
+        'http://localhost/oauth/authorize?response_type=token&code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc123&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=test-state'
+      )
+    )
+
+    expect(response.status).toBe(400)
+    const body = await response.text()
+    expect(body).toContain('Unsupported response type')
+    expect(body).toContain('(received: token)')
+  } finally {
+    await dispose()
+  }
+})
+
 test('authorize returns inline error HTML for unsupported code challenge method', async () => {
   const { handler, dispose } = createOAuthHandler(
     makeStore({
@@ -285,7 +308,7 @@ test('authorize returns inline error HTML for unsupported code challenge method'
   try {
     const response = await handler(
       new Request(
-        'http://localhost/oauth/authorize?code_challenge_method=plain&client_id=test-client&scope=patient/*.read&code_challenge=abc123&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=test-state'
+        'http://localhost/oauth/authorize?response_type=code&code_challenge_method=plain&client_id=test-client&scope=patient/*.read&code_challenge=abc123&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=test-state'
       )
     )
 
@@ -336,7 +359,7 @@ test('authorize auto-approves using matching redirect row from byClientIdAndRedi
   try {
     const response = await handler(
       new Request(
-        'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=client-123&scope=patient/*.read%20launch&code_challenge=test-challenge&redirect_uri=https%3A%2F%2Fapp.example%2Fcallback&state=state-123'
+        'http://localhost/oauth/authorize?response_type=code&code_challenge_method=S256&client_id=client-123&scope=patient/*.read%20launch&code_challenge=test-challenge&redirect_uri=https%3A%2F%2Fapp.example%2Fcallback&state=state-123'
       )
     )
 
@@ -362,7 +385,7 @@ test('authorize redirects to the polling page', async () => {
   try {
     const response = await handler(
       new Request(
-        'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc123&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=test-state'
+        'http://localhost/oauth/authorize?response_type=code&code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc123&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=test-state'
       )
     )
 
@@ -486,7 +509,7 @@ test('authorize rejects an unknown client_id', async () => {
   try {
     const response = await handler(
       new Request(
-        'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=unknown-client&scope=patient/*.read&code_challenge=abc&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=s'
+        'http://localhost/oauth/authorize?response_type=code&code_challenge_method=S256&client_id=unknown-client&scope=patient/*.read&code_challenge=abc&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=s'
       )
     )
     expect(response.status).toBe(400)
@@ -507,7 +530,7 @@ test('authorize rejects a disabled client', async () => {
   try {
     const response = await handler(
       new Request(
-        'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=s'
+        'http://localhost/oauth/authorize?response_type=code&code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=s'
       )
     )
     expect(response.status).toBe(400)
@@ -528,7 +551,7 @@ test('authorize rejects redirect_uri not in client allowlist', async () => {
   try {
     const response = await handler(
       new Request(
-        'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc&redirect_uri=https%3A%2F%2Fmalicious.example%2Fcb&state=s'
+        'http://localhost/oauth/authorize?response_type=code&code_challenge_method=S256&client_id=test-client&scope=patient/*.read&code_challenge=abc&redirect_uri=https%3A%2F%2Fmalicious.example%2Fcb&state=s'
       )
     )
     expect(response.status).toBe(400)
@@ -549,7 +572,7 @@ test('authorize rejects requested scope not in client allowedScopes', async () =
   try {
     const response = await handler(
       new Request(
-        'http://localhost/oauth/authorize?code_challenge_method=S256&client_id=test-client&scope=patient/*.read%20launch&code_challenge=abc&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=s'
+        'http://localhost/oauth/authorize?response_type=code&code_challenge_method=S256&client_id=test-client&scope=patient/*.read%20launch&code_challenge=abc&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&state=s'
       )
     )
     expect(response.status).toBe(400)

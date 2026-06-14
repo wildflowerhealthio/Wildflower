@@ -100,8 +100,14 @@ const defineSliceHttpClient = <
           Tag,
           Effect.gen(function* () {
             const tokenSubscribable = yield* BearerToken
+            // No `baseUrl`: endpoint paths are already absolute-path
+            // relative (`/x`), so a `'/'` base is a no-op at best — and
+            // `HttpApiClient`'s base prepend runs *after* any transform
+            // the app layered onto the context `HttpClient`, so it
+            // corrupts URLs when an app-level origin prepend (e.g. the Tauri
+            // entry's `apiBaseUrl`) already made them absolute
+            // (`/http://127.0.0.1:8080/x`).
             return yield* HttpApiClient.make(input.api, {
-              baseUrl: '/',
               transformClient: (c) =>
                 HttpClient.mapRequestEffect(c, (request) =>
                   Effect.map(tokenSubscribable.get, (token) =>
@@ -121,7 +127,7 @@ const defineSliceHttpClient = <
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         return built as unknown as Layer.Layer<Self, never, LayerRequirementsFor<AuthType>>
       }
-      const built = Layer.effect(Tag, HttpApiClient.make(input.api, { baseUrl: '/' }))
+      const built = Layer.effect(Tag, HttpApiClient.make(input.api))
       // Paired with the bearer-branch cast above.
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       return built as unknown as Layer.Layer<Self, never, LayerRequirementsFor<AuthType>>

@@ -40,8 +40,8 @@ describe('GET /fhir-r4/.well-known/smart-configuration', () => {
           const config = yield* wired.public['smart-well-known'].SmartConfiguration()
 
           expect(config.issuer).toBe(`${ORIGIN}/fhir-r4`)
-          expect(config.token_endpoint).toBe(`${ORIGIN}/auth/token`)
-          expect(config.authorization_endpoint).toBe(`${ORIGIN}/auth/authorize`)
+          expect(config.token_endpoint).toBe(`${ORIGIN}/oauth/token`)
+          expect(config.authorization_endpoint).toBe(`${ORIGIN}/oauth/authorize`)
           expect(config.grant_types_supported).toContain('authorization_code')
           expect(config.code_challenge_methods_supported).toContain('S256')
           expect(config.capabilities).toContain('launch-ehr')
@@ -58,7 +58,7 @@ describe('GET /fhir-r4/.well-known/smart-configuration', () => {
             fetchSmartConfig(wired.handler, { host: '127.0.0.1:3000' })
           )
           expect(body.issuer).toBe('http://127.0.0.1:3000/fhir-r4')
-          expect(body.authorization_endpoint).toBe('http://127.0.0.1:3000/auth/authorize')
+          expect(body.authorization_endpoint).toBe('http://127.0.0.1:3000/oauth/authorize')
           expect(body.jwks_uri).toBe('http://127.0.0.1:3000/.well-known/jwks.json')
         })
       )
@@ -78,7 +78,7 @@ describe('GET /fhir-r4/.well-known/smart-configuration', () => {
           )
           expect(body.issuer).toBe('https://wildflower-node-dev.loca.lt/fhir-r4')
           expect(body.authorization_endpoint).toBe(
-            'https://wildflower-node-dev.loca.lt/auth/authorize'
+            'https://wildflower-node-dev.loca.lt/oauth/authorize'
           )
           expect(body.jwks_uri).toBe('https://wildflower-node-dev.loca.lt/.well-known/jwks.json')
         })

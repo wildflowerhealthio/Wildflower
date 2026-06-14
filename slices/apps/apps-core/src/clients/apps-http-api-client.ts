@@ -5,7 +5,7 @@ import { AppsAdminApi, AppsApi } from '../http-api-definition/index.ts'
 const publicHc = defineSliceHttpClient({
   name: 'AppsHttpApiClient',
   api: AppsApi,
-  authType: 'none',
+  authType: 'bearer',
 })
 
 const adminHc = defineSliceHttpClient({
@@ -15,9 +15,12 @@ const adminHc = defineSliceHttpClient({
 })
 
 /**
- * Effect Service providing the resolved `AppsApi` (public) HttpApi
- * client — `ListApps` + `LaunchApp`. No bearer token required;
- * consumers should *not* attach `Authorization` headers.
+ * Effect Service providing the resolved `AppsApi` HttpApi client —
+ * `ListApps` + `LaunchApp`. Attaches a bearer: hosts that gate the
+ * apps surface (e.g. the Tauri host's Rust server) reject anonymous
+ * reads, and hosts that don't yet (wildflower-server) ignore the
+ * header. Note `LaunchApp` is normally driven via `window.location`
+ * navigation (which carries no bearer), not through this client.
  */
 class AppsHttpApiClient extends publicHc.ClientTag<AppsHttpApiClient>() {
   static readonly layer = publicHc.makeLayerFactory(AppsHttpApiClient)()

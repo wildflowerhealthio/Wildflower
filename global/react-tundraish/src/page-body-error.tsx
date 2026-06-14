@@ -30,7 +30,15 @@ const PageBodyError = ({
       {title === undefined ? null : (
         <h2 className={cn('text-heading-3', titleClassName)}>{title}</h2>
       )}
-      <p className={cn(pageLayout['error'], 'text-body-3')}>{message}</p>
+      {message.includes('\n') ? (
+        // Multi-line messages (Effect Schema ParseError trees etc.)
+        // keep their own line structure: a `<pre>` with the same error
+        // chrome, monospace so indentation and tree arms line up. No
+        // `text-body-*` class — that would override the monospace.
+        <pre className={cn(pageLayout['error'], pageLayout['error--multiline'])}>{message}</pre>
+      ) : (
+        <p className={cn(pageLayout['error'], 'text-body-3')}>{message}</p>
+      )}
       {retry === undefined ? null : (
         <button type="button" className="button-3 outline" onClick={retry}>
           Retry

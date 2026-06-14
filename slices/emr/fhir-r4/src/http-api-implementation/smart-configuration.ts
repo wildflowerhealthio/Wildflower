@@ -13,8 +13,8 @@ const layer = HttpApiBuilder.group(FhirPublicApi, 'smart-well-known', (handlers)
         {
           issuer: host,
           jwks_uri: `${origin}/.well-known/jwks.json`,
-          authorization_endpoint: `${origin}/auth/authorize`,
-          token_endpoint: `${origin}/auth/token`,
+          authorization_endpoint: `${origin}/oauth/authorize`,
+          token_endpoint: `${origin}/oauth/token`,
           token_endpoint_auth_methods_supported: ['client_secret_basic', 'private_key_jwt'],
           grant_types_supported: ['authorization_code', 'client_credentials'],
           registration_endpoint: `${host}/auth/register`,

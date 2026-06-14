@@ -1,0 +1,268 @@
+import { emit, listen } from '@tauri-apps/api/event'
+import type { ParseResult } from 'effect'
+import { Cause, Effect, Queue, Schema, Stream } from 'effect'
+import type {
+  Bridge,
+  BridgeHandlerRecord,
+  BridgeTransport,
+  HandlerCoordinator,
+  Message,
+  MessageHandler,
+} from 'effect-messaging-core'
+import { HandlerHelpers } from 'effect-messaging-core'
+
+import { eventNameForTag, READY_EVENT, READY_TAG } from './event-names.ts'
+
+/**
+ * The slice of Tauri's event API the transport consumes, structurally
+ * narrowed so tests can inject a plain fake without reproducing
+ * `@tauri-apps/api`'s generics. The real `emit`/`listen` satisfy it.
+ */
+interface TauriEventApi {
+  readonly emit: (event: string, payload?: unknown) => Promise<void>
+  readonly listen: (
+    event: string,
+    handler: (event: { readonly payload: unknown }) => void
+  ) => Promise<() => void>
+}
+
+/**
+ * Boot-stable handler seed, keyed by bridge name and typed per bridge:
+ * a key must be a wired bridge's name and its value that bridge's own
+ * `HostToWeb` handler record — a typo'd name or a record from the
+ * wrong bridge is a compile error at the call site.
+ */
+type InitialHandlers<Bridges extends ReadonlyArray<Bridge.AnyBridge>> = {
+  readonly [B in Bridges[number] as B['name']]?: MessageHandler.HandlersFor<B['HostToWeb']>
+}
+
+/**
+ * Config object accepted by {@link makeTauriTransport}.
+ *
+ * @typeParam Bridges - the wired bridge tuple this transport will serve.
+ */
+interface TauriTransportConfig<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
+  /**
+   * The wired bridge tuple; inbound tags are collected from each
+   * bridge's `HostToWeb` record. Rejects on a tag shared by two bridges
+   * or directions (see {@link assertUniqueTags}).
+   */
+  readonly bridges: Bridges
+  /**
+   * Boot-stable handler records keyed by bridge name. Bridges absent
+   * here warn-and-drop until a slice registers on mount.
+   */
+  readonly initial?: InitialHandlers<Bridges>
+  /**
+   * Injected event functions for tests; defaults to
+   * `@tauri-apps/api/event`'s `emit`/`listen`.
+   */
+  readonly api?: TauriEventApi
+}
+
+/**
+ * The Tauri-native bridge transport: the same `sendMessage` +
+ * `coordinator` seam the React app consumes (`ReactTransport`), with no
+ * string envelope underneath — each message rides its own
+ * `bridge:{tag}` Tauri event as a structured payload.
+ */
+interface TauriTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
+  /**
+   * Emit an outbound (web→host) message on its per-tag Tauri event.
+   * Emit failures are logged and dropped — sending never fails the
+   * caller, mirroring the postMessage transports' behavior.
+   */
+  readonly sendMessage: BridgeTransport.MessageSender<Bridges, 'WebToHost'>
+  /**
+   * Per-bridge inbound handler registration with the same semantics as
+   * `makeHandlerCoordinator` (last-writer-wins `register`, set-if-equal
+   * `unregister`, drop-all-with-warn for unregistered bridges) — so
+   * slice `makeUseSliceRegister` hooks work unchanged.
+   */
+  readonly coordinator: HandlerCoordinator
+}
+
+/**
+ * Tags double as Tauri event names here, and Tauri events broadcast to
+ * every listener — including the emitting webview itself. So tags must
+ * be unique across every wired bridge and across *both* directions
+ * (a tag in one bridge's `HostToWeb` and another's `WebToHost` would
+ * make the web receive its own sends), and must not shadow the
+ * reserved `__Ready` handshake tag. Stricter than the core transport's
+ * per-direction `assertNoDuplicateTags`, because event names are
+ * direction-less. Throws at build time, before any listener attaches.
+ */
+const assertUniqueTags = (bridges: ReadonlyArray<Bridge.AnyBridge>): void => {
+  const owners = new Map<string, string>([[READY_TAG, 'the reserved __Ready handshake tag']])
+  for (const bridge of bridges) {
+    for (const direction of ['HostToWeb', 'WebToHost'] as const) {
+      for (const tag of Object.keys(bridge[direction])) {
+        const owner = owners.get(tag)
+        if (owner !== undefined) {
+          throw new Error(
+            `[effect-messaging] tag "${tag}" on bridge "${bridge.name}" (${direction}) collides with ${owner} — tags name Tauri events and must be unique across bridges and directions`
+          )
+        }
+        owners.set(tag, `bridge "${bridge.name}" (${direction})`)
+      }
+    }
+  }
+}
+
+/**
+ * Build the web-side bridge transport for a Tauri host.
+ *
+ * @remarks
+ * Inbound: one Tauri `listen` per `HostToWeb` tag across the wired
+ * tuple, attached before anything else. Each payload is validated
+ * against the bridge schema's struct side (`Schema.typeSchema` — the
+ * bridge schemas stay the wire authority even though no JSON string
+ * crosses this transport) and routed to the bridge's *current* handler
+ * record. Undecodable payloads and handler defects are logged and
+ * dropped; the next event dispatches normally. Every inbound event is
+ * funnelled through one unbounded queue drained by a single fiber (as in
+ * core's `makeInboundDispatcher`), so same-tag events apply in arrival
+ * order even when a handler suspends — no per-event fiber can overtake an
+ * earlier one.
+ *
+ * Readiness: once **all** listeners have attached, `bridge:__Ready` is
+ * emitted — only then may the host respond, so its first message (e.g.
+ * the gatekeeper token) cannot race listener setup and vanish (Tauri
+ * events are not buffered). The host re-receives `__Ready` on every
+ * page load, so reloads re-trigger its boot-state push. The resolved
+ * Promise therefore has the same meaning as the postMessage
+ * transports' `signalReady`.
+ *
+ * The transport lives for the page's lifetime — listeners are never
+ * detached (page teardown drops them with the document).
+ *
+ * @param config - see {@link TauriTransportConfig}.
+ */
+const makeTauriTransport = async <const Bridges extends ReadonlyArray<Bridge.AnyBridge>>(
+  config: TauriTransportConfig<Bridges>
+): Promise<TauriTransport<Bridges>> => {
+  assertUniqueTags(config.bridges)
+  const api = config.api ?? { emit, listen }
+  // Widening seam: every `InitialHandlers` value is some bridge's typed
+  // `HandlersFor` record, all of which erase to `BridgeHandlerRecord`
+  // by parameter contravariance — provable at any concrete
+  // instantiation, but opaque to the checker while `Bridges` is
+  // generic, hence the one-off assertion.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const seed = (config.initial ?? {}) as Readonly<Record<string, BridgeHandlerRecord>>
+  const active = new Map<string, BridgeHandlerRecord>(Object.entries(seed))
+
+  const sendMessage: BridgeTransport.MessageSender<Bridges, 'WebToHost'> = (message) =>
+    Effect.tryPromise(() => api.emit(eventNameForTag(message._tag), message)).pipe(
+      Effect.catchAll((error) =>
+        Effect.logWarning(
+          `[effect-messaging] tauri emit for ${message._tag} failed; message dropped: ${String(error)}`
+        )
+      ),
+      Effect.asVoid
+    )
+
+  // One dispatch program per (bridge, tag): validate the structured
+  // payload, then route to whatever record is active *at dispatch time*
+  // (so coordinator swaps take effect without re-listening).
+  const dispatchFor = (
+    bridgeName: string,
+    tag: string,
+    schema: Message.AnyStringEncodedSchema
+  ): ((payload: unknown) => Effect.Effect<void>) => {
+    const eventName = eventNameForTag(tag)
+    // Pinned to the decoded floor shape so `AnyStringEncodedSchema`'s
+    // `any` stops here instead of flowing into the handler call.
+    const decodePayload: (
+      payload: unknown
+    ) => Effect.Effect<MessageHandler.DecodedMessage, ParseResult.ParseError> =
+      Schema.decodeUnknown(Schema.typeSchema(schema))
+    return (payload) =>
+      decodePayload(payload).pipe(
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.logWarning(
+              `[effect-messaging] undecodable ${eventName} payload dropped: ${String(error)}`
+            ),
+          onSuccess: (message) => {
+            const handler = active.get(bridgeName)?.[tag]
+            if (handler === undefined) {
+              return HandlerHelpers.warnAboutDroppedTag(bridgeName, tag)
+            }
+            // `message` was just validated by the same
+            // `bridge.HostToWeb[tag]` schema this handler's parameter
+            // type was derived from (`HandlersFor`) — every write path
+            // into `active` pairs a bridge with its own record, so the
+            // value matches the handler by construction; the
+            // string-keyed registry just can't carry that correlation
+            // in types. Independently pinned by the delivery and
+            // validation tests in tauri-transport.test.ts.
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+            return handler(message as never)
+          },
+        }),
+        Effect.catchAllCause((cause) =>
+          Effect.logError(
+            `[effect-messaging] ${eventName} handler died; continuing: ${Cause.pretty(cause)}`
+          )
+        )
+      )
+  }
+
+  // Single-consumer inbox, mirroring the core transport's inbound
+  // dispatcher (`makeInboundDispatcher`): every Tauri event offers its
+  // already-bound dispatch program onto one unbounded queue, drained by a
+  // single forked fiber. Forking a fiber *per event* would let an async
+  // handler on an earlier event be overtaken by a later event's fiber, so
+  // two rapid pushes on the same tag could apply out of order; funnelling
+  // through one consumer pins FIFO across handler suspensions, matching the
+  // postMessage transports. Each queued program carries its own
+  // error/defect handling (see `dispatchFor`), so a bad message never
+  // takes the consumer down.
+  const inbox = Queue.unbounded<Effect.Effect<void>>().pipe(Effect.runSync)
+  Effect.runFork(Stream.runForEach(Stream.fromQueue(inbox), (program) => program))
+
+  await Promise.all(
+    config.bridges.flatMap((bridge) =>
+      Object.entries(bridge.HostToWeb).map(([tag, schema]) => {
+        const dispatch = dispatchFor(bridge.name, tag, schema)
+        return api.listen(eventNameForTag(tag), (event) => {
+          // Synchronous, order-preserving handoff: the listener fires on
+          // the JS event loop, so unsafe-offering in call order is what
+          // makes the single consumer FIFO.
+          inbox.unsafeOffer(dispatch(event.payload))
+        })
+      })
+    )
+  )
+
+  // Every inbound listener is up — only now may the host learn we're
+  // ready (its response could otherwise beat the listeners and vanish).
+  await api.emit(READY_EVENT, { _tag: READY_TAG })
+
+  // Implementations are typed against the erased structural shapes;
+  // the `HandlerCoordinator` annotation below is where TS verifies
+  // them against the generic interface (instantiated at its
+  // constraint) — no casts needed on the write path.
+  const register = (bridge: Bridge.AnyBridge, handlers: BridgeHandlerRecord): Effect.Effect<void> =>
+    Effect.sync(() => {
+      active.set(bridge.name, handlers)
+    })
+
+  const unregister = (
+    bridge: Bridge.AnyBridge,
+    handlers: BridgeHandlerRecord
+  ): Effect.Effect<void> =>
+    Effect.sync(() => {
+      if (active.get(bridge.name) === handlers) {
+        active.delete(bridge.name)
+      }
+    })
+
+  const coordinator: HandlerCoordinator = { register, unregister }
+
+  return { sendMessage, coordinator }
+}
+
+export { makeTauriTransport }
+export type { InitialHandlers, TauriEventApi, TauriTransport, TauriTransportConfig }

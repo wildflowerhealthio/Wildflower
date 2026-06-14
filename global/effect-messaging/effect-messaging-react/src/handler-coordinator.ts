@@ -1,59 +1,14 @@
 import { Effect, Record } from 'effect'
-import type { Bridge, BridgeTransport, MessageHandler } from 'effect-messaging-core'
-import { HandlerHelpers } from 'effect-messaging-core'
+import {
+  type Bridge,
+  type BridgeHandlerRecord,
+  type BridgeTransport,
+  type HandlerCoordinator,
+  HandlerHelpers,
+  type MessageHandler,
+} from 'effect-messaging-core'
 import { createContext, useMemo } from 'react'
 import { useContextOrThrow } from 'react-kitchen-sink'
-
-/**
- * Any bridge's inbound handler record, accepted structurally for internal
- * storage. The `never` parameter widens to any specific message type via
- * contravariance.
- */
-type BridgeHandlerRecord = Readonly<Record<string, (message: never) => Effect.Effect<void>>>
-
-/**
- * Coordinates per-bridge inbound handler records on the web side, where
- * the transport is built at boot but each slice's real handlers only
- * exist once its React subtree mounts.
- *
- * @remarks
- * Holds one record per bridge name. On every change it recomposes the
- * full per-bridge tuple in `bridges` order and calls the transport's
- * `registerHandlers` once (replace semantics) — so slices register
- * independently without clobbering each other. A bridge with no
- * registered record gets a generated **drop-all** record (every inbound
- * tag warns-and-drops), exactly the behavior the old per-slice forwarder
- * cells provided before a real handler was installed.
- *
- * The outward `register` / `unregister` API is wide on purpose: each
- * call's `bridge` argument fixes `B`, so a slice calling
- * `coordinator.register(CollectorBridge, handlers)` gets `handlers`
- * typed precisely against `CollectorBridge['HostToWeb']` without the
- * consumer needing to pre-declare the app's `Bridges` tuple. Bridges
- * outside the app's wired tuple silently no-op (recompose only iterates
- * the wired bridges), matching the runtime's name-keyed reality.
- */
-interface HandlerCoordinator {
-  /**
-   * Install `handlers` as `bridge`'s active record (last writer wins) and
-   * re-register. Fails with a `DuplicateTagError` if the combined record
-   * would collide on an inbound tag.
-   */
-  readonly register: <const B extends Bridge.AnyBridge>(
-    bridge: B,
-    handlers: MessageHandler.HandlersFor<B['HostToWeb']>
-  ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
-  /**
-   * Remove `handlers` if it's still the active record for `bridge`
-   * (set-if-equal), then re-register. Same failure channel as
-   * {@link HandlerCoordinator.register}, since re-registering is what
-   * actually surfaces a collision.
-   */
-  readonly unregister: <const B extends Bridge.AnyBridge>(
-    bridge: B,
-    handlers: MessageHandler.HandlersFor<B['HostToWeb']>
-  ) => Effect.Effect<void, BridgeTransport.DuplicateTagError>
-}
 
 /** The boot-composed handler tuple plus a way to bind the live transport. */
 interface UnconnectedCoordinator<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
@@ -222,4 +177,8 @@ export {
   makeUseSliceRegister,
   useHandlerCoordinator,
 }
-export type { BridgeHandlerRecord, HandlerCoordinator, SliceRegister, UnconnectedCoordinator }
+// `BridgeHandlerRecord` and `HandlerCoordinator` now live in
+// effect-messaging-core (the contract is platform-agnostic); re-exported
+// here so existing React consumers keep importing them from this module.
+export type { BridgeHandlerRecord, HandlerCoordinator } from 'effect-messaging-core'
+export type { SliceRegister, UnconnectedCoordinator }

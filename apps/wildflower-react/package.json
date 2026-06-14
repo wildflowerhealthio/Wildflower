@@ -37,6 +37,9 @@
     "./web-assets": {
       "source": "./src/web-assets.ts"
     },
+    "./bridges": {
+      "source": "./src/bridges/bridges.ts"
+    },
     "./global.css": {
       "source": "./src/styles/global.css"
     },

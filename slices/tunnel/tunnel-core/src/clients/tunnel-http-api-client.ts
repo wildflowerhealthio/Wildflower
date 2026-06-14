@@ -7,7 +7,7 @@ import { TunnelAdminApi } from '../http-api-definition/index.ts'
 // at call sites. Mirrors `apps-core/clients` and `gatekeeper-core/clients`.
 
 // oxlint-disable no-underscore-dangle
-const _bareAdminClient = HttpApiClient.make(TunnelAdminApi, { baseUrl: '/' })
+const _bareAdminClient = HttpApiClient.make(TunnelAdminApi)
 type TunnelAdminHttpApiClientShape = Effect.Effect.Success<typeof _bareAdminClient>
 // oxlint-enable no-underscore-dangle
 
