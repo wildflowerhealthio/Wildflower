@@ -9,7 +9,7 @@ use super::client_auth::{
     ClientAuthenticationMethod, ClientCredentials, ResolveClientCredentialsError,
     BASIC_AUTH_CHALLENGE,
 };
-use super::error_codes;
+use super::error_codes::OAuthErrorCode;
 use crate::crypto_util::client_secret::verify_client_secret;
 use crate::db_utils::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
@@ -61,7 +61,7 @@ pub struct OAuthErrorResponse {
 }
 
 impl OAuthErrorResponse {
-    pub fn new(status: StatusCode, error: &str, description: Option<&str>) -> Self {
+    pub fn new(status: StatusCode, error: OAuthErrorCode, description: Option<&str>) -> Self {
         Self {
             status,
             error: OAuthError::new(error, description),
@@ -76,7 +76,7 @@ impl OAuthErrorResponse {
     pub fn server_error(description: &str) -> Self {
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
-            error_codes::SERVER_ERROR,
+            OAuthErrorCode::ServerError,
             Some(description),
         )
     }
@@ -121,9 +121,9 @@ pub struct OAuthError {
 }
 
 impl OAuthError {
-    pub fn new(error: &str, description: Option<&str>) -> Self {
+    pub fn new(error: OAuthErrorCode, description: Option<&str>) -> Self {
         Self {
-            error: error.to_string(),
+            error: error.as_str().to_string(),
             error_description: description.map(str::to_string),
         }
     }
@@ -155,7 +155,7 @@ pub enum TokenError {
 impl TokenError {
     /// A 400 OAuth error: the `error` code plus an optional human-readable
     /// `description` (RFC 6749 §5.2).
-    pub fn bad_request(error: &str, description: Option<&str>) -> Self {
+    pub fn bad_request(error: OAuthErrorCode, description: Option<&str>) -> Self {
         TokenError::Oauth(OAuthErrorResponse::new(
             StatusCode::BAD_REQUEST,
             error,
@@ -217,12 +217,12 @@ pub fn build_client_redirect_url(redirect_uri: &Url, code: &str, client_state: &
 /// `redirect_uri` with `error` and `state` appended (RFC 6749 §4.1.2.1).
 pub fn build_client_error_redirect_url(
     redirect_uri: &Url,
-    error: &str,
+    error: OAuthErrorCode,
     client_state: &str,
 ) -> String {
     let mut url = redirect_uri.clone();
     url.query_pairs_mut()
-        .append_pair("error", error)
+        .append_pair("error", error.as_str())
         .append_pair("state", client_state);
     url.to_string()
 }
@@ -284,14 +284,14 @@ pub fn require_valid_client_for_token(
     // 401s answer Basic attempts with a matching `WWW-Authenticate` header
     // (RFC 6749 §5.2).
     let unauthorized = |description: &str| ValidateClientError::Unauthorized {
-        error: OAuthError::new(error_codes::INVALID_CLIENT, Some(description)),
+        error: OAuthError::new(OAuthErrorCode::InvalidClient, Some(description)),
         attempted_via: presented_credentials.presented_via,
     };
     let client = store
         .client_by_id(&presented_credentials.client_id)
         .map_err(|e| {
             tracing::error!(error = %e, "client_by_id lookup failed");
-            ValidateClientError::Internal(OAuthError::new(error_codes::SERVER_ERROR, None))
+            ValidateClientError::Internal(OAuthError::new(OAuthErrorCode::ServerError, None))
         })?;
     let client = client.ok_or_else(|| unauthorized("Unknown client_id"))?;
     if client.disabled_at.is_some() {
@@ -310,7 +310,7 @@ pub fn require_valid_client_for_token(
         .ok_or_else(|| unauthorized("Client secret required"))?;
     let secret_matches = verify_client_secret(presented, stored_hash).map_err(|e| {
         tracing::error!(error = %e, "client secret verification failed");
-        ValidateClientError::Internal(OAuthError::new(error_codes::SERVER_ERROR, None))
+        ValidateClientError::Internal(OAuthError::new(OAuthErrorCode::ServerError, None))
     })?;
     if !secret_matches {
         return Err(unauthorized("Invalid client_secret"));
@@ -343,13 +343,13 @@ pub fn issue_token_response(
         .map_err(|e| {
             tracing::error!(error = %e, "active_signing_key lookup failed");
             OAuthError::new(
-                error_codes::SERVER_ERROR,
+                OAuthErrorCode::ServerError,
                 Some("No JSON Web Keys available to sign token"),
             )
         })?
         .ok_or_else(|| {
             OAuthError::new(
-                error_codes::SERVER_ERROR,
+                OAuthErrorCode::ServerError,
                 Some("No JSON Web Keys available to sign token"),
             )
         })?;
@@ -367,7 +367,7 @@ pub fn issue_token_response(
     )
     .map_err(|e| {
         tracing::error!(error = %e, "mint_access_token failed");
-        OAuthError::new(error_codes::SERVER_ERROR, Some("Failed to sign JWT"))
+        OAuthError::new(OAuthErrorCode::ServerError, Some("Failed to sign JWT"))
     })?;
     Ok(TokenResponse {
         access_token: signed,

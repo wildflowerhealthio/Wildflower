@@ -13,7 +13,7 @@ use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 
-use super::error_codes;
+use super::error_codes::OAuthErrorCode;
 use super::internal::{OAuthError, OAuthErrorResponse};
 use crate::crypto_util::base64;
 
@@ -129,7 +129,7 @@ pub fn resolve_client_credentials(
     let basic =
         decode_basic_authorization_header(authorization).map_err(|MalformedBasicHeader| {
             ResolveClientCredentialsError::MalformedBasic(OAuthError::new(
-                error_codes::INVALID_CLIENT,
+                OAuthErrorCode::InvalidClient,
                 Some("Malformed Basic authorization header"),
             ))
         })?;
@@ -138,7 +138,7 @@ pub fn resolve_client_credentials(
             if body.client_secret.is_some() {
                 return Err(ResolveClientCredentialsError::InvalidRequest(
                     OAuthError::new(
-                        error_codes::INVALID_REQUEST,
+                        OAuthErrorCode::InvalidRequest,
                         Some("Multiple client authentication methods presented"),
                     ),
                 ));
@@ -150,7 +150,7 @@ pub fn resolve_client_credentials(
             {
                 return Err(ResolveClientCredentialsError::InvalidRequest(
                     OAuthError::new(
-                        error_codes::INVALID_REQUEST,
+                        OAuthErrorCode::InvalidRequest,
                         Some("client_id does not match Basic authorization header"),
                     ),
                 ));
@@ -168,7 +168,7 @@ pub fn resolve_client_credentials(
                 presented_via: ClientAuthenticationMethod::RequestBody,
             }),
             None => Err(ResolveClientCredentialsError::InvalidRequest(
-                OAuthError::new(error_codes::INVALID_REQUEST, Some("Missing client_id")),
+                OAuthError::new(OAuthErrorCode::InvalidRequest, Some("Missing client_id")),
             )),
         },
     }

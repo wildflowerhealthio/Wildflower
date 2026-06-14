@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use url::Url;
 use uuid::Uuid;
 
+use super::error_codes::OAuthErrorCode;
 use super::internal::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::db_utils::{JsonColumn, UriColumn};
@@ -76,7 +77,7 @@ impl AuthorizeError {
     /// client `redirect_uri` (RFC 6749 §4.1.2.1). Builds the `Location` eagerly
     /// — only callable once `redirect_uri` + `client_id` are validated; errors
     /// before that point must render a local page instead.
-    fn redirect(redirect_uri: &Url, error: &str, client_state: &str) -> Self {
+    fn redirect(redirect_uri: &Url, error: OAuthErrorCode, client_state: &str) -> Self {
         AuthorizeError::Redirect {
             location: build_client_error_redirect_url(redirect_uri, error, client_state),
         }
@@ -272,7 +273,7 @@ fn validate_code(params: &AuthorizeParams, parsed_redirect: &Url) -> Result<(), 
     if params.response_type != "code" {
         return Err(AuthorizeError::redirect(
             parsed_redirect,
-            "unsupported_response_type",
+            OAuthErrorCode::UnsupportedResponseType,
             &params.state,
         ));
     }
@@ -282,7 +283,7 @@ fn validate_code(params: &AuthorizeParams, parsed_redirect: &Url) -> Result<(), 
     if params.code_challenge_method != "S256" {
         return Err(AuthorizeError::redirect(
             parsed_redirect,
-            "invalid_request",
+            OAuthErrorCode::InvalidRequest,
             &params.state,
         ));
     }
@@ -291,7 +292,7 @@ fn validate_code(params: &AuthorizeParams, parsed_redirect: &Url) -> Result<(), 
     if !is_valid_s256_code_challenge(&params.code_challenge) {
         return Err(AuthorizeError::redirect(
             parsed_redirect,
-            "invalid_request",
+            OAuthErrorCode::InvalidRequest,
             &params.state,
         ));
     }
@@ -318,7 +319,7 @@ fn validate_requested_scopes(
     {
         return Err(AuthorizeError::redirect(
             parsed_redirect,
-            "invalid_scope",
+            OAuthErrorCode::InvalidScope,
             &params.state,
         ));
     }
