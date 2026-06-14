@@ -49,9 +49,15 @@ async fn run_server(
     // `Host:` header is `127.0.0.1:<port>` — the same canonical form
     // `served_origin_for` falls back to for un-forwarded requests.
     let gatekeeper_config = GatekeeperConfig {
-        db_file_path: runtime.app_data_dir.join("gatekeeper.sqlite"),
         loopback_origin: loopback_origin.clone(),
     };
+
+    // One shared SQLite database for all persistence-rust-backed slices
+    // (gatekeeper, and the tunnel slice); each runs its own namespaced
+    // migrations on it. (The FHIR/emr store is managed separately by
+    // helios-persistence.)
+    let db = persistence_rust::Connection::open(&runtime.app_data_dir.join("wildflower.sqlite"))
+        .context("failed to open shared database")?;
 
     // Bind BEFORE minting/publishing the Owner token: `setup_gatekeeper`
     // pushes the freshly-minted token onto the bridge publisher, and the
@@ -70,7 +76,7 @@ async fn run_server(
     // through the bridge's publisher; the bridge's resident task emits
     // `AuthTokenIssued` to the webview on every page load and on every
     // token change (see `bridge::attach_bridge`).
-    let gatekeeper = setup_gatekeeper(&gatekeeper_config, &publishers.host_owner_token_sender)
+    let gatekeeper = setup_gatekeeper(db, &gatekeeper_config, &publishers.host_owner_token_sender)
         .context("failed to set up gatekeeper")?;
 
     let gated_fhir_r4 =

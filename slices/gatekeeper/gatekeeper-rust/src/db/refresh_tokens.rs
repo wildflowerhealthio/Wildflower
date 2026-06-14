@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
 use rusqlite::{params, OptionalExtension, ToSql};
 
-use crate::db_utils::sql_builder::build_insert_sql;
-use crate::db_utils::{sql_row, DbResult, GatekeeperStore};
+use crate::db_utils::GatekeeperStore;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
+use persistence_rust::build_insert_sql;
+use persistence_rust::{sql_row, DbResult};
 
 // `RefreshTokenFamily` is mapped by hand: its read path is a JOIN aliasing
 // `f.issued_at AS family_issued_at` (see `refresh_token_with_family_by_hash`),
@@ -336,7 +337,7 @@ impl GatekeeperStore {
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp};
-    use crate::db_utils::JsonColumn;
+    use persistence_rust::JsonColumn;
     use proptest::prelude::*;
 
     fn arb_family() -> impl Strategy<Value = RefreshTokenFamily> {

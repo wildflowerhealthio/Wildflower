@@ -84,10 +84,11 @@ pub struct Gatekeeper {
 /// host owner token fails, or the `local_owner_token_tx` receiver has already
 /// been dropped when publishing the token.
 pub fn setup_gatekeeper(
+    conn: persistence_rust::Connection,
     config: &GatekeeperConfig,
     local_owner_token_tx: &watch::Sender<Option<String>>,
 ) -> anyhow::Result<Gatekeeper> {
-    let store = seeding::open_and_seed_store(config)?;
+    let store = seeding::open_and_seed_store(conn)?;
     let host_owner_token =
         seeding::mint_host_owner_token(&store, &config.loopback_origin, HOST_OWNER_TOKEN_TTL)
             .context("failed to mint host owner token")?;

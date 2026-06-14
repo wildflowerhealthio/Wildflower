@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 
-use crate::db_utils::{JsonColumn, UriColumn};
+use persistence_rust::{JsonColumn, UriColumn};
 
 /// A short-lived single-use authorization code issued at `/authorize` and
 /// redeemed at `/token` (RFC 6749 §4.1.2). The PKCE `code_challenge` is

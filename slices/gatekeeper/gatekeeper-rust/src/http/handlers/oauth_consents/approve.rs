@@ -10,11 +10,11 @@ use super::internal::{
     AUTHORIZATION_CODE_TTL,
 };
 use crate::crypto_util::random_token::generate_authorization_code;
-use crate::db_utils::{JsonColumn, UriColumn};
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::http::handlers::consent::{deny_consent, grantable_scopes, ApproveBody, ConsentResult};
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
+use persistence_rust::{JsonColumn, UriColumn};
 
 /// `POST /oauth-consents/{id}/approve` — the Owner approves a consent prompt,
 /// granting a (narrowed) scope set and minting the authorization code the

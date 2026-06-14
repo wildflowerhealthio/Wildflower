@@ -4,9 +4,10 @@ use url::Url;
 
 use uuid::Uuid;
 
-use crate::db_utils::sql_builder::build_insert_sql;
-use crate::db_utils::{sql_row, DbResult, GatekeeperStore, JsonColumn, UriColumn};
+use crate::db_utils::GatekeeperStore;
 use crate::domain::grant::Grant;
+use persistence_rust::build_insert_sql;
+use persistence_rust::{sql_row, DbResult, JsonColumn, UriColumn};
 
 sql_row!(Grant {
     id,
@@ -221,7 +222,7 @@ impl GatekeeperStore {
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
-    use crate::db_utils::{JsonColumn, UriColumn};
+    use persistence_rust::{JsonColumn, UriColumn};
     use proptest::prelude::*;
 
     fn arb_grant() -> impl Strategy<Value = Grant> {

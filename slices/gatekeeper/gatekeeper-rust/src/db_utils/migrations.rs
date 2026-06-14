@@ -1,9 +1,12 @@
 //! Gatekeeper's schema migration list, applied through the shared
-//! [`persistence_rust::run_migrations`] `PRAGMA user_version` runner (the
-//! generic runner lifted out of this module). The list is append-only; the
-//! runner applies each pending entry once, in order.
+//! [`persistence_rust::run_migrations`] runner under the `gatekeeper`
+//! namespace, so it coexists with other slices in one shared database. The list
+//! is append-only; the runner applies each pending entry once, in order.
 
 use rusqlite::Connection;
+
+/// Migration namespace for the gatekeeper tables in the shared database.
+const NAMESPACE: &str = "gatekeeper";
 
 /// Apply pending gatekeeper migrations.
 ///
@@ -11,11 +14,11 @@ use rusqlite::Connection;
 ///
 /// Returns any rusqlite error surfaced by [`persistence_rust::run_migrations`].
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
-    persistence_rust::run_migrations(conn, MIGRATIONS)
+    persistence_rust::run_migrations(conn, NAMESPACE, MIGRATIONS)
 }
 
-/// Ordered list of schema migrations. The array index is the persisted
-/// `PRAGMA user_version` — append-only; never reorder or rewrite an
+/// Ordered list of schema migrations. The array index is the recorded
+/// `schema_migrations` version — append-only; never reorder or rewrite an
 /// already-shipped entry. New migrations land as a sibling `.sql` file
 /// under `src/migrations/` plus one new `include_str!` line below.
 const MIGRATIONS: &[&str] = &[
@@ -37,8 +40,12 @@ mod tests {
         let mut conn = Connection::open_in_memory().unwrap();
         migrate(&mut conn).unwrap();
         migrate(&mut conn).unwrap();
-        let v: u32 = conn
-            .query_row("PRAGMA user_version", [], |row| row.get(0))
+        let v: i64 = conn
+            .query_row(
+                "SELECT version FROM schema_migrations WHERE namespace = ?1",
+                [NAMESPACE],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(v as usize, MIGRATIONS.len());
     }

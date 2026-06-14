@@ -12,7 +12,6 @@ use gatekeeper_rust::crypto_util::base64;
 use gatekeeper_rust::crypto_util::client_secret::hash_client_secret;
 use gatekeeper_rust::crypto_util::pkce::compute_code_challenge;
 use gatekeeper_rust::crypto_util::random_token::token_storage_hash;
-use gatekeeper_rust::db_utils::{JsonColumn, UriColumn};
 use gatekeeper_rust::domain::authorization_code::AuthorizationCode;
 use gatekeeper_rust::domain::authorization_request::{
     AuthorizationRequest, GrantType, RequestStatus,
@@ -20,19 +19,21 @@ use gatekeeper_rust::domain::authorization_request::{
 use gatekeeper_rust::domain::client::{AllowedGrantType, Client, ClientKind};
 use gatekeeper_rust::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use gatekeeper_rust::GatekeeperStore;
+use persistence_rust::{Connection, JsonColumn, UriColumn};
 use serde_json::Value;
-use tempfile::TempDir;
 use tower::ServiceExt;
 use url::Url;
 
-fn spin_up() -> (Gatekeeper, String, TempDir) {
-    let tmp = TempDir::new().expect("tmp dir");
+fn spin_up() -> (Gatekeeper, String, Connection) {
+    // One shared in-memory database, opened once and handed to the slice —
+    // mirrors how the host wires a single DB into each slice. `tmp` is that
+    // shared handle; `store_handle` clones it to reach the same database.
+    let tmp = Connection::open_in_memory().expect("open shared db");
     let config = GatekeeperConfig {
-        db_file_path: tmp.path().join("gatekeeper.sqlite"),
         loopback_origin: LOOPBACK_ORIGIN.to_string(),
     };
     let (token_tx, token_rx) = watch::channel::<Option<String>>(None);
-    let g = setup_gatekeeper(&config, &token_tx).expect("setup");
+    let g = setup_gatekeeper(tmp.clone(), &config, &token_tx).expect("setup");
     let host_owner_token = token_rx
         .borrow()
         .clone()
@@ -40,20 +41,25 @@ fn spin_up() -> (Gatekeeper, String, TempDir) {
     (g, host_owner_token, tmp)
 }
 
-/// Open a second `GatekeeperStore` handle on the same `SQLite` file the running
+/// A second `GatekeeperStore` handle on the *same* shared connection the running
 /// router uses. Tests reach through this to seed clients and to plant rows
 /// (e.g. an already-expired authorization request) that the public HTTP
 /// surface can't construct directly — preferred over real-time sleeps so the
 /// expiry paths stay deterministic.
-fn store_handle(tmp: &TempDir) -> GatekeeperStore {
-    GatekeeperStore::open(&tmp.path().join("gatekeeper.sqlite")).expect("open second handle")
+fn store_handle(tmp: &Connection) -> GatekeeperStore {
+    GatekeeperStore::new(tmp.clone()).expect("store handle")
 }
 
 /// Register an OAuth client with an allowlisted `redirect_uri` through a
 /// second store handle on the same `SQLite` file. The redirect-back error
 /// tests (RFC 6749 §4.1.2.1) need a client whose `redirect_uri` validates,
 /// which the seeded first-party client (empty allowlist) cannot provide.
-fn seed_client_with_redirect(tmp: &TempDir, client_id: &str, redirect_uri: &str, scopes: &[&str]) {
+fn seed_client_with_redirect(
+    tmp: &Connection,
+    client_id: &str,
+    redirect_uri: &str,
+    scopes: &[&str],
+) {
     let store = store_handle(tmp);
     store
         .register_client(&Client {
@@ -1556,7 +1562,7 @@ async fn revoking_grant_revokes_refresh_tokens() {
 /// `client_secret_plaintext`, through a second store handle — mirrors
 /// `seed_client_with_redirect`, which can only seed public clients.
 fn seed_confidential_client(
-    tmp: &TempDir,
+    tmp: &Connection,
     client_id: &str,
     client_secret_plaintext: &str,
     scopes: &[&str],
@@ -1609,7 +1615,7 @@ const CONFIDENTIAL_CLIENT_SECRET: &str = "shhh-integration-secret";
 
 /// Spin up a gatekeeper with a seeded confidential client and a live planted
 /// refresh token — the cheapest real grant to exercise client auth against.
-fn spin_up_with_confidential_client() -> (Gatekeeper, TempDir) {
+fn spin_up_with_confidential_client() -> (Gatekeeper, Connection) {
     let (g, _host_owner_token, tmp) = spin_up();
     seed_confidential_client(
         &tmp,

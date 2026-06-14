@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-use crate::db_utils::{JsonColumn, UriColumn};
+use persistence_rust::{JsonColumn, UriColumn};
 
 /// A previously-approved consent — when the same (client, `redirect_uri`) pair
 /// re-authorizes, the gatekeeper can skip the consent prompt for any scopes

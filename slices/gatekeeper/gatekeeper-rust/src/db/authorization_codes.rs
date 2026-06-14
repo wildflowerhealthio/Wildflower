@@ -1,8 +1,9 @@
 use rusqlite::{params, OptionalExtension};
 
-use crate::db_utils::sql_builder::build_insert_sql;
-use crate::db_utils::{sql_row, DbResult, GatekeeperStore};
+use crate::db_utils::GatekeeperStore;
 use crate::domain::authorization_code::AuthorizationCode;
+use persistence_rust::build_insert_sql;
+use persistence_rust::{sql_row, DbResult};
 
 sql_row!(AuthorizationCode {
     code,
@@ -78,7 +79,7 @@ impl GatekeeperStore {
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_timestamp, arb_url};
-    use crate::db_utils::{JsonColumn, UriColumn};
+    use persistence_rust::{JsonColumn, UriColumn};
     use proptest::prelude::*;
 
     fn arb_authorization_code() -> impl Strategy<Value = AuthorizationCode> {

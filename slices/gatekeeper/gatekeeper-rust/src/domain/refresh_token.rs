@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 
-use crate::db_utils::JsonColumn;
+use persistence_rust::JsonColumn;
 
 /// One authorization's refresh-token lineage (RFC 6749 §6). The family owns
 /// every fact shared by all the tokens rotated under it — client, scopes,

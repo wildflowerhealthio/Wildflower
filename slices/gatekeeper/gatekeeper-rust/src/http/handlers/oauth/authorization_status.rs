@@ -9,10 +9,10 @@ use super::error_codes;
 use super::internal::{
     build_client_error_redirect_url, build_client_redirect_url, OAuthErrorResponse,
 };
-use crate::db_utils::UriColumn;
 use crate::domain::authorization_request::RequestStatus;
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
+use persistence_rust::UriColumn;
 
 /// Polling response for the Owner UI watching an authorization request as it
 /// moves from `Pending` toward approval or denial.
