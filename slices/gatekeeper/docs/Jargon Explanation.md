@@ -184,10 +184,11 @@ small code space; over-budget requests get `429` + `Retry-After`. The IP is
 the tunnel-forwarded `x-forwarded-for` client when present, else the loopback
 `ConnectInfo` peer — behind the loopback gate the peer alone is always
 `127.0.0.1`. Distinct from the step-4 `slow_down` poll limit, which is per
-device row, not per IP. Every Owner `/access/*` response is also stamped
-`Cache-Control: no-store` (it carries privileged consent/grant data), matching
-the `no-store` already pinned on the `/oauth` token and device-authorization
-responses.
+device row, not per IP. Every Owner `/access/*` response is also
+cache-suppressed (`Cache-Control: no-store` + `Pragma: no-cache`, since it
+carries privileged consent/grant data) via a blanket layer that reuses the same
+`CacheSuppressed` wrapper the `/oauth` token and device-authorization responses
+pin per-response.
 
 ### Bootstrap URL
 

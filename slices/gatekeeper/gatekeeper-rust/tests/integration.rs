@@ -1248,6 +1248,10 @@ async fn device_consent_user_code_lookup_is_rate_limited_per_ip() {
             .map(|v| v.to_str().unwrap()),
         Some("no-store")
     );
+    assert_eq!(
+        res.headers().get("pragma").map(|v| v.to_str().unwrap()),
+        Some("no-cache")
+    );
 
     // A different client IP keeps its own budget — not throttled by the first.
     let res = g
@@ -1264,11 +1268,13 @@ async fn device_consent_user_code_lookup_is_rate_limited_per_ip() {
 }
 
 /// Every Owner `/access/*` response is cache-suppressed (`Cache-Control:
-/// no-store`) — the surface carries privileged consent/grant data a shared cache
-/// must never retain. Pins the blanket layer across a representative spread: a
-/// pending device-consent prompt, the grants list, and the owner-auth 401.
+/// no-store` + `Pragma: no-cache`, via the same `CacheSuppressed` wrapper the
+/// `/oauth` surface uses) — the surface carries privileged consent/grant data a
+/// shared cache must never retain. Pins the blanket layer across a
+/// representative spread: a pending device-consent prompt, the grants list, and
+/// the owner-auth 401.
 #[tokio::test]
-async fn access_owner_surface_responses_carry_no_store() {
+async fn access_owner_surface_responses_are_cache_suppressed() {
     let (g, host_owner_token, tmp) = spin_up();
     seed_client_with_redirect(&tmp, "device-client", "https://app.example/cb", &["read"]);
     plant_device_request(
@@ -1280,12 +1286,16 @@ async fn access_owner_surface_responses_carry_no_store() {
         Utc::now() + Duration::minutes(5),
     );
 
-    let no_store = |res: &axum::response::Response| {
+    let cache_suppressed = |res: &axum::response::Response| {
         assert_eq!(
             res.headers()
                 .get("cache-control")
                 .map(|v| v.to_str().unwrap()),
             Some("no-store")
+        );
+        assert_eq!(
+            res.headers().get("pragma").map(|v| v.to_str().unwrap()),
+            Some("no-cache")
         );
     };
 
@@ -1301,7 +1311,7 @@ async fn access_owner_surface_responses_carry_no_store() {
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
-    no_store(&res);
+    cache_suppressed(&res);
 
     // The grants list.
     let res = g
@@ -1316,7 +1326,7 @@ async fn access_owner_surface_responses_carry_no_store() {
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
-    no_store(&res);
+    cache_suppressed(&res);
 
     // Even the owner-auth rejection (no token) is cache-suppressed — the blanket
     // layer sits outside the auth gate.
@@ -1330,7 +1340,7 @@ async fn access_owner_surface_responses_carry_no_store() {
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
-    no_store(&res);
+    cache_suppressed(&res);
 }
 
 /// A client restricted to a grant-type subset is refused a grant outside it

@@ -8,12 +8,40 @@
 //! 500 ([`internal_error`]), a plain 401 ([`unauthorized`]), and a JSON
 //! 404 ([`not_found`]).
 
-use axum::http::StatusCode;
+use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::json;
 
 use crate::domain::token::VerifyError;
+
+/// Wrapper that stamps the RFC 6749 §5.1/§5.2 cache-suppression headers
+/// (`Cache-Control: no-store`, `Pragma: no-cache`) onto the wrapped response.
+/// Sensitive responses — OAuth token / device-authorization bodies (success or
+/// error), and the Owner `/access/*` surface — must never be cached; wrapping
+/// makes that part of the value instead of a step a call site can forget.
+///
+/// The single source of truth for cache-suppression, applied two ways: the
+/// `/oauth` handlers wrap individual responses (`CacheSuppressed(Json(..))`) so
+/// the guarantee is visible at the type, and the `/access` surface applies it
+/// as a blanket layer ([`cache_suppress`](crate::http) wraps every response in
+/// it) so a new route can't forget. Prepends the headers, so only wrap
+/// responses that don't already set `Cache-Control` (none on these surfaces do)
+/// to avoid a duplicated header.
+pub(crate) struct CacheSuppressed<T>(pub T);
+
+impl<T: IntoResponse> IntoResponse for CacheSuppressed<T> {
+    fn into_response(self) -> Response {
+        (
+            [
+                (header::CACHE_CONTROL, "no-store"),
+                (header::PRAGMA, "no-cache"),
+            ],
+            self.0,
+        )
+            .into_response()
+    }
+}
 
 /// Map a token-[`VerifyError`] to its HTTP response, shared by the auth
 /// middlewares. Server-side failures (no keys configured, the key store can't

@@ -39,8 +39,10 @@ pub fn router(state: AppState) -> Router {
             middleware::require_owner_auth,
         ))
         // Outermost on `/access`, so every response — handler output, the
-        // owner-auth 401, the rate-limiter 429, a 404 — is cache-suppressed.
-        .layer(axum_middleware::from_fn(middleware::set_no_store));
+        // owner-auth 401, the rate-limiter 429, a 404 — is cache-suppressed
+        // (`no-store` + `Pragma: no-cache`) via the same `CacheSuppressed`
+        // wrapper the `/oauth` handlers apply per-response.
+        .layer(axum_middleware::from_fn(middleware::cache_suppress));
 
     Router::new()
         .route(

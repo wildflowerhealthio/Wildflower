@@ -32,25 +32,10 @@ pub const OFFLINE_ACCESS_SCOPE: &str = "offline_access";
 /// Minimum polling interval the device-code flow enforces (RFC 8628 §3.5).
 pub const DEVICE_CODE_POLL_INTERVAL: Duration = Duration::seconds(5);
 
-/// Wrapper that stamps the RFC 6749 §5.1/§5.2 cache-suppression headers
-/// (`Cache-Control: no-store`, `Pragma: no-cache`) onto the wrapped response.
-/// Token- and device-authorization-endpoint responses — success or error —
-/// must never be cached; wrapping makes that part of the value instead of a
-/// step a call site can forget.
-pub struct CacheSuppressed<T>(pub T);
-
-impl<T: IntoResponse> IntoResponse for CacheSuppressed<T> {
-    fn into_response(self) -> Response {
-        (
-            [
-                (header::CACHE_CONTROL, "no-store"),
-                (header::PRAGMA, "no-cache"),
-            ],
-            self.0,
-        )
-            .into_response()
-    }
-}
+/// The cache-suppression wrapper lives in `response_templates` (shared with the
+/// `/access` blanket layer); re-exported here so the OAuth handlers keep
+/// reaching it as `super::internal::CacheSuppressed`.
+pub(crate) use crate::http::response_templates::CacheSuppressed;
 
 /// An [`OAuthError`] paired with the HTTP status it renders at — the
 /// `(status, JSON body)` shape every OAuth-surface error response shares.
