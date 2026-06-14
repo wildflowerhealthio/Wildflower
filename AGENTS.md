@@ -76,13 +76,15 @@ When running multiple agents in parallel inside the devcontainer, **use the help
 .devcontainer/wf-worktree.sh remove <branch>
 ```
 
-Requires **git 2.48+** — the script uses `git worktree add --relative-paths`, which landed in that release. The devcontainer image ships a newer git; on older hosts `wf-worktree.sh new` fails fast with the version requirement instead of git's opaque "unknown option" message.
+Requires **git 2.48+** — the script uses `git worktree add --relative-paths`, which landed in that release. The devcontainer image ships a newer git; on older hosts `wf-worktree.sh new` fails fast with the version requirement instead of git's opaque "unknown option" message. The **host** git must also be **2.48+**: the first `--relative-paths` worktree writes `extensions.relativeWorktrees = true` into the shared `.git/config`, after which older git refuses to operate on the repo at all (`fatal: unknown repository extension found: relativeworktrees`) — even after the worktree is removed.
 
 The script places the worktree at `${workspace}/.worktrees/<branch>` (host-visible via the existing bind mount) and symlinks its `node_modules` to `/data/worktrees/<branch>/node_modules` on the Linux-native `wf-data` volume. That keeps the source files editable from host VSCode while installs hardlink from the shared pnpm store at `/data/pnpm-store` — fast, with ~1× total disk cost across worktrees.
 
 The `node_modules/` segment in the symlink target is load-bearing: Node canonicalizes symlinks during require resolution, so the realpath chain has to contain a literal `node_modules/` ancestor — otherwise scoped optional deps like `@voidzero-dev/vite-plus-<platform>` fail to resolve and `vp install`'s postinstall crashes.
 
-Calling `git worktree add` directly will either dump dependencies onto the slow macOS↔Linux bind mount or skip the shared-store hardlinking. The host's `node_modules` for the main checkout is unaffected — it stays in its own Docker volume.
+Cargo's `target/` is redirected per-checkout to `/data/cargo-target/main` (for the main checkout, set up by `postCreateCommand.sh`) or `/data/cargo-target/worktrees/<branch>` (for worktrees, set up by `wf-worktree.sh`) via a generated `.cargo/config.toml`. Same volume, same rationale as `node_modules`: keep the thousands of small files cargo writes during `cargo check`/`cargo build` off the slow macOS↔Linux bind mount. The `.cargo/` directory is gitignored; rebuilding the container regenerates the config. Host-side `cargo` (run from macOS directly) is unaffected — no `.cargo/config.toml` is written on the host.
+
+Calling `git worktree add` directly will either dump dependencies onto the slow macOS↔Linux bind mount or skip the shared-store hardlinking, and it will not set up the per-worktree cargo target dir. The host's `node_modules` for the main checkout is unaffected — it stays in its own Docker volume.
 
 ## Documentation
 

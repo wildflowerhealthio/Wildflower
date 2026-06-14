@@ -23,6 +23,7 @@ jobs:
   # outputs gate the heavy jobs so an unrelated PR doesn't spend runners
   # compiling Rust.
   changes:
+    name: Rust Lint [Detect Changes]
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     outputs:
@@ -36,6 +37,7 @@ jobs:
           filters: .github/path-filters.yml
 
   lint:
+    name: Rust Lib Lint [Check]
     needs: changes
     # Full run on every push to main; on PRs only when Rust files changed.
     if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true') }}
@@ -45,8 +47,13 @@ jobs:
       - name: Set up Rust toolchain
         # Reads rust-toolchain.toml (channel + rustfmt/clippy), caches build
         # artifacts, and registers clippy/rustfmt problem matchers so findings
-        # surface as inline PR annotations.
+        # surface as inline PR annotations. `cache-shared-key` joins this
+        # job's cache namespace with rust-test/nextest, since both compile the
+        # same workspace (everything except wildflower-tauri) — without it the
+        # two jobs warm separate caches from cold despite identical inputs.
         uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-shared-key: rust-workspace-excl-tauri
       - name: rustfmt
         run: cargo fmt --all --check
       - name: clippy (deny warnings)
@@ -65,6 +72,7 @@ jobs:
   # fmt-checked, so a change that breaks its build would otherwise pass CI. Runs
   # only when the tauri app changes, or on push to main, to bound the cost.
   tauri:
+    name: Tauri App Lint [Check]
     needs: changes
     if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.tauri == 'true') }}
     runs-on: ubuntu-latest
@@ -93,6 +101,7 @@ jobs:
         run: cargo clippy -p wildflower-tauri --all-targets --all-features -- -D warnings
 
   deny:
+    name: Rust Dependency Check
     needs: changes
     if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true') }}
     runs-on: ubuntu-latest

@@ -1,4 +1,4 @@
-name: Rust Test
+name: Rust Lib Test
 
 on:
   push:
@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   changes:
+    name: Rust Lib Test [Detect Changes]
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     outputs:
@@ -32,13 +33,21 @@ jobs:
   # it doesn't collide with the `test` gate in test.yml — two jobs named `test`
   # would both surface as a check literally called "test".
   nextest:
+    name: Rust Lib Test [Check]
     needs: changes
     if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Set up Rust toolchain
+        # `cache-shared-key` joins this job's cache namespace with
+        # rust-lint/lint, since both compile the same workspace (everything
+        # except wildflower-tauri) — without it the two jobs warm separate
+        # caches from cold despite identical inputs. See rust-lint.yml for the
+        # matching entry.
         uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-shared-key: rust-workspace-excl-tauri
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
         with:

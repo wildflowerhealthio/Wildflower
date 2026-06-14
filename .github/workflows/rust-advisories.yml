@@ -1,4 +1,4 @@
-name: Rust Advisories
+name: Rust Dependency Check [Advisories]
 
 # Catches newly-published RustSec advisories against dependencies even when no
 # code changes. The rust-lint workflow only runs cargo-deny on Rust-touching
@@ -14,6 +14,7 @@ permissions:
 
 jobs:
   advisories:
+    name: Rust Dependency Check [Advisories]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

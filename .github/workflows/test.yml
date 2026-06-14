@@ -1,4 +1,4 @@
-name: Test
+name: TypeScript Test
 
 on:
   push:
@@ -21,6 +21,7 @@ jobs:
   # Detect whether this change touches TS/JS. A Rust-only PR skips the heavy
   # `vp-test` job below; every push to main runs it regardless.
   changes:
+    name: TypeScript Test [Detect Changes]
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     outputs:
@@ -33,6 +34,7 @@ jobs:
           filters: .github/path-filters.yml
 
   vp-test:
+    name: TypeScript Test [Check]
     needs: changes
     # Skip on draft PRs; `pull_request` is null on push events so the draft
     # comparison is true and the job still runs on main.
@@ -49,6 +51,28 @@ jobs:
         uses: voidzero-dev/setup-vp@v1
         with:
           cache: true
+
+      # vp's task cache (node_modules/.vite/task-cache) only stores terminal
+      # output, not the dist/ files that `vp run pack` produces. Caching both
+      # together keeps cache hits in sync with the dist/ outputs that Expo
+      # Jest tests read (Jest doesn't honor the `source` export condition
+      # that the root vite.config.ts sets for vitest). setup-vp already
+      # caches the pnpm store, so this only covers build outputs. Shares
+      # cache namespace `vp-pack-` with check.yml.
+      - name: Cache vp pack outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules/.vite/task-cache
+            apps/*/dist
+            domain/*/dist
+            global/**/dist
+            packages/*/dist
+            slices/**/dist
+            tools/*/dist
+          key: vp-pack-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            vp-pack-${{ runner.os }}-
 
       - name: Install dependencies
         run: vp install
