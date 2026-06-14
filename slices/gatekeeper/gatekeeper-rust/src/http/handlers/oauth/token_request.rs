@@ -2,7 +2,7 @@
 //! and `/oauth/device_authorization`).
 
 use axum::extract::{FromRequest, Request};
-use axum::http::header::CONTENT_TYPE;
+use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::HeaderMap;
 use serde::de::DeserializeOwned;
 
@@ -44,9 +44,14 @@ where
 
     async fn from_request(req: Request, state: &AppState) -> Result<Self, Self::Rejection> {
         require_form_urlencoded_content_type(req.headers())?;
-        // Credential resolution needs the headers (Basic auth); capture them
-        // before the body read consumes the request.
-        let headers = req.headers().clone();
+        // `resolve_client_credentials` reads only the `Authorization` header
+        // (the Basic-auth `client_secret_basic` source); clone just that into a
+        // one-entry map before the body read consumes the request, rather than
+        // cloning the whole `HeaderMap`.
+        let mut credential_headers = HeaderMap::new();
+        if let Some(authorization) = req.headers().get(AUTHORIZATION) {
+            credential_headers.insert(AUTHORIZATION, authorization.clone());
+        }
         let body = String::from_request(req, state).await.map_err(|_| {
             TokenError::bad_request(error_codes::INVALID_REQUEST, Some("Invalid request body"))
         })?;
@@ -55,7 +60,7 @@ where
         let payload: P = serde_urlencoded::from_str(&body).map_err(|_| {
             TokenError::bad_request(error_codes::INVALID_REQUEST, Some("Malformed payload"))
         })?;
-        let credentials = resolve_client_credentials(&headers, &body)?;
+        let credentials = resolve_client_credentials(&credential_headers, &body)?;
         Ok(TokenRequest {
             payload,
             credentials,
