@@ -97,6 +97,7 @@ pub fn setup_gatekeeper(
     let state = AppState {
         store: store.clone(),
         loopback_origin: config.loopback_origin.clone(),
+        user_code_rate_limiter: http::user_code_rate_limiter(),
     };
     let router = http::router(state.clone());
     Ok(Gatekeeper { router, state })

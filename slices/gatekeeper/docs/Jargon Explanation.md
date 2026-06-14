@@ -177,6 +177,18 @@ client. Flow:
 The device_code is single-use: the row's status flips to `expired` on
 the first successful token mint so a second poll returns `expired_token`.
 
+The `/access/devices/:userCode` consent routes (step 2/3) look a request up
+by its short, human-typeable `user_code`, so that lookup is throttled per
+client IP (10 attempts / 60s sliding window) to blunt brute-forcing of the
+small code space; over-budget requests get `429` + `Retry-After`. The IP is
+the tunnel-forwarded `x-forwarded-for` client when present, else the loopback
+`ConnectInfo` peer — behind the loopback gate the peer alone is always
+`127.0.0.1`. Distinct from the step-4 `slow_down` poll limit, which is per
+device row, not per IP. Every Owner `/access/*` response is also stamped
+`Cache-Control: no-store` (it carries privileged consent/grant data), matching
+the `no-store` already pinned on the `/oauth` token and device-authorization
+responses.
+
 ### Bootstrap URL
 
 Replaces the deleted PIN flow's "operator gets onto a cold deployment"

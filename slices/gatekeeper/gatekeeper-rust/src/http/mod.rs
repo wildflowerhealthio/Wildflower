@@ -12,6 +12,7 @@ mod page_paths;
 mod response_templates;
 mod state;
 
+pub(crate) use middleware::{user_code_rate_limiter, SlidingWindowRateLimiter};
 pub(crate) use origin::{served_origin_for, ServedOrigin};
 pub use state::AppState;
 
@@ -28,11 +29,18 @@ pub fn router(state: AppState) -> Router {
     let access = Router::new()
         .merge(handlers::grants::router())
         .merge(handlers::oauth_consents::router())
-        .merge(handlers::devices::router())
+        // The device routes carry their own per-IP throttle on the
+        // `user_code`-lookup path; the other `/access` groups don't need it.
+        .merge(handlers::devices::router(
+            state.user_code_rate_limiter.clone(),
+        ))
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::require_owner_auth,
-        ));
+        ))
+        // Outermost on `/access`, so every response — handler output, the
+        // owner-auth 401, the rate-limiter 429, a 404 — is cache-suppressed.
+        .layer(axum_middleware::from_fn(middleware::set_no_store));
 
     Router::new()
         .route(

@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use super::error_codes;
 use super::internal::{
-    build_client_error_redirect_url, build_client_redirect_url, OAuthErrorResponse,
+    build_client_error_redirect_url, build_client_redirect_url, CacheSuppressed, OAuthErrorResponse,
 };
 use crate::db_utils::UriColumn;
 use crate::domain::authorization_request::RequestStatus;
@@ -37,8 +37,12 @@ pub enum AuthorizationStatus {
 }
 
 impl IntoResponse for AuthorizationStatus {
+    /// The `Approved` variant carries the client redirect with a redeemable
+    /// authorization `code`, so this polling response must never be cached
+    /// (RFC 6749 §5.1, by analogy with the token endpoint). Rendering through
+    /// [`CacheSuppressed`] pins `Cache-Control: no-store` on every variant.
     fn into_response(self) -> Response {
-        Json(self).into_response()
+        CacheSuppressed(Json(self)).into_response()
     }
 }
 

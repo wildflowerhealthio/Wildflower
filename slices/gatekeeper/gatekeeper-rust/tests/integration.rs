@@ -639,6 +639,14 @@ async fn auth_code_grant_happy_path_end_to_end() {
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
+    // The approved poll hands back a redeemable `code` in the redirect — it must
+    // be cache-suppressed (RFC 6749 §5.1), like the token endpoint.
+    assert_eq!(
+        res.headers()
+            .get("cache-control")
+            .map(|v| v.to_str().unwrap()),
+        Some("no-store")
+    );
     let status = body_json(res.into_body()).await;
     assert_eq!(status["status"], "approved");
     let redirect = status["redirect"].as_str().expect("redirect");
@@ -1165,6 +1173,164 @@ async fn device_consent_threads_patient_onto_request() {
         .expect("request present");
     assert_eq!(request.status, RequestStatus::Approved);
     assert_eq!(request.patient.as_deref(), Some("Patient/123"));
+}
+
+/// Build a `GET /access/devices/{user_code}` request as `client_ip` (set via
+/// `x-forwarded-for`, the tunnel-forwarded client address the limiter keys on)
+/// carrying the owner token.
+fn device_consent_get_as(
+    user_code: &str,
+    host_owner_token: &str,
+    client_ip: &str,
+) -> Request<Body> {
+    loopback_request(
+        Request::get(format!("/access/devices/{user_code}"))
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("x-forwarded-for", client_ip),
+        Body::empty(),
+    )
+}
+
+/// The device-consent `user_code`-lookup path is throttled per client IP: after
+/// the per-window budget of attempts from one remote, the next is rejected with
+/// `429 Too Many Requests` + `Retry-After`, while a *different* client IP is
+/// unaffected (the limiter keys on the tunnel-forwarded `x-forwarded-for`, not
+/// the shared loopback peer).
+#[tokio::test]
+async fn device_consent_user_code_lookup_is_rate_limited_per_ip() {
+    // Mirrors the wired policy in `user_code_rate_limiter()`.
+    const BUDGET: usize = 10;
+    let (g, host_owner_token, _tmp) = spin_up();
+
+    // The budget's worth of attempts from one IP are admitted — each is a 404
+    // for the unknown code, but admitted by the limiter.
+    for _ in 0..BUDGET {
+        let res = g
+            .router
+            .clone()
+            .oneshot(device_consent_get_as(
+                "UNKN-OWN1",
+                &host_owner_token,
+                "203.0.113.7",
+            ))
+            .await
+            .expect("oneshot");
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    }
+
+    // The next attempt from the same IP is throttled.
+    let res = g
+        .router
+        .clone()
+        .oneshot(device_consent_get_as(
+            "UNKN-OWN1",
+            &host_owner_token,
+            "203.0.113.7",
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    let retry_after: u64 = res
+        .headers()
+        .get("retry-after")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse().ok())
+        .expect("Retry-After delta-seconds");
+    assert!(
+        (1..=60).contains(&retry_after),
+        "Retry-After {retry_after} should be within the 60s window"
+    );
+    // Even the throttled response is cache-suppressed (Owner surface).
+    assert_eq!(
+        res.headers()
+            .get("cache-control")
+            .map(|v| v.to_str().unwrap()),
+        Some("no-store")
+    );
+
+    // A different client IP keeps its own budget — not throttled by the first.
+    let res = g
+        .router
+        .clone()
+        .oneshot(device_consent_get_as(
+            "UNKN-OWN1",
+            &host_owner_token,
+            "198.51.100.4",
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+/// Every Owner `/access/*` response is cache-suppressed (`Cache-Control:
+/// no-store`) — the surface carries privileged consent/grant data a shared cache
+/// must never retain. Pins the blanket layer across a representative spread: a
+/// pending device-consent prompt, the grants list, and the owner-auth 401.
+#[tokio::test]
+async fn access_owner_surface_responses_carry_no_store() {
+    let (g, host_owner_token, tmp) = spin_up();
+    seed_client_with_redirect(&tmp, "device-client", "https://app.example/cb", &["read"]);
+    plant_device_request(
+        &store_handle(&tmp),
+        "device-client",
+        "dev-nostore",
+        &["read"],
+        RequestStatus::Pending,
+        Utc::now() + Duration::minutes(5),
+    );
+
+    let no_store = |res: &axum::response::Response| {
+        assert_eq!(
+            res.headers()
+                .get("cache-control")
+                .map(|v| v.to_str().unwrap()),
+            Some("no-store")
+        );
+    };
+
+    // A loaded device-consent prompt.
+    let res = g
+        .router
+        .clone()
+        .oneshot(device_consent_get_as(
+            "WILD-FLWR",
+            &host_owner_token,
+            "203.0.113.20",
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    no_store(&res);
+
+    // The grants list.
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get("/access/grants")
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {host_owner_token}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    no_store(&res);
+
+    // Even the owner-auth rejection (no token) is cache-suppressed — the blanket
+    // layer sits outside the auth gate.
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get("/access/grants"),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    no_store(&res);
 }
 
 /// A client restricted to a grant-type subset is refused a grant outside it
