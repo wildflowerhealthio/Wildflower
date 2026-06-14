@@ -1,4 +1,4 @@
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 

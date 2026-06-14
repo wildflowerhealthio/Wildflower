@@ -10,7 +10,7 @@ import {
   TestClock,
   TestContext,
 } from 'effect'
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 

@@ -1,5 +1,5 @@
 import { Arbitrary, Schema } from 'effect'
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 

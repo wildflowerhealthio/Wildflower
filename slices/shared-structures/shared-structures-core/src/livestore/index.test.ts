@@ -5,7 +5,7 @@ import {
   isLiveStoreSchema,
 } from '@livestore/livestore'
 import { Effect, Schema } from 'effect'
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
 

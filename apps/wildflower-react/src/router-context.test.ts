@@ -1,6 +1,6 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { Effect, Layer, SubscriptionRef } from 'effect'
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import { BearerToken } from 'kitchen-sink/auth-token'
 import type { BaseRouterContext } from 'shared-structures-react'
 import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
