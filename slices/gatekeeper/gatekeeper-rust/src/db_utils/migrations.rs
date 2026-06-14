@@ -8,21 +8,19 @@
 use rusqlite::Connection;
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
-    let current: u32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    for (idx, sql) in MIGRATIONS.iter().enumerate().skip(current as usize) {
+    let current: usize = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    for (idx, sql) in MIGRATIONS.iter().enumerate().skip(current) {
         // One transaction per migration so each lands (and bumps
         // `user_version`) atomically and independently: a failure in a later
         // migration can't roll back an already-validated earlier one, and the
         // version always reflects exactly what is committed.
         let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
-        // `idx` is an index into the compile-time `MIGRATIONS` array, so this
-        // conversion never actually overflows; fold the impossible case into
-        // the existing `rusqlite::Result` rather than panicking.
-        let next = u32::try_from(idx + 1)
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-        // The literal is index-derived, not user input.
-        tx.execute_batch(&format!("PRAGMA user_version = {next}"))?;
+        // `idx` is an index into the compile-time `MIGRATIONS` array, so the
+        // next version is simply `idx + 1`. `pragma_update` binds the value as
+        // a parameter, so there's no SQL string to interpolate and no integer
+        // conversion to contort into a `rusqlite::Error`.
+        tx.pragma_update(None, "user_version", idx + 1)?;
         tx.commit()?;
     }
     Ok(())

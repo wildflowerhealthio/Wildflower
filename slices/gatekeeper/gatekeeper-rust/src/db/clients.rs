@@ -8,7 +8,7 @@ use crate::domain::client::{Client, ClientKind};
 impl ToSql for ClientKind {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         Ok(ToSqlOutput::Borrowed(ValueRef::Text(
-            <&str>::from(self).as_bytes(),
+            self.as_str().as_bytes(),
         )))
     }
 }

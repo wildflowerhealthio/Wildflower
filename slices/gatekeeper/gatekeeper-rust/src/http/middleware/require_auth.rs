@@ -1,6 +1,6 @@
 use axum::body::Body;
 use axum::extract::{Request, State};
-use axum::http::HeaderMap;
+use axum::http::{header, HeaderMap};
 use axum::middleware::Next;
 use axum::response::Response;
 
@@ -31,7 +31,7 @@ pub async fn require_owner_auth(
 }
 
 pub fn try_bearer_token_from_headers(headers: &HeaderMap) -> Option<String> {
-    let value = headers.get("authorization")?.to_str().ok()?;
+    let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     let prefix = "bearer ";
     // Case-insensitive prefix check against just the scheme bytes — avoids
     // lowercasing (and reallocating) the whole header, which carries the

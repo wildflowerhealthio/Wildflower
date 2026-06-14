@@ -34,6 +34,12 @@ sql_row!(
 );
 
 /// Outcome of attempting to consume a refresh token.
+///
+/// `#[must_use]`: ignoring a `Replayed` outcome would skip the family
+/// revocation that reuse detection depends on, so the result must always be
+/// inspected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use]
 pub enum RefreshTokenConsumeOutcome {
     /// The token was live and is now consumed. The caller can proceed with
     /// issuing new credentials and a new refresh token.

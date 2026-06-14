@@ -1,3 +1,4 @@
+use std::fmt;
 use std::str::FromStr;
 
 use chrono::{DateTime, Duration, Utc};
@@ -32,12 +33,20 @@ impl FromStr for GrantType {
     }
 }
 
-impl From<&GrantType> for &'static str {
-    fn from(val: &GrantType) -> Self {
-        match val {
+impl GrantType {
+    /// The RFC `grant_type` wire string this variant is stored and serialized as.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
             GrantType::AuthorizationCode => "authorization_code",
             GrantType::DeviceCode => "device_code",
         }
+    }
+}
+
+impl fmt::Display for GrantType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -55,14 +64,22 @@ pub enum RequestStatus {
     Expired,
 }
 
-impl From<&RequestStatus> for &'static str {
-    fn from(val: &RequestStatus) -> Self {
-        match val {
+impl RequestStatus {
+    /// The wire string this status is stored and serialized as.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
             RequestStatus::Pending => "pending",
             RequestStatus::Approved => "approved",
             RequestStatus::Denied => "denied",
             RequestStatus::Expired => "expired",
         }
+    }
+}
+
+impl fmt::Display for RequestStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 

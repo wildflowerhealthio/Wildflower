@@ -15,7 +15,7 @@ pub struct Jwks {
 
 /// `GET` handler for `/.well-known/jwks.json`, as a `MethodRouter` the caller
 /// mounts at the full path — avoids wrapping a whole `Router` for one route.
-pub fn handle_get_jwks_request() -> MethodRouter<AppState> {
+pub fn route() -> MethodRouter<AppState> {
     get(handle_jwks_request)
 }
 
