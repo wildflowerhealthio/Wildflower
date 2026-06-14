@@ -44,14 +44,13 @@ where
 
     async fn from_request(req: Request, state: &AppState) -> Result<Self, Self::Rejection> {
         require_form_urlencoded_content_type(req.headers())?;
-        // `resolve_client_credentials` reads only the `Authorization` header
-        // (the Basic-auth `client_secret_basic` source); clone just that into a
-        // one-entry map before the body read consumes the request, rather than
-        // cloning the whole `HeaderMap`.
-        let mut credential_headers = HeaderMap::new();
-        if let Some(authorization) = req.headers().get(AUTHORIZATION) {
-            credential_headers.insert(AUTHORIZATION, authorization.clone());
-        }
+        // `resolve_client_credentials` needs only the `Authorization` header
+        // value; capture it (owned) before the body read consumes the request.
+        let authorization = req
+            .headers()
+            .get(AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
         let body = String::from_request(req, state).await.map_err(|_| {
             TokenError::bad_request(error_codes::INVALID_REQUEST, Some("Invalid request body"))
         })?;
@@ -60,7 +59,7 @@ where
         let payload: P = serde_urlencoded::from_str(&body).map_err(|_| {
             TokenError::bad_request(error_codes::INVALID_REQUEST, Some("Malformed payload"))
         })?;
-        let credentials = resolve_client_credentials(&credential_headers, &body)?;
+        let credentials = resolve_client_credentials(authorization.as_deref(), &body)?;
         Ok(TokenRequest {
             payload,
             credentials,

@@ -9,7 +9,7 @@
 //! the fallback, and presenting a secret both ways is rejected (§2.3 — "MUST
 //! NOT use more than one authentication method in each request").
 
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 
@@ -102,8 +102,9 @@ struct BasicCredentials {
 #[derive(Debug)]
 struct MalformedBasicHeader;
 
-/// Resolve the client credentials for a token-style request from the request
-/// headers and the raw `application/x-www-form-urlencoded` body.
+/// Resolve the client credentials for a token-style request from the request's
+/// `Authorization` header value (`None` when absent) and the raw
+/// `application/x-www-form-urlencoded` body.
 ///
 /// Precedence per RFC 6749 §2.3.1: a Basic `Authorization` header wins; body
 /// `client_id`/`client_secret` are the fallback. A body `client_id` alongside
@@ -119,14 +120,14 @@ struct MalformedBasicHeader;
 ///   presented both ways, the body `client_id` contradicts the Basic userid,
 ///   or no `client_id` is present at all.
 pub fn resolve_client_credentials(
-    request_headers: &HeaderMap,
+    authorization: Option<&str>,
     form_body: &str,
 ) -> Result<ClientCredentials, ResolveClientCredentialsError> {
     // A structurally unparseable body simply contributes no credentials; the
     // grant-payload parse is responsible for rejecting malformed bodies.
     let body: BodyClientCredentials = serde_urlencoded::from_str(form_body).unwrap_or_default();
     let basic =
-        decode_basic_authorization_header(request_headers).map_err(|MalformedBasicHeader| {
+        decode_basic_authorization_header(authorization).map_err(|MalformedBasicHeader| {
             ResolveClientCredentialsError::MalformedBasic(OAuthError::new(
                 error_codes::INVALID_CLIENT,
                 Some("Malformed Basic authorization header"),
@@ -173,20 +174,18 @@ pub fn resolve_client_credentials(
     }
 }
 
-/// Decode a Basic `Authorization` header per RFC 6749 §2.3.1: base64 →
-/// UTF-8 → split at the first colon → form-urlencoded-decode each half.
+/// Decode the `Authorization` header value as Basic credentials per RFC 6749
+/// §2.3.1: base64 → UTF-8 → split at the first colon → form-urlencoded-decode
+/// each half.
 ///
-/// `Ok(None)` means no Basic attempt (header absent, or a different scheme
-/// such as `Bearer` — mirroring `try_bearer_token_from_headers`);
+/// `Ok(None)` means no Basic attempt (`authorization` is `None`, or a different
+/// scheme such as `Bearer` — mirroring `try_bearer_token_from_headers`);
 /// `Err(MalformedBasicHeader)` means the client attempted Basic but the
 /// header is undecodable.
 fn decode_basic_authorization_header(
-    request_headers: &HeaderMap,
+    authorization: Option<&str>,
 ) -> Result<Option<BasicCredentials>, MalformedBasicHeader> {
-    let Some(value) = request_headers
-        .get("authorization")
-        .and_then(|raw| raw.to_str().ok())
-    else {
+    let Some(value) = authorization else {
         return Ok(None);
     };
     let prefix = "basic ";
@@ -235,13 +234,6 @@ fn form_urlencoded_decode_credential_component(encoded_component: &str) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::HeaderValue;
-
-    fn headers_with_authorization(value: &str) -> HeaderMap {
-        let mut headers = HeaderMap::new();
-        headers.insert("authorization", HeaderValue::from_str(value).unwrap());
-        headers
-    }
 
     fn basic_authorization(userid: &str, password: &str) -> String {
         format!(
@@ -253,7 +245,7 @@ mod tests {
     #[test]
     fn resolves_body_credentials_when_no_authorization_header() {
         let resolved = resolve_client_credentials(
-            &HeaderMap::new(),
+            None,
             "grant_type=refresh_token&client_id=app&client_secret=s3cret&refresh_token=x",
         )
         .unwrap();
@@ -269,10 +261,12 @@ mod tests {
 
     #[test]
     fn resolves_basic_header_credentials() {
-        let headers = headers_with_authorization(&basic_authorization("app", "s3cret"));
-        let resolved =
-            resolve_client_credentials(&headers, "grant_type=refresh_token&refresh_token=x")
-                .unwrap();
+        let authorization = basic_authorization("app", "s3cret");
+        let resolved = resolve_client_credentials(
+            Some(&authorization),
+            "grant_type=refresh_token&refresh_token=x",
+        )
+        .unwrap();
         assert_eq!(
             resolved,
             ClientCredentials {
@@ -286,8 +280,8 @@ mod tests {
     #[test]
     fn basic_scheme_match_is_case_insensitive() {
         let encoded = base64::standard_encode("app:s3cret".as_bytes());
-        let headers = headers_with_authorization(&format!("bASIC {encoded}"));
-        let resolved = resolve_client_credentials(&headers, "").unwrap();
+        let authorization = format!("bASIC {encoded}");
+        let resolved = resolve_client_credentials(Some(&authorization), "").unwrap();
         assert_eq!(
             resolved.presented_via,
             ClientAuthenticationMethod::HttpBasic
@@ -297,9 +291,11 @@ mod tests {
 
     #[test]
     fn non_basic_authorization_scheme_falls_back_to_body() {
-        let headers = headers_with_authorization("Bearer some-jwt");
-        let resolved =
-            resolve_client_credentials(&headers, "client_id=app&client_secret=s3cret").unwrap();
+        let resolved = resolve_client_credentials(
+            Some("Bearer some-jwt"),
+            "client_id=app&client_secret=s3cret",
+        )
+        .unwrap();
         assert_eq!(
             resolved,
             ClientCredentials {
@@ -314,8 +310,8 @@ mod tests {
     fn basic_halves_are_form_urlencoded_decoded() {
         // userid "app+one" → "app%2Bone"; password "p@ss word%" → "p%40ss+word%25"
         let encoded = base64::standard_encode("app%2Bone:p%40ss+word%25".as_bytes());
-        let headers = headers_with_authorization(&format!("Basic {encoded}"));
-        let resolved = resolve_client_credentials(&headers, "").unwrap();
+        let authorization = format!("Basic {encoded}");
+        let resolved = resolve_client_credentials(Some(&authorization), "").unwrap();
         assert_eq!(
             resolved,
             ClientCredentials {
@@ -328,15 +324,16 @@ mod tests {
 
     #[test]
     fn basic_password_keeps_text_after_first_colon() {
-        let headers = headers_with_authorization(&basic_authorization("app", "se:cret"));
-        let resolved = resolve_client_credentials(&headers, "").unwrap();
+        let authorization = basic_authorization("app", "se:cret");
+        let resolved = resolve_client_credentials(Some(&authorization), "").unwrap();
         assert_eq!(resolved.client_secret.as_deref(), Some("se:cret"));
     }
 
     #[test]
     fn basic_alongside_body_client_secret_is_invalid_request() {
-        let headers = headers_with_authorization(&basic_authorization("app", "s3cret"));
-        let err = resolve_client_credentials(&headers, "client_secret=s3cret").unwrap_err();
+        let authorization = basic_authorization("app", "s3cret");
+        let err =
+            resolve_client_credentials(Some(&authorization), "client_secret=s3cret").unwrap_err();
         let ResolveClientCredentialsError::InvalidRequest(oauth_error) = err else {
             panic!("expected InvalidRequest, got {err:?}");
         };
@@ -345,8 +342,8 @@ mod tests {
 
     #[test]
     fn basic_with_matching_body_client_id_is_allowed() {
-        let headers = headers_with_authorization(&basic_authorization("app", "s3cret"));
-        let resolved = resolve_client_credentials(&headers, "client_id=app").unwrap();
+        let authorization = basic_authorization("app", "s3cret");
+        let resolved = resolve_client_credentials(Some(&authorization), "client_id=app").unwrap();
         assert_eq!(resolved.client_id, "app");
         assert_eq!(
             resolved.presented_via,
@@ -356,8 +353,9 @@ mod tests {
 
     #[test]
     fn basic_with_mismatched_body_client_id_is_invalid_request() {
-        let headers = headers_with_authorization(&basic_authorization("app", "s3cret"));
-        let err = resolve_client_credentials(&headers, "client_id=other-app").unwrap_err();
+        let authorization = basic_authorization("app", "s3cret");
+        let err =
+            resolve_client_credentials(Some(&authorization), "client_id=other-app").unwrap_err();
         let ResolveClientCredentialsError::InvalidRequest(oauth_error) = err else {
             panic!("expected InvalidRequest, got {err:?}");
         };
@@ -366,11 +364,8 @@ mod tests {
 
     #[test]
     fn missing_client_id_everywhere_is_invalid_request() {
-        let err = resolve_client_credentials(
-            &HeaderMap::new(),
-            "grant_type=refresh_token&refresh_token=x",
-        )
-        .unwrap_err();
+        let err = resolve_client_credentials(None, "grant_type=refresh_token&refresh_token=x")
+            .unwrap_err();
         let ResolveClientCredentialsError::InvalidRequest(oauth_error) = err else {
             panic!("expected InvalidRequest, got {err:?}");
         };
@@ -398,8 +393,7 @@ mod tests {
             ),
         ];
         for authorization in malformed_payloads {
-            let headers = headers_with_authorization(&authorization);
-            let err = resolve_client_credentials(&headers, "").unwrap_err();
+            let err = resolve_client_credentials(Some(&authorization), "").unwrap_err();
             assert!(
                 matches!(err, ResolveClientCredentialsError::MalformedBasic(_)),
                 "expected MalformedBasic for {authorization:?}, got {err:?}"
