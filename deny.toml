@@ -9,7 +9,14 @@
 # advisory id (e.g. "RUSTSEC-2024-0001") to `ignore` with a comment explaining
 # why. Yanked crates are treated as errors so the lockfile stays installable.
 yanked = "deny"
-ignore = []
+ignore = [
+  # atty 0.2.14 — potential unaligned read on Windows (`atty::is`). Pulled in
+  # transitively by `rathole` -> `clap` 3.x (the embedded tunnel client/relay).
+  # We never call atty on Windows from a tunnel path, and rathole's clap 3 dep
+  # is outside our control until rathole upgrades. Reviewed, low-risk, temporary
+  # until rathole moves to clap 4 (which dropped atty).
+  "RUSTSEC-2021-0145",
+]
 # Only fail on "unmaintained" advisories for crates we depend on directly; deep
 # transitive ones (e.g. the gtk3/atk chain pulled in by Tauri, or unic-* and
 # proc-macro-error) are outside our control and would otherwise block every PR.
