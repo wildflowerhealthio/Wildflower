@@ -1,5 +1,6 @@
-//! The closed set of OAuth error codes the gatekeeper's JSON error surface is
-//! allowed to emit — RFC 6749 §5.2, plus §4.1.2.1 `access_denied` and the
+//! The closed set of OAuth error codes the gatekeeper's error surfaces are
+//! allowed to emit — RFC 6749 §5.2, plus the §4.1.2.1 authorization-endpoint
+//! redirect codes (`access_denied`, `unsupported_response_type`) and the
 //! RFC 8628 §3.5 device-flow polling codes. Modeled as an enum so a code can't
 //! be typo'd into a spec-violating string at a construction site (a free-typed
 //! `"invalid_grnat"` no longer compiles), and so the valid set is enforced at
@@ -7,8 +8,10 @@
 //!
 //! [`OAuthErrorCode::as_str`] returns the exact RFC wire value, so variants drop
 //! straight into the `OAuthErrorCode`-taking constructors (`OAuthError::new`,
-//! `OAuthErrorResponse::new`, `TokenError::bad_request`). Out of scope: the
-//! `authorize.rs` HTML/redirect error surface, which renders its own pages.
+//! `OAuthErrorResponse::new`, `TokenError::bad_request`) and the redirect
+//! builder (`build_client_error_redirect_url`). Still untyped: the
+//! `authorize.rs` HTML local-error page, which renders its own markup rather
+//! than emitting a wire code.
 
 use std::fmt;
 
@@ -30,6 +33,10 @@ pub(crate) enum OAuthErrorCode {
     /// RFC 6749 §5.2 — the requested scope is invalid, unknown, or exceeds what
     /// the client may hold.
     InvalidScope,
+    /// RFC 6749 §4.1.2.1 — the authorization server does not support obtaining an
+    /// authorization code using this `response_type`. Surfaced on the
+    /// authorization-endpoint redirect, never the JSON token surface.
+    UnsupportedResponseType,
     /// RFC 6749 §5.2 — the server encountered an unexpected condition.
     ServerError,
     /// RFC 6749 §4.1.2.1 — the resource owner (or authorization server) denied
@@ -57,6 +64,7 @@ impl OAuthErrorCode {
             Self::InvalidGrant => "invalid_grant",
             Self::UnauthorizedClient => "unauthorized_client",
             Self::InvalidScope => "invalid_scope",
+            Self::UnsupportedResponseType => "unsupported_response_type",
             Self::ServerError => "server_error",
             Self::AccessDenied => "access_denied",
             Self::AuthorizationPending => "authorization_pending",
@@ -88,6 +96,10 @@ mod tests {
             "unauthorized_client"
         );
         assert_eq!(OAuthErrorCode::InvalidScope.as_str(), "invalid_scope");
+        assert_eq!(
+            OAuthErrorCode::UnsupportedResponseType.as_str(),
+            "unsupported_response_type"
+        );
         assert_eq!(OAuthErrorCode::ServerError.as_str(), "server_error");
         assert_eq!(OAuthErrorCode::AccessDenied.as_str(), "access_denied");
         assert_eq!(
@@ -107,6 +119,7 @@ mod tests {
             OAuthErrorCode::InvalidGrant,
             OAuthErrorCode::UnauthorizedClient,
             OAuthErrorCode::InvalidScope,
+            OAuthErrorCode::UnsupportedResponseType,
             OAuthErrorCode::ServerError,
             OAuthErrorCode::AccessDenied,
             OAuthErrorCode::AuthorizationPending,

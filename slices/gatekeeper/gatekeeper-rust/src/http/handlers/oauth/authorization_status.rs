@@ -82,10 +82,7 @@ async fn handle_authorization_status_request(
                 (Some(UriColumn(redirect_uri)), Some(client_state)) => {
                     Some(build_client_error_redirect_url(
                         redirect_uri,
-                        // The redirect error surface stays `&str` (out of
-                        // scope), but the value is still sourced from the
-                        // typed code so it can't drift from the wire string.
-                        OAuthErrorCode::AccessDenied.as_str(),
+                        OAuthErrorCode::AccessDenied,
                         client_state,
                     ))
                 }

@@ -217,12 +217,12 @@ pub fn build_client_redirect_url(redirect_uri: &Url, code: &str, client_state: &
 /// `redirect_uri` with `error` and `state` appended (RFC 6749 §4.1.2.1).
 pub fn build_client_error_redirect_url(
     redirect_uri: &Url,
-    error: &str,
+    error: OAuthErrorCode,
     client_state: &str,
 ) -> String {
     let mut url = redirect_uri.clone();
     url.query_pairs_mut()
-        .append_pair("error", error)
+        .append_pair("error", error.as_str())
         .append_pair("state", client_state);
     url.to_string()
 }
