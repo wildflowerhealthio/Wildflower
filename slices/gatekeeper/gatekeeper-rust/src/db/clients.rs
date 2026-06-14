@@ -5,10 +5,6 @@ use crate::db_utils::sql_builder::build_insert_sql;
 use crate::db_utils::{sql_row, DbResult, GatekeeperStore};
 use crate::domain::client::{Client, ClientKind};
 
-const ALL_COLS: &str =
-    "client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, \
-     secret_hash, registered_at, disabled_at";
-
 impl ToSql for ClientKind {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         Ok(ToSqlOutput::Borrowed(ValueRef::Text(

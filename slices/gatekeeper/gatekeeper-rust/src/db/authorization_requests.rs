@@ -58,11 +58,6 @@ sql_row!(AuthorizationRequest {
     patient,
 });
 
-const ALL_COLS: &str =
-    "id, grant_type, client_id, requested_scopes, code_challenge, code_challenge_method, redirect_uri, \
-     client_state, user_code, pre_approved_scopes, requested_at, expires_at, last_polled_at, status, \
-     granted_scopes, patient";
-
 impl GatekeeperStore {
     /// Load an authorization request by its primary id (the `device_code` for
     /// device-flow, otherwise an internal UUID).

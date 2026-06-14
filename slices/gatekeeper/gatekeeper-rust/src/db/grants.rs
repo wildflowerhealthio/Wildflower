@@ -18,8 +18,6 @@ sql_row!(Grant {
     patient,
 });
 
-const ALL_COLS: &str = "id, client_id, scopes, redirect_uri, granted_at, last_used_at, patient";
-
 impl GatekeeperStore {
     /// All grants in `granted_at` order — backs the Owner UI's grant list page.
     ///

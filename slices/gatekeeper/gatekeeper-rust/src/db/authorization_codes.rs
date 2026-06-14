@@ -16,9 +16,6 @@ sql_row!(AuthorizationCode {
     expires_at,
 });
 
-const ALL_COLS: &str =
-    "code, request_id, client_id, redirect_uri, code_challenge, granted_scopes, patient, issued_at, expires_at";
-
 impl GatekeeperStore {
     /// Atomically read-and-delete the authorization code so a `/token`
     /// redemption either gets the row exactly once or sees `None`. Wins the
