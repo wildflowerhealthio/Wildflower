@@ -7,8 +7,8 @@ use std::path::Path;
 
 use anyhow::Context;
 
-use crate::db_utils::connection::Connection;
 use crate::db_utils::migrations;
+use persistence_rust::Connection;
 
 #[derive(Clone)]
 pub struct GatekeeperStore {

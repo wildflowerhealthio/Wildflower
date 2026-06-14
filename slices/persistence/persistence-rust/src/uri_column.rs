@@ -20,8 +20,8 @@ impl From<Url> for UriColumn {
 
 impl UriColumn {
     /// Consume the wrapper and return the inner [`Url`]. Mirrors
-    /// [`JsonColumn::into_inner`](crate::db_utils::JsonColumn::into_inner) so
-    /// both column newtypes unwrap the same way.
+    /// [`JsonColumn::into_inner`](crate::JsonColumn::into_inner) so both column
+    /// newtypes unwrap the same way.
     #[must_use]
     pub fn into_inner(self) -> Url {
         self.0

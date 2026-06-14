@@ -1,29 +1,17 @@
-//! Tiny `PRAGMA user_version` migration runner. Each entry of
-//! [`MIGRATIONS`] runs at most once, in order; the index of the highest
-//! applied entry is persisted in `PRAGMA user_version`. Reproduces what
-//! we'd get from `rusqlite_migration` — we hand-roll it because no
-//! published `rusqlite_migration` version targets rusqlite 0.33 (the
-//! version helios-persistence pins).
+//! Gatekeeper's schema migration list, applied through the shared
+//! [`persistence_rust::run_migrations`] `PRAGMA user_version` runner (the
+//! generic runner lifted out of this module). The list is append-only; the
+//! runner applies each pending entry once, in order.
 
 use rusqlite::Connection;
 
+/// Apply pending gatekeeper migrations.
+///
+/// # Errors
+///
+/// Returns any rusqlite error surfaced by [`persistence_rust::run_migrations`].
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
-    let current: usize = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    for (idx, sql) in MIGRATIONS.iter().enumerate().skip(current) {
-        // One transaction per migration so each lands (and bumps
-        // `user_version`) atomically and independently: a failure in a later
-        // migration can't roll back an already-validated earlier one, and the
-        // version always reflects exactly what is committed.
-        let tx = conn.transaction()?;
-        tx.execute_batch(sql)?;
-        // `idx` is an index into the compile-time `MIGRATIONS` array, so the
-        // next version is simply `idx + 1`. `pragma_update` binds the value as
-        // a parameter, so there's no SQL string to interpolate and no integer
-        // conversion to contort into a `rusqlite::Error`.
-        tx.pragma_update(None, "user_version", idx + 1)?;
-        tx.commit()?;
-    }
-    Ok(())
+    persistence_rust::run_migrations(conn, MIGRATIONS)
 }
 
 /// Ordered list of schema migrations. The array index is the persisted
