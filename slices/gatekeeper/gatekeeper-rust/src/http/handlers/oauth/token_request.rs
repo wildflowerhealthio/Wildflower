@@ -7,7 +7,7 @@ use axum::http::HeaderMap;
 use serde::de::DeserializeOwned;
 
 use super::client_auth::{resolve_client_credentials, ClientCredentials};
-use super::error_codes;
+use super::error_codes::OAuthErrorCode;
 use super::internal::TokenError;
 use crate::http::state::AppState;
 
@@ -52,12 +52,12 @@ where
             .and_then(|value| value.to_str().ok())
             .map(str::to_owned);
         let body = String::from_request(req, state).await.map_err(|_| {
-            TokenError::bad_request(error_codes::INVALID_REQUEST, Some("Invalid request body"))
+            TokenError::bad_request(OAuthErrorCode::InvalidRequest, Some("Invalid request body"))
         })?;
         // Parse the grant payload before resolving credentials so a structurally
         // malformed body still reads as such, not as "Missing client_id".
         let payload: P = serde_urlencoded::from_str(&body).map_err(|_| {
-            TokenError::bad_request(error_codes::INVALID_REQUEST, Some("Malformed payload"))
+            TokenError::bad_request(OAuthErrorCode::InvalidRequest, Some("Malformed payload"))
         })?;
         let credentials = resolve_client_credentials(authorization.as_deref(), &body)?;
         Ok(TokenRequest {
@@ -80,7 +80,7 @@ fn require_form_urlencoded_content_type(headers: &HeaderMap) -> Result<(), Token
         Ok(())
     } else {
         Err(TokenError::bad_request(
-            error_codes::INVALID_REQUEST,
+            OAuthErrorCode::InvalidRequest,
             Some("Content-Type must be application/x-www-form-urlencoded"),
         ))
     }

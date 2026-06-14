@@ -5,7 +5,7 @@ use axum::Json;
 use chrono::Utc;
 use serde::Serialize;
 
-use super::error_codes;
+use super::error_codes::OAuthErrorCode;
 use super::internal::{
     build_client_error_redirect_url, build_client_redirect_url, OAuthErrorResponse,
 };
@@ -82,7 +82,10 @@ async fn handle_authorization_status_request(
                 (Some(UriColumn(redirect_uri)), Some(client_state)) => {
                     Some(build_client_error_redirect_url(
                         redirect_uri,
-                        error_codes::ACCESS_DENIED,
+                        // The redirect error surface stays `&str` (out of
+                        // scope), but the value is still sourced from the
+                        // typed code so it can't drift from the wire string.
+                        OAuthErrorCode::AccessDenied.as_str(),
                         client_state,
                     ))
                 }

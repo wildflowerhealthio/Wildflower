@@ -9,7 +9,7 @@ use url::Url;
 use uuid::Uuid;
 
 use super::client_auth::ClientCredentials;
-use super::error_codes;
+use super::error_codes::OAuthErrorCode;
 use super::internal::{
     issue_token_response, require_valid_client_for_token, IssueTokenInput, TokenError,
     TokenResponse, DEVICE_CODE_POLL_INTERVAL, OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
@@ -123,7 +123,7 @@ fn exchange_authorization_code(
         .contains(&AllowedGrantType::AuthorizationCode)
     {
         return Err(TokenError::bad_request(
-            error_codes::UNAUTHORIZED_CLIENT,
+            OAuthErrorCode::UnauthorizedClient,
             Some("Client may not use this grant type"),
         ));
     }
@@ -132,13 +132,13 @@ fn exchange_authorization_code(
     // malformed request (RFC 6749 §5.2).
     if !is_valid_code_verifier_length(grant.code_verifier) {
         return Err(TokenError::bad_request(
-            error_codes::INVALID_GRANT,
+            OAuthErrorCode::InvalidGrant,
             Some("Invalid code_verifier parameter"),
         ));
     }
     let parsed_redirect = Url::parse(grant.redirect_uri).map_err(|_| {
         TokenError::bad_request(
-            error_codes::INVALID_REQUEST,
+            OAuthErrorCode::InvalidRequest,
             Some("Invalid redirect_uri parameter"),
         )
     })?;
@@ -172,7 +172,7 @@ fn exchange_authorization_code(
                 "authorization_code grant rejected: code not found or already redeemed (possible replay)"
             );
             return Err(TokenError::bad_request(
-                error_codes::INVALID_GRANT,
+                OAuthErrorCode::InvalidGrant,
                 Some("Invalid authorization grant"),
             ));
         }
@@ -210,7 +210,7 @@ fn validate_code_and_issue_token(
     // the operator can still tell them apart.
     let invalid_grant = || {
         TokenError::bad_request(
-            error_codes::INVALID_GRANT,
+            OAuthErrorCode::InvalidGrant,
             Some("Invalid authorization grant"),
         )
     };
@@ -278,11 +278,11 @@ fn ensure_device_request_approved(status: RequestStatus) -> Result<(), TokenErro
     match status {
         RequestStatus::Approved => Ok(()),
         RequestStatus::Pending => Err(TokenError::bad_request(
-            error_codes::AUTHORIZATION_PENDING,
+            OAuthErrorCode::AuthorizationPending,
             None,
         )),
-        RequestStatus::Denied => Err(TokenError::bad_request(error_codes::ACCESS_DENIED, None)),
-        RequestStatus::Expired => Err(TokenError::bad_request(error_codes::EXPIRED_TOKEN, None)),
+        RequestStatus::Denied => Err(TokenError::bad_request(OAuthErrorCode::AccessDenied, None)),
+        RequestStatus::Expired => Err(TokenError::bad_request(OAuthErrorCode::ExpiredToken, None)),
     }
 }
 
@@ -298,7 +298,7 @@ fn exchange_device_code(
         .contains(&AllowedGrantType::DeviceCode)
     {
         return Err(TokenError::bad_request(
-            error_codes::UNAUTHORIZED_CLIENT,
+            OAuthErrorCode::UnauthorizedClient,
             Some("Client may not use this grant type"),
         ));
     }
@@ -317,7 +317,7 @@ fn exchange_device_code(
                 "device_code grant rejected: no matching pending/approved device request for this client"
             );
             return Err(TokenError::bad_request(
-                error_codes::INVALID_GRANT,
+                OAuthErrorCode::InvalidGrant,
                 Some("Unknown device_code"),
             ));
         }
@@ -329,12 +329,12 @@ fn exchange_device_code(
         }
     };
     if request_record.expires_at < Utc::now() {
-        return Err(TokenError::bad_request(error_codes::EXPIRED_TOKEN, None));
+        return Err(TokenError::bad_request(OAuthErrorCode::ExpiredToken, None));
     }
     if request_record.status == RequestStatus::Pending {
         if let Some(last_polled) = request_record.last_polled_at {
             if Utc::now() - last_polled < DEVICE_CODE_POLL_INTERVAL {
-                return Err(TokenError::bad_request(error_codes::SLOW_DOWN, None));
+                return Err(TokenError::bad_request(OAuthErrorCode::SlowDown, None));
             }
         }
         state
@@ -359,7 +359,7 @@ fn exchange_device_code(
                 "device_code grant rejected: request already redeemed (lost the single-use race)"
             );
             return Err(TokenError::bad_request(
-                error_codes::INVALID_GRANT,
+                OAuthErrorCode::InvalidGrant,
                 Some("Device code already redeemed"),
             ));
         }
@@ -452,7 +452,7 @@ fn exchange_refresh_token(
         .contains(&AllowedGrantType::RefreshToken)
     {
         return Err(TokenError::bad_request(
-            error_codes::UNAUTHORIZED_CLIENT,
+            OAuthErrorCode::UnauthorizedClient,
             Some("Client may not use this grant type"),
         ));
     }
@@ -462,7 +462,7 @@ fn exchange_refresh_token(
         Ok(None) => {
             tracing::warn!("refresh_token grant rejected: token not found");
             return Err(TokenError::bad_request(
-                error_codes::INVALID_GRANT,
+                OAuthErrorCode::InvalidGrant,
                 Some("Invalid refresh_token parameter"),
             ));
         }
@@ -481,7 +481,7 @@ fn exchange_refresh_token(
             "refresh_token grant rejected: token belongs to a different client"
         );
         return Err(TokenError::bad_request(
-            error_codes::INVALID_GRANT,
+            OAuthErrorCode::InvalidGrant,
             Some("Invalid refresh_token parameter"),
         ));
     }
@@ -491,7 +491,7 @@ fn exchange_refresh_token(
     // rows, so the lineage stays auditable.
     if family.expires_at <= now {
         return Err(TokenError::bad_request(
-            error_codes::INVALID_GRANT,
+            OAuthErrorCode::InvalidGrant,
             Some("Refresh token has expired"),
         ));
     }
@@ -536,7 +536,7 @@ fn exchange_refresh_token(
                 .expire_refresh_token_family(&family.family_id, now)
                 .map_err(|e| TokenError::internal("expire_refresh_token_family failed", e))?;
             return Err(TokenError::bad_request(
-                error_codes::INVALID_GRANT,
+                OAuthErrorCode::InvalidGrant,
                 Some("Refresh token has been revoked"),
             ));
         }
@@ -548,7 +548,7 @@ fn exchange_refresh_token(
                 "refresh_token grant rejected: token vanished between lookup and rotate"
             );
             return Err(TokenError::bad_request(
-                error_codes::INVALID_GRANT,
+                OAuthErrorCode::InvalidGrant,
                 Some("Invalid refresh_token parameter"),
             ));
         }
