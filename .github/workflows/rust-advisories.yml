@@ -17,7 +17,7 @@ jobs:
     name: Rust Dependency Check [Advisories]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: cargo-deny — advisories
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
