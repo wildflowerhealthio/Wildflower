@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { dirname, parse as parsePath, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Option } from 'effect'
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { multiplierFromMap, numRunsFor, scaleNumRuns } from './num-runs-for.ts'

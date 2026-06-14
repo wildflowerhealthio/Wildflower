@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render } from '@testing-library/react'
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { type JSX } from 'react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'

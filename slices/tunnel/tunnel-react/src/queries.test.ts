@@ -1,7 +1,7 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
 import { Effect, Layer, pipe, SubscriptionRef } from 'effect'
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import { BearerToken } from 'kitchen-sink/auth-token'
 import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, test } from 'vite-plus/test'

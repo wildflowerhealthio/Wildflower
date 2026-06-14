@@ -1,5 +1,5 @@
 import { Arbitrary, Schema } from 'effect'
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import {
   InstanceConfig as FhirR4InstanceConfig,
   scrapingPlan as fhirR4ScrapingPlan,

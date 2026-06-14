@@ -13,7 +13,7 @@ import {
   HttpClientResponse,
 } from '@effect/platform'
 import { Effect, Layer, Schema, SubscriptionRef } from 'effect'
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import { BearerToken } from 'kitchen-sink/auth-token'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'

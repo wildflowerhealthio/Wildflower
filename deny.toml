@@ -16,6 +16,17 @@ ignore = [
   # is outside our control until rathole upgrades. Reviewed, low-risk, temporary
   # until rathole moves to clap 4 (which dropped atty).
   "RUSTSEC-2021-0145",
+  # rsa 0.9.x — "Marvin Attack": the crate's RSA private-key operation is not
+  # constant-time, leaking key bits through timing observable to an attacker who
+  # can submit ciphertexts and measure decryption timing over the network. There
+  # is no patched release ("No safe upgrade is available"). Pulled in by
+  # `gatekeeper-rust`, which uses `rsa` only to *generate* RSA keys and DER-encode
+  # the components (`to_pkcs1_der`); all JWT signing/verification is delegated to
+  # `jsonwebtoken` (ring). The vulnerable variable-time decryption path is never
+  # invoked on attacker-supplied input, so the timing side-channel is not
+  # reachable here. Reviewed, low-risk, temporary until `rsa` ships a
+  # constant-time release.
+  "RUSTSEC-2023-0071",
 ]
 # Only fail on "unmaintained" advisories for crates we depend on directly; deep
 # transitive ones (e.g. the gtk3/atk chain pulled in by Tauri, or unic-* and

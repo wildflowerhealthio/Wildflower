@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { Effect, Layer, SubscriptionRef } from 'effect'
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { numRunsFor } from 'kitchen-sink/test'
 import type { JSX, ReactNode } from 'react'

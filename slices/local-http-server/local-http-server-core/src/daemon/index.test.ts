@@ -14,7 +14,7 @@ import { makeAdapter } from '@livestore/adapter-node'
 import type { Store } from '@livestore/livestore'
 import { createStorePromise } from '@livestore/livestore'
 import { Deferred, Effect, Exit, LogLevel, Queue, Stream, type Scope } from 'effect'
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
