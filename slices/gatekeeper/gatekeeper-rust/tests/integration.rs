@@ -1267,6 +1267,32 @@ async fn device_consent_user_code_lookup_is_rate_limited_per_ip() {
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
 
+/// The `user_code` throttle sits *ahead* of the owner-auth gate, so even
+/// unauthenticated brute-force attempts are rejected once over budget: the first
+/// requests 401 (admitted by the limiter, then refused by auth), but past the
+/// budget the limiter short-circuits with 429 before auth runs at all.
+#[tokio::test]
+async fn device_consent_throttle_runs_before_owner_auth() {
+    const BUDGET: usize = 10;
+    let (g, _host_owner_token, _tmp) = spin_up();
+
+    // No Authorization header — auth would 401 these, but the throttle is outer.
+    let unauthed = || {
+        loopback_request(
+            Request::get("/access/devices/UNKN-OWN1").header("x-forwarded-for", "203.0.113.99"),
+            Body::empty(),
+        )
+    };
+
+    for _ in 0..BUDGET {
+        let res = g.router.clone().oneshot(unauthed()).await.expect("oneshot");
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    }
+    // Over budget: throttled before the auth gate sees the request.
+    let res = g.router.clone().oneshot(unauthed()).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
 /// Every Owner `/access/*` response is cache-suppressed (`Cache-Control:
 /// no-store` + `Pragma: no-cache`, via the same `CacheSuppressed` wrapper the
 /// `/oauth` surface uses) — the surface carries privileged consent/grant data a

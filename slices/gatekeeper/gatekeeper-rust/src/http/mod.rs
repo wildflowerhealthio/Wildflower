@@ -26,18 +26,32 @@ use axum::Router;
 /// non-loopback peers receive 403 before any handler runs.
 pub fn router(state: AppState) -> Router {
     let oauth = handlers::oauth::router();
-    let access = Router::new()
-        .merge(handlers::grants::router())
-        .merge(handlers::oauth_consents::router())
-        // The device routes carry their own per-IP throttle on the
-        // `user_code`-lookup path; the other `/access` groups don't need it.
-        .merge(handlers::devices::router(
-            state.user_code_rate_limiter.clone(),
-        ))
+
+    // The device-consent routes look a pending request up by its short,
+    // brute-forceable `user_code`, so they get a per-IP throttle *ahead* of the
+    // owner-auth gate — over-budget attempts are rejected before any auth work.
+    // `.layer` wraps inside-out, so listing auth first then the throttle makes
+    // the throttle the outer of the two (it runs first). The other `/access`
+    // groups need only owner-auth.
+    let devices = handlers::devices::router()
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::require_owner_auth,
         ))
+        .layer(axum_middleware::from_fn_with_state(
+            state.user_code_rate_limiter.clone(),
+            middleware::rate_limit_user_code,
+        ));
+    let owner_only = Router::new()
+        .merge(handlers::grants::router())
+        .merge(handlers::oauth_consents::router())
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::require_owner_auth,
+        ));
+    let access = Router::new()
+        .merge(devices)
+        .merge(owner_only)
         // Outermost on `/access`, so every response — handler output, the
         // owner-auth 401, the rate-limiter 429, a 404 — is cache-suppressed
         // (`no-store` + `Pragma: no-cache`) via the same `CacheSuppressed`
