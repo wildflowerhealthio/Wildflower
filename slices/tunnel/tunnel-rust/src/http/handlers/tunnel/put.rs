@@ -4,8 +4,9 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{put, MethodRouter};
 use axum::Json;
+use serde::Deserialize;
 
-use super::internal::{snapshot, ReplaceTunnelRequestBody, TunnelStateWire};
+use super::tunnel_state_response::TunnelStateResponse;
 use crate::db::{SettingsUpdate, SettingsUpdateOutcome};
 use crate::domain::RelaySettings;
 use crate::http::response_templates::HandlerError;
@@ -22,7 +23,7 @@ pub(super) fn route() -> MethodRouter<Arc<TunnelState>> {
 async fn handle_put_tunnel(
     State(state): State<Arc<TunnelState>>,
     Json(body): Json<ReplaceTunnelRequestBody>,
-) -> Result<(StatusCode, Json<TunnelStateWire>), HandlerError> {
+) -> Result<(StatusCode, Json<TunnelStateResponse>), HandlerError> {
     let update = SettingsUpdate {
         public_host: body.public_host,
         requested_running: body.requested_running,
@@ -35,11 +36,52 @@ async fn handle_put_tunnel(
 
     match settings_update_outcome {
         SettingsUpdateOutcome::Applied(settings) => {
-            state.reconcile(&settings);
-            Ok((StatusCode::OK, Json(snapshot(&state, &settings))))
+            state.daemon.reconcile(&settings);
+            Ok((
+                StatusCode::OK,
+                Json(TunnelStateResponse::from_current_state(
+                    &state.daemon,
+                    &settings,
+                )),
+            ))
         }
-        SettingsUpdateOutcome::Conflict(current) => {
-            Ok((StatusCode::CONFLICT, Json(snapshot(&state, &current))))
+        SettingsUpdateOutcome::Conflict(current) => Ok((
+            StatusCode::CONFLICT,
+            Json(TunnelStateResponse::from_current_state(&state.daemon, &current)),
+        )),
+    }
+}
+
+/// PUT body — a full replace of the visible settings guarded by `revision`,
+/// plus an optional write-only `relay` block (absent = keep the stored relay
+/// connection, present = replace all four fields).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceTunnelRequestBody {
+    pub(super) revision: i64,
+    #[serde(default)]
+    pub(super) public_host: Option<String>,
+    pub(super) requested_running: bool,
+    #[serde(default)]
+    pub(super) relay: Option<RelayInput>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct RelayInput {
+    remote_addr: String,
+    token: String,
+    public_key: String,
+    service_name: String,
+}
+
+impl From<RelayInput> for RelaySettings {
+    fn from(input: RelayInput) -> Self {
+        RelaySettings {
+            remote_addr: input.remote_addr,
+            token: input.token,
+            public_key: input.public_key,
+            service_name: input.service_name,
         }
     }
 }

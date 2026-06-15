@@ -5,8 +5,8 @@
 //! `/tunnel` (GET + PUT) are merged here onto the shared path.
 
 mod get;
-mod internal;
 mod put;
+mod tunnel_state_response;
 
 use std::sync::Arc;
 
@@ -28,9 +28,9 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
-    use crate::client::RelayClient;
     use crate::db::TunnelStore;
-    use crate::domain::RelaySettings;
+    use crate::domain::{RelayClient, RelaySettings};
+    use crate::TunnelDaemon;
 
     /// What a fake attempt does once started.
     #[derive(Clone, Copy)]
@@ -71,12 +71,10 @@ mod tests {
         let (started, rx) = mpsc::unbounded_channel();
         let client = Arc::new(FakeClient { behavior, started });
         let store = TunnelStore::open_in_memory().expect("store");
-        let state = Arc::new(TunnelState::new_test(
+        let state = Arc::new(TunnelState {
             store,
-            client,
-            "http://127.0.0.1:8080",
-            8080,
-        ));
+            daemon: TunnelDaemon::new(client, "http://127.0.0.1:8080", 8080),
+        });
         (state, rx)
     }
 
@@ -227,7 +225,7 @@ mod tests {
     #[tokio::test]
     async fn a_failed_attempt_surfaces_the_error_and_keeps_retrying() {
         let (st, mut started) = state(Behavior::FailImmediately);
-        let mut observed = st.watch_observed();
+        let mut observed = st.daemon.watch_observed();
         let _ = send(
             &st,
             put(serde_json::json!({

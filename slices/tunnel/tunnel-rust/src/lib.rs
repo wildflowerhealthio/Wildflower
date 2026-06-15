@@ -2,11 +2,12 @@
 //!
 //! Layered like `gatekeeper-rust`:
 //!
-//!  - [`domain`] — pure settings types ([`TunnelSettings`]).
+//!  - [`domain`] — pure settings types ([`TunnelSettings`]) and the
+//!    [`RelayClient`](domain::RelayClient) trait.
 //!  - [`db`] — the SQLite [`TunnelStore`] (on the shared `persistence-rust`
 //!    primitives) and its queries.
-//!  - [`client`] — the embedded `rathole` client that dials the self-hosted
-//!    relay.
+//!  - `relay_clients` — the embedded `rathole` impl of `RelayClient` that
+//!    dials the self-hosted relay.
 //!  - [`http`] — the `/tunnel` wire contract.
 //!
 //! Settings live in SQLite and are API-controlled (`PUT /tunnel`, a
@@ -28,11 +29,11 @@
 //! older PATCH/`subdomain` contract and are reconciled to this one in the
 //! follow-up UI PR.
 
-pub mod client;
 pub mod config;
 pub mod db;
 pub mod domain;
 pub mod http;
+mod relay_clients;
 
 use std::sync::Arc;
 
@@ -41,8 +42,9 @@ use axum::Router;
 
 pub use config::TunnelConfig;
 pub use db::TunnelStore;
-pub use domain::TunnelSettings;
+pub use domain::{TunnelDaemon, TunnelSettings};
 pub use http::TunnelState;
+use relay_clients::RatholeRelayClient;
 
 /// Build the `/tunnel` router over the shared `conn` and an embedded rathole
 /// client, mirroring `gatekeeper-rust`'s `setup_gatekeeper`. The host opens one
@@ -57,13 +59,14 @@ pub fn setup_tunnel(
     config: &TunnelConfig,
 ) -> anyhow::Result<Router> {
     let store = TunnelStore::new(conn).context("failed to open tunnel store")?;
-    let client = Arc::new(client::RatholeRelayClient::new());
-    let state = Arc::new(TunnelState::new(
+    let client = Arc::new(RatholeRelayClient::new());
+    let tunnel_daemon =
+        TunnelDaemon::new(client, config.loopback_origin.clone(), config.local_port);
+
+    let state = Arc::new(TunnelState {
         store,
-        client,
-        config.loopback_origin.clone(),
-        config.local_port,
-    ));
+        daemon: tunnel_daemon,
+    });
 
     // Resume persisted intent: reconcile spawns a supervisor for the stored
     // revision (a no-op when the tunnel isn't requested or the relay isn't
@@ -72,7 +75,7 @@ pub fn setup_tunnel(
         .store
         .get_settings()
         .context("failed to read tunnel settings")?;
-    state.reconcile(&settings);
+    state.daemon.reconcile(&settings);
 
     Ok(http::router(state))
 }

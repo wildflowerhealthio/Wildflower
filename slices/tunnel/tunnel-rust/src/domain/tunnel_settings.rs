@@ -10,6 +10,8 @@
 //! write; it is the optimistic-concurrency token a PUT must match (and the key
 //! that decides which tunnel run is live).
 
+use crate::domain::relay_client::RelaySettings;
+
 /// The full settings row. Relay fields are `Option` because they are unset on a
 /// fresh install.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -23,15 +25,4 @@ pub struct TunnelSettings {
     pub requested_running: bool,
     /// The relay connection details. Configuration is all or nothing,`None` unless all fields are present.
     pub relay_settings: Option<RelaySettings>,
-}
-
-/// A fully-specified relay connection — produced only when every field the
-/// rathole client needs is present. Also the shape a PUT sets the relay block
-/// to (all four together, or none).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RelaySettings {
-    pub remote_addr: String,
-    pub token: String,
-    pub public_key: String,
-    pub service_name: String,
 }
