@@ -47,7 +47,10 @@ async fn handle_put_tunnel(
         }
         SettingsUpdateOutcome::Conflict(current) => Ok((
             StatusCode::CONFLICT,
-            Json(TunnelStateResponse::from_current_state(&state.daemon, &current)),
+            Json(TunnelStateResponse::from_current_state(
+                &state.daemon,
+                &current,
+            )),
         )),
     }
 }
