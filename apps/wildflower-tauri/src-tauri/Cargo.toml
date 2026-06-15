@@ -32,6 +32,7 @@ emr-rust = { path = "../../../slices/emr/emr-rust" }
 gatekeeper-rust = { path = "../../../slices/gatekeeper/gatekeeper-rust" }
 persistence-rust = { path = "../../../slices/persistence/persistence-rust" }
 shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust" }
+tunnel-rust = { path = "../../../slices/tunnel/tunnel-rust" }
 anyhow.workspace = true
 axum.workspace = true
 tokio = { workspace = true, features = ["full"] }

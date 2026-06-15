@@ -1,0 +1,37 @@
+[package]
+name = "wildflower-relay"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# A deliberately thin wrapper over the `rathole` library running in server
+# mode — this binary owns no tunneling protocol of its own. The `noise`
+# transport is selected (and TLS/websocket default features dropped) so the
+# relay needs no system OpenSSL and no certificate plumbing of its own; TLS
+# for the public `https://*.<root>` surface is terminated by the reverse-proxy
+# edge (Caddy/Traefik) that sits in front of this relay.
+[dependencies]
+anyhow.workspace = true
+rathole = { version = "0.5", default-features = false, features = [
+  "server",
+  "noise",
+  "hot-reload",
+] }
+tokio = { workspace = true, features = [
+  "rt-multi-thread",
+  "macros",
+  "signal",
+  "sync",
+] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Opt into the workspace lints (notably `unsafe_code = "forbid"`). This crate
+# is pure glue and carries no `unsafe`; rathole's transitive deps are
+# unaffected by our lints.
+[lints]
+workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
+tempfile = "3"
