@@ -9,13 +9,18 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use crate::client::{RelayClient, RelayHandle};
-use crate::db_utils::TunnelStore;
+use crate::client::{ExitReporter, RelayClient, RelayHandle, TunnelStatus};
+use crate::db::TunnelStore;
 use crate::domain::TunnelSettings;
 
 /// Daemon-owned runtime, reset on (re)start.
 #[derive(Default)]
 struct Runtime {
+    /// Generation of the live tunnel, bumped on every (re)start. A client task
+    /// that exits late reports against the generation it was started under, so
+    /// [`TunnelState::on_status`] can ignore the exit of a tunnel that a newer
+    /// start has already replaced.
+    epoch: u64,
     handle: Option<RelayHandle>,
     running: bool,
     current_subdomain: Option<String>,
@@ -67,19 +72,36 @@ impl TunnelState {
     /// any existing tunnel, then (if requested) start a fresh one. A start
     /// failure leaves `running == false` with the cause in `error`, mirroring
     /// how the Effect daemon persists a failed bring-up.
-    pub(crate) fn apply_running(&self, settings: &TunnelSettings) {
+    ///
+    /// A *post-launch* failure (the client task exiting after a successful
+    /// launch) is delivered later through the [`ExitReporter`] handed to the
+    /// client and folded in by [`Self::on_status`].
+    pub(crate) fn apply_running(self: &Arc<Self>, settings: &TunnelSettings) {
         let mut runtime = self.runtime.lock();
         if let Some(handle) = runtime.handle.take() {
             handle.stop();
         }
-        *runtime = Runtime::default();
+        // New generation: invalidates any late exit report from the tunnel we
+        // just tore down.
+        let epoch = runtime.epoch.wrapping_add(1);
+        *runtime = Runtime {
+            epoch,
+            ..Default::default()
+        };
 
         if !settings.requested_running {
             return;
         }
+
+        let weak = Arc::downgrade(self);
+        let on_exit = ExitReporter::new(move |status| {
+            if let Some(state) = weak.upgrade() {
+                state.on_status(epoch, status);
+            }
+        });
         match self
             .client
-            .start(settings, &format!("127.0.0.1:{}", self.local_port))
+            .start(settings, &format!("127.0.0.1:{}", self.local_port), on_exit)
         {
             Ok(handle) => {
                 runtime.handle = Some(handle);
@@ -92,6 +114,26 @@ impl TunnelState {
                 runtime.error = Some(format!("{error:#}"));
             }
         }
+    }
+
+    /// Fold a client task's terminal status back into the runtime. Ignored if a
+    /// newer (re)start has already superseded `epoch`; otherwise the tunnel is
+    /// torn down — `running` off, `current_*` cleared — with a `Failed` cause
+    /// surfaced in `error`.
+    pub(crate) fn on_status(&self, epoch: u64, status: TunnelStatus) {
+        let mut runtime = self.runtime.lock();
+        if runtime.epoch != epoch {
+            return;
+        }
+        let error = match status {
+            TunnelStatus::Failed(message) => Some(message),
+            TunnelStatus::Stopped => None,
+        };
+        *runtime = Runtime {
+            epoch,
+            error,
+            ..Default::default()
+        };
     }
 
     pub(crate) fn runtime_view(&self) -> RuntimeView {

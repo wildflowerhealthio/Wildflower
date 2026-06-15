@@ -2,7 +2,7 @@
 
 use rusqlite::{params, OptionalExtension};
 
-use crate::db_utils::TunnelStore;
+use crate::db::TunnelStore;
 use crate::domain::TunnelSettings;
 use persistence_rust::DbResult;
 

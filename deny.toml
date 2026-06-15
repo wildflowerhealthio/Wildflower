@@ -10,12 +10,15 @@
 # why. Yanked crates are treated as errors so the lockfile stays installable.
 yanked = "deny"
 ignore = [
-  # atty 0.2.14 — potential unaligned read on Windows (`atty::is`). Pulled in
-  # transitively by `rathole` -> `clap` 3.x (the embedded tunnel client/relay).
-  # We never call atty on Windows from a tunnel path, and rathole's clap 3 dep
-  # is outside our control until rathole upgrades. Reviewed, low-risk, temporary
-  # until rathole moves to clap 4 (which dropped atty).
-  "RUSTSEC-2021-0145",
+  # libgit2 < 1.7.2 (via `libgit2-sys` <- `git2` <- `vergen`) — three issues
+  # (revparse_single DoS, git_index_add heap corruption, smart-transport OOB
+  # read). `vergen` is a *build-dependency* of `rathole` (it stamps git/build
+  # info into the binary at compile time); the vulnerable runtime methods
+  # (`Repository::revparse_single`, `Index::add`, smart-transport negotiation)
+  # are never called by us — vergen only reads `HEAD`/describe at build time.
+  # The dep is transitive through rathole and outside our control until rathole
+  # bumps `vergen`/`git2`. Reviewed, build-time-only, low-risk, temporary.
+  "RUSTSEC-2024-0013",
   # rsa 0.9.x — "Marvin Attack": the crate's RSA private-key operation is not
   # constant-time, leaking key bits through timing observable to an attacker who
   # can submit ciphertexts and measure decryption timing over the network. There

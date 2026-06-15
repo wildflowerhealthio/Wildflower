@@ -10,10 +10,49 @@
 //! runner is private and its `Config` doesn't cleanly re-serialize), so we
 //! render the client config to a temp file whose handle lives as long as the
 //! tunnel.
+//!
+//! [`RelayClient::start`] returns once the client *task* is spawned; the tunnel
+//! may still fail later (relay unreachable, handshake rejected). That terminal
+//! outcome is reported through the [`ExitReporter`] the caller hands in, so the
+//! HTTP layer can flip `running` back off and surface the cause.
 
 use tokio::sync::broadcast;
 
 use crate::domain::{RelayConnection, TunnelSettings};
+
+/// The terminal status of an embedded relay client, reported once its task
+/// exits.
+#[derive(Debug)]
+pub enum TunnelStatus {
+    /// The client exited with an error after launch (relay unreachable,
+    /// handshake rejected, transport error). Carries the formatted cause.
+    Failed(String),
+    /// The client exited cleanly — after a shutdown signal, or because the
+    /// relay closed the session without an error.
+    Stopped,
+}
+
+/// A one-shot sink the embedded client uses to report why it exited. The HTTP
+/// state machine builds one that folds the outcome back into the live runtime;
+/// tests build ones that record it.
+pub struct ExitReporter {
+    report: Box<dyn FnOnce(TunnelStatus) + Send>,
+}
+
+impl ExitReporter {
+    /// Build a reporter from a callback invoked at most once, when the client
+    /// task exits.
+    pub fn new(report: impl FnOnce(TunnelStatus) + Send + 'static) -> Self {
+        Self {
+            report: Box::new(report),
+        }
+    }
+
+    /// Report the terminal `status`, consuming the reporter so it fires once.
+    pub fn report(self, status: TunnelStatus) {
+        (self.report)(status);
+    }
+}
 
 /// Brings the tunnel up. The trait is a test seam; the real impl embeds
 /// rathole.
@@ -21,7 +60,15 @@ pub trait RelayClient: Send + Sync {
     /// Start forwarding `local_addr` to the relay per `settings`. Returns a
     /// handle that tears the tunnel down on [`RelayHandle::stop`], or an error
     /// if the relay isn't configured or the client couldn't launch.
-    fn start(&self, settings: &TunnelSettings, local_addr: &str) -> anyhow::Result<RelayHandle>;
+    ///
+    /// Returning `Ok` only means the client task was spawned. A *post-launch*
+    /// exit (clean or failed) is delivered later through `on_exit`.
+    fn start(
+        &self,
+        settings: &TunnelSettings,
+        local_addr: &str,
+        on_exit: ExitReporter,
+    ) -> anyhow::Result<RelayHandle>;
 }
 
 /// A running tunnel. Dropping or [`stop`](RelayHandle::stop)ping it signals the
@@ -65,7 +112,12 @@ impl RatholeRelayClient {
 }
 
 impl RelayClient for RatholeRelayClient {
-    fn start(&self, settings: &TunnelSettings, local_addr: &str) -> anyhow::Result<RelayHandle> {
+    fn start(
+        &self,
+        settings: &TunnelSettings,
+        local_addr: &str,
+        on_exit: ExitReporter,
+    ) -> anyhow::Result<RelayHandle> {
         let relay = settings.relay_connection().ok_or_else(|| {
             anyhow::anyhow!(
                 "tunnel relay is not configured (set the relay address, token, and public key)"
@@ -94,12 +146,17 @@ impl RelayClient for RatholeRelayClient {
             ..Default::default()
         };
         handle.spawn(async move {
-            if let Err(error) = rathole::run(cli, shutdown_rx).await {
-                // Post-launch failure (relay unreachable, handshake rejected).
-                // Logged here; reflecting it back into the HTTP `error` field is
-                // a tracked follow-up.
-                tracing::error!(?error, "embedded rathole client exited with error");
-            }
+            let status = match rathole::run(cli, shutdown_rx).await {
+                Ok(()) => TunnelStatus::Stopped,
+                Err(error) => {
+                    // Post-launch failure (relay unreachable, handshake
+                    // rejected). Logged here and reported back so the HTTP
+                    // `error` field reflects it.
+                    tracing::error!(?error, "embedded rathole client exited with error");
+                    TunnelStatus::Failed(format!("{error:#}"))
+                }
+            };
+            on_exit.report(status);
         });
 
         Ok(RelayHandle {
@@ -169,7 +226,11 @@ mod tests {
     #[test]
     fn start_errors_when_relay_unconfigured() {
         let err = RatholeRelayClient::new()
-            .start(&TunnelSettings::default(), "127.0.0.1:8080")
+            .start(
+                &TunnelSettings::default(),
+                "127.0.0.1:8080",
+                ExitReporter::new(|_| {}),
+            )
             .unwrap_err();
         assert!(err.to_string().contains("not configured"));
     }

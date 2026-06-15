@@ -34,6 +34,7 @@ use tokio::sync::broadcast;
 /// the relay in-process). `..Default::default()` fills the remaining flags
 /// (`client`, `genkey`) with their off/none defaults so this keeps compiling
 /// if rathole grows further optional flags.
+#[must_use]
 pub fn build_server_cli(config_path: PathBuf) -> rathole::Cli {
     rathole::Cli {
         config_path: Some(config_path),

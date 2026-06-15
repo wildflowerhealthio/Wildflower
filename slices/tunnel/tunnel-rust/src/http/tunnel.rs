@@ -151,14 +151,17 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
-    use crate::client::{RelayClient, RelayHandle};
-    use crate::db_utils::TunnelStore;
+    use crate::client::{ExitReporter, RelayClient, RelayHandle, TunnelStatus};
+    use crate::db::TunnelStore;
 
     /// Fake client: records start/stop and either succeeds or fails on start,
-    /// so the handler state machine is testable without a live relay.
+    /// so the handler state machine is testable without a live relay. On a
+    /// successful start it retains the [`ExitReporter`] so a test can simulate
+    /// a *post-launch* exit deterministically via [`Self::fail_after_launch`].
     struct FakeClient {
         succeed: bool,
         starts: PlMutex<u32>,
+        last_reporter: PlMutex<Option<ExitReporter>>,
     }
 
     impl FakeClient {
@@ -166,20 +169,36 @@ mod tests {
             Arc::new(Self {
                 succeed: true,
                 starts: PlMutex::new(0),
+                last_reporter: PlMutex::new(None),
             })
         }
         fn failing() -> Arc<Self> {
             Arc::new(Self {
                 succeed: false,
                 starts: PlMutex::new(0),
+                last_reporter: PlMutex::new(None),
             })
+        }
+
+        /// Fire the most recent start's exit reporter with a post-launch
+        /// failure, as the embedded rathole task would on a relay drop.
+        fn fail_after_launch(&self, message: &str) {
+            if let Some(reporter) = self.last_reporter.lock().take() {
+                reporter.report(TunnelStatus::Failed(message.to_string()));
+            }
         }
     }
 
     impl RelayClient for FakeClient {
-        fn start(&self, _: &TunnelSettings, _: &str) -> anyhow::Result<RelayHandle> {
+        fn start(
+            &self,
+            _: &TunnelSettings,
+            _: &str,
+            on_exit: ExitReporter,
+        ) -> anyhow::Result<RelayHandle> {
             *self.starts.lock() += 1;
             if self.succeed {
+                *self.last_reporter.lock() = Some(on_exit);
                 Ok(RelayHandle::test_handle())
             } else {
                 Err(anyhow::anyhow!("relay unreachable"))
@@ -271,6 +290,75 @@ mod tests {
         assert_eq!(
             body["servedOrigin"],
             serde_json::json!("http://127.0.0.1:8080")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_post_launch_exit_flips_running_off_and_surfaces_the_error() {
+        let client = FakeClient::ok();
+        let st = state(client.clone());
+        // provision + turn on in one request
+        let body = send(
+            st.clone(),
+            patch(serde_json::json!({
+                "subdomain": "dev1",
+                "rootDomain": "example.com",
+                "requestedRunning": true,
+            })),
+        )
+        .await;
+        assert_eq!(body["running"], serde_json::json!(true), "launched");
+
+        // the relay drops after launch; the client task reports the failure
+        client.fail_after_launch("relay dropped: handshake rejected");
+
+        let body = send(st, get()).await;
+        assert_eq!(
+            body["requestedRunning"],
+            serde_json::json!(true),
+            "intent kept"
+        );
+        assert_eq!(body["running"], serde_json::json!(false));
+        assert_eq!(
+            body["error"],
+            serde_json::json!("relay dropped: handshake rejected")
+        );
+        assert_eq!(body["currentSubdomain"], serde_json::json!(null));
+        assert_eq!(
+            body["servedOrigin"],
+            serde_json::json!("http://127.0.0.1:8080"),
+            "back to loopback once the tunnel is down"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_superseded_tunnels_late_exit_is_ignored() {
+        let client = FakeClient::ok();
+        let st = state(client.clone());
+        // start tunnel A
+        let _ = send(
+            st.clone(),
+            patch(serde_json::json!({ "subdomain": "dev1", "requestedRunning": true })),
+        )
+        .await;
+        // capture A's reporter, then restart (tunnel B) — bumps the generation
+        let a_reporter = client.last_reporter.lock().take();
+        let _ = send(
+            st.clone(),
+            patch(serde_json::json!({ "requestedRunning": true })),
+        )
+        .await;
+
+        // A's late failure must not clobber B's live state
+        if let Some(reporter) = a_reporter {
+            reporter.report(TunnelStatus::Failed("stale A failure".into()));
+        }
+        let body = send(st, get()).await;
+        assert_eq!(body["running"], serde_json::json!(true), "B still running");
+        assert_eq!(
+            body["error"],
+            serde_json::json!(null),
+            "stale error ignored"
         );
     }
 

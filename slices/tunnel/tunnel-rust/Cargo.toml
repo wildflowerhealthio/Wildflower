@@ -8,7 +8,7 @@ publish.workspace = true
 # the `/tunnel` HTTP surface the tunnel-react UI speaks, and an embedded
 # `rathole` client (noise transport, no TLS/openssl) that dials the self-hosted
 # wildflower-relay and forwards the loopback server through it. Layered like
-# gatekeeper-rust: pure `domain`, `db`/`db_utils`, and `http`.
+# gatekeeper-rust: pure `domain`, `db`, and `http`.
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
