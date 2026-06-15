@@ -11,7 +11,7 @@ use super::client_auth::{
 };
 use super::error_codes;
 use crate::crypto_util::client_secret::verify_client_secret;
-use crate::db_utils::GatekeeperStore;
+use crate::db::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
 use crate::domain::token::{mint_access_token, NewJwtArgs};
 use crate::http::response_templates::InternalError;

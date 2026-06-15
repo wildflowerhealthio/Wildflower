@@ -7,7 +7,7 @@ use chrono::{Duration, Utc};
 use persistence_rust::{Connection, JsonColumn};
 use thiserror::Error;
 
-use crate::db_utils::GatekeeperStore;
+use crate::db::GatekeeperStore;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::token::{mint_access_token, MintError, NewJwtArgs};

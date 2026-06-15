@@ -1,48 +1,24 @@
-//! A `macro_rules!` that generates the three verbose, drift-prone copies of a
-//! table's column list from a single field list: the `impl TryFrom<&Row>` that
-//! reads a domain struct out of a row, the named-parameter array that
-//! [`build_insert_sql`](crate::sql_builder::build_insert_sql) turns into the
-//! matching `INSERT`, and the `ALL_COLS` `&str` the module's `SELECT` /
-//! `RETURNING` statements interpolate. Hand-writing them per table is how `db/*`
-//! drifted before (a `TryFrom` that reads a column the params array doesn't
-//! write compiles fine and mismaps at runtime); generating them from one list
-//! makes that class of bug unrepresentable.
+//! `sql_row!` generates a table's row-mapping boilerplate — the
+//! `TryFrom<&Row>`, the named-parameter array [`build_insert_sql`] consumes, and
+//! the `ALL_COLS` list — from one field list so the three can't drift. Invoked
+//! in a slice's `db/` layer, keeping the rusqlite-coupled impls off the pure
+//! `domain/*` structs.
 //!
-//! The macro is meant to be *invoked* in a slice's `db/` layer (not on the
-//! pure `domain/*` structs) so the `rusqlite`-coupled `TryFrom` impls stay in
-//! the db layer — preserving the domain/db separation a `#[derive]` on the
-//! pure structs would break.
+//! [`build_insert_sql`]: crate::build_insert_sql
 
-/// Generate `impl TryFrom<&Row> for $struct` and a private parameter-array
-/// builder for a table whose every column name equals its field name and whose
-/// field types each carry their own `FromSql`/`ToSql` (directly, or via the
-/// `JsonColumn`/`UriColumn` wrapper *fields*). The default form additionally
-/// emits `const ALL_COLS: &str` — the comma-joined column list the module's
-/// `SELECT` / `RETURNING` statements interpolate.
-///
-/// Two forms:
+/// Generate `impl TryFrom<&Row>` plus a named-param builder (and, in the default
+/// form, `const ALL_COLS`) for a table whose column names equal its field names.
 ///
 /// ```ignore
-/// sql_row!(Client { client_id, name, kind, /* … */ });           // make_named_sql_params + ALL_COLS
-/// sql_row!(RefreshToken { token_hash, /* … */ }, token_named_sql_params);  // named builder, no ALL_COLS
+/// sql_row!(Client { client_id, name });                          // builder make_named_sql_params + ALL_COLS
+/// sql_row!(RefreshToken { token_hash }, token_named_sql_params);  // explicit builder, no ALL_COLS
 /// ```
 ///
-/// The default form names the builder `make_named_sql_params` and emits
-/// `ALL_COLS` — the one-table-per-module convention. The named form takes an
-/// explicit builder name and emits no `ALL_COLS`: a second table in the same
-/// module would collide on the const name, and its only user (`refresh_tokens`)
-/// selects JOIN-aliased columns a bare `ALL_COLS` couldn't express.
-///
-/// Not for tables whose column name differs from its field name or that wrap a
-/// field only at the db boundary (`signing_keys`' `values`/`values_json`), nor
-/// for a `TryFrom` keyed on JOIN-aliased columns (`RefreshTokenFamily`) — those
-/// stay hand-written.
-///
-/// The macro's recursive expansions self-qualify with `$crate::sql_row!`, so it
-/// resolves back to this crate no matter how a consumer brings it into scope:
-/// both `use persistence_rust::sql_row;` then `sql_row!(...)` and a
-/// fully-qualified `persistence_rust::sql_row!(...)` work, and a same-named
-/// macro in the caller's scope can't capture the recursion.
+/// Use the explicit-builder form for a module with a second table (one
+/// `make_named_sql_params`/`ALL_COLS` would collide). Not for columns whose name
+/// differs from the field, db-only wrappers, or JOIN-aliased `TryFrom`s — those
+/// stay hand-written. Recursive arms self-qualify with `$crate::sql_row!`, so it
+/// resolves however it's imported.
 #[macro_export]
 macro_rules! sql_row {
     // Default builder name; also emits the `ALL_COLS` SELECT/RETURNING column

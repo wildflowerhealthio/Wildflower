@@ -1,6 +1,6 @@
 use rusqlite::{params, OptionalExtension};
 
-use crate::db_utils::GatekeeperStore;
+use crate::db::GatekeeperStore;
 use crate::domain::authorization_code::AuthorizationCode;
 use persistence_rust::build_insert_sql;
 use persistence_rust::{sql_row, DbResult};

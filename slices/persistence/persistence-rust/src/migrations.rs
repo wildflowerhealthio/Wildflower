@@ -1,5 +1,5 @@
 //! A tiny migration runner keyed on a per-slice `namespace`, so multiple
-//! slices can share one SQLite database without their `user_version`s
+//! slices can share one `SQLite` database without their `user_version`s
 //! colliding. Applied versions are tracked in a `schema_migrations` table
 //! (`namespace` -> highest applied index). Each slice's `migrations` slice is
 //! append-only; the runner applies each pending entry once, in order.

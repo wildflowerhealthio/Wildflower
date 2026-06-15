@@ -1,4 +1,4 @@
-//! `persistence-rust` — common SQLite persistence utilities shared across Rust
+//! `persistence-rust` — common `SQLite` persistence utilities shared across Rust
 //! slices.
 //!
 //! These are the generic, slice-agnostic pieces lifted out of
@@ -14,15 +14,17 @@
 //!  - [`build_insert_sql`] + the [`sql_row!`] macro — generate a table's
 //!    `TryFrom<&Row>`, named-param array, and column list from one field list.
 
-pub mod connection;
-pub mod json_column;
-pub mod sql_builder;
-pub mod uri_column;
-
+// Private modules: their public items are surfaced through the curated `pub use`
+// below, so there's exactly one path to each (`persistence_rust::Connection`,
+// not also `persistence_rust::connection::Connection`).
+mod connection;
+mod json_column;
 mod migrations;
 // `sql_row!` is `#[macro_export]`ed at the crate root (see `row_mapping`);
 // consumers reach it as `persistence_rust::sql_row`.
 mod row_mapping;
+mod sql_builder;
+mod uri_column;
 
 pub use connection::{Connection, DbResult};
 pub use json_column::JsonColumn;

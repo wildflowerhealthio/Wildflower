@@ -1,7 +1,7 @@
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
 use rusqlite::{params, OptionalExtension, ToSql};
 
-use crate::db_utils::GatekeeperStore;
+use crate::db::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
 use persistence_rust::build_insert_sql;
 use persistence_rust::{sql_row, DbResult};

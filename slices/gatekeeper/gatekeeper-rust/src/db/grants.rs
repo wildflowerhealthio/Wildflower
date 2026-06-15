@@ -4,7 +4,7 @@ use url::Url;
 
 use uuid::Uuid;
 
-use crate::db_utils::GatekeeperStore;
+use crate::db::GatekeeperStore;
 use crate::domain::grant::Grant;
 use persistence_rust::build_insert_sql;
 use persistence_rust::{sql_row, DbResult, JsonColumn, UriColumn};

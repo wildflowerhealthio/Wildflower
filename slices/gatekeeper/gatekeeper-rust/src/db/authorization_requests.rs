@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
 use rusqlite::{params, OptionalExtension, ToSql};
 
-use crate::db_utils::GatekeeperStore;
+use crate::db::GatekeeperStore;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use persistence_rust::build_insert_sql;
 use persistence_rust::JsonColumn;

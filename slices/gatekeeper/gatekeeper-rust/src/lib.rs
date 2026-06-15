@@ -9,21 +9,19 @@ pub mod config;
 //     `crypto_util::oauth_user_code::is_valid_oauth_user_code`, and its
 //     doc links to `[crate::domain::token]`.
 //   * `domain` (pub): its doc links to `[crate::db]` and `[crate::http]`.
-//   * `db` / `db_utils` (pub): their docs link to each other and to
-//     `[crate::domain]`.
+//   * `db` (pub): its docs link to `[crate::domain]`.
 //
 // Making any link *target* `pub(crate)` while a `pub` module's doc links
 // into it turns rustdoc's `private_intra_doc_links` warning on (and fails
 // `cargo doc -D warnings`). Narrowing these further means rephrasing those
-// doc links in crypto_util/mod.rs, domain/mod.rs, db/mod.rs and
-// db_utils/gatekeeper_store.rs — all outside this change's file boundary.
+// doc links in crypto_util/mod.rs, domain/mod.rs and db/mod.rs — all outside
+// this change's file boundary.
 //   * `http` (pub): `domain`'s doc links to `[crate::http]`.
 //
 // Flagged for the orchestrator. `seeding` carries no inbound pub doc
 // links, so it is the one module narrowed here.
 pub mod crypto_util;
 pub mod db;
-pub mod db_utils;
 pub mod domain;
 pub mod http;
 pub(crate) mod seeding;
@@ -33,7 +31,7 @@ use chrono::Duration;
 use tokio::sync::watch;
 
 pub use config::GatekeeperConfig;
-pub use db_utils::GatekeeperStore;
+pub use db::GatekeeperStore;
 pub use http::{layer_router_with_gatekeeper_auth_gating, AppState};
 
 /// `client_id` of the host application's first-party OAuth client. The host

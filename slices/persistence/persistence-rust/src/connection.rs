@@ -44,7 +44,7 @@ impl Connection {
         Self::configured(conn)
     }
 
-    /// Enforce declared foreign keys (SQLite defaults this OFF per connection,
+    /// Enforce declared foreign keys (`SQLite` defaults this OFF per connection,
     /// and rusqlite doesn't enable it) before wrapping. Set outside any
     /// transaction — the pragma is a no-op inside one.
     fn configured(conn: rusqlite::Connection) -> anyhow::Result<Self> {
