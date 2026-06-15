@@ -20,8 +20,11 @@ rathole = { version = "0.5", default-features = false, features = [
   "client",
   "noise",
 ] }
+async-trait = "0.1"
 parking_lot = "0.12"
-tokio = { workspace = true, features = ["rt", "sync", "macros"] }
+tokio = { workspace = true, features = ["rt", "sync", "macros", "time"] }
+tokio-util = "0.7"
+toml = "0.5"
 tempfile = "3"
 tracing = "0.1"
 
@@ -29,7 +32,12 @@ tracing = "0.1"
 workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
+tokio = { workspace = true, features = [
+  "rt-multi-thread",
+  "macros",
+  "sync",
+  "time",
+] }
 http = "1"
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }

@@ -8,5 +8,5 @@
 mod tunnel_settings;
 mod tunnel_store;
 
-pub use tunnel_settings::SettingsPatch;
+pub use tunnel_settings::{ReplaceOutcome, SettingsUpdate};
 pub use tunnel_store::TunnelStore;

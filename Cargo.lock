@@ -6464,6 +6464,7 @@ name = "tunnel-rust"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "http",
  "http-body-util",
@@ -6476,6 +6477,8 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tokio-util",
+ "toml 0.5.11",
  "tower",
  "tracing",
 ]

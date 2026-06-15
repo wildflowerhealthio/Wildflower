@@ -7,21 +7,26 @@
 //!    primitives) and its queries.
 //!  - [`client`] — the embedded `rathole` client that dials the self-hosted
 //!    relay.
-//!  - [`http`] — the `/tunnel` wire contract the `tunnel-react` UI speaks.
+//!  - [`http`] — the `/tunnel` wire contract.
 //!
-//! Settings live in SQLite and are API-controlled (`PATCH /tunnel`); there is
-//! no settings UI and no env-var seeding yet, so the relay connection fields
-//! start empty and the tunnel reports "not configured" until set. Runtime state
-//! (running / current* / error) is in-memory and resets per process, mirroring
-//! the TS daemon.
+//! Settings live in SQLite and are API-controlled (`PUT /tunnel`, a
+//! full-replace guarded by an optimistic-concurrency `revision`). The relay
+//! connection fields are write-only and start empty; until they are set the
+//! tunnel reports "not configured". Observed runtime state (running / error) is
+//! in-memory and resets per process.
 //!
-//! ## Runtime failure reporting
+//! ## Reconcile model
 //!
-//! A *post-launch* rathole failure (relay unreachable, handshake rejected) is
-//! reported back from the client task into [`http::TunnelState`] via an
-//! [`client::ExitReporter`]: `running` flips back off and the cause surfaces in
-//! the HTTP `error` field. A generation counter discards the late exit of a
-//! tunnel that a newer (re)start has already superseded.
+//! Every accepted write bumps `revision` and reconciles: the previous
+//! [`http::TunnelState`] supervisor is cancelled and a fresh one is spawned for
+//! the new revision. A supervisor owns a reconnect/backoff loop and awaits its
+//! own rathole child, so a post-launch failure (relay unreachable, handshake
+//! rejected) surfaces in the HTTP `error` field and is retried, and a superseded
+//! run's late exit can't clobber the live one.
+//!
+//! NOTE(pr-ui): the `tunnel-core` TS schema + `tunnel-react` UI still speak the
+//! older PATCH/`subdomain` contract and are reconciled to this one in the
+//! follow-up UI PR.
 
 pub mod client;
 pub mod config;
@@ -41,8 +46,7 @@ pub use http::TunnelState;
 
 /// Build the `/tunnel` router over the shared `conn` and an embedded rathole
 /// client, mirroring `gatekeeper-rust`'s `setup_gatekeeper`. The host opens one
-/// database and passes it in. Resumes the tunnel when `requested_running` was
-/// persisted on.
+/// database and passes it in. Resumes the tunnel from persisted settings.
 ///
 /// # Errors
 ///
@@ -61,14 +65,14 @@ pub fn setup_tunnel(
         config.local_port,
     ));
 
-    // Auto-resume persisted intent (no-op error if the relay isn't configured).
+    // Resume persisted intent: reconcile spawns a supervisor for the stored
+    // revision (a no-op when the tunnel isn't requested or the relay isn't
+    // configured).
     let settings = state
         .store
         .get_settings()
         .context("failed to read tunnel settings")?;
-    if settings.requested_running {
-        state.apply_running(&settings);
-    }
+    state.reconcile(&settings);
 
     Ok(http::tunnel_router(state))
 }

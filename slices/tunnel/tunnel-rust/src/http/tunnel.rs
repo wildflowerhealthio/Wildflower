@@ -1,119 +1,107 @@
-//! The `/tunnel` GET/PATCH handlers and wire types.
+//! The `/tunnel` GET/PUT handlers and wire types.
 //!
-//! Wire shapes are pinned to the TS schemas in
-//! `slices/tunnel/tunnel-core/src/http-api-definition/tunnel.ts`
-//! (`TunnelStateSchema`, `SetTunnelRequestBodySchema`). The golden test guards
-//! against drift.
+//! NOTE(pr-ui): this Rust surface is the new tunnel contract — a full-replace
+//! PUT with an optimistic-concurrency `revision`, a single `publicHost`, and a
+//! write-only `relay` block. The `tunnel-core` TS schema and the `tunnel-react`
+//! UI still speak the old PATCH/`subdomain`/`rootDomain` shape and are
+//! reconciled in the follow-up UI PR; they are intentionally out of sync until
+//! then.
 
 use std::sync::Arc;
 
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
-use crate::db::SettingsPatch;
-use crate::domain::TunnelSettings;
+use crate::db::{ReplaceOutcome, SettingsUpdate};
+use crate::domain::{RelayConnection, TunnelSettings};
 use crate::http::state::TunnelState;
 
-/// Merged tunnel state on the wire — matches `TunnelStateSchema`.
+/// Tunnel state on the wire. Relay connection details are write-only and never
+/// appear here. `revision` is the optimistic-concurrency token a PUT must echo.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TunnelStateWire {
-    subdomain: Option<String>,
-    root_domain: Option<String>,
+    revision: i64,
+    public_host: Option<String>,
     requested_running: bool,
     running: bool,
-    current_subdomain: Option<String>,
-    current_root_domain: Option<String>,
-    current_local_port: Option<u16>,
     error: Option<String>,
     served_origin: String,
 }
 
-/// PATCH body — config-side fields only, matching `SetTunnelRequestBodySchema`.
-/// `subdomain`/`rootDomain` use double-`Option` so the three TS cases survive
-/// the wire: key absent (`None`) preserves, explicit `null` (`Some(None)`)
-/// clears, a value (`Some(Some(_))`) sets.
-#[derive(Debug, Default, Deserialize)]
+/// PUT body — a full replace of the visible settings guarded by `revision`,
+/// plus an optional write-only `relay` block (absent = keep the stored relay
+/// connection, present = replace all four fields).
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SetTunnelRequestBody {
-    #[serde(default, deserialize_with = "double_option")]
-    subdomain: Option<Option<String>>,
-    #[serde(default, deserialize_with = "double_option")]
-    root_domain: Option<Option<String>>,
+pub struct ReplaceTunnelRequestBody {
+    revision: i64,
     #[serde(default)]
-    requested_running: Option<bool>,
+    public_host: Option<String>,
+    requested_running: bool,
+    #[serde(default)]
+    relay: Option<RelayInput>,
 }
 
-impl SetTunnelRequestBody {
-    fn touches_running(&self) -> bool {
-        self.requested_running.is_some()
-    }
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RelayInput {
+    remote_addr: String,
+    token: String,
+    public_key: String,
+    service_name: String,
+}
 
-    fn into_patch(self) -> SettingsPatch {
-        SettingsPatch {
-            subdomain: self.subdomain,
-            root_domain: self.root_domain,
-            requested_running: self.requested_running,
+impl From<RelayInput> for RelayConnection {
+    fn from(input: RelayInput) -> Self {
+        RelayConnection {
+            remote_addr: input.remote_addr,
+            token: input.token,
+            public_key: input.public_key,
+            service_name: input.service_name,
         }
     }
 }
 
-fn double_option<'de, D, T>(de: D) -> Result<Option<Option<T>>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    Ok(Some(Option::<T>::deserialize(de)?))
-}
-
-/// Compute the origin clients should reach the server at, mirroring
-/// `served-origin.ts`: the public `https://{sub}.{root}` only when the tunnel
-/// is up and both labels are present and non-empty, else the loopback fallback.
-fn served_origin(
-    running: bool,
-    current_subdomain: Option<&str>,
-    current_root_domain: Option<&str>,
-    loopback_origin: &str,
-) -> String {
-    match (running, current_subdomain, current_root_domain) {
-        (true, Some(sub), Some(root)) if !sub.is_empty() && !root.is_empty() => {
-            format!("https://{sub}.{root}")
-        }
+/// Compute the origin clients should reach the server at: the public
+/// `https://{publicHost}` only when the tunnel is up and the host is set, else
+/// the loopback fallback.
+fn served_origin(running: bool, public_host: Option<&str>, loopback_origin: &str) -> String {
+    match public_host {
+        Some(host) if running && !host.is_empty() => format!("https://{host}"),
         _ => loopback_origin.to_string(),
     }
 }
 
 impl TunnelState {
-    /// Build the wire snapshot from persisted `settings` + the live runtime.
+    /// Build the wire snapshot from persisted `settings` + the live observed
+    /// runtime.
     pub(crate) fn snapshot(&self, settings: &TunnelSettings) -> TunnelStateWire {
-        let runtime = self.runtime_view();
-        let origin = served_origin(
-            runtime.running,
-            runtime.current_subdomain.as_deref(),
-            runtime.current_root_domain.as_deref(),
+        let observed = self.observed();
+        let served_origin = served_origin(
+            observed.running,
+            settings.public_host.as_deref(),
             self.loopback_origin(),
         );
         TunnelStateWire {
-            subdomain: settings.subdomain.clone(),
-            root_domain: settings.root_domain.clone(),
+            revision: settings.revision,
+            public_host: settings.public_host.clone(),
             requested_running: settings.requested_running,
-            running: runtime.running,
-            current_subdomain: runtime.current_subdomain,
-            current_root_domain: runtime.current_root_domain,
-            current_local_port: runtime.current_local_port,
-            error: runtime.error,
-            served_origin: origin,
+            running: observed.running,
+            error: observed.error,
+            served_origin,
         }
     }
 }
 
-/// Build the `/tunnel` router (GET + PATCH) over a [`TunnelState`].
+/// Build the `/tunnel` router (GET + PUT) over a [`TunnelState`].
 pub fn tunnel_router(state: Arc<TunnelState>) -> Router {
     Router::new()
-        .route("/tunnel", get(get_tunnel).patch(patch_tunnel))
+        .route("/tunnel", get(get_tunnel).put(put_tunnel))
         .with_state(state)
 }
 
@@ -127,19 +115,25 @@ async fn get_tunnel(
     Ok(Json(state.snapshot(&settings)))
 }
 
-async fn patch_tunnel(
+async fn put_tunnel(
     State(state): State<Arc<TunnelState>>,
-    Json(body): Json<SetTunnelRequestBody>,
-) -> Result<Json<TunnelStateWire>, StatusCode> {
-    let touched_running = body.touches_running();
-    let settings = state
-        .store
-        .patch_settings(body.into_patch())
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if touched_running {
-        state.apply_running(&settings);
+    Json(body): Json<ReplaceTunnelRequestBody>,
+) -> Response {
+    let update = SettingsUpdate {
+        public_host: body.public_host,
+        requested_running: body.requested_running,
+        relay: body.relay.map(RelayConnection::from),
+    };
+    match state.store.replace_settings(body.revision, update) {
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Ok(ReplaceOutcome::Applied(settings)) => {
+            state.reconcile(&settings);
+            Json(state.snapshot(&settings)).into_response()
+        }
+        Ok(ReplaceOutcome::Conflict(current)) => {
+            (StatusCode::CONFLICT, Json(state.snapshot(&current))).into_response()
+        }
     }
-    Ok(Json(state.snapshot(&settings)))
 }
 
 #[cfg(test)]
@@ -147,80 +141,71 @@ mod tests {
     use axum::body::Body;
     use axum::http::Request;
     use http_body_util::BodyExt;
-    use parking_lot::Mutex as PlMutex;
+    use tokio::sync::mpsc;
     use tower::ServiceExt;
 
     use super::*;
-    use crate::client::{ExitReporter, RelayClient, RelayHandle, TunnelStatus};
+    use crate::client::RelayClient;
     use crate::db::TunnelStore;
+    use tokio_util::sync::CancellationToken;
 
-    /// Fake client: records start/stop and either succeeds or fails on start,
-    /// so the handler state machine is testable without a live relay. On a
-    /// successful start it retains the [`ExitReporter`] so a test can simulate
-    /// a *post-launch* exit deterministically via [`Self::fail_after_launch`].
+    /// What a fake attempt does once started.
+    #[derive(Clone, Copy)]
+    enum Behavior {
+        /// Hold the tunnel up until cancelled, then stop cleanly (a healthy run).
+        HoldUntilCancel,
+        /// Fail immediately (drives the reconnect loop).
+        FailImmediately,
+    }
+
+    /// Fake relay client: signals each attempt on a channel so tests can await
+    /// attempts deterministically, then behaves per `Behavior`.
     struct FakeClient {
-        succeed: bool,
-        starts: PlMutex<u32>,
-        last_reporter: PlMutex<Option<ExitReporter>>,
+        behavior: Behavior,
+        started: mpsc::UnboundedSender<()>,
     }
 
-    impl FakeClient {
-        fn ok() -> Arc<Self> {
-            Arc::new(Self {
-                succeed: true,
-                starts: PlMutex::new(0),
-                last_reporter: PlMutex::new(None),
-            })
-        }
-        fn failing() -> Arc<Self> {
-            Arc::new(Self {
-                succeed: false,
-                starts: PlMutex::new(0),
-                last_reporter: PlMutex::new(None),
-            })
-        }
-
-        /// Fire the most recent start's exit reporter with a post-launch
-        /// failure, as the embedded rathole task would on a relay drop.
-        fn fail_after_launch(&self, message: &str) {
-            if let Some(reporter) = self.last_reporter.lock().take() {
-                reporter(TunnelStatus::Failed(anyhow::Error::msg(message.to_owned())));
-            }
-        }
-    }
-
+    #[async_trait::async_trait]
     impl RelayClient for FakeClient {
-        fn start(
+        async fn run_once(
             &self,
-            _: &TunnelSettings,
-            _: &str,
-            on_exit: ExitReporter,
-        ) -> anyhow::Result<RelayHandle> {
-            *self.starts.lock() += 1;
-            if self.succeed {
-                *self.last_reporter.lock() = Some(on_exit);
-                Ok(RelayHandle::test_handle())
-            } else {
-                Err(anyhow::anyhow!("relay unreachable"))
+            _relay: &RelayConnection,
+            _local_addr: &str,
+            cancel: CancellationToken,
+        ) -> anyhow::Result<()> {
+            let _ = self.started.send(());
+            match self.behavior {
+                Behavior::HoldUntilCancel => {
+                    cancel.cancelled().await;
+                    Ok(())
+                }
+                Behavior::FailImmediately => Err(anyhow::anyhow!("relay unreachable")),
             }
         }
     }
 
-    fn state(client: Arc<dyn RelayClient>) -> Arc<TunnelState> {
+    fn state(behavior: Behavior) -> (Arc<TunnelState>, mpsc::UnboundedReceiver<()>) {
+        let (started, rx) = mpsc::unbounded_channel();
+        let client = Arc::new(FakeClient { behavior, started });
         let store = TunnelStore::open_in_memory().expect("store");
-        Arc::new(TunnelState::new(
+        let state = Arc::new(TunnelState::new_test(
             store,
             client,
             "http://127.0.0.1:8080",
             8080,
-        ))
+        ));
+        (state, rx)
     }
 
-    async fn send(state: Arc<TunnelState>, req: Request<Body>) -> serde_json::Value {
-        let res = tunnel_router(state).oneshot(req).await.expect("oneshot");
-        assert_eq!(res.status(), StatusCode::OK);
+    async fn send(state: &Arc<TunnelState>, req: Request<Body>) -> (StatusCode, serde_json::Value) {
+        let res = tunnel_router(Arc::clone(state))
+            .oneshot(req)
+            .await
+            .expect("oneshot");
+        let status = res.status();
         let bytes = res.into_body().collect().await.expect("body").to_bytes();
-        serde_json::from_slice(&bytes).expect("json")
+        let json = serde_json::from_slice(&bytes).expect("json");
+        (status, json)
     }
 
     fn get() -> Request<Body> {
@@ -230,28 +215,36 @@ mod tests {
             .unwrap()
     }
 
-    fn patch(json: serde_json::Value) -> Request<Body> {
+    fn put(json: serde_json::Value) -> Request<Body> {
         Request::builder()
-            .method("PATCH")
+            .method("PUT")
             .uri("/tunnel")
             .header("content-type", "application/json")
             .body(Body::from(json.to_string()))
             .unwrap()
     }
 
+    fn relay_json() -> serde_json::Value {
+        serde_json::json!({
+            "remoteAddr": "relay.example.com:2333",
+            "token": "tok",
+            "publicKey": "key",
+            "serviceName": "dev1",
+        })
+    }
+
     #[tokio::test]
-    async fn empty_state_is_the_schema_shaped_default() {
-        let body = send(state(FakeClient::ok()), get()).await;
+    async fn fresh_state_is_the_schema_shaped_default() {
+        let (st, _started) = state(Behavior::HoldUntilCancel);
+        let (status, body) = send(&st, get()).await;
+        assert_eq!(status, StatusCode::OK);
         assert_eq!(
             body,
             serde_json::json!({
-                "subdomain": null,
-                "rootDomain": null,
+                "revision": 0,
+                "publicHost": null,
                 "requestedRunning": false,
                 "running": false,
-                "currentSubdomain": null,
-                "currentRootDomain": null,
-                "currentLocalPort": null,
                 "error": null,
                 "servedOrigin": "http://127.0.0.1:8080",
             })
@@ -259,18 +252,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn requesting_running_with_provisioned_subdomain_reports_public_origin() {
-        let st = state(FakeClient::ok());
-        // provision subdomain/root first, then turn on
-        let _ = send(
-            st.clone(),
-            patch(serde_json::json!({ "subdomain": "dev1", "rootDomain": "example.com" })),
+    async fn put_with_relay_running_reports_public_origin_and_bumps_revision() {
+        let (st, _started) = state(Behavior::HoldUntilCancel);
+        let (status, body) = send(
+            &st,
+            put(serde_json::json!({
+                "revision": 0,
+                "publicHost": "dev1.example.com",
+                "requestedRunning": true,
+                "relay": relay_json(),
+            })),
         )
         .await;
-        let body = send(st, patch(serde_json::json!({ "requestedRunning": true }))).await;
-        assert_eq!(body["running"], serde_json::json!(true));
-        assert_eq!(body["currentSubdomain"], serde_json::json!("dev1"));
-        assert_eq!(body["currentLocalPort"], serde_json::json!(8080));
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["revision"], serde_json::json!(1));
+        assert_eq!(body["running"], serde_json::json!(true), "optimistic up");
         assert_eq!(
             body["servedOrigin"],
             serde_json::json!("https://dev1.example.com")
@@ -278,100 +274,117 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_failed_start_keeps_intent_but_records_error_and_stays_loopback() {
-        let body = send(
-            state(FakeClient::failing()),
-            patch(serde_json::json!({ "requestedRunning": true })),
+    async fn relay_block_is_write_only_and_never_returned() {
+        let (st, _started) = state(Behavior::HoldUntilCancel);
+        let _ = send(
+            &st,
+            put(serde_json::json!({
+                "revision": 0, "publicHost": "dev1.example.com",
+                "requestedRunning": true, "relay": relay_json(),
+            })),
         )
         .await;
-        assert_eq!(body["requestedRunning"], serde_json::json!(true));
+        let (_status, body) = send(&st, get()).await;
+        let obj = body.as_object().unwrap();
+        for k in [
+            "relay",
+            "relayToken",
+            "token",
+            "relayRemoteAddr",
+            "serviceName",
+        ] {
+            assert!(!obj.contains_key(k), "wire must not expose {k}");
+        }
+    }
+
+    #[tokio::test]
+    async fn put_with_stale_revision_conflicts_and_returns_current() {
+        let (st, _started) = state(Behavior::HoldUntilCancel);
+        let _ = send(
+            &st,
+            put(serde_json::json!({
+                "revision": 0, "publicHost": "dev1", "requestedRunning": true, "relay": relay_json(),
+            })),
+        )
+        .await;
+        // a second writer still on revision 0 loses
+        let (status, body) = send(
+            &st,
+            put(serde_json::json!({ "revision": 0, "publicHost": "evil", "requestedRunning": false })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body["revision"], serde_json::json!(1), "current revision");
+        assert_eq!(body["publicHost"], serde_json::json!("dev1"), "unchanged");
+    }
+
+    #[tokio::test]
+    async fn requested_on_without_relay_reports_not_configured() {
+        let (st, _started) = state(Behavior::HoldUntilCancel);
+        let (_status, body) = send(
+            &st,
+            put(serde_json::json!({
+                "revision": 0, "publicHost": "dev1.example.com", "requestedRunning": true,
+            })),
+        )
+        .await;
         assert_eq!(body["running"], serde_json::json!(false));
-        assert_eq!(body["error"], serde_json::json!("relay unreachable"));
+        assert_eq!(
+            body["error"],
+            serde_json::json!("tunnel relay is not configured")
+        );
+        assert_eq!(
+            body["servedOrigin"],
+            serde_json::json!("http://127.0.0.1:8080"),
+            "loopback while down"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_attempt_surfaces_the_error_and_keeps_retrying() {
+        let (st, mut started) = state(Behavior::FailImmediately);
+        let mut observed = st.watch_observed();
+        let _ = send(
+            &st,
+            put(serde_json::json!({
+                "revision": 0, "publicHost": "dev1.example.com",
+                "requestedRunning": true, "relay": relay_json(),
+            })),
+        )
+        .await;
+
+        // the supervisor's attempt fails and the error surfaces (deterministic
+        // await on the observed-state transition)
+        observed
+            .wait_for(|o| !o.running && o.error.as_deref() == Some("relay unreachable"))
+            .await
+            .expect("error observed");
+        // and it keeps reconnecting — at least two attempts happen
+        started.recv().await.expect("attempt 1");
+        started.recv().await.expect("attempt 2");
+    }
+
+    #[tokio::test]
+    async fn turning_off_stops_the_tunnel_and_returns_to_loopback() {
+        let (st, _started) = state(Behavior::HoldUntilCancel);
+        let _ = send(
+            &st,
+            put(serde_json::json!({
+                "revision": 0, "publicHost": "dev1.example.com",
+                "requestedRunning": true, "relay": relay_json(),
+            })),
+        )
+        .await;
+        let (_status, body) = send(
+            &st,
+            put(serde_json::json!({ "revision": 1, "publicHost": "dev1.example.com", "requestedRunning": false })),
+        )
+        .await;
+        assert_eq!(body["revision"], serde_json::json!(2));
+        assert_eq!(body["running"], serde_json::json!(false));
         assert_eq!(
             body["servedOrigin"],
             serde_json::json!("http://127.0.0.1:8080")
         );
-    }
-
-    #[tokio::test]
-    async fn a_post_launch_exit_flips_running_off_and_surfaces_the_error() {
-        let client = FakeClient::ok();
-        let st = state(client.clone());
-        // provision + turn on in one request
-        let body = send(
-            st.clone(),
-            patch(serde_json::json!({
-                "subdomain": "dev1",
-                "rootDomain": "example.com",
-                "requestedRunning": true,
-            })),
-        )
-        .await;
-        assert_eq!(body["running"], serde_json::json!(true), "launched");
-
-        // the relay drops after launch; the client task reports the failure
-        client.fail_after_launch("relay dropped: handshake rejected");
-
-        let body = send(st, get()).await;
-        assert_eq!(
-            body["requestedRunning"],
-            serde_json::json!(true),
-            "intent kept"
-        );
-        assert_eq!(body["running"], serde_json::json!(false));
-        assert_eq!(
-            body["error"],
-            serde_json::json!("relay dropped: handshake rejected")
-        );
-        assert_eq!(body["currentSubdomain"], serde_json::json!(null));
-        assert_eq!(
-            body["servedOrigin"],
-            serde_json::json!("http://127.0.0.1:8080"),
-            "back to loopback once the tunnel is down"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_superseded_tunnels_late_exit_is_ignored() {
-        let client = FakeClient::ok();
-        let st = state(client.clone());
-        // start tunnel A
-        let _ = send(
-            st.clone(),
-            patch(serde_json::json!({ "subdomain": "dev1", "requestedRunning": true })),
-        )
-        .await;
-        // capture A's reporter, then restart (tunnel B) — bumps the generation
-        let a_reporter = client.last_reporter.lock().take();
-        let _ = send(
-            st.clone(),
-            patch(serde_json::json!({ "requestedRunning": true })),
-        )
-        .await;
-
-        // A's late failure must not clobber B's live state
-        if let Some(reporter) = a_reporter {
-            reporter(TunnelStatus::Failed(anyhow::anyhow!("stale A failure")));
-        }
-        let body = send(st, get()).await;
-        assert_eq!(body["running"], serde_json::json!(true), "B still running");
-        assert_eq!(
-            body["error"],
-            serde_json::json!(null),
-            "stale error ignored"
-        );
-    }
-
-    #[tokio::test]
-    async fn intent_persists_across_requests() {
-        let st = state(FakeClient::ok());
-        let _ = send(
-            st.clone(),
-            patch(serde_json::json!({ "subdomain": "dev1" })),
-        )
-        .await;
-        // a subsequent GET still shows the persisted subdomain
-        let body = send(st, get()).await;
-        assert_eq!(body["subdomain"], serde_json::json!("dev1"));
     }
 }

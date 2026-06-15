@@ -1,42 +1,53 @@
-//! Shared HTTP state: the SQLite store, the relay client, and the in-memory
-//! runtime (the live tunnel handle + observed state).
+//! Shared HTTP state plus the per-revision tunnel supervisor.
 //!
-//! Settings (intent) are persisted; runtime is ephemeral per process, mirroring
-//! the TS side where `TunnelState` resets each session and `TunnelConfig`
-//! persists.
+//! Persisted settings (incl. the `revision` CAS token) live in SQLite; the
+//! *observed* runtime — whether the tunnel is up and any error — is in-memory
+//! and resets per process. Each accepted write bumps the revision and
+//! [`reconcile`](TunnelState::reconcile)s: it cancels the previous supervisor
+//! and spawns a fresh one for the new revision. A supervisor owns the
+//! reconnect/backoff loop and awaits its own rathole child, so there are no
+//! stale cross-task reports — supersession is just cancellation, and the
+//! revision guard on observed updates closes the teardown race.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use parking_lot::Mutex;
+use tokio::sync::watch;
+use tokio_util::sync::CancellationToken;
 
-use crate::client::{ExitReporter, RelayClient, RelayHandle, TunnelStatus};
+use crate::client::RelayClient;
 use crate::db::TunnelStore;
 use crate::domain::TunnelSettings;
 
-/// Daemon-owned runtime, reset on (re)start.
-#[derive(Default)]
-struct Runtime {
-    /// Identifies the current tunnel run, bumped on every (re)start. A client
-    /// task that exits late reports the run it was started under, so
-    /// [`TunnelState::on_status`] can ignore the exit of a run that a newer
-    /// start has already superseded.
-    run_id: u64,
-    handle: Option<RelayHandle>,
-    running: bool,
-    current_subdomain: Option<String>,
-    current_root_domain: Option<String>,
-    current_local_port: Option<u16>,
-    error: Option<String>,
+/// Message shown when the tunnel is requested on but the relay isn't configured.
+const NOT_CONFIGURED: &str = "tunnel relay is not configured";
+
+/// Observed, in-memory liveness of the live tunnel run. Watched so reads see the
+/// latest value and internal waiters (and tests) can await transitions.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Observed {
+    /// The revision this observation belongs to; a superseded supervisor's
+    /// update is dropped when it no longer matches the live revision.
+    pub revision: i64,
+    pub running: bool,
+    pub error: Option<String>,
 }
 
-/// A copy of the observed runtime for building the wire snapshot without
-/// holding the lock.
-pub(crate) struct RuntimeView {
-    pub running: bool,
-    pub current_subdomain: Option<String>,
-    pub current_root_domain: Option<String>,
-    pub current_local_port: Option<u16>,
-    pub error: Option<String>,
+/// Exponential reconnect backoff, configurable so tests don't wait on wall time.
+#[derive(Debug, Clone, Copy)]
+struct Backoff {
+    initial: Duration,
+    max: Duration,
+}
+
+impl Default for Backoff {
+    fn default() -> Self {
+        Self {
+            initial: Duration::from_secs(1),
+            max: Duration::from_secs(30),
+        }
+    }
 }
 
 /// Shared state threaded through the tunnel handlers.
@@ -45,7 +56,11 @@ pub struct TunnelState {
     client: Arc<dyn RelayClient>,
     loopback_origin: String,
     local_port: u16,
-    runtime: Mutex<Runtime>,
+    observed_tx: watch::Sender<Observed>,
+    observed_rx: watch::Receiver<Observed>,
+    /// Cancels the live supervisor; replaced on every reconcile.
+    cancel: Mutex<Option<CancellationToken>>,
+    backoff: Backoff,
 }
 
 impl TunnelState {
@@ -55,12 +70,32 @@ impl TunnelState {
         loopback_origin: impl Into<String>,
         local_port: u16,
     ) -> Self {
+        Self::with_backoff(
+            store,
+            client,
+            loopback_origin,
+            local_port,
+            Backoff::default(),
+        )
+    }
+
+    fn with_backoff(
+        store: TunnelStore,
+        client: Arc<dyn RelayClient>,
+        loopback_origin: impl Into<String>,
+        local_port: u16,
+        backoff: Backoff,
+    ) -> Self {
+        let (observed_tx, observed_rx) = watch::channel(Observed::default());
         Self {
             store,
             client,
             loopback_origin: loopback_origin.into(),
             local_port,
-            runtime: Mutex::new(Runtime::default()),
+            observed_tx,
+            observed_rx,
+            cancel: Mutex::new(None),
+            backoff,
         }
     }
 
@@ -68,82 +103,141 @@ impl TunnelState {
         &self.loopback_origin
     }
 
-    /// Reconcile the live tunnel with `settings.requested_running`: tear down
-    /// any existing tunnel, then (if requested) start a fresh one. A start
-    /// failure leaves `running == false` with the cause in `error`, mirroring
-    /// how the Effect daemon persists a failed bring-up.
-    ///
-    /// A *post-launch* failure (the client task exiting after a successful
-    /// launch) is delivered later through the [`ExitReporter`] handed to the
-    /// client and folded in by [`Self::on_status`].
-    pub(crate) fn apply_running(self: &Arc<Self>, settings: &TunnelSettings) {
-        let mut runtime = self.runtime.lock();
-        if let Some(handle) = runtime.handle.take() {
-            handle.stop();
-        }
-        // A new run id invalidates any late exit report from the tunnel we just
-        // tore down.
-        let run_id = runtime.run_id.wrapping_add(1);
-        *runtime = Runtime {
-            run_id,
-            ..Default::default()
-        };
+    /// A snapshot of the current observed runtime.
+    pub(crate) fn observed(&self) -> Observed {
+        self.observed_rx.borrow().clone()
+    }
 
-        if !settings.requested_running {
-            return;
+    /// Bring the live tunnel in line with `settings`: cancel the previous
+    /// supervisor, set the immediate observed state (so the PUT response and an
+    /// immediate GET are coherent before the supervisor task runs), then spawn a
+    /// supervisor for this revision.
+    pub(crate) fn reconcile(self: &Arc<Self>, settings: &TunnelSettings) {
+        let token = CancellationToken::new();
+        if let Some(old) = self.cancel.lock().replace(token.clone()) {
+            old.cancel();
         }
 
-        let weak = Arc::downgrade(self);
-        let on_exit: ExitReporter = Box::new(move |status| {
-            if let Some(state) = weak.upgrade() {
-                state.on_status(run_id, status);
-            }
+        let (running, error) = initial_observed(settings);
+        let revision = settings.revision;
+        self.observed_tx.send_modify(|o| {
+            o.revision = revision;
+            o.running = running;
+            o.error = error;
         });
-        match self
-            .client
-            .start(settings, &format!("127.0.0.1:{}", self.local_port), on_exit)
-        {
-            Ok(handle) => {
-                runtime.handle = Some(handle);
-                runtime.running = true;
-                runtime.current_subdomain = settings.subdomain.clone();
-                runtime.current_root_domain = settings.root_domain.clone();
-                runtime.current_local_port = Some(self.local_port);
-            }
-            Err(error) => {
-                runtime.error = Some(format!("{error:#}"));
-            }
-        }
-    }
 
-    /// Fold a client task's terminal status back into the runtime. Ignored if a
-    /// newer (re)start has already superseded `run_id`; otherwise the tunnel is
-    /// torn down — `running` off, `current_*` cleared — with a `Failed` cause
-    /// stringified into the wire `error` field.
-    pub(crate) fn on_status(&self, run_id: u64, status: TunnelStatus) {
-        let mut runtime = self.runtime.lock();
-        if runtime.run_id != run_id {
+        tokio::spawn(supervise(
+            self.observed_tx.clone(),
+            Arc::clone(&self.client),
+            format!("127.0.0.1:{}", self.local_port),
+            settings.clone(),
+            token,
+            self.backoff,
+        ));
+    }
+}
+
+/// The immediate observed state for a freshly-reconciled `settings`, before the
+/// supervisor task runs: optimistic `running` when requested + configured,
+/// terminal "not configured" when requested without a relay, else idle.
+fn initial_observed(settings: &TunnelSettings) -> (bool, Option<String>) {
+    if !settings.requested_running {
+        (false, None)
+    } else if settings.relay_connection().is_some() {
+        (true, None)
+    } else {
+        (false, Some(NOT_CONFIGURED.to_string()))
+    }
+}
+
+/// Drive one revision's tunnel: reconnect with backoff until cancelled. Updates
+/// to the observed state are dropped if a newer revision has taken over.
+async fn supervise(
+    observed: watch::Sender<Observed>,
+    client: Arc<dyn RelayClient>,
+    local_addr: String,
+    settings: TunnelSettings,
+    cancel: CancellationToken,
+    backoff: Backoff,
+) {
+    let revision = settings.revision;
+    if !settings.requested_running {
+        set_observed(&observed, revision, false, None);
+        return;
+    }
+    let Some(relay) = settings.relay_connection() else {
+        set_observed(&observed, revision, false, Some(NOT_CONFIGURED.to_string()));
+        return;
+    };
+
+    let mut delay = backoff.initial;
+    loop {
+        if cancel.is_cancelled() {
             return;
         }
-        let error = match status {
-            TunnelStatus::Failed(error) => Some(format!("{error:#}")),
-            TunnelStatus::Stopped => None,
-        };
-        *runtime = Runtime {
-            run_id,
-            error,
-            ..Default::default()
-        };
+        // Optimistic: the attempt is starting (rathole exposes no "connected"
+        // signal, so this flips to true before the handshake completes).
+        set_observed(&observed, revision, true, None);
+        let result = client
+            .run_once(&relay, &local_addr, cancel.child_token())
+            .await;
+        if cancel.is_cancelled() {
+            return;
+        }
+        match result {
+            Ok(()) => set_observed(&observed, revision, false, None),
+            Err(error) => set_observed(&observed, revision, false, Some(format!("{error:#}"))),
+        }
+        tokio::select! {
+            () = tokio::time::sleep(delay) => {}
+            () = cancel.cancelled() => return,
+        }
+        delay = (delay * 2).min(backoff.max);
+    }
+}
+
+/// Apply an observed-state update for `revision`, ignored when a newer revision
+/// is live (a superseded supervisor must not clobber the current one).
+fn set_observed(
+    observed: &watch::Sender<Observed>,
+    revision: i64,
+    running: bool,
+    error: Option<String>,
+) {
+    observed.send_if_modified(|o| {
+        if o.revision != revision || (o.running == running && o.error == error) {
+            return false;
+        }
+        o.running = running;
+        o.error = error;
+        true
+    });
+}
+
+#[cfg(test)]
+impl TunnelState {
+    /// Build with a near-zero backoff so reconnect tests don't wait on wall
+    /// time. 1ms (not zero) keeps the retry loop from busy-spinning the runtime.
+    pub(crate) fn new_test(
+        store: TunnelStore,
+        client: Arc<dyn RelayClient>,
+        loopback_origin: impl Into<String>,
+        local_port: u16,
+    ) -> Self {
+        Self::with_backoff(
+            store,
+            client,
+            loopback_origin,
+            local_port,
+            Backoff {
+                initial: Duration::from_millis(1),
+                max: Duration::from_millis(1),
+            },
+        )
     }
 
-    pub(crate) fn runtime_view(&self) -> RuntimeView {
-        let runtime = self.runtime.lock();
-        RuntimeView {
-            running: runtime.running,
-            current_subdomain: runtime.current_subdomain.clone(),
-            current_root_domain: runtime.current_root_domain.clone(),
-            current_local_port: runtime.current_local_port,
-            error: runtime.error.clone(),
-        }
+    /// Subscribe to observed-state transitions (deterministic awaits in tests).
+    pub(crate) fn watch_observed(&self) -> watch::Receiver<Observed> {
+        self.observed_tx.subscribe()
     }
 }

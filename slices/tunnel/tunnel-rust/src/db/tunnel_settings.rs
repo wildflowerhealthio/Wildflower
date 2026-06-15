@@ -1,27 +1,59 @@
 //! `tunnel_settings` singleton-row queries.
+//!
+//! The row is seeded by the migration (id = `'tunnel'`), so reads always find
+//! it and writes are a plain `UPDATE` guarded on `revision` — an atomic
+//! compare-and-swap, no upsert and no read-modify-write. The row mapping reads
+//! columns by name (not position) so the column list can't silently drift.
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{named_params, Row};
 
 use crate::db::TunnelStore;
-use crate::domain::TunnelSettings;
+use crate::domain::{RelayConnection, TunnelSettings};
 use persistence_rust::DbResult;
 
 /// The settings table only ever holds one row, addressed by this id.
 const TUNNEL_SETTINGS_ID: &str = "tunnel";
 
-/// A patch over the API-controllable settings fields. `None` preserves the
-/// field, `Some(None)` clears it, `Some(Some(v))` sets it; `requested_running`
-/// has no clear (absent preserves, present sets). Relay connection fields are
-/// not patched here (no UI yet).
-#[derive(Debug, Default)]
-pub struct SettingsPatch {
-    pub subdomain: Option<Option<String>>,
-    pub root_domain: Option<Option<String>>,
-    pub requested_running: Option<bool>,
+/// The full column list, shared by every read.
+const COLS: &str = "revision, public_host, requested_running, \
+                    relay_remote_addr, relay_token, relay_public_key, service_name";
+
+impl TryFrom<&Row<'_>> for TunnelSettings {
+    type Error = rusqlite::Error;
+    fn try_from(row: &Row<'_>) -> rusqlite::Result<Self> {
+        Ok(TunnelSettings {
+            revision: row.get("revision")?,
+            public_host: row.get("public_host")?,
+            requested_running: row.get("requested_running")?,
+            relay_remote_addr: row.get("relay_remote_addr")?,
+            relay_token: row.get("relay_token")?,
+            relay_public_key: row.get("relay_public_key")?,
+            service_name: row.get("service_name")?,
+        })
+    }
+}
+
+/// A full replacement of the settings' visible fields, plus an optional
+/// write-only relay block: `relay: None` keeps the stored relay connection,
+/// `relay: Some(_)` replaces all four relay fields together.
+#[derive(Debug, Clone)]
+pub struct SettingsUpdate {
+    pub public_host: Option<String>,
+    pub requested_running: bool,
+    pub relay: Option<RelayConnection>,
+}
+
+/// The result of a compare-and-swap write: `Applied` when the expected revision
+/// matched (carrying the new row), `Conflict` when it didn't (carrying the
+/// current row so the caller can re-read and retry).
+#[derive(Debug)]
+pub enum ReplaceOutcome {
+    Applied(TunnelSettings),
+    Conflict(TunnelSettings),
 }
 
 impl TunnelStore {
-    /// Read the settings row, returning defaults on a fresh install.
+    /// Read the singleton settings row.
     ///
     /// # Errors
     ///
@@ -30,68 +62,73 @@ impl TunnelStore {
         read_settings(&self.conn().lock())
     }
 
-    /// Apply `patch` to the settings row (creating it if absent) and return the
-    /// resulting settings. Read-modify-write under a single lock so the
-    /// singleton row can't race.
+    /// Replace the settings iff `expected_revision` still matches the stored
+    /// revision, bumping the revision on success. The visible fields are fully
+    /// replaced; the relay block is replaced only when `update.relay` is set
+    /// (otherwise the stored relay connection is kept). Returns
+    /// [`ReplaceOutcome::Conflict`] (with the current row) when the revision
+    /// has moved on.
     ///
     /// # Errors
     ///
-    /// Returns any rusqlite error from the read or the upsert.
-    pub fn patch_settings(&self, patch: SettingsPatch) -> DbResult<TunnelSettings> {
+    /// Returns any rusqlite error from the update or the read-back.
+    pub fn replace_settings(
+        &self,
+        expected_revision: i64,
+        update: SettingsUpdate,
+    ) -> DbResult<ReplaceOutcome> {
         let conn = self.conn().lock();
-        let mut next = read_settings(&conn)?;
-        if let Some(subdomain) = patch.subdomain {
-            next.subdomain = subdomain;
-        }
-        if let Some(root_domain) = patch.root_domain {
-            next.root_domain = root_domain;
-        }
-        if let Some(requested_running) = patch.requested_running {
-            next.requested_running = requested_running;
-        }
-        conn.execute(
-            "INSERT INTO tunnel_settings \
-             (id, subdomain, root_domain, requested_running, relay_remote_addr, relay_token, relay_public_key, service_name) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
-             ON CONFLICT(id) DO UPDATE SET \
-               subdomain = excluded.subdomain, \
-               root_domain = excluded.root_domain, \
-               requested_running = excluded.requested_running",
-            params![
-                TUNNEL_SETTINGS_ID,
-                next.subdomain,
-                next.root_domain,
-                next.requested_running,
-                next.relay_remote_addr,
-                next.relay_token,
-                next.relay_public_key,
-                next.service_name,
-            ],
-        )?;
-        Ok(next)
+        let affected = match &update.relay {
+            Some(relay) => conn.execute(
+                "UPDATE tunnel_settings SET \
+                    public_host = :public_host, \
+                    requested_running = :requested_running, \
+                    relay_remote_addr = :relay_remote_addr, \
+                    relay_token = :relay_token, \
+                    relay_public_key = :relay_public_key, \
+                    service_name = :service_name, \
+                    revision = revision + 1 \
+                 WHERE id = :id AND revision = :expected",
+                named_params! {
+                    ":public_host": update.public_host,
+                    ":requested_running": update.requested_running,
+                    ":relay_remote_addr": relay.remote_addr,
+                    ":relay_token": relay.token,
+                    ":relay_public_key": relay.public_key,
+                    ":service_name": relay.service_name,
+                    ":id": TUNNEL_SETTINGS_ID,
+                    ":expected": expected_revision,
+                },
+            )?,
+            None => conn.execute(
+                "UPDATE tunnel_settings SET \
+                    public_host = :public_host, \
+                    requested_running = :requested_running, \
+                    revision = revision + 1 \
+                 WHERE id = :id AND revision = :expected",
+                named_params! {
+                    ":public_host": update.public_host,
+                    ":requested_running": update.requested_running,
+                    ":id": TUNNEL_SETTINGS_ID,
+                    ":expected": expected_revision,
+                },
+            )?,
+        };
+        let current = read_settings(&conn)?;
+        Ok(if affected == 1 {
+            ReplaceOutcome::Applied(current)
+        } else {
+            ReplaceOutcome::Conflict(current)
+        })
     }
 }
 
 fn read_settings(conn: &rusqlite::Connection) -> DbResult<TunnelSettings> {
     conn.query_row(
-        "SELECT subdomain, root_domain, requested_running, relay_remote_addr, \
-                relay_token, relay_public_key, service_name \
-         FROM tunnel_settings WHERE id = ?1",
+        &format!("SELECT {COLS} FROM tunnel_settings WHERE id = ?1"),
         [TUNNEL_SETTINGS_ID],
-        |row| {
-            Ok(TunnelSettings {
-                subdomain: row.get(0)?,
-                root_domain: row.get(1)?,
-                requested_running: row.get(2)?,
-                relay_remote_addr: row.get(3)?,
-                relay_token: row.get(4)?,
-                relay_public_key: row.get(5)?,
-                service_name: row.get(6)?,
-            })
-        },
+        |row| TunnelSettings::try_from(row),
     )
-    .optional()
-    .map(Option::unwrap_or_default)
 }
 
 #[cfg(test)]
@@ -102,51 +139,91 @@ mod tests {
         TunnelStore::open_in_memory().expect("open in-memory store")
     }
 
-    #[test]
-    fn defaults_on_fresh_install() {
-        let settings = store().get_settings().unwrap();
-        assert_eq!(settings, TunnelSettings::default());
+    fn update(public_host: Option<&str>, requested_running: bool) -> SettingsUpdate {
+        SettingsUpdate {
+            public_host: public_host.map(str::to_owned),
+            requested_running,
+            relay: None,
+        }
+    }
+
+    fn relay() -> RelayConnection {
+        RelayConnection {
+            remote_addr: "relay.example.com:2333".into(),
+            token: "tok".into(),
+            public_key: "key".into(),
+            service_name: "dev1".into(),
+        }
     }
 
     #[test]
-    fn patch_sets_preserves_and_clears_and_persists() {
+    fn fresh_install_is_revision_zero_and_empty() {
+        let s = store().get_settings().unwrap();
+        assert_eq!(s.revision, 0);
+        assert_eq!(s.public_host, None);
+        assert!(!s.requested_running);
+        assert_eq!(s.relay_connection(), None);
+    }
+
+    #[test]
+    fn replace_applies_on_matching_revision_and_bumps_it() {
         let store = store();
-        // set
-        let s = store
-            .patch_settings(SettingsPatch {
-                subdomain: Some(Some("dev1".into())),
-                requested_running: Some(true),
-                ..Default::default()
-            })
+        let outcome = store
+            .replace_settings(0, update(Some("dev1.example.com"), true))
             .unwrap();
-        assert_eq!(s.subdomain.as_deref(), Some("dev1"));
+        let ReplaceOutcome::Applied(s) = outcome else {
+            panic!("expected Applied, got {outcome:?}");
+        };
+        assert_eq!(s.revision, 1);
+        assert_eq!(s.public_host.as_deref(), Some("dev1.example.com"));
         assert!(s.requested_running);
+        // persists across a fresh read
+        assert_eq!(store.get_settings().unwrap().revision, 1);
+    }
 
-        // preserve subdomain (omitted), set root_domain
-        let s = store
-            .patch_settings(SettingsPatch {
-                root_domain: Some(Some("example.com".into())),
-                ..Default::default()
-            })
+    #[test]
+    fn replace_conflicts_on_stale_revision_and_leaves_state_untouched() {
+        let store = store();
+        store
+            .replace_settings(0, update(Some("dev1"), true))
             .unwrap();
-        assert_eq!(s.subdomain.as_deref(), Some("dev1"));
-        assert_eq!(s.root_domain.as_deref(), Some("example.com"));
-        assert!(s.requested_running, "requested_running preserved");
-
-        // clear subdomain
-        let s = store
-            .patch_settings(SettingsPatch {
-                subdomain: Some(None),
-                ..Default::default()
-            })
+        // a second writer still holding revision 0 loses
+        let outcome = store
+            .replace_settings(0, update(Some("evil"), false))
             .unwrap();
-        assert_eq!(s.subdomain, None);
-        assert_eq!(s.root_domain.as_deref(), Some("example.com"));
+        let ReplaceOutcome::Conflict(s) = outcome else {
+            panic!("expected Conflict, got {outcome:?}");
+        };
+        assert_eq!(s.revision, 1, "current row returned");
+        assert_eq!(s.public_host.as_deref(), Some("dev1"), "unchanged");
+        assert!(s.requested_running, "unchanged");
+    }
 
-        // reload from a fresh handle to prove persistence
+    #[test]
+    fn relay_block_is_set_when_present_and_kept_when_absent() {
+        let store = store();
+        // set the relay block
+        store
+            .replace_settings(
+                0,
+                SettingsUpdate {
+                    public_host: Some("dev1.example.com".into()),
+                    requested_running: false,
+                    relay: Some(relay()),
+                },
+            )
+            .unwrap();
         assert_eq!(
-            store.get_settings().unwrap().root_domain.as_deref(),
-            Some("example.com")
+            store.get_settings().unwrap().relay_connection(),
+            Some(relay())
         );
+
+        // a later write that omits relay keeps it
+        store
+            .replace_settings(1, update(Some("dev2.example.com"), true))
+            .unwrap();
+        let s = store.get_settings().unwrap();
+        assert_eq!(s.public_host.as_deref(), Some("dev2.example.com"));
+        assert_eq!(s.relay_connection(), Some(relay()), "relay kept");
     }
 }
