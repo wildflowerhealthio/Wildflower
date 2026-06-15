@@ -1,9 +1,10 @@
 use rusqlite::{params, OptionalExtension, Row, ToSql};
 
-use crate::db_utils::sql_builder::build_insert_sql;
-use crate::db_utils::JsonColumn;
-use crate::db_utils::{DbResult, GatekeeperStore};
+use crate::db::GatekeeperStore;
 use crate::domain::signing_key::{SigningKey, SigningKeyValues};
+use persistence_rust::build_insert_sql;
+use persistence_rust::DbResult;
+use persistence_rust::JsonColumn;
 
 impl TryFrom<&Row<'_>> for SigningKey {
     type Error = rusqlite::Error;

@@ -11,7 +11,6 @@ use uuid::Uuid;
 use super::error_codes::OAuthErrorCode;
 use super::internal::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::crypto_util::random_token::generate_authorization_code;
-use crate::db_utils::{JsonColumn, UriColumn};
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
 use crate::domain::client::Client;
@@ -20,6 +19,7 @@ use crate::http::page_paths;
 use crate::http::response_templates::InternalError;
 use crate::http::state::AppState;
 use crate::http::ServedOrigin;
+use persistence_rust::{JsonColumn, UriColumn};
 
 /// A `code_challenge` for the S256 method is the base64url SHA-256 digest:
 /// exactly 43 unpadded base64url characters (RFC 7636 §4.2).

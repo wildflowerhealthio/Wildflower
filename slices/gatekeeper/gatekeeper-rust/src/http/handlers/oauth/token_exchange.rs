@@ -18,13 +18,13 @@ use super::token_request::TokenRequest;
 use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
 use crate::db::RefreshTokenConsumeOutcome;
-use crate::db_utils::JsonColumn;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
 use crate::domain::client::AllowedGrantType;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::http::state::AppState;
 use crate::http::ServedOrigin;
+use persistence_rust::JsonColumn;
 
 /// Body of an RFC 6749 / RFC 8628 token endpoint request, dispatched by the
 /// wire-level `grant_type` field. Client credentials are not parsed here —

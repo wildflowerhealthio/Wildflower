@@ -4,7 +4,7 @@ use std::str::FromStr;
 use chrono::{DateTime, Duration, Utc};
 use url::Url;
 
-use crate::db_utils::{JsonColumn, UriColumn};
+use persistence_rust::{JsonColumn, UriColumn};
 
 /// Which OAuth grant flow an `AuthorizationRequest` represents. Stored as the
 /// wire-level RFC string in the `grantType` column.

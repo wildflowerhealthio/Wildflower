@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::db_utils::JsonColumn;
+use persistence_rust::JsonColumn;
 
 /// OAuth client authentication category — `public` clients can't keep a secret (e.g. SPAs, native), `confidential` ones can.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

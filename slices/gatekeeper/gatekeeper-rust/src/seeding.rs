@@ -4,30 +4,24 @@
 
 use anyhow::Context;
 use chrono::{Duration, Utc};
+use persistence_rust::{Connection, JsonColumn};
 use thiserror::Error;
 
-use crate::config::GatekeeperConfig;
-use crate::db_utils::GatekeeperStore;
-use crate::db_utils::JsonColumn;
+use crate::db::GatekeeperStore;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::token::{mint_access_token, MintError, NewJwtArgs};
 use crate::{FIRST_PARTY_CLIENT_ID, OWNER_SCOPE};
 
-/// Open the gatekeeper `SQLite` store at the configured path and run every
-/// idempotent first-boot seeding step — signing key, first-party client.
+/// Wrap the shared `conn` in a gatekeeper store (applying migrations) and run
+/// every idempotent first-boot seeding step — signing key, first-party client.
 ///
 /// # Errors
 ///
-/// Returns an error if the sqlite store cannot be opened or if seeding the
-/// signing key or first-party client fails.
-pub fn open_and_seed_store(config: &GatekeeperConfig) -> anyhow::Result<GatekeeperStore> {
-    let store = GatekeeperStore::open(&config.db_file_path).with_context(|| {
-        format!(
-            "failed to open gatekeeper sqlite at {}",
-            config.db_file_path.display()
-        )
-    })?;
+/// Returns an error if the store cannot be created (migrations) or if seeding
+/// the signing key or first-party client fails.
+pub fn open_and_seed_store(conn: Connection) -> anyhow::Result<GatekeeperStore> {
+    let store = GatekeeperStore::new(conn).context("failed to open gatekeeper store")?;
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
     ensure_first_party_client(&store).context("failed to seed first-party client")?;
     Ok(store)

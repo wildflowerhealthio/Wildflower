@@ -1,0 +1,22 @@
+[package]
+name = "persistence-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# Common SQLite persistence utilities shared across Rust slices (gatekeeper,
+# tunnel, ...). Holds the generic, slice-agnostic pieces lifted out of
+# gatekeeper-rust's `db_utils`: a synchronized connection handle, a
+# `PRAGMA user_version` migration runner, the `JsonColumn`/`UriColumn` column
+# newtypes, the `sql_row!` row-mapping macro, and the insert-SQL builder. Each
+# slice keeps its own named store + migration list on top of these.
+[dependencies]
+anyhow.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+parking_lot = "0.12"
+url = { version = "2", features = ["serde"] }
+
+[lints]
+workspace = true

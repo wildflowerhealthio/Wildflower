@@ -1,9 +1,10 @@
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
 use rusqlite::{params, OptionalExtension, ToSql};
 
-use crate::db_utils::sql_builder::build_insert_sql;
-use crate::db_utils::{sql_row, DbResult, GatekeeperStore};
+use crate::db::GatekeeperStore;
 use crate::domain::client::{Client, ClientKind};
+use persistence_rust::build_insert_sql;
+use persistence_rust::{sql_row, DbResult};
 
 impl ToSql for ClientKind {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
@@ -70,8 +71,8 @@ impl GatekeeperStore {
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
-    use crate::db_utils::JsonColumn;
     use crate::domain::client::{AllowedGrantType, ClientKind};
+    use persistence_rust::JsonColumn;
     use proptest::prelude::*;
 
     fn arb_client() -> impl Strategy<Value = Client> {

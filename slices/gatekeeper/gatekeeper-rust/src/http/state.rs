@@ -1,4 +1,4 @@
-use crate::db_utils::GatekeeperStore;
+use crate::db::GatekeeperStore;
 
 /// Shared state threaded through every gatekeeper handler. Opaque to
 /// callers outside the crate — the host receives one from

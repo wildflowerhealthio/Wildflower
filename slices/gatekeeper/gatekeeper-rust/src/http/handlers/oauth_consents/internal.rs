@@ -7,10 +7,10 @@ use chrono::{Duration, Utc};
 use serde::Serialize;
 use url::Url;
 
-use crate::db_utils::{DbResult, UriColumn};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
+use persistence_rust::{DbResult, UriColumn};
 
 /// Lifetime of the `authorization_code` minted when an Owner approves a
 /// code-flow consent, from issuance to the client redeeming it at `/token`
