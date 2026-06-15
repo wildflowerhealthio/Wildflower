@@ -143,7 +143,7 @@ impl TunnelState {
 fn initial_observed(settings: &TunnelSettings) -> (bool, Option<String>) {
     if !settings.requested_running {
         (false, None)
-    } else if settings.relay_connection().is_some() {
+    } else if settings.relay_settings.is_some() {
         (true, None)
     } else {
         (false, Some(NOT_CONFIGURED.to_string()))
@@ -165,7 +165,7 @@ async fn supervise(
         set_observed(&observed, revision, false, None);
         return;
     }
-    let Some(relay) = settings.relay_connection() else {
+    let Some(relay) = settings.relay_settings else {
         set_observed(&observed, revision, false, Some(NOT_CONFIGURED.to_string()));
         return;
     };

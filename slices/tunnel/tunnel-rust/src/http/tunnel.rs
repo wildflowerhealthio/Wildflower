@@ -17,7 +17,7 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
 use crate::db::{ReplaceOutcome, SettingsUpdate};
-use crate::domain::{RelayConnection, TunnelSettings};
+use crate::domain::{RelaySettings, TunnelSettings};
 use crate::http::state::TunnelState;
 
 /// Tunnel state on the wire. Relay connection details are write-only and never
@@ -56,9 +56,9 @@ struct RelayInput {
     service_name: String,
 }
 
-impl From<RelayInput> for RelayConnection {
+impl From<RelayInput> for RelaySettings {
     fn from(input: RelayInput) -> Self {
-        RelayConnection {
+        RelaySettings {
             remote_addr: input.remote_addr,
             token: input.token,
             public_key: input.public_key,
@@ -122,7 +122,7 @@ async fn put_tunnel(
     let update = SettingsUpdate {
         public_host: body.public_host,
         requested_running: body.requested_running,
-        relay: body.relay.map(RelayConnection::from),
+        relay: body.relay.map(RelaySettings::from),
     };
     match state.store.replace_settings(body.revision, update) {
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
@@ -169,7 +169,7 @@ mod tests {
     impl RelayClient for FakeClient {
         async fn run_once(
             &self,
-            _relay: &RelayConnection,
+            _relay: &RelaySettings,
             _local_addr: &str,
             cancel: CancellationToken,
         ) -> anyhow::Result<()> {

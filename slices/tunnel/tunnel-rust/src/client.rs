@@ -18,7 +18,7 @@ use serde::Serialize;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
-use crate::domain::RelayConnection;
+use crate::domain::RelaySettings;
 
 /// Runs a single rathole client attempt. The supervisor calls this in a loop.
 #[async_trait::async_trait]
@@ -29,7 +29,7 @@ pub trait RelayClient: Send + Sync {
     /// should back off and retry (relay unreachable, handshake rejected).
     async fn run_once(
         &self,
-        relay: &RelayConnection,
+        relay: &RelaySettings,
         local_addr: &str,
         cancel: CancellationToken,
     ) -> anyhow::Result<()>;
@@ -51,7 +51,7 @@ impl RatholeRelayClient {
 impl RelayClient for RatholeRelayClient {
     async fn run_once(
         &self,
-        relay: &RelayConnection,
+        relay: &RelaySettings,
         local_addr: &str,
         cancel: CancellationToken,
     ) -> anyhow::Result<()> {
@@ -90,7 +90,7 @@ impl RelayClient for RatholeRelayClient {
 /// reuse rathole's `Config` because its `MaskedString` token serializes as
 /// `***`; serializing our own structs keeps the real token and escapes every
 /// value (including the `service_name` table key) by construction.
-fn render_client_toml(relay: &RelayConnection, local_addr: &str) -> anyhow::Result<String> {
+fn render_client_toml(relay: &RelaySettings, local_addr: &str) -> anyhow::Result<String> {
     let mut services = BTreeMap::new();
     services.insert(
         relay.service_name.as_str(),
@@ -157,7 +157,7 @@ mod tests {
     /// through the same path runtime uses — guards against TOML drift.
     #[tokio::test]
     async fn rendered_client_toml_is_a_valid_rathole_client_config() {
-        let relay = RelayConnection {
+        let relay = RelaySettings {
             remote_addr: "relay.example.com:2333".into(),
             token: "shared-secret".into(),
             public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".into(),
@@ -183,7 +183,7 @@ mod tests {
     /// parser, proving the typed serializer escapes them.
     #[tokio::test]
     async fn rendered_toml_escapes_hostile_field_contents() {
-        let relay = RelayConnection {
+        let relay = RelaySettings {
             remote_addr: "relay:2333".into(),
             token: "tok\"with\nquote".into(),
             public_key: "key".into(),
