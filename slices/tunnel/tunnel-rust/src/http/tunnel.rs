@@ -184,7 +184,7 @@ mod tests {
         /// failure, as the embedded rathole task would on a relay drop.
         fn fail_after_launch(&self, message: &str) {
             if let Some(reporter) = self.last_reporter.lock().take() {
-                reporter.report(TunnelStatus::Failed(message.to_string()));
+                reporter(TunnelStatus::Failed(anyhow::Error::msg(message.to_owned())));
             }
         }
     }
@@ -351,7 +351,7 @@ mod tests {
 
         // A's late failure must not clobber B's live state
         if let Some(reporter) = a_reporter {
-            reporter.report(TunnelStatus::Failed("stale A failure".into()));
+            reporter(TunnelStatus::Failed(anyhow::anyhow!("stale A failure")));
         }
         let body = send(st, get()).await;
         assert_eq!(body["running"], serde_json::json!(true), "B still running");

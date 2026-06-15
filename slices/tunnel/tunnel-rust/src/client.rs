@@ -25,34 +25,20 @@ use crate::domain::{RelayConnection, TunnelSettings};
 #[derive(Debug)]
 pub enum TunnelStatus {
     /// The client exited with an error after launch (relay unreachable,
-    /// handshake rejected, transport error). Carries the formatted cause.
-    Failed(String),
+    /// handshake rejected, transport error). Carries the original error so the
+    /// consumer decides how to render it (the HTTP layer stringifies it only
+    /// when folding it into the wire `error` field).
+    Failed(anyhow::Error),
     /// The client exited cleanly — after a shutdown signal, or because the
     /// relay closed the session without an error.
     Stopped,
 }
 
-/// A one-shot sink the embedded client uses to report why it exited. The HTTP
-/// state machine builds one that folds the outcome back into the live runtime;
-/// tests build ones that record it.
-pub struct ExitReporter {
-    report: Box<dyn FnOnce(TunnelStatus) + Send>,
-}
-
-impl ExitReporter {
-    /// Build a reporter from a callback invoked at most once, when the client
-    /// task exits.
-    pub fn new(report: impl FnOnce(TunnelStatus) + Send + 'static) -> Self {
-        Self {
-            report: Box::new(report),
-        }
-    }
-
-    /// Report the terminal `status`, consuming the reporter so it fires once.
-    pub fn report(self, status: TunnelStatus) {
-        (self.report)(status);
-    }
-}
+/// A one-shot sink the embedded client uses to report why it exited, called at
+/// most once when the client task exits. The HTTP state machine builds one that
+/// folds the outcome back into the live runtime; tests build ones that record
+/// it.
+pub type ExitReporter = Box<dyn FnOnce(TunnelStatus) + Send>;
 
 /// Brings the tunnel up. The trait is a test seam; the real impl embeds
 /// rathole.
@@ -153,10 +139,10 @@ impl RelayClient for RatholeRelayClient {
                     // rejected). Logged here and reported back so the HTTP
                     // `error` field reflects it.
                     tracing::error!(?error, "embedded rathole client exited with error");
-                    TunnelStatus::Failed(format!("{error:#}"))
+                    TunnelStatus::Failed(error)
                 }
             };
-            on_exit.report(status);
+            on_exit(status);
         });
 
         Ok(RelayHandle {
@@ -229,7 +215,7 @@ mod tests {
             .start(
                 &TunnelSettings::default(),
                 "127.0.0.1:8080",
-                ExitReporter::new(|_| {}),
+                Box::new(|_| {}),
             )
             .unwrap_err();
         assert!(err.to_string().contains("not configured"));

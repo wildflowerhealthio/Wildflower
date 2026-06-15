@@ -16,11 +16,11 @@ use crate::domain::TunnelSettings;
 /// Daemon-owned runtime, reset on (re)start.
 #[derive(Default)]
 struct Runtime {
-    /// Generation of the live tunnel, bumped on every (re)start. A client task
-    /// that exits late reports against the generation it was started under, so
-    /// [`TunnelState::on_status`] can ignore the exit of a tunnel that a newer
-    /// start has already replaced.
-    epoch: u64,
+    /// Identifies the current tunnel run, bumped on every (re)start. A client
+    /// task that exits late reports the run it was started under, so
+    /// [`TunnelState::on_status`] can ignore the exit of a run that a newer
+    /// start has already superseded.
+    run_id: u64,
     handle: Option<RelayHandle>,
     running: bool,
     current_subdomain: Option<String>,
@@ -81,11 +81,11 @@ impl TunnelState {
         if let Some(handle) = runtime.handle.take() {
             handle.stop();
         }
-        // New generation: invalidates any late exit report from the tunnel we
-        // just tore down.
-        let epoch = runtime.epoch.wrapping_add(1);
+        // A new run id invalidates any late exit report from the tunnel we just
+        // tore down.
+        let run_id = runtime.run_id.wrapping_add(1);
         *runtime = Runtime {
-            epoch,
+            run_id,
             ..Default::default()
         };
 
@@ -94,9 +94,9 @@ impl TunnelState {
         }
 
         let weak = Arc::downgrade(self);
-        let on_exit = ExitReporter::new(move |status| {
+        let on_exit: ExitReporter = Box::new(move |status| {
             if let Some(state) = weak.upgrade() {
-                state.on_status(epoch, status);
+                state.on_status(run_id, status);
             }
         });
         match self
@@ -117,20 +117,20 @@ impl TunnelState {
     }
 
     /// Fold a client task's terminal status back into the runtime. Ignored if a
-    /// newer (re)start has already superseded `epoch`; otherwise the tunnel is
+    /// newer (re)start has already superseded `run_id`; otherwise the tunnel is
     /// torn down — `running` off, `current_*` cleared — with a `Failed` cause
-    /// surfaced in `error`.
-    pub(crate) fn on_status(&self, epoch: u64, status: TunnelStatus) {
+    /// stringified into the wire `error` field.
+    pub(crate) fn on_status(&self, run_id: u64, status: TunnelStatus) {
         let mut runtime = self.runtime.lock();
-        if runtime.epoch != epoch {
+        if runtime.run_id != run_id {
             return;
         }
         let error = match status {
-            TunnelStatus::Failed(message) => Some(message),
+            TunnelStatus::Failed(error) => Some(format!("{error:#}")),
             TunnelStatus::Stopped => None,
         };
         *runtime = Runtime {
-            epoch,
+            run_id,
             error,
             ..Default::default()
         };
