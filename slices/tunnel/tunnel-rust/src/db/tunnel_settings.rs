@@ -91,14 +91,14 @@ impl TryFrom<&Row<'_>> for TunnelSettings {
 pub struct SettingsUpdate {
     pub public_host: Option<String>,
     pub requested_running: bool,
-    pub relay: Option<RelaySettings>,
+    pub relay_settings: Option<RelaySettings>,
 }
 
 /// The result of a compare-and-swap write: `Applied` when the expected revision
 /// matched (carrying the new row), `Conflict` when it didn't (carrying the
 /// current row so the caller can re-read and retry).
 #[derive(Debug)]
-pub enum ReplaceOutcome {
+pub enum SettingsUpdateOutcome {
     Applied(TunnelSettings),
     Conflict(TunnelSettings),
 }
@@ -110,14 +110,14 @@ impl TunnelStore {
     ///
     /// Returns any rusqlite error from the read.
     pub fn get_settings(&self) -> DbResult<TunnelSettings> {
-        read_settings(&self.conn().lock())
+        read_settings_with_connection(&self.conn().lock())
     }
 
     /// Replace the settings iff `expected_revision` still matches the stored
     /// revision, bumping the revision on success. The visible fields are fully
-    /// replaced; the relay block is replaced only when `update.relay` is set
+    /// replaced; the relay block is replaced only when `update.relay_settings` is set
     /// (otherwise the stored relay connection is kept). Returns
-    /// [`ReplaceOutcome::Conflict`] (with the current row) when the revision
+    /// [`SettingsUpdateOutcome::Conflict`] (with the current row) when the revision
     /// has moved on.
     ///
     /// # Errors
@@ -127,9 +127,9 @@ impl TunnelStore {
         &self,
         expected_revision: i64,
         update: SettingsUpdate,
-    ) -> DbResult<ReplaceOutcome> {
+    ) -> DbResult<SettingsUpdateOutcome> {
         let conn = self.conn().lock();
-        let affected = match &update.relay {
+        let affected = match &update.relay_settings {
             Some(relay) => conn.execute(
                 "UPDATE tunnel_settings SET \
                     public_host = :public_host, \
@@ -165,16 +165,16 @@ impl TunnelStore {
                 },
             )?,
         };
-        let current = read_settings(&conn)?;
+        let current = read_settings_with_connection(&conn)?;
         Ok(if affected == 1 {
-            ReplaceOutcome::Applied(current)
+            SettingsUpdateOutcome::Applied(current)
         } else {
-            ReplaceOutcome::Conflict(current)
+            SettingsUpdateOutcome::Conflict(current)
         })
     }
 }
 
-fn read_settings(conn: &rusqlite::Connection) -> DbResult<TunnelSettings> {
+fn read_settings_with_connection(conn: &rusqlite::Connection) -> DbResult<TunnelSettings> {
     conn.query_row(
         &format!("SELECT {COLS} FROM tunnel_settings WHERE id = ?1"),
         [TUNNEL_SETTINGS_ID],
@@ -194,7 +194,7 @@ mod tests {
         SettingsUpdate {
             public_host: public_host.map(str::to_owned),
             requested_running,
-            relay: None,
+            relay_settings: None,
         }
     }
 
@@ -222,7 +222,7 @@ mod tests {
         let outcome = store
             .replace_settings(0, update(Some("dev1.example.com"), true))
             .unwrap();
-        let ReplaceOutcome::Applied(s) = outcome else {
+        let SettingsUpdateOutcome::Applied(s) = outcome else {
             panic!("expected Applied, got {outcome:?}");
         };
         assert_eq!(s.revision, 1);
@@ -242,7 +242,7 @@ mod tests {
         let outcome = store
             .replace_settings(0, update(Some("evil"), false))
             .unwrap();
-        let ReplaceOutcome::Conflict(s) = outcome else {
+        let SettingsUpdateOutcome::Conflict(s) = outcome else {
             panic!("expected Conflict, got {outcome:?}");
         };
         assert_eq!(s.revision, 1, "current row returned");
@@ -324,7 +324,7 @@ mod tests {
                 SettingsUpdate {
                     public_host: Some("dev1.example.com".into()),
                     requested_running: false,
-                    relay: Some(relay()),
+                    relay_settings: Some(relay()),
                 },
             )
             .unwrap();

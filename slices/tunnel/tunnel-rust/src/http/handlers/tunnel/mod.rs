@@ -1,153 +1,36 @@
-//! The `/tunnel` GET/PUT handlers and wire types.
-//!
-//! NOTE(pr-ui): this Rust surface is the new tunnel contract — a full-replace
-//! PUT with an optimistic-concurrency `revision`, a single `publicHost`, and a
-//! write-only `relay` block. The `tunnel-core` TS schema and the `tunnel-react`
-//! UI still speak the old PATCH/`subdomain`/`rootDomain` shape and are
-//! reconciled in the follow-up UI PR; they are intentionally out of sync until
-//! then.
+//! `/tunnel` routes — the host-side surface for reading and replacing tunnel
+//! settings. One module per route handler (`get`, `put`), each exposing a
+//! `MethodRouter`; shared wire types and the snapshot helper live in
+//! [`internal`]. `router()` is the only path table. The two methods on
+//! `/tunnel` (GET + PUT) are merged here onto the shared path.
+
+mod get;
+mod internal;
+mod put;
 
 use std::sync::Arc;
 
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
-use axum::routing::get;
-use axum::{Json, Router};
-use serde::{Deserialize, Serialize};
+use axum::Router;
 
-use crate::db::{ReplaceOutcome, SettingsUpdate};
-use crate::domain::{RelaySettings, TunnelSettings};
 use crate::http::state::TunnelState;
 
-/// Tunnel state on the wire. Relay connection details are write-only and never
-/// appear here. `revision` is the optimistic-concurrency token a PUT must echo.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TunnelStateWire {
-    revision: i64,
-    public_host: Option<String>,
-    requested_running: bool,
-    running: bool,
-    error: Option<String>,
-    served_origin: String,
-}
-
-/// PUT body — a full replace of the visible settings guarded by `revision`,
-/// plus an optional write-only `relay` block (absent = keep the stored relay
-/// connection, present = replace all four fields).
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReplaceTunnelRequestBody {
-    revision: i64,
-    #[serde(default)]
-    public_host: Option<String>,
-    requested_running: bool,
-    #[serde(default)]
-    relay: Option<RelayInput>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RelayInput {
-    remote_addr: String,
-    token: String,
-    public_key: String,
-    service_name: String,
-}
-
-impl From<RelayInput> for RelaySettings {
-    fn from(input: RelayInput) -> Self {
-        RelaySettings {
-            remote_addr: input.remote_addr,
-            token: input.token,
-            public_key: input.public_key,
-            service_name: input.service_name,
-        }
-    }
-}
-
-/// Compute the origin clients should reach the server at: the public
-/// `https://{publicHost}` only when the tunnel is up and the host is set, else
-/// the loopback fallback.
-fn served_origin(running: bool, public_host: Option<&str>, loopback_origin: &str) -> String {
-    match public_host {
-        Some(host) if running && !host.is_empty() => format!("https://{host}"),
-        _ => loopback_origin.to_string(),
-    }
-}
-
-impl TunnelState {
-    /// Build the wire snapshot from persisted `settings` + the live observed
-    /// runtime.
-    pub(crate) fn snapshot(&self, settings: &TunnelSettings) -> TunnelStateWire {
-        let observed = self.observed();
-        let served_origin = served_origin(
-            observed.running,
-            settings.public_host.as_deref(),
-            self.loopback_origin(),
-        );
-        TunnelStateWire {
-            revision: settings.revision,
-            public_host: settings.public_host.clone(),
-            requested_running: settings.requested_running,
-            running: observed.running,
-            error: observed.error,
-            served_origin,
-        }
-    }
-}
-
-/// Build the `/tunnel` router (GET + PUT) over a [`TunnelState`].
-pub fn tunnel_router(state: Arc<TunnelState>) -> Router {
-    Router::new()
-        .route("/tunnel", get(get_tunnel).put(put_tunnel))
-        .with_state(state)
-}
-
-async fn get_tunnel(
-    State(state): State<Arc<TunnelState>>,
-) -> Result<Json<TunnelStateWire>, StatusCode> {
-    let settings = state
-        .store
-        .get_settings()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(Json(state.snapshot(&settings)))
-}
-
-async fn put_tunnel(
-    State(state): State<Arc<TunnelState>>,
-    Json(body): Json<ReplaceTunnelRequestBody>,
-) -> Response {
-    let update = SettingsUpdate {
-        public_host: body.public_host,
-        requested_running: body.requested_running,
-        relay: body.relay.map(RelaySettings::from),
-    };
-    match state.store.replace_settings(body.revision, update) {
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-        Ok(ReplaceOutcome::Applied(settings)) => {
-            state.reconcile(&settings);
-            Json(state.snapshot(&settings)).into_response()
-        }
-        Ok(ReplaceOutcome::Conflict(current)) => {
-            (StatusCode::CONFLICT, Json(state.snapshot(&current))).into_response()
-        }
-    }
+pub fn router() -> Router<Arc<TunnelState>> {
+    Router::new().route("/tunnel", get::route().merge(put::route()))
 }
 
 #[cfg(test)]
 mod tests {
     use axum::body::Body;
-    use axum::http::Request;
+    use axum::http::{Request, StatusCode};
     use http_body_util::BodyExt;
     use tokio::sync::mpsc;
+    use tokio_util::sync::CancellationToken;
     use tower::ServiceExt;
 
     use super::*;
     use crate::client::RelayClient;
     use crate::db::TunnelStore;
-    use tokio_util::sync::CancellationToken;
+    use crate::domain::RelaySettings;
 
     /// What a fake attempt does once started.
     #[derive(Clone, Copy)]
@@ -198,7 +81,8 @@ mod tests {
     }
 
     async fn send(state: &Arc<TunnelState>, req: Request<Body>) -> (StatusCode, serde_json::Value) {
-        let res = tunnel_router(Arc::clone(state))
+        let res = router()
+            .with_state(Arc::clone(state))
             .oneshot(req)
             .await
             .expect("oneshot");

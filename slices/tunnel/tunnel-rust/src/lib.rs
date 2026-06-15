@@ -74,5 +74,5 @@ pub fn setup_tunnel(
         .context("failed to read tunnel settings")?;
     state.reconcile(&settings);
 
-    Ok(http::tunnel_router(state))
+    Ok(http::router(state))
 }
