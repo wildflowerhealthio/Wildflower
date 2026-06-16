@@ -97,24 +97,26 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   const nextPublicHost = normalizeOptionalString(publicHostInput)
   const hostDirty = nextPublicHost !== state.publicHost
 
-  const relayTrimmed: RelayInput = {
-    remoteAddr: relay.remoteAddr.trim(),
-    token: relay.token.trim(),
-    publicKey: relay.publicKey.trim(),
-    serviceName: relay.serviceName.trim(),
-  }
-  // Only a *dirtied* relay is validated and sent. Dirty = a visible field
-  // differs from the returned value, or a token was entered (the token is
-  // never returned, so any token is a change). An untouched relay is omitted
-  // from the PUT — the server keeps the stored connection.
-  const relayDirty =
-    relayTrimmed.remoteAddr !== (state.relay?.remoteAddr ?? '') ||
-    relayTrimmed.publicKey !== (state.relay?.publicKey ?? '') ||
-    relayTrimmed.serviceName !== (state.relay?.serviceName ?? '') ||
-    relayTrimmed.token !== ''
+  // The server-stored value to compare an edited relay field against. The
+  // token is write-only — never echoed back — so its baseline is always empty
+  // and any entered token reads as a change.
+  const storedRelayValue = (key: keyof RelayInput): string =>
+    key === 'token' ? '' : (state.relay?.[key] ?? '')
+
+  // RELAY_FIELDS is the single source for the relay field set: a field added
+  // there flows into the trim, the dirty check, and the completeness check
+  // automatically — no hand-listed key can silently fall out of sync.
+  const relayTrimmed = RELAY_FIELDS.reduce<RelayInput>(
+    (trimmed, { key }) => ({ ...trimmed, [key]: trimmed[key].trim() }),
+    relay
+  )
+  // Only a *dirtied* relay is validated and sent. Dirty = any field differs
+  // from its stored baseline (so any entered token counts). An untouched
+  // relay is omitted from the PUT — the server keeps the stored connection.
+  const relayDirty = RELAY_FIELDS.some(({ key }) => relayTrimmed[key] !== storedRelayValue(key))
   // A relay change is all-or-nothing and must carry a fresh token (the stored
   // one can't be reused — it's never echoed back).
-  const relayComplete = Object.values(relayTrimmed).every((value) => value !== '')
+  const relayComplete = RELAY_FIELDS.every(({ key }) => relayTrimmed[key] !== '')
   const relayInvalid = relayDirty && !relayComplete
 
   const updateRelay =
