@@ -120,11 +120,15 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
       </FieldGroup>
 
       {hasPatientScope && patients.length > 0 ? (
-        <FieldGroup label="Patient Context">
+        <>
           <FieldDescription>
             Choose which patient record to share with this application.
           </FieldDescription>
+          {/* The native <fieldset> RadioGroup renders is the group; naming it
+              via `legend` avoids the unnamed inner group a FieldGroup wrapper
+              would nest it under. */}
           <RadioGroup
+            legend="Patient Context"
             name="patient"
             value={selectedPatient}
             onChange={setSelectedPatient}
@@ -140,7 +144,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
               })),
             ]}
           />
-        </FieldGroup>
+        </>
       ) : null}
 
       {errorMessage !== null ? (
