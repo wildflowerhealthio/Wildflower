@@ -1,0 +1,32 @@
+# Example rathole server config for wildflower-relay.
+#
+# Copy to `relay.toml` (or point WILDFLOWER_RELAY_CONFIG at it) and replace the
+# placeholder secrets before deploying. Generate the noise keypair with the
+# rathole CLI: `rathole --genkey` (the private key goes here; the matching
+# public key goes into each Tauri client's config as `remote_public_key`).
+
+[server]
+# Control-channel port the Tauri host (rathole client) dials. Put this behind
+# your firewall/security-group; only the noise handshake + token gate it.
+bind_addr = "0.0.0.0:2333"
+# Shared secret. Prefer a per-service `token` (below) in real deployments; this
+# default is the fallback for services that don't set their own.
+default_token = "CHANGE_ME_shared_secret"
+
+[server.transport]
+type = "noise"
+
+[server.transport.noise]
+# `rathole --genkey` output. The all-zero placeholder is valid base64 (32
+# bytes) so this example parses, but it MUST be replaced — it is not secret.
+local_private_key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+# One service per device/install. `bind_addr` is the loopback port on THIS
+# relay host that the reverse-proxy edge (Caddy/Traefik) forwards the device's
+# subdomain to: e.g. a Caddy rule `device-1.example.com -> 127.0.0.1:5201`.
+# This is how a stable, provisioned subdomain maps to a device's loopback
+# server tunneled through here.
+[server.services.wildflower-device-1]
+type = "tcp"
+bind_addr = "127.0.0.1:5201"
+# token = "per-device-secret"   # falls back to default_token when omitted

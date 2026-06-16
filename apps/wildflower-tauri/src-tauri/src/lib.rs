@@ -76,16 +76,34 @@ async fn run_server(
     // through the bridge's publisher; the bridge's resident task emits
     // `AuthTokenIssued` to the webview on every page load and on every
     // token change (see `bridge::attach_bridge`).
-    let gatekeeper = setup_gatekeeper(db, &gatekeeper_config, &publishers.host_owner_token_sender)
-        .context("failed to set up gatekeeper")?;
+    let gatekeeper = setup_gatekeeper(
+        db.clone(),
+        &gatekeeper_config,
+        &publishers.host_owner_token_sender,
+    )
+    .context("failed to set up gatekeeper")?;
 
     let gated_fhir_r4 =
         layer_router_with_gatekeeper_auth_gating(fhir_r4_router, gatekeeper.state.clone());
 
     let gated_stubs = layer_router_with_gatekeeper_auth_gating(
-        api_stubs::app_shell_stub_router(&loopback_origin),
+        api_stubs::app_shell_stub_router(),
         gatekeeper.state.clone(),
     );
+
+    // The real `/tunnel` surface (replacing the former api_stubs stub). It's
+    // Owner-gated like the rest of the admin API. Settings (incl. the relay
+    // connection) are persisted in SQLite and controlled through the API; there
+    // is no UI and no env seeding yet, so on a fresh install the relay is
+    // unconfigured and toggling the tunnel on just reports that.
+    let tunnel_config = tunnel_rust::TunnelConfig {
+        loopback_origin: loopback_origin.clone(),
+        local_port: runtime.loopback_port,
+    };
+    let tunnel_router =
+        tunnel_rust::setup_tunnel(db, &tunnel_config).context("failed to set up tunnel")?;
+    let gated_tunnel =
+        layer_router_with_gatekeeper_auth_gating(tunnel_router, gatekeeper.state.clone());
     // The webview page is NOT served from this origin — it loads from
     // the Vite dev server (`http://localhost:1420`) in dev and Tauri's
     // asset protocol (`tauri://localhost`) in builds, while API fetches
@@ -101,6 +119,7 @@ async fn run_server(
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
         .merge(gated_stubs)
+        .merge(gated_tunnel)
         .fallback(spa::handle_serving_spa_html)
         .layer(CorsLayer::very_permissive());
 
