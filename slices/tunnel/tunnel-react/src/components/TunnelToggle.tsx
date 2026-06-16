@@ -8,7 +8,11 @@ import styles from './TunnelToggle.module.css'
 interface TunnelTogglePropsBase {
   /** Owner intent: `true` if the daemon has been asked to run the tunnel. */
   readonly requestedRunning: boolean
-  /** Daemon-observed running state. Surfaces as the badge tone. */
+  /**
+   * Daemon-observed state. Optimistic: `true` means *dialing or
+   * reconnecting*, not a confirmed connection (rathole exposes no
+   * handshake-complete signal). Surfaces as the badge tone.
+   */
   readonly running: boolean
   /** Latest daemon-reported error, if any. `null` = no error. */
   readonly error: string | null
@@ -74,7 +78,7 @@ const deriveTunnelStatus: (input: {
  *
  * The component is presentation-only; it does *not* call the API. The
  * parent (`TunnelScreen`, or an embedding host) wires `onToggle` to the
- * `PatchTunnel` runner.
+ * `ReplaceTunnel` runner.
  */
 const TunnelToggle = (props: TunnelToggleProps): JSX.Element => {
   const { requestedRunning, running, error, className } = props

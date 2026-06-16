@@ -1,60 +1,46 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, type JSX } from 'react'
+import { useId, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { AsyncErrorView, Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
 import { TunnelToggle } from '../../../components/TunnelToggle.tsx'
 import {
   tunnelStateQueryOptions,
-  useTunnelPatchMutation,
   useTunnelStateQuery,
+  type RelayInput,
   type TunnelState,
 } from '../../../queries.ts'
+import { useTunnelSettingsForm } from '../../../use-tunnel-settings-form.ts'
 import styles from './index.module.css'
 
 interface TunnelScreenBodyProps {
   readonly state: TunnelState
 }
 
-/**
- * Compare the `subdomain` / `rootDomain` strings — empty input maps to
- * `null` so the user clearing a field becomes an explicit `null` write
- * (matching the `SetTunnelRequestBody` schema's "`null` clears,
- * `undefined` preserves" semantics).
- */
-const normalizeOptionalString = (raw: string): string | null => {
-  const trimmed = raw.trim()
-  return trimmed === '' ? null : trimmed
-}
-
-const formatError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
+/** Field descriptors for the relay block — single source for the repeated inputs. */
+const RELAY_FIELDS: ReadonlyArray<{
+  readonly key: keyof RelayInput
+  readonly label: string
+  readonly type: 'text' | 'password'
+  readonly placeholder?: string
+  readonly inputMode?: 'url'
+}> = [
+  {
+    key: 'remoteAddr',
+    label: 'Relay address',
+    type: 'text',
+    placeholder: 'relay.example.com:2333',
+    inputMode: 'url',
+  },
+  { key: 'serviceName', label: 'Service name', type: 'text', placeholder: 'wildflower' },
+  { key: 'publicKey', label: 'Public key', type: 'text', placeholder: 'base64 noise public key' },
+  { key: 'token', label: 'Token', type: 'password' },
+]
 
 const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
-  const patchMutation = useTunnelPatchMutation()
-  const [subdomainInput, setSubdomainInput] = useState(state.subdomain ?? '')
-  const [rootDomainInput, setRootDomainInput] = useState(state.rootDomain ?? '')
-
-  // Locks inputs even though the optimistic state has already advanced.
-  const pending = patchMutation.isPending
-  const submitError = patchMutation.error
-  const errorMessage = submitError === null ? null : formatError(submitError)
-
-  const nextSubdomain = normalizeOptionalString(subdomainInput)
-  const nextRootDomain = normalizeOptionalString(rootDomainInput)
-
-  const dirty = nextSubdomain !== state.subdomain || nextRootDomain !== state.rootDomain
-
-  const onToggle = (requestedRunning: boolean): void => {
-    patchMutation.mutate({ requestedRunning })
-  }
-
-  const onSave = (): void => {
-    patchMutation.mutate({
-      subdomain: nextSubdomain,
-      rootDomain: nextRootDomain,
-    })
-  }
+  const form = useTunnelSettingsForm(state)
+  const hostInputDomId = useId()
+  const relayInputDomIdBase = useId()
 
   return (
     <>
@@ -63,9 +49,16 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
         Expose this device to the public Internet so apps installed on phones can reach it.
       </FieldDescription>
 
-      {errorMessage !== null ? (
+      {form.errorMessage !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
-          {errorMessage}
+          {form.errorMessage}
+        </p>
+      ) : null}
+
+      {form.conflicted ? (
+        <p className={cn(styles['conflict'], 'text-body-3')} role="status">
+          These settings changed elsewhere. The current values are shown below — review them and
+          save again to apply your change.
         </p>
       ) : null}
 
@@ -73,62 +66,76 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
         requestedRunning={state.requestedRunning}
         running={state.running}
         error={state.error}
-        disabled={pending}
-        onToggle={onToggle}
+        disabled={form.pending}
+        onToggle={form.toggle}
       />
 
       <div className={styles['fields']}>
-        <Field label="Subdomain">
+        <Field label="Public host" htmlFor={hostInputDomId}>
           <input
-            type="text"
-            inputMode="text"
-            autoComplete="off"
-            autoCapitalize="none"
-            className={styles['input']}
-            value={subdomainInput}
-            placeholder="my-clinic"
-            disabled={pending}
-            onChange={(e) => {
-              setSubdomainInput(e.target.value)
-            }}
-          />
-          {state.currentSubdomain !== null && state.currentSubdomain !== state.subdomain ? (
-            <FieldDescription>
-              <span className={styles['current']}>Running as: {state.currentSubdomain}</span>
-            </FieldDescription>
-          ) : null}
-        </Field>
-
-        <Field label="Root domain">
-          <input
+            id={hostInputDomId}
             type="text"
             inputMode="url"
             autoComplete="off"
             autoCapitalize="none"
             className={styles['input']}
-            value={rootDomainInput}
-            placeholder="example.com"
-            disabled={pending}
+            value={form.hostInput}
+            placeholder="my-clinic.example.com"
+            disabled={form.pending}
             onChange={(e) => {
-              setRootDomainInput(e.target.value)
+              form.setHostInput(e.target.value)
             }}
           />
-          {state.currentRootDomain !== null && state.currentRootDomain !== state.rootDomain ? (
-            <FieldDescription>
-              <span className={styles['current']}>Running as: {state.currentRootDomain}</span>
-            </FieldDescription>
-          ) : null}
+          <FieldDescription>The public domain the relay routes to this device.</FieldDescription>
         </Field>
       </div>
 
+      <details className={styles['relay']}>
+        <summary className={styles['relay__summary']}>Relay Server</summary>
+        <FieldDescription>
+          Connection details for the self-hosted rathole relay. The token is never shown — enter a
+          new one to change the connection.
+        </FieldDescription>
+
+        <div className={styles['fields']}>
+          {RELAY_FIELDS.map((field) => {
+            const fieldId = `${relayInputDomIdBase}-${field.key}`
+            return (
+              <Field key={field.key} label={field.label} htmlFor={fieldId}>
+                <input
+                  id={fieldId}
+                  type={field.type}
+                  inputMode={field.inputMode}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  className={styles['input']}
+                  value={form.relay[field.key]}
+                  placeholder={field.placeholder}
+                  disabled={form.pending}
+                  onChange={(e) => {
+                    form.setRelayField(field.key, e.target.value)
+                  }}
+                />
+              </Field>
+            )
+          })}
+        </div>
+      </details>
+
+      {form.relayInvalid ? (
+        // Outside the collapsible block so a disabled Save is always
+        // explained even when the relay section is collapsed.
+        <p className={cn(styles['relay__error'], 'text-body-3')} role="alert">
+          To change the relay, fill all four fields including a new token.
+        </p>
+      ) : null}
+
       <FieldDescription>
         <span className={styles['current']}>Bound to local server at: {state.servedOrigin}</span>
-        {state.currentLocalPort !== null ? (
+        {state.attempt > 0 ? (
           <>
             <br />
-            <span className={styles['current']}>
-              Tunnel forwarding to port {state.currentLocalPort}
-            </span>
+            <span className={styles['current']}>Dial attempts this revision: {state.attempt}</span>
           </>
         ) : null}
       </FieldDescription>
@@ -137,8 +144,8 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
         <button
           type="button"
           className="button-2 filled"
-          disabled={pending || !dirty}
-          onClick={onSave}
+          disabled={!form.canSave}
+          onClick={form.save}
         >
           Save
         </button>
@@ -154,16 +161,16 @@ const TunnelScreenContent = (): JSX.Element => {
 
 /**
  * Loader warms the `TunnelState` cache for first paint. The `/settings`
- * layout now gates on a `beforeLoad` that `await`s the bearer token, so
- * by the time this loader runs the token is guaranteed present —
- * embedded waited the bridge handshake, web had it synchronously. No
- * more first-paint skip; this is a plain `ensureQueryData`.
+ * layout gates on a `beforeLoad` that `await`s the bearer token, so by
+ * the time this loader runs the token is guaranteed present — embedded
+ * waited the bridge handshake, web had it synchronously. This is a plain
+ * `ensureQueryData`.
  *
- * We deliberately do NOT swallow failures: a genuine error (500,
- * schema-invalid, network) propagates so the route's `errorComponent`
- * (`AsyncErrorView`) renders instead of vanishing silently — important
- * because `defaultPreload: 'intent'` fires this loader on hover with no
- * component mounted to surface the error.
+ * We deliberately do NOT swallow failures: a genuine error (no `/tunnel`
+ * backend in web/node, 500, schema-invalid, network) propagates so the
+ * route's `errorComponent` (`AsyncErrorView`) renders instead of
+ * vanishing silently — important because `defaultPreload: 'intent'` fires
+ * this loader on hover with no component mounted to surface the error.
  */
 export const Route = createFileRoute('/settings/tunnel/')({
   loader: async ({ context }) => {

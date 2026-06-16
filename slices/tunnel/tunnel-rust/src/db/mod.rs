@@ -5,8 +5,10 @@
 //! migration runner live in `persistence-rust`. Mirrors `gatekeeper-rust`'s
 //! `db/` layer.
 
+mod seed_tunnel_settings;
 mod tunnel_settings;
 mod tunnel_store;
 
+pub use seed_tunnel_settings::SettingsSeed;
 pub use tunnel_settings::{SettingsUpdate, SettingsUpdateOutcome};
 pub use tunnel_store::TunnelStore;

@@ -253,7 +253,13 @@ async fn supervise(
         return;
     }
     let Some(relay) = settings.relay_settings else {
-        set_observed(&observed, revision, false, Some(NOT_CONFIGURED.to_string()), 0);
+        set_observed(
+            &observed,
+            revision,
+            false,
+            Some(NOT_CONFIGURED.to_string()),
+            0,
+        );
         return;
     };
 
@@ -546,8 +552,7 @@ mod tests {
             hold,
             origin,
         });
-        let daemon =
-            TunnelDaemon::with_backoff(client, "http://127.0.0.1:8080", 8080, backoff);
+        let daemon = TunnelDaemon::with_backoff(client, "http://127.0.0.1:8080", 8080, backoff);
         daemon.reconcile(&running_settings(1));
 
         // Let several retry cycles play out in virtual time. The supervise

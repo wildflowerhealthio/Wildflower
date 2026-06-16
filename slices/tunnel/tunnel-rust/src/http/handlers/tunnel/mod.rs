@@ -130,6 +130,7 @@ mod tests {
                 "error": null,
                 "attempt": 0,
                 "servedOrigin": "http://127.0.0.1:8080",
+                "relay": null,
             })
         );
     }
@@ -157,7 +158,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn relay_block_is_write_only_and_never_returned() {
+    async fn relay_is_returned_without_the_secret_token() {
         let (st, _started) = state(Behavior::HoldUntilCancel);
         let _ = send(
             &st,
@@ -168,15 +169,23 @@ mod tests {
         )
         .await;
         let (_status, body) = send(&st, get()).await;
+        // The non-secret relay fields are returned so the UI can prefill them.
+        let relay = body["relay"].as_object().expect("relay object returned");
+        assert_eq!(
+            relay["remoteAddr"],
+            serde_json::json!("relay.example.com:2333")
+        );
+        assert_eq!(relay["publicKey"], serde_json::json!("key"));
+        assert_eq!(relay["serviceName"], serde_json::json!("dev1"));
+        // The token stays write-only — never inside the relay object...
+        assert!(!relay.contains_key("token"), "token stays write-only");
+        // ...nor leaked as a bare top-level key.
         let obj = body.as_object().unwrap();
-        for k in [
-            "relay",
-            "relayToken",
-            "token",
-            "relayRemoteAddr",
-            "serviceName",
-        ] {
-            assert!(!obj.contains_key(k), "wire must not expose {k}");
+        for k in ["token", "relayToken", "relayRemoteAddr", "serviceName"] {
+            assert!(
+                !obj.contains_key(k),
+                "wire must not expose {k} at top level"
+            );
         }
     }
 

@@ -41,8 +41,8 @@ use anyhow::Context;
 use axum::Router;
 
 pub use config::TunnelConfig;
-pub use db::TunnelStore;
-pub use domain::{TunnelDaemon, TunnelSettings};
+pub use db::{SettingsSeed, TunnelStore};
+pub use domain::{RelaySettings, TunnelDaemon, TunnelSettings};
 pub use http::TunnelState;
 use relay_clients::RatholeRelayClient;
 
@@ -67,6 +67,14 @@ pub fn setup_tunnel(
         store,
         daemon: tunnel_daemon,
     });
+
+    // Seed build-time connection defaults into a fresh row (only where
+    // unconfigured) before resuming, so a reinstall picks up the baked-in
+    // tunnel connection without clobbering any in-app edits.
+    state
+        .store
+        .seed_if_absent(&config.seed)
+        .context("failed to seed tunnel settings")?;
 
     // Resume persisted intent: reconcile spawns a supervisor for the stored
     // revision (a no-op when the tunnel isn't requested or the relay isn't

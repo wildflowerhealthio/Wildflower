@@ -5,7 +5,14 @@ export { Awaited, type AwaitedProps } from './awaited.tsx'
 export { Checkbox, type CheckboxProps } from './checkbox.tsx'
 export { Dialog, type DialogProps } from './dialog.tsx'
 export { ErrorBoundary, type ErrorBoundaryProps } from './error-boundary.tsx'
-export { Field, FieldDescription, type FieldDescriptionProps, type FieldProps } from './field.tsx'
+export {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  type FieldDescriptionProps,
+  type FieldGroupProps,
+  type FieldProps,
+} from './field.tsx'
 export { ItemList, type ItemListItem, type ItemListProps } from './item-list.tsx'
 export { Menu, type MenuItem, type MenuProps } from './menu.tsx'
 export { PageBodyError, type PageBodyErrorProps } from './page-body-error.tsx'

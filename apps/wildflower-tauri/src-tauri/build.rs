@@ -45,5 +45,40 @@ fn main() {
         config.loopback_port
     );
 
+    // Build-time tunnel seed: read the package-local `.env` (a sibling of this
+    // build script), NOT dotenvy's ancestor-walking `dotenv()` — which, with no
+    // sibling `.env`, resolves the repo-root `.env` and would bake unrelated
+    // secrets (e.g. a `GH_TOKEN`) into the distributed binary. Forward only the
+    // documented WILDFLOWER_TUNNEL_* keys, so an unrelated key in the file is
+    // never compiled in.
+    const TUNNEL_SEED_KEYS: [&str; 5] = [
+        "WILDFLOWER_TUNNEL_PUBLIC_HOST",
+        "WILDFLOWER_TUNNEL_RELAY_REMOTE_ADDR",
+        "WILDFLOWER_TUNNEL_RELAY_TOKEN",
+        "WILDFLOWER_TUNNEL_RELAY_PUBLIC_KEY",
+        "WILDFLOWER_TUNNEL_RELAY_SERVICE_NAME",
+    ];
+    let env_path = Path::new(&manifest_dir).join(".env");
+
+    // Re-run when the .env appears or changes (registered even when absent, so a
+    // later `cp .env.example .env` triggers a rebuild) and when any seed key is
+    // overridden via the shell environment. Emitting any rerun-if-* directive
+    // opts this script out of cargo's default "rerun on any package-file change".
+    println!("cargo:rerun-if-changed={}", env_path.display());
+    for key in TUNNEL_SEED_KEYS {
+        println!("cargo:rerun-if-env-changed={key}");
+    }
+
+    if env_path.exists() {
+        for item in dotenvy::from_path_iter(&env_path).expect("pinned .env to be loadable") {
+            // A malformed line (e.g. one missing `=`) fails the build loudly
+            // rather than being silently dropped to surface only at runtime.
+            let (key, value) = item.expect("each .env line to parse");
+            if TUNNEL_SEED_KEYS.contains(&key.as_str()) {
+                println!("cargo:rustc-env={key}={value}");
+            }
+        }
+    }
+
     tauri_build::build();
 }

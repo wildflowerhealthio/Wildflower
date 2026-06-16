@@ -96,9 +96,47 @@ async fn run_server(
     // connection) are persisted in SQLite and controlled through the API; there
     // is no UI and no env seeding yet, so on a fresh install the relay is
     // unconfigured and toggling the tunnel on just reports that.
+    // Build-time tunnel connection defaults, baked into the binary so a
+    // reinstall re-seeds them (see `tunnel_rust::TunnelStore::seed_if_absent`,
+    // which only fills unconfigured fields). The relay is seeded only when all
+    // four fields are present at build time.
+    //
+    // SECURITY: `WILDFLOWER_TUNNEL_RELAY_TOKEN` is compiled into the distributed
+    // binary (an extractable artifact) — an accepted trade-off so the relay
+    // connection survives reinstalls, token included, without re-entry.
+    fn tunnel_seed_from_build_env() -> tunnel_rust::SettingsSeed {
+        // Treat an empty value as absent: a blank `.env` entry is forwarded by
+        // `dotenvy` as `Some("")`, which would otherwise seed a half-configured
+        // relay (and an empty token reads back as unconfigured anyway).
+        let non_empty = |value: &'static str| (!value.is_empty()).then_some(value);
+        let relay = match (
+            option_env!("WILDFLOWER_TUNNEL_RELAY_REMOTE_ADDR").and_then(non_empty),
+            option_env!("WILDFLOWER_TUNNEL_RELAY_TOKEN").and_then(non_empty),
+            option_env!("WILDFLOWER_TUNNEL_RELAY_PUBLIC_KEY").and_then(non_empty),
+            option_env!("WILDFLOWER_TUNNEL_RELAY_SERVICE_NAME").and_then(non_empty),
+        ) {
+            (Some(remote_addr), Some(token), Some(public_key), Some(service_name)) => {
+                Some(tunnel_rust::RelaySettings {
+                    remote_addr: remote_addr.to_owned(),
+                    token: token.to_owned(),
+                    public_key: public_key.to_owned(),
+                    service_name: service_name.to_owned(),
+                })
+            }
+            _ => None,
+        };
+        tunnel_rust::SettingsSeed {
+            public_host: option_env!("WILDFLOWER_TUNNEL_PUBLIC_HOST")
+                .and_then(non_empty)
+                .map(str::to_owned),
+            relay,
+        }
+    }
+
     let tunnel_config = tunnel_rust::TunnelConfig {
         loopback_origin: loopback_origin.clone(),
         local_port: runtime.loopback_port,
+        seed: tunnel_seed_from_build_env(),
     };
     let tunnel_router =
         tunnel_rust::setup_tunnel(db, &tunnel_config).context("failed to set up tunnel")?;

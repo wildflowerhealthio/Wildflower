@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState, type JSX } from 'react'
+import { useId, useState, type JSX } from 'react'
 import { Field, FieldDescription } from 'react-tundraish'
 
 import pageLayout from '../../../styles/page-layout.module.css'
@@ -16,6 +16,7 @@ const normalize = (raw: string): string => {
 
 function DeviceEntryScreen(): JSX.Element {
   const navigate = useNavigate()
+  const codeInputDomId = useId()
   const [code, setCode] = useState('')
 
   const isValid = DEVICE_CODE_PATTERN.test(code)
@@ -30,8 +31,9 @@ function DeviceEntryScreen(): JSX.Element {
       <h1 className="text-heading-6">Enter Device Code</h1>
       <FieldDescription>Enter the code shown on the device requesting access.</FieldDescription>
 
-      <Field label="Code">
+      <Field label="Code" htmlFor={codeInputDomId}>
         <input
+          id={codeInputDomId}
           type="text"
           inputMode="text"
           autoComplete="off"

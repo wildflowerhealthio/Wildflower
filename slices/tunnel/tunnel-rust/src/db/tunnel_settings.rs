@@ -12,7 +12,7 @@ use crate::domain::{RelaySettings, TunnelSettings};
 use persistence_rust::DbResult;
 
 /// The settings table only ever holds one row, addressed by this id.
-const TUNNEL_SETTINGS_ID: &str = "tunnel";
+pub(super) const TUNNEL_SETTINGS_ID: &str = "tunnel";
 
 /// The full column list, shared by every read.
 const COLS: &str = "revision, public_host, requested_running, \
@@ -168,7 +168,9 @@ impl TunnelStore {
     }
 }
 
-fn read_settings_with_connection(conn: &rusqlite::Connection) -> DbResult<TunnelSettings> {
+pub(super) fn read_settings_with_connection(
+    conn: &rusqlite::Connection,
+) -> DbResult<TunnelSettings> {
     conn.query_row(
         &format!("SELECT {COLS} FROM tunnel_settings WHERE id = ?1"),
         [TUNNEL_SETTINGS_ID],

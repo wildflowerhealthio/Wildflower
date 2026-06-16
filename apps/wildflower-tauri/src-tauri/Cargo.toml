@@ -22,6 +22,7 @@ tauri-build = { version = "2", features = [] }
 # vars for `src/lib.rs`.
 serde = { workspace = true }
 serde_json = { workspace = true }
+dotenvy = "0.15.7"
 
 [dependencies]
 tauri = { version = "2", features = [] }
@@ -40,6 +41,7 @@ tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 tower-http.workspace = true
+dotenvy = "0.15.7"
 
 # Opt the host into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]
