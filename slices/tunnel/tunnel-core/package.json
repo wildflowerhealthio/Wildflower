@@ -33,32 +33,16 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@fast-check/vitest": "catalog:",
-    "@livestore/adapter-node": "catalog:",
-    "@livestore/common": "catalog:",
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
-    "@livestore/utils": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
-    "local-http-server-core": "workspace:*",
-    "navigation-core": "workspace:*",
-    "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
-    "@livestore/common": "catalog:",
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
-    "@livestore/utils": "catalog:",
-    "effect": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "local-http-server-core": "workspace:*",
-    "navigation-core": "workspace:*",
-    "shared-structures-core": "workspace:*"
+    "effect": "catalog:"
   }
 }

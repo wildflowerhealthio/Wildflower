@@ -44,14 +44,12 @@ describe('tunnel routes', () => {
 // A stub `HttpClient` returning either a canned 200 `TunnelState` or a
 // 500, so the loader's `ensureQueryData` resolves or rejects for real.
 const TUNNEL_STATE_BODY = {
-  subdomain: null,
-  rootDomain: null,
+  revision: 0,
+  publicHost: null,
   requestedRunning: false,
   running: false,
-  currentSubdomain: null,
-  currentRootDomain: null,
-  currentLocalPort: null,
   error: null,
+  attempt: 0,
   servedOrigin: 'http://127.0.0.1:8080',
 }
 

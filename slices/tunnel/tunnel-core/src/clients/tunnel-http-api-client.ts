@@ -13,9 +13,9 @@ type TunnelAdminHttpApiClientShape = Effect.Effect.Success<typeof _bareAdminClie
 
 /**
  * Effect Service providing the resolved `TunnelAdminApi` (owner-only)
- * HttpApi client — `GetTunnel` + `PatchTunnel`. The composing app wraps
- * `TunnelAdminApi` in `RequireAuthMiddleware`, so the corresponding
- * client layer must attach a bearer.
+ * HttpApi client — `GetTunnel` + `ReplaceTunnel`. The host gates the
+ * `/tunnel` surface (the Tauri app's Rust server checks the gatekeeper
+ * Owner token), so the corresponding client layer must attach a bearer.
  */
 class TunnelAdminHttpApiClient extends Context.Tag('TunnelAdminHttpApiClient')<
   TunnelAdminHttpApiClient,

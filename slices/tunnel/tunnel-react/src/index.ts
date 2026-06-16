@@ -11,11 +11,14 @@ export * as TunnelRouterContext from './router-context.ts'
 
 export {
   applyTunnelOptimistic,
+  buildReplacePayload,
   TUNNEL_STATE_QUERY_KEY,
   tunnelStateQueryOptions,
-  useTunnelPatchMutation,
+  useTunnelReplaceMutation,
   useTunnelStateQuery,
+  type RelayInput,
   type RunAuthed,
-  type TunnelPatchPayload,
+  type TunnelReplaceInput,
+  type TunnelReplaceResult,
   type TunnelState,
 } from './queries.ts'
