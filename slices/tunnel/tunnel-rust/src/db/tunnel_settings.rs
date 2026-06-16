@@ -129,42 +129,36 @@ impl TunnelStore {
         update: SettingsUpdate,
     ) -> DbResult<SettingsUpdateOutcome> {
         let conn = self.conn().lock();
-        let affected = match &update.relay_settings {
-            Some(relay) => conn.execute(
-                "UPDATE tunnel_settings SET \
-                    public_host = :public_host, \
-                    requested_running = :requested_running, \
-                    relay_remote_addr = :relay_remote_addr, \
-                    relay_token = :relay_token, \
-                    relay_public_key = :relay_public_key, \
-                    service_name = :service_name, \
-                    revision = revision + 1 \
-                 WHERE id = :id AND revision = :expected",
-                named_params! {
-                    ":public_host": update.public_host,
-                    ":requested_running": update.requested_running,
-                    ":relay_remote_addr": relay.remote_addr,
-                    ":relay_token": relay.token,
-                    ":relay_public_key": relay.public_key,
-                    ":service_name": relay.service_name,
-                    ":id": TUNNEL_SETTINGS_ID,
-                    ":expected": expected_revision,
-                },
-            )?,
-            None => conn.execute(
-                "UPDATE tunnel_settings SET \
-                    public_host = :public_host, \
-                    requested_running = :requested_running, \
-                    revision = revision + 1 \
-                 WHERE id = :id AND revision = :expected",
-                named_params! {
-                    ":public_host": update.public_host,
-                    ":requested_running": update.requested_running,
-                    ":id": TUNNEL_SETTINGS_ID,
-                    ":expected": expected_revision,
-                },
-            )?,
-        };
+        // One UPDATE for both relay-present and relay-absent: the relay
+        // columns use `COALESCE(:bind, column)` so a NULL bind (relay absent)
+        // falls through to the stored value, while a non-null bind (relay
+        // present) replaces it. Safe because `RelaySettings` fields are
+        // `String` (never `None`), so "relay present" always provides
+        // non-null binds. Collapsing the two arms means a future visible
+        // column lands in one SET list — no risk of being added to the
+        // relay-present arm and silently skipped on the relay-absent path.
+        let relay = update.relay_settings.as_ref();
+        let affected = conn.execute(
+            "UPDATE tunnel_settings SET \
+                public_host = :public_host, \
+                requested_running = :requested_running, \
+                relay_remote_addr = COALESCE(:relay_remote_addr, relay_remote_addr), \
+                relay_token = COALESCE(:relay_token, relay_token), \
+                relay_public_key = COALESCE(:relay_public_key, relay_public_key), \
+                service_name = COALESCE(:service_name, service_name), \
+                revision = revision + 1 \
+             WHERE id = :id AND revision = :expected",
+            named_params! {
+                ":public_host": update.public_host,
+                ":requested_running": update.requested_running,
+                ":relay_remote_addr": relay.map(|r| &r.remote_addr),
+                ":relay_token": relay.map(|r| &r.token),
+                ":relay_public_key": relay.map(|r| &r.public_key),
+                ":service_name": relay.map(|r| &r.service_name),
+                ":id": TUNNEL_SETTINGS_ID,
+                ":expected": expected_revision,
+            },
+        )?;
         let current = read_settings_with_connection(&conn)?;
         Ok(if affected == 1 {
             SettingsUpdateOutcome::Applied(current)
