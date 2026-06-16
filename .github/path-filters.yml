@@ -11,8 +11,8 @@ rust:
   - 'rust-toolchain.toml'
   - 'deny.toml'
   - '.github/path-filters.yml'
-  - '.github/workflows/rust-lint.yml'
-  - '.github/workflows/rust-test.yml'
+  - '.github/workflows/lint-rust.yml'
+  - '.github/workflows/test-rust.yml'
 
 # Subset of `rust`: just the Tauri desktop app. Gates the rust-lint `tauri`
 # job, which installs GTK/webkit system libs to compile + lint that crate (the
@@ -21,7 +21,7 @@ rust:
 tauri:
   - 'apps/wildflower-tauri/**'
   - '.github/path-filters.yml'
-  - '.github/workflows/rust-lint.yml'
+  - '.github/workflows/lint-tauri.yml'
 
 ts:
   - '**/*.ts'
@@ -37,5 +37,5 @@ ts:
   - 'pnpm-lock.yaml'
   - 'pnpm-workspace.yaml'
   - '.github/path-filters.yml'
-  - '.github/workflows/check.yml'
-  - '.github/workflows/test.yml'
+  - '.github/workflows/lint-typescript.yml'
+  - '.github/workflows/test-typescript.yml'

@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   changes:
-    name: Rust Lib Test [Detect Changes]
+    name: Detect Changes
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     outputs:
@@ -33,7 +33,7 @@ jobs:
   # it doesn't collide with the `test` gate in test.yml — two jobs named `test`
   # would both surface as a check literally called "test".
   nextest:
-    name: Rust Lib Test [Check]
+    name: Check
     needs: changes
     if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true') }}
     runs-on: ubuntu-latest
@@ -63,7 +63,8 @@ jobs:
         run: cargo test --doc --workspace --exclude wildflower-tauri --all-features
 
   # Always-runs summary job — the check to require in branch protection.
-  rust-test:
+  conclusion:
+    name: Conclusion
     needs: [changes, nextest]
     if: ${{ always() }}
     runs-on: ubuntu-latest

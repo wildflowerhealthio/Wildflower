@@ -68,7 +68,7 @@ jobs:
         run: cargo clippy --workspace --exclude wildflower-tauri --all-targets --all-features -- -W clippy::pedantic
 
   deny:
-    name: Dependency Conformance
+    name: Dependency Check
     needs: changes
     if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true'  || needs.changes.outputs.tauri == 'true') }}
     runs-on: ubuntu-latest
