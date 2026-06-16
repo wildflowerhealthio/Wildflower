@@ -60,8 +60,16 @@ fn main() {
     ];
     let env_path = Path::new(&manifest_dir).join(".env");
 
+    // Re-run when the .env appears or changes (registered even when absent, so a
+    // later `cp .env.example .env` triggers a rebuild) and when any seed key is
+    // overridden via the shell environment. Emitting any rerun-if-* directive
+    // opts this script out of cargo's default "rerun on any package-file change".
+    println!("cargo:rerun-if-changed={}", env_path.display());
+    for key in TUNNEL_SEED_KEYS {
+        println!("cargo:rerun-if-env-changed={key}");
+    }
+
     if env_path.exists() {
-        println!("cargo:rerun-if-changed={}", env_path.display());
         for item in dotenvy::from_path_iter(&env_path)
             .expect("pinned .env to be loadable")
             .flatten()
