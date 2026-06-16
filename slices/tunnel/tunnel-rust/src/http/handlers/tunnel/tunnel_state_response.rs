@@ -36,9 +36,10 @@ pub struct RelayView {
 /// hands `servedOrigin` to another component) must probe the URL itself —
 /// don't treat `running: true` as a liveness guarantee.
 ///
-/// TODO(pr-ui): the follow-up UI PR that reconciles the TS contract is the
-/// right moment to introduce a real liveness signal (probe or tri-state),
-/// when the consumer's actual needs are visible.
+/// A real liveness signal (probe or tri-state) to replace the optimistic
+/// `running` / `servedOrigin` is tracked in
+/// <https://github.com/Assessment-is/Wildflower/issues/184>; the dirty-gated
+/// settings UI accepts the optimistic value for now.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TunnelStateResponse {
