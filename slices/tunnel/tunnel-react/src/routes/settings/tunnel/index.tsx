@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { unknownErrorToString } from 'kitchen-sink'
 import { useId, useState, type ChangeEvent, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { AsyncErrorView, Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
@@ -61,9 +62,6 @@ const normalizeOptionalString = (raw: string): string | null => {
   return trimmed === '' ? null : trimmed
 }
 
-const formatError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
-
 const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   const replaceMutation = useTunnelReplaceMutation()
   const hostInputDomId = useId()
@@ -94,7 +92,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   // Locks inputs even though the optimistic state has already advanced.
   const pending = replaceMutation.isPending
   const transportError = replaceMutation.error
-  const errorMessage = transportError === null ? null : formatError(transportError)
+  const errorMessage = transportError === null ? null : unknownErrorToString(transportError)
 
   const nextPublicHost = normalizeOptionalString(publicHostInput)
   const hostDirty = nextPublicHost !== state.publicHost
