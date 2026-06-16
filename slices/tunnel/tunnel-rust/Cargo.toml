@@ -25,7 +25,7 @@ parking_lot = "0.12"
 rand = "0.8"
 tokio = { workspace = true, features = ["rt", "sync", "macros", "time"] }
 tokio-util = "0.7"
-toml = "0.5"
+toml = "0.9"
 tempfile = "3"
 tracing = "0.1"
 
