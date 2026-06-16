@@ -38,6 +38,7 @@ tokio = { workspace = true, features = [
   "macros",
   "sync",
   "time",
+  "test-util",
 ] }
 http = "1"
 http-body-util = "0.1"

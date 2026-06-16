@@ -60,6 +60,12 @@ pub(crate) struct Observed {
 struct Backoff {
     initial: Duration,
     max: Duration,
+    /// An attempt that ran at least this long before exiting (Ok or Err) is
+    /// treated as a successful session and the next delay snaps back to
+    /// `initial`. Without it a tunnel that flaps at startup (delay climbs to
+    /// `max`), runs cleanly for hours, then drops would wait the full `max`
+    /// before reconnecting instead of `initial`.
+    stable_threshold: Duration,
 }
 
 impl Default for Backoff {
@@ -67,6 +73,7 @@ impl Default for Backoff {
         Self {
             initial: Duration::from_secs(1),
             max: Duration::from_secs(30),
+            stable_threshold: Duration::from_secs(60),
         }
     }
 }
@@ -260,24 +267,38 @@ async fn supervise(
         // Optimistic: the attempt is starting (rathole exposes no "connected"
         // signal, so this flips to true before the handshake completes).
         set_observed(&observed, revision, true, None, attempt);
+        // tokio's Instant tracks the runtime clock so tests can run this
+        // against virtual time; in normal runs it's a thin wrapper over the
+        // monotonic clock.
+        let attempt_started = tokio::time::Instant::now();
         let result = client
             .run_once(&relay, &local_addr, cancel.child_token())
             .await;
         if cancel.is_cancelled() {
             return;
         }
+        // An attempt that ran long enough to count as a real session resets
+        // the backoff to `initial` — without this, a tunnel that ran cleanly
+        // for hours then dropped would wait the full climbed `max` before
+        // reconnecting instead of the cheap initial delay.
+        let attempt_was_stable = attempt_started.elapsed() >= backoff.stable_threshold;
         match result {
             Ok(()) => {
                 delay = backoff.initial;
                 set_observed(&observed, revision, false, None, attempt)
             }
-            Err(error) => set_observed(
-                &observed,
-                revision,
-                false,
-                Some(format!("{error:#}")),
-                attempt,
-            ),
+            Err(error) => {
+                if attempt_was_stable {
+                    delay = backoff.initial;
+                }
+                set_observed(
+                    &observed,
+                    revision,
+                    false,
+                    Some(format!("{error:#}")),
+                    attempt,
+                )
+            }
         }
         // Jittered sleep — N devices losing the relay together would otherwise
         // retry in lockstep (thundering herd). Equal jitter keeps a minimum
@@ -337,6 +358,10 @@ impl TunnelDaemon {
             Backoff {
                 initial: Duration::from_millis(1),
                 max: Duration::from_millis(1),
+                // Far larger than anything a test will let an attempt run, so
+                // the stable-attempt reset doesn't fire by accident — tests
+                // that exercise it construct their own `Backoff` directly.
+                stable_threshold: Duration::from_secs(3600),
             },
         )
     }
@@ -477,5 +502,81 @@ mod tests {
         // run_once) before rev 2's dial starts.
         assert_eq!(events_rx.recv().await, Some(DialEvent::Ended), "rev 1");
         assert_eq!(events_rx.recv().await, Some(DialEvent::Started), "rev 2");
+    }
+
+    /// A `RelayClient` that holds each attempt for a fixed duration then
+    /// returns `Err`, recording the virtual-time start of every attempt so a
+    /// test can verify the inter-attempt gap stays bounded.
+    struct StableFlapperRelayClient {
+        starts: Arc<std::sync::Mutex<Vec<tokio::time::Duration>>>,
+        hold: tokio::time::Duration,
+        origin: tokio::time::Instant,
+    }
+
+    #[async_trait::async_trait]
+    impl RelayClient for StableFlapperRelayClient {
+        async fn run_once(
+            &self,
+            _relay: &RelaySettings,
+            _local_addr: &str,
+            _cancel: CancellationToken,
+        ) -> anyhow::Result<()> {
+            self.starts.lock().unwrap().push(self.origin.elapsed());
+            tokio::time::sleep(self.hold).await;
+            Err(anyhow::anyhow!("simulated drop"))
+        }
+    }
+
+    /// An attempt that stayed up beyond `stable_threshold` before erroring
+    /// must reset the backoff to `initial` — without this, a tunnel that
+    /// flaps at startup (climbs `delay` to `max`), runs cleanly for hours,
+    /// then drops, would wait the full climbed `max` before reconnecting.
+    #[tokio::test(start_paused = true)]
+    async fn backoff_resets_after_a_stable_attempt_errors() {
+        let backoff = Backoff {
+            initial: Duration::from_millis(100),
+            max: Duration::from_secs(10),
+            stable_threshold: Duration::from_millis(500),
+        };
+        let hold = Duration::from_secs(1); // > stable_threshold
+        let starts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let origin = tokio::time::Instant::now();
+        let client = Arc::new(StableFlapperRelayClient {
+            starts: Arc::clone(&starts),
+            hold,
+            origin,
+        });
+        let daemon =
+            TunnelDaemon::with_backoff(client, "http://127.0.0.1:8080", 8080, backoff);
+        daemon.reconcile(&running_settings(1));
+
+        // Let several retry cycles play out in virtual time. The supervise
+        // loop and the fake's `sleep(hold)` are both on the virtual clock.
+        for _ in 0..40 {
+            tokio::time::advance(Duration::from_millis(200)).await;
+            tokio::task::yield_now().await;
+        }
+
+        let starts = starts.lock().unwrap();
+        assert!(
+            starts.len() >= 4,
+            "expected several attempts in 8s of virtual time, got {}: {:?}",
+            starts.len(),
+            *starts,
+        );
+        // Every inter-attempt gap is roughly `hold + jittered(initial)` ∈
+        // [hold + initial/2, hold + initial] = [1.05s, 1.10s]. Without the
+        // reset, the gap would climb: 1s + 200ms, 1s + 400ms, …, capped at
+        // 1s + 10s. A 1.5s ceiling tests "didn't climb" with slack.
+        let ceiling = hold + Duration::from_millis(500);
+        for i in 1..starts.len() {
+            let gap = starts[i] - starts[i - 1];
+            assert!(
+                gap <= ceiling,
+                "attempt gap {i} ({gap:?}) climbed past {ceiling:?} — \
+                 stable-attempt reset didn't fire; all starts: {:?}",
+                *starts,
+            );
+        }
     }
 }
