@@ -1,5 +1,5 @@
 # Shared path filters consumed by dorny/paths-filter in the lint/test
-# workflows (rust-lint, rust-test, check, test). A pull request that touches
+# workflows (lint-rust, test-rust, lint-typescript, test-typescript). A PR that touches
 # only `rust` paths skips the JS jobs and vice versa; a PR touching both runs
 # everything, and every push to main runs everything regardless. Keep these
 # lists aligned with where source actually lives.
@@ -14,14 +14,14 @@ rust:
   - '.github/workflows/lint-rust.yml'
   - '.github/workflows/test-rust.yml'
 
-# Subset of `rust`: just the Tauri desktop app. Gates the rust-lint `tauri`
-# job, which installs GTK/webkit system libs to compile + lint that crate (the
-# regular `lint`/`nextest` jobs exclude it). A tauri change matches both `rust`
-# and `tauri`, so it runs the normal Rust jobs AND the tauri job.
+# Subset of `rust`: just the Tauri desktop app. Gates the `tauri` job in
+# lint-rust.yml, which installs GTK/webkit system libs to compile + lint that
+# crate (the regular `lint`/`nextest` jobs exclude it). A tauri change matches
+# both `rust` and `tauri`, so it runs the normal Rust jobs AND the tauri job.
 tauri:
   - 'apps/wildflower-tauri/**'
   - '.github/path-filters.yml'
-  - '.github/workflows/lint-tauri.yml'
+  - '.github/workflows/lint-rust.yml'
 
 ts:
   - '**/*.ts'

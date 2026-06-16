@@ -1,4 +1,4 @@
-name: Rust Lib Lint
+name: Rust Lint
 
 on:
   push:
@@ -37,7 +37,7 @@ jobs:
           filters: .github/path-filters.yml
 
   lint:
-    name: Check
+    name: Lib Check
     needs: changes
     # Full run on every push to main; on PRs only when Rust files changed.
     if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true') }}
@@ -67,10 +67,45 @@ jobs:
         continue-on-error: true
         run: cargo clippy --workspace --exclude wildflower-tauri --all-targets --all-features -- -W clippy::pedantic
 
+  # Compiles + lints the tauri crate, which `lint` excludes because its deps
+  # need GTK/webkit system libraries. Without this the crate is only
+  # fmt-checked, so a change that breaks its build would otherwise pass CI. Runs
+  # only when the tauri app changes, or on push to main, to bound the cost.
+  tauri:
+    name: Tauri Check
+    needs: changes
+    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.tauri == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Stub the embedded SPA bundle
+        # `spa.rs` `include_str!`s the single-file web bundle
+        # (`dist-single-web/index-single-web.html`), which is produced by the
+        # `build:single-web` step and gitignored — so it's absent in a fresh
+        # checkout and the crate won't compile. CI only lints/compiles the Rust,
+        # not the served HTML, so a placeholder file is enough to satisfy the
+        # `include_str!`. Real builds run `build:single-web` first.
+        run: |
+          mkdir -p apps/wildflower-react/dist-single-web
+          echo '<!doctype html><title>stub</title>' \
+            > apps/wildflower-react/dist-single-web/index-single-web.html
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: clippy (wildflower-tauri)
+        run: cargo clippy -p wildflower-tauri --all-targets --all-features -- -D warnings
+
   deny:
     name: Dependency Check
     needs: changes
-    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true'  || needs.changes.outputs.tauri == 'true') }}
+    # Runs on any Rust- or Tauri-touching change: the tauri crate pulls in its
+    # own dependency tree, so its supply chain needs the same cargo-deny gate.
+    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.tauri == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -88,10 +123,12 @@ jobs:
   # Always-runs summary job. This is the check to mark required in branch
   # protection — never the heavy jobs above. It stays green when they're
   # skipped (e.g. a TS-only PR), so path filtering can never block a merge, and
-  # goes red only on a genuine lint or supply-chain failure.
-  conclusion:
-    name: Conclusion
-    needs: [changes, lint, deny]
+  # goes red only on a genuine lint or supply-chain failure. Intentionally left
+  # without a `name:` so its required-check context stays the stable `rust-lint`
+  # (the existing branch-protection rule), the same convention the TS workflows
+  # use for their `check`/`test` summaries.
+  rust-lint:
+    needs: [changes, lint, tauri, deny]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -99,14 +136,15 @@ jobs:
         run: |
           changes='${{ needs.changes.result }}'
           lint='${{ needs.lint.result }}'
+          tauri='${{ needs.tauri.result }}'
           deny='${{ needs.deny.result }}'
-          echo "changes=$changes lint=$lint deny=$deny"
+          echo "changes=$changes lint=$lint tauri=$tauri deny=$deny"
           if [[ "$changes" != 'success' && "$changes" != 'skipped' ]]; then
             echo '::error::changes job did not succeed'; exit 1
           fi
-          for result in "$lint" "$deny"; do
+          for result in "$lint" "$tauri" "$deny"; do
             if [[ "$result" == 'failure' || "$result" == 'cancelled' ]]; then
-              echo '::error::a lint-rust job failed'; exit 1
+              echo '::error::a rust-lint job failed'; exit 1
             fi
           done
-          echo 'lint-rust OK'
+          echo 'rust-lint OK'
