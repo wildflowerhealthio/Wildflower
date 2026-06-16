@@ -8,6 +8,7 @@ import {
   Checkbox,
   Field,
   FieldDescription,
+  FieldGroup,
   pageLayoutStyles,
 } from 'react-tundraish'
 
@@ -104,7 +105,7 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
         </FieldDescription>
       </Field>
 
-      <Field label="Requested Scopes">
+      <FieldGroup label="Requested Scopes">
         <FieldDescription>Select which permissions to grant this device.</FieldDescription>
         <div className={scopeListStyles['scope-list']}>
           {requestedScopes.map((scope) => (
@@ -118,7 +119,7 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
             />
           ))}
         </div>
-      </Field>
+      </FieldGroup>
 
       {errorMessage !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">

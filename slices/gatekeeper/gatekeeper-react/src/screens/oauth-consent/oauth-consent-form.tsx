@@ -2,7 +2,14 @@ import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Checkbox, Field, FieldDescription, pageLayoutStyles, RadioGroup } from 'react-tundraish'
+import {
+  Checkbox,
+  Field,
+  FieldDescription,
+  FieldGroup,
+  pageLayoutStyles,
+  RadioGroup,
+} from 'react-tundraish'
 
 import { useOAuthConsentMutation } from '../../queries/index.ts'
 import type { Consent } from './types.ts'
@@ -96,7 +103,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
         <span className="text-body-2">{consent.clientId}</span>
       </Field>
 
-      <Field label="Requested Scopes">
+      <FieldGroup label="Requested Scopes">
         <FieldDescription>Select which permissions to grant this application.</FieldDescription>
         <div className={scopeListStyles['scope-list']}>
           {requestedScopes.map((scope) => (
@@ -110,10 +117,10 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
             />
           ))}
         </div>
-      </Field>
+      </FieldGroup>
 
       {hasPatientScope && patients.length > 0 ? (
-        <Field label="Patient Context">
+        <FieldGroup label="Patient Context">
           <FieldDescription>
             Choose which patient record to share with this application.
           </FieldDescription>
@@ -133,7 +140,7 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
               })),
             ]}
           />
-        </Field>
+        </FieldGroup>
       ) : null}
 
       {errorMessage !== null ? (

@@ -80,30 +80,42 @@ const useTunnelStateQuery = (): UseSuspenseQueryResult<TunnelState, Error> =>
  * a value the user didn't touch. `relay` is included only when supplied
  * (it's write-only — absent means "keep the stored relay").
  */
+/**
+ * The single "omitted-preserves / present-writes" merge for the visible,
+ * client-writable fields (`publicHost`, `requestedRunning`). Shared by
+ * {@link buildReplacePayload} (the PUT body) and {@link applyTunnelOptimistic}
+ * (the optimistic projection) so the two never drift — add a visible field
+ * here once and both follow.
+ */
+const mergeVisibleFields = (
+  base: TunnelState,
+  input: TunnelReplaceInput
+): Pick<TunnelState, 'publicHost' | 'requestedRunning'> => ({
+  publicHost: input.publicHost === undefined ? base.publicHost : input.publicHost,
+  requestedRunning:
+    input.requestedRunning === undefined ? base.requestedRunning : input.requestedRunning,
+})
+
 const buildReplacePayload = (
   current: TunnelState,
   input: TunnelReplaceInput
 ): ReplaceTunnelPayload => ({
   revision: current.revision,
-  publicHost: input.publicHost === undefined ? current.publicHost : input.publicHost,
-  requestedRunning:
-    input.requestedRunning === undefined ? current.requestedRunning : input.requestedRunning,
+  ...mergeVisibleFields(current, input),
   ...(input.relay === undefined ? {} : { relay: input.relay }),
 })
 
 /**
  * Project a {@link TunnelReplaceInput} onto a cached snapshot for the
- * optimistic update — only the visible, client-writable fields
- * (`publicHost`, `requestedRunning`). Server-derived fields (`running`,
- * `error`, `attempt`, `servedOrigin`) and `revision` are left untouched;
- * they settle from the server's response. `relay` is write-only and not
- * part of the snapshot, so it's never projected.
+ * optimistic update — only the visible, client-writable fields.
+ * Server-derived fields (`running`, `error`, `attempt`, `servedOrigin`)
+ * and `revision` are left untouched; they settle from the server's
+ * response. `relay` is write-only and not part of the snapshot, so it's
+ * never projected.
  */
 const applyTunnelOptimistic = (previous: TunnelState, input: TunnelReplaceInput): TunnelState => ({
   ...previous,
-  publicHost: input.publicHost === undefined ? previous.publicHost : input.publicHost,
-  requestedRunning:
-    input.requestedRunning === undefined ? previous.requestedRunning : input.requestedRunning,
+  ...mergeVisibleFields(previous, input),
 })
 
 /**
