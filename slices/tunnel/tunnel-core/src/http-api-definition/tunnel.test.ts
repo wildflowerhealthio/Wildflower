@@ -4,25 +4,13 @@ import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
+  freshTunnelState as FRESH_STATE,
   RelayInputSchema,
   ReplaceTunnelRequestBodySchema,
   TunnelStateViewSchema,
 } from './tunnel.ts'
 
 const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
-
-// A fresh-install snapshot: every counter at zero, every nullable null,
-// the server bound to its loopback fallback.
-const FRESH_STATE = {
-  revision: 0,
-  publicHost: null,
-  requestedRunning: false,
-  running: false,
-  error: null,
-  attempt: 0,
-  servedOrigin: 'http://127.0.0.1:8080',
-  relay: null,
-}
 
 describe('TunnelStateViewSchema', () => {
   it('round-trips any schema-conformant state', () => {

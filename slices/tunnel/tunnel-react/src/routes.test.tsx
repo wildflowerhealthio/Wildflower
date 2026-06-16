@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter, type AnyRoute } from '@tanstack/reac
 import { Effect, Layer, pipe, SubscriptionRef } from 'effect'
 import { BearerToken } from 'kitchen-sink/auth-token'
 import type { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
+import { Tunnel } from 'tunnel-core/http-api-definition'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { TUNNEL_STATE_QUERY_KEY, type RunAuthed } from './queries.ts'
@@ -43,16 +44,7 @@ describe('tunnel routes', () => {
 
 // A stub `HttpClient` returning either a canned 200 `TunnelState` or a
 // 500, so the loader's `ensureQueryData` resolves or rejects for real.
-const TUNNEL_STATE_BODY = {
-  revision: 0,
-  publicHost: null,
-  requestedRunning: false,
-  running: false,
-  error: null,
-  attempt: 0,
-  servedOrigin: 'http://127.0.0.1:8080',
-  relay: null,
-}
+const TUNNEL_STATE_BODY = Tunnel.freshTunnelState
 
 const stubHttpClientLayer = (options?: {
   readonly failing?: boolean

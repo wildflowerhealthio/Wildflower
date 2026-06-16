@@ -81,6 +81,23 @@ const ReplaceTunnelRequestBodySchema = Schema.Struct({
 })
 
 /**
+ * The fresh-install tunnel snapshot — every counter at zero, every nullable
+ * `null`, the server bound to its loopback fallback. The single canonical
+ * sample shared by the slice's tests, so the fixture doesn't drift across
+ * packages when a field is added.
+ */
+const freshTunnelState: Schema.Schema.Type<typeof TunnelStateViewSchema> = {
+  revision: 0,
+  publicHost: null,
+  requestedRunning: false,
+  running: false,
+  error: null,
+  attempt: 0,
+  servedOrigin: 'http://127.0.0.1:8080',
+  relay: null,
+}
+
+/**
  * Tunnel-state endpoints. The group carries no middleware — auth is
  * applied by the host. In the Tauri app the Rust server gates `/tunnel`
  * behind the gatekeeper Owner check; the TS client layer still attaches
@@ -105,6 +122,7 @@ const httpApiGroup = HttpApiGroup.make('tunnel', { topLevel: false })
   )
 
 export {
+  freshTunnelState,
   httpApiGroup,
   RelayInputSchema,
   RelayViewSchema,

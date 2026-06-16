@@ -2,21 +2,13 @@ import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { Effect, Layer, SubscriptionRef } from 'effect'
 import { BearerToken } from 'kitchen-sink/auth-token'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
+import { Tunnel } from 'tunnel-core/http-api-definition'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { isTunnelState } from '../queries.ts'
 import { buildTunnelAdminClientLayer } from './tunnel-client.ts'
 
-const STATE_BODY = {
-  revision: 0,
-  publicHost: null,
-  requestedRunning: false,
-  running: false,
-  error: null,
-  attempt: 0,
-  servedOrigin: 'http://127.0.0.1:8080',
-  relay: null,
-}
+const STATE_BODY = Tunnel.freshTunnelState
 
 // Stub the request transport with one that captures the outgoing
 // `Authorization` header and replies with a canned JSON body matching

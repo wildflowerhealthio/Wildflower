@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { Effect, Layer, pipe, SubscriptionRef } from 'effect'
 import { BearerToken } from 'kitchen-sink/auth-token'
 import type { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
+import { Tunnel } from 'tunnel-core/http-api-definition'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { TUNNEL_STATE_QUERY_KEY, type RunAuthed, type TunnelState } from './queries.ts'
@@ -12,16 +13,7 @@ import { sliceRuntimeLayer, type RouterContext } from './router-context.ts'
 import { routeTree } from './routeTree.gen.ts'
 
 // The fresh-install snapshot the cache (and the stub server's GET) starts at.
-const INITIAL: TunnelState = {
-  revision: 0,
-  publicHost: null,
-  requestedRunning: false,
-  running: false,
-  error: null,
-  attempt: 0,
-  servedOrigin: 'http://127.0.0.1:8080',
-  relay: null,
-}
+const INITIAL: TunnelState = Tunnel.freshTunnelState
 
 // A snapshot with a configured relay (non-secret fields returned; token never).
 const CONFIGURED: TunnelState = {

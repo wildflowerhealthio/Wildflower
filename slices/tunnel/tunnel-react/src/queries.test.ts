@@ -25,16 +25,7 @@ import { sliceRuntimeLayer } from './router-context.ts'
  * returns a canned `TunnelState` body.
  */
 
-const TUNNEL_STATE_BODY = {
-  revision: 0,
-  publicHost: null,
-  requestedRunning: false,
-  running: false,
-  error: null,
-  attempt: 0,
-  servedOrigin: 'http://127.0.0.1:8080',
-  relay: null,
-}
+const TUNNEL_STATE_BODY = Tunnel.freshTunnelState
 
 // `failing: true` always 500s — drives the rejecting read path that the
 // route loader now propagates (see routes.test.tsx) instead of swallowing.
