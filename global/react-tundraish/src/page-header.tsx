@@ -45,10 +45,10 @@ const PageHeader = ({
   <header className={styles['page-header']}>
     {backHref !== undefined ? (
       <Link to={backHref} className={styles['page-header__back']} aria-label={backLabel}>
-        <span aria-hidden="true">‹</span>
+        &#x2329;
       </Link>
     ) : null}
-    <h1 className={cn(styles['page-header__title'], 'text-heading-6')}>{title}</h1>
+    <h1 className={cn(styles['page-header__title'], 'text-heading-5')}>{title}</h1>
     {actions !== undefined ? <div className={styles['page-header__actions']}>{actions}</div> : null}
   </header>
 )
