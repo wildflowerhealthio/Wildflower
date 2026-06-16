@@ -21,7 +21,7 @@ jobs:
   # Detect whether this change touches TS/JS. A Rust-only PR skips the heavy
   # `vp-check` job below; every push to main runs it regardless.
   changes:
-    name: TypeScript Lint [Detect Changes]
+    name: Detect Changes
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     outputs:
@@ -34,7 +34,7 @@ jobs:
           filters: .github/path-filters.yml
 
   vp-check:
-    name: TypeScript Lint [Check]
+    name: Check
     needs: changes
     # Skip on draft PRs; `pull_request` is null on push events so the draft
     # comparison is true and the job still runs on main.
@@ -90,7 +90,7 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
-      - name: Verify vp check result
+      - name: Verify
         run: |
           changes='${{ needs.changes.result }}'
           vp_check='${{ needs.vp-check.result }}'

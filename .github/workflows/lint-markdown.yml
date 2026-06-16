@@ -1,4 +1,4 @@
-name: Docs Lint
+name: Markdown Lint
 
 on:
   push:
@@ -12,33 +12,8 @@ permissions:
   checks: write
 
 jobs:
-  lint-comments:
-    name: TypeScript TSDoc Lint
-    # Skip on draft PRs; `pull_request` is null on push events so the
-    # comparison is true and the job still runs on main.
-    if: github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          cache: true
-
-      - name: Install dependencies
-        run: vp install
-
-      - name: Enable ESLint problem matcher
-        run: echo "::add-matcher::.github/eslint-problem-matcher.json"
-
-      - name: Run ESLint with eslint-plugin-tsdoc
-        run: vp run lint:comments
-        continue-on-error: true
-
   check-markdown-changes:
-    name: Markdown Lint [Detect Changes]
+    name: Detect Changes
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     outputs:
@@ -53,7 +28,7 @@ jobs:
               - '**/*.md'
 
   markdownlint:
-    name: Markdown Lint [Check]
+    name: Check
     needs: check-markdown-changes
     if: needs.check-markdown-changes.outputs.has-markdown == 'true'
     runs-on: ubuntu-latest

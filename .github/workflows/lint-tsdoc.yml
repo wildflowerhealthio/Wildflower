@@ -1,0 +1,38 @@
+name: Markdown Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  lint-comments:
+    name: Check
+    # Skip on draft PRs; `pull_request` is null on push events so the
+    # comparison is true and the job still runs on main.
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: vp install
+
+      - name: Enable ESLint problem matcher
+        run: echo "::add-matcher::.github/eslint-problem-matcher.json"
+
+      - name: Run ESLint with eslint-plugin-tsdoc
+        run: vp run lint:comments
+        continue-on-error: true
