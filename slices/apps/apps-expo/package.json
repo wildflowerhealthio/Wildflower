@@ -47,7 +47,6 @@
     "jest-expo": "catalog:",
     "react": "catalog:",
     "shared-structures-core": "workspace:*",
-    "tunnel-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -57,7 +56,6 @@
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "react": "catalog:",
-    "shared-structures-core": "workspace:*",
-    "tunnel-core": "workspace:*"
+    "shared-structures-core": "workspace:*"
   }
 }
