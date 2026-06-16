@@ -45,18 +45,31 @@ fn main() {
         config.loopback_port
     );
 
-    // Load the .env file if it exists
-    if let Ok(path) = dotenvy::dotenv() {
-        // Tell Cargo to rerun this script if the .env file changes
-        println!("cargo:rerun-if-changed={}", path.display());
+    // Build-time tunnel seed: read the package-local `.env` (a sibling of this
+    // build script), NOT dotenvy's ancestor-walking `dotenv()` — which, with no
+    // sibling `.env`, resolves the repo-root `.env` and would bake unrelated
+    // secrets (e.g. a `GH_TOKEN`) into the distributed binary. Forward only the
+    // documented WILDFLOWER_TUNNEL_* keys, so an unrelated key in the file is
+    // never compiled in.
+    const TUNNEL_SEED_KEYS: [&str; 5] = [
+        "WILDFLOWER_TUNNEL_PUBLIC_HOST",
+        "WILDFLOWER_TUNNEL_RELAY_REMOTE_ADDR",
+        "WILDFLOWER_TUNNEL_RELAY_TOKEN",
+        "WILDFLOWER_TUNNEL_RELAY_PUBLIC_KEY",
+        "WILDFLOWER_TUNNEL_RELAY_SERVICE_NAME",
+    ];
+    let env_path = Path::new(&manifest_dir).join(".env");
 
-        // Pass each variable from the file into Cargo's build environment
-        for item in dotenvy::from_path_iter(path)
-            .expect("dotenv to be loadable")
+    if env_path.exists() {
+        println!("cargo:rerun-if-changed={}", env_path.display());
+        for item in dotenvy::from_path_iter(&env_path)
+            .expect("pinned .env to be loadable")
             .flatten()
         {
             let (key, value) = item;
-            println!("cargo:rustc-env={key}={value}");
+            if TUNNEL_SEED_KEYS.contains(&key.as_str()) {
+                println!("cargo:rustc-env={key}={value}");
+            }
         }
     }
 
