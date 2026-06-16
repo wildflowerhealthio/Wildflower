@@ -6,8 +6,19 @@
  * (`min-width: 0` lets the flex child shrink below its content width so
  * `text-overflow` can engage) — a long title is clipped on a narrow
  * viewport instead of wrapping onto a second line.
+ *
+ * The header sticks to the top of its scroll container (the authed tab
+ * shell's content column, or the viewport on the public flow pages) so
+ * the title and back affordance stay reachable while the body scrolls.
+ * The solid background and `z-index` keep scrolled content from showing
+ * through; `top: 0` pins it flush once the page shell's top padding has
+ * scrolled away.
  */
 .page-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-background);
   display: flex;
   flex-direction: row;
   align-items: center;
