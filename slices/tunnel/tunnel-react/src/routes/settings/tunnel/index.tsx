@@ -66,8 +66,8 @@ const formatError = (error: unknown): string =>
 
 const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   const replaceMutation = useTunnelReplaceMutation()
-  const hostId = useId()
-  const relayIdBase = useId()
+  const hostInputDomId = useId()
+  const relayInputDomIdBase = useId()
   const [publicHostInput, setPublicHostInput] = useState(state.publicHost ?? '')
   const [syncedRevision, setSyncedRevision] = useState(state.revision)
   const [relay, setRelay] = useState<RelayInput>(() => relayDraftFromState(state))
@@ -75,7 +75,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   // `mutation.data`) so it survives an unrelated toggle and only clears
   // when the user acts on the host. Set by any 409, cleared by a host
   // re-save (Applied) or a fresh host edit.
-  const [conflict, setConflict] = useState(false)
+  const [updateDidConflict, setUpdateDidConflict] = useState(false)
 
   // Re-seed the editable host whenever the server snapshot advances — an
   // Applied save *or* an adopted 409 snapshot. Without this the input keeps
@@ -137,7 +137,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
       { requestedRunning },
       {
         onSuccess: (result) => {
-          if (result._tag === 'Conflict') setConflict(true)
+          if (result._tag === 'Conflict') setUpdateDidConflict(true)
         },
       }
     )
@@ -152,13 +152,13 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
       {
         onSuccess: (result) => {
           if (result._tag === 'Conflict') {
-            setConflict(true)
+            setUpdateDidConflict(true)
             return
           }
           // Applied: the write landed. The relay draft (incl. the now-stored
           // token) is re-prefilled from the refreshed snapshot on the revision
           // change — no manual clearing needed here.
-          setConflict(false)
+          setUpdateDidConflict(false)
         },
       }
     )
@@ -177,7 +177,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
         </p>
       ) : null}
 
-      {conflict ? (
+      {updateDidConflict ? (
         <p className={cn(styles['conflict'], 'text-body-3')} role="status">
           These settings changed elsewhere. The current values are shown below — review them and
           save again to apply your change.
@@ -193,9 +193,9 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
       />
 
       <div className={styles['fields']}>
-        <Field label="Public host" htmlFor={hostId}>
+        <Field label="Public host" htmlFor={hostInputDomId}>
           <input
-            id={hostId}
+            id={hostInputDomId}
             type="text"
             inputMode="url"
             autoComplete="off"
@@ -208,7 +208,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
               setPublicHostInput(e.target.value)
               // Editing the host acknowledges the refreshed values and is a
               // fresh, non-stale decision — so dismiss the conflict banner.
-              if (conflict) setConflict(false)
+              if (updateDidConflict) setUpdateDidConflict(false)
             }}
           />
           <FieldDescription>The public domain the relay routes to this device.</FieldDescription>
@@ -224,7 +224,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
 
         <div className={styles['fields']}>
           {RELAY_FIELDS.map((field) => {
-            const fieldId = `${relayIdBase}-${field.key}`
+            const fieldId = `${relayInputDomIdBase}-${field.key}`
             return (
               <Field key={field.key} label={field.label} htmlFor={fieldId}>
                 <input
