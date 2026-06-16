@@ -12,7 +12,7 @@ serde.workspace = true
 serde_json.workspace = true
 persistence-rust = { path = "../../persistence/persistence-rust" }
 parking_lot = "0.12"
-jsonwebtoken = "9"
+jsonwebtoken = "10"
 rsa = { version = "0.9", features = ["sha2"] }
 sha2 = "0.10"
 argon2 = "0.5"
