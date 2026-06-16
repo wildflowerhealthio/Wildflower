@@ -94,13 +94,19 @@ describe('gatekeeper settings bucket', () => {
     }
   })
 
-  test('declares the four owner-facing landing routes', () => {
+  test('declares the owner-facing landing routes', () => {
     expect([...fullPaths(settings)].toSorted()).toEqual(
       [
         '/settings/gatekeeper/',
         '/settings/gatekeeper/approved/$id',
         '/settings/gatekeeper/requests',
         '/settings/gatekeeper/requests/$id',
+        // The device-authorization flow has an owner-facing twin under
+        // settings (a back link to the access page) alongside the public
+        // `/gatekeeper/devices*` verification URLs — same inner forms,
+        // different chrome.
+        '/settings/gatekeeper/devices',
+        '/settings/gatekeeper/devices/$userCode',
       ].toSorted()
     )
   })
@@ -119,6 +125,8 @@ describe('gatekeeper route tree', () => {
       '/_open/gatekeeper/oauth-polling/$id',
       '/settings/gatekeeper/',
       '/settings/gatekeeper/approved/$id',
+      '/settings/gatekeeper/devices',
+      '/settings/gatekeeper/devices_/$userCode',
       '/settings/gatekeeper/requests',
       '/settings/gatekeeper/requests_/$id',
     ])
@@ -135,6 +143,8 @@ describe('gatekeeper route tree', () => {
         '/gatekeeper/oauth-polling/$id',
         '/settings/gatekeeper/',
         '/settings/gatekeeper/approved/$id',
+        '/settings/gatekeeper/devices',
+        '/settings/gatekeeper/devices/$userCode',
         '/settings/gatekeeper/requests',
         '/settings/gatekeeper/requests/$id',
       ].toSorted()

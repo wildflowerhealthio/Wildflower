@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { AsyncErrorView, ItemList, pageLayoutStyles } from 'react-tundraish'
+import { AsyncErrorView, ItemList, PageHeader, pageLayoutStyles } from 'react-tundraish'
 
 import { formatInstant } from '../../../format-date.ts'
 import {
@@ -87,6 +87,8 @@ const RequestsListBody = ({ requests }: RequestsListBodyProps): JSX.Element => {
 
   return (
     <>
+      <PageHeader title="Requests" backHref="/settings/gatekeeper" />
+
       {errorMessage !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
           {errorMessage}

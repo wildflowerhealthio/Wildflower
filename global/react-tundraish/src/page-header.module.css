@@ -1,0 +1,55 @@
+/*
+ * Shared single-line page header: a leading back link, the title, and an
+ * optional trailing actions slot on one row.
+ *
+ * The title takes the remaining width and truncates with an ellipsis
+ * (`min-width: 0` lets the flex child shrink below its content width so
+ * `text-overflow` can engage) — a long title is clipped on a narrow
+ * viewport instead of wrapping onto a second line.
+ */
+.page-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.page-header__title {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * The back link. A generous square keeps it a comfortable tap target on
+ * touch; the negative left margin pulls the glyph back to the page's left
+ * edge so the title still aligns where it would without a back link.
+ */
+.page-header__back {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-7);
+  height: var(--space-7);
+  margin-left: calc(-1 * var(--space-3));
+  border-radius: var(--radius-2);
+  color: var(--color-foreground);
+  text-decoration: none;
+  font-size: var(--font-size-6);
+  line-height: 1;
+}
+
+.page-header__back:hover {
+  background: var(--color-neutral-9);
+}
+
+.page-header__actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}

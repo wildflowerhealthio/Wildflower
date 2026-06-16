@@ -2,7 +2,13 @@ import { createFileRoute } from '@tanstack/react-router'
 import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { AsyncErrorView, pageLayoutStyles, StatusBadge, type StatusTone } from 'react-tundraish'
+import {
+  AsyncErrorView,
+  PageHeader,
+  pageLayoutStyles,
+  StatusBadge,
+  type StatusTone,
+} from 'react-tundraish'
 
 import { formatInstant } from '../../../format-date.ts'
 import {
@@ -36,9 +42,11 @@ const RequestDetailBody = ({ request, id }: RequestDetailBodyProps): JSX.Element
 
   return (
     <>
+      <PageHeader title="Request" backHref="/settings/gatekeeper/requests" />
+
       <div className={pageLayout['section']}>
-        <h2 className="text-label-3">{request.method}</h2>
-        <h1 className="text-heading-4">{request.url}</h1>
+        <span className="text-label-3">{request.method}</span>
+        <span className="text-body-2">{request.url}</span>
       </div>
 
       <StatusBadge tone={statusTone(request.status)}>{request.status.toUpperCase()}</StatusBadge>

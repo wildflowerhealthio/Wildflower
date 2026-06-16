@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import type { JSX } from 'react'
-import { AsyncErrorView } from 'react-tundraish'
+import { AsyncErrorView, PageHeader } from 'react-tundraish'
 
 import { oauthConsentQueryOptions, useOAuthConsentQuery } from '../../../queries/index.ts'
 import { OAuthConsentForm } from '../../../screens/oauth-consent/oauth-consent-form.tsx'
@@ -9,12 +9,15 @@ const OAuthConsentScreen = ({ id }: { readonly id: string }): JSX.Element => {
   const navigate = useNavigate()
   const { data: consent } = useOAuthConsentQuery(id)
   return (
-    <OAuthConsentForm
-      consent={consent}
-      onDone={() => {
-        void navigate({ to: '/settings/gatekeeper' })
-      }}
-    />
+    <>
+      <PageHeader title="Authorize App" />
+      <OAuthConsentForm
+        consent={consent}
+        onDone={() => {
+          void navigate({ to: '/settings/gatekeeper' })
+        }}
+      />
+    </>
   )
 }
 

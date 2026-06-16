@@ -16,6 +16,7 @@ export {
 export { ItemList, type ItemListItem, type ItemListProps } from './item-list.tsx'
 export { Menu, type MenuItem, type MenuProps } from './menu.tsx'
 export { PageBodyError, type PageBodyErrorProps } from './page-body-error.tsx'
+export { PageHeader, type PageHeaderProps } from './page-header.tsx'
 export { pageLayoutStyles, type PageLayoutClassName } from './page-layout-styles.ts'
 export { PageLoading, type PageLoadingProps } from './page-loading.tsx'
 export { RadioGroup, type RadioGroupProps, type RadioOption } from './radio-group.tsx'

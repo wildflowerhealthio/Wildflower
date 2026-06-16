@@ -4,7 +4,7 @@ import { defaultConfig } from 'fhir-r4-client-collector'
 import { unknownErrorToString } from 'kitchen-sink'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { pageLayoutStyles } from 'react-tundraish'
+import { PageHeader, pageLayoutStyles } from 'react-tundraish'
 
 import { useCreateRemoteMutation } from '../../../queries/index.ts'
 import accountConfig from './account-config.module.css'
@@ -55,7 +55,7 @@ function AccountNewScreen({
 
   return (
     <>
-      <h2 className="text-heading-5">Add Account</h2>
+      <PageHeader title="Add Account" backHref="/collector" />
 
       {error !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>

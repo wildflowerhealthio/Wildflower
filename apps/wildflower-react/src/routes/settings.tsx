@@ -6,9 +6,13 @@ import { authGatedRouteOptions } from '../session/auth-gated-route-options.ts'
 import { AppTabShell } from '../session/tab-bar.tsx'
 
 /**
- * `/settings` layout — persistent "Settings" header that stays visible
- * across child routes. The slice-contributed `/settings/<slice>/…`
- * subtrees render in the `<Outlet />` below the header.
+ * `/settings` layout — the persistent tab shell plus the shared page
+ * shell that the slice-contributed `/settings/<slice>/…` subtrees render
+ * into via `<Outlet />`. The layout deliberately renders no heading of
+ * its own: each child page owns a single `<PageHeader>` (the index's
+ * "Settings", a sub-page's own short title + back link), so a settings
+ * page never stacks the section title on top of its own — the
+ * double-header this layout used to cause.
  *
  * Mounted as a root-level sibling of `_auth` (not under it) so the id
  * (`/settings`) matches what each slice's own generator computes from its
@@ -20,7 +24,6 @@ function SettingsLayout(): JSX.Element {
   return (
     <AppTabShell>
       <div className={pageLayoutStyles['page']}>
-        <h1 className="text-heading-6">Settings</h1>
         <Outlet />
       </div>
     </AppTabShell>

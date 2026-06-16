@@ -10,7 +10,7 @@ import { cn, useAuthTokenSetter } from 'react-kitchen-sink'
 import { Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
 
 import { useGatekeeperRuntimeLayer } from '../router-context.ts'
-import deviceEntryStyles from '../routes/_open/gatekeeper/devices.module.css'
+import deviceCodeStyles from '../styles/device-code.module.css'
 import pageLayout from '../styles/page-layout.module.css'
 
 type DeviceFlowState =
@@ -207,7 +207,7 @@ const NeedsAuthMessage = (): JSX.Element => {
           Open <code>{state.verificationUri}</code> on a signed-in device and enter the code below.
         </p>
         <Field label="Code">
-          <pre className={deviceEntryStyles['pin-input']}>{state.userCode}</pre>
+          <pre className={deviceCodeStyles['pin-input']}>{state.userCode}</pre>
         </Field>
         <FieldDescription>
           Or open the direct link:{' '}
