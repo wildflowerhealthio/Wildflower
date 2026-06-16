@@ -35,7 +35,7 @@ vp install
 
 This is a pnpm + Vite+ workspace organized into:
 
-- **`apps/`** — User-facing applications (`website`, `wildflower`, `wildflower-node`)
+- **`apps/`** — User-facing applications (`website`, `wildflower-react`, `wildflower-tauri`, `wildflower-relay`)
 - **`global/`** — Project-agnostic shared utilities, copy-pastable to other projects
 - **`infrastructure/`** — Cross-slice infrastructure adapters (currently `fhir-r4-remote`)
 - **`slices/`** — Vertical product slices (`apps`, `collector`, `gatekeeper`, `store`, `telemetry`). Each slice is a `<name>-core` plus optional platform adapters (`-web`, `-node`, `-react-native`, `-expo`)

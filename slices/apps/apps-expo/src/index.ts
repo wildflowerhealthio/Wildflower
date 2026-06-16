@@ -14,4 +14,3 @@ const AppsBridgeExpo: {
 }
 
 export { AppsBridgeExpo }
-export type { UseAppsHostBindingOptions } from './use-host-binding.ts'

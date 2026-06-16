@@ -2,40 +2,11 @@ import { HttpApiBuilder, HttpServerResponse } from '@effect/platform'
 import { nanoid } from '@livestore/livestore'
 import { Effect } from 'effect'
 import { LocalHttpServerStore, ServerState } from 'local-http-server-core/livestore'
-import { servedOrigin$, TunnelConfig, TunnelStore, type ServedOrigin } from 'tunnel-core/livestore'
 
 import { AppsApi } from '../http-api-definition/index.ts'
-import { awaitTunnelRunning } from '../internal/await-tunnel-running.ts'
 import { AppSelection, AppsStore } from '../livestore/index.ts'
 import type { AppKind } from '../registry/app-item.ts'
 import { BUNDLED_APPS, FHIR_SHARING_ID, findBundled } from '../registry/index.ts'
-
-/**
- * Drive the tunnel toward `running` if it isn't already there, then return
- * whatever {@link servedOrigin$} reports. Fast path: tunnel is already up,
- * return immediately. Cold path: commit `requestedRunning` (sticky — see
- * {@link awaitTunnelRunning}), wait for the daemon, re-read. Timeout or
- * still-unavailable resolution both surface as `tunnelUnavailable` via
- * the LiveQuery's own taxonomy.
- */
-const resolveLaunchOrigin = (appId: string): Effect.Effect<ServedOrigin, never, TunnelStore> =>
-  Effect.gen(function* () {
-    const tunnelStore = yield* TunnelStore
-    const live = tunnelStore.query(servedOrigin$)
-    if (live.kind === 'tunnel') return live
-    tunnelStore.commit(TunnelConfig.events.tunnelConfigSet({ requestedRunning: true }))
-    return yield* awaitTunnelRunning().pipe(
-      Effect.map(() => tunnelStore.query(servedOrigin$)),
-      Effect.catchTag('TunnelLaunchTimedOut', () =>
-        Effect.zipRight(
-          Effect.logWarning(
-            `[apps-core] tunnel did not start within deadline for ${appId}; falling back to local origin`
-          ),
-          Effect.sync(() => tunnelStore.query(servedOrigin$))
-        )
-      )
-    )
-  })
 
 interface AppEntry {
   id: string
@@ -118,6 +89,25 @@ const appendTunnelUnavailable = (target: string): string => {
   return `${base}${sep}${param}${hash}`
 }
 
+/**
+ * Resolve the origin a `requiresTunnel` app launches at — NO-OP tunnel seam.
+ *
+ * The livestore tunnel daemon (commit `requestedRunning` → await `running`
+ * → public `servedOrigin`) was removed with the TS server stack. This is the
+ * start-the-tunnel-on-launch hook, kept for re-wiring to the Rust tunnel
+ * (`tunnel-rust`: `PUT /tunnel { requestedRunning: true }`, then read
+ * `servedOrigin`). Until then a tunnel-requiring launch falls back to the
+ * local origin and signals `tunnel=unavailable` — exactly the old
+ * timeout-fallback path.
+ */
+const resolveLaunchOrigin = (
+  localOrigin: string,
+  requiresTunnel: boolean
+): { readonly origin: string; readonly tunnelUnavailable: boolean } => ({
+  origin: localOrigin,
+  tunnelUnavailable: requiresTunnel,
+})
+
 const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
   handlers
     .handle('ListApps', () =>
@@ -166,16 +156,18 @@ const layer = HttpApiBuilder.group(AppsApi, 'apps', (handlers) =>
           )
         }
 
-        // Non-tunnel apps always redirect to the loopback origin — device-served
-        // bundles shouldn't round-trip through the relay even when the tunnel is up.
+        // All apps redirect to the loopback origin — device-served bundles
+        // shouldn't round-trip through a relay. `requiresTunnel` apps go through
+        // the no-op tunnel seam, which (until rewired to the Rust tunnel) also
+        // resolves to the local origin but flags `tunnel=unavailable`.
         const { localHostname, port } = localStore.query(ServerState.queries.current$)
         const localOrigin = `http://${localHostname}:${port}`
-        const resolvedOrigin: ServedOrigin = launchContext.requiresTunnel
-          ? yield* resolveLaunchOrigin(path.id)
-          : { kind: 'loopback', origin: localOrigin }
-        const { origin } = resolvedOrigin
+        const { origin, tunnelUnavailable } = resolveLaunchOrigin(
+          localOrigin,
+          launchContext.requiresTunnel
+        )
         const finalize = (target: string): string =>
-          resolvedOrigin.kind === 'tunnelUnavailable' ? appendTunnelUnavailable(target) : target
+          tunnelUnavailable ? appendTunnelUnavailable(target) : target
 
         // Re-check after tunnel state settles: the row may have been
         // deleted or kind-changed mid-flight. Bundled apps have static

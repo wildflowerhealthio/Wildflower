@@ -66,7 +66,6 @@
     "kitchen-sink": "workspace:*",
     "local-http-server-core": "workspace:*",
     "shared-structures-core": "workspace:*",
-    "tunnel-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -80,7 +79,6 @@
     "effect-messaging-core": "workspace:*",
     "kitchen-sink": "workspace:*",
     "local-http-server-core": "workspace:*",
-    "shared-structures-core": "workspace:*",
-    "tunnel-core": "workspace:*"
+    "shared-structures-core": "workspace:*"
   }
 }

@@ -2,7 +2,6 @@ import { HttpApiBuilder } from '@effect/platform'
 import { Layer } from 'effect'
 import type { LocalHttpServerStore } from 'local-http-server-core/livestore'
 import { apiHandlersFor } from 'shared-structures-core/http-api-implementation'
-import type { TunnelStore } from 'tunnel-core/livestore'
 
 import { AppsAdminApi, AppsApi } from '../http-api-definition/index.ts'
 import type { AppsStore } from '../livestore/index.ts'
@@ -19,7 +18,7 @@ const AppsApiHandlersFor = apiHandlersFor<
   'AppsApi',
   ['apps'],
   never,
-  AppsStore | TunnelStore | LocalHttpServerStore
+  AppsStore | LocalHttpServerStore
 >(AppsApiHandlersLive)
 
 // --- Admin (authed) surface ------------------------------------------

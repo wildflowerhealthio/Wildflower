@@ -25,10 +25,6 @@
       "source": "./src/http-api-definition/index.ts",
       "default": "./dist/http-api-definition/index.js"
     },
-    "./http-api-implementation": {
-      "source": "./src/http-api-implementation/index.ts",
-      "default": "./dist/http-api-implementation/index.js"
-    },
     "./bridge": {
       "source": "./src/bridge.ts",
       "default": "./dist/bridge.js"
