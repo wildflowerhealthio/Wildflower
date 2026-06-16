@@ -35,7 +35,7 @@ catalog:
   '@livestore/adapter-expo': 0.4.0-dev.26
   '@livestore/adapter-node': 0.4.0-dev.26
   '@livestore/common': 0.4.0-dev.26
-  '@livestore/devtools-expo': 0.4.0-dev.26
+  '@livestore/devtools-expo': 0.4.0
   '@livestore/devtools-vite': 0.4.0-dev.26
   '@livestore/livestore': 0.4.0-dev.26
   '@livestore/peer-deps': 0.4.0-dev.26
