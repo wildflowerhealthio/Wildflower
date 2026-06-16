@@ -43,6 +43,11 @@ pub struct TunnelStateResponse {
     /// connected-handshake signal. See the type-level docs.
     pub(super) running: bool,
     pub(super) error: Option<String>,
+    /// Dial attempts the live supervisor has made for this revision, resets
+    /// on the next reconcile. Surfaced so an operator can spot a permanent
+    /// misconfiguration (counter climbs with no recovery) without the daemon
+    /// having to classify rathole errors itself.
+    pub(super) attempt: i64,
     /// `https://{publicHost}` while `running` (optimistically — see the
     /// type-level docs), else the loopback fallback.
     pub(super) served_origin: String,
@@ -68,6 +73,7 @@ impl TunnelStateResponse {
             requested_running: settings.requested_running,
             running: observed.running,
             error: observed.error,
+            attempt: observed.attempt,
             served_origin,
         }
     }

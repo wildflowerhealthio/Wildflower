@@ -46,6 +46,13 @@ pub(crate) struct Observed {
     /// retries that haven't yet errored. Treat as "dialing", not "reachable".
     pub running: bool,
     pub error: Option<String>,
+    /// Count of `run_once` invocations for this revision since the supervisor
+    /// started. Resets to 0 on the next reconcile (new revision). A growing
+    /// `attempt` paired with a steady `error` is the operator-facing signal
+    /// for "this is probably a permanent misconfiguration, not a transient outage"
+    /// — the daemon can't classify rathole errors itself, but a long-running
+    /// counter lets the human see it.
+    pub attempt: i64,
 }
 
 /// Exponential reconnect backoff, configurable so tests don't wait on wall time.
@@ -178,6 +185,7 @@ impl TunnelDaemon {
             o.revision = Some(revision);
             o.running = running;
             o.error = error;
+            o.attempt = 0;
         });
 
         let join = tokio::spawn(handover_and_supervise(
@@ -234,22 +242,24 @@ async fn supervise(
 ) {
     let revision = settings.revision;
     if !settings.requested_running {
-        set_observed(&observed, revision, false, None);
+        set_observed(&observed, revision, false, None, 0);
         return;
     }
     let Some(relay) = settings.relay_settings else {
-        set_observed(&observed, revision, false, Some(NOT_CONFIGURED.to_string()));
+        set_observed(&observed, revision, false, Some(NOT_CONFIGURED.to_string()), 0);
         return;
     };
 
     let mut delay = backoff.initial;
+    let mut attempt: i64 = 0;
     loop {
         if cancel.is_cancelled() {
             return;
         }
+        attempt = attempt.saturating_add(1);
         // Optimistic: the attempt is starting (rathole exposes no "connected"
         // signal, so this flips to true before the handshake completes).
-        set_observed(&observed, revision, true, None);
+        set_observed(&observed, revision, true, None, attempt);
         let result = client
             .run_once(&relay, &local_addr, cancel.child_token())
             .await;
@@ -259,16 +269,33 @@ async fn supervise(
         match result {
             Ok(()) => {
                 delay = backoff.initial;
-                set_observed(&observed, revision, false, None)
+                set_observed(&observed, revision, false, None, attempt)
             }
-            Err(error) => set_observed(&observed, revision, false, Some(format!("{error:#}"))),
+            Err(error) => set_observed(
+                &observed,
+                revision,
+                false,
+                Some(format!("{error:#}")),
+                attempt,
+            ),
         }
+        // Jittered sleep — N devices losing the relay together would otherwise
+        // retry in lockstep (thundering herd). Equal jitter keeps a minimum
+        // gap (half the base) while spreading the rest across [0, base/2].
         tokio::select! {
-            () = tokio::time::sleep(delay) => {}
+            () = tokio::time::sleep(jittered(delay)) => {}
             () = cancel.cancelled() => return,
         }
         delay = (delay * 2).min(backoff.max);
     }
+}
+
+/// Equal-jitter backoff: returns a duration in `[base / 2, base]`. Half
+/// deterministic so retries don't pile near zero; half random so concurrent
+/// losers of a relay session don't reconnect in lockstep.
+fn jittered(base: Duration) -> Duration {
+    let half = base / 2;
+    half + half.mul_f64(rand::random::<f64>())
 }
 
 /// Apply an observed-state update for `revision`, ignored when a newer revision
@@ -278,13 +305,18 @@ fn set_observed(
     revision: i64,
     running: bool,
     error: Option<String>,
+    attempt: i64,
 ) {
     observed.send_if_modified(|o| {
-        if o.revision != Some(revision) || (o.running == running && o.error == error) {
+        if o.revision != Some(revision) {
+            return false;
+        }
+        if o.running == running && o.error == error && o.attempt == attempt {
             return false;
         }
         o.running = running;
         o.error = error;
+        o.attempt = attempt;
         true
     });
 }

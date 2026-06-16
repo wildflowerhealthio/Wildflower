@@ -22,6 +22,7 @@ rathole = { version = "0.5", default-features = false, features = [
 ] }
 async-trait = "0.1"
 parking_lot = "0.12"
+rand = "0.8"
 tokio = { workspace = true, features = ["rt", "sync", "macros", "time"] }
 tokio-util = "0.7"
 toml = "0.5"

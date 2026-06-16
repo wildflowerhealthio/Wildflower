@@ -6471,6 +6471,7 @@ dependencies = [
  "parking_lot",
  "persistence-rust",
  "proptest",
+ "rand 0.8.6",
  "rathole",
  "rusqlite",
  "serde",

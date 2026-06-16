@@ -128,6 +128,7 @@ mod tests {
                 "requestedRunning": false,
                 "running": false,
                 "error": null,
+                "attempt": 0,
                 "servedOrigin": "http://127.0.0.1:8080",
             })
         );
@@ -244,6 +245,18 @@ mod tests {
         // and it keeps reconnecting — at least two attempts happen
         started.recv().await.expect("attempt 1");
         started.recv().await.expect("attempt 2");
+
+        // The attempt counter climbs on every retry so an operator can spot a
+        // permanent misconfiguration (steady error + steadily climbing count).
+        observed
+            .wait_for(|o| o.attempt >= 2)
+            .await
+            .expect("attempt count climbs");
+        let (_, body) = send(&st, get()).await;
+        assert!(
+            body["attempt"].as_i64().expect("attempt is a number") >= 2,
+            "wire surfaces the climbing attempt count: {body}",
+        );
     }
 
     /// `publicHost` is a full-replace field, not optional — omitting it must
