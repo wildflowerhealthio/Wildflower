@@ -190,70 +190,49 @@ impl TunnelStore {
     /// Returns any rusqlite error from the read-back or the update.
     pub fn seed_if_absent(&self, seed: &SettingsSeed) -> DbResult<()> {
         let conn = self.conn().lock();
+        // Migration 001 always inserts the singleton row and every `TunnelStore`
+        // migrates before seeding, so the read always finds it — a missing row
+        // is a genuine error, not a fresh namespace to INSERT into.
+        let current = read_settings_with_connection(&conn)?;
 
-        match read_settings_with_connection(&conn) {
-            Ok(current) => {
-                let host_unset = as_none_if_empty(current.public_host.clone()).is_none();
-                let seed_host = host_unset && seed.public_host.is_some();
-                let seed_relay = current.relay_settings.is_none() && seed.relay.is_some();
+        // Seed a field only where the stored value is unconfigured; the relay is
+        // all-or-nothing, gated on the whole block being unset. A `None` bind
+        // makes `COALESCE` keep the stored value, so this is the same single
+        // SET list as `replace_settings` — a future column can't be skipped on
+        // one path. `revision`/`requested_running` are intentionally untouched.
+        let seed_host = if as_none_if_empty(current.public_host.clone()).is_none() {
+            seed.public_host.as_deref()
+        } else {
+            None
+        };
+        let seed_relay = if current.relay_settings.is_none() {
+            seed.relay.as_ref()
+        } else {
+            None
+        };
 
-                if !seed_host && !seed_relay {
-                    return Ok(());
-                }
-                // Each field is set to the seed value where absent, else preserved at
-                // its current value; `revision` is intentionally left out of the SET.
-                let public_host = if seed_host {
-                    seed.public_host.as_deref()
-                } else {
-                    current.public_host.as_deref()
-                };
-                let relay = if seed_relay {
-                    seed.relay.as_ref()
-                } else {
-                    current.relay_settings.as_ref()
-                };
+        if seed_host.is_none() && seed_relay.is_none() {
+            return Ok(());
+        }
 
-                conn.execute(
-                    "UPDATE tunnel_settings SET \
-                    public_host = :public_host, \
-                    relay_remote_addr = :relay_remote_addr, \
-                    relay_token = :relay_token, \
-                    relay_public_key = :relay_public_key, \
-                    service_name = :service_name \
-                    WHERE id = :id",
-                    named_params! {
-                        ":public_host": public_host,
-                        ":relay_remote_addr": relay.map(|r| &r.remote_addr),
-                        ":relay_token": relay.map(|r| &r.token),
-                        ":relay_public_key": relay.map(|r| &r.public_key),
-                        ":service_name": relay.map(|r| &r.service_name),
-                        ":id": TUNNEL_SETTINGS_ID,
-                    },
-                )
-            }
-            // No row at all means a fresh namespace, so treat it as an empty
-            // settings and let the seed fill it in.
-            Err(rusqlite::Error::QueryReturnedNoRows) => {
-                let public_host = seed.public_host.as_deref();
-                let relay = seed.relay.as_ref();
-
-                conn.execute(
-                    "INSERT INTO tunnel_settings (\
-                    id, public_host, relay_remote_addr, relay_token, relay_public_key, service_name\
-                    ) VALUES (\
-                    :id, :public_host, :relay_remote_addr, :relay_token, :relay_public_key, :service_name)",
-                    named_params! {
-                        ":id": TUNNEL_SETTINGS_ID,
-                        ":public_host": public_host,
-                        ":relay_remote_addr": relay.map(|r| &r.remote_addr),
-                        ":relay_token": relay.map(|r| &r.token),
-                        ":relay_public_key": relay.map(|r| &r.public_key),
-                        ":service_name": relay.map(|r| &r.service_name),
-                    },
-                )
-            }
-            Err(e) => return Err(e),
-        }.map(|_| ())
+        conn.execute(
+            "UPDATE tunnel_settings SET \
+                public_host = COALESCE(:public_host, public_host), \
+                relay_remote_addr = COALESCE(:relay_remote_addr, relay_remote_addr), \
+                relay_token = COALESCE(:relay_token, relay_token), \
+                relay_public_key = COALESCE(:relay_public_key, relay_public_key), \
+                service_name = COALESCE(:service_name, service_name) \
+             WHERE id = :id",
+            named_params! {
+                ":public_host": seed_host,
+                ":relay_remote_addr": seed_relay.map(|r| &r.remote_addr),
+                ":relay_token": seed_relay.map(|r| &r.token),
+                ":relay_public_key": seed_relay.map(|r| &r.public_key),
+                ":service_name": seed_relay.map(|r| &r.service_name),
+                ":id": TUNNEL_SETTINGS_ID,
+            },
+        )
+        .map(|_| ())
     }
 }
 
