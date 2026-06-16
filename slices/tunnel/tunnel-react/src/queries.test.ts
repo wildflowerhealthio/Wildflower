@@ -1,9 +1,18 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
-import { QueryClient } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
+import { act, cleanup, render, waitFor } from '@testing-library/react'
 import { Arbitrary, Effect, Layer, pipe, SubscriptionRef } from 'effect'
 import * as fc from 'fast-check'
 import { BearerToken } from 'kitchen-sink/auth-token'
 import { numRunsFor } from 'kitchen-sink/test'
+import { createElement } from 'react'
 import { Tunnel } from 'tunnel-core/http-api-definition'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
@@ -14,10 +23,13 @@ import {
   isTunnelState,
   TUNNEL_STATE_QUERY_KEY,
   tunnelStateQueryOptions,
+  useTunnelReplaceMutation,
   type RunAuthed,
+  type TunnelReplaceInput,
+  type TunnelReplaceResult,
   type TunnelState,
 } from './queries.ts'
-import { sliceRuntimeLayer } from './router-context.ts'
+import { sliceRuntimeLayer, type RouterContext } from './router-context.ts'
 
 /**
  * Drives `tunnelStateQueryOptions(runAuthed)` over the real
@@ -51,6 +63,7 @@ const stubHttpClientLayer = (options?: {
 
 const disposers: Array<() => Promise<void>> = []
 afterEach(async () => {
+  cleanup()
   await Promise.all(disposers.splice(0).map((dispose) => dispose()))
 })
 
@@ -257,5 +270,98 @@ describe('isTunnelState', () => {
     // Structurally close but wrong-typed revision.
     expect(isTunnelState({ ...BASE_STATE, revision: 'nope' })).toBe(false)
     expect(isTunnelState(null)).toBe(false)
+  })
+})
+
+const jsonResponse = (status: number, body: TunnelState): Response =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+// GET serves `served`; every PUT 409s with `conflict` (a *different* snapshot),
+// so the only way the cache can come to hold `conflict` is the mutation's
+// onSuccess adopting `result.current` — a refetch would deliver `served`.
+const makePutConflictHttp = (
+  served: TunnelState,
+  conflict: TunnelState
+): Layer.Layer<HttpClient.HttpClient> =>
+  Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request) =>
+      Effect.succeed(
+        HttpClientResponse.fromWeb(
+          request,
+          request.method === 'PUT' ? jsonResponse(409, conflict) : jsonResponse(200, served)
+        )
+      )
+    )
+  )
+
+/**
+ * Mount ONLY the replace mutation — no {@link useTunnelStateQuery} observer — so
+ * the mutation's `onSettled` invalidate has no active query to refetch. That
+ * leaves nothing to mask whether `onSuccess` adopted the server snapshot into
+ * the cache.
+ */
+const mountReplaceMutation = (
+  httpLayer: Layer.Layer<HttpClient.HttpClient>,
+  seed: TunnelState
+): {
+  readonly queryClient: QueryClient
+  readonly mutate: { current?: (input: TunnelReplaceInput) => Promise<TunnelReplaceResult> }
+} => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  queryClient.setQueryData<TunnelState>(TUNNEL_STATE_QUERY_KEY, seed)
+  disposers.push(() => Promise.resolve(queryClient.clear()))
+
+  const mutate: { current?: (input: TunnelReplaceInput) => Promise<TunnelReplaceResult> } = {}
+  const Harness = (): null => {
+    mutate.current = useTunnelReplaceMutation().mutateAsync
+    return null
+  }
+  const rootRoute = createRootRoute()
+  const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: Harness })
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([indexRoute]),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+    context: {
+      queryClient,
+      runAuthed: makeRunAuthed(httpLayer),
+      runtimeLayer: Layer.die('runtimeLayer not used in this test'),
+      awaitAuthReady: () => Promise.resolve(),
+    } satisfies RouterContext,
+  })
+  render(
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(RouterProvider, { router })
+    )
+  )
+  return { queryClient, mutate }
+}
+
+describe('useTunnelReplaceMutation cache adoption', () => {
+  test('a 409 adopts result.current into the cache (not masked by the refetch)', async () => {
+    const served = BASE_STATE
+    const conflict: TunnelState = { ...BASE_STATE, revision: 6, publicHost: 'other.example.com' }
+    const { queryClient, mutate } = mountReplaceMutation(
+      makePutConflictHttp(served, conflict),
+      served
+    )
+
+    await waitFor(() => {
+      expect(mutate.current).toBeDefined()
+    })
+
+    let result: TunnelReplaceResult | undefined
+    await act(async () => {
+      result = await mutate.current?.({ requestedRunning: true })
+    })
+
+    // The PUT 409'd → Conflict result carrying the server's current snapshot...
+    expect(result).toEqual({ _tag: 'Conflict', current: conflict })
+    // ...and onSuccess adopted it. With no active observer, onSettled's
+    // invalidate can't refetch `served` over it, so the cache proves the
+    // adoption ran: drop the onSuccess setQueryData and this reads `served`.
+    expect(queryClient.getQueryData<TunnelState>(TUNNEL_STATE_QUERY_KEY)).toEqual(conflict)
   })
 })
