@@ -1,4 +1,4 @@
-name: Markdown Lint
+name: TSDoc Lint
 
 on:
   push:
@@ -8,9 +8,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  checks: write
-
 jobs:
   lint-comments:
     name: Check

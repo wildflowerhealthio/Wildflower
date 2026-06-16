@@ -15,7 +15,7 @@ permissions:
 # budget. Pushes to main keep cancel-in-progress off so every main commit gets
 # a complete run.
 concurrency:
-  group: rust-lint-${{ github.ref }}
+  group: rust-tauri-lint-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -79,7 +79,7 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
-      - name: Verify lint + deny results
+      - name: Verify lint result
         run: |
           changes='${{ needs.changes.result }}'
           lint='${{ needs.lint.result }}'
