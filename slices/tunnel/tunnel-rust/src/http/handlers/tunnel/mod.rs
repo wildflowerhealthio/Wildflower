@@ -246,6 +246,57 @@ mod tests {
         started.recv().await.expect("attempt 2");
     }
 
+    /// `publicHost` is a full-replace field, not optional — omitting it must
+    /// be a client error, not a silent NULL write that wipes a configured
+    /// host. (Contrast with the write-only `relay` block, which is optional
+    /// because clients can't echo back what they never see.)
+    #[tokio::test]
+    async fn put_without_public_host_is_rejected() {
+        let (st, _started) = state(Behavior::HoldUntilCancel);
+        // Don't use `send` — axum's Json rejection body isn't JSON, so we
+        // only check the status here.
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(put(
+                serde_json::json!({ "revision": 0, "requestedRunning": false }),
+            ))
+            .await
+            .expect("oneshot");
+        assert!(
+            res.status().is_client_error(),
+            "PUT body lacking publicHost must be a 4xx, got {}",
+            res.status(),
+        );
+    }
+
+    /// An explicit `publicHost: null` is the documented way to clear the host
+    /// — distinct from omission, which is rejected.
+    #[tokio::test]
+    async fn put_with_explicit_null_public_host_clears_it() {
+        let (st, _started) = state(Behavior::HoldUntilCancel);
+        let _ = send(
+            &st,
+            put(serde_json::json!({
+                "revision": 0,
+                "publicHost": "dev1.example.com",
+                "requestedRunning": true,
+                "relay": relay_json(),
+            })),
+        )
+        .await;
+        let (status, body) = send(
+            &st,
+            put(serde_json::json!({
+                "revision": 1,
+                "publicHost": serde_json::Value::Null,
+                "requestedRunning": true,
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["publicHost"], serde_json::Value::Null);
+    }
+
     #[tokio::test]
     async fn turning_off_stops_the_tunnel_and_returns_to_loopback() {
         let (st, _started) = state(Behavior::HoldUntilCancel);

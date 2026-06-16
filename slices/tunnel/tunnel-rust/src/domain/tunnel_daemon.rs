@@ -14,12 +14,20 @@ use std::time::Duration;
 
 use parking_lot::Mutex;
 use tokio::sync::watch;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::domain::{RelayClient, TunnelSettings};
 
 /// Message shown when the tunnel is requested on but the relay isn't configured.
 const NOT_CONFIGURED: &str = "tunnel relay is not configured";
+
+/// How long a freshly-spawned supervisor will wait for the cancelled previous
+/// one to exit before forcibly aborting it. The drain prevents two rathole
+/// clients from briefly dialing the same `service_name` (the relay would
+/// reject the second as a duplicate); the abort cap prevents a misbehaving
+/// old client from leaking forever.
+const CANCEL_GRACE: Duration = Duration::from_secs(5);
 
 /// Observed, in-memory liveness of the live tunnel run. Watched so reads see the
 /// latest value and internal waiters (and tests) can await transitions.
@@ -52,14 +60,25 @@ impl Default for Backoff {
     }
 }
 
+/// The cancel token and join handle of the live supervisor. Held together so
+/// `reconcile` can atomically cancel the previous run and hand its join handle
+/// off to the new task for a bounded drain before the new dial begins.
+struct SupervisorHandle {
+    cancel: CancellationToken,
+    join: JoinHandle<()>,
+}
+
 pub struct TunnelDaemon {
     client: Arc<dyn RelayClient>,
     loopback_origin: String,
     local_port: u16,
     observed_tx: watch::Sender<Observed>,
     observed_rx: watch::Receiver<Observed>,
-    /// Cancels the live supervisor; replaced on every reconcile.
-    cancel: Mutex<Option<CancellationToken>>,
+    /// The live supervisor's cancel token + join handle. Taken and replaced on
+    /// every reconcile; the taken handle is passed to the new task so it can
+    /// drain (and, if the grace period elapses, abort) the previous run before
+    /// dialing.
+    supervisor: Mutex<Option<SupervisorHandle>>,
     backoff: Backoff,
 }
 
@@ -85,7 +104,7 @@ impl TunnelDaemon {
             local_port,
             observed_tx,
             observed_rx,
-            cancel: Mutex::new(None),
+            supervisor: Mutex::new(None),
             backoff,
         }
     }
@@ -110,11 +129,17 @@ impl TunnelDaemon {
     /// later-arriving (lower-revision) reconcile would cancel the live
     /// (higher-revision) supervisor and rewind `observed.revision`, leaving the
     /// DB and the live tunnel disagreeing on which revision is current. Holding
-    /// `cancel` across the whole body keeps the revision check, the cancel
-    /// swap, the observed update, and the spawn atomic against a racing
-    /// reconcile.
+    /// `supervisor` across the whole body keeps the revision check, the
+    /// cancel + handle swap, the observed update, and the spawn atomic against
+    /// a racing reconcile.
+    ///
+    /// The new supervisor task begins by draining the cancelled previous one
+    /// (bounded by [`CANCEL_GRACE`], then `JoinHandle::abort`) so two rathole
+    /// clients can't briefly hold the same `service_name` at the relay — the
+    /// relay rejects the duplicate, which would otherwise surface as a
+    /// spurious error on a tunnel that's actually fine.
     pub(crate) fn reconcile(&self, settings: &TunnelSettings) {
-        let mut cancel = self.cancel.lock();
+        let mut supervisor = self.supervisor.lock();
 
         if let Some(current) = self.observed_tx.borrow().revision {
             if settings.revision <= current {
@@ -127,10 +152,12 @@ impl TunnelDaemon {
             }
         }
 
-        let token = CancellationToken::new();
-        if let Some(old) = cancel.replace(token.clone()) {
-            old.cancel();
+        let previous = supervisor.take();
+        if let Some(SupervisorHandle { cancel, join: _ }) = previous.as_ref() {
+            cancel.cancel();
         }
+
+        let cancel = CancellationToken::new();
 
         // The immediate observed state for a freshly-reconciled `settings`, before the
         // supervisor task runs: optimistic `running` when requested + configured,
@@ -149,15 +176,46 @@ impl TunnelDaemon {
             o.error = error;
         });
 
-        tokio::spawn(supervise(
+        let join = tokio::spawn(handover_and_supervise(
+            previous.map(|h| h.join),
             self.observed_tx.clone(),
             Arc::clone(&self.client),
             format!("127.0.0.1:{}", self.local_port),
             settings.clone(),
-            token,
+            cancel.clone(),
             self.backoff,
         ));
+
+        *supervisor = Some(SupervisorHandle { cancel, join });
     }
+}
+
+/// Drain the previous supervisor (up to [`CANCEL_GRACE`], then abort) before
+/// this revision begins dialing, so the relay never sees two clients holding
+/// the same `service_name`.
+async fn handover_and_supervise(
+    previous: Option<JoinHandle<()>>,
+    observed: watch::Sender<Observed>,
+    client: Arc<dyn RelayClient>,
+    local_addr: String,
+    settings: TunnelSettings,
+    cancel: CancellationToken,
+    backoff: Backoff,
+) {
+    if let Some(mut previous) = previous {
+        if tokio::time::timeout(CANCEL_GRACE, &mut previous)
+            .await
+            .is_err()
+        {
+            tracing::warn!(
+                "previous tunnel supervisor did not exit within {:?}; aborting",
+                CANCEL_GRACE,
+            );
+            previous.abort();
+            let _ = previous.await;
+        }
+    }
+    supervise(observed, client, local_addr, settings, cancel, backoff).await;
 }
 
 /// Drive one revision's tunnel: reconnect with backoff until cancelled. Updates
@@ -257,6 +315,7 @@ impl TunnelDaemon {
 mod tests {
     use super::*;
     use crate::domain::RelaySettings;
+    use tokio::sync::mpsc;
 
     /// A `RelayClient` that returns `Ok` immediately so any spawned supervisor
     /// exits without dialing — these tests are about `reconcile`'s monotonicity,
@@ -320,5 +379,67 @@ mod tests {
         daemon.reconcile(&settings_at(3));
         daemon.reconcile(&settings_at(3));
         assert_eq!(daemon.observed().revision, Some(3));
+    }
+
+    /// What a `TracingRelayClient.run_once` call did across its lifetime.
+    #[derive(Debug, PartialEq, Eq)]
+    enum DialEvent {
+        Started,
+        Ended,
+    }
+
+    /// A `RelayClient` that holds each attempt until cancelled and signals both
+    /// edges — used to assert ordering across a supervisor handover.
+    struct TracingRelayClient {
+        events: mpsc::UnboundedSender<DialEvent>,
+    }
+
+    #[async_trait::async_trait]
+    impl RelayClient for TracingRelayClient {
+        async fn run_once(
+            &self,
+            _relay: &RelaySettings,
+            _local_addr: &str,
+            cancel: CancellationToken,
+        ) -> anyhow::Result<()> {
+            let _ = self.events.send(DialEvent::Started);
+            cancel.cancelled().await;
+            let _ = self.events.send(DialEvent::Ended);
+            Ok(())
+        }
+    }
+
+    fn running_settings(revision: i64) -> TunnelSettings {
+        TunnelSettings {
+            revision,
+            requested_running: true,
+            relay_settings: Some(RelaySettings {
+                remote_addr: "relay.example.com:2333".into(),
+                token: "tok".into(),
+                public_key: "key".into(),
+                service_name: "dev1".into(),
+            }),
+            ..Default::default()
+        }
+    }
+
+    /// On reconcile, the new supervisor's first dial must not start until the
+    /// previous supervisor's dial has ended — otherwise two rathole clients
+    /// briefly hold the same `service_name` and the relay rejects one of them.
+    #[tokio::test]
+    async fn new_supervisor_dials_only_after_old_has_exited() {
+        let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+        let client = Arc::new(TracingRelayClient { events: events_tx });
+        let daemon = TunnelDaemon::new_test(client, "http://127.0.0.1:8080", 8080);
+
+        daemon.reconcile(&running_settings(1));
+        assert_eq!(events_rx.recv().await, Some(DialEvent::Started), "rev 1");
+
+        daemon.reconcile(&running_settings(2));
+
+        // The handover invariant: rev 1's dial ends (cancel propagated through
+        // run_once) before rev 2's dial starts.
+        assert_eq!(events_rx.recv().await, Some(DialEvent::Ended), "rev 1");
+        assert_eq!(events_rx.recv().await, Some(DialEvent::Started), "rev 2");
     }
 }
