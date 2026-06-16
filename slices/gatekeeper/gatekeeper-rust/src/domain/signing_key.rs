@@ -46,7 +46,13 @@ impl SigningKey {
     ///
     /// Returns [`KeyMaterialError::Generate`] if RSA key generation fails.
     pub fn generate() -> Result<SigningKey, KeyMaterialError> {
-        let mut rng = rand::thread_rng();
+        // `rsa` 0.9 bounds its key generation on `rand_core` 0.6's
+        // `CryptoRngCore`, which rand 0.9's `rand_core` 0.9 RNGs (e.g.
+        // `rand::rng()`) do not satisfy. Reuse the `rand_core` 0.6 `OsRng`
+        // re-exported through argon2's password-hash crate — already a
+        // dependency, and the same entropy source used for salt generation in
+        // `crypto_util::client_secret`.
+        let mut rng = argon2::password_hash::rand_core::OsRng;
         let private = RsaPrivateKey::new(&mut rng, 2048).map_err(KeyMaterialError::Generate)?;
         Ok(SigningKey::from(&private))
     }
