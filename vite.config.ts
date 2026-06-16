@@ -70,6 +70,11 @@ export default defineConfig({
       '**/test/snapshots/**',
       'slices/apps/vendor-apps/src/generated-*.ts',
       '**/*.generated.ts',
+      // Rust manifests are owned by the Rust toolchain (`cargo fmt` formats
+      // `.rs` only; Cargo.toml layout is hand-maintained). oxfmt's TOML rules
+      // disagree with how they're written (e.g. collapsing multi-line feature
+      // arrays), which would otherwise fail `vp check` — so skip all TOML.
+      '**/*.toml',
     ],
   },
   lint: {
