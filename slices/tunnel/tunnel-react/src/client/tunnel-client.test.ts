@@ -4,7 +4,7 @@ import { BearerToken } from 'kitchen-sink/auth-token'
 import { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { isTunnelConflict } from '../queries.ts'
+import { isTunnelState } from '../queries.ts'
 import { buildTunnelAdminClientLayer } from './tunnel-client.ts'
 
 const STATE_BODY = {
@@ -214,7 +214,7 @@ describe('buildTunnelAdminClientLayer', () => {
     const result = await Effect.runPromise(program.pipe(Effect.provide(layer), Effect.scoped))
 
     expect(result._tag).toBe('Left')
-    if (result._tag === 'Left' && isTunnelConflict(result.left)) {
+    if (result._tag === 'Left' && isTunnelState(result.left)) {
       expect(result.left.revision).toBe(99)
     } else {
       throw new Error('expected the 409 body to decode into the error channel as a TunnelState')

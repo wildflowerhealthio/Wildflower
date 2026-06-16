@@ -119,13 +119,16 @@ const applyTunnelOptimistic = (previous: TunnelState, input: TunnelReplaceInput)
 })
 
 /**
- * A `409` surfaces the server's current snapshot in the client's error
- * channel, decoded as a {@link TunnelState}. This refinement separates
- * that expected conflict from genuine failures (HttpClientError, decode
- * errors), which don't structurally match the state schema.
+ * Type guard for a `TunnelState`. The `ReplaceTunnel` 409 surfaces the
+ * server's current snapshot in the client's error channel, decoded
+ * against the state schema; this refinement separates that expected
+ * conflict from genuine failures (HttpClientError, decode errors) that
+ * don't structurally match. Built once at module scope — `Schema.is`
+ * compiles the refinement, so it isn't rebuilt per call.
  */
-const isTunnelConflict = (error: unknown): error is TunnelState =>
-  Schema.is(Tunnel.TunnelStateViewSchema)(error)
+const isTunnelState: (error: unknown) => error is TunnelState = Schema.is(
+  Tunnel.TunnelStateViewSchema
+)
 
 interface TunnelReplaceMutationContext {
   readonly previous: TunnelState | undefined
@@ -162,9 +165,9 @@ const useTunnelReplaceMutation = (): UseMutationResult<
         Effect.flatMap(TunnelAdminHttpApiClient, (c) => c.tunnel.ReplaceTunnel({ payload })).pipe(
           Effect.map((state): TunnelReplaceResult => ({ _tag: 'Applied', state })),
           // The 409 body decodes to a `TunnelState` (the current snapshot);
-          // {@link isTunnelConflict} distinguishes it from genuine errors
+          // {@link isTunnelState} distinguishes it from genuine errors
           // (HttpClientError / decode failures), which stay in the channel.
-          Effect.catchIf(isTunnelConflict, (serverSnapshot) =>
+          Effect.catchIf(isTunnelState, (serverSnapshot) =>
             Effect.succeed<TunnelReplaceResult>({ _tag: 'Conflict', current: serverSnapshot })
           ),
           Effect.provide(buildTunnelAdminClientLayer())
@@ -204,7 +207,7 @@ const useTunnelReplaceMutation = (): UseMutationResult<
 export {
   applyTunnelOptimistic,
   buildReplacePayload,
-  isTunnelConflict,
+  isTunnelState,
   TUNNEL_STATE_QUERY_KEY,
   tunnelStateQueryOptions,
   useTunnelReplaceMutation,

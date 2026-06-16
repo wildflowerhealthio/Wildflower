@@ -11,7 +11,7 @@ import type { TunnelAdminHttpApiClient } from 'tunnel-core/clients'
 import {
   applyTunnelOptimistic,
   buildReplacePayload,
-  isTunnelConflict,
+  isTunnelState,
   TUNNEL_STATE_QUERY_KEY,
   tunnelStateQueryOptions,
   type RunAuthed,
@@ -245,26 +245,26 @@ describe('applyTunnelOptimistic', () => {
   })
 })
 
-describe('isTunnelConflict', () => {
+describe('isTunnelState', () => {
   test('accepts a decoded state snapshot (the 409 body)', () => {
-    expect(isTunnelConflict(BASE_STATE)).toBe(true)
+    expect(isTunnelState(BASE_STATE)).toBe(true)
   })
 
   test('any schema-conformant state is recognised as a conflict body', () => {
     fc.assert(
       fc.property(Arbitrary.make(Tunnel.TunnelStateViewSchema), (state) => {
-        expect(isTunnelConflict(state)).toBe(true)
+        expect(isTunnelState(state)).toBe(true)
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 
   test('rejects genuine transport/decode errors', () => {
-    expect(isTunnelConflict(new Error('network down'))).toBe(false)
+    expect(isTunnelState(new Error('network down'))).toBe(false)
     // HttpClientError-shaped value from the client error channel.
-    expect(isTunnelConflict({ _tag: 'ResponseError', request: {}, response: {} })).toBe(false)
+    expect(isTunnelState({ _tag: 'ResponseError', request: {}, response: {} })).toBe(false)
     // Structurally close but wrong-typed revision.
-    expect(isTunnelConflict({ ...BASE_STATE, revision: 'nope' })).toBe(false)
-    expect(isTunnelConflict(null)).toBe(false)
+    expect(isTunnelState({ ...BASE_STATE, revision: 'nope' })).toBe(false)
+    expect(isTunnelState(null)).toBe(false)
   })
 })
