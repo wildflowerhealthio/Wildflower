@@ -167,6 +167,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
+name = "apps-rust"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "http",
+ "http-body-util",
+ "persistence-rust",
+ "rand 0.9.4",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "ar_archive_writer"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7232,6 +7251,7 @@ name = "wildflower-tauri"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "apps-rust",
  "axum",
  "dotenvy",
  "emr-rust",

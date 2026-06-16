@@ -29,6 +29,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde.workspace = true
 serde_json.workspace = true
+apps-rust = { path = "../../../slices/apps/apps-rust" }
 emr-rust = { path = "../../../slices/emr/emr-rust" }
 gatekeeper-rust = { path = "../../../slices/gatekeeper/gatekeeper-rust" }
 persistence-rust = { path = "../../../slices/persistence/persistence-rust" }

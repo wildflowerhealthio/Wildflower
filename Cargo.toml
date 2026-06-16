@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "apps/wildflower-relay",
   "apps/wildflower-tauri/src-tauri",
+  "slices/apps/apps-rust",
   "slices/emr/emr-rust",
   "slices/gatekeeper/gatekeeper-rust",
   "slices/persistence/persistence-rust",
