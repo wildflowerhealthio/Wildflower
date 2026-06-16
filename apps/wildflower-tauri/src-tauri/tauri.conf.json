@@ -12,9 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "wildflower-tauri",
-        "width": 800,
-        "height": 600
+        "title": "Wildflower",
+        "width": 393,
+        "height": 852
       }
     ],
     "security": {
