@@ -56,6 +56,12 @@ pub(crate) fn grantable_scopes(
 /// result. Each flow loads/validates the request with its own loader first,
 /// then funnels both the explicit-deny route and the nothing-granted route of
 /// `approve` through here, so the deny side stays identical across both trees.
+///
+/// Also republishes the active device-consent head: a device-flow deny
+/// may have just resolved the popup's head, so the modal needs to close
+/// (or jump to the next queued request). Code-flow denies are no-ops
+/// against the device-only query, so the call is safe to make here
+/// unconditionally rather than threading a `grant_type` argument.
 pub(crate) fn deny_consent(
     state: &AppState,
     request_id: &str,
@@ -64,5 +70,6 @@ pub(crate) fn deny_consent(
         .store
         .deny_authorization_request(request_id)
         .map_err(|e| HandlerError::internal("deny_authorization_request failed", e))?;
+    state.republish_active_device_user_code();
     Ok(Json(ConsentResult::Denied))
 }

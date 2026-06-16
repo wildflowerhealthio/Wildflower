@@ -2,22 +2,37 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import type { JSX } from 'react'
 import { AsyncErrorView, PageHeader } from 'react-tundraish'
 
-import { deviceConsentQueryOptions } from '../../../queries/index.ts'
-import { DeviceConsentScreen } from '../../../screens/device/device-consent-screen.tsx'
+import { deviceConsentQueryOptions, useDeviceConsentQuery } from '../../../queries/index.ts'
+import { DeviceConsentForm } from '../../../screens/device-consent/device-consent-form.tsx'
+
+const DeviceConsentScreen = ({
+  userCode,
+  onDone,
+}: {
+  readonly userCode: string
+  readonly onDone: () => void
+}): JSX.Element => {
+  const { data: consent } = useDeviceConsentQuery(userCode)
+  return <DeviceConsentForm consent={consent} onDone={onDone} />
+}
 
 /**
  * The `/gatekeeper/devices/$userCode` file route — the public device
  * consent screen reached from the public code-entry page. Renders the
- * shared {@link DeviceConsentScreen} under a header with no back link
+ * shared {@link DeviceConsentForm} under a header with no back link
  * (entered via the published device-flow URL); on a decision it lands the
  * owner in their access settings.
  *
  * The owner-facing equivalent (`/settings/gatekeeper/devices/$userCode`)
- * renders the same screen with a back link to the in-settings entry page.
+ * renders the same form with a back link to the in-settings entry page.
  *
  * Reads the typed `$userCode` path param via `Route.useParams()`. The
  * `_auth` `beforeLoad` gate guarantees a token before this loader runs, so
  * it's a plain `ensureQueryData` — failures propagate to `errorComponent`.
+ *
+ * The same form is reused by the in-app {@link DeviceConsentModalHost}
+ * popup (Tauri-only), which dismisses the modal on `onDone` instead of
+ * navigating.
  */
 function DeviceConsentRoute(): JSX.Element {
   const { userCode } = Route.useParams()

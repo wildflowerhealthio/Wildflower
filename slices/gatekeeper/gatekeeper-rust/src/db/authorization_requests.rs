@@ -130,6 +130,46 @@ impl GatekeeperStore {
             .optional()
     }
 
+    /// Return the `user_code` of the oldest pending, non-expired device-code
+    /// authorization request — the head the host UI surfaces in its
+    /// non-dismissable consent modal. Returns `None` if no such request
+    /// exists.
+    ///
+    /// The host calls this after every transition that may change the head
+    /// (a fresh `/oauth/device_authorization` insert; `approve`/`deny` of a
+    /// device consent) and pushes the result through a `watch::Sender` to
+    /// the webview bridge. The query is intentionally minimal: only the
+    /// `user_code` rides the bridge — the SPA reuses the existing
+    /// `GET /access/devices/{userCode}` fetch path to hydrate the form,
+    /// so this slice doesn't grow a second DTO for the same row.
+    ///
+    /// `NULLS LAST` isn't needed because the `user_code IS NOT NULL`
+    /// filter rules them out; that guard exists at all because a malformed
+    /// half-row could otherwise float to the head with `user_code = NULL`
+    /// and crash the SPA's `string` decoder.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the select query fails or the column can't be
+    /// decoded as `String`.
+    pub fn oldest_pending_device_user_code(&self) -> DbResult<Option<String>> {
+        let now = Utc::now();
+        self.conn()
+            .lock()
+            .query_row(
+                "SELECT user_code FROM authorization_requests \
+                 WHERE grant_type = 'device_code' \
+                   AND status = 'pending' \
+                   AND user_code IS NOT NULL \
+                   AND expires_at > ?1 \
+                 ORDER BY requested_at ASC \
+                 LIMIT 1",
+                params![now],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+    }
+
     /// Persist a freshly-constructed `AuthorizationRequest`.
     ///
     /// # Errors
@@ -401,6 +441,137 @@ mod tests {
             .expect("query")
             .expect("row present");
         assert_eq!(after.status, RequestStatus::Expired);
+    }
+
+    fn device_request(id: &str, user_code: &str, status: RequestStatus) -> AuthorizationRequest {
+        let now = Utc::now();
+        AuthorizationRequest {
+            id: id.to_string(),
+            grant_type: GrantType::DeviceCode,
+            client_id: "device-client".to_string(),
+            requested_scopes: JsonColumn(vec!["openid".to_string()]),
+            code_challenge: None,
+            code_challenge_method: None,
+            redirect_uri: None,
+            client_state: None,
+            user_code: Some(user_code.to_string()),
+            pre_approved_scopes: JsonColumn(vec![]),
+            requested_at: now,
+            expires_at: now + chrono::Duration::minutes(5),
+            last_polled_at: None,
+            status,
+            granted_scopes: None,
+            patient: None,
+        }
+    }
+
+    // FIFO head selector: oldest pending non-expired device-code row wins.
+    // A code-flow row, a non-pending row, and an expired row are all
+    // ignored — proves each filter pulls its weight.
+    #[test]
+    fn oldest_pending_device_user_code_picks_the_fifo_head() {
+        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+
+        // Empty → None.
+        assert_eq!(
+            store
+                .oldest_pending_device_user_code()
+                .expect("query empty"),
+            None
+        );
+
+        // Insert two pending device rows with explicit requested_at ordering;
+        // proptest's arbitrary timestamps would let one shadow the other
+        // without the FIFO discriminator being visible.
+        let now = Utc::now();
+        let mut older = device_request("dev-older", "AAA-111", RequestStatus::Pending);
+        older.requested_at = now - chrono::Duration::seconds(30);
+        let mut newer = device_request("dev-newer", "BBB-222", RequestStatus::Pending);
+        newer.requested_at = now;
+        store
+            .insert_authorization_request(&older)
+            .expect("insert older");
+        store
+            .insert_authorization_request(&newer)
+            .expect("insert newer");
+
+        assert_eq!(
+            store
+                .oldest_pending_device_user_code()
+                .expect("query")
+                .as_deref(),
+            Some("AAA-111")
+        );
+
+        // A code-flow row with an even older requested_at must not become the
+        // head — the query is device-only.
+        let code_row = AuthorizationRequest {
+            id: "code-1".to_string(),
+            grant_type: GrantType::AuthorizationCode,
+            user_code: None,
+            requested_at: now - chrono::Duration::seconds(120),
+            ..device_request("code-1", "unused", RequestStatus::Pending)
+        };
+        store
+            .insert_authorization_request(&code_row)
+            .expect("insert code row");
+        assert_eq!(
+            store
+                .oldest_pending_device_user_code()
+                .expect("query")
+                .as_deref(),
+            Some("AAA-111")
+        );
+
+        // Denying the head promotes the next pending row.
+        store
+            .deny_authorization_request("dev-older")
+            .expect("deny older");
+        assert_eq!(
+            store
+                .oldest_pending_device_user_code()
+                .expect("query")
+                .as_deref(),
+            Some("BBB-222")
+        );
+
+        // Denying the last pending row leaves no head.
+        store
+            .deny_authorization_request("dev-newer")
+            .expect("deny newer");
+        assert_eq!(
+            store
+                .oldest_pending_device_user_code()
+                .expect("query final"),
+            None
+        );
+    }
+
+    // Expired pending rows are filtered out: the FIFO head must skip a row
+    // whose `expires_at` is in the past. The regular insert prunes via
+    // `expires_at < now`, but a row inserted *first* sits in the table
+    // until the next insert sweeps it — the popup query must not pick it
+    // up in that window either.
+    #[test]
+    fn oldest_pending_device_user_code_skips_expired_rows() {
+        let store = GatekeeperStore::open_in_memory().expect("open in-memory store");
+        let mut expired = device_request("dev-expired", "EXP-000", RequestStatus::Pending);
+        expired.expires_at = Utc::now() - chrono::Duration::minutes(1);
+        store
+            .insert_authorization_request(&expired)
+            .expect("insert expired");
+        // Row is in the table (no other insert has swept it).
+        assert!(store
+            .authorization_request_by_id("dev-expired")
+            .expect("query")
+            .is_some());
+        // Popup-head query filters it out.
+        assert_eq!(
+            store
+                .oldest_pending_device_user_code()
+                .expect("query"),
+            None
+        );
     }
 
     // A request that is not `approved` is never claimable and is left untouched

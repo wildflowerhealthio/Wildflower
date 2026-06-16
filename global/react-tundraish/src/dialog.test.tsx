@@ -67,6 +67,28 @@ const ControlledDialog = ({
   )
 }
 
+const ControlledDialogNonDismissable = ({
+  initialOpen,
+  onClose,
+}: {
+  readonly initialOpen: boolean
+  readonly onClose?: () => void
+}): JSX.Element => {
+  const [open, setOpen] = useState(initialOpen)
+  return (
+    <Dialog
+      open={open}
+      dismissable={false}
+      onClose={() => {
+        onClose?.()
+        setOpen(false)
+      }}
+    >
+      Body
+    </Dialog>
+  )
+}
+
 describe('Dialog', () => {
   it('calls showModal when transitioning from closed to open', () => {
     // Arrange
@@ -140,6 +162,58 @@ describe('Dialog', () => {
 
     // Assert
     expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  describe('non-dismissable (dismissable={false})', () => {
+    it('omits the × close button', () => {
+      // Arrange + Act
+      render(
+        <Dialog open={true} onClose={vi.fn()} dismissable={false}>
+          Body
+        </Dialog>
+      )
+
+      // Assert — the dismissable variant renders an `&#215;` text button.
+      const closeButton = document.querySelector('button')
+      expect(closeButton).toBeNull()
+    })
+
+    it('ignores backdrop clicks (no close, no onClose)', () => {
+      // Arrange
+      const onClose = vi.fn()
+      const closeSpy = vi.spyOn(HTMLDialogElement.prototype, 'close')
+      render(<ControlledDialogNonDismissable initialOpen={true} onClose={onClose} />)
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      const dialog = document.querySelector('dialog') as HTMLDialogElement
+      closeSpy.mockClear()
+
+      // Act
+      fireEvent.click(dialog, { target: dialog })
+
+      // Assert
+      expect(closeSpy).not.toHaveBeenCalled()
+      expect(onClose).not.toHaveBeenCalled()
+    })
+
+    it('preventDefaults the native cancel event and never calls onCancel', () => {
+      // Arrange
+      const onCancel = vi.fn()
+      render(
+        <Dialog open={true} onClose={vi.fn()} onCancel={onCancel} dismissable={false}>
+          Body
+        </Dialog>
+      )
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      const dialog = document.querySelector('dialog') as HTMLDialogElement
+      const cancelEvent = new Event('cancel', { bubbles: false, cancelable: true })
+
+      // Act
+      fireEvent(dialog, cancelEvent)
+
+      // Assert
+      expect(cancelEvent.defaultPrevented).toBe(true)
+      expect(onCancel).not.toHaveBeenCalled()
+    })
   })
 
   it('restores focus to the previously focused element on close', () => {

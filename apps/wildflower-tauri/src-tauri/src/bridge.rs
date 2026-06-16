@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use gatekeeper_rust::bridge::GatekeeperHostToWeb;
 use serde::Deserialize;
-use tauri::{AppHandle, Emitter, Listener};
+use tauri::{AppHandle, Emitter, Listener, Manager};
 use tauri_plugin_log::log;
 use tokio::sync::{watch, Notify};
 
@@ -10,7 +10,14 @@ use tokio::sync::{watch, Notify};
 /// `global/effect-messaging/effect-messaging-tauri/src/event-names.ts`.
 pub const READY_EVENT: &str = "bridge:__Ready";
 pub const AUTH_TOKEN_ISSUED_EVENT: &str = "bridge:AuthTokenIssued";
+pub const DEVICE_CONSENT_REQUESTED_EVENT: &str = "bridge:DeviceConsentRequested";
 pub const LOG_EVENT: &str = "bridge:Log";
+
+/// Tauri window label of the main webview, set in
+/// `tauri.conf.json`. The consent-popup arrival path looks the window
+/// up by label to raise/focus it; an unknown label is a config drift
+/// and the focus call is skipped with a log.
+const MAIN_WINDOW_LABEL: &str = "main";
 
 /// Wire shape of a `bridge:Log` payload, pinned by
 /// `effect-messaging-core/src/logging.ts` (`LogMessageBody`). The
@@ -119,10 +126,46 @@ fn format_log_payload(payload: &[serde_json::Value]) -> String {
 /// the underlying channels (it owns the receiving ends for the lifetime
 /// of its resident task) and hands this struct to the caller; the
 /// server task publishes through it. Grows one field per state — slice
-/// crates never see this type, they take a bare `&watch::Sender`.
+/// crates never see this type, they take a bare `watch::Sender`.
 pub struct BridgePublishers {
     pub host_owner_token_sender: watch::Sender<Option<String>>,
+    pub active_device_user_code_sender: watch::Sender<Option<String>>,
 }
+
+/// Raise the main webview window to the foreground so a freshly-arrived
+/// device-consent popup is visible to the operator (the whole point of
+/// the popup — a `verification_uri` could pair while the user is in
+/// another app). `unminimize` plus `set_focus` is the desktop pattern;
+/// `is_minimized` short-circuits the unminimize call so we don't reset
+/// a window that's already in view.
+///
+/// Scoped behind `cfg(desktop)` because mobile Tauri targets either
+/// have no concept of foreground-raise (iOS forbids unsolicited focus
+/// stealing) or expose the surface differently — leaving it on the
+/// desktop branch keeps the iOS/Android builds linkable without a
+/// stub.
+#[cfg(desktop)]
+fn raise_main_window(handle: &AppHandle) {
+    let Some(window) = handle.get_webview_window(MAIN_WINDOW_LABEL) else {
+        log::warn!(
+            "[bridge] window '{MAIN_WINDOW_LABEL}' missing; consent popup focus skipped"
+        );
+        return;
+    };
+    if matches!(window.is_minimized(), Ok(true)) {
+        if let Err(error) = window.unminimize() {
+            log::warn!("[bridge] window unminimize failed: {error}");
+        }
+    }
+    if let Err(error) = window.set_focus() {
+        log::warn!("[bridge] window set_focus failed: {error}");
+    }
+}
+
+/// Mobile builds don't raise the window themselves — see the desktop
+/// variant. An empty stub keeps the dispatch loop platform-blind.
+#[cfg(not(desktop))]
+fn raise_main_window(_handle: &AppHandle) {}
 
 /// Wire the webview↔host bridge onto Tauri's event bus and return the
 /// publishers the server task feeds.
@@ -136,12 +179,30 @@ pub struct BridgePublishers {
 ///   `Notify`'s single stored permit collapses a `__Ready` burst into
 ///   one delivery, and a permit stored before the task first polls is
 ///   not lost, so the boot race is covered.
+/// - Device-consent delivery: the same task forwards the active
+///   pending device-consent head (or `null`) as
+///   `bridge:DeviceConsentRequested` on `__Ready` *and* on every
+///   change. The webview side's
+///   [`ActiveDeviceUserCodeStore`](gatekeeper-react) seeds itself off
+///   the `__Ready` re-delivery, just like the token store does. The
+///   `__Ready` arm uses `borrow()` (not `borrow_and_update`) on the
+///   consent channel: a real DB-driven head change pending in
+///   parallel must still wake the `changed` arm afterwards so the
+///   window-focus path runs. A no-op same-value publish from the
+///   slice side is suppressed at the source via `send_if_modified`,
+///   so the `changed` arm fires only on real transitions.
+/// - Window focus: on a non-`None` consent transition (head was
+///   different and is now `Some`), the main window is raised and
+///   unminimised. `__Ready` re-deliveries skip the focus call — the
+///   webview just reloaded, the user is already looking at it.
 /// - `bridge:Log`: forwards the webview's intercepted `console.*`
 ///   output into the host's `log` facade. Logging is one-way — the log
 ///   plugin has no Webview target, so nothing here can echo back into
 ///   the webview and loop.
 pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     let (host_owner_token_sender, mut token_rx) = watch::channel::<Option<String>>(None);
+    let (active_device_user_code_sender, mut consent_rx) =
+        watch::channel::<Option<String>>(None);
 
     let ready = Arc::new(Notify::new());
     {
@@ -152,28 +213,73 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         loop {
-            tokio::select! {
-                () = ready.notified() => {}
-                changed = token_rx.changed() => {
-                    if changed.is_err() {
-                        log::error!("[bridge] token channel closed; token delivery stopped");
+            // Which arm woke the loop drives whether we re-deliver token,
+            // re-deliver consent, and/or focus the window — see the per-
+            // outcome match below.
+            enum Outcome {
+                Ready,
+                TokenChanged,
+                ConsentChanged,
+            }
+            let outcome = tokio::select! {
+                () = ready.notified() => Outcome::Ready,
+                changed = token_rx.changed() => match changed {
+                    Ok(()) => Outcome::TokenChanged,
+                    Err(_) => {
+                        log::error!("[bridge] token channel closed; delivery stopped");
                         return;
                     }
+                },
+                changed = consent_rx.changed() => match changed {
+                    Ok(()) => Outcome::ConsentChanged,
+                    Err(_) => {
+                        log::error!("[bridge] device-consent channel closed; delivery stopped");
+                        return;
+                    }
+                },
+            };
+
+            match outcome {
+                Outcome::Ready => {
+                    // `borrow_and_update` marks the token seen so a
+                    // delivery triggered by `__Ready` doesn't re-fire
+                    // the `changed` arm for the same token.
+                    let token = token_rx.borrow_and_update().clone();
+                    if let Some(token) = token {
+                        emit_auth_token(&handle, token);
+                    }
+                    // `borrow()` (not `_and_update`) on consent so a
+                    // real head change pending in parallel still wakes
+                    // the `ConsentChanged` arm next iteration — that's
+                    // what runs the window-focus path. A spurious wake
+                    // here would idempotently re-emit the same userCode
+                    // (the webview store no-ops on equal snapshots).
+                    let consent = consent_rx.borrow().clone();
+                    emit_device_consent(&handle, &consent);
                 }
-            }
-            // `borrow_and_update` marks the value seen, so a delivery
-            // triggered by `__Ready` doesn't re-fire the `changed` arm
-            // for the same token. A token change landing before the
-            // first page load emits into the void (Tauri events aren't
-            // buffered) — harmless, the eventual `__Ready` re-delivers.
-            let token = token_rx.borrow_and_update().clone();
-            // `__Ready` before the server has minted: nothing to send
-            // yet; the `changed` arm delivers the moment it exists.
-            let Some(token) = token else { continue };
-            let message = GatekeeperHostToWeb::AuthTokenIssued { token };
-            match handle.emit(AUTH_TOKEN_ISSUED_EVENT, &message) {
-                Ok(()) => log::debug!("[bridge] AuthTokenIssued delivered to webview"),
-                Err(error) => log::error!("[bridge] failed to emit AuthTokenIssued: {error}"),
+                Outcome::TokenChanged => {
+                    let token = token_rx.borrow_and_update().clone();
+                    // A token change landing before the first page
+                    // load emits into the void (Tauri events aren't
+                    // buffered) — harmless, the eventual `__Ready`
+                    // re-delivers.
+                    let Some(token) = token else { continue };
+                    emit_auth_token(&handle, token);
+                }
+                Outcome::ConsentChanged => {
+                    let consent = consent_rx.borrow_and_update().clone();
+                    let is_some = consent.is_some();
+                    emit_device_consent(&handle, &consent);
+                    // Raise the window only on transitions *to* a
+                    // pending head — never on clear-events, never on
+                    // page reloads. Pre-page-ready transitions also
+                    // raise: the user may be in another app while a
+                    // device pairs in the background, and the focus
+                    // is exactly what the popup needs to be visible.
+                    if is_some {
+                        raise_main_window(&handle);
+                    }
+                }
             }
         }
     });
@@ -191,6 +297,27 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
 
     BridgePublishers {
         host_owner_token_sender,
+        active_device_user_code_sender,
+    }
+}
+
+fn emit_auth_token(handle: &AppHandle, token: String) {
+    let message = GatekeeperHostToWeb::AuthTokenIssued { token };
+    match handle.emit(AUTH_TOKEN_ISSUED_EVENT, &message) {
+        Ok(()) => log::debug!("[bridge] AuthTokenIssued delivered to webview"),
+        Err(error) => log::error!("[bridge] failed to emit AuthTokenIssued: {error}"),
+    }
+}
+
+fn emit_device_consent(handle: &AppHandle, user_code: &Option<String>) {
+    let message = GatekeeperHostToWeb::DeviceConsentRequested {
+        user_code: user_code.clone(),
+    };
+    match handle.emit(DEVICE_CONSENT_REQUESTED_EVENT, &message) {
+        Ok(()) => log::debug!(
+            "[bridge] DeviceConsentRequested delivered to webview (userCode={user_code:?})"
+        ),
+        Err(error) => log::error!("[bridge] failed to emit DeviceConsentRequested: {error}"),
     }
 }
 

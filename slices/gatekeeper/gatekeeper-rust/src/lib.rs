@@ -60,6 +60,13 @@ pub struct Gatekeeper {
 ///
 ///  - publishes the host owner token on `local_owner_token_tx` so subscribers (e.g.
 ///    the `WebView` bridge listener) observe it the moment it exists;
+///  - publishes the current head of the pending device-code consent
+///    queue on `active_device_user_code_tx`. The host-side bridge task
+///    forwards this through `bridge:DeviceConsentRequested` events and
+///    focuses the desktop window on transitions to `Some`. Seeding at
+///    boot means a request that was pending across an app restart still
+///    drives the popup (the row survived in SQLite, the in-memory
+///    `watch` value didn't);
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
 ///    `/oauth/*`, and `/access/*` (Owner-only via bearer JWT) — the
 ///    slice owns its mount paths so the caller just `.merge()`s;
@@ -85,6 +92,7 @@ pub fn setup_gatekeeper(
     conn: persistence_rust::Connection,
     config: &GatekeeperConfig,
     local_owner_token_tx: &watch::Sender<Option<String>>,
+    active_device_user_code_tx: watch::Sender<Option<String>>,
 ) -> anyhow::Result<Gatekeeper> {
     let store = seeding::open_and_seed_store(conn)?;
     let host_owner_token =
@@ -96,7 +104,13 @@ pub fn setup_gatekeeper(
     let state = AppState {
         store: store.clone(),
         loopback_origin: config.loopback_origin.clone(),
+        active_device_user_code_sender: active_device_user_code_tx,
     };
+    // Seed the popup head from SQLite so a request that was pending
+    // across an app restart still drives the modal on first webview
+    // load — the `watch` value itself doesn't survive the process, but
+    // the row does.
+    state.republish_active_device_user_code();
     let router = http::router(state.clone());
     Ok(Gatekeeper { router, state })
 }

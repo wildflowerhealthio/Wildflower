@@ -1,30 +1,43 @@
+/**
+ * Shared device-consent form, reused by:
+ *
+ *  - the standalone `/gatekeeper/devices/:userCode` route, which
+ *    navigates away on `onDone`, and
+ *  - the in-app {@link DeviceConsentModalHost} popup (Tauri only),
+ *    which closes the modal on `onDone`.
+ *
+ * The two callers differ only in the `onDone` policy and whether they
+ * need the surrounding `<h1>` heading — the modal supplies the title
+ * via its Dialog header. Everything else (scope toggle, approve/decline
+ * mutation, stale-denied clearing, mutation-error precedence) is shared.
+ */
+
 import { unknownErrorToString } from 'kitchen-sink'
-import { useState, type JSX } from 'react'
+import type { JSX } from 'react'
+import { useState } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Checkbox, Field, FieldDescription, FieldGroup, pageLayoutStyles } from 'react-tundraish'
 
-import {
-  useDeviceConsentMutation,
-  useDeviceConsentQuery,
-  type DeviceConsent,
-} from '../../queries/index.ts'
+import { useDeviceConsentMutation, type DeviceConsent } from '../../queries/index.ts'
 import pageLayout from '../../styles/page-layout.module.css'
 import scopeListStyles from '../../styles/scope-list.module.css'
 
-type DeviceConsentFormProps = {
+interface DeviceConsentFormProps {
   readonly consent: DeviceConsent
   readonly onDone: () => void
+  /**
+   * Whether to render the form's `<h1>Device Authorization</h1>`
+   * heading. Defaults to `true` (standalone route). The modal host
+   * passes `false` because the Dialog already titles the surface.
+   */
+  readonly showHeading?: boolean
 }
 
-/**
- * The device-authorization consent form, lifted out of its route so the
- * public (`/gatekeeper/devices/$userCode`) and owner-facing
- * (`/settings/gatekeeper/devices/$userCode`) surfaces share one
- * implementation and differ only in their page header (the in-settings one
- * carries a back link). Renders no header itself — each route supplies its
- * own `<PageHeader>`.
- */
-const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Element => {
+const DeviceConsentForm = ({
+  consent,
+  onDone,
+  showHeading = true,
+}: DeviceConsentFormProps): JSX.Element => {
   const requestedScopes = consent.requestedScopes
   const consentMutation = useDeviceConsentMutation()
   const [selectedScopes, setSelectedScopes] = useState<ReadonlySet<string>>(
@@ -88,6 +101,8 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
 
   return (
     <>
+      {showHeading ? <h1 className="text-heading-6">Device Authorization</h1> : null}
+
       <Field label="Code">
         <span className="text-body-2">
           <code>{consent.userCode}</code>
@@ -147,21 +162,5 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
   )
 }
 
-type DeviceConsentScreenProps = {
-  readonly userCode: string
-  readonly onDone: () => void
-}
-
-/**
- * Reads the pending device consent for `userCode` (warmed by the route
- * loader, so this resolves from cache) and renders the shared
- * {@link DeviceConsentForm}. Shared by the public and in-settings consent
- * routes; each passes its own `onDone`.
- */
-const DeviceConsentScreen = ({ userCode, onDone }: DeviceConsentScreenProps): JSX.Element => {
-  const { data: consent } = useDeviceConsentQuery(userCode)
-  return <DeviceConsentForm consent={consent} onDone={onDone} />
-}
-
-export { DeviceConsentForm, DeviceConsentScreen }
-export type { DeviceConsentFormProps, DeviceConsentScreenProps }
+export { DeviceConsentForm }
+export type { DeviceConsentFormProps }

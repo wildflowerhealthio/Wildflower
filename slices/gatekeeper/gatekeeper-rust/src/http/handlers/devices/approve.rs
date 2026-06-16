@@ -47,6 +47,7 @@ async fn handle_approve_device_consent(
     );
     if granted_scopes.is_empty() {
         // No requested-and-allowed scopes were approved — treat as a deny.
+        // `deny_consent` republishes the active head itself.
         return deny_consent(&state, &device_request.id);
     }
     let approved = state
@@ -61,5 +62,9 @@ async fn handle_approve_device_consent(
             &user_code,
         ));
     }
+    // The popup's head may have just resolved; recompute and republish
+    // so the modal either closes (no more pending) or jumps to the
+    // next queued request.
+    state.republish_active_device_user_code();
     Ok(Json(ConsentResult::Approved))
 }

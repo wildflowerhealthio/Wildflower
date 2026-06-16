@@ -49,3 +49,13 @@ export {
   makeWebAuthTokenStore,
   TOKEN_STORAGE_KEY,
 } from './client/token-storage.ts'
+
+export {
+  ActiveDeviceUserCodeProvider,
+  makeActiveDeviceUserCodeStore,
+  useActiveDeviceUserCode,
+  type ActiveDeviceUserCodeProviderProps,
+  type ActiveDeviceUserCodeStore,
+} from './active-device-consent/index.ts'
+
+export { DeviceConsentModalHost } from './screens/device-consent/device-consent-modal-host.tsx'

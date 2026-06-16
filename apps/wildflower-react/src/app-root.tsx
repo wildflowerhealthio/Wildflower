@@ -1,6 +1,11 @@
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { type AnyRouter, createRouter, type RouterHistory } from '@tanstack/react-router'
 import { Effect, type Fiber, type Subscribable, Stream } from 'effect'
+import {
+  ActiveDeviceUserCodeProvider,
+  makeActiveDeviceUserCodeStore,
+  type ActiveDeviceUserCodeStore,
+} from 'gatekeeper-react'
 import type { NavTarget } from 'navigation-react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -16,18 +21,21 @@ import { routeTree } from './routeTree.gen.ts'
 
 /**
  * Per-entry transport factory. Receives a stable `navigate` closure
- * that delegates to the router instance (set after `createRouter`)
- * and a `writeIssuedToken` writer threaded from the entry's
- * {@link AuthTokenStore}; returns the page's `BridgeTransport`
- * (narrowed to the React-facing `ReactTransport` surface). Web entries
- * return a pre-resolved stub and ignore the setter (no host bridge to
- * receive `AuthTokenIssued` from); embedded wires `writeIssuedToken`
- * into the gatekeeper page-bridge handler so a host-issued bearer lands
- * in the store.
+ * that delegates to the router instance (set after `createRouter`),
+ * a `writeIssuedToken` writer threaded from the entry's
+ * {@link AuthTokenStore}, and a `setActiveDeviceUserCode` writer
+ * threaded from the in-app {@link ActiveDeviceUserCodeStore}; returns
+ * the page's `BridgeTransport` (narrowed to the React-facing
+ * `ReactTransport` surface). Web entries return a pre-resolved stub
+ * and ignore both setters (no host bridge to receive `AuthTokenIssued`
+ * or `DeviceConsentRequested` from); embedded/Tauri wires both into
+ * the gatekeeper page-bridge handler so host pushes land in the
+ * corresponding stores.
  */
 type MakeTransport = (
   navigate: (to: NavTarget) => void,
-  writeIssuedToken: AuthTokenStore['setToken']
+  writeIssuedToken: AuthTokenStore['setToken'],
+  setActiveDeviceUserCode: ActiveDeviceUserCodeStore['setActiveUserCode']
 ) => Promise<ReactTransport>
 
 /**
@@ -173,7 +181,17 @@ const renderApp = ({
     else void router.navigate({ to })
   }
 
-  const transportPromise = makeTransport(navigate, tokenStore.setToken)
+  // Built once per renderApp. Only the Tauri host ever pushes
+  // `DeviceConsentRequested`, but the store and provider are wired in
+  // every entry so the modal host's hook contract is identical
+  // everywhere (no per-entry guard inside the gatekeeper-react surface).
+  const activeDeviceUserCodeStore = makeActiveDeviceUserCodeStore()
+
+  const transportPromise = makeTransport(
+    navigate,
+    tokenStore.setToken,
+    activeDeviceUserCodeStore.setActiveUserCode
+  )
   const transportReady = transportPromise.then(() => undefined)
   const resolvedAwaitAuthReady = awaitAuthReady(transportReady)
 
@@ -211,7 +229,9 @@ const renderApp = ({
       >
         <QueryClientProvider client={queryClient}>
           <AuthTokenProvider store={tokenStore}>
-            <AppRootTree router={router} transportPromise={transportPromise} />
+            <ActiveDeviceUserCodeProvider store={activeDeviceUserCodeStore}>
+              <AppRootTree router={router} transportPromise={transportPromise} />
+            </ActiveDeviceUserCodeProvider>
           </AuthTokenProvider>
         </QueryClientProvider>
       </ErrorBoundary>

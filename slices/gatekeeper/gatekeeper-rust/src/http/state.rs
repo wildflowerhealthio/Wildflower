@@ -1,3 +1,5 @@
+use tokio::sync::watch;
+
 use crate::db::GatekeeperStore;
 
 /// Shared state threaded through every gatekeeper handler. Opaque to
@@ -16,4 +18,49 @@ pub struct AppState {
     /// `served_origin_for(&headers, &state.loopback_origin)`, never from this
     /// value directly.
     pub(crate) loopback_origin: String,
+    /// Watch sender that publishes the `user_code` of the
+    /// currently-active pending device-code consent request — the head
+    /// the host webview surfaces in its non-dismissable popup. Handlers
+    /// whose write may change the head call
+    /// [`Self::republish_active_device_user_code`] after the write
+    /// completes; the host-side bridge task forwards the value over the
+    /// `bridge:DeviceConsentRequested` event and focuses the window when
+    /// it goes to `Some`.
+    pub(crate) active_device_user_code_sender: watch::Sender<Option<String>>,
+}
+
+impl AppState {
+    /// Recompute the head of the pending device-code consent queue from
+    /// the store and publish it through the bridge's watch sender. Call
+    /// after every transition that may change the head (`/oauth/device_authorization`
+    /// insert, `/access/devices/{userCode}/approve`,
+    /// `/access/devices/{userCode}/deny`).
+    ///
+    /// Uses `send_if_modified` so a transition that leaves the head
+    /// unchanged (e.g. denying a non-head request) does not produce a
+    /// spurious bridge event — the host's window-focus path only wakes
+    /// on real head changes.
+    ///
+    /// DB-read failures are logged and dropped: a degraded popup is
+    /// better than failing the surrounding HTTP request (which is
+    /// already through its write).
+    pub(crate) fn republish_active_device_user_code(&self) {
+        let next = match self.store.oldest_pending_device_user_code() {
+            Ok(next) => next,
+            Err(error) => {
+                tracing::warn!(
+                    "oldest_pending_device_user_code query failed; popup head not refreshed: {error}"
+                );
+                return;
+            }
+        };
+        self.active_device_user_code_sender.send_if_modified(|current| {
+            if *current == next {
+                false
+            } else {
+                *current = next;
+                true
+            }
+        });
+    }
 }

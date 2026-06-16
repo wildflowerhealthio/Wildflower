@@ -5,14 +5,13 @@ import { type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import type { DeviceConsent } from '../../queries/index.ts'
-import { DeviceConsentForm } from './device-consent-screen.tsx'
+import { DeviceConsentForm } from './device-consent-form.tsx'
 
 /**
- * `DeviceConsentForm` is the lifted, shared body of the public and
- * in-settings consent routes; all the consent logic lives here (scope
- * selection, approve vs deny, result handling), so this is the unit worth
- * testing. `DeviceConsentScreen` is a trivial `useDeviceConsentQuery` →
- * render wrapper with no branching, so it isn't tested separately.
+ * `DeviceConsentForm` is the lifted, shared body of the public,
+ * in-settings, and Tauri-modal consent surfaces; all the consent logic
+ * lives here (scope selection, approve vs deny, result handling), so this
+ * is the unit worth testing.
  *
  * The form drives `useDeviceConsentMutation`, which reads `runAuthed` from
  * router context (`useRouteContext`) and runs through a real `useMutation`.
