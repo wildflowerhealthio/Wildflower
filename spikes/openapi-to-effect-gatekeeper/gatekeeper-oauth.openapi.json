@@ -1,0 +1,328 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gatekeeper OAuth API",
+    "version": "0.0.0",
+    "description": "Hand-authored stand-in for the OpenAPI document that `utoipa` + `utoipa-axum` would emit from the gatekeeper Rust HTTP handlers (slices/gatekeeper/gatekeeper-rust/src/http/handlers/oauth + jwks). Modeled from the Rust source of truth (the serde structs/enums and handler signatures), NOT from the current hand-written TS HttpApi. See README.md for how each schema maps to its Rust origin and where the live TS contract has drifted from it."
+  },
+  "paths": {
+    "/.well-known/jwks.json": {
+      "get": {
+        "operationId": "JwksJson",
+        "summary": "RFC 7517 JSON Web Key Set",
+        "responses": {
+          "200": {
+            "description": "The active signing keys as public JWKs.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Jwks" } }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/authorize": {
+      "get": {
+        "operationId": "Authorize",
+        "summary": "Authorization endpoint (RFC 6749 §4.1.1 + PKCE)",
+        "parameters": [
+          { "name": "response_type", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } },
+          { "name": "code_challenge_method", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } },
+          { "name": "client_id", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } },
+          { "name": "scope", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } },
+          { "name": "code_challenge", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } },
+          { "name": "redirect_uri", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } },
+          { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rendered consent / error HTML page.",
+            "content": { "text/html": { "schema": { "type": "string" } } }
+          }
+        }
+      }
+    },
+    "/oauth/authorize/{id}": {
+      "get": {
+        "operationId": "AuthorizationStatus",
+        "summary": "Poll a pending authorization request",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current status of the authorization request.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AuthorizationStatus" } }
+            }
+          },
+          "404": {
+            "description": "No authorization request with that id.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AuthorizationRequestNotFound" } }
+            }
+          },
+          "500": {
+            "description": "Server error (RFC 6749 §5.2).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OAuthError" } }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "operationId": "TokenExchange",
+        "summary": "Token endpoint (RFC 6749 §3.2 / RFC 8628 §3.4)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": { "$ref": "#/components/schemas/TokenRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful token response (RFC 6749 §5.1).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TokenResponse" } }
+            }
+          },
+          "400": {
+            "description": "OAuth error (RFC 6749 §5.2 / RFC 8628 §3.5).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OAuthError" } }
+            }
+          },
+          "401": {
+            "description": "Client authentication failed (RFC 6749 §5.2).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OAuthError" } }
+            }
+          },
+          "500": {
+            "description": "Server error (RFC 6749 §5.2).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OAuthError" } }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/device_authorization": {
+      "post": {
+        "operationId": "DeviceAuthorization",
+        "summary": "Device authorization endpoint (RFC 8628 §3.1)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": { "$ref": "#/components/schemas/DeviceAuthorizationRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Device + user code pair (RFC 8628 §3.2).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/DeviceAuthorizationResponse" } }
+            }
+          },
+          "400": {
+            "description": "OAuth error (RFC 6749 §5.2).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OAuthError" } }
+            }
+          },
+          "401": {
+            "description": "Client authentication failed (RFC 6749 §5.2).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OAuthError" } }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "JsonWebKey": {
+        "type": "object",
+        "description": "RFC 7517 public JWK. Opaque key material; gatekeeper serializes a fixed RSA/EC shape but the wire contract is an open object.",
+        "additionalProperties": true
+      },
+      "Jwks": {
+        "type": "object",
+        "description": "Origin: `jwks.rs::Jwks`.",
+        "properties": {
+          "keys": { "type": "array", "items": { "$ref": "#/components/schemas/JsonWebKey" } }
+        },
+        "required": ["keys"]
+      },
+      "TokenResponse": {
+        "type": "object",
+        "description": "Origin: `internal.rs::TokenResponse` (RFC 6749 §5.1). `refresh_token` and `patient` use `#[serde(skip_serializing_if = \"Option::is_none\")]`, so they are optional (omitted, not null).",
+        "properties": {
+          "access_token": { "type": "string" },
+          "token_type": { "type": "string" },
+          "expires_in": { "type": "integer", "format": "int64" },
+          "scope": { "type": "string" },
+          "refresh_token": { "type": "string" },
+          "patient": { "type": "string" }
+        },
+        "required": ["access_token", "token_type", "expires_in", "scope"]
+      },
+      "OAuthError": {
+        "type": "object",
+        "description": "Origin: `internal.rs::OAuthError` (RFC 6749 §5.2). NOTE: the Rust struct types `error` as `String`; the closed `OAuthErrorCode` set in `error_codes.rs` is NOT reflected in the type utoipa sees, so the generated schema is `string` (not a literal union). See README 'precision regression'.",
+        "properties": {
+          "error": { "type": "string" },
+          "error_description": { "type": "string" }
+        },
+        "required": ["error"]
+      },
+      "AuthorizationRequestNotFound": {
+        "type": "object",
+        "description": "Origin: `HandlerError::not_found(\"AuthorizationRequestNotFound\", \"id\", ...)`.",
+        "properties": {
+          "error": { "type": "string", "enum": ["AuthorizationRequestNotFound"] },
+          "id": { "type": "string" }
+        },
+        "required": ["error", "id"]
+      },
+      "DeviceAuthorizationResponse": {
+        "type": "object",
+        "description": "Origin: `device_authorization.rs::DeviceAuthorizationResponse` (RFC 8628 §3.2).",
+        "properties": {
+          "device_code": { "type": "string" },
+          "user_code": { "type": "string" },
+          "verification_uri": { "type": "string" },
+          "verification_uri_complete": { "type": "string" },
+          "expires_in": { "type": "integer", "format": "int64" },
+          "interval": { "type": "integer", "format": "int64" }
+        },
+        "required": [
+          "device_code",
+          "user_code",
+          "verification_uri",
+          "verification_uri_complete",
+          "expires_in",
+          "interval"
+        ]
+      },
+      "AuthorizationStatusPending": {
+        "type": "object",
+        "properties": { "status": { "type": "string", "enum": ["pending"] } },
+        "required": ["status"]
+      },
+      "AuthorizationStatusDenied": {
+        "type": "object",
+        "description": "`redirect` is `#[serde(skip_serializing_if = \"Option::is_none\")]` — present only for code-flow denials.",
+        "properties": {
+          "status": { "type": "string", "enum": ["denied"] },
+          "redirect": { "type": "string" }
+        },
+        "required": ["status"]
+      },
+      "AuthorizationStatusApproved": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["approved"] },
+          "redirect": { "type": "string" }
+        },
+        "required": ["status", "redirect"]
+      },
+      "AuthorizationStatusError": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["error"] },
+          "message": { "type": "string" }
+        },
+        "required": ["status", "message"]
+      },
+      "AuthorizationStatus": {
+        "description": "Origin: `authorization_status.rs::AuthorizationStatus` — an internally-tagged enum (`#[serde(tag = \"status\", rename_all = \"lowercase\")]`). utoipa emits this as a discriminated `oneOf`.",
+        "oneOf": [
+          { "$ref": "#/components/schemas/AuthorizationStatusPending" },
+          { "$ref": "#/components/schemas/AuthorizationStatusDenied" },
+          { "$ref": "#/components/schemas/AuthorizationStatusApproved" },
+          { "$ref": "#/components/schemas/AuthorizationStatusError" }
+        ],
+        "discriminator": {
+          "propertyName": "status",
+          "mapping": {
+            "pending": "#/components/schemas/AuthorizationStatusPending",
+            "denied": "#/components/schemas/AuthorizationStatusDenied",
+            "approved": "#/components/schemas/AuthorizationStatusApproved",
+            "error": "#/components/schemas/AuthorizationStatusError"
+          }
+        }
+      },
+      "AuthorizationCodeTokenRequest": {
+        "type": "object",
+        "description": "Origin: `token_exchange.rs::TokenPayload::AuthorizationCode` (grant_type = authorization_code), plus the body `client_id`/`client_secret` that `resolve_client_credentials` reads from the same form (the typed enum ignores them). `code_verifier` is RFC 7636 §4.1: 43-128 chars.",
+        "properties": {
+          "grant_type": { "type": "string", "enum": ["authorization_code"] },
+          "client_id": { "type": "string", "minLength": 1 },
+          "client_secret": { "type": "string" },
+          "code": { "type": "string", "minLength": 1 },
+          "code_verifier": { "type": "string", "minLength": 43, "maxLength": 128 },
+          "redirect_uri": { "type": "string", "minLength": 1 }
+        },
+        "required": ["grant_type", "client_id", "code", "code_verifier", "redirect_uri"]
+      },
+      "DeviceCodeTokenRequest": {
+        "type": "object",
+        "description": "Origin: `token_exchange.rs::TokenPayload::DeviceCode` (grant_type = urn:ietf:params:oauth:grant-type:device_code), plus body credentials.",
+        "properties": {
+          "grant_type": {
+            "type": "string",
+            "enum": ["urn:ietf:params:oauth:grant-type:device_code"]
+          },
+          "client_id": { "type": "string", "minLength": 1 },
+          "client_secret": { "type": "string" },
+          "device_code": { "type": "string", "minLength": 1 }
+        },
+        "required": ["grant_type", "client_id", "device_code"]
+      },
+      "RefreshTokenTokenRequest": {
+        "type": "object",
+        "description": "Origin: `token_exchange.rs::TokenPayload::RefreshToken` (grant_type = refresh_token), plus body credentials. NOTE: this whole grant is ABSENT from the current TS `TokenExchangePayloadSchema` union. See README 'drift'.",
+        "properties": {
+          "grant_type": { "type": "string", "enum": ["refresh_token"] },
+          "client_id": { "type": "string", "minLength": 1 },
+          "client_secret": { "type": "string" },
+          "refresh_token": { "type": "string", "minLength": 1 }
+        },
+        "required": ["grant_type", "client_id", "refresh_token"]
+      },
+      "TokenRequest": {
+        "description": "Origin: `token_exchange.rs::TokenPayload` — an internally-tagged enum on `grant_type` with THREE variants. utoipa emits a discriminated `oneOf`.",
+        "oneOf": [
+          { "$ref": "#/components/schemas/AuthorizationCodeTokenRequest" },
+          { "$ref": "#/components/schemas/DeviceCodeTokenRequest" },
+          { "$ref": "#/components/schemas/RefreshTokenTokenRequest" }
+        ],
+        "discriminator": {
+          "propertyName": "grant_type",
+          "mapping": {
+            "authorization_code": "#/components/schemas/AuthorizationCodeTokenRequest",
+            "urn:ietf:params:oauth:grant-type:device_code": "#/components/schemas/DeviceCodeTokenRequest",
+            "refresh_token": "#/components/schemas/RefreshTokenTokenRequest"
+          }
+        }
+      },
+      "DeviceAuthorizationRequest": {
+        "type": "object",
+        "description": "Origin: `device_authorization.rs::DeviceAuthorizationPayload` (typed body = `{ scope?: String }`) plus the body `client_id`/`client_secret` that `resolve_client_credentials` reads from the same form.",
+        "properties": {
+          "client_id": { "type": "string", "minLength": 1 },
+          "client_secret": { "type": "string" },
+          "scope": { "type": "string" }
+        },
+        "required": ["client_id"]
+      }
+    }
+  }
+}
