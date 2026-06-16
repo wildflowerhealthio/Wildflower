@@ -193,7 +193,7 @@ impl TunnelStore {
 
         match read_settings_with_connection(&conn) {
             Ok(current) => {
-                let host_unset = current.public_host.as_deref().unwrap_or("").is_empty();
+                let host_unset = as_none_if_empty(current.public_host.clone()).is_none();
                 let seed_host = host_unset && seed.public_host.is_some();
                 let seed_relay = current.relay_settings.is_none() && seed.relay.is_some();
 
