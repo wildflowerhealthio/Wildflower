@@ -20,7 +20,7 @@ import type { RouterContext, RunAuthed } from './router-context.ts'
 const useRunAuthed = (): RunAuthed =>
   useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })
 
-type TunnelState = Schema.Schema.Type<typeof Tunnel.TunnelStateSchema>
+type TunnelState = Schema.Schema.Type<typeof Tunnel.TunnelStateViewSchema>
 type RelayInput = Schema.Schema.Type<typeof Tunnel.RelayInputSchema>
 type ReplaceTunnelPayload = Schema.Schema.Type<typeof Tunnel.ReplaceTunnelRequestBodySchema>
 
@@ -125,7 +125,7 @@ const applyTunnelOptimistic = (previous: TunnelState, input: TunnelReplaceInput)
  * errors), which don't structurally match the state schema.
  */
 const isTunnelConflict = (error: unknown): error is TunnelState =>
-  Schema.is(Tunnel.TunnelStateSchema)(error)
+  Schema.is(Tunnel.TunnelStateViewSchema)(error)
 
 interface TunnelReplaceMutationContext {
   readonly previous: TunnelState | undefined

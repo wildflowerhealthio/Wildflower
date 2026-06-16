@@ -3,7 +3,11 @@ import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { RelayInputSchema, ReplaceTunnelRequestBodySchema, TunnelStateSchema } from './tunnel.ts'
+import {
+  RelayInputSchema,
+  ReplaceTunnelRequestBodySchema,
+  TunnelStateViewSchema,
+} from './tunnel.ts'
 
 const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
 
@@ -20,19 +24,19 @@ const FRESH_STATE = {
   relay: null,
 }
 
-describe('TunnelStateSchema', () => {
+describe('TunnelStateViewSchema', () => {
   it('round-trips any schema-conformant state', () => {
     fc.assert(
-      fc.property(Arbitrary.make(TunnelStateSchema), (state) => {
-        const encoded = Schema.encodeSync(TunnelStateSchema)(state)
-        expect(Schema.decodeSync(TunnelStateSchema)(encoded)).toEqual(state)
+      fc.property(Arbitrary.make(TunnelStateViewSchema), (state) => {
+        const encoded = Schema.encodeSync(TunnelStateViewSchema)(state)
+        expect(Schema.decodeSync(TunnelStateViewSchema)(encoded)).toEqual(state)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
   it('accepts a fresh-install snapshot', () => {
-    expectRightToEqual(Schema.decodeUnknownEither(TunnelStateSchema)(FRESH_STATE), FRESH_STATE)
+    expectRightToEqual(Schema.decodeUnknownEither(TunnelStateViewSchema)(FRESH_STATE), FRESH_STATE)
   })
 
   it('accepts a running snapshot with a public host, served origin, and relay view', () => {
@@ -51,13 +55,13 @@ describe('TunnelStateSchema', () => {
         serviceName: 'wildflower',
       },
     }
-    expectRightToEqual(Schema.decodeUnknownEither(TunnelStateSchema)(running), running)
+    expectRightToEqual(Schema.decodeUnknownEither(TunnelStateViewSchema)(running), running)
   })
 
   it('strips a stray token from the relay view (token is never part of the view)', () => {
     // Defense in depth: even if the wire carried a token, the view schema
     // drops it so it can't leak into the client's cache.
-    const decoded = Schema.decodeUnknownSync(TunnelStateSchema)({
+    const decoded = Schema.decodeUnknownSync(TunnelStateViewSchema)({
       ...FRESH_STATE,
       relay: {
         remoteAddr: 'relay.example.com:2333',
@@ -74,15 +78,15 @@ describe('TunnelStateSchema', () => {
   })
 
   it('decodes the 409 conflict body — same shape, just a newer revision', () => {
-    // The PUT 409 carries the current snapshot via TunnelStateSchema, so a
+    // The PUT 409 carries the current snapshot via TunnelStateViewSchema, so a
     // bumped-revision body must decode like any other state.
     const conflict = { ...FRESH_STATE, revision: 42 }
-    expectRightToEqual(Schema.decodeUnknownEither(TunnelStateSchema)(conflict), conflict)
+    expectRightToEqual(Schema.decodeUnknownEither(TunnelStateViewSchema)(conflict), conflict)
   })
 
   it('rejects state missing the required requestedRunning flag', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(TunnelStateSchema)({
+      Schema.decodeUnknownEither(TunnelStateViewSchema)({
         ...FRESH_STATE,
         requestedRunning: undefined,
       }),

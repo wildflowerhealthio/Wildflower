@@ -20,7 +20,7 @@ const STATE_BODY = {
 
 // Stub the request transport with one that captures the outgoing
 // `Authorization` header and replies with a canned JSON body matching
-// the `TunnelStateSchema` shape. The bearer-attaching layer should
+// the `TunnelStateViewSchema` shape. The bearer-attaching layer should
 // stamp the header from the `BearerToken` Subscribable at request time,
 // so flipping the token between two calls must surface as two distinct
 // captured values without rebuilding the client layer.

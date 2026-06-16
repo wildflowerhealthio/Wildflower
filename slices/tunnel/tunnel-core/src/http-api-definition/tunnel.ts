@@ -38,7 +38,7 @@ const RelayViewSchema = Schema.Struct({
  * counters they stay well under `2^53`, so `Schema.Number` matches the
  * JSON wire exactly.
  */
-const TunnelStateSchema = Schema.Struct({
+const TunnelStateViewSchema = Schema.Struct({
   revision: Schema.Number,
   publicHost: Schema.NullOr(Schema.String),
   requestedRunning: Schema.Boolean,
@@ -52,7 +52,7 @@ const TunnelStateSchema = Schema.Struct({
 /**
  * Write-only relay connection block — the four fields needed to dial the
  * self-hosted rathole relay. Mirrors the Rust `RelayInput`. Never
- * returned in {@link TunnelStateSchema}, so the client can only *set* it,
+ * returned in {@link TunnelStateViewSchema}, so the client can only *set* it,
  * not echo it back.
  */
 const RelayInputSchema = Schema.Struct({
@@ -89,19 +89,19 @@ const ReplaceTunnelRequestBodySchema = Schema.Struct({
  * `ReplaceTunnel` is a full-replace `PUT`:
  * - **200** returns the new snapshot after the write applied and the
  *   daemon reconciled.
- * - **409** returns the *current* snapshot (same {@link TunnelStateSchema}
+ * - **409** returns the *current* snapshot (same {@link TunnelStateViewSchema}
  *   shape, with the newer `revision`) because the caller's `revision`
  *   was stale — no partial write happened. The client surfaces this in
  *   the error channel as a `TunnelState` value; discriminate it with
- *   `Schema.is(TunnelStateSchema)`.
+ *   `Schema.is(TunnelStateViewSchema)`.
  */
 const httpApiGroup = HttpApiGroup.make('tunnel', { topLevel: false })
-  .add(HttpApiEndpoint.get('GetTunnel', '/tunnel').addSuccess(TunnelStateSchema))
+  .add(HttpApiEndpoint.get('GetTunnel', '/tunnel').addSuccess(TunnelStateViewSchema))
   .add(
     HttpApiEndpoint.put('ReplaceTunnel', '/tunnel')
       .setPayload(ReplaceTunnelRequestBodySchema)
-      .addSuccess(TunnelStateSchema)
-      .addError(TunnelStateSchema, { status: 409 })
+      .addSuccess(TunnelStateViewSchema)
+      .addError(TunnelStateViewSchema, { status: 409 })
   )
 
 export {
@@ -109,5 +109,5 @@ export {
   RelayInputSchema,
   RelayViewSchema,
   ReplaceTunnelRequestBodySchema,
-  TunnelStateSchema,
+  TunnelStateViewSchema,
 }

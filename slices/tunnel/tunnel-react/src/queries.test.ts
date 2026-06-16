@@ -169,7 +169,7 @@ describe('buildReplacePayload', () => {
   test('revision always tracks the snapshot and omitted fields are preserved', () => {
     fc.assert(
       fc.property(
-        Arbitrary.make(Tunnel.TunnelStateSchema),
+        Arbitrary.make(Tunnel.TunnelStateViewSchema),
         fc.option(fc.option(fc.string(), { nil: null }), { nil: undefined }),
         fc.option(fc.boolean(), { nil: undefined }),
         (current, publicHost, requestedRunning) => {
@@ -225,7 +225,7 @@ describe('applyTunnelOptimistic', () => {
     const optionalHost = fc.option(fc.option(fc.string(), { nil: null }), { nil: undefined })
     fc.assert(
       fc.property(
-        Arbitrary.make(Tunnel.TunnelStateSchema),
+        Arbitrary.make(Tunnel.TunnelStateViewSchema),
         optionalHost,
         fc.option(fc.boolean(), { nil: undefined }),
         (previous, publicHost, requestedRunning) => {
@@ -252,7 +252,7 @@ describe('isTunnelConflict', () => {
 
   test('any schema-conformant state is recognised as a conflict body', () => {
     fc.assert(
-      fc.property(Arbitrary.make(Tunnel.TunnelStateSchema), (state) => {
+      fc.property(Arbitrary.make(Tunnel.TunnelStateViewSchema), (state) => {
         expect(isTunnelConflict(state)).toBe(true)
       }),
       { numRuns: numRunsFor({ base: 50 }) }
