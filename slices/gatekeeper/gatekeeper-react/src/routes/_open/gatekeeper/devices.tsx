@@ -16,7 +16,7 @@ const normalize = (raw: string): string => {
 
 function DeviceEntryScreen(): JSX.Element {
   const navigate = useNavigate()
-  const codeId = useId()
+  const codeInputDomId = useId()
   const [code, setCode] = useState('')
 
   const isValid = DEVICE_CODE_PATTERN.test(code)
@@ -31,9 +31,9 @@ function DeviceEntryScreen(): JSX.Element {
       <h1 className="text-heading-6">Enter Device Code</h1>
       <FieldDescription>Enter the code shown on the device requesting access.</FieldDescription>
 
-      <Field label="Code" htmlFor={codeId}>
+      <Field label="Code" htmlFor={codeInputDomId}>
         <input
-          id={codeId}
+          id={codeInputDomId}
           type="text"
           inputMode="text"
           autoComplete="off"
