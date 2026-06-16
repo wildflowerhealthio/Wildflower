@@ -20,7 +20,16 @@ interface TunnelScreenBodyProps {
 // The relay block is collected straight into the wire `RelayInput` (all four
 // fields are strings the user types). Reusing the type means a field add/rename
 // on `RelayInputSchema` is a compile error here, not silent drift.
-const EMPTY_RELAY: RelayInput = { remoteAddr: '', token: '', publicKey: '', serviceName: '' }
+//
+// Build the editable draft from the returned state: the three non-secret fields
+// prefill, but the write-only `token` always starts blank — the server never
+// returns it, so changing the relay requires re-entering it.
+const relayDraftFromState = (state: TunnelState): RelayInput => ({
+  remoteAddr: state.relay?.remoteAddr ?? '',
+  publicKey: state.relay?.publicKey ?? '',
+  serviceName: state.relay?.serviceName ?? '',
+  token: '',
+})
 
 /** Field descriptors for the relay block — single source for the repeated inputs. */
 const RELAY_FIELDS: ReadonlyArray<{
@@ -37,9 +46,9 @@ const RELAY_FIELDS: ReadonlyArray<{
     placeholder: 'relay.example.com:2333',
     inputMode: 'url',
   },
-  { key: 'token', label: 'Token', type: 'password' },
-  { key: 'publicKey', label: 'Public key', type: 'text', placeholder: 'base64 noise public key' },
   { key: 'serviceName', label: 'Service name', type: 'text', placeholder: 'wildflower' },
+  { key: 'publicKey', label: 'Public key', type: 'text', placeholder: 'base64 noise public key' },
+  { key: 'token', label: 'Token', type: 'password' },
 ]
 
 /**
@@ -61,7 +70,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   const relayIdBase = useId()
   const [publicHostInput, setPublicHostInput] = useState(state.publicHost ?? '')
   const [syncedRevision, setSyncedRevision] = useState(state.revision)
-  const [relay, setRelay] = useState<RelayInput>(EMPTY_RELAY)
+  const [relay, setRelay] = useState<RelayInput>(() => relayDraftFromState(state))
   // Unresolved-conflict signal. Tracked explicitly (not derived from
   // `mutation.data`) so it survives an unrelated toggle and only clears
   // when the user acts on the host. Set by any 409, cleared by a host
@@ -77,6 +86,9 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   if (syncedRevision !== state.revision) {
     setSyncedRevision(state.revision)
     setPublicHostInput(state.publicHost ?? '')
+    // Re-prefill the relay draft from the refreshed snapshot (token blanked),
+    // so a saved/adopted relay shows its current non-secret values.
+    setRelay(relayDraftFromState(state))
   }
 
   // Locks inputs even though the optimistic state has already advanced.
@@ -87,18 +99,25 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   const nextPublicHost = normalizeOptionalString(publicHostInput)
   const hostDirty = nextPublicHost !== state.publicHost
 
-  // Relay is all-or-nothing: send all four or none. A partial draft is a
-  // client-side error, never a partial PUT (which would corrupt the
-  // stored relay).
   const relayTrimmed: RelayInput = {
     remoteAddr: relay.remoteAddr.trim(),
     token: relay.token.trim(),
     publicKey: relay.publicKey.trim(),
     serviceName: relay.serviceName.trim(),
   }
-  const relayFilledCount = Object.values(relayTrimmed).filter((value) => value !== '').length
-  const relayComplete = relayFilledCount === 4
-  const relayPartial = relayFilledCount > 0 && relayFilledCount < 4
+  // Only a *dirtied* relay is validated and sent. Dirty = a visible field
+  // differs from the returned value, or a token was entered (the token is
+  // never returned, so any token is a change). An untouched relay is omitted
+  // from the PUT — the server keeps the stored connection.
+  const relayDirty =
+    relayTrimmed.remoteAddr !== (state.relay?.remoteAddr ?? '') ||
+    relayTrimmed.publicKey !== (state.relay?.publicKey ?? '') ||
+    relayTrimmed.serviceName !== (state.relay?.serviceName ?? '') ||
+    relayTrimmed.token !== ''
+  // A relay change is all-or-nothing and must carry a fresh token (the stored
+  // one can't be reused — it's never echoed back).
+  const relayComplete = Object.values(relayTrimmed).every((value) => value !== '')
+  const relayInvalid = relayDirty && !relayComplete
 
   const updateRelay =
     (key: keyof RelayInput) =>
@@ -107,7 +126,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
       setRelay((draft) => ({ ...draft, [key]: value }))
     }
 
-  const canSave = !pending && !relayPartial && (hostDirty || relayComplete)
+  const canSave = !pending && !relayInvalid && (hostDirty || relayDirty)
 
   const onToggle = (requestedRunning: boolean): void => {
     // Toggle never touches the host or relay — the mutation fills those
@@ -128,7 +147,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
     replaceMutation.mutate(
       {
         publicHost: nextPublicHost,
-        ...(relayComplete ? { relay: relayTrimmed } : {}),
+        ...(relayDirty ? { relay: relayTrimmed } : {}),
       },
       {
         onSuccess: (result) => {
@@ -136,10 +155,10 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
             setConflict(true)
             return
           }
-          // Applied: the host write landed — resolve the conflict and clear
-          // the (write-only) relay draft now that it's actually stored.
+          // Applied: the write landed. The relay draft (incl. the now-stored
+          // token) is re-prefilled from the refreshed snapshot on the revision
+          // change — no manual clearing needed here.
           setConflict(false)
-          if (relayComplete) setRelay(EMPTY_RELAY)
         },
       }
     )
@@ -197,10 +216,10 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
       </div>
 
       <details className={styles['relay']}>
-        <summary className={styles['relay__summary']}>Relay connection</summary>
+        <summary className={styles['relay__summary']}>Relay Server</summary>
         <FieldDescription>
-          Connection details for the self-hosted rathole relay. Stored securely and not shown after
-          saving — re-enter all four fields to change them.
+          Connection details for the self-hosted rathole relay. The token is never shown — enter a
+          new one to change the connection.
         </FieldDescription>
 
         <div className={styles['fields']}>
@@ -226,11 +245,11 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
         </div>
       </details>
 
-      {relayPartial ? (
+      {relayInvalid ? (
         // Outside the collapsible block so a disabled Save is always
         // explained even when the relay section is collapsed.
         <p className={cn(styles['relay__error'], 'text-body-3')} role="alert">
-          Fill all four relay fields, or clear them all to keep the stored connection.
+          To change the relay, fill all four fields including a new token.
         </p>
       ) : null}
 

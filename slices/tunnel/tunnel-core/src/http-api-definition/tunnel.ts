@@ -2,10 +2,22 @@ import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { Schema } from 'effect'
 
 /**
+ * The readable view of the relay connection — the non-secret fields,
+ * mirroring the Rust `RelayView`. The `token` is write-only and never
+ * returned, so it's absent here. `null` on the wire means no relay is
+ * configured.
+ */
+const RelayViewSchema = Schema.Struct({
+  remoteAddr: Schema.String,
+  publicKey: Schema.String,
+  serviceName: Schema.String,
+})
+
+/**
  * Tunnel state on the wire — mirrors the Rust `TunnelStateResponse`
  * (`slices/tunnel/tunnel-rust/.../tunnel_state_response.rs`,
- * `#[serde(rename_all = "camelCase")]`). Relay connection details are
- * write-only and never appear here.
+ * `#[serde(rename_all = "camelCase")]`). The relay's non-secret fields are
+ * returned in `relay` (the `token` stays write-only and never appears here).
  *
  * `revision` is the optimistic-concurrency token: a PUT must echo the
  * last-seen revision, and a stale one is rejected with `409` (see
@@ -34,6 +46,7 @@ const TunnelStateSchema = Schema.Struct({
   error: Schema.NullOr(Schema.String),
   attempt: Schema.Number,
   servedOrigin: Schema.String,
+  relay: Schema.NullOr(RelayViewSchema),
 })
 
 /**
@@ -91,4 +104,10 @@ const httpApiGroup = HttpApiGroup.make('tunnel', { topLevel: false })
       .addError(TunnelStateSchema, { status: 409 })
   )
 
-export { httpApiGroup, RelayInputSchema, ReplaceTunnelRequestBodySchema, TunnelStateSchema }
+export {
+  httpApiGroup,
+  RelayInputSchema,
+  RelayViewSchema,
+  ReplaceTunnelRequestBodySchema,
+  TunnelStateSchema,
+}

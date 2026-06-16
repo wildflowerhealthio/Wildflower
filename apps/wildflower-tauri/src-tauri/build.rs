@@ -45,5 +45,20 @@ fn main() {
         config.loopback_port
     );
 
+    // Load the .env file if it exists
+    if let Ok(path) = dotenvy::dotenv() {
+        // Tell Cargo to rerun this script if the .env file changes
+        println!("cargo:rerun-if-changed={}", path.display());
+
+        // Pass each variable from the file into Cargo's build environment
+        for item in dotenvy::from_path_iter(path)
+            .expect("dotenv to be loadable")
+            .flatten()
+        {
+            let (key, value) = item;
+            println!("cargo:rustc-env={key}={value}");
+        }
+    }
+
     tauri_build::build();
 }

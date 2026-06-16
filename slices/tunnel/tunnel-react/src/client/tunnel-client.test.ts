@@ -15,6 +15,7 @@ const STATE_BODY = {
   error: null,
   attempt: 0,
   servedOrigin: 'http://127.0.0.1:8080',
+  relay: null,
 }
 
 // Stub the request transport with one that captures the outgoing

@@ -17,6 +17,7 @@ const FRESH_STATE = {
   error: null,
   attempt: 0,
   servedOrigin: 'http://127.0.0.1:8080',
+  relay: null,
 }
 
 describe('TunnelStateSchema', () => {
@@ -34,7 +35,7 @@ describe('TunnelStateSchema', () => {
     expectRightToEqual(Schema.decodeUnknownEither(TunnelStateSchema)(FRESH_STATE), FRESH_STATE)
   })
 
-  it('accepts a running snapshot with a public host and served origin', () => {
+  it('accepts a running snapshot with a public host, served origin, and relay view', () => {
     const running = {
       revision: 7,
       publicHost: 'my-clinic.example.com',
@@ -43,8 +44,33 @@ describe('TunnelStateSchema', () => {
       error: null,
       attempt: 2,
       servedOrigin: 'https://my-clinic.example.com',
+      // The relay view is the non-secret fields only — no token.
+      relay: {
+        remoteAddr: 'relay.example.com:2333',
+        publicKey: 'base64key',
+        serviceName: 'wildflower',
+      },
     }
     expectRightToEqual(Schema.decodeUnknownEither(TunnelStateSchema)(running), running)
+  })
+
+  it('strips a stray token from the relay view (token is never part of the view)', () => {
+    // Defense in depth: even if the wire carried a token, the view schema
+    // drops it so it can't leak into the client's cache.
+    const decoded = Schema.decodeUnknownSync(TunnelStateSchema)({
+      ...FRESH_STATE,
+      relay: {
+        remoteAddr: 'relay.example.com:2333',
+        publicKey: 'base64key',
+        serviceName: 'wildflower',
+        token: 'leaked',
+      },
+    })
+    expect(decoded.relay).toEqual({
+      remoteAddr: 'relay.example.com:2333',
+      publicKey: 'base64key',
+      serviceName: 'wildflower',
+    })
   })
 
   it('decodes the 409 conflict body — same shape, just a newer revision', () => {

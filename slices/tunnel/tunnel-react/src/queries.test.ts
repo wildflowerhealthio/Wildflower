@@ -33,6 +33,7 @@ const TUNNEL_STATE_BODY = {
   error: null,
   attempt: 0,
   servedOrigin: 'http://127.0.0.1:8080',
+  relay: null,
 }
 
 // `failing: true` always 500s — drives the rejecting read path that the
@@ -90,6 +91,7 @@ const BASE_STATE: TunnelState = {
   error: null,
   attempt: 0,
   servedOrigin: 'http://127.0.0.1:8080',
+  relay: null,
 }
 
 const RELAY = {

@@ -103,6 +103,16 @@ pub enum SettingsUpdateOutcome {
     Conflict(TunnelSettings),
 }
 
+/// Build-time defaults seeded into the row at startup. Each field fills the
+/// stored value only when it's currently unconfigured (see
+/// [`TunnelStore::seed_if_absent`]), so a fresh install picks up the baked-in
+/// connection while an in-app edit is never overwritten.
+#[derive(Debug, Clone, Default)]
+pub struct SettingsSeed {
+    pub public_host: Option<String>,
+    pub relay: Option<RelaySettings>,
+}
+
 impl TunnelStore {
     /// Read the singleton settings row.
     ///
@@ -165,6 +175,85 @@ impl TunnelStore {
         } else {
             SettingsUpdateOutcome::Conflict(current)
         })
+    }
+
+    /// Fill `public_host` and/or the relay block from build-time defaults, but
+    /// only where the stored value is currently unconfigured — an in-app edit is
+    /// never clobbered. Does **not** bump `revision` (this is initialization,
+    /// not a user write). A no-op once configured, or when the seed is empty.
+    ///
+    /// Runs once at startup before the slice serves, so the single shared
+    /// connection has no concurrent writer to race.
+    ///
+    /// # Errors
+    ///
+    /// Returns any rusqlite error from the read-back or the update.
+    pub fn seed_if_absent(&self, seed: &SettingsSeed) -> DbResult<()> {
+        let conn = self.conn().lock();
+
+        match read_settings_with_connection(&conn) {
+            Ok(current) => {
+                let host_unset = current.public_host.as_deref().unwrap_or("").is_empty();
+                let seed_host = host_unset && seed.public_host.is_some();
+                let seed_relay = current.relay_settings.is_none() && seed.relay.is_some();
+
+                if !seed_host && !seed_relay {
+                    return Ok(());
+                }
+                // Each field is set to the seed value where absent, else preserved at
+                // its current value; `revision` is intentionally left out of the SET.
+                let public_host = if seed_host {
+                    seed.public_host.as_deref()
+                } else {
+                    current.public_host.as_deref()
+                };
+                let relay = if seed_relay {
+                    seed.relay.as_ref()
+                } else {
+                    current.relay_settings.as_ref()
+                };
+
+                conn.execute(
+                    "UPDATE tunnel_settings SET \
+                    public_host = :public_host, \
+                    relay_remote_addr = :relay_remote_addr, \
+                    relay_token = :relay_token, \
+                    relay_public_key = :relay_public_key, \
+                    service_name = :service_name \
+                    WHERE id = :id",
+                    named_params! {
+                        ":public_host": public_host,
+                        ":relay_remote_addr": relay.map(|r| &r.remote_addr),
+                        ":relay_token": relay.map(|r| &r.token),
+                        ":relay_public_key": relay.map(|r| &r.public_key),
+                        ":service_name": relay.map(|r| &r.service_name),
+                        ":id": TUNNEL_SETTINGS_ID,
+                    },
+                )
+            }
+            // No row at all means a fresh namespace, so treat it as an empty
+            // settings and let the seed fill it in.
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                let public_host = seed.public_host.as_deref();
+                let relay = seed.relay.as_ref();
+
+                conn.execute(
+                    "INSERT INTO tunnel_settings (\
+                    id, public_host, relay_remote_addr, relay_token, relay_public_key, service_name\
+                    ) VALUES (\
+                    :id, :public_host, :relay_remote_addr, :relay_token, :relay_public_key, :service_name)",
+                    named_params! {
+                        ":id": TUNNEL_SETTINGS_ID,
+                        ":public_host": public_host,
+                        ":relay_remote_addr": relay.map(|r| &r.remote_addr),
+                        ":relay_token": relay.map(|r| &r.token),
+                        ":relay_public_key": relay.map(|r| &r.public_key),
+                        ":service_name": relay.map(|r| &r.service_name),
+                    },
+                )
+            }
+            Err(e) => return Err(e),
+        }.map(|_| ())
     }
 }
 
@@ -331,5 +420,52 @@ mod tests {
         let s = store.get_settings().unwrap();
         assert_eq!(s.public_host.as_deref(), Some("dev2.example.com"));
         assert_eq!(s.relay_settings, Some(relay()), "relay kept");
+    }
+
+    #[test]
+    fn seed_fills_absent_fields_without_bumping_revision() {
+        let store = store();
+        store
+            .seed_if_absent(&SettingsSeed {
+                public_host: Some("seed.example.com".into()),
+                relay: Some(relay()),
+            })
+            .unwrap();
+        let s = store.get_settings().unwrap();
+        assert_eq!(s.revision, 0, "seeding is initialization, not a write");
+        assert_eq!(s.public_host.as_deref(), Some("seed.example.com"));
+        assert_eq!(s.relay_settings, Some(relay()));
+    }
+
+    #[test]
+    fn seed_never_clobbers_a_configured_value() {
+        let store = store();
+        // The user configures via the API (bumps revision to 1).
+        store
+            .replace_settings(
+                0,
+                SettingsUpdate {
+                    public_host: Some("user.example.com".into()),
+                    requested_running: false,
+                    relay_settings: Some(relay()),
+                },
+            )
+            .unwrap();
+        // A later boot with different baked-in defaults must not overwrite it.
+        store
+            .seed_if_absent(&SettingsSeed {
+                public_host: Some("seed.example.com".into()),
+                relay: Some(RelaySettings {
+                    remote_addr: "other:1".into(),
+                    token: "other".into(),
+                    public_key: "other".into(),
+                    service_name: "other".into(),
+                }),
+            })
+            .unwrap();
+        let s = store.get_settings().unwrap();
+        assert_eq!(s.public_host.as_deref(), Some("user.example.com"), "kept");
+        assert_eq!(s.relay_settings, Some(relay()), "kept");
+        assert_eq!(s.revision, 1, "seed didn't bump revision");
     }
 }

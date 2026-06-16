@@ -20,6 +20,19 @@ const INITIAL: TunnelState = {
   error: null,
   attempt: 0,
   servedOrigin: 'http://127.0.0.1:8080',
+  relay: null,
+}
+
+// A snapshot with a configured relay (non-secret fields returned; token never).
+const CONFIGURED: TunnelState = {
+  ...INITIAL,
+  revision: 3,
+  publicHost: 'clinic.example.com',
+  relay: {
+    remoteAddr: 'relay.example.com:2333',
+    publicKey: 'base64key',
+    serviceName: 'wildflower',
+  },
 }
 
 const jsonResponse = (status: number, body: TunnelState): Response =>
@@ -55,12 +68,12 @@ const makeConflictThenApplyHttp = (): Layer.Layer<HttpClient.HttpClient> => {
   )
 }
 
-/** A server that only ever serves the initial snapshot (no writes expected). */
-const makeReadOnlyHttp = (): Layer.Layer<HttpClient.HttpClient> =>
+/** A server that only ever serves a fixed snapshot (no writes expected). */
+const makeReadOnlyHttp = (snapshot: TunnelState = INITIAL): Layer.Layer<HttpClient.HttpClient> =>
   Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request) =>
-      Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(200, INITIAL)))
+      Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(200, snapshot)))
     )
   )
 
@@ -85,11 +98,14 @@ const makeRunAuthed = (httpLayer: Layer.Layer<HttpClient.HttpClient>): RunAuthed
     )
 }
 
-const renderTunnelRoute = (httpLayer: Layer.Layer<HttpClient.HttpClient>): QueryClient => {
+const renderTunnelRoute = (
+  httpLayer: Layer.Layer<HttpClient.HttpClient>,
+  seedState: TunnelState = INITIAL
+): QueryClient => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   // Warm the cache so the route renders without suspending; the stub GET
   // still backs the `onSettled` refetch.
-  queryClient.setQueryData<TunnelState>(TUNNEL_STATE_QUERY_KEY, INITIAL)
+  queryClient.setQueryData<TunnelState>(TUNNEL_STATE_QUERY_KEY, seedState)
   const context: RouterContext = {
     queryClient,
     runAuthed: makeRunAuthed(httpLayer),
@@ -112,6 +128,12 @@ const renderTunnelRoute = (httpLayer: Layer.Layer<HttpClient.HttpClient>): Query
 const asInput = (el: HTMLElement): HTMLInputElement => {
   if (!(el instanceof HTMLInputElement)) throw new Error('expected an <input> element')
   return el
+}
+
+const saveButton = (): HTMLButtonElement => {
+  const button = screen.getByRole('button', { name: 'Save' })
+  if (!(button instanceof HTMLButtonElement)) throw new Error('expected a <button>')
+  return button
 }
 
 afterEach(() => {
@@ -167,19 +189,48 @@ describe('tunnel settings form — conflict flow', () => {
   })
 })
 
-describe('tunnel settings form — relay validation', () => {
-  test('a partial relay draft surfaces an error outside the collapsed section and disables Save', async () => {
+describe('tunnel settings form — relay', () => {
+  test('dirtying a relay field without a token surfaces an error and disables Save', async () => {
     renderTunnelRoute(makeReadOnlyHttp())
 
     await screen.findByLabelText('Public host')
-    // Fill only one of the four relay fields.
+    // Type into one relay field but supply no token.
     fireEvent.change(screen.getByLabelText('Relay address'), {
       target: { value: 'relay.example.com:2333' },
     })
 
-    expect(screen.getByText(/Fill all four relay fields/i)).toBeDefined()
-    const save = screen.getByRole('button', { name: 'Save' })
-    if (!(save instanceof HTMLButtonElement)) throw new Error('expected a <button>')
-    expect(save.disabled).toBe(true)
+    expect(screen.getByText(/including a new token/i)).toBeDefined()
+    expect(saveButton().disabled).toBe(true)
+  })
+
+  test('a configured relay prefills the visible fields with a blank token', async () => {
+    renderTunnelRoute(makeReadOnlyHttp(CONFIGURED), CONFIGURED)
+
+    expect(asInput(await screen.findByLabelText('Relay address')).value).toBe(
+      'relay.example.com:2333'
+    )
+    expect(asInput(screen.getByLabelText('Service name')).value).toBe('wildflower')
+    expect(asInput(screen.getByLabelText('Public key')).value).toBe('base64key')
+    // The write-only token is never prefilled.
+    expect(asInput(screen.getByLabelText('Token')).value).toBe('')
+    // Nothing dirty (host matches, relay untouched) → Save disabled.
+    expect(saveButton().disabled).toBe(true)
+  })
+
+  test('changing a prefilled relay field requires a fresh token before Save enables', async () => {
+    renderTunnelRoute(makeReadOnlyHttp(CONFIGURED), CONFIGURED)
+
+    const addr = asInput(await screen.findByLabelText('Relay address'))
+    fireEvent.change(addr, { target: { value: 'new-relay.example.com:2333' } })
+    // A relay change with no token is invalid.
+    expect(screen.getByText(/including a new token/i)).toBeDefined()
+    expect(saveButton().disabled).toBe(true)
+
+    // Supplying a fresh token completes the (all-or-nothing) relay change.
+    fireEvent.change(asInput(screen.getByLabelText('Token')), {
+      target: { value: 'fresh-token' },
+    })
+    expect(screen.queryByText(/including a new token/i)).toBeNull()
+    expect(saveButton().disabled).toBe(false)
   })
 })

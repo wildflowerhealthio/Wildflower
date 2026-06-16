@@ -51,6 +51,7 @@ const TUNNEL_STATE_BODY = {
   error: null,
   attempt: 0,
   servedOrigin: 'http://127.0.0.1:8080',
+  relay: null,
 }
 
 const stubHttpClientLayer = (options?: {

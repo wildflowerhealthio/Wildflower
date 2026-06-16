@@ -2,20 +2,26 @@
 //! handlers. The per-route handlers (`get`, `put`) live in sibling modules and
 //! pull what they need from here.
 //!
-//! NOTE(pr-ui): this Rust surface is the new tunnel contract — a full-replace
-//! PUT with an optimistic-concurrency `revision`, a single `publicHost`, and a
-//! write-only `relay` block. The `tunnel-core` TS schema and the `tunnel-react`
-//! UI still speak the old PATCH/`subdomain`/`rootDomain` shape and are
-//! reconciled in the follow-up UI PR; they are intentionally out of sync until
-//! then.
-
 use serde::Serialize;
 
 use crate::domain::TunnelSettings;
 use crate::TunnelDaemon;
 
-/// Tunnel state on the wire. Relay connection details are write-only and never
-/// appear here. `revision` is the optimistic-concurrency token a PUT must echo.
+/// The readable view of the relay connection — everything except the secret
+/// `token`, which stays write-only and is never returned. Mirrors
+/// `RelaySettings` minus `token`. The client prefills these and only re-sends
+/// the relay block (with a fresh token) when the user changes it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayView {
+    pub(super) remote_addr: String,
+    pub(super) public_key: String,
+    pub(super) service_name: String,
+}
+
+/// Tunnel state on the wire. The relay connection's non-secret fields are
+/// returned in [`RelayView`] (the `token` stays write-only and never appears
+/// here). `revision` is the optimistic-concurrency token a PUT must echo.
 ///
 /// # `running` and `servedOrigin` are optimistic
 ///
@@ -51,6 +57,9 @@ pub struct TunnelStateResponse {
     /// `https://{publicHost}` while `running` (optimistically — see the
     /// type-level docs), else the loopback fallback.
     pub(super) served_origin: String,
+    /// The relay connection's non-secret fields, or `null` when no relay is
+    /// configured. The `token` is never included.
+    pub(super) relay: Option<RelayView>,
 }
 
 impl TunnelStateResponse {
@@ -67,6 +76,11 @@ impl TunnelStateResponse {
             settings.public_host.as_deref(),
             state.loopback_origin(),
         );
+        let relay = settings.relay_settings.as_ref().map(|r| RelayView {
+            remote_addr: r.remote_addr.clone(),
+            public_key: r.public_key.clone(),
+            service_name: r.service_name.clone(),
+        });
         TunnelStateResponse {
             revision: settings.revision,
             public_host: settings.public_host.clone(),
@@ -75,6 +89,7 @@ impl TunnelStateResponse {
             error: observed.error,
             attempt: observed.attempt,
             served_origin,
+            relay,
         }
     }
 
