@@ -73,7 +73,10 @@ describe('SettingsScreen', () => {
     renderSettingsScreen()
     await waitFor(() => {
       const headings = screen.getAllByRole('heading', { name: 'Settings', level: 1 })
-      expect(headings.length).toBeGreaterThanOrEqual(1)
+      // Exactly one: the index page's single `<PageHeader>`. The layout no
+      // longer stacks its own "Settings" h1 on top — a reintroduced layout
+      // heading (the double-header this PR removes) must fail this test.
+      expect(headings.length).toBe(1)
     })
   })
 
