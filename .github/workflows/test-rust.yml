@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   changes:
-    name: Rust Lib Test [Detect Changes]
+    name: Detect Changes
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     outputs:
@@ -29,22 +29,23 @@ jobs:
         with:
           filters: .github/path-filters.yml
 
-  # Named for the tool it runs (like the `deny`/`lint` jobs in rust-lint.yml) so
-  # it doesn't collide with the `test` gate in test.yml — two jobs named `test`
-  # would both surface as a check literally called "test".
+  # The heavy test job. Its result is rolled up by the always-runs `rust-test`
+  # summary below, which is the required check in branch protection. The job id
+  # stays `nextest` (not `test`) so it never collides with the `test` summary
+  # gate in test-typescript.yml.
   nextest:
-    name: Rust Lib Test [Check]
+    name: Check
     needs: changes
     if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - name: Set up Rust toolchain
-        # `cache-shared-key` joins this job's cache namespace with
-        # rust-lint/lint, since both compile the same workspace (everything
-        # except wildflower-tauri) — without it the two jobs warm separate
-        # caches from cold despite identical inputs. See rust-lint.yml for the
-        # matching entry.
+        # `cache-shared-key` joins this job's cache namespace with the `lint`
+        # job in lint-rust.yml, since both compile the same workspace
+        # (everything except wildflower-tauri) — without it the two jobs warm
+        # separate caches from cold despite identical inputs. See lint-rust.yml
+        # for the matching entry.
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-shared-key: rust-workspace-excl-tauri
@@ -56,13 +57,16 @@ jobs:
         # --no-tests=warn keeps the run green while these crates have no tests
         # yet (nextest 0.9.85+ fails on zero tests by default). Switch to
         # --no-tests=fail once Rust tests exist to guard against an empty run.
-        # wildflower-tauri is excluded — see rust-lint.yml for why.
+        # wildflower-tauri is excluded — see lint-rust.yml for why.
         run: cargo nextest run --workspace --exclude wildflower-tauri --all-features --no-tests=warn
       - name: Run doctests
         # nextest does not execute doctests, so cover them with cargo test.
         run: cargo test --doc --workspace --exclude wildflower-tauri --all-features
 
   # Always-runs summary job — the check to require in branch protection.
+  # Left without a `name:` so its required-check context stays the stable
+  # `rust-test` (the existing branch-protection rule), matching the convention
+  # the TS workflows use for their `check`/`test` summaries.
   rust-test:
     needs: [changes, nextest]
     if: ${{ always() }}

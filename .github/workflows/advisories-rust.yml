@@ -1,9 +1,10 @@
-name: Rust Dependency Check [Advisories]
+name: Rust Advisories
 
 # Catches newly-published RustSec advisories against dependencies even when no
-# code changes. The rust-lint workflow only runs cargo-deny on Rust-touching
-# PRs, so an advisory filed against an otherwise-unchanged dependency would go
-# unnoticed until the next Rust PR; this weekly run closes that gap.
+# code changes. The Rust Lint workflow (lint-rust.yml) only runs cargo-deny on
+# Rust- or Tauri-touching PRs, so an advisory filed against an otherwise-
+# unchanged dependency would go unnoticed until the next such PR; this weekly
+# run closes that gap.
 on:
   schedule:
     - cron: '0 6 * * 1' # Mondays 06:00 UTC
@@ -14,7 +15,7 @@ permissions:
 
 jobs:
   advisories:
-    name: Rust Dependency Check [Advisories]
+    name: Check Dependencies
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

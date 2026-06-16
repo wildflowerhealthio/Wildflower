@@ -23,7 +23,7 @@ jobs:
   # outputs gate the heavy jobs so an unrelated PR doesn't spend runners
   # compiling Rust.
   changes:
-    name: Rust Lint [Detect Changes]
+    name: Detect Changes
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     outputs:
@@ -37,7 +37,7 @@ jobs:
           filters: .github/path-filters.yml
 
   lint:
-    name: Rust Lib Lint [Check]
+    name: Lib Check
     needs: changes
     # Full run on every push to main; on PRs only when Rust files changed.
     if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true') }}
@@ -72,7 +72,7 @@ jobs:
   # fmt-checked, so a change that breaks its build would otherwise pass CI. Runs
   # only when the tauri app changes, or on push to main, to bound the cost.
   tauri:
-    name: Tauri App Lint [Check]
+    name: Tauri Check
     needs: changes
     if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.tauri == 'true') }}
     runs-on: ubuntu-latest
@@ -101,9 +101,11 @@ jobs:
         run: cargo clippy -p wildflower-tauri --all-targets --all-features -- -D warnings
 
   deny:
-    name: Rust Dependency Check
+    name: Dependency Check
     needs: changes
-    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true') }}
+    # Runs on any Rust- or Tauri-touching change: the tauri crate pulls in its
+    # own dependency tree, so its supply chain needs the same cargo-deny gate.
+    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.tauri == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -121,7 +123,10 @@ jobs:
   # Always-runs summary job. This is the check to mark required in branch
   # protection — never the heavy jobs above. It stays green when they're
   # skipped (e.g. a TS-only PR), so path filtering can never block a merge, and
-  # goes red only on a genuine lint or supply-chain failure.
+  # goes red only on a genuine lint or supply-chain failure. Intentionally left
+  # without a `name:` so its required-check context stays the stable `rust-lint`
+  # (the existing branch-protection rule), the same convention the TS workflows
+  # use for their `check`/`test` summaries.
   rust-lint:
     needs: [changes, lint, tauri, deny]
     if: ${{ always() }}
