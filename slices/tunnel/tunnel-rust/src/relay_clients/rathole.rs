@@ -100,8 +100,9 @@ fn render_client_toml(relay: &RelaySettings, local_addr: &str) -> anyhow::Result
     toml::to_string(&config).context("failed to render rathole client config")
 }
 
-// Scalars are declared before sub-tables in each struct so `toml` 0.5 (which
-// rejects a value emitted after a table) serializes them in a valid order.
+// Scalars are declared before sub-tables in each struct so the `toml`
+// serializer (which rejects a value emitted after a table) emits them in a
+// valid order.
 #[derive(Serialize)]
 struct ClientToml<'a> {
     client: ClientSection<'a>,

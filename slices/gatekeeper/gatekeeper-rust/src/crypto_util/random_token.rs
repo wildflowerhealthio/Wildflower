@@ -18,7 +18,7 @@ const TOKEN_BYTES: usize = 32;
 /// only requirement (the value carries no structure).
 pub(crate) fn generate_authorization_code() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     base64::url_safe_no_pad_encode(&bytes)
 }
 

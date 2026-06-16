@@ -141,7 +141,7 @@ fn device_authorization(
 fn generate_unique_user_code(state: &AppState) -> anyhow::Result<String> {
     for _ in 0..MAX_USER_CODE_GENERATION_ATTEMPTS {
         let candidate = {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             generate_oauth_user_code(&mut rng)
         };
         if state
