@@ -70,11 +70,10 @@ fn main() {
     }
 
     if env_path.exists() {
-        for item in dotenvy::from_path_iter(&env_path)
-            .expect("pinned .env to be loadable")
-            .flatten()
-        {
-            let (key, value) = item;
+        for item in dotenvy::from_path_iter(&env_path).expect("pinned .env to be loadable") {
+            // A malformed line (e.g. one missing `=`) fails the build loudly
+            // rather than being silently dropped to surface only at runtime.
+            let (key, value) = item.expect("each .env line to parse");
             if TUNNEL_SEED_KEYS.contains(&key.as_str()) {
                 println!("cargo:rustc-env={key}={value}");
             }
