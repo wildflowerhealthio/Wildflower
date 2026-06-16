@@ -67,26 +67,42 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   const hostInputDomId = useId()
   const relayInputDomIdBase = useId()
   const [publicHostInput, setPublicHostInput] = useState(state.publicHost ?? '')
-  const [syncedRevision, setSyncedRevision] = useState(state.revision)
   const [relay, setRelay] = useState<RelayInput>(() => relayDraftFromState(state))
+  // The server values the inputs were last synced to, tracked per field so a
+  // genuine change to *this* field is distinguishable from an unrelated
+  // revision bump.
+  const [syncedServerHost, setSyncedServerHost] = useState(state.publicHost)
+  const [syncedServerRelay, setSyncedServerRelay] = useState(state.relay)
   // Unresolved-conflict signal. Tracked explicitly (not derived from
   // `mutation.data`) so it survives an unrelated toggle and only clears
-  // when the user acts on the host. Set by any 409, cleared by a host
-  // re-save (Applied) or a fresh host edit.
+  // when the user re-saves (Applied) or makes a fresh host edit.
   const [updateDidConflict, setUpdateDidConflict] = useState(false)
 
-  // Re-seed the editable host whenever the server snapshot advances — an
-  // Applied save *or* an adopted 409 snapshot. Without this the input keeps
-  // a stale edit after a conflict, the "current values are shown below"
-  // banner lies, and a re-Save (now carrying the fresh revision) silently
-  // clobbers the concurrent writer. React's documented "adjust state on
-  // prop change during render" pattern.
-  if (syncedRevision !== state.revision) {
-    setSyncedRevision(state.revision)
+  // Re-seed an editable field from the server snapshot only when *that field's*
+  // server value changed since we last synced — the rebase a 409 conflict
+  // demands. A field the server didn't touch keeps the user's text, so an
+  // unsaved edit survives an unrelated revision bump (e.g. an Applied toggle).
+  // React's documented "adjust state on prop change during render" pattern.
+  if (syncedServerHost !== state.publicHost) {
+    setSyncedServerHost(state.publicHost)
     setPublicHostInput(state.publicHost ?? '')
-    // Re-prefill the relay draft from the refreshed snapshot (token blanked),
-    // so a saved/adopted relay shows its current non-secret values.
-    setRelay(relayDraftFromState(state))
+  }
+  const relayServerChanged = RELAY_FIELDS.some(
+    ({ key }) => key !== 'token' && (syncedServerRelay?.[key] ?? '') !== (state.relay?.[key] ?? '')
+  )
+  if (relayServerChanged) {
+    setSyncedServerRelay(state.relay)
+    // Adopt only the changed non-secret relay fields, and keep the user's typed
+    // token: it's write-only and never echoed, so a conflict elsewhere must not
+    // discard an in-progress relay change.
+    setRelay((draft) =>
+      RELAY_FIELDS.reduce<RelayInput>((next, { key }) => {
+        if (key === 'token' || (syncedServerRelay?.[key] ?? '') === (state.relay?.[key] ?? '')) {
+          return next
+        }
+        return { ...next, [key]: state.relay?.[key] ?? '' }
+      }, draft)
+    )
   }
 
   // Locks inputs even though the optimistic state has already advanced.
@@ -151,14 +167,14 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
       },
       {
         onSuccess: (result) => {
-          if (result._tag === 'Conflict') {
-            setUpdateDidConflict(true)
-            return
+          setUpdateDidConflict(result._tag === 'Conflict')
+          // Applied: the relay write landed and its token is now stored, so
+          // blank the write-only token input. On a Conflict no write happened —
+          // keep the user's typed relay (incl. token) so a re-Save still carries
+          // it; any changed-elsewhere fields are rebased by the re-seed above.
+          if (result._tag === 'Applied' && relayDirty) {
+            setRelay((draft) => ({ ...draft, token: '' }))
           }
-          // Applied: the write landed. The relay draft (incl. the now-stored
-          // token) is re-prefilled from the refreshed snapshot on the revision
-          // change — no manual clearing needed here.
-          setUpdateDidConflict(false)
         },
       }
     )

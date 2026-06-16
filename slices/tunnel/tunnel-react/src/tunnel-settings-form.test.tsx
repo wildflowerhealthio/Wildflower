@@ -68,6 +68,46 @@ const makeConflictThenApplyHttp = (): Layer.Layer<HttpClient.HttpClient> => {
   )
 }
 
+/** A server where every PUT applies and bumps the revision (no conflict). */
+const makeApplyHttp = (initial: TunnelState = INITIAL): Layer.Layer<HttpClient.HttpClient> => {
+  let serverState = initial
+  return Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request) => {
+      if (request.method !== 'PUT') {
+        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(200, serverState)))
+      }
+      serverState = { ...serverState, revision: serverState.revision + 1 }
+      return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(200, serverState)))
+    })
+  )
+}
+
+/**
+ * GET serves CONFIGURED; the FIRST PUT 409s with a newer revision but the
+ * SAME relay view — a concurrent writer that bumped the revision without
+ * touching the relay. The user's in-progress relay edit must survive it.
+ */
+const makeRelayConflictHttp = (): Layer.Layer<HttpClient.HttpClient> => {
+  let serverState: TunnelState = CONFIGURED
+  let conflicted = false
+  return Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request) => {
+      if (request.method !== 'PUT') {
+        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(200, serverState)))
+      }
+      if (!conflicted) {
+        conflicted = true
+        serverState = { ...CONFIGURED, revision: CONFIGURED.revision + 1 }
+        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(409, serverState)))
+      }
+      serverState = { ...serverState, revision: serverState.revision + 1 }
+      return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(200, serverState)))
+    })
+  )
+}
+
 /** A server that only ever serves a fixed snapshot (no writes expected). */
 const makeReadOnlyHttp = (snapshot: TunnelState = INITIAL): Layer.Layer<HttpClient.HttpClient> =>
   Layer.succeed(
@@ -231,6 +271,47 @@ describe('tunnel settings form — relay', () => {
       target: { value: 'fresh-token' },
     })
     expect(screen.queryByText(/including a new token/i)).toBeNull()
+    expect(saveButton().disabled).toBe(false)
+  })
+})
+
+describe('tunnel settings form — dirty-edit preservation', () => {
+  test('an unsaved host edit survives an unrelated toggle', async () => {
+    const queryClient = renderTunnelRoute(makeApplyHttp())
+
+    fireEvent.change(asInput(await screen.findByLabelText('Public host')), {
+      target: { value: 'mine.example.com' },
+    })
+
+    // Toggle the tunnel — an unrelated write that bumps the revision but
+    // leaves the host untouched on the server.
+    fireEvent.click(screen.getByRole('checkbox'))
+    await waitFor(() => {
+      expect(queryClient.getQueryData<TunnelState>(TUNNEL_STATE_QUERY_KEY)?.revision).toBe(1)
+    })
+
+    // The server didn't change the host, so the in-progress edit must NOT be
+    // discarded by the revision bump.
+    expect(asInput(screen.getByLabelText('Public host')).value).toBe('mine.example.com')
+  })
+
+  test('a dirty relay change (incl. token) survives a 409 and stays sendable', async () => {
+    renderTunnelRoute(makeRelayConflictHttp(), CONFIGURED)
+
+    fireEvent.change(asInput(await screen.findByLabelText('Relay address')), {
+      target: { value: 'new-relay.example.com:2333' },
+    })
+    fireEvent.change(asInput(screen.getByLabelText('Token')), {
+      target: { value: 'fresh-token' },
+    })
+    fireEvent.click(saveButton())
+
+    // The 409 raises the banner, but the relay view didn't change server-side,
+    // so the typed reconfiguration (incl. the write-only token) must be kept —
+    // a re-Save still carries it instead of silently applying host-only.
+    await screen.findByText(/changed elsewhere/i)
+    expect(asInput(screen.getByLabelText('Relay address')).value).toBe('new-relay.example.com:2333')
+    expect(asInput(screen.getByLabelText('Token')).value).toBe('fresh-token')
     expect(saveButton().disabled).toBe(false)
   })
 })
