@@ -25,9 +25,13 @@ const NOT_CONFIGURED: &str = "tunnel relay is not configured";
 /// latest value and internal waiters (and tests) can await transitions.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Observed {
-    /// The revision this observation belongs to; a superseded supervisor's
-    /// update is dropped when it no longer matches the live revision.
-    pub revision: i64,
+    /// The revision of the most-recently-reconciled supervisor. Doubles as the
+    /// monotonicity marker: [`TunnelDaemon::reconcile`] skips when its
+    /// `settings.revision` is not strictly greater (closing the concurrent-PUT
+    /// race), and [`set_observed`] drops a superseded supervisor's late update
+    /// when this no longer matches its own revision. `None` before any
+    /// reconcile has run.
+    pub revision: Option<i64>,
     pub running: bool,
     pub error: Option<String>,
 }
@@ -99,9 +103,32 @@ impl TunnelDaemon {
     /// supervisor, set the immediate observed state (so the PUT response and an
     /// immediate GET are coherent before the supervisor task runs), then spawn a
     /// supervisor for this revision.
+    ///
+    /// Skips when `settings.revision` is not strictly greater than the live
+    /// observed revision. Two PUTs that both win the SQLite CAS race towards
+    /// different revisions can both reach `reconcile`; without this guard the
+    /// later-arriving (lower-revision) reconcile would cancel the live
+    /// (higher-revision) supervisor and rewind `observed.revision`, leaving the
+    /// DB and the live tunnel disagreeing on which revision is current. Holding
+    /// `cancel` across the whole body keeps the revision check, the cancel
+    /// swap, the observed update, and the spawn atomic against a racing
+    /// reconcile.
     pub(crate) fn reconcile(&self, settings: &TunnelSettings) {
+        let mut cancel = self.cancel.lock();
+
+        if let Some(current) = self.observed_tx.borrow().revision {
+            if settings.revision <= current {
+                tracing::warn!(
+                    "skipping stale reconcile for revision {}, current is {}",
+                    settings.revision,
+                    current,
+                );
+                return;
+            }
+        }
+
         let token = CancellationToken::new();
-        if let Some(old) = self.cancel.lock().replace(token.clone()) {
+        if let Some(old) = cancel.replace(token.clone()) {
             old.cancel();
         }
 
@@ -117,7 +144,7 @@ impl TunnelDaemon {
         };
 
         self.observed_tx.send_modify(|o| {
-            o.revision = revision;
+            o.revision = Some(revision);
             o.running = running;
             o.error = error;
         });
@@ -191,7 +218,7 @@ fn set_observed(
     error: Option<String>,
 ) {
     observed.send_if_modified(|o| {
-        if o.revision != revision || (o.running == running && o.error == error) {
+        if o.revision != Some(revision) || (o.running == running && o.error == error) {
             return false;
         }
         o.running = running;
@@ -223,5 +250,75 @@ impl TunnelDaemon {
     /// Subscribe to observed-state transitions (deterministic awaits in tests).
     pub(crate) fn watch_observed(&self) -> watch::Receiver<Observed> {
         self.observed_tx.subscribe()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::RelaySettings;
+
+    /// A `RelayClient` that returns `Ok` immediately so any spawned supervisor
+    /// exits without dialing — these tests are about `reconcile`'s monotonicity,
+    /// not the dial loop.
+    struct NoopRelayClient;
+
+    #[async_trait::async_trait]
+    impl RelayClient for NoopRelayClient {
+        async fn run_once(
+            &self,
+            _relay: &RelaySettings,
+            _local_addr: &str,
+            _cancel: CancellationToken,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn settings_at(revision: i64) -> TunnelSettings {
+        TunnelSettings {
+            revision,
+            ..Default::default()
+        }
+    }
+
+    fn daemon() -> TunnelDaemon {
+        TunnelDaemon::new_test(Arc::new(NoopRelayClient), "http://127.0.0.1:8080", 8080)
+    }
+
+    /// The first reconcile after construction must pass even at DB rev 0 —
+    /// otherwise a fresh install's `setup_tunnel` resume is a silent no-op.
+    #[tokio::test]
+    async fn first_reconcile_at_db_default_revision_is_applied() {
+        let daemon = daemon();
+        daemon.reconcile(&settings_at(0));
+        assert_eq!(daemon.observed().revision, Some(0));
+    }
+
+    /// Two PUTs that both win the SQLite CAS race (rev 1 then rev 2) can both
+    /// reach `reconcile`. If the higher-revision one runs first, the
+    /// lower-revision one must skip — otherwise it cancels the live supervisor
+    /// and rewinds `observed.revision` below the persisted revision.
+    #[tokio::test]
+    async fn stale_reconcile_after_newer_one_is_skipped() {
+        let daemon = daemon();
+        daemon.reconcile(&settings_at(2));
+        daemon.reconcile(&settings_at(1));
+        assert_eq!(
+            daemon.observed().revision,
+            Some(2),
+            "stale reconcile must not rewind observed below the live revision",
+        );
+    }
+
+    /// Same-revision reconciles are also no-ops (the guard is strictly greater,
+    /// not `>=`) — a duplicate dispatch can't cancel and re-spawn the live
+    /// supervisor for the revision it's already running.
+    #[tokio::test]
+    async fn same_revision_reconcile_is_a_noop() {
+        let daemon = daemon();
+        daemon.reconcile(&settings_at(3));
+        daemon.reconcile(&settings_at(3));
+        assert_eq!(daemon.observed().revision, Some(3));
     }
 }
