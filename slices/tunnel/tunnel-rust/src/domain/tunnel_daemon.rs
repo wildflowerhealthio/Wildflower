@@ -40,6 +40,10 @@ pub(crate) struct Observed {
     /// when this no longer matches its own revision. `None` before any
     /// reconcile has run.
     pub revision: Option<i64>,
+    /// `true` while the supervisor is *attempting* to keep a dial up, not a
+    /// connected-handshake signal — rathole exposes no such signal, so this
+    /// flips to `true` the instant `run_once` starts and stays `true` across
+    /// retries that haven't yet errored. Treat as "dialing", not "reachable".
     pub running: bool,
     pub error: Option<String>,
 }
