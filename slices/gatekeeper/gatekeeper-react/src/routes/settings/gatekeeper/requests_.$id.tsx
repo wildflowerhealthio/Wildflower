@@ -42,12 +42,11 @@ const RequestDetailBody = ({ request, id }: RequestDetailBodyProps): JSX.Element
 
   return (
     <>
-      <PageHeader title="Request" backHref="/settings/gatekeeper/requests" />
-
-      <div className={pageLayout['section']}>
-        <span className="text-label-3">{request.method}</span>
-        <span className="text-body-2">{request.url}</span>
-      </div>
+      <PageHeader
+        title="Request"
+        subtitle={`${request.method} ${request.url}`}
+        backHref="/settings/gatekeeper/requests"
+      />
 
       <StatusBadge tone={statusTone(request.status)}>{request.status.toUpperCase()}</StatusBadge>
 

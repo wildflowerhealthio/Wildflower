@@ -13,6 +13,13 @@ type PageHeaderProps = {
    */
   readonly title: string
   /**
+   * Optional secondary line under the title — a per-record identifier (a
+   * URL, a client id) that would overflow a single-line title. Like the
+   * title it stays on one line and truncates with an ellipsis, and it is
+   * not a heading, so the page keeps exactly one `<h1>`.
+   */
+  readonly subtitle?: ReactNode
+  /**
    * Destination for the back affordance. When set, a leading back link
    * renders that navigates to this absolute path (the page's logical
    * parent). Omit on top-level surfaces (the tab destinations) that have
@@ -27,9 +34,9 @@ type PageHeaderProps = {
 
 /**
  * Single, consistent page header: an optional back link, a single-line
- * title, and an optional trailing actions slot. Every screen renders
- * exactly one of these as the first child of its page shell, so a page
- * never stacks two headings.
+ * title with an optional secondary `subtitle` line, and an optional
+ * trailing actions slot. Every screen renders exactly one of these as the
+ * first child of its page shell, so a page never stacks two headings.
  *
  * The back link is a TanStack `<Link>` to a fixed parent path (not a
  * history pop), so it behaves predictably on a refreshed or deep-linked
@@ -38,6 +45,7 @@ type PageHeaderProps = {
  */
 const PageHeader = ({
   title,
+  subtitle,
   backHref,
   backLabel = 'Back',
   actions,
@@ -48,7 +56,12 @@ const PageHeader = ({
         &#x2329;
       </Link>
     ) : null}
-    <h1 className={cn(styles['page-header__title'], 'text-heading-5')}>{title}</h1>
+    <div className={styles['page-header__heading']}>
+      <h1 className={cn(styles['page-header__title'], 'text-heading-5')}>{title}</h1>
+      {subtitle !== undefined ? (
+        <p className={cn(styles['page-header__subtitle'], 'text-body-3')}>{subtitle}</p>
+      ) : null}
+    </div>
     {actions !== undefined ? <div className={styles['page-header__actions']}>{actions}</div> : null}
   </header>
 )

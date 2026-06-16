@@ -12,7 +12,13 @@
   max-width: 720px;
   width: 100%;
   margin: 0 auto;
-  padding: var(--space-5);
+  /*
+   * The page's edge padding, exposed as a custom property so a full-bleed
+   * child (e.g. `<PageHeader>`'s negative margins) can cancel exactly this
+   * value instead of re-stating the `--space-5` magic number.
+   */
+  --page-padding: var(--space-5);
+  padding: var(--page-padding);
   display: flex;
   flex-direction: column;
   gap: var(--space-6);

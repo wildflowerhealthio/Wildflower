@@ -75,4 +75,15 @@ describe('PageHeader', () => {
     expect(screen.getByRole('button', { name: 'Manage' })).toBeTruthy()
     expect(screen.getByRole('heading', { level: 1, name: 'Apps' })).toBeTruthy()
   })
+
+  it('renders an optional subtitle as non-heading text beside the title', () => {
+    // Arrange / Act — detail pages surface a per-record identifier here.
+    render(<PageHeader title="Request" subtitle="GET /fhir/Patient" />)
+
+    // Assert — the title stays the single h1; the subtitle is separate,
+    // non-heading text, so the page still has exactly one heading.
+    expect(screen.getByRole('heading', { level: 1, name: 'Request' })).toBeTruthy()
+    expect(screen.getByText('GET /fhir/Patient')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'GET /fhir/Patient' })).toBeNull()
+  })
 })
