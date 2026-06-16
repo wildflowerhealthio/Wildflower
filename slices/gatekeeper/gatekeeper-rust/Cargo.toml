@@ -25,7 +25,7 @@ serde_urlencoded = "0.7"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 tracing = "0.1"
 url = { version = "2", features = ["serde"] }
-thiserror = "1"
+thiserror = "2"
 tokio = { workspace = true, features = ["sync"] }
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`),
