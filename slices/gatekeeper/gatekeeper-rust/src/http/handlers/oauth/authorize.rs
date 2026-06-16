@@ -1,11 +1,11 @@
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
-use axum::routing::{get, MethodRouter};
 use chrono::{Duration, Utc};
 use serde::Deserialize;
 use std::collections::HashSet;
 use url::Url;
+use utoipa::IntoParams;
 use uuid::Uuid;
 
 use super::error_codes::OAuthErrorCode;
@@ -54,7 +54,7 @@ fn found_redirect(location: &str) -> Response {
 /// [`TokenError`](super::internal::TokenError). Kept small (no embedded
 /// `Response`) so `Result<_, AuthorizeError>` doesn't trip
 /// `clippy::result_large_err`.
-enum AuthorizeError {
+pub(super) enum AuthorizeError {
     /// Failure before `client_id` / `redirect_uri` are trusted (unknown or
     /// disabled client, malformed/un-allowlisted `redirect_uri`). Renders a
     /// local HTML page — redirecting to an unvalidated URI would be an open
@@ -111,7 +111,8 @@ const AUTHORIZATION_REQUEST_TTL: Duration = Duration::minutes(5);
 /// RFC 7636 (PKCE). Stricter than the base spec: `state` is required (the
 /// spec merely recommends it), and PKCE with S256 is mandatory — both
 /// matching the OAuth 2.1 direction.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct AuthorizeParams {
     pub response_type: String,
     pub code_challenge_method: String,
@@ -120,11 +121,6 @@ pub struct AuthorizeParams {
     pub code_challenge: String,
     pub redirect_uri: String,
     pub state: String,
-}
-
-/// `GET /oauth/authorize` route.
-pub(super) fn route() -> MethodRouter<AppState> {
-    get(handle_authorize_request)
 }
 
 /// The authorization endpoint (RFC 6749 §3.1), the public front door of the
@@ -151,7 +147,17 @@ pub(super) fn route() -> MethodRouter<AppState> {
 /// 3. Approval 302s the browser back to the client's `redirect_uri` with
 ///    `code` + `state` (§4.1.2); the client then redeems the short-lived
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
-async fn handle_authorize_request(
+#[utoipa::path(
+    get,
+    path = "/authorize",
+    params(AuthorizeParams),
+    responses(
+        (status = 302, description = "Redirect to the client redirect_uri or the owner approval UI"),
+        (status = 400, description = "Local HTML error page (untrusted client / redirect_uri)"),
+        (status = 503, description = "No active signing key")
+    )
+)]
+pub(super) async fn handle_authorize_request(
     State(state): State<AppState>,
     origin: ServedOrigin,
     Query(params): Query<AuthorizeParams>,

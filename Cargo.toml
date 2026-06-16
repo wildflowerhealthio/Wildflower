@@ -25,6 +25,9 @@ tower-http = { version = "0.6", features = ["cors"] }
 # Code-first OpenAPI generation. `preserve_order` keeps schema properties in
 # declaration order so the committed spec snapshot is stable across runs.
 utoipa = { version = "5", features = ["preserve_order"] }
+# axum integration: collects the OpenAPI spec from the real router so the spec
+# can't drift from the routes (axum 0.8-compatible).
+utoipa-axum = "0.2"
 
 # Lints shared by every crate that opts in with `[lints] workspace = true`.
 # Forbidding unsafe makes any `unsafe` block a compile error (not just a lint),

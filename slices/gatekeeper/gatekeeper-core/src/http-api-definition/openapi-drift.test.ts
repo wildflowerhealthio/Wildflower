@@ -1,44 +1,43 @@
 /**
  * Spec-drift contract test (trial: gatekeeper OAuth + discovery surface).
  *
- * It diffs two OpenAPI documents:
+ * Diffs two OpenAPI 3.1 documents:
  *   - the Rust/axum server's spec, emitted by `utoipa` and committed at
  *     `gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json` (the source of
- *     truth — regenerate with
- *     `UPDATE_OPENAPI=1 cargo test -p gatekeeper-rust openapi_spec_snapshot_is_up_to_date`);
- *   - the TypeScript client's spec, derived live from the Effect `HttpApi`
- *     via `OpenApi.fromApi(GatekeeperApi)`.
+ *     truth — regenerate with `UPDATE_OPENAPI=1 cargo test -p gatekeeper-rust
+ *     openapi_spec_snapshot_is_up_to_date`);
+ *   - the TypeScript client's spec, derived live from the Effect `HttpApi` via
+ *     `OpenApi.fromApi(GatekeeperApi)`.
  *
- * A raw JSON diff of the two is all-noise (utoipa uses `$ref`/`oneOf`, Effect
- * inlines/`anyOf`, adds `HttpApiDecodeError`, `additionalProperties`, titles,
- * etc.), so both are projected onto a normalized *wire shape* — per
- * path+method: parameters, request body, and per-status response body — that
- * compares only what a client/server must agree on:
+ * `$ref` resolution is delegated to `@apidevtools/json-schema-ref-parser` — both
+ * docs are fully dereferenced first. What remains here is the project-specific
+ * *compatibility policy*: a normalization that projects each spec onto a wire
+ * shape and compares only what a client and server must agree on:
  *
  *   - field presence and required-ness;
  *   - primitive KIND (string / integer / number / boolean / array / object /
  *     union) — NOT enum values, formats, or string constraints, so a client
- *     schema that narrows a server `string` to a literal union is not "drift";
+ *     that narrows the server's `string` to a literal union is not "drift";
  *   - union arity and member shapes (catches a missing grant);
- *   - `unknown`/`any` on either side is a wildcard (a client that accepts
- *     anything is compatible with any server shape).
+ *   - `unknown`/`any` on either side is a wildcard.
  *
- * Framework noise is stripped: Effect's injected `HttpApiDecodeError` union
- * members and decode-only `400`s are ignored. See ACCEPTED_DIFFERENCES for the
- * documented, intentional exceptions.
+ * Framework noise is stripped: Effect's injected `HttpApiDecodeError` (detected
+ * by its `_tag`, even once inlined) and the resulting decode-only `400`s are
+ * ignored. See RESPONSES_NOT_COMPARED for the one endpoint-level exception.
  */
 
 import * as fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import $RefParser from '@apidevtools/json-schema-ref-parser'
 import { OpenApi } from '@effect/platform'
 import { expect, test } from 'vite-plus/test'
 import { GatekeeperApi } from './index.ts'
 
-// ---- Minimal OpenAPI shapes (loose by design; these are external JSON) ------
+// ---- Minimal OpenAPI shapes (loose by design; external JSON, post-deref) ----
 
 interface SchemaObject {
-  $ref?: string
   type?: string | ReadonlyArray<string>
+  enum?: ReadonlyArray<unknown>
   properties?: Record<string, SchemaObject>
   required?: ReadonlyArray<string>
   items?: SchemaObject
@@ -61,14 +60,13 @@ interface Operation {
 }
 interface OpenApiDoc {
   paths: Record<string, Record<string, Operation>>
-  components?: { schemas?: Record<string, SchemaObject> }
 }
 
 // ---- Normalized wire shapes -------------------------------------------------
 
 type Shape =
   | { kind: 'any' }
-  | { kind: 'none' } // framework-only / no body (e.g. HttpApiDecodeError, 302)
+  | { kind: 'none' } // framework-only / no body (HttpApiDecodeError, 302, ...)
   | { kind: 'string' | 'integer' | 'number' | 'boolean' }
   | { kind: 'array'; items: Shape }
   | { kind: 'object'; fields: Record<string, { required: boolean; shape: Shape }> }
@@ -79,14 +77,11 @@ type Shape =
 const primitiveShape = (t: string): Shape | undefined =>
   t === 'string' || t === 'integer' || t === 'number' || t === 'boolean' ? { kind: t } : undefined
 
-/** Resolve a `$ref` to its component schema, mapping framework refs to markers. */
-const resolveRef = (ref: string, doc: OpenApiDoc, seen: ReadonlySet<string>): Shape => {
-  const name = ref.split('/').pop() ?? ''
-  if (name === 'HttpApiDecodeError') return { kind: 'none' }
-  if (seen.has(name)) return { kind: 'any' } // cycle guard
-  const target = doc.components?.schemas?.[name]
-  if (!target) return { kind: 'any' }
-  return normalize(target, doc, new Set([...seen, name]))
+/** Effect injects `HttpApiDecodeError` on decode failures; it is framework noise,
+ * recognizable even once inlined by its `_tag` literal. */
+const isDecodeError = (schema: SchemaObject): boolean => {
+  const tag = schema.properties?._tag?.enum
+  return tag?.length === 1 && tag[0] === 'HttpApiDecodeError'
 }
 
 /**
@@ -106,14 +101,10 @@ const toUnion = (members: ReadonlyArray<Shape>): Shape => {
   return { kind: 'union', members: flat }
 }
 
-const normalize = (
-  schema: SchemaObject,
-  doc: OpenApiDoc,
-  seen: ReadonlySet<string> = new Set()
-): Shape => {
-  if (schema.$ref) return resolveRef(schema.$ref, doc, seen)
-  if (schema.anyOf) return toUnion(schema.anyOf.map((s) => normalize(s, doc, seen)))
-  if (schema.oneOf) return toUnion(schema.oneOf.map((s) => normalize(s, doc, seen)))
+const normalize = (schema: SchemaObject): Shape => {
+  if (isDecodeError(schema)) return { kind: 'none' }
+  if (schema.anyOf) return toUnion(schema.anyOf.map(normalize))
+  if (schema.oneOf) return toUnion(schema.oneOf.map(normalize))
   // A bare `null` member (Effect emits nullable as `anyOf:[T, {type:"null"}]`);
   // nullability is dropped — optionality is carried by `required`, not the type.
   if (schema.type === 'null') return { kind: 'none' }
@@ -131,15 +122,12 @@ const normalize = (
     const required = new Set(schema.required ?? [])
     const fields: Record<string, { required: boolean; shape: Shape }> = {}
     for (const [name, propSchema] of Object.entries(schema.properties ?? {})) {
-      fields[name] = { required: required.has(name), shape: normalize(propSchema, doc, seen) }
+      fields[name] = { required: required.has(name), shape: normalize(propSchema) }
     }
     return { kind: 'object', fields }
   }
   if (type === 'array')
-    return {
-      kind: 'array',
-      items: schema.items ? normalize(schema.items, doc, seen) : { kind: 'any' },
-    }
+    return { kind: 'array', items: schema.items ? normalize(schema.items) : { kind: 'any' } }
   if (typeof type === 'string') {
     const prim = primitiveShape(type)
     if (prim) return prim
@@ -239,10 +227,10 @@ const firstMediaSchema = (content?: Record<string, MediaType>): SchemaObject | u
 }
 
 /** The normalized response body for a status, or `none` if absent/decode-only. */
-const responseBody = (op: Operation, status: string, doc: OpenApiDoc): Shape => {
+const responseBody = (op: Operation, status: string): Shape => {
   const schema = firstMediaSchema(op.responses?.[status]?.content)
   if (!schema) return { kind: 'none' }
-  return normalize(schema, doc)
+  return normalize(schema)
 }
 
 const paramKey = (p: Parameter): string => `${p.in} ${p.name}`
@@ -271,7 +259,7 @@ const SCOPE: ReadonlyArray<readonly [string, string]> = [
  */
 const RESPONSES_NOT_COMPARED = new Set<string>(['get /oauth/authorize'])
 
-test('gatekeeper OAuth client (Effect HttpApi) matches the axum OpenAPI spec', () => {
+test('gatekeeper OAuth client (Effect HttpApi) matches the axum OpenAPI spec', async () => {
   // Both specs are external JSON, parsed at this typed boundary into the loose
   // `OpenApiDoc` shape and never trusted beyond it (test-only).
   // oxlint-disable-next-line typescript/no-unsafe-assignment
@@ -281,6 +269,11 @@ test('gatekeeper OAuth client (Effect HttpApi) matches the axum OpenAPI spec', (
   )
   // oxlint-disable-next-line typescript/no-unsafe-assignment
   const rust: OpenApiDoc = JSON.parse(fs.readFileSync(rustPath, 'utf8'))
+
+  // Resolve internal `$ref`s in place (delegated to a battle-tested resolver), so
+  // the normalizer below only ever sees inlined schemas.
+  await $RefParser.dereference(effect)
+  await $RefParser.dereference(rust)
 
   const drift: Array<string> = []
 
@@ -312,8 +305,8 @@ test('gatekeeper OAuth client (Effect HttpApi) matches the axum OpenAPI spec', (
         )
       }
       diffShapes(
-        rp.schema ? normalize(rp.schema, rust) : { kind: 'any' },
-        ep.schema ? normalize(ep.schema, effect) : { kind: 'any' },
+        rp.schema ? normalize(rp.schema) : { kind: 'any' },
+        ep.schema ? normalize(ep.schema) : { kind: 'any' },
         `${where} param ${key}`,
         drift
       )
@@ -325,12 +318,7 @@ test('gatekeeper OAuth client (Effect HttpApi) matches the axum OpenAPI spec', (
     if (Boolean(rustReq) !== Boolean(effectReq)) {
       drift.push(`${where} requestBody: on ${rustReq ? 'server' : 'client'} only`)
     } else if (rustReq && effectReq) {
-      diffShapes(
-        normalize(rustReq, rust),
-        normalize(effectReq, effect),
-        `${where} requestBody`,
-        drift
-      )
+      diffShapes(normalize(rustReq), normalize(effectReq), `${where} requestBody`, drift)
     }
 
     // Responses (per status), unless this endpoint's responses are excluded.
@@ -340,8 +328,8 @@ test('gatekeeper OAuth client (Effect HttpApi) matches the axum OpenAPI spec', (
         ...Object.keys(effectOp.responses ?? {}),
       ])
       for (const status of statuses) {
-        const rustBody = responseBody(rustOp, status, rust)
-        const effectBody = responseBody(effectOp, status, effect)
+        const rustBody = responseBody(rustOp, status)
+        const effectBody = responseBody(effectOp, status)
         if (rustBody.kind === 'none' && effectBody.kind === 'none') continue
         if (rustBody.kind === 'none' || effectBody.kind === 'none') {
           drift.push(

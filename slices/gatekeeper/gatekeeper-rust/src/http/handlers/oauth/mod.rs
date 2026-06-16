@@ -8,14 +8,23 @@ mod openapi;
 mod token_exchange;
 mod token_request;
 
-use axum::Router;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use crate::http::state::AppState;
 
-pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/authorize", authorize::route())
-        .route("/authorize/{id}", authorization_status::route())
-        .route("/token", token_exchange::route())
-        .route("/device_authorization", device_authorization::route())
+/// The `/oauth/*` routes as an `OpenApiRouter`, so the OpenAPI spec is collected
+/// from the same handlers that serve traffic. Mounted under `/oauth` by
+/// [`crate::http`]; `routes!` reads each handler's `#[utoipa::path]` for its
+/// method + path.
+pub(crate) fn openapi_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(authorize::handle_authorize_request))
+        .routes(routes!(
+            authorization_status::handle_authorization_status_request
+        ))
+        .routes(routes!(token_exchange::handle_token_request))
+        .routes(routes!(
+            device_authorization::handle_device_authorization_request
+        ))
 }

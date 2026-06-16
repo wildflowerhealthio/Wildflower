@@ -1,5 +1,4 @@
 use axum::extract::State;
-use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -14,13 +13,15 @@ pub struct Jwks {
     pub keys: Vec<PublicJwk>,
 }
 
-/// `GET` handler for `/.well-known/jwks.json`, as a `MethodRouter` the caller
-/// mounts at the full path — avoids wrapping a whole `Router` for one route.
-pub fn route() -> MethodRouter<AppState> {
-    get(handle_jwks_request)
-}
-
-async fn handle_jwks_request(State(state): State<AppState>) -> Result<Json<Jwks>, HandlerError> {
+/// `GET /.well-known/jwks.json` — serve the active public signing keys.
+#[utoipa::path(
+    get,
+    path = "/.well-known/jwks.json",
+    responses((status = 200, description = "RFC 7517 JSON Web Key Set", body = Jwks))
+)]
+pub(crate) async fn handle_jwks_request(
+    State(state): State<AppState>,
+) -> Result<Json<Jwks>, HandlerError> {
     let keys = state
         .store
         .all_signing_keys()
