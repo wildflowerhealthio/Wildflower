@@ -70,6 +70,9 @@ export default defineConfig({
       '**/test/snapshots/**',
       'slices/apps/vendor-apps/src/generated-*.ts',
       '**/*.generated.ts',
+      // Effect schemas generated from a service's OpenAPI spec
+      // (`openapi-to-effect`); gitignored, reference-only.
+      '**/http-api-definition/generated/**',
       // Rust manifests are owned by the Rust toolchain (`cargo fmt` formats
       // `.rs` only; Cargo.toml layout is hand-maintained). oxfmt's TOML rules
       // disagree with how they're written (e.g. collapsing multi-line feature
@@ -90,6 +93,9 @@ export default defineConfig({
       '**/test/snapshots/**',
       'slices/apps/vendor-apps/src/generated-*.ts',
       '**/*.generated.ts',
+      // Effect schemas generated from a service's OpenAPI spec
+      // (`openapi-to-effect`); gitignored, reference-only.
+      '**/http-api-definition/generated/**',
     ],
     plugins: ['typescript', 'react', 'unicorn', 'import'],
     categories: {

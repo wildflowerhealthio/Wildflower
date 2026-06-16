@@ -4,6 +4,7 @@ use axum::Json;
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use url::Url;
+use utoipa::ToSchema;
 
 use super::client_auth::{
     ClientAuthenticationMethod, ClientCredentials, ResolveClientCredentialsError,
@@ -89,7 +90,7 @@ impl IntoResponse for OAuthErrorResponse {
 }
 
 /// RFC 6749 §5.1 successful token-endpoint response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct TokenResponse {
     pub access_token: String,
     pub token_type: String,
@@ -113,7 +114,7 @@ impl IntoResponse for TokenResponse {
 }
 
 /// RFC 6749 §5.2 token-endpoint error body.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct OAuthError {
     pub error: String,
     #[serde(skip_serializing_if = "Option::is_none")]

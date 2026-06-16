@@ -4,6 +4,7 @@ use axum::routing::{get, MethodRouter};
 use axum::Json;
 use chrono::Utc;
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use super::error_codes::OAuthErrorCode;
 use super::internal::{
@@ -16,7 +17,7 @@ use persistence_rust::UriColumn;
 
 /// Polling response for the Owner UI watching an authorization request as it
 /// moves from `Pending` toward approval or denial.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub enum AuthorizationStatus {
     Pending,

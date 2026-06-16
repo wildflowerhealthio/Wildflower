@@ -2,13 +2,14 @@ use axum::extract::State;
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::crypto_util::public_jwk::PublicJwk;
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
 
 /// RFC 7517 JSON Web Key Set body served at `/.well-known/jwks.json`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct Jwks {
     pub keys: Vec<PublicJwk>,
 }

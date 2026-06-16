@@ -4,6 +4,7 @@ mod client_auth;
 mod device_authorization;
 mod error_codes;
 mod internal;
+mod openapi;
 mod token_exchange;
 mod token_request;
 

@@ -6,6 +6,7 @@ use axum::Json;
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use utoipa::ToSchema;
 
 use super::error_codes::OAuthErrorCode;
 use super::internal::{
@@ -37,7 +38,7 @@ pub struct DeviceAuthorizationPayload {
 }
 
 /// Body returned by `/oauth/device_authorization` per RFC 8628 §3.2.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DeviceAuthorizationResponse {
     pub device_code: String,
     pub user_code: String,
