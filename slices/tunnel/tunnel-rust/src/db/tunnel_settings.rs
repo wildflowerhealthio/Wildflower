@@ -193,25 +193,29 @@ impl TunnelStore {
         // Migration 001 always inserts the singleton row and every `TunnelStore`
         // migrates before seeding, so the read always finds it — a missing row
         // is a genuine error, not a fresh namespace to INSERT into.
-        let current = read_settings_with_connection(&conn)?;
+        let TunnelSettings {
+            public_host: current_public_host,
+            relay_settings: current_relay_settings,
+            ..
+        } = read_settings_with_connection(&conn)?;
 
         // Seed a field only where the stored value is unconfigured; the relay is
         // all-or-nothing, gated on the whole block being unset. A `None` bind
         // makes `COALESCE` keep the stored value, so this is the same single
         // SET list as `replace_settings` — a future column can't be skipped on
         // one path. `revision`/`requested_running` are intentionally untouched.
-        let seed_host = if as_none_if_empty(current.public_host.clone()).is_none() {
+        let maybe_new_public_host = if current_public_host.as_ref().is_none_or(String::is_empty) {
             seed.public_host.as_deref()
         } else {
             None
         };
-        let seed_relay = if current.relay_settings.is_none() {
+        let maybe_new_relay_settings = if current_relay_settings.is_none() {
             seed.relay.as_ref()
         } else {
             None
         };
 
-        if seed_host.is_none() && seed_relay.is_none() {
+        if maybe_new_public_host.is_none() && maybe_new_relay_settings.is_none() {
             return Ok(());
         }
 
@@ -224,11 +228,11 @@ impl TunnelStore {
                 service_name = COALESCE(:service_name, service_name) \
              WHERE id = :id",
             named_params! {
-                ":public_host": seed_host,
-                ":relay_remote_addr": seed_relay.map(|r| &r.remote_addr),
-                ":relay_token": seed_relay.map(|r| &r.token),
-                ":relay_public_key": seed_relay.map(|r| &r.public_key),
-                ":service_name": seed_relay.map(|r| &r.service_name),
+                ":public_host": maybe_new_public_host,
+                ":relay_remote_addr": maybe_new_relay_settings.map(|r| &r.remote_addr),
+                ":relay_token": maybe_new_relay_settings.map(|r| &r.token),
+                ":relay_public_key": maybe_new_relay_settings.map(|r| &r.public_key),
+                ":service_name": maybe_new_relay_settings.map(|r| &r.service_name),
                 ":id": TUNNEL_SETTINGS_ID,
             },
         )
