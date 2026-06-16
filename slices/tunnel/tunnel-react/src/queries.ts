@@ -123,8 +123,7 @@ const applyTunnelOptimistic = (previous: TunnelState, input: TunnelReplaceInput)
  * server's current snapshot in the client's error channel, decoded
  * against the state schema; this refinement separates that expected
  * conflict from genuine failures (HttpClientError, decode errors) that
- * don't structurally match. Built once at module scope — `Schema.is`
- * compiles the refinement, so it isn't rebuilt per call.
+ * don't structurally match.
  */
 const isTunnelState: (error: unknown) => error is TunnelState = Schema.is(
   Tunnel.TunnelStateViewSchema
