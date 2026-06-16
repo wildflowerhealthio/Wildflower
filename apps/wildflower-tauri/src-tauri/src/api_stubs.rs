@@ -1,39 +1,39 @@
 use axum::{routing::get, Json, Router};
 
 /// Temporary stubs for the app-shell API surface the React shell loads on
-/// `/_auth/home/` (`ListApps`, `ListRemotes`). The real implementations live
-/// in TS (`wildflower-server`) with no Rust counterpart yet. Without these
-/// routes the requests fell through to the SPA fallback, whose `200` HTML body
+/// `/_auth/home/` (`ListRemotes`). The real implementations live in TS
+/// (`wildflower-server`) with no Rust counterpart yet. Without these routes
+/// the requests fell through to the SPA fallback, whose `200` HTML body
 /// failed the client's JSON decode (`ParseError: Could not parse JSON`).
 ///
 /// `GetTunnel` used to be stubbed here too; it is now served for real by
-/// [`tunnel_rust::setup_tunnel`] (mounted in `lib.rs`).
+/// [`tunnel_rust::setup_tunnel`]. `ListApps` (`GET /apps`) plus the rest of
+/// the apps catalogue is now served for real by [`apps_rust::setup_apps`]
+/// — both are mounted in `lib.rs`.
 pub fn app_shell_stub_router() -> Router {
-    Router::new()
-        .route("/apps", get(|| async { Json(serde_json::json!([])) }))
-        .route(
-            "/collector/remotes",
-            get(|| async {
-                // `addedAt` is pinned to the static demo-install date
-                // (when this stub first shipped). Generating it at
-                // request time would let the SPA render "added X
-                // minutes ago" for an entry that's always existed —
-                // misleading. The fixed timestamp reads as "this
-                // demo has always been here", which matches what
-                // the user sees.
-                Json(serde_json::json!([{
-                    "id": "fhir-demo",
-                    "name": "FHIR Demo",
-                    "tag": "fhir-r4",
-                    "config": {
-                          "_tag": "fhir-r4",
-                          "rootUrl": "https://r4.smarthealthit.org",
-                          "patientId": "8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882",
-                    },
-                    "addedAt": "2026-06-17T14:29:22.363Z",
-                }]))
-            }),
-        )
+    Router::new().route(
+        "/collector/remotes",
+        get(|| async {
+            // `addedAt` is pinned to the static demo-install date
+            // (when this stub first shipped). Generating it at
+            // request time would let the SPA render "added X
+            // minutes ago" for an entry that's always existed —
+            // misleading. The fixed timestamp reads as "this
+            // demo has always been here", which matches what
+            // the user sees.
+            Json(serde_json::json!([{
+                "id": "fhir-demo",
+                "name": "FHIR Demo",
+                "tag": "fhir-r4",
+                "config": {
+                      "_tag": "fhir-r4",
+                      "rootUrl": "https://r4.smarthealthit.org",
+                      "patientId": "8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882",
+                },
+                "addedAt": "2026-06-17T14:29:22.363Z",
+            }]))
+        }),
+    )
 }
 
 #[cfg(test)]
@@ -63,13 +63,6 @@ mod tests {
             .to_bytes();
         let json = serde_json::from_slice(&bytes).expect("stub body must be JSON");
         (status, json)
-    }
-
-    #[tokio::test]
-    async fn apps_endpoint_returns_an_empty_array() {
-        let (status, body) = get_json("/apps").await;
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(body, serde_json::json!([]));
     }
 
     /// `/collector/remotes` now ships a single FHIR demo remote so the

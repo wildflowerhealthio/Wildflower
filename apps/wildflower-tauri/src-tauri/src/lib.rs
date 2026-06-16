@@ -3,6 +3,7 @@ mod bridge;
 mod spa;
 
 use anyhow::Context;
+use apps_rust::{setup_apps, AppsConfig};
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
@@ -146,9 +147,20 @@ async fn run_server(
         seed: tunnel_seed_from_build_env(),
     };
     let tunnel_router =
-        tunnel_rust::setup_tunnel(db, &tunnel_config).context("failed to set up tunnel")?;
+        tunnel_rust::setup_tunnel(db.clone(), &tunnel_config).context("failed to set up tunnel")?;
     let gated_tunnel =
         layer_router_with_gatekeeper_auth_gating(tunnel_router, gatekeeper.state.clone());
+
+    // The apps catalogue surface. `GET /apps` (list) and `GET /apps/{id}`
+    // (launch redirect) ride on the public router — the webview consumes
+    // them unauthenticated like the rest of the launch path. The admin
+    // surface (POST/PATCH/DELETE) is owner-gated through the gatekeeper.
+    let apps_config = AppsConfig {
+        loopback_origin: loopback_origin.clone(),
+    };
+    let apps = setup_apps(db, &apps_config).context("failed to set up apps")?;
+    let gated_apps_admin =
+        layer_router_with_gatekeeper_auth_gating(apps.admin_router, gatekeeper.state.clone());
     // The webview page is NOT served from this origin — it loads from
     // the Vite dev server (`http://localhost:1420`) in dev and Tauri's
     // asset protocol (`tauri://localhost`) in builds, while API fetches
@@ -165,6 +177,8 @@ async fn run_server(
         .merge(gated_fhir_r4)
         .merge(gated_stubs)
         .merge(gated_tunnel)
+        .merge(apps.public_router)
+        .merge(gated_apps_admin)
         .fallback(spa::handle_serving_spa_html)
         .layer(CorsLayer::very_permissive());
 
