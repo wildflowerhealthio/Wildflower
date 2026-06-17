@@ -3,7 +3,15 @@ import { Schema } from 'effect'
 
 const AuthorizationStatusSchema = Schema.Union(
   Schema.Struct({ status: Schema.Literal('pending') }),
-  Schema.Struct({ status: Schema.Literal('denied') }),
+  Schema.Struct({
+    status: Schema.Literal('denied'),
+    // `NullishOr(...).optionalWith` to mirror `TokenResponseSchema.refresh_token`
+    // / `patient`: the server's `Option<String>` maps to `["string", "null"]` in
+    // the spec, so tolerate an explicit `null` on the wire, not just omission.
+    redirect: Schema.NullishOr(Schema.String).pipe(
+      Schema.optionalWith({ default: () => undefined })
+    ),
+  }),
   Schema.Struct({ status: Schema.Literal('approved'), redirect: Schema.String }),
   Schema.Struct({ status: Schema.Literal('error'), message: Schema.String })
 )
@@ -13,6 +21,9 @@ const TokenResponseSchema = Schema.Struct({
   token_type: Schema.String,
   expires_in: Schema.Int,
   scope: Schema.String,
+  refresh_token: Schema.NullishOr(Schema.String).pipe(
+    Schema.optionalWith({ default: () => undefined })
+  ),
   patient: Schema.NullishOr(Schema.String).pipe(Schema.optionalWith({ default: () => undefined })),
 })
 
@@ -96,7 +107,10 @@ const AuthorizationStatusNotFoundSchema = Schema.Struct({
 // which leaks into the whole API's requirements channel.
 const AuthorizationCodePayload = Schema.Struct({
   grant_type: Schema.Literal('authorization_code'),
-  client_id: Schema.NonEmptyString,
+  // Optional: a confidential client may authenticate via `Authorization: Basic`
+  // (RFC 6749 §2.3.1) and omit credentials from the body. Public/PKCE clients
+  // still send it.
+  client_id: Schema.optional(Schema.NonEmptyString),
   client_secret: Schema.optional(Schema.String),
   code: Schema.NonEmptyString,
   code_verifier: Schema.String.pipe(Schema.minLength(43), Schema.maxLength(128)),
@@ -110,7 +124,7 @@ const AuthorizationCodePayload = Schema.Struct({
 
 const DeviceCodePayload = Schema.Struct({
   grant_type: Schema.Literal('urn:ietf:params:oauth:grant-type:device_code'),
-  client_id: Schema.NonEmptyString,
+  client_id: Schema.optional(Schema.NonEmptyString),
   client_secret: Schema.optional(Schema.String),
   device_code: Schema.NonEmptyString,
 }).pipe(
@@ -120,10 +134,31 @@ const DeviceCodePayload = Schema.Struct({
   })
 )
 
-const TokenExchangePayloadSchema = Schema.Union(AuthorizationCodePayload, DeviceCodePayload)
+// Refresh-token grant (RFC 6749 §6) — the gatekeeper's `/token` handler
+// dispatches it (`token_exchange.rs::TokenPayload::RefreshToken`), so the
+// client contract must be able to express it. Same per-member form encoding as
+// the other grants.
+const RefreshTokenPayload = Schema.Struct({
+  grant_type: Schema.Literal('refresh_token'),
+  client_id: Schema.optional(Schema.NonEmptyString),
+  client_secret: Schema.optional(Schema.String),
+  refresh_token: Schema.NonEmptyString,
+}).pipe(
+  HttpApiSchema.withEncoding({
+    kind: 'UrlParams',
+    contentType: 'application/x-www-form-urlencoded',
+  })
+)
+
+const TokenExchangePayloadSchema = Schema.Union(
+  AuthorizationCodePayload,
+  DeviceCodePayload,
+  RefreshTokenPayload
+)
 
 const DeviceAuthorizationPayloadSchema = Schema.Struct({
-  client_id: Schema.NonEmptyString,
+  client_id: Schema.optional(Schema.NonEmptyString),
+  client_secret: Schema.optional(Schema.String),
   scope: Schema.optional(Schema.String),
 }).pipe(
   HttpApiSchema.withEncoding({
@@ -168,6 +203,7 @@ export {
   AuthorizationStatusSchema,
   AuthorizeUrlParamsSchema,
   DeviceCodePayload,
+  RefreshTokenPayload,
   DeviceAuthorizationPayloadSchema,
   DeviceAuthorizationResponseSchema,
   TokenResponseSchema,

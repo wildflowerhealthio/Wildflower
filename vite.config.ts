@@ -70,11 +70,20 @@ export default defineConfig({
       '**/test/snapshots/**',
       'slices/apps/vendor-apps/src/generated-*.ts',
       '**/*.generated.ts',
+      // Effect schemas generated from a service's OpenAPI spec
+      // (`openapi-to-effect`); gitignored, reference-only.
+      '**/http-api-definition/generated/**',
       // Rust manifests are owned by the Rust toolchain (`cargo fmt` formats
       // `.rs` only; Cargo.toml layout is hand-maintained). oxfmt's TOML rules
       // disagree with how they're written (e.g. collapsing multi-line feature
       // arrays), which would otherwise fail `vp check` — so skip all TOML.
       '**/*.toml',
+      // Committed OpenAPI snapshot emitted by the Rust server
+      // (`serde_json::to_string_pretty`, written by the `UPDATE_OPENAPI=1`
+      // snapshot test). That test asserts byte-exact equality, but oxfmt would
+      // collapse its short arrays onto one line and break the test on the next
+      // `vp fmt` — so leave its formatting to the serde_json emitter.
+      '**/openapi/*.openapi.json',
     ],
   },
   lint: {
@@ -90,6 +99,9 @@ export default defineConfig({
       '**/test/snapshots/**',
       'slices/apps/vendor-apps/src/generated-*.ts',
       '**/*.generated.ts',
+      // Effect schemas generated from a service's OpenAPI spec
+      // (`openapi-to-effect`); gitignored, reference-only.
+      '**/http-api-definition/generated/**',
     ],
     plugins: ['typescript', 'react', 'unicorn', 'import'],
     categories: {

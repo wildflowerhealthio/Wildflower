@@ -1,14 +1,15 @@
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, MethodRouter};
 use axum::Json;
 use chrono::Utc;
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use super::error_codes::OAuthErrorCode;
 use super::internal::{
-    build_client_error_redirect_url, build_client_redirect_url, OAuthErrorResponse,
+    build_client_error_redirect_url, build_client_redirect_url, OAuthError, OAuthErrorResponse,
 };
+use super::openapi::AuthorizationRequestNotFound;
 use crate::domain::authorization_request::RequestStatus;
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppState;
@@ -16,7 +17,7 @@ use persistence_rust::UriColumn;
 
 /// Polling response for the Owner UI watching an authorization request as it
 /// moves from `Pending` toward approval or denial.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub enum AuthorizationStatus {
     Pending,
@@ -42,11 +43,6 @@ impl IntoResponse for AuthorizationStatus {
     }
 }
 
-/// `GET /oauth/authorize/{id}` route.
-pub(super) fn route() -> MethodRouter<AppState> {
-    get(handle_authorization_status_request)
-}
-
 /// Return the current status of the pending authorization request, including
 /// the final redirect URL once approved.
 ///
@@ -54,7 +50,17 @@ pub(super) fn route() -> MethodRouter<AppState> {
 /// share the handler: the Owner-surface [`HandlerError`] (404/logged 500) and
 /// the OAuth-shaped [`OAuthErrorResponse`] `server_error` — `?` converts
 /// either through its `IntoResponse`.
-async fn handle_authorization_status_request(
+#[utoipa::path(
+    get,
+    path = "/authorize/{id}",
+    params(("id" = String, Path, description = "Authorization request id")),
+    responses(
+        (status = 200, description = "Current authorization-request status", body = AuthorizationStatus),
+        (status = 404, description = "No authorization request with that id", body = AuthorizationRequestNotFound),
+        (status = 500, description = "Server error (RFC 6749 §5.2)", body = OAuthError)
+    )
+)]
+pub(super) async fn handle_authorization_status_request(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> axum::response::Result<AuthorizationStatus> {

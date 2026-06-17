@@ -1,0 +1,627 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gatekeeper OAuth API",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/.well-known/jwks.json": {
+      "get": {
+        "summary": "`GET /.well-known/jwks.json` — serve the active public signing keys.",
+        "operationId": "handle_jwks_request",
+        "responses": {
+          "200": {
+            "description": "RFC 7517 JSON Web Key Set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Jwks"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/authorize": {
+      "get": {
+        "summary": "The authorization endpoint (RFC 6749 §3.1), the public front door of the\nOAuth flow. Validates the request, then either auto-issues an authorization\ncode (when an existing grant pre-approves every requested scope) or\nredirects the user-agent to the Owner UI to drive the approval.",
+        "description": "Nothing in-process calls this route. Registered clients (e.g.\nSMART-on-FHIR apps) discover it via the FHIR server's\n`.well-known/smart-configuration` (`authorization_endpoint`) and send the\n*user's browser* here with PKCE params to start an authorization-code\nflow:\n\n1. Browser lands here; the request is parked as an `AuthorizationRequest`\n   (5-minute TTL).\n2. Unless every requested scope is pre-approved by an existing grant for\n   this (client, `redirect_uri`) pair, the browser is 302'd to the Owner\n   UI's polling page, which polls `GET /oauth/authorize/{id}` (a custom\n   extension, not part of any RFC) until the Owner decides. RFC 6749\n   leaves the owner-interaction mechanism unspecified, so the polling\n   page is spec-legal; likewise §4.1 explicitly allows skipping consent\n   on a previously established authorization decision, which is what the\n   grant fast path implements.\n3. Approval 302s the browser back to the client's `redirect_uri` with\n   `code` + `state` (§4.1.2); the client then redeems the short-lived\n   code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.",
+        "operationId": "handle_authorize_request",
+        "parameters": [
+          {
+            "name": "response_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code_challenge_method",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code_challenge",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "redirect_uri",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the client redirect_uri or the owner approval UI"
+          },
+          "400": {
+            "description": "Local HTML error page (untrusted client / redirect_uri)"
+          },
+          "503": {
+            "description": "No active signing key"
+          }
+        }
+      }
+    },
+    "/oauth/authorize/{id}": {
+      "get": {
+        "summary": "Return the current status of the pending authorization request, including\nthe final redirect URL once approved.",
+        "description": "The error side is `axum::response::ErrorResponse` because two error shapes\nshare the handler: the Owner-surface [`HandlerError`] (404/logged 500) and\nthe OAuth-shaped [`OAuthErrorResponse`] `server_error` — `?` converts\neither through its `IntoResponse`.",
+        "operationId": "handle_authorization_status_request",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Authorization request id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current authorization-request status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No authorization request with that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationRequestNotFound"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error (RFC 6749 §5.2)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/device_authorization": {
+      "post": {
+        "summary": "Issue a `(device_code, user_code)` pair for the client to poll on while the\nuser pairs the device. `Ok` carries the §5.1 cache suppression via\n[`DeviceAuthorizationResponse`], `Err` via [`TokenError`].",
+        "operationId": "handle_device_authorization_request",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceAuthorizationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Device + user code pair (RFC 8628 §3.2)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceAuthorizationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "OAuth error (RFC 6749 §5.2)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Client authentication failed (RFC 6749 §5.2)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "summary": "Render the dispatch outcome — `Ok` carries the §5.1 cache suppression via\n[`TokenResponse`], `Err` via [`TokenError`].",
+        "operationId": "handle_token_request",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful token response (RFC 6749 §5.1)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "OAuth error (RFC 6749 §5.2 / RFC 8628 §3.5)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Client authentication failed (RFC 6749 §5.2)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error (RFC 6749 §5.2)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AuthorizationRequestNotFound": {
+        "type": "object",
+        "description": "The JSON 404 body `not_found(\"AuthorizationRequestNotFound\", \"id\", ...)`\nrenders for an unknown authorization request.",
+        "required": [
+          "error",
+          "id"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "AuthorizationStatus": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "redirect": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Client callback URL carrying `error=access_denied&state=...` for\ncode-flow requests (RFC 6749 §4.1.2.1) so the polling page can\ncomplete the flow. Absent for device-flow denials, which have no\nclient `redirect_uri`."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "denied"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "redirect",
+              "status"
+            ],
+            "properties": {
+              "redirect": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "approved"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message",
+              "status"
+            ],
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "error"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Polling response for the Owner UI watching an authorization request as it\nmoves from `Pending` toward approval or denial."
+      },
+      "DeviceAuthorizationRequest": {
+        "type": "object",
+        "description": "`POST /oauth/device_authorization` request body (RFC 8628 §3.1) — the\noptional `scope` plus the body credentials. Form-urlencoded.",
+        "properties": {
+          "client_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "client_secret": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "DeviceAuthorizationResponse": {
+        "type": "object",
+        "description": "Body returned by `/oauth/device_authorization` per RFC 8628 §3.2.",
+        "required": [
+          "device_code",
+          "user_code",
+          "verification_uri",
+          "verification_uri_complete",
+          "expires_in",
+          "interval"
+        ],
+        "properties": {
+          "device_code": {
+            "type": "string"
+          },
+          "user_code": {
+            "type": "string"
+          },
+          "verification_uri": {
+            "type": "string"
+          },
+          "verification_uri_complete": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "interval": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "Jwks": {
+        "type": "object",
+        "description": "RFC 7517 JSON Web Key Set body served at `/.well-known/jwks.json`.",
+        "required": [
+          "keys"
+        ],
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicJwk"
+            }
+          }
+        }
+      },
+      "OAuthError": {
+        "type": "object",
+        "description": "RFC 6749 §5.2 token-endpoint error body.",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "error_description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PublicJwk": {
+        "type": "object",
+        "required": [
+          "kid",
+          "kty",
+          "alg",
+          "key_ops",
+          "n",
+          "e"
+        ],
+        "properties": {
+          "kid": {
+            "type": "string",
+            "description": "Key identifier matching the source `SigningKey.kid`; verifiers use this to select the key."
+          },
+          "kty": {
+            "type": "string",
+            "description": "JWK key type — always `\"RSA\"`."
+          },
+          "alg": {
+            "type": "string",
+            "description": "JWS algorithm the key is intended for — always `\"RS256\"`."
+          },
+          "key_ops": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Permitted JWK operations — always `[\"verify\"]` for published public keys."
+          },
+          "n": {
+            "type": "string",
+            "description": "RSA modulus `n`, base64url-encoded."
+          },
+          "e": {
+            "type": "string",
+            "description": "RSA public exponent `e`, base64url-encoded."
+          }
+        }
+      },
+      "TokenRequestBody": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "code",
+              "code_verifier",
+              "redirect_uri",
+              "grant_type"
+            ],
+            "properties": {
+              "client_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "client_secret": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "code": {
+                "type": "string"
+              },
+              "code_verifier": {
+                "type": "string"
+              },
+              "redirect_uri": {
+                "type": "string"
+              },
+              "grant_type": {
+                "type": "string",
+                "enum": [
+                  "authorization_code"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "device_code",
+              "grant_type"
+            ],
+            "properties": {
+              "client_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "client_secret": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "device_code": {
+                "type": "string"
+              },
+              "grant_type": {
+                "type": "string",
+                "enum": [
+                  "urn:ietf:params:oauth:grant-type:device_code"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "refresh_token",
+              "grant_type"
+            ],
+            "properties": {
+              "client_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "client_secret": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "refresh_token": {
+                "type": "string"
+              },
+              "grant_type": {
+                "type": "string",
+                "enum": [
+                  "refresh_token"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "`POST /oauth/token` request body — the `grant_type`-tagged union of the\nthree grants the endpoint dispatches (mirrors\n`super::token_exchange::TokenPayload` plus the body credentials).\nForm-urlencoded (RFC 6749 §3.2). `client_id`/`client_secret` are optional:\na confidential client may instead authenticate via `Authorization: Basic`\n(RFC 6749 §2.3.1) and omit them from the body — `resolve_client_credentials`\naccepts either source."
+      },
+      "TokenResponse": {
+        "type": "object",
+        "description": "RFC 6749 §5.1 successful token-endpoint response.",
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "scope"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "refresh_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Present only when the grant carries [`OFFLINE_ACCESS_SCOPE`] — the\nplaintext of the freshly-minted refresh-token generation (RFC 6749\n§5.1; only its hash is persisted)."
+          },
+          "patient": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -50,3 +50,12 @@ target/
 # and wf-worktree.sh — redirects target-dir off the macOS bind mount onto the
 # wf-data Docker volume. Never committed; regenerated on container start.
 .cargo/
+
+# Effect schemas generated from the gatekeeper OpenAPI spec (trial;
+# `openapi-to-effect`). Reference-only — the hand-written HttpApi in
+# `http-api-definition/` stays the source of truth. Regenerate with:
+#   vp run -C slices/gatekeeper/gatekeeper-core generate:openapi-schemas
+# (gatekeeper-core's `prettier` + `prettier-plugin-jsdoc` devDeps exist only
+# because openapi-to-effect requires them to format this output — they are NOT
+# a project formatter; oxfmt/`vp check` still owns the repo.)
+slices/gatekeeper/gatekeeper-core/src/http-api-definition/generated/

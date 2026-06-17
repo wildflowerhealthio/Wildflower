@@ -1,6 +1,7 @@
 use serde::Serialize;
+use utoipa::ToSchema;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PublicJwk {
     /// Key identifier matching the source `SigningKey.kid`; verifiers use this to select the key.
     pub kid: String,

@@ -1,16 +1,18 @@
 use anyhow::{anyhow, Context};
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{post, MethodRouter};
 use axum::Json;
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use utoipa::ToSchema;
 
 use super::error_codes::OAuthErrorCode;
 use super::internal::{
-    require_valid_client_for_token, CacheSuppressed, TokenError, DEVICE_CODE_POLL_INTERVAL,
+    require_valid_client_for_token, CacheSuppressed, OAuthError, TokenError,
+    DEVICE_CODE_POLL_INTERVAL,
 };
+use super::openapi::DeviceAuthorizationRequest;
 use super::token_request::TokenRequest;
 use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
 use crate::crypto_util::random_token::generate_authorization_code;
@@ -37,7 +39,7 @@ pub struct DeviceAuthorizationPayload {
 }
 
 /// Body returned by `/oauth/device_authorization` per RFC 8628 §3.2.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DeviceAuthorizationResponse {
     pub device_code: String,
     pub user_code: String,
@@ -55,15 +57,20 @@ impl IntoResponse for DeviceAuthorizationResponse {
     }
 }
 
-/// `POST /oauth/device_authorization` route.
-pub(super) fn route() -> MethodRouter<AppState> {
-    post(handle_device_authorization_request)
-}
-
 /// Issue a `(device_code, user_code)` pair for the client to poll on while the
 /// user pairs the device. `Ok` carries the §5.1 cache suppression via
 /// [`DeviceAuthorizationResponse`], `Err` via [`TokenError`].
-async fn handle_device_authorization_request(
+#[utoipa::path(
+    post,
+    path = "/device_authorization",
+    request_body(content = DeviceAuthorizationRequest, content_type = "application/x-www-form-urlencoded"),
+    responses(
+        (status = 200, description = "Device + user code pair (RFC 8628 §3.2)", body = DeviceAuthorizationResponse),
+        (status = 400, description = "OAuth error (RFC 6749 §5.2)", body = OAuthError),
+        (status = 401, description = "Client authentication failed (RFC 6749 §5.2)", body = OAuthError)
+    )
+)]
+pub(super) async fn handle_device_authorization_request(
     State(state): State<AppState>,
     origin: ServedOrigin,
     request: TokenRequest<DeviceAuthorizationPayload>,

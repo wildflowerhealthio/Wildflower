@@ -46,10 +46,12 @@
     "build": "vp pack",
     "check": "vp check",
     "dev": "vp pack --watch",
+    "generate:openapi-schemas": "mkdir -p src/http-api-definition/generated && openapi-to-effect gen ../gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json src/http-api-definition/generated",
     "prepublishOnly": "vp run build",
     "test": "vp test"
   },
   "devDependencies": {
+    "@apidevtools/json-schema-ref-parser": "^11.7.0",
     "@effect/platform": "catalog:",
     "@livestore/adapter-node": "catalog:",
     "@livestore/common": "catalog:",
@@ -65,6 +67,9 @@
     "jose": "catalog:",
     "kitchen-sink": "workspace:*",
     "navigation-core": "workspace:*",
+    "openapi-to-effect": "^0.9.3",
+    "prettier": "^3.4.2",
+    "prettier-plugin-jsdoc": "^1.3.0",
     "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:",

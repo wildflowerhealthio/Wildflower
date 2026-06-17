@@ -72,6 +72,37 @@ describe('TokenExchange wire format', () => {
       },
     ])
   })
+
+  // The third grant the server dispatches (`token_exchange.rs`). Mirrors the two
+  // cases above so the per-member form encoding is guarded for every union
+  // member, not just the first two (the drift test checks schema shape, not
+  // wire encoding, so it can't catch a re-hoisted `withEncoding`).
+  test('encodes the refresh-token payload as form-urlencoded', async () => {
+    // Arrange
+    const captures: CapturedRequest[] = []
+
+    // Act
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* HttpApiClient.make(GatekeeperApi)
+        return yield* client.oauth.TokenExchange({
+          payload: {
+            grant_type: 'refresh_token',
+            client_id: 'wildflower-host',
+            refresh_token: 'rt-1',
+          },
+        })
+      }).pipe(Effect.provide(capturingHttpClientLayer(captures)), Effect.scoped)
+    )
+
+    // Assert
+    expect(captures).toEqual([
+      {
+        contentType: 'application/x-www-form-urlencoded',
+        bodyText: 'grant_type=refresh_token&client_id=wildflower-host&refresh_token=rt-1',
+      },
+    ])
+  })
 })
 
 // Helpers

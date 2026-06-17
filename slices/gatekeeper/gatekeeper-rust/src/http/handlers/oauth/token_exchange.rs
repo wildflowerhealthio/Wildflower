@@ -1,6 +1,5 @@
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{post, MethodRouter};
 use chrono::Utc;
 use serde::Deserialize;
 use subtle::ConstantTimeEq;
@@ -11,9 +10,10 @@ use uuid::Uuid;
 use super::client_auth::ClientCredentials;
 use super::error_codes::OAuthErrorCode;
 use super::internal::{
-    issue_token_response, require_valid_client_for_token, IssueTokenInput, TokenError,
+    issue_token_response, require_valid_client_for_token, IssueTokenInput, OAuthError, TokenError,
     TokenResponse, DEVICE_CODE_POLL_INTERVAL, OFFLINE_ACCESS_SCOPE, REFRESH_TOKEN_FAMILY_TTL,
 };
+use super::openapi::TokenRequestBody;
 use super::token_request::TokenRequest;
 use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
@@ -52,14 +52,20 @@ pub enum TokenPayload {
     RefreshToken { refresh_token: String },
 }
 
-/// `POST /oauth/token` route.
-pub(super) fn route() -> MethodRouter<AppState> {
-    post(handle_token_request)
-}
-
 /// Render the dispatch outcome — `Ok` carries the §5.1 cache suppression via
 /// [`TokenResponse`], `Err` via [`TokenError`].
-async fn handle_token_request(
+#[utoipa::path(
+    post,
+    path = "/token",
+    request_body(content = TokenRequestBody, content_type = "application/x-www-form-urlencoded"),
+    responses(
+        (status = 200, description = "Successful token response (RFC 6749 §5.1)", body = TokenResponse),
+        (status = 400, description = "OAuth error (RFC 6749 §5.2 / RFC 8628 §3.5)", body = OAuthError),
+        (status = 401, description = "Client authentication failed (RFC 6749 §5.2)", body = OAuthError),
+        (status = 500, description = "Server error (RFC 6749 §5.2)", body = OAuthError)
+    )
+)]
+pub(super) async fn handle_token_request(
     State(state): State<AppState>,
     origin: ServedOrigin,
     request: TokenRequest<TokenPayload>,
