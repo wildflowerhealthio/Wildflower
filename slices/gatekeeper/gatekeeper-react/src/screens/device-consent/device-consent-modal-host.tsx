@@ -30,7 +30,7 @@ const DeviceConsentDialogBody = ({
   readonly onDone: () => void
 }): JSX.Element => {
   const { data: consent } = useDeviceConsentQuery(userCode)
-  return <DeviceConsentForm consent={consent} onDone={onDone} showHeading={false} />
+  return <DeviceConsentForm consent={consent} onDone={onDone} />
 }
 
 const DeviceConsentModalHost = (): JSX.Element => {

@@ -25,18 +25,11 @@ import scopeListStyles from '../../styles/scope-list.module.css'
 interface DeviceConsentFormProps {
   readonly consent: DeviceConsent
   readonly onDone: () => void
-  /**
-   * Whether to render the form's `<h1>Device Authorization</h1>`
-   * heading. Defaults to `true` (standalone route). The modal host
-   * passes `false` because the Dialog already titles the surface.
-   */
-  readonly showHeading?: boolean
 }
 
 const DeviceConsentForm = ({
   consent,
   onDone,
-  showHeading = true,
 }: DeviceConsentFormProps): JSX.Element => {
   const requestedScopes = consent.requestedScopes
   const consentMutation = useDeviceConsentMutation()
@@ -101,8 +94,6 @@ const DeviceConsentForm = ({
 
   return (
     <>
-      {showHeading ? <h1 className="text-heading-6">Device Authorization</h1> : null}
-
       <Field label="Code">
         <span className="text-body-2">
           <code>{consent.userCode}</code>
