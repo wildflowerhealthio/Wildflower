@@ -261,7 +261,10 @@
       "AuthorizationRequestNotFound": {
         "type": "object",
         "description": "The JSON 404 body `not_found(\"AuthorizationRequestNotFound\", \"id\", ...)`\nrenders for an unknown authorization request.",
-        "required": ["error", "id"],
+        "required": [
+          "error",
+          "id"
+        ],
         "properties": {
           "error": {
             "type": "string"
@@ -275,51 +278,72 @@
         "oneOf": [
           {
             "type": "object",
-            "required": ["status"],
+            "required": [
+              "status"
+            ],
             "properties": {
               "status": {
                 "type": "string",
-                "enum": ["pending"]
+                "enum": [
+                  "pending"
+                ]
               }
             }
           },
           {
             "type": "object",
-            "required": ["status"],
+            "required": [
+              "status"
+            ],
             "properties": {
               "redirect": {
-                "type": ["string", "null"],
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "description": "Client callback URL carrying `error=access_denied&state=...` for\ncode-flow requests (RFC 6749 §4.1.2.1) so the polling page can\ncomplete the flow. Absent for device-flow denials, which have no\nclient `redirect_uri`."
               },
               "status": {
                 "type": "string",
-                "enum": ["denied"]
+                "enum": [
+                  "denied"
+                ]
               }
             }
           },
           {
             "type": "object",
-            "required": ["redirect", "status"],
+            "required": [
+              "redirect",
+              "status"
+            ],
             "properties": {
               "redirect": {
                 "type": "string"
               },
               "status": {
                 "type": "string",
-                "enum": ["approved"]
+                "enum": [
+                  "approved"
+                ]
               }
             }
           },
           {
             "type": "object",
-            "required": ["message", "status"],
+            "required": [
+              "message",
+              "status"
+            ],
             "properties": {
               "message": {
                 "type": "string"
               },
               "status": {
                 "type": "string",
-                "enum": ["error"]
+                "enum": [
+                  "error"
+                ]
               }
             }
           }
@@ -331,13 +355,22 @@
         "description": "`POST /oauth/device_authorization` request body (RFC 8628 §3.1) — the\noptional `scope` plus the body credentials. Form-urlencoded.",
         "properties": {
           "client_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "client_secret": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "scope": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -378,7 +411,9 @@
       "Jwks": {
         "type": "object",
         "description": "RFC 7517 JSON Web Key Set body served at `/.well-known/jwks.json`.",
-        "required": ["keys"],
+        "required": [
+          "keys"
+        ],
         "properties": {
           "keys": {
             "type": "array",
@@ -391,19 +426,31 @@
       "OAuthError": {
         "type": "object",
         "description": "RFC 6749 §5.2 token-endpoint error body.",
-        "required": ["error"],
+        "required": [
+          "error"
+        ],
         "properties": {
           "error": {
             "type": "string"
           },
           "error_description": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "PublicJwk": {
         "type": "object",
-        "required": ["kid", "kty", "alg", "key_ops", "n", "e"],
+        "required": [
+          "kid",
+          "kty",
+          "alg",
+          "key_ops",
+          "n",
+          "e"
+        ],
         "properties": {
           "kid": {
             "type": "string",
@@ -438,13 +485,24 @@
         "oneOf": [
           {
             "type": "object",
-            "required": ["code", "code_verifier", "redirect_uri", "grant_type"],
+            "required": [
+              "code",
+              "code_verifier",
+              "redirect_uri",
+              "grant_type"
+            ],
             "properties": {
               "client_id": {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "client_secret": {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "code": {
                 "type": "string"
@@ -457,45 +515,69 @@
               },
               "grant_type": {
                 "type": "string",
-                "enum": ["authorization_code"]
+                "enum": [
+                  "authorization_code"
+                ]
               }
             }
           },
           {
             "type": "object",
-            "required": ["device_code", "grant_type"],
+            "required": [
+              "device_code",
+              "grant_type"
+            ],
             "properties": {
               "client_id": {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "client_secret": {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "device_code": {
                 "type": "string"
               },
               "grant_type": {
                 "type": "string",
-                "enum": ["urn:ietf:params:oauth:grant-type:device_code"]
+                "enum": [
+                  "urn:ietf:params:oauth:grant-type:device_code"
+                ]
               }
             }
           },
           {
             "type": "object",
-            "required": ["refresh_token", "grant_type"],
+            "required": [
+              "refresh_token",
+              "grant_type"
+            ],
             "properties": {
               "client_id": {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "client_secret": {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "refresh_token": {
                 "type": "string"
               },
               "grant_type": {
                 "type": "string",
-                "enum": ["refresh_token"]
+                "enum": [
+                  "refresh_token"
+                ]
               }
             }
           }
@@ -505,7 +587,12 @@
       "TokenResponse": {
         "type": "object",
         "description": "RFC 6749 §5.1 successful token-endpoint response.",
-        "required": ["access_token", "token_type", "expires_in", "scope"],
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "scope"
+        ],
         "properties": {
           "access_token": {
             "type": "string"
@@ -521,11 +608,17 @@
             "type": "string"
           },
           "refresh_token": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Present only when the grant carries [`OFFLINE_ACCESS_SCOPE`] — the\nplaintext of the freshly-minted refresh-token generation (RFC 6749\n§5.1; only its hash is persisted)."
           },
           "patient": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       }
