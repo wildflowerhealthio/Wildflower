@@ -14,12 +14,14 @@ rust:
   - '.github/workflows/lint-rust.yml'
   - '.github/workflows/test-rust.yml'
 
-# Subset of `rust`: just the Tauri desktop app. Gates the `tauri` job in
-# lint-rust.yml, which installs GTK/webkit system libs to compile + lint that
-# crate (the regular `lint`/`nextest` jobs exclude it). A tauri change matches
-# both `rust` and `tauri`, so it runs the normal Rust jobs AND the tauri job.
+# Subset of `rust`: crates that depend on `tauri = "2"` and therefore
+# need GTK/webkit system libs to compile. Gates the `tauri` job in
+# lint-rust.yml (the regular `lint`/`nextest` jobs exclude these
+# crates). A tauri change matches both `rust` and `tauri`, so it runs
+# the normal Rust jobs AND the tauri job.
 tauri:
   - 'apps/wildflower-tauri/**'
+  - 'slices/browser-sniffer/browser-sniffer-tauri-rust/**'
   - '.github/path-filters.yml'
   - '.github/workflows/lint-rust.yml'
 

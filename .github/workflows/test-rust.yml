@@ -57,11 +57,13 @@ jobs:
         # --no-tests=warn keeps the run green while these crates have no tests
         # yet (nextest 0.9.85+ fails on zero tests by default). Switch to
         # --no-tests=fail once Rust tests exist to guard against an empty run.
-        # wildflower-tauri is excluded — see lint-rust.yml for why.
-        run: cargo nextest run --workspace --exclude wildflower-tauri --all-features --no-tests=warn
+        # wildflower-tauri and browser-sniffer-tauri-rust are excluded — both
+        # pull in `tauri = "2"` and need GTK/webkit system libraries. See
+        # lint-rust.yml for the GTK-enabled `tauri` job that covers them.
+        run: cargo nextest run --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-features --no-tests=warn
       - name: Run doctests
         # nextest does not execute doctests, so cover them with cargo test.
-        run: cargo test --doc --workspace --exclude wildflower-tauri --all-features
+        run: cargo test --doc --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-features
 
   # Always-runs summary job — the check to require in branch protection.
   # Left without a `name:` so its required-check context stays the stable

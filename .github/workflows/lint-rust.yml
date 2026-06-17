@@ -57,15 +57,16 @@ jobs:
       - name: rustfmt
         run: cargo fmt --all --check
       - name: clippy (deny warnings)
-        # wildflower-tauri is excluded here: linting it needs the webkit2gtk/gtk
-        # system libraries, so it gets its own `tauri` job below.
-        run: cargo clippy --workspace --exclude wildflower-tauri --all-targets --all-features -- -D warnings
+        # wildflower-tauri and browser-sniffer-tauri-rust are excluded here:
+        # both pull in `tauri = "2"` which needs webkit2gtk/gtk system
+        # libraries to compile, so they get their own `tauri` job below.
+        run: cargo clippy --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-targets --all-features -- -D warnings
       - name: clippy pedantic (informational)
         # Pedantic findings are surfaced as annotations but do not fail the job
         # yet. Once the codebase is clean against them, promote this by folding
         # `-W clippy::pedantic` into the deny-warnings step above.
         continue-on-error: true
-        run: cargo clippy --workspace --exclude wildflower-tauri --all-targets --all-features -- -W clippy::pedantic
+        run: cargo clippy --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-targets --all-features -- -W clippy::pedantic
 
   # Compiles + lints the tauri crate, which `lint` excludes because its deps
   # need GTK/webkit system libraries. Without this the crate is only
@@ -97,8 +98,11 @@ jobs:
             libayatana-appindicator3-dev librsvg2-dev libxdo-dev
       - name: Set up Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: clippy (wildflower-tauri)
-        run: cargo clippy -p wildflower-tauri --all-targets --all-features -- -D warnings
+      - name: clippy (wildflower-tauri + browser-sniffer-tauri-rust)
+        # Both crates pull in `tauri = "2"` and need the GTK/webkit system
+        # libraries installed above; they are lint-checked together here so
+        # the `lint` job above can stay GTK-free.
+        run: cargo clippy -p wildflower-tauri -p browser-sniffer-tauri-rust --all-targets --all-features -- -D warnings
 
   deny:
     name: Dependency Check
