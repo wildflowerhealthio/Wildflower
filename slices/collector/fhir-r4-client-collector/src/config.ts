@@ -183,9 +183,8 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<AnyReso
   const patientUrl = `${config.rootUrl}/Patient/${safePatientId}?_format=json`
   const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
   const firstPage: WebViewSource.Any = {
-    _tag: 'Html',
-    html: fetchWrapperHtml(patientUrl),
-    baseUrl: config.rootUrl,
+    _tag: 'Uri',
+    uri: patientUrl,
   }
   return ScrapingPlan.make<AnyResource>({
     name: 'FHIR R4',
@@ -199,9 +198,8 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<AnyReso
       {
         _tag: 'Open',
         source: {
-          _tag: 'Html',
-          html: fetchWrapperHtml(observationUrl),
-          baseUrl: config.rootUrl,
+          _tag: 'Uri',
+          uri: observationUrl,
         },
       },
     ],

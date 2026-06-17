@@ -1,8 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "browser-sniffer",
-  "description": "Capability for the sniffer child webview opened by browser-sniffer-tauri-rust. Grants only the event bus (so the injected bootstrap can emit BrowserSnifferBridge.webToHost tags as bridge:{tag} Tauri events, and listen for the host's bridge:Click / bridge:CancelSnifferRequest sends) and log access (so console mirroring works the same way it does in the main webview). The broad core:default surface is intentionally NOT granted — the third-party page loaded into this webview shares the JS context with our bootstrap and inherits whatever __TAURI__ namespace permissions allow.",
-  "windows": ["main"],
+  "description": "Capability for the sniffer top-level WebviewWindow opened by browser-sniffer-tauri-rust. Grants only the event bus (so the injected bootstrap can emit BrowserSnifferBridge.webToHost tags as bridge:{tag} Tauri events, and listen for the host's bridge:Click / bridge:CancelSnifferRequest sends) and log access (so console mirroring works the same way it does in the main webview). The broad core:default surface is intentionally NOT granted — the third-party page loaded into this webview shares the JS context with our bootstrap and inherits whatever __TAURI__ namespace permissions allow. WebviewWindowBuilder labels both the window and the webview 'browser-sniffer' (see SNIFFER_WEBVIEW_LABEL). The `remote.urls` block is required because the sniffer's top-level navigation is an arbitrary external https:// URL (Origin::Remote in Tauri's authority): without a matching urlpattern, the capability is silently treated as local-only and every IPC call from the page is rejected as `not allowed on window`. Pattern is intentionally permissive — the sniffer is designed to load any third-party EHR / health portal, so we cannot enumerate hosts in advance. Security note: the JS context inside the sniffer webview is shared with the loaded page, so anything the bootstrap can do, a hostile page can also do; the threat model already assumes the loaded page may be adversarial.",
+  "local": false,
+  "windows": ["browser-sniffer"],
   "webviews": ["browser-sniffer"],
+  "remote": {
+    "urls": ["https://*", "http://*"]
+  },
   "permissions": ["core:event:default", "log:default"]
 }
