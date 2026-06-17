@@ -5,9 +5,9 @@
 //! operations:
 //!
 //! - `bridge:RequestSniffableWebView` → create a sniffer
-//!   [`tauri::WebviewWindow`] (top-level webview) sized to match the
-//!   main window, with `browser-sniffer-tauri`'s bootstrap IIFE wired
-//!   as `WebviewWindowBuilder::initialization_script(...)`.
+//!   [`tauri::WebviewWindow`] (top-level webview) with
+//!   `browser-sniffer-tauri`'s bootstrap IIFE wired as
+//!   `WebviewWindowBuilder::initialization_script(...)`.
 //! - `bridge:Open` → navigate the existing sniffer webview to a new
 //!   source (the init script re-runs on every navigation, so the
 //!   sniffer re-installs idempotently).
@@ -42,8 +42,10 @@ pub const OPEN_EVENT: &str = "bridge:Open";
 pub const SNIFFING_COMPLETE_EVENT: &str = "bridge:SniffingComplete";
 
 /// Window label assigned to the main React SPA webview by
-/// `apps/wildflower-tauri/src-tauri/tauri.conf.json`. The sniffer
-/// child webview is added under this window so it overlays the SPA.
+/// `apps/wildflower-tauri/src-tauri/tauri.conf.json`. Re-exported so
+/// integration tests can drift-guard against a config rename; not
+/// referenced at runtime in this crate today (the sniffer opens as a
+/// peer top-level `WebviewWindow`, not a child of the main window).
 pub const MAIN_WINDOW_LABEL: &str = "main";
 
 /// Label assigned to the sniffer child webview. Used to look up the
@@ -58,13 +60,17 @@ pub const SNIFFER_WEBVIEW_LABEL: &str = "browser-sniffer";
 /// the unmodified `installSniffer()` into Tauri `event.emit`/`listen`
 /// calls.
 ///
-/// The path is relative to this crate's `Cargo.toml`. The generated
-/// file is gitignored; `vp install` triggers its creation via the
-/// `prepare` script in `browser-sniffer-tauri/package.json`. A stale
-/// or empty file fails the `bootstrap_is_non_empty` test below before
-/// it can reach a real `WebviewBuilder`.
+/// The path is relative to this crate's `Cargo.toml`. The file lives
+/// at `embedded/` (not `dist/`) and is committed to the repository —
+/// the Rust CI workflow does not run pnpm, so it cannot regenerate
+/// the file before `cargo build`. Contributors who change the TS shim
+/// must regenerate (`vp run generate-tauri-bootstrap` in
+/// browser-sniffer-tauri, or simply re-run `pnpm install` to trigger
+/// the package's `prepare`) and commit the new bytes; a stale file
+/// fails the `bootstrap_is_non_empty` test below before it can reach
+/// a real `WebviewWindowBuilder`.
 const SNIFFER_BOOTSTRAP: &str =
-    include_str!("../../browser-sniffer-tauri/dist/tauri-bootstrap.js");
+    include_str!("../../browser-sniffer-tauri/embedded/tauri-bootstrap.js");
 
 /// Wire shape of `CollectorBridge.webToHost.RequestSniffableWebView`,
 /// pinned by `slices/collector/collector-fundamentals/src/bridge.ts`.
@@ -253,11 +259,11 @@ fn handle_sniffing_complete(app: &AppHandle) {
 /// Open the sniffer webview as a top-level `WebviewWindow` if it does
 /// not exist; otherwise navigate the existing webview to `url`.
 ///
-/// On desktop the sniffer presents as a separate OS window sized to
-/// match the main window (so it visually mimics an overlay), on mobile
-/// as a separate screen. The cross-platform path is `WebviewWindow`
-/// (top-level) — `Window::add_child` is desktop+unstable only in Tauri
-/// 2.11 and would not compile for mobile targets.
+/// On desktop the sniffer presents as a separate OS window (Tauri picks
+/// the default size and position), on mobile as a separate screen. The
+/// cross-platform path is `WebviewWindow` (top-level) — `Window::add_child`
+/// is desktop+unstable only in Tauri 2.11 and would not compile for
+/// mobile targets.
 ///
 /// Idempotent re-injection is safe at the JS level — the sniffer's
 /// `Symbol.for('browser-sniffer:state')` slot short-circuits a second
@@ -281,28 +287,17 @@ fn open_or_navigate_sniffer_webview(app: &AppHandle, url: WebviewUrl) -> anyhow:
         return Ok(());
     }
 
-    let mut builder = WebviewWindowBuilder::new(app, SNIFFER_WEBVIEW_LABEL, url)
+    // Leave window placement and sizing to the OS / Tauri default. On
+    // mobile the OS owns presentation anyway (typically a fullscreen
+    // screen push); on desktop a centred separate window is acceptable
+    // for v1, and copying the main window's geometry needed a
+    // `#[cfg(desktop)]` gate that is set only by `tauri-build` — this
+    // crate has no build script, so the cfg was undeclared and clippy's
+    // `unexpected_cfgs` lint refused the workspace build.
+    WebviewWindowBuilder::new(app, SNIFFER_WEBVIEW_LABEL, url)
         .initialization_script(SNIFFER_BOOTSTRAP)
-        .title("Wildflower Sniffer");
-
-    // On desktop, size and place the sniffer window to match the main
-    // window so it visually mimics an overlay even though it is a
-    // separate OS window. On mobile this branch is skipped — the OS
-    // controls presentation of a new webview (typically a fullscreen
-    // screen push), which is the intended user experience.
-    #[cfg(desktop)]
-    if let Some(main) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-        if let (Ok(physical_size), Ok(scale)) = (main.inner_size(), main.scale_factor()) {
-            let logical = physical_size.to_logical::<f64>(scale);
-            builder = builder.inner_size(logical.width, logical.height);
-        }
-        if let (Ok(physical_pos), Ok(scale)) = (main.outer_position(), main.scale_factor()) {
-            let logical = physical_pos.to_logical::<f64>(scale);
-            builder = builder.position(logical.x, logical.y);
-        }
-    }
-
-    builder.build()?;
+        .title("Wildflower Sniffer")
+        .build()?;
     Ok(())
 }
 
