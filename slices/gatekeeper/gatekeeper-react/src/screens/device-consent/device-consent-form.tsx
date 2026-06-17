@@ -27,10 +27,7 @@ interface DeviceConsentFormProps {
   readonly onDone: () => void
 }
 
-const DeviceConsentForm = ({
-  consent,
-  onDone,
-}: DeviceConsentFormProps): JSX.Element => {
+const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Element => {
   const requestedScopes = consent.requestedScopes
   const consentMutation = useDeviceConsentMutation()
   const [selectedScopes, setSelectedScopes] = useState<ReadonlySet<string>>(

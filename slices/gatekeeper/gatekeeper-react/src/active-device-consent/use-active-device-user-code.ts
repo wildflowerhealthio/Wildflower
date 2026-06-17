@@ -1,5 +1,4 @@
-import { Effect, Fiber, Stream } from 'effect'
-import { useContext, useSyncExternalStore } from 'react'
+import { useContextOrThrow, useSubscribable } from 'react-kitchen-sink'
 
 import { ActiveDeviceUserCodeContext } from './context.ts'
 
@@ -9,30 +8,13 @@ import { ActiveDeviceUserCodeContext } from './context.ts'
  * `<ActiveDeviceUserCodeProvider>` — accidental consumers without a
  * wired store have no useful fallback.
  *
- * Bridges `Subscribable.changes` (an Effect `Stream`) to React's
- * `useSyncExternalStore` via a one-shot forked fiber per subscribe.
- * The fiber emits the replayed initial value too — React's snapshot
- * equality drops the redundant re-render for the same value, and
- * relying on the replay is what closes the boot race PR #142
- * documented (an async `Effect.runFork` subscribed *after* the first
- * write would otherwise drop it).
+ * The actual `Subscribable → React` bridge lives in
+ * {@link useSubscribable}; this hook is the typed lookup against the
+ * provider context plus a missing-provider throw.
  */
 const useActiveDeviceUserCode = (): string | null => {
-  const store = useContext(ActiveDeviceUserCodeContext)
-  if (store === null) {
-    throw new Error('useActiveDeviceUserCode must be used inside <ActiveDeviceUserCodeProvider>')
-  }
-  return useSyncExternalStore(
-    (notify) => {
-      const fiber = Effect.runFork(
-        Stream.runForEach(store.subscribable.changes, () => Effect.sync(notify))
-      )
-      return () => {
-        Effect.runFork(Fiber.interrupt(fiber))
-      }
-    },
-    () => Effect.runSync(store.subscribable.get)
-  )
+  const store = useContextOrThrow(ActiveDeviceUserCodeContext)
+  return useSubscribable(store.subscribable)
 }
 
 export { useActiveDeviceUserCode }

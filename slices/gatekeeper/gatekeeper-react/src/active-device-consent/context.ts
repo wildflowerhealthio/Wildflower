@@ -9,5 +9,6 @@ import type { ActiveDeviceUserCodeStore } from './store.ts'
  * throws.
  */
 const ActiveDeviceUserCodeContext = createContext<ActiveDeviceUserCodeStore | null>(null)
+ActiveDeviceUserCodeContext.displayName = 'ActiveDeviceUserCodeContext'
 
 export { ActiveDeviceUserCodeContext }

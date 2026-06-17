@@ -12,7 +12,7 @@
  */
 
 import { Effect, SubscriptionRef } from 'effect'
-import type { AuthTokenStore } from 'react-kitchen-sink'
+import { makeSubscribableStore, type AuthTokenStore } from 'react-kitchen-sink'
 
 const TOKEN_STORAGE_KEY = 'gatekeeper:token'
 
@@ -134,11 +134,8 @@ const makeWebAuthTokenStore = (): AuthTokenStore => {
  * why this store ignores `localStorage`.
  */
 const makeEmbeddedAuthTokenStore = (): AuthTokenStore => {
-  const ref = Effect.runSync(SubscriptionRef.make<string | null>(null))
-  return {
-    subscribable: ref,
-    setToken: (token) => Effect.runSync(SubscriptionRef.set(ref, token)),
-  }
+  const { subscribable, set: setToken } = makeSubscribableStore<string | null>(null)
+  return { subscribable, setToken }
 }
 
 export {

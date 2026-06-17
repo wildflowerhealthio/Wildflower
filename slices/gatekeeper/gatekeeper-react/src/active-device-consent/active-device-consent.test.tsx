@@ -49,7 +49,7 @@ describe('ActiveDeviceUserCodeStore + useActiveDeviceUserCode', () => {
     // through the testing-library boundary.
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
-      expect(() => render(<RenderUserCode />)).toThrow(/ActiveDeviceUserCodeProvider/)
+      expect(() => render(<RenderUserCode />)).toThrow(/ActiveDeviceUserCodeContext/)
     } finally {
       errorSpy.mockRestore()
     }

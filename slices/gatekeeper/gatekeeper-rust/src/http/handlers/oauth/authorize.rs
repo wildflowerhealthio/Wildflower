@@ -189,6 +189,12 @@ async fn handle_authorize_request(
         .store
         .insert_authorization_request(&request)
         .map_err(|e| AuthorizeError::internal("insert_authorization_request failed", e))?;
+    // `insert_authorization_request` opportunistically prunes every
+    // row past its `expires_at`, including pending device-code rows.
+    // Republish the head so the popup doesn't keep advertising a
+    // device-code `user_code` whose backing row this code-flow insert
+    // just swept out from under it.
+    state.republish_active_device_user_code();
 
     // Fully-pre-approved fast path: skip the Owner UI and 302 the user-agent
     // straight back to the client with a fresh code.

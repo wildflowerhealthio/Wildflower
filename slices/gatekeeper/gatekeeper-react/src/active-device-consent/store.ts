@@ -7,9 +7,9 @@
  * `bridge:DeviceConsentRequested` handler (in `web-bridge.ts`) calls
  * `setActiveUserCode(...)` whenever a fresh pending head arrives or the
  * head clears. The
- * [`DeviceConsentModalHost`](./device-consent-modal-host.tsx) reads
- * via {@link useActiveDeviceUserCode} and surfaces the modal whenever
- * the value is non-null.
+ * [`DeviceConsentModalHost`](../screens/device-consent/device-consent-modal-host.tsx)
+ * reads via {@link useActiveDeviceUserCode} and surfaces the modal
+ * whenever the value is non-null.
  *
  * No persistence: the host re-delivers the current head on every
  * webview `bridge:__Ready` (page load and reload), so any locally
@@ -17,7 +17,8 @@
  * push. Mirrors the {@link makeEmbeddedAuthTokenStore} rationale.
  */
 
-import { Effect, type Subscribable, SubscriptionRef } from 'effect'
+import type { Subscribable } from 'effect'
+import { makeSubscribableStore } from 'react-kitchen-sink'
 
 interface ActiveDeviceUserCodeStore {
   /**
@@ -28,9 +29,9 @@ interface ActiveDeviceUserCodeStore {
   readonly subscribable: Subscribable.Subscribable<string | null>
   /**
    * Replace the current head. The web-bridge handler is the only
-   * caller — slices and components never write here. Synchronous
-   * side-effect, so `subscribable.changes` emits before the call
-   * returns.
+   * caller — slices and components never write here. Synchronous Ref
+   * write; `subscribable.changes` notifications fire on the next
+   * microtask.
    */
   readonly setActiveUserCode: (userCode: string | null) => void
 }
@@ -42,11 +43,8 @@ interface ActiveDeviceUserCodeStore {
  * actually pushes consent events).
  */
 const makeActiveDeviceUserCodeStore = (): ActiveDeviceUserCodeStore => {
-  const ref = Effect.runSync(SubscriptionRef.make<string | null>(null))
-  return {
-    subscribable: ref,
-    setActiveUserCode: (userCode) => Effect.runSync(SubscriptionRef.set(ref, userCode)),
-  }
+  const { subscribable, set: setActiveUserCode } = makeSubscribableStore<string | null>(null)
+  return { subscribable, setActiveUserCode }
 }
 
 export { makeActiveDeviceUserCodeStore }
