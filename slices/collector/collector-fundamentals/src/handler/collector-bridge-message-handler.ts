@@ -310,6 +310,22 @@ const make = <TResources>({
                 )
               : Effect.void
           ),
+          // TEMP debug: when the entity parse fails, dump the URL, the
+          // captured content-type, and the first 200 bytes of the body so
+          // we can tell whether the sniffer captured an unexpected HTML
+          // envelope (viewer wrapper drift), a non-JSON error page, or
+          // truly malformed JSON. Remove once the Bundle parse failure on
+          // the smarthealthit sandbox is understood.
+          Effect.tap((either) => {
+            if (Either.isRight(either)) return Effect.void
+            const contentType =
+              response.headers.find(([name]) => name.toLowerCase() === 'content-type')?.[1]
+              ?? '(none)'
+            const head = response.text().slice(0, 200).replaceAll('\n', '\\n')
+            return Effect.logWarning(
+              `[debug] parse failed for entity ${entity.name} at ${response.url}: status=${response.status} content-type=${contentType} bytes=${response.byteLength} chunks=${response.chunkCount}\nfirst 200 chars: ${head}`
+            )
+          }),
           Effect.withSpan(Telemetry.Importing.Parse.Span.Name, {
             attributes: {
               [Telemetry.Entity.Attributes.Name]: entity.name,
