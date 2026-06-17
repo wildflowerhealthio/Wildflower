@@ -16,6 +16,7 @@ describe('makeWebEntryOptions', () => {
     const { makeTransport } = makeWebEntryOptions()
     const transport = await makeTransport(
       () => {},
+      () => {},
       () => {}
     )
     expect(transport).toBe(stubTransport)
