@@ -1,9 +1,10 @@
 /**
  * Central catalog of OpenTelemetry span names, event names, and attribute
  * keys for the browser-sniffer host adapter. Kept in one file — even
- * though the spans fire from the platform adapter (`browser-sniffer-expo`),
- * not this pure core — so the naming philosophy stays coherent in a single
- * place, the same way `collector-fundamentals/telemetry` centralises the
+ * though the spans fire from the platform adapter
+ * (`browser-sniffer-tauri-rust` plus its TS bootstrap), not this pure
+ * core — so the naming philosophy stays coherent in a single place,
+ * the same way `collector-fundamentals/telemetry` centralises the
  * collector's.
  *
  * The adapter opens a small tree of manually-managed spans (see

@@ -2,11 +2,12 @@
 
 ## What this slice is
 
-A generic page-sniffing primitive. Three packages, each independent of any consuming slice:
+A generic page-sniffing primitive. Four packages, each independent of any consuming slice:
 
 - **`browser-sniffer-core`** — message schemas (the six events the sniffer posts) and `BrowserSnifferBridge` (an `effect-messaging-core` bridge declaring those messages as `Web→Host`).
-- **`browser-sniffer-injected`** — the actual JS that goes into a third-party page. Real TypeScript source (`src/install-sniffer.ts`); a string export (`snifferScript`) ready to drop into `react-native-webview`'s `injectedJavaScriptBeforeContentLoaded`.
-- **`browser-sniffer-expo`** — `<BrowserSnifferWebView>`, a `react-native-webview` wrapper that injects the script pre-content-load and dispatches incoming messages through `BridgeTransport`'s `Host` side.
+- **`browser-sniffer-injected`** — the actual JS that goes into a third-party page. Real TypeScript source (`src/install-sniffer.ts`); a string export (`snifferScript`) the platform-adapter packages embed verbatim into whatever injection mechanism their webview offers.
+- **`browser-sniffer-tauri`** — TypeScript bootstrap that adapts the sniffer's `ReactNativeWebView.postMessage` outbound convention onto Tauri's event bus and wraps `installSniffer()` for injection via `WebviewWindowBuilder::initialization_script`. Bundles to a self-contained IIFE (`embedded/tauri-bootstrap.js`) which the Rust crate includes via `include_str!`.
+- **`browser-sniffer-tauri-rust`** — Tauri host plumbing. Listens for the lifecycle events on the bridge (`RequestSniffableWebView` → open the sniffer `WebviewWindow`, `Open` → navigate the existing one, `SniffingComplete` → close) and injects the bootstrap as the webview's initialization script.
 
 No package in this slice knows about FHIR, collector, or any specific consumer. It's a primitive other slices compose with.
 
@@ -22,7 +23,7 @@ When `installSniffer()` runs in a page, it:
 3. Reports `RequestError { id, url, message }` on network failure (fetch reject, XHR `error` event).
 4. Posts `PageLoaded { url, content }` once the window `load` event fires.
 5. Posts ad-hoc `Log { log }` entries when shims install (single-shot diagnostics).
-6. Exposes `window.cancelSnifferRequest(id)` so the host can stop pumping events for a specific in-flight request via `webRef.injectJavaScript(...)` (no Host→Web bridge entry needed).
+6. Accepts host→web `Click` and `CancelSnifferRequest` messages (the latter to stop pumping events for a specific in-flight request). On Tauri, the bootstrap delivers these by `event.listen`-ing the bridge channel and dispatching a synthetic `MessageEvent` with `source: null` — exactly the shape the sniffer's `window.addEventListener('message', …)` handler reads.
 
 Idempotent: re-injecting on the same page short-circuits each shim on its `window.native*` shadow.
 
@@ -41,28 +42,31 @@ The slice rule says "slices should not depend on other slices unless intrinsic �
 The sniffer is half of a two-bridge sync. The other half — `CollectorBridge` — lives in `slices/collector/collector-core` and is added when the collector slice migrates. The flow once both are in place:
 
 ```text
-[collector-react SPA, inside <CollectorWebView>]
+[collector-react SPA, inside the main Tauri webview]
     │ user taps "Import Now"
     │ collectorTransport.sendMessage({ _tag: 'RequestSniffableWebView', source: {...} })
     ▼
-[Expo host's CollectorBridge.Host receiver]
-    │ pushes a screen rendering <BrowserSnifferWebView source={...}> alongside the still-mounted <CollectorWebView>
+[browser-sniffer-tauri-rust]
+    │ listens on bridge:RequestSniffableWebView
+    │ opens a top-level WebviewWindow with browser-sniffer-tauri's bootstrap
+    │ as the initialization_script and navigates it to source.uri
     ▼
-[<BrowserSnifferWebView> — this slice]
-    │ injects snifferScript pre-content-load
-    │ sniffer posts __Ready, then ResponseStart / ResponseData / etc. via window.ReactNativeWebView.postMessage
-    │ BridgeTransport.Host dispatches each event to its supplied handler
+[sniffer WebviewWindow]
+    │ Tauri's runtime + the bootstrap script wire window.__TAURI__ and an outbound
+    │ ReactNativeWebView.postMessage shim before any page script runs
+    │ installSniffer() shims fetch / XHR and posts __Ready, then
+    │ ResponseStart / ResponseData / etc. via window.ReactNativeWebView.postMessage
+    │ the bootstrap re-emits each as a structured message on the Tauri event bus
     ▼
-[Host's BrowserSnifferBridge handlers, supplied by the parent screen]
-    │ forward the four collector-relevant tags onto collectorTransport.sendMessage
-    │ (ResponseStart, ResponseData, ResponseFinished, RequestError)
+[Tauri event bus]
+    │ broadcasts the message to every webview listening on the bridge channel
     ▼
-[collector-react SPA's CollectorBridge.Web receiver]
+[collector-react SPA's CollectorBridge.Web receiver, in the main webview]
     │ feeds events into a FhirR4Remote (or other Remote) for parsing
     │ writes resources via same-origin PUT /fhir-r4/*
 ```
 
-The host is a pure router: it instantiates two bridges, holds a ref to the CollectorWebView's transport, and forwards selected sniffer events. No parsing logic in the host.
+The Rust host is a pure router: it listens for the four lifecycle tags (`RequestSniffableWebView`, `Open`, `SniffingComplete`, plus `Click` rerouting if a slice uses it), opens/navigates/closes the sniffer `WebviewWindow`, and lets the data-plane events fan out through Tauri's event bus unmodified. No parsing logic in the host.
 
 ## Why `installSniffer.toString()` (not a Vite bundle plugin)
 
@@ -74,7 +78,7 @@ This places a constraint on the function: **no module-scope dependencies**. Ever
 
 - **Effect-Messaging Web side**: The sniffer runs in _arbitrary_ third-party pages — it can't depend on our SPA bundle's `WebPlatformAdapter`. So it speaks the wire format manually (`JSON.stringify({_tag:..., ...})`) and the host decodes it through `BridgeTransport`'s `Host` side only. The `__Ready` message is the one piece of `BridgeTransport`'s protocol the sniffer participates in directly.
 
-- **A Host→Web channel**: `BrowserSnifferBridge.hostToWeb` is empty. Cancellation (the only host→sniffer signal today) goes via `injectJavaScript('window.cancelSnifferRequest(...)')`, which keeps the sniffer page-level rather than transport-level. If a future need for typed host messages emerges (e.g. "pause sniffing for these URL patterns"), the handshake is already wired so `BridgeTransport.sendMessage` will work as soon as a `hostToWeb` entry lands.
+- **A Tauri-shaped Web platform adapter inside the sniffer page**: the sniffer page is a _third-party_ origin; it can't import our SPA bundle or `@tauri-apps/api` modules at build time. The Tauri bootstrap relies on `withGlobalTauri: true` to surface `window.__TAURI__.event`, then runs everything else as plain script — no SDK, no Effect runtime, no schema decoder. The bridge wire format is parsed by hand on both sides for the same reason `installSniffer.toString()` constrains the sniffer body: nothing in the injected page can assume a module loader.
 
 - **A web-side test harness**: Tests live in `browser-sniffer-injected/src/install-sniffer.test.ts` against a Vitest jsdom env, calling `installSniffer()` directly and observing `window.ReactNativeWebView.postMessage` mocks. We also round-trip through `new Function(snifferScript)()` to guard against `toString()` losing semantic information.
 
@@ -83,5 +87,6 @@ This places a constraint on the function: **no module-scope dependencies**. Ever
 - `browser-sniffer-core/src/bridge.ts` — the typed contract.
 - `browser-sniffer-core/src/messages.ts` — the six event schemas.
 - `browser-sniffer-injected/src/install-sniffer.ts` — the actual shimming code.
-- `browser-sniffer-expo/src/components/BrowserSnifferWebView.tsx` — the React Native host component.
-- `slices/collector/collector-core/src/bridge.ts` (lands in a later PR) — the consumer side; re-uses message schemas from `browser-sniffer-core` so the wire format stays in lockstep.
+- `browser-sniffer-tauri/src/tauri-sniffer-entry.ts` — the Tauri bootstrap that adapts the postMessage convention onto Tauri's event bus.
+- `browser-sniffer-tauri-rust/src/lib.rs` — the Rust host plumbing that opens / navigates / closes the sniffer `WebviewWindow`.
+- `slices/collector/collector-fundamentals/src/bridge.ts` — the consumer-side bridge; re-uses message schemas from `browser-sniffer-core` so the wire format stays in lockstep.
