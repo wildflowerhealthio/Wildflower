@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { gatekeeperSettingsItemsFragment } from 'gatekeeper-react'
 import type { JSX } from 'react'
-import { ItemList } from 'react-tundraish'
+import { ItemList, PageHeader } from 'react-tundraish'
 import type { SettingsItem } from 'shared-structures-react'
 import { tunnelSettingsItemsFragment } from 'tunnel-react'
 
@@ -16,12 +16,18 @@ const settingsItems: readonly SettingsItem[] = [
 ]
 
 /**
- * Index of `/settings`. Renders one row per slice that opts in via
- * `*SettingsItemsFragment`; each row deep-links to a route mounted by
- * the slice's settings subtree.
+ * Index of `/settings`. Renders the section's single "Settings" header
+ * (this is a top-level tab, so no back link) followed by one row per
+ * slice that opts in via `*SettingsItemsFragment`; each row deep-links to
+ * a route mounted by the slice's settings subtree.
  */
 function SettingsIndex(): JSX.Element {
-  return <ItemList items={settingsItems} />
+  return (
+    <>
+      <PageHeader title="Settings" />
+      <ItemList items={settingsItems} />
+    </>
+  )
 }
 
 const Route = createFileRoute('/settings/')({ component: SettingsIndex })

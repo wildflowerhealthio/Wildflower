@@ -1,7 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useId, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { AsyncErrorView, Field, FieldDescription, pageLayoutStyles } from 'react-tundraish'
+import {
+  AsyncErrorView,
+  Field,
+  FieldDescription,
+  PageHeader,
+  pageLayoutStyles,
+} from 'react-tundraish'
 
 import { TunnelToggle } from '../../../components/TunnelToggle.tsx'
 import {
@@ -44,7 +50,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
 
   return (
     <>
-      <h1 className="text-heading-6">Tunnel</h1>
+      <PageHeader title="Tunnel" backHref="/settings" />
       <FieldDescription>
         Expose this device to the public Internet so apps installed on phones can reach it.
       </FieldDescription>

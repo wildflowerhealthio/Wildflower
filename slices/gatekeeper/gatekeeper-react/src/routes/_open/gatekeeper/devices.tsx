@@ -1,62 +1,30 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useId, useState, type JSX } from 'react'
-import { Field, FieldDescription } from 'react-tundraish'
+import type { JSX } from 'react'
+import { PageHeader } from 'react-tundraish'
 
-import pageLayout from '../../../styles/page-layout.module.css'
-import styles from './devices.module.css'
+import { DeviceCodeEntryForm } from '../../../screens/device/device-code-entry-form.tsx'
 
-const DEVICE_CODE_PATTERN = /^[BCDFGHJKLMNPQRSTVWXZ]{4}-[BCDFGHJKLMNPQRSTVWXZ]{4}$/
-
-const normalize = (raw: string): string => {
-  const upper = raw.toUpperCase().replace(/[^BCDFGHJKLMNPQRSTVWXZ-]/g, '')
-  const stripped = upper.replace(/-/g, '')
-  if (stripped.length <= 4) return stripped
-  return `${stripped.slice(0, 4)}-${stripped.slice(4, 8)}`
-}
-
+/**
+ * Public device-code entry screen — the RFC 8628 `verification_uri` an
+ * owner reaches from another device. Renders the shared
+ * {@link DeviceCodeEntryForm} with no back link (this surface is entered
+ * directly via the published URL, so there is nowhere in-app to go back
+ * to). Submitting advances to the public consent route.
+ *
+ * The owner-facing equivalent (`/settings/gatekeeper/devices`) renders the
+ * same form with a back link to the access page — same inner content,
+ * different chrome.
+ */
 function DeviceEntryScreen(): JSX.Element {
   const navigate = useNavigate()
-  const codeInputDomId = useId()
-  const [code, setCode] = useState('')
-
-  const isValid = DEVICE_CODE_PATTERN.test(code)
-
-  const submit = (): void => {
-    if (!isValid) return
-    void navigate({ to: `/gatekeeper/devices/${encodeURIComponent(code)}` })
-  }
-
   return (
     <>
-      <h1 className="text-heading-6">Enter Device Code</h1>
-      <FieldDescription>Enter the code shown on the device requesting access.</FieldDescription>
-
-      <Field label="Code" htmlFor={codeInputDomId}>
-        <input
-          id={codeInputDomId}
-          type="text"
-          inputMode="text"
-          autoComplete="off"
-          autoCapitalize="characters"
-          className={styles['pin-input']}
-          value={code}
-          onChange={(e) => {
-            setCode(normalize(e.target.value))
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submit()
-          }}
-          placeholder="BCDF-GHJK"
-          maxLength={9}
-          autoFocus
-        />
-      </Field>
-
-      <div className={pageLayout['buttons']}>
-        <button type="button" className="button-2 filled" disabled={!isValid} onClick={submit}>
-          Continue
-        </button>
-      </div>
+      <PageHeader title="Enter Code" />
+      <DeviceCodeEntryForm
+        onSubmit={(code) => {
+          void navigate({ to: `/gatekeeper/devices/${encodeURIComponent(code)}` })
+        }}
+      />
     </>
   )
 }

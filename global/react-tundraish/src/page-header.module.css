@@ -1,0 +1,106 @@
+/*
+ * Shared single-line page header: a leading back link, the title, and an
+ * optional trailing actions slot on one row.
+ *
+ * The title takes the remaining width and truncates with an ellipsis
+ * (`min-width: 0` lets the flex child shrink below its content width so
+ * `text-overflow` can engage) — a long title is clipped on a narrow
+ * viewport instead of wrapping onto a second line.
+ *
+ * The header sticks to the top of its scroll container (the authed tab
+ * shell's content column, or the viewport on the public flow pages) so
+ * the title and back affordance stay reachable while the body scrolls.
+ * The solid background and `z-index` keep scrolled content from showing
+ * through; `top: 0` pins it flush once the page shell's top padding has
+ * scrolled away.
+ */
+.page-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-background);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-neutral-7);
+
+  /*
+   * Bleed flush to the page edges by cancelling the `.page` shell's
+   * padding. `--page-padding` is set by that shell (page-layout.module.css)
+   * and read here so the two stay in lockstep; the `--space-5` fallback
+   * keeps a stray header rendered outside `.page` from collapsing.
+   */
+  margin-top: calc(-1 * var(--page-padding, var(--space-5)));
+  margin-inline: calc(-1 * var(--page-padding, var(--space-5)));
+
+  box-shadow:
+    0 var(--space-1) var(--space-2) calc(var(--space-1) * -1) #0003,
+    var(--space-2) var(--space-1) var(--space-3) var(--space-1) #0000001a;
+}
+
+/*
+ * The title + optional subtitle stack. It takes the remaining width and
+ * each line truncates independently with an ellipsis (`min-width: 0` lets
+ * the flex child shrink below its content width so `text-overflow` can
+ * engage) — a long title or subtitle is clipped instead of wrapping.
+ */
+.page-header__heading {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.page-header__title {
+  margin: 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-header__subtitle {
+  margin: 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-neutral-4);
+}
+
+.page-header__heading:first-child {
+  margin-left: var(--page-padding, var(--space-5));
+}
+/*
+ * The back link. A generous square keeps it a comfortable tap target on
+ * touch; the negative left margin pulls the glyph back to the page's left
+ * edge so the title still aligns where it would without a back link.
+ */
+.page-header__back {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-7);
+  height: var(--space-7);
+  margin-right: var(--space-1);
+  margin-left: calc(-1 * var(--space-1));
+  border-radius: var(--radius-2);
+  color: var(--color-foreground);
+  text-decoration: none;
+  font-size: var(--font-size-6);
+  line-height: 1;
+}
+
+.page-header__back:hover {
+  background: var(--color-neutral-9);
+}
+
+.page-header__actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}

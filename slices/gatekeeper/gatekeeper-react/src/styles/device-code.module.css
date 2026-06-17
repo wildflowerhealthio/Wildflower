@@ -1,3 +1,9 @@
+/*
+ * The large, spaced monospace treatment shared by the two device-flow
+ * surfaces: the code-entry `<input>` (where an owner types a code from
+ * another device) and the sign-in `<pre>` that surfaces this device's own
+ * `user_code` during the RFC 8628 flow.
+ */
 .pin-input {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 2rem;

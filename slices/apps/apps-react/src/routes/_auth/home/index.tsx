@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { stripTrailingSlash } from 'kitchen-sink'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { AsyncErrorView, ItemList, type ItemListItem } from 'react-tundraish'
+import { AsyncErrorView, ItemList, PageHeader, type ItemListItem } from 'react-tundraish'
 import { tunnelStateQueryOptions, useTunnelStateQuery, type TunnelState } from 'tunnel-react'
 
 import { appsListQueryOptions, useAppsListQuery, type AppEntry } from '../../../queries.ts'
@@ -70,19 +70,20 @@ const AppsHomeBody = ({ tunnel, apps }: AppsHomeBodyProps): JSX.Element => {
 
   return (
     <>
-      <header className={pageLayout['page__header']}>
-        <h1 className="text-heading-6">Apps</h1>
-
-        <button
-          type="button"
-          className="button-2 outline"
-          onClick={() => {
-            setEditorOpen(true)
-          }}
-        >
-          Manage
-        </button>
-      </header>
+      <PageHeader
+        title="Apps"
+        actions={
+          <button
+            type="button"
+            className="button-2 outline"
+            onClick={() => {
+              setEditorOpen(true)
+            }}
+          >
+            Manage
+          </button>
+        }
+      />
       {error !== null ? (
         <p className={cn(pageLayout['page__error'], 'text-body-3')} role="alert">
           {error}

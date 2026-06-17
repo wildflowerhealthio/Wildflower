@@ -10,10 +10,13 @@ import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 // The `/settings` auth gate now lives in the route's `beforeLoad`
 // (shared `authGatedRouteOptions`), not inside `SettingsLayout` — so
-// the component renders its header + `<Outlet>` unconditionally. The
-// gate's behaviour is exercised in `gatekeeper-react`'s
-// `auth-ready.test.ts`; mounting `SettingsLayout` directly here
-// bypasses the gate, which is exactly the unit under test.
+// the component renders the tab shell + `<Outlet>` unconditionally. The
+// "Settings" heading no longer lives in the layout (which used to stack
+// it on top of every child's own header); it's the index page's single
+// `<PageHeader>`, so the macro tree below (layout + index) still renders
+// exactly one "Settings" h1. The gate's behaviour is exercised in
+// `gatekeeper-react`'s `auth-ready.test.ts`; mounting `SettingsLayout`
+// directly here bypasses the gate, which is exactly the unit under test.
 import { SettingsLayout } from './settings.tsx'
 import { SettingsIndex } from './settings/index.tsx'
 
@@ -70,7 +73,10 @@ describe('SettingsScreen', () => {
     renderSettingsScreen()
     await waitFor(() => {
       const headings = screen.getAllByRole('heading', { name: 'Settings', level: 1 })
-      expect(headings.length).toBeGreaterThanOrEqual(1)
+      // Exactly one: the index page's single `<PageHeader>`. The layout no
+      // longer stacks its own "Settings" h1 on top — a reintroduced layout
+      // heading (the double-header this PR removes) must fail this test.
+      expect(headings.length).toBe(1)
     })
   })
 

@@ -3,7 +3,14 @@ import { unknownErrorToString } from 'kitchen-sink'
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { AsyncErrorView, ItemList, Menu, pageLayoutStyles, type MenuItem } from 'react-tundraish'
+import {
+  AsyncErrorView,
+  ItemList,
+  Menu,
+  PageHeader,
+  pageLayoutStyles,
+  type MenuItem,
+} from 'react-tundraish'
 
 import { RevokeGrantDialog } from '../../../components/RevokeGrantDialog.tsx'
 import { formatInstant } from '../../../format-date.ts'
@@ -42,6 +49,8 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
 
   return (
     <>
+      <PageHeader title="Access" backHref="/settings" />
+
       {errorMessage !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
           {errorMessage}
@@ -103,7 +112,7 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
             title: 'Authorize a Device',
             subtitle: 'Enter a code to authorize a device',
             onClick: () => {
-              void navigate({ to: '/gatekeeper/devices' })
+              void navigate({ to: '/settings/gatekeeper/devices' })
             },
           },
         ]}

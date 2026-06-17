@@ -8,6 +8,7 @@ import {
   Dialog,
   ItemList,
   Menu,
+  PageHeader,
   pageLayoutStyles,
   type MenuItem,
 } from 'react-tundraish'
@@ -79,7 +80,7 @@ function AccountListBody({ remotes }: AccountListBodyProps): JSX.Element {
 
   return (
     <>
-      <h1 className="text-heading-6">Collector</h1>
+      <PageHeader title="Collector" />
 
       {error !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>

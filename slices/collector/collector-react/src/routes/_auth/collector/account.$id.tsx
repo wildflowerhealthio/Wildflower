@@ -3,7 +3,7 @@ import { defaultConfig } from 'fhir-r4-client-collector'
 import { unknownErrorToString } from 'kitchen-sink'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { AsyncErrorView, pageLayoutStyles } from 'react-tundraish'
+import { AsyncErrorView, PageHeader, pageLayoutStyles } from 'react-tundraish'
 
 import {
   remoteQueryOptions,
@@ -54,7 +54,7 @@ function AccountConfigScreen({ existing }: { readonly existing: Remote }): JSX.E
 
   return (
     <>
-      <h2 className="text-heading-6">Edit Account</h2>
+      <PageHeader title="Edit Account" backHref="/collector" />
 
       {error !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>

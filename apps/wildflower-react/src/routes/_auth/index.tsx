@@ -1,35 +1,20 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import type { JSX } from 'react'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 /**
- * Owner-facing landing page rendered at the `_auth` layout's index
- * (`/`). Links out to the slice entry points (apps, collector,
- * settings, device auth) mounted as siblings under the same auth gate.
+ * The `_auth` layout index (`/`). The app's owner-facing surfaces are the
+ * three tabs (`/home`, `/collector`, `/settings`), so the bare root has
+ * no content of its own — it redirects to the apps landing, the same
+ * post-sign-in default the device-login flow targets
+ * (`POST_AUTH_DEFAULT_PATH`).
+ *
+ * This replaces a former second "Home" landing that just re-listed the
+ * tab destinations (including a confusing "Home → /home" link) — dead
+ * scaffolding that duplicated the tab bar.
  */
-function HomePage(): JSX.Element {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-      <h1>Home</h1>
-
-      <Link to="/home">
-        <h2>Home</h2>
-      </Link>
-
-      <Link to="/collector">
-        <h2>Collector</h2>
-      </Link>
-
-      <Link to="/settings">
-        <h2>Settings</h2>
-      </Link>
-
-      <Link to="/gatekeeper/devices">
-        <h2>Device Auth</h2>
-      </Link>
-    </div>
-  )
-}
-
-const Route = createFileRoute('/_auth/')({ component: HomePage })
+const Route = createFileRoute('/_auth/')({
+  beforeLoad: () => {
+    throw redirect({ to: '/home' })
+  },
+})
 
 export { Route }
