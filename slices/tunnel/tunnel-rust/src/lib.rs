@@ -24,10 +24,6 @@
 //! own rathole child, so a post-launch failure (relay unreachable, handshake
 //! rejected) surfaces in the HTTP `error` field and is retried, and a superseded
 //! run's late exit can't clobber the live one.
-//!
-//! NOTE(pr-ui): the `tunnel-core` TS schema + `tunnel-react` UI still speak the
-//! older PATCH/`subdomain` contract and are reconciled to this one in the
-//! follow-up UI PR.
 
 pub mod config;
 pub mod db;

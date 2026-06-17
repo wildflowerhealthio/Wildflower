@@ -51,7 +51,6 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "@apidevtools/json-schema-ref-parser": "^11.7.0",
     "@effect/platform": "catalog:",
     "@livestore/adapter-node": "catalog:",
     "@livestore/common": "catalog:",

@@ -30,6 +30,10 @@
       "source": "./src/openapi-drift/index.ts",
       "default": "./dist/openapi-drift/index.js"
     },
+    "./openapi-drift/testing": {
+      "source": "./src/openapi-drift/testing.ts",
+      "default": "./dist/openapi-drift/testing.js"
+    },
     "./process-daemon": {
       "source": "./src/process-daemon/index.ts",
       "default": "./dist/process-daemon/index.js"
@@ -43,6 +47,7 @@
     "test": "vp test"
   },
   "devDependencies": {
+    "@apidevtools/json-schema-ref-parser": "^11.7.0",
     "@effect/platform": "catalog:",
     "@livestore/adapter-node": "catalog:",
     "@livestore/common": "catalog:",

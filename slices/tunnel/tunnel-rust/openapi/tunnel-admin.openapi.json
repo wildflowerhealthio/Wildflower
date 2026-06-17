@@ -1,0 +1,203 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Tunnel Admin API",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/tunnel": {
+      "get": {
+        "summary": "`GET /tunnel` — read the current persisted settings + observed runtime as a\nsingle wire snapshot. Collected into the OpenAPI doc via `routes!` in the\nparent module, which reads this `#[utoipa::path]`.",
+        "operationId": "handle_get_tunnel",
+        "responses": {
+          "200": {
+            "description": "Current tunnel settings + observed runtime",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelStateResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "`PUT /tunnel` — full-replace of the visible settings under the caller's\n`revision` token. A stale revision returns 409 with the current snapshot so\nthe client can rebase; a winning write bumps the revision, reconciles the\nlive supervisor, and returns the new snapshot. Collected into the OpenAPI\ndoc via `routes!` in the parent module, which reads this `#[utoipa::path]`.",
+        "operationId": "handle_put_tunnel",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceTunnelRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Write applied; the new snapshot after the daemon reconciled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelStateResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale revision; no write happened — the current snapshot is returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelStateResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "RelayInput": {
+        "type": "object",
+        "required": [
+          "remoteAddr",
+          "token",
+          "publicKey",
+          "serviceName"
+        ],
+        "properties": {
+          "remoteAddr": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "publicKey": {
+            "type": "string"
+          },
+          "serviceName": {
+            "type": "string"
+          }
+        }
+      },
+      "RelayView": {
+        "type": "object",
+        "description": "The readable view of the relay connection — everything except the secret\n`token`, which stays write-only and is never returned. Mirrors\n`RelaySettings` minus `token`. The client prefills these and only re-sends\nthe relay block (with a fresh token) when the user changes it.",
+        "required": [
+          "remoteAddr",
+          "publicKey",
+          "serviceName"
+        ],
+        "properties": {
+          "remoteAddr": {
+            "type": "string"
+          },
+          "publicKey": {
+            "type": "string"
+          },
+          "serviceName": {
+            "type": "string"
+          }
+        }
+      },
+      "ReplaceTunnelRequestBody": {
+        "type": "object",
+        "description": "PUT body — a full replace of the visible settings guarded by `revision`,\nplus an optional write-only `relay` block (absent = keep the stored relay\nconnection, present = replace all four fields).\n\n`publicHost` is required and full-replace: send the desired host as a\nstring, or `null` to clear it. An omitted field is rejected — full-replace\nPUT semantics, and the relay block is the only intentionally-omittable\nmember (because it's write-only and the client can't echo back what it\nhasn't seen).",
+        "required": [
+          "revision",
+          "publicHost",
+          "requestedRunning"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "publicHost": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requestedRunning": {
+            "type": "boolean"
+          },
+          "relay": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RelayInput"
+              }
+            ]
+          }
+        }
+      },
+      "TunnelStateResponse": {
+        "type": "object",
+        "description": "Tunnel state on the wire. The relay connection's non-secret fields are\nreturned in [`RelayView`] (the `token` stays write-only and never appears\nhere). `revision` is the optimistic-concurrency token a PUT must echo.\n\n# `running` and `servedOrigin` are optimistic\n\n`running` flips to `true` the instant a dial attempt starts and stays true\nacross reconnect attempts that haven't yet errored — it means *dialing*,\nnot *connected*. Rathole exposes no \"handshake completed\" signal, so the\ndaemon has nothing more precise to report. `servedOrigin` derives from\n`running`, so it may resolve to `https://{publicHost}` while the tunnel is\nstill mid-dial (or briefly during a reconnect after a real failure).\n\nA caller that needs *verified reachable* (e.g. an await-tunnel flow that\nhands `servedOrigin` to another component) must probe the URL itself —\ndon't treat `running: true` as a liveness guarantee.\n\nA real liveness signal (probe or tri-state) to replace the optimistic\n`running` / `servedOrigin` is tracked in\n<https://github.com/Assessment-is/Wildflower/issues/184>; the dirty-gated\nsettings UI accepts the optimistic value for now.",
+        "required": [
+          "revision",
+          "publicHost",
+          "requestedRunning",
+          "running",
+          "error",
+          "attempt",
+          "servedOrigin",
+          "relay"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "publicHost": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requestedRunning": {
+            "type": "boolean"
+          },
+          "running": {
+            "type": "boolean",
+            "description": "`true` when the daemon is *dialing or reconnecting* — not a\nconnected-handshake signal. See the type-level docs."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attempt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Dial attempts the live supervisor has made for this revision, resets\non the next reconcile. Surfaced so an operator can spot a permanent\nmisconfiguration (counter climbs with no recovery) without the daemon\nhaving to classify rathole errors itself."
+          },
+          "servedOrigin": {
+            "type": "string",
+            "description": "`https://{publicHost}` while `running` (optimistically — see the\ntype-level docs), else the loopback fallback."
+          },
+          "relay": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RelayView",
+                "description": "The relay connection's non-secret fields, or `null` when no relay is\nconfigured. The `token` is never included."
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

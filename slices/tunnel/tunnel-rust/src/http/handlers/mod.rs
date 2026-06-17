@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use axum::Router;
+use utoipa_axum::router::OpenApiRouter;
 
 use crate::TunnelState;
 
 mod tunnel;
 
-pub fn router() -> Router<Arc<TunnelState>> {
-    Router::new().merge(tunnel::router())
+pub(crate) fn openapi_router() -> OpenApiRouter<Arc<TunnelState>> {
+    OpenApiRouter::new().merge(tunnel::openapi_router())
 }

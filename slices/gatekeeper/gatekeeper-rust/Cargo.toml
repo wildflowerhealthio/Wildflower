@@ -42,6 +42,9 @@ workspace = true
 
 [dev-dependencies]
 persistence-rust = { path = "../../persistence/persistence-rust" }
+# The shared OpenAPI snapshot helper (assert/regenerate the committed spec). Only
+# the snapshot test uses it, so it's a dev-dependency with the opt-in feature.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 proptest = "1"
 http = "1"

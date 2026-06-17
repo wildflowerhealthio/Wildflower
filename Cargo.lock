@@ -2023,6 +2023,7 @@ dependencies = [
  "serde_json",
  "serde_urlencoded",
  "sha2 0.11.0",
+ "shared-structures-rust",
  "subtle",
  "tempfile",
  "thiserror 2.0.18",
@@ -5500,6 +5501,10 @@ dependencies = [
 [[package]]
 name = "shared-structures-rust"
 version = "0.0.0"
+dependencies = [
+ "serde_json",
+ "utoipa",
+]
 
 [[package]]
 name = "shlex"
@@ -6726,12 +6731,15 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "shared-structures-rust",
  "tempfile",
  "tokio",
  "tokio-util",
  "toml 0.9.5",
  "tower",
  "tracing",
+ "utoipa",
+ "utoipa-axum",
 ]
 
 [[package]]

@@ -1,8 +1,9 @@
 //! `/tunnel` routes — the host-side surface for reading and replacing tunnel
-//! settings. One module per route handler (`get`, `put`), each exposing a
-//! `MethodRouter`; shared wire types and the snapshot helper live in
-//! [`internal`]. `router()` is the only path table. The two methods on
-//! `/tunnel` (GET + PUT) are merged here onto the shared path.
+//! settings. One module per route handler (`get`, `put`), each a
+//! `#[utoipa::path]`-annotated handler; shared wire types live in
+//! [`tunnel_state_response`]. [`openapi_router`] is the only path table — the
+//! two methods on `/tunnel` (GET + PUT) share the path and `routes!` merges
+//! them, collecting the OpenAPI spec from the very handlers that serve traffic.
 
 mod get;
 mod put;
@@ -10,12 +11,13 @@ mod tunnel_state_response;
 
 use std::sync::Arc;
 
-use axum::Router;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use crate::http::state::TunnelState;
 
-pub fn router() -> Router<Arc<TunnelState>> {
-    Router::new().route("/tunnel", get::route().merge(put::route()))
+pub(crate) fn openapi_router() -> OpenApiRouter<Arc<TunnelState>> {
+    OpenApiRouter::new().routes(routes!(get::handle_get_tunnel, put::handle_put_tunnel))
 }
 
 #[cfg(test)]
@@ -31,6 +33,12 @@ mod tests {
     use crate::db::TunnelStore;
     use crate::domain::{RelayClient, RelaySettings};
     use crate::TunnelDaemon;
+
+    /// The plain axum router (OpenAPI spec discarded) for exercising the
+    /// handlers via `oneshot` — the documented router minus its spec half.
+    fn router() -> axum::Router<Arc<TunnelState>> {
+        openapi_router().split_for_parts().0
+    }
 
     /// What a fake attempt does once started.
     #[derive(Clone, Copy)]

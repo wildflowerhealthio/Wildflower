@@ -91,23 +91,6 @@ mod openapi_tests {
     /// `UPDATE_OPENAPI=1 cargo test -p gatekeeper-rust openapi_spec_snapshot_is_up_to_date`.
     #[test]
     fn openapi_spec_snapshot_is_up_to_date() {
-        let generated = format!(
-            "{}\n",
-            serde_json::to_string_pretty(&openapi_spec())
-                .expect("serialize gatekeeper OpenAPI to JSON")
-        );
-        if std::env::var_os("UPDATE_OPENAPI").is_some() {
-            std::fs::write(SPEC_PATH, &generated).expect("write OpenAPI snapshot");
-            return;
-        }
-        let committed = std::fs::read_to_string(SPEC_PATH).expect(
-            "read committed OpenAPI snapshot; regenerate with \
-             UPDATE_OPENAPI=1 cargo test -p gatekeeper-rust openapi_spec_snapshot_is_up_to_date",
-        );
-        assert_eq!(
-            committed, generated,
-            "gatekeeper OpenAPI spec is out of date — regenerate with \
-             UPDATE_OPENAPI=1 cargo test -p gatekeeper-rust openapi_spec_snapshot_is_up_to_date"
-        );
+        shared_structures_rust::openapi_snapshot::assert_up_to_date(&openapi_spec(), SPEC_PATH);
     }
 }
