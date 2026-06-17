@@ -5,6 +5,14 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { tauriSnifferBootstrapScript } from '../src/index.ts'
 
+/**
+ * Multiplexed bridge channel literal — pinned in
+ * `effect-messaging-tauri/event-names.ts`. Hardcoded here rather than
+ * imported so the bootstrap's own copy can drift independently and the
+ * test catches it.
+ */
+const BRIDGE_EVENT = 'bridge'
+
 interface EventListenEnvelope {
   readonly payload: unknown
 }
@@ -32,12 +40,13 @@ interface WindowWithReactNativeWebView {
  * a successful boot is observable as a `bridge:__Ready` emit in
  * `emits`.
  */
-const bootBootstrapInFreshWindow = (
+const bootBootstrapInFreshWindow = async (
   options: { withTauri: boolean } = { withTauri: true }
-): {
+): Promise<{
   emits: Array<{ event: string; payload: unknown }>
   fireInbound: (event: string, payload: unknown) => void
-} => {
+  flushEmits: () => Promise<void>
+}> => {
   const emits: Array<{ event: string; payload: unknown }> = []
   const listeners = new Map<string, (event: EventListenEnvelope) => void>()
   const fakeEvent: FakeTauriEventApi = {
@@ -62,8 +71,20 @@ const bootBootstrapInFreshWindow = (
   // to jsdom's window.
   new Function(tauriSnifferBootstrapScript)()
 
+  // The bootstrap serializes outbound emits on a Promise chain — every
+  // `ReactNativeWebView.postMessage(json)` call extends the chain
+  // rather than calling `event.emit` synchronously, so a sniffer post
+  // that ran *before* this function returns is still pending as a
+  // microtask. Flush a few microtask cycles so the test can observe
+  // the emits synchronously.
+  const flushEmits = async (): Promise<void> => {
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+  }
+  await flushEmits()
+
   return {
     emits,
+    flushEmits,
     fireInbound: (event, payload): void => {
       const handler = listeners.get(event)
       expect(handler, `no Tauri listener registered for ${event}`).toBeDefined()
@@ -86,18 +107,24 @@ describe('tauriSnifferBootstrapScript', () => {
     expect(declared).toEqual(['CancelSnifferRequest', 'Click'])
   })
 
-  it('emits bridge:__Ready when the sniffer initialises', () => {
-    const { emits } = bootBootstrapInFreshWindow()
-    const ready = emits.find((entry) => entry.event === 'bridge:__Ready')
+  it('emits the __Ready handshake payload on the bridge channel when the sniffer initialises', async () => {
+    const { emits } = await bootBootstrapInFreshWindow()
+    const ready = emits.find(
+      (entry) =>
+        entry.event === BRIDGE_EVENT &&
+        entry.payload !== null &&
+        typeof entry.payload === 'object' &&
+        '_tag' in entry.payload &&
+        (entry.payload as { _tag: unknown })._tag === '__Ready'
+    )
     expect(ready).toBeDefined()
-    expect(ready?.payload).toMatchObject({ _tag: '__Ready' })
   })
 
-  it('forwards a sniffer postMessage as a structured Tauri event', () => {
-    const { emits } = bootBootstrapInFreshWindow()
+  it('forwards a sniffer postMessage as a tagged payload on the bridge channel', async () => {
+    const { emits, flushEmits } = await bootBootstrapInFreshWindow()
     // Simulate the sniffer posting a real wire message — the shim must
-    // JSON-parse and re-emit on `bridge:ResponseStart` with the same
-    // payload (modulo JSON round-trip).
+    // JSON-parse and re-emit the parsed payload on the single
+    // BRIDGE_EVENT channel (carrying `_tag` as the discriminator).
     const wire = {
       _tag: 'ResponseStart',
       id: 'abc123',
@@ -112,21 +139,29 @@ describe('tauriSnifferBootstrapScript', () => {
     expect(reactNativeWebView).toBeDefined()
     // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin -- `ReactNativeWebView.postMessage(string)` is not the window `postMessage` API; no `targetOrigin` argument exists.
     reactNativeWebView?.postMessage(JSON.stringify(wire))
+    await flushEmits()
 
-    const start = emits.find((entry) => entry.event === 'bridge:ResponseStart')
+    const start = emits.find(
+      (entry) =>
+        entry.event === BRIDGE_EVENT &&
+        entry.payload !== null &&
+        typeof entry.payload === 'object' &&
+        '_tag' in entry.payload &&
+        (entry.payload as { _tag: unknown })._tag === 'ResponseStart'
+    )
     expect(start).toBeDefined()
     expect(start?.payload).toEqual(wire)
   })
 
-  it('delivers an inbound Tauri Click event as a window message with source=null', () => {
-    const { fireInbound } = bootBootstrapInFreshWindow()
+  it('delivers an inbound Click message on the bridge channel as a window message with source=null', async () => {
+    const { fireInbound } = await bootBootstrapInFreshWindow()
     const received: Array<{ data: unknown; source: unknown }> = []
     const messageHandler = (event: MessageEvent): void => {
       received.push({ data: event.data, source: event.source })
     }
     globalThis.addEventListener('message', messageHandler)
 
-    fireInbound('bridge:Click', { _tag: 'Click', querySelector: '#submit' })
+    fireInbound(BRIDGE_EVENT, { _tag: 'Click', querySelector: '#submit' })
 
     expect(received).toHaveLength(1)
     expect(received[0]?.source).toBeNull()
@@ -140,12 +175,34 @@ describe('tauriSnifferBootstrapScript', () => {
     globalThis.removeEventListener('message', messageHandler)
   })
 
-  it('does nothing observable when window.__TAURI__ is absent (the shim becomes a no-op)', () => {
+  it('ignores inbound bridge payloads whose `_tag` is not a declared hostToWeb tag', async () => {
+    // The multiplexed channel carries every tag — gatekeeper's
+    // AuthTokenIssued, the sniffer's own outbound echoes, etc. The
+    // bootstrap must only dispatch the BrowserSnifferBridge.HostToWeb
+    // tags (`Click`, `CancelSnifferRequest`) and drop everything else
+    // rather than firing synthetic `message` events the inner sniffer
+    // would mis-decode.
+    const { fireInbound } = await bootBootstrapInFreshWindow()
+    const received: Array<unknown> = []
+    const messageHandler = (event: MessageEvent): void => {
+      received.push(event.data)
+    }
+    globalThis.addEventListener('message', messageHandler)
+
+    fireInbound(BRIDGE_EVENT, { _tag: 'AuthTokenIssued', token: 'not-for-us' })
+    fireInbound(BRIDGE_EVENT, { _tag: 'ResponseStart', id: 'x', url: 'https://x.test/' })
+
+    expect(received).toEqual([])
+
+    globalThis.removeEventListener('message', messageHandler)
+  })
+
+  it('does nothing observable when window.__TAURI__ is absent (the shim becomes a no-op)', async () => {
     // Without __TAURI__, the bootstrap skips the shim install entirely.
     // installSniffer() still runs but its `post()` helper short-circuits
     // because `window.ReactNativeWebView` is undefined — so no emits
     // happen via the (also-absent) fake event API.
-    const { emits } = bootBootstrapInFreshWindow({ withTauri: false })
+    const { emits } = await bootBootstrapInFreshWindow({ withTauri: false })
     expect(emits).toHaveLength(0)
   })
 })
