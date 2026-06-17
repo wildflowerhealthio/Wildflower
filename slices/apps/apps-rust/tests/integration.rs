@@ -4,10 +4,9 @@
 //! — fails the test rather than relying on unit-level handler coverage.
 //!
 //! Mirrors `gatekeeper-rust/tests/integration.rs`: one shared in-memory DB
-//! shared between the public and admin routers (so a custom row created
-//! through the admin one is immediately visible through the public one),
-//! one router-per-call (each `oneshot` consumes the router instance), and
-//! `serde_json::from_slice` for body assertions.
+//! shared between the public and admin routers (so a row created or
+//! patched through the admin one is immediately visible through the public
+//! one).
 
 use apps_rust::{setup_apps, Apps, AppsConfig};
 use axum::body::{to_bytes, Body};
@@ -53,9 +52,10 @@ fn delete(uri: &str) -> Request<Body> {
     Request::delete(uri).body(Body::empty()).expect("build")
 }
 
-/// The list endpoint returns at least every bundled app on a fresh install.
+/// Fresh-install seed: every code-defined bundled app present and
+/// FHIR Sharing absent (tunnel control is no longer routed through apps).
 #[tokio::test]
-async fn fresh_install_lists_every_bundled_app() {
+async fn fresh_install_lists_the_bundled_set_without_fhir_sharing() {
     let apps = spin_up();
     let res = apps
         .public_router
@@ -68,7 +68,6 @@ async fn fresh_install_lists_every_bundled_app() {
     let arr = body.as_array().expect("array");
     let ids: Vec<&str> = arr.iter().map(|v| v["id"].as_str().unwrap()).collect();
     for expected in [
-        "fhir-sharing",
         "patient-browser",
         "api-view",
         "api-docs",
@@ -77,9 +76,13 @@ async fn fresh_install_lists_every_bundled_app() {
     ] {
         assert!(
             ids.contains(&expected),
-            "missing seeded id {expected} in {ids:?}"
+            "missing seeded id {expected} in {ids:?}",
         );
     }
+    assert!(
+        !ids.contains(&"fhir-sharing"),
+        "fhir-sharing should be gone from the seed: {ids:?}",
+    );
 }
 
 /// The two routers share the same `AppsState` — a custom row created
@@ -87,7 +90,6 @@ async fn fresh_install_lists_every_bundled_app() {
 #[tokio::test]
 async fn custom_apps_round_trip_between_routers() {
     let apps = spin_up();
-    // create through admin
     let create_res = apps
         .admin_router
         .clone()
@@ -106,7 +108,6 @@ async fn custom_apps_round_trip_between_routers() {
     let id = created["id"].as_str().expect("id").to_string();
     assert!(id.starts_with("custom-"));
 
-    // visible through public list
     let list_res = apps
         .public_router
         .clone()
@@ -122,7 +123,6 @@ async fn custom_apps_round_trip_between_routers() {
         .expect("created row visible through public list");
     assert_eq!(found["name"], "Round Trip");
 
-    // launch through public router
     let launch_res = apps
         .public_router
         .clone()
@@ -140,7 +140,6 @@ async fn custom_apps_round_trip_between_routers() {
         "https://example.com/launch",
     );
 
-    // delete through admin
     let delete_res = apps
         .admin_router
         .clone()
@@ -151,7 +150,6 @@ async fn custom_apps_round_trip_between_routers() {
     let body = body_json(delete_res.into_body()).await;
     assert_eq!(body["deleted"], true);
 
-    // gone from the list
     let list_res = apps
         .public_router
         .clone()
@@ -168,22 +166,31 @@ async fn custom_apps_round_trip_between_routers() {
     );
 }
 
-/// Toggling a bundled app's `enabled` flag persists across reads.
+/// Bundled apps are first-class: rename, URL swap, and disable land
+/// successfully and persist into the public list.
 #[tokio::test]
-async fn bundled_app_disable_persists() {
+async fn bundled_app_is_fully_editable() {
     let apps = spin_up();
-    let res = apps
+    let patch_res = apps
         .admin_router
         .clone()
         .oneshot(patch(
             "/apps/patient-browser",
-            serde_json::json!({ "enabled": false }),
+            serde_json::json!({
+                "name": "Renamed Browser",
+                "url": "https://example.com/replacement",
+                "enabled": false,
+            }),
         ))
         .await
         .expect("oneshot");
-    assert_eq!(res.status(), StatusCode::OK);
-    let body = body_json(res.into_body()).await;
+    assert_eq!(patch_res.status(), StatusCode::OK);
+    let body = body_json(patch_res.into_body()).await;
+    assert_eq!(body["name"], "Renamed Browser");
+    assert_eq!(body["url"], "https://example.com/replacement");
     assert_eq!(body["enabled"], false);
+    // Provenance survives the edit so the UI can still label it.
+    assert_eq!(body["kind"], "bundled");
 
     let list_res = apps
         .public_router
@@ -198,31 +205,42 @@ async fn bundled_app_disable_persists() {
         .iter()
         .find(|v| v["id"] == "patient-browser")
         .expect("patient-browser in list");
-    assert_eq!(row["enabled"], false, "disable persisted into list output");
+    assert_eq!(row["name"], "Renamed Browser");
+    assert_eq!(row["url"], "https://example.com/replacement");
 }
 
-/// Renaming a bundled app — even one we just disabled — must 403.
+/// Bundled apps are first-class — including for deletion. After a bundled
+/// id is deleted it doesn't reappear on the next list (the migration
+/// runner only seeds it once per database).
 #[tokio::test]
-async fn bundled_app_rename_is_403() {
+async fn deleted_bundled_app_stays_deleted() {
     let apps = spin_up();
     let res = apps
         .admin_router
         .clone()
-        .oneshot(patch(
-            "/apps/api-docs",
-            serde_json::json!({ "name": "Hijack" }),
-        ))
+        .oneshot(delete("/apps/api-docs"))
         .await
         .expect("oneshot");
-    assert_eq!(res.status(), StatusCode::FORBIDDEN);
-    let body = body_json(res.into_body()).await;
-    assert_eq!(body["error"], "BundledAppImmutable");
-    assert_eq!(body["id"], "api-docs");
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let list_res = apps
+        .public_router
+        .clone()
+        .oneshot(get("/apps"))
+        .await
+        .expect("oneshot");
+    let list = body_json(list_res.into_body()).await;
+    assert!(
+        list.as_array()
+            .unwrap()
+            .iter()
+            .all(|v| v["id"] != "api-docs"),
+        "api-docs reappeared after deletion: {list}",
+    );
 }
 
-/// Launch path defence-in-depth: the create endpoint rejects a bad URL on
-/// write so a row whose `LaunchApp` would 302 to `javascript:` etc. can't
-/// be persisted.
+/// Launch-path defence-in-depth: a `javascript:` URL is rejected on write,
+/// so a row that would 302 to `javascript:` can never land.
 #[tokio::test]
 async fn create_rejects_javascript_url() {
     let apps = spin_up();

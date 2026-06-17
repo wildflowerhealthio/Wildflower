@@ -1,25 +1,22 @@
 //! `GET /apps/{id}` — resolve an app id to a redirect target.
 //!
-//! Three shapes of target:
+//! Every app — bundled or custom — is the same shape: a stored URL template
+//! with `{origin}` and `{launch}` placeholders. The handler:
 //!
-//!   1. The FHIR-sharing action and any bundled `action` kind: redirect to
-//!      the served origin (the loopback origin, until a real tunnel seam is
-//!      wired in).
-//!   2. A bundled `bundled` row: invoke the registry's `build_url` with the
-//!      served origin and a fresh launch nonce.
-//!   3. A custom row: substitute `{origin}` (and `{launch}`) into its
-//!      stored URL.
+//!   1. Loads the row (404 if absent).
+//!   2. Resolves the served origin through the (currently no-op) tunnel
+//!      seam — see [`resolve_origin`].
+//!   3. Substitutes `{origin}` and `{launch}` into the stored URL.
+//!   4. Re-validates the resolved URL through [`is_launchable_url`] before
+//!      emitting the 302. This defence-in-depth catches a row whose URL
+//!      passed the write-side filter but resolves to something we can't
+//!      safely redirect to (e.g. an `http://` host after substitution).
 //!
-//! For (2) and (3) the resolved URL is re-validated through
-//! [`is_launchable_url`] before being emitted — defence-in-depth against
-//! a row that was inserted out-of-band with a non-https target.
-//!
-//! `requires_tunnel` is honoured through a no-op seam ([`resolve_origin`]):
-//! until tunnel-rust exposes a served-origin reader the loopback origin is
-//! used unconditionally, and a `requires_tunnel` launch appends
-//! `?tunnel=unavailable` so the SPA can surface a banner. This matches the
-//! TS `resolveLaunchOrigin` behaviour and is the hook for the eventual
-//! tunnel-rust integration.
+//! `requires_tunnel` is honoured through the same no-op seam: the loopback
+//! origin is used unconditionally for now, and a `requires_tunnel` launch
+//! appends `?tunnel=unavailable` so the SPA can surface a banner. This is
+//! the hook for the eventual tunnel-rust integration where a
+//! `requires_tunnel` launch would resolve to the live `servedOrigin`.
 
 use std::sync::Arc;
 
@@ -31,8 +28,6 @@ use axum::routing::{get, MethodRouter};
 use rand::distr::Alphanumeric;
 use rand::Rng;
 
-use crate::db::AppRow;
-use crate::domain::{find_bundled, BundledKind, FHIR_SHARING_ID};
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppsState;
 
@@ -44,86 +39,35 @@ async fn handle_launch_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
 ) -> Result<Response, HandlerError> {
-    let row = state
+    let app = state
         .store
         .find_app(&id)
-        .map_err(|e| HandlerError::internal("find_app lookup failed", e))?;
-
-    let context = resolve_launch_context(&id, row.as_ref())
+        .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
         .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
 
-    // Until tunnel-rust grows a served-origin reader, every launch resolves
-    // to the loopback origin. A `requires_tunnel` launch flags the SPA so
-    // it can surface a "tunnel unavailable" banner.
-    let (origin, tunnel_unavailable) =
-        resolve_origin(&state.loopback_origin, context.requires_tunnel);
-
-    // The FHIR-sharing action (and any other action kind) redirects straight
-    // to the served origin — no further URL building, no launch nonce.
-    if id == FHIR_SHARING_ID || context.is_action {
-        let target = if tunnel_unavailable {
-            append_tunnel_unavailable(&origin)
-        } else {
-            origin
-        };
-        return Ok(redirect(target));
-    }
+    let (origin, tunnel_unavailable) = resolve_origin(&state.loopback_origin, app.requires_tunnel);
 
     let launch = launch_nonce();
-    let resolved = (context.build_url)(&origin, &launch);
+    let resolved = app
+        .url
+        .replace("{origin}", &origin)
+        .replace("{launch}", &launch);
+
     if !is_launchable_url(&resolved, &origin) {
         tracing::warn!(
-            "[apps-rust] LaunchApp rejected resolved URL for {}: {}",
-            id,
-            resolved,
+            app_id = %id,
+            resolved = %resolved,
+            "LaunchApp rejected a resolved URL that failed the launch-time guard",
         );
         return Err(HandlerError::NotFound { id });
     }
+
     let target = if tunnel_unavailable {
         append_tunnel_unavailable(&resolved)
     } else {
         resolved
     };
     Ok(redirect(target))
-}
-
-/// A closure that takes the served `origin` and a launch nonce and returns
-/// the target URL to redirect to. Boxed because the custom-row path closes
-/// over the row's stored URL string.
-type UrlBuilder = Box<dyn Fn(&str, &str) -> String + Send>;
-
-/// What the launch handler needs from a resolved row: how to build the
-/// target URL, whether the app requires the tunnel, and whether it's a
-/// no-op action (in which case `build_url` is never called).
-struct LaunchContext {
-    build_url: UrlBuilder,
-    requires_tunnel: bool,
-    is_action: bool,
-}
-
-/// Map an id (plus its row, if any) to a [`LaunchContext`]. `None` when
-/// the id has no bundled-registry entry AND no custom row — that's a 404.
-fn resolve_launch_context(id: &str, row: Option<&AppRow>) -> Option<LaunchContext> {
-    if let Some(bundled) = find_bundled(id) {
-        return Some(LaunchContext {
-            build_url: Box::new(move |origin, launch| (bundled.build_url)(origin, launch)),
-            requires_tunnel: bundled.requires_tunnel,
-            is_action: matches!(bundled.kind, BundledKind::Action),
-        });
-    }
-    let row = row?;
-    if row.kind != "custom" {
-        return None;
-    }
-    let url = row.custom_url.clone()?;
-    let requires_tunnel = row.custom_requires_tunnel.unwrap_or(false);
-    Some(LaunchContext {
-        build_url: Box::new(move |origin, launch| {
-            url.replace("{origin}", origin).replace("{launch}", launch)
-        }),
-        requires_tunnel,
-        is_action: false,
-    })
 }
 
 /// NO-OP tunnel seam — mirrors the TS `resolveLaunchOrigin`. Always returns
@@ -154,14 +98,14 @@ fn append_tunnel_unavailable(target: &str) -> String {
     format!("{base}{sep}{param}{hash}")
 }
 
-/// Defence-in-depth at launch time. `validate_custom_url` rejects bad
-/// shapes on write, but `LaunchApp` re-validates the *resolved* URL — after
-/// `{origin}` interpolation — so a row whose template produced a weird URL
-/// can't 302 to it. Acceptable targets:
+/// Defence-in-depth at launch time. `validate_app_url` rejects bad shapes
+/// on write, but the launch handler re-validates the *resolved* URL —
+/// after `{origin}` interpolation — so a row whose template produced a
+/// weird URL can't 302 to it. Acceptable targets:
 ///
-///   * Any URL sharing the live origin (`origin_prefix`) — covers the
-///     bundled apps that build against the loopback host as well as a
-///     custom app whose template resolves to `/path` or `{origin}/path`.
+///   * Any URL sharing the live origin (`origin_prefix`) — covers
+///     bundled-style apps that resolve to the loopback host as well as
+///     `/path`-shaped URLs.
 ///   * Any absolute `https://` URL — for off-device targets (growth-chart,
 ///     medication-viewer, third-party custom apps).
 ///

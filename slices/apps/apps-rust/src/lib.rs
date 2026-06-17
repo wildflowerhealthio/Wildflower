@@ -2,19 +2,21 @@
 //!
 //! Layered like `tunnel-rust` and `gatekeeper-rust`:
 //!
-//!  - [`domain`] — pure types: the wire-level [`domain::AppEntry`], the
-//!    code-defined [`domain::BUNDLED_APPS`] registry, and the write-side
-//!    [`domain::validate_custom_url`] filter.
+//!  - [`domain`] — pure types: the wire-level [`domain::AppEntry`]
+//!    (which doubles as the SQL row shape) and the
+//!    [`domain::validate_app_url`] filter.
 //!  - [`db`] — the SQLite [`db::AppsStore`] (built on the shared
-//!    `persistence-rust` primitives) and its read/write methods.
+//!    `persistence-rust` primitives, with the row mapping generated
+//!    directly off `AppEntry` via `persistence_rust::sql_row!`).
 //!  - [`http`] — the `/apps` wire contract, split into a public router
 //!    (list + launch) and an admin router (create / patch / delete).
 //!
-//! The bundled-apps registry is seeded into SQLite by the initial migration
-//! so a user can toggle a bundled app's `enabled` flag without the slice
-//! having to decide whether to INSERT or UPDATE on every write. The static
-//! metadata (display name, subtitle, launch-URL builder) stays in Rust —
-//! it isn't user-editable and migrations are the wrong shape for code.
+//! Every app — bundled or custom — is editable, deletable, and renamable.
+//! The `kind` column persists as a display-only provenance hint
+//! (`bundled` rows shipped with the binary; `custom` rows were added by
+//! the user). Deletion of a bundled row sticks across upgrades — each
+//! seed migration runs once per database, so a re-installed default set
+//! is reserved for fresh installs.
 //!
 //! ## Launch / tunnel seam
 //!

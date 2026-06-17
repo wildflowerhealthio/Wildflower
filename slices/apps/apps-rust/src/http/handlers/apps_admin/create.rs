@@ -12,8 +12,7 @@ use rand::distr::Alphanumeric;
 use rand::Rng;
 use serde::Deserialize;
 
-use crate::db::CreateCustomApp;
-use crate::domain::{validate_custom_url, AppEntry, AppKind};
+use crate::domain::{validate_app_url, AppEntry, AppKind};
 use crate::http::response_templates::HandlerError;
 use crate::http::state::AppsState;
 
@@ -21,59 +20,53 @@ use crate::http::state::AppsState;
 /// uses the wire-camelCase the existing client speaks.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateCustomAppBody {
+struct CreateAppBody {
     name: String,
     url: String,
     requires_tunnel: bool,
+    #[serde(default)]
+    subtitle: Option<String>,
 }
 
 pub(super) fn route() -> MethodRouter<Arc<AppsState>> {
-    post(handle_create_custom_app)
+    post(handle_create_app)
 }
 
-async fn handle_create_custom_app(
+async fn handle_create_app(
     State(state): State<Arc<AppsState>>,
-    Json(body): Json<CreateCustomAppBody>,
+    Json(body): Json<CreateAppBody>,
 ) -> Result<Json<AppEntry>, HandlerError> {
     if body.name.is_empty() {
         return Err(HandlerError::InvalidUrl {
             message: "name must not be empty".to_owned(),
         });
     }
-    if let Err(e) = validate_custom_url(&body.url) {
-        return Err(HandlerError::InvalidUrl {
-            message: e.to_string(),
-        });
-    }
-    let id = mint_custom_id();
-    let payload = CreateCustomApp {
-        id: id.clone(),
-        name: body.name.clone(),
-        url: body.url.clone(),
+    validate_app_url(&body.url).map_err(|e| HandlerError::InvalidUrl {
+        message: e.to_string(),
+    })?;
+    let entry = AppEntry {
+        id: mint_custom_id(),
+        kind: AppKind::Custom,
+        enabled: true,
+        name: body.name,
+        subtitle: body.subtitle,
+        url: body.url,
         requires_tunnel: body.requires_tunnel,
     };
     let inserted = state
         .store
-        .create_custom_app(&payload)
-        .map_err(|e| HandlerError::internal("create_custom_app insert failed", e))?;
+        .insert_app(&entry)
+        .map_err(|e| HandlerError::internal("insert_app failed", e))?;
     if !inserted {
         // 21-char random id collided — vanishingly unlikely, but surface it
         // as a logged 500 rather than silently returning the existing row.
-        tracing::error!("custom-app id collision on {id}");
+        tracing::error!("custom-app id collision on {}", entry.id);
         return Err(HandlerError::internal(
-            "create_custom_app id collision",
+            "insert_app id collision",
             "id already exists",
         ));
     }
-    Ok(Json(AppEntry {
-        id,
-        name: body.name,
-        // Custom apps surface their URL as the subtitle, matching TS.
-        subtitle: Some(body.url),
-        requires_tunnel: body.requires_tunnel,
-        kind: AppKind::Custom,
-        enabled: true,
-    }))
+    Ok(Json(entry))
 }
 
 /// Generate a fresh `custom-<21-alphanumeric>` id. Roughly matches the TS

@@ -1,69 +1,81 @@
--- The apps catalogue. One table keyed by app id covers both bundled and
--- custom entries: bundled rows only use `enabled` (and the seeded static
--- columns the registry pulls from); custom rows additionally carry
--- `custom_name`, `custom_url`, and `custom_requires_tunnel`. Removing a
--- custom entry deletes the row; "removing" a bundled entry just flips
--- `enabled` to 0. Mirrors the TS livestore `AppSelection` shape.
+-- The apps catalogue. One row per app (bundled and custom alike). Every
+-- column is editable post-install — the `kind` tag is preserved as a
+-- display-only provenance hint (`bundled` rows shipped with the binary;
+-- `custom` rows were added by the user) and has no behavioural effect on
+-- the write surface.
 --
--- `kind` is one of:
---   * 'bundled' — a code-defined static app shown verbatim from the registry
---   * 'action'  — a code-defined static app whose launch is a no-op redirect
---                 to the served origin (e.g. the FHIR Sharing toggle)
---   * 'custom'  — a user-defined entry; the custom_* columns are NOT NULL
---                 for these rows and the registry has no entry by this id.
+-- The bundled apps are seeded by this migration; once seeded, the user can
+-- rename them, change their URL, toggle `enabled`, or delete them outright.
+-- Future bundled additions land as their own migration files; deletion of
+-- a bundled row sticks across upgrades because each seed migration only
+-- runs once (`schema_migrations.version`), and `INSERT OR IGNORE` keeps
+-- subsequent migrations from re-creating a row the user already edited
+-- or removed.
 CREATE TABLE apps (
-    id                     TEXT PRIMARY KEY,
-    kind                   TEXT NOT NULL CHECK (kind IN ('bundled', 'action', 'custom')),
-    enabled                INTEGER NOT NULL DEFAULT 1,
-    custom_name            TEXT,
-    custom_url             TEXT,
-    custom_requires_tunnel INTEGER
+    id              TEXT PRIMARY KEY,
+    kind            TEXT NOT NULL CHECK (kind IN ('bundled', 'custom')),
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    name            TEXT NOT NULL,
+    -- The descriptive line shown under the app name in the UI. NULL means
+    -- "no subtitle"; the wire layer falls back to the URL for that case
+    -- so a user-created row without an explicit subtitle still shows
+    -- something useful.
+    subtitle        TEXT,
+    -- A URL template. `{origin}` is replaced with the served origin at
+    -- launch time, `{launch}` with a fresh per-launch nonce (for SMART-on-
+    -- FHIR apps that round-trip it through the authorize endpoint).
+    url             TEXT NOT NULL,
+    requires_tunnel INTEGER NOT NULL DEFAULT 0
 ) STRICT;
 
--- A custom row must have its custom_* fields populated; a bundled/action row
--- must not. Belt-and-braces — the Rust write path enforces the same, but the
--- check guards against an out-of-band INSERT (e.g. a future migration) that
--- forgets the invariant.
-CREATE TRIGGER apps_custom_columns_match_kind_insert
-BEFORE INSERT ON apps
-FOR EACH ROW
-BEGIN
-    SELECT RAISE(ABORT, 'custom apps require custom_name, custom_url, custom_requires_tunnel')
-    WHERE NEW.kind = 'custom'
-      AND (NEW.custom_name IS NULL
-           OR NEW.custom_url IS NULL
-           OR NEW.custom_requires_tunnel IS NULL);
-    SELECT RAISE(ABORT, 'bundled/action apps must not carry custom_* columns')
-    WHERE NEW.kind IN ('bundled', 'action')
-      AND (NEW.custom_name IS NOT NULL
-           OR NEW.custom_url IS NOT NULL
-           OR NEW.custom_requires_tunnel IS NOT NULL);
-END;
-
-CREATE TRIGGER apps_custom_columns_match_kind_update
-BEFORE UPDATE ON apps
-FOR EACH ROW
-BEGIN
-    SELECT RAISE(ABORT, 'custom apps require custom_name, custom_url, custom_requires_tunnel')
-    WHERE NEW.kind = 'custom'
-      AND (NEW.custom_name IS NULL
-           OR NEW.custom_url IS NULL
-           OR NEW.custom_requires_tunnel IS NULL);
-    SELECT RAISE(ABORT, 'bundled/action apps must not carry custom_* columns')
-    WHERE NEW.kind IN ('bundled', 'action')
-      AND (NEW.custom_name IS NOT NULL
-           OR NEW.custom_url IS NOT NULL
-           OR NEW.custom_requires_tunnel IS NOT NULL);
-END;
-
--- Seed the bundled / action registry. These are the apps every install
--- ships with; the seed is idempotent (INSERT OR IGNORE) so re-running this
--- migration after a hand-edit doesn't error and an enabled-flag flip from
--- the API is preserved.
-INSERT OR IGNORE INTO apps (id, kind, enabled) VALUES
-    ('fhir-sharing',      'action',  1),
-    ('patient-browser',   'bundled', 1),
-    ('api-view',          'bundled', 1),
-    ('api-docs',          'bundled', 1),
-    ('growth-chart',      'bundled', 1),
-    ('medication-viewer', 'bundled', 1);
+-- The shipped-with-the-binary set. URL strings carry `{origin}` /
+-- `{launch}` placeholders the launch handler substitutes at request time.
+-- FHIR Sharing is intentionally NOT in this list — tunnel control now
+-- has its own UI surface (see `tunnel-rust`), and apps slice no longer
+-- doubles as a switchboard for it.
+INSERT OR IGNORE INTO apps (id, kind, enabled, name, subtitle, url, requires_tunnel) VALUES
+    (
+        'patient-browser',
+        'bundled',
+        1,
+        'Patient Browser',
+        'Browse patient records served from this device.',
+        '{origin}/installed-apps/patient-browser/index.html',
+        0
+    ),
+    (
+        'api-view',
+        'bundled',
+        1,
+        'API View',
+        'View patient records in your browser.',
+        '{origin}/fhir-r4/Patient/8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882',
+        0
+    ),
+    (
+        'api-docs',
+        'bundled',
+        1,
+        'API Docs',
+        'View API documentation in your browser.',
+        '{origin}/docs',
+        0
+    ),
+    (
+        'growth-chart',
+        'bundled',
+        1,
+        'Growth Chart',
+        'Interactive growth chart app.',
+        'https://examples.smarthealthit.org/growth-chart-app/launch.html?iss={origin}/fhir-r4&launch={launch}',
+        1
+    ),
+    (
+        'medication-viewer',
+        'bundled',
+        1,
+        'Medication Viewer',
+        'A bare medication viewer app.',
+        'https://mitre.github.io/smart-on-fhir-demo/launch.html?iss={origin}/fhir-r4&launch={launch}',
+        1
+    );
