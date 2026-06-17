@@ -10,6 +10,21 @@ type DialogProps = {
   readonly title?: ReactNode
   readonly children: ReactNode
   readonly className?: string
+  /**
+   * Whether the user may dismiss the dialog without an explicit
+   * action. Defaults to `true` (regular dialog behaviour: backdrop
+   * click closes, the × button is shown, the native `cancel` event —
+   * including ESC — closes the dialog).
+   *
+   * `false` is for blocking flows where the host needs an answer
+   * before the user can move on (the device-consent popup in
+   * particular). The × button is hidden, backdrop clicks are ignored,
+   * `cancel` is `preventDefault`'d, and `onCancel` is *not* invoked —
+   * a non-dismissable dialog has nothing meaningful to do on cancel,
+   * so forwarding the event would invite consumers to wire deny/close
+   * logic into it accidentally.
+   */
+  readonly dismissable?: boolean
 }
 
 const Dialog = ({
@@ -19,6 +34,7 @@ const Dialog = ({
   title,
   children,
   className,
+  dismissable = true,
 }: DialogProps): JSX.Element => {
   const ref = useRef<HTMLDialogElement>(null)
   const previouslyFocusedRef = useRef<HTMLElement | null>(null)
@@ -45,22 +61,34 @@ const Dialog = ({
         previouslyFocusedRef.current = null
         onClose()
       }}
-      onCancel={onCancel}
+      onCancel={(event) => {
+        // ESC / native cancel: blocking dialogs swallow it; regular
+        // dialogs forward it to the consumer (which typically closes).
+        if (!dismissable) {
+          event.preventDefault()
+          return
+        }
+        onCancel?.(event)
+      }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) {
+        // Backdrop click closes only when dismissable; the × button
+        // (when shown) routes here via its own `close()` call.
+        if (dismissable && event.target === event.currentTarget) {
           ref.current?.close()
         }
       }}
     >
       <header className={styles['dialog__header']}>
         <h2 className="text-heading-4">{title}</h2>
-        <button
-          type="button"
-          className={styles['dialog__close']}
-          onClick={() => ref.current?.close()}
-        >
-          &#215;
-        </button>
+        {dismissable ? (
+          <button
+            type="button"
+            className={styles['dialog__close']}
+            onClick={() => ref.current?.close()}
+          >
+            &#215;
+          </button>
+        ) : null}
       </header>
       <div className={styles['dialog__body']}>{children}</div>
     </dialog>

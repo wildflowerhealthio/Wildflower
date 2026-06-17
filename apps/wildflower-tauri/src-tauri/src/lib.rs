@@ -75,11 +75,15 @@ async fn run_server(
     // `setup_gatekeeper` publishes the freshly-minted host owner token
     // through the bridge's publisher; the bridge's resident task emits
     // `AuthTokenIssued` to the webview on every page load and on every
-    // token change (see `bridge::attach_bridge`).
+    // token change. The same task forwards pending device-consent
+    // heads (and `null` clears) over `bridge:DeviceConsentRequested`
+    // and raises the desktop window on transitions to a pending head
+    // (see `bridge::attach_bridge`).
     let gatekeeper = setup_gatekeeper(
         db.clone(),
         &gatekeeper_config,
         &publishers.host_owner_token_sender,
+        publishers.active_device_user_code_sender,
     )
     .context("failed to set up gatekeeper")?;
 

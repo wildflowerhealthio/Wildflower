@@ -120,6 +120,11 @@ fn device_authorization(
         .store
         .insert_authorization_request(&request)
         .map_err(|e| TokenError::internal("insert_authorization_request failed", e))?;
+    // A fresh pending row may have just become the head of the
+    // device-consent queue (it always does, unless an older
+    // non-expired pending request still leads). Republish so the
+    // host webview popup picks it up.
+    state.republish_active_device_user_code();
     Ok(DeviceAuthorizationResponse {
         device_code,
         user_code: user_code.clone(),

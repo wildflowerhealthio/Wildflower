@@ -33,7 +33,8 @@ fn spin_up() -> (Gatekeeper, String, Connection) {
         loopback_origin: LOOPBACK_ORIGIN.to_string(),
     };
     let (token_tx, token_rx) = watch::channel::<Option<String>>(None);
-    let g = setup_gatekeeper(db.clone(), &config, &token_tx).expect("setup");
+    let (active_device_tx, _active_device_rx) = watch::channel::<Option<String>>(None);
+    let g = setup_gatekeeper(db.clone(), &config, &token_tx, active_device_tx).expect("setup");
     let host_owner_token = token_rx
         .borrow()
         .clone()

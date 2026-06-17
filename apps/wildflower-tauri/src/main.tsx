@@ -40,13 +40,19 @@ renderApp({
   awaitAuthReady: (transportReady) =>
     makeAwaitEmbeddedAuthReady(tokenStore.subscribable, transportReady),
   // Tauri-native transport over per-tag events; only the gatekeeper
-  // bridge needs a boot-stable handler (the host pushes the token
-  // before any slice mounts). Other slices register on mount through
-  // the coordinator, exactly as on embedded.
-  makeTransport: (_navigate, writeIssuedToken) =>
+  // bridge needs a boot-stable handler (the host pushes the token and
+  // any pending device-consent head before any slice mounts). Other
+  // slices register on mount through the coordinator, exactly as on
+  // embedded.
+  makeTransport: (_navigate, writeIssuedToken, setActiveDeviceUserCode) =>
     makeTauriTransport({
       bridges,
-      initial: { [GatekeeperBridge.name]: makeGatekeeperWebHandlers(writeIssuedToken) },
+      initial: {
+        [GatekeeperBridge.name]: makeGatekeeperWebHandlers(
+          writeIssuedToken,
+          setActiveDeviceUserCode
+        ),
+      },
     }).then((transport) => {
       // Webview console → `bridge:Log` events → the Rust log facade.
       // One-way: the host's log plugin has no Webview target, so this

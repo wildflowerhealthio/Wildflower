@@ -1,5 +1,6 @@
 import type { BridgeHandlerRecord } from 'effect-messaging-react'
 import { GatekeeperBridge } from 'gatekeeper-core/bridge'
+import type { ActiveDeviceUserCodeStore } from 'gatekeeper-react'
 import { makeGatekeeperWebHandlers } from 'gatekeeper-react/web-bridge'
 import { NavigationBridge } from 'navigation-core'
 import { makeNavigationWebHandlers, type NavTarget } from 'navigation-react'
@@ -36,14 +37,15 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  */
 const makeBootStableInitialHandlers = (
   navigate: (to: NavTarget) => void,
-  setToken: AuthTokenStore['setToken']
+  setToken: AuthTokenStore['setToken'],
+  setActiveDeviceUserCode: ActiveDeviceUserCodeStore['setActiveUserCode']
 ): Readonly<Record<string, BridgeHandlerRecord>> => ({
   [NavigationBridge.name]: makeNavigationWebHandlers({
     navigate,
     applyInsets: applyRootInsets,
     applyColorScheme,
   }),
-  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setToken),
+  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setToken, setActiveDeviceUserCode),
 })
 
 export { makeBootStableInitialHandlers }

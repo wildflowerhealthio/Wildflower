@@ -27,7 +27,13 @@ renderApp({
   // {@link EMBEDDED_TOKEN_TIMEOUT} bound.
   awaitAuthReady: (transportReady) =>
     makeAwaitEmbeddedAuthReady(tokenStore.subscribable, transportReady),
-  // `writeIssuedToken` flows into the gatekeeper page-bridge handler so
-  // the host's `AuthTokenIssued` push lands here.
-  makeTransport: (navigate, writeIssuedToken) => buildTransport(navigate, writeIssuedToken),
+  // `writeIssuedToken` flows into the gatekeeper page-bridge handler
+  // so the host's `AuthTokenIssued` push lands in the token store.
+  // `setActiveDeviceUserCode` is wired identically for
+  // `DeviceConsentRequested`; the Expo host doesn't emit it today, so
+  // the setter is dormant on embedded — kept wired so the page-bridge
+  // contract is environment-blind and a future Expo emitter just
+  // works.
+  makeTransport: (navigate, writeIssuedToken, setActiveDeviceUserCode) =>
+    buildTransport(navigate, writeIssuedToken, setActiveDeviceUserCode),
 })

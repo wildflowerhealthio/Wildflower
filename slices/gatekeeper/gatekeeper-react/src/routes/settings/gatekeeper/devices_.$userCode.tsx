@@ -2,13 +2,24 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import type { JSX } from 'react'
 import { AsyncErrorView, PageHeader } from 'react-tundraish'
 
-import { deviceConsentQueryOptions } from '../../../queries/index.ts'
-import { DeviceConsentScreen } from '../../../screens/device/device-consent-screen.tsx'
+import { deviceConsentQueryOptions, useDeviceConsentQuery } from '../../../queries/index.ts'
+import { DeviceConsentForm } from '../../../screens/device-consent/device-consent-form.tsx'
+
+const DeviceConsentScreen = ({
+  userCode,
+  onDone,
+}: {
+  readonly userCode: string
+  readonly onDone: () => void
+}): JSX.Element => {
+  const { data: consent } = useDeviceConsentQuery(userCode)
+  return <DeviceConsentForm consent={consent} onDone={onDone} />
+}
 
 /**
  * The `/settings/gatekeeper/devices/$userCode` file route — the
  * owner-facing device consent screen reached from the in-settings
- * code-entry page. Renders the same {@link DeviceConsentScreen} as the
+ * code-entry page. Renders the same {@link DeviceConsentForm} as the
  * public `/gatekeeper/devices/$userCode` surface but with a back link to
  * the in-settings entry page; on a decision it returns to the access page.
  *
