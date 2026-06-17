@@ -14,6 +14,13 @@ pub fn app_shell_stub_router() -> Router {
         .route(
             "/collector/remotes",
             get(|| async {
+                // `addedAt` is pinned to the static demo-install date
+                // (when this stub first shipped). Generating it at
+                // request time would let the SPA render "added X
+                // minutes ago" for an entry that's always existed —
+                // misleading. The fixed timestamp reads as "this
+                // demo has always been here", which matches what
+                // the user sees.
                 Json(serde_json::json!([{
                     "id": "fhir-demo",
                     "name": "FHIR Demo",
@@ -84,6 +91,13 @@ mod tests {
         assert_eq!(
             config.get("rootUrl").and_then(|v| v.as_str()),
             Some("https://r4.smarthealthit.org"),
+        );
+        // Pin the ISO-8601 shape: SPA decode treats this as Date and a
+        // typo (missing `Z`, off-by-one separator) would surface only
+        // at runtime as a decode error. Catch it here instead.
+        assert_eq!(
+            entry.get("addedAt").and_then(|v| v.as_str()),
+            Some("2026-06-17T14:29:22.363Z"),
         );
     }
 }
