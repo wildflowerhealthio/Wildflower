@@ -7,7 +7,7 @@
   "paths": {
     "/tunnel": {
       "get": {
-        "summary": "`GET /tunnel` — read the current persisted settings + observed runtime as a\nsingle wire snapshot. Collected into the OpenAPI doc via `routes!` in the\nparent module, which reads this `#[utoipa::path]`.",
+        "summary": "`GET /tunnel` — read the current persisted settings + observed runtime as a\nsingle wire snapshot. Collected into the `OpenAPI` doc via `routes!` in the\nparent module, which reads this `#[utoipa::path]`.",
         "operationId": "handle_get_tunnel",
         "responses": {
           "200": {
@@ -23,7 +23,7 @@
         }
       },
       "put": {
-        "summary": "`PUT /tunnel` — full-replace of the visible settings under the caller's\n`revision` token. A stale revision returns 409 with the current snapshot so\nthe client can rebase; a winning write bumps the revision, reconciles the\nlive supervisor, and returns the new snapshot. Collected into the OpenAPI\ndoc via `routes!` in the parent module, which reads this `#[utoipa::path]`.",
+        "summary": "`PUT /tunnel` — full-replace of the visible settings under the caller's\n`revision` token. A stale revision returns 409 with the current snapshot so\nthe client can rebase; a winning write bumps the revision, reconciles the\nlive supervisor, and returns the new snapshot. Collected into the `OpenAPI`\ndoc via `routes!` in the parent module, which reads this `#[utoipa::path]`.",
         "operationId": "handle_put_tunnel",
         "requestBody": {
           "content": {

@@ -8,7 +8,7 @@ use crate::http::response_templates::HandlerError;
 use crate::http::state::TunnelState;
 
 /// `GET /tunnel` — read the current persisted settings + observed runtime as a
-/// single wire snapshot. Collected into the OpenAPI doc via `routes!` in the
+/// single wire snapshot. Collected into the `OpenAPI` doc via `routes!` in the
 /// parent module, which reads this `#[utoipa::path]`.
 #[utoipa::path(
     get,

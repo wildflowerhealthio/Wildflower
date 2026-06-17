@@ -15,7 +15,7 @@ use crate::http::state::TunnelState;
 /// `PUT /tunnel` — full-replace of the visible settings under the caller's
 /// `revision` token. A stale revision returns 409 with the current snapshot so
 /// the client can rebase; a winning write bumps the revision, reconciles the
-/// live supervisor, and returns the new snapshot. Collected into the OpenAPI
+/// live supervisor, and returns the new snapshot. Collected into the `OpenAPI`
 /// doc via `routes!` in the parent module, which reads this `#[utoipa::path]`.
 #[utoipa::path(
     put,

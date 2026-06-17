@@ -14,7 +14,7 @@ use axum::Router;
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 
-/// Base OpenAPI document; the collected routes fill in paths + components.
+/// Base `OpenAPI` document; the collected routes fill in paths + components.
 #[derive(OpenApi)]
 struct ApiDoc;
 
@@ -41,7 +41,7 @@ mod openapi_tests {
         "/openapi/tunnel-admin.openapi.json"
     );
 
-    /// The tunnel admin OpenAPI document. `info` is set explicitly so the
+    /// The tunnel admin `OpenAPI` document. `info` is set explicitly so the
     /// committed snapshot doesn't churn with the crate version. Test-only —
     /// nothing serves the spec at runtime.
     fn openapi_spec() -> utoipa::openapi::OpenApi {
@@ -50,7 +50,7 @@ mod openapi_tests {
         spec
     }
 
-    /// The generated OpenAPI document must match the committed snapshot. A wire
+    /// The generated `OpenAPI` document must match the committed snapshot. A wire
     /// type change flips this red; regenerate with
     /// `UPDATE_OPENAPI=1 cargo test -p tunnel-rust openapi_spec_snapshot_is_up_to_date`.
     #[test]

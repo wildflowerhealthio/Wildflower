@@ -1,4 +1,4 @@
-//! Shared OpenAPI snapshot-test helper. A `-rust` crate emits its documented
+//! Shared `OpenAPI` snapshot-test helper. A `-rust` crate emits its documented
 //! HTTP surface as a [`utoipa::openapi::OpenApi`], then a `#[test]` hands it to
 //! [`assert_up_to_date`] to keep the committed JSON snapshot — the one the
 //! TypeScript spec-drift test reads — byte-exact with the live routes.
@@ -14,9 +14,16 @@ use utoipa::openapi::OpenApi;
 ///
 /// The comparison is byte-exact on purpose: the snapshot is excluded from oxfmt
 /// (`vite.config.ts` `fmt.ignorePatterns` → `**/openapi/*.openapi.json`) so it
-/// stays in serde_json's canonical form and doesn't churn on `vp fmt`. Pass an
+/// stays in `serde_json`'s canonical form and doesn't churn on `vp fmt`. Pass an
 /// absolute `path`, e.g.
 /// `concat!(env!("CARGO_MANIFEST_DIR"), "/openapi/<name>.openapi.json")`.
+///
+/// # Panics
+///
+/// Panics if `spec` fails to serialize, if `path` can't be read (without
+/// `UPDATE_OPENAPI`) or written (with `UPDATE_OPENAPI`), or if the committed
+/// snapshot doesn't match the generated one. All are test-only conditions
+/// indicating a stale snapshot or a misconfigured `path`.
 pub fn assert_up_to_date(spec: &OpenApi, path: &str) {
     let generated = format!(
         "{}\n",

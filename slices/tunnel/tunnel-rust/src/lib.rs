@@ -4,13 +4,13 @@
 //!
 //!  - [`domain`] — pure settings types ([`TunnelSettings`]) and the
 //!    [`RelayClient`](domain::RelayClient) trait.
-//!  - [`db`] — the SQLite [`TunnelStore`] (on the shared `persistence-rust`
+//!  - [`db`] — the `SQLite` [`TunnelStore`] (on the shared `persistence-rust`
 //!    primitives) and its queries.
 //!  - `relay_clients` — the embedded `rathole` impl of `RelayClient` that
 //!    dials the self-hosted relay.
 //!  - [`http`] — the `/tunnel` wire contract.
 //!
-//! Settings live in SQLite and are API-controlled (`PUT /tunnel`, a
+//! Settings live in `SQLite` and are API-controlled (`PUT /tunnel`, a
 //! full-replace guarded by an optimistic-concurrency `revision`). The relay
 //! connection fields are write-only and start empty; until they are set the
 //! tunnel reports "not configured". Observed runtime state (running / error) is
