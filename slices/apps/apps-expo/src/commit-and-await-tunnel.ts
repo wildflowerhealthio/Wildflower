@@ -5,8 +5,9 @@
  * `TunnelConfig`, await `running` on `TunnelState`) was removed with the rest
  * of the TS server stack. These functions keep the host binding's start/stop
  * + await-origin shape (see `host-handlers.ts`'s `RequestTunnel`) so a later
- * PR can rewire them to the Rust tunnel (`tunnel-rust`: `PUT /tunnel
- * { requestedRunning }`, then poll `GET /tunnel` for `servedOrigin`).
+ * PR can rewire them to the Rust tunnel (`tunnel-rust`:
+ * `PUT /tunnel { requestedRunning }`, then poll `GET /tunnel` for
+ * `servedOrigin`).
  *
  * This file is reference scaffolding — it is not wired into any running app
  * today (wildflower-expo, its only consumer, was removed). Until rewired,
