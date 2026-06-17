@@ -45,18 +45,17 @@ pub(crate) fn mark_closed() -> bool {
 /// `RequestSniffableWebView` arriving while the sniffer is already
 /// mounted simply triggers a navigation.
 pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Result<()> {
-    if SNIFFER_OPEN.load(Ordering::SeqCst)
-        && let Some(existing) = app.get_webview_window(SNIFFER_WEBVIEW_LABEL)
-    {
-        let parsed = match url {
-            WebviewUrl::External(parsed) => parsed,
-            _ => anyhow::bail!(
-                "non-External WebviewUrl handed to navigate path — only Uri sources are \
-                 supported today"
-            ),
-        };
-        existing.navigate(parsed)?;
-        return Ok(());
+    if SNIFFER_OPEN.load(Ordering::SeqCst) {
+        if let Some(existing) = app.get_webview_window(SNIFFER_WEBVIEW_LABEL) {
+            let WebviewUrl::External(parsed) = url else {
+                anyhow::bail!(
+                    "non-External WebviewUrl handed to navigate path — only Uri sources are \
+                     supported today"
+                )
+            };
+            existing.navigate(parsed)?;
+            return Ok(());
+        }
     }
 
     // Leave window placement and sizing to the OS / Tauri default. On

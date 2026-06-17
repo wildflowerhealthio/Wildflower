@@ -10,8 +10,8 @@ use crate::sniffer_window::open_or_navigate;
 /// sniffer webview to the new source. If the webview is missing (e.g.
 /// the SPA emitted `Open` before `RequestSniffableWebView`), fall
 /// through to opening a fresh one — matches the collector-expo
-/// behaviour where setting a new `pendingSource` re-mounts the WebView
-/// component if needed.
+/// behaviour where setting a new `pendingSource` re-mounts the
+/// `WebView` component if needed.
 pub(crate) fn handle(app: &AppHandle, payload: &str) {
     let decoded = match serde_json::from_str::<OpenPayload>(payload) {
         Ok(decoded) => decoded,
