@@ -51,13 +51,13 @@ jobs:
           filters: |
             api:
               # Any slice's Rust crate (handlers) + its committed snapshot.
+              # Also covers the shared Rust snapshot-test helper
+              # (`shared-structures-rust`), so no dedicated entry for it.
               - 'slices/**/*-rust/**'
               # Any slice's Effect HttpApi definition + its TS drift test.
               - 'slices/**/http-api-definition/**'
               # The shared wire-shape engine + the spec-drift test factory.
               - 'slices/shared-structures/shared-structures-core/src/openapi-drift/**'
-              # The shared Rust snapshot-test helper.
-              - 'slices/shared-structures/shared-structures-rust/**'
               # This workflow itself.
               - '.github/workflows/api-sync.yml'
 
