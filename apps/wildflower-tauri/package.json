@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "atool": "xcrun altool --upload-app --type ios --file \"src-tauri/gen/apple/build/arm64/Wildflower.ipa\" --apiKey 5BCV34AABD --apiIssuer 779a0265-ae31-49aa-937d-9a7e5b0d640f",
     "build": "tsc && vite build",
     "dev": "vite",
     "preview": "vite preview",

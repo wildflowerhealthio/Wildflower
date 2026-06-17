@@ -15,7 +15,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "5BB8618A8ED863864DF7A08E"
-               BuildableName = "wildflower-tauri.app"
+               BuildableName = "Wildflower.app"
                BlueprintName = "wildflower-tauri_iOS"
                ReferencedContainer = "container:wildflower-tauri.xcodeproj">
             </BuildableReference>
@@ -31,7 +31,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "5BB8618A8ED863864DF7A08E"
-            BuildableName = "wildflower-tauri.app"
+            BuildableName = "Wildflower.app"
             BlueprintName = "wildflower-tauri_iOS"
             ReferencedContainer = "container:wildflower-tauri.xcodeproj">
          </BuildableReference>
@@ -66,7 +66,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "5BB8618A8ED863864DF7A08E"
-            BuildableName = "wildflower-tauri.app"
+            BuildableName = "Wildflower.app"
             BlueprintName = "wildflower-tauri_iOS"
             ReferencedContainer = "container:wildflower-tauri.xcodeproj">
          </BuildableReference>
@@ -95,7 +95,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "5BB8618A8ED863864DF7A08E"
-            BuildableName = "wildflower-tauri.app"
+            BuildableName = "Wildflower.app"
             BlueprintName = "wildflower-tauri_iOS"
             ReferencedContainer = "container:wildflower-tauri.xcodeproj">
          </BuildableReference>
