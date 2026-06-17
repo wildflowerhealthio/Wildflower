@@ -147,9 +147,7 @@ pub struct BridgePublishers {
 #[cfg(desktop)]
 fn raise_main_window(handle: &AppHandle) {
     let Some(window) = handle.get_webview_window(MAIN_WINDOW_LABEL) else {
-        log::warn!(
-            "[bridge] window '{MAIN_WINDOW_LABEL}' missing; consent popup focus skipped"
-        );
+        log::warn!("[bridge] window '{MAIN_WINDOW_LABEL}' missing; consent popup focus skipped");
         return;
     };
     if matches!(window.is_minimized(), Ok(true)) {
@@ -205,8 +203,7 @@ fn raise_main_window(_handle: &AppHandle) {}
 ///   the webview and loop.
 pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     let (host_owner_token_sender, mut token_rx) = watch::channel::<Option<String>>(None);
-    let (active_device_user_code_sender, mut consent_rx) =
-        watch::channel::<Option<String>>(None);
+    let (active_device_user_code_sender, mut consent_rx) = watch::channel::<Option<String>>(None);
 
     let ready = Arc::new(Notify::new());
     {

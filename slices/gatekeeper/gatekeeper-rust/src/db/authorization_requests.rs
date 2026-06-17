@@ -567,9 +567,7 @@ mod tests {
             .is_some());
         // Popup-head query filters it out.
         assert_eq!(
-            store
-                .oldest_pending_device_user_code()
-                .expect("query"),
+            store.oldest_pending_device_user_code().expect("query"),
             None
         );
     }
