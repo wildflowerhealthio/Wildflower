@@ -50,85 +50,66 @@ const ItemListRow = ({ item }: { item: ItemListItem }): JSX.Element => {
     item.subtitle !== undefined ? (
       <span className={cn(styles['item-list__subtitle'], 'text-body-3')}>{item.subtitle}</span>
     ) : null
-  // The row body is wrapped in a `<button>` (or `<Link>`) whose click
-  // navigates; the actions slot sits inside that wrapper. Without
-  // stopping propagation here, a click on a Menu trigger / interactive
-  // action would bubble up and also fire the row navigation, so the
-  // consumer's primary action always wins over the secondary one.
   const actionsJsx =
     item.actions !== undefined ? (
-      <span
-        className={styles['item-list__actions']}
-        onClick={(event) => {
-          event.stopPropagation()
-        }}
-        onKeyDown={(event) => {
-          event.stopPropagation()
-        }}
-      >
-        {item.actions}
-      </span>
+      <span className={styles['item-list__actions']}>{item.actions}</span>
     ) : null
-  const body = (
+  const textChildren = (
     <>
-      <div className={styles['item-list__text']}>
-        <div className={styles['item-list__title-row']}>
-          <span className={cn(styles['item-list__name'], 'text-body-2')}>{item.title}</span>
-          {badgeJsx}
-        </div>
-        {subtitleJsx}
-      </div>
-      {actionsJsx}
-      <span aria-hidden="true" className={styles['item-list__chevron']}>
-        ›
+      <span className={styles['item-list__title-row']}>
+        <span className={cn(styles['item-list__name'], 'text-body-2')}>{item.title}</span>
+        {badgeJsx}
       </span>
+      {subtitleJsx}
     </>
   )
 
   const rowClass = cn(styles['item-list__row'], {
     [styles['item-list__row--disabled']]: item.disabled === true,
   })
+  const textClass = styles['item-list__text']
 
-  if (item.href !== undefined) {
-    if (item.disabled === true) {
-      return (
-        <li className={rowClass}>
-          <span className={styles['item-list__link']} aria-disabled="true">
-            {body}
+  const textElement = ((): JSX.Element => {
+    if (item.href !== undefined) {
+      if (item.disabled === true) {
+        return (
+          <span className={textClass} aria-disabled="true">
+            {textChildren}
           </span>
-        </li>
-      )
-    }
-
-    if (item.href.startsWith('/')) {
-      return (
-        <li className={rowClass}>
-          <Link className={styles['item-list__link']} to={item.href}>
-            {body}
+        )
+      }
+      if (item.href.startsWith('/')) {
+        return (
+          <Link className={textClass} to={item.href}>
+            {textChildren}
           </Link>
-        </li>
+        )
+      }
+      return (
+        <a className={textClass} href={item.href}>
+          {textChildren}
+        </a>
       )
     }
-
     return (
-      <li className={rowClass}>
-        <a className={styles['item-list__link']} href={item.href}>
-          {body}
-        </a>
-      </li>
-    )
-  }
-
-  return (
-    <li className={rowClass}>
       <button
         type="button"
-        className={styles['item-list__button']}
+        className={textClass}
         disabled={item.disabled}
         onClick={() => item.onClick()}
       >
-        {body}
+        {textChildren}
       </button>
+    )
+  })()
+
+  return (
+    <li className={rowClass}>
+      {textElement}
+      {actionsJsx}
+      <span aria-hidden="true" className={styles['item-list__chevron']}>
+        ›
+      </span>
     </li>
   )
 }
