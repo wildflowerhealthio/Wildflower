@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		00C5C0CCDF795A1E829021D3 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8859CE99A54E214C620075DD /* QuartzCore.framework */; };
 		0D2820B6281980855E52C611 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 61F6061E2225C8955C2CE40E /* Assets.xcassets */; };
+		11E8F58228E1823DEE3EAFB5 /* libapp.a in Resources */ = {isa = PBXBuildFile; fileRef = 89620063203F4196786DA490 /* libapp.a */; };
 		2274C1D0E682DB53086DDFF7 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = A21D4F5CEFE1B521B3638F62 /* main.mm */; };
 		394D3A434150CE484AD34D37 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 22933AC1B70CC5564AFE5884 /* Security.framework */; };
 		49AB5BAAE0675BF13832ED0F /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 41ABD8D6959380B5C55C9EAF /* UIKit.framework */; };
@@ -23,22 +24,26 @@
 
 /* Begin PBXFileReference section */
 		036F6113582DF66D46F01404 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		1A2F32CE35B47EEF00E3D054 /* api_stubs.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = api_stubs.rs; sourceTree = "<group>"; };
 		22933AC1B70CC5564AFE5884 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		2E0F5797DFE2D269A10E593B /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
 		3177D1BE441185CF382DC51B /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
 		41ABD8D6959380B5C55C9EAF /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		4A4B2F2CCBB2D6AE38B80583 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		4B5BA2FED322FC0DE76B6269 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		4BF3E98649443DDDF7EDDCE7 /* bridge.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = bridge.rs; sourceTree = "<group>"; };
 		57A3C147DE83C9898C705F16 /* lib.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = lib.rs; sourceTree = "<group>"; };
 		61F6061E2225C8955C2CE40E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7A7886025F46CD24E0A887A3 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
 		8859CE99A54E214C620075DD /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		89620063203F4196786DA490 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
+		9055207B0F3313595066EDB4 /* spa.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = spa.rs; sourceTree = "<group>"; };
 		A11F1F801116E6492B08EAE4 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		A21D4F5CEFE1B521B3638F62 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
 		ACA699C626D17D0C85728DDE /* wildflower-tauri_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "wildflower-tauri_iOS.entitlements"; sourceTree = "<group>"; };
 		AF9A88A79F74A288235FAF72 /* main.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = main.rs; sourceTree = "<group>"; };
 		BD7818903EE982DF8D571742 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
-		BD9C8C7085CA01997086AC2E /* wildflower-tauri.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "wildflower-tauri.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		BD9C8C7085CA01997086AC2E /* Wildflower.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Wildflower.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C178627EF86CC35941AE1D91 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -64,6 +69,7 @@
 		4D9D4A1072E62EF35B65EECC /* Externals */ = {
 			isa = PBXGroup;
 			children = (
+				C2710D17B227E86372D8C258 /* arm64 */,
 			);
 			path = Externals;
 			sourceTree = "<group>";
@@ -85,6 +91,14 @@
 			path = "wildflower-tauri_iOS";
 			sourceTree = "<group>";
 		};
+		796F1AF33632CE7235CDE915 /* debug */ = {
+			isa = PBXGroup;
+			children = (
+				89620063203F4196786DA490 /* libapp.a */,
+			);
+			path = debug;
+			sourceTree = "<group>";
+		};
 		95FE9827834D2A60DB7747D9 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -103,7 +117,7 @@
 		96279359B953E36E8A304D98 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				BD9C8C7085CA01997086AC2E /* wildflower-tauri.app */,
+				BD9C8C7085CA01997086AC2E /* Wildflower.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -126,11 +140,22 @@
 		A85E32B91264FDC11E4FBD64 /* src */ = {
 			isa = PBXGroup;
 			children = (
+				1A2F32CE35B47EEF00E3D054 /* api_stubs.rs */,
+				4BF3E98649443DDDF7EDDCE7 /* bridge.rs */,
 				57A3C147DE83C9898C705F16 /* lib.rs */,
 				AF9A88A79F74A288235FAF72 /* main.rs */,
+				9055207B0F3313595066EDB4 /* spa.rs */,
 			);
 			name = src;
 			path = ../../src;
+			sourceTree = "<group>";
+		};
+		C2710D17B227E86372D8C258 /* arm64 */ = {
+			isa = PBXGroup;
+			children = (
+				796F1AF33632CE7235CDE915 /* debug */,
+			);
+			path = arm64;
 			sourceTree = "<group>";
 		};
 		C46E7B488B936A40AEAFBD4B /* wildflower-tauri */ = {
@@ -170,7 +195,7 @@
 			packageProductDependencies = (
 			);
 			productName = "wildflower-tauri_iOS";
-			productReference = BD9C8C7085CA01997086AC2E /* wildflower-tauri.app */;
+			productReference = BD9C8C7085CA01997086AC2E /* Wildflower.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -209,6 +234,7 @@
 				0D2820B6281980855E52C611 /* Assets.xcassets in Resources */,
 				D644FE1EB518B5EBC41EE1BB /* LaunchScreen.storyboard in Resources */,
 				F6F069C8CDD81A79F06550AB /* assets in Resources */,
+				11E8F58228E1823DEE3EAFB5 /* libapp.a in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -217,6 +243,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		561384D74CE3794039682435 /* Build Rust Code */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -233,7 +260,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "pnpm tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}\n";
+			shellScript = "PATH=${PATH}:/Users/ryanmarks/Library/pnpm/:/opt/local/bin pnpm tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
