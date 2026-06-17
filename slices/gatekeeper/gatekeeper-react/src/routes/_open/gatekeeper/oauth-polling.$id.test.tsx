@@ -36,7 +36,9 @@ afterEach(() => {
 
 describe('PollingResult', () => {
   test('renders the declined view for a denied status', () => {
-    render(<PollingResult status={{ status: 'denied' }} />)
+    // `denied` carries a normalized `redirect` (absent for device-flow denials,
+    // decoded to `undefined`); the declined view ignores it, so pin that case.
+    render(<PollingResult status={{ status: 'denied', redirect: undefined }} />)
     expect(screen.getByText('Request Declined')).toBeTruthy()
     expect(screen.getByText('The authorization request was declined.')).toBeTruthy()
   })
