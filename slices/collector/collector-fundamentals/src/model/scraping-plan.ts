@@ -25,10 +25,10 @@ import type * as WebViewSource from './web-view-source.ts'
  *     event. When the sequence is exhausted, fires `SniffingComplete`
  *     after a final `stepDelay`.
  *
- * `firstPage` is the host-side `WebViewSource` the BrowserSnifferWebView
- * is initially mounted with; it is *not* read by the handler (the
- * handler only sees PageLoaded events). It lives on the plan so each
- * slice's configuration is a single export.
+ * `firstPage` is the host-side `WebViewSource` the sniffer webview is
+ * initially mounted with; it is *not* read by the handler (the handler
+ * only sees PageLoaded events). It lives on the plan so each slice's
+ * configuration is a single export.
  *
  * Replaces the previous `RemoteKind<T>` shape (`name + entityDefinitions`),
  * absorbing the slice's `firstPage(config)` factory and adding the new
@@ -42,7 +42,7 @@ import type * as WebViewSource from './web-view-source.ts'
  *   `CollectorBridgeMessageHandler` consults `isFoundAt` against each
  *   response URL; the first match wins.
  * - `firstPage`: the initial `WebViewSource` (inline HTML or absolute
- *   `https://` URI) to mount the BrowserSnifferWebView with.
+ *   `https://` URI) to mount the sniffer webview with.
  * - `linkSequence`: ordered list of navigation steps. Each `Link.Open`
  *   is dispatched as an `OpenLink` web→host message; each `Link.Click`
  *   as a `ClickLink`. An empty array fires `SniffingComplete` after

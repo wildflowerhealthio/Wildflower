@@ -11,7 +11,7 @@ import type {
 } from 'effect-messaging-core'
 import { HandlerHelpers } from 'effect-messaging-core'
 
-import { eventNameForTag, READY_EVENT, READY_TAG } from './event-names.ts'
+import { BRIDGE_EVENT, READY_TAG } from './event-names.ts'
 
 /**
  * The slice of Tauri's event API the transport consumes, structurally
@@ -63,8 +63,10 @@ interface TauriTransportConfig<Bridges extends ReadonlyArray<Bridge.AnyBridge>> 
 /**
  * The Tauri-native bridge transport: the same `sendMessage` +
  * `coordinator` seam the React app consumes (`ReactTransport`), with no
- * string envelope underneath — each message rides its own
- * `bridge:{tag}` Tauri event as a structured payload.
+ * string envelope underneath — every message rides the single
+ * `BRIDGE_EVENT` Tauri event as a structured payload, with the
+ * message's `_tag` field acting as the dispatch discriminator on the
+ * receiving side.
  */
 interface TauriTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   /**
@@ -83,13 +85,14 @@ interface TauriTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
 }
 
 /**
- * Tags double as Tauri event names here, and Tauri events broadcast to
- * every listener — including the emitting webview itself. So tags must
- * be unique across every wired bridge and across *both* directions
- * (a tag in one bridge's `HostToWeb` and another's `WebToHost` would
- * make the web receive its own sends), and must not shadow the
- * reserved `__Ready` handshake tag. Stricter than the core transport's
- * per-direction `assertNoDuplicateTags`, because event names are
+ * Tags discriminate dispatch inside the single multiplexed Tauri event,
+ * and Tauri events broadcast to every listener — including the
+ * emitting webview itself. So tags must be unique across every wired
+ * bridge and across *both* directions (a tag in one bridge's
+ * `HostToWeb` and another's `WebToHost` would make the web receive its
+ * own sends), and must not shadow the reserved `__Ready` handshake
+ * tag. Stricter than the core transport's per-direction
+ * `assertNoDuplicateTags`, because the multiplexed channel is
  * direction-less. Throws at build time, before any listener attaches.
  */
 const assertUniqueTags = (bridges: ReadonlyArray<Bridge.AnyBridge>): void => {
@@ -153,7 +156,7 @@ const makeTauriTransport = async <const Bridges extends ReadonlyArray<Bridge.Any
   const active = new Map<string, BridgeHandlerRecord>(Object.entries(seed))
 
   const sendMessage: BridgeTransport.MessageSender<Bridges, 'WebToHost'> = (message) =>
-    Effect.tryPromise(() => api.emit(eventNameForTag(message._tag), message)).pipe(
+    Effect.tryPromise(() => api.emit(BRIDGE_EVENT, message)).pipe(
       Effect.catchAll((error) =>
         Effect.logWarning(
           `[effect-messaging] tauri emit for ${message._tag} failed; message dropped: ${String(error)}`
@@ -170,7 +173,6 @@ const makeTauriTransport = async <const Bridges extends ReadonlyArray<Bridge.Any
     tag: string,
     schema: Message.AnyStringEncodedSchema
   ): ((payload: unknown) => Effect.Effect<void>) => {
-    const eventName = eventNameForTag(tag)
     // Pinned to the decoded floor shape so `AnyStringEncodedSchema`'s
     // `any` stops here instead of flowing into the handler call.
     const decodePayload: (
@@ -182,7 +184,7 @@ const makeTauriTransport = async <const Bridges extends ReadonlyArray<Bridge.Any
         Effect.matchEffect({
           onFailure: (error) =>
             Effect.logWarning(
-              `[effect-messaging] undecodable ${eventName} payload dropped: ${String(error)}`
+              `[effect-messaging] undecodable ${BRIDGE_EVENT} ${tag} payload dropped: ${String(error)}`
             ),
           onSuccess: (message) => {
             const handler = active.get(bridgeName)?.[tag]
@@ -203,7 +205,7 @@ const makeTauriTransport = async <const Bridges extends ReadonlyArray<Bridge.Any
         }),
         Effect.catchAllCause((cause) =>
           Effect.logError(
-            `[effect-messaging] ${eventName} handler died; continuing: ${Cause.pretty(cause)}`
+            `[effect-messaging] ${BRIDGE_EVENT} ${tag} handler died; continuing: ${Cause.pretty(cause)}`
           )
         )
       )
@@ -222,23 +224,41 @@ const makeTauriTransport = async <const Bridges extends ReadonlyArray<Bridge.Any
   const inbox = Queue.unbounded<Effect.Effect<void>>().pipe(Effect.runSync)
   Effect.runFork(Stream.runForEach(Stream.fromQueue(inbox), (program) => program))
 
-  await Promise.all(
-    config.bridges.flatMap((bridge) =>
-      Object.entries(bridge.HostToWeb).map(([tag, schema]) => {
-        const dispatch = dispatchFor(bridge.name, tag, schema)
-        return api.listen(eventNameForTag(tag), (event) => {
-          // Synchronous, order-preserving handoff: the listener fires on
-          // the JS event loop, so unsafe-offering in call order is what
-          // makes the single consumer FIFO.
-          inbox.unsafeOffer(dispatch(event.payload))
-        })
-      })
-    )
-  )
+  // Single-tag dispatch table: every wired bridge's `HostToWeb` entry
+  // contributes one `(tag → dispatch)` row keyed by the message's
+  // discriminator. Built once at attach time; the single listener
+  // below looks up the row per inbound message. Tags are guaranteed
+  // unique across bridges and directions by `assertUniqueTags`.
+  const dispatchByTag = new Map<string, (payload: unknown) => Effect.Effect<void>>()
+  for (const bridge of config.bridges) {
+    for (const [tag, schema] of Object.entries(bridge.HostToWeb)) {
+      dispatchByTag.set(tag, dispatchFor(bridge.name, tag, schema))
+    }
+  }
+
+  // One listener for the entire bridge channel; demux by the payload's
+  // `_tag` field. Unknown tags (a `WebToHost` echo of our own emit, a
+  // sibling bridge's traffic we don't subscribe to, or a malformed
+  // payload) are dropped silently. Per-tag listeners would let Tauri
+  // re-order events across tags (see BRIDGE_EVENT's docstring): one
+  // listener pins FIFO across the whole protocol, which the sniffer's
+  // chunked page-content stream depends on.
+  await api.listen(BRIDGE_EVENT, (event) => {
+    const payload = event.payload
+    if (payload === null || typeof payload !== 'object' || !('_tag' in payload)) return
+    const tag = (payload as { readonly _tag: unknown })._tag
+    if (typeof tag !== 'string') return
+    const dispatch = dispatchByTag.get(tag)
+    if (dispatch === undefined) return
+    // Synchronous, order-preserving handoff: the listener fires on
+    // the JS event loop, so unsafe-offering in call order is what
+    // makes the single consumer FIFO.
+    inbox.unsafeOffer(dispatch(payload))
+  })
 
   // Every inbound listener is up — only now may the host learn we're
   // ready (its response could otherwise beat the listeners and vanish).
-  await api.emit(READY_EVENT, { _tag: READY_TAG })
+  await api.emit(BRIDGE_EVENT, { _tag: READY_TAG })
 
   // Implementations are typed against the erased structural shapes;
   // the `HandlerCoordinator` annotation below is where TS verifies

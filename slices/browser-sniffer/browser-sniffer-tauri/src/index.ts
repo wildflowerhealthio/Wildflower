@@ -9,13 +9,15 @@ import { tauriSnifferBootstrapScript } from './tauri-bootstrap.generated.ts'
  *
  * The bundle does three things, in order:
  *   1. Replaces `window.ReactNativeWebView.postMessage` with a Tauri
- *      `event.emit('bridge:{tag}', payload)` shim — the only outbound
- *      channel the unmodified `installSniffer()` uses.
- *   2. Attaches Tauri `event.listen('bridge:Click' | 'bridge:CancelSnifferRequest')`
- *      handlers that dispatch synthetic `window` `message` events with
- *      `source: null` (the channel the sniffer's host-message handler
- *      reads — see `install-sniffer.ts:589-628`).
- *   3. Invokes `installSniffer()` exactly as the Expo arm does.
+ *      `event.emit(BRIDGE_EVENT, payload)` shim — the only outbound
+ *      channel the unmodified `installSniffer()` uses. The payload
+ *      keeps its `_tag` discriminator so the receiver demuxes by tag.
+ *   2. Attaches one `event.listen(BRIDGE_EVENT, …)` handler that filters
+ *      by `_tag` (`Click` / `CancelSnifferRequest`) and dispatches
+ *      synthetic `window` `message` events with `source: null` (the
+ *      channel the sniffer's host-message handler reads — see
+ *      `install-sniffer.ts:589-628`).
+ *   3. Invokes `installSniffer()`.
  *
  * Length guard: an empty or stale generated file is a build-step bug.
  * Anything below ~1000 chars almost certainly means the esbuild step

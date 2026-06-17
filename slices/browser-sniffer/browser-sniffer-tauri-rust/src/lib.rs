@@ -1,25 +1,27 @@
 //! Tauri host plumbing for the browser sniffer.
 //!
-//! Listens to three SPA-emitted CollectorBridge.webToHost events on the
-//! global Tauri event bus and translates them into webview lifecycle
+//! Listens on the single multiplexed bridge channel (`BRIDGE_EVENT` /
+//! `"bridge"`) and dispatches by the payload's `_tag` to translate
+//! three CollectorBridge.webToHost tags into webview lifecycle
 //! operations:
 //!
-//! - `bridge:RequestSniffableWebView` → create a sniffer
+//! - `RequestSniffableWebView` → create a sniffer
 //!   [`tauri::WebviewWindow`] (top-level webview) with
 //!   `browser-sniffer-tauri`'s bootstrap IIFE wired as
 //!   `WebviewWindowBuilder::initialization_script(...)`.
-//! - `bridge:Open` → navigate the existing sniffer webview to a new
-//!   source (the init script re-runs on every navigation, so the
-//!   sniffer re-installs idempotently).
-//! - `bridge:SniffingComplete` → close the sniffer webview. The main
+//! - `Open` → navigate the existing sniffer webview to a new source
+//!   (the init script re-runs on every navigation, so the sniffer
+//!   re-installs idempotently).
+//! - `SniffingComplete` → close the sniffer webview. The main
 //!   webview's React SPA stays mounted.
 //!
 //! No Rust-side forwarding for the data plane. Sniffer-emitted
-//! `bridge:ResponseStart`/`ResponseData`/`PageLoaded`/etc. land directly
-//! on the main webview's `makeTauriTransport` listeners because Tauri
-//! events broadcast to every webview AND to the Rust side — the
-//! CollectorBridge re-exports BrowserSnifferBridge's webToHost schemas
-//! as its own hostToWeb messages, so the tag names line up exactly.
+//! `ResponseStart`/`ResponseData`/`PageLoaded`/etc. tags land directly
+//! on the main webview's `makeTauriTransport` listener because Tauri
+//! events broadcast the bridge channel to every webview AND to the
+//! Rust side — the CollectorBridge re-exports BrowserSnifferBridge's
+//! webToHost schemas as its own hostToWeb messages, so the tag names
+//! line up exactly.
 //!
 //! Why `WebviewWindow` and not `Window::add_child`: the latter is
 //! gated behind `desktop + unstable` features in Tauri 2.11
@@ -33,13 +35,19 @@ use serde::Deserialize;
 use tauri::{AppHandle, Listener, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_log::log;
 
-/// Event-name convention `bridge:{tag}` — must match the TS side in
+/// Single multiplexed bridge channel — must match the TS side in
 /// `global/effect-messaging/effect-messaging-tauri/src/event-names.ts`.
-/// Drift between Rust and TS is caught by the test in
-/// [`tests::event_names_match_the_ts_convention`].
-pub const REQUEST_SNIFFABLE_WEBVIEW_EVENT: &str = "bridge:RequestSniffableWebView";
-pub const OPEN_EVENT: &str = "bridge:Open";
-pub const SNIFFING_COMPLETE_EVENT: &str = "bridge:SniffingComplete";
+/// Every web↔host message rides this one Tauri event; the discriminator
+/// is the `_tag` field on the JSON payload, which every bridge message
+/// already carries. Drift between Rust and TS is caught by the test in
+/// [`tests::bridge_event_and_tags_match_the_ts_convention`].
+pub const BRIDGE_EVENT: &str = "bridge";
+
+/// Web→host tag literals this crate reacts to. Mirrors the TS bridge
+/// definitions in `slices/collector/collector-fundamentals/src/bridge.ts`.
+const REQUEST_SNIFFABLE_WEBVIEW_TAG: &str = "RequestSniffableWebView";
+const OPEN_TAG: &str = "Open";
+const SNIFFING_COMPLETE_TAG: &str = "SniffingComplete";
 
 /// Window label assigned to the main React SPA webview by
 /// `apps/wildflower-tauri/src-tauri/tauri.conf.json`. Re-exported so
@@ -71,6 +79,15 @@ pub const SNIFFER_WEBVIEW_LABEL: &str = "browser-sniffer";
 /// a real `WebviewWindowBuilder`.
 const SNIFFER_BOOTSTRAP: &str =
     include_str!("../../browser-sniffer-tauri/embedded/tauri-bootstrap.js");
+
+/// Wire shape of the bridge envelope's `_tag` discriminator. Used to
+/// peek the tag without committing to a specific message struct, so the
+/// listener can route by tag and skip payloads it does not react to.
+#[derive(Debug, Deserialize)]
+struct BridgeEnvelope {
+    #[serde(rename = "_tag")]
+    tag: String,
+}
 
 /// Wire shape of `CollectorBridge.webToHost.RequestSniffableWebView`,
 /// pinned by `slices/collector/collector-fundamentals/src/bridge.ts`.
@@ -160,36 +177,34 @@ fn resolve_source(source: WebViewSourcePayload) -> Result<WebviewUrl, SourceReso
     }
 }
 
-/// Wire the three CollectorBridge.webToHost listeners onto Tauri's
-/// event bus. Idempotent at the listener level — call once per app
-/// lifecycle from `setup()`.
+/// Wire one listener on the multiplexed bridge event and route the
+/// three CollectorBridge.webToHost tags this crate cares about by the
+/// envelope's `_tag`. Idempotent at the listener level — call once per
+/// app lifecycle from `setup()`.
 ///
-/// Listener callbacks decode the JSON payload, then dispatch. Decode
-/// failures and webview operation failures log at warn (matching
-/// `bridge.rs`'s `bridge:Log` handler convention) — the loop continues
-/// to the next event.
+/// Decode failures and webview operation failures log at warn (matching
+/// `bridge.rs`'s `Log` handler convention) — the loop continues to the
+/// next event. Tags this crate does not care about (host→web emits
+/// echoing back, sibling slices' web→host traffic) are dropped
+/// silently.
 pub fn attach_browser_sniffer(app: &AppHandle) {
-    {
-        let handle = app.clone();
-        app.listen(REQUEST_SNIFFABLE_WEBVIEW_EVENT, move |event| {
-            handle_request_sniffable_webview(&handle, event.payload());
-        });
-    }
-    {
-        let handle = app.clone();
-        app.listen(OPEN_EVENT, move |event| {
-            handle_open(&handle, event.payload());
-        });
-    }
-    {
-        let handle = app.clone();
-        app.listen(SNIFFING_COMPLETE_EVENT, move |event| {
-            // SniffingComplete carries an empty struct on the wire; no
-            // decode needed beyond the listener firing.
-            let _ = event;
-            handle_sniffing_complete(&handle);
-        });
-    }
+    let handle = app.clone();
+    app.listen(BRIDGE_EVENT, move |event| {
+        let payload = event.payload();
+        let tag = match serde_json::from_str::<BridgeEnvelope>(payload) {
+            Ok(envelope) => envelope.tag,
+            Err(error) => {
+                log::warn!("[browser-sniffer] undecodable bridge payload dropped: {error}");
+                return;
+            }
+        };
+        match tag.as_str() {
+            REQUEST_SNIFFABLE_WEBVIEW_TAG => handle_request_sniffable_webview(&handle, payload),
+            OPEN_TAG => handle_open(&handle, payload),
+            SNIFFING_COMPLETE_TAG => handle_sniffing_complete(&handle),
+            _ => {}
+        }
+    });
 }
 
 fn handle_request_sniffable_webview(app: &AppHandle, payload: &str) {
@@ -197,7 +212,7 @@ fn handle_request_sniffable_webview(app: &AppHandle, payload: &str) {
         Ok(decoded) => decoded,
         Err(error) => {
             log::warn!(
-                "[browser-sniffer] undecodable {REQUEST_SNIFFABLE_WEBVIEW_EVENT} payload dropped: \
+                "[browser-sniffer] undecodable {REQUEST_SNIFFABLE_WEBVIEW_TAG} payload dropped: \
                  {error}"
             );
             return;
@@ -219,7 +234,7 @@ fn handle_open(app: &AppHandle, payload: &str) {
     let decoded = match serde_json::from_str::<OpenPayload>(payload) {
         Ok(decoded) => decoded,
         Err(error) => {
-            log::warn!("[browser-sniffer] undecodable {OPEN_EVENT} payload dropped: {error}");
+            log::warn!("[browser-sniffer] undecodable {OPEN_TAG} payload dropped: {error}");
             return;
         }
     };
@@ -233,8 +248,9 @@ fn handle_open(app: &AppHandle, payload: &str) {
     // `Open` is a navigate-in-place: the SPA assumes the sniffer webview
     // is already mounted (typically follows a RequestSniffableWebView).
     // If the webview is missing we fall through to opening a fresh one,
-    // matching the Expo collector-expo behaviour where setting a new
-    // `pendingSource` re-mounts the WebView component if needed.
+    // so the SPA does not have to distinguish "navigate the existing
+    // sniffer" from "open a new sniffer" when its planner advances to
+    // the next page.
     if let Err(error) = open_or_navigate_sniffer_webview(app, url) {
         log::error!("[browser-sniffer] failed to (re)navigate sniffer webview: {error}");
     }
@@ -246,7 +262,7 @@ fn handle_sniffing_complete(app: &AppHandle) {
         // legal at the bridge level (e.g. SPA decided "done" before
         // RequestSniffableWebView fired), just nothing to close.
         log::debug!(
-            "[browser-sniffer] {SNIFFING_COMPLETE_EVENT} received but no '{SNIFFER_WEBVIEW_LABEL}' \
+            "[browser-sniffer] {SNIFFING_COMPLETE_TAG} received but no '{SNIFFER_WEBVIEW_LABEL}' \
              webview window is open; ignoring"
         );
         return;
@@ -269,9 +285,8 @@ fn handle_sniffing_complete(app: &AppHandle) {
 /// `Symbol.for('browser-sniffer:state')` slot short-circuits a second
 /// `installSniffer()` call on the same page — so a
 /// `RequestSniffableWebView` arriving while a sniffer webview is
-/// already mounted simply triggers a navigation. This matches the
-/// collector-expo behaviour where the modal screen swaps
-/// `pendingSource` rather than tearing down the component.
+/// already mounted simply triggers a navigation rather than tearing
+/// down and re-creating the webview.
 fn open_or_navigate_sniffer_webview(app: &AppHandle, url: WebviewUrl) -> anyhow::Result<()> {
     if let Some(existing) = app.get_webview_window(SNIFFER_WEBVIEW_LABEL) {
         let parsed = match url {
@@ -308,10 +323,11 @@ mod tests {
     /// Drift guard: the TS side pins the same literals via
     /// `bridge:{tag}` where `tag` is the bridge schema's tag name.
     #[test]
-    fn event_names_match_the_ts_convention() {
-        assert_eq!(REQUEST_SNIFFABLE_WEBVIEW_EVENT, "bridge:RequestSniffableWebView");
-        assert_eq!(OPEN_EVENT, "bridge:Open");
-        assert_eq!(SNIFFING_COMPLETE_EVENT, "bridge:SniffingComplete");
+    fn bridge_event_and_tags_match_the_ts_convention() {
+        assert_eq!(BRIDGE_EVENT, "bridge");
+        assert_eq!(REQUEST_SNIFFABLE_WEBVIEW_TAG, "RequestSniffableWebView");
+        assert_eq!(OPEN_TAG, "Open");
+        assert_eq!(SNIFFING_COMPLETE_TAG, "SniffingComplete");
     }
 
     /// The bootstrap IIFE is generated at build time. An empty file

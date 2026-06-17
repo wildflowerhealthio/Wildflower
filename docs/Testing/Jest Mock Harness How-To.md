@@ -43,4 +43,3 @@ const resetHarness = (): void => {
 ## Worked examples
 
 - `slices/apps/apps-expo/src/__test-support__/host-receiver-test-mocks.ts`
-- `slices/collector/collector-expo/src/__test-support__/host-provider-test-mocks.ts`

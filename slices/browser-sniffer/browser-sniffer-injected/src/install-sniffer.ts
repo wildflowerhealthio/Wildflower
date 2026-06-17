@@ -537,9 +537,64 @@ const installSniffer = function (): void {
   // just with HTML rules. Out of scope: DOCTYPE / processing
   // instructions / XML declarations.
   const PAGE_CONTENT_CHUNK_BYTES = 65536
-  const pageLoadHandler = (): void => {
-    const pageContentId = makeRequestId()
+  // Some browsers — Safari most reliably for `application/json` responses
+  // — fire `load` once the response is downloaded but build the
+  // `<html><body><pre>{json}</pre></body></html>` viewer wrapper
+  // asynchronously over the following frame(s). Capturing
+  // `documentElement.outerHTML` synchronously inside the `load` listener
+  // then sees an empty document and emits a zero-byte page snapshot.
+  // The retry below: if the first attempt sees zero-length content and
+  // we still have a frame budget left, re-schedule on
+  // `requestAnimationFrame` (twice — one to flush layout, one to land
+  // after the viewer's first paint). The `attempt` counter caps retries
+  // so a genuinely empty document still terminates.
+  const MAX_PAGE_LOAD_RETRIES = 8
+  // `pageLoadHandler` is registered both as a `load` event listener
+  // (called with the `Event` object as its first arg) and self-invoked
+  // for the retry path (called with a numeric `attempt`). The typed
+  // union and the explicit `typeof` narrow lets one function serve
+  // both call sites without a wrapper that would shadow the symbol
+  // `resetShims` cleans up.
+  //
+  // Defer the snapshot when the document looks like it's still being
+  // built by an async viewer. Two signals: the response is one of the
+  // content types Safari/Chrome wraps in a JSON / image / video viewer
+  // *after* `load` fires (the load event fires on bytes-arrived, the
+  // viewer's `<pre>{json}</pre>` DOM is built over the next frame or
+  // two), or the document is empty even for a text/html response (a
+  // rendering pipeline that hasn't started yet). Each retry burns two
+  // `requestAnimationFrame` slots — one to flush layout, one to land
+  // past the viewer's first paint.
+  const ASYNC_VIEWER_CONTENT_TYPES: ReadonlySet<string> = new Set([
+    'application/json',
+    'application/fhir+json',
+    'application/ld+json',
+    'text/xml',
+    'application/xml',
+  ])
+  const pageLoadHandler = (attemptOrEvent: number | Event = 0): void => {
+    const attempt = typeof attemptOrEvent === 'number' ? attemptOrEvent : 0
     const content = document.documentElement.outerHTML
+    const contentTypeIsAsyncViewer = ASYNC_VIEWER_CONTENT_TYPES.has(
+      // `document.contentType` is a string per the DOM spec; the
+      // optional cast guards jsdom edge cases where it has been
+      // shadowed by a property descriptor.
+      String(document.contentType ?? '')
+    )
+    const documentLooksEmpty = content.length === 0 || !content.includes('<body')
+    const shouldRetry =
+      attempt < MAX_PAGE_LOAD_RETRIES
+      && typeof win.requestAnimationFrame === 'function'
+      && (documentLooksEmpty || (contentTypeIsAsyncViewer && !content.includes('<pre')))
+    if (shouldRetry) {
+      win.requestAnimationFrame(() => {
+        win.requestAnimationFrame(() => {
+          pageLoadHandler(attempt + 1)
+        })
+      })
+      return
+    }
+    const pageContentId = makeRequestId()
     const bytes = utf8.encode(content)
     post({ _tag: 'PageLoaded', url: win.location.href, pageContentId })
     activeRequests.add(pageContentId)
