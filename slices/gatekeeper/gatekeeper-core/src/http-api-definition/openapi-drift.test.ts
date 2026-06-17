@@ -74,7 +74,7 @@ type Shape =
 
 /** A primitive `Shape` for an OpenAPI primitive type name, else undefined. The
  * `===` comparisons narrow `t` to the literal union, so no assertion is needed. */
-const primitiveShape = (t: string): Shape | undefined =>
+const maybePrimitiveShapeFromName = (t: string): Shape | undefined =>
   t === 'string' || t === 'integer' || t === 'number' || t === 'boolean' ? { kind: t } : undefined
 
 /** Effect injects `HttpApiDecodeError` on decode failures; it is framework noise,
@@ -91,11 +91,13 @@ const isDecodeError = (schema: SchemaObject): boolean => {
  */
 const toUnion = (members: ReadonlyArray<Shape>): Shape => {
   const flat: Array<Shape> = []
-  for (const m of members) {
-    if (m.kind === 'none') continue
-    if (m.kind === 'union') flat.push(...m.members)
+  const add = (m: Shape): void => {
+    if (m.kind === 'none') return
+    if (m.kind === 'union')
+      m.members.forEach(add) // flatten arbitrarily-nested unions
     else flat.push(m)
   }
+  members.forEach(add)
   if (flat.length === 0) return { kind: 'none' }
   if (flat.length === 1) return flat[0]
   return { kind: 'union', members: flat }
@@ -113,7 +115,7 @@ const normalize = (schema: SchemaObject): Shape => {
   if (Array.isArray(type)) {
     // e.g. ["string", "null"] — drop null; nullability is not part of the shape.
     const kinds = type.filter((t) => t !== 'null')
-    const only = kinds.length === 1 ? primitiveShape(kinds[0]) : undefined
+    const only = kinds.length === 1 ? maybePrimitiveShapeFromName(kinds[0]) : undefined
     if (only) return only
     if (kinds.length === 0) return { kind: 'none' }
   }
@@ -129,7 +131,7 @@ const normalize = (schema: SchemaObject): Shape => {
   if (type === 'array')
     return { kind: 'array', items: schema.items ? normalize(schema.items) : { kind: 'any' } }
   if (typeof type === 'string') {
-    const prim = primitiveShape(type)
+    const prim = maybePrimitiveShapeFromName(type)
     if (prim) return prim
   }
   // Empty schema ({}), Schema.Unknown, or anything we don't model → wildcard.
@@ -152,6 +154,11 @@ const shapesEqual = (a: Shape, b: Shape): boolean => {
     return true
   }
   if (a.kind === 'array' && b.kind === 'array') return shapesEqual(a.items, b.items)
+  // Greedy first-match pairing — adequate while union members are structurally
+  // distinct (as the OAuth grants and AuthorizationStatus variants are). It can
+  // report a false "no match" if a wildcard (`any`) member makes the pairing
+  // ambiguous; revisit with bipartite matching if a union ever contains
+  // `Schema.Unknown`. The union branch of `diffShapes` shares this caveat.
   if (a.kind === 'union' && b.kind === 'union') {
     if (a.members.length !== b.members.length) return false
     const used = new Set<number>()
@@ -274,6 +281,18 @@ test('gatekeeper OAuth client (Effect HttpApi) matches the axum OpenAPI spec', a
   // the normalizer below only ever sees inlined schemas.
   await $RefParser.dereference(effect)
   await $RefParser.dereference(rust)
+
+  // Guard against a stale SCOPE: any endpoint present in BOTH specs must be
+  // listed there, so a new route added to both the Rust router and the TS
+  // HttpApi can't silently go un-compared.
+  const scoped = new Set(SCOPE.map(([p, m]) => `${m} ${p}`))
+  const unscoped: Array<string> = []
+  for (const [p, ops] of Object.entries(rust.paths)) {
+    for (const m of Object.keys(ops)) {
+      if (effect.paths[p]?.[m] && !scoped.has(`${m} ${p}`)) unscoped.push(`${m.toUpperCase()} ${p}`)
+    }
+  }
+  expect(unscoped, 'endpoints present in both specs but missing from SCOPE — add them').toEqual([])
 
   const drift: Array<string> = []
 

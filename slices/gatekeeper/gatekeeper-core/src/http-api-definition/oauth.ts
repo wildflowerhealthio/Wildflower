@@ -3,7 +3,15 @@ import { Schema } from 'effect'
 
 const AuthorizationStatusSchema = Schema.Union(
   Schema.Struct({ status: Schema.Literal('pending') }),
-  Schema.Struct({ status: Schema.Literal('denied'), redirect: Schema.optional(Schema.String) }),
+  Schema.Struct({
+    status: Schema.Literal('denied'),
+    // `NullishOr(...).optionalWith` to mirror `TokenResponseSchema.refresh_token`
+    // / `patient`: the server's `Option<String>` maps to `["string", "null"]` in
+    // the spec, so tolerate an explicit `null` on the wire, not just omission.
+    redirect: Schema.NullishOr(Schema.String).pipe(
+      Schema.optionalWith({ default: () => undefined })
+    ),
+  }),
   Schema.Struct({ status: Schema.Literal('approved'), redirect: Schema.String }),
   Schema.Struct({ status: Schema.Literal('error'), message: Schema.String })
 )
