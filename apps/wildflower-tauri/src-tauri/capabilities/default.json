@@ -1,7 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Capability for the React SPA webview. Narrowed to the 'main' webview (the SPA shell) so a sniffer child webview added under the same window (browser-sniffer-tauri-rust) inherits only what browser-sniffer.json grants — not the broad core:default surface.",
   "windows": ["main"],
+  "webviews": ["main"],
   "permissions": ["core:default", "opener:default", "log:default", "dialog:default"]
 }
