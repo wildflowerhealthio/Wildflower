@@ -1,13 +1,13 @@
 {
-  "name": "browser-sniffer-injected",
+  "name": "browser-sniffer-tauri",
   "version": "0.0.0",
   "private": true,
-  "description": "The browser-side sniffer script as injectable JS — shims fetch/XHR and posts BrowserSnifferBridge messages.",
+  "description": "Tauri bootstrap for the browser-sniffer: a tiny shim that re-exports the RN-WebView postMessage contract over Tauri's event bus, plus the unmodified installSniffer() call. The bundled IIFE is consumed by browser-sniffer-tauri-rust via include_str!.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/browser-sniffer/browser-sniffer-injected"
+    "directory": "slices/browser-sniffer/browser-sniffer-tauri"
   },
   "files": [
     "dist"
@@ -21,29 +21,24 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "node scripts/build-sniffer-script.mjs && vp pack",
+    "build": "node scripts/build-tauri-bootstrap.mts && vp pack",
     "check": "vp check",
     "dev": "vp pack --watch",
-    "generate-sniffer-script": "node scripts/build-sniffer-script.mjs",
-    "prepare": "node scripts/build-sniffer-script.mjs",
-    "test": "node scripts/build-sniffer-script.mjs && vp test"
+    "generate-tauri-bootstrap": "node scripts/build-tauri-bootstrap.mts",
+    "prepare": "node scripts/build-tauri-bootstrap.mts",
+    "test": "node scripts/build-tauri-bootstrap.mts && vp test"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "browser-sniffer-core": "workspace:*",
+    "browser-sniffer-injected": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
-    "fast-check": "catalog:",
-    "jsdom": "catalog:",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "browser-sniffer-core": "workspace:*",
-    "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "browser-sniffer-injected": "workspace:*"
   }
 }

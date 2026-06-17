@@ -13,7 +13,19 @@ pub fn app_shell_stub_router() -> Router {
         .route("/apps", get(|| async { Json(serde_json::json!([])) }))
         .route(
             "/collector/remotes",
-            get(|| async { Json(serde_json::json!([])) }),
+            get(|| async {
+                Json(serde_json::json!([{
+                    "id": "fhir-demo",
+                    "name": "FHIR Demo",
+                    "tag": "fhir-r4",
+                    "config": {
+                          "_tag": "fhir-r4",
+                          "rootUrl": "https://r4.smarthealthit.org",
+                          "patientId": "8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882",
+                    },
+                    "addedAt": "2026-06-17T14:29:22.363Z",
+                }]))
+            }),
         )
 }
 
@@ -47,11 +59,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stub_list_endpoints_return_empty_json_arrays() {
-        for path in ["/apps", "/collector/remotes"] {
-            let (status, body) = get_json(path).await;
-            assert_eq!(status, StatusCode::OK, "{path}");
-            assert_eq!(body, serde_json::json!([]), "{path}");
-        }
+    async fn apps_endpoint_returns_an_empty_array() {
+        let (status, body) = get_json("/apps").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, serde_json::json!([]));
+    }
+
+    /// `/collector/remotes` now ships a single FHIR demo remote so the
+    /// browser-sniffer flow has something to drive against on a fresh
+    /// install. The assertion pins the shape consumers (`collector-react`)
+    /// rely on — drift here would surface as a SPA-side decode error
+    /// rather than a stub-test failure.
+    #[tokio::test]
+    async fn collector_remotes_endpoint_returns_the_demo_fhir_remote() {
+        let (status, body) = get_json("/collector/remotes").await;
+        assert_eq!(status, StatusCode::OK);
+        let entries = body.as_array().expect("expected an array response");
+        assert_eq!(entries.len(), 1);
+        let entry = &entries[0];
+        assert_eq!(entry.get("id").and_then(|v| v.as_str()), Some("fhir-demo"));
+        assert_eq!(entry.get("tag").and_then(|v| v.as_str()), Some("fhir-r4"));
+        let config = entry.get("config").expect("config field");
+        assert_eq!(config.get("_tag").and_then(|v| v.as_str()), Some("fhir-r4"));
+        assert_eq!(
+            config.get("rootUrl").and_then(|v| v.as_str()),
+            Some("https://r4.smarthealthit.org"),
+        );
     }
 }
