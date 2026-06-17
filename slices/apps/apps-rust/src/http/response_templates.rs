@@ -1,12 +1,14 @@
 //! Shared HTTP response templates for the apps handlers. Mirrors
 //! `tunnel-rust`'s `response_templates`: the logged opaque-500
-//! ([`internal_error`]) and the `Result`-returning [`HandlerError`] so
+//! ([`InternalError`]) and the `Result`-returning [`HandlerError`] so
 //! a fallible step bails with `?` instead of a `match` + `into_response`.
 //!
 //! On top of `tunnel-rust`'s shape the apps slice carries domain-level
-//! errors (404 `AppNotFound`, 403 `BundledAppImmutable`, 400 `InvalidUrl`)
-//! that are part of the wire contract — they round-trip through the
-//! webview as structured `{ error: 'NAME', id: '…' }` payloads.
+//! errors (404 `AppNotFound`, 400 `InvalidUrl`) that are part of the wire
+//! contract — they round-trip through the webview as structured
+//! `{ error: 'NAME', ... }` payloads. There is no `BundledAppImmutable`
+//! variant: bundled rows are editable like any other, so the only failure
+//! modes left are "no such id" and "your URL is bad".
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -45,17 +47,9 @@ struct AppNotFoundBody {
     id: String,
 }
 
-/// Wire shape for `BundledAppImmutable`. Matches the TS
-/// `BundledAppImmutableSchema`.
-#[derive(Debug, Serialize)]
-struct BundledAppImmutableBody {
-    error: &'static str,
-    id: String,
-}
-
-/// Wire shape for `InvalidUrl` — the 400 a bad custom-app URL gets back.
-/// The `message` carries the human-readable reason from
-/// [`crate::domain::CustomUrlError`].
+/// Wire shape for `InvalidUrl` — the 400 a bad app URL gets back. The
+/// `message` carries the human-readable reason from
+/// [`crate::domain::AppUrlError`].
 #[derive(Debug, Serialize)]
 struct InvalidUrlBody {
     error: &'static str,
@@ -71,9 +65,6 @@ pub(crate) enum HandlerError {
     Internal(InternalError),
     /// 404 — no app has this id.
     NotFound { id: String },
-    /// 403 — the id resolves to a bundled/action row that can't be
-    /// renamed, re-pointed, or deleted (only `enabled` can be toggled).
-    BundledImmutable { id: String },
     /// 400 — the submitted URL failed the write-side validator.
     InvalidUrl { message: String },
 }
@@ -92,14 +83,6 @@ impl IntoResponse for HandlerError {
                 StatusCode::NOT_FOUND,
                 Json(AppNotFoundBody {
                     error: "AppNotFound",
-                    id,
-                }),
-            )
-                .into_response(),
-            HandlerError::BundledImmutable { id } => (
-                StatusCode::FORBIDDEN,
-                Json(BundledAppImmutableBody {
-                    error: "BundledAppImmutable",
                     id,
                 }),
             )

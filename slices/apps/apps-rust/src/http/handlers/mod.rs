@@ -4,7 +4,6 @@
 
 mod apps;
 mod apps_admin;
-mod build_entry;
 
 use std::sync::Arc;
 
