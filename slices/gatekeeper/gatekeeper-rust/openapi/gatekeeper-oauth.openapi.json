@@ -329,10 +329,9 @@
       "DeviceAuthorizationRequest": {
         "type": "object",
         "description": "`POST /oauth/device_authorization` request body (RFC 8628 §3.1) — the\noptional `scope` plus the body credentials. Form-urlencoded.",
-        "required": ["client_id"],
         "properties": {
           "client_id": {
-            "type": "string"
+            "type": ["string", "null"]
           },
           "client_secret": {
             "type": ["string", "null"]
@@ -439,10 +438,10 @@
         "oneOf": [
           {
             "type": "object",
-            "required": ["client_id", "code", "code_verifier", "redirect_uri", "grant_type"],
+            "required": ["code", "code_verifier", "redirect_uri", "grant_type"],
             "properties": {
               "client_id": {
-                "type": "string"
+                "type": ["string", "null"]
               },
               "client_secret": {
                 "type": ["string", "null"]
@@ -464,10 +463,10 @@
           },
           {
             "type": "object",
-            "required": ["client_id", "device_code", "grant_type"],
+            "required": ["device_code", "grant_type"],
             "properties": {
               "client_id": {
-                "type": "string"
+                "type": ["string", "null"]
               },
               "client_secret": {
                 "type": ["string", "null"]
@@ -483,10 +482,10 @@
           },
           {
             "type": "object",
-            "required": ["client_id", "refresh_token", "grant_type"],
+            "required": ["refresh_token", "grant_type"],
             "properties": {
               "client_id": {
-                "type": "string"
+                "type": ["string", "null"]
               },
               "client_secret": {
                 "type": ["string", "null"]
@@ -501,7 +500,7 @@
             }
           }
         ],
-        "description": "`POST /oauth/token` request body — the `grant_type`-tagged union of the\nthree grants the endpoint dispatches (mirrors\n`super::token_exchange::TokenPayload` plus the body credentials).\nForm-urlencoded (RFC 6749 §3.2)."
+        "description": "`POST /oauth/token` request body — the `grant_type`-tagged union of the\nthree grants the endpoint dispatches (mirrors\n`super::token_exchange::TokenPayload` plus the body credentials).\nForm-urlencoded (RFC 6749 §3.2). `client_id`/`client_secret` are optional:\na confidential client may instead authenticate via `Authorization: Basic`\n(RFC 6749 §2.3.1) and omit them from the body — `resolve_client_credentials`\naccepts either source."
       },
       "TokenResponse": {
         "type": "object",

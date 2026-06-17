@@ -107,7 +107,10 @@ const AuthorizationStatusNotFoundSchema = Schema.Struct({
 // which leaks into the whole API's requirements channel.
 const AuthorizationCodePayload = Schema.Struct({
   grant_type: Schema.Literal('authorization_code'),
-  client_id: Schema.NonEmptyString,
+  // Optional: a confidential client may authenticate via `Authorization: Basic`
+  // (RFC 6749 §2.3.1) and omit credentials from the body. Public/PKCE clients
+  // still send it.
+  client_id: Schema.optional(Schema.NonEmptyString),
   client_secret: Schema.optional(Schema.String),
   code: Schema.NonEmptyString,
   code_verifier: Schema.String.pipe(Schema.minLength(43), Schema.maxLength(128)),
@@ -121,7 +124,7 @@ const AuthorizationCodePayload = Schema.Struct({
 
 const DeviceCodePayload = Schema.Struct({
   grant_type: Schema.Literal('urn:ietf:params:oauth:grant-type:device_code'),
-  client_id: Schema.NonEmptyString,
+  client_id: Schema.optional(Schema.NonEmptyString),
   client_secret: Schema.optional(Schema.String),
   device_code: Schema.NonEmptyString,
 }).pipe(
@@ -137,7 +140,7 @@ const DeviceCodePayload = Schema.Struct({
 // the other grants.
 const RefreshTokenPayload = Schema.Struct({
   grant_type: Schema.Literal('refresh_token'),
-  client_id: Schema.NonEmptyString,
+  client_id: Schema.optional(Schema.NonEmptyString),
   client_secret: Schema.optional(Schema.String),
   refresh_token: Schema.NonEmptyString,
 }).pipe(
@@ -154,7 +157,7 @@ const TokenExchangePayloadSchema = Schema.Union(
 )
 
 const DeviceAuthorizationPayloadSchema = Schema.Struct({
-  client_id: Schema.NonEmptyString,
+  client_id: Schema.optional(Schema.NonEmptyString),
   client_secret: Schema.optional(Schema.String),
   scope: Schema.optional(Schema.String),
 }).pipe(

@@ -17,13 +17,17 @@ use utoipa::ToSchema;
 /// `POST /oauth/token` request body — the `grant_type`-tagged union of the
 /// three grants the endpoint dispatches (mirrors
 /// `super::token_exchange::TokenPayload` plus the body credentials).
-/// Form-urlencoded (RFC 6749 §3.2).
+/// Form-urlencoded (RFC 6749 §3.2). `client_id`/`client_secret` are optional:
+/// a confidential client may instead authenticate via `Authorization: Basic`
+/// (RFC 6749 §2.3.1) and omit them from the body — `resolve_client_credentials`
+/// accepts either source.
 #[derive(Serialize, ToSchema)]
 #[serde(tag = "grant_type")]
 pub(super) enum TokenRequestBody {
     #[serde(rename = "authorization_code")]
     AuthorizationCode {
-        client_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        client_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         client_secret: Option<String>,
         code: String,
@@ -32,14 +36,16 @@ pub(super) enum TokenRequestBody {
     },
     #[serde(rename = "urn:ietf:params:oauth:grant-type:device_code")]
     DeviceCode {
-        client_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        client_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         client_secret: Option<String>,
         device_code: String,
     },
     #[serde(rename = "refresh_token")]
     RefreshToken {
-        client_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        client_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         client_secret: Option<String>,
         refresh_token: String,
@@ -50,7 +56,8 @@ pub(super) enum TokenRequestBody {
 /// optional `scope` plus the body credentials. Form-urlencoded.
 #[derive(Serialize, ToSchema)]
 pub(super) struct DeviceAuthorizationRequest {
-    client_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     client_secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
