@@ -70,12 +70,6 @@ export default defineConfig({
       '**/test/snapshots/**',
       'slices/apps/vendor-apps/src/generated-*.ts',
       '**/*.generated.ts',
-      // Build-step bundle output committed for cross-language consumers
-      // (e.g. browser-sniffer-tauri's `embedded/tauri-bootstrap.js`, which the
-      // Rust slice `include_str!`s at compile time). Owned by esbuild's emit;
-      // re-formatting would diverge the bytes from what `vp run generate-*`
-      // produces and break staleness checks.
-      '**/embedded/**',
       // Effect schemas generated from a service's OpenAPI spec
       // (`openapi-to-effect`); gitignored, reference-only.
       '**/http-api-definition/generated/**',
@@ -105,11 +99,6 @@ export default defineConfig({
       '**/test/snapshots/**',
       'slices/apps/vendor-apps/src/generated-*.ts',
       '**/*.generated.ts',
-      // Build-step bundle output committed for cross-language consumers
-      // (e.g. browser-sniffer-tauri's `embedded/tauri-bootstrap.js`, which
-      // the Rust slice `include_str!`s at compile time). See the fmt
-      // ignorePatterns above for the same rationale.
-      '**/embedded/**',
       // Effect schemas generated from a service's OpenAPI spec
       // (`openapi-to-effect`); gitignored, reference-only.
       '**/http-api-definition/generated/**',

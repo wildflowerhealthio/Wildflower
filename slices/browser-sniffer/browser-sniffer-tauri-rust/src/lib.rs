@@ -67,8 +67,8 @@ mod tests {
         assert!(
             SNIFFER_BOOTSTRAP.len() > 1000,
             "SNIFFER_BOOTSTRAP is {} bytes; expected >1000. The generated file at \
-             slices/browser-sniffer/browser-sniffer-tauri/embedded/tauri-bootstrap.js looks empty \
-             or stale — run `vp install` or `vp run generate-tauri-bootstrap` in that package.",
+             slices/browser-sniffer/browser-sniffer-tauri/dist/tauri-bootstrap.js looks empty or \
+             stale — run `vp install` or `vp run generate-tauri-bootstrap` in that package.",
             SNIFFER_BOOTSTRAP.len(),
         );
     }
