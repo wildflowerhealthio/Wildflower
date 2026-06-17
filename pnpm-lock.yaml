@@ -123,6 +123,9 @@ catalogs:
     babel-preset-expo:
       specifier: ~54.0.10
       version: 54.0.10
+    esbuild:
+      specifier: ^0.27.0
+      version: 0.27.7
     expect-type:
       specifier: ^1.3.0
       version: 1.3.0
@@ -1186,6 +1189,9 @@ importers:
 
   slices/browser-sniffer/browser-sniffer-tauri:
     devDependencies:
+      '@tauri-apps/api':
+        specifier: 'catalog:'
+        version: 2.11.0
       '@types/node':
         specifier: ^24
         version: 24.12.4
@@ -1198,12 +1204,9 @@ importers:
       browser-sniffer-injected:
         specifier: workspace:*
         version: link:../browser-sniffer-injected
-      effect:
-        specifier: 3.21.2
-        version: 3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
-      effect-messaging-core:
-        specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-core
+      esbuild:
+        specifier: 'catalog:'
+        version: 0.27.7
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -16902,7 +16905,6 @@ snapshots:
       '@esbuild/win32-arm64': 0.27.7
       '@esbuild/win32-ia32': 0.27.7
       '@esbuild/win32-x64': 0.27.7
-    optional: true
 
   escalade@3.2.0: {}
 

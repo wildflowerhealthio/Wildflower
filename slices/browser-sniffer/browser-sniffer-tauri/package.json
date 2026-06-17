@@ -29,12 +29,12 @@
     "test": "node scripts/build-tauri-bootstrap.mts && vp test"
   },
   "devDependencies": {
+    "@tauri-apps/api": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "browser-sniffer-core": "workspace:*",
     "browser-sniffer-injected": "workspace:*",
-    "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
+    "esbuild": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },

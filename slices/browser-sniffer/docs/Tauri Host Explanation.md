@@ -6,11 +6,11 @@ How `browser-sniffer-tauri-rust` (Rust) and `browser-sniffer-tauri` (TS) work to
 
 A pure event-bus router. The Rust side listens for three SPA-emitted `CollectorBridge.webToHost` events on Tauri's global event bus and translates them into webview lifecycle operations:
 
-| Event | Effect |
-|---|---|
+| Event                            | Effect                                                                                                                                        |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bridge:RequestSniffableWebView` | Create the sniffer `WebviewWindow` (top-level webview) with the TS bootstrap wired in via `WebviewWindowBuilder::initialization_script(...)`. |
-| `bridge:Open` | Navigate the existing sniffer webview to a new source. The init script re-runs on every navigation, so the sniffer re-installs idempotently. |
-| `bridge:SniffingComplete` | Close the sniffer webview. The main webview's React SPA stays mounted. |
+| `bridge:Open`                    | Navigate the existing sniffer webview to a new source. The init script re-runs on every navigation, so the sniffer re-installs idempotently.  |
+| `bridge:SniffingComplete`        | Close the sniffer webview. The main webview's React SPA stays mounted.                                                                        |
 
 No Rust-side forwarding for the data plane. Sniffer-emitted `bridge:ResponseStart` / `ResponseData` / `PageLoaded` / etc. land directly on the main webview's `makeTauriTransport` listeners because Tauri events broadcast to every webview AND to the Rust side — `CollectorBridge` re-exports `BrowserSnifferBridge`'s webToHost schemas as its own hostToWeb messages, so the tag names line up exactly.
 
@@ -22,7 +22,7 @@ No Rust-side forwarding for the data plane. Sniffer-emitted `bridge:ResponseStar
 
 `WebviewWindow::close()` is a request to the platform, not a synchronous teardown — Tauri's `get_webview_window(label)` may still find a closing window for one or more event-loop ticks. If the SPA emits `SniffingComplete` immediately followed by a fresh `RequestSniffableWebView` ("switch demos" UX), the lookup race could route the second event into the navigate-in-place branch against a doomed window — the SPA would never see the new sniffer.
 
-The fix lives in `sniffer_window.rs`: an `AtomicBool` sentinel (`SNIFFER_OPEN`) tracks our own belief about the slot's state. `handle_sniffing_complete` flips it to `false` *before* asking Tauri to close, so a follow-up open always takes the fresh-build path. The Tauri lookup is still consulted (as an idempotency check), but it's no longer the source of truth.
+The fix lives in `sniffer_window.rs`: an `AtomicBool` sentinel (`SNIFFER_OPEN`) tracks our own belief about the slot's state. `handle_sniffing_complete` flips it to `false` _before_ asking Tauri to close, so a follow-up open always takes the fresh-build path. The Tauri lookup is still consulted (as an idempotency check), but it's no longer the source of truth.
 
 ## Why a single embedded bootstrap
 
