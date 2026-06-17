@@ -1,8 +1,9 @@
 //! `/tunnel` routes — the host-side surface for reading and replacing tunnel
-//! settings. One module per route handler (`get`, `put`), each exposing a
-//! `MethodRouter`; shared wire types and the snapshot helper live in
-//! [`internal`]. `router()` is the only path table. The two methods on
-//! `/tunnel` (GET + PUT) are merged here onto the shared path.
+//! settings. One module per route handler (`get`, `put`), each a
+//! `#[utoipa::path]`-annotated handler; shared wire types live in
+//! [`tunnel_state_response`]. [`openapi_router`] is the only path table — the
+//! two methods on `/tunnel` (GET + PUT) share the path and `routes!` merges
+//! them, collecting the `OpenAPI` spec from the very handlers that serve traffic.
 
 mod get;
 mod put;
@@ -10,12 +11,13 @@ mod tunnel_state_response;
 
 use std::sync::Arc;
 
-use axum::Router;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use crate::http::state::TunnelState;
 
-pub fn router() -> Router<Arc<TunnelState>> {
-    Router::new().route("/tunnel", get::route().merge(put::route()))
+pub(crate) fn openapi_router() -> OpenApiRouter<Arc<TunnelState>> {
+    OpenApiRouter::new().routes(routes!(get::handle_get_tunnel, put::handle_put_tunnel))
 }
 
 #[cfg(test)]
@@ -31,6 +33,12 @@ mod tests {
     use crate::db::TunnelStore;
     use crate::domain::{RelayClient, RelaySettings};
     use crate::TunnelDaemon;
+
+    /// The plain axum router (`OpenAPI` spec discarded) for exercising the
+    /// handlers via `oneshot` — the documented router minus its spec half.
+    fn router() -> axum::Router<Arc<TunnelState>> {
+        openapi_router().split_for_parts().0
+    }
 
     /// What a fake attempt does once started.
     #[derive(Clone, Copy)]
@@ -97,7 +105,7 @@ mod tests {
             .unwrap()
     }
 
-    fn put(json: serde_json::Value) -> Request<Body> {
+    fn put(json: &serde_json::Value) -> Request<Body> {
         Request::builder()
             .method("PUT")
             .uri("/tunnel")
@@ -140,7 +148,7 @@ mod tests {
         let (st, _started) = state(Behavior::HoldUntilCancel);
         let (status, body) = send(
             &st,
-            put(serde_json::json!({
+            put(&serde_json::json!({
                 "revision": 0,
                 "publicHost": "dev1.example.com",
                 "requestedRunning": true,
@@ -162,7 +170,7 @@ mod tests {
         let (st, _started) = state(Behavior::HoldUntilCancel);
         let _ = send(
             &st,
-            put(serde_json::json!({
+            put(&serde_json::json!({
                 "revision": 0, "publicHost": "dev1.example.com",
                 "requestedRunning": true, "relay": relay_json(),
             })),
@@ -194,7 +202,7 @@ mod tests {
         let (st, _started) = state(Behavior::HoldUntilCancel);
         let _ = send(
             &st,
-            put(serde_json::json!({
+            put(&serde_json::json!({
                 "revision": 0, "publicHost": "dev1", "requestedRunning": true, "relay": relay_json(),
             })),
         )
@@ -202,7 +210,7 @@ mod tests {
         // a second writer still on revision 0 loses
         let (status, body) = send(
             &st,
-            put(serde_json::json!({ "revision": 0, "publicHost": "evil", "requestedRunning": false })),
+            put(&serde_json::json!({ "revision": 0, "publicHost": "evil", "requestedRunning": false })),
         )
         .await;
         assert_eq!(status, StatusCode::CONFLICT);
@@ -215,7 +223,7 @@ mod tests {
         let (st, _started) = state(Behavior::HoldUntilCancel);
         let (_status, body) = send(
             &st,
-            put(serde_json::json!({
+            put(&serde_json::json!({
                 "revision": 0, "publicHost": "dev1.example.com", "requestedRunning": true,
             })),
         )
@@ -238,7 +246,7 @@ mod tests {
         let mut observed = st.daemon.watch_observed();
         let _ = send(
             &st,
-            put(serde_json::json!({
+            put(&serde_json::json!({
                 "revision": 0, "publicHost": "dev1.example.com",
                 "requestedRunning": true, "relay": relay_json(),
             })),
@@ -279,9 +287,9 @@ mod tests {
         // only check the status here.
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(put(
-                serde_json::json!({ "revision": 0, "requestedRunning": false }),
-            ))
+            .oneshot(put(&serde_json::json!(
+                { "revision": 0, "requestedRunning": false }
+            )))
             .await
             .expect("oneshot");
         assert!(
@@ -298,7 +306,7 @@ mod tests {
         let (st, _started) = state(Behavior::HoldUntilCancel);
         let _ = send(
             &st,
-            put(serde_json::json!({
+            put(&serde_json::json!({
                 "revision": 0,
                 "publicHost": "dev1.example.com",
                 "requestedRunning": true,
@@ -308,7 +316,7 @@ mod tests {
         .await;
         let (status, body) = send(
             &st,
-            put(serde_json::json!({
+            put(&serde_json::json!({
                 "revision": 1,
                 "publicHost": serde_json::Value::Null,
                 "requestedRunning": true,
@@ -324,7 +332,7 @@ mod tests {
         let (st, _started) = state(Behavior::HoldUntilCancel);
         let _ = send(
             &st,
-            put(serde_json::json!({
+            put(&serde_json::json!({
                 "revision": 0, "publicHost": "dev1.example.com",
                 "requestedRunning": true, "relay": relay_json(),
             })),
@@ -332,7 +340,7 @@ mod tests {
         .await;
         let (_status, body) = send(
             &st,
-            put(serde_json::json!({ "revision": 1, "publicHost": "dev1.example.com", "requestedRunning": false })),
+            put(&serde_json::json!({ "revision": 1, "publicHost": "dev1.example.com", "requestedRunning": false })),
         )
         .await;
         assert_eq!(body["revision"], serde_json::json!(2));

@@ -1,14 +1,17 @@
 name: API Sync
 
-# The gatekeeper OAuth wire contract is a cross-language invariant pinned by the
-# committed OpenAPI snapshot (`gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json`):
-#   - the Rust snapshot test proves that file matches what `utoipa` emits from
-#     the live axum routes, and
-#   - the TS drift test proves the Effect `GatekeeperApi` matches that same file.
-# Those two halves otherwise live in the path-filtered `rust-test`/`test`
+# Each slice that exposes an HTTP surface pins a cross-language wire contract via
+# a committed OpenAPI snapshot (`slices/<slice>/<slice>-rust/openapi/*.openapi.json`):
+#   - a Rust snapshot test proves that file matches what `utoipa` emits from the
+#     live axum routes, and
+#   - a TS drift test proves the slice's Effect `HttpApi` matches that same file.
+# Those two halves otherwise live in the path-filtered `test-rust`/`test-typescript`
 # workflows, so a one-sided change can satisfy its own language's gate while the
 # other half is skipped — letting drift through. This workflow runs BOTH halves
-# whenever either side (or the snapshot itself) changes, closing that gap.
+# whenever either side (or a snapshot) changes, closing that gap. It is
+# project-agnostic: a new slice is picked up with no edit here — its Rust
+# snapshot test shares the name `openapi_spec_snapshot_is_up_to_date` (run across
+# the workspace) and its TS test matches the `openapi-drift` filter.
 
 on:
   push:
@@ -28,10 +31,10 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Detect whether this change touches either side of the contract. A PR that
-  # touches neither skips both check jobs below; every push to main runs them.
+  # Detect whether this change touches either side of any slice's contract. A PR
+  # that touches neither skips both check jobs below; every push to main runs them.
   changes:
-    name: API Sync [Detect Changes]
+    name: Detect Changes
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     outputs:
@@ -41,21 +44,25 @@ jobs:
       - uses: dorny/paths-filter@v4
         id: filter
         # Inlined (not in path-filters.yml) because this filter is specific to
-        # this workflow, like lint-docs.yml's `markdown` filter.
+        # this workflow, like lint-markdown.yml's `markdown` filter. Broad on
+        # purpose: any slice's Rust crate, any TS HttpApi definition, the shared
+        # harness, or a committed snapshot — so a new consumer needs no edit here.
         with:
           filters: |
             api:
-              # Rust handlers + the committed OpenAPI snapshot the contract pins.
-              - 'slices/gatekeeper/gatekeeper-rust/**'
-              # The Effect HttpApi definition + the TS drift test that reads it.
-              - 'slices/gatekeeper/gatekeeper-core/src/http-api-definition/**'
-              # The shared wire-shape comparison engine both halves lean on.
+              # Any slice's Rust crate (handlers) + its committed snapshot.
+              # Also covers the shared Rust snapshot-test helper
+              # (`shared-structures-rust`), so no dedicated entry for it.
+              - 'slices/**/*-rust/**'
+              # Any slice's Effect HttpApi definition + its TS drift test.
+              - 'slices/**/http-api-definition/**'
+              # The shared wire-shape engine + the spec-drift test factory.
               - 'slices/shared-structures/shared-structures-core/src/openapi-drift/**'
               # This workflow itself.
               - '.github/workflows/api-sync.yml'
 
   rust-snapshot:
-    name: API Sync [Rust snapshot]
+    name: Rust Snapshot
     needs: changes
     # Skip on draft PRs; `pull_request` is null on push events so the draft
     # comparison is true and the job still runs on main.
@@ -64,20 +71,22 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Set up Rust toolchain
-        # Dedicated cache namespace: this job compiles only `-p gatekeeper-rust`,
-        # not the whole workspace, so it must NOT join the
-        # `rust-workspace-excl-tauri` key the rust-lint/rust-test jobs share
-        # (that key assumes identical full-workspace inputs).
+        # Share the `rust-workspace-excl-tauri` cache with test-rust/lint-rust:
+        # this job compiles the same workspace set (everything except
+        # wildflower-tauri), so the same compiled deps warm all three.
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          cache-shared-key: gatekeeper-openapi-snapshot
-      - name: Verify the committed OpenAPI spec matches the utoipa routes
-        # Regenerate after a wire-type change with:
-        #   UPDATE_OPENAPI=1 cargo test -p gatekeeper-rust openapi_spec_snapshot_is_up_to_date
-        run: cargo test -p gatekeeper-rust openapi_spec_snapshot_is_up_to_date
+          cache-shared-key: rust-workspace-excl-tauri
+      - name: Verify every committed OpenAPI spec matches its utoipa routes
+        # One shared test name across the workspace, so adding a slice's snapshot
+        # test needs no edit here. Regenerate a stale snapshot with e.g.
+        #   UPDATE_OPENAPI=1 cargo test -p <slice>-rust openapi_spec_snapshot_is_up_to_date
+        # wildflower-tauri is excluded — it needs GTK/webkit system libs to build
+        # (see lint-rust.yml) and owns no documented surface.
+        run: cargo test --workspace --exclude wildflower-tauri --all-features openapi_spec_snapshot_is_up_to_date
 
   ts-drift:
-    name: API Sync [TS drift]
+    name: TS Drift
     needs: changes
     if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.api == 'true') }}
     runs-on: ubuntu-latest
@@ -89,10 +98,10 @@ jobs:
           cache: true
       - name: Install dependencies
         run: vp install
-      - name: Diff the Effect HttpApi against the committed OpenAPI spec
-        # Matches both the gatekeeper drift test and the shared engine's unit
-        # tests; vitest resolves workspace deps via the `source` export
-        # condition, so no `vp run pack` build step is needed.
+      - name: Diff every Effect HttpApi against its committed OpenAPI spec
+        # Matches every slice's `openapi-drift` test plus the shared engine's unit
+        # tests; vitest resolves workspace deps via the `source` export condition,
+        # so no `vp run pack` build step is needed.
         run: vp test openapi-drift
 
   # Always-runs summary that keeps the "api-sync" status name green/red.
@@ -115,9 +124,9 @@ jobs:
             echo '::error::changes job did not succeed'; exit 1
           fi
           if [[ "$rust" == 'failure' || "$rust" == 'cancelled' ]]; then
-            echo '::error::Rust OpenAPI snapshot is out of date — regenerate with UPDATE_OPENAPI=1 cargo test -p gatekeeper-rust openapi_spec_snapshot_is_up_to_date'; exit 1
+            echo '::error::A committed OpenAPI snapshot is out of date — regenerate with UPDATE_OPENAPI=1 cargo test -p <slice>-rust openapi_spec_snapshot_is_up_to_date'; exit 1
           fi
           if [[ "$ts" == 'failure' || "$ts" == 'cancelled' ]]; then
-            echo '::error::Effect HttpApi drifted from the committed OpenAPI spec — fix oauth.ts / jwks.ts (or regenerate the snapshot if the server changed)'; exit 1
+            echo '::error::An Effect HttpApi drifted from its committed OpenAPI spec — fix the slice HttpApi (or regenerate the snapshot if the server changed)'; exit 1
           fi
           echo 'api-sync OK'

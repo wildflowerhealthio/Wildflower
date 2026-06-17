@@ -4,6 +4,12 @@ A running log of non-obvious insights discovered during agent sessions. Triage i
 
 <!-- Append new entries below this line -->
 
+## OpenAPI spec-drift across Rust↔TS: `#[schema(required)]` for always-serialized `Option`, `Schema.Int` for `i64`
+
+**Discovered during**: claude/openapi-drift-harness-tunnel — generalizing the gatekeeper drift trial + adding the tunnel as a second consumer
+**Learning**: Two non-obvious reconciliations when putting a slice's wire contract under `collectSpecDrift` (`shared-structures-core/openapi-drift`). (1) The engine drops nullability but compares required-ness, so a TS `Schema.NullOr(x)` (required key, nullable value) must be matched on the Rust side by `Option<T>` + `#[schema(required)]` — utoipa marks `Option` non-required by default, but a field with no `#[serde(skip_serializing_if)]` is _always_ on the wire, so `required` is accurate (utoipa 5.5 parses `#[schema(required)]` as a bool-or-true flag that overrides the Option default). Conversely, match a `Schema.optionalWith({ default })` (optional key) with a plain `Option<T>`. (2) The engine treats OpenAPI `integer` and `number` as distinct kinds: `utoipa` emits Rust `i64` as `integer`, so the TS side must use `Schema.Int` (not `Schema.Number`, which emits `number`) or it drifts — even though both are just JSON numbers on the wire. The committed snapshot must stay byte-exact with `serde_json::to_string_pretty` (the Rust snapshot test asserts equality), so it's excluded from oxfmt via the `**/openapi/*.openapi.json` glob in the root `vite.config.ts` `fmt.ignorePatterns`. Shared harnesses: `shared_structures_rust::openapi_snapshot::assert_up_to_date` (dev-dep, feature `openapi-snapshot`) and `shared-structures-core/openapi-drift/testing`'s `defineSpecDriftTest` — make the TS factory generic over `fromApi`'s `<Id, Groups, E, R>`, since a materialized supertype like `HttpApi.HttpApi.Any` isn't assignable from a concrete `HttpApi`.
+**Suggested destination**: docs/Effect/OpenAPI Spec Drift How-To.md (created this session; promote refinements there)
+
 ## `@fast-check/vitest` is broken under Vite+ ("Vitest failed to find the current suite"); use raw `fast-check` + `numRunsFor`
 
 **Discovered during**: ruthmarks/add-gatekeeper-rust — effect-messaging-tauri tests
@@ -290,7 +296,7 @@ From the `defineBridge` + `makeWebTransport` refactor in `slices/interop/`. Patt
 
 ## Slice-level bridge tests earn their keep on cross-side alignment, not library-primitive round-trips or parent-package shape duplication
 
-**Discovered during**: ruthmarks/add-wildflower-node — review of [slices/navigation/navigation-core/tests/bridge.test.ts](../../slices/navigation/navigation-core/tests/bridge.test.ts)
+**Discovered during**: ruthmarks/add-wildflower-node — review of [slices/navigation/navigation-core/src/navigation-bridge.test.ts](../../slices/navigation/navigation-core/src/navigation-bridge.test.ts)
 **Learning**: A slice's bridge test file landed at 16 tests / 151 lines, but only the last two earned their keep. The per-schema round-trip tests (L6-75) re-test `Schema.parseJson(Schema.TaggedStruct(...))` — a library primitive — three times for HostBackRequested / HostRequestedWebNavigation / RouteChanged. The shape assertions (L78-122) — `Object.keys(Host.OutboundSchemas)`, `HandlerTag.key === 'Navigation.Host.HandlerTag'` — duplicate the equivalent tests already covered in the parent `effect-messaging-core` package one layer down. The valuable tests (L123-150) exercise cross-side alignment via the test adapter: `NavigationBridge.Host.send(...)` then `Schema.decodeSync(NavigationBridge.Web.InboundSchemas.X)(sentSink[0])`. Heuristic when auditing slice-level test files: keep tests that exercise contracts unique to the slice (cross-side schema pairing, slice-specific options-shape honoring by an aggregator's encoding logic, e.g. `hostOptionsShape: { initialPath }` flowing through the Expo wiring); drop tests that re-test library primitives or re-assert parent-package invariants. The budget freed by dropping the duplicates should fund tests on slice-specific encoding behaviour the parent package can't possibly cover.
 **Suggested destination**: docs/Testing/Testing Reference.md
 

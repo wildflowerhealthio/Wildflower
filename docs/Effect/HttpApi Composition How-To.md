@@ -77,7 +77,7 @@ What each export is for:
 
 The cast must be surrounded by:
 
-1. A comment explaining the bridge. New slices may shorten to `// See gatekeeper-core's AuthApiHandlersFor: the phantom-id bridge lets a Layer built against <ChildApi> satisfy a parent ApiId's group requirement.` — gatekeeper-core's [AuthApiHandlersFor](../../slices/gatekeeper/gatekeeper-core/src/http-api-implementation/index.ts) carries the canonical long-form explanation.
+1. A comment explaining the bridge. New slices may shorten to `// See shared-structures-core's apiHandlersFor: the phantom-id bridge lets a Layer built against <ChildApi> satisfy a parent ApiId's group requirement.` — shared-structures-core's [`apiHandlersFor`](../../slices/shared-structures/shared-structures-core/src/http-api-implementation/index.ts) carries the canonical long-form explanation.
 2. `// oxlint-disable-next-line typescript/no-unsafe-type-assertion` immediately above the `as unknown as ...` line, scoped to that single line.
 
 This is the one sanctioned `as unknown as` cast in slice code. See the [no-`any`/`@ts-ignore`/unsafe-cast rule](../../AGENTS.md) in the root AGENTS.md for the broader policy.

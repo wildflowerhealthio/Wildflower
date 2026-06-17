@@ -35,16 +35,17 @@ const RelayViewSchema = Schema.Struct({
  * no recovery flags a permanent misconfiguration.
  *
  * `revision` / `attempt` are `i64` on the Rust side; as monotonic
- * counters they stay well under `2^53`, so `Schema.Number` matches the
- * JSON wire exactly.
+ * counters they stay well under `2^53`. `Schema.Int` (not `Schema.Number`)
+ * keeps the OpenAPI type `integer`, matching utoipa's `i64` so the
+ * spec-drift contract test agrees on the wire kind.
  */
 const TunnelStateViewSchema = Schema.Struct({
-  revision: Schema.Number,
+  revision: Schema.Int,
   publicHost: Schema.NullOr(Schema.String),
   requestedRunning: Schema.Boolean,
   running: Schema.Boolean,
   error: Schema.NullOr(Schema.String),
-  attempt: Schema.Number,
+  attempt: Schema.Int,
   servedOrigin: Schema.String,
   relay: Schema.NullOr(RelayViewSchema),
 })
@@ -74,7 +75,7 @@ const RelayInputSchema = Schema.Struct({
  * means "replace all four fields".
  */
 const ReplaceTunnelRequestBodySchema = Schema.Struct({
-  revision: Schema.Number,
+  revision: Schema.Int,
   publicHost: Schema.NullOr(Schema.String),
   requestedRunning: Schema.Boolean,
   relay: Schema.optional(RelayInputSchema),

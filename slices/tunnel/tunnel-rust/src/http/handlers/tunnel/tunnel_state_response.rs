@@ -3,6 +3,7 @@
 //! pull what they need from here.
 //!
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::domain::TunnelSettings;
 use crate::TunnelDaemon;
@@ -11,7 +12,7 @@ use crate::TunnelDaemon;
 /// `token`, which stays write-only and is never returned. Mirrors
 /// `RelaySettings` minus `token`. The client prefills these and only re-sends
 /// the relay block (with a fresh token) when the user changes it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RelayView {
     pub(super) remote_addr: String,
@@ -40,15 +41,20 @@ pub struct RelayView {
 /// `running` / `servedOrigin` is tracked in
 /// <https://github.com/Assessment-is/Wildflower/issues/184>; the dirty-gated
 /// settings UI accepts the optimistic value for now.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TunnelStateResponse {
     pub(super) revision: i64,
+    // Always serialized (no `skip_serializing_if`), so it's required-on-the-wire
+    // even though it's `Option` — `#[schema(required)]` overrides utoipa's
+    // Option-implies-optional default to match the always-present TS `NullOr`.
+    #[schema(required)]
     pub(super) public_host: Option<String>,
     pub(super) requested_running: bool,
     /// `true` when the daemon is *dialing or reconnecting* — not a
     /// connected-handshake signal. See the type-level docs.
     pub(super) running: bool,
+    #[schema(required)]
     pub(super) error: Option<String>,
     /// Dial attempts the live supervisor has made for this revision, resets
     /// on the next reconcile. Surfaced so an operator can spot a permanent
@@ -60,6 +66,7 @@ pub struct TunnelStateResponse {
     pub(super) served_origin: String,
     /// The relay connection's non-secret fields, or `null` when no relay is
     /// configured. The `token` is never included.
+    #[schema(required)]
     pub(super) relay: Option<RelayView>,
 }
 

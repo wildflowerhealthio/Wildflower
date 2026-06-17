@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::routing::{put, MethodRouter};
 use axum::Json;
 use serde::{Deserialize, Deserializer};
+use utoipa::ToSchema;
 
 use super::tunnel_state_response::TunnelStateResponse;
 use crate::db::{SettingsUpdate, SettingsUpdateOutcome};
@@ -15,12 +15,18 @@ use crate::http::state::TunnelState;
 /// `PUT /tunnel` — full-replace of the visible settings under the caller's
 /// `revision` token. A stale revision returns 409 with the current snapshot so
 /// the client can rebase; a winning write bumps the revision, reconciles the
-/// live supervisor, and returns the new snapshot.
-pub(super) fn route() -> MethodRouter<Arc<TunnelState>> {
-    put(handle_put_tunnel)
-}
-
-async fn handle_put_tunnel(
+/// live supervisor, and returns the new snapshot. Collected into the `OpenAPI`
+/// doc via `routes!` in the parent module, which reads this `#[utoipa::path]`.
+#[utoipa::path(
+    put,
+    path = "/tunnel",
+    request_body = ReplaceTunnelRequestBody,
+    responses(
+        (status = 200, description = "Write applied; the new snapshot after the daemon reconciled", body = TunnelStateResponse),
+        (status = 409, description = "Stale revision; no write happened — the current snapshot is returned", body = TunnelStateResponse)
+    )
+)]
+pub(super) async fn handle_put_tunnel(
     State(state): State<Arc<TunnelState>>,
     Json(body): Json<ReplaceTunnelRequestBody>,
 ) -> Result<(StatusCode, Json<TunnelStateResponse>), HandlerError> {
@@ -64,10 +70,14 @@ async fn handle_put_tunnel(
 /// PUT semantics, and the relay block is the only intentionally-omittable
 /// member (because it's write-only and the client can't echo back what it
 /// hasn't seen).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ReplaceTunnelRequestBody {
     pub(super) revision: i64,
+    // `RequiredNullable` has no `ToSchema`, so describe it to utoipa as a
+    // nullable string; `required` overrides utoipa's nullable-implies-optional
+    // default to match the always-present TS `NullOr` (full-replace PUT).
+    #[schema(value_type = Option<String>, required)]
     pub(super) public_host: RequiredNullable<String>,
     pub(super) requested_running: bool,
     #[serde(default)]
@@ -105,7 +115,7 @@ where
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct RelayInput {
     remote_addr: String,

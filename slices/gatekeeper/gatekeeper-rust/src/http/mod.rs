@@ -21,7 +21,7 @@ use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-/// Base OpenAPI document; the collected routes fill in paths + components.
+/// Base `OpenAPI` document; the collected routes fill in paths + components.
 #[derive(OpenApi)]
 struct ApiDoc;
 
@@ -77,7 +77,7 @@ mod openapi_tests {
         "/openapi/gatekeeper-oauth.openapi.json"
     );
 
-    /// The gatekeeper OAuth + discovery OpenAPI document. `info` is set
+    /// The gatekeeper OAuth + discovery `OpenAPI` document. `info` is set
     /// explicitly so the committed snapshot doesn't churn with the crate
     /// version. Test-only — nothing serves the spec at runtime.
     fn openapi_spec() -> utoipa::openapi::OpenApi {
@@ -86,28 +86,11 @@ mod openapi_tests {
         spec
     }
 
-    /// The generated OpenAPI document must match the committed snapshot. A wire
+    /// The generated `OpenAPI` document must match the committed snapshot. A wire
     /// type change flips this red; regenerate with
     /// `UPDATE_OPENAPI=1 cargo test -p gatekeeper-rust openapi_spec_snapshot_is_up_to_date`.
     #[test]
     fn openapi_spec_snapshot_is_up_to_date() {
-        let generated = format!(
-            "{}\n",
-            serde_json::to_string_pretty(&openapi_spec())
-                .expect("serialize gatekeeper OpenAPI to JSON")
-        );
-        if std::env::var_os("UPDATE_OPENAPI").is_some() {
-            std::fs::write(SPEC_PATH, &generated).expect("write OpenAPI snapshot");
-            return;
-        }
-        let committed = std::fs::read_to_string(SPEC_PATH).expect(
-            "read committed OpenAPI snapshot; regenerate with \
-             UPDATE_OPENAPI=1 cargo test -p gatekeeper-rust openapi_spec_snapshot_is_up_to_date",
-        );
-        assert_eq!(
-            committed, generated,
-            "gatekeeper OpenAPI spec is out of date — regenerate with \
-             UPDATE_OPENAPI=1 cargo test -p gatekeeper-rust openapi_spec_snapshot_is_up_to_date"
-        );
+        shared_structures_rust::openapi_snapshot::assert_up_to_date(&openapi_spec(), SPEC_PATH);
     }
 }

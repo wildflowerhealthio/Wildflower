@@ -4,7 +4,17 @@ version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
 
+[features]
+# Opt-in test-support: the OpenAPI snapshot assert/regenerate helper. Gated
+# behind a feature so the production builds of crates that depend on
+# shared-structures-rust (emr-rust, wildflower-tauri) don't pull utoipa /
+# serde_json — only the `-rust` crates that own a documented surface enable it,
+# as a dev-dependency.
+openapi-snapshot = ["dep:utoipa", "dep:serde_json"]
+
 [dependencies]
+utoipa = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 
 [lints]
 workspace = true

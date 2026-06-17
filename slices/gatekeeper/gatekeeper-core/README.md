@@ -60,9 +60,9 @@ redirectUri)`. Grant lookups drive the auto-approve fast path.
 The gatekeeper API redirects to URLs under `/gatekeeper/`, which the host app
 serves with a single-page app. The redirect targets are typed in
 [`gatekeeper-core/page-paths`](./src/page-paths.ts) (`GatekeeperPaths`); the
-SPA's React Router config in [`gatekeeper-react`](../gatekeeper-react/src/routes.tsx)
+SPA's file-based route tree in [`gatekeeper-react`](../gatekeeper-react/src/routes/)
 mirrors them, and a drift test in
-[`gatekeeper-react/tests/routes.test.tsx`](../gatekeeper-react/tests/routes.test.tsx)
+[`gatekeeper-react/src/routes.test.tsx`](../gatekeeper-react/src/routes.test.tsx)
 enforces consistency. Serving the SPA itself is the host app's static-asset
 concern (see [`apps/wildflower-react`](../../../apps/wildflower-react)), not
 part of the gatekeeper-core contract.
