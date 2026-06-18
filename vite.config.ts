@@ -89,6 +89,12 @@ export default defineConfig({
   lint: {
     ignorePatterns: [
       '.claude/**/*',
+      // /design-sync authored preview compositions. These are scratch .tsx
+      // files compiled by the design-sync converter's own esbuild (it aliases
+      // the `react-tundraish` import to a runtime global), not project source —
+      // they intentionally use multiple named exports, no explicit return
+      // types, and an unresolvable package import, none of which apply here.
+      '.design-sync/**/*',
       '**/tapes/**/*',
       '**/dist/**',
       '**/dist-html/**',
