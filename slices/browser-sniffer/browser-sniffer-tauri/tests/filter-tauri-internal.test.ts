@@ -433,47 +433,59 @@ describe('makeFilteringEventBus', () => {
   })
 
   describe('emit-chain FIFO', () => {
-    it('serializes a burst of emits in initiation order even when the bus resolves out of order', async () => {
-      // Drive the bus's emit resolution OUT of initiation order: each
-      // emit returns a Promise that resolves on a configurable delay.
-      // Without the chain, awaiting a later emit could land before an
-      // earlier one resolved. With the chain, each `.then` waits for
-      // the previous resolution before invoking the next bus.emit, so
-      // the recorded order matches initiation order.
+    it('serializes a burst of emits — only one bus.emit is in flight at a time', async () => {
+      // Each `bus.emit` lands a `{ resolve, emission }` record in
+      // `pendingEmits`. With the chain, only one record can be added
+      // between resolutions (the chain blocks the next `bus.emit` until
+      // the current one resolves). Without the chain, all three
+      // `bus.emit` calls would fire during the first microtask burst,
+      // populating the array up front — caught by the per-step "length
+      // should be N" assertion.
       const emissions: Emission[] = []
-      const slow: Array<() => void> = []
+      const pendingEmits: { resolve: () => void; emission: Emission }[] = []
       const bus: TauriEventApi = {
         emit: (event, payload) =>
           new Promise<void>((resolve) => {
-            slow.push(() => {
-              emissions.push({ event, payload })
-              resolve()
-            })
+            pendingEmits.push({ resolve, emission: { event, payload } })
           }),
         listen: async () => () => {},
       }
       const wrapped = makeFilteringEventBus(bus)
 
       // Three external-URL emits — all pass the filter and ride the
-      // chain. We don't await them: we want to see what happens when
-      // they're issued back-to-back synchronously.
+      // chain. Issued back-to-back synchronously, fire-and-forget.
       const a = { _tag: 'ResponseStart', id: 'a', url: 'https://x/a', status: 200 }
-      const b = { _tag: 'Responsta', id: 'a', data: 'aaaa' }
+      const b = { _tag: 'ResponseData', id: 'a', data: 'aaaa' }
       const c = { _tag: 'ResponseFinished', id: 'a' }
       void wrapped.emit(BRIDGE_EVENT, a)
       void wrapped.emit(BRIDGE_EVENT, b)
       void wrapped.emit(BRIDGE_EVENT, c)
 
-      // Drain the queue by firing the slow callbacks in order — the
-      // chain ensures each step is queued only after the previous
-      // resolves. If we fire the slow callback for step 1, the chain
-      // can advance to step 2's bus.emit call.
-      for (let i = 0; i < 3; i += 1) {
-        await Promise.resolve()
-        await Promise.resolve()
-        slow[i]?.()
+      // Drain microtasks until the next `bus.emit` has been recorded.
+      // The budget (32) is well beyond the three-or-so microtask cycles
+      // each chain step needs (then-result settle → catch pass-through
+      // → next then-handler queue). Early-returns on success so the
+      // loop terminates as soon as the queue grows.
+      const drainUntilQueueLength = async (target: number): Promise<void> => {
+        for (let j = 0; j < 32; j += 1) {
+          if (pendingEmits.length >= target) return
+          // oxlint-disable-next-line eslint/no-await-in-loop -- intentional sequencing of microtask cycles
+          await Promise.resolve()
+        }
       }
-      await flushChain()
+
+      for (let i = 0; i < 3; i += 1) {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- intentional sequencing of chain steps
+        await drainUntilQueueLength(i + 1)
+        expect(
+          pendingEmits.length,
+          `bus.emit ${String(i + 1)} should be in flight by iteration ${String(i)}`
+        ).toBe(i + 1)
+        const inflight = pendingEmits[i]
+        if (inflight === undefined) break
+        emissions.push(inflight.emission)
+        inflight.resolve()
+      }
 
       expect(emissions).toEqual([
         { event: BRIDGE_EVENT, payload: a },
