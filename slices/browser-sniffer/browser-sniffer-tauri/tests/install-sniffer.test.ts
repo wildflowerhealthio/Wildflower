@@ -495,6 +495,42 @@ describe('fetch shim', () => {
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
+
+  test.each([
+    'ipc://localhost/cmd',
+    'tauri://localhost/asset',
+    'http://ipc.localhost/x',
+    'https://tauri.localhost/y',
+  ])('does not sniff Tauri-internal fetch %s (handed straight to native)', async (url) => {
+    // Tauri's own IPC transport fetches from this same context; the shim
+    // must hand those to native unsniffed so they don't re-enter the
+    // bridge. The fetch still runs, but emits no Response* observations.
+    const native = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }))
+    window.fetch = native
+    installSnifferForTest()
+
+    const res = await window.fetch(url)
+    await res.text()
+
+    expect(native).toHaveBeenCalledTimes(1)
+    expect(withTag(getMessages(), 'ResponseStart')).toHaveLength(0)
+    expect(withTag(getMessages(), 'ResponseData')).toHaveLength(0)
+    expect(withTag(getMessages(), 'ResponseFinished')).toHaveLength(0)
+  })
+
+  test('still sniffs ordinary fetches after the internal-URL guard', async () => {
+    const native = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    window.fetch = native
+    installSnifferForTest()
+
+    await window.fetch('ipc://localhost/cmd')
+    await window.fetch('https://api.example.com/things')
+
+    // Only the real external request produced a ResponseStart.
+    expect(withTag(getMessages(), 'ResponseStart')).toEqual([
+      expect.objectContaining({ _tag: 'ResponseStart', url: 'https://api.example.com/things' }),
+    ])
+  })
 })
 
 describe('XHR shim', () => {
@@ -672,6 +708,26 @@ describe('XHR shim', () => {
     expect(withTag(getMessages(), 'ResponseData').slice(firstDataCount)).toEqual([
       expect.objectContaining({ id: starts[1]?.id }),
     ])
+  })
+
+  test('does not sniff a Tauri-internal XHR (send runs natively, emits nothing)', () => {
+    installSnifferForTest()
+    const xhr = new XMLHttpRequest()
+    xhr.open('GET', 'ipc://localhost/cmd')
+    xhr.send()
+
+    // The internal request short-circuits in `send` before any listeners
+    // are attached, so even a full response lifecycle emits nothing.
+    Object.defineProperty(xhr, 'status', { value: 200, configurable: true })
+    Object.defineProperty(xhr, 'statusText', { value: 'OK', configurable: true })
+    Object.defineProperty(xhr, 'responseType', { value: '', configurable: true })
+    Object.defineProperty(xhr, 'responseText', { value: 'ipc payload', configurable: true })
+    xhr.dispatchEvent(new Event('progress'))
+    xhr.dispatchEvent(new Event('load'))
+
+    expect(withTag(getMessages(), 'ResponseStart')).toHaveLength(0)
+    expect(withTag(getMessages(), 'ResponseData')).toHaveLength(0)
+    expect(withTag(getMessages(), 'ResponseFinished')).toHaveLength(0)
   })
 })
 

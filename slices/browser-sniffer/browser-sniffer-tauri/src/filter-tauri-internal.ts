@@ -3,108 +3,60 @@ import type { TauriEventApi } from 'effect-messaging-tauri'
 import { BRIDGE_EVENT } from './install-sniffer.ts'
 
 /**
- * Tauri-internal traffic filter for the sniffer's multiplexed
- * `BRIDGE_EVENT` Tauri channel.
+ * Outbound filter + serializer for the sniffer's multiplexed
+ * `BRIDGE_EVENT` Tauri channel. Wraps a {@link TauriEventApi} so:
  *
- * Why: Tauri's IPC transport (`@tauri-apps/api`) calls
- * `fetch('ipc://localhost/...')` from inside the same JS context the
- * sniffer's fetch shim runs in, so every Tauri IPC call gets re-sniffed
- * and forwarded back as a `ResponseStart` / `RequestError` pair pointing
- * at the internal IPC URL. On macOS the fetch is also blocked by
- * WebKit's mixed-content gate (top-level https://, custom `ipc:`
- * subresource); Tauri's protocol script catches that and retries via
- * the wry `WKScriptMessageHandler` postMessage path, but the failed
- * fetch leaks out as `console.warn`-flooded host logs and confuses the
- * collector with untracked-id errors. Two filters cooperate to clean
- * the stream:
+ *   1. Tauri's own IPC-fallback `console.warn` ("IPC custom protocol
+ *      failed …") — captured by the sniffer's console shim and re-posted
+ *      as a `Log` — is dropped. It fires once per IPC call until WebKit's
+ *      `customProtocolIpcFailed` flips sticky; the per-call spam is noise,
+ *      not a page observation.
+ *   2. Outbound emits are serialized on a Promise chain. Tauri's macOS
+ *      IPC transport falls back from a blocked `ipc://` fetch to the
+ *      `WKScriptMessageHandler` postMessage path on the first call, and
+ *      emits issued concurrently during that transition were observed to
+ *      reorder — so a streaming burst (`ResponseStart` + N×`ResponseData`
+ *      + `ResponseFinished`) could land out of order on the host. The
+ *      chain forces one in-flight emit at a time, at a cost of one IPC
+ *      round-trip per emit, to keep the sniffer's chunked page-content
+ *      stream FIFO. A rejected emit is reported (not swallowed) and does
+ *      not poison the chain — see {@link makeFilteringEventBus}.
  *
- *   1. Tag the request id at `ResponseStart` if the URL is Tauri-internal
- *      (`ipc://` / `tauri://localhost` / `http(s)://ipc.localhost` /
- *      `http(s)://tauri.localhost`). Drop subsequent `ResponseData`,
- *      `ResponseFinished`, `RequestError`, `Cancelled` events for the
- *      same id so the collector never sees them.
- *   2. Drop `Log` events whose first payload entry is Tauri's IPC
- *      fallback warning. The warning is expected (and self-resolving
- *      after the first call flips `customProtocolIpcFailed`); per-call
- *      log spam is not useful.
+ * Tauri-internal IPC traffic itself (`ipc://`, `tauri://localhost`, …) is
+ * not filtered here: the fetch/XHR shims in `install-sniffer.ts` skip
+ * those URLs at the source (see `isTauriInternalUrl`), so they never
+ * reach this wrapper as `ResponseStart`/`ResponseData`/… in the first
+ * place.
  *
- * A third filter handles the sniffer's own `"fetch threw before
- * response:"` warning: install-sniffer's fetch shim emits it
- * synchronously immediately before the `ResponseStart` carrying the
- * failing URL, but at warn-time we don't know if it's a real
- * page-fetch failure or Tauri's own blocked IPC. Buffer the Log and
- * decide on the very next event (see {@link makeFilteringEventBus}).
- *
- * The wrapper also serializes outbound emits on a Promise chain so a
- * synchronous burst from the sniffer (e.g. `pageLoadHandler` emitting
- * `PageLoaded` + `ResponseStart` + N×`ResponseData` + `ResponseFinished`
- * in one tight loop) cannot get reordered by Tauri's IPC fallback
- * dance: the first emit drains the fetch-path retry, after which
- * `customProtocolIpcFailed` is sticky and every subsequent emit goes
- * straight to the synchronous postMessage path (FIFO at the
- * WKWebView message-handler layer). Net latency cost is one
- * round-trip per burst, not per chunk.
+ * `listen` and any emit whose name is not `BRIDGE_EVENT` pass through
+ * (still on the chain, so ordering holds across event names).
  */
-
-const isTauriInternalUrl = (url: unknown): boolean => {
-  if (typeof url !== 'string') return false
-  return (
-    url.startsWith('ipc://') ||
-    url.startsWith('tauri://') ||
-    url.startsWith('http://ipc.localhost') ||
-    url.startsWith('https://ipc.localhost') ||
-    url.startsWith('http://tauri.localhost') ||
-    url.startsWith('https://tauri.localhost')
-  )
-}
 
 const TAURI_IPC_FALLBACK_WARN_PREFIX = 'IPC custom protocol failed'
-const SNIFFER_FETCH_THREW_WARN_PREFIX = 'fetch threw before response:'
 
 /**
- * A `Log` record at `warn` level whose first payload entry is a string
- * starting with `prefix`. Both Tauri-internal warnings the filter cares
- * about share this shape; they differ only in the prefix literal.
+ * Whether `record` is the `warn`-level `Log` Tauri emits (via the
+ * console shim) when its custom-protocol IPC fetch is blocked and it
+ * falls back to postMessage.
  */
-const isWarnWithHeadPrefix = (record: Record<string, unknown>, prefix: string): boolean => {
+const isTauriIpcFallbackWarning = (record: Record<string, unknown>): boolean => {
   if (record.level !== 'warn') return false
   const payload = record.payload
   if (!Array.isArray(payload) || payload.length === 0) return false
   const head: unknown = payload[0]
-  return typeof head === 'string' && head.startsWith(prefix)
+  return typeof head === 'string' && head.startsWith(TAURI_IPC_FALLBACK_WARN_PREFIX)
 }
 
 /**
- * Wrap a {@link TauriEventApi} so outbound `BRIDGE_EVENT` emits pass
- * through the Tauri-internal filter described in this module's header.
- * `listen` and any emit whose name is not `BRIDGE_EVENT` pass through
- * unchanged.
+ * Wrap a {@link TauriEventApi} so outbound `BRIDGE_EVENT` emits are
+ * serialized and the Tauri IPC-fallback warning is dropped (see this
+ * module's header).
  *
- * Closure state (the set of known-internal request ids, the
- * single-event Log lookahead buffer, and the outbound emit-chain
- * Promise) lives on the wrapper instance — one wrapper per page is the
- * intended use; tests construct a fresh wrapper per case.
+ * Closure state (the outbound emit-chain Promise) lives on the wrapper
+ * instance — one wrapper per page is the intended use; tests construct a
+ * fresh wrapper per case.
  */
 const makeFilteringEventBus = (eventBus: TauriEventApi): TauriEventApi => {
-  const internalRequestIds = new Set<string>()
-  // install-sniffer's fetch shim emits a `Log` *immediately* before a
-  // `ResponseStart` carrying the failing URL whenever fetch throws (see
-  // the `catch` block in `install-sniffer.ts`). The sniffer doesn't
-  // know whether the failing fetch was a real cross-origin request from
-  // the page or one of Tauri's own `ipc://` IPC fetches that WebKit's
-  // mixed-content gate blocked, so we buffer the Log here and decide
-  // based on the URL on the next `ResponseStart`:
-  //   - URL is Tauri-internal (`ipc://`, `tauri://`, …) → drop the Log
-  //     (the failing fetch was Tauri's own IPC, which has a postMessage
-  //     fallback that handles this transparently)
-  //   - URL is anything else → forward the Log so real page-fetch
-  //     failures (CORS, SSL, network) stay visible
-  // A safety drain: if any non-`ResponseStart` event lands while a Log
-  // is buffered, forward the Log; the buffered Log is then dropped from
-  // the state regardless.
-  let bufferedFetchErrorLog: Record<string, unknown> | null = null
-  // Promise chain that serializes outbound emits — see the module
-  // header for the IPC-fallback-ordering rationale.
   let emitChain: Promise<void> = Promise.resolve()
 
   // Capture the *native* console.error now, before `installSniffer`
@@ -131,71 +83,15 @@ const makeFilteringEventBus = (eventBus: TauriEventApi): TauriEventApi => {
 
   return {
     emit: (eventName, payload) => {
-      if (eventName !== BRIDGE_EVENT) return enqueueEmit(eventName, payload)
-      if (payload === null || typeof payload !== 'object') {
-        return enqueueEmit(eventName, payload)
-      }
-
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-      const record = payload as Record<string, unknown>
-      const tag = record._tag
-      if (typeof tag !== 'string') return enqueueEmit(eventName, payload)
-
-      if (tag === 'Log' && isWarnWithHeadPrefix(record, TAURI_IPC_FALLBACK_WARN_PREFIX)) {
-        return Promise.resolve()
-      }
-
-      // Buffer the "fetch threw before response:" Log: install-sniffer
-      // emits this Log synchronously right before the ResponseStart
-      // carrying the failing URL. Decide whether to forward it on the
-      // next event (see the drain below).
-      if (tag === 'Log' && isWarnWithHeadPrefix(record, SNIFFER_FETCH_THREW_WARN_PREFIX)) {
-        bufferedFetchErrorLog = record
-        return Promise.resolve()
-      }
-
-      // Drain the buffered Log first, deciding by the *current* event:
-      // if it's a ResponseStart for a Tauri-internal URL, the Log was
-      // about a blocked IPC fetch — drop it; otherwise forward it so
-      // real page-fetch errors stay visible. Any non-ResponseStart
-      // event also forwards the Log (the lookahead pairing only holds
-      // for sync ResponseStart immediately after the warning). The
-      // forwarded Log goes through `enqueueEmit` so it stays ordered
-      // with the next event in the chain.
-      if (bufferedFetchErrorLog !== null) {
-        const buffered = bufferedFetchErrorLog
-        bufferedFetchErrorLog = null
-        const isInternalResponseStart = tag === 'ResponseStart' && isTauriInternalUrl(record.url)
-        if (!isInternalResponseStart) {
-          void enqueueEmit(BRIDGE_EVENT, buffered)
+      // Only the multiplexed bridge channel carries the `Log` payloads we
+      // filter; everything else just rides the ordering chain.
+      if (eventName === BRIDGE_EVENT && payload !== null && typeof payload === 'object') {
+        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+        const record = payload as Record<string, unknown>
+        if (record._tag === 'Log' && isTauriIpcFallbackWarning(record)) {
+          return Promise.resolve()
         }
       }
-
-      // Tag-time gate: record the id of any request whose start URL is
-      // Tauri-internal so we can drop the per-chunk and terminal events
-      // that follow without re-checking the URL (those events don't
-      // carry one).
-      if (tag === 'ResponseStart' && isTauriInternalUrl(record.url)) {
-        if (typeof record.id === 'string') internalRequestIds.add(record.id)
-        return Promise.resolve()
-      }
-
-      if (
-        (tag === 'ResponseData' ||
-          tag === 'ResponseFinished' ||
-          tag === 'RequestError' ||
-          tag === 'Cancelled') &&
-        typeof record.id === 'string' &&
-        internalRequestIds.has(record.id)
-      ) {
-        if (tag === 'ResponseFinished' || tag === 'RequestError' || tag === 'Cancelled') {
-          // Terminal event — release the id so the set doesn't grow
-          // unboundedly across the page's lifetime.
-          internalRequestIds.delete(record.id)
-        }
-        return Promise.resolve()
-      }
-
       return enqueueEmit(eventName, payload)
     },
     listen: eventBus.listen,

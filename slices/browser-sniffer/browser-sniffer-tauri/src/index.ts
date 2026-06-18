@@ -23,9 +23,12 @@ import { tauriSnifferBootstrapScript } from './tauri-bootstrap.generated.ts'
  *   3. Injects an in-page `BrowserTopBar` (closed shadow DOM, Close
  *      button + URL label) so the sniffer webview reads as a
  *      sub-context on iOS where there's no native browser chrome.
+ *      The fetch/XHR shims skip Tauri-internal IPC URLs at the source,
+ *      so that traffic is never sniffed in the first place.
  *   4. Invokes `installSniffer()` with a filter-wrapped event bus that
- *      drops Tauri-internal IPC traffic and serializes outbound emits
- *      to preserve FIFO across Tauri's IPC fallback dance.
+ *      serializes outbound emits (and drops Tauri's own IPC-fallback
+ *      console warning) to preserve FIFO across Tauri's IPC fallback
+ *      dance.
  *
  * When `__TAURI__` is absent the whole shim no-ops (no fetch/XHR/console
  * wrapping) — the bootstrap has nowhere to send sniffer traffic, so

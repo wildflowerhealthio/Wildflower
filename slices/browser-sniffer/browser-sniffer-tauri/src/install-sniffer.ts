@@ -254,6 +254,8 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     url: string
     /** Number of UTF-8 bytes already posted as ResponseData chunks. */
     sentBytes: number
+    /** Tauri-internal IPC request — `send` hands to native, unsniffed. */
+    internal: boolean
   }
   const xhrState = new WeakMap<XMLHttpRequest, XhrState>()
 
@@ -269,6 +271,22 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     logInfo(message)
   }
 
+  // Tauri's own IPC transport (`@tauri-apps/api`) issues
+  // `fetch('ipc://localhost/...')` from this same JS context, so without
+  // a guard every host command/event gets re-sniffed and forwarded back
+  // as a `ResponseStart`/`RequestError` pair pointing at the internal IPC
+  // URL — re-entering the bridge and flooding the collector with
+  // untracked ids. Skipping these URLs at the shim source (rather than
+  // emitting then filtering downstream) keeps the wire clean; the fetch
+  // itself still runs, we just hand straight to native and emit nothing.
+  const isTauriInternalUrl = (candidate: string): boolean =>
+    candidate.startsWith('ipc://') ||
+    candidate.startsWith('tauri://') ||
+    candidate.startsWith('http://ipc.localhost') ||
+    candidate.startsWith('https://ipc.localhost') ||
+    candidate.startsWith('http://tauri.localhost') ||
+    candidate.startsWith('https://tauri.localhost')
+
   // Fetch shim — capture the native into a const so the closure has a
   // typed, definitely-defined reference (no `!` later).
   logInfo('Shimming fetch')
@@ -279,6 +297,20 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     request: RequestInfo | URL,
     init?: RequestInit
   ): Promise<Response> {
+    // Tauri-internal IPC — hand straight to native, unsniffed (see
+    // `isTauriInternalUrl`). Pass the original input through unchanged so
+    // we don't re-wrap a string in `new Request(...)` (which rejects the
+    // custom `ipc:` scheme in some engines).
+    const probeUrl =
+      typeof request === 'string'
+        ? request
+        : request instanceof URL
+          ? request.toString()
+          : request.url
+    if (isTauriInternalUrl(probeUrl)) {
+      return nativeFetch(request, init)
+    }
+
     const requestId = makeRequestId()
     let url: string
     let response: Response
@@ -402,7 +434,13 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     username?: string | null,
     password?: string | null
   ): void {
-    xhrState.set(this, { id: makeRequestId(), url: String(url), sentBytes: 0 })
+    const urlStr = String(url)
+    xhrState.set(this, {
+      id: makeRequestId(),
+      url: urlStr,
+      sentBytes: 0,
+      internal: isTauriInternalUrl(urlStr),
+    })
     nativeXHROpen.call(this, method, url, async ?? true, username ?? null, password ?? null)
   } as XMLHttpRequest['open']
 
@@ -410,8 +448,19 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     this: XMLHttpRequest,
     body?: Document | XMLHttpRequestBodyInit | null
   ): void {
-    const state = xhrState.get(this) ?? { id: makeRequestId(), url: '', sentBytes: 0 }
+    const state = xhrState.get(this) ?? {
+      id: makeRequestId(),
+      url: '',
+      sentBytes: 0,
+      internal: false,
+    }
     xhrState.set(this, state)
+    // Tauri-internal IPC — run it natively without sniffing (see
+    // `isTauriInternalUrl`).
+    if (state.internal) {
+      nativeXHRSend.call(this, body ?? null)
+      return
+    }
     const requestId = state.id
     let startSent = false
 

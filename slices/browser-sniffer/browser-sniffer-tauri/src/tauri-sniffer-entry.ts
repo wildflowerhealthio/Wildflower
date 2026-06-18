@@ -29,14 +29,10 @@ const win = globalThis as typeof globalThis & SnifferWindowExtensions
 const event = win.__TAURI__?.event
 
 if (event !== undefined) {
-  // Wrap the raw Tauri event bus once and share the wrapper between
-  // the top bar and the sniffer install. The top bar emits only
-  // `SniffingComplete` on the bridge channel, which is not one of the
-  // filtered tags
-  // and passes through unchanged — but going through the wrapper keeps
-  // the buffered-Log safety drain consistent (a SniffingComplete that
-  // lands while a Log is buffered will flush the Log just like any
-  // other non-ResponseStart event).
+  // Wrap the raw Tauri event bus once and share the wrapper between the
+  // top bar and the sniffer install, so both the top bar's
+  // `SniffingComplete` and the sniffer's stream ride the same outbound
+  // ordering chain (and the same Tauri IPC-fallback-warning filter).
   const filteredEvent = makeFilteringEventBus(event)
 
   // A persistent in-page top bar so the sniffer reads as a sub-context
