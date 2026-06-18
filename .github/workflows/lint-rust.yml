@@ -104,19 +104,19 @@ jobs:
       # stub IIFE long enough to pass the `bootstrap_is_non_empty` test
       # — pnpm install across the monorepo is ~30s of wasted work to
       # lint Rust against a bootstrap nobody touched.
-      - name: Set up Node.js (for the bootstrap regen)
+      - name: Setup Node
         if: needs.changes.outputs.tauri-bootstrap == 'true' || github.event_name == 'push'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Regenerate the sniffer bootstrap
+      - name: Build Sniffer
         if: needs.changes.outputs.tauri-bootstrap == 'true' || github.event_name == 'push'
         run: |
           set -euo pipefail
           corepack enable
           pnpm install --frozen-lockfile --filter browser-sniffer-tauri...
           pnpm --filter browser-sniffer-tauri run generate-tauri-bootstrap
-      - name: Stub the sniffer bootstrap (rust-only PR)
+      - name: Stub Sniffer
         if: needs.changes.outputs.tauri-bootstrap != 'true' && github.event_name != 'push'
         run: |
           set -euo pipefail
