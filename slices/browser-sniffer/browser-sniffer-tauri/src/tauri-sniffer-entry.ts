@@ -13,6 +13,7 @@
 
 import type { TauriEventApi } from 'effect-messaging-tauri'
 
+import { makeFilteringEventBus } from './filter-tauri-internal.ts'
 import { installSniffer } from './install-sniffer.ts'
 
 interface TauriGlobals {
@@ -28,18 +29,27 @@ const win = globalThis as typeof globalThis & SnifferWindowExtensions
 const event = win.__TAURI__?.event
 
 if (event !== undefined) {
+  // Wrap the raw Tauri event bus once and share the wrapper between
+  // the top bar and the sniffer install. The top bar emits only
+  // `bridge:SniffingComplete`, which is not one of the filtered tags
+  // and passes through unchanged — but going through the wrapper keeps
+  // the buffered-Log safety drain consistent (a SniffingComplete that
+  // lands while a Log is buffered will flush the Log just like any
+  // other non-ResponseStart event).
+  const filteredEvent = makeFilteringEventBus(event)
+
   // A persistent in-page top bar so the sniffer reads as a sub-context
   // on platforms (notably iOS) where a Tauri WebviewWindow presents as
   // a full-screen native screen with no visible browser chrome. See
   // `injectBrowserTopBar` for the design constraints — shadow-DOM
   // isolation, JS-style mutations (CSP-safe), self-healing against
   // pages that strip foreign DOM.
-  injectBrowserTopBar(event)
+  injectBrowserTopBar(filteredEvent)
 
   // Without a working Tauri event bus the bootstrap can't carry any
   // sniffer traffic — gating `installSniffer()` here keeps an arbitrary
   // page free of fetch/XHR/console wrappers it can never observe.
-  installSniffer(event)
+  installSniffer(filteredEvent)
 }
 
 /**
