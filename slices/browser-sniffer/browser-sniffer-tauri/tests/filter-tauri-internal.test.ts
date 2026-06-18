@@ -1,5 +1,5 @@
 import type { TauriEventApi } from 'effect-messaging-tauri'
-import { describe, expect, it } from 'vite-plus/test'
+import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { makeFilteringEventBus } from '../src/filter-tauri-internal.ts'
 import { BRIDGE_EVENT } from '../src/install-sniffer.ts'
@@ -492,6 +492,39 @@ describe('makeFilteringEventBus', () => {
         { event: BRIDGE_EVENT, payload: b },
         { event: BRIDGE_EVENT, payload: c },
       ])
+    })
+  })
+
+  describe('dropped emit surfacing', () => {
+    it('reports a rejected emit via console.error and keeps the chain alive', async () => {
+      // The wrapper captures the native console.error at construction
+      // time; spy before constructing so the captured reference is the
+      // spy. A rejected emit must be surfaced (not swallowed) and must
+      // not poison the chain for later messages.
+      const spy = vi.spyOn(globalThis.console, 'error').mockImplementation(() => {})
+      try {
+        let attempts = 0
+        const bus: TauriEventApi = {
+          emit: async (): Promise<void> => {
+            attempts += 1
+            throw new Error('ipc down')
+          },
+          listen: async () => () => {},
+        }
+        const wrapped = makeFilteringEventBus(bus)
+
+        await wrapped.emit(BRIDGE_EVENT, { _tag: 'ResponseData', id: 'r1', data: 'AAAA' })
+        await wrapped.emit(BRIDGE_EVENT, { _tag: 'ResponseData', id: 'r1', data: 'BBBB' })
+        await flushChain()
+
+        // Both emits reached the bus (the first rejection did not poison
+        // the chain) and both failures were reported.
+        expect(attempts).toBe(2)
+        expect(spy).toHaveBeenCalledTimes(2)
+        expect(String(spy.mock.calls[0]?.[0])).toContain('bridge emit dropped')
+      } finally {
+        spy.mockRestore()
+      }
     })
   })
 })

@@ -107,8 +107,25 @@ const makeFilteringEventBus = (eventBus: TauriEventApi): TauriEventApi => {
   // header for the IPC-fallback-ordering rationale.
   let emitChain: Promise<void> = Promise.resolve()
 
+  // Capture the *native* console.error now, before `installSniffer`
+  // swaps `console.*` for the Log-posting shims. A dropped emit is
+  // reported through this captured reference rather than the live
+  // `console.error`, so surfacing the failure can't re-enter the
+  // console → `post(Log)` → `emit` path and loop when the bridge itself
+  // is the thing that's failing.
+  const reportDroppedEmit = globalThis.console.error.bind(globalThis.console)
+
   const enqueueEmit = (eventName: string, payload?: unknown): Promise<void> => {
-    emitChain = emitChain.then(() => eventBus.emit(eventName, payload)).catch(() => {})
+    // `.catch` keeps the chain alive after a rejected emit (a poisoned
+    // chain would silently drop every later message), but the failure is
+    // surfaced rather than swallowed: a dropped `ResponseData` chunk
+    // otherwise leaves the host reassembling a truncated body with no
+    // diagnostic anywhere.
+    emitChain = emitChain
+      .then(() => eventBus.emit(eventName, payload))
+      .catch((error: unknown) => {
+        reportDroppedEmit(`[browser-sniffer] bridge emit dropped (${eventName}): ${String(error)}`)
+      })
     return emitChain
   }
 
