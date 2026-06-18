@@ -15,9 +15,10 @@ import { AnySchema as WebViewSourceSchema } from './model/web-view-source.ts'
 
 /**
  * Web → Host: the collector SPA asks the host to open a sniffer-enabled
- * WebView for the given `source`. The host opens a screen with
- * `<BrowserSnifferWebView>` and forwards the resulting sniffer events
- * back through this same bridge's Host→Web channel.
+ * WebView for the given `source`. The Tauri host
+ * (`browser-sniffer-tauri-rust`) opens a sniffer `WebviewWindow` and
+ * forwards the resulting sniffer events back through this same bridge's
+ * Host→Web channel.
  *
  * The `source` field reuses the slice's `WebViewSource.AnySchema` so
  * the bridge wire-shape and the host-side `WebViewSource.Any` type
@@ -27,7 +28,7 @@ import { AnySchema as WebViewSourceSchema } from './model/web-view-source.ts'
  *
  * `linkedSpan` is the optional OpenTelemetry span context of the trace
  * active on the SPA when it asked for the sniffer. The host threads it
- * to `<BrowserSnifferWebView>`, which adds it as a span *link* on every
+ * into the sniffer webview, which adds it as a span *link* on every
  * root span it opens (the initial-load span and each per-page span), so
  * the otherwise-independent sniffer traces point back at the collector's
  * sync trace. Omitted when no span was in scope at send time.
@@ -50,7 +51,7 @@ const SniffingComplete = Schema.parseJson(Schema.TaggedStruct('SniffingComplete'
 
 /**
  * Web → Host: the collector SPA's handler decided the active sync's
- * next step is to mount a fresh page in the BrowserSnifferWebView.
+ * next step is to navigate the sniffer webview to a fresh page.
  * `source` reuses the slice's `WebViewSource.AnySchema` so the same
  * tagged union the host uses for the initial `firstPage` also covers
  * subsequent navigations — `{ _tag: 'Uri', uri: 'https://…' }` for a
@@ -81,7 +82,7 @@ type CollectorBridge = Bridge.Bridge<
 >
 
 /**
- * Slice-level bridge between the embedded collector SPA and the Expo
+ * Slice-level bridge between the embedded collector SPA and the Tauri
  * host. Web→Host carries control signals (`RequestSniffableWebView`,
  * `CancelSnifferRequest`, `SniffingComplete`) and script-driven
  * navigation steps (`Open`, `Click`); Host→Web carries the
@@ -89,14 +90,14 @@ type CollectorBridge = Bridge.Bridge<
  * notification that drives the step timer.
  *
  * `Click` is the same `ClickMessage` schema `BrowserSnifferBridge`
- * declares for its Host→Web side, so the collector-expo runtime
- * forwards the decoded payload through both bridges without
- * re-encoding. The six sniffer events imported from
- * `browser-sniffer-core` keep wire schemas in lockstep with
- * `BrowserSnifferBridge` for the same reason. `Cancelled` is the
- * terminal acknowledgement for a mid-stream `CancelSnifferRequest`;
- * the handler uses it to release the in-progress slot and notify the
- * consumer via `onResult` with a `Left(SnifferCancelled)`.
+ * declares for its Host→Web side, so the Tauri host forwards the
+ * decoded payload through both bridges without re-encoding. The six
+ * sniffer events imported from `browser-sniffer-core` keep wire
+ * schemas in lockstep with `BrowserSnifferBridge` for the same reason.
+ * `Cancelled` is the terminal acknowledgement for a mid-stream
+ * `CancelSnifferRequest`; the handler uses it to release the
+ * in-progress slot and notify the consumer via `onResult` with a
+ * `Left(SnifferCancelled)`.
  */
 const CollectorBridge: CollectorBridge = Bridge.make({
   name: 'Collector',

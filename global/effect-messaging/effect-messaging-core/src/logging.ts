@@ -22,9 +22,9 @@ type LogLevel = Schema.Schema.Type<typeof LogLevel>
 /**
  * Inner (post-`parseJson`) struct shape for a Log message. Exposed so
  * sender helpers that can't carry the full `parseJson` runtime (e.g.
- * the `browser-sniffer-injected` script, which is `Function.prototype.toString`'d
- * into arbitrary pages and can't import the schema runtime) can still
- * type-import the wire shape.
+ * an injected sniffer script bundled as a self-contained IIFE that
+ * can't import the schema runtime) can still type-import the wire
+ * shape.
  */
 const LogMessageBody = Schema.TaggedStruct('Log', {
   level: LogLevel,

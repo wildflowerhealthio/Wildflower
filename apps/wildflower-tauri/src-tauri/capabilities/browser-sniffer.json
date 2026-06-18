@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "browser-sniffer",
+  "description": "Capability for the sniffer child webview opened by browser-sniffer-tauri-rust. Grants only the event bus (so the injected bootstrap can emit BrowserSnifferBridge.webToHost tags as bridge:{tag} Tauri events, and listen for the host's bridge:Click / bridge:CancelSnifferRequest sends) and log access (so console mirroring works the same way it does in the main webview). The broad core:default surface is intentionally NOT granted — the third-party page loaded into this webview shares the JS context with our bootstrap and inherits whatever __TAURI__ namespace permissions allow.",
+  "windows": ["main"],
+  "webviews": ["browser-sniffer"],
+  "permissions": ["core:event:default", "log:default"]
+}
