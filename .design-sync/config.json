@@ -12,6 +12,8 @@
   },
   "overrides": {
     "Menu": { "cardMode": "single", "primaryStory": "Opened", "viewport": "360x300" },
-    "Dialog": { "cardMode": "single", "primaryStory": "Confirm", "viewport": "420x300" }
+    "Dialog": { "cardMode": "single", "primaryStory": "Confirm", "viewport": "420x300" },
+    "Field": { "cardMode": "column" },
+    "FieldDescription": { "cardMode": "column" }
   }
 }

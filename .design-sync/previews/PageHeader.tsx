@@ -7,10 +7,10 @@ export const TopLevel = () => (
   </div>
 )
 
-/** A detail page: back link to the logical parent plus a record subtitle. */
-export const WithBackAndSubtitle = () => (
+/** A detail page: a record subtitle under the title (a URL or per-record id). */
+export const WithSubtitle = () => (
   <div style={{ maxWidth: 480 }}>
-    <PageHeader title="Request" subtitle="POST https://api.example.com/v1/grants" backHref="/settings/gatekeeper/requests" />
+    <PageHeader title="Request" subtitle="POST https://api.example.com/v1/grants" />
   </div>
 )
 
@@ -34,7 +34,6 @@ export const Truncating = () => (
     <PageHeader
       title="Edit Demo FHIR Server account configuration"
       subtitle="https://fhir.example.org/r4/very/long/base/url/that/overflows"
-      backHref="/collector"
     />
   </div>
 )
