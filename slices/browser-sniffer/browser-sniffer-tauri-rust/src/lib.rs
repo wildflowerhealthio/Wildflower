@@ -10,33 +10,38 @@ mod model;
 mod sniffer_window;
 
 use tauri::{AppHandle, Listener};
+use tauri_plugin_log::log;
 
 pub use crate::sniffer_window::SNIFFER_WEBVIEW_LABEL;
 
-/// Wire the three CollectorBridge.webToHost listeners onto Tauri's
-/// event bus. Idempotent at the listener level — call once per app
-/// lifecycle from `setup()`.
+/// Wire one listener on the multiplexed bridge event and route the
+/// three CollectorBridge.webToHost tags this crate cares about by the
+/// envelope's `_tag`. Idempotent at the listener level — call once per
+/// app lifecycle from `setup()`.
+///
+/// Decode failures inside each handler log at warn; tags this crate
+/// does not care about (host→web emits echoing back, sibling slices'
+/// web→host traffic) are dropped silently.
 pub fn attach_browser_sniffer(app: &AppHandle) {
-    {
-        let handle = app.clone();
-        app.listen(events::REQUEST_SNIFFABLE_WEBVIEW, move |event| {
-            handlers::request_sniffable_webview::handle(&handle, event.payload());
-        });
-    }
-    {
-        let handle = app.clone();
-        app.listen(events::OPEN, move |event| {
-            handlers::open::handle(&handle, event.payload());
-        });
-    }
-    {
-        let handle = app.clone();
-        app.listen(events::SNIFFING_COMPLETE, move |_event| {
-            // SniffingComplete carries an empty struct on the wire; no
-            // decode needed beyond the listener firing.
-            handlers::sniffing_complete::handle(&handle);
-        });
-    }
+    let handle = app.clone();
+    app.listen(events::BRIDGE_EVENT, move |event| {
+        let payload = event.payload();
+        let tag = match serde_json::from_str::<events::BridgeEnvelope>(payload) {
+            Ok(envelope) => envelope.tag,
+            Err(error) => {
+                log::warn!("[browser-sniffer] undecodable bridge payload dropped: {error}");
+                return;
+            }
+        };
+        match tag.as_str() {
+            events::REQUEST_SNIFFABLE_WEBVIEW => {
+                handlers::request_sniffable_webview::handle(&handle, payload);
+            }
+            events::OPEN => handlers::open::handle(&handle, payload),
+            events::SNIFFING_COMPLETE => handlers::sniffing_complete::handle(&handle),
+            _ => {}
+        }
+    });
 }
 
 #[cfg(test)]
@@ -44,16 +49,15 @@ mod tests {
     use super::*;
     use crate::bootstrap::SNIFFER_BOOTSTRAP;
 
-    /// Drift guard: the TS side pins the same literals via
-    /// `bridge:{tag}` where `tag` is the bridge schema's tag name.
+    /// Drift guard: the TS side pins the same `BRIDGE_EVENT` literal
+    /// and the same bare tag literals (the `_tag` discriminator on the
+    /// JSON payload).
     #[test]
-    fn event_names_match_the_ts_convention() {
-        assert_eq!(
-            events::REQUEST_SNIFFABLE_WEBVIEW,
-            "bridge:RequestSniffableWebView"
-        );
-        assert_eq!(events::OPEN, "bridge:Open");
-        assert_eq!(events::SNIFFING_COMPLETE, "bridge:SniffingComplete");
+    fn bridge_event_and_tags_match_the_ts_convention() {
+        assert_eq!(events::BRIDGE_EVENT, "bridge");
+        assert_eq!(events::REQUEST_SNIFFABLE_WEBVIEW, "RequestSniffableWebView");
+        assert_eq!(events::OPEN, "Open");
+        assert_eq!(events::SNIFFING_COMPLETE, "SniffingComplete");
     }
 
     /// The bootstrap IIFE is generated at build time. An empty file

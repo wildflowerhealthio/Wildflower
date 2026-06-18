@@ -4,7 +4,7 @@
 // looks up Tauri's event API, injects an in-page `BrowserTopBar` (a
 // fixed-position chrome-like bar with a Close button), and hands the
 // event API to `installSniffer` which wires the fetch/XHR/console
-// shims directly onto the `bridge:{tag}` Tauri event channels.
+// shims directly onto the single multiplexed `BRIDGE_EVENT` channel.
 //
 // `window.__TAURI__` is present inside the sniffer webview because
 // the app's `tauri.conf.json` sets `app.withGlobalTauri: true`, which
@@ -14,7 +14,7 @@
 import type { TauriEventApi } from 'effect-messaging-tauri'
 
 import { makeFilteringEventBus } from './filter-tauri-internal.ts'
-import { installSniffer } from './install-sniffer.ts'
+import { BRIDGE_EVENT, installSniffer } from './install-sniffer.ts'
 
 interface TauriGlobals {
   readonly event?: TauriEventApi
@@ -31,7 +31,8 @@ const event = win.__TAURI__?.event
 if (event !== undefined) {
   // Wrap the raw Tauri event bus once and share the wrapper between
   // the top bar and the sniffer install. The top bar emits only
-  // `bridge:SniffingComplete`, which is not one of the filtered tags
+  // `SniffingComplete` on the bridge channel, which is not one of the
+  // filtered tags
   // and passes through unchanged — but going through the wrapper keeps
   // the buffered-Log safety drain consistent (a SniffingComplete that
   // lands while a Log is buffered will flush the Log just like any
@@ -54,7 +55,8 @@ if (event !== undefined) {
 
 /**
  * Inject a fixed-position top bar at the top of the page with a Close
- * button (which emits `bridge:SniffingComplete`) and the current page
+ * button (which emits `SniffingComplete` on the bridge channel) and
+ * the current page
  * URL. It looks like the top bar of a browser, hence the name — the
  * sniffer webview itself has no native browser chrome on mobile, so
  * this is the user's only "I'm somewhere else, I can dismiss" signal.
@@ -154,10 +156,11 @@ function injectBrowserTopBar(eventBus: TauriEventApi): void {
     close.style.font = 'inherit'
     close.style.cursor = 'pointer'
     close.addEventListener('click', () => {
-      // Best-effort emit. SniffingComplete carries an empty struct on
-      // the wire; Rust-side `handle_sniffing_complete` ignores the
-      // payload shape.
-      void eventBus.emit('bridge:SniffingComplete', { _tag: 'SniffingComplete' })
+      // Best-effort emit on the multiplexed bridge channel.
+      // SniffingComplete carries an empty struct on the wire beyond
+      // the `_tag` discriminator; Rust-side `handle_sniffing_complete`
+      // ignores the payload shape.
+      void eventBus.emit(BRIDGE_EVENT, { _tag: 'SniffingComplete' })
     })
 
     const label = doc.createElement('span')

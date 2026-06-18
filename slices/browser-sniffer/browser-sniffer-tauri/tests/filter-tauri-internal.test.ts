@@ -2,6 +2,7 @@ import type { TauriEventApi } from 'effect-messaging-tauri'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { makeFilteringEventBus } from '../src/filter-tauri-internal.ts'
+import { BRIDGE_EVENT } from '../src/install-sniffer.ts'
 
 interface Emission {
   readonly event: string
@@ -32,6 +33,17 @@ const makeFakeBus = (): {
   return { emissions, listeners, bus }
 }
 
+/**
+ * The wrapper serializes outbound emits through a Promise chain, so a
+ * single `await wrapped.emit(...)` resolves to the chain head after the
+ * current emit completes. Tests that issue multiple emits and inspect
+ * the recorded emissions should drain the microtask queue first so
+ * earlier chained emits have landed.
+ */
+const flushChain = async (): Promise<void> => {
+  for (let i = 0; i < 8; i += 1) await Promise.resolve()
+}
+
 const TAURI_IPC_FALLBACK_LOG = {
   _tag: 'Log',
   level: 'warn',
@@ -46,7 +58,7 @@ const FETCH_THREW_LOG = {
 
 describe('makeFilteringEventBus', () => {
   describe('pass-through', () => {
-    it('forwards non-bridge emits unchanged', async () => {
+    it('forwards non-BRIDGE_EVENT emits unchanged', async () => {
       const { emissions, bus } = makeFakeBus()
       const wrapped = makeFilteringEventBus(bus)
 
@@ -55,17 +67,27 @@ describe('makeFilteringEventBus', () => {
       expect(emissions).toEqual([{ event: 'tauri://updater', payload: { something: 'else' } }])
     })
 
-    it('forwards bridge emits with non-object payloads unchanged', async () => {
+    it('forwards BRIDGE_EVENT emits with non-object payloads unchanged', async () => {
       const { emissions, bus } = makeFakeBus()
       const wrapped = makeFilteringEventBus(bus)
 
-      await wrapped.emit('bridge:Log', null)
-      await wrapped.emit('bridge:Log', 'string-payload')
+      await wrapped.emit(BRIDGE_EVENT, null)
+      await wrapped.emit(BRIDGE_EVENT, 'string-payload')
 
       expect(emissions).toEqual([
-        { event: 'bridge:Log', payload: null },
-        { event: 'bridge:Log', payload: 'string-payload' },
+        { event: BRIDGE_EVENT, payload: null },
+        { event: BRIDGE_EVENT, payload: 'string-payload' },
       ])
+    })
+
+    it('forwards BRIDGE_EVENT emits whose payload has no string _tag unchanged', async () => {
+      const { emissions, bus } = makeFakeBus()
+      const wrapped = makeFilteringEventBus(bus)
+
+      const noTag = { id: 'r1', url: 'https://example.com' }
+      await wrapped.emit(BRIDGE_EVENT, noTag)
+
+      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: noTag }])
     })
 
     it('forwards listen() through to the underlying bus', async () => {
@@ -73,27 +95,27 @@ describe('makeFilteringEventBus', () => {
       const wrapped = makeFilteringEventBus(bus)
       const seen: unknown[] = []
 
-      const unlisten = await wrapped.listen('bridge:Click', ({ payload }) => {
+      const unlisten = await wrapped.listen(BRIDGE_EVENT, ({ payload }) => {
         seen.push(payload)
       })
 
-      const handler = listeners.get('bridge:Click')
+      const handler = listeners.get(BRIDGE_EVENT)
       expect(handler).toBeDefined()
       handler?.({ payload: { _tag: 'Click', querySelector: '#btn' } })
       expect(seen).toEqual([{ _tag: 'Click', querySelector: '#btn' }])
 
       unlisten()
-      expect(listeners.has('bridge:Click')).toBe(false)
+      expect(listeners.has(BRIDGE_EVENT)).toBe(false)
     })
 
-    it('forwards bridge:SniffingComplete (not a filtered tag)', async () => {
+    it('forwards SniffingComplete (not a filtered tag)', async () => {
       const { emissions, bus } = makeFakeBus()
       const wrapped = makeFilteringEventBus(bus)
 
-      await wrapped.emit('bridge:SniffingComplete', { _tag: 'SniffingComplete' })
+      await wrapped.emit(BRIDGE_EVENT, { _tag: 'SniffingComplete' })
 
       expect(emissions).toEqual([
-        { event: 'bridge:SniffingComplete', payload: { _tag: 'SniffingComplete' } },
+        { event: BRIDGE_EVENT, payload: { _tag: 'SniffingComplete' } },
       ])
     })
 
@@ -102,9 +124,9 @@ describe('makeFilteringEventBus', () => {
       const wrapped = makeFilteringEventBus(bus)
 
       const infoLog = { _tag: 'Log', level: 'info', payload: ['IPC custom protocol failed'] }
-      await wrapped.emit('bridge:Log', infoLog)
+      await wrapped.emit(BRIDGE_EVENT, infoLog)
 
-      expect(emissions).toEqual([{ event: 'bridge:Log', payload: infoLog }])
+      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: infoLog }])
     })
 
     it('forwards Logs whose first payload entry does not match a guarded prefix', async () => {
@@ -112,9 +134,9 @@ describe('makeFilteringEventBus', () => {
       const wrapped = makeFilteringEventBus(bus)
 
       const ordinaryWarn = { _tag: 'Log', level: 'warn', payload: ['something else broke'] }
-      await wrapped.emit('bridge:Log', ordinaryWarn)
+      await wrapped.emit(BRIDGE_EVENT, ordinaryWarn)
 
-      expect(emissions).toEqual([{ event: 'bridge:Log', payload: ordinaryWarn }])
+      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: ordinaryWarn }])
     })
   })
 
@@ -123,7 +145,8 @@ describe('makeFilteringEventBus', () => {
       const { emissions, bus } = makeFakeBus()
       const wrapped = makeFilteringEventBus(bus)
 
-      await wrapped.emit('bridge:Log', TAURI_IPC_FALLBACK_LOG)
+      await wrapped.emit(BRIDGE_EVENT, TAURI_IPC_FALLBACK_LOG)
+      await flushChain()
 
       expect(emissions).toEqual([])
     })
@@ -132,7 +155,7 @@ describe('makeFilteringEventBus', () => {
       const { emissions, bus } = makeFakeBus()
       const wrapped = makeFilteringEventBus(bus)
 
-      await wrapped.emit('bridge:Log', TAURI_IPC_FALLBACK_LOG)
+      await wrapped.emit(BRIDGE_EVENT, TAURI_IPC_FALLBACK_LOG)
       const externalStart = {
         _tag: 'ResponseStart',
         id: 'r1',
@@ -141,9 +164,9 @@ describe('makeFilteringEventBus', () => {
         statusText: 'OK',
         headers: [],
       }
-      await wrapped.emit('bridge:ResponseStart', externalStart)
+      await wrapped.emit(BRIDGE_EVENT, externalStart)
 
-      expect(emissions).toEqual([{ event: 'bridge:ResponseStart', payload: externalStart }])
+      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: externalStart }])
     })
   })
 
@@ -162,7 +185,7 @@ describe('makeFilteringEventBus', () => {
         const { emissions, bus } = makeFakeBus()
         const wrapped = makeFilteringEventBus(bus)
 
-        await wrapped.emit('bridge:ResponseStart', {
+        await wrapped.emit(BRIDGE_EVENT, {
           _tag: 'ResponseStart',
           id: 'i1',
           url,
@@ -170,6 +193,7 @@ describe('makeFilteringEventBus', () => {
           statusText: 'OK',
           headers: [],
         })
+        await flushChain()
 
         expect(emissions).toEqual([])
       })
@@ -187,16 +211,16 @@ describe('makeFilteringEventBus', () => {
         statusText: 'OK',
         headers: [],
       }
-      await wrapped.emit('bridge:ResponseStart', start)
+      await wrapped.emit(BRIDGE_EVENT, start)
 
-      expect(emissions).toEqual([{ event: 'bridge:ResponseStart', payload: start }])
+      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: start }])
     })
 
     it('drops chunk and terminal events tied to an internal id', async () => {
       const { emissions, bus } = makeFakeBus()
       const wrapped = makeFilteringEventBus(bus)
 
-      await wrapped.emit('bridge:ResponseStart', {
+      await wrapped.emit(BRIDGE_EVENT, {
         _tag: 'ResponseStart',
         id: 'i1',
         url: 'ipc://localhost/cmd',
@@ -204,13 +228,14 @@ describe('makeFilteringEventBus', () => {
         statusText: 'OK',
         headers: [],
       })
-      await wrapped.emit('bridge:ResponseData', { _tag: 'ResponseData', id: 'i1', data: 'AAAA' })
-      await wrapped.emit('bridge:RequestError', {
+      await wrapped.emit(BRIDGE_EVENT, { _tag: 'ResponseData', id: 'i1', data: 'AAAA' })
+      await wrapped.emit(BRIDGE_EVENT, {
         _tag: 'RequestError',
         id: 'i1',
         url: 'ipc://localhost/cmd',
         message: 'blocked',
       })
+      await flushChain()
 
       expect(emissions).toEqual([])
     })
@@ -220,16 +245,16 @@ describe('makeFilteringEventBus', () => {
       const wrapped = makeFilteringEventBus(bus)
 
       const chunk = { _tag: 'ResponseData', id: 'r-unknown', data: 'ABCD' }
-      await wrapped.emit('bridge:ResponseData', chunk)
+      await wrapped.emit(BRIDGE_EVENT, chunk)
 
-      expect(emissions).toEqual([{ event: 'bridge:ResponseData', payload: chunk }])
+      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: chunk }])
     })
 
     it('releases an internal id on ResponseFinished so future reuse forwards', async () => {
       const { emissions, bus } = makeFakeBus()
       const wrapped = makeFilteringEventBus(bus)
 
-      await wrapped.emit('bridge:ResponseStart', {
+      await wrapped.emit(BRIDGE_EVENT, {
         _tag: 'ResponseStart',
         id: 'reused',
         url: 'ipc://localhost/a',
@@ -237,19 +262,19 @@ describe('makeFilteringEventBus', () => {
         statusText: 'OK',
         headers: [],
       })
-      await wrapped.emit('bridge:ResponseFinished', { _tag: 'ResponseFinished', id: 'reused' })
+      await wrapped.emit(BRIDGE_EVENT, { _tag: 'ResponseFinished', id: 'reused' })
 
       const lateChunk = { _tag: 'ResponseData', id: 'reused', data: 'WXYZ' }
-      await wrapped.emit('bridge:ResponseData', lateChunk)
+      await wrapped.emit(BRIDGE_EVENT, lateChunk)
 
-      expect(emissions).toEqual([{ event: 'bridge:ResponseData', payload: lateChunk }])
+      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: lateChunk }])
     })
 
     it('releases an internal id on RequestError as a terminal event', async () => {
       const { emissions, bus } = makeFakeBus()
       const wrapped = makeFilteringEventBus(bus)
 
-      await wrapped.emit('bridge:ResponseStart', {
+      await wrapped.emit(BRIDGE_EVENT, {
         _tag: 'ResponseStart',
         id: 'r',
         url: 'tauri://localhost/x',
@@ -257,7 +282,7 @@ describe('makeFilteringEventBus', () => {
         statusText: '',
         headers: [],
       })
-      await wrapped.emit('bridge:RequestError', {
+      await wrapped.emit(BRIDGE_EVENT, {
         _tag: 'RequestError',
         id: 'r',
         url: 'tauri://localhost/x',
@@ -265,16 +290,16 @@ describe('makeFilteringEventBus', () => {
       })
 
       const reuse = { _tag: 'ResponseData', id: 'r', data: 'AA' }
-      await wrapped.emit('bridge:ResponseData', reuse)
+      await wrapped.emit(BRIDGE_EVENT, reuse)
 
-      expect(emissions).toEqual([{ event: 'bridge:ResponseData', payload: reuse }])
+      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: reuse }])
     })
 
     it('releases an internal id on Cancelled as a terminal event', async () => {
       const { emissions, bus } = makeFakeBus()
       const wrapped = makeFilteringEventBus(bus)
 
-      await wrapped.emit('bridge:ResponseStart', {
+      await wrapped.emit(BRIDGE_EVENT, {
         _tag: 'ResponseStart',
         id: 'r',
         url: 'https://ipc.localhost/y',
@@ -282,25 +307,26 @@ describe('makeFilteringEventBus', () => {
         statusText: 'OK',
         headers: [],
       })
-      await wrapped.emit('bridge:Cancelled', { _tag: 'Cancelled', id: 'r' })
+      await wrapped.emit(BRIDGE_EVENT, { _tag: 'Cancelled', id: 'r' })
 
       const reuse = { _tag: 'ResponseData', id: 'r', data: 'AA' }
-      await wrapped.emit('bridge:ResponseData', reuse)
+      await wrapped.emit(BRIDGE_EVENT, reuse)
 
-      expect(emissions).toEqual([{ event: 'bridge:ResponseData', payload: reuse }])
+      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: reuse }])
     })
 
     it('still drops ResponseStart when the id is missing (no crash, just drop)', async () => {
       const { emissions, bus } = makeFakeBus()
       const wrapped = makeFilteringEventBus(bus)
 
-      await wrapped.emit('bridge:ResponseStart', {
+      await wrapped.emit(BRIDGE_EVENT, {
         _tag: 'ResponseStart',
         url: 'ipc://localhost/cmd',
         status: 200,
         statusText: 'OK',
         headers: [],
       })
+      await flushChain()
 
       expect(emissions).toEqual([])
     })
@@ -311,8 +337,8 @@ describe('makeFilteringEventBus', () => {
       const { emissions, bus } = makeFakeBus()
       const wrapped = makeFilteringEventBus(bus)
 
-      await wrapped.emit('bridge:Log', FETCH_THREW_LOG)
-      await wrapped.emit('bridge:ResponseStart', {
+      await wrapped.emit(BRIDGE_EVENT, FETCH_THREW_LOG)
+      await wrapped.emit(BRIDGE_EVENT, {
         _tag: 'ResponseStart',
         id: 'i1',
         url: 'ipc://localhost/cmd',
@@ -320,8 +346,8 @@ describe('makeFilteringEventBus', () => {
         statusText: '',
         headers: [],
       })
+      await flushChain()
 
-      // Both the Log and the ResponseStart are dropped.
       expect(emissions).toEqual([])
     })
 
@@ -329,7 +355,7 @@ describe('makeFilteringEventBus', () => {
       const { emissions, bus } = makeFakeBus()
       const wrapped = makeFilteringEventBus(bus)
 
-      await wrapped.emit('bridge:Log', FETCH_THREW_LOG)
+      await wrapped.emit(BRIDGE_EVENT, FETCH_THREW_LOG)
       const externalStart = {
         _tag: 'ResponseStart',
         id: 'r1',
@@ -338,11 +364,12 @@ describe('makeFilteringEventBus', () => {
         statusText: '',
         headers: [],
       }
-      await wrapped.emit('bridge:ResponseStart', externalStart)
+      await wrapped.emit(BRIDGE_EVENT, externalStart)
+      await flushChain()
 
       expect(emissions).toEqual([
-        { event: 'bridge:Log', payload: FETCH_THREW_LOG },
-        { event: 'bridge:ResponseStart', payload: externalStart },
+        { event: BRIDGE_EVENT, payload: FETCH_THREW_LOG },
+        { event: BRIDGE_EVENT, payload: externalStart },
       ])
     })
 
@@ -350,13 +377,14 @@ describe('makeFilteringEventBus', () => {
       const { emissions, bus } = makeFakeBus()
       const wrapped = makeFilteringEventBus(bus)
 
-      await wrapped.emit('bridge:Log', FETCH_THREW_LOG)
+      await wrapped.emit(BRIDGE_EVENT, FETCH_THREW_LOG)
       const cancelled = { _tag: 'Cancelled', id: 'r1' }
-      await wrapped.emit('bridge:Cancelled', cancelled)
+      await wrapped.emit(BRIDGE_EVENT, cancelled)
+      await flushChain()
 
       expect(emissions).toEqual([
-        { event: 'bridge:Log', payload: FETCH_THREW_LOG },
-        { event: 'bridge:Cancelled', payload: cancelled },
+        { event: BRIDGE_EVENT, payload: FETCH_THREW_LOG },
+        { event: BRIDGE_EVENT, payload: cancelled },
       ])
     })
 
@@ -364,19 +392,18 @@ describe('makeFilteringEventBus', () => {
       const { emissions, bus } = makeFakeBus()
       const wrapped = makeFilteringEventBus(bus)
 
-      await wrapped.emit('bridge:Log', FETCH_THREW_LOG)
+      await wrapped.emit(BRIDGE_EVENT, FETCH_THREW_LOG)
       const drainEvent = { _tag: 'Cancelled', id: 'r1' }
-      await wrapped.emit('bridge:Cancelled', drainEvent)
+      await wrapped.emit(BRIDGE_EVENT, drainEvent)
 
-      // Second non-Log event arrives; the buffer is already cleared so
-      // only this event should be emitted.
       const otherEvent = { _tag: 'Cancelled', id: 'r2' }
-      await wrapped.emit('bridge:Cancelled', otherEvent)
+      await wrapped.emit(BRIDGE_EVENT, otherEvent)
+      await flushChain()
 
       expect(emissions).toEqual([
-        { event: 'bridge:Log', payload: FETCH_THREW_LOG },
-        { event: 'bridge:Cancelled', payload: drainEvent },
-        { event: 'bridge:Cancelled', payload: otherEvent },
+        { event: BRIDGE_EVENT, payload: FETCH_THREW_LOG },
+        { event: BRIDGE_EVENT, payload: drainEvent },
+        { event: BRIDGE_EVENT, payload: otherEvent },
       ])
     })
 
@@ -394,16 +421,66 @@ describe('makeFilteringEventBus', () => {
         level: 'warn',
         payload: ['fetch threw before response: second'],
       }
-      await wrapped.emit('bridge:Log', firstLog)
-      await wrapped.emit('bridge:Log', secondLog)
-      // Force a drain via a non-buffered event.
+      await wrapped.emit(BRIDGE_EVENT, firstLog)
+      await wrapped.emit(BRIDGE_EVENT, secondLog)
       const drain = { _tag: 'Cancelled', id: 'r1' }
-      await wrapped.emit('bridge:Cancelled', drain)
+      await wrapped.emit(BRIDGE_EVENT, drain)
+      await flushChain()
 
-      // First Log was overwritten; only the second one drains.
       expect(emissions).toEqual([
-        { event: 'bridge:Log', payload: secondLog },
-        { event: 'bridge:Cancelled', payload: drain },
+        { event: BRIDGE_EVENT, payload: secondLog },
+        { event: BRIDGE_EVENT, payload: drain },
+      ])
+    })
+  })
+
+  describe('emit-chain FIFO', () => {
+    it('serializes a burst of emits in initiation order even when the bus resolves out of order', async () => {
+      // Drive the bus's emit resolution OUT of initiation order: each
+      // emit returns a Promise that resolves on a configurable delay.
+      // Without the chain, awaiting a later emit could land before an
+      // earlier one resolved. With the chain, each `.then` waits for
+      // the previous resolution before invoking the next bus.emit, so
+      // the recorded order matches initiation order.
+      const emissions: Emission[] = []
+      const slow: Array<() => void> = []
+      const bus: TauriEventApi = {
+        emit: (event, payload) =>
+          new Promise<void>((resolve) => {
+            slow.push(() => {
+              emissions.push({ event, payload })
+              resolve()
+            })
+          }),
+        listen: async () => () => {},
+      }
+      const wrapped = makeFilteringEventBus(bus)
+
+      // Three external-URL emits — all pass the filter and ride the
+      // chain. We don't await them: we want to see what happens when
+      // they're issued back-to-back synchronously.
+      const a = { _tag: 'ResponseStart', id: 'a', url: 'https://x/a', status: 200 }
+      const b = { _tag: 'ResponseData', id: 'a', data: 'aaaa' }
+      const c = { _tag: 'ResponseFinished', id: 'a' }
+      void wrapped.emit(BRIDGE_EVENT, a)
+      void wrapped.emit(BRIDGE_EVENT, b)
+      void wrapped.emit(BRIDGE_EVENT, c)
+
+      // Drain the queue by firing the slow callbacks in order — the
+      // chain ensures each step is queued only after the previous
+      // resolves. If we fire the slow callback for step 1, the chain
+      // can advance to step 2's bus.emit call.
+      for (let i = 0; i < 3; i += 1) {
+        await Promise.resolve()
+        await Promise.resolve()
+        slow[i]?.()
+      }
+      await flushChain()
+
+      expect(emissions).toEqual([
+        { event: BRIDGE_EVENT, payload: a },
+        { event: BRIDGE_EVENT, payload: b },
+        { event: BRIDGE_EVENT, payload: c },
       ])
     })
   })

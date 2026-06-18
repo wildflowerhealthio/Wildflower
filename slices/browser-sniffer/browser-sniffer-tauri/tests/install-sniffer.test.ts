@@ -15,7 +15,12 @@ import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
-import { installSniffer, SNIFFER_STATE_KEY, type SnifferState } from '../src/install-sniffer.ts'
+import {
+  BRIDGE_EVENT,
+  installSniffer,
+  SNIFFER_STATE_KEY,
+  type SnifferState,
+} from '../src/install-sniffer.ts'
 
 const { expectDistinct, expectToMultisetEqual } = utilityExpectations(expect)
 
@@ -97,7 +102,7 @@ const fireInbound = (event: string, payload: unknown): void => {
 const withTag = (msgs: Message[], tag: string): Message[] => msgs.filter((m) => m._tag === tag)
 
 const cancelRequest = (id: string): void => {
-  fireInbound('bridge:CancelSnifferRequest', { _tag: 'CancelSnifferRequest', id })
+  fireInbound(BRIDGE_EVENT, { _tag: 'CancelSnifferRequest', id })
 }
 
 // Domain-event schemas.
@@ -675,12 +680,12 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
 
   afterEach(resetShims)
 
-  test('should register Tauri listeners on install', () => {
+  test('should register a single multiplexed Tauri listener on install', () => {
     installSnifferForTest()
-    // One unlisten per inbound bridge tag (`Click`, `CancelSnifferRequest`).
-    expect(getState()?.unlistens).toHaveLength(2)
-    expect(listeners.has('bridge:CancelSnifferRequest')).toBe(true)
-    expect(listeners.has('bridge:Click')).toBe(true)
+    // One unlisten for the single `BRIDGE_EVENT` channel; inbound tags
+    // (`Click`, `CancelSnifferRequest`) demux by the payload's `_tag`.
+    expect(getState()?.unlistens).toHaveLength(1)
+    expect(listeners.has(BRIDGE_EVENT)).toBe(true)
   })
 
   test('should stop posting ResponseData and ResponseFinished after cancellation (fetch)', async () => {
@@ -747,9 +752,9 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
     installSnifferForTest()
     // Wrong tag in payload (Tauri delivers per-tag, but defensive shape
     // check still rejects).
-    fireInbound('bridge:CancelSnifferRequest', { _tag: 'Other' })
+    fireInbound(BRIDGE_EVENT, { _tag: 'Other' })
     // Missing id.
-    fireInbound('bridge:CancelSnifferRequest', { _tag: 'CancelSnifferRequest' })
+    fireInbound(BRIDGE_EVENT, { _tag: 'CancelSnifferRequest' })
     expect(getState()?.activeRequests).toEqual(new Set())
   })
 })
@@ -777,14 +782,14 @@ describe('Click (host→web bridge message)', () => {
     document.body.replaceChildren(button)
     installSnifferForTest()
 
-    fireInbound('bridge:Click', { _tag: 'Click', querySelector: '#go' })
+    fireInbound(BRIDGE_EVENT, { _tag: 'Click', querySelector: '#go' })
     expect(clicked).toHaveBeenCalledTimes(1)
   })
 
   test('silently no-ops when the selector matches no element', () => {
     installSnifferForTest()
     expect(() =>
-      fireInbound('bridge:Click', { _tag: 'Click', querySelector: '#missing' })
+      fireInbound(BRIDGE_EVENT, { _tag: 'Click', querySelector: '#missing' })
     ).not.toThrow()
   })
 
@@ -795,7 +800,7 @@ describe('Click (host→web bridge message)', () => {
     document.body.replaceChildren(button)
     installSnifferForTest()
 
-    fireInbound('bridge:Click', { _tag: 'Click', querySelector: '' })
+    fireInbound(BRIDGE_EVENT, { _tag: 'Click', querySelector: '' })
     expect(clicked).not.toHaveBeenCalled()
   })
 })

@@ -9,17 +9,23 @@ import { tauriSnifferBootstrapScript } from './tauri-bootstrap.generated.ts'
  *
  * The bundle does four things, in order, conditional on
  * `window.__TAURI__.event` being present:
- *   1. Replaces `window.ReactNativeWebView.postMessage` with a Tauri
- *      `event.emit('bridge:{tag}', payload)` shim — the only outbound
- *      channel the unmodified `installSniffer()` uses.
- *   2. Attaches Tauri `event.listen('bridge:Click' | 'bridge:CancelSnifferRequest')`
- *      handlers that dispatch synthetic `window` `message` events with
- *      `source: null` — the channel the sniffer's host-message handler
- *      reads.
+ *   1. Emits sniffer messages on the single multiplexed `BRIDGE_EVENT`
+ *      Tauri channel with the message's `_tag` field as the dispatch
+ *      discriminator. The host-side `makeTauriTransport` listens on
+ *      the same channel and demuxes by `_tag`; per-tag listeners would
+ *      let Tauri re-order events across tags (FIFO is only guaranteed
+ *      within a single event name).
+ *   2. Attaches one `event.listen(BRIDGE_EVENT, …)` listener that
+ *      filters payloads by `_tag` (`Click` / `CancelSnifferRequest`)
+ *      and reacts in-place — `Click` runs `document.querySelector`
+ *      then `.click()`, `CancelSnifferRequest` cancels the in-flight
+ *      request id and emits a terminal `Cancelled`.
  *   3. Injects an in-page `BrowserTopBar` (closed shadow DOM, Close
  *      button + URL label) so the sniffer webview reads as a
  *      sub-context on iOS where there's no native browser chrome.
- *   4. Invokes `installSniffer()`.
+ *   4. Invokes `installSniffer()` with a filter-wrapped event bus that
+ *      drops Tauri-internal IPC traffic and serializes outbound emits
+ *      to preserve FIFO across Tauri's IPC fallback dance.
  *
  * When `__TAURI__` is absent the whole shim no-ops (no fetch/XHR/console
  * wrapping) — the bootstrap has nowhere to send sniffer traffic, so
