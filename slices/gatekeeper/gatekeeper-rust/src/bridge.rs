@@ -47,7 +47,8 @@ mod tests {
 
     #[test]
     fn auth_token_issued_round_trips() {
-        let encoded = serde_json::to_string(&GatekeeperHostToWeb::AuthTokenIssued).expect("serialize");
+        let encoded =
+            serde_json::to_string(&GatekeeperHostToWeb::AuthTokenIssued).expect("serialize");
         let decoded: GatekeeperHostToWeb = serde_json::from_str(&encoded).expect("deserialize");
         assert_eq!(decoded, GatekeeperHostToWeb::AuthTokenIssued);
     }

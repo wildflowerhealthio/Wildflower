@@ -275,9 +275,7 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     // cross-process tag guard; log this crate's tag set at attach time so
     // the boot log shows who dispatches what. See the effect-messaging-tauri
     // README ("Tag uniqueness across processes").
-    log::info!(
-        "[bridge] listening on '{BRIDGE_EVENT}' for tags: [{READY_TAG}, {LOG_TAG}]"
-    );
+    log::info!("[bridge] listening on '{BRIDGE_EVENT}' for tags: [{READY_TAG}, {LOG_TAG}]");
 
     let ready = Arc::new(Notify::new());
     {
