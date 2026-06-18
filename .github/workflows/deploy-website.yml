@@ -1,0 +1,75 @@
+name: Deploy Website
+
+# Builds the marketing site (apps/website) and publishes it to GitHub Pages.
+# Runs on pushes to main that touch the site (or this workflow) and on manual
+# dispatch.
+#
+# Prerequisites (one-time, in repo Settings → Pages):
+#   - Source: "GitHub Actions".
+#   - Custom domain: wildflower-health.io. The CNAME file in
+#     apps/website/public carries that domain into the build output so the
+#     setting survives each deploy.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/website/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/deploy-website.yml'
+  workflow_dispatch:
+
+# Least privilege for the build; the deploy job needs pages + id-token to
+# publish via the GitHub Pages deployment API.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One live site: let an in-flight deploy finish instead of cancelling it, so a
+# half-published artifact never goes live.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: vp install
+
+      # Runs the package's "build" script (tsc typecheck + `vp build`), which
+      # emits the static site — including the copied public/CNAME — to dist/.
+      - name: Build website
+        run: vp run build
+        working-directory: apps/website
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/website/dist
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

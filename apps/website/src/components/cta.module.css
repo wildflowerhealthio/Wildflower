@@ -1,0 +1,41 @@
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 48px;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: 70px var(--page-padding-x);
+  scroll-margin-top: var(--header-height);
+}
+
+.cta__title {
+  margin-bottom: 8px;
+  font-size: 36px;
+}
+
+.cta__sub {
+  color: var(--color-warm-gray);
+  font-size: 15px;
+}
+
+/* Shares the 450px form width with the hero form via the token. */
+.cta__form-wrap {
+  width: var(--beta-form-width);
+}
+
+@media (max-width: 680px) {
+  .cta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 24px;
+  }
+
+  .cta__title {
+    font-size: 28px;
+  }
+
+  .cta__form-wrap {
+    width: 100%;
+  }
+}

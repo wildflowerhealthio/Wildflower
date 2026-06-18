@@ -1,0 +1,96 @@
+/*
+ * Design tokens for the Wildflower Health landing page.
+ *
+ * Everything used by more than one component, or that two components have
+ * to agree on, lives here as a custom property so there is a single source
+ * of truth. Two relationships in particular are load-bearing and are the
+ * reason a few of these exist at all:
+ *
+ *   - `--header-height`: the sticky header's height. The Convergence app
+ *     selector pins *directly under* the header when the layout stacks
+ *     (`position: sticky; top: var(--header-height)`), and in-page anchors
+ *     offset their scroll target by it (`scroll-margin-top`). One sticky
+ *     element placed under another — both read this value, so they can
+ *     never drift apart. (71px = 18px + 18px padding + 34px logo + 1px
+ *     bottom border.)
+ *
+ *   - `--page-padding-x`: the horizontal gutter applied to every centered
+ *     section. The mobile app-pill rail in Convergence bleeds to the
+ *     screen edges by *cancelling* that gutter with a negative margin
+ *     (`margin-inline: calc(-1 * var(--page-padding-x))`) and re-adding it
+ *     as inner padding. Because the rail derives its bleed from the same
+ *     token, the narrow breakpoint only has to retune the gutter once
+ *     (below) and the bleed follows automatically.
+ */
+
+:root {
+  /* --- Palette --- */
+  --color-cream: #f7ecdd; /* page background */
+  --color-cream-raised: #fbf4e9; /* inputs, cards, app buttons (resting) */
+  --color-cream-alt: #faf3e8; /* phone screen background */
+  --color-cream-band: #f1e4d2; /* privacy band; resting chip background */
+  --color-ink: #2c211d; /* primary text, dark surfaces, phone bezel */
+  --color-ink-70: #4a3d35; /* header nav text */
+  --color-warm-gray: #6c5b50; /* body copy */
+  --color-muted-gray: #9a897d; /* captions, meta */
+  --color-chip-text: #8a796d; /* resting chip text */
+  --color-magenta: #a23566; /* primary accent */
+  --color-magenta-hover: #8c2a56; /* hero primary button hover */
+  --color-plum: #7e2a52; /* active / selected state */
+  --color-amber: #d99a2b; /* source dot (labs, steps) */
+  --color-green: #5f6b34; /* source dot (sleep); success dot */
+  --color-success-bg: #eef0e0;
+  --color-success-border: #c3cb9c;
+  --color-success-text: #4d5626;
+  --color-footer-text: #e7d8c8; /* footer link text */
+  --color-footer-body: #b7a596; /* footer blurb */
+  --color-footer-label: #8c7a6c; /* footer column labels, bottom bar */
+  --color-footer-link-hover: #f3c8d9;
+  --color-selection: #e9b9cd; /* ::selection background */
+  --color-placeholder: #a9988b; /* input placeholder */
+
+  /* --- Hairlines & borders (tints of ink / cream) --- */
+  --border-hairline: rgba(44, 33, 29, 0.12);
+  --border-hairline-soft: rgba(44, 33, 29, 0.1);
+  --border-input: rgba(44, 33, 29, 0.22);
+  --border-app-card: rgba(44, 33, 29, 0.16);
+  --border-footer: rgba(247, 236, 221, 0.12);
+
+  /* --- Type families --- */
+  --font-serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Spline Sans Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+
+  /* --- Layout (shared / cancel-out; see file header) --- */
+  --content-max-width: 1140px;
+  --page-padding-x: 32px;
+  --header-height: 71px;
+  --beta-form-width: 450px; /* hero form max-width + CTA form-wrap width */
+
+  /* --- Radii --- */
+  --radius-input: 10px; /* inputs, buttons */
+  --radius-card: 16px; /* record / large cards */
+  --radius-app-card: 14px; /* connectable app cards */
+  --radius-pill: 999px; /* chips, pills */
+  --radius-logo: 8px; /* app-icon logo */
+
+  /* --- Shadows --- */
+  --shadow-phone: 0 28px 60px rgba(44, 33, 29, 0.22);
+  --shadow-app-selected: 0 8px 22px rgba(126, 42, 82, 0.24);
+  --shadow-row-selected: 0 3px 14px rgba(126, 42, 82, 0.13);
+
+  /* --- Transitions --- */
+  --transition-ui: all 0.2s ease;
+  --transition-opacity: opacity 0.25s ease;
+}
+
+/*
+ * Mobile retunes the single gutter token. Every centered section and the
+ * Convergence pill-rail bleed read `--page-padding-x`, so this one override
+ * tightens the whole page and keeps the bleed cancelling exactly.
+ */
+@media (max-width: 680px) {
+  :root {
+    --page-padding-x: 24px;
+  }
+}

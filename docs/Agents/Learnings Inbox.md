@@ -4,6 +4,12 @@ A running log of non-obvious insights discovered during agent sessions. Triage i
 
 <!-- Append new entries below this line -->
 
+## In Claude-on-the-web sessions, run `vp test` via the workspace-local `vp`, not the globally-bootstrapped one
+
+**Discovered during**: claude/gifted-archimedes-kgdxoy — building apps/website
+**Learning**: A fresh web-session container has no `node_modules` and no `vp` on PATH. `.devcontainer/postCreateCommand.sh` bootstraps it with `pnpm install -g vite-plus` (unpinned → latest, currently 0.2.1) then `vp install`. But the workspace catalog pins `vite-plus: ^0.1.20` (installs 0.1.21), so the global `vp` and the workspace's differ. `vp check`/`vp build` work under the global one, but `vp test` for an `environment: 'jsdom'` package fails with `Cannot find package 'jsdom' imported from /data/pnpm-global/.../vitest@4.../...` — the global vp's bundled vitest resolves test-env deps from its own global store, where `jsdom` (a workspace dep) doesn't exist. Fix: run tests through the workspace-local binary, `node_modules/.bin/vp test` (i.e. put `<repo>/node_modules/.bin` first on PATH), which uses the pinned vite-plus/vitest that resolves `jsdom` from the workspace tree. `vp install` must run after editing a package.json so the lockfile + per-package `node_modules` links are in place.
+**Suggested destination**: Strategies (Claude-on-the-web / environment setup)
+
 ## OpenAPI spec-drift across Rust↔TS: `#[schema(required)]` for always-serialized `Option`, `Schema.Int` for `i64`
 
 **Discovered during**: claude/openapi-drift-harness-tunnel — generalizing the gatekeeper drift trial + adding the tunnel as a second consumer
