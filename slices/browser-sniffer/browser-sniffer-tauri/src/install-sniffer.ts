@@ -279,13 +279,29 @@ const installSniffer = function (eventBus: TauriEventApi): void {
   // untracked ids. Skipping these URLs at the shim source (rather than
   // emitting then filtering downstream) keeps the wire clean; the fetch
   // itself still runs, we just hand straight to native and emit nothing.
-  const isTauriInternalUrl = (candidate: string): boolean =>
-    candidate.startsWith('ipc://') ||
-    candidate.startsWith('tauri://') ||
-    candidate.startsWith('http://ipc.localhost') ||
-    candidate.startsWith('https://ipc.localhost') ||
-    candidate.startsWith('http://tauri.localhost') ||
-    candidate.startsWith('https://tauri.localhost')
+  const TAURI_INTERNAL_HTTP_ORIGINS = [
+    'http://ipc.localhost',
+    'https://ipc.localhost',
+    'http://tauri.localhost',
+    'https://tauri.localhost',
+  ]
+  const isTauriInternalUrl = (candidate: string): boolean => {
+    if (candidate.startsWith('ipc://') || candidate.startsWith('tauri://')) return true
+    // Match the exact IPC-fallback host — followed by a port, path, query,
+    // fragment, or end-of-string — not a bare prefix, so a genuine external
+    // `https://ipc.localhost.evil.example/…` is still sniffed rather than
+    // silently handed to native.
+    for (const origin of TAURI_INTERNAL_HTTP_ORIGINS) {
+      if (candidate === origin) return true
+      if (candidate.startsWith(origin)) {
+        const boundary = candidate[origin.length]
+        if (boundary === '/' || boundary === ':' || boundary === '?' || boundary === '#') {
+          return true
+        }
+      }
+    }
+    return false
+  }
 
   // Fetch shim — capture the native into a const so the closure has a
   // typed, definitely-defined reference (no `!` later).
@@ -643,9 +659,14 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     //
     // `document.contentType` is a string per the DOM spec; the optional
     // cast guards jsdom edge cases where it has been shadowed by a
-    // property descriptor.
+    // property descriptor. Strip any media-type parameter so a
+    // non-conformant engine reporting `application/json; charset=utf-8`
+    // still matches the viewer set (the spec essence is bare + lowercase,
+    // but WebKit has not always honored that for the JSON viewer).
     // oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- intentional runtime guard
-    const contentType = String(document.contentType ?? '')
+    const contentType = (String(document.contentType ?? '').split(';')[0] ?? '')
+      .trim()
+      .toLowerCase()
     const jsonViewerNotReady =
       JSON_VIEWER_CONTENT_TYPES.has(contentType) && document.querySelector('pre') === null
     const shouldRetry =

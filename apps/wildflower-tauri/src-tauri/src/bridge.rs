@@ -291,7 +291,7 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                         format_log_payload(&message.payload)
                     ),
                     Err(error) => {
-                        log::warn!("[bridge] undecodable bridge:Log payload dropped: {error}");
+                        log::warn!("[bridge] undecodable Log payload dropped: {error}");
                     }
                 },
                 // Other tags travel through the same channel but aren't

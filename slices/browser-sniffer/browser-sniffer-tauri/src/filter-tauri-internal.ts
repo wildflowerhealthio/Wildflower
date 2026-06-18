@@ -35,6 +35,14 @@ import { BRIDGE_EVENT } from './install-sniffer.ts'
 const TAURI_IPC_FALLBACK_WARN_PREFIX = 'IPC custom protocol failed'
 
 /**
+ * Narrow an unknown wire payload to a string-keyed record. A real type
+ * guard (not an assertion), so reading `record._tag` / `record.level`
+ * downstream stays type-safe without an `as` cast.
+ */
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object'
+
+/**
  * Whether `record` is the `warn`-level `Log` Tauri emits (via the
  * console shim) when its custom-protocol IPC fetch is blocked and it
  * falls back to postMessage.
@@ -85,16 +93,18 @@ const makeFilteringEventBus = (eventBus: TauriEventApi): TauriEventApi => {
     emit: (eventName, payload) => {
       // Only the multiplexed bridge channel carries the `Log` payloads we
       // filter; everything else just rides the ordering chain.
-      if (eventName === BRIDGE_EVENT && payload !== null && typeof payload === 'object') {
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-        const record = payload as Record<string, unknown>
-        if (record._tag === 'Log' && isTauriIpcFallbackWarning(record)) {
+      if (eventName === BRIDGE_EVENT && isRecord(payload)) {
+        if (payload._tag === 'Log' && isTauriIpcFallbackWarning(payload)) {
           return Promise.resolve()
         }
       }
       return enqueueEmit(eventName, payload)
     },
-    listen: eventBus.listen,
+    // Forward through an arrow (not a bare method reference) so the
+    // underlying bus stays the receiver — symmetric with `emit` above and
+    // safe if a wrapped bus ever implements `listen` as a `this`-bound
+    // method.
+    listen: (event, handler) => eventBus.listen(event, handler),
   }
 }
 

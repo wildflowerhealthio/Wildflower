@@ -3,9 +3,11 @@ use tauri::WebviewUrl;
 
 /// Wire shape of the `WebViewSource` tagged union from
 /// `slices/collector/collector-fundamentals/src/model/web-view-source.ts`.
-/// The `Uri` variant carries an `https://`-only URL; we validate that
+/// The `Uri` variant carries an `http(s)://`-only URL; we validate that
 /// invariant at decode time as defense-in-depth alongside the SPA-side
-/// schema check. `Html` is decoded body-less (a `serde::de::IgnoredAny`
+/// schema check (which likewise accepts both schemes so a FHIR server
+/// reachable only over http — e.g. a local dev HAPI instance — can still
+/// be sniffed). `Html` is decoded body-less (a `serde::de::IgnoredAny`
 /// drains the field without allocating) — the variant exists so wire-shape
 /// drift surfaces as a decode mismatch on the Rust side, not because the
 /// host can do anything with the payload today.
@@ -28,7 +30,7 @@ pub(crate) struct UriSource {
 /// events) but the failure lands in the host log.
 #[derive(Debug)]
 pub(crate) enum SourceResolveError {
-    NonHttpsUri(String),
+    NonHttpUri(String),
     InvalidUri(String),
     HtmlNotSupported,
 }
@@ -36,10 +38,10 @@ pub(crate) enum SourceResolveError {
 impl std::fmt::Display for SourceResolveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NonHttpsUri(uri) => write!(
+            Self::NonHttpUri(uri) => write!(
                 f,
-                "WebViewSource.Uri must be https:// (got: {uri}); the SPA-side schema should have \
-                 rejected this — investigate drift"
+                "WebViewSource.Uri must be http(s):// (got: {uri}); the SPA-side schema should \
+                 have rejected this — investigate drift"
             ),
             Self::InvalidUri(uri) => write!(f, "WebViewSource.Uri could not be parsed: {uri}"),
             Self::HtmlNotSupported => write!(
@@ -56,8 +58,8 @@ pub(crate) fn resolve_source(
 ) -> Result<WebviewUrl, SourceResolveError> {
     match source {
         WebViewSourcePayload::Uri(UriSource { uri }) => {
-            if !uri.starts_with("https://") {
-                return Err(SourceResolveError::NonHttpsUri(uri));
+            if !uri.starts_with("https://") && !uri.starts_with("http://") {
+                return Err(SourceResolveError::NonHttpUri(uri));
             }
             let parsed = url::Url::parse(&uri).map_err(|_| SourceResolveError::InvalidUri(uri))?;
             Ok(WebviewUrl::External(parsed))
@@ -71,13 +73,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolve_source_rejects_non_https_uri() {
+    fn resolve_source_rejects_non_http_uri() {
         let source = WebViewSourcePayload::Uri(UriSource {
-            uri: "http://example.test/".to_string(),
+            uri: "ftp://example.test/".to_string(),
         });
         let error = resolve_source(source).expect_err("expected rejection");
         assert!(
-            matches!(error, SourceResolveError::NonHttpsUri(uri) if uri == "http://example.test/"),
+            matches!(error, SourceResolveError::NonHttpUri(uri) if uri == "ftp://example.test/"),
         );
     }
 
@@ -90,6 +92,23 @@ mod tests {
         match resolved {
             WebviewUrl::External(url) => {
                 assert_eq!(url.as_str(), "https://example.test/page");
+            }
+            _ => panic!("expected WebviewUrl::External"),
+        }
+    }
+
+    #[test]
+    fn resolve_source_accepts_http_uri() {
+        // Plain http is accepted so a FHIR server reachable only over http
+        // (e.g. a local dev HAPI instance) can still be sniffed — mirrors
+        // the SPA-side `HttpUriString` schema.
+        let source = WebViewSourcePayload::Uri(UriSource {
+            uri: "http://localhost:8080/fhir/Patient/1".to_string(),
+        });
+        let resolved = resolve_source(source).expect("expected success");
+        match resolved {
+            WebviewUrl::External(url) => {
+                assert_eq!(url.as_str(), "http://localhost:8080/fhir/Patient/1");
             }
             _ => panic!("expected WebviewUrl::External"),
         }

@@ -531,6 +531,23 @@ describe('fetch shim', () => {
       expect.objectContaining({ _tag: 'ResponseStart', url: 'https://api.example.com/things' }),
     ])
   })
+
+  test('sniffs an external host that merely shares the IPC host as a prefix', async () => {
+    // `https://ipc.localhost.evil.example` is a different host than Tauri's
+    // `ipc.localhost`; a bare prefix match would mis-classify it as internal
+    // and silently skip sniffing. It must be sniffed like any external URL.
+    const native = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    window.fetch = native
+    installSnifferForTest()
+
+    await window.fetch('https://ipc.localhost.evil.example/x')
+    await window.fetch('http://tauri.localhost.attacker.test/y')
+
+    expect(withTag(getMessages(), 'ResponseStart')).toEqual([
+      expect.objectContaining({ url: 'https://ipc.localhost.evil.example/x' }),
+      expect.objectContaining({ url: 'http://tauri.localhost.attacker.test/y' }),
+    ])
+  })
 })
 
 describe('XHR shim', () => {
@@ -1107,6 +1124,22 @@ describe('pageLoadHandler JSON-viewer retry', () => {
     window.dispatchEvent(new Event('load'))
     expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
     expect(rafQueue).toHaveLength(0)
+  })
+
+  test('defers when contentType carries a charset/casing parameter', () => {
+    // A non-conformant engine may report `application/fhir+json; charset=UTF-8`
+    // rather than the bare lowercase essence; the handler must still recognize
+    // it as a JSON viewer and wait for the <pre>, not snapshot an empty shell.
+    setContentType('application/fhir+json; charset=UTF-8')
+    installSnifferForTest()
+    window.dispatchEvent(new Event('load'))
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(0)
+
+    const pre = document.createElement('pre')
+    pre.textContent = '{"resourceType":"Bundle"}'
+    document.body.replaceChildren(pre)
+    advanceRetries(1)
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
   })
 
   test('caps retries and snapshots once even if the <pre> never appears', () => {

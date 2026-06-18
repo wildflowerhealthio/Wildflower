@@ -113,7 +113,11 @@ describe('scrapingPlan', () => {
     // applies encodeURIComponent defensively for values arriving through
     // an untyped path — pin that the encoding actually happens by feeding
     // a value with URL-significant characters past the type.
-    const plan = scrapingPlan({ _tag: 'fhir-r4', rootUrl: 'https://example.com', patientId: 'a/b c' })
+    const plan = scrapingPlan({
+      _tag: 'fhir-r4',
+      rootUrl: 'https://example.com',
+      patientId: 'a/b c',
+    })
     expect(plan.firstPage).toEqual({
       _tag: 'Uri',
       uri: 'https://example.com/Patient/a%2Fb%20c?_format=json',
