@@ -1,8 +1,8 @@
 use tauri::AppHandle;
 use tauri_plugin_log::log;
 
-use crate::events::REQUEST_SNIFFABLE_WEBVIEW_EVENT;
-use crate::model::payloads::RequestSniffableWebViewPayload;
+use crate::events::REQUEST_SNIFFABLE_WEBVIEW;
+use crate::model::request_sniffable_webview::RequestSniffableWebViewPayload;
 use crate::model::web_view_source::resolve_source;
 use crate::sniffer_window::open_or_navigate;
 
@@ -14,7 +14,7 @@ pub(crate) fn handle(app: &AppHandle, payload: &str) {
         Ok(decoded) => decoded,
         Err(error) => {
             log::warn!(
-                "[browser-sniffer] undecodable {REQUEST_SNIFFABLE_WEBVIEW_EVENT} payload \
+                "[browser-sniffer] undecodable {REQUEST_SNIFFABLE_WEBVIEW} payload \
                  dropped: {error}"
             );
             return;

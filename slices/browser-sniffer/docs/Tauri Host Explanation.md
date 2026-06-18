@@ -46,7 +46,8 @@ browser-sniffer-tauri-rust/
 │   ├── bootstrap.rs                 — `include_str!` of the TS-generated IIFE
 │   ├── sniffer_window.rs            — `open_or_navigate` + `AtomicBool` race sentinel
 │   ├── model/
-│   │   ├── payloads.rs              — Request/Open payload structs
+│   │   ├── request_sniffable_webview.rs — `RequestSniffableWebViewPayload`
+│   │   ├── open.rs                  — `OpenPayload`
 │   │   └── web_view_source.rs       — `WebViewSourcePayload`, `resolve_source`, `SourceResolveError`
 │   └── handlers/
 │       ├── request_sniffable_webview.rs
@@ -62,4 +63,4 @@ Doc-comments at the top of each file should be quick references useful on hover.
 - `browser-sniffer-tauri-rust/src/lib.rs` — entry point; wires three `app.listen(...)` calls.
 - `browser-sniffer-tauri-rust/src/sniffer_window.rs` — the only file that talks to Tauri's `WebviewWindowBuilder`.
 - `browser-sniffer-tauri/src/tauri-sniffer-entry.ts` — the TS bootstrap that adapts the postMessage convention onto Tauri's event bus.
-- `slices/collector/collector-fundamentals/src/bridge.ts` — the consumer-side bridge schema; the Rust payload structs in `model/payloads.rs` mirror its shapes.
+- `slices/collector/collector-fundamentals/src/bridge.ts` — the consumer-side bridge schema; the Rust payload structs in `model/{request_sniffable_webview,open}.rs` mirror its shapes.

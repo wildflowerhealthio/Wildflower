@@ -4,16 +4,13 @@
 //! and event-bus glue.
 
 mod bootstrap;
-mod events;
+pub mod events;
 mod handlers;
 mod model;
 mod sniffer_window;
 
 use tauri::{AppHandle, Listener};
 
-pub use crate::events::{
-    MAIN_WINDOW_LABEL, OPEN_EVENT, REQUEST_SNIFFABLE_WEBVIEW_EVENT, SNIFFING_COMPLETE_EVENT,
-};
 pub use crate::sniffer_window::SNIFFER_WEBVIEW_LABEL;
 
 /// Wire the three CollectorBridge.webToHost listeners onto Tauri's
@@ -22,19 +19,19 @@ pub use crate::sniffer_window::SNIFFER_WEBVIEW_LABEL;
 pub fn attach_browser_sniffer(app: &AppHandle) {
     {
         let handle = app.clone();
-        app.listen(REQUEST_SNIFFABLE_WEBVIEW_EVENT, move |event| {
+        app.listen(events::REQUEST_SNIFFABLE_WEBVIEW, move |event| {
             handlers::request_sniffable_webview::handle(&handle, event.payload());
         });
     }
     {
         let handle = app.clone();
-        app.listen(OPEN_EVENT, move |event| {
+        app.listen(events::OPEN, move |event| {
             handlers::open::handle(&handle, event.payload());
         });
     }
     {
         let handle = app.clone();
-        app.listen(SNIFFING_COMPLETE_EVENT, move |_event| {
+        app.listen(events::SNIFFING_COMPLETE, move |_event| {
             // SniffingComplete carries an empty struct on the wire; no
             // decode needed beyond the listener firing.
             handlers::sniffing_complete::handle(&handle);
@@ -51,9 +48,9 @@ mod tests {
     /// `bridge:{tag}` where `tag` is the bridge schema's tag name.
     #[test]
     fn event_names_match_the_ts_convention() {
-        assert_eq!(REQUEST_SNIFFABLE_WEBVIEW_EVENT, "bridge:RequestSniffableWebView");
-        assert_eq!(OPEN_EVENT, "bridge:Open");
-        assert_eq!(SNIFFING_COMPLETE_EVENT, "bridge:SniffingComplete");
+        assert_eq!(events::REQUEST_SNIFFABLE_WEBVIEW, "bridge:RequestSniffableWebView");
+        assert_eq!(events::OPEN, "bridge:Open");
+        assert_eq!(events::SNIFFING_COMPLETE, "bridge:SniffingComplete");
     }
 
     /// The bootstrap IIFE is generated at build time. An empty file
@@ -79,6 +76,6 @@ mod tests {
         // set in `app.windows[].label`. The existing bridge.rs pins the
         // same literal — drift here would also break the consent popup
         // raise path.
-        assert_eq!(MAIN_WINDOW_LABEL, "main");
+        assert_eq!(events::MAIN_WINDOW_LABEL, "main");
     }
 }

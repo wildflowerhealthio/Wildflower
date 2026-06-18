@@ -4,9 +4,9 @@
 //! Drift between Rust and TS is caught by `event_names_match_the_ts_convention`
 //! in `lib.rs`.
 
-pub const REQUEST_SNIFFABLE_WEBVIEW_EVENT: &str = "bridge:RequestSniffableWebView";
-pub const OPEN_EVENT: &str = "bridge:Open";
-pub const SNIFFING_COMPLETE_EVENT: &str = "bridge:SniffingComplete";
+pub const REQUEST_SNIFFABLE_WEBVIEW: &str = "bridge:RequestSniffableWebView";
+pub const OPEN: &str = "bridge:Open";
+pub const SNIFFING_COMPLETE: &str = "bridge:SniffingComplete";
 
 /// Window label assigned to the main React SPA webview by
 /// `apps/wildflower-tauri/src-tauri/tauri.conf.json`. Re-exported so

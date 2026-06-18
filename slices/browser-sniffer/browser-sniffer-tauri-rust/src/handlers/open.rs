@@ -1,8 +1,8 @@
 use tauri::AppHandle;
 use tauri_plugin_log::log;
 
-use crate::events::OPEN_EVENT;
-use crate::model::payloads::OpenPayload;
+use crate::events::OPEN;
+use crate::model::open::OpenPayload;
 use crate::model::web_view_source::resolve_source;
 use crate::sniffer_window::open_or_navigate;
 
@@ -16,7 +16,7 @@ pub(crate) fn handle(app: &AppHandle, payload: &str) {
     let decoded = match serde_json::from_str::<OpenPayload>(payload) {
         Ok(decoded) => decoded,
         Err(error) => {
-            log::warn!("[browser-sniffer] undecodable {OPEN_EVENT} payload dropped: {error}");
+            log::warn!("[browser-sniffer] undecodable {OPEN} payload dropped: {error}");
             return;
         }
     };

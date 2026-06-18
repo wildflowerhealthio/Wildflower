@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Manager};
 use tauri_plugin_log::log;
 
-use crate::events::SNIFFING_COMPLETE_EVENT;
+use crate::events::SNIFFING_COMPLETE;
 use crate::sniffer_window::{mark_closed, SNIFFER_WEBVIEW_LABEL};
 
 /// Close the sniffer webview. Flip the open/close sentinel *before*
@@ -13,7 +13,7 @@ pub(crate) fn handle(app: &AppHandle) {
     let Some(webview_window) = app.get_webview_window(SNIFFER_WEBVIEW_LABEL) else {
         if was_open {
             log::debug!(
-                "[browser-sniffer] {SNIFFING_COMPLETE_EVENT}: sentinel was open but no \
+                "[browser-sniffer] {SNIFFING_COMPLETE}: sentinel was open but no \
                  '{SNIFFER_WEBVIEW_LABEL}' webview found — already closed by another path"
             );
         } else {
@@ -21,7 +21,7 @@ pub(crate) fn handle(app: &AppHandle) {
             // webview — legal at the bridge level (e.g. SPA decided
             // "done" before RequestSniffableWebView fired).
             log::debug!(
-                "[browser-sniffer] {SNIFFING_COMPLETE_EVENT} received with no sniffer webview \
+                "[browser-sniffer] {SNIFFING_COMPLETE} received with no sniffer webview \
                  open; ignoring"
             );
         }
