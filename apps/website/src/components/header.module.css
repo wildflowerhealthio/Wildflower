@@ -1,0 +1,71 @@
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  /* Cream at 86% so the page tints through the blur. One-off, so literal. */
+  background: rgba(247, 236, 221, 0.86);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border-hairline-soft);
+}
+
+.site-header__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  /* 18px + 18px + 34px logo + 1px border = 71px = --header-height. */
+  padding: 18px var(--page-padding-x);
+}
+
+.site-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.site-header__wordmark {
+  font-family: var(--font-serif);
+  font-size: 22px;
+}
+
+.site-header__nav {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  color: var(--color-ink-70);
+  font-size: 14.5px;
+}
+
+.site-header__link {
+  text-decoration: none;
+  transition: var(--transition-ui);
+}
+
+.site-header__link:hover {
+  color: var(--color-magenta);
+}
+
+.site-header__cta {
+  border: 1px solid var(--color-magenta);
+  border-radius: var(--radius-pill);
+  padding: 9px 18px;
+  color: var(--color-magenta);
+  font-weight: 600;
+  font-size: 13.5px;
+  text-decoration: none;
+  transition: var(--transition-ui);
+}
+
+.site-header__cta:hover {
+  background: var(--color-magenta);
+  color: var(--color-cream-raised);
+}
+
+@media (max-width: 680px) {
+  .site-header__link--text {
+    display: none;
+  }
+}

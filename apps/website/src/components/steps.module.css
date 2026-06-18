@@ -1,0 +1,35 @@
+.steps {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 10px var(--page-padding-x) 64px;
+}
+
+.steps__item {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 24px;
+  align-items: baseline;
+  padding: 28px 0;
+  border-top: 1px solid var(--border-hairline);
+}
+
+.steps__item:last-child {
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.steps__num {
+  color: var(--color-magenta);
+  font-family: var(--font-serif);
+  font-size: 23px;
+}
+
+.steps__title {
+  margin-bottom: 6px;
+  font-size: 26px;
+}
+
+.steps__text {
+  color: var(--color-warm-gray);
+  font-size: 16px;
+  line-height: 1.55;
+}

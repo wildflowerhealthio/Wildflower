@@ -1,0 +1,53 @@
+.privacy {
+  background: var(--color-cream-band);
+  scroll-margin-top: var(--header-height);
+}
+
+.privacy__inner {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: 66px var(--page-padding-x);
+  text-align: center;
+}
+
+.privacy__title {
+  max-width: 720px;
+  margin: 0 auto 40px;
+  font-size: 40px;
+  line-height: 1.14;
+}
+
+.privacy__title em {
+  color: var(--color-magenta);
+  font-style: italic;
+}
+
+.privacy__items {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 52px;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.privacy__item {
+  max-width: 240px;
+}
+
+.privacy__item-title {
+  margin-bottom: 7px;
+  font-size: 19px;
+}
+
+.privacy__item-body {
+  color: var(--color-warm-gray);
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+@media (max-width: 680px) {
+  .privacy__title {
+    font-size: 29px;
+  }
+}
