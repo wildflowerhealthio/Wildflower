@@ -2,7 +2,7 @@
   "name": "browser-sniffer-tauri",
   "version": "0.0.0",
   "private": true,
-  "description": "Tauri bootstrap for the browser-sniffer: a tiny shim that re-exports the RN-WebView postMessage contract over Tauri's event bus, plus the unmodified installSniffer() call. The bundled IIFE is consumed by browser-sniffer-tauri-rust via include_str!.",
+  "description": "Tauri bootstrap for the browser-sniffer: a shim that bridges the sniffer's window.ReactNativeWebView.postMessage outbound channel onto Tauri's event bus, plus an in-page top bar for the sniffer webview, plus the unmodified installSniffer() call. The bundled IIFE is consumed by browser-sniffer-tauri-rust via include_str!.",
   "license": "MIT",
   "repository": {
     "type": "git",

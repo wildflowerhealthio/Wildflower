@@ -1,10 +1,10 @@
 // Entry point used by `scripts/build-tauri-bootstrap.mts` to produce
 // the self-invoking IIFE injected into Tauri sniffer webviews via
 // `WebviewWindowBuilder::initialization_script(...)`. The bundle adapts
-// the `react-native-webview` postMessage contract that the unmodified
-// `installSniffer()` uses to Tauri's per-tag event bus (`bridge:{tag}` —
-// the same convention pinned by `effect-messaging-tauri/event-names.ts`),
-// then invokes the sniffer.
+// the unmodified `installSniffer()`'s outbound channel
+// (`window.ReactNativeWebView.postMessage(jsonStr)`) onto Tauri's
+// per-tag event bus (`bridge:{tag}` — the same convention pinned by
+// `effect-messaging-tauri/event-names.ts`), then invokes the sniffer.
 //
 // `window.__TAURI__` is present inside the sniffer webview because the
 // app's `tauri.conf.json` sets `app.withGlobalTauri: true`, which Tauri

@@ -2,27 +2,15 @@ import { snifferScriptSource } from './sniffer-script.generated.ts'
 
 /**
  * Self-invoking JS source string of the sniffer, injected into sniffed
- * pages via `react-native-webview`'s
- * `injectedJavaScriptBeforeContentLoaded` (or `injectJavaScript` for live
- * re-injection), or embedded into inline HTML sources before the WebView
- * renders them.
+ * pages as the webview's pre-content initialization script (Tauri's
+ * `WebviewWindowBuilder::initialization_script(...)`).
  *
  * Produced at build time by `scripts/build-sniffer-script.mjs`, which
  * bundles `sniffer-entry.ts` (which imports and invokes
  * {@link installSniffer}) into a self-contained IIFE. The bundled
  * string is committed to source as `sniffer-script.generated.ts` so
- * Metro — which resolves this package via the `source` export
- * condition — sees the script without running a build step in the
- * consuming app.
- *
- * Why not `Function.prototype.toString()` at runtime: Hermes (RN/Expo)
- * strips function source after bytecode compilation, so the previous
- * ```
- * `(${installSniffer.toString()})()`
- * ```
- *  approach returned a syntactically
- * valid no-op (`(function () { [bytecode] })()`) on-device. Build-time
- * generation sidesteps that entirely.
+ * consumers resolving this package via the `source` export condition
+ * see the script without running a build step.
  *
  * The length guard below trips if the generated file is empty or
  * mistakenly checked in stale — a louder failure than a silent no-op.

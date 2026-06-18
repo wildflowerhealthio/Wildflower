@@ -32,7 +32,7 @@ The bootstrap shim is responsible for:
 
 1. Replacing `window.ReactNativeWebView.postMessage` with a `event.emit('bridge:{tag}', payload)` shim — the only outbound channel the unmodified `installSniffer()` uses. The sniffer always calls `JSON.stringify(msg)` before posting, so JSON.parse round-trips the structured message we hand to `event.emit` — letting `makeTauriTransport`'s `Schema.typeSchema` decode on the main side without any string envelope.
 2. Attaching Tauri `event.listen('bridge:Click' | 'bridge:CancelSnifferRequest')` handlers that dispatch synthetic `window` `message` events with `source: null` — exactly the channel the sniffer's host-message handler reads.
-3. Invoking `installSniffer()` exactly as the Expo arm did.
+3. Invoking `installSniffer()` to wire up the fetch/XHR shims.
 
 `window.__TAURI__` is present inside the sniffer webview because `app.withGlobalTauri: true` in `tauri.conf.json` is baked in at codegen time (`tauri-codegen/src/context.rs`) and prepended to every webview's init-script list at runtime (`tauri/src/manager/webview.rs`) — the bootstrap doesn't need to call any per-webview API to opt in.
 

@@ -956,9 +956,9 @@ describe('PageLoaded', () => {
   })
 
   test('should capture WebView-wrapped HTML for text/plain documents', () => {
-    // RN-WebView (and every other engine) renders `text/plain` by wrapping
-    // it in a `<pre>` inside `<html><body>`; the sniffer runs against
-    // *that* DOM, never the raw bytes, so our handler captures the wrapper.
+    // Every WebView engine renders `text/plain` by wrapping it in a
+    // `<pre>` inside `<html><body>`; the sniffer runs against *that*
+    // DOM, never the raw bytes, so our handler captures the wrapper.
     // We simulate by populating the body — the captured payload is HTML.
     const lines = 'Line 1\nLine 2 with <brackets>\nLine 3'
     const pre = document.createElement('pre')

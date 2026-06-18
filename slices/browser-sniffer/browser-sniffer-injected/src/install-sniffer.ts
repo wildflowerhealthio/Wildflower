@@ -1,5 +1,5 @@
-// oxlint-disable eslint-plugin-unicorn/consistent-function-scoping -- installSniffer's body is stringified via Function.prototype.toString() and injected into arbitrary pages; nested helpers MUST stay inside the function body so they survive the stringification path. Moving them out would break the bundle.
-// oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin -- RN-WebView's bridge `postMessage(string)` is not the window `postMessage` API; no `targetOrigin` argument exists (mirrors effect-messaging-react/web-platform-adapter).
+// oxlint-disable eslint-plugin-unicorn/consistent-function-scoping -- installSniffer is esbuild-bundled at build time and injected into arbitrary third-party pages; nested helpers MUST stay inside the function body so they're captured in the IIFE bundle. Moving them out would break the bundle.
+// oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin -- `ReactNativeWebView.postMessage(string)` is the sniffer's outbound channel; it's not the window `postMessage` API and has no `targetOrigin` argument.
 
 import type {
   CancelSnifferRequestMessageBody,
@@ -18,14 +18,15 @@ import type { JsonValue } from 'kitchen-sink/schema'
 /**
  * Browser-side sniffer installed into an arbitrary third-party page.
  *
- * The injected JS bundle is produced by `Function.prototype.toString()`
- * on {@link installSniffer} — meaning every helper, every runtime
- * reference, and every cross-call piece of state must live *inside*
- * the function body. Top-level value imports or closures over module
- * scope would resolve to nothing in the injected page. Type-only
- * imports (the message body schemas, used to type {@link SnifferOutboundMessage}
- * / {@link SnifferInboundMessage}) are erased at compile time and so
- * do survive.
+ * The injected JS bundle is produced ahead of time by
+ * `scripts/build-sniffer-script.mjs`, which esbuild-bundles this
+ * function as a self-contained IIFE — meaning every helper, every
+ * runtime reference, and every cross-call piece of state must live
+ * *inside* the function body. Top-level value imports or closures
+ * over module scope would resolve to nothing in the injected page.
+ * Type-only imports (the message body schemas, used to type
+ * {@link SnifferOutboundMessage} / {@link SnifferInboundMessage}) are
+ * erased at compile time and so do survive.
  *
  * Wire format:
  *   - Posts `{"_tag":"__Ready"}` first — handshake signal for the host
@@ -36,9 +37,9 @@ import type { JsonValue } from 'kitchen-sink/schema'
  *     `browser-sniffer-core/messages` for the schemas.
  *   - Listens for `CancelSnifferRequest` Host→Web messages on
  *     `window`'s `message` event. The handler tightens against confused
- *     deputies by only accepting events whose `source` is `null`
- *     (RN-WebView's injection path); page-side scripts dispatching
- *     synthetic `message` events with a non-null `source` are ignored.
+ *     deputies by only accepting events whose `source` is `null`;
+ *     page-side scripts dispatching synthetic `message` events with a
+ *     non-null `source` are ignored.
  *
  * Idempotent: a single `Symbol.for('browser-sniffer:state')` slot on
  * `window` stashes the captured native references and tracker state.
@@ -47,9 +48,7 @@ import type { JsonValue } from 'kitchen-sink/schema'
  * *newer version* of this script (host app upgraded mid-session, etc.)
  * the early-return uses the stale state and the new logic never
  * installs. The slot carries no version tag; v1 deliberately accepts
- * this limitation. Tracking: re-injection-with-upgrade is out of scope
- * for the collector-stack rollout. Test coverage in
- * `install-sniffer.test.ts`.
+ * this limitation. Test coverage in `install-sniffer.test.ts`.
  */
 
 /** Wire form posted Web→Host: JSON-stringifiable, base64 `data`, plus the `__Ready` handshake. */
@@ -529,8 +528,8 @@ const installSniffer = function (): void {
   // just a notification (`url`, `pageContentId`); the DOM body streams
   // through the standard `ResponseStart`/`ResponseData`/`ResponseFinished`
   // triple. Chunking the body (vs. a single multi-MB `postMessage`) keeps
-  // us under RN-WebView's binder size limits on Android and the iOS
-  // truncation threshold.
+  // per-message size bounded so the host's IPC transport doesn't have
+  // to special-case large payloads.
   //
   // `Element.outerHTML` is defined on every `Element` (not just
   // `HTMLElement`), so XML-content documents (e.g. RSS) also serialise,
@@ -563,9 +562,8 @@ const installSniffer = function (): void {
   }
   win.addEventListener('load', pageLoadHandler)
 
-  // Host→Web bridge messages arrive as `message` events on `window`
-  // (via `react-native-webview`'s `webViewRef.postMessage`). RN-WebView's
-  // host-side injection dispatches with `event.source === null`; any
+  // Host→Web bridge messages arrive as `message` events on `window`,
+  // dispatched by the host adapter with `event.source === null`. Any
   // `message` event whose `source` is a `Window` or `MessagePort` is
   // page-originated (iframe, opener, in-page script) and must be
   // rejected — otherwise any third-party script on the page can
