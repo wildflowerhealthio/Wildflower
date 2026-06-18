@@ -5,7 +5,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { READY_EVENT } from './event-names.ts'
+import { BRIDGE_EVENT } from './event-names.ts'
 import { makeTauriTransport, type TauriEventApi } from './tauri-transport.ts'
 
 const TokenIssued = Schema.parseJson(Schema.TaggedStruct('TokenIssued', { token: Schema.String }))
@@ -26,7 +26,7 @@ const ThemeBridge = Bridge.make({
 const bridges = [AuthBridge, ThemeBridge] as const
 
 describe('makeTauriTransport', () => {
-  it('should attach a listener for every host→web tag before signalling __Ready', async () => {
+  it('should attach the single bridge listener before signalling __Ready', async () => {
     // Arrange
     const fake = makeFakeApi()
 
@@ -35,11 +35,11 @@ describe('makeTauriTransport', () => {
 
     // Assert — the fake resolves `listen` on a macrotask, so a transport
     // that emitted __Ready without awaiting attachment would record 0.
-    expect(fake.listenedEvents()).toEqual(
-      expect.arrayContaining(['bridge:TokenIssued', 'bridge:ThemeChanged'])
-    )
+    // Multiplexed channel: exactly one listener for BRIDGE_EVENT covers
+    // every wired tag across every bridge.
+    expect(fake.listenedEvents()).toEqual([BRIDGE_EVENT])
     expect(fake.emitted).toEqual([
-      { event: READY_EVENT, payload: { _tag: '__Ready' }, listenersAttached: 2 },
+      { event: BRIDGE_EVENT, payload: { _tag: '__Ready' }, listenersAttached: 1 },
     ])
   })
 
@@ -54,7 +54,7 @@ describe('makeTauriTransport', () => {
     })
 
     // Act
-    fake.fire('bridge:TokenIssued', { _tag: 'TokenIssued', token: 'bearer-abc123' })
+    fake.fire(BRIDGE_EVENT, { _tag: 'TokenIssued', token: 'bearer-abc123' })
 
     // Assert
     await delivery.opened
@@ -72,10 +72,54 @@ describe('makeTauriTransport', () => {
     })
 
     // Act — a number where the schema demands a string, then a valid push
-    fake.fire('bridge:TokenIssued', { _tag: 'TokenIssued', token: 42 })
-    fake.fire('bridge:TokenIssued', { _tag: 'TokenIssued', token: 'bearer-valid' })
+    fake.fire(BRIDGE_EVENT, { _tag: 'TokenIssued', token: 42 })
+    fake.fire(BRIDGE_EVENT, { _tag: 'TokenIssued', token: 'bearer-valid' })
 
     // Assert — only the valid payload ever lands, whatever the fiber order
+    await delivery.opened
+    expect(tokens).toEqual(['bearer-valid'])
+  })
+
+  it('should drop payloads without a `_tag` discriminator without affecting later delivery', async () => {
+    // Arrange — the single-listener demux reads `_tag` to route; payloads
+    // without one are unroutable and must be dropped silently rather than
+    // crashing the consumer.
+    const fake = makeFakeApi()
+    const { handlers, tokens, delivery } = makeTokenCapture()
+    await makeTauriTransport({
+      bridges,
+      initial: { [AuthBridge.name]: handlers },
+      api: fake.api,
+    })
+
+    // Act — malformed shapes, then a valid push to anchor the absence
+    fake.fire(BRIDGE_EVENT, null)
+    fake.fire(BRIDGE_EVENT, { token: 'no tag here' })
+    fake.fire(BRIDGE_EVENT, { _tag: 42 })
+    fake.fire(BRIDGE_EVENT, { _tag: 'TokenIssued', token: 'bearer-valid' })
+
+    // Assert
+    await delivery.opened
+    expect(tokens).toEqual(['bearer-valid'])
+  })
+
+  it('should drop payloads whose `_tag` is not wired by any bridge', async () => {
+    // Arrange — an unknown tag could be a sibling slice's bridge traffic
+    // on the same channel, or a stale producer; either way the receiver
+    // must not blow up.
+    const fake = makeFakeApi()
+    const { handlers, tokens, delivery } = makeTokenCapture()
+    await makeTauriTransport({
+      bridges,
+      initial: { [AuthBridge.name]: handlers },
+      api: fake.api,
+    })
+
+    // Act
+    fake.fire(BRIDGE_EVENT, { _tag: 'NotABridgeTagWeKnow', whatever: true })
+    fake.fire(BRIDGE_EVENT, { _tag: 'TokenIssued', token: 'bearer-valid' })
+
+    // Assert
     await delivery.opened
     expect(tokens).toEqual(['bearer-valid'])
   })
@@ -91,8 +135,8 @@ describe('makeTauriTransport', () => {
     })
 
     // Act
-    fake.fire('bridge:ThemeChanged', { _tag: 'ThemeChanged', theme: 'dark' })
-    fake.fire('bridge:TokenIssued', { _tag: 'TokenIssued', token: 'bearer-after-drop' })
+    fake.fire(BRIDGE_EVENT, { _tag: 'ThemeChanged', theme: 'dark' })
+    fake.fire(BRIDGE_EVENT, { _tag: 'TokenIssued', token: 'bearer-after-drop' })
 
     // Assert
     await delivery.opened
@@ -107,7 +151,7 @@ describe('makeTauriTransport', () => {
 
     // Act
     await Effect.runPromise(transport.coordinator.register(AuthBridge, handlers))
-    fake.fire('bridge:TokenIssued', { _tag: 'TokenIssued', token: 'bearer-late' })
+    fake.fire(BRIDGE_EVENT, { _tag: 'TokenIssued', token: 'bearer-late' })
 
     // Assert
     await delivery.opened
@@ -124,7 +168,7 @@ describe('makeTauriTransport', () => {
 
     // Act — set-if-equal: a different record identity must not evict
     await Effect.runPromise(transport.coordinator.unregister(AuthBridge, other.handlers))
-    fake.fire('bridge:TokenIssued', { _tag: 'TokenIssued', token: 'bearer-still-active' })
+    fake.fire(BRIDGE_EVENT, { _tag: 'TokenIssued', token: 'bearer-still-active' })
 
     // Assert
     await active.delivery.opened
@@ -140,7 +184,7 @@ describe('makeTauriTransport', () => {
 
     // Act — unregister, then fire the now-orphaned token at no one.
     await Effect.runPromise(transport.coordinator.unregister(AuthBridge, stale.handlers))
-    fake.fire('bridge:TokenIssued', { _tag: 'TokenIssued', token: 'bearer-orphaned' })
+    fake.fire(BRIDGE_EVENT, { _tag: 'TokenIssued', token: 'bearer-orphaned' })
 
     // Assert — anchor the absence to a presence instead of a fixed settle.
     // Register a FRESH record on a *different* bridge (Theme, so it can't
@@ -153,7 +197,7 @@ describe('makeTauriTransport', () => {
     // orphaned event yet.
     const anchor = makeThemeCapture()
     await Effect.runPromise(transport.coordinator.register(ThemeBridge, anchor.handlers))
-    fake.fire('bridge:ThemeChanged', { _tag: 'ThemeChanged', theme: 'dark' })
+    fake.fire(BRIDGE_EVENT, { _tag: 'ThemeChanged', theme: 'dark' })
 
     await anchor.delivery.opened
     expect(anchor.themes).toEqual(['dark'])
@@ -189,15 +233,70 @@ describe('makeTauriTransport', () => {
     })
 
     // Act — fire both back-to-back, same tag, same macrotask.
-    fake.fire('bridge:TokenIssued', { _tag: 'TokenIssued', token: 'first' })
-    fake.fire('bridge:TokenIssued', { _tag: 'TokenIssued', token: 'second' })
+    fake.fire(BRIDGE_EVENT, { _tag: 'TokenIssued', token: 'first' })
+    fake.fire(BRIDGE_EVENT, { _tag: 'TokenIssued', token: 'second' })
 
     // Assert — FIFO held across the suspension.
     await bothDelivered
     expect(order).toEqual(['first', 'second'])
   })
 
-  it('should emit outbound messages on their per-tag event', async () => {
+  it('should preserve cross-tag FIFO when one tag streams chunks ahead of a terminal on another', async () => {
+    // Arrange — this is the regression the single-channel rewrite exists
+    // for. The previous per-tag scheme used one listener per tag, and
+    // Tauri's event bus only guarantees FIFO *within* a single name; a
+    // chunked stream's terminal could land at the receiver before the
+    // earlier chunks. Pin that the new transport keeps cross-tag ordering
+    // even when the schemas are independent.
+    const ChunkArrived = Schema.parseJson(
+      Schema.TaggedStruct('ChunkArrived', { seq: Schema.Number })
+    )
+    const StreamFinished = Schema.parseJson(Schema.TaggedStruct('StreamFinished', {}))
+    const StreamBridge = Bridge.make({
+      name: 'Stream',
+      hostToWeb: [
+        ['ChunkArrived', ChunkArrived],
+        ['StreamFinished', StreamFinished],
+      ] as const,
+      webToHost: [] as const,
+    })
+    const fake = makeFakeApi()
+    const order: Array<string> = []
+    let delivered!: () => void
+    const allDelivered = new Promise<void>((resolve) => {
+      delivered = resolve
+    })
+    const handlers: MessageHandler.HandlersFor<(typeof StreamBridge)['HostToWeb']> = {
+      ChunkArrived: ({ seq }) =>
+        Effect.sync(() => {
+          order.push(`chunk:${seq}`)
+        }),
+      StreamFinished: () =>
+        Effect.sync(() => {
+          order.push('finished')
+          delivered()
+        }),
+    }
+    await makeTauriTransport({
+      bridges: [StreamBridge] as const,
+      initial: { [StreamBridge.name]: handlers },
+      api: fake.api,
+    })
+
+    // Act — five chunks, then the terminal, on the single channel.
+    fake.fire(BRIDGE_EVENT, { _tag: 'ChunkArrived', seq: 1 })
+    fake.fire(BRIDGE_EVENT, { _tag: 'ChunkArrived', seq: 2 })
+    fake.fire(BRIDGE_EVENT, { _tag: 'ChunkArrived', seq: 3 })
+    fake.fire(BRIDGE_EVENT, { _tag: 'ChunkArrived', seq: 4 })
+    fake.fire(BRIDGE_EVENT, { _tag: 'ChunkArrived', seq: 5 })
+    fake.fire(BRIDGE_EVENT, { _tag: 'StreamFinished' })
+
+    // Assert — every chunk before the terminal, in order.
+    await allDelivered
+    expect(order).toEqual(['chunk:1', 'chunk:2', 'chunk:3', 'chunk:4', 'chunk:5', 'finished'])
+  })
+
+  it('should emit outbound messages on the single bridge channel with the tagged payload', async () => {
     // Arrange
     const fake = makeFakeApi()
     const transport = await makeTauriTransport({ bridges, api: fake.api })
@@ -208,7 +307,7 @@ describe('makeTauriTransport', () => {
     // Assert
     expect(fake.emitted).toContainEqual(
       expect.objectContaining({
-        event: 'bridge:PingSent',
+        event: BRIDGE_EVENT,
         payload: { _tag: 'PingSent', count: 3 },
       })
     )
@@ -287,7 +386,7 @@ describe('makeTauriTransport', () => {
         })
 
         // Act
-        fake.fire('bridge:TokenIssued', { _tag: 'TokenIssued', token })
+        fake.fire(BRIDGE_EVENT, { _tag: 'TokenIssued', token })
 
         // Assert
         await delivery.opened

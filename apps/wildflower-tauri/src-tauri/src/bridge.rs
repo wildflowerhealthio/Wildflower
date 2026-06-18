@@ -6,12 +6,20 @@ use tauri::{AppHandle, Emitter, Listener, Manager};
 use tauri_plugin_log::log;
 use tokio::sync::{watch, Notify};
 
-/// Event-name convention `bridge:{tag}` — must match the TS side in
+/// Single multiplexed bridge channel — must match the TS side in
 /// `global/effect-messaging/effect-messaging-tauri/src/event-names.ts`.
-pub const READY_EVENT: &str = "bridge:__Ready";
-pub const AUTH_TOKEN_ISSUED_EVENT: &str = "bridge:AuthTokenIssued";
-pub const DEVICE_CONSENT_REQUESTED_EVENT: &str = "bridge:DeviceConsentRequested";
-pub const LOG_EVENT: &str = "bridge:Log";
+/// Every web↔host message rides this one Tauri event; the discriminator
+/// is the `_tag` field on the JSON payload, which every bridge message
+/// already carries. See the TS-side `BRIDGE_EVENT` docstring for why
+/// per-tag channels were retired (cross-tag ordering broke streaming).
+pub const BRIDGE_EVENT: &str = "bridge";
+
+/// Tag literals dispatched by the bridge listener. Web→host tags we
+/// react to plus host→web tags we emit. Matches the TS-side schemas in
+/// `gatekeeper-core/src/bridge.ts` and
+/// `effect-messaging-core/src/logging.ts`.
+const READY_TAG: &str = "__Ready";
+const LOG_TAG: &str = "Log";
 
 /// Tauri window label of the main webview, set in
 /// `tauri.conf.json`. The consent-popup arrival path looks the window
@@ -19,7 +27,16 @@ pub const LOG_EVENT: &str = "bridge:Log";
 /// and the focus call is skipped with a log.
 const MAIN_WINDOW_LABEL: &str = "main";
 
-/// Wire shape of a `bridge:Log` payload, pinned by
+/// Wire shape of the bridge envelope's `_tag` discriminator. Used to
+/// peek the tag without committing to a specific message struct, so the
+/// listener can route by tag and skip payloads it doesn't react to.
+#[derive(Debug, Deserialize)]
+struct BridgeEnvelope {
+    #[serde(rename = "_tag")]
+    tag: String,
+}
+
+/// Wire shape of a `Log` payload, pinned by
 /// `effect-messaging-core/src/logging.ts` (`LogMessageBody`). The
 /// `_tag` field rides along on the wire; serde ignores it as an
 /// unknown field.
@@ -197,10 +214,16 @@ fn raise_main_window(_handle: &AppHandle) {}
 ///   a window that's already foreground doesn't get a redundant
 ///   focus-steal pulse on every approve/deny. Clears and `__Ready`
 ///   re-deliveries also skip the focus call.
-/// - `bridge:Log`: forwards the webview's intercepted `console.*`
-///   output into the host's `log` facade. Logging is one-way — the log
-///   plugin has no Webview target, so nothing here can echo back into
-///   the webview and loop.
+/// - `Log` tag: forwards the webview's intercepted `console.*` output
+///   into the host's `log` facade. Logging is one-way — the log plugin
+///   has no Webview target, so nothing here can echo back into the
+///   webview and loop.
+///
+/// The TS-side transport multiplexes every tag onto one Tauri event
+/// (`BRIDGE_EVENT` / `"bridge"`); this listener decodes the envelope's
+/// `_tag` once and routes by tag. Tags we don't react to (host→web
+/// emit echoes, sibling slices' web→host traffic, …) are dropped
+/// silently.
 pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     let (host_owner_token_sender, mut token_rx) = watch::channel::<Option<String>>(None);
     let (active_device_user_code_sender, mut consent_rx) = watch::channel::<Option<String>>(None);
@@ -208,7 +231,33 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     let ready = Arc::new(Notify::new());
     {
         let ready = Arc::clone(&ready);
-        app.listen(READY_EVENT, move |_event| ready.notify_one());
+        app.listen(BRIDGE_EVENT, move |event| {
+            let payload = event.payload();
+            let tag = match serde_json::from_str::<BridgeEnvelope>(payload) {
+                Ok(envelope) => envelope.tag,
+                Err(error) => {
+                    log::warn!("[bridge] undecodable bridge payload dropped: {error}");
+                    return;
+                }
+            };
+            match tag.as_str() {
+                READY_TAG => ready.notify_one(),
+                LOG_TAG => match serde_json::from_str::<LogMessage>(payload) {
+                    Ok(message) => log::log!(
+                        message.level.as_log_level(),
+                        "[webview] {}",
+                        format_log_payload(&message.payload)
+                    ),
+                    Err(error) => {
+                        log::warn!("[bridge] undecodable bridge:Log payload dropped: {error}");
+                    }
+                },
+                // Other tags travel through the same channel but aren't
+                // for us — the browser-sniffer crate's listener picks up
+                // its tags, and host→web emits echo back here too.
+                _ => {}
+            }
+        });
     }
 
     let handle = app.clone();
@@ -295,17 +344,6 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
         }
     });
 
-    app.listen(LOG_EVENT, |event| {
-        match serde_json::from_str::<LogMessage>(event.payload()) {
-            Ok(message) => log::log!(
-                message.level.as_log_level(),
-                "[webview] {}",
-                format_log_payload(&message.payload)
-            ),
-            Err(error) => log::warn!("[bridge] undecodable bridge:Log payload dropped: {error}"),
-        }
-    });
-
     BridgePublishers {
         host_owner_token_sender,
         active_device_user_code_sender,
@@ -314,7 +352,7 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
 
 fn emit_auth_token(handle: &AppHandle, token: String) {
     let message = GatekeeperHostToWeb::AuthTokenIssued { token };
-    match handle.emit(AUTH_TOKEN_ISSUED_EVENT, &message) {
+    match handle.emit(BRIDGE_EVENT, &message) {
         Ok(()) => log::debug!("[bridge] AuthTokenIssued delivered to webview"),
         Err(error) => log::error!("[bridge] failed to emit AuthTokenIssued: {error}"),
     }
@@ -324,7 +362,7 @@ fn emit_device_consent(handle: &AppHandle, user_code: &Option<String>) {
     let message = GatekeeperHostToWeb::DeviceConsentRequested {
         user_code: user_code.clone(),
     };
-    match handle.emit(DEVICE_CONSENT_REQUESTED_EVENT, &message) {
+    match handle.emit(BRIDGE_EVENT, &message) {
         Ok(()) => log::debug!(
             "[bridge] DeviceConsentRequested delivered to webview (userCode={user_code:?})"
         ),
@@ -339,10 +377,10 @@ mod tests {
     /// Drift guard: the TS side pins the same literals in
     /// `effect-messaging-tauri/src/event-names.test.ts`.
     #[test]
-    fn event_names_match_the_ts_convention() {
-        assert_eq!(READY_EVENT, "bridge:__Ready");
-        assert_eq!(AUTH_TOKEN_ISSUED_EVENT, "bridge:AuthTokenIssued");
-        assert_eq!(LOG_EVENT, "bridge:Log");
+    fn event_name_and_tags_match_the_ts_convention() {
+        assert_eq!(BRIDGE_EVENT, "bridge");
+        assert_eq!(READY_TAG, "__Ready");
+        assert_eq!(LOG_TAG, "Log");
     }
 
     #[test]
