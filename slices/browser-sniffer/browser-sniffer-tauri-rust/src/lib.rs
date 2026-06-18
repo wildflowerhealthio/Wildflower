@@ -48,7 +48,10 @@ mod tests {
     /// `bridge:{tag}` where `tag` is the bridge schema's tag name.
     #[test]
     fn event_names_match_the_ts_convention() {
-        assert_eq!(events::REQUEST_SNIFFABLE_WEBVIEW, "bridge:RequestSniffableWebView");
+        assert_eq!(
+            events::REQUEST_SNIFFABLE_WEBVIEW,
+            "bridge:RequestSniffableWebView"
+        );
         assert_eq!(events::OPEN, "bridge:Open");
         assert_eq!(events::SNIFFING_COMPLETE, "bridge:SniffingComplete");
     }

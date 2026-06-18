@@ -18,7 +18,8 @@ mod tests {
 
     #[test]
     fn decodes_uri_source() {
-        let payload = r#"{"_tag":"Open","source":{"_tag":"Uri","uri":"https://example.test/next"}}"#;
+        let payload =
+            r#"{"_tag":"Open","source":{"_tag":"Uri","uri":"https://example.test/next"}}"#;
         let decoded: OpenPayload = serde_json::from_str(payload).expect("decode");
         assert_eq!(
             decoded,
