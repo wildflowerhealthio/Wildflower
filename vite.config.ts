@@ -60,6 +60,9 @@ export default defineConfig({
     },
     ignorePatterns: [
       '.claude/**/*',
+      // /design-sync authored preview compositions — converter scratch .tsx,
+      // not project source (see the matching lint.ignorePatterns entry).
+      '.design-sync/**/*',
       '**/tapes/**/*',
       '**/dist/**',
       '**/dist-html/**',
