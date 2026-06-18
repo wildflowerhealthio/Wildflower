@@ -81,9 +81,10 @@ jobs:
         # One shared test name across the workspace, so adding a slice's snapshot
         # test needs no edit here. Regenerate a stale snapshot with e.g.
         #   UPDATE_OPENAPI=1 cargo test -p <slice>-rust openapi_spec_snapshot_is_up_to_date
-        # wildflower-tauri is excluded — it needs GTK/webkit system libs to build
-        # (see lint-rust.yml) and owns no documented surface.
-        run: cargo test --workspace --exclude wildflower-tauri --all-features openapi_spec_snapshot_is_up_to_date
+        # wildflower-tauri and browser-sniffer-tauri-rust are excluded — both
+        # pull in `tauri = "2"` which needs GTK/webkit system libs to build
+        # (see lint-rust.yml). Neither owns a documented OpenAPI surface.
+        run: cargo test --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-features openapi_spec_snapshot_is_up_to_date
 
   ts-drift:
     name: TS Drift
