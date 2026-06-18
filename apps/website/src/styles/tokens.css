@@ -57,9 +57,13 @@
   --border-footer: rgba(247, 236, 221, 0.12);
 
   /* --- Type families --- */
-  --font-serif: 'Newsreader', Georgia, 'Times New Roman', serif;
-  --font-sans: 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'Spline Sans Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  --font-serif: 'Newsreader Variable', 'Newsreader', Georgia, 'Times New Roman', serif;
+  --font-sans:
+    'Hanken Grotesk Variable', 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto,
+    sans-serif;
+  --font-mono:
+    'Spline Sans Mono Variable', 'Spline Sans Mono', ui-monospace, 'SFMono-Regular', Consolas,
+    monospace;
 
   /* --- Layout (shared / cancel-out; see file header) --- */
   --content-max-width: 1140px;

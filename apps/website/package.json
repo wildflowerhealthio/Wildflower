@@ -11,6 +11,9 @@
     "test": "vp test --passWithNoTests"
   },
   "dependencies": {
+    "@fontsource-variable/hanken-grotesk": "catalog:",
+    "@fontsource-variable/newsreader": "catalog:",
+    "@fontsource-variable/spline-sans-mono": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

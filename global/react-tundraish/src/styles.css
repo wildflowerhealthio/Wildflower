@@ -9,25 +9,26 @@
  * This file carries the *global*, non-module styling that has to live on
  * `:root` rather than a scoped component: the dark-mode colour scheme.
  *
- * tundra-css ships a light-only `:root` palette. Dark mode is layered on
- * here by re-pointing tundra's colour custom properties under
- * `:root[data-color-scheme='dark']`. Because every Tundraish component, every
- * app `*.module.css`, and tundra-css's own utility classes
- * (`.button.filled`, `.accent-red`, `.text-body-2`, inputs, toggles, ...)
- * read their colours from these variables, overriding the variables
- * re-themes the entire surface at once.
+ * tundra-css ships a light-only, chroma-0 (grey) `:root` palette. The
+ * Wildflower refresh re-points tundra's colour, radius, and type custom
+ * properties — for both schemes — to the warm, editorial language of the
+ * marketing site (sand canvas, cream paper, ink text, a plum accent chain).
+ * Because every Tundraish component, every app `*.module.css`, and
+ * tundra-css's own utility classes (`.button.filled`, `.accent-red`,
+ * `.text-body-2`, inputs, toggles, ...) read their colours from these
+ * variables, re-pointing the variables re-themes the entire surface at once.
  *
- * Each ramp is mirrored: in dark mode level N takes light-mode level
- * (10 - N). The saturated midpoint (level 5) is its own mirror, so filled
- * accents keep the same hue in both schemes; the pale tints (8/9) become
- * deep tints and the deep shades (1/2) become pale, which is exactly what
- * "subtle background" and "strong text" want when the canvas flips.
+ * The light overrides live in the `:root` block below; the dark overrides
+ * live under `:root[data-color-scheme='dark']`. Dark is a designed theme, not
+ * a dimmed one: warm near-blacks, the same plum on fills, and a lighter dusty
+ * rose for accents that need legibility on the dark canvas.
  *
- * Values are tundra-css's own published hex fallbacks, so the palette stays
- * within the Tundra family. The bare aliases (`--neutral-1` etc.) follow
- * automatically: in oklch-capable browsers tundra defines them as
- * `var(--color-neutral-1)`, so re-pointing the `--color-*` forms cascades
- * through.
+ * tundra-css collapses every surface onto a single `--color-background` plus
+ * the neutral ramp, so the design's five surface levels (canvas / paper /
+ * raised / sunken / modal) are reintroduced as helper tokens
+ * (`--color-canvas`, `--color-raised`, `--color-sunken`, `--color-modal`)
+ * alongside a `--color-background` that stays the raised "paper" most
+ * components paint themselves with.
  *
  * One trigger, one palette: dark mode is keyed solely off
  * `:root[data-color-scheme='dark']`. There is no `prefers-color-scheme`
@@ -109,16 +110,124 @@
    * accent-coloured chrome across the whole subtree without any new
    * rule.
    */
-  --app-accent: var(--color-neutral-3);
-  --app-accent-1: var(--color-neutral-1);
-  --app-accent-2: var(--color-neutral-2);
-  --app-accent-3: var(--color-neutral-3);
-  --app-accent-4: var(--color-neutral-4);
-  --app-accent-5: var(--color-neutral-5);
-  --app-accent-6: var(--color-neutral-6);
-  --app-accent-7: var(--color-neutral-7);
-  --app-accent-8: var(--color-neutral-8);
-  --app-accent-9: var(--color-neutral-9);
+  --app-accent: var(--color-accent);
+  --app-accent-1: var(--color-accent-1);
+  --app-accent-2: var(--color-accent-2);
+  --app-accent-3: var(--color-accent-3);
+  --app-accent-4: var(--color-accent-4);
+  --app-accent-5: var(--color-accent-5);
+  --app-accent-6: var(--color-accent-6);
+  --app-accent-7: var(--color-accent-7);
+  --app-accent-8: var(--color-accent-8);
+  --app-accent-9: var(--color-accent-9);
+}
+
+/*
+ * ======================================================================
+ * Tundraish "Wildflower" refresh — light palette.
+ * ======================================================================
+ *
+ * The component shapes, props, and class vocabulary are unchanged; this
+ * block only re-points the tundra-css custom properties the whole surface
+ * reads from. The look is the warm, editorial language of the Wildflower
+ * marketing site: a sand/taupe canvas, cream paper, ink text, and a single
+ * plum accent chain with a rose emphasis.
+ *
+ * tundra-css collapses every surface onto one `--color-background` plus the
+ * neutral ramp, so the design's five surface levels are layered back on
+ * with three helper tokens (`--color-canvas`/`--color-raised`/
+ * `--color-modal`) and a warmed neutral ramp. `--color-background` stays the
+ * raised "paper" most components paint themselves with; `html`/`body` take
+ * the recessed canvas (see the rule further down).
+ */
+:root {
+  /* Surface roles (design names → tundra plumbing). */
+  --color-canvas: #e3ddd3; /* page background (html/body) */
+  --color-background: #f7ecdd; /* paper — cards, rows, menus, header */
+  --color-raised: #fbf4e9; /* input fills, popovers */
+  --color-sunken: #f1e4d2; /* secondary fill, neutral chips, hovers */
+  --color-modal: #faf3e8; /* dialog & device-screen surface */
+
+  /*
+   * Warm neutral ramp. tundra ships a chroma-0 grey scale here; we re-point
+   * it to the Wildflower ink→sand range so every component that reads
+   * `--color-neutral-N` (borders, muted text, faint captions, hover fills)
+   * warms up at once. Direction matches tundra: 1 = darkest (ink), 9 =
+   * lightest (sunken).
+   */
+  --color-neutral-1: #2c211d; /* ink — primary text & dark surfaces */
+  --color-neutral-2: #4a3d35;
+  --color-neutral-3: #6c5b50; /* muted body / descriptions */
+  --color-neutral-4: #6c5b50; /* muted — labels, subtitles */
+  --color-neutral-5: #9a897d; /* faint — captions, chevrons, placeholder */
+  --color-neutral-6: #c2b6a8; /* resting input / control border */
+  --color-neutral-7: #d3c7b8; /* hairline — header, dialog, menu borders */
+  --color-neutral-8: #e4d8c7; /* row hairline, badge fill, menu hover */
+  --color-neutral-9: #f1e4d2; /* sunken — code, hover, back-button hover */
+
+  /* `--color-foreground` is left to tundra's own `var(--color-neutral-1)`
+   * definition so it tracks the ink ramp and flips to the light dark-mode
+   * value automatically — pinning a literal here would freeze text dark in
+   * dark mode. */
+
+  /*
+   * Plum accent chain — replaces tundra's grey `@property` default. Filled
+   * controls read level 5 (plum); hover/focus emphasis reads level 4 (rose,
+   * intentionally lighter than 5 so focus rings and outline-hover land on
+   * the brand rose); the pale tints at 8/9 back hover fills.
+   */
+  --color-accent: #7e2951;
+  --color-accent-1: #3a1226;
+  --color-accent-2: #571a38;
+  --color-accent-3: #6e2244;
+  --color-accent-4: #a83d68; /* rose — links, focus, outline hover */
+  --color-accent-5: #7e2951; /* plum — primary fill */
+  --color-accent-6: #b85a80;
+  --color-accent-7: #cf8aa6;
+  --color-accent-8: #e8bdd0; /* petal */
+  --color-accent-9: #f6e2ec; /* soft plum tint — hover fills */
+
+  /*
+   * Danger ramp (the `accent-red` chain). A true alarm red — destructive
+   * button fills, the delete dialog, revoke actions, the menu destructive
+   * item, and the `<PageBodyError>` panel all read it.
+   */
+  --color-red-1: #4a0f10;
+  --color-red-2: #6e1717;
+  --color-red-3: #9f2026; /* danger text */
+  --color-red-4: #d83b3b; /* destructive hover / menu destructive text */
+  --color-red-5: #cb2c2c; /* destructive fill / dot */
+  --color-red-6: #b8262a;
+  --color-red-7: #e89a9a; /* danger border */
+  --color-red-8: #efbfbe;
+  --color-red-9: #f7d7d6; /* danger soft fill — error panel */
+
+  /*
+   * Softer, roomier shape. tundra's `--element-border-radius` (radius-2,
+   * 6px) is bumped to the design's soft end; inputs and buttons take their
+   * own slightly different radii. Borders thicken to the design's 1.5px
+   * hairline at a warm ink tint.
+   */
+  --element-border-radius: var(--radius-3); /* 12px — cards/controls */
+  --element-border-width: 1.5px;
+  --element-color-border: rgba(44, 33, 29, 0.22);
+  --button-border-radius: 12px;
+  --input-border-radius: 11px;
+  --input-color-background: var(--color-raised);
+
+  /*
+   * Type system — three self-hosted families (loaded by the consuming app
+   * via `@fontsource`). Hanken Grotesk is the working UI voice; Newsreader
+   * is the serif reserved for titles & emphasis; Spline Sans Mono carries
+   * eyebrows, labels, and technical metadata (URLs, IDs).
+   */
+  --font-sans:
+    'Hanken Grotesk Variable', 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto,
+    sans-serif;
+  --font-serif: 'Newsreader Variable', 'Newsreader', Georgia, 'Times New Roman', serif;
+  --font-mono:
+    'Spline Sans Mono Variable', 'Spline Sans Mono', ui-monospace, 'SFMono-Regular', Consolas,
+    monospace;
 }
 
 /*
@@ -131,12 +240,16 @@
  */
 html {
   color: var(--color-foreground);
-  background-color: var(--color-background);
+  background-color: var(--color-canvas);
 }
 
 body {
-  background-color: var(--color-background);
+  background-color: var(--color-canvas);
   color: var(--color-foreground);
+  /* Hanken Grotesk is the app's working voice; the type tokens carry the
+   * three-family system (see `:root`). The serif/mono are applied where the
+   * design reserves them (titles, eyebrows, metadata), not globally. */
+  font-family: var(--font-sans);
 }
 
 /*
@@ -175,27 +288,56 @@ hr {
  * both the plain web and embedded-WebView runtimes (see the file header).
  */
 :root[data-color-scheme='dark'] {
-  /* Neutral ramp (mirrored) */
-  --color-neutral-1: #f5f5f5;
-  --color-neutral-2: #dedede;
-  --color-neutral-3: #bebebe;
-  --color-neutral-4: #9e9e9e;
-  --color-neutral-5: #808080;
-  --color-neutral-6: #636363;
-  --color-neutral-7: #484848;
-  --color-neutral-8: #2e2e2e;
-  --color-neutral-9: #161616;
+  /*
+   * Warm near-blacks, never cold grey — dark is a designed theme, not a
+   * dimmed one. The ramp keeps tundra's direction (1 = lightest text,
+   * 9 = darkest fill) so every `--color-neutral-N` consumer flips in
+   * lockstep with the surface tokens below.
+   */
+  --color-neutral-1: #f3e9db; /* primary text */
+  --color-neutral-2: #d8cabb;
+  --color-neutral-3: #b3a294; /* muted text */
+  --color-neutral-4: #b3a294; /* muted — labels, subtitles */
+  --color-neutral-5: #9c8a7c; /* fainter — captions, chevrons */
+  --color-neutral-6: #4a3f37; /* resting field / control border */
+  --color-neutral-7: #3a322b; /* hairline — header, dialog, menu borders */
+  --color-neutral-8: #2b231d; /* row hairline, badge fill, menu hover */
+  --color-neutral-9: #221b16; /* sunken — code, hover fills */
 
-  /* Red ramp (mirrored) */
-  --color-red-1: #ffece9;
-  --color-red-2: #ffccc5;
-  --color-red-3: #ff9890;
-  --color-red-4: #ff5655;
-  --color-red-5: #ee0b2a;
-  --color-red-6: #c20010;
-  --color-red-7: #910006;
-  --color-red-8: #620000;
-  --color-red-9: #380000;
+  /* Surface roles for dark. Canvas is the deepest; cards/menus/dialogs take
+   * the raised surface; inputs sink to the deepest field bg. */
+  --color-canvas: #1a1512;
+  --color-background: #221b16; /* paper/surface — cards, rows, menus */
+  --color-raised: #2b231d;
+  --color-sunken: #2b231d;
+  --color-modal: #221b16;
+  --input-color-background: #14100d; /* deepest field bg */
+  --element-color-border: #4a3f37;
+
+  /* Plum stays the same hex on fills; the rose accent lightens to a dusty
+   * tint for legibility on dark, and the resting/outline borders pick up a
+   * muted plum. */
+  --color-accent: #7e2951;
+  --color-accent-1: #f6e2ec;
+  --color-accent-2: #e8bdd0;
+  --color-accent-3: #d79bb6;
+  --color-accent-4: #c77a9b; /* rose — links, focus, glow */
+  --color-accent-5: #7e2951; /* plum — primary fill */
+  --color-accent-6: #8a3f60; /* accent border — outline btn, focused field */
+  --color-accent-7: #5e3a4a;
+  --color-accent-8: #3a2030;
+  --color-accent-9: #2a1a22;
+
+  /* Danger ramp — a brighter alarm red reads better on near-black. */
+  --color-red-1: #ffd9d7;
+  --color-red-2: #f0a3a0; /* danger badge text */
+  --color-red-3: #ec6b6b;
+  --color-red-4: #e64b4b; /* destructive / revoke */
+  --color-red-5: #e64b4b;
+  --color-red-6: #c93a3a;
+  --color-red-7: #6e2d2f; /* danger badge border */
+  --color-red-8: #4f1f20;
+  --color-red-9: #3c1b1b; /* danger soft fill */
 
   /* Orange ramp (mirrored) */
   --color-orange-1: #ffeee0;
@@ -273,19 +415,208 @@ hr {
   --color-pink-7: #830054;
   --color-pink-8: #5c0038;
   --color-pink-9: #33001c;
-
-  /* Page/surface background. Not part of any ramp in tundra-css
-   * (it's a literal `#fff`), so it needs an explicit dark value;
-   * `--color-foreground` already tracks `--color-neutral-1` and flips
-   * to light automatically. */
-  --color-background: #161616;
 }
 
+/*
+ * Filled controls keep a warm cream label on the plum fill (rather than the
+ * paper surface that light mode borrows), so primary/save buttons stay
+ * legible against the saturated plum on a dark canvas.
+ */
 :root[data-color-scheme='dark'] button.filled,
 :root[data-color-scheme='dark'] input[type='button'].filled,
 :root[data-color-scheme='dark'] input[type='reset'].filled,
 :root[data-color-scheme='dark'] input[type='submit'].filled,
 :root[data-color-scheme='dark'] .button.filled,
 :root[data-color-scheme='dark'] .element-button.filled {
-  --button-color-foreground: #fff;
+  --button-color-foreground: #fbf4e9;
+}
+
+/*
+ * Outline buttons read the plum accent (level 5) for their text+border,
+ * which is too dark to sit on a near-black surface. On dark, repoint the
+ * outline foreground to the dusty-rose accent so the border and label keep
+ * their contrast. Light mode leaves the plum outline as-is.
+ */
+:root[data-color-scheme='dark'] button.outline,
+:root[data-color-scheme='dark'] input[type='button'].outline,
+:root[data-color-scheme='dark'] input[type='reset'].outline,
+:root[data-color-scheme='dark'] input[type='submit'].outline,
+:root[data-color-scheme='dark'] .button.outline,
+:root[data-color-scheme='dark'] .element-button.outline {
+  --button-color-foreground: var(--color-accent-4);
+}
+
+/*
+ * ======================================================================
+ * Component classes the primitives reference but tundra-css does not ship.
+ * ======================================================================
+ *
+ * `StatusBadge`, `Checkbox`, and `RadioGroup` render bare class names
+ * (`status-badge`, `sr-only`, `checkbox-row`, `radio-row`, `radio-group`)
+ * that have no definition in tundra-css or any consuming app — the
+ * components expected the host to supply the layout/skin. The Wildflower
+ * refresh authors them here so the primitives are self-sufficient: badges
+ * get their pill tones, the screen-reader prefix stays hidden, and
+ * checkbox/radio rows get their gap.
+ */
+
+/* Visually-hidden text kept available to assistive tech (the StatusBadge
+ * tone prefix: "Success: ", "Warning: ", "Error: "). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * StatusBadge — a pill with a leading tone dot. The component adds an
+ * `accent-{blue,green,yellow,red}` class for the info/success/warning/danger
+ * tones and nothing for neutral, so the tones are keyed off those classes
+ * with the design's exact light/dark trios (fill / text / border / dot)
+ * rather than the accent ramp (the badge wants a soft tint the ramp can't
+ * spare).
+ */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 9px;
+  border-radius: var(--radius-pill, 999px);
+  font-size: 0.85rem;
+  font-weight: var(--font-weight-3);
+  line-height: 1.2;
+  white-space: nowrap;
+  /* neutral tone (no accent class) */
+  background: #efe7da;
+  color: #3a2e28;
+  border: 1px solid rgba(44, 33, 29, 0.18);
+}
+
+.status-badge::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #6c5b50;
+}
+
+.status-badge.accent-blue {
+  background: #d2e8e5;
+  color: #1f5e57;
+  border-color: #93c4be;
+}
+.status-badge.accent-blue::before {
+  background: #2f867d;
+}
+
+.status-badge.accent-green {
+  background: #e6efcc;
+  color: #445c1b;
+  border-color: #abc173;
+}
+.status-badge.accent-green::before {
+  background: #5f7a28;
+}
+
+.status-badge.accent-yellow {
+  background: #fbe4b8;
+  color: #8a5210;
+  border-color: #eaba5b;
+}
+.status-badge.accent-yellow::before {
+  background: #e0921a;
+}
+
+.status-badge.accent-red {
+  background: #f7d7d6;
+  color: #9f2026;
+  border-color: #e89a9a;
+}
+.status-badge.accent-red::before {
+  background: #cb2c2c;
+}
+
+/* Dark-mode tones — warm-tinted fills, lighter text/dots. */
+:root[data-color-scheme='dark'] .status-badge {
+  background: #2b231d;
+  color: #d8cabb;
+  border-color: rgba(247, 236, 221, 0.12);
+}
+:root[data-color-scheme='dark'] .status-badge::before {
+  background: #b3a294;
+}
+:root[data-color-scheme='dark'] .status-badge.accent-blue {
+  background: #173a37;
+  color: #7fcfc4;
+  border-color: #2c5b56;
+}
+:root[data-color-scheme='dark'] .status-badge.accent-blue::before {
+  background: #46b3a6;
+}
+:root[data-color-scheme='dark'] .status-badge.accent-green {
+  background: #2c3417;
+  color: #a9c86a;
+  border-color: #495426;
+}
+:root[data-color-scheme='dark'] .status-badge.accent-green::before {
+  background: #8fae4f;
+}
+:root[data-color-scheme='dark'] .status-badge.accent-yellow {
+  background: #3a2e12;
+  color: #e0bb6b;
+  border-color: #5a481f;
+}
+:root[data-color-scheme='dark'] .status-badge.accent-yellow::before {
+  background: #e0921a;
+}
+:root[data-color-scheme='dark'] .status-badge.accent-red {
+  background: #3c1b1b;
+  color: #f0a3a0;
+  border-color: #6e2d2f;
+}
+:root[data-color-scheme='dark'] .status-badge.accent-red::before {
+  background: #e64b4b;
+}
+
+/*
+ * Checkbox / radio row layout — box and label on one line with a comfortable
+ * gap (the components render `.checkbox-row` / `.radio-row` wrappers that
+ * tundra-css leaves unstyled, so the box and label would otherwise sit
+ * flush). `.radio-group` resets the `<fieldset>` and stacks its rows.
+ */
+.checkbox-row,
+.radio-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+
+/*
+ * Destructive fill keeps a near-white label on the alarm red (rather than
+ * the cream paper surface that the generic filled rule borrows from
+ * `--color-background`), matching the delete dialog and revoke buttons.
+ */
+.button.filled.accent-red,
+button.filled.accent-red,
+input[type='button'].filled.accent-red,
+input[type='submit'].filled.accent-red {
+  --button-color-foreground: #fff3ef;
 }

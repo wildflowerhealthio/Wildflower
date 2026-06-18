@@ -53,16 +53,23 @@ const PageHeader = ({
   <header className={styles['page-header']}>
     {backHref !== undefined ? (
       <Link to={backHref} className={styles['page-header__back']} aria-label={backLabel}>
-        &#x2329;
+        <span aria-hidden="true" className={styles['page-header__back-chevron']}>
+          &#x2039;
+        </span>
+        {backLabel}
       </Link>
     ) : null}
-    <div className={styles['page-header__heading']}>
-      <h1 className={cn(styles['page-header__title'], 'text-heading-5')}>{title}</h1>
-      {subtitle !== undefined ? (
-        <p className={cn(styles['page-header__subtitle'], 'text-body-3')}>{subtitle}</p>
+    <div className={styles['page-header__main']}>
+      <div className={styles['page-header__heading']}>
+        <h1 className={styles['page-header__title']}>{title}</h1>
+        {subtitle !== undefined ? (
+          <p className={cn(styles['page-header__subtitle'], 'text-body-3')}>{subtitle}</p>
+        ) : null}
+      </div>
+      {actions !== undefined ? (
+        <div className={styles['page-header__actions']}>{actions}</div>
       ) : null}
     </div>
-    {actions !== undefined ? <div className={styles['page-header__actions']}>{actions}</div> : null}
   </header>
 )
 
