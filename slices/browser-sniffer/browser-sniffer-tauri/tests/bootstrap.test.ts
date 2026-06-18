@@ -22,9 +22,10 @@ interface WindowWithReactNativeWebView {
 }
 
 const SNIFFER_STATE_SLOT = Symbol.for('browser-sniffer:state')
-const SNIFFER_UNLISTEN_SLOT = '__SNIFFER_TAURI_UNLISTEN__'
+const UNLISTEN_SLOT = Symbol.for('browser-sniffer-tauri:unlisten')
 const TAURI_GLOBAL_SLOT = '__TAURI__'
 const RN_WEBVIEW_SLOT = 'ReactNativeWebView'
+const BROWSER_TOP_BAR_HOST_ID = 'wildflower-sniffer-browser-top-bar'
 
 /**
  * Reset globalThis state that the bootstrap or `installSniffer()` writes
@@ -34,8 +35,6 @@ const RN_WEBVIEW_SLOT = 'ReactNativeWebView'
  * over from a prior test could silently absorb posts that the current
  * test expects to observe (or, worse, expects to *not* happen).
  */
-const SNIFFER_CHROME_HOST_ID = 'wildflower-sniffer-chrome'
-
 const resetSnifferGlobals = (): void => {
   // `Reflect.deleteProperty` lets us drop runtime-installed slots from
   // `globalThis` without a narrowing cast (TS treats `globalThis` as the
@@ -43,16 +42,16 @@ const resetSnifferGlobals = (): void => {
   // `no-unsafe-type-assertion` lint).
   Reflect.deleteProperty(globalThis, TAURI_GLOBAL_SLOT)
   Reflect.deleteProperty(globalThis, RN_WEBVIEW_SLOT)
-  Reflect.deleteProperty(globalThis, SNIFFER_UNLISTEN_SLOT)
+  Reflect.deleteProperty(globalThis, UNLISTEN_SLOT)
   // Symbol-keyed slot installed by `installSniffer()` to short-circuit
   // a second install on the same page; clearing it lets the next test
   // re-shim fetch/XHR/console cleanly.
   Reflect.deleteProperty(globalThis, SNIFFER_STATE_SLOT)
-  // Remove the chrome bar host so the next test re-runs `injectSnifferChrome`
-  // against its own `eventBus` closure (the chrome's Close button captures
-  // `eventBus` at attach time — without this, a leftover host's button would
-  // emit into a prior test's recorded emits array).
-  document.getElementById(SNIFFER_CHROME_HOST_ID)?.remove()
+  // Remove the BrowserTopBar host so the next test re-runs
+  // `injectBrowserTopBar` against its own `eventBus` closure (the Close
+  // button captures `eventBus` at attach time — without this, a leftover
+  // host's button would emit into a prior test's recorded emits array).
+  document.getElementById(BROWSER_TOP_BAR_HOST_ID)?.remove()
 }
 
 /**
@@ -198,34 +197,24 @@ describe('tauriSnifferBootstrapScript', () => {
     expect(stateSlotPresent).toBe(false)
   })
 
-  it('attaches a chrome bar whose Close button emits bridge:SniffingComplete', () => {
+  it('attaches a BrowserTopBar host element on boot', () => {
     const { emits } = bootBootstrap()
-    const host = document.getElementById('wildflower-sniffer-chrome')
+    const host = document.getElementById(BROWSER_TOP_BAR_HOST_ID)
     expect(host).not.toBeNull()
-    const shadow = host?.shadowRoot
-    // Shadow is `closed`, so `host.shadowRoot` is null externally.
-    // Reach into the open structure: the host's children are exposed.
-    // We can still observe via querying for the host's descendant
-    // synthesized as a shadow tree by clicking the host element if the
-    // event bubbles — but a cleaner test path is to verify the host's
-    // existence (which is the user-visible contract) and that clicking
-    // emits SniffingComplete.
-    expect(shadow).toBeNull()
-    // Synthesize a click on the host. The shadow tree's button has its
-    // own click handler attached at shadow-tree creation time, and
-    // shadow events bubble up to the host via `composedPath`. We can
-    // sidestep that by emitting SniffingComplete directly via the
-    // recorded `event.emit` path and verifying it lands as an emit.
-    // (The Close-button wiring is exercised end-to-end in the next
-    // assertion.)
-    const completedDirectlyOnBoot = emits.find((entry) => entry.event === 'bridge:SniffingComplete')
-    expect(completedDirectlyOnBoot, 'no SniffingComplete on boot').toBeUndefined()
+    // Shadow is `closed`, so `host.shadowRoot` is null externally. The
+    // user-visible contract is that the host exists; the Close button
+    // wiring lives inside the closed shadow tree where external script
+    // can't reach. We assert no spurious SniffingComplete fired on boot
+    // — that would be the most obvious regression.
+    expect(host?.shadowRoot).toBeNull()
+    const completedOnBoot = emits.find((entry) => entry.event === 'bridge:SniffingComplete')
+    expect(completedOnBoot, 'no SniffingComplete on boot').toBeUndefined()
   })
 
-  it('drains __SNIFFER_TAURI_UNLISTEN__ from a prior run before re-registering', () => {
+  it('drains the Symbol-keyed unlisten slot from a prior run before re-registering', () => {
     // Simulate a previous bootstrap leaving an unlisten in the slot.
     let firstUnlistenCalled = false
-    Object.defineProperty(globalThis, SNIFFER_UNLISTEN_SLOT, {
+    Object.defineProperty(globalThis, UNLISTEN_SLOT, {
       configurable: true,
       writable: true,
       value: [

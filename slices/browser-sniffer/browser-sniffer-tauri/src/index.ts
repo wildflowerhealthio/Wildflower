@@ -7,7 +7,7 @@ import { tauriSnifferBootstrapScript } from './tauri-bootstrap.generated.ts'
  * and hands them to `WebviewBuilder::initialization_script(...)` — this
  * TS export exists for tests, devtools, and any non-Rust consumer.
  *
- * The bundle does three things, in order, conditional on
+ * The bundle does four things, in order, conditional on
  * `window.__TAURI__.event` being present:
  *   1. Replaces `window.ReactNativeWebView.postMessage` with a Tauri
  *      `event.emit('bridge:{tag}', payload)` shim — the only outbound
@@ -16,7 +16,10 @@ import { tauriSnifferBootstrapScript } from './tauri-bootstrap.generated.ts'
  *      handlers that dispatch synthetic `window` `message` events with
  *      `source: null` — the channel the sniffer's host-message handler
  *      reads.
- *   3. Invokes `installSniffer()`.
+ *   3. Injects an in-page `BrowserTopBar` (closed shadow DOM, Close
+ *      button + URL label) so the sniffer webview reads as a
+ *      sub-context on iOS where there's no native browser chrome.
+ *   4. Invokes `installSniffer()`.
  *
  * When `__TAURI__` is absent the whole shim no-ops (no fetch/XHR/console
  * wrapping) — the bootstrap has nowhere to send sniffer traffic, so

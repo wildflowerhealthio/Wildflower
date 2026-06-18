@@ -50,14 +50,22 @@ interface SnifferWindowExtensions {
     postMessage(data: string): void
   }
   __TAURI__?: TauriGlobals
-  // Stash of pending unlisten functions registered by the previous run
-  // of this script. The init script re-runs on every navigation inside
-  // the sniffer webview, so without cleanup the Rust-side listener
-  // registry would grow unbounded — each `event.listen(...)` allocates
-  // a fresh listener ID and the old IDs would dispatch into the new
-  // page's JS context where they no longer resolve. We drain this
-  // slot before re-registering.
-  __SNIFFER_TAURI_UNLISTEN__?: Array<UnlistenFn | Promise<UnlistenFn>>
+}
+
+// Symbol-keyed slot for the pending unlisten functions registered by
+// the previous run of this script. The init script re-runs on every
+// navigation inside the sniffer webview, so without cleanup the
+// Rust-side listener registry would grow unbounded — each
+// `event.listen(...)` allocates a fresh listener ID and the old IDs
+// would dispatch into the new page's JS context where they no longer
+// resolve. We drain this slot before re-registering. `Symbol.for`
+// keeps slots we own off the global string-key namespace where they
+// could collide with anything the page declares.
+const UNLISTEN_SLOT = Symbol.for('browser-sniffer-tauri:unlisten')
+
+type UnlistenStash = Array<UnlistenFn | Promise<UnlistenFn>>
+type WindowWithUnlistenSlot = typeof globalThis & {
+  [UNLISTEN_SLOT]?: UnlistenStash
 }
 
 const win = globalThis as typeof globalThis & SnifferWindowExtensions
@@ -69,16 +77,15 @@ if (event !== undefined) {
   // `event.listen` returns Promise<UnlistenFn>; the previous run may have
   // stashed promises that haven't resolved yet (the `await`-less style
   // we use below). Resolve-then-call handles both shapes.
-  // oxlint-disable-next-line no-underscore-dangle
-  const priorUnlistens = win.__SNIFFER_TAURI_UNLISTEN__ ?? []
+  const slot = win as WindowWithUnlistenSlot
+  const priorUnlistens = slot[UNLISTEN_SLOT] ?? []
   for (const entry of priorUnlistens) {
     void Promise.resolve(entry).then((unlisten) => {
       unlisten()
     })
   }
-  const pendingUnlistens: Array<UnlistenFn | Promise<UnlistenFn>> = []
-  // oxlint-disable-next-line no-underscore-dangle
-  win.__SNIFFER_TAURI_UNLISTEN__ = pendingUnlistens
+  const pendingUnlistens: UnlistenStash = []
+  slot[UNLISTEN_SLOT] = pendingUnlistens
 
   // Outbound: replace `window.ReactNativeWebView.postMessage` (the
   // sniffer's only outbound channel) with a Tauri-event emitter. The
@@ -119,13 +126,13 @@ if (event !== undefined) {
     pendingUnlistens.push(promise)
   }
 
-  // A persistent in-page chrome bar so the sniffer reads as a
-  // sub-context on platforms (notably iOS) where a Tauri WebviewWindow
-  // presents as a full-screen native screen with no visible browser
-  // chrome. See `injectSnifferChrome` for the design constraints —
-  // shadow-DOM isolation, JS-style mutations (CSP-safe), self-healing
-  // against pages that strip foreign DOM.
-  injectSnifferChrome(event)
+  // A persistent in-page top bar so the sniffer reads as a sub-context
+  // on platforms (notably iOS) where a Tauri WebviewWindow presents as
+  // a full-screen native screen with no visible browser chrome. See
+  // `injectBrowserTopBar` for the design constraints — shadow-DOM
+  // isolation, JS-style mutations (CSP-safe), self-healing against
+  // pages that strip foreign DOM.
+  injectBrowserTopBar(event)
 
   // Without a working Tauri event bus the bootstrap can't carry any
   // sniffer traffic — gating `installSniffer()` here keeps an arbitrary
@@ -134,16 +141,20 @@ if (event !== undefined) {
 }
 
 /**
- * Inject a fixed-position chrome bar at the top of the page with a
- * Close button (which emits `bridge:SniffingComplete`) and the current
- * page URL. Designed for arbitrary third-party pages — see the
- * Architecture Explanation doc for the design constraints (CSP, page
- * CSS clobbering, iOS safe-area, etc.).
+ * Inject a fixed-position top bar at the top of the page with a Close
+ * button (which emits `bridge:SniffingComplete`) and the current page
+ * URL. It looks like the top bar of a browser, hence the name — the
+ * sniffer webview itself has no native browser chrome on mobile, so
+ * this is the user's only "I'm somewhere else, I can dismiss" signal.
+ *
+ * Designed for arbitrary third-party pages — see the Architecture
+ * Explanation doc for the design constraints (CSP, page CSS clobbering,
+ * iOS safe-area, etc.).
  *
  * Returns nothing — best-effort, never throws into the page.
  */
-function injectSnifferChrome(eventBus: TauriEventApi): void {
-  const HOST_ID = 'wildflower-sniffer-chrome'
+function injectBrowserTopBar(eventBus: TauriEventApi): void {
+  const HOST_ID = 'wildflower-sniffer-browser-top-bar'
   const doc = document
   // If a prior init-script pass already attached a host, reuse it —
   // skips the shadow-DOM cost on re-injection.
