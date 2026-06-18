@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use gatekeeper_rust::bridge::GatekeeperHostToWeb;
 use serde::Deserialize;
-use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT};
+use shared_structures_rust::bridge::BRIDGE_EVENT;
 use tauri::{AppHandle, Emitter, Listener, Manager};
 use tauri_plugin_log::log;
 use tokio::sync::{watch, Notify};
@@ -28,6 +28,20 @@ const MAIN_WINDOW_LABEL: &str = "main";
 struct LogMessage {
     level: LogLevel,
     payload: Vec<serde_json::Value>,
+}
+
+/// Inbound bridge messages this listener acts on, decoded in one pass.
+/// Unrecognized tags (host→web echoes, sibling slices' web→host traffic)
+/// fall through to `Other` and are dropped. The `__Ready` literal is
+/// pinned against the TS convention by `tag_literals_match_the_ts_convention`.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "_tag")]
+enum InboundBridgeMessage {
+    #[serde(rename = "__Ready")]
+    Ready,
+    Log(LogMessage),
+    #[serde(other)]
+    Other,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -257,15 +271,10 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     });
     let mut token_rx = token_rx;
 
-    // Cross-process tag-uniqueness aid: the bridge channel is shared
-    // with every other listener (the React transport, the sniffer
-    // bootstrap, and `browser-sniffer-tauri-rust`). There is no
-    // automated guard against a tag colliding across listeners, so log
-    // this crate's known tag set at attach time — grep the boot log to
-    // cross-check what each process is dispatching on. See
-    // `global/effect-messaging/effect-messaging-tauri/README.md`
-    // ("Tag uniqueness across processes — manual discipline") for the
-    // procedure when adding a new tag.
+    // The bridge channel is shared across listeners with no automated
+    // cross-process tag guard; log this crate's tag set at attach time so
+    // the boot log shows who dispatches what. See the effect-messaging-tauri
+    // README ("Tag uniqueness across processes").
     log::info!(
         "[bridge] listening on '{BRIDGE_EVENT}' for tags: [{READY_TAG}, {LOG_TAG}]"
     );
@@ -274,30 +283,20 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     {
         let ready = Arc::clone(&ready);
         app.listen(BRIDGE_EVENT, move |event| {
-            let payload = event.payload();
-            let tag = match serde_json::from_str::<BridgeEnvelope>(payload) {
-                Ok(envelope) => envelope.tag,
+            // One parse routes by `_tag` and decodes the body; tags we
+            // don't own (sibling crates' traffic, host→web echoes) land on
+            // `Other` and are dropped.
+            match serde_json::from_str::<InboundBridgeMessage>(event.payload()) {
+                Ok(InboundBridgeMessage::Ready) => ready.notify_one(),
+                Ok(InboundBridgeMessage::Log(message)) => log::log!(
+                    message.level.as_log_level(),
+                    "[webview] {}",
+                    format_log_payload(&message.payload)
+                ),
+                Ok(InboundBridgeMessage::Other) => {}
                 Err(error) => {
                     log::warn!("[bridge] undecodable bridge payload dropped: {error}");
-                    return;
                 }
-            };
-            match tag.as_str() {
-                READY_TAG => ready.notify_one(),
-                LOG_TAG => match serde_json::from_str::<LogMessage>(payload) {
-                    Ok(message) => log::log!(
-                        message.level.as_log_level(),
-                        "[webview] {}",
-                        format_log_payload(&message.payload)
-                    ),
-                    Err(error) => {
-                        log::warn!("[bridge] undecodable Log payload dropped: {error}");
-                    }
-                },
-                // Other tags travel through the same channel but aren't
-                // for us — the browser-sniffer crate's listener picks up
-                // its tags, and host→web emits echo back here too.
-                _ => {}
             }
         });
     }

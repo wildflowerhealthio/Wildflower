@@ -18,43 +18,29 @@ import type { JsonValue } from 'kitchen-sink/schema'
 /**
  * Browser-side sniffer installed into an arbitrary third-party page.
  *
- * The injected JS bundle is produced ahead of time by
- * `scripts/build-tauri-bootstrap.mts`, which esbuild-bundles this
- * function as part of a self-contained IIFE — meaning every helper,
- * every runtime reference, and every cross-call piece of state must
- * live *inside* the function body. Top-level value imports or closures
- * over module scope would resolve to nothing in the injected page.
- * Type-only imports (the message body schemas, `TauriEventApi`) are
- * erased at compile time and so do survive.
+ * esbuild bundles this function into a self-contained IIFE
+ * (`scripts/build-tauri-bootstrap.mts`), so every helper, reference, and
+ * piece of state must live *inside* the function body — top-level value
+ * imports or module-scope closures resolve to nothing in the injected
+ * page. Type-only imports are erased and so survive.
  *
  * Wire format:
  *   - Emits `Log`, `ResponseStart`, `ResponseData`, `ResponseFinished`,
- *     `RequestError`, `Cancelled`, `PageLoaded` as structured payloads
- *     on the single multiplexed `BRIDGE_EVENT` Tauri channel; the
- *     message's `_tag` field is the dispatch discriminator on the
- *     receiving side. `void eventBus.emit(...)` is fire-and-forget
- *     from this module — outbound ordering across a synchronous burst
- *     is enforced by the wrapping `makeFilteringEventBus`'s
- *     Promise-chain serializer (see
- *     `filter-tauri-internal.ts`). Tauri only guarantees FIFO within a
- *     single event name, so the single-channel scheme is what keeps
- *     `ResponseData` chunks (~64KB each) reassembling in order on the
- *     host side.
- *   - Listens for Host→Web messages on the same `BRIDGE_EVENT` channel
- *     and demuxes by `payload._tag` (`CancelSnifferRequest` / `Click`).
- *     No window `message`-event indirection, no `source === null`
- *     guard: a Tauri listener can only be invoked by Tauri's IPC, so
- *     page scripts can't spoof inbound messages.
+ *     `RequestError`, `Cancelled`, `PageLoaded` on the multiplexed
+ *     `BRIDGE_EVENT` channel (discriminated by `_tag`). Emits are
+ *     fire-and-forget here; the wrapping `makeFilteringEventBus` serializes
+ *     them to keep the ~64KB `ResponseData` chunks FIFO (see
+ *     `filter-tauri-internal.ts`).
+ *   - Listens for Host→Web messages on the same channel, demuxing by
+ *     `_tag` (`CancelSnifferRequest` / `Click`). No `message`-event
+ *     indirection or `source === null` guard: only Tauri IPC can invoke a
+ *     Tauri listener, so page scripts can't spoof inbound messages.
  *
- * Idempotent: a single `Symbol.for('browser-sniffer:state')` slot on
- * `window` stashes the captured native references, tracker state, and
- * pending unlisten functions. Re-injecting on the same page finds the
- * slot, drains the previous-run unlistens, and exits early. **Caveat**:
- * if a host re-injects a *newer version* of this script (host app
- * upgraded mid-session) the early-return uses the stale state and the
- * new logic never installs. The slot carries no version tag; v1
- * deliberately accepts this limitation. Test coverage in
- * `tests/install-sniffer.test.ts`.
+ * Idempotent: a `Symbol.for('browser-sniffer:state')` slot on `window`
+ * holds the captured natives, tracker state, and pending unlistens;
+ * re-injection drains the prior unlistens and exits early. Caveat: a
+ * re-injected *newer* script reuses the stale state and never installs —
+ * v1 accepts this (no version tag). Tests: `tests/install-sniffer.test.ts`.
  */
 
 /** Wire form posted Web→Host: JSON-stringifiable, base64 `data`. */
@@ -93,13 +79,10 @@ interface SnifferState {
 const SNIFFER_STATE_KEY: symbol = Symbol.for('browser-sniffer:state')
 
 /**
- * Tauri event name for the multiplexed bridge channel. Hardcoded
- * (rather than imported from `effect-messaging-tauri`) so the
- * sniffer's bundled IIFE keeps its own copy and the
- * `bootstrap.test.ts` drift guard catches divergence between the
- * bundled bootstrap and the canonical TS constant. Mirrors
- * `BRIDGE_EVENT` in
- * `global/effect-messaging/effect-messaging-tauri/src/event-names.ts`.
+ * Tauri event name for the multiplexed bridge channel. Hardcoded rather
+ * than imported from `effect-messaging-tauri` because the bundled IIFE
+ * can't pull in workspace modules; `bootstrap.test.ts` guards it against
+ * the canonical `BRIDGE_EVENT` in event-names.ts.
  */
 const BRIDGE_EVENT = 'bridge'
 
@@ -271,14 +254,10 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     logInfo(message)
   }
 
-  // Tauri's own IPC transport (`@tauri-apps/api`) issues
-  // `fetch('ipc://localhost/...')` from this same JS context, so without
-  // a guard every host command/event gets re-sniffed and forwarded back
-  // as a `ResponseStart`/`RequestError` pair pointing at the internal IPC
-  // URL — re-entering the bridge and flooding the collector with
-  // untracked ids. Skipping these URLs at the shim source (rather than
-  // emitting then filtering downstream) keeps the wire clean; the fetch
-  // itself still runs, we just hand straight to native and emit nothing.
+  // Tauri's own IPC transport fetches `ipc://localhost/...` from this
+  // same JS context; without a guard every host call gets re-sniffed and
+  // forwarded back, re-entering the bridge. Skip these at the source — the
+  // fetch still runs natively, we just emit nothing.
   const TAURI_INTERNAL_HTTP_ORIGINS = [
     'http://ipc.localhost',
     'https://ipc.localhost',
@@ -607,62 +586,34 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     nativeXHRSend.call(this, body ?? null)
   } as XMLHttpRequest['send']
 
-  // Page content capture on window-level `load`. `PageLoaded` is now
-  // just a notification (`url`, `pageContentId`); the DOM body streams
-  // through the standard `ResponseStart`/`ResponseData`/`ResponseFinished`
-  // triple. Chunking the body (vs. a single multi-MB emit) keeps
-  // per-message size bounded so the host's IPC transport doesn't have
-  // to special-case large payloads.
-  //
-  // `Element.outerHTML` is defined on every `Element` (not just
-  // `HTMLElement`), so XML-content documents (e.g. RSS) also serialise,
-  // just with HTML rules. Out of scope: DOCTYPE / processing
-  // instructions / XML declarations.
+  // Page-content capture on window `load`. `PageLoaded` is just a
+  // notification; the DOM body (`Element.outerHTML`, so XML serialises
+  // too) streams through the standard Response triple, chunked to keep
+  // per-message size bounded.
   const PAGE_CONTENT_CHUNK_BYTES = 65536
-  // Some browsers — Safari most reliably for `application/json` responses
-  // — fire `load` once the response is downloaded but build the
-  // `<html><body><pre>{json}</pre></body></html>` viewer wrapper
-  // asynchronously over the following frame(s). Capturing
-  // `documentElement.outerHTML` synchronously inside the `load` listener
-  // then sees an empty document and emits a zero-byte page snapshot.
-  // The retry below re-schedules on `requestAnimationFrame` (twice — one
-  // to flush layout, one to land after the viewer's first paint) while
-  // the document still looks unbuilt. The `attempt` counter caps retries
-  // so a genuinely empty document still terminates.
   const MAX_PAGE_LOAD_RETRIES = 8
-  // Content types WebKit renders into a `<body><pre>…</pre></body>`
-  // viewer a frame or two *after* `load` fires. Only these force the
-  // `<pre>`-presence wait: XML is shown as a tree (no `<pre>`) and HTML
-  // is its own content, so neither should hold up the snapshot.
+  // WebKit builds its JSON viewer (`<pre>{json}</pre>`) a frame or two
+  // *after* `load` fires for these content types, so a synchronous
+  // snapshot captures an empty shell — wait for the `<pre>`. XML (tree)
+  // and HTML (its own content) snapshot immediately.
   const JSON_VIEWER_CONTENT_TYPES: ReadonlySet<string> = new Set([
     'application/json',
     'application/fhir+json',
     'application/ld+json',
   ])
-  // `pageLoadHandler` is registered both as a `load` event listener
-  // (called with the `Event` object as its first arg) and self-invoked
-  // for the retry path (called with a numeric `attempt`). The typed
-  // union and the explicit `typeof` narrow lets one function serve
-  // both call sites without a wrapper that would shadow the symbol
-  // `resetShims` cleans up.
+  // At most one snapshot per installed page — guards a re-fired `load`
+  // and a second retry chain from double-emitting. Reset per page by
+  // re-injection rebuilding the closure.
+  let pageSnapshotEmitted = false
+  // Serves both the `load` listener (passed the `Event`) and its own rAF
+  // retry (passed a numeric `attempt`); the `typeof` narrow lets the one
+  // function `resetShims` unregisters cover both.
   const pageLoadHandler = (attemptOrEvent: number | Event = 0): void => {
     const attempt = typeof attemptOrEvent === 'number' ? attemptOrEvent : 0
-    // The only case that needs a deferred snapshot is the JSON-family
-    // viewer: WebKit builds its `<pre>{json}</pre>` body a frame or two
-    // after `load` fires, so a synchronous snapshot would capture an
-    // empty shell. HTML and XML are fully parsed by the time `load`
-    // fires, so they snapshot immediately — judging readiness off the
-    // live DOM (`querySelector('pre')`) rather than a serialized string
-    // also means a multi-MB document isn't re-serialized on every retry
-    // attempt; `outerHTML` is taken once below, only when we commit to
-    // emitting.
-    //
-    // `document.contentType` is a string per the DOM spec; the optional
-    // cast guards jsdom edge cases where it has been shadowed by a
-    // property descriptor. Strip any media-type parameter so a
-    // non-conformant engine reporting `application/json; charset=utf-8`
-    // still matches the viewer set (the spec essence is bare + lowercase,
-    // but WebKit has not always honored that for the JSON viewer).
+    // Readiness is judged off the live DOM so a multi-MB document isn't
+    // re-serialized each retry. The content-type parameter is stripped
+    // (`application/json; charset=utf-8`) because WebKit hasn't always
+    // reported the bare spec essence.
     // oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- intentional runtime guard
     const contentType = (String(document.contentType ?? '').split(';')[0] ?? '')
       .trim()
@@ -681,6 +632,8 @@ const installSniffer = function (eventBus: TauriEventApi): void {
       })
       return
     }
+    if (pageSnapshotEmitted) return
+    pageSnapshotEmitted = true
     const content = document.documentElement.outerHTML
     const pageContentId = makeRequestId()
     const bytes = utf8.encode(content)
@@ -706,22 +659,15 @@ const installSniffer = function (eventBus: TauriEventApi): void {
   }
   win.addEventListener('load', pageLoadHandler)
 
-  // Host→Web bridge messages arrive on the single multiplexed
-  // `BRIDGE_EVENT` Tauri channel; demux by the payload's `_tag` field.
-  // Tags this listener doesn't recognize (other slices' host→web
-  // traffic, our own outbound echo from the same broadcast bus, etc.)
-  // are dropped silently. Tauri's IPC is the only thing that can
-  // invoke this listener, so page scripts can't spoof inbound
-  // messages.
+  // Host→Web messages arrive on the multiplexed `BRIDGE_EVENT` channel;
+  // demux by `_tag`. Unrecognized tags (other slices' traffic, our own
+  // echo from the broadcast bus) are dropped. Only Tauri IPC can invoke
+  // this listener, so page scripts can't spoof inbound messages.
   //
-  // On a mid-stream cancel we emit `Cancelled` as the terminal
-  // observation so the host can release per-id state without
-  // waiting for a `ResponseFinished` that won't come.
-  //
-  // `Click` runs `document.querySelector(querySelector)?.click()` —
-  // best-effort, no feedback on a missing element (the host
-  // typically retries by waiting for the next `PageLoaded` to land
-  // before re-sending).
+  // `CancelSnifferRequest` emits a terminal `Cancelled` so the host can
+  // release per-id state without a `ResponseFinished` that won't come.
+  // `Click` is best-effort `querySelector(...)?.click()` — no feedback on
+  // a miss (the host retries after the next `PageLoaded`).
   const unlistens: Array<(() => void) | Promise<() => void>> = []
   unlistens.push(
     eventBus.listen(BRIDGE_EVENT, ({ payload }) => {

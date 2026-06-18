@@ -1,15 +1,11 @@
-// Entry point used by `scripts/build-tauri-bootstrap.mts` to produce
-// the self-invoking IIFE injected into Tauri sniffer webviews via
-// `WebviewWindowBuilder::initialization_script(...)`. The bundle
-// looks up Tauri's event API, injects an in-page `BrowserTopBar` (a
-// fixed-position chrome-like bar with a Close button), and hands the
-// event API to `installSniffer` which wires the fetch/XHR/console
-// shims directly onto the single multiplexed `BRIDGE_EVENT` channel.
+// Entry point bundled by `scripts/build-tauri-bootstrap.mts` into the
+// IIFE injected into Tauri sniffer webviews via
+// `initialization_script(...)`. Looks up Tauri's event API, injects the
+// in-page `BrowserTopBar`, and hands the bus to `installSniffer`.
 //
-// `window.__TAURI__` is present inside the sniffer webview because
-// the app's `tauri.conf.json` sets `app.withGlobalTauri: true`, which
-// Tauri codegen prepends to every webview's init-script list at
-// runtime — no per-builder opt-in is needed.
+// `window.__TAURI__` is present because `tauri.conf.json` sets
+// `app.withGlobalTauri: true`, which Tauri prepends to every webview's
+// init scripts at runtime — no per-builder opt-in needed.
 
 import type { TauriEventApi } from 'effect-messaging-tauri'
 
@@ -51,9 +47,9 @@ if (event !== undefined) {
 
 /**
  * Inject a fixed-position top bar at the top of the page with a Close
- * button (which emits `SniffingComplete` on the bridge channel) and
- * the current page
- * URL. It looks like the top bar of a browser, hence the name — the
+ * button (which emits `SniffingComplete` on the bridge channel) and the
+ * current page URL. It looks like the top bar of a browser, hence the
+ * name — the
  * sniffer webview itself has no native browser chrome on mobile, so
  * this is the user's only "I'm somewhere else, I can dismiss" signal.
  *

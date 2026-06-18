@@ -1,36 +1,18 @@
 /**
- * Tauri event name for the single multiplexed bridge channel. Every
- * wired bridge — across both directions — emits and listens on this
- * single name; the discriminator is the `_tag` field inside the
- * payload, which every bridge message already carries by construction.
- *
- * @remarks
- * The per-tag scheme (`bridge:{tag}`) was retired because Tauri's event
- * bus only guarantees FIFO *within* a single event name. With a tag per
- * channel, a streaming sender's `ResponseFinished` could land at the
- * receiver before the in-flight `ResponseData` chunks, because each
- * cross-tag delivery is its own `webview.eval(__TAURI_INTERNALS__.runCallback(...))`
- * injection on the receiver and Tauri makes no inter-injection ordering
- * promise. One channel = strict FIFO across every tag the protocol
- * uses, which is what the sniffer's chunked page-content stream relies
- * on.
- *
- * The Rust host must listen/emit with the same literal; both sides pin
- * it with a test (TS: `event-names.test.ts`; Rust: the host crate's
- * bridge module) so drift breaks a build instead of a runtime
- * handshake. Tauri accepts alphanumeric event names plus `-`, `/`, `:`,
- * `_`; the bare `bridge` literal is well within that.
+ * Tauri event name for the single multiplexed bridge channel: every
+ * wired bridge, both directions, emits and listens here, discriminated
+ * by the payload's `_tag`. One channel rather than per-tag `bridge:{tag}`
+ * because Tauri only guarantees FIFO within one event name — see the
+ * package README ("Why one channel and not per-tag"). Rust hosts pin the
+ * same literal; `event-names.test.ts` is the drift guard.
  */
 const BRIDGE_EVENT = 'bridge'
 
 /**
- * Web→host readiness tag. The web side emits a payload with this
- * `_tag` once every inbound listener is attached; the host's bridge
- * listener watches for this tag and replies with its boot-time state
- * (e.g. the gatekeeper's `AuthTokenIssued`). Same `__Ready` literal as
- * effect-messaging-core's transport handshake — kept as a tag rather
- * than its own event name so it travels through the same single
- * channel as everything else.
+ * Web→host readiness tag, emitted once every inbound listener is
+ * attached; the host replies with its boot-time state. Same `__Ready`
+ * literal as effect-messaging-core's handshake, kept as a tag so it
+ * rides the one shared channel.
  */
 const READY_TAG = '__Ready'
 

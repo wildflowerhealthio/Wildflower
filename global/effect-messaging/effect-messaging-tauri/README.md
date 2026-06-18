@@ -44,7 +44,7 @@ uses, which the sniffer's chunked page-content stream relies on.
 ## Tag uniqueness across processes — manual discipline
 
 `makeTauriTransport` runs `assertUniqueTags` over the bridges it is
-handed, which catches collisions *within* a single transport instance.
+handed, which catches collisions _within_ a single transport instance.
 The `BRIDGE_EVENT` channel is shared with every other listener in the
 app (the main TS transport, the raw sniffer webview's bootstrap, every
 Rust `app.listen(BRIDGE_EVENT, …)` host crate). A new tag that

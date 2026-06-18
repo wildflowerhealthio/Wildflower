@@ -3,33 +3,22 @@ import type { TauriEventApi } from 'effect-messaging-tauri'
 import { BRIDGE_EVENT } from './install-sniffer.ts'
 
 /**
- * Outbound filter + serializer for the sniffer's multiplexed
- * `BRIDGE_EVENT` Tauri channel. Wraps a {@link TauriEventApi} so:
+ * Outbound wrapper for the sniffer's multiplexed `BRIDGE_EVENT` channel.
+ * Wraps a {@link TauriEventApi} to:
  *
- *   1. Tauri's own IPC-fallback `console.warn` ("IPC custom protocol
- *      failed …") — captured by the sniffer's console shim and re-posted
- *      as a `Log` — is dropped. It fires once per IPC call until WebKit's
- *      `customProtocolIpcFailed` flips sticky; the per-call spam is noise,
- *      not a page observation.
- *   2. Outbound emits are serialized on a Promise chain. Tauri's macOS
- *      IPC transport falls back from a blocked `ipc://` fetch to the
- *      `WKScriptMessageHandler` postMessage path on the first call, and
- *      emits issued concurrently during that transition were observed to
- *      reorder — so a streaming burst (`ResponseStart` + N×`ResponseData`
- *      + `ResponseFinished`) could land out of order on the host. The
- *      chain forces one in-flight emit at a time, at a cost of one IPC
- *      round-trip per emit, to keep the sniffer's chunked page-content
- *      stream FIFO. A rejected emit is reported (not swallowed) and does
- *      not poison the chain — see {@link makeFilteringEventBus}.
+ *   1. Drop Tauri's own IPC-fallback `console.warn` ("IPC custom protocol
+ *      failed …"), which the console shim would otherwise re-post as a
+ *      `Log` once per IPC call — noise, not a page observation.
+ *   2. Serialize outbound emits on a Promise chain (one in-flight at a
+ *      time). Tauri's macOS IPC transport reorders emits issued during
+ *      its first `ipc://` → `WKScriptMessageHandler` fallback, which would
+ *      scramble a streaming burst; the chain trades one round-trip per
+ *      emit for FIFO. Rejected emits are reported, not swallowed, and
+ *      don't poison the chain (see {@link makeFilteringEventBus}).
  *
- * Tauri-internal IPC traffic itself (`ipc://`, `tauri://localhost`, …) is
- * not filtered here: the fetch/XHR shims in `install-sniffer.ts` skip
- * those URLs at the source (see `isTauriInternalUrl`), so they never
- * reach this wrapper as `ResponseStart`/`ResponseData`/… in the first
- * place.
- *
- * `listen` and any emit whose name is not `BRIDGE_EVENT` pass through
- * (still on the chain, so ordering holds across event names).
+ * Tauri-internal IPC URLs are skipped at the shim source
+ * (`install-sniffer.ts`'s `isTauriInternalUrl`), so they never reach here.
+ * `listen` and non-`BRIDGE_EVENT` emits pass straight through.
  */
 
 const TAURI_IPC_FALLBACK_WARN_PREFIX = 'IPC custom protocol failed'
@@ -67,20 +56,17 @@ const isTauriIpcFallbackWarning = (record: Record<string, unknown>): boolean => 
 const makeFilteringEventBus = (eventBus: TauriEventApi): TauriEventApi => {
   let emitChain: Promise<void> = Promise.resolve()
 
-  // Capture the *native* console.error now, before `installSniffer`
-  // swaps `console.*` for the Log-posting shims. A dropped emit is
-  // reported through this captured reference rather than the live
-  // `console.error`, so surfacing the failure can't re-enter the
-  // console → `post(Log)` → `emit` path and loop when the bridge itself
-  // is the thing that's failing.
+  // Capture the *native* console.error before `installSniffer` swaps
+  // `console.*` for Log-posting shims, so reporting a dropped emit can't
+  // re-enter console → post(Log) → emit and loop when the bridge is the
+  // thing that's failing.
   const reportDroppedEmit = globalThis.console.error.bind(globalThis.console)
 
   const enqueueEmit = (eventName: string, payload?: unknown): Promise<void> => {
     // `.catch` keeps the chain alive after a rejected emit (a poisoned
-    // chain would silently drop every later message), but the failure is
-    // surfaced rather than swallowed: a dropped `ResponseData` chunk
-    // otherwise leaves the host reassembling a truncated body with no
-    // diagnostic anywhere.
+    // chain drops every later message) while still surfacing it — a
+    // silently dropped `ResponseData` chunk would truncate the host's
+    // reassembly with no diagnostic.
     emitChain = emitChain
       .then(() => eventBus.emit(eventName, payload))
       .catch((error: unknown) => {

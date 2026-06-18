@@ -1164,6 +1164,16 @@ describe('pageLoadHandler JSON-viewer retry', () => {
     expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
     expect(rafQueue).toHaveLength(0)
   })
+
+  test('emits a single PageLoaded even if load fires twice', () => {
+    // Default text/html snapshots immediately; a re-fired `load` must not
+    // double-emit (distinct pageContentIds would double-count the page).
+    document.body.innerHTML = '<main>ready</main>'
+    installSnifferForTest()
+    window.dispatchEvent(new Event('load'))
+    window.dispatchEvent(new Event('load'))
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
+  })
 })
 
 describe('injection', () => {

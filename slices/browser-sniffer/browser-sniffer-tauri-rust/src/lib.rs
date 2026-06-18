@@ -24,14 +24,10 @@ pub use crate::sniffer_window::SNIFFER_WEBVIEW_LABEL;
 /// does not care about (host→web emits echoing back, sibling slices'
 /// web→host traffic) are dropped silently.
 pub fn attach_browser_sniffer(app: &AppHandle) {
-    // Cross-process tag-uniqueness aid: the bridge channel is shared
-    // with every other listener (`wildflower-tauri::bridge`, the React
-    // transport, the sniffer's web-side bootstrap). There is no
-    // automated guard against a tag colliding across listeners, so log
-    // this crate's known tag set at attach time. See
-    // `global/effect-messaging/effect-messaging-tauri/README.md`
-    // ("Tag uniqueness across processes — manual discipline") for the
-    // procedure when adding a new tag.
+    // The bridge channel is shared across listeners with no automated
+    // cross-process tag guard; log this crate's tag set at attach time so
+    // the boot log shows who dispatches what. See the effect-messaging-tauri
+    // README ("Tag uniqueness across processes").
     log::info!(
         "[browser-sniffer] listening on '{BRIDGE_EVENT}' for tags: [{}, {}, {}]",
         events::REQUEST_SNIFFABLE_WEBVIEW,

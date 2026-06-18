@@ -70,7 +70,7 @@ interface TauriTransportConfig<Bridges extends ReadonlyArray<Bridge.AnyBridge>> 
  */
 interface TauriTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
   /**
-   * Emit an outbound (web→host) message on its per-tag Tauri event.
+   * Emit an outbound (web→host) message on the single bridge channel.
    * Emit failures are logged and dropped — sending never fails the
    * caller, mirroring the postMessage transports' behavior.
    */
@@ -96,21 +96,13 @@ interface TauriTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  * direction-less. Throws at build time, before any listener attaches.
  *
  * @remarks
- * **Cross-process collision domain.** This check only sees the bridges
- * passed to *this* transport. The `bridge` Tauri channel is shared
- * with every other listener in the app (the main TS transport, raw
- * sniffer webviews, every Rust `app.listen(BRIDGE_EVENT, …)` in
- * `wildflower-tauri` / `browser-sniffer-tauri-rust` / future host
- * crates). A tag added to a sibling listener with the same name will
- * NOT throw here — instead, both listeners will receive every emit
- * for that tag and dispatch independently. Whenever you introduce a
- * new tag on the bridge channel, manually grep every listener
- * (`match tag.as_str` arms under `src-tauri/src/` and each
- * `<name>-tauri-rust/src/`, plus every TS bridge declaration under
- * `<name>-core/src/bridge.ts`) and confirm the literal is unused.
- * There is no automated cross-process guard. See the
- * `effect-messaging-tauri` README "Tag uniqueness across processes"
- * section for the longer write-up.
+ * This check only sees *this* transport's bridges. The `bridge` channel
+ * is shared with every other listener in the app (sibling TS transports,
+ * raw sniffer webviews, each Rust `app.listen(BRIDGE_EVENT, …)`), and a
+ * colliding tag on a sibling listener will NOT throw — both dispatch
+ * independently. When adding a tag, grep the other listeners by hand;
+ * there is no automated cross-process guard. See the README ("Tag
+ * uniqueness across processes").
  */
 const assertUniqueTags = (bridges: ReadonlyArray<Bridge.AnyBridge>): void => {
   const owners = new Map<string, string>([[READY_TAG, 'the reserved __Ready handshake tag']])
@@ -253,13 +245,10 @@ const makeTauriTransport = async <const Bridges extends ReadonlyArray<Bridge.Any
     }
   }
 
-  // One listener for the entire bridge channel; demux by the payload's
-  // `_tag` field. Unknown tags (a `WebToHost` echo of our own emit, a
-  // sibling bridge's traffic we don't subscribe to, or a malformed
-  // payload) are dropped silently. Per-tag listeners would let Tauri
-  // re-order events across tags (see BRIDGE_EVENT's docstring): one
-  // listener pins FIFO across the whole protocol, which the sniffer's
-  // chunked page-content stream depends on.
+  // One listener for the whole channel; demux by `_tag`. Unknown tags
+  // (a `WebToHost` echo of our own emit, a sibling bridge's traffic, or a
+  // malformed payload) are dropped. The single listener is what pins
+  // cross-tag FIFO — see `BRIDGE_EVENT`'s docstring.
   await api.listen(BRIDGE_EVENT, (event) => {
     const payload = event.payload
     if (payload === null || typeof payload !== 'object' || !('_tag' in payload)) return
