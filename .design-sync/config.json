@@ -3,13 +3,15 @@
   "shape": "package",
   "pkg": "react-tundraish",
   "globalName": "ReactTundraish",
-  "buildCmd": "pnpm -F \"react-tundraish...\" build",
+  "buildCmd": "vp run -F \"react-tundraish...\" build",
   "cssEntry": "dist/style.css",
   "tokensPkg": "tundra-css",
+  "readmeHeader": ".design-sync/conventions.md",
   "componentSrcMap": {
     "pageLayoutStyles": null
   },
   "overrides": {
-    "Menu": { "cardMode": "single", "primaryStory": "Opened", "viewport": "360x300" }
+    "Menu": { "cardMode": "single", "primaryStory": "Opened", "viewport": "360x300" },
+    "Dialog": { "cardMode": "single", "primaryStory": "Confirm", "viewport": "420x300" }
   }
 }

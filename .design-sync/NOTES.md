@@ -5,9 +5,9 @@ Shape: package (no Storybook). DS package: `global/react-tundraish`. 15 componen
 
 ## Build facts
 
-- **Entry**: `global/react-tundraish/dist/index.js` (built by `vp pack`; `dist/` is committed-fresh in CI/local).
+- **Entry**: `global/react-tundraish/dist/index.js` (built by `vp pack`). `dist/` is **gitignored** (root `.gitignore` ignores `dist`), so on a fresh clone it won't exist until you build — run the build command below before the converter runs.
 - **`--node-modules ./node_modules`** (repo root) — react/react-dom/@types/react are pnpm-hoisted there; the package's own `node_modules` is sparse.
-- **Build command** to refresh dist before re-sync: `pnpm -F "react-tundraish..." build` (the `...` pulls workspace deps). `dist/` was already fresh at first sync, so no rebuild was needed.
+- **Build command** to produce/refresh dist before re-sync: `vp run -F "react-tundraish..." build` (the `...` pulls workspace deps). Drive the build through `vp`, never `pnpm` directly (repo toolchain rule).
 - Converter deps + playwright install into `.ds-sync/` with `COREPACK_ENABLE_STRICT=0`. Chromium cache: `~/Library/Caches/ms-playwright` (macOS — NOT `~/.cache`). playwright 1.61.0 matches the cached `chromium-1228` build.
 
 ## Repo change required for detection (already applied, in the PR)
@@ -30,7 +30,8 @@ The DS is **tundra-css**-styled. Token + utility-class source: `node_modules/tun
 
 - **`.checkbox-row`** (Checkbox's wrapper layout class) is **defined in NO shipped stylesheet** (not tundra-css, not dist/style.css, nowhere in the repo). The component expects the *host app* to supply the row's flex+gap, so the box and label sit flush. This is faithful shipped behavior, not a preview bug — graded `good`. If a future maintainer wants the gap to ship, define `.checkbox-row` in react-tundraish's own module CSS.
 - **Menu** is an internal-state dropdown (`useState(open)`); closed by default → its floor card was blank. Authored preview opens it via an on-mount `button.click()` in the `Opened` cell. Config: `overrides.Menu = {cardMode:'single', primaryStory:'Opened', viewport:'360x300'}` so the open list renders in-card instead of escaping/collapsing.
-- Rich real usage to author from lives in the apps/slices (no docs/examples dir in the package): gatekeeper-react, collector-react, tunnel-react, wildflower-react routes. Menu usage: `slices/gatekeeper/.../settings/gatekeeper/index.tsx` and `slices/collector/.../collector/index.tsx`.
+- **Dialog** is an overlay (native `<dialog>` via `showModal()`); its floor card is blank because the modal isn't shown. Authored preview holds `open` true on mount. Config: `overrides.Dialog = {cardMode:'single', primaryStory:'Confirm', viewport:'420x300'}`, mirroring Menu. The `Blocking` story shows the non-dismissable variant.
+- Rich real usage to author from lives in the apps/slices (no docs/examples dir in the package): gatekeeper-react, collector-react, tunnel-react, wildflower-react routes. Menu usage: `slices/gatekeeper/.../settings/gatekeeper/index.tsx` and `slices/collector/.../collector/index.tsx`. ItemList/Dialog/PageHeader: `slices/collector/.../collector/index.tsx`; RadioGroup: `slices/gatekeeper/.../oauth-consent/oauth-consent-form.tsx`; StatusBadge: `slices/tunnel/.../TunnelToggle.tsx` and `slices/gatekeeper/.../requests_.$id.tsx`; PageHeader actions: `slices/apps/.../home/index.tsx`.
 
 ## Authored-preview lint noise (harmless)
 
@@ -38,23 +39,23 @@ Files in `.design-sync/previews/*.tsx` import from `'react-tundraish'` (the conv
 
 ## Known render warns (triaged-legitimate)
 
-(none yet — Field/FieldGroup `thin` and Menu `blank` were floor-card warns that disappear once their previews are authored. Re-check after the full author pass.)
+(none yet — Field/FieldGroup `thin` and Menu `blank` were floor-card warns that disappear once their previews are authored. Re-check after the full author pass — especially the new Dialog/ItemList/PageHeader/RadioGroup/StatusBadge cells.)
 
-## Progress at handoff (2026-06-18)
+## Progress at handoff (2026-06-18, updated)
 
 First sync was interrupted partway for time. State:
 - Bundle + validate clean (exit 0), 15 components, anchor written.
 - Uploaded (incremental plan `finalize_plan` approved; planId is session-scoped, will need re-approval on resume):
   - **Batch 1**: shared base (`_ds_bundle.js/.css`, `styles.css`, `README.md`, `_vendor/`, `tokens/`) + 5 auto/floor components: AsyncErrorView, Awaited, ErrorBoundary, PageBodyError, PageLoading.
   - **Batch 2 (solo trio)**: Checkbox, Field, Menu — authored, graded all `good`, pushed.
-- **Still on floor cards / not yet authored**: Dialog, ItemList, PageHeader, RadioGroup, StatusBadge, FieldDescription, FieldGroup. (FieldGroup/FieldDescription are composed inside Field's preview but have no own authored `.tsx` yet — still floor cards as standalone components.)
-- Conventions header (`.design-sync/conventions.md`) NOT yet authored.
-- Close-out (full content write + reconciliation deletes + final `_ds_sync.json` anchor) NOT yet done — **the project is currently un-anchored**, which is the documented safe state: next sync re-verifies everything.
+- **All remaining previews now authored (committed, not yet uploaded/graded)**: Dialog, ItemList, PageHeader, RadioGroup, StatusBadge, plus standalone FieldGroup and FieldDescription — `.design-sync/previews/*.tsx`, composed from real app usage (collector index, gatekeeper oauth-consent/device-consent, apps home, tunnel toggle). Dialog is an overlay → `overrides.Dialog = {cardMode:'single', primaryStory:'Confirm', viewport:'420x300'}`, mirroring Menu.
+- **Conventions header authored**: `.design-sync/conventions.md`, wired via the `readmeHeader` config key. Rebuild so the README carries it.
+- **Remaining (needs a real `/design-sync` re-run with the converter + Claude Design access)**: upload + grade the newly authored previews, then the close-out (full content write + reconciliation deletes + final `_ds_sync.json` anchor). **The project is currently un-anchored** — the documented safe state; next sync re-verifies everything. Re-check render warns after the upload/grade pass and record any legitimate ones above under "Known render warns".
 
 ## Re-sync risks / watch-list
 
 - The upload plan (`finalize_plan`) is session-scoped — a resumed sync must re-approve it. Resuming arrives **pinned** (config has `projectId`) so it routes to the **atomic** path, not incremental — that's expected.
-- `dist/` must be fresh before the converter runs; `pnpm -F "react-tundraish..." build` if the DS source changed.
+- `dist/` is gitignored, so it must be (re)built before the converter runs; `vp run -F "react-tundraish..." build` (never `pnpm` directly) on a fresh clone or if the DS source changed.
 - The `types` field fix lives in the repo (committed) — if it's ever reverted, detection breaks again with `[ZERO_MATCH]`.
 - Grades for Checkbox/Field/Menu live in `.design-sync/.cache/review/` (gitignored). They are NOT carried across machines until the project's `_ds_sync.json` anchor is written by a completed close-out. A resume on this machine reuses them; a fresh clone re-grades.
 - `tundra-css` is a published catalog dep pinned `^0.14.0` — a token rename upstream would shift the styling vocabulary in this NOTES file.
