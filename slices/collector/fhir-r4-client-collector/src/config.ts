@@ -76,18 +76,16 @@ type AnyResource =
 
 /**
  * Build the FHIR R4 scraping plan for a configured patient on a
- * configured server. The plan's `firstPage` mounts an HTML wrapper that
- * `fetch()`es `/Patient/:id?_format=json`; the browser-sniffer's
- * intercepted `fetch` captures the response, streams it through the
- * standard `ResponseStart`/`Data`/`Finished` triple, and
- * `PatientEntity.parse` extracts the JSON via `extractJson`. Once the
- * Patient page is settled, `linkSequence[0]` navigates the WebView to a
- * fresh HTML wrapper around `/Observation?subject:Patient=…&_count=250`;
- * the same intercept-and-extract flow yields the Observation Bundle
+ * configured server. The plan's `firstPage` navigates the sniffer
+ * webview directly to `/Patient/:id?_format=json`; the browser-sniffer's
+ * window-`load` handler snapshots the rendered document (the browser's
+ * native JSON viewer wraps the response in `<pre>{json}</pre>`), streams
+ * it through the standard `ResponseStart`/`Data`/`Finished` triple keyed
+ * on the FHIR URL, and `PatientEntity.parse` extracts the JSON via
+ * `extractJson`. Once the Patient page is settled, `linkSequence[0]`
+ * navigates the WebView to `/Observation?subject:Patient=…&_count=250`;
+ * the same snapshot-and-extract flow yields the Observation Bundle
  * entries.
- *
- * The wrapper indirection is required because the sniffer JS only runs
- * on documents the WebView parses as HTML — see {@link fetchWrapperHtml}.
  *
  * `stepDelay` is a flat 5 seconds — enough for the FHIR server's
  * round-trip plus the WebView's render on a slow tablet.

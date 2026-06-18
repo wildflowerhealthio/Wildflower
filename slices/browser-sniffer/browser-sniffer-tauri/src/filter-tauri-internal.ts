@@ -61,20 +61,17 @@ const isTauriInternalUrl = (url: unknown): boolean => {
 const TAURI_IPC_FALLBACK_WARN_PREFIX = 'IPC custom protocol failed'
 const SNIFFER_FETCH_THREW_WARN_PREFIX = 'fetch threw before response:'
 
-const isTauriIpcFallbackWarning = (record: Record<string, unknown>): boolean => {
+/**
+ * A `Log` record at `warn` level whose first payload entry is a string
+ * starting with `prefix`. Both Tauri-internal warnings the filter cares
+ * about share this shape; they differ only in the prefix literal.
+ */
+const isWarnWithHeadPrefix = (record: Record<string, unknown>, prefix: string): boolean => {
   if (record.level !== 'warn') return false
   const payload = record.payload
   if (!Array.isArray(payload) || payload.length === 0) return false
   const head: unknown = payload[0]
-  return typeof head === 'string' && head.startsWith(TAURI_IPC_FALLBACK_WARN_PREFIX)
-}
-
-const isSnifferFetchThrewWarning = (record: Record<string, unknown>): boolean => {
-  if (record.level !== 'warn') return false
-  const payload = record.payload
-  if (!Array.isArray(payload) || payload.length === 0) return false
-  const head: unknown = payload[0]
-  return typeof head === 'string' && head.startsWith(SNIFFER_FETCH_THREW_WARN_PREFIX)
+  return typeof head === 'string' && head.startsWith(prefix)
 }
 
 /**
@@ -124,17 +121,18 @@ const makeFilteringEventBus = (eventBus: TauriEventApi): TauriEventApi => {
 
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
       const record = payload as Record<string, unknown>
-      const rawTag = record._tag
-      if (typeof rawTag !== 'string') return enqueueEmit(eventName, payload)
-      const tag = rawTag
+      const tag = record._tag
+      if (typeof tag !== 'string') return enqueueEmit(eventName, payload)
 
-      if (tag === 'Log' && isTauriIpcFallbackWarning(record)) return Promise.resolve()
+      if (tag === 'Log' && isWarnWithHeadPrefix(record, TAURI_IPC_FALLBACK_WARN_PREFIX)) {
+        return Promise.resolve()
+      }
 
       // Buffer the "fetch threw before response:" Log: install-sniffer
       // emits this Log synchronously right before the ResponseStart
       // carrying the failing URL. Decide whether to forward it on the
       // next event (see the drain below).
-      if (tag === 'Log' && isSnifferFetchThrewWarning(record)) {
+      if (tag === 'Log' && isWarnWithHeadPrefix(record, SNIFFER_FETCH_THREW_WARN_PREFIX)) {
         bufferedFetchErrorLog = record
         return Promise.resolve()
       }

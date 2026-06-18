@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { InstanceConfig, defaultConfig } from './config.ts'
+import { InstanceConfig, defaultConfig, scrapingPlan } from './config.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
@@ -77,6 +77,46 @@ describe('defaultConfig', () => {
     expect(defaultConfig).toMatchObject({
       rootUrl: 'https://r4.smarthealthit.org',
       patientId: '8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882',
+    })
+  })
+})
+
+describe('scrapingPlan', () => {
+  // The plan navigates the sniffer webview directly to the FHIR JSON
+  // endpoints via `Uri` sources (the browser's native viewer renders the
+  // response, which the sniffer snapshots). A regression to the old
+  // inline-`Html` wrapper — or a dropped `?_format=json` / mis-encoded
+  // `subject:Patient` query — would silently change what page loads.
+  it('mounts the Patient endpoint as the first page via a direct Uri', () => {
+    const plan = scrapingPlan(defaultConfig)
+    expect(plan.firstPage).toEqual({
+      _tag: 'Uri',
+      uri: 'https://r4.smarthealthit.org/Patient/8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882?_format=json',
+    })
+  })
+
+  it('navigates to the Observation endpoint as a single Open step via a direct Uri', () => {
+    const plan = scrapingPlan(defaultConfig)
+    expect(plan.linkSequence).toEqual([
+      {
+        _tag: 'Open',
+        source: {
+          _tag: 'Uri',
+          uri: 'https://r4.smarthealthit.org/Observation?subject%3APatient=8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882&_count=250&_format=json',
+        },
+      },
+    ])
+  })
+
+  it('percent-encodes a patientId that contains URL-significant characters', () => {
+    // patientId is schema-constrained to [A-Za-z0-9.-], but the plan
+    // applies encodeURIComponent defensively for values arriving through
+    // an untyped path — pin that the encoding actually happens by feeding
+    // a value with URL-significant characters past the type.
+    const plan = scrapingPlan({ _tag: 'fhir-r4', rootUrl: 'https://example.com', patientId: 'a/b c' })
+    expect(plan.firstPage).toEqual({
+      _tag: 'Uri',
+      uri: 'https://example.com/Patient/a%2Fb%20c?_format=json',
     })
   })
 })
