@@ -40,3 +40,28 @@ cross-tag delivery is its own `webview.eval(__TAURI_INTERNALS__.runCallback(…)
 injection on the receiver and Tauri makes no inter-injection ordering
 promise. One channel = strict FIFO across every tag the protocol
 uses, which the sniffer's chunked page-content stream relies on.
+
+## Tag uniqueness across processes — manual discipline
+
+`makeTauriTransport` runs `assertUniqueTags` over the bridges it is
+handed, which catches collisions *within* a single transport instance.
+The `BRIDGE_EVENT` channel is shared with every other listener in the
+app (the main TS transport, the raw sniffer webview's bootstrap, every
+Rust `app.listen(BRIDGE_EVENT, …)` host crate). A new tag that
+duplicates a sibling listener's tag will **not** trip the assertion —
+both listeners will receive every emit and dispatch independently.
+There is deliberately no automated cross-process guard; the live
+listener sets are scattered across TS bridges, raw sniffer code, and
+two Rust crates, and the kind of registry that would let a test enumerate
+them all would mostly be load-bearing for a test no one would read.
+
+Whenever you add a tag on the bridge channel, manually confirm the
+literal is unused across:
+
+- Every `slices/*/<name>-core/src/bridge.ts` bridge schema.
+- The raw sniffer's web-side bootstrap.
+- Every Rust `match tag.as_str()` arm under `apps/wildflower-tauri/src-tauri/src/` and `slices/*/<name>-tauri-rust/src/`.
+
+Each Rust listener also logs its complete tag set at attach time
+(`info!("[<crate>] listening on bridge for tags: [...]")`) — grep the
+boot log to cross-check what the live processes are dispatching on.

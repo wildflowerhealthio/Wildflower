@@ -257,6 +257,19 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     });
     let mut token_rx = token_rx;
 
+    // Cross-process tag-uniqueness aid: the bridge channel is shared
+    // with every other listener (the React transport, the sniffer
+    // bootstrap, and `browser-sniffer-tauri-rust`). There is no
+    // automated guard against a tag colliding across listeners, so log
+    // this crate's known tag set at attach time — grep the boot log to
+    // cross-check what each process is dispatching on. See
+    // `global/effect-messaging/effect-messaging-tauri/README.md`
+    // ("Tag uniqueness across processes — manual discipline") for the
+    // procedure when adding a new tag.
+    log::info!(
+        "[bridge] listening on '{BRIDGE_EVENT}' for tags: [{READY_TAG}, {LOG_TAG}]"
+    );
+
     let ready = Arc::new(Notify::new());
     {
         let ready = Arc::clone(&ready);

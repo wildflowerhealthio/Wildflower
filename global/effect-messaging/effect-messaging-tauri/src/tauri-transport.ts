@@ -94,6 +94,23 @@ interface TauriTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  * tag. Stricter than the core transport's per-direction
  * `assertNoDuplicateTags`, because the multiplexed channel is
  * direction-less. Throws at build time, before any listener attaches.
+ *
+ * @remarks
+ * **Cross-process collision domain.** This check only sees the bridges
+ * passed to *this* transport. The `bridge` Tauri channel is shared
+ * with every other listener in the app (the main TS transport, raw
+ * sniffer webviews, every Rust `app.listen(BRIDGE_EVENT, …)` in
+ * `wildflower-tauri` / `browser-sniffer-tauri-rust` / future host
+ * crates). A tag added to a sibling listener with the same name will
+ * NOT throw here — instead, both listeners will receive every emit
+ * for that tag and dispatch independently. Whenever you introduce a
+ * new tag on the bridge channel, manually grep every listener
+ * (`match tag.as_str` arms under `src-tauri/src/` and each
+ * `<name>-tauri-rust/src/`, plus every TS bridge declaration under
+ * `<name>-core/src/bridge.ts`) and confirm the literal is unused.
+ * There is no automated cross-process guard. See the
+ * `effect-messaging-tauri` README "Tag uniqueness across processes"
+ * section for the longer write-up.
  */
 const assertUniqueTags = (bridges: ReadonlyArray<Bridge.AnyBridge>): void => {
   const owners = new Map<string, string>([[READY_TAG, 'the reserved __Ready handshake tag']])
