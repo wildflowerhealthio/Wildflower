@@ -24,8 +24,8 @@ server?", not a full diff). The shared test harnesses are
 (`assert_up_to_date`). `gatekeeper` and `tunnel` are the worked examples.
 
 The `api-sync` CI workflow runs **both** halves whenever either side changes, so
-a one-sided change can't slip drift past the per-language `test-rust` /
-`test-typescript` gates. It is project-agnostic — the steps below need **no
+a one-sided change can't slip drift past the per-language `Rust` /
+`TypeScript` CI workflows. It is project-agnostic — the steps below need **no
 workflow edit**.
 
 ## Add a slice (Rust side)

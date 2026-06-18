@@ -1,0 +1,99 @@
+name: Rust
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # PR runs are gated to Rust-touching changes at the trigger level, so an
+    # unrelated PR never starts this workflow (no change-detection job needed).
+    # Pushes to main have NO paths filter, so every main commit runs the full
+    # Rust suite regardless of what changed. The Tauri crate lives under these
+    # paths too (its *.rs / Cargo.toml match), so a Tauri-only change also runs
+    # the dependency check here, while ci-rust-tauri.yml handles its compile.
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'deny.toml'
+      - '.github/workflows/ci-rust.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # One job for fmt + clippy + nextest + doctests: a single toolchain setup and
+  # a single compiled-artifact cache mean the workspace is compiled ONCE, then
+  # clippy and the tests reuse those artifacts — instead of the previous two
+  # jobs (lint and nextest) each warming the cache and compiling from it
+  # separately. wildflower-tauri and browser-sniffer-tauri-rust are excluded:
+  # both pull in `tauri = "2"` and need GTK/webkit system libs, so
+  # ci-rust-tauri.yml compiles, lints, and tests them on its own.
+  rust:
+    name: Lint + Test
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Rust toolchain
+        # Reads rust-toolchain.toml (channel + rustfmt/clippy), caches build
+        # artifacts, and registers clippy/rustfmt problem matchers for inline
+        # annotations. `cache-shared-key` shares the compiled-workspace cache
+        # with the api-sync rust-snapshot job, which compiles the same set.
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-shared-key: rust-workspace-excl-tauri
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - name: rustfmt
+        run: cargo fmt --all --check
+      - name: clippy (deny warnings)
+        run: cargo clippy --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-targets --all-features -- -D warnings
+      - name: clippy pedantic (informational, main only)
+        # Pedantic findings surface as annotations but do not fail the job. This
+        # recompiles clippy a second time, so running it on every PR roughly
+        # doubled clippy's cost for info-only output — restrict it to main.
+        # Promote it into the deny-warnings step above once the tree is clean.
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: cargo clippy --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-targets --all-features -- -W clippy::pedantic
+      - name: Run tests (nextest)
+        # --no-tests=warn keeps the run green while these crates have no tests
+        # yet (nextest 0.9.85+ fails on zero tests by default). Switch to
+        # --no-tests=fail once Rust tests exist to guard against an empty run.
+        run: cargo nextest run --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-features --no-tests=warn
+      - name: Run doctests (main only)
+        # nextest does not run doctests, so cover them with cargo test. The
+        # workspace currently has ~no doctests, so this is an extra compile for
+        # little gain on PRs — restrict it to main. Promote to all events once
+        # doctests exist.
+        if: github.event_name == 'push'
+        run: cargo test --doc --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-features
+
+  # Supply-chain gate. Kept as its own job because cargo-deny doesn't reuse the
+  # compiled-workspace artifacts above, so merging it in would only serialize
+  # unrelated work. A Tauri-only change matches this workflow's paths, so its
+  # dependency tree is covered here too.
+  deny:
+    name: Dependency Check
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: cargo-deny — advisories + sources
+        # Security advisories (RustSec) and source pinning (crates.io only).
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories sources
+      - name: cargo-deny — licenses + bans
+        # License allowlist + duplicate/banned-crate policy from deny.toml.
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans
