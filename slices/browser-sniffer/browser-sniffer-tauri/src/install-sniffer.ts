@@ -560,27 +560,19 @@ const installSniffer = function (eventBus: TauriEventApi): void {
   // asynchronously over the following frame(s). Capturing
   // `documentElement.outerHTML` synchronously inside the `load` listener
   // then sees an empty document and emits a zero-byte page snapshot.
-  // The retry below: if the first attempt sees zero-length content and
-  // we still have a frame budget left, re-schedule on
-  // `requestAnimationFrame` (twice — one to flush layout, one to land
-  // after the viewer's first paint). The `attempt` counter caps retries
+  // The retry below re-schedules on `requestAnimationFrame` (twice — one
+  // to flush layout, one to land after the viewer's first paint) while
+  // the document still looks unbuilt. The `attempt` counter caps retries
   // so a genuinely empty document still terminates.
   const MAX_PAGE_LOAD_RETRIES = 8
-  // Defer the snapshot when the document looks like it's still being
-  // built by an async viewer. Two signals: the response is one of the
-  // content types Safari/Chrome wraps in a JSON / image / video viewer
-  // *after* `load` fires (the load event fires on bytes-arrived, the
-  // viewer's `<pre>{json}</pre>` DOM is built over the next frame or
-  // two), or the document is empty even for a text/html response (a
-  // rendering pipeline that hasn't started yet). Each retry burns two
-  // `requestAnimationFrame` slots — one to flush layout, one to land
-  // past the viewer's first paint.
-  const ASYNC_VIEWER_CONTENT_TYPES: ReadonlySet<string> = new Set([
+  // Content types WebKit renders into a `<body><pre>…</pre></body>`
+  // viewer a frame or two *after* `load` fires. Only these force the
+  // `<pre>`-presence wait: XML is shown as a tree (no `<pre>`) and HTML
+  // is its own content, so neither should hold up the snapshot.
+  const JSON_VIEWER_CONTENT_TYPES: ReadonlySet<string> = new Set([
     'application/json',
     'application/fhir+json',
     'application/ld+json',
-    'text/xml',
-    'application/xml',
   ])
   // `pageLoadHandler` is registered both as a `load` event listener
   // (called with the `Event` object as its first arg) and self-invoked
@@ -590,19 +582,27 @@ const installSniffer = function (eventBus: TauriEventApi): void {
   // `resetShims` cleans up.
   const pageLoadHandler = (attemptOrEvent: number | Event = 0): void => {
     const attempt = typeof attemptOrEvent === 'number' ? attemptOrEvent : 0
-    const content = document.documentElement.outerHTML
-    const contentTypeIsAsyncViewer = ASYNC_VIEWER_CONTENT_TYPES.has(
-      // `document.contentType` is a string per the DOM spec; the
-      // optional cast guards jsdom edge cases where it has been
-      // shadowed by a property descriptor.
-      // oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- intentional runtime guard
-      String(document.contentType ?? '')
-    )
-    const documentLooksEmpty = content.length === 0 || !content.includes('<body')
+    // The only case that needs a deferred snapshot is the JSON-family
+    // viewer: WebKit builds its `<pre>{json}</pre>` body a frame or two
+    // after `load` fires, so a synchronous snapshot would capture an
+    // empty shell. HTML and XML are fully parsed by the time `load`
+    // fires, so they snapshot immediately — judging readiness off the
+    // live DOM (`querySelector('pre')`) rather than a serialized string
+    // also means a multi-MB document isn't re-serialized on every retry
+    // attempt; `outerHTML` is taken once below, only when we commit to
+    // emitting.
+    //
+    // `document.contentType` is a string per the DOM spec; the optional
+    // cast guards jsdom edge cases where it has been shadowed by a
+    // property descriptor.
+    // oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- intentional runtime guard
+    const contentType = String(document.contentType ?? '')
+    const jsonViewerNotReady =
+      JSON_VIEWER_CONTENT_TYPES.has(contentType) && document.querySelector('pre') === null
     const shouldRetry =
       attempt < MAX_PAGE_LOAD_RETRIES &&
       typeof win.requestAnimationFrame === 'function' &&
-      (documentLooksEmpty || (contentTypeIsAsyncViewer && !content.includes('<pre')))
+      jsonViewerNotReady
     if (shouldRetry) {
       win.requestAnimationFrame(() => {
         win.requestAnimationFrame(() => {
@@ -611,6 +611,7 @@ const installSniffer = function (eventBus: TauriEventApi): void {
       })
       return
     }
+    const content = document.documentElement.outerHTML
     const pageContentId = makeRequestId()
     const bytes = utf8.encode(content)
     post({ _tag: 'PageLoaded', url: win.location.href, pageContentId })

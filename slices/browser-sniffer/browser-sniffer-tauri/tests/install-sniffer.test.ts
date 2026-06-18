@@ -101,6 +101,13 @@ const fireInbound = (event: string, payload: unknown): void => {
 
 const withTag = (msgs: Message[], tag: string): Message[] => msgs.filter((m) => m._tag === tag)
 
+// jsdom types `document.contentType` as a non-writable prototype getter;
+// shadow it with a configurable own property so the page-load tests can
+// drive the JSON-viewer branch. Teardown drops the shadow.
+const setContentType = (value: string): void => {
+  Object.defineProperty(document, 'contentType', { value, configurable: true })
+}
+
 const cancelRequest = (id: string): void => {
   fireInbound(BRIDGE_EVENT, { _tag: 'CancelSnifferRequest', id })
 }
@@ -977,6 +984,96 @@ describe('PageLoaded', () => {
     // one specific high-byte value survives — the `\xff`.
     expect(content).toContain('\xff')
     validateMessages(msgs)
+  })
+})
+
+describe('pageLoadHandler JSON-viewer retry', () => {
+  let getMessages: () => Message[]
+  let rafQueue: FrameRequestCallback[]
+  const originalRaf = window.requestAnimationFrame
+  const initialBodyHtml = document.body.innerHTML
+
+  // Run every callback queued for the current animation frame. A retry
+  // schedules a *nested* rAF (two frames), so advancing one retry is two
+  // flushes; callbacks scheduled during a flush land in the next frame.
+  const flushFrame = (): void => {
+    const due = rafQueue
+    rafQueue = []
+    for (const cb of due) cb(0)
+  }
+  const advanceRetries = (retries: number): void => {
+    for (let i = 0; i < retries * 2; i += 1) flushFrame()
+  }
+
+  beforeEach(() => {
+    resetShims()
+    XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
+    XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
+    rafQueue = []
+    window.requestAnimationFrame = ((cb: FrameRequestCallback): number => {
+      rafQueue.push(cb)
+      return rafQueue.length
+    }) as typeof window.requestAnimationFrame
+    document.body.innerHTML = ''
+    getMessages = setupEnv()
+  })
+
+  afterEach(() => {
+    window.requestAnimationFrame = originalRaf
+    Reflect.deleteProperty(document, 'contentType')
+    document.body.innerHTML = initialBodyHtml
+    resetShims()
+  })
+
+  test('defers the snapshot for a JSON document until the <pre> viewer is built', () => {
+    setContentType('application/json')
+    installSnifferForTest()
+    // Empty body + JSON content type: the first attempt schedules a retry
+    // instead of snapshotting an empty shell.
+    window.dispatchEvent(new Event('load'))
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(0)
+
+    // WebKit builds the viewer over the next frame(s); once the <pre>
+    // exists, the retry lands the snapshot exactly once.
+    const pre = document.createElement('pre')
+    pre.textContent = '{"resourceType":"Patient"}'
+    document.body.replaceChildren(pre)
+    advanceRetries(1)
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
+  })
+
+  test('snapshots a JSON document immediately when the <pre> is already present', () => {
+    setContentType('application/json')
+    const pre = document.createElement('pre')
+    pre.textContent = '{"ok":true}'
+    document.body.replaceChildren(pre)
+    installSnifferForTest()
+    window.dispatchEvent(new Event('load'))
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
+    expect(rafQueue).toHaveLength(0)
+  })
+
+  test('caps retries and snapshots once even if the <pre> never appears', () => {
+    setContentType('application/json')
+    installSnifferForTest()
+    window.dispatchEvent(new Event('load'))
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(0)
+    // Far more frames than the retry budget; the attempt counter must
+    // terminate the loop and still emit exactly one snapshot.
+    advanceRetries(12)
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
+  })
+
+  test('does not defer non-JSON documents — XML snapshots immediately with no retry', () => {
+    // Regression guard: text/xml / application/xml were previously in the
+    // async-viewer set and burned the whole retry budget on a document
+    // that is already parsed at `load`. They must snapshot on attempt 0.
+    setContentType('application/xml')
+    document.body.innerHTML = '<data>ready</data>'
+    installSnifferForTest()
+    window.dispatchEvent(new Event('load'))
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
+    expect(rafQueue).toHaveLength(0)
   })
 })
 
