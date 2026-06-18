@@ -1,0 +1,109 @@
+name: TypeScript
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # PR runs are gated to TS/JS-touching changes at the trigger level, so an
+    # unrelated PR never starts this workflow at all (no change-detection job
+    # needed). Pushes to main have NO paths filter, so every main commit runs
+    # the full TS suite regardless of what changed. Keep this list aligned with
+    # where TS/JS source actually lives.
+    paths:
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '**/*.cts'
+      - '**/*.mts'
+      - '**/*.js'
+      - '**/*.jsx'
+      - '**/*.cjs'
+      - '**/*.mjs'
+      - '**/package.json'
+      - '**/tsconfig*.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/ci-typescript.yml'
+
+permissions:
+  contents: read
+  # The ESLint/TSDoc problem matcher surfaces findings as inline PR annotations.
+  checks: write
+  pull-requests: write
+
+# Cancel superseded PR runs to save the actions budget; pushes to main always
+# run to completion.
+concurrency:
+  group: typescript-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # One job for lint + typecheck + test + TSDoc: it installs deps and builds the
+  # internal projects ONCE, then every check reuses that same checkout, pnpm
+  # store, and dist/ cache — instead of the previous two jobs (vp-check and
+  # vp-test) each paying for its own install + `vp run pack`. Draft PRs are
+  # skipped; on push, `pull_request` is null so the guard is true and it runs.
+  typescript:
+    name: Lint + Test
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          # Need history + origin/main for `test:changed` to compute the merge-base.
+          fetch-depth: 0
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          cache: true
+
+      # vp's task cache (node_modules/.vite/task-cache) stores only terminal
+      # output, not the dist/ files that `vp run pack` produces. Caching both
+      # together keeps cache hits in sync with the dist/ outputs that typecheck
+      # reads (dist/*.d.ts via workspace exports) and that Expo Jest reads (Jest
+      # doesn't honor the `source` export condition). setup-vp already caches the
+      # pnpm store, so this only covers build outputs.
+      - name: Cache vp pack outputs
+        uses: actions/cache@v5
+        with:
+          path: |
+            node_modules/.vite/task-cache
+            apps/*/dist
+            domain/*/dist
+            global/**/dist
+            packages/*/dist
+            slices/**/dist
+            tools/*/dist
+          key: vp-pack-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            vp-pack-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: vp install
+
+      - name: Build internal projects
+        run: vp run pack
+
+      - name: Run vp check (format, lint, typecheck)
+        run: vp check
+
+      - name: Run tests (full strength on main)
+        if: github.event_name == 'push'
+        run: vp run test:all
+
+      - name: Run tests (reduced for unchanged on PR)
+        if: github.event_name == 'pull_request'
+        run: vp run test:changed
+
+      # TSDoc lint is informational only (continue-on-error), so it runs last
+      # and never fails the job — it used to be a whole separate workflow
+      # (lint-tsdoc.yml) that paid for its own checkout + `vp install` on every
+      # PR. Folding it in here drops that duplicate setup entirely.
+      - name: Enable ESLint problem matcher
+        run: echo "::add-matcher::.github/eslint-problem-matcher.json"
+
+      - name: Run ESLint with eslint-plugin-tsdoc (informational)
+        run: vp run lint:comments
+        continue-on-error: true

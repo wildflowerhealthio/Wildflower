@@ -5,24 +5,38 @@ name: API Sync
 #   - a Rust snapshot test proves that file matches what `utoipa` emits from the
 #     live axum routes, and
 #   - a TS drift test proves the slice's Effect `HttpApi` matches that same file.
-# Those two halves otherwise live in the path-filtered `test-rust`/`test-typescript`
-# workflows, so a one-sided change can satisfy its own language's gate while the
-# other half is skipped — letting drift through. This workflow runs BOTH halves
-# whenever either side (or a snapshot) changes, closing that gap. It is
-# project-agnostic: a new slice is picked up with no edit here — its Rust
-# snapshot test shares the name `openapi_spec_snapshot_is_up_to_date` (run across
-# the workspace) and its TS test matches the `openapi-drift` filter.
+# Those two halves otherwise live in the path-filtered Rust/TypeScript workflows,
+# so a one-sided change can satisfy its own language's gate while the other half
+# is skipped — letting drift through. This workflow runs BOTH halves whenever
+# either side (or a snapshot) changes, closing that gap. It is project-agnostic:
+# a new slice is picked up with no edit here — its Rust snapshot test shares the
+# name `openapi_spec_snapshot_is_up_to_date` (run across the workspace) and its
+# TS test matches the `openapi-drift` filter.
 
 on:
   push:
     branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    # Gated at the trigger to changes that touch either side of any slice's
+    # contract, so an unrelated PR never starts this workflow (no
+    # change-detection job needed). Pushes to main have NO paths filter and run
+    # regardless. Broad on purpose: any slice's Rust crate, any TS HttpApi
+    # definition, the shared engine, or a committed snapshot — so a new consumer
+    # needs no edit here.
+    paths:
+      # Any slice's Rust crate (handlers) + its committed snapshot. Also covers
+      # the shared Rust snapshot-test helper (`shared-structures-rust`).
+      - 'slices/**/*-rust/**'
+      # Any slice's Effect HttpApi definition + its TS drift test.
+      - 'slices/**/http-api-definition/**'
+      # The shared wire-shape engine + the spec-drift test factory.
+      - 'slices/shared-structures/shared-structures-core/src/openapi-drift/**'
+      # This workflow itself.
+      - '.github/workflows/api-sync.yml'
 
 permissions:
   contents: read
-  # dorny/paths-filter reads the PR's changed-file list from the GitHub API.
-  pull-requests: read
 
 # Cancel superseded PR runs to save the actions budget; pushes to main always
 # run to completion.
@@ -31,49 +45,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Detect whether this change touches either side of any slice's contract. A PR
-  # that touches neither skips both check jobs below; every push to main runs them.
-  changes:
-    name: Detect Changes
-    if: github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
-    outputs:
-      api: ${{ steps.filter.outputs.api }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v4
-        id: filter
-        # Inlined (not in path-filters.yml) because this filter is specific to
-        # this workflow, like lint-markdown.yml's `markdown` filter. Broad on
-        # purpose: any slice's Rust crate, any TS HttpApi definition, the shared
-        # harness, or a committed snapshot — so a new consumer needs no edit here.
-        with:
-          filters: |
-            api:
-              # Any slice's Rust crate (handlers) + its committed snapshot.
-              # Also covers the shared Rust snapshot-test helper
-              # (`shared-structures-rust`), so no dedicated entry for it.
-              - 'slices/**/*-rust/**'
-              # Any slice's Effect HttpApi definition + its TS drift test.
-              - 'slices/**/http-api-definition/**'
-              # The shared wire-shape engine + the spec-drift test factory.
-              - 'slices/shared-structures/shared-structures-core/src/openapi-drift/**'
-              # This workflow itself.
-              - '.github/workflows/api-sync.yml'
-
   rust-snapshot:
     name: Rust Snapshot
-    needs: changes
-    # Skip on draft PRs; `pull_request` is null on push events so the draft
-    # comparison is true and the job still runs on main.
-    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.api == 'true') }}
+    # Skip on draft PRs; `pull_request` is null on push so the guard is true.
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - name: Set up Rust toolchain
-        # Share the `rust-workspace-excl-tauri` cache with test-rust/lint-rust:
-        # this job compiles the same workspace set (everything except
-        # wildflower-tauri), so the same compiled deps warm all three.
+        # Share the `rust-workspace-excl-tauri` cache with ci-rust.yml: this job
+        # compiles the same workspace set (everything except wildflower-tauri),
+        # so the same compiled deps warm both.
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-shared-key: rust-workspace-excl-tauri
@@ -83,13 +65,12 @@ jobs:
         #   UPDATE_OPENAPI=1 cargo test -p <slice>-rust openapi_spec_snapshot_is_up_to_date
         # wildflower-tauri and browser-sniffer-tauri-rust are excluded — both
         # pull in `tauri = "2"` which needs GTK/webkit system libs to build
-        # (see lint-rust.yml). Neither owns a documented OpenAPI surface.
+        # (see ci-rust-tauri.yml). Neither owns a documented OpenAPI surface.
         run: cargo test --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-features openapi_spec_snapshot_is_up_to_date
 
   ts-drift:
     name: TS Drift
-    needs: changes
-    if: ${{ github.event.pull_request.draft != true && (github.event_name == 'push' || needs.changes.outputs.api == 'true') }}
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -100,34 +81,7 @@ jobs:
       - name: Install dependencies
         run: vp install
       - name: Diff every Effect HttpApi against its committed OpenAPI spec
-        # Matches every slice's `openapi-drift` test plus the shared engine's unit
-        # tests; vitest resolves workspace deps via the `source` export condition,
-        # so no `vp run pack` build step is needed.
+        # Matches every slice's `openapi-drift` test plus the shared engine's
+        # unit tests; vitest resolves workspace deps via the `source` export
+        # condition, so no `vp run pack` build step is needed.
         run: vp test openapi-drift
-
-  # Always-runs summary that keeps the "api-sync" status name green/red.
-  # Intentionally left without a `name:` so the required-check context stays
-  # "api-sync" — make THIS the required check, not the per-language jobs, so a PR
-  # touching neither side (where both are skipped) is never blocked by a stuck
-  # pending check.
-  api-sync:
-    needs: [changes, rust-snapshot, ts-drift]
-    if: ${{ always() }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify API sync results
-        run: |
-          changes='${{ needs.changes.result }}'
-          rust='${{ needs.rust-snapshot.result }}'
-          ts='${{ needs.ts-drift.result }}'
-          echo "changes=$changes rust-snapshot=$rust ts-drift=$ts"
-          if [[ "$changes" != 'success' && "$changes" != 'skipped' ]]; then
-            echo '::error::changes job did not succeed'; exit 1
-          fi
-          if [[ "$rust" == 'failure' || "$rust" == 'cancelled' ]]; then
-            echo '::error::A committed OpenAPI snapshot is out of date — regenerate with UPDATE_OPENAPI=1 cargo test -p <slice>-rust openapi_spec_snapshot_is_up_to_date'; exit 1
-          fi
-          if [[ "$ts" == 'failure' || "$ts" == 'cancelled' ]]; then
-            echo '::error::An Effect HttpApi drifted from its committed OpenAPI spec — fix the slice HttpApi (or regenerate the snapshot if the server changed)'; exit 1
-          fi
-          echo 'api-sync OK'

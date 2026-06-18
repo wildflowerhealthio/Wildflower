@@ -1,7 +1,7 @@
 name: Rust Advisories
 
 # Catches newly-published RustSec advisories against dependencies even when no
-# code changes. The Rust Lint workflow (lint-rust.yml) only runs cargo-deny on
+# code changes. The Rust workflow (ci-rust.yml) only runs cargo-deny on
 # Rust- or Tauri-touching PRs, so an advisory filed against an otherwise-
 # unchanged dependency would go unnoticed until the next such PR; this weekly
 # run closes that gap.

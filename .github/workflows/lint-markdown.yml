@@ -5,32 +5,29 @@ on:
     branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    # Gated at the trigger to Markdown changes, so a PR with no *.md edits never
+    # starts this workflow (no change-detection job needed). Pushes to main have
+    # NO paths filter and run regardless.
+    paths:
+      - '**/*.md'
+      - '.github/workflows/lint-markdown.yml'
 
 permissions:
   contents: read
   pull-requests: write
   checks: write
 
-jobs:
-  check-markdown-changes:
-    name: Detect Changes
-    if: github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
-    outputs:
-      has-markdown: ${{ steps.filter.outputs.markdown }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v4
-        id: filter
-        with:
-          filters: |
-            markdown:
-              - '**/*.md'
+# Cancel superseded PR runs to save the actions budget; pushes to main always
+# run to completion. (This was previously missing, so rapid pushes to a PR
+# stacked uncancelled Markdown runs.)
+concurrency:
+  group: markdown-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+jobs:
   markdownlint:
     name: Check
-    needs: check-markdown-changes
-    if: needs.check-markdown-changes.outputs.has-markdown == 'true'
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
