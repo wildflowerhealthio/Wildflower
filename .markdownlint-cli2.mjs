@@ -27,6 +27,7 @@ const config = {
     '**/Pods/**',
     '**/.expo/**',
     '**/.claude/**',
+    '**/.design-sync/**',
     '**/.pnpm-store/**',
   ],
 }

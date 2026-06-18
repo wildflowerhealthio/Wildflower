@@ -59,3 +59,12 @@ target/
 # because openapi-to-effect requires them to format this output — they are NOT
 # a project formatter; oxfmt/`vp check` still owns the repo.)
 slices/gatekeeper/gatekeeper-core/src/http-api-definition/generated/
+# /design-sync skill — staged converter scripts + their deps, regenerated
+# build output, machine state (verdicts, generated previews, fan-out scratch).
+# Durable inputs under .design-sync/ (config.json, NOTES.md, conventions.md,
+# previews/, overrides/) ARE committed.
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules

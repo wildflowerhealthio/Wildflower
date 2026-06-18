@@ -1,0 +1,19 @@
+{
+  "projectId": "89c8cb47-f40c-4311-a4f5-ada94f3e88ef",
+  "shape": "package",
+  "pkg": "react-tundraish",
+  "globalName": "ReactTundraish",
+  "buildCmd": "vp run -F \"react-tundraish...\" build",
+  "cssEntry": "dist/style.css",
+  "tokensPkg": "tundra-css",
+  "readmeHeader": ".design-sync/conventions.md",
+  "componentSrcMap": {
+    "pageLayoutStyles": null
+  },
+  "overrides": {
+    "Menu": { "cardMode": "single", "primaryStory": "Opened", "viewport": "360x300" },
+    "Dialog": { "cardMode": "single", "primaryStory": "Confirm", "viewport": "420x300" },
+    "Field": { "cardMode": "column" },
+    "FieldDescription": { "cardMode": "column" }
+  }
+}
