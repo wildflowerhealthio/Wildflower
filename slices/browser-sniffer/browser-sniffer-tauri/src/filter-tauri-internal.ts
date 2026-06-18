@@ -49,12 +49,12 @@ import { BRIDGE_EVENT } from './install-sniffer.ts'
 const isTauriInternalUrl = (url: unknown): boolean => {
   if (typeof url !== 'string') return false
   return (
-    url.startsWith('ipc://')
-    || url.startsWith('tauri://')
-    || url.startsWith('http://ipc.localhost')
-    || url.startsWith('https://ipc.localhost')
-    || url.startsWith('http://tauri.localhost')
-    || url.startsWith('https://tauri.localhost')
+    url.startsWith('ipc://') ||
+    url.startsWith('tauri://') ||
+    url.startsWith('http://ipc.localhost') ||
+    url.startsWith('https://ipc.localhost') ||
+    url.startsWith('http://tauri.localhost') ||
+    url.startsWith('https://tauri.localhost')
   )
 }
 
@@ -150,8 +150,7 @@ const makeFilteringEventBus = (eventBus: TauriEventApi): TauriEventApi => {
       if (bufferedFetchErrorLog !== null) {
         const buffered = bufferedFetchErrorLog
         bufferedFetchErrorLog = null
-        const isInternalResponseStart =
-          tag === 'ResponseStart' && isTauriInternalUrl(record.url)
+        const isInternalResponseStart = tag === 'ResponseStart' && isTauriInternalUrl(record.url)
         if (!isInternalResponseStart) {
           void enqueueEmit(BRIDGE_EVENT, buffered)
         }
@@ -167,12 +166,12 @@ const makeFilteringEventBus = (eventBus: TauriEventApi): TauriEventApi => {
       }
 
       if (
-        (tag === 'ResponseData'
-          || tag === 'ResponseFinished'
-          || tag === 'RequestError'
-          || tag === 'Cancelled')
-        && typeof record.id === 'string'
-        && internalRequestIds.has(record.id)
+        (tag === 'ResponseData' ||
+          tag === 'ResponseFinished' ||
+          tag === 'RequestError' ||
+          tag === 'Cancelled') &&
+        typeof record.id === 'string' &&
+        internalRequestIds.has(record.id)
       ) {
         if (tag === 'ResponseFinished' || tag === 'RequestError' || tag === 'Cancelled') {
           // Terminal event — release the id so the set doesn't grow

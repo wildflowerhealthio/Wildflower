@@ -114,9 +114,7 @@ describe('makeFilteringEventBus', () => {
 
       await wrapped.emit(BRIDGE_EVENT, { _tag: 'SniffingComplete' })
 
-      expect(emissions).toEqual([
-        { event: BRIDGE_EVENT, payload: { _tag: 'SniffingComplete' } },
-      ])
+      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: { _tag: 'SniffingComplete' } }])
     })
 
     it('forwards non-warn Logs', async () => {
@@ -460,7 +458,7 @@ describe('makeFilteringEventBus', () => {
       // chain. We don't await them: we want to see what happens when
       // they're issued back-to-back synchronously.
       const a = { _tag: 'ResponseStart', id: 'a', url: 'https://x/a', status: 200 }
-      const b = { _tag: 'ResponseData', id: 'a', data: 'aaaa' }
+      const b = { _tag: 'Responsta', id: 'a', data: 'aaaa' }
       const c = { _tag: 'ResponseFinished', id: 'a' }
       void wrapped.emit(BRIDGE_EVENT, a)
       void wrapped.emit(BRIDGE_EVENT, b)

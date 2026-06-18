@@ -33,7 +33,7 @@ this transport guarantees arrives after all listeners are attached.
 
 ## Why one channel and not per-tag
 
-Tauri only guarantees FIFO *within* a single event name. With a tag
+Tauri only guarantees FIFO _within_ a single event name. With a tag
 per channel, a streaming sender's `ResponseFinished` could land at the
 receiver before the in-flight `ResponseData` chunks because each
 cross-tag delivery is its own `webview.eval(__TAURI_INTERNALS__.runCallback(…))`
