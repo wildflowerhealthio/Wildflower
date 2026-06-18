@@ -26,7 +26,7 @@ string envelope and no postMessage machinery.
 
 The Rust side listens on `BRIDGE_EVENT`, demuxes by the JSON payload's
 `_tag` field (every bridge message already carries one by construction;
-e.g. `{"_tag":"AuthTokenIssued","token":"…"}`), and emits its own
+e.g. `{"_tag":"ResponseFinished","requestId":"…"}`), and emits its own
 messages the same way. Tauri events are not buffered: the host must
 only send in response to a `__Ready`-tagged payload (or later), which
 this transport guarantees arrives after all listeners are attached.

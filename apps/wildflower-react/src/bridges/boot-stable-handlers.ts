@@ -1,3 +1,4 @@
+import { Effect } from 'effect'
 import type { BridgeHandlerRecord } from 'effect-messaging-react'
 import { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import type { ActiveDeviceUserCodeStore } from 'gatekeeper-react'
@@ -35,6 +36,13 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  * from `addOsColorSchemeListener`, which writes the same attribute from
  * `prefers-color-scheme` at boot.
  */
+// No host emits `AuthTokenIssued` on the standalone-web or embedded
+// entries (the standalone path serves a stub transport, and the
+// embedded path is web-only). The handler is registered for
+// type-completeness; the no-op puller would only fire if a future host
+// started emitting on this transport.
+const noTokenAvailable = (): Effect.Effect<string | null> => Effect.succeed(null)
+
 const makeBootStableInitialHandlers = (
   navigate: (to: NavTarget) => void,
   setToken: AuthTokenStore['setToken'],
@@ -45,7 +53,11 @@ const makeBootStableInitialHandlers = (
     applyInsets: applyRootInsets,
     applyColorScheme,
   }),
-  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setToken, setActiveDeviceUserCode),
+  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(
+    setToken,
+    setActiveDeviceUserCode,
+    noTokenAvailable
+  ),
 })
 
 export { makeBootStableInitialHandlers }

@@ -3,6 +3,7 @@ import 'tundra-css'
 import 'react-tundraish/styles.css'
 import 'wildflower-react/instrument'
 import 'wildflower-react/global.css'
+import { invoke } from '@tauri-apps/api/core'
 import { Effect } from 'effect'
 import { Logging } from 'effect-messaging-core'
 import { makeTauriTransport } from 'effect-messaging-tauri'
@@ -16,10 +17,22 @@ import { addOsColorSchemeListener } from 'wildflower-react/os-color-scheme-liste
 addOsColorSchemeListener()
 
 // Embedded-style store: in-memory, initial value `null`. The Rust host
-// re-delivers the bearer over the bridge on every page load (it replies
-// to each `bridge:__Ready` with `AuthTokenIssued`), so persisting a
-// token could only ever serve a stale value.
+// re-notifies the bridge on every page load (sends a contentless
+// `AuthTokenIssued` on each `bridge:__Ready`), and the page-side
+// handler pulls the bearer via the capability-gated
+// `gatekeeper_current_token` command — so persisting a token here
+// could only ever serve a stale value, and the bearer never rides the
+// multiplexed bridge channel that sibling webviews can subscribe to.
 const tokenStore = makeEmbeddedAuthTokenStore()
+
+// Capability-gated pull of the current Owner bearer. The Tauri
+// capability ACL only includes `allow-gatekeeper-current-token` on the
+// `main` webview, so the browser-sniffer's shared JS context (which a
+// hostile EHR page can drive) cannot reach it. `Effect.promise` is
+// safe because the command implementation is infallible — it just
+// returns the watch channel's current value.
+const pullCurrentTokenFromHost = (): Effect.Effect<string | null> =>
+  Effect.promise(() => invoke<string | null>('gatekeeper_current_token'))
 
 renderApp({
   history: createBrowserHistory(),
@@ -50,7 +63,8 @@ renderApp({
       initial: {
         [GatekeeperBridge.name]: makeGatekeeperWebHandlers(
           writeIssuedToken,
-          setActiveDeviceUserCode
+          setActiveDeviceUserCode,
+          pullCurrentTokenFromHost
         ),
       },
     }).then((transport) => {

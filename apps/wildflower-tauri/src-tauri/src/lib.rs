@@ -61,11 +61,12 @@ async fn run_server(
 
     // Bind BEFORE minting/publishing the Owner token: `setup_gatekeeper`
     // pushes the freshly-minted token onto the bridge publisher, and the
-    // bridge emits `AuthTokenIssued` to the webview. If the port were
-    // already taken, minting first would hand a full-Owner bearer to the
-    // webview while a *foreign* process owns `127.0.0.1:<port>`. Binding
-    // first guarantees the token is only ever minted once this process
-    // owns the port.
+    // bridge emits a contentless `AuthTokenIssued` notify so the webview
+    // pulls via the capability-gated `gatekeeper_current_token` command.
+    // If the port were already taken, minting first would mean the next
+    // pull would return a full-Owner bearer while a *foreign* process
+    // owns `127.0.0.1:<port>`. Binding first guarantees the token is
+    // only ever minted once this process owns the port.
     let listener = TcpListener::bind(&loopback_host)
         .await
         .with_context(|| format!("failed to bind to {loopback_host}"))?;
@@ -74,11 +75,13 @@ async fn run_server(
         setup_fhir_r4(&runtime, &emr_config).context("failed to set up FHIR R4 router")?;
     // `setup_gatekeeper` publishes the freshly-minted host owner token
     // through the bridge's publisher; the bridge's resident task emits
-    // `AuthTokenIssued` to the webview on every page load and on every
-    // token change. The same task forwards pending device-consent
-    // heads (and `null` clears) over `bridge:DeviceConsentRequested`
-    // and raises the desktop window on transitions to a pending head
-    // (see `bridge::attach_bridge`).
+    // a contentless `AuthTokenIssued` notify to the webview on every
+    // page load and on every token change (the webview pulls the
+    // bearer via `gatekeeper_current_token`, which is capability-gated
+    // to the main webview). The same task forwards pending
+    // device-consent heads (and `null` clears) over
+    // `bridge:DeviceConsentRequested` and raises the desktop window on
+    // transitions to a pending head (see `bridge::attach_bridge`).
     let gatekeeper = setup_gatekeeper(
         db.clone(),
         &gatekeeper_config,
@@ -185,6 +188,7 @@ async fn run_server(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![bridge::gatekeeper_current_token])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

@@ -1,13 +1,18 @@
 import { Schema } from 'effect'
-import { Bridge, UrlParamMessage } from 'effect-messaging-core'
+import { Bridge } from 'effect-messaging-core'
 
 /**
- * Host → Web: Tauri/Expo host hands a bearer token to the embedded SPA
- * so HTTP calls to the gatekeeper API authenticate.
+ * Host → Web: notify-only signal that a fresh bearer is available
+ * for the SPA to pull. The token does NOT ride this message — it is
+ * fetched out-of-band via a capability-gated Tauri command (so it
+ * never travels on the multiplexed bridge channel that sibling
+ * webviews can subscribe to). Sent on first page load and on every
+ * mid-session re-mint.
+ *
+ * @remarks
+ * Wire shape is the bare envelope `{"_tag":"AuthTokenIssued"}`.
  */
-const AuthTokenIssued = Schema.parseJson(
-  Schema.TaggedStruct('AuthTokenIssued', { token: Schema.String })
-)
+const AuthTokenIssued = Schema.parseJson(Schema.TaggedStruct('AuthTokenIssued', {}))
 type AuthTokenIssued = Schema.Schema.Type<typeof AuthTokenIssued>
 
 /**
@@ -44,13 +49,12 @@ type GatekeeperBridge = Bridge.Bridge<
 
 /**
  * Slice-level bridge for the gatekeeper auth surface. Web receives
- * `AuthTokenIssued` (the bearer the host minted at boot) and
- * `DeviceConsentRequested` (the pending device-consent head). The
- * Tauri host emits both as per-tag events; the Expo host emits
- * `AuthTokenIssued` via URL-encoded initial messages on the WebView's
- * source URL (so the bearer never touches a postMessage channel
- * before the transport's `peerReadyGate` has lifted) and does not
- * emit consent — the device-consent popup is Tauri-only for now.
+ * `AuthTokenIssued` (a contentless notify — pull the bearer
+ * out-of-band, the multiplexed channel never carries the secret) and
+ * `DeviceConsentRequested` (the pending device-consent head). Both
+ * messages are Tauri-emitted; no URL-param fallback (the bearer must
+ * never be embeddable in a URL that could leak through history or
+ * Referer headers).
  */
 const GatekeeperBridge: GatekeeperBridge = Bridge.make({
   name: 'Gatekeeper',
@@ -59,9 +63,6 @@ const GatekeeperBridge: GatekeeperBridge = Bridge.make({
     ['DeviceConsentRequested', DeviceConsentRequested],
   ] as const,
   webToHost: [] as const,
-  urlParams: {
-    AuthTokenIssued: UrlParamMessage.singleStringMessageSchema('AuthTokenIssued', 'token'),
-  },
 })
 
 export { GatekeeperBridge }
