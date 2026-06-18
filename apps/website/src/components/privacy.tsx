@@ -16,7 +16,7 @@ const GUARANTEES: readonly Guarantee[] = [
   },
   {
     id: 'standards',
-    title: 'Modern standards',
+    title: 'Open standards',
     body: 'Built on the Fast Healthcare Interoperability Resources (FHIR R4) standard — the same one mandated by the U.S. Office of the National Coordinator for Health IT.',
   },
   {
