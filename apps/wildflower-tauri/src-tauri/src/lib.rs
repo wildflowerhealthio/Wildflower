@@ -211,6 +211,13 @@ pub fn run() {
             // channel plumbing; the server task gets the publishers.
             let publishers = bridge::attach_bridge(app.handle());
 
+            // Wire the CollectorBridge.webToHost listeners that manage the
+            // sniffer child webview lifecycle (open / navigate / close).
+            // Sniffer-emitted data-plane events (`bridge:ResponseStart`
+            // etc.) reach the React SPA directly via the global Tauri
+            // event bus — no Rust forwarding is needed for them.
+            browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
+
             let error_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let runtime = ServerRuntimeConfig {

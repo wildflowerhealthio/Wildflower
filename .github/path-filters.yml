@@ -14,14 +14,39 @@ rust:
   - '.github/workflows/lint-rust.yml'
   - '.github/workflows/test-rust.yml'
 
-# Subset of `rust`: just the Tauri desktop app. Gates the `tauri` job in
-# lint-rust.yml, which installs GTK/webkit system libs to compile + lint that
-# crate (the regular `lint`/`nextest` jobs exclude it). A tauri change matches
-# both `rust` and `tauri`, so it runs the normal Rust jobs AND the tauri job.
-tauri:
+# Crates that depend on `tauri = "2"` and therefore need GTK/webkit
+# system libs to compile. Gates the `tauri` lint/test jobs in
+# {lint,test}-rust.yml (the regular `lint`/`nextest` jobs exclude these
+# crates).
+tauri-rust:
   - 'apps/wildflower-tauri/**'
+  - 'slices/browser-sniffer/browser-sniffer-tauri-rust/**'
   - '.github/path-filters.yml'
   - '.github/workflows/lint-rust.yml'
+  - '.github/workflows/test-rust.yml'
+
+# The TS bootstrap package whose generated IIFE is `include_str!`'d by
+# `browser-sniffer-tauri-rust`. A change here doesn't touch any `.rs`,
+# but it does change the byte content the Rust binary ships, so the
+# tauri Rust job needs to re-run pnpm + regenerate the bootstrap and
+# then build/test against the new bytes.
+tauri-bootstrap:
+  - 'slices/browser-sniffer/browser-sniffer-tauri/**'
+  - 'pnpm-lock.yaml'
+  - 'pnpm-workspace.yaml'
+
+# Union filter: any change that should run the GTK-enabled tauri job.
+# A tauri change matches both `rust` and `tauri`, so it runs the normal
+# Rust jobs AND the tauri job.
+tauri:
+  - 'apps/wildflower-tauri/**'
+  - 'slices/browser-sniffer/browser-sniffer-tauri-rust/**'
+  - 'slices/browser-sniffer/browser-sniffer-tauri/**'
+  - 'pnpm-lock.yaml'
+  - 'pnpm-workspace.yaml'
+  - '.github/path-filters.yml'
+  - '.github/workflows/lint-rust.yml'
+  - '.github/workflows/test-rust.yml'
 
 ts:
   - '**/*.ts'

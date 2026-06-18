@@ -10,22 +10,22 @@ import {
 } from 'browser-sniffer-core'
 import { Schema } from 'effect'
 import { Logging } from 'effect-messaging-core'
+import type { TauriEventApi } from 'effect-messaging-tauri'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
-import { installSniffer, SNIFFER_STATE_KEY, snifferScript, type SnifferState } from './index.ts'
+
+import { installSniffer, SNIFFER_STATE_KEY, type SnifferState } from '../src/install-sniffer.ts'
 
 const { expectDistinct, expectToMultisetEqual } = utilityExpectations(expect)
-
-declare global {
-  interface Window {
-    ReactNativeWebView: { postMessage: (msg: string) => void }
-  }
-}
 
 interface Message {
   readonly _tag: string
   readonly [key: string]: unknown
+}
+
+interface TauriEnvelope {
+  readonly payload: unknown
 }
 
 // Capture the real prototype methods once so each test can reset to them
@@ -45,7 +45,11 @@ const resetShims = (): void => {
   const state = getState()
   if (state !== undefined) {
     window.removeEventListener('load', state.pageLoadHandler)
-    window.removeEventListener('message', state.hostMessageHandler)
+    for (const entry of state.unlistens) {
+      void Promise.resolve(entry).then((unlisten) => {
+        unlisten()
+      })
+    }
     delete (window as unknown as Record<symbol, unknown>)[SNIFFER_STATE_KEY]
   }
   // Always restore originals — installSniffer overrode them whether or not
@@ -56,24 +60,47 @@ const resetShims = (): void => {
   window.fetch = originalFetch
 }
 
+// Per-test recorder: every `eventBus.emit(event, payload)` call lands
+// in `emits` (the payload is the structured sniffer message), and every
+// `eventBus.listen(event, handler)` registers the handler in `listeners`
+// so `fireInbound` can poke it from tests. `installSnifferForTest()`
+// passes `testEventBus` to `installSniffer`.
+let emits: Message[] = []
+let listeners = new Map<string, (env: TauriEnvelope) => void>()
+let testEventBus: TauriEventApi
+
 const setupEnv = (): (() => Message[]) => {
-  const postMessage = vi.fn<(data: string) => void>()
-  window.ReactNativeWebView = { postMessage }
-  return () => postMessage.mock.calls.map(([json]) => JSON.parse(json) as Message)
+  emits = []
+  listeners = new Map()
+  testEventBus = {
+    emit: async (_event, payload): Promise<void> => {
+      emits.push(payload as Message)
+    },
+    listen: async (event, handler): Promise<() => void> => {
+      listeners.set(event, handler)
+      return () => listeners.delete(event)
+    },
+  }
+  return () => emits
+}
+
+const installSnifferForTest = (): void => {
+  installSniffer(testEventBus)
+}
+
+const fireInbound = (event: string, payload: unknown): void => {
+  const handler = listeners.get(event)
+  expect(handler, `no Tauri listener registered for ${event}`).toBeDefined()
+  handler?.({ payload })
 }
 
 const withTag = (msgs: Message[], tag: string): Message[] => msgs.filter((m) => m._tag === tag)
 
 const cancelRequest = (id: string): void => {
-  // Bridge-format Host→Web cancel. The injected sniffer's
-  // `message`-event listener decodes by hand (the bridge runtime
-  // schemas can't survive `installSniffer.toString()`).
-  window.dispatchEvent(
-    new MessageEvent('message', { data: JSON.stringify({ _tag: 'CancelSnifferRequest', id }) })
-  )
+  fireInbound('bridge:CancelSnifferRequest', { _tag: 'CancelSnifferRequest', id })
 }
 
-// Domain-event schemas (everything except the transport-level `__Ready`).
+// Domain-event schemas.
 const decodeLog = Schema.decodeUnknownSync(Schema.typeSchema(Logging.LogMessage))
 const decodeResponseStart = Schema.decodeUnknownSync(Schema.typeSchema(ResponseStartMessage))
 const decodeResponseData = Schema.decodeUnknownSync(Schema.typeSchema(ResponseDataMessage))
@@ -91,7 +118,6 @@ const decodeByTag: Record<string, (msg: unknown) => unknown> = {
 
 const validateMessages = (msgs: Message[]): void => {
   for (const msg of msgs) {
-    if (msg._tag === '__Ready') continue
     const decode = decodeByTag[msg._tag]
     expect(decode, `unknown _tag ${msg._tag}`).toBeDefined()
     expect(() => decode(msg)).not.toThrow()
@@ -125,24 +151,6 @@ const reassembleStream = (msgs: Message[], id: string): string => {
   return new TextDecoder().decode(combined)
 }
 
-describe('handshake', () => {
-  let getMessages: () => Message[]
-
-  beforeEach(() => {
-    resetShims()
-    getMessages = setupEnv()
-  })
-
-  afterEach(resetShims)
-
-  test('posts __Ready as the very first message', () => {
-    installSniffer()
-    const msgs = getMessages()
-    expect(msgs.length).toBeGreaterThan(0)
-    expect(msgs[0]).toEqual({ _tag: '__Ready' })
-  })
-})
-
 describe('fetch shim', () => {
   let getMessages: () => Message[]
 
@@ -155,7 +163,7 @@ describe('fetch shim', () => {
 
   test('should preserve the original fetch in the sniffer state', () => {
     const original = window.fetch
-    installSniffer()
+    installSnifferForTest()
     // `win.fetch.bind(win)` returns a new function reference, so
     // identity-equality with `original` won't hold. The behaviorally
     // relevant assertions are that the slot is populated and that
@@ -165,7 +173,7 @@ describe('fetch shim', () => {
   })
 
   test('should log shim installation', () => {
-    installSniffer()
+    installSnifferForTest()
     expect(getMessages()).toContainEqual({
       _tag: 'Log',
       level: 'info',
@@ -186,7 +194,7 @@ describe('fetch shim', () => {
           resetShims()
           const getMs = setupEnv()
           window.fetch = vi.fn().mockResolvedValue(new Response(null, { status, statusText }))
-          installSniffer()
+          installSnifferForTest()
           await window.fetch('https://test.example/status')
 
           expect(withTag(getMs(), 'ResponseStart')).toEqual([
@@ -223,7 +231,7 @@ describe('fetch shim', () => {
         window.fetch = vi
           .fn()
           .mockResolvedValue(new Response('ok', { status: 200, headers: headersInput }))
-        installSniffer()
+        installSnifferForTest()
         const res = await window.fetch('https://test.example/headers')
         await res.text()
 
@@ -247,19 +255,19 @@ describe('fetch shim', () => {
 
   test('should handle bodyless responses with immediate ResponseFinished', async () => {
     window.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
-    installSniffer()
+    installSnifferForTest()
     await window.fetch('https://test.example/empty')
 
     // No ResponseData emitted between start and finish for a null body.
     const lifecycle = getMessages()
-      .filter((m) => m._tag !== 'Log' && m._tag !== '__Ready')
+      .filter((m) => m._tag !== 'Log')
       .map((m) => m._tag)
     expect(lifecycle).toEqual(['ResponseStart', 'ResponseFinished'])
   })
 
   test('should post RequestError and re-throw on fetch network error', async () => {
     window.fetch = vi.fn().mockRejectedValue(new Error('network down'))
-    installSniffer()
+    installSnifferForTest()
 
     await expect(window.fetch('https://test.example/fail')).rejects.toThrow('network down')
     expect(withTag(getMessages(), 'RequestError')).toEqual([
@@ -274,7 +282,7 @@ describe('fetch shim', () => {
 
   test('should handle Request object input', async () => {
     window.fetch = vi.fn().mockResolvedValue(new Response(null))
-    installSniffer()
+    installSnifferForTest()
     await window.fetch(new Request('https://test.example/req-obj'))
 
     expect(withTag(getMessages(), 'ResponseStart')).toEqual([
@@ -288,7 +296,7 @@ describe('fetch shim', () => {
         resetShims()
         const getMs = setupEnv()
         window.fetch = vi.fn().mockResolvedValue(new Response(body))
-        installSniffer()
+        installSnifferForTest()
 
         const res = await window.fetch('https://test.example/validate')
         await res.text()
@@ -305,7 +313,7 @@ describe('fetch shim', () => {
         resetShims()
         const getMs = setupEnv()
         window.fetch = vi.fn().mockResolvedValue(new Response(body))
-        installSniffer()
+        installSnifferForTest()
 
         const res = await window.fetch('https://test.example/data')
         await res.text()
@@ -324,7 +332,7 @@ describe('fetch shim', () => {
         resetShims()
         const getMs = setupEnv()
         window.fetch = vi.fn().mockResolvedValue(new Response(null))
-        installSniffer()
+        installSnifferForTest()
         await window.fetch(url)
 
         expect(withTag(getMs(), 'ResponseStart')).toEqual([expect.objectContaining({ url })])
@@ -339,11 +347,11 @@ describe('fetch shim', () => {
         resetShims()
         const getMs = setupEnv()
         window.fetch = vi.fn().mockResolvedValue(new Response(body))
-        installSniffer()
+        installSnifferForTest()
         const res = await window.fetch(url)
         await res.text()
 
-        const msgs = getMs().filter((m) => m._tag !== 'Log' && m._tag !== '__Ready')
+        const msgs = getMs().filter((m) => m._tag !== 'Log')
         expect(withTag(msgs, 'ResponseStart')).toHaveLength(1)
         expect(withTag(msgs, 'ResponseFinished')).toHaveLength(1)
       }),
@@ -357,11 +365,11 @@ describe('fetch shim', () => {
         resetShims()
         const getMs = setupEnv()
         window.fetch = vi.fn().mockResolvedValue(new Response(body))
-        installSniffer()
+        installSnifferForTest()
         const res = await window.fetch('https://test.example')
         await res.text()
 
-        const msgs = getMs().filter((m) => m._tag !== 'Log' && m._tag !== '__Ready')
+        const msgs = getMs().filter((m) => m._tag !== 'Log')
         const ids = new Set(msgs.map((m) => m['id']))
         expect(ids.size).toBe(1)
       }),
@@ -385,7 +393,7 @@ describe('fetch shim', () => {
       if (callCount === 1) return promiseA
       return promiseB
     })
-    installSniffer()
+    installSnifferForTest()
 
     const fetchA = window.fetch('https://test.example/a')
     const fetchB = window.fetch('https://test.example/b')
@@ -442,7 +450,7 @@ describe('fetch shim', () => {
           )
           let callIdx = 0
           window.fetch = vi.fn().mockImplementation(() => scheduledResponses[callIdx++])
-          installSniffer()
+          installSnifferForTest()
 
           const fetched = requests.map(([url]) =>
             window.fetch(url).then(async (r) => {
@@ -493,7 +501,7 @@ describe('XHR shim', () => {
   afterEach(resetShims)
 
   test('should preserve the original open/send in the sniffer state', () => {
-    installSniffer()
+    installSnifferForTest()
     expect(getState()).toEqual(
       expect.objectContaining({
         nativeXHROpen: expect.any(Function),
@@ -503,7 +511,7 @@ describe('XHR shim', () => {
   })
 
   test('should log shim installation', () => {
-    installSniffer()
+    installSnifferForTest()
     expect(getMessages()).toContainEqual({
       _tag: 'Log',
       level: 'info',
@@ -512,7 +520,7 @@ describe('XHR shim', () => {
   })
 
   test('should defer ResponseStart until response headers are available', () => {
-    installSniffer()
+    installSnifferForTest()
     const xhr = new XMLHttpRequest()
     xhr.open('GET', 'https://test.example/xhr')
     xhr.send()
@@ -535,7 +543,7 @@ describe('XHR shim', () => {
   })
 
   test('should post ResponseFinished on load with remaining text flushed as base64', () => {
-    installSniffer()
+    installSnifferForTest()
     const xhr = new XMLHttpRequest()
     xhr.open('GET', 'https://test.example/xhr')
     xhr.send()
@@ -553,7 +561,7 @@ describe('XHR shim', () => {
   })
 
   test('should post RequestError on XHR error event', () => {
-    installSniffer()
+    installSnifferForTest()
     const xhr = new XMLHttpRequest()
     xhr.open('GET', 'https://test.example/xhr-err')
     xhr.send()
@@ -570,7 +578,7 @@ describe('XHR shim', () => {
   })
 
   test('should post ResponseFinished on abort', () => {
-    installSniffer()
+    installSnifferForTest()
     const xhr = new XMLHttpRequest()
     xhr.open('GET', 'https://test.example/xhr')
     xhr.send()
@@ -581,7 +589,7 @@ describe('XHR shim', () => {
   })
 
   test('should produce schema-valid messages for XHR lifecycle', () => {
-    installSniffer()
+    installSnifferForTest()
     const xhr = new XMLHttpRequest()
     xhr.open('GET', 'https://test.example/xhr')
     xhr.send()
@@ -602,7 +610,7 @@ describe('XHR shim', () => {
         XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
         XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
         const getMs = setupEnv()
-        installSniffer()
+        installSnifferForTest()
         const xhr = new XMLHttpRequest()
         xhr.open('GET', 'https://test.example/xhr')
         xhr.send()
@@ -626,7 +634,7 @@ describe('XHR shim', () => {
   })
 
   test('should guard against stale listeners when XHR is reused', () => {
-    installSniffer()
+    installSnifferForTest()
     const xhr = new XMLHttpRequest()
 
     xhr.open('GET', 'https://test.example/first')
@@ -667,9 +675,12 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
 
   afterEach(resetShims)
 
-  test('should register a message-event listener on install', () => {
-    installSniffer()
-    expect(getState()?.hostMessageHandler).toBeDefined()
+  test('should register Tauri listeners on install', () => {
+    installSnifferForTest()
+    // One unlisten per inbound bridge tag (`Click`, `CancelSnifferRequest`).
+    expect(getState()?.unlistens).toHaveLength(2)
+    expect(listeners.has('bridge:CancelSnifferRequest')).toBe(true)
+    expect(listeners.has('bridge:Click')).toBe(true)
   })
 
   test('should stop posting ResponseData and ResponseFinished after cancellation (fetch)', async () => {
@@ -684,7 +695,7 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
       },
     })
     window.fetch = vi.fn().mockResolvedValue(new Response(stream))
-    installSniffer()
+    installSnifferForTest()
 
     const res = await window.fetch('https://test.example/cancel')
     const reader = res.body!.getReader()
@@ -708,7 +719,7 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
   })
 
   test('should stop posting data after cancellation (XHR)', () => {
-    installSniffer()
+    installSnifferForTest()
     const xhr = new XMLHttpRequest()
     xhr.open('GET', 'https://test.example/cancel-xhr')
     xhr.send()
@@ -732,30 +743,14 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
     expect(withTag(getMessages(), 'ResponseFinished')).toEqual([])
   })
 
-  test('should not mutate the active-set on malformed or unknown inbound payloads', () => {
-    installSniffer()
-    window.dispatchEvent(new MessageEvent('message', { data: 'not json' }))
-    window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ _tag: 'Other' }) }))
-    window.dispatchEvent(
-      new MessageEvent('message', { data: JSON.stringify({ _tag: 'CancelSnifferRequest' }) })
-    )
+  test('should not mutate the active-set on malformed CancelSnifferRequest payloads', () => {
+    installSnifferForTest()
+    // Wrong tag in payload (Tauri delivers per-tag, but defensive shape
+    // check still rejects).
+    fireInbound('bridge:CancelSnifferRequest', { _tag: 'Other' })
+    // Missing id.
+    fireInbound('bridge:CancelSnifferRequest', { _tag: 'CancelSnifferRequest' })
     expect(getState()?.activeRequests).toEqual(new Set())
-  })
-
-  test('should post a Log message when the inbound _tag is unrecognised', () => {
-    installSniffer()
-    const before = withTag(getMessages(), 'Log').length
-    window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ _tag: 'Other' }) }))
-    const after = withTag(getMessages(), 'Log')
-    expect(after.length).toBe(before + 1)
-    const last = after[after.length - 1] as Message & {
-      level?: unknown
-      payload?: readonly unknown[]
-    }
-    expect(last._tag).toBe('Log')
-    expect(last.level).toBe('warn')
-    expect(last.payload).toHaveLength(1)
-    expect(String(last.payload?.[0])).toContain('Other')
   })
 })
 
@@ -780,24 +775,16 @@ describe('Click (host→web bridge message)', () => {
     const clicked = vi.fn()
     button.addEventListener('click', clicked)
     document.body.replaceChildren(button)
-    installSniffer()
+    installSnifferForTest()
 
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: JSON.stringify({ _tag: 'Click', querySelector: '#go' }),
-      })
-    )
+    fireInbound('bridge:Click', { _tag: 'Click', querySelector: '#go' })
     expect(clicked).toHaveBeenCalledTimes(1)
   })
 
   test('silently no-ops when the selector matches no element', () => {
-    installSniffer()
+    installSnifferForTest()
     expect(() =>
-      window.dispatchEvent(
-        new MessageEvent('message', {
-          data: JSON.stringify({ _tag: 'Click', querySelector: '#missing' }),
-        })
-      )
+      fireInbound('bridge:Click', { _tag: 'Click', querySelector: '#missing' })
     ).not.toThrow()
   })
 
@@ -806,42 +793,33 @@ describe('Click (host→web bridge message)', () => {
     const clicked = vi.fn()
     button.addEventListener('click', clicked)
     document.body.replaceChildren(button)
-    installSniffer()
+    installSnifferForTest()
 
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: JSON.stringify({ _tag: 'Click', querySelector: '' }),
-      })
-    )
+    fireInbound('bridge:Click', { _tag: 'Click', querySelector: '' })
     expect(clicked).not.toHaveBeenCalled()
   })
 })
 
 describe('idempotent re-injection (simulating post-navigation re-inject)', () => {
-  let getMessages: () => Message[]
-
   beforeEach(() => {
     resetShims()
     XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
     XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
-    getMessages = setupEnv()
+    setupEnv()
   })
 
   afterEach(resetShims)
 
-  test('posts __Ready on every install but installs the fetch/XHR shim exactly once', () => {
-    installSniffer()
+  test('installs the fetch/XHR shim exactly once across multiple installs', () => {
+    installSnifferForTest()
     const shimmedFetchAfterFirst = window.fetch
     const stateAfterFirst = getState()
     expect(stateAfterFirst).toBeDefined()
 
-    installSniffer()
-    installSniffer()
+    installSnifferForTest()
+    installSnifferForTest()
 
-    // __Ready handshake fires on every install (a re-injection wakes a
-    // host that mounted after the original install).
-    expect(withTag(getMessages(), '__Ready')).toHaveLength(3)
-    // But the shim itself is captured once: the state slot survives and
+    // The shim is captured once: the state slot survives and
     // `window.fetch` is the same reference as after the first install.
     expect(getState()).toBe(stateAfterFirst)
     expect(window.fetch).toBe(shimmedFetchAfterFirst)
@@ -873,7 +851,7 @@ describe('PageLoaded', () => {
   }
 
   test('should post PageLoaded (notification only) with a pageContentId on window load event', () => {
-    installSniffer()
+    installSnifferForTest()
     window.dispatchEvent(new Event('load'))
 
     const loaded = withTag(getMessages(), 'PageLoaded')
@@ -890,7 +868,7 @@ describe('PageLoaded', () => {
   })
 
   test('should stream the DOM content through the standard Response* triple', () => {
-    installSniffer()
+    installSnifferForTest()
     window.dispatchEvent(new Event('load'))
 
     const msgs = getMessages()
@@ -912,14 +890,14 @@ describe('PageLoaded', () => {
   })
 
   test('should produce schema-valid PageLoaded + Response* messages', () => {
-    installSniffer()
+    installSnifferForTest()
     window.dispatchEvent(new Event('load'))
     validateMessages(getMessages())
   })
 
   test('should not register the load listener twice on double injection', () => {
-    installSniffer()
-    installSniffer()
+    installSnifferForTest()
+    installSnifferForTest()
     window.dispatchEvent(new Event('load'))
 
     expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
@@ -927,7 +905,7 @@ describe('PageLoaded', () => {
 
   test('should serialize the entire <html>… subtree, including arbitrary body content', () => {
     document.body.innerHTML = '<p id="x">hello &amp; goodbye</p>'
-    installSniffer()
+    installSnifferForTest()
     window.dispatchEvent(new Event('load'))
 
     // `&amp;` survives the HTML-escaped round-trip — `Element.outerHTML`
@@ -945,7 +923,7 @@ describe('PageLoaded', () => {
     // the expectation for hosts that ingest the captured payload as HTML.
     document.body.innerHTML =
       '<svg xmlns="http://www.w3.org/2000/svg"><circle cx="1" cy="2" r="3"/></svg>'
-    installSniffer()
+    installSnifferForTest()
     window.dispatchEvent(new Event('load'))
 
     // `<circle>` closes per HTML rules — either self-closing or paired —
@@ -956,15 +934,15 @@ describe('PageLoaded', () => {
   })
 
   test('should capture WebView-wrapped HTML for text/plain documents', () => {
-    // RN-WebView (and every other engine) renders `text/plain` by wrapping
-    // it in a `<pre>` inside `<html><body>`; the sniffer runs against
-    // *that* DOM, never the raw bytes, so our handler captures the wrapper.
+    // Every WebView engine renders `text/plain` by wrapping it in a
+    // `<pre>` inside `<html><body>`; the sniffer runs against *that*
+    // DOM, never the raw bytes, so our handler captures the wrapper.
     // We simulate by populating the body — the captured payload is HTML.
     const lines = 'Line 1\nLine 2 with <brackets>\nLine 3'
     const pre = document.createElement('pre')
     pre.textContent = lines
     document.body.replaceChildren(pre)
-    installSniffer()
+    installSnifferForTest()
     window.dispatchEvent(new Event('load'))
 
     // `<` and `>` come back HTML-entity-encoded inside the <pre>;
@@ -984,7 +962,7 @@ describe('PageLoaded', () => {
     // text should preserve high-byte characters.
     const allBytes = Array.from({ length: 256 }, (_, i) => String.fromCharCode(i)).join('')
     document.body.textContent = allBytes
-    installSniffer()
+    installSnifferForTest()
     window.dispatchEvent(new Event('load'))
 
     const msgs = getMessages()
@@ -1008,46 +986,17 @@ describe('injection', () => {
   afterEach(resetShims)
 
   test('should not double-shim when injected multiple times', () => {
-    installSniffer()
+    installSnifferForTest()
     const firstShimmedFetch = window.fetch
     const firstNativeFetch = getState()?.nativeFetch
 
-    installSniffer()
+    installSnifferForTest()
 
     expect(window.fetch).toBe(firstShimmedFetch)
     expect(getState()?.nativeFetch).toBe(firstNativeFetch)
   })
 })
 
-describe('snifferScript (string form)', () => {
-  let getMessages: () => Message[]
-
-  beforeEach(() => {
-    resetShims()
-    XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
-    XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
-    getMessages = setupEnv()
-  })
-
-  afterEach(resetShims)
-
-  test('round-trips through new Function() and installs the shims', () => {
-    // The "real" delivery path: consumers inject `snifferScript` as a string
-    // into a WebView. This test exercises that path in-process to guard
-    // against `installSniffer.toString()` losing semantic information
-    // (closure capture, top-level identifiers, etc).
-    // oxlint-disable-next-line eslint/no-implied-eval -- intentional dynamic injection
-    new Function(snifferScript)()
-
-    expect(getMessages()[0]).toEqual({ _tag: '__Ready' })
-    expect(getState()).toEqual(
-      expect.objectContaining({
-        nativeFetch: expect.any(Function),
-        nativeXHROpen: expect.any(Function),
-        nativeXHRSend: expect.any(Function),
-        hostMessageHandler: expect.any(Function),
-        pageLoadHandler: expect.any(Function),
-      })
-    )
-  })
-})
+// The IIFE round-trip — `new Function(tauriSnifferBootstrapScript)()` —
+// is covered by `tests/bootstrap.test.ts`, which exercises the bundled
+// bootstrap end-to-end through a fake `__TAURI__.event` API.

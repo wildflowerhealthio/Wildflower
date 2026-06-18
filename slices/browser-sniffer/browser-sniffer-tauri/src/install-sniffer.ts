@@ -1,5 +1,4 @@
-// oxlint-disable eslint-plugin-unicorn/consistent-function-scoping -- installSniffer's body is stringified via Function.prototype.toString() and injected into arbitrary pages; nested helpers MUST stay inside the function body so they survive the stringification path. Moving them out would break the bundle.
-// oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin -- RN-WebView's bridge `postMessage(string)` is not the window `postMessage` API; no `targetOrigin` argument exists (mirrors effect-messaging-react/web-platform-adapter).
+// oxlint-disable eslint-plugin-unicorn/consistent-function-scoping -- installSniffer is esbuild-bundled at build time and injected into arbitrary third-party pages; nested helpers MUST stay inside the function body so they're captured in the IIFE bundle. Moving them out would break the bundle.
 
 import type {
   CancelSnifferRequestMessageBody,
@@ -13,46 +12,46 @@ import type {
 } from 'browser-sniffer-core'
 import type { Schema } from 'effect'
 import type { Logging } from 'effect-messaging-core'
+import type { TauriEventApi } from 'effect-messaging-tauri'
 import type { JsonValue } from 'kitchen-sink/schema'
 
 /**
  * Browser-side sniffer installed into an arbitrary third-party page.
  *
- * The injected JS bundle is produced by `Function.prototype.toString()`
- * on {@link installSniffer} — meaning every helper, every runtime
- * reference, and every cross-call piece of state must live *inside*
- * the function body. Top-level value imports or closures over module
- * scope would resolve to nothing in the injected page. Type-only
- * imports (the message body schemas, used to type {@link SnifferOutboundMessage}
- * / {@link SnifferInboundMessage}) are erased at compile time and so
- * do survive.
+ * The injected JS bundle is produced ahead of time by
+ * `scripts/build-tauri-bootstrap.mts`, which esbuild-bundles this
+ * function as part of a self-contained IIFE — meaning every helper,
+ * every runtime reference, and every cross-call piece of state must
+ * live *inside* the function body. Top-level value imports or closures
+ * over module scope would resolve to nothing in the injected page.
+ * Type-only imports (the message body schemas, `TauriEventApi`) are
+ * erased at compile time and so do survive.
  *
  * Wire format:
- *   - Posts `{"_tag":"__Ready"}` first — handshake signal for the host
- *     side's `BridgeTransport` (resolves the send-gating `Deferred` so
- *     Host→Web messages can flow).
- *   - Posts `Log`, `ResponseStart`, `ResponseData`, `ResponseFinished`,
- *     `RequestError`, `Cancelled`, `PageLoaded` — see
- *     `browser-sniffer-core/messages` for the schemas.
- *   - Listens for `CancelSnifferRequest` Host→Web messages on
- *     `window`'s `message` event. The handler tightens against confused
- *     deputies by only accepting events whose `source` is `null`
- *     (RN-WebView's injection path); page-side scripts dispatching
- *     synthetic `message` events with a non-null `source` are ignored.
+ *   - Emits `Log`, `ResponseStart`, `ResponseData`, `ResponseFinished`,
+ *     `RequestError`, `Cancelled`, `PageLoaded` as `bridge:{tag}` Tauri
+ *     events. `void eventBus.emit(...)` is fire-and-forget; Tauri's
+ *     per-event listener queue preserves arrival order, which matters
+ *     for `ResponseData` chunks (~64KB each) that must reconstruct in
+ *     order on the host side.
+ *   - Listens for `bridge:CancelSnifferRequest` and `bridge:Click`
+ *     Host→Web messages via `eventBus.listen` directly. No window
+ *     `message`-event indirection, no `source === null` guard: a Tauri
+ *     listener can only be invoked by Tauri's IPC, so page scripts
+ *     can't spoof inbound messages.
  *
  * Idempotent: a single `Symbol.for('browser-sniffer:state')` slot on
- * `window` stashes the captured native references and tracker state.
- * Re-injecting on the same page finds the slot and exits early after
- * the (harmless) repeat `__Ready`. **Caveat**: if a host re-injects a
- * *newer version* of this script (host app upgraded mid-session, etc.)
- * the early-return uses the stale state and the new logic never
- * installs. The slot carries no version tag; v1 deliberately accepts
- * this limitation. Tracking: re-injection-with-upgrade is out of scope
- * for the collector-stack rollout. Test coverage in
- * `install-sniffer.test.ts`.
+ * `window` stashes the captured native references, tracker state, and
+ * pending unlisten functions. Re-injecting on the same page finds the
+ * slot, drains the previous-run unlistens, and exits early. **Caveat**:
+ * if a host re-injects a *newer version* of this script (host app
+ * upgraded mid-session) the early-return uses the stale state and the
+ * new logic never installs. The slot carries no version tag; v1
+ * deliberately accepts this limitation. Test coverage in
+ * `tests/install-sniffer.test.ts`.
  */
 
-/** Wire form posted Web→Host: JSON-stringifiable, base64 `data`, plus the `__Ready` handshake. */
+/** Wire form posted Web→Host: JSON-stringifiable, base64 `data`. */
 type SnifferOutboundMessage =
   | Schema.Schema.Encoded<typeof Logging.LogMessageBody>
   | Schema.Schema.Encoded<typeof ResponseStartMessageBody>
@@ -61,7 +60,6 @@ type SnifferOutboundMessage =
   | Schema.Schema.Encoded<typeof RequestErrorMessageBody>
   | Schema.Schema.Encoded<typeof CancelledMessageBody>
   | Schema.Schema.Encoded<typeof PageLoadedMessageBody>
-  | { readonly _tag: '__Ready' }
 
 /** Wire form received Host→Web. */
 type SnifferInboundMessage =
@@ -74,13 +72,8 @@ interface SnifferState {
   readonly nativeXHRSend: XMLHttpRequest['send']
   readonly activeRequests: Set<string>
   readonly pageLoadHandler: () => void
-  readonly hostMessageHandler: (event: MessageEvent) => void
-}
-
-interface SnifferWindowExtensions {
-  ReactNativeWebView?: {
-    postMessage(data: string): void
-  }
+  /** Resolved `event.listen(...)` cleanups; drained on re-injection. */
+  readonly unlistens: Array<(() => void) | Promise<() => void>>
 }
 
 /**
@@ -88,18 +81,23 @@ interface SnifferWindowExtensions {
  * `window`. Tests use this to reset between cases; the injected
  * function body looks up the same registry symbol via
  * `Symbol.for('browser-sniffer:state')` (a literal string — closure
- * capture over `SNIFFER_STATE_KEY` would not survive the
- * `Function.prototype.toString()` path).
+ * capture over `SNIFFER_STATE_KEY` would not survive esbuild's IIFE
+ * boundary).
  */
 const SNIFFER_STATE_KEY: symbol = Symbol.for('browser-sniffer:state')
 
 /**
- * Install the sniffer on the current page. Idempotent. Posts `__Ready`
- * immediately so the host transport's send-gating handshake completes
- * before the first network event fires.
+ * Install the sniffer on the current page. Idempotent. On re-injection,
+ * drains any pending unlistens from the previous run before short-
+ * circuiting on the symbol-keyed state slot.
+ *
+ * Takes the Tauri event bus as an explicit parameter so the function
+ * is testable without mocking `window.__TAURI__` — the
+ * `tauri-sniffer-entry.ts` wrapper looks the global up once and passes
+ * it in.
  */
-const installSniffer = function (): void {
-  const win = window as Window & SnifferWindowExtensions
+const installSniffer = function (eventBus: TauriEventApi): void {
+  const win = window
   // Single state slot keyed by a registry symbol — eliminates name
   // collisions with arbitrary host-page globals and gives idempotency
   // (re-injection finds the slot and returns early). `unique symbol`
@@ -113,21 +111,23 @@ const installSniffer = function (): void {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
   const winWithState = win as WinWithState
 
-  const post = (msg: SnifferOutboundMessage): void => {
-    if (
-      win.ReactNativeWebView !== undefined &&
-      typeof win.ReactNativeWebView.postMessage === 'function'
-    ) {
-      win.ReactNativeWebView.postMessage(JSON.stringify(msg))
+  // On re-injection (the script ran on a previous page in this webview)
+  // drain the prior run's listener cleanups before the early-return.
+  // Without this, every navigation accumulates listener IDs on the
+  // Rust side that point at the destroyed JS context.
+  const existing = winWithState[stateKey]
+  if (existing !== undefined) {
+    for (const entry of existing.unlistens) {
+      void Promise.resolve(entry).then((unlisten) => {
+        unlisten()
+      })
     }
+    return
   }
 
-  // The handshake fires on every call (re-resolving an already-resolved
-  // BridgeTransport Deferred is a no-op in Effect) so a re-injection
-  // still wakes a host that mounted after the original install.
-  post({ _tag: '__Ready' })
-
-  if (winWithState[stateKey] !== undefined) return
+  const post = (msg: SnifferOutboundMessage): void => {
+    void eventBus.emit(`bridge:${msg._tag}`, msg)
+  }
 
   // Per-level Log emitters. The host re-emits each `Log` message via
   // `console[level](...payload)` on its side, so each page-side
@@ -137,17 +137,17 @@ const installSniffer = function (): void {
   // injected script can't import the Effect runtime, so this is the
   // plain-JS analogue. `LogLevel` is type-imported from `Logging` so
   // any future expansion of the bridge's level union surfaces here at
-  // compile time. (Type-only imports survive `Function.prototype.toString`.)
+  // compile time. (Type-only imports survive esbuild's bundle.)
   const makeLogForLevel =
     (level: Logging.LogLevel) =>
     (...args: unknown[]): void => {
       // Try to log, but fail for unsafe payloads. We assert the
       // JSON-safe shape rather than validating it: `logging.ts` narrows
       // with `Schema.is(JsonValue)`, but that's a runtime value and only
-      // type-only imports survive this file's `Function.prototype.toString()`
-      // injection path — so the schema guard isn't available here. The
-      // `catch` below is the runtime backstop: a non-JSON-safe arg makes
-      // `post`'s encode throw and we fall through to the warn payload.
+      // type-only imports survive this file's IIFE bundle — so the
+      // schema guard isn't available here. The `catch` below is the
+      // runtime backstop: a non-JSON-safe arg makes `post`'s encode
+      // throw and we fall through to the warn payload.
       try {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         post({ _tag: 'Log', level, payload: args as readonly JsonValue[] })
@@ -528,9 +528,9 @@ const installSniffer = function (): void {
   // Page content capture on window-level `load`. `PageLoaded` is now
   // just a notification (`url`, `pageContentId`); the DOM body streams
   // through the standard `ResponseStart`/`ResponseData`/`ResponseFinished`
-  // triple. Chunking the body (vs. a single multi-MB `postMessage`) keeps
-  // us under RN-WebView's binder size limits on Android and the iOS
-  // truncation threshold.
+  // triple. Chunking the body (vs. a single multi-MB emit) keeps
+  // per-message size bounded so the host's IPC transport doesn't have
+  // to special-case large payloads.
   //
   // `Element.outerHTML` is defined on every `Element` (not just
   // `HTMLElement`), so XML-content documents (e.g. RSS) also serialise,
@@ -563,20 +563,12 @@ const installSniffer = function (): void {
   }
   win.addEventListener('load', pageLoadHandler)
 
-  // Host→Web bridge messages arrive as `message` events on `window`
-  // (via `react-native-webview`'s `webViewRef.postMessage`). RN-WebView's
-  // host-side injection dispatches with `event.source === null`; any
-  // `message` event whose `source` is a `Window` or `MessagePort` is
-  // page-originated (iframe, opener, in-page script) and must be
-  // rejected — otherwise any third-party script on the page can
-  // `postMessage({_tag:'CancelSnifferRequest', id})` and silently
-  // suppress sniffer output for arbitrary ids.
-  //
-  // The bridge wire format is a JSON-stringified tagged struct; we
-  // parse by hand because the schema runtime can't survive
-  // `installSniffer.toString()`. The `SnifferInboundMessage` type
-  // keeps field names honest at compile time; we still reject
-  // malformed payloads at runtime.
+  // Host→Web bridge messages arrive as `bridge:Click` /
+  // `bridge:CancelSnifferRequest` Tauri events. We register one
+  // listener per tag and the typed payload is delivered directly — no
+  // JSON parsing, no MessageEvent indirection, no `source === null`
+  // guard. Tauri's IPC is the only thing that can invoke these
+  // listeners, so page scripts can't spoof inbound messages.
   //
   // On a mid-stream cancel we emit `Cancelled` as the terminal
   // observation so the host can release per-id state without
@@ -586,46 +578,36 @@ const installSniffer = function (): void {
   // best-effort, no feedback on a missing element (the host
   // typically retries by waiting for the next `PageLoaded` to land
   // before re-sending).
-  const hostMessageHandler = (event: MessageEvent): void => {
-    if (event.source !== null) return
-    if (typeof event.data !== 'string') return
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(event.data)
-    } catch {
-      return
-    }
-    if (parsed === null || typeof parsed !== 'object') return
-    const msg = parsed as Partial<SnifferInboundMessage>
-    switch (msg._tag) {
-      case 'CancelSnifferRequest': {
-        if (typeof msg.id !== 'string') return
-        const wasActive = activeRequests.has(msg.id)
-        activeRequests.delete(msg.id)
-        if (wasActive) {
-          post({ _tag: 'Cancelled', id: msg.id })
-        }
+  const unlistens: Array<(() => void) | Promise<() => void>> = []
+  unlistens.push(
+    eventBus.listen('bridge:CancelSnifferRequest', ({ payload }) => {
+      if (payload === null || typeof payload !== 'object') return
+      const msg = payload as Partial<SnifferInboundMessage>
+      if (msg._tag !== 'CancelSnifferRequest' || typeof msg.id !== 'string') return
+      const wasActive = activeRequests.has(msg.id)
+      activeRequests.delete(msg.id)
+      if (wasActive) {
+        post({ _tag: 'Cancelled', id: msg.id })
+      }
+    })
+  )
+  unlistens.push(
+    eventBus.listen('bridge:Click', ({ payload }) => {
+      if (payload === null || typeof payload !== 'object') return
+      const msg = payload as Partial<SnifferInboundMessage>
+      if (
+        msg._tag !== 'Click' ||
+        typeof msg.querySelector !== 'string' ||
+        msg.querySelector.length === 0
+      ) {
         return
       }
-      case 'Click': {
-        if (typeof msg.querySelector !== 'string' || msg.querySelector.length === 0) return
-        // `HTMLElement.click()` exists on the HTMLElement prototype; a
-        // generic `Element` (SVG, etc.) is unlikely as a click target
-        // but the cast keeps the call site honest.
-        const target = document.querySelector(msg.querySelector)
-        if (target !== null && 'click' in target && typeof target.click === 'function') {
-          target.click()
-        }
-        return
+      const target = document.querySelector(msg.querySelector)
+      if (target !== null && 'click' in target && typeof target.click === 'function') {
+        target.click()
       }
-      case undefined:
-      default: {
-        logWarning(`Unknown inbound message tag: ${String(msg._tag)}`)
-        return
-      }
-    }
-  }
-  win.addEventListener('message', hostMessageHandler)
+    })
+  )
 
   winWithState[stateKey] = {
     nativeFetch,
@@ -633,9 +615,13 @@ const installSniffer = function (): void {
     nativeXHRSend,
     activeRequests,
     pageLoadHandler,
-    hostMessageHandler,
+    unlistens,
   }
+  // `logError` is captured for use by future top-level error sinks;
+  // referencing it here keeps the local binding from being optimized
+  // away by the IIFE bundler.
+  void logError
 }
 
 export { installSniffer, SNIFFER_STATE_KEY }
-export type { SnifferInboundMessage, SnifferOutboundMessage, SnifferState, SnifferWindowExtensions }
+export type { SnifferInboundMessage, SnifferOutboundMessage, SnifferState }

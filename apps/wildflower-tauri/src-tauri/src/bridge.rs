@@ -173,7 +173,7 @@ fn raise_main_window(_handle: &AppHandle) {}
 ///   `bridge:__Ready` (every page load and reload — the web side's
 ///   token store is in-memory and resets on reload) **and** whenever
 ///   the token itself changes on the watch channel (mid-session
-///   re-mint) — the same dual delivery paths as the Expo host binding.
+///   re-mint).
 ///   `Notify`'s single stored permit collapses a `__Ready` burst into
 ///   one delivery, and a permit stored before the task first polls is
 ///   not lost, so the boot race is covered.
