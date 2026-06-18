@@ -23,8 +23,9 @@ vp build    # production build to dist/
   interactive "how it works" section (unit-tested in `convergence.test.ts`).
 - `src/styles/tokens.css` — design tokens and cross-cutting CSS variables.
 - `src/styles/global.css` — reset, page surface, shared typography.
-- `public/app-icon.png` — brand icon (favicon + logo); `public/CNAME` — the
-  custom domain.
+- `public/app-icon.png` (128px logo / apple-touch) and `public/favicon.png`
+  (32px tab icon) — scaled from the shared app-icon set in
+  `apps/wildflower-tauri/src-tauri/icons`; `public/CNAME` — the custom domain.
 
 ## Styling conventions
 
