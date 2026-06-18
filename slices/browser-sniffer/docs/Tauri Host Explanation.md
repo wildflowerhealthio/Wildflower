@@ -26,13 +26,15 @@ The fix lives in `sniffer_window.rs`: an `AtomicBool` sentinel (`SNIFFER_OPEN`) 
 
 ## Why a single embedded bootstrap
 
-The TS side (`browser-sniffer-tauri`) bundles `tauri-sniffer-entry.ts` into a self-contained IIFE and writes it as raw JS. The Rust crate `include_str!`s those bytes at compile time, so the sniffer webview always ships a frozen snapshot — no runtime fetch, no filesystem lookup at process start, no path management for the host `.app` bundle.
+The TS side (`browser-sniffer-tauri`) bundles `tauri-sniffer-entry.ts` (which imports `installSniffer` from the sibling `install-sniffer.ts`) into a self-contained IIFE and writes it as raw JS. The Rust crate `include_str!`s those bytes at compile time, so the sniffer webview always ships a frozen snapshot — no runtime fetch, no filesystem lookup at process start, no path management for the host `.app` bundle.
 
-The bootstrap shim is responsible for:
+The bootstrap is responsible for:
 
-1. Replacing `window.ReactNativeWebView.postMessage` with a `event.emit('bridge:{tag}', payload)` shim — the only outbound channel the unmodified `installSniffer()` uses. The sniffer always calls `JSON.stringify(msg)` before posting, so JSON.parse round-trips the structured message we hand to `event.emit` — letting `makeTauriTransport`'s `Schema.typeSchema` decode on the main side without any string envelope.
-2. Attaching Tauri `event.listen('bridge:Click' | 'bridge:CancelSnifferRequest')` handlers that dispatch synthetic `window` `message` events with `source: null` — exactly the channel the sniffer's host-message handler reads.
-3. Invoking `installSniffer()` to wire up the fetch/XHR shims.
+1. Looking up `globalThis.__TAURI__.event` (the structural `TauriEventApi` exported by `effect-messaging-tauri`).
+2. Injecting the in-page `BrowserTopBar` (closed shadow DOM, Close button + URL label) so the sniffer webview reads as a sub-context on iOS where there's no native browser chrome. The Close button emits `bridge:SniffingComplete` directly.
+3. Calling `installSniffer(event)` — the sniffer body wires the fetch / XHR / console shims and registers `event.listen('bridge:Click' | 'bridge:CancelSnifferRequest', …)` directly. No `window.ReactNativeWebView.postMessage` shim, no synthetic `MessageEvent` dispatch.
+
+When `__TAURI__` is absent (e.g. config drift removed `withGlobalTauri`) the bootstrap no-ops end-to-end: no shims attach, no BrowserTopBar attaches, no listeners register.
 
 `window.__TAURI__` is present inside the sniffer webview because `app.withGlobalTauri: true` in `tauri.conf.json` is baked in at codegen time (`tauri-codegen/src/context.rs`) and prepended to every webview's init-script list at runtime (`tauri/src/manager/webview.rs`) — the bootstrap doesn't need to call any per-webview API to opt in.
 
@@ -62,5 +64,6 @@ Doc-comments at the top of each file should be quick references useful on hover.
 
 - `browser-sniffer-tauri-rust/src/lib.rs` — entry point; wires three `app.listen(...)` calls.
 - `browser-sniffer-tauri-rust/src/sniffer_window.rs` — the only file that talks to Tauri's `WebviewWindowBuilder`.
-- `browser-sniffer-tauri/src/tauri-sniffer-entry.ts` — the TS bootstrap that adapts the postMessage convention onto Tauri's event bus.
+- `browser-sniffer-tauri/src/install-sniffer.ts` — the fetch / XHR / console shim that emits `bridge:{tag}` directly via `eventBus.emit`.
+- `browser-sniffer-tauri/src/tauri-sniffer-entry.ts` — the thin IIFE wrapper that gates on `window.__TAURI__.event`, injects the `BrowserTopBar`, and hands the event API to `installSniffer`.
 - `slices/collector/collector-fundamentals/src/bridge.ts` — the consumer-side bridge schema; the Rust payload structs in `model/{request_sniffable_webview,open}.rs` mirror its shapes.

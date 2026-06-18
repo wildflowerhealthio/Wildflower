@@ -2,7 +2,7 @@
   "name": "browser-sniffer-tauri",
   "version": "0.0.0",
   "private": true,
-  "description": "Tauri bootstrap for the browser-sniffer: a shim that bridges the sniffer's window.ReactNativeWebView.postMessage outbound channel onto Tauri's event bus, plus an in-page top bar for the sniffer webview, plus the unmodified installSniffer() call. The bundled IIFE is consumed by browser-sniffer-tauri-rust via include_str!.",
+  "description": "Tauri sniffer bootstrap: the fetch/XHR/console shim that emits captured network activity as `bridge:{tag}` Tauri events, plus an in-page top bar for the sniffer webview. The bundled IIFE is consumed by browser-sniffer-tauri-rust via include_str!.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -33,12 +33,12 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "browser-sniffer-core": "workspace:*",
-    "browser-sniffer-injected": "workspace:*",
+    "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "effect-messaging-tauri": "workspace:*",
     "esbuild": "catalog:",
+    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
-  },
-  "peerDependencies": {
-    "browser-sniffer-injected": "workspace:*"
   }
 }

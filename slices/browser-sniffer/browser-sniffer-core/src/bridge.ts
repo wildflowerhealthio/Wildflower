@@ -27,8 +27,8 @@ type BrowserSnifferBridge = Bridge.Bridge<
 >
 
 /**
- * Cross-process contract for the injected `browser-sniffer-injected`
- * script. Web→Host: every shimmed `fetch` / XHR response, page-load
+ * Cross-process contract for the injected sniffer (`browser-sniffer-tauri`'s
+ * `installSniffer`). Web→Host: every shimmed `fetch` / XHR response, page-load
  * notifications, and mid-stream cancel acknowledgements. Host→Web:
  * `CancelSnifferRequest` tells the page to stop pumping events for a
  * given request id (the page then posts `Cancelled` as the terminal
