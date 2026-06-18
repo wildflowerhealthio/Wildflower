@@ -13,8 +13,19 @@ publish.workspace = true
 openapi-snapshot = ["dep:utoipa", "dep:serde_json"]
 
 [dependencies]
+# `serde` is non-optional: the always-on `bridge` module derives
+# `Deserialize` on its envelope shape, so every downstream crate
+# (`wildflower-tauri`, `browser-sniffer-tauri-rust`, …) needs the
+# trait available unconditionally.
+serde = { workspace = true }
 utoipa = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+
+[dev-dependencies]
+# `bridge::tests` decodes a JSON wire payload to verify the envelope
+# peek ignores extra fields. Kept off the runtime surface so production
+# builds of downstream crates don't pull `serde_json`.
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

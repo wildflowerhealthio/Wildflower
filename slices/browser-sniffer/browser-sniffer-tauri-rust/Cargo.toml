@@ -9,6 +9,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
 serde.workspace = true
 serde_json.workspace = true
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
 anyhow.workspace = true
 url = "2"
 

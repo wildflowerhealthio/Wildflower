@@ -654,6 +654,7 @@ dependencies = [
  "anyhow",
  "serde",
  "serde_json",
+ "shared-structures-rust",
  "tauri",
  "tauri-plugin-log",
  "url",
@@ -5514,6 +5515,7 @@ dependencies = [
 name = "shared-structures-rust"
 version = "0.0.0"
 dependencies = [
+ "serde",
  "serde_json",
  "utoipa",
 ]

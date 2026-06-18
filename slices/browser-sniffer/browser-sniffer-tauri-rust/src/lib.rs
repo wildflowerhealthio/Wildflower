@@ -9,6 +9,7 @@ mod handlers;
 mod model;
 mod sniffer_window;
 
+use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT};
 use tauri::{AppHandle, Listener};
 use tauri_plugin_log::log;
 
@@ -24,9 +25,9 @@ pub use crate::sniffer_window::SNIFFER_WEBVIEW_LABEL;
 /// web→host traffic) are dropped silently.
 pub fn attach_browser_sniffer(app: &AppHandle) {
     let handle = app.clone();
-    app.listen(events::BRIDGE_EVENT, move |event| {
+    app.listen(BRIDGE_EVENT, move |event| {
         let payload = event.payload();
-        let tag = match serde_json::from_str::<events::BridgeEnvelope>(payload) {
+        let tag = match serde_json::from_str::<BridgeEnvelope>(payload) {
             Ok(envelope) => envelope.tag,
             Err(error) => {
                 log::warn!("[browser-sniffer] undecodable bridge payload dropped: {error}");
@@ -49,12 +50,12 @@ mod tests {
     use super::*;
     use crate::bootstrap::SNIFFER_BOOTSTRAP;
 
-    /// Drift guard: the TS side pins the same `BRIDGE_EVENT` literal
-    /// and the same bare tag literals (the `_tag` discriminator on the
-    /// JSON payload).
+    /// Drift guard for this crate's sniffer-specific tag literals. The
+    /// shared `BRIDGE_EVENT` is drift-guarded in
+    /// `shared_structures_rust::bridge::tests`; this crate only owns
+    /// the per-tag literals on the multiplexed channel.
     #[test]
-    fn bridge_event_and_tags_match_the_ts_convention() {
-        assert_eq!(events::BRIDGE_EVENT, "bridge");
+    fn bridge_tags_match_the_ts_convention() {
         assert_eq!(events::REQUEST_SNIFFABLE_WEBVIEW, "RequestSniffableWebView");
         assert_eq!(events::OPEN, "Open");
         assert_eq!(events::SNIFFING_COMPLETE, "SniffingComplete");

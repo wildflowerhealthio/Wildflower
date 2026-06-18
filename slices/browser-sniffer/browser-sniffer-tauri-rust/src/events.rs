@@ -1,8 +1,8 @@
-//! Bridge event constants and the multiplexed envelope shape. Must
-//! match the TS side in
-//! `global/effect-messaging/effect-messaging-tauri/src/event-names.ts`.
-//! Drift between Rust and TS is caught by
-//! `bridge_event_and_tags_match_the_ts_convention` in `lib.rs`.
+//! Sniffer-specific tag literals dispatched on the multiplexed bridge
+//! channel. The channel name and envelope shape are shared with every
+//! other Rust bridge listener via
+//! [`shared_structures_rust::bridge`] — this module only owns the
+//! per-crate tag literals and window labels.
 //!
 //! Every web↔host message rides the single `BRIDGE_EVENT` Tauri event;
 //! the discriminator is the `_tag` field on the JSON payload, which
@@ -11,26 +11,12 @@
 //! within a single event name — so the multiplexed channel is what
 //! pins strict ordering for the sniffer's chunked page-content stream.
 
-use serde::Deserialize;
-
-pub const BRIDGE_EVENT: &str = "bridge";
-
 /// Web→host tag literals this crate dispatches on. Each handler's log
 /// message embeds its tag for diagnostic continuity with the old
 /// per-tag scheme.
 pub const REQUEST_SNIFFABLE_WEBVIEW: &str = "RequestSniffableWebView";
 pub const OPEN: &str = "Open";
 pub const SNIFFING_COMPLETE: &str = "SniffingComplete";
-
-/// Wire shape of the bridge envelope's `_tag` discriminator. Used to
-/// peek the tag without committing to a specific message struct, so
-/// the listener can route by tag and skip payloads it does not react
-/// to.
-#[derive(Debug, Deserialize)]
-pub(crate) struct BridgeEnvelope {
-    #[serde(rename = "_tag")]
-    pub(crate) tag: String,
-}
 
 /// Window label assigned to the main React SPA webview by
 /// `apps/wildflower-tauri/src-tauri/tauri.conf.json`. Re-exported so

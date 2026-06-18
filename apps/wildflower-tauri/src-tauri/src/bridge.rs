@@ -2,17 +2,10 @@ use std::sync::Arc;
 
 use gatekeeper_rust::bridge::GatekeeperHostToWeb;
 use serde::Deserialize;
+use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT};
 use tauri::{AppHandle, Emitter, Listener, Manager};
 use tauri_plugin_log::log;
 use tokio::sync::{watch, Notify};
-
-/// Single multiplexed bridge channel — must match the TS side in
-/// `global/effect-messaging/effect-messaging-tauri/src/event-names.ts`.
-/// Every web↔host message rides this one Tauri event; the discriminator
-/// is the `_tag` field on the JSON payload, which every bridge message
-/// already carries. See the TS-side `BRIDGE_EVENT` docstring for why
-/// per-tag channels were retired (cross-tag ordering broke streaming).
-pub const BRIDGE_EVENT: &str = "bridge";
 
 /// Tag literals dispatched by the bridge listener. Web→host tags we
 /// react to plus host→web tags we emit. Matches the TS-side schemas in
@@ -26,15 +19,6 @@ const LOG_TAG: &str = "Log";
 /// up by label to raise/focus it; an unknown label is a config drift
 /// and the focus call is skipped with a log.
 const MAIN_WINDOW_LABEL: &str = "main";
-
-/// Wire shape of the bridge envelope's `_tag` discriminator. Used to
-/// peek the tag without committing to a specific message struct, so the
-/// listener can route by tag and skip payloads it doesn't react to.
-#[derive(Debug, Deserialize)]
-struct BridgeEnvelope {
-    #[serde(rename = "_tag")]
-    tag: String,
-}
 
 /// Wire shape of a `Log` payload, pinned by
 /// `effect-messaging-core/src/logging.ts` (`LogMessageBody`). The
@@ -422,11 +406,12 @@ fn emit_device_consent(handle: &AppHandle, user_code: &Option<String>) {
 mod tests {
     use super::*;
 
-    /// Drift guard: the TS side pins the same literals in
-    /// `effect-messaging-tauri/src/event-names.test.ts`.
+    /// Drift guard for this crate's local tag literals. `BRIDGE_EVENT`
+    /// is pinned by `shared_structures_rust::bridge` (one source of
+    /// truth across every Rust bridge listener); the TS side pins the
+    /// same literals in `effect-messaging-tauri/src/event-names.test.ts`.
     #[test]
-    fn event_name_and_tags_match_the_ts_convention() {
-        assert_eq!(BRIDGE_EVENT, "bridge");
+    fn tag_literals_match_the_ts_convention() {
         assert_eq!(READY_TAG, "__Ready");
         assert_eq!(LOG_TAG, "Log");
     }
