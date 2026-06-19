@@ -5521,6 +5521,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "shared-structures-tauri-rust"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "tauri",
+ "tauri-plugin-log",
+ "url",
+]
+
+[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

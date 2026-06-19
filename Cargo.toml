@@ -8,6 +8,7 @@ members = [
   "slices/gatekeeper/gatekeeper-rust",
   "slices/persistence/persistence-rust",
   "slices/shared-structures/shared-structures-rust",
+  "slices/shared-structures/shared-structures-tauri-rust",
   "slices/tunnel/tunnel-rust",
 ]
 

@@ -1,0 +1,21 @@
+[package]
+name = "shared-structures-tauri-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# Shared Tauri host-side helpers, platform adapter for the shared-structures
+# slice. Currently the `sandboxed_webview` opener: a generic, less-privileged
+# top-level webview for loading arbitrary external (non-Tauri) pages. The window
+# logic is copied from the browser-sniffer host adapter and generalised so any
+# host flow can open an untrusted page in a webview that does NOT inherit the
+# main webview's capabilities — it is deliberately not coupled to any one slice.
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-log = "2"
+anyhow.workspace = true
+url = "2"
+
+# Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
+[lints]
+workspace = true
