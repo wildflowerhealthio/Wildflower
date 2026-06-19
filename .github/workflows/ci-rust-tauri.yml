@@ -1,8 +1,9 @@
 name: Rust Tauri
 
 # Compiles, lints, and tests the crates that pull in `tauri = "2"`
-# (wildflower-tauri + browser-sniffer-tauri-rust), which the main Rust workflow
-# (ci-rust.yml) excludes because their deps need GTK/webkit system libraries.
+# (wildflower-tauri + browser-sniffer-tauri-rust + shared-structures-tauri-rust),
+# which the main Rust workflow (ci-rust.yml) excludes because their deps need
+# GTK/webkit system libraries.
 # Without this they'd only be fmt-checked, so a change breaking their build or
 # tests would slip through. Runs only when a Tauri crate, the sniffer bootstrap,
 # or the lockfile changes (PRs), or on any push to main, to bound the cost.
@@ -20,6 +21,7 @@ on:
       - 'apps/wildflower-tauri/**'
       - 'slices/browser-sniffer/browser-sniffer-tauri-rust/**'
       - 'slices/browser-sniffer/browser-sniffer-tauri/**'
+      - 'slices/shared-structures/shared-structures-tauri-rust/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/ci-rust-tauri.yml'
@@ -35,10 +37,10 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # One job for clippy + nextest + doctests across both tauri crates: a single
+  # One job for clippy + nextest + doctests across all the tauri crates: a single
   # GTK/webkit apt install, one bootstrap setup, and one compile are shared by
-  # all three — instead of #208's separate lint and test jobs each repeating the
-  # apt install + bootstrap dance + compile.
+  # all three steps — instead of #208's separate lint and test jobs each
+  # repeating the apt install + bootstrap dance + compile.
   tauri:
     name: Tauri Check
     if: github.event.pull_request.draft != true
@@ -121,13 +123,13 @@ jobs:
         with:
           tool: nextest
       - name: clippy (tauri crates)
-        run: cargo clippy -p wildflower-tauri -p browser-sniffer-tauri-rust --all-targets --all-features -- -D warnings
+        run: cargo clippy -p wildflower-tauri -p browser-sniffer-tauri-rust -p shared-structures-tauri-rust --all-targets --all-features -- -D warnings
       - name: Run tests (nextest)
         # --no-tests=warn keeps the run green while these crates have few tests.
-        run: cargo nextest run -p wildflower-tauri -p browser-sniffer-tauri-rust --all-features --no-tests=warn
+        run: cargo nextest run -p wildflower-tauri -p browser-sniffer-tauri-rust -p shared-structures-tauri-rust --all-features --no-tests=warn
       - name: Run doctests (main only)
         # nextest does not run doctests; cover them with cargo test. These crates
         # have ~no doctests, so this extra compile is restricted to main —
         # matching ci-rust.yml. Promote to all events once doctests exist.
         if: github.event_name == 'push'
-        run: cargo test --doc -p wildflower-tauri -p browser-sniffer-tauri-rust --all-features
+        run: cargo test --doc -p wildflower-tauri -p browser-sniffer-tauri-rust -p shared-structures-tauri-rust --all-features
