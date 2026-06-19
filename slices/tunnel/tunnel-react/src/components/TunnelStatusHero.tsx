@@ -3,7 +3,7 @@ import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { StatusBadge, ToggleSwitch, type StatusTone } from 'react-tundraish'
 
-import type { TunnelState } from '../queries.ts'
+import { isTunnelOpen, type TunnelState } from '../queries.ts'
 import styles from './TunnelStatusHero.module.css'
 
 interface TunnelStatusHeroPropsBase {
@@ -63,14 +63,6 @@ const deriveHeroStatus: (input: {
   })),
   Match.orElse(() => ({ tone: 'neutral', label: 'Off' }))
 )
-
-/*
- * `running || requestedRunning` — same "err toward open" predicate the
- * explainer uses, so the address block and the explanatory paragraph
- * agree about whether the tunnel is "open" during start/stop
- * transitions.
- */
-const isOpen = (state: TunnelState): boolean => state.running || state.requestedRunning
 
 interface ConnectionPathProps {
   /**
@@ -176,7 +168,7 @@ const TunnelStatusHero = (props: TunnelStatusHeroProps): JSX.Element => {
     running: state.running,
     error: state.error,
   })
-  const open = isOpen(state)
+  const open = isTunnelOpen(state)
   const hostText = state.publicHost ?? 'No public host set'
   /*
    * Active-connection count is stubbed at 0 — there is no live source in

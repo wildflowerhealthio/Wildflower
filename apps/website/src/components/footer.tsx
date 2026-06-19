@@ -1,4 +1,4 @@
-import type { JSX } from 'react'
+import type { ComponentType, JSX } from 'react'
 
 import { useHref } from '../hooks/use-href.ts'
 import { AppIcon } from './app-icon.tsx'
@@ -7,7 +7,10 @@ import styles from './footer.module.css'
 type FooterLink = {
   readonly label: string
   readonly href: string
-  readonly extra?: () => JSX.Element
+  // A component (not a bare element) so it's rendered as its own fiber below —
+  // it uses hooks (`useHref`), which must run inside their own component, not
+  // be invoked as a plain function in the parent's render.
+  readonly extra?: ComponentType
 }
 
 const PRODUCT_LINKS: readonly FooterLink[] = [
@@ -17,7 +20,7 @@ const PRODUCT_LINKS: readonly FooterLink[] = [
 ]
 
 const AboutTheCompany = (): JSX.Element => {
-  const href = useHref() // from react-router-dom
+  const href = useHref()
   if (!href.includes('#about-the-company')) return <></>
 
   return (
@@ -56,7 +59,7 @@ function FooterColumn({
           <a className={styles['site-footer__link']} href={link.href}>
             {link.label}
           </a>
-          {link.extra && link.extra()}
+          {link.extra ? <link.extra /> : null}
         </div>
       ))}
     </div>

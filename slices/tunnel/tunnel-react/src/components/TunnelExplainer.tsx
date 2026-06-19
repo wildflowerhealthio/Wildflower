@@ -1,6 +1,6 @@
 import type { JSX, ReactNode } from 'react'
 
-import type { TunnelState } from '../queries.ts'
+import { isTunnelOpen, type TunnelState } from '../queries.ts'
 import styles from './TunnelExplainer.module.css'
 
 interface TunnelExplainerProps {
@@ -9,17 +9,8 @@ interface TunnelExplainerProps {
 
 type ExplainerVariant = 'open-host' | 'open-no-host' | 'closed'
 
-/*
- * `running || requestedRunning` errs toward the "open" copy: during a
- * stop transition (requestedRunning=false, running=true) and during a
- * start transition (requestedRunning=true, running=false) the device is
- * still reachable or about to be, so the open-state copy is the safer
- * truth to tell the user.
- */
-const isOpen = (state: TunnelState): boolean => state.running || state.requestedRunning
-
 const deriveVariant = (state: TunnelState): ExplainerVariant => {
-  if (!isOpen(state)) return 'closed'
+  if (!isTunnelOpen(state)) return 'closed'
   return state.publicHost !== null ? 'open-host' : 'open-no-host'
 }
 
@@ -45,7 +36,7 @@ const renderCopy = (variant: ExplainerVariant, publicHost: string | null): React
   return (
     <>
       By default, your personal health record is only accessible on this device. <br /> By
-      activating the tunnel you can use use apps that access your data remotely, or grant access
+      activating the tunnel you can use apps that access your data remotely, or grant access
       from another device.
     </>
   )

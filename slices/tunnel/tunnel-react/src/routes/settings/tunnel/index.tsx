@@ -7,7 +7,12 @@ import { RelaySettingsEntry } from '../../../components/RelaySettingsEntry.tsx'
 import { TunnelActivityFeed, type ActivityEntry } from '../../../components/TunnelActivityFeed.tsx'
 import { TunnelExplainer } from '../../../components/TunnelExplainer.tsx'
 import { TunnelStatusHero } from '../../../components/TunnelStatusHero.tsx'
-import { tunnelStateQueryOptions, useTunnelStateQuery, type TunnelState } from '../../../queries.ts'
+import {
+  isTunnelOpen,
+  tunnelStateQueryOptions,
+  useTunnelStateQuery,
+  type TunnelState,
+} from '../../../queries.ts'
 import { useTunnelSettingsForm } from '../../../use-tunnel-settings-form.ts'
 
 interface TunnelScreenBodyProps {
@@ -71,7 +76,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
         <TunnelStatusHero state={state} onToggle={form.toggle} />
       )}
 
-      {state.running || state.requestedRunning ? (
+      {isTunnelOpen(state) ? (
         <TunnelActivityFeed entries={buildShamActivityEntries()} />
       ) : null}
 
