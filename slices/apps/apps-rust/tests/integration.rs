@@ -52,10 +52,10 @@ fn delete(uri: &str) -> Request<Body> {
     Request::delete(uri).body(Body::empty()).expect("build")
 }
 
-/// Fresh-install seed: every code-defined bundled app present and
+/// Fresh-install seed: every code-defined default app present and
 /// FHIR Sharing absent (tunnel control is no longer routed through apps).
 #[tokio::test]
-async fn fresh_install_lists_the_bundled_set_without_fhir_sharing() {
+async fn fresh_install_lists_the_default_set_without_fhir_sharing() {
     let apps = spin_up();
     let res = apps
         .public_router
@@ -85,10 +85,10 @@ async fn fresh_install_lists_the_bundled_set_without_fhir_sharing() {
     );
 }
 
-/// The two routers share the same `AppsState` — a custom row created
-/// through the admin router shows up immediately through the public one.
+/// The two routers share the same `AppsState` — a row created through the
+/// admin router shows up immediately through the public one.
 #[tokio::test]
-async fn custom_apps_round_trip_between_routers() {
+async fn apps_round_trip_between_routers() {
     let apps = spin_up();
     let create_res = apps
         .admin_router
@@ -106,7 +106,7 @@ async fn custom_apps_round_trip_between_routers() {
     assert_eq!(create_res.status(), StatusCode::OK);
     let created = body_json(create_res.into_body()).await;
     let id = created["id"].as_str().expect("id").to_string();
-    assert!(id.starts_with("custom-"));
+    assert!(!id.is_empty());
 
     let list_res = apps
         .public_router
@@ -166,10 +166,10 @@ async fn custom_apps_round_trip_between_routers() {
     );
 }
 
-/// Bundled apps are first-class: rename, URL swap, and disable land
+/// Every app is first-class: rename, URL swap, and disable land
 /// successfully and persist into the public list.
 #[tokio::test]
-async fn bundled_app_is_fully_editable() {
+async fn seeded_app_is_fully_editable() {
     let apps = spin_up();
     let patch_res = apps
         .admin_router
@@ -207,11 +207,11 @@ async fn bundled_app_is_fully_editable() {
     assert_eq!(row["url"], "https://example.com/replacement");
 }
 
-/// Bundled apps are first-class — including for deletion. After a bundled
-/// id is deleted it doesn't reappear on the next list (the migration
-/// runner only seeds it once per database).
+/// Every app is first-class — including for deletion. After a seeded id is
+/// deleted it doesn't reappear on the next list (the migration runner only
+/// seeds it once per database).
 #[tokio::test]
-async fn deleted_bundled_app_stays_deleted() {
+async fn deleted_seeded_app_stays_deleted() {
     let apps = spin_up();
     let res = apps
         .admin_router

@@ -20,23 +20,23 @@ const formatError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
 /**
- * Modal editor for the apps list. Bundled apps toggle on/off; custom
- * apps can be added or removed. Writes are issued through the slice's
+ * Modal editor for the apps list. Every app can be toggled on/off or
+ * removed, and new apps can be added. Writes are issued through the slice's
  * TanStack Query mutations (`useAppsAdmin{Update,Create,Delete}Mutation`),
  * which invalidate the cached apps list on success — the parent screen
  * re-renders with the new data without any prop drilling.
  *
  * Every input lives inside a `<fieldset disabled={busy}>` so the entire
  * form locks during an in-flight write, not just the submit button —
- * stops the user from racing toggles or adding a duplicate custom row
- * while a previous write is still pending.
+ * stops the user from racing toggles or adding a duplicate row while a
+ * previous write is still pending.
  *
  * The host `Dialog` (react-tundraish) keeps its children mounted while
  * closed, so the three mutations' `error` state would otherwise persist
  * and a stale error would reappear on the next open. An effect keyed on
- * `open` resets all three mutations (and clears the new-custom form
- * fields) whenever the dialog transitions to open, so each open starts
- * from a clean slate.
+ * `open` resets all three mutations (and clears the new-app form fields)
+ * whenever the dialog transitions to open, so each open starts from a
+ * clean slate.
  */
 const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
   const updateMutation = useAppsAdminUpdateMutation()
@@ -50,7 +50,7 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
   // mutation hangs onto its last `error` until the next `mutate`. Without
   // this, reopening the dialog after a failed write would flash the stale
   // error before any new interaction. Resetting on the open transition
-  // (and clearing the new-custom form) gives every open a clean slate.
+  // (and clearing the new-app form) gives every open a clean slate.
   // `.reset` is a plain function (not an Effect), so calling it directly
   // in a sync effect is safe — no `Effect.runFork` needed. The mutation
   // `reset` identities are stable across renders, so listing them keeps
@@ -79,11 +79,11 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
     updateMutation.mutate({ id: app.id, payload: { enabled: !app.enabled } })
   }
 
-  const removeCustom = (app: AppEntry): void => {
+  const remove = (app: AppEntry): void => {
     deleteMutation.mutate({ id: app.id })
   }
 
-  const submitNewCustom = (): void => {
+  const submitNewApp = (): void => {
     const name = newName.trim()
     const url = newUrl.trim()
     if (name === '' || url === '') return
@@ -99,12 +99,6 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
     )
   }
 
-  // Custom apps carry a `custom-` id prefix (minted by the admin
-  // `CreateCustomApp` handler); bundled apps have stable slug ids. That
-  // prefix is the provenance signal now that the wire entry has no `kind`.
-  const nonCustom = apps.filter((app) => !app.id.startsWith('custom-'))
-  const custom = apps.filter((app) => app.id.startsWith('custom-'))
-
   return (
     <Dialog open={open} onClose={onClose} title="Manage apps">
       {errorMessage !== null ? (
@@ -114,8 +108,7 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
       ) : null}
       <fieldset className={editorStyles['apps-editor__fieldset']} disabled={busy}>
         <section className={editorStyles['apps-editor__section']}>
-          <h3 className="text-label-3">Bundled</h3>
-          {nonCustom.map((app) => (
+          {apps.map((app) => (
             <div key={app.id} className={editorStyles['apps-editor__row']}>
               <div className={editorStyles['apps-editor__row-label']}>
                 <span className="text-body-2">{app.name}</span>
@@ -125,45 +118,35 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
                   </span>
                 ) : null}
               </div>
-              <Checkbox
-                checked={app.enabled}
-                label=""
-                onChange={() => {
-                  toggle(app)
-                }}
-              />
+              <div className={editorStyles['apps-editor__row-actions']}>
+                <Checkbox
+                  checked={app.enabled}
+                  label=""
+                  onChange={() => {
+                    toggle(app)
+                  }}
+                />
+                <button
+                  type="button"
+                  className="button-3 outline accent-red"
+                  onClick={() => {
+                    remove(app)
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           ))}
         </section>
 
         <section className={editorStyles['apps-editor__section']}>
-          <h3 className="text-label-3">Custom</h3>
-          {custom.map((app) => (
-            <div key={app.id} className={editorStyles['apps-editor__row']}>
-              <div className={editorStyles['apps-editor__row-label']}>
-                <span className="text-body-2">{app.name}</span>
-                {app.subtitle !== undefined ? (
-                  <span className={cn(editorStyles['apps-editor__row-sub'], 'text-body-3')}>
-                    {app.subtitle}
-                  </span>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                className="button-3 outline accent-red"
-                onClick={() => {
-                  removeCustom(app)
-                }}
-              >
-                Remove
-              </button>
-            </div>
-          ))}
+          <h3 className="text-label-3">Add app</h3>
           <form
             className={editorStyles['apps-editor__form']}
             onSubmit={(event) => {
               event.preventDefault()
-              submitNewCustom()
+              submitNewApp()
             }}
           >
             <label className={editorStyles['apps-editor__form-field']}>
@@ -198,7 +181,7 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
               }}
             />
             <button type="submit" className="button-2 filled">
-              Add custom app
+              Add app
             </button>
           </form>
         </section>

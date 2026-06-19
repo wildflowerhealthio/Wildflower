@@ -10,6 +10,6 @@
 pub struct AppsConfig {
     /// e.g. `http://127.0.0.1:8080` — the origin clients reach when the
     /// tunnel is down. Used by `LaunchApp` to build redirect targets and to
-    /// validate that a resolved custom-app URL is launchable.
+    /// validate that a resolved app URL is launchable.
     pub loopback_origin: String,
 }

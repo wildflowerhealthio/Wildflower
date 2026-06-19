@@ -1,5 +1,4 @@
-//! `DELETE /apps/{id}` — remove an app row of any kind. Unknown ids return
-//! 404; bundled rows are deletable like any other.
+//! `DELETE /apps/{id}` — remove an app row. Unknown ids return 404.
 
 use std::sync::Arc;
 

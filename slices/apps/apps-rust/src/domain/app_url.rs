@@ -1,9 +1,10 @@
 //! `AppUrl` — a validated app-launch URL, parsed once from the stored/wire
 //! string and rendered back to a concrete redirect target at launch.
 //!
-//! Two shapes are accepted; everything else is rejected at [`parse_app_url`],
-//! so a bad URL never lands in a row and the open-redirect / XSS surface a
-//! launch-time check alone can't cover stays closed:
+//! Two shapes are accepted; everything else is rejected when parsing (via the
+//! standard [`FromStr`] trait), so a bad URL never lands in a row and the
+//! open-redirect / XSS surface a launch-time check alone can't cover stays
+//! closed:
 //!
 //!   * [`AppUrl::External`] — an absolute `https://` URL (an off-device
 //!     target). It may embed `{origin}` / `{launch}` placeholders (e.g. a
@@ -15,7 +16,7 @@
 //!     plain `/path` and the explicit `{origin}…` placeholder form parse to
 //!     this; its canonical string re-emits the `{origin}` prefix so a
 //!     query/fragment-only or bare-origin target round-trips back through
-//!     [`parse_app_url`].
+//!     [`str::parse`].
 //!
 //! Rejected on parse: `http://` (no TLS), `javascript:`, `data:`, `file:`, a
 //! protocol-relative `//authority` (open redirect), and an `{origin}` followed
@@ -24,12 +25,13 @@
 //! off-device.
 
 use std::fmt;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
 /// A validated app-launch URL. See the module docs for the accepted shapes and
 /// the `{origin}` / `{launch}` placeholders. Serialized (wire + SQLite) as its
-/// canonical string via [`fmt::Display`]; parsed back via [`parse_app_url`].
+/// canonical string via [`fmt::Display`]; parsed back via [`str::parse`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
 pub enum AppUrl {
@@ -50,8 +52,8 @@ pub struct LaunchParams<'a> {
     pub tunnel_unavailable: bool,
 }
 
-/// The error returned by [`parse_app_url`] when a string isn't a valid
-/// [`AppUrl`]. Reused as the `message` of the wire-level 400.
+/// The error returned when a string isn't a valid [`AppUrl`] (see
+/// [`AppUrl`]'s [`FromStr`] impl). Reused as the `message` of the wire-level 400.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppUrlError {
     /// Empty string.
@@ -74,38 +76,43 @@ impl fmt::Display for AppUrlError {
 
 impl std::error::Error for AppUrlError {}
 
-/// Parse a stored/wire URL string into an [`AppUrl`], rejecting empty and
-/// unsafe shapes. This is the single write-side gate: a value that doesn't
-/// parse never lands in a row, and a row that fails to parse on read surfaces
-/// as a typed error rather than redirecting somewhere unsafe.
-///
-/// # Errors
-///
-/// Returns [`AppUrlError::Empty`] for an empty string and [`AppUrlError::Invalid`]
-/// for anything outside the two accepted shapes (see the module docs).
-pub fn parse_app_url(value: &str) -> Result<AppUrl, AppUrlError> {
-    if value.is_empty() {
-        return Err(AppUrlError::Empty);
-    }
-    if let Some(rest) = value.strip_prefix("{origin}") {
-        // `{origin}` must be followed by a path/query/fragment boundary (or
-        // nothing), never an authority-extending char. Otherwise
-        // `{origin}@evil.com` would persist and resolve to
-        // `http://<loopback>@evil.com`, an off-device redirect target.
-        if rest.is_empty() || starts_at_url_boundary(rest) {
-            return Ok(AppUrl::OriginRelative(rest.to_owned()));
+impl FromStr for AppUrl {
+    type Err = AppUrlError;
+
+    /// Parse a stored/wire URL string into an [`AppUrl`], rejecting empty and
+    /// unsafe shapes. This is the single write-side gate: a value that doesn't
+    /// parse never lands in a row, and a row that fails to parse on read
+    /// surfaces as a typed error rather than redirecting somewhere unsafe.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AppUrlError::Empty`] for an empty string and
+    /// [`AppUrlError::Invalid`] for anything outside the two accepted shapes
+    /// (see the module docs).
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value.is_empty() {
+            return Err(AppUrlError::Empty);
         }
-        return Err(AppUrlError::Invalid);
+        if let Some(rest) = value.strip_prefix("{origin}") {
+            // `{origin}` must be followed by a path/query/fragment boundary (or
+            // nothing), never an authority-extending char. Otherwise
+            // `{origin}@evil.com` would persist and resolve to
+            // `http://<loopback>@evil.com`, an off-device redirect target.
+            if rest.is_empty() || can_immediately_follow_origin(rest) {
+                return Ok(AppUrl::OriginRelative(rest.to_owned()));
+            }
+            return Err(AppUrlError::Invalid);
+        }
+        // A single-slash `/path` is origin-relative; a protocol-relative
+        // `//authority` is an open redirect.
+        if value.starts_with('/') && !value.starts_with("//") {
+            return Ok(AppUrl::OriginRelative(value.to_owned()));
+        }
+        if value.starts_with("https://") {
+            return Ok(AppUrl::External(value.to_owned()));
+        }
+        Err(AppUrlError::Invalid)
     }
-    // A single-slash `/path` is origin-relative; a protocol-relative
-    // `//authority` is an open redirect.
-    if value.starts_with('/') && !value.starts_with("//") {
-        return Ok(AppUrl::OriginRelative(value.to_owned()));
-    }
-    if value.starts_with("https://") {
-        return Ok(AppUrl::External(value.to_owned()));
-    }
-    Err(AppUrlError::Invalid)
 }
 
 impl AppUrl {
@@ -140,7 +147,7 @@ impl AppUrl {
 impl fmt::Display for AppUrl {
     /// The canonical stored/wire string. [`AppUrl::OriginRelative`] re-emits the
     /// `{origin}` prefix so a `?query`/`#fragment`-only or bare-origin target
-    /// round-trips back through [`parse_app_url`].
+    /// round-trips back through [`str::parse`].
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AppUrl::External(url) => f.write_str(url),
@@ -159,7 +166,7 @@ impl TryFrom<String> for AppUrl {
     type Error = AppUrlError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        parse_app_url(&value)
+        value.parse()
     }
 }
 
@@ -169,13 +176,13 @@ impl TryFrom<String> for AppUrl {
 /// is what stops an `{origin}` match from being widened into an off-device
 /// authority. `rest` is assumed non-empty (the empty case is handled at the
 /// call site).
-fn starts_at_url_boundary(rest: &str) -> bool {
+fn can_immediately_follow_origin(rest: &str) -> bool {
     rest.starts_with(['/', '?', '#'])
 }
 
 /// Append `flag` as a query parameter to `target`, before any `#fragment`.
 ///
-/// Uses string manipulation rather than `url::Url`: bundled launch URLs (e.g.
+/// Uses string manipulation rather than `url::Url`: some launch URLs (e.g.
 /// growth-chart, medication-viewer) carry raw colons / slashes in their `iss=`
 /// query values that round-tripping through `Url` would percent-encode —
 /// downstream consumers expect the un-encoded form.
@@ -203,30 +210,30 @@ mod tests {
     #[test]
     fn parses_https_origin_relative_and_origin_placeholder() {
         assert_eq!(
-            parse_app_url("https://example.com/x"),
+            "https://example.com/x".parse(),
             Ok(AppUrl::External("https://example.com/x".to_owned())),
         );
         // A plain `/path` and the `{origin}/path` placeholder form both parse
         // to the same origin-relative suffix.
         assert_eq!(
-            parse_app_url("/relative/path"),
+            "/relative/path".parse(),
             Ok(AppUrl::OriginRelative("/relative/path".to_owned())),
         );
         assert_eq!(
-            parse_app_url("{origin}/launch?foo=1"),
+            "{origin}/launch?foo=1".parse(),
             Ok(AppUrl::OriginRelative("/launch?foo=1".to_owned())),
         );
         // `{origin}` may be the whole URL or carry a query/fragment directly.
         assert_eq!(
-            parse_app_url("{origin}"),
-            Ok(AppUrl::OriginRelative(String::new())),
+            "{origin}".parse(),
+            Ok(AppUrl::OriginRelative(String::new()))
         );
         assert_eq!(
-            parse_app_url("{origin}?x=1"),
+            "{origin}?x=1".parse(),
             Ok(AppUrl::OriginRelative("?x=1".to_owned())),
         );
         assert_eq!(
-            parse_app_url("{origin}#frag"),
+            "{origin}#frag".parse(),
             Ok(AppUrl::OriginRelative("#frag".to_owned())),
         );
     }
@@ -237,7 +244,7 @@ mod tests {
         // off-device redirect; the boundary check rejects it on parse.
         for bad in ["{origin}@evil.com/x", "{origin}.evil.com", "{origin}evil"] {
             assert_eq!(
-                parse_app_url(bad),
+                bad.parse::<AppUrl>(),
                 Err(AppUrlError::Invalid),
                 "rejects {bad}"
             );
@@ -246,15 +253,15 @@ mod tests {
 
     #[test]
     fn rejects_empty_and_unsafe_shapes() {
-        assert_eq!(parse_app_url(""), Err(AppUrlError::Empty));
+        assert_eq!("".parse::<AppUrl>(), Err(AppUrlError::Empty));
         // protocol-relative authority is an open redirect
         assert_eq!(
-            parse_app_url("//evil.example.com/x"),
+            "//evil.example.com/x".parse::<AppUrl>(),
             Err(AppUrlError::Invalid)
         );
         // plaintext http (no TLS)
         assert_eq!(
-            parse_app_url("http://example.com/"),
+            "http://example.com/".parse::<AppUrl>(),
             Err(AppUrlError::Invalid)
         );
         for scheme in [
@@ -263,14 +270,14 @@ mod tests {
             "file:///etc/passwd",
         ] {
             assert_eq!(
-                parse_app_url(scheme),
+                scheme.parse::<AppUrl>(),
                 Err(AppUrlError::Invalid),
                 "rejects {scheme}"
             );
         }
     }
 
-    /// The canonical string round-trips back through [`parse_app_url`] for every
+    /// The canonical string round-trips back through [`str::parse`] for every
     /// shape — including query/fragment-only origin-relative targets, which is
     /// why `OriginRelative` re-emits the `{origin}` prefix.
     #[test]
@@ -283,21 +290,21 @@ mod tests {
             "{origin}?x=1",
             "{origin}#frag",
         ] {
-            let parsed = parse_app_url(raw).expect("parses");
-            let reparsed = parse_app_url(&parsed.to_string()).expect("re-parses");
+            let parsed: AppUrl = raw.parse().expect("parses");
+            let reparsed: AppUrl = parsed.to_string().parse().expect("re-parses");
             assert_eq!(parsed, reparsed, "round-trip failed for {raw}");
         }
     }
 
     #[test]
     fn origin_relative_renders_same_origin_with_launch_substituted() {
-        let url = parse_app_url("{origin}/x?launch={launch}").unwrap();
+        let url: AppUrl = "{origin}/x?launch={launch}".parse().unwrap();
         assert_eq!(
             url.to_url_with_params(&params("http://127.0.0.1:8080", "NONCE", false)),
             "http://127.0.0.1:8080/x?launch=NONCE",
         );
         // A plain `/path` resolves against the origin too.
-        let url = parse_app_url("/installed-apps/x").unwrap();
+        let url: AppUrl = "/installed-apps/x".parse().unwrap();
         assert_eq!(
             url.to_url_with_params(&params("http://127.0.0.1:8080", "n", false)),
             "http://127.0.0.1:8080/installed-apps/x",
@@ -306,8 +313,9 @@ mod tests {
 
     #[test]
     fn external_substitutes_origin_and_launch_in_place() {
-        let url =
-            parse_app_url("https://host/launch.html?iss={origin}/fhir-r4&launch={launch}").unwrap();
+        let url: AppUrl = "https://host/launch.html?iss={origin}/fhir-r4&launch={launch}"
+            .parse()
+            .unwrap();
         assert_eq!(
             url.to_url_with_params(&params("http://127.0.0.1:8080", "NONCE", false)),
             "https://host/launch.html?iss=http://127.0.0.1:8080/fhir-r4&launch=NONCE",
@@ -316,22 +324,22 @@ mod tests {
 
     #[test]
     fn tunnel_unavailable_flag_lands_before_any_fragment() {
-        let bare = parse_app_url("https://x/y").unwrap();
+        let bare: AppUrl = "https://x/y".parse().unwrap();
         assert_eq!(
             bare.to_url_with_params(&params("o", "n", true)),
             "https://x/y?tunnel=unavailable",
         );
-        let with_query = parse_app_url("https://x/y?z=1").unwrap();
+        let with_query: AppUrl = "https://x/y?z=1".parse().unwrap();
         assert_eq!(
             with_query.to_url_with_params(&params("o", "n", true)),
             "https://x/y?z=1&tunnel=unavailable",
         );
-        let with_hash = parse_app_url("https://x/y#hash").unwrap();
+        let with_hash: AppUrl = "https://x/y#hash".parse().unwrap();
         assert_eq!(
             with_hash.to_url_with_params(&params("o", "n", true)),
             "https://x/y?tunnel=unavailable#hash",
         );
-        let with_query_hash = parse_app_url("https://x/y?z=1#hash").unwrap();
+        let with_query_hash: AppUrl = "https://x/y?z=1#hash".parse().unwrap();
         assert_eq!(
             with_query_hash.to_url_with_params(&params("o", "n", true)),
             "https://x/y?z=1&tunnel=unavailable#hash",

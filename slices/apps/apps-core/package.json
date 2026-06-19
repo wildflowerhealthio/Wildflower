@@ -22,10 +22,6 @@
       "source": "./src/bridge.ts",
       "default": "./dist/bridge.js"
     },
-    "./registry": {
-      "source": "./src/registry/index.ts",
-      "default": "./dist/registry/index.js"
-    },
     "./clients": {
       "source": "./src/clients/index.ts",
       "default": "./dist/clients/index.js"
@@ -33,10 +29,6 @@
     "./http-api-definition": {
       "source": "./src/http-api-definition/index.ts",
       "default": "./dist/http-api-definition/index.js"
-    },
-    "./livestore": {
-      "source": "./src/livestore/index.ts",
-      "default": "./dist/livestore/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -48,33 +40,20 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
-    "@fast-check/vitest": "catalog:",
-    "@livestore/adapter-node": "catalog:",
-    "@livestore/common": "catalog:",
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
-    "@livestore/utils": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
-    "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
-    "local-http-server-core": "workspace:*",
     "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
-    "@livestore/common": "catalog:",
-    "@livestore/livestore": "catalog:",
-    "@livestore/peer-deps": "catalog:",
-    "@livestore/utils": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "kitchen-sink": "workspace:*",
-    "local-http-server-core": "workspace:*",
     "shared-structures-core": "workspace:*"
   }
 }

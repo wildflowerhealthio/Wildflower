@@ -12,13 +12,13 @@ use utoipa::ToSchema;
 
 use super::app_url::AppUrl;
 
-/// One app — bundled or custom — as both the wire shape and the SQL row
-/// shape. Field names match column names so `sql_row!` in `db/` can
-/// generate the mapping without a separate row type.
+/// One app as both the wire shape and the SQL row shape. Field names match
+/// column names so `sql_row!` in `db/` can generate the mapping without a
+/// separate row type.
 ///
 /// The `url` is a template: `{origin}` is replaced with the served origin
-/// at launch time, `{launch}` with a fresh per-launch nonce. A bundled
-/// SMART-on-FHIR app's URL might be
+/// at launch time, `{launch}` with a fresh per-launch nonce. A SMART-on-FHIR
+/// app's URL might be
 /// `https://example/launch.html?iss={origin}/fhir-r4&launch={launch}`; a
 /// hand-rolled one might be `{origin}/some/path` or `https://other-host/x`.
 /// See [`AppUrl`] for the accepted shapes.

@@ -1,10 +1,10 @@
--- The apps catalogue. One row per app (bundled and custom alike). Every
--- column is editable post-install; there is no provenance tag on the row.
+-- The apps catalogue. One row per app. Every column is editable
+-- post-install; there is no provenance tag on the row.
 --
--- The bundled apps are seeded by this migration; once seeded, the user can
+-- The default apps are seeded by this migration; once seeded, the user can
 -- rename them, change their URL, toggle `enabled`, or delete them outright.
--- Future bundled additions land as their own migration files; deletion of
--- a bundled row sticks across upgrades because each seed migration only
+-- Future default additions land as their own migration files; deletion of
+-- a seeded row sticks across upgrades because each seed migration only
 -- runs once (`schema_migrations.version`), and `INSERT OR IGNORE` keeps
 -- subsequent migrations from re-creating a row the user already edited
 -- or removed.

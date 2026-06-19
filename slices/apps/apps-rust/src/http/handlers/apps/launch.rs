@@ -1,6 +1,6 @@
 //! `GET /apps/{id}` — resolve an app id to a redirect target.
 //!
-//! Every app — bundled or custom — is the same shape: a stored [`AppUrl`]
+//! Every app is the same shape: a stored [`AppUrl`]
 //! template with `{origin}` and `{launch}` placeholders. The handler:
 //!
 //!   1. Loads the row (404 if absent).
@@ -76,7 +76,7 @@ fn resolve_origin(loopback_origin: &str, requires_tunnel: bool) -> (String, bool
 
 /// 21-char base62-ish nonce — close enough to nanoid (the TS handler's
 /// `launch` source) without pulling in a fresh crate. The launch nonce is
-/// opaque to this slice; bundled launch URLs forward it to the SMART-on-FHIR
+/// opaque to this slice; some launch URLs forward it to the SMART-on-FHIR
 /// authorize endpoint where it's checked against the AS-issued value.
 fn launch_nonce() -> String {
     rand::rng()

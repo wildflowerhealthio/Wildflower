@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   AppEntrySchema,
   AppNotFoundSchema,
-  CreateCustomAppBodySchema,
+  AppUrlSchema,
+  CreateAppBodySchema,
   InvalidFieldSchema,
   UpdateAppBodySchema,
 } from './schemas.ts'
@@ -27,8 +28,8 @@ describe('AppEntrySchema', () => {
 
   it('accepts an entry without a subtitle', () => {
     const entry = {
-      id: 'custom-1',
-      name: 'My Custom',
+      id: 'app-1',
+      name: 'My App',
       url: 'https://example.com',
       requiresTunnel: false,
       enabled: true,
@@ -63,19 +64,47 @@ describe('AppEntrySchema', () => {
   })
 })
 
-describe('CreateCustomAppBodySchema', () => {
+describe('AppUrlSchema', () => {
+  it.each([
+    'https://example.com',
+    'https://example.com/launch?launch=x',
+    '/apps/local',
+    '/fhir-r4/Patient/123',
+    '{origin}/some/path',
+    '{origin}/{launch}',
+  ])('accepts %s', (url) => {
+    expectRightToEqual(Schema.decodeUnknownEither(AppUrlSchema)(url), url)
+  })
+
+  it.each([
+    '',
+    'http://example.com',
+    'javascript:alert(1)',
+    'data:text/html,<script>',
+    'file:///etc/passwd',
+    '//attacker.example',
+    'ftp://example.com',
+  ])('rejects %s', (url) => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(AppUrlSchema)(url),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+})
+
+describe('CreateAppBodySchema', () => {
   it('accepts a well-formed body', () => {
     const body = {
       name: 'My App',
       url: 'https://example.com',
       requiresTunnel: false,
     }
-    expectRightToEqual(Schema.decodeUnknownEither(CreateCustomAppBodySchema)(body), body)
+    expectRightToEqual(Schema.decodeUnknownEither(CreateAppBodySchema)(body), body)
   })
 
   it('rejects an empty name', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(CreateCustomAppBodySchema)({
+      Schema.decodeUnknownEither(CreateAppBodySchema)({
         name: '',
         url: 'https://example.com',
         requiresTunnel: false,
@@ -86,7 +115,7 @@ describe('CreateCustomAppBodySchema', () => {
 
   it('rejects bodies missing url', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(CreateCustomAppBodySchema)({
+      Schema.decodeUnknownEither(CreateAppBodySchema)({
         name: 'X',
         requiresTunnel: false,
       }),
@@ -96,7 +125,7 @@ describe('CreateCustomAppBodySchema', () => {
 
   it('rejects a malformed url', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(CreateCustomAppBodySchema)({
+      Schema.decodeUnknownEither(CreateAppBodySchema)({
         name: 'X',
         url: 'javascript:alert(1)',
         requiresTunnel: false,

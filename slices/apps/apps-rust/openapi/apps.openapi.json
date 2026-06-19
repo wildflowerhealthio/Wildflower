@@ -26,7 +26,7 @@
         }
       },
       "post": {
-        "summary": "`POST /apps` — create a custom app. Owner-gated by the consumer.",
+        "summary": "`POST /apps` — create an app. Owner-gated by the consumer.",
         "operationId": "handle_create_app",
         "requestBody": {
           "content": {
@@ -193,7 +193,7 @@
     "schemas": {
       "AppEntry": {
         "type": "object",
-        "description": "One app — bundled or custom — as both the wire shape and the SQL row\nshape. Field names match column names so `sql_row!` in `db/` can\ngenerate the mapping without a separate row type.\n\nThe `url` is a template: `{origin}` is replaced with the served origin\nat launch time, `{launch}` with a fresh per-launch nonce. A bundled\nSMART-on-FHIR app's URL might be\n`https://example/launch.html?iss={origin}/fhir-r4&launch={launch}`; a\nhand-rolled one might be `{origin}/some/path` or `https://other-host/x`.\nSee [`AppUrl`] for the accepted shapes.",
+        "description": "One app as both the wire shape and the SQL row shape. Field names match\ncolumn names so `sql_row!` in `db/` can generate the mapping without a\nseparate row type.\n\nThe `url` is a template: `{origin}` is replaced with the served origin\nat launch time, `{launch}` with a fresh per-launch nonce. A SMART-on-FHIR\napp's URL might be\n`https://example/launch.html?iss={origin}/fhir-r4&launch={launch}`; a\nhand-rolled one might be `{origin}/some/path` or `https://other-host/x`.\nSee [`AppUrl`] for the accepted shapes.",
         "required": [
           "id",
           "enabled",
@@ -245,7 +245,7 @@
       },
       "CreateAppBody": {
         "type": "object",
-        "description": "POST body — matches the TS `CreateCustomAppBodySchema`. `requiresTunnel`\nuses the wire-camelCase the existing client speaks. `url` is read as a raw\nstring so a bad value yields the structured `400 InvalidUrl` rather than a\ngeneric deserialize error.",
+        "description": "POST body — matches the TS `CreateAppBodySchema`. `requiresTunnel`\nuses the wire-camelCase the existing client speaks. `url` is read as a raw\nstring so a bad value yields the structured `400 InvalidUrl` rather than a\ngeneric deserialize error.",
         "required": [
           "name",
           "url",

@@ -1,6 +1,6 @@
 //! `PATCH /apps/{id}` — partial update. Any subset of `enabled` / `name` /
 //! `subtitle` / `url` / `requiresTunnel` is honoured; a present `url` is
-//! re-parsed. Works on any row — bundled and custom apps are equally editable.
+//! re-parsed. Works on any row — every app is equally editable.
 
 use std::sync::Arc;
 
@@ -9,7 +9,7 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::domain::{parse_app_url, AppEntry};
+use crate::domain::{AppEntry, AppUrl};
 use crate::http::response_templates::{AppNotFoundBody, HandlerError, InvalidFieldBody};
 use crate::http::state::AppsState;
 
@@ -91,9 +91,12 @@ pub(crate) async fn handle_update_app(
         }
     }
     let new_url = match body.url.as_deref() {
-        Some(url) => Some(parse_app_url(url).map_err(|e| HandlerError::InvalidUrl {
-            message: e.to_string(),
-        })?),
+        Some(url) => Some(
+            url.parse::<AppUrl>()
+                .map_err(|e| HandlerError::InvalidUrl {
+                    message: e.to_string(),
+                })?,
+        ),
         None => None,
     };
 

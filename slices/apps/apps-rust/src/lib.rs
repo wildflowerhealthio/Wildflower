@@ -11,10 +11,10 @@
 //!  - [`http`] — the `/apps` wire contract, split into a public router
 //!    (list + launch) and an admin router (create / patch / delete).
 //!
-//! Every app — bundled or custom — is editable, deletable, and renamable;
-//! there is no provenance tag on the row. Deletion of a bundled row sticks
-//! across upgrades — each seed migration runs once per database, so a
-//! re-installed default set is reserved for fresh installs.
+//! Every app is editable, deletable, and renamable; there is no provenance
+//! tag on the row. Deletion of a seeded row sticks across upgrades — each
+//! seed migration runs once per database, so a re-installed default set is
+//! reserved for fresh installs.
 //!
 //! ## Launch / tunnel seam
 //!

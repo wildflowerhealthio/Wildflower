@@ -4,7 +4,7 @@ import {
   AppEntrySchema,
   AppIdPathSchema,
   AppNotFoundSchema,
-  CreateCustomAppBodySchema,
+  CreateAppBodySchema,
   InvalidFieldSchema,
   UpdateAppBodySchema,
 } from './schemas.ts'
@@ -15,13 +15,13 @@ import {
  * applies `RequireAuthMiddleware` when adding `AppsAdminApi` to its
  * root `HttpApi`. Slice cores stay free of auth dependencies.
  *
- * Every app — bundled or custom — is editable and deletable; there is no
- * `BundledAppImmutable` 403. A bad name/url is a `400 InvalidField`.
+ * Every app is editable and deletable — no app is immutable. A bad name/url
+ * is a `400 InvalidField`.
  */
 const httpApiGroup = HttpApiGroup.make('apps-admin', { topLevel: false })
   .add(
-    HttpApiEndpoint.post('CreateCustomApp', '/apps')
-      .setPayload(CreateCustomAppBodySchema)
+    HttpApiEndpoint.post('CreateApp', '/apps')
+      .setPayload(CreateAppBodySchema)
       .addSuccess(AppEntrySchema)
       .addError(InvalidFieldSchema, { status: 400 })
   )

@@ -941,24 +941,6 @@ importers:
       '@effect/platform':
         specifier: 0.96.1
         version: 0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
-      '@fast-check/vitest':
-        specifier: 'catalog:'
-        version: 0.3.0(vitest@3.2.4(@types/debug@4.1.13)(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
-      '@livestore/adapter-node':
-        specifier: 'catalog:'
-        version: 0.4.0-dev.26(16fa3922bc31ff17ba1c422572ada520)
-      '@livestore/common':
-        specifier: 'catalog:'
-        version: 0.4.0-dev.26(16fa3922bc31ff17ba1c422572ada520)
-      '@livestore/livestore':
-        specifier: 'catalog:'
-        version: 0.4.0-dev.26(16fa3922bc31ff17ba1c422572ada520)
-      '@livestore/peer-deps':
-        specifier: 'catalog:'
-        version: 0.4.0-dev.26(3e78a90c581ac1407225b55c5cea3ea3)
-      '@livestore/utils':
-        specifier: 'catalog:'
-        version: 0.4.0-dev.26(16fa3922bc31ff17ba1c422572ada520)
       '@types/node':
         specifier: ^24
         version: 24.12.4
@@ -971,15 +953,9 @@ importers:
       effect-messaging-core:
         specifier: workspace:*
         version: link:../../../global/effect-messaging/effect-messaging-core
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.1
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
-      local-http-server-core:
-        specifier: workspace:*
-        version: link:../../local-http-server/local-http-server-core
       shared-structures-core:
         specifier: workspace:*
         version: link:../../shared-structures/shared-structures-core

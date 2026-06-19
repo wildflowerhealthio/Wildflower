@@ -10,10 +10,8 @@ export default defineConfig({
     entry: {
       index: 'src/index.ts',
       bridge: 'src/bridge.ts',
-      'registry/index': 'src/registry/index.ts',
       'clients/index': 'src/clients/index.ts',
       'http-api-definition/index': 'src/http-api-definition/index.ts',
-      'livestore/index': 'src/livestore/index.ts',
     },
   },
   test: {

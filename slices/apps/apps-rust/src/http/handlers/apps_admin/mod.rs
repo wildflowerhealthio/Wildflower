@@ -108,7 +108,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK, "body: {body}");
         assert!(body["enabled"].as_bool().unwrap());
         let id = body["id"].as_str().unwrap().to_string();
-        assert!(id.starts_with("custom-"));
+        assert!(!id.is_empty());
 
         // update name
         let (status, body) = send(
@@ -169,10 +169,10 @@ mod tests {
         assert_eq!(body["error"], "InvalidName");
     }
 
-    /// Bundled apps are first-class — every editable field is editable.
+    /// Every app is first-class — every editable field is editable.
     /// Rename, URL swap, and disable all land successfully.
     #[tokio::test]
-    async fn bundled_app_can_be_fully_edited() {
+    async fn seeded_app_can_be_fully_edited() {
         let st = state();
         let (status, body) = send(
             &st,
@@ -192,9 +192,9 @@ mod tests {
         assert_eq!(body["enabled"], false);
     }
 
-    /// Bundled apps are first-class — including for deletion.
+    /// Every app is first-class — including for deletion.
     #[tokio::test]
-    async fn bundled_app_can_be_deleted() {
+    async fn seeded_app_can_be_deleted() {
         let st = state();
         let (status, body) = send(&st, delete("/apps/patient-browser")).await;
         assert_eq!(status, StatusCode::OK);
@@ -240,9 +240,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_rejects_bad_url_on_any_kind() {
+    async fn update_rejects_bad_url() {
         let st = state();
-        // Even a bundled row's URL has to pass the validator.
+        // Every row's URL has to pass the validator.
         let (status, body) = send(
             &st,
             patch(

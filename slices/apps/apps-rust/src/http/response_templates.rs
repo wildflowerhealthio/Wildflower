@@ -6,9 +6,8 @@
 //! On top of `tunnel-rust`'s shape the apps slice carries domain-level
 //! errors (404 `AppNotFound`, 400 `InvalidUrl`) that are part of the wire
 //! contract — they round-trip through the webview as structured
-//! `{ error: 'NAME', ... }` payloads. There is no `BundledAppImmutable`
-//! variant: bundled rows are editable like any other, so the only failure
-//! modes left are "no such id" and "your URL is bad".
+//! `{ error: 'NAME', ... }` payloads. Every app is editable, so the only
+//! failure modes are "no such id" and "your URL is bad".
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};

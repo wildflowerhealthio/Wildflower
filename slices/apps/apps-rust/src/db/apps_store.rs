@@ -1,7 +1,7 @@
 //! The `AppsStore` handle — wraps the shared SQLite connection, applies the
-//! per-namespace migrations onto it, and exposes the four CRUD operations
-//! the HTTP layer needs (`list_apps`, `find_app`, `insert_app`,
-//! `replace_app`, `delete_app`). Every method speaks in [`AppEntry`]: the
+//! per-namespace migrations onto it, and exposes the CRUD operations the
+//! HTTP layer needs (`list_apps`, `find_app`, `insert_app`, `replace_app`,
+//! `delete_app`). Every method speaks in [`AppEntry`]: the
 //! domain struct doubles as the row mapping via `sql_row!`, so the wire
 //! shape, the rusqlite mapping, and the named-param array for inserts all
 //! come from one field list.
@@ -11,7 +11,7 @@ use persistence_rust::{build_insert_sql, sql_row, Connection, DbResult};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, Value, ValueRef};
 use rusqlite::{params, OptionalExtension, ToSql};
 
-use crate::domain::{parse_app_url, AppEntry, AppUrl};
+use crate::domain::{AppEntry, AppUrl};
 
 #[derive(Clone)]
 pub struct AppsStore {
@@ -120,8 +120,7 @@ impl AppsStore {
     }
 
     /// Delete a row by id. Returns `true` when a row was actually removed,
-    /// `false` when no row had that id. Bundled rows are deletable like
-    /// any other.
+    /// `false` when no row had that id. Any row is deletable.
     ///
     /// # Errors
     ///
@@ -138,7 +137,7 @@ impl AppsStore {
 impl ToSql for AppUrl {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         // The canonical string (see `AppUrl`'s `Display`) — the only form the
-        // `url` column ever holds, and the one `parse_app_url` round-trips.
+        // `url` column ever holds, and the one `str::parse` round-trips.
         Ok(ToSqlOutput::Owned(Value::Text(self.to_string())))
     }
 }
@@ -148,7 +147,8 @@ impl FromSql for AppUrl {
         let s = value.as_str()?;
         // A stored URL that no longer parses (e.g. an externally tampered row)
         // surfaces as a typed read error rather than a silent unsafe redirect.
-        parse_app_url(s).map_err(|e| FromSqlError::Other(Box::new(e)))
+        s.parse::<AppUrl>()
+            .map_err(|e| FromSqlError::Other(Box::new(e)))
     }
 }
 
@@ -176,10 +176,10 @@ fn migrate(conn: &mut rusqlite::Connection) -> rusqlite::Result<()> {
 
 /// Ordered list of schema migrations. The array index is the recorded
 /// `schema_migrations` version — append-only; never reorder or rewrite an
-/// already-shipped entry. A new bundled app (or any other schema change)
+/// already-shipped entry. A new default app (or any other schema change)
 /// lands as a sibling `.sql` file under `src/migrations/` plus one new
 /// `include_str!` line below. Because each migration runs only once per
-/// database, a user-deleted bundled row stays deleted across upgrades —
+/// database, a user-deleted seeded row stays deleted across upgrades —
 /// only fresh installs see the full default set.
 const MIGRATIONS: &[&str] = &[include_str!("../migrations/001_initial_schema.sql")];
 
@@ -187,15 +187,19 @@ const MIGRATIONS: &[&str] = &[include_str!("../migrations/001_initial_schema.sql
 mod tests {
     use super::*;
 
-    fn entry(id: &str, url: &str) -> AppEntry {
+    fn entry(id: &str, url: AppUrl) -> AppEntry {
         AppEntry {
             id: id.to_owned(),
             enabled: true,
             name: id.to_owned(),
             subtitle: None,
-            url: parse_app_url(url).expect("valid test url"),
+            url,
             requires_tunnel: false,
         }
+    }
+
+    fn external(url: &str) -> AppUrl {
+        AppUrl::External(url.to_owned())
     }
 
     #[test]
@@ -213,11 +217,11 @@ mod tests {
         assert!(exists, "apps table must exist after migrate");
     }
 
-    /// The seed migration creates the well-known bundled rows verbatim.
+    /// The seed migration creates the well-known default rows verbatim.
     /// FHIR Sharing is intentionally NOT among them — tunnel control has
     /// its own UI surface and is no longer part of the apps catalogue.
     #[test]
-    fn migration_seeds_the_bundled_set_without_fhir_sharing() {
+    fn migration_seeds_the_default_set_without_fhir_sharing() {
         let store = AppsStore::open_in_memory().unwrap();
         let rows = store.list_apps().unwrap();
         let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
@@ -242,16 +246,16 @@ mod tests {
     #[test]
     fn insert_app_round_trips_through_find_app() {
         let store = AppsStore::open_in_memory().unwrap();
-        let app = entry("custom-x", "https://example.com/launch");
+        let app = entry("app-x", external("https://example.com/launch"));
         assert!(store.insert_app(&app).unwrap());
-        let fetched = store.find_app("custom-x").unwrap().expect("present");
+        let fetched = store.find_app("app-x").unwrap().expect("present");
         assert_eq!(fetched, app);
     }
 
     #[test]
     fn insert_app_returns_false_on_duplicate_id() {
         let store = AppsStore::open_in_memory().unwrap();
-        let app = entry("custom-x", "https://example.com/x");
+        let app = entry("app-x", external("https://example.com/x"));
         assert!(store.insert_app(&app).unwrap());
         assert!(
             !store.insert_app(&app).unwrap(),
@@ -264,38 +268,38 @@ mod tests {
     #[test]
     fn replace_app_writes_all_mutable_columns() {
         let store = AppsStore::open_in_memory().unwrap();
-        let mut app = entry("custom-x", "https://example.com/x");
+        let mut app = entry("app-x", external("https://example.com/x"));
         store.insert_app(&app).unwrap();
 
         app.name = "Renamed".into();
         app.subtitle = Some("the new subtitle".into());
-        app.url = parse_app_url("{origin}/path").unwrap();
+        app.url = AppUrl::OriginRelative("/path".to_owned());
         app.requires_tunnel = true;
         app.enabled = false;
         assert!(store.replace_app(&app).unwrap());
 
-        let fetched = store.find_app("custom-x").unwrap().expect("present");
+        let fetched = store.find_app("app-x").unwrap().expect("present");
         assert_eq!(fetched, app);
     }
 
     #[test]
     fn replace_app_returns_false_for_unknown_id() {
         let store = AppsStore::open_in_memory().unwrap();
-        let app = entry("ghost", "https://example.com/x");
+        let app = entry("ghost", external("https://example.com/x"));
         assert!(!store.replace_app(&app).unwrap());
     }
 
-    /// Bundled rows are first-class editable. The patch flow can rename,
+    /// Seeded rows are first-class editable. The patch flow can rename,
     /// re-point, and disable any of them.
     #[test]
-    fn bundled_seeded_rows_are_editable_through_replace_app() {
+    fn seeded_rows_are_editable_through_replace_app() {
         let store = AppsStore::open_in_memory().unwrap();
         let mut app = store
             .find_app("patient-browser")
             .unwrap()
             .expect("seeded row");
         app.name = "Renamed Patient Browser".into();
-        app.url = parse_app_url("https://example.com/replacement").unwrap();
+        app.url = external("https://example.com/replacement");
         app.enabled = false;
         assert!(store.replace_app(&app).unwrap());
 
@@ -304,23 +308,20 @@ mod tests {
             .unwrap()
             .expect("still present");
         assert_eq!(fetched.name, "Renamed Patient Browser");
-        assert_eq!(
-            fetched.url,
-            parse_app_url("https://example.com/replacement").unwrap()
-        );
+        assert_eq!(fetched.url, external("https://example.com/replacement"));
         assert!(!fetched.enabled);
     }
 
     #[test]
-    fn delete_app_removes_any_seeded_or_custom_row() {
+    fn delete_app_removes_any_row() {
         let store = AppsStore::open_in_memory().unwrap();
         assert!(store.delete_app("patient-browser").unwrap());
         assert!(store.find_app("patient-browser").unwrap().is_none());
 
-        let custom = entry("custom-y", "https://example.com/y");
-        store.insert_app(&custom).unwrap();
-        assert!(store.delete_app("custom-y").unwrap());
-        assert!(store.find_app("custom-y").unwrap().is_none());
+        let app = entry("app-y", external("https://example.com/y"));
+        store.insert_app(&app).unwrap();
+        assert!(store.delete_app("app-y").unwrap());
+        assert!(store.find_app("app-y").unwrap().is_none());
     }
 
     #[test]

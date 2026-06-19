@@ -34,7 +34,7 @@ mod tests {
 
     use super::*;
     use crate::db::AppsStore;
-    use crate::domain::{parse_app_url, AppEntry};
+    use crate::domain::{AppEntry, AppUrl};
     use crate::http::state::AppsState;
 
     /// The served public router, state not yet applied — the spec half of
@@ -64,19 +64,23 @@ mod tests {
         Request::builder().uri(uri).body(Body::empty()).unwrap()
     }
 
-    fn custom(id: &str, url: &str) -> AppEntry {
+    fn app(id: &str, url: AppUrl) -> AppEntry {
         AppEntry {
             id: id.to_owned(),
             enabled: true,
             name: id.to_owned(),
             subtitle: None,
-            url: parse_app_url(url).expect("valid test url"),
+            url,
             requires_tunnel: false,
         }
     }
 
+    fn external(url: &str) -> AppUrl {
+        AppUrl::External(url.to_owned())
+    }
+
     #[tokio::test]
-    async fn list_apps_returns_all_seeded_bundled_apps() {
+    async fn list_apps_returns_all_seeded_apps() {
         let st = state();
         let (status, body) = send(&st, get("/apps")).await;
         assert_eq!(status, StatusCode::OK);
@@ -94,18 +98,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_apps_includes_custom_rows() {
+    async fn list_apps_includes_inserted_rows() {
         let st = state();
         st.store
-            .insert_app(&custom("custom-x", "https://example.com/x"))
+            .insert_app(&app("app-x", external("https://example.com/x")))
             .unwrap();
         let (_status, body) = send(&st, get("/apps")).await;
         let found = body
             .as_array()
             .unwrap()
             .iter()
-            .find(|v| v["id"] == "custom-x")
-            .expect("custom row in list");
+            .find(|v| v["id"] == "app-x")
+            .expect("inserted row in list");
         assert_eq!(found["url"], "https://example.com/x");
     }
 
@@ -120,10 +124,10 @@ mod tests {
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
     }
 
-    /// A seeded bundled app whose URL template substitutes `{origin}`
-    /// resolves to a same-origin redirect.
+    /// A seeded app whose URL template substitutes `{origin}` resolves to a
+    /// same-origin redirect.
     #[tokio::test]
-    async fn launch_bundled_redirects_to_built_url() {
+    async fn launch_seeded_app_redirects_to_built_url() {
         let st = state();
         let res = router()
             .with_state(Arc::clone(&st))
@@ -143,9 +147,9 @@ mod tests {
         );
     }
 
-    /// A `requires_tunnel` bundled launch redirects to the loopback origin
-    /// (no real tunnel seam yet) with the `tunnel=unavailable` flag so the
-    /// SPA can surface a banner.
+    /// A `requires_tunnel` launch redirects to the loopback origin (no real
+    /// tunnel seam yet) with the `tunnel=unavailable` flag so the SPA can
+    /// surface a banner.
     #[tokio::test]
     async fn launch_growth_chart_appends_tunnel_unavailable() {
         let st = state();
@@ -172,14 +176,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn launch_custom_app_resolves_origin_placeholder() {
+    async fn launch_app_resolves_origin_placeholder() {
         let st = state();
         st.store
-            .insert_app(&custom("custom-y", "{origin}/y"))
+            .insert_app(&app("app-y", AppUrl::OriginRelative("/y".to_owned())))
             .unwrap();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/custom-y"))
+            .oneshot(get("/apps/app-y"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::FOUND);
@@ -204,13 +208,13 @@ mod tests {
             .lock()
             .execute(
                 "INSERT INTO apps (id, enabled, name, subtitle, url, requires_tunnel) \
-                 VALUES ('custom-bad', 1, 'Bad', NULL, 'http://evil.example.com', 0)",
+                 VALUES ('app-bad', 1, 'Bad', NULL, 'http://evil.example.com', 0)",
                 [],
             )
             .unwrap();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/custom-bad"))
+            .oneshot(get("/apps/app-bad"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
