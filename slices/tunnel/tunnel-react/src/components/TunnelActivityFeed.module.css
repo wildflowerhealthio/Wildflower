@@ -24,9 +24,9 @@
 }
 
 .feed {
-  background: rgb(251, 244, 233);
-  border: 1px solid rgba(44, 33, 29, 0.12);
-  border-radius: 18px;
+  background: var(--card-color-background);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--card-border-radius);
   /*
    * Only block-axis padding lives on the feed; the inline axis is
    * delegated to children so the ItemList rows can carry the full
@@ -38,12 +38,12 @@
    * otherwise paint a flat-corner rectangle that pokes past the
    * border-radius.
    */
-  padding-block: var(--space-5);
-  --item-list-row-padding-inline: var(--space-5);
+  padding-block: var(--space-7);
+  --item-list-row-padding-inline: var(--space-7);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-5);
   animation: tunnel-feed-fade-in 1s ease both;
 }
 
@@ -53,16 +53,12 @@
   }
 }
 
-:global(:root[data-color-scheme='dark']) .feed {
-  border-color: rgba(247, 236, 221, 0.1);
-}
-
 .feed__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding-inline: var(--space-5);
+  gap: var(--space-5);
+  padding-inline: var(--space-7);
 }
 
 /*
@@ -71,8 +67,8 @@
  */
 .feed__label {
   font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
+  font-size: var(--font-size-1);
+  letter-spacing: var(--letter-spacing-5);
   text-transform: uppercase;
   color: var(--color-neutral-5);
   white-space: nowrap;
@@ -88,23 +84,19 @@
 .feed__live {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-3);
   font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: var(--font-size-1);
+  letter-spacing: var(--letter-spacing-4);
   text-transform: uppercase;
-  color: #5f7a28;
+  color: var(--color-success);
   white-space: nowrap;
-}
-
-:global(:root[data-color-scheme='dark']) .feed__live {
-  color: #8fae4f;
 }
 
 .feed__live::before {
   content: '';
-  width: 6px;
-  height: 6px;
+  width: var(--space-3);
+  height: var(--space-3);
   border-radius: 999px;
   background: currentColor;
   animation: tundra-pulse-dot 1.8s ease-in-out infinite;
@@ -120,9 +112,9 @@
 .feed__summary {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--font-size-2);
   color: var(--color-neutral-3);
-  padding-inline: var(--space-5);
+  padding-inline: var(--space-7);
 }
 
 /*
@@ -134,17 +126,13 @@
  */
 .dot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: var(--space-4);
+  height: var(--space-4);
   border-radius: 999px;
 }
 
 .dot--active {
-  background: #5f7a28;
-}
-
-:global(:root[data-color-scheme='dark']) .dot--active {
-  background: #8fae4f;
+  background: var(--color-success);
 }
 
 .dot--error {
@@ -159,14 +147,14 @@
 .feed__footer {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-2);
   align-self: flex-start;
-  font-size: 12.5px;
+  font-size: var(--font-size-2);
   font-weight: var(--font-weight-3);
   color: var(--color-accent);
   text-decoration: none;
-  margin-top: var(--space-2);
-  margin-inline-start: var(--space-5);
+  margin-top: var(--space-4);
+  margin-inline-start: var(--space-7);
 }
 
 .feed__footer:hover {

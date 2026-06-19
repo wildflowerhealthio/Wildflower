@@ -15,13 +15,14 @@
   /*
    * The page's edge padding, exposed as a custom property so a full-bleed
    * child (e.g. `<PageHeader>`'s negative margins) can cancel exactly this
-   * value instead of re-stating the `--space-5` magic number.
+   * value instead of re-stating the `--space-9` magic number. `--space-9`
+   * (22px) is the design's inside-phone screen padding.
    */
-  --page-padding: var(--space-5);
+  --page-padding: var(--space-9);
   padding: var(--page-padding);
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-7);
 }
 
 /*
@@ -34,10 +35,10 @@
 .error {
   color: var(--color-red-4);
   margin: 0;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-5) var(--space-6);
   background: var(--color-red-9);
   border: 1px solid var(--color-red-7);
-  border-radius: var(--radius-2);
+  border-radius: var(--radius-3);
 }
 
 /*
@@ -52,6 +53,6 @@
   white-space: pre-wrap;
   word-break: break-word;
   overflow-x: auto;
-  font-size: var(--font-size-1);
-  line-height: 1.4;
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
 }

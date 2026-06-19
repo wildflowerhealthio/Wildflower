@@ -1,0 +1,93 @@
+/*
+ * Dark-mode mirrors for the tundra-css colour ramps Wildflower does not
+ * actively use.
+ *
+ * tundra-css ships its accent ramps (orange / yellow / green / cyan / blue
+ * / purple / pink) light-only — a consumer that reaches for
+ * `--color-blue-5` while the dark scheme is active would otherwise pick up
+ * the light-mode value and read as eye-burning on a near-black surface.
+ *
+ * This file flips each ramp to a dark equivalent (1 = lightest tint, 9 =
+ * darkest fill, matching tundra's direction) so the tokens stay legible
+ * across both schemes. None of these are part of the active Wildflower
+ * palette — that lives in `colors-custom.css`; these are just
+ * dark-mode safety nets for future surfaces and tundra interop.
+ */
+:root[data-color-scheme='dark'] {
+  /* Orange ramp (mirrored) */
+  --color-orange-1: #ffeee0;
+  --color-orange-2: #ffceb2;
+  --color-orange-3: #ff9d69;
+  --color-orange-4: #fe6a00;
+  --color-orange-5: #d94a00;
+  --color-orange-6: #ac3600;
+  --color-orange-7: #802300;
+  --color-orange-8: #571000;
+  --color-orange-9: #320200;
+
+  /* Yellow ramp (mirrored) */
+  --color-yellow-1: #fff1c2;
+  --color-yellow-2: #ffd470;
+  --color-yellow-3: #f0b135;
+  --color-yellow-4: #ce9200;
+  --color-yellow-5: #ac7400;
+  --color-yellow-6: #875900;
+  --color-yellow-7: #643f00;
+  --color-yellow-8: #432700;
+  --color-yellow-9: #241100;
+
+  /* Green ramp (mirrored) */
+  --color-green-1: #c4ffe8;
+  --color-green-2: #6afdc5;
+  --color-green-3: #41dca5;
+  --color-green-4: #00bb87;
+  --color-green-5: #009b69;
+  --color-green-6: #007950;
+  --color-green-7: #005939;
+  --color-green-8: #003b22;
+  --color-green-9: #001f0e;
+
+  /* Cyan ramp (mirrored) */
+  --color-cyan-1: #b7ffff;
+  --color-cyan-2: #2bfdf4;
+  --color-cyan-3: #00dbd3;
+  --color-cyan-4: #00b9b2;
+  --color-cyan-5: #009790;
+  --color-cyan-6: #007671;
+  --color-cyan-7: #003836;
+  --color-cyan-8: #003836;
+  --color-cyan-9: #001d1b;
+
+  /* Blue ramp (mirrored) */
+  --color-blue-1: #e6f7ff;
+  --color-blue-2: #bfe1ff;
+  --color-blue-3: #85c1ff;
+  --color-blue-4: #59a0f9;
+  --color-blue-5: #3a81d7;
+  --color-blue-6: #1762b6;
+  --color-blue-7: #004495;
+  --color-blue-8: #002774;
+  --color-blue-9: #000d49;
+
+  /* Purple ramp (mirrored) */
+  --color-purple-1: #f9f0ff;
+  --color-purple-2: #e6d2ff;
+  --color-purple-3: #cca7ff;
+  --color-purple-4: #ad87ed;
+  --color-purple-5: #8f68cb;
+  --color-purple-6: #724aab;
+  --color-purple-7: #562c8b;
+  --color-purple-8: #3c086b;
+  --color-purple-9: #220046;
+
+  /* Pink ramp (mirrored) */
+  --color-pink-1: #ffeaf9;
+  --color-pink-2: #ffc6e6;
+  --color-pink-3: #ff8ecd;
+  --color-pink-4: #e96cad;
+  --color-pink-5: #c74c8e;
+  --color-pink-6: #a42c71;
+  --color-pink-7: #830054;
+  --color-pink-8: #5c0038;
+  --color-pink-9: #33001c;
+}

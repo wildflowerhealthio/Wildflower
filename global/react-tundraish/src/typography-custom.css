@@ -1,0 +1,26 @@
+/*
+ * Type-family tokens. The Wildflower refresh runs three self-hosted
+ * families (loaded by the consuming app via `@fontsource`):
+ *
+ *   - Hanken Grotesk — sans, the working UI voice. Applied as the body
+ *     default in `reset.css` and to the tundra body/link/label/input/button
+ *     helpers in `tokens.css`.
+ *   - Newsreader — serif, reserved for titles & emphasis. Applied to
+ *     tundra's heading and alt-heading helpers in `tokens.css`.
+ *   - Spline Sans Mono — mono, carries eyebrows, labels, and technical
+ *     metadata (URLs, IDs). Applied per-element rather than through a
+ *     tundra helper, since no tundra text class corresponds to
+ *     "eyebrow/metadata".
+ *
+ * Tokens live on `:root` so any component or app stylesheet can read
+ * `var(--font-sans)` without importing this file directly.
+ */
+:root {
+  --font-sans:
+    'Hanken Grotesk Variable', 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto,
+    sans-serif;
+  --font-serif: 'Newsreader Variable', 'Newsreader', Georgia, 'Times New Roman', serif;
+  --font-mono:
+    'Spline Sans Mono Variable', 'Spline Sans Mono', ui-monospace, 'SFMono-Regular', Consolas,
+    monospace;
+}

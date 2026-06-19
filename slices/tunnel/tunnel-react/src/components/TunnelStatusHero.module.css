@@ -4,26 +4,21 @@
  * summary that dims when the tunnel is off.
  */
 .hero {
-  background: rgb(251, 244, 233);
-  border: 1px solid rgba(44, 33, 29, 0.12);
-  border-radius: 18px;
-  padding: var(--space-5) var(--space-5);
-  box-shadow: 0 1px 2px rgba(31, 23, 20, 0.05);
+  background: var(--card-color-background);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--card-border-radius);
+  padding: var(--space-8);
+  box-shadow: var(--card-box-shadow);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-}
-
-:global(:root[data-color-scheme='dark']) .hero {
-  border-color: rgba(247, 236, 221, 0.1);
-  box-shadow: none;
+  gap: var(--space-7);
 }
 
 .hero__top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-5);
 }
 
 /*
@@ -36,7 +31,7 @@
 .hero__address {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-5);
   opacity: 1;
   transition: opacity 1s ease;
 }
@@ -55,14 +50,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-5);
 }
 
 .hero__host {
   flex: 1 1 auto;
   min-width: 0;
   font-family: var(--font-mono);
-  font-size: var(--font-size-2);
+  font-size: var(--font-size-3);
   font-weight: var(--font-weight-2);
   color: var(--color-foreground);
   white-space: nowrap;
@@ -81,8 +76,8 @@
   padding: 0;
   margin: 0;
   font: inherit;
-  font-size: 1rem;
-  line-height: 1;
+  font-size: var(--font-size-4);
+  line-height: var(--line-height-1);
   color: var(--color-accent);
   cursor: pointer;
 }
@@ -100,7 +95,7 @@
 
 .hero__meta {
   margin: 0;
-  font-size: var(--font-size-1);
+  font-size: var(--font-size-2);
   color: var(--color-neutral-5);
 }
 
@@ -153,11 +148,7 @@
 .path__node--device {
   width: 10px;
   height: 10px;
-  background: #5f7a28;
-}
-
-:global(:root[data-color-scheme='dark']) .path__node--device {
-  background: #8fae4f;
+  background: var(--color-success);
 }
 
 /*
@@ -197,37 +188,25 @@
 .path__node--internet {
   width: 10px;
   height: 10px;
-  background: #5f7a28;
-}
-
-:global(:root[data-color-scheme='dark']) .path__node--internet {
-  background: #8fae4f;
+  background: var(--color-success);
 }
 
 .path__node--internet.path__node--inactive {
   background: var(--color-neutral-5);
 }
 
-:global(:root[data-color-scheme='dark']) .path__node--internet.path__node--inactive {
-  background: var(--color-neutral-5);
-}
-
 .path__connector {
   flex: 1 1 auto;
   height: 2px;
-  background: #dcc2cd;
+  background: var(--color-path-connector);
   border-radius: 2px;
-}
-
-:global(:root[data-color-scheme='dark']) .path__connector {
-  background: #4a3a22;
 }
 
 .path__labels {
   display: flex;
   justify-content: space-between;
   font-family: var(--font-mono);
-  font-size: 9.5px;
-  letter-spacing: 0.05em;
+  font-size: var(--font-size-1);
+  letter-spacing: var(--letter-spacing-4);
   color: var(--color-neutral-5);
 }

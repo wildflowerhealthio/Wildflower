@@ -164,7 +164,7 @@ describe('ItemList', () => {
   })
 
   it('does not fire the row onClick when an interactive element inside actions is clicked', async () => {
-    // Arrange — interactive `actions` (e.g. a kebab menu trigger) sit
+    // Arrange — interactive `actions` (e.g. a meatball menu trigger) sit
     // inside the row's wrapping `<button>`. Without click-bubble
     // suppression, hitting the action ALSO fires the row's primary
     // navigation — exactly the bug that broke collector's "open menu"
@@ -178,7 +178,7 @@ describe('ItemList', () => {
         onClick: onRowClick,
         actions: (
           <button type="button" onClick={onActionClick}>
-            ⋮
+            …
           </button>
         ),
       },
@@ -186,8 +186,8 @@ describe('ItemList', () => {
     const user = userEvent.setup()
     render(<ItemList items={items} />)
 
-    // Act — click the inner kebab button, NOT the row text.
-    await user.click(screen.getByRole('button', { name: '⋮' }))
+    // Act — click the inner meatball button, NOT the row text.
+    await user.click(screen.getByRole('button', { name: '…' }))
 
     // Assert — only the action handler ran; the row's onClick was suppressed.
     expect(onActionClick).toHaveBeenCalledTimes(1)

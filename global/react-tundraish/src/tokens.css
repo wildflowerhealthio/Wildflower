@@ -1,0 +1,184 @@
+/*
+ * Wildflower → Tundra token overrides.
+ *
+ * Tundra-css ships its design-system constants as registered `@property`
+ * custom properties (`--radius-N`, `--space-N`, `--font-size-N`,
+ * `--font-weight-N`, `--line-height-N`, `--letter-spacing-N`). Every helper
+ * class it ships — `.text-heading-N`, `.text-body-N`, `.button-N`,
+ * `.element-button-N`, `.text-input-N`, `.element-text-entry-N`, etc. — reads
+ * from those properties; re-pointing the properties here re-tunes the entire
+ * helper surface at once.
+ *
+ * The values come directly from the Wildflower tunnel-screen designs in
+ * `design_handoff_tunnel/Tunnel Refresh.dc.html`. Where a scale slot is not
+ * exercised by the current screens it is still populated, so the rung is
+ * available before a future surface needs it (the user has accepted this).
+ *
+ * Per-element/colour role tokens (`--card-*`, `--color-success-*`, etc.) live
+ * in `styles.css` alongside the surface palette they slot into.
+ */
+
+:root {
+  /*
+   * Radius ramp. 4px inline → 18px hero card. Tundra's `--element-border-radius`,
+   * `--button-border-radius`, and `--input-border-radius` (set in styles.css)
+   * point into this scale.
+   */
+  --radius-1: 4px;
+  --radius-2: 8px;
+  --radius-3: 12px;
+  --radius-4: 14px;
+  --radius-5: 18px;
+
+  /*
+   * Spacing ramp. Reads as four bands: tight (2-8px, inside chips/badges),
+   * compact (12-18px, control/card interiors), comfortable (22-32px, between
+   * cards and at the screen edge), and stage (40-64px, between page
+   * sections on the design-handoff stage).
+   */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 14px;
+  --space-7: 16px;
+  --space-8: 18px;
+  --space-9: 22px;
+  --space-10: 28px;
+  --space-11: 32px;
+  --space-12: 40px;
+  --space-13: 56px;
+  --space-14: 64px;
+
+  /*
+   * Font weights — Hanken Grotesk and Spline Sans Mono carry weights 400/500/600/700,
+   * Newsreader carries 300-600 (we use 400 and 500). The four-rung tundra scale
+   * lines up exactly.
+   */
+  --font-weight-1: 400;
+  --font-weight-2: 500;
+  --font-weight-3: 600;
+  --font-weight-4: 700;
+
+  /*
+   * Font sizes. Rungs 1-4 are body-class sizes (font-size-N feeds .text-body-N
+   * etc.) and 4-9 carry the heading ramp (.text-heading-N uses font-size-N+3).
+   * The design's two real titles — "Tunnel" / "Relay settings" at 30px and the
+   * stage title "Monitor here…" at 40px — land at font-size-7 and font-size-8
+   * so `.text-heading-4` / `.text-heading-5` paint them directly.
+   */
+  --font-size-1: 0.625rem; /* 10px — chip, eyebrow */
+  --font-size-2: 0.75rem; /* 12px — back link, caption */
+  --font-size-3: 0.875rem; /* 14px — default body, item title, input value */
+  --font-size-4: 1rem; /* 16px — large body, page-level explainer */
+  --font-size-5: 1.25rem; /* 20px */
+  --font-size-6: 1.5rem; /* 24px */
+  --font-size-7: 1.875rem; /* 30px — in-app page title (.text-heading-4) */
+  --font-size-8: 2.5rem; /* 40px — stage / marketing title (.text-heading-5) */
+  --font-size-9: 3rem; /* 48px */
+
+  /*
+   * Line heights. 1 = strict single-line for clipped/lockup titles, 5 = the
+   * 1.6 the design uses for body explainer copy. The intermediate rungs map
+   * to "editorial display" (1.12), "compact UI" (1.25), and "default UI" (1.5).
+   */
+  --line-height-1: 1;
+  --line-height-2: 1.12;
+  --line-height-3: 1.25;
+  --line-height-4: 1.5;
+  --line-height-5: 1.6;
+
+  /*
+   * Letter spacing — two tight rungs for serif titles, neutral 0, then two
+   * loose rungs for the mono-uppercase eyebrows / labels the design uses
+   * throughout (0.05em for per-field labels, 0.12em for section eyebrows).
+   */
+  --letter-spacing-1: -0.02em;
+  --letter-spacing-2: -0.01em;
+  --letter-spacing-3: 0em;
+  --letter-spacing-4: 0.05em;
+  --letter-spacing-5: 0.12em;
+}
+
+/*
+ * Font-family assignment on tundra's shipped text helpers. Tundra-css's
+ * helpers (`.text-heading-N` etc.) set size/weight/line-height/letter-spacing
+ * but leave font-family to the host so the design language can opt different
+ * roles into different families. The Wildflower refresh runs three:
+ *
+ *   - Serif (Newsreader) — headings and alt-headings only. Editorial display.
+ *   - Sans  (Hanken Grotesk) — body, link, label, input, button. Working UI voice.
+ *   - Mono  (Spline Sans Mono) — back link, eyebrows, technical metadata.
+ *     Applied per-element rather than through a tundra helper, since no
+ *     tundra text class corresponds to "eyebrow/metadata".
+ */
+.heading-1,
+.heading-2,
+.heading-3,
+.heading-4,
+.heading-5,
+.heading-6,
+.text-heading-1,
+.text-heading-2,
+.text-heading-3,
+.text-heading-4,
+.text-heading-5,
+.text-heading-6,
+.alt-heading-1,
+.alt-heading-2,
+.alt-heading-3,
+.alt-heading-4,
+.alt-heading-5,
+.alt-heading-6,
+.text-alt-heading-1,
+.text-alt-heading-2,
+.text-alt-heading-3,
+.text-alt-heading-4,
+.text-alt-heading-5,
+.text-alt-heading-6 {
+  font-family: var(--font-serif);
+}
+
+.body-1,
+.body-2,
+.body-3,
+.body-4,
+.text-body-1,
+.text-body-2,
+.text-body-3,
+.text-body-4,
+.link-1,
+.link-2,
+.link-3,
+.link-4,
+.text-link-1,
+.text-link-2,
+.text-link-3,
+.text-link-4,
+.label-1,
+.label-2,
+.label-3,
+.label-4,
+.text-label-1,
+.text-label-2,
+.text-label-3,
+.text-label-4,
+.input-1,
+.input-2,
+.input-3,
+.input-4,
+.text-input-1,
+.text-input-2,
+.text-input-3,
+.text-input-4,
+.button-1,
+.button-2,
+.button-3,
+.button-4,
+.text-button-1,
+.text-button-2,
+.text-button-3,
+.text-button-4 {
+  font-family: var(--font-sans);
+}

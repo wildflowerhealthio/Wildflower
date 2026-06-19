@@ -1,17 +1,17 @@
 .dialog {
   box-sizing: border-box;
-  padding: var(--space-8);
-  margin: var(--space-6) auto;
+  padding: var(--space-10);
+  margin: var(--space-8) auto;
   background: var(--color-modal);
   color: var(--color-foreground);
 
-  border: 1px solid var(--color-neutral-7);
-  border-radius: 16px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-4);
 
   width: auto;
-  max-width: min(480px, calc(100vw - 2 * var(--space-6)));
+  max-width: min(480px, calc(100vw - 2 * var(--space-8)));
 
-  max-height: calc(100vh - 2 * var(--space-6));
+  max-height: calc(100vh - 2 * var(--space-8));
   overflow-y: auto;
 
   /* Soft, warm, low-spread elevation (design "dialog" shadow). */
@@ -28,12 +28,12 @@
   background: transparent;
   border: none;
   color: var(--color-neutral-4);
-  font-size: 32px;
-  line-height: 1;
+  font-size: var(--font-size-7);
+  line-height: var(--line-height-1);
   cursor: pointer;
   padding: 0;
   margin: 0;
-  width: 32px;
+  width: var(--space-11);
   border-radius: 50%;
   font-weight: 300;
 }
@@ -47,8 +47,8 @@
   flex-direction: row;
   justify-content: space-between;
   align-items: flex-start;
-  gap: var(--space-3);
-  margin: 0 0 var(--space-4) 0;
+  gap: var(--space-5);
+  margin: 0 0 var(--space-6) 0;
 }
 
 /* The dialog title is one of the few serif "accent" moments — Newsreader,
@@ -56,13 +56,13 @@
 .dialog__header h2 {
   font-family: var(--font-serif);
   font-weight: var(--font-weight-2);
-  letter-spacing: -0.01em;
+  letter-spacing: var(--letter-spacing-2);
 }
 
 .dialog__body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-6);
 }
 
 /* The drop shadow needs more depth to read as a raised layer on the dark

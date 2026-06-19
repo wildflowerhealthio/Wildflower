@@ -1,0 +1,54 @@
+/*
+ * Component skin rules for primitives whose React component renders bare
+ * class names tundra-css does not ship a definition for.
+ *
+ * `Checkbox` and `RadioGroup` (in `global/react-tundraish/src/`) emit
+ * `.checkbox-row` / `.radio-row` wrappers and a `.radio-group` fieldset
+ * that tundra-css leaves unstyled — the components expected the host to
+ * supply the layout. The StatusBadge primitive emits `.sr-only` for the
+ * visually-hidden tone prefix. The Wildflower refresh authors them here
+ * so the primitives are self-sufficient: the screen-reader prefix stays
+ * hidden, and checkbox/radio rows get their gap.
+ *
+ * The StatusBadge skin itself (`.status-badge`, its tone variants, and
+ * the `tundra-pulse-dot` keyframes) lives in its own file — see
+ * `status-badge.css`.
+ */
+
+/* Visually-hidden text kept available to assistive tech (the StatusBadge
+ * tone prefix: "Success: ", "Warning: ", "Error: "). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * Checkbox / radio row layout — box and label on one line with a comfortable
+ * gap (the components render `.checkbox-row` / `.radio-row` wrappers that
+ * tundra-css leaves unstyled, so the box and label would otherwise sit
+ * flush). `.radio-group` resets the `<fieldset>` and stacks its rows.
+ */
+.checkbox-row,
+.radio-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+}

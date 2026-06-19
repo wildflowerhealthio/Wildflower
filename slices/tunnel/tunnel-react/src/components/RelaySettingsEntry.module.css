@@ -12,17 +12,15 @@
    * (via `--item-list-row-padding-inline`) so the row's hit area
    * reaches the card's edges — the card itself stays unpadded.
    */
-  --item-list-row-padding-inline: var(--space-5);
-  background: rgb(251, 244, 233);
-  border: 1px solid rgba(44, 33, 29, 0.12);
-  border-radius: 14px;
+  --item-list-row-padding-inline: var(--space-7);
+  background: var(--card-color-background);
+  border: 1px solid var(--card-color-border);
+  /* Smaller than the hero/feed card radius — the relay entry is a
+   * single-row affordance, so a tighter corner reads as more compact. */
+  border-radius: var(--radius-4);
   /* Guarantee a minimum tap target even if a future change shrinks
    * the title or removes the chip. */
-  min-height: 40px;
-}
-
-:global(:root[data-color-scheme='dark']) .card {
-  border-color: rgba(247, 236, 221, 0.1);
+  min-height: var(--space-12);
 }
 
 /*
@@ -32,7 +30,7 @@
  * this row.
  */
 .title-chip {
-  margin-inline-start: var(--space-2);
+  margin-inline-start: var(--space-4);
 }
 
 /*
@@ -43,7 +41,7 @@
  * affordance and not as a timestamp.
  */
 .chevron {
-  font-size: 20px;
-  line-height: 1;
+  font-size: var(--font-size-5);
+  line-height: var(--line-height-1);
   color: var(--color-accent);
 }

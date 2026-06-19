@@ -4,7 +4,7 @@
 }
 
 /*
- * The trigger is just a kebab glyph — no surrounding chip / pill / border, so
+ * The trigger is just a meatball glyph — no surrounding chip / pill / border, so
  * it can sit flush inside an `ItemList` row or a `PageHeader` actions slot
  * without adding a second container's worth of visual weight. A negative
  * margin keeps the comfortable tap target (28×28) from inflating the parent's
@@ -14,9 +14,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  margin: -6px;
+  width: var(--space-10);
+  height: var(--space-10);
+  margin: calc(-1 * var(--space-3));
   padding: 0;
   background: transparent;
   border: 1px solid transparent;
@@ -38,18 +38,18 @@
 
 .menu__dots {
   font-size: var(--font-size-5);
-  line-height: 1;
+  line-height: var(--line-height-1);
 }
 
 .menu__list {
   position: absolute;
   z-index: 10;
-  top: calc(100% + var(--space-1));
+  top: calc(100% + var(--space-2));
   margin: 0;
-  padding: var(--space-1);
+  padding: var(--space-2);
   list-style: none;
   background: var(--color-raised);
-  border: 1px solid var(--color-neutral-7);
+  border: 1px solid var(--color-divider);
   border-radius: var(--radius-3);
   box-shadow: 0 14px 34px rgba(44, 33, 29, 0.18);
   min-width: 160px;
@@ -70,11 +70,11 @@
 .menu__item {
   display: block;
   width: 100%;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-4) var(--space-5);
   text-align: left;
   background: transparent;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-2);
   color: inherit;
   font: inherit;
   cursor: pointer;

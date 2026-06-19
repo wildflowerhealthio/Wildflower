@@ -21,19 +21,18 @@
   background: var(--color-canvas);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-2) 0; /* var(--space-3); */
-  /* border-bottom: 1px solid var(--color-neutral-7); */
+  gap: var(--space-4);
+  padding: var(--space-4) 0 0;
 
   /*
    * Bleed flush to the page edges by cancelling the `.page` shell's padding.
    * `--page-padding` is set by that shell (page-layout.module.css) and read
-   * here so the two stay in lockstep; the `--space-5` fallback keeps a stray
+   * here so the two stay in lockstep; the `--space-9` fallback keeps a stray
    * header rendered outside `.page` from collapsing.
    */
-  margin-top: calc(-1 * var(--page-padding, var(--space-5)));
-  margin-inline: calc(-1 * var(--page-padding, var(--space-5)));
-  padding-inline: var(--page-padding, var(--space-5));
+  margin-top: calc(-1 * var(--page-padding, var(--space-9)));
+  margin-inline: calc(-1 * var(--page-padding, var(--space-9)));
+  padding-inline: var(--page-padding, var(--space-9));
 }
 
 /*
@@ -47,14 +46,14 @@
   align-self: flex-start;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  max-width: calc(100% + var(--space-2));
-  padding: var(--space-1) var(--space-2);
-  margin: calc(-1 * var(--space-1)) calc(-1 * var(--space-2));
+  gap: var(--space-2);
+  max-width: calc(100% + var(--space-4));
+  padding: var(--space-2) var(--space-4);
+  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-4));
   border-radius: var(--radius-2);
   font-family: var(--font-mono);
-  font-size: var(--font-size-1);
-  letter-spacing: 0.02em;
+  font-size: var(--font-size-2);
+  letter-spacing: var(--letter-spacing-4);
   color: var(--color-accent);
   text-decoration: none;
   white-space: nowrap;
@@ -74,7 +73,7 @@
 
 .page-header__back-chevron {
   font-size: var(--font-size-3);
-  line-height: 1;
+  line-height: var(--line-height-1);
 }
 
 /* Title + trailing action share one row; the heading takes the remaining
@@ -83,7 +82,7 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-5);
 }
 
 /*
@@ -93,7 +92,7 @@
 .page-header__heading {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-1);
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -102,9 +101,10 @@
   margin: 0;
   min-width: 0;
   font-family: var(--font-serif);
-  font-size: var(--font-size-8);
+  font-size: var(--font-size-7);
   font-weight: var(--font-weight-2);
   line-height: var(--line-height-1);
+  letter-spacing: var(--letter-spacing-2);
   color: var(--color-foreground);
   white-space: nowrap;
   overflow: hidden;
@@ -115,7 +115,7 @@
   margin: 0;
   min-width: 0;
   font-family: var(--font-mono);
-  font-size: 0.84rem;
+  font-size: var(--font-size-2);
   color: var(--color-neutral-4);
   white-space: nowrap;
   overflow: hidden;
@@ -126,5 +126,5 @@
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-4);
 }

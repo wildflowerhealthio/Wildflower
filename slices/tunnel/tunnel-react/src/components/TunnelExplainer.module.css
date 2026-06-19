@@ -19,7 +19,7 @@
 .explainer {
   margin: 0;
   color: var(--color-neutral-3);
-  font-size: var(--font-size-2);
+  font-size: var(--font-size-3);
   line-height: var(--line-height-5);
   animation: tunnel-explainer-fade-in 1s ease both;
 }

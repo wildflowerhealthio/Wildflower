@@ -1,7 +1,7 @@
 .fields {
   display: grid;
   grid-template-columns: 1fr;
-  gap: var(--space-4);
+  gap: var(--space-6);
 }
 
 /*
@@ -14,7 +14,7 @@
 .divider {
   margin: 0;
   border: 0;
-  border-top: 1px solid var(--color-neutral-7);
+  border-top: 1px solid var(--color-divider);
 }
 
 /*
@@ -28,9 +28,9 @@
 .zone-label {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: var(--font-size-2);
+  font-size: var(--font-size-1);
   font-weight: var(--font-weight-2);
-  letter-spacing: 0.14em;
+  letter-spacing: var(--letter-spacing-5);
   text-transform: uppercase;
   color: var(--color-neutral-5);
 }
@@ -41,7 +41,7 @@
  * the chip stays context-agnostic.
  */
 .title-chip {
-  margin-inline-start: var(--space-3);
+  margin-inline-start: var(--space-5);
 }
 
 /*
@@ -52,7 +52,7 @@
 .actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--space-3);
+  gap: var(--space-5);
   align-items: center;
   flex-wrap: wrap;
 }
@@ -68,7 +68,7 @@
 }
 
 .test-status--success {
-  color: var(--color-green-7, #5f7a28);
+  color: var(--color-success-foreground);
 }
 
 .test-status--error {

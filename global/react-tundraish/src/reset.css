@@ -1,0 +1,101 @@
+/*
+ * Tundra-style reset + global element rules. Imported by `styles.css`.
+ *
+ * Two layers of content here:
+ *
+ * 1. `@layer reset` — mirrors the reset block in joshdales'
+ *    `tundra-css/www/src/app.css` so a consumer of `tundra-css` gets the
+ *    same baseline whether they're rendering the tundra website or this
+ *    app. Lives in a named layer so any other rule in the cascade wins
+ *    against it without specificity acrobatics.
+ *
+ * 2. The handful of global element styles (`html`, `body`, `code`, `hr`)
+ *    that have to live on the document root rather than a scoped
+ *    component. They read from the colour / spacing / radius custom
+ *    properties defined elsewhere, so a token re-point automatically
+ *    re-themes them.
+ *
+ * Reset notes:
+ *
+ * - `* { margin: 0 }` zeroes browser default margins — every spacing in
+ *   the design system flows from `gap`/`padding` against tundra's
+ *   `--space-N` ramp, so leaving UA margins in place would fight the
+ *   design tokens.
+ * - `text-wrap: pretty` on headings/paragraphs is a Tundraish typography
+ *   nicety (prefers balanced line breaks where the engine supports it).
+ * - `cursor: pointer` on `a`/`label` matches Tundra's UA cleanup.
+ * - `select { appearance: none }` strips Safari's default chrome so the
+ *   tundra-css form-control rules can paint the control instead.
+ *
+ * We do NOT adopt tundra's global `a` rule (flex + `::after { content:
+ * '→' }`) — that style is opinionated for the tundra docs site and would
+ * sprout arrows on every `<ItemList>` link / OAuth link / inline anchor
+ * in this app. Text links here use tundra-css's `.text-link-N` classes
+ * when they want the underlined-link treatment.
+ */
+@layer reset {
+  * {
+    margin: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p {
+    text-wrap: pretty;
+  }
+
+  a,
+  label {
+    cursor: pointer;
+  }
+
+  select {
+    appearance: none;
+  }
+}
+
+/*
+ * Default canvas / surface — pin both the document and the body to
+ * tundra's surface palette so the dark-mode mirror in `colors-custom.css`
+ * flips them in lockstep. Tundra's `app.css` hard-codes `html { background:
+ * --color-neutral-1 }` and `body { background: #fff }`; we use the
+ * semantic `--color-canvas` / `--color-foreground` aliases so the
+ * dark-mode block can re-point them without duplicating selectors.
+ */
+html {
+  color: var(--color-foreground);
+  background-color: var(--color-canvas);
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-foreground);
+  /* Hanken Grotesk is the app's working voice; the type tokens carry the
+   * three-family system (see `typography-custom.css`). The serif/mono are
+   * applied where the design reserves them (titles, eyebrows, metadata),
+   * not globally. */
+  font-family: var(--font-sans);
+}
+
+/*
+ * Inline `<code>` — tundra `app.css`'s rule, adapted to use our semantic
+ * `--color-neutral-9` surface variable so dark mode flips automatically.
+ * The accent foreground reads from `--app-accent`, so a surface tagged
+ * `.app-blue` paints its inline code blue without a separate rule.
+ */
+code {
+  background-color: var(--color-neutral-9);
+  color: var(--app-accent);
+  padding-inline: var(--space-2);
+  padding-block: var(--space-1);
+  border-radius: var(--radius-1);
+}
+
+/* Tundra `app.css`'s horizontal-rule treatment. */
+hr {
+  border: 0.5px solid var(--color-neutral-8);
+}
