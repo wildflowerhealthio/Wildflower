@@ -1,5 +1,4 @@
 import { useId, type JSX, type PropsWithChildren, type ReactNode } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import styles from './field.module.css'
 
@@ -68,11 +67,14 @@ interface FieldDescriptionProps {
 }
 
 /**
- * Secondary text inside a `<Field>`. Typeset as `text-body-3` and tinted
- * with the field's muted color.
+ * Secondary text inside a `<Field>`. Typeset a notch smaller than body
+ * (sans, ~14px) so the helper sits beneath its label/input without
+ * competing for primary-copy weight; muted with the field's neutral
+ * tint. Typesetting lives in `.field__description` — see the module
+ * CSS for the size/weight/leading rationale.
  */
 const FieldDescription = ({ children }: FieldDescriptionProps): JSX.Element => (
-  <span className={cn(styles['field__description'], 'text-body-3')}>{children}</span>
+  <span className={styles['field__description']}>{children}</span>
 )
 
 export { Field, FieldDescription, FieldGroup }

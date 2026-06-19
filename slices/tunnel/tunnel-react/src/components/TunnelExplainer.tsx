@@ -33,22 +33,22 @@ const TunnelExplainer = ({ state }: TunnelExplainerProps): JSX.Element => {
     return state.publicHost !== null ? (
       <p className={styles['explainer']}>
         Apps and people you&apos;ve authorized can access your device at{' '}
-        <strong className={styles['explainer__host']}>{state.publicHost}</strong>. Anyone who you
-        haven&apos;t granted access to will need to ask your permission through the app.
+        <strong className={styles['explainer__host']}>{state.publicHost}</strong>.<br />
+        Apps and devices can only access your personal health record with your explicit permission
+        &mdash; granted through the Wildflower app.
       </p>
     ) : (
       <p className={styles['explainer']}>
-        Apps and people you&apos;ve authorized can access your device. Anyone who you haven&apos;t
-        granted access to will need to ask your permission through the app.
+        Apps and people you&apos;ve authorized can access your device. Apps and devices will still
+        need to ask your permission through the app to get access.
       </p>
     )
   }
   return (
     <p className={styles['explainer']}>
-      By default, your personal health record is only accessible on this device. By activating the
-      tunnel you can use Wildflower from your computer, use apps that access your data remotely, or
-      share access with anyone in your circle of care. You need to specifically grant any user or
-      app access from the Wildflower app on your device.
+      By default, your personal health record is only accessible on this device. <br /> By
+      activating the tunnel you can use use apps that access your data remotely, or grant access
+      from another device.
     </p>
   )
 }

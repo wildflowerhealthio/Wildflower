@@ -75,9 +75,7 @@ const ItemListRow = ({ item }: { item: ItemListItem }): JSX.Element => {
       <span className={styles['item-list__badge']}>{item.badge}</span>
     ) : null
   const metaJsx =
-    item.meta !== undefined ? (
-      <span className={styles['item-list__meta']}>{item.meta}</span>
-    ) : null
+    item.meta !== undefined ? <span className={styles['item-list__meta']}>{item.meta}</span> : null
   const subtitleJsx =
     item.subtitle !== undefined ? (
       <span className={cn(styles['item-list__subtitle'], 'text-body-3')}>{item.subtitle}</span>

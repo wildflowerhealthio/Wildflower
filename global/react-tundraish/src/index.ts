@@ -21,4 +21,5 @@ export { pageLayoutStyles, type PageLayoutClassName } from './page-layout-styles
 export { PageLoading, type PageLoadingProps } from './page-loading.tsx'
 export { RadioGroup, type RadioGroupProps, type RadioOption } from './radio-group.tsx'
 export { StatusBadge, type StatusBadgeProps, type StatusTone } from './status-badge.tsx'
+export { TextField, type TextFieldProps } from './text-field.tsx'
 export { ToggleSwitch, type ToggleSwitchProps } from './toggle-switch.tsx'

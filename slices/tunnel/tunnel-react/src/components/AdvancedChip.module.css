@@ -1,0 +1,27 @@
+/*
+ * "Advanced" chip — a small mono pill marking a destination or section
+ * as setup-level config. Used inline beside the "Relay settings" title
+ * on the Tunnel overview row and in the Relay settings page header.
+ * Self-sufficient (no inherited-context assumptions); parents add an
+ * inline-start margin when needed.
+ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--color-sunken);
+  border: 1px solid rgba(44, 33, 29, 0.14);
+  color: var(--color-neutral-5);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--font-weight-1);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+:global(:root[data-color-scheme='dark']) .chip {
+  border-color: rgba(247, 236, 221, 0.1);
+}

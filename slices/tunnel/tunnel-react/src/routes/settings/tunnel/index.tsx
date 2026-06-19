@@ -1,26 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { DateTime } from 'effect'
-import { useId, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import {
-  AsyncErrorView,
-  Field,
-  FieldDescription,
-  PageHeader,
-  pageLayoutStyles,
-} from 'react-tundraish'
+import type { JSX } from 'react'
+import { AsyncErrorView, PageHeader } from 'react-tundraish'
 
+import { RelaySettingsEntry } from '../../../components/RelaySettingsEntry.tsx'
 import { TunnelActivityFeed, type ActivityEntry } from '../../../components/TunnelActivityFeed.tsx'
 import { TunnelExplainer } from '../../../components/TunnelExplainer.tsx'
 import { TunnelStatusHero } from '../../../components/TunnelStatusHero.tsx'
-import {
-  tunnelStateQueryOptions,
-  useTunnelStateQuery,
-  type RelayInput,
-  type TunnelState,
-} from '../../../queries.ts'
+import { tunnelStateQueryOptions, useTunnelStateQuery, type TunnelState } from '../../../queries.ts'
 import { useTunnelSettingsForm } from '../../../use-tunnel-settings-form.ts'
-import styles from './index.module.css'
 
 interface TunnelScreenBodyProps {
   readonly state: TunnelState
@@ -31,75 +19,51 @@ interface TunnelScreenBodyProps {
  * against the daemon) is a future slice; until then the screen renders
  * a fixed set of plausible events so the layout/design can be reviewed
  * with real-shaped data. Generated at call time so the relative times
- * stay anchored to `Date.now()`.
+ * stay anchored to "now".
  */
 const buildShamActivityEntries = (): readonly ActivityEntry[] => {
-  const nowMs = Date.now()
+  const now = DateTime.unsafeNow()
   return [
     {
       name: 'Collector',
       location: "Ruth's iPhone",
-      lastConnectionAt: DateTime.unsafeMake(nowMs),
+      lastConnectionAt: now,
       state: 'active',
     },
     {
       name: 'Patient app',
       location: '198.51.100.24',
-      lastConnectionAt: DateTime.unsafeMake(nowMs - 2 * 60 * 1000),
+      lastConnectionAt: DateTime.subtract(now, { minutes: 2 }),
       state: 'active',
     },
     {
       name: 'Unknown client',
       location: '203.0.113.9',
-      lastConnectionAt: DateTime.unsafeMake(nowMs - 60 * 60 * 1000),
+      lastConnectionAt: DateTime.subtract(now, { hours: 1 }),
       message: 'not authorized',
       state: 'error',
     },
   ]
 }
 
-/** Field descriptors for the relay block — single source for the repeated inputs. */
-const RELAY_FIELDS: ReadonlyArray<{
-  readonly key: keyof RelayInput
-  readonly label: string
-  readonly type: 'text' | 'password'
-  readonly placeholder?: string
-  readonly inputMode?: 'url'
-}> = [
-  {
-    key: 'remoteAddr',
-    label: 'Relay address',
-    type: 'text',
-    placeholder: 'relay.example.com:2333',
-    inputMode: 'url',
-  },
-  { key: 'serviceName', label: 'Service name', type: 'text', placeholder: 'wildflower' },
-  { key: 'publicKey', label: 'Public key', type: 'text', placeholder: 'base64 noise public key' },
-  { key: 'token', label: 'Token', type: 'password' },
-]
-
+/**
+ * The Tunnel overview screen — header + explainer + status hero +
+ * recent-activity feed (when the tunnel is open) + a navigation entry
+ * to the Relay settings detail page. The form for editing host/relay
+ * + the Save / Test connection actions live on the Relay settings
+ * page (`/settings/tunnel/relay`); this screen carries no form.
+ *
+ * The hero still owns the live Run-tunnel switch, so the overview
+ * uses the shared `useTunnelSettingsForm` hook for its `toggle` and
+ * `pending` outputs only.
+ */
 const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   const form = useTunnelSettingsForm(state)
-  const hostInputDomId = useId()
-  const relayInputDomIdBase = useId()
 
   return (
     <>
       <PageHeader title="Tunnel" backHref="/settings" backLabel="Settings" />
       <TunnelExplainer state={state} />
-
-      {form.errorMessage !== null ? (
-        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
-          {form.errorMessage}
-        </p>
-      ) : null}
-
-      {form.conflicted ? (
-        <p className={cn(styles['conflict'], 'text-body-3')} role="status">
-          These settings changed elsewhere. The current values are shown below — review them and
-          save again to apply your change.
-        </p>
-      ) : null}
 
       {form.pending ? (
         <TunnelStatusHero state={state} disabled />
@@ -111,86 +75,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
         <TunnelActivityFeed entries={buildShamActivityEntries()} />
       ) : null}
 
-      <div className={styles['fields']}>
-        <Field label="Public host" htmlFor={hostInputDomId}>
-          <input
-            id={hostInputDomId}
-            type="text"
-            inputMode="url"
-            autoComplete="off"
-            autoCapitalize="none"
-            className="input-2"
-            value={form.hostInput}
-            placeholder="my-clinic.example.com"
-            disabled={form.pending}
-            onChange={(e) => {
-              form.setHostInput(e.target.value)
-            }}
-          />
-          <FieldDescription>The public domain the relay routes to this device.</FieldDescription>
-        </Field>
-      </div>
-
-      <details className={styles['relay']}>
-        <summary className={styles['relay__summary']}>Relay Server</summary>
-        <FieldDescription>
-          Connection details for the self-hosted rathole relay. The token is never shown — enter a
-          new one to change the connection.
-        </FieldDescription>
-
-        <div className={styles['fields']}>
-          {RELAY_FIELDS.map((field) => {
-            const fieldId = `${relayInputDomIdBase}-${field.key}`
-            return (
-              <Field key={field.key} label={field.label} htmlFor={fieldId}>
-                <input
-                  id={fieldId}
-                  type={field.type}
-                  inputMode={field.inputMode}
-                  autoComplete="off"
-                  autoCapitalize="none"
-                  className="input-2"
-                  value={form.relay[field.key]}
-                  placeholder={field.placeholder}
-                  disabled={form.pending}
-                  onChange={(e) => {
-                    form.setRelayField(field.key, e.target.value)
-                  }}
-                />
-              </Field>
-            )
-          })}
-        </div>
-      </details>
-
-      {form.relayInvalid ? (
-        // Outside the collapsible block so a disabled Save is always
-        // explained even when the relay section is collapsed.
-        <p className={cn(styles['relay__error'], 'text-body-3')} role="alert">
-          To change the relay, fill all four fields including a new token.
-        </p>
-      ) : null}
-
-      <FieldDescription>
-        <span className={styles['current']}>Bound to local server at: {state.servedOrigin}</span>
-        {state.attempt > 0 ? (
-          <>
-            <br />
-            <span className={styles['current']}>Dial attempts this revision: {state.attempt}</span>
-          </>
-        ) : null}
-      </FieldDescription>
-
-      <div className={styles['actions']}>
-        <button
-          type="button"
-          className="button-2 filled"
-          disabled={!form.canSave}
-          onClick={form.save}
-        >
-          Save
-        </button>
-      </div>
+      <RelaySettingsEntry />
     </>
   )
 }

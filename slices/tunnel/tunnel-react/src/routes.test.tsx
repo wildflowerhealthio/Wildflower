@@ -30,15 +30,19 @@ const routes = (): readonly AnyRoute[] =>
   Object.values(router.routesById).filter((route) => route.id !== '__root__')
 
 describe('tunnel routes', () => {
-  test('the generated tree exposes exactly the tunnel settings route', () => {
-    const ids = routes().map((route) => route.id)
-    expect(ids).toEqual(['/settings/tunnel/'])
+  test('the generated tree exposes the overview + relay-settings routes', () => {
+    const ids = routes()
+      .map((route) => route.id)
+      .toSorted((a, b) => a.localeCompare(b))
+    expect(ids).toEqual(['/settings/tunnel/', '/settings/tunnel/relay'])
   })
 
-  test('the settings route resolves at /settings/tunnel/', () => {
-    // The screen is an index route, so the resolved fullPath keeps the
-    // trailing slash.
-    expect(routes()[0]?.fullPath).toBe('/settings/tunnel/')
+  test('the overview resolves at /settings/tunnel/ and the relay page at /settings/tunnel/relay', () => {
+    const byId = new Map(routes().map((route) => [route.id, route]))
+    // The overview is an index route, so the resolved fullPath keeps the
+    // trailing slash; the relay page is a leaf, no trailing slash.
+    expect(byId.get('/settings/tunnel/')?.fullPath).toBe('/settings/tunnel/')
+    expect(byId.get('/settings/tunnel/relay')?.fullPath).toBe('/settings/tunnel/relay')
   })
 })
 

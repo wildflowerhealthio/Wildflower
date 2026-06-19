@@ -1,0 +1,81 @@
+.fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+/*
+ * Hairline between the device-facing fields (Public host / Service name
+ * / Token) above and the rarely-touched relay-endpoint coordinates
+ * (Relay address / Public key) below. The grid's `gap` sits on either
+ * side, so the visual break is the gap + hairline + gap, no extra
+ * margin needed.
+ */
+.divider {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--color-neutral-7);
+}
+
+/*
+ * Zone label — mono uppercase eyebrow naming the group of fields that
+ * follows. One step quieter than the per-field label tint
+ * (`--color-neutral-5` vs `--color-neutral-4`) so the section heading
+ * reads as a structural marker rather than another control label.
+ */
+.zone-label {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  font-weight: var(--font-weight-2);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-neutral-5);
+}
+
+/*
+ * Actions row pinned at the bottom of the page content. Filled Save +
+ * outline Test connection sit on the right; Save is primary so it
+ * leads, Test connection follows.
+ */
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.test-button {
+  white-space: nowrap;
+}
+
+.test-status {
+  margin-inline-end: auto;
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-4);
+}
+
+.test-status--success {
+  color: var(--color-green-7, #5f7a28);
+}
+
+.test-status--error {
+  color: var(--color-red-3);
+}
+
+.relay-error {
+  color: var(--color-red-5);
+  margin: 0;
+}
+
+.conflict {
+  color: var(--color-yellow-5);
+  margin: 0;
+}
+
+.current {
+  margin: 0;
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-4);
+}

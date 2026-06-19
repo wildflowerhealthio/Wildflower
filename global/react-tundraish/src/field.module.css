@@ -22,6 +22,20 @@
   color: var(--color-neutral-4);
 }
 
+/*
+ * Field helper text — secondary copy under a label/input. Typeset a
+ * notch smaller than body (`--font-size-2`, ~14px) so it reads as
+ * "explanatory" rather than "primary copy" and so a stack of labelled
+ * inputs feels denser than a page of paragraphs. Set explicitly here
+ * (not via a `text-body-N` utility) because tundra-css's body-3
+ * resolves to 16px — the page's body size — which makes helpers
+ * compete visually with the field values they describe.
+ */
 .field__description {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-1);
+  line-height: var(--line-height-5);
+  letter-spacing: var(--letter-spacing-2);
   color: var(--color-neutral-4);
 }

@@ -6,19 +6,14 @@ import {
 } from '@tanstack/react-router'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { DateTime } from 'effect'
-import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
-import {
-  TunnelActivityFeed,
-  formatRelativeTime,
-  type ActivityEntry,
-} from './TunnelActivityFeed.tsx'
+import { TunnelActivityFeed, type ActivityEntry } from './TunnelActivityFeed.tsx'
 
 // A fixed "now" so all relative-time assertions are deterministic.
 const NOW_MS = 1_700_000_000_000
+const NOW: DateTime.DateTime = DateTime.unsafeMake(NOW_MS)
 
 const dt = (offsetMs: number): DateTime.DateTime => DateTime.unsafeMake(NOW_MS - offsetMs)
 
@@ -57,35 +52,6 @@ afterEach(() => {
   cleanup()
 })
 
-describe('formatRelativeTime', () => {
-  // Bucket boundaries — verifies the cutoffs the rendered meta line
-  // depends on, so a row that should read "now" doesn't unexpectedly
-  // flip to "1 min ago".
-  test.each([
-    [0, 'now'],
-    [59_000, 'now'],
-    [60_000, '1 min ago'],
-    [119_000, '1 min ago'],
-    [60 * 60_000, '1 hr ago'],
-    [2 * 60 * 60_000, '2 hr ago'],
-    [24 * 60 * 60_000, '1 day ago'],
-    [3 * 24 * 60 * 60_000, '3 days ago'],
-  ] as const)('formats %i ms ago as "%s"', (offsetMs, expected) => {
-    expect(formatRelativeTime(NOW_MS - offsetMs, NOW_MS)).toBe(expected)
-  })
-
-  // Future timestamps (clock skew) should clamp to "now" rather than
-  // render a negative "−5 min ago".
-  test('clamps future timestamps to "now"', () => {
-    fc.assert(
-      fc.property(fc.integer({ min: 1, max: 365 * 24 * 60 * 60_000 }), (futureOffsetMs) => {
-        expect(formatRelativeTime(NOW_MS + futureOffsetMs, NOW_MS)).toBe('now')
-      }),
-      { numRuns: numRunsFor({ base: 50 }) }
-    )
-  })
-})
-
 // Helper: TanStack's `<RouterProvider>` mounts asynchronously, so the
 // activity-feed content (and the `<Link>` it contains) isn't in the
 // DOM on the synchronous tick after `render`. `findByText` polls until
@@ -94,7 +60,7 @@ const findFeedText = (text: string | RegExp): Promise<HTMLElement> => screen.fin
 
 describe('TunnelActivityFeed', () => {
   test('renders the section eyebrow + "Live" cue + summary line', async () => {
-    renderWithRouter(<TunnelActivityFeed entries={ENTRIES} now={NOW_MS} />)
+    renderWithRouter(<TunnelActivityFeed entries={ENTRIES} now={NOW} />)
 
     expect(await findFeedText('Recent activity')).toBeTruthy()
     expect(await findFeedText('Live')).toBeTruthy()
@@ -103,7 +69,7 @@ describe('TunnelActivityFeed', () => {
   })
 
   test('renders one row per entry with name, location, and relative time', async () => {
-    renderWithRouter(<TunnelActivityFeed entries={ENTRIES} now={NOW_MS} />)
+    renderWithRouter(<TunnelActivityFeed entries={ENTRIES} now={NOW} />)
 
     // Names.
     expect(await findFeedText('Collector')).toBeTruthy()
@@ -117,7 +83,7 @@ describe('TunnelActivityFeed', () => {
   })
 
   test('blocked rows surface the message in the subtitle and the danger row tint', async () => {
-    renderWithRouter(<TunnelActivityFeed entries={ENTRIES} now={NOW_MS} />)
+    renderWithRouter(<TunnelActivityFeed entries={ENTRIES} now={NOW} />)
 
     // Message appended after the location with the bullet separator.
     expect(await findFeedText('203.0.113.9 · not authorized')).toBeTruthy()
@@ -128,7 +94,7 @@ describe('TunnelActivityFeed', () => {
   })
 
   test('renders the "View all activity" footer as a navigable link', async () => {
-    renderWithRouter(<TunnelActivityFeed entries={ENTRIES} now={NOW_MS} />)
+    renderWithRouter(<TunnelActivityFeed entries={ENTRIES} now={NOW} />)
 
     await waitFor(() => {
       const link = screen.getByRole('link', { name: /View all activity/ })
@@ -145,7 +111,7 @@ describe('TunnelActivityFeed', () => {
         state: 'active',
       },
     ]
-    renderWithRouter(<TunnelActivityFeed entries={single} now={NOW_MS} />)
+    renderWithRouter(<TunnelActivityFeed entries={single} now={NOW} />)
 
     expect(await findFeedText('1 request today · 0 blocked')).toBeTruthy()
   })

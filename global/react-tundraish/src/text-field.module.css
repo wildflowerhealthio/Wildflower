@@ -1,0 +1,16 @@
+/*
+ * Accent-bordered callout variant — the field-styled affordance for
+ * "this is the input you'd actively change in this context" (e.g. a
+ * write-only token sitting among rarely-touched coordinates). The
+ * input still inherits its base box from tundra-css's `input-2`; this
+ * rule only re-points the border + focus outline to the accent so the
+ * callout reads as part of the brand family rather than as an alert.
+ */
+.text-field__input--callout {
+  border-color: var(--color-accent);
+}
+
+.text-field__input--callout:focus,
+.text-field__input--callout:focus-visible {
+  outline-color: var(--color-accent);
+}
