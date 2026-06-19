@@ -26,6 +26,7 @@
 //! run's late exit can't clobber the live one.
 
 pub mod config;
+mod control;
 pub mod db;
 pub mod domain;
 pub mod http;
@@ -37,14 +38,26 @@ use anyhow::Context;
 use axum::Router;
 
 pub use config::TunnelConfig;
+pub use control::TunnelControl;
 pub use db::{SettingsSeed, TunnelStore};
 pub use domain::{RelaySettings, TunnelDaemon, TunnelSettings};
 pub use http::TunnelState;
 use relay_clients::RatholeRelayClient;
 
-/// Build the `/tunnel` router over the shared `conn` and an embedded rathole
-/// client, mirroring `gatekeeper-rust`'s `setup_gatekeeper`. The host opens one
-/// database and passes it in. Resumes the tunnel from persisted settings.
+/// What [`setup_tunnel`] hands back: the `/tunnel` HTTP router to mount plus the
+/// in-process [`TunnelControl`] seam. The composition root threads the control
+/// into the apps slice (launch-origin resolution) and the `RequestTunnel`
+/// bridge handler, so a tunnel-requiring launch can trigger the tunnel and read
+/// its live public origin without an HTTP round-trip.
+pub struct Tunnel {
+    pub router: Router,
+    pub control: TunnelControl,
+}
+
+/// Build the `/tunnel` router + control seam over the shared `conn` and an
+/// embedded rathole client, mirroring `gatekeeper-rust`'s `setup_gatekeeper`.
+/// The host opens one database and passes it in. Resumes the tunnel from
+/// persisted settings.
 ///
 /// # Errors
 ///
@@ -53,7 +66,7 @@ use relay_clients::RatholeRelayClient;
 pub fn setup_tunnel(
     conn: persistence_rust::Connection,
     config: &TunnelConfig,
-) -> anyhow::Result<Router> {
+) -> anyhow::Result<Tunnel> {
     let store = TunnelStore::new(conn).context("failed to open tunnel store")?;
     let client = Arc::new(RatholeRelayClient::new());
     let tunnel_daemon =
@@ -81,5 +94,12 @@ pub fn setup_tunnel(
         .context("failed to read tunnel settings")?;
     state.daemon.reconcile(&settings);
 
-    Ok(http::router(state))
+    // The control seam shares the daemon's served-origin watch and owns the
+    // start-trigger task; spawn it before handing the state to the router.
+    let control = control::spawn_control(Arc::clone(&state));
+
+    Ok(Tunnel {
+        router: http::router(state),
+        control,
+    })
 }

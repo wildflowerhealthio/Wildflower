@@ -97,7 +97,33 @@ pub struct TunnelDaemon {
     /// drain (and, if the grace period elapses, abort) the previous run before
     /// dialing.
     supervisor: Mutex<Option<SupervisorHandle>>,
+    /// The current served origin (`https://{publicHost}` while dialing this
+    /// revision's configured host, else the loopback fallback), published as a
+    /// `watch` channel so consumers — notably the apps slice's launch handler,
+    /// wired in by the composition root — read the live value and react to
+    /// changes without reaching into the tunnel store. Wrapped in `Arc` because
+    /// both [`reconcile`](TunnelDaemon::reconcile) and the per-revision
+    /// supervisor task hold a sender, and `watch::Sender` is not `Clone`.
+    /// Mirrors the optimistic `servedOrigin` the HTTP `GET /tunnel` surface
+    /// reports — see [`crate::http`].
+    served_origin_tx: Arc<watch::Sender<String>>,
     backoff: Backoff,
+}
+
+/// Compute the origin clients should reach the server at: the public
+/// `https://{public_host}` when the daemon is dialing this revision's
+/// configured (non-empty) host, else the loopback fallback. The optimistic
+/// twin of the HTTP layer's `served_origin` — see [`crate::http`]'s type docs
+/// on why `running` means "dialing", not "reachable".
+fn compute_served_origin(
+    running: bool,
+    public_host: Option<&str>,
+    loopback_origin: &str,
+) -> String {
+    match public_host {
+        Some(host) if running && !host.is_empty() => format!("https://{host}"),
+        _ => loopback_origin.to_string(),
+    }
 }
 
 impl TunnelDaemon {
@@ -115,14 +141,20 @@ impl TunnelDaemon {
         local_port: u16,
         backoff: Backoff,
     ) -> Self {
+        let loopback_origin = loopback_origin.into();
         let (observed_tx, observed_rx) = watch::channel(Observed::default());
+        // Seed the served-origin channel with the loopback fallback: nothing is
+        // dialing yet, so the live origin is the loopback one until a reconcile
+        // flips `running` for a configured public host.
+        let (served_origin_tx, _) = watch::channel(loopback_origin.clone());
         Self {
             client,
-            loopback_origin: loopback_origin.into(),
+            loopback_origin,
             local_port,
             observed_tx,
             observed_rx,
             supervisor: Mutex::new(None),
+            served_origin_tx: Arc::new(served_origin_tx),
             backoff,
         }
     }
@@ -134,6 +166,21 @@ impl TunnelDaemon {
     /// A snapshot of the current observed runtime.
     pub(crate) fn observed(&self) -> Observed {
         self.observed_rx.borrow().clone()
+    }
+
+    /// The current served origin (`https://{publicHost}` while the tunnel is
+    /// dialing a configured host, else the loopback fallback).
+    pub fn served_origin(&self) -> String {
+        self.served_origin_tx.borrow().clone()
+    }
+
+    /// Subscribe to served-origin changes. Consumers hold the receiver and
+    /// read `borrow()` for the live value, or `await changed()` for
+    /// transitions. The composition root hands one of these to the apps
+    /// slice's launch handler so `requires_tunnel` launches resolve to the
+    /// live public origin.
+    pub fn watch_served_origin(&self) -> watch::Receiver<String> {
+        self.served_origin_tx.subscribe()
     }
 
     /// Bring the live tunnel in line with `settings`: cancel the previous
@@ -195,32 +242,63 @@ impl TunnelDaemon {
             o.attempt = 0;
         });
 
+        // Publish the immediate served origin alongside the optimistic observed
+        // state so a launch resolved right after this reconcile sees the public
+        // origin (when requested + configured) rather than a stale fallback.
+        self.served_origin_tx.send_replace(compute_served_origin(
+            running,
+            settings.public_host.as_deref(),
+            &self.loopback_origin,
+        ));
+
         let join = tokio::spawn(handover_and_supervise(
             previous.map(|h| h.join),
-            self.observed_tx.clone(),
-            Arc::clone(&self.client),
-            format!("127.0.0.1:{}", self.local_port),
-            settings.clone(),
-            cancel.clone(),
-            self.backoff,
+            SupervisorJob {
+                observed: self.observed_tx.clone(),
+                client: Arc::clone(&self.client),
+                local_addr: format!("127.0.0.1:{}", self.local_port),
+                served: ServedOrigin {
+                    tx: Arc::clone(&self.served_origin_tx),
+                    public_host: settings.public_host.clone(),
+                    loopback_origin: self.loopback_origin.clone(),
+                },
+                settings: settings.clone(),
+                cancel: cancel.clone(),
+                backoff: self.backoff,
+            },
         ));
 
         *supervisor = Some(SupervisorHandle { cancel, join });
     }
 }
 
-/// Drain the previous supervisor (up to [`CANCEL_GRACE`], then abort) before
-/// this revision begins dialing, so the relay never sees two clients holding
-/// the same `service_name`.
-async fn handover_and_supervise(
-    previous: Option<JoinHandle<()>>,
+/// Per-supervisor context for keeping the served-origin watch in step with the
+/// observed `running` flag. `public_host` and `loopback_origin` are fixed for
+/// the single revision a supervisor drives, so only `running` varies across its
+/// lifetime — [`set_observed`] recomputes the origin from each new flag.
+struct ServedOrigin {
+    tx: Arc<watch::Sender<String>>,
+    public_host: Option<String>,
+    loopback_origin: String,
+}
+
+/// Everything one spawned supervisor needs for the revision it drives, bundled
+/// so `reconcile` hands off a single value (rather than a long argument list)
+/// to the handover task.
+struct SupervisorJob {
     observed: watch::Sender<Observed>,
     client: Arc<dyn RelayClient>,
     local_addr: String,
+    served: ServedOrigin,
     settings: TunnelSettings,
     cancel: CancellationToken,
     backoff: Backoff,
-) {
+}
+
+/// Drain the previous supervisor (up to [`CANCEL_GRACE`], then abort) before
+/// this revision begins dialing, so the relay never sees two clients holding
+/// the same `service_name`.
+async fn handover_and_supervise(previous: Option<JoinHandle<()>>, job: SupervisorJob) {
     if let Some(mut previous) = previous {
         if tokio::time::timeout(CANCEL_GRACE, &mut previous)
             .await
@@ -234,27 +312,30 @@ async fn handover_and_supervise(
             let _ = previous.await;
         }
     }
-    supervise(observed, client, local_addr, settings, cancel, backoff).await;
+    supervise(job).await;
 }
 
 /// Drive one revision's tunnel: reconnect with backoff until cancelled. Updates
 /// to the observed state are dropped if a newer revision has taken over.
-async fn supervise(
-    observed: watch::Sender<Observed>,
-    client: Arc<dyn RelayClient>,
-    local_addr: String,
-    settings: TunnelSettings,
-    cancel: CancellationToken,
-    backoff: Backoff,
-) {
+async fn supervise(job: SupervisorJob) {
+    let SupervisorJob {
+        observed,
+        client,
+        local_addr,
+        served,
+        settings,
+        cancel,
+        backoff,
+    } = job;
     let revision = settings.revision;
     if !settings.requested_running {
-        set_observed(&observed, revision, false, None, 0);
+        set_observed(&observed, &served, revision, false, None, 0);
         return;
     }
     let Some(relay) = settings.relay_settings else {
         set_observed(
             &observed,
+            &served,
             revision,
             false,
             Some(NOT_CONFIGURED.to_string()),
@@ -272,7 +353,7 @@ async fn supervise(
         attempt = attempt.saturating_add(1);
         // Optimistic: the attempt is starting (rathole exposes no "connected"
         // signal, so this flips to true before the handshake completes).
-        set_observed(&observed, revision, true, None, attempt);
+        set_observed(&observed, &served, revision, true, None, attempt);
         // tokio's Instant tracks the runtime clock so tests can run this
         // against virtual time; in normal runs it's a thin wrapper over the
         // monotonic clock.
@@ -291,7 +372,7 @@ async fn supervise(
         match result {
             Ok(()) => {
                 delay = backoff.initial;
-                set_observed(&observed, revision, false, None, attempt)
+                set_observed(&observed, &served, revision, false, None, attempt)
             }
             Err(error) => {
                 if attempt_was_stable {
@@ -299,6 +380,7 @@ async fn supervise(
                 }
                 set_observed(
                     &observed,
+                    &served,
                     revision,
                     false,
                     Some(format!("{error:#}")),
@@ -326,9 +408,13 @@ fn jittered(base: Duration) -> Duration {
 }
 
 /// Apply an observed-state update for `revision`, ignored when a newer revision
-/// is live (a superseded supervisor must not clobber the current one).
+/// is live (a superseded supervisor must not clobber the current one). Keeps
+/// the served-origin watch in step with the applied `running` flag under the
+/// same revision guard, so a superseded supervisor can't rewind the live
+/// origin either.
 fn set_observed(
     observed: &watch::Sender<Observed>,
+    served: &ServedOrigin,
     revision: i64,
     running: bool,
     error: Option<String>,
@@ -346,6 +432,29 @@ fn set_observed(
         o.attempt = attempt;
         true
     });
+    // Recompute the served origin from the *live* running flag (read back
+    // under the revision guard) rather than the requested one — a dropped,
+    // superseded update must not move the origin. `send_if_modified` keeps
+    // watchers from waking on a no-op republish.
+    let live_running = {
+        let o = observed.borrow();
+        (o.revision == Some(revision)).then_some(o.running)
+    };
+    if let Some(running) = live_running {
+        let next = compute_served_origin(
+            running,
+            served.public_host.as_deref(),
+            &served.loopback_origin,
+        );
+        served.tx.send_if_modified(|current| {
+            if *current == next {
+                false
+            } else {
+                *current = next;
+                true
+            }
+        });
+    }
 }
 
 #[cfg(test)]
@@ -446,6 +555,62 @@ mod tests {
         daemon.reconcile(&settings_at(3));
         daemon.reconcile(&settings_at(3));
         assert_eq!(daemon.observed().revision, Some(3));
+    }
+
+    /// A configured, running, public-host settings row — the only shape that
+    /// resolves the served origin to a public `https://` value.
+    fn running_settings_with_host(revision: i64, host: &str) -> TunnelSettings {
+        TunnelSettings {
+            public_host: Some(host.to_string()),
+            ..running_settings(revision)
+        }
+    }
+
+    /// Before any reconcile, nothing is dialing, so the served origin is the
+    /// loopback fallback the launch handler redirects non-tunnel apps to.
+    #[tokio::test]
+    async fn served_origin_starts_at_the_loopback_fallback() {
+        let daemon = daemon();
+        assert_eq!(daemon.served_origin(), "http://127.0.0.1:8080");
+    }
+
+    /// A reconcile that optimistically flips `running` for a configured public
+    /// host publishes `https://{host}` synchronously — read before the spawned
+    /// supervisor task runs, so the value is the optimistic one the PUT/launch
+    /// path sees immediately.
+    #[tokio::test]
+    async fn reconcile_to_running_publishes_the_public_https_origin() {
+        let daemon = daemon();
+        daemon.reconcile(&running_settings_with_host(1, "dev1.example.com"));
+        assert_eq!(daemon.served_origin(), "https://dev1.example.com");
+    }
+
+    /// Requested-on but relay-unconfigured stays on the loopback fallback: the
+    /// daemon can't dial, so there is no public origin to hand a launch even
+    /// though a public host is set.
+    #[tokio::test]
+    async fn served_origin_stays_loopback_when_relay_unconfigured() {
+        let daemon = daemon();
+        let settings = TunnelSettings {
+            revision: 1,
+            public_host: Some("dev1.example.com".into()),
+            requested_running: true,
+            relay_settings: None,
+        };
+        daemon.reconcile(&settings);
+        assert_eq!(daemon.served_origin(), "http://127.0.0.1:8080");
+    }
+
+    /// A `watch_served_origin` subscriber observes the transition the launch
+    /// handler reacts to: loopback → public `https://` on a running reconcile.
+    #[tokio::test]
+    async fn watch_served_origin_observes_the_public_transition() {
+        let daemon = daemon();
+        let mut rx = daemon.watch_served_origin();
+        assert_eq!(*rx.borrow_and_update(), "http://127.0.0.1:8080");
+        daemon.reconcile(&running_settings_with_host(1, "dev1.example.com"));
+        assert!(rx.has_changed().expect("sender alive"));
+        assert_eq!(*rx.borrow_and_update(), "https://dev1.example.com");
     }
 
     /// What a `TracingRelayClient.run_once` call did across its lifetime.
