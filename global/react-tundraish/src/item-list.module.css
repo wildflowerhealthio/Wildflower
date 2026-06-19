@@ -33,7 +33,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 15px 0;
+  padding: 11px var(--row-tone-inset, 0);
   border-bottom: 1px solid var(--element-color-border, var(--color-neutral-8));
 }
 
@@ -43,6 +43,33 @@
 
 .item-list__row--disabled {
   opacity: 0.55;
+}
+
+/*
+ * Danger-tone row — a faint danger background tint that bleeds slightly
+ * past the row's natural padding so it reads as "this whole row is the
+ * exception" against an otherwise quiet list. The bleed is keyed off
+ * `--row-tone-inset` so the row's own content stays in its column; the
+ * negative margin pulls the tinted block outward by the same amount.
+ */
+.item-list__row--tone-danger {
+  --row-tone-inset: 10px;
+  background: rgba(203, 44, 44, 0.05);
+  margin-inline: calc(-1 * var(--row-tone-inset));
+  border-radius: 8px;
+}
+
+:global(:root[data-color-scheme='dark']) .item-list__row--tone-danger {
+  background: rgba(230, 75, 75, 0.1);
+}
+
+/* Leading slot — a compact mark (status dot, icon) before the text
+ * column. Doesn't grow; the row's `gap` separates it from the text. */
+.item-list__leading {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .item-list__text {
@@ -74,6 +101,28 @@
   min-width: 0;
 }
 
+/*
+ * Right-aligned mark inside the title row (e.g. a relative timestamp).
+ * `margin-inline-start: auto` pushes it to the row's end without needing
+ * a flexible spacer; it stays on the title's baseline.
+ */
+.item-list__meta {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-neutral-5);
+  white-space: nowrap;
+}
+
+.item-list__row--tone-danger .item-list__meta {
+  color: var(--color-red-3);
+}
+
+:global(:root[data-color-scheme='dark']) .item-list__row--tone-danger .item-list__meta {
+  color: var(--color-red-2);
+}
+
 .item-list__name {
   font-size: 15.5px;
   font-weight: var(--font-weight-3);
@@ -91,6 +140,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Danger-tone row shifts the subtitle into the danger ramp too, so the
+ * detail line agrees with the row's failure tint. */
+.item-list__row--tone-danger .item-list__subtitle {
+  color: var(--color-red-3);
+}
+
+:global(:root[data-color-scheme='dark']) .item-list__row--tone-danger .item-list__subtitle {
+  color: var(--color-red-2);
 }
 
 /* Generic mono badge (e.g. "Coming soon"); apps can pass their own tinted

@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { DateTime } from 'effect'
 import { useId, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import {
@@ -9,6 +10,7 @@ import {
   pageLayoutStyles,
 } from 'react-tundraish'
 
+import { TunnelActivityFeed, type ActivityEntry } from '../../../components/TunnelActivityFeed.tsx'
 import { TunnelExplainer } from '../../../components/TunnelExplainer.tsx'
 import { TunnelStatusHero } from '../../../components/TunnelStatusHero.tsx'
 import {
@@ -22,6 +24,38 @@ import styles from './index.module.css'
 
 interface TunnelScreenBodyProps {
   readonly state: TunnelState
+}
+
+/*
+ * Sham activity feed entries. The real source (connection-log query
+ * against the daemon) is a future slice; until then the screen renders
+ * a fixed set of plausible events so the layout/design can be reviewed
+ * with real-shaped data. Generated at call time so the relative times
+ * stay anchored to `Date.now()`.
+ */
+const buildShamActivityEntries = (): readonly ActivityEntry[] => {
+  const nowMs = Date.now()
+  return [
+    {
+      name: 'Collector',
+      location: "Ruth's iPhone",
+      lastConnectionAt: DateTime.unsafeMake(nowMs),
+      state: 'active',
+    },
+    {
+      name: 'Patient app',
+      location: '198.51.100.24',
+      lastConnectionAt: DateTime.unsafeMake(nowMs - 2 * 60 * 1000),
+      state: 'active',
+    },
+    {
+      name: 'Unknown client',
+      location: '203.0.113.9',
+      lastConnectionAt: DateTime.unsafeMake(nowMs - 60 * 60 * 1000),
+      message: 'not authorized',
+      state: 'error',
+    },
+  ]
 }
 
 /** Field descriptors for the relay block — single source for the repeated inputs. */
@@ -72,6 +106,10 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
       ) : (
         <TunnelStatusHero state={state} onToggle={form.toggle} />
       )}
+
+      {state.running || state.requestedRunning ? (
+        <TunnelActivityFeed entries={buildShamActivityEntries()} />
+      ) : null}
 
       <div className={styles['fields']}>
         <Field label="Public host" htmlFor={hostInputDomId}>

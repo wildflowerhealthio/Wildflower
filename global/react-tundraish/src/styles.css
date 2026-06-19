@@ -538,9 +538,11 @@ hr {
  * `pulse` is an opt-in liveliness cue on the leading dot — used to mean
  * "this status is being kept fresh" (e.g. an Online tunnel, a Live
  * feed). The animation is a gentle scale + opacity dip, cancelled under
- * `prefers-reduced-motion`.
+ * `prefers-reduced-motion`. The keyframes are named generically so
+ * other components (e.g. an activity-feed "Live" indicator) can reuse
+ * the same beat.
  */
-@keyframes status-badge-pulse {
+@keyframes tundra-pulse-dot {
   0%,
   100% {
     transform: scale(1);
@@ -553,7 +555,7 @@ hr {
 }
 
 .status-badge.pulse::before {
-  animation: status-badge-pulse 1.8s ease-in-out infinite;
+  animation: tundra-pulse-dot 1.8s ease-in-out infinite;
   transform-origin: center;
 }
 

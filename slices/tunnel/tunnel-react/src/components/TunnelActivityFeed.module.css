@@ -1,0 +1,137 @@
+/*
+ * Recent-activity card — sits beneath the status hero on the Tunnel
+ * screen, summarizing the most recent connections (allowed + blocked).
+ * Only renders when the tunnel is open; the parent route gates this.
+ */
+.feed {
+  background: var(--color-background);
+  border: 1px solid rgba(44, 33, 29, 0.12);
+  border-radius: 18px;
+  padding: var(--space-5) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+:global(:root[data-color-scheme='dark']) .feed {
+  border-color: rgba(247, 236, 221, 0.1);
+}
+
+.feed__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/*
+ * Section eyebrow — same mono/letter-spaced/uppercase treatment the
+ * ItemList title uses, sized down a hair for the card-internal context.
+ */
+.feed__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-neutral-5);
+  white-space: nowrap;
+}
+
+/*
+ * Live pill — text-only "LIVE" cue with a leading green dot that
+ * pulses. Different shape than `<StatusBadge tone="success" pulse>`:
+ * no fill, no border, just text and dot, sized smaller. Re-uses the
+ * `tundra-pulse-dot` keyframes promoted in `react-tundraish/styles.css`
+ * so the beat matches the badge pulse exactly.
+ */
+.feed__live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5f7a28;
+  white-space: nowrap;
+}
+
+:global(:root[data-color-scheme='dark']) .feed__live {
+  color: #8fae4f;
+}
+
+.feed__live::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: tundra-pulse-dot 1.8s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feed__live::before {
+    animation: none;
+  }
+}
+
+.feed__summary {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--color-neutral-3);
+}
+
+/*
+ * Per-row leading status dot. Two tones — `active` (green, matches the
+ * hero's "This device" and Internet nodes when on) and `error` (the
+ * danger red the relay node uses when reporting). The mark is a plain
+ * `<span>` with a fixed footprint so the row's flex `gap` separates it
+ * cleanly from the text column.
+ */
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.dot--active {
+  background: #5f7a28;
+}
+
+:global(:root[data-color-scheme='dark']) .dot--active {
+  background: #8fae4f;
+}
+
+.dot--error {
+  background: var(--color-red-5);
+}
+
+/*
+ * Footer link — "View all activity ›". Uses the accent for the link
+ * tint (matches slice-1's back-link decision) and sits flush-left
+ * inside the card padding.
+ */
+.feed__footer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  font-size: 12.5px;
+  font-weight: var(--font-weight-3);
+  color: var(--color-accent);
+  text-decoration: none;
+  margin-top: var(--space-2);
+}
+
+.feed__footer:hover {
+  text-decoration: underline;
+}
+
+.feed__footer:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-1);
+}
