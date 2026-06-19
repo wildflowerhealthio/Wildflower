@@ -4,7 +4,7 @@
  * summary that dims when the tunnel is off.
  */
 .hero {
-  background: var(--color-background);
+  background: rgb(251, 244, 233);
   border: 1px solid rgba(44, 33, 29, 0.12);
   border-radius: 18px;
   padding: var(--space-5) var(--space-5);
@@ -38,7 +38,7 @@
   flex-direction: column;
   gap: var(--space-3);
   opacity: 1;
-  transition: opacity 0.25s ease;
+  transition: opacity 1s ease;
 }
 
 .hero__address--dim {
@@ -131,6 +131,17 @@
 .path__node {
   flex: 0 0 auto;
   border-radius: 999px;
+  /* Smooth the active/inactive/error swap so flipping Run-tunnel reads
+   * as a continuous state change rather than a hard color flip. */
+  transition:
+    background 1s ease,
+    box-shadow 1s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .path__node {
+    transition: none;
+  }
 }
 
 /*

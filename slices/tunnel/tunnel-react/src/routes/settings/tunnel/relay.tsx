@@ -1,9 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { AsyncErrorView, PageHeader, TextField, pageLayoutStyles } from 'react-tundraish'
+import { AsyncErrorView, Chip, PageHeader, TextField, pageLayoutStyles } from 'react-tundraish'
 
-import { AdvancedChip } from '../../../components/AdvancedChip.tsx'
 import {
   tunnelStateQueryOptions,
   useTunnelStateQuery,
@@ -119,10 +118,14 @@ const RelaySettingsScreenBody = ({ state }: RelaySettingsScreenBodyProps): JSX.E
   return (
     <>
       <PageHeader
-        title="Relay settings"
+        title={
+          <>
+            Relay settings
+            <Chip className={styles['title-chip']}>Advanced</Chip>
+          </>
+        }
         backHref="/settings/tunnel"
         backLabel="Tunnel"
-        actions={<AdvancedChip />}
       />
 
       {form.errorMessage !== null ? (
@@ -140,6 +143,7 @@ const RelaySettingsScreenBody = ({ state }: RelaySettingsScreenBodyProps): JSX.E
 
       <div className={styles['fields']}>
         <h2 className={styles['zone-label']}>Your Settings</h2>
+        <hr className={styles['divider']} aria-hidden="true" />
         <TextField
           label="Public host"
           type="text"
@@ -152,8 +156,9 @@ const RelaySettingsScreenBody = ({ state }: RelaySettingsScreenBodyProps): JSX.E
         />
 
         {TOP_RELAY_FIELDS.map(renderRelayField)}
-        <hr className={styles['divider']} aria-hidden="true" />
+
         <h2 className={styles['zone-label']}>Relay Server</h2>
+        <hr className={styles['divider']} aria-hidden="true" />
         {BOTTOM_RELAY_FIELDS.map(renderRelayField)}
       </div>
 

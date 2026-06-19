@@ -1,8 +1,7 @@
 import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { ItemList } from 'react-tundraish'
+import { Chip, ItemList } from 'react-tundraish'
 
-import { AdvancedChip } from './AdvancedChip.tsx'
 import styles from './RelaySettingsEntry.module.css'
 
 interface RelaySettingsEntryProps {
@@ -40,7 +39,7 @@ const RelaySettingsEntry = ({
           title: (
             <>
               Relay settings
-              <AdvancedChip className={styles['title-chip']} />
+              <Chip className={styles['title-chip']}>Advanced</Chip>
             </>
           ),
           meta: (

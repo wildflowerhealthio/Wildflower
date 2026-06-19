@@ -7,10 +7,18 @@
  * branch.
  */
 .card {
-  background: var(--color-background);
+  /*
+   * The single inner ItemList row carries its own horizontal padding
+   * (via `--item-list-row-padding-inline`) so the row's hit area
+   * reaches the card's edges — the card itself stays unpadded.
+   */
+  --item-list-row-padding-inline: var(--space-5);
+  background: rgb(251, 244, 233);
   border: 1px solid rgba(44, 33, 29, 0.12);
   border-radius: 14px;
-  padding: 0 var(--space-5);
+  /* Guarantee a minimum tap target even if a future change shrinks
+   * the title or removes the chip. */
+  min-height: 40px;
 }
 
 :global(:root[data-color-scheme='dark']) .card {

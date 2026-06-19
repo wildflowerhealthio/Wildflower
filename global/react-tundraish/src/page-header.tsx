@@ -6,12 +6,14 @@ import styles from './page-header.module.css'
 
 type PageHeaderProps = {
   /**
-   * The page title. Keep it short — the title renders on a single line and
-   * truncates with an ellipsis rather than wrapping, so a long title is
-   * clipped on narrow (mobile) viewports instead of pushing the header
-   * taller.
+   * The page title. Usually a plain string; accepts `ReactNode` so a
+   * small inline mark (e.g. an "Advanced" chip) can sit beside the
+   * title text within the `<h1>`. Keep it short — the title renders on
+   * a single line and truncates with an ellipsis rather than wrapping,
+   * so a long title is clipped on narrow (mobile) viewports instead of
+   * pushing the header taller.
    */
-  readonly title: string
+  readonly title: ReactNode
   /**
    * Optional secondary line under the title — a per-record identifier (a
    * URL, a client id) that would overflow a single-line title. Like the

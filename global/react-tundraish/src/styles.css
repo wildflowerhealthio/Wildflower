@@ -511,12 +511,19 @@ hr {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px 3px 9px;
+  padding: 5px 11px;
   border-radius: var(--radius-pill, 999px);
   font-size: 0.85rem;
   font-weight: var(--font-weight-3);
   line-height: 1.2;
   white-space: nowrap;
+  /* Smooth tone changes (Online → Stopping → Stopped) so flipping the
+   * Run-tunnel switch doesn't snap the badge from one palette to
+   * another instantly. */
+  transition:
+    background-color 1s ease,
+    color 1s ease,
+    border-color 1s ease;
   /* neutral tone (no accent class) — quieter ink/dot than the toned
    * variants so an "Off"/"Idle" badge reads as resting rather than as
    * highlighted info. */
@@ -726,6 +733,6 @@ input[type='reset'].filled[aria-disabled='true'] {
 :root[data-color-scheme='dark'] input[type='submit'].filled[aria-disabled='true'],
 :root[data-color-scheme='dark'] input[type='reset'].filled:disabled,
 :root[data-color-scheme='dark'] input[type='reset'].filled[aria-disabled='true'] {
-  --button-color-background: var(--color-neutral-6);
-  --button-color-foreground: var(--color-neutral-3);
+  --button-color-background: var(--color-neutral-7);
+  --button-color-foreground: var(--color-neutral-9);
 }

@@ -3,14 +3,54 @@
  * screen, summarizing the most recent connections (allowed + blocked).
  * Only renders when the tunnel is open; the parent route gates this.
  */
+/*
+ * Fade-in on mount — the feed appears when the tunnel flips on (the
+ * parent route gates the render on `running || requestedRunning`), and
+ * a hard mount felt abrupt against the rest of the page's smooth tone
+ * changes. The animation is a one-shot opacity/translate; unmount is
+ * still instant (CSS animation can't drive an exit without an
+ * animation library), which is fine — flipping off feels deliberate
+ * already.
+ */
+@keyframes tunnel-feed-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .feed {
-  background: var(--color-background);
+  background: rgb(251, 244, 233);
   border: 1px solid rgba(44, 33, 29, 0.12);
   border-radius: 18px;
-  padding: var(--space-5) var(--space-5);
+  /*
+   * Only block-axis padding lives on the feed; the inline axis is
+   * delegated to children so the ItemList rows can carry the full
+   * width of the card. The danger-tone row tint therefore bleeds to
+   * the feed's edges naturally without negative-margin trickery.
+   *
+   * `overflow: hidden` clips the row tint against the feed's rounded
+   * corners — a danger row that happens to land first or last would
+   * otherwise paint a flat-corner rectangle that pokes past the
+   * border-radius.
+   */
+  padding-block: var(--space-5);
+  --item-list-row-padding-inline: var(--space-5);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  animation: tunnel-feed-fade-in 1s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feed {
+    animation: none;
+  }
 }
 
 :global(:root[data-color-scheme='dark']) .feed {
@@ -22,6 +62,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  padding-inline: var(--space-5);
 }
 
 /*
@@ -81,6 +122,7 @@
   font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--color-neutral-3);
+  padding-inline: var(--space-5);
 }
 
 /*
@@ -124,6 +166,7 @@
   color: var(--color-accent);
   text-decoration: none;
   margin-top: var(--space-2);
+  margin-inline-start: var(--space-5);
 }
 
 .feed__footer:hover {

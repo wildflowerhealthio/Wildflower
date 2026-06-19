@@ -22,15 +22,26 @@
  * follows. One step quieter than the per-field label tint
  * (`--color-neutral-5` vs `--color-neutral-4`) so the section heading
  * reads as a structural marker rather than another control label.
+ * Sized one notch above the per-field label so the section heading
+ * leads the group visually.
  */
 .zone-label {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: var(--font-size-1);
+  font-size: var(--font-size-2);
   font-weight: var(--font-weight-2);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-neutral-5);
+}
+
+/*
+ * Margin between the title text and the inline AdvancedChip in the
+ * PageHeader. Lives in this module (rather than `AdvancedChip`) so
+ * the chip stays context-agnostic.
+ */
+.title-chip {
+  margin-inline-start: var(--space-3);
 }
 
 /*

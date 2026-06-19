@@ -2,6 +2,29 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+
+  /*
+   * The single inner ItemList row carries its own horizontal padding
+   * (via `--item-list-row-padding-inline`) so the row's hit area
+   * reaches the card's edges — the card itself stays unpadded.
+   */
+  --item-list-row-padding-inline: var(--space-5);
+  background: rgb(251, 244, 233);
+  border: 1px solid rgba(44, 33, 29, 0.12);
+  border-radius: 14px;
+  /* Guarantee a minimum tap target even if a future change shrinks
+   * the title or removes the chip. */
+  min-height: 40px;
+}
+
+.item-list:first-child {
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+}
+
+.item-list:last-child {
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
 }
 
 /* Section eyebrow — mono, uppercase, letter-spaced, faint. */
@@ -13,6 +36,7 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-neutral-5);
+  padding: var(--space-4) var(--item-list-row-padding-inline, 0) 0;
 }
 
 /*
@@ -28,12 +52,21 @@
   flex-direction: column;
 }
 
+/*
+ * Rows carry their own inline padding (driven by a CSS variable so
+ * consumers can re-point or zero it). The hit/hover region therefore
+ * reaches the row's own edge — which, when the container drops its
+ * own horizontal padding, reaches the container's edge end-to-end.
+ * Default `0` keeps existing flush-flow consumers (pages where the
+ * page shell already provides the inset) unchanged.
+ */
 .item-list__row {
   position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 11px var(--row-tone-inset, 0);
+  padding-block: 11px;
+  padding-inline: var(--item-list-row-padding-inline, 0);
   border-bottom: 1px solid var(--element-color-border, var(--color-neutral-8));
 }
 
@@ -46,17 +79,17 @@
 }
 
 /*
- * Danger-tone row — a faint danger background tint that bleeds slightly
- * past the row's natural padding so it reads as "this whole row is the
- * exception" against an otherwise quiet list. The bleed is keyed off
- * `--row-tone-inset` so the row's own content stays in its column; the
- * negative margin pulls the tinted block outward by the same amount.
+ * Danger-tone row — a faint danger background tint that fills the
+ * whole row (now that the row carries its own padding, the tint
+ * naturally reaches the container's edge without a negative-margin
+ * bleed). No border-radius on the row itself — the container's
+ * `overflow: hidden` is responsible for clipping the tint against
+ * the card's rounded corners when the danger row lands first or
+ * last; rounding the row independently leaves a flat gap between
+ * the tint and the card edge.
  */
 .item-list__row--tone-danger {
-  --row-tone-inset: 10px;
   background: rgba(203, 44, 44, 0.05);
-  margin-inline: calc(-1 * var(--row-tone-inset));
-  border-radius: 8px;
 }
 
 :global(:root[data-color-scheme='dark']) .item-list__row--tone-danger {

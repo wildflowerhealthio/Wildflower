@@ -22,8 +22,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-4) var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-neutral-7);
+  padding: var(--space-4) var(--space-2) 0; /* var(--space-3); */
+  /* border-bottom: 1px solid var(--color-neutral-7); */
 
   /*
    * Bleed flush to the page edges by cancelling the `.page` shell's padding.
