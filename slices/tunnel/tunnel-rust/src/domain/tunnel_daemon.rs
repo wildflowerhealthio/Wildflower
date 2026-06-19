@@ -242,9 +242,20 @@ impl TunnelDaemon {
             o.attempt = 0;
         });
 
-        // Publish the immediate served origin alongside the optimistic observed
-        // state so a launch resolved right after this reconcile sees the public
-        // origin (when requested + configured) rather than a stale fallback.
+        // Publish the served origin from the revision's *configuration*
+        // (`running` here is `requested_running && relay_settings.is_some()` —
+        // a stable property of the settings row, not the live connection
+        // state). This is the single writer of the served-origin watch: the
+        // per-attempt supervisor deliberately does NOT republish it. Otherwise
+        // a healthy tunnel's normal reconnect churn — each `run_once` return
+        // momentarily flips the observed `running` flag false — would flap the
+        // served origin between `https://{host}` and the loopback fallback,
+        // and a `requires_tunnel` launch resolved during a reconnect gap would
+        // redirect to the wrong (non-public) origin. The optimistic semantics
+        // match `observed`: `running` means "requested + configured to dial",
+        // not "reachable". A `requested_running = false` reconcile (the user
+        // turning the tunnel off) publishes the loopback fallback here, since
+        // it bumps the revision and runs this path.
         self.served_origin_tx.send_replace(compute_served_origin(
             running,
             settings.public_host.as_deref(),
@@ -257,11 +268,6 @@ impl TunnelDaemon {
                 observed: self.observed_tx.clone(),
                 client: Arc::clone(&self.client),
                 local_addr: format!("127.0.0.1:{}", self.local_port),
-                served: ServedOrigin {
-                    tx: Arc::clone(&self.served_origin_tx),
-                    public_host: settings.public_host.clone(),
-                    loopback_origin: self.loopback_origin.clone(),
-                },
                 settings: settings.clone(),
                 cancel: cancel.clone(),
                 backoff: self.backoff,
@@ -272,24 +278,16 @@ impl TunnelDaemon {
     }
 }
 
-/// Per-supervisor context for keeping the served-origin watch in step with the
-/// observed `running` flag. `public_host` and `loopback_origin` are fixed for
-/// the single revision a supervisor drives, so only `running` varies across its
-/// lifetime — [`set_observed`] recomputes the origin from each new flag.
-struct ServedOrigin {
-    tx: Arc<watch::Sender<String>>,
-    public_host: Option<String>,
-    loopback_origin: String,
-}
-
 /// Everything one spawned supervisor needs for the revision it drives, bundled
 /// so `reconcile` hands off a single value (rather than a long argument list)
-/// to the handover task.
+/// to the handover task. The served-origin watch is intentionally absent: it is
+/// published once per revision by [`TunnelDaemon::reconcile`] from the row's
+/// configuration and must not be rewound by this supervisor's per-attempt
+/// `running` transitions.
 struct SupervisorJob {
     observed: watch::Sender<Observed>,
     client: Arc<dyn RelayClient>,
     local_addr: String,
-    served: ServedOrigin,
     settings: TunnelSettings,
     cancel: CancellationToken,
     backoff: Backoff,
@@ -322,20 +320,18 @@ async fn supervise(job: SupervisorJob) {
         observed,
         client,
         local_addr,
-        served,
         settings,
         cancel,
         backoff,
     } = job;
     let revision = settings.revision;
     if !settings.requested_running {
-        set_observed(&observed, &served, revision, false, None, 0);
+        set_observed(&observed, revision, false, None, 0);
         return;
     }
     let Some(relay) = settings.relay_settings else {
         set_observed(
             &observed,
-            &served,
             revision,
             false,
             Some(NOT_CONFIGURED.to_string()),
@@ -353,7 +349,7 @@ async fn supervise(job: SupervisorJob) {
         attempt = attempt.saturating_add(1);
         // Optimistic: the attempt is starting (rathole exposes no "connected"
         // signal, so this flips to true before the handshake completes).
-        set_observed(&observed, &served, revision, true, None, attempt);
+        set_observed(&observed, revision, true, None, attempt);
         // tokio's Instant tracks the runtime clock so tests can run this
         // against virtual time; in normal runs it's a thin wrapper over the
         // monotonic clock.
@@ -372,7 +368,7 @@ async fn supervise(job: SupervisorJob) {
         match result {
             Ok(()) => {
                 delay = backoff.initial;
-                set_observed(&observed, &served, revision, false, None, attempt)
+                set_observed(&observed, revision, false, None, attempt)
             }
             Err(error) => {
                 if attempt_was_stable {
@@ -380,7 +376,6 @@ async fn supervise(job: SupervisorJob) {
                 }
                 set_observed(
                     &observed,
-                    &served,
                     revision,
                     false,
                     Some(format!("{error:#}")),
@@ -408,13 +403,15 @@ fn jittered(base: Duration) -> Duration {
 }
 
 /// Apply an observed-state update for `revision`, ignored when a newer revision
-/// is live (a superseded supervisor must not clobber the current one). Keeps
-/// the served-origin watch in step with the applied `running` flag under the
-/// same revision guard, so a superseded supervisor can't rewind the live
-/// origin either.
+/// is live (a superseded supervisor must not clobber the current one).
+///
+/// This touches only the `observed` watch. The served-origin watch is
+/// deliberately left alone: it is published once per revision by
+/// [`TunnelDaemon::reconcile`] from the row's configuration, so the per-attempt
+/// `running` churn this function applies never flaps the origin a
+/// `requires_tunnel` launch resolves against.
 fn set_observed(
     observed: &watch::Sender<Observed>,
-    served: &ServedOrigin,
     revision: i64,
     running: bool,
     error: Option<String>,
@@ -432,29 +429,6 @@ fn set_observed(
         o.attempt = attempt;
         true
     });
-    // Recompute the served origin from the *live* running flag (read back
-    // under the revision guard) rather than the requested one — a dropped,
-    // superseded update must not move the origin. `send_if_modified` keeps
-    // watchers from waking on a no-op republish.
-    let live_running = {
-        let o = observed.borrow();
-        (o.revision == Some(revision)).then_some(o.running)
-    };
-    if let Some(running) = live_running {
-        let next = compute_served_origin(
-            running,
-            served.public_host.as_deref(),
-            &served.loopback_origin,
-        );
-        served.tx.send_if_modified(|current| {
-            if *current == next {
-                false
-            } else {
-                *current = next;
-                true
-            }
-        });
-    }
 }
 
 #[cfg(test)]
@@ -611,6 +585,52 @@ mod tests {
         daemon.reconcile(&running_settings_with_host(1, "dev1.example.com"));
         assert!(rx.has_changed().expect("sender alive"));
         assert_eq!(*rx.borrow_and_update(), "https://dev1.example.com");
+    }
+
+    /// A relay client whose `run_once` returns `Ok(())` immediately, modelling a
+    /// tunnel that keeps cleanly reconnecting. Each return flips the observed
+    /// `running` flag false until the next attempt starts.
+    struct CleanReconnectRelayClient;
+
+    #[async_trait::async_trait]
+    impl RelayClient for CleanReconnectRelayClient {
+        async fn run_once(
+            &self,
+            _relay: &RelaySettings,
+            _local_addr: &str,
+            _cancel: CancellationToken,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Regression for the served-origin flap: a healthy tunnel's reconnect
+    /// churn must NOT move the served origin. The supervisor flips
+    /// `observed.running` false on every clean `run_once` return, but the
+    /// served origin — published once from the revision's configuration — must
+    /// stay `https://{host}` throughout, so a `requires_tunnel` launch resolved
+    /// during a reconnect gap never redirects to the loopback fallback.
+    #[tokio::test(start_paused = true)]
+    async fn served_origin_does_not_flap_during_reconnect_churn() {
+        let daemon = TunnelDaemon::new_test(
+            Arc::new(CleanReconnectRelayClient),
+            "http://127.0.0.1:8080",
+            8080,
+        );
+        daemon.reconcile(&running_settings_with_host(1, "dev1.example.com"));
+        assert_eq!(daemon.served_origin(), "https://dev1.example.com");
+
+        // Drive many reconnect cycles in virtual time; `observed.running`
+        // toggles true→false every loop, which previously flapped the origin.
+        for _ in 0..50 {
+            tokio::time::advance(Duration::from_millis(5)).await;
+            tokio::task::yield_now().await;
+            assert_eq!(
+                daemon.served_origin(),
+                "https://dev1.example.com",
+                "served origin flapped during reconnect churn",
+            );
+        }
     }
 
     /// What a `TracingRelayClient.run_once` call did across its lifetime.

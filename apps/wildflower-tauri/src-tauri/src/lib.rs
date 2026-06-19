@@ -146,10 +146,15 @@ async fn run_server(
         local_port: runtime.loopback_port,
         seed: tunnel_seed_from_build_env(),
     };
-    let tunnel_router =
+    // `setup_tunnel` now hands back the `/tunnel` router plus the in-process
+    // `TunnelControl` seam. The control is the staged hook a host consumer
+    // (the apps launch handler, in a later change) drives to resolve launches
+    // against the live served origin; until that wiring lands we only mount
+    // the router.
+    let tunnel =
         tunnel_rust::setup_tunnel(db.clone(), &tunnel_config).context("failed to set up tunnel")?;
     let gated_tunnel =
-        layer_router_with_gatekeeper_auth_gating(tunnel_router, gatekeeper.state.clone());
+        layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone());
 
     // The apps catalogue surface. `GET /apps` (list) and `GET /apps/{id}`
     // (launch redirect) ride on the public router — the webview consumes
