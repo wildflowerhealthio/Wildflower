@@ -55,7 +55,7 @@ function AccountNewScreen({
 
   return (
     <>
-      <PageHeader title="Add Account" backHref="/collector" />
+      <PageHeader title="Add Account" backHref="/collector" backLabel="Collector" />
 
       {error !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>
