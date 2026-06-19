@@ -15,7 +15,12 @@ import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
-import { installSniffer, SNIFFER_STATE_KEY, type SnifferState } from '../src/install-sniffer.ts'
+import {
+  BRIDGE_EVENT,
+  installSniffer,
+  SNIFFER_STATE_KEY,
+  type SnifferState,
+} from '../src/install-sniffer.ts'
 
 const { expectDistinct, expectToMultisetEqual } = utilityExpectations(expect)
 
@@ -96,8 +101,15 @@ const fireInbound = (event: string, payload: unknown): void => {
 
 const withTag = (msgs: Message[], tag: string): Message[] => msgs.filter((m) => m._tag === tag)
 
+// jsdom types `document.contentType` as a non-writable prototype getter;
+// shadow it with a configurable own property so the page-load tests can
+// drive the JSON-viewer branch. Teardown drops the shadow.
+const setContentType = (value: string): void => {
+  Object.defineProperty(document, 'contentType', { value, configurable: true })
+}
+
 const cancelRequest = (id: string): void => {
-  fireInbound('bridge:CancelSnifferRequest', { _tag: 'CancelSnifferRequest', id })
+  fireInbound(BRIDGE_EVENT, { _tag: 'CancelSnifferRequest', id })
 }
 
 // Domain-event schemas.
@@ -483,6 +495,59 @@ describe('fetch shim', () => {
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
+
+  test.each([
+    'ipc://localhost/cmd',
+    'tauri://localhost/asset',
+    'http://ipc.localhost/x',
+    'https://tauri.localhost/y',
+  ])('does not sniff Tauri-internal fetch %s (handed straight to native)', async (url) => {
+    // Tauri's own IPC transport fetches from this same context; the shim
+    // must hand those to native unsniffed so they don't re-enter the
+    // bridge. The fetch still runs, but emits no Response* observations.
+    const native = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }))
+    window.fetch = native
+    installSnifferForTest()
+
+    const res = await window.fetch(url)
+    await res.text()
+
+    expect(native).toHaveBeenCalledTimes(1)
+    expect(withTag(getMessages(), 'ResponseStart')).toHaveLength(0)
+    expect(withTag(getMessages(), 'ResponseData')).toHaveLength(0)
+    expect(withTag(getMessages(), 'ResponseFinished')).toHaveLength(0)
+  })
+
+  test('still sniffs ordinary fetches after the internal-URL guard', async () => {
+    const native = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    window.fetch = native
+    installSnifferForTest()
+
+    await window.fetch('ipc://localhost/cmd')
+    await window.fetch('https://api.example.com/things')
+
+    // Only the real external request produced a ResponseStart.
+    expect(withTag(getMessages(), 'ResponseStart')).toEqual([
+      expect.objectContaining({ _tag: 'ResponseStart', url: 'https://api.example.com/things' }),
+    ])
+  })
+
+  test('sniffs an external host that merely shares the IPC host as a prefix', async () => {
+    // `https://ipc.localhost.evil.example` is a different host than Tauri's
+    // `ipc.localhost`; a bare prefix match would mis-classify it as internal
+    // and silently skip sniffing. It must be sniffed like any external URL.
+    const native = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    window.fetch = native
+    installSnifferForTest()
+
+    await window.fetch('https://ipc.localhost.evil.example/x')
+    await window.fetch('http://tauri.localhost.attacker.test/y')
+
+    expect(withTag(getMessages(), 'ResponseStart')).toEqual([
+      expect.objectContaining({ url: 'https://ipc.localhost.evil.example/x' }),
+      expect.objectContaining({ url: 'http://tauri.localhost.attacker.test/y' }),
+    ])
+  })
 })
 
 describe('XHR shim', () => {
@@ -661,6 +726,26 @@ describe('XHR shim', () => {
       expect.objectContaining({ id: starts[1]?.id }),
     ])
   })
+
+  test('does not sniff a Tauri-internal XHR (send runs natively, emits nothing)', () => {
+    installSnifferForTest()
+    const xhr = new XMLHttpRequest()
+    xhr.open('GET', 'ipc://localhost/cmd')
+    xhr.send()
+
+    // The internal request short-circuits in `send` before any listeners
+    // are attached, so even a full response lifecycle emits nothing.
+    Object.defineProperty(xhr, 'status', { value: 200, configurable: true })
+    Object.defineProperty(xhr, 'statusText', { value: 'OK', configurable: true })
+    Object.defineProperty(xhr, 'responseType', { value: '', configurable: true })
+    Object.defineProperty(xhr, 'responseText', { value: 'ipc payload', configurable: true })
+    xhr.dispatchEvent(new Event('progress'))
+    xhr.dispatchEvent(new Event('load'))
+
+    expect(withTag(getMessages(), 'ResponseStart')).toHaveLength(0)
+    expect(withTag(getMessages(), 'ResponseData')).toHaveLength(0)
+    expect(withTag(getMessages(), 'ResponseFinished')).toHaveLength(0)
+  })
 })
 
 describe('CancelSnifferRequest (host→web bridge message)', () => {
@@ -675,12 +760,12 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
 
   afterEach(resetShims)
 
-  test('should register Tauri listeners on install', () => {
+  test('should register a single multiplexed Tauri listener on install', () => {
     installSnifferForTest()
-    // One unlisten per inbound bridge tag (`Click`, `CancelSnifferRequest`).
-    expect(getState()?.unlistens).toHaveLength(2)
-    expect(listeners.has('bridge:CancelSnifferRequest')).toBe(true)
-    expect(listeners.has('bridge:Click')).toBe(true)
+    // One unlisten for the single `BRIDGE_EVENT` channel; inbound tags
+    // (`Click`, `CancelSnifferRequest`) demux by the payload's `_tag`.
+    expect(getState()?.unlistens).toHaveLength(1)
+    expect(listeners.has(BRIDGE_EVENT)).toBe(true)
   })
 
   test('should stop posting ResponseData and ResponseFinished after cancellation (fetch)', async () => {
@@ -747,9 +832,9 @@ describe('CancelSnifferRequest (host→web bridge message)', () => {
     installSnifferForTest()
     // Wrong tag in payload (Tauri delivers per-tag, but defensive shape
     // check still rejects).
-    fireInbound('bridge:CancelSnifferRequest', { _tag: 'Other' })
+    fireInbound(BRIDGE_EVENT, { _tag: 'Other' })
     // Missing id.
-    fireInbound('bridge:CancelSnifferRequest', { _tag: 'CancelSnifferRequest' })
+    fireInbound(BRIDGE_EVENT, { _tag: 'CancelSnifferRequest' })
     expect(getState()?.activeRequests).toEqual(new Set())
   })
 })
@@ -777,14 +862,14 @@ describe('Click (host→web bridge message)', () => {
     document.body.replaceChildren(button)
     installSnifferForTest()
 
-    fireInbound('bridge:Click', { _tag: 'Click', querySelector: '#go' })
+    fireInbound(BRIDGE_EVENT, { _tag: 'Click', querySelector: '#go' })
     expect(clicked).toHaveBeenCalledTimes(1)
   })
 
   test('silently no-ops when the selector matches no element', () => {
     installSnifferForTest()
     expect(() =>
-      fireInbound('bridge:Click', { _tag: 'Click', querySelector: '#missing' })
+      fireInbound(BRIDGE_EVENT, { _tag: 'Click', querySelector: '#missing' })
     ).not.toThrow()
   })
 
@@ -795,7 +880,7 @@ describe('Click (host→web bridge message)', () => {
     document.body.replaceChildren(button)
     installSnifferForTest()
 
-    fireInbound('bridge:Click', { _tag: 'Click', querySelector: '' })
+    fireInbound(BRIDGE_EVENT, { _tag: 'Click', querySelector: '' })
     expect(clicked).not.toHaveBeenCalled()
   })
 })
@@ -972,6 +1057,122 @@ describe('PageLoaded', () => {
     // one specific high-byte value survives — the `\xff`.
     expect(content).toContain('\xff')
     validateMessages(msgs)
+  })
+})
+
+describe('pageLoadHandler JSON-viewer retry', () => {
+  let getMessages: () => Message[]
+  let rafQueue: FrameRequestCallback[]
+  const originalRaf = window.requestAnimationFrame
+  const initialBodyHtml = document.body.innerHTML
+
+  // Run every callback queued for the current animation frame. A retry
+  // schedules a *nested* rAF (two frames), so advancing one retry is two
+  // flushes; callbacks scheduled during a flush land in the next frame.
+  const flushFrame = (): void => {
+    const due = rafQueue
+    rafQueue = []
+    for (const cb of due) cb(0)
+  }
+  const advanceRetries = (retries: number): void => {
+    for (let i = 0; i < retries * 2; i += 1) flushFrame()
+  }
+
+  beforeEach(() => {
+    resetShims()
+    XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
+    XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
+    rafQueue = []
+    window.requestAnimationFrame = ((cb: FrameRequestCallback): number => {
+      rafQueue.push(cb)
+      return rafQueue.length
+    }) as typeof window.requestAnimationFrame
+    document.body.innerHTML = ''
+    getMessages = setupEnv()
+  })
+
+  afterEach(() => {
+    window.requestAnimationFrame = originalRaf
+    Reflect.deleteProperty(document, 'contentType')
+    document.body.innerHTML = initialBodyHtml
+    resetShims()
+  })
+
+  test('defers the snapshot for a JSON document until the <pre> viewer is built', () => {
+    setContentType('application/json')
+    installSnifferForTest()
+    // Empty body + JSON content type: the first attempt schedules a retry
+    // instead of snapshotting an empty shell.
+    window.dispatchEvent(new Event('load'))
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(0)
+
+    // WebKit builds the viewer over the next frame(s); once the <pre>
+    // exists, the retry lands the snapshot exactly once.
+    const pre = document.createElement('pre')
+    pre.textContent = '{"resourceType":"Patient"}'
+    document.body.replaceChildren(pre)
+    advanceRetries(1)
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
+  })
+
+  test('snapshots a JSON document immediately when the <pre> is already present', () => {
+    setContentType('application/json')
+    const pre = document.createElement('pre')
+    pre.textContent = '{"ok":true}'
+    document.body.replaceChildren(pre)
+    installSnifferForTest()
+    window.dispatchEvent(new Event('load'))
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
+    expect(rafQueue).toHaveLength(0)
+  })
+
+  test('defers when contentType carries a charset/casing parameter', () => {
+    // A non-conformant engine may report `application/fhir+json; charset=UTF-8`
+    // rather than the bare lowercase essence; the handler must still recognize
+    // it as a JSON viewer and wait for the <pre>, not snapshot an empty shell.
+    setContentType('application/fhir+json; charset=UTF-8')
+    installSnifferForTest()
+    window.dispatchEvent(new Event('load'))
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(0)
+
+    const pre = document.createElement('pre')
+    pre.textContent = '{"resourceType":"Bundle"}'
+    document.body.replaceChildren(pre)
+    advanceRetries(1)
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
+  })
+
+  test('caps retries and snapshots once even if the <pre> never appears', () => {
+    setContentType('application/json')
+    installSnifferForTest()
+    window.dispatchEvent(new Event('load'))
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(0)
+    // Far more frames than the retry budget; the attempt counter must
+    // terminate the loop and still emit exactly one snapshot.
+    advanceRetries(12)
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
+  })
+
+  test('does not defer non-JSON documents — XML snapshots immediately with no retry', () => {
+    // Regression guard: text/xml / application/xml were previously in the
+    // async-viewer set and burned the whole retry budget on a document
+    // that is already parsed at `load`. They must snapshot on attempt 0.
+    setContentType('application/xml')
+    document.body.innerHTML = '<data>ready</data>'
+    installSnifferForTest()
+    window.dispatchEvent(new Event('load'))
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
+    expect(rafQueue).toHaveLength(0)
+  })
+
+  test('emits a single PageLoaded even if load fires twice', () => {
+    // Default text/html snapshots immediately; a re-fired `load` must not
+    // double-emit (distinct pageContentIds would double-count the page).
+    document.body.innerHTML = '<main>ready</main>'
+    installSnifferForTest()
+    window.dispatchEvent(new Event('load'))
+    window.dispatchEvent(new Event('load'))
+    expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
   })
 })
 

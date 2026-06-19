@@ -67,7 +67,7 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
     // refused the workspace build.
     WebviewWindowBuilder::new(app, SNIFFER_WEBVIEW_LABEL, url)
         .initialization_script(SNIFFER_BOOTSTRAP)
-        .title("Wildflower Sniffer")
+        .title("Wildflower Collector")
         .build()?;
     SNIFFER_OPEN.store(true, Ordering::SeqCst);
     Ok(())

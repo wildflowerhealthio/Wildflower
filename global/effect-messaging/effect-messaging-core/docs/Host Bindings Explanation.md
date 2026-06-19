@@ -41,14 +41,13 @@ HostBindings.single({
   // Gatekeeper is host→web only, so its Host-side inbound record is empty.
   bridge: GatekeeperBridge,
   handlers: {},
-  onTransportReady:
-    token === undefined ? undefined : (send) => send({ _tag: 'AuthTokenIssued', token }),
+  onTransportReady: (send) => send({ _tag: 'AuthTokenIssued' }),
 })
 ```
 
 Slice-specific policy lives next to the slice:
 
-- `useGatekeeperHostBinding({ token })` routes `AuthTokenIssued` through `onTransportReady` — never URL params, since the bearer would leak into native WebView logs.
+- `AuthTokenIssued` is a contentless notify — the bearer never rides the multiplexed bridge channel (and never URL params, where it would leak into native WebView logs). The webview pulls the token out-of-band via a capability-gated command; see `slices/gatekeeper/gatekeeper-core/src/bridge.ts`.
 - `useNavigationHostBinding({ initialRoute, onRouteChanged })` seeds the URL-param channel itself.
 - `useAppsHostBinding({ store })` discharges `TunnelStore` against the caller's store handle (the slice derives the layer internally via `TunnelStore.layerFrom(store)`).
 - `useCollectorHostBinding()` wraps `useCollectorHostHandlers` (which reads the host handler record from `<CollectorHostProvider>`) into the uniform shape, and installs the transport's outbound sender into the collector pipe on `onTransportReady`.

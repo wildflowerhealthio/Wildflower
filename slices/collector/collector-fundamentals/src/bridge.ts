@@ -22,9 +22,9 @@ import { AnySchema as WebViewSourceSchema } from './model/web-view-source.ts'
  *
  * The `source` field reuses the slice's `WebViewSource.AnySchema` so
  * the bridge wire-shape and the host-side `WebViewSource.Any` type
- * share one definition. The schema's `Uri` variant is `https://`-only
- * (see `web-view-source.ts`) — malformed messages fail to decode at
- * the bridge boundary.
+ * share one definition. The schema's `Uri` variant is `http(s)://`-only
+ * (see `web-view-source.ts`) — non-http(s) schemes (`file:`,
+ * `javascript:`, …) fail to decode at the bridge boundary.
  *
  * `linkedSpan` is the optional OpenTelemetry span context of the trace
  * active on the SPA when it asked for the sniffer. The host threads it

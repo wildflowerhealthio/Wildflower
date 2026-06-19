@@ -2,16 +2,17 @@ use std::sync::Arc;
 
 use gatekeeper_rust::bridge::GatekeeperHostToWeb;
 use serde::Deserialize;
+use shared_structures_rust::bridge::BRIDGE_EVENT;
 use tauri::{AppHandle, Emitter, Listener, Manager};
 use tauri_plugin_log::log;
 use tokio::sync::{watch, Notify};
 
-/// Event-name convention `bridge:{tag}` — must match the TS side in
-/// `global/effect-messaging/effect-messaging-tauri/src/event-names.ts`.
-pub const READY_EVENT: &str = "bridge:__Ready";
-pub const AUTH_TOKEN_ISSUED_EVENT: &str = "bridge:AuthTokenIssued";
-pub const DEVICE_CONSENT_REQUESTED_EVENT: &str = "bridge:DeviceConsentRequested";
-pub const LOG_EVENT: &str = "bridge:Log";
+/// Tag literals dispatched by the bridge listener. Web→host tags we
+/// react to plus host→web tags we emit. Matches the TS-side schemas in
+/// `gatekeeper-core/src/bridge.ts` and
+/// `effect-messaging-core/src/logging.ts`.
+const READY_TAG: &str = "__Ready";
+const LOG_TAG: &str = "Log";
 
 /// Tauri window label of the main webview, set in
 /// `tauri.conf.json`. The consent-popup arrival path looks the window
@@ -19,7 +20,7 @@ pub const LOG_EVENT: &str = "bridge:Log";
 /// and the focus call is skipped with a log.
 const MAIN_WINDOW_LABEL: &str = "main";
 
-/// Wire shape of a `bridge:Log` payload, pinned by
+/// Wire shape of a `Log` payload, pinned by
 /// `effect-messaging-core/src/logging.ts` (`LogMessageBody`). The
 /// `_tag` field rides along on the wire; serde ignores it as an
 /// unknown field.
@@ -27,6 +28,20 @@ const MAIN_WINDOW_LABEL: &str = "main";
 struct LogMessage {
     level: LogLevel,
     payload: Vec<serde_json::Value>,
+}
+
+/// Inbound bridge messages this listener acts on, decoded in one pass.
+/// Unrecognized tags (host→web echoes, sibling slices' web→host traffic)
+/// fall through to `Other` and are dropped. The `__Ready` literal is
+/// pinned against the TS convention by `tag_literals_match_the_ts_convention`.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "_tag")]
+enum InboundBridgeMessage {
+    #[serde(rename = "__Ready")]
+    Ready,
+    Log(LogMessage),
+    #[serde(other)]
+    Other,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -132,6 +147,36 @@ pub struct BridgePublishers {
     pub active_device_user_code_sender: watch::Sender<Option<String>>,
 }
 
+/// Tauri managed state backing the [`gatekeeper_current_token`] command.
+///
+/// Holds a `watch::Receiver` clone fed by the same channel
+/// `setup_gatekeeper` publishes through, so a pull always reflects the
+/// latest minted token. Lives in [`tauri::App`] managed state and is
+/// reachable only from webviews whose capability grants
+/// `allow-gatekeeper-current-token` — the sniffer webview's capability
+/// must NOT include that permission, which is how the bearer stays
+/// off any surface a hostile EHR page can reach.
+pub struct GatekeeperTokenState {
+    token_rx: watch::Receiver<Option<String>>,
+}
+
+/// Capability-gated pull of the current Owner bearer token. The
+/// command emits no event — it only returns the watch channel's
+/// current value — so a hostile page in a webview without the matching
+/// `allow-gatekeeper-current-token` permission cannot reach it, and a
+/// page that *can* still receives no payload through the multiplexed
+/// `bridge` event channel.
+///
+/// `None` is the legitimate "no token yet" state during the brief
+/// window between the embedded server binding its loopback port and
+/// `setup_gatekeeper` minting the first token; callers should treat it
+/// the same as a yet-to-arrive `AuthTokenIssued` notify (wait and retry
+/// on the next notify).
+#[tauri::command]
+pub fn gatekeeper_current_token(state: tauri::State<'_, GatekeeperTokenState>) -> Option<String> {
+    state.token_rx.borrow().clone()
+}
+
 /// Raise the main webview window to the foreground so a freshly-arrived
 /// device-consent popup is visible to the operator (the whole point of
 /// the popup — a `verification_uri` could pair while the user is in
@@ -168,12 +213,17 @@ fn raise_main_window(_handle: &AppHandle) {}
 /// Wire the webview↔host bridge onto Tauri's event bus and return the
 /// publishers the server task feeds.
 ///
-/// - Token delivery: one resident task emits the current host owner
-///   token as `bridge:AuthTokenIssued` whenever the webview signals
+/// - Token delivery: one resident task emits a contentless
+///   `bridge:AuthTokenIssued` notify whenever the webview signals
 ///   `bridge:__Ready` (every page load and reload — the web side's
 ///   token store is in-memory and resets on reload) **and** whenever
 ///   the token itself changes on the watch channel (mid-session
-///   re-mint).
+///   re-mint). The bearer itself never rides the multiplexed bridge
+///   channel — the webview pulls it via the capability-gated
+///   [`gatekeeper_current_token`] command, which sibling webviews
+///   (notably the browser-sniffer loading hostile EHR pages) cannot
+///   reach because their capability does not include
+///   `allow-gatekeeper-current-token`.
 ///   `Notify`'s single stored permit collapses a `__Ready` burst into
 ///   one delivery, and a permit stored before the task first polls is
 ///   not lost, so the boot race is covered.
@@ -197,18 +247,56 @@ fn raise_main_window(_handle: &AppHandle) {}
 ///   a window that's already foreground doesn't get a redundant
 ///   focus-steal pulse on every approve/deny. Clears and `__Ready`
 ///   re-deliveries also skip the focus call.
-/// - `bridge:Log`: forwards the webview's intercepted `console.*`
-///   output into the host's `log` facade. Logging is one-way — the log
-///   plugin has no Webview target, so nothing here can echo back into
-///   the webview and loop.
+/// - `Log` tag: forwards the webview's intercepted `console.*` output
+///   into the host's `log` facade. Logging is one-way — the log plugin
+///   has no Webview target, so nothing here can echo back into the
+///   webview and loop.
+///
+/// The TS-side transport multiplexes every tag onto one Tauri event
+/// (`BRIDGE_EVENT` / `"bridge"`); this listener decodes the envelope's
+/// `_tag` once and routes by tag. Tags we don't react to (host→web
+/// emit echoes, sibling slices' web→host traffic, …) are dropped
+/// silently.
 pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
-    let (host_owner_token_sender, mut token_rx) = watch::channel::<Option<String>>(None);
+    let (host_owner_token_sender, token_rx) = watch::channel::<Option<String>>(None);
     let (active_device_user_code_sender, mut consent_rx) = watch::channel::<Option<String>>(None);
+
+    // Expose the live token watcher to `gatekeeper_current_token` via
+    // Tauri managed state. The capability gate (only the main webview's
+    // capability allows the command) is what prevents sniffer-context
+    // pulls — keeping the bearer off the multiplexed event bus would be
+    // moot if any webview could invoke this.
+    app.manage(GatekeeperTokenState {
+        token_rx: token_rx.clone(),
+    });
+    let mut token_rx = token_rx;
+
+    // The bridge channel is shared across listeners with no automated
+    // cross-process tag guard; log this crate's tag set at attach time so
+    // the boot log shows who dispatches what. See the effect-messaging-tauri
+    // README ("Tag uniqueness across processes").
+    log::info!("[bridge] listening on '{BRIDGE_EVENT}' for tags: [{READY_TAG}, {LOG_TAG}]");
 
     let ready = Arc::new(Notify::new());
     {
         let ready = Arc::clone(&ready);
-        app.listen(READY_EVENT, move |_event| ready.notify_one());
+        app.listen(BRIDGE_EVENT, move |event| {
+            // One parse routes by `_tag` and decodes the body; tags we
+            // don't own (sibling crates' traffic, host→web echoes) land on
+            // `Other` and are dropped.
+            match serde_json::from_str::<InboundBridgeMessage>(event.payload()) {
+                Ok(InboundBridgeMessage::Ready) => ready.notify_one(),
+                Ok(InboundBridgeMessage::Log(message)) => log::log!(
+                    message.level.as_log_level(),
+                    "[webview] {}",
+                    format_log_payload(&message.payload)
+                ),
+                Ok(InboundBridgeMessage::Other) => {}
+                Err(error) => {
+                    log::warn!("[bridge] undecodable bridge payload dropped: {error}");
+                }
+            }
+        });
     }
 
     let handle = app.clone();
@@ -250,10 +338,10 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                 Outcome::Ready => {
                     // `borrow_and_update` marks the token seen so a
                     // delivery triggered by `__Ready` doesn't re-fire
-                    // the `changed` arm for the same token.
+                    // the `changed` arm for the same value.
                     let token = token_rx.borrow_and_update().clone();
-                    if let Some(token) = token {
-                        emit_auth_token(&handle, token);
+                    if token.is_some() {
+                        emit_auth_token_notify(&handle);
                     }
                     // Also `borrow_and_update` on consent: a `__Ready`
                     // that races a boot-time republish would otherwise
@@ -271,9 +359,12 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                     // A token change landing before the first page
                     // load emits into the void (Tauri events aren't
                     // buffered) — harmless, the eventual `__Ready`
-                    // re-delivers.
-                    let Some(token) = token else { continue };
-                    emit_auth_token(&handle, token);
+                    // re-delivers the notify and the webview pulls the
+                    // current value through the gated command.
+                    if token.is_none() {
+                        continue;
+                    }
+                    emit_auth_token_notify(&handle);
                 }
                 Outcome::ConsentChanged => {
                     let consent = consent_rx.borrow_and_update().clone();
@@ -295,28 +386,17 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
         }
     });
 
-    app.listen(LOG_EVENT, |event| {
-        match serde_json::from_str::<LogMessage>(event.payload()) {
-            Ok(message) => log::log!(
-                message.level.as_log_level(),
-                "[webview] {}",
-                format_log_payload(&message.payload)
-            ),
-            Err(error) => log::warn!("[bridge] undecodable bridge:Log payload dropped: {error}"),
-        }
-    });
-
     BridgePublishers {
         host_owner_token_sender,
         active_device_user_code_sender,
     }
 }
 
-fn emit_auth_token(handle: &AppHandle, token: String) {
-    let message = GatekeeperHostToWeb::AuthTokenIssued { token };
-    match handle.emit(AUTH_TOKEN_ISSUED_EVENT, &message) {
-        Ok(()) => log::debug!("[bridge] AuthTokenIssued delivered to webview"),
-        Err(error) => log::error!("[bridge] failed to emit AuthTokenIssued: {error}"),
+fn emit_auth_token_notify(handle: &AppHandle) {
+    let message = GatekeeperHostToWeb::AuthTokenIssued;
+    match handle.emit(BRIDGE_EVENT, &message) {
+        Ok(()) => log::debug!("[bridge] AuthTokenIssued notify delivered to webview"),
+        Err(error) => log::error!("[bridge] failed to emit AuthTokenIssued notify: {error}"),
     }
 }
 
@@ -324,7 +404,7 @@ fn emit_device_consent(handle: &AppHandle, user_code: &Option<String>) {
     let message = GatekeeperHostToWeb::DeviceConsentRequested {
         user_code: user_code.clone(),
     };
-    match handle.emit(DEVICE_CONSENT_REQUESTED_EVENT, &message) {
+    match handle.emit(BRIDGE_EVENT, &message) {
         Ok(()) => log::debug!(
             "[bridge] DeviceConsentRequested delivered to webview (userCode={user_code:?})"
         ),
@@ -336,13 +416,14 @@ fn emit_device_consent(handle: &AppHandle, user_code: &Option<String>) {
 mod tests {
     use super::*;
 
-    /// Drift guard: the TS side pins the same literals in
-    /// `effect-messaging-tauri/src/event-names.test.ts`.
+    /// Drift guard for this crate's local tag literals. `BRIDGE_EVENT`
+    /// is pinned by `shared_structures_rust::bridge` (one source of
+    /// truth across every Rust bridge listener); the TS side pins the
+    /// same literals in `effect-messaging-tauri/src/event-names.test.ts`.
     #[test]
-    fn event_names_match_the_ts_convention() {
-        assert_eq!(READY_EVENT, "bridge:__Ready");
-        assert_eq!(AUTH_TOKEN_ISSUED_EVENT, "bridge:AuthTokenIssued");
-        assert_eq!(LOG_EVENT, "bridge:Log");
+    fn tag_literals_match_the_ts_convention() {
+        assert_eq!(READY_TAG, "__Ready");
+        assert_eq!(LOG_TAG, "Log");
     }
 
     #[test]

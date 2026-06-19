@@ -19,23 +19,26 @@ import { Schema } from 'effect'
  */
 
 /**
- * Refined string schema accepting only `https://`-prefixed URIs. The
- * collector deliberately refuses `http://`, `file://`, `javascript:`,
+ * Refined string schema accepting only `http(s)://`-prefixed URIs. The
+ * collector deliberately refuses `file://`, `javascript:`, `data:`,
  * etc., so a malformed `RequestSniffableWebView` message fails to
  * decode at the bridge boundary rather than reaching the host's
- * `<WebView>` props.
+ * `<WebView>` props. Plain `http://` is permitted alongside `https://`
+ * so a FHIR server reachable only over http (e.g. a local dev HAPI
+ * instance) can still be sniffed — `InstanceConfig.rootUrl` likewise
+ * accepts both schemes.
  */
-const HttpsUriString = Schema.String.pipe(
-  Schema.filter((s) => s.startsWith('https://'), {
-    description: 'HTTPS URI only (https://…)',
+const HttpUriString = Schema.String.pipe(
+  Schema.filter((s) => s.startsWith('https://') || s.startsWith('http://'), {
+    description: 'HTTP(S) URI only (http(s)://…)',
   })
 )
 
 const UriSchema = Schema.TaggedStruct('Uri', {
   /**
-   * The URI to load in the `WebView`. Must be `https://`-prefixed.
+   * The URI to load in the `WebView`. Must be `http(s)://`-prefixed.
    */
-  uri: HttpsUriString,
+  uri: HttpUriString,
   /**
    * The HTTP Method to use. Defaults to GET if not specified.
    * NOTE: On Android, only GET and POST are supported.

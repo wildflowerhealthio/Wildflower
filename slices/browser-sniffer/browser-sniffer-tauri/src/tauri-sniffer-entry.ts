@@ -1,19 +1,16 @@
-// Entry point used by `scripts/build-tauri-bootstrap.mts` to produce
-// the self-invoking IIFE injected into Tauri sniffer webviews via
-// `WebviewWindowBuilder::initialization_script(...)`. The bundle
-// looks up Tauri's event API, injects an in-page `BrowserTopBar` (a
-// fixed-position chrome-like bar with a Close button), and hands the
-// event API to `installSniffer` which wires the fetch/XHR/console
-// shims directly onto the `bridge:{tag}` Tauri event channels.
+// Entry point bundled by `scripts/build-tauri-bootstrap.mts` into the
+// IIFE injected into Tauri sniffer webviews via
+// `initialization_script(...)`. Looks up Tauri's event API, injects the
+// in-page `BrowserTopBar`, and hands the bus to `installSniffer`.
 //
-// `window.__TAURI__` is present inside the sniffer webview because
-// the app's `tauri.conf.json` sets `app.withGlobalTauri: true`, which
-// Tauri codegen prepends to every webview's init-script list at
-// runtime — no per-builder opt-in is needed.
+// `window.__TAURI__` is present because `tauri.conf.json` sets
+// `app.withGlobalTauri: true`, which Tauri prepends to every webview's
+// init scripts at runtime — no per-builder opt-in needed.
 
 import type { TauriEventApi } from 'effect-messaging-tauri'
 
-import { installSniffer } from './install-sniffer.ts'
+import { makeFilteringEventBus } from './filter-tauri-internal.ts'
+import { BRIDGE_EVENT, installSniffer } from './install-sniffer.ts'
 
 interface TauriGlobals {
   readonly event?: TauriEventApi
@@ -28,24 +25,31 @@ const win = globalThis as typeof globalThis & SnifferWindowExtensions
 const event = win.__TAURI__?.event
 
 if (event !== undefined) {
+  // Wrap the raw Tauri event bus once and share the wrapper between the
+  // top bar and the sniffer install, so both the top bar's
+  // `SniffingComplete` and the sniffer's stream ride the same outbound
+  // ordering chain (and the same Tauri IPC-fallback-warning filter).
+  const filteredEvent = makeFilteringEventBus(event)
+
   // A persistent in-page top bar so the sniffer reads as a sub-context
   // on platforms (notably iOS) where a Tauri WebviewWindow presents as
   // a full-screen native screen with no visible browser chrome. See
   // `injectBrowserTopBar` for the design constraints — shadow-DOM
   // isolation, JS-style mutations (CSP-safe), self-healing against
   // pages that strip foreign DOM.
-  injectBrowserTopBar(event)
+  injectBrowserTopBar(filteredEvent)
 
   // Without a working Tauri event bus the bootstrap can't carry any
   // sniffer traffic — gating `installSniffer()` here keeps an arbitrary
   // page free of fetch/XHR/console wrappers it can never observe.
-  installSniffer(event)
+  installSniffer(filteredEvent)
 }
 
 /**
  * Inject a fixed-position top bar at the top of the page with a Close
- * button (which emits `bridge:SniffingComplete`) and the current page
- * URL. It looks like the top bar of a browser, hence the name — the
+ * button (which emits `SniffingComplete` on the bridge channel) and the
+ * current page URL. It looks like the top bar of a browser, hence the
+ * name — the
  * sniffer webview itself has no native browser chrome on mobile, so
  * this is the user's only "I'm somewhere else, I can dismiss" signal.
  *
@@ -144,10 +148,11 @@ function injectBrowserTopBar(eventBus: TauriEventApi): void {
     close.style.font = 'inherit'
     close.style.cursor = 'pointer'
     close.addEventListener('click', () => {
-      // Best-effort emit. SniffingComplete carries an empty struct on
-      // the wire; Rust-side `handle_sniffing_complete` ignores the
-      // payload shape.
-      void eventBus.emit('bridge:SniffingComplete', { _tag: 'SniffingComplete' })
+      // Best-effort emit on the multiplexed bridge channel.
+      // SniffingComplete carries an empty struct on the wire beyond
+      // the `_tag` discriminator; Rust-side `handle_sniffing_complete`
+      // ignores the payload shape.
+      void eventBus.emit(BRIDGE_EVENT, { _tag: 'SniffingComplete' })
     })
 
     const label = doc.createElement('span')

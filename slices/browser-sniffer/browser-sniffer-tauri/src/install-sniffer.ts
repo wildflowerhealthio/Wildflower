@@ -18,37 +18,29 @@ import type { JsonValue } from 'kitchen-sink/schema'
 /**
  * Browser-side sniffer installed into an arbitrary third-party page.
  *
- * The injected JS bundle is produced ahead of time by
- * `scripts/build-tauri-bootstrap.mts`, which esbuild-bundles this
- * function as part of a self-contained IIFE — meaning every helper,
- * every runtime reference, and every cross-call piece of state must
- * live *inside* the function body. Top-level value imports or closures
- * over module scope would resolve to nothing in the injected page.
- * Type-only imports (the message body schemas, `TauriEventApi`) are
- * erased at compile time and so do survive.
+ * esbuild bundles this function into a self-contained IIFE
+ * (`scripts/build-tauri-bootstrap.mts`), so every helper, reference, and
+ * piece of state must live *inside* the function body — top-level value
+ * imports or module-scope closures resolve to nothing in the injected
+ * page. Type-only imports are erased and so survive.
  *
  * Wire format:
  *   - Emits `Log`, `ResponseStart`, `ResponseData`, `ResponseFinished`,
- *     `RequestError`, `Cancelled`, `PageLoaded` as `bridge:{tag}` Tauri
- *     events. `void eventBus.emit(...)` is fire-and-forget; Tauri's
- *     per-event listener queue preserves arrival order, which matters
- *     for `ResponseData` chunks (~64KB each) that must reconstruct in
- *     order on the host side.
- *   - Listens for `bridge:CancelSnifferRequest` and `bridge:Click`
- *     Host→Web messages via `eventBus.listen` directly. No window
- *     `message`-event indirection, no `source === null` guard: a Tauri
- *     listener can only be invoked by Tauri's IPC, so page scripts
- *     can't spoof inbound messages.
+ *     `RequestError`, `Cancelled`, `PageLoaded` on the multiplexed
+ *     `BRIDGE_EVENT` channel (discriminated by `_tag`). Emits are
+ *     fire-and-forget here; the wrapping `makeFilteringEventBus` serializes
+ *     them to keep the ~64KB `ResponseData` chunks FIFO (see
+ *     `filter-tauri-internal.ts`).
+ *   - Listens for Host→Web messages on the same channel, demuxing by
+ *     `_tag` (`CancelSnifferRequest` / `Click`). No `message`-event
+ *     indirection or `source === null` guard: only Tauri IPC can invoke a
+ *     Tauri listener, so page scripts can't spoof inbound messages.
  *
- * Idempotent: a single `Symbol.for('browser-sniffer:state')` slot on
- * `window` stashes the captured native references, tracker state, and
- * pending unlisten functions. Re-injecting on the same page finds the
- * slot, drains the previous-run unlistens, and exits early. **Caveat**:
- * if a host re-injects a *newer version* of this script (host app
- * upgraded mid-session) the early-return uses the stale state and the
- * new logic never installs. The slot carries no version tag; v1
- * deliberately accepts this limitation. Test coverage in
- * `tests/install-sniffer.test.ts`.
+ * Idempotent: a `Symbol.for('browser-sniffer:state')` slot on `window`
+ * holds the captured natives, tracker state, and pending unlistens;
+ * re-injection drains the prior unlistens and exits early. Caveat: a
+ * re-injected *newer* script reuses the stale state and never installs —
+ * v1 accepts this (no version tag). Tests: `tests/install-sniffer.test.ts`.
  */
 
 /** Wire form posted Web→Host: JSON-stringifiable, base64 `data`. */
@@ -85,6 +77,14 @@ interface SnifferState {
  * boundary).
  */
 const SNIFFER_STATE_KEY: symbol = Symbol.for('browser-sniffer:state')
+
+/**
+ * Tauri event name for the multiplexed bridge channel. Hardcoded rather
+ * than imported from `effect-messaging-tauri` because the bundled IIFE
+ * can't pull in workspace modules; `bootstrap.test.ts` guards it against
+ * the canonical `BRIDGE_EVENT` in event-names.ts.
+ */
+const BRIDGE_EVENT = 'bridge'
 
 /**
  * Install the sniffer on the current page. Idempotent. On re-injection,
@@ -126,7 +126,7 @@ const installSniffer = function (eventBus: TauriEventApi): void {
   }
 
   const post = (msg: SnifferOutboundMessage): void => {
-    void eventBus.emit(`bridge:${msg._tag}`, msg)
+    void eventBus.emit(BRIDGE_EVENT, msg)
   }
 
   // Per-level Log emitters. The host re-emits each `Log` message via
@@ -237,6 +237,8 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     url: string
     /** Number of UTF-8 bytes already posted as ResponseData chunks. */
     sentBytes: number
+    /** Tauri-internal IPC request — `send` hands to native, unsniffed. */
+    internal: boolean
   }
   const xhrState = new WeakMap<XMLHttpRequest, XhrState>()
 
@@ -252,6 +254,34 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     logInfo(message)
   }
 
+  // Tauri's own IPC transport fetches `ipc://localhost/...` from this
+  // same JS context; without a guard every host call gets re-sniffed and
+  // forwarded back, re-entering the bridge. Skip these at the source — the
+  // fetch still runs natively, we just emit nothing.
+  const TAURI_INTERNAL_HTTP_ORIGINS = [
+    'http://ipc.localhost',
+    'https://ipc.localhost',
+    'http://tauri.localhost',
+    'https://tauri.localhost',
+  ]
+  const isTauriInternalUrl = (candidate: string): boolean => {
+    if (candidate.startsWith('ipc://') || candidate.startsWith('tauri://')) return true
+    // Match the exact IPC-fallback host — followed by a port, path, query,
+    // fragment, or end-of-string — not a bare prefix, so a genuine external
+    // `https://ipc.localhost.evil.example/…` is still sniffed rather than
+    // silently handed to native.
+    for (const origin of TAURI_INTERNAL_HTTP_ORIGINS) {
+      if (candidate === origin) return true
+      if (candidate.startsWith(origin)) {
+        const boundary = candidate[origin.length]
+        if (boundary === '/' || boundary === ':' || boundary === '?' || boundary === '#') {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
   // Fetch shim — capture the native into a const so the closure has a
   // typed, definitely-defined reference (no `!` later).
   logInfo('Shimming fetch')
@@ -262,6 +292,20 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     request: RequestInfo | URL,
     init?: RequestInit
   ): Promise<Response> {
+    // Tauri-internal IPC — hand straight to native, unsniffed (see
+    // `isTauriInternalUrl`). Pass the original input through unchanged so
+    // we don't re-wrap a string in `new Request(...)` (which rejects the
+    // custom `ipc:` scheme in some engines).
+    const probeUrl =
+      typeof request === 'string'
+        ? request
+        : request instanceof URL
+          ? request.toString()
+          : request.url
+    if (isTauriInternalUrl(probeUrl)) {
+      return nativeFetch(request, init)
+    }
+
     const requestId = makeRequestId()
     let url: string
     let response: Response
@@ -385,7 +429,13 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     username?: string | null,
     password?: string | null
   ): void {
-    xhrState.set(this, { id: makeRequestId(), url: String(url), sentBytes: 0 })
+    const urlStr = String(url)
+    xhrState.set(this, {
+      id: makeRequestId(),
+      url: urlStr,
+      sentBytes: 0,
+      internal: isTauriInternalUrl(urlStr),
+    })
     nativeXHROpen.call(this, method, url, async ?? true, username ?? null, password ?? null)
   } as XMLHttpRequest['open']
 
@@ -393,8 +443,19 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     this: XMLHttpRequest,
     body?: Document | XMLHttpRequestBodyInit | null
   ): void {
-    const state = xhrState.get(this) ?? { id: makeRequestId(), url: '', sentBytes: 0 }
+    const state = xhrState.get(this) ?? {
+      id: makeRequestId(),
+      url: '',
+      sentBytes: 0,
+      internal: false,
+    }
     xhrState.set(this, state)
+    // Tauri-internal IPC — run it natively without sniffing (see
+    // `isTauriInternalUrl`).
+    if (state.internal) {
+      nativeXHRSend.call(this, body ?? null)
+      return
+    }
     const requestId = state.id
     let startSent = false
 
@@ -525,21 +586,56 @@ const installSniffer = function (eventBus: TauriEventApi): void {
     nativeXHRSend.call(this, body ?? null)
   } as XMLHttpRequest['send']
 
-  // Page content capture on window-level `load`. `PageLoaded` is now
-  // just a notification (`url`, `pageContentId`); the DOM body streams
-  // through the standard `ResponseStart`/`ResponseData`/`ResponseFinished`
-  // triple. Chunking the body (vs. a single multi-MB emit) keeps
-  // per-message size bounded so the host's IPC transport doesn't have
-  // to special-case large payloads.
-  //
-  // `Element.outerHTML` is defined on every `Element` (not just
-  // `HTMLElement`), so XML-content documents (e.g. RSS) also serialise,
-  // just with HTML rules. Out of scope: DOCTYPE / processing
-  // instructions / XML declarations.
+  // Page-content capture on window `load`. `PageLoaded` is just a
+  // notification; the DOM body (`Element.outerHTML`, so XML serialises
+  // too) streams through the standard Response triple, chunked to keep
+  // per-message size bounded.
   const PAGE_CONTENT_CHUNK_BYTES = 65536
-  const pageLoadHandler = (): void => {
-    const pageContentId = makeRequestId()
+  const MAX_PAGE_LOAD_RETRIES = 8
+  // WebKit builds its JSON viewer (`<pre>{json}</pre>`) a frame or two
+  // *after* `load` fires for these content types, so a synchronous
+  // snapshot captures an empty shell — wait for the `<pre>`. XML (tree)
+  // and HTML (its own content) snapshot immediately.
+  const JSON_VIEWER_CONTENT_TYPES: ReadonlySet<string> = new Set([
+    'application/json',
+    'application/fhir+json',
+    'application/ld+json',
+  ])
+  // At most one snapshot per installed page — guards a re-fired `load`
+  // and a second retry chain from double-emitting. Reset per page by
+  // re-injection rebuilding the closure.
+  let pageSnapshotEmitted = false
+  // Serves both the `load` listener (passed the `Event`) and its own rAF
+  // retry (passed a numeric `attempt`); the `typeof` narrow lets the one
+  // function `resetShims` unregisters cover both.
+  const pageLoadHandler = (attemptOrEvent: number | Event = 0): void => {
+    const attempt = typeof attemptOrEvent === 'number' ? attemptOrEvent : 0
+    // Readiness is judged off the live DOM so a multi-MB document isn't
+    // re-serialized each retry. The content-type parameter is stripped
+    // (`application/json; charset=utf-8`) because WebKit hasn't always
+    // reported the bare spec essence.
+    // oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- intentional runtime guard
+    const contentType = (String(document.contentType ?? '').split(';')[0] ?? '')
+      .trim()
+      .toLowerCase()
+    const jsonViewerNotReady =
+      JSON_VIEWER_CONTENT_TYPES.has(contentType) && document.querySelector('pre') === null
+    const shouldRetry =
+      attempt < MAX_PAGE_LOAD_RETRIES &&
+      typeof win.requestAnimationFrame === 'function' &&
+      jsonViewerNotReady
+    if (shouldRetry) {
+      win.requestAnimationFrame(() => {
+        win.requestAnimationFrame(() => {
+          pageLoadHandler(attempt + 1)
+        })
+      })
+      return
+    }
+    if (pageSnapshotEmitted) return
+    pageSnapshotEmitted = true
     const content = document.documentElement.outerHTML
+    const pageContentId = makeRequestId()
     const bytes = utf8.encode(content)
     post({ _tag: 'PageLoaded', url: win.location.href, pageContentId })
     activeRequests.add(pageContentId)
@@ -563,48 +659,36 @@ const installSniffer = function (eventBus: TauriEventApi): void {
   }
   win.addEventListener('load', pageLoadHandler)
 
-  // Host→Web bridge messages arrive as `bridge:Click` /
-  // `bridge:CancelSnifferRequest` Tauri events. We register one
-  // listener per tag and the typed payload is delivered directly — no
-  // JSON parsing, no MessageEvent indirection, no `source === null`
-  // guard. Tauri's IPC is the only thing that can invoke these
-  // listeners, so page scripts can't spoof inbound messages.
+  // Host→Web messages arrive on the multiplexed `BRIDGE_EVENT` channel;
+  // demux by `_tag`. Unrecognized tags (other slices' traffic, our own
+  // echo from the broadcast bus) are dropped. Only Tauri IPC can invoke
+  // this listener, so page scripts can't spoof inbound messages.
   //
-  // On a mid-stream cancel we emit `Cancelled` as the terminal
-  // observation so the host can release per-id state without
-  // waiting for a `ResponseFinished` that won't come.
-  //
-  // `Click` runs `document.querySelector(querySelector)?.click()` —
-  // best-effort, no feedback on a missing element (the host
-  // typically retries by waiting for the next `PageLoaded` to land
-  // before re-sending).
+  // `CancelSnifferRequest` emits a terminal `Cancelled` so the host can
+  // release per-id state without a `ResponseFinished` that won't come.
+  // `Click` is best-effort `querySelector(...)?.click()` — no feedback on
+  // a miss (the host retries after the next `PageLoaded`).
   const unlistens: Array<(() => void) | Promise<() => void>> = []
   unlistens.push(
-    eventBus.listen('bridge:CancelSnifferRequest', ({ payload }) => {
+    eventBus.listen(BRIDGE_EVENT, ({ payload }) => {
       if (payload === null || typeof payload !== 'object') return
       const msg = payload as Partial<SnifferInboundMessage>
-      if (msg._tag !== 'CancelSnifferRequest' || typeof msg.id !== 'string') return
-      const wasActive = activeRequests.has(msg.id)
-      activeRequests.delete(msg.id)
-      if (wasActive) {
-        post({ _tag: 'Cancelled', id: msg.id })
-      }
-    })
-  )
-  unlistens.push(
-    eventBus.listen('bridge:Click', ({ payload }) => {
-      if (payload === null || typeof payload !== 'object') return
-      const msg = payload as Partial<SnifferInboundMessage>
-      if (
-        msg._tag !== 'Click' ||
-        typeof msg.querySelector !== 'string' ||
-        msg.querySelector.length === 0
-      ) {
+      if (msg._tag === 'CancelSnifferRequest') {
+        if (typeof msg.id !== 'string') return
+        const wasActive = activeRequests.has(msg.id)
+        activeRequests.delete(msg.id)
+        if (wasActive) {
+          post({ _tag: 'Cancelled', id: msg.id })
+        }
         return
       }
-      const target = document.querySelector(msg.querySelector)
-      if (target !== null && 'click' in target && typeof target.click === 'function') {
-        target.click()
+      if (msg._tag === 'Click') {
+        if (typeof msg.querySelector !== 'string' || msg.querySelector.length === 0) return
+        const target = document.querySelector(msg.querySelector)
+        if (target !== null && 'click' in target && typeof target.click === 'function') {
+          target.click()
+        }
+        return
       }
     })
   )
@@ -623,5 +707,5 @@ const installSniffer = function (eventBus: TauriEventApi): void {
   void logError
 }
 
-export { installSniffer, SNIFFER_STATE_KEY }
+export { BRIDGE_EVENT, installSniffer, SNIFFER_STATE_KEY }
 export type { SnifferInboundMessage, SnifferOutboundMessage, SnifferState }

@@ -1,5 +1,4 @@
-import { strict as assert } from 'node:assert'
-import { Predicate, Schema } from 'effect'
+import { Schema } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 import { GatekeeperBridge } from './bridge.ts'
 
@@ -11,18 +10,19 @@ describe('GatekeeperBridge', () => {
     ])
   })
 
-  test('AuthTokenIssued URL schema round-trips the token', () => {
-    const schema = GatekeeperBridge.UrlParamSchemas.AuthTokenIssued
-    assert(Predicate.isNotUndefined(schema), 'AuthTokenIssued URL schema missing')
-    expect(Schema.encodeSync(schema)({ _tag: 'AuthTokenIssued', token: 'abc.def' })).toBe('abc.def')
-    expect(Schema.decodeSync(schema)('abc.def')).toEqual({
-      _tag: 'AuthTokenIssued',
-      token: 'abc.def',
-    })
+  test('no tags carry a URL-param schema — the bearer must not be embeddable in a URL', () => {
+    expect(GatekeeperBridge.UrlParamSchemas.AuthTokenIssued).toBeUndefined()
+    expect(GatekeeperBridge.UrlParamSchemas.DeviceConsentRequested).toBeUndefined()
   })
 
-  test('DeviceConsentRequested has no URL schema — push-only Tauri-event tag', () => {
-    expect(GatekeeperBridge.UrlParamSchemas.DeviceConsentRequested).toBeUndefined()
+  test('AuthTokenIssued is a contentless notify — the wire shape carries no token', () => {
+    const schema = GatekeeperBridge.HostToWeb.AuthTokenIssued
+    expect(Schema.decodeSync(schema)('{"_tag":"AuthTokenIssued"}')).toEqual({
+      _tag: 'AuthTokenIssued',
+    })
+    expect(Schema.encodeSync(schema)({ _tag: 'AuthTokenIssued' })).toBe(
+      '{"_tag":"AuthTokenIssued"}'
+    )
   })
 
   test('DeviceConsentRequested round-trips a userCode and null', () => {

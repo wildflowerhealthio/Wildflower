@@ -1,26 +1,19 @@
 /**
- * Tauri event-name convention for bridge messages: `bridge:{tag}`.
- *
- * @remarks
- * Each bridge message travels on its own Tauri event, named after its
- * `_tag` — no multiplexed channel, no string envelope. The Rust host
- * must listen/emit with the same literals; both sides pin them with a
- * test (TS: `event-names.test.ts`; Rust: the host crate's bridge
- * module) so drift breaks a build instead of a runtime handshake.
- * Tags only contain characters Tauri accepts in event names
- * (alphanumeric plus `-`, `/`, `:`, `_`).
+ * Tauri event name for the single multiplexed bridge channel: every
+ * wired bridge, both directions, emits and listens here, discriminated
+ * by the payload's `_tag`. One channel rather than per-tag `bridge:{tag}`
+ * because Tauri only guarantees FIFO within one event name — see the
+ * package README ("Why one channel and not per-tag"). Rust hosts pin the
+ * same literal; `event-names.test.ts` is the drift guard.
  */
-const eventNameForTag = <const Tag extends string>(tag: Tag): `bridge:${Tag}` => `bridge:${tag}`
+const BRIDGE_EVENT = 'bridge'
 
 /**
- * Web→host readiness tag. The web side emits it once every inbound
- * listener is attached; the host replies with its boot-time state
- * (e.g. the gatekeeper's `AuthTokenIssued`). Same `__Ready` literal as
- * effect-messaging-core's transport handshake.
+ * Web→host readiness tag, emitted once every inbound listener is
+ * attached; the host replies with its boot-time state. Same `__Ready`
+ * literal as effect-messaging-core's handshake, kept as a tag so it
+ * rides the one shared channel.
  */
 const READY_TAG = '__Ready'
 
-/** The readiness signal's full Tauri event name. */
-const READY_EVENT = eventNameForTag(READY_TAG)
-
-export { eventNameForTag, READY_EVENT, READY_TAG }
+export { BRIDGE_EVENT, READY_TAG }

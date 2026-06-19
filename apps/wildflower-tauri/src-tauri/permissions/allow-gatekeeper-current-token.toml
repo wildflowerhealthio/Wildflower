@@ -1,0 +1,18 @@
+"$schema" = "../gen/schemas/desktop-schema.json"
+
+[[permission]]
+identifier = "allow-gatekeeper-current-token"
+description = """
+Grants the webview the right to invoke the app-defined
+`gatekeeper_current_token` command, which returns the current Owner
+bearer token from the host's gatekeeper watch channel.
+
+SECURITY: this permission MUST be granted only to webviews that need
+the full-Owner bearer to authenticate against the embedded API. In
+particular it MUST NOT appear in `browser-sniffer.json` (or any other
+capability that targets a webview loading untrusted content) — the
+multiplexed bridge channel keeps the token off-bus precisely so that a
+hostile EHR page sharing the sniffer's JS context cannot reach it,
+and granting this command there would re-open exactly that hole.
+"""
+commands.allow = ["gatekeeper_current_token"]

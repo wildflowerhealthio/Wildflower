@@ -6,6 +6,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import { tauriSnifferBootstrapScript } from '../src/index.ts'
 
+/**
+ * Multiplexed bridge channel literal — pinned in
+ * `effect-messaging-tauri/event-names.ts` and the sniffer's own copy in
+ * `install-sniffer.ts`. Hardcoded here rather than imported so the
+ * bootstrap's own copy can drift independently and the test catches it.
+ */
+const BRIDGE_EVENT = 'bridge'
+
 interface EventListenEnvelope {
   readonly payload: unknown
 }
@@ -115,7 +123,14 @@ describe('tauriSnifferBootstrapScript', () => {
     // can't reach. Assert no spurious SniffingComplete fired on boot —
     // that would be the most obvious regression.
     expect(host?.shadowRoot).toBeNull()
-    const completedOnBoot = emits.find((entry) => entry.event === 'bridge:SniffingComplete')
+    const completedOnBoot = emits.find(
+      (entry) =>
+        entry.event === BRIDGE_EVENT &&
+        entry.payload !== null &&
+        typeof entry.payload === 'object' &&
+        '_tag' in entry.payload &&
+        (entry.payload as { _tag: unknown })._tag === 'SniffingComplete'
+    )
     expect(completedOnBoot, 'no SniffingComplete on boot').toBeUndefined()
   })
 

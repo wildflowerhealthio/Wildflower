@@ -6,12 +6,27 @@ import type { AuthTokenStore } from 'react-kitchen-sink'
 import type { ActiveDeviceUserCodeStore } from './active-device-consent/store.ts'
 
 /**
+ * Pull the current Owner bearer from the host. `AuthTokenIssued` is a
+ * contentless notify — the secret never rides the bridge channel —
+ * so the handler delegates to this fetcher, which the page-app entry
+ * implements per-platform (Tauri: capability-gated
+ * `gatekeeper_current_token` invoke; embedded/web: no-op resolving to
+ * `null` because no host emits the notify on that path). Returning
+ * `null` is a legitimate "no token yet" state during the brief boot
+ * window before the host mints one — the store is left unchanged.
+ */
+type PullCurrentToken = () => Effect.Effect<string | null>
+
+/**
  * Build the web-side {@link GatekeeperBridge} inbound handler record:
  *
- * - `AuthTokenIssued`: forwards the bearer token through the supplied
- *   {@link AuthTokenStore.setToken} so the same write the device-login
- *   completion uses also flows through here. The empty-string guard
- *   drops the bridge's empty sentinel without rotating the store.
+ * - `AuthTokenIssued`: contentless notify that the host has a fresh
+ *   bearer ready. The handler calls {@link PullCurrentToken} to fetch
+ *   it out-of-band (so the secret never travels on the multiplexed
+ *   bridge channel that sibling webviews can subscribe to) and
+ *   forwards a non-empty result through the supplied
+ *   {@link AuthTokenStore.setToken}. A `null` pull or empty token is
+ *   ignored without rotating the store.
  * - `DeviceConsentRequested`: forwards the active pending
  *   device-consent head (or `null` clear) into the SPA's
  *   {@link ActiveDeviceUserCodeStore} — the modal host reads from
@@ -20,23 +35,25 @@ import type { ActiveDeviceUserCodeStore } from './active-device-consent/store.ts
  *   guard); the host pushes `null` to dismiss.
  *
  * @remarks
- * Takes only the *setters* because no other handler in this record
- * needs the read sides. Per-entry construction in the page-app
- * entrypoint passes the right setters (the Tauri entry wires the real
- * stores; web entries pass no-op setters because their stub transport
- * never receives these messages — the host that emits them only
- * exists in the Tauri shell).
+ * Takes only the *setters* (and the platform-specific pull function)
+ * because no other handler in this record needs the read sides.
+ * Per-entry construction in the page-app entrypoint wires the Tauri
+ * invoke or a no-op puller, the same way it wires the real stores or
+ * no-op setters.
  */
 const makeGatekeeperWebHandlers = (
   setToken: AuthTokenStore['setToken'],
-  setActiveDeviceUserCode: ActiveDeviceUserCodeStore['setActiveUserCode']
+  setActiveDeviceUserCode: ActiveDeviceUserCodeStore['setActiveUserCode'],
+  pullCurrentToken: PullCurrentToken
 ): MessageHandler.HandlersFor<(typeof GatekeeperBridge)['HostToWeb']> => ({
-  AuthTokenIssued: ({ token }) =>
-    token !== ''
-      ? Effect.sync(() => {
-          setToken(token)
-        })
-      : Effect.void,
+  AuthTokenIssued: () =>
+    Effect.flatMap(pullCurrentToken(), (token) =>
+      token !== null && token !== ''
+        ? Effect.sync(() => {
+            setToken(token)
+          })
+        : Effect.void
+    ),
   DeviceConsentRequested: ({ userCode }) =>
     Effect.sync(() => {
       setActiveDeviceUserCode(userCode)
@@ -44,3 +61,4 @@ const makeGatekeeperWebHandlers = (
 })
 
 export { makeGatekeeperWebHandlers }
+export type { PullCurrentToken }

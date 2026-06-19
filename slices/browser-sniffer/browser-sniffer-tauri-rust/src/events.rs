@@ -1,12 +1,12 @@
-//! Event-name constants. Convention `bridge:{tag}` — must match the TS
-//! side in
-//! `global/effect-messaging/effect-messaging-tauri/src/event-names.ts`.
-//! Drift between Rust and TS is caught by `event_names_match_the_ts_convention`
-//! in `lib.rs`.
+//! Sniffer-specific tag literals dispatched on the multiplexed bridge
+//! channel. The channel name (`BRIDGE_EVENT`), envelope shape, and the
+//! single-channel/FIFO rationale live in [`shared_structures_rust::bridge`];
+//! this module only owns the per-crate tag literals and window labels.
 
-pub const REQUEST_SNIFFABLE_WEBVIEW: &str = "bridge:RequestSniffableWebView";
-pub const OPEN: &str = "bridge:Open";
-pub const SNIFFING_COMPLETE: &str = "bridge:SniffingComplete";
+/// Web→host tag literals this crate dispatches on.
+pub const REQUEST_SNIFFABLE_WEBVIEW: &str = "RequestSniffableWebView";
+pub const OPEN: &str = "Open";
+pub const SNIFFING_COMPLETE: &str = "SniffingComplete";
 
 /// Window label assigned to the main React SPA webview by
 /// `apps/wildflower-tauri/src-tauri/tauri.conf.json`. Re-exported so

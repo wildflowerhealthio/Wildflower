@@ -2,7 +2,7 @@
   "name": "browser-sniffer-tauri",
   "version": "0.0.0",
   "private": true,
-  "description": "Tauri sniffer bootstrap: the fetch/XHR/console shim that emits captured network activity as `bridge:{tag}` Tauri events, plus an in-page top bar for the sniffer webview. The bundled IIFE is consumed by browser-sniffer-tauri-rust via include_str!.",
+  "description": "Tauri sniffer bootstrap: the fetch/XHR/console shim that emits captured network activity as structured payloads on the single multiplexed `BRIDGE_EVENT` Tauri channel (with `_tag` as the dispatch discriminator), plus an in-page top bar for the sniffer webview. The bundled IIFE is consumed by browser-sniffer-tauri-rust via include_str!.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -21,7 +21,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "node scripts/build-tauri-bootstrap.mts && vp pack",
+    "build": "vp pack && node scripts/build-tauri-bootstrap.mts",
     "check": "vp check",
     "dev": "vp pack --watch",
     "generate-tauri-bootstrap": "node scripts/build-tauri-bootstrap.mts",

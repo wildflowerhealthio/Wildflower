@@ -9,10 +9,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "_tag")]
 pub enum GatekeeperHostToWeb {
-    /// Host hands a bearer token to the embedded SPA so HTTP calls to the
-    /// gatekeeper API authenticate.
-    /// Wire: `{"_tag":"AuthTokenIssued","token":"..."}`.
-    AuthTokenIssued { token: String },
+    /// Notify-only signal that a fresh bearer is available for the
+    /// embedded SPA to pull. The token does NOT ride this message —
+    /// it is fetched out-of-band via a capability-gated Tauri
+    /// command, so it never travels on the multiplexed bridge channel
+    /// that sibling webviews can subscribe to.
+    /// Wire: `{"_tag":"AuthTokenIssued"}`.
+    AuthTokenIssued,
     /// Host informs the embedded SPA which (if any) pending device-flow
     /// authorization is currently first in line for owner consent. The
     /// SPA renders a non-dismissable modal whenever this is `Some` and
@@ -35,13 +38,19 @@ mod tests {
     /// drift here is a cross-language protocol break, not a refactor.
     #[test]
     fn auth_token_issued_serializes_to_pinned_wire_format() {
-        let message = GatekeeperHostToWeb::AuthTokenIssued {
-            token: "abc".to_string(),
-        };
+        let message = GatekeeperHostToWeb::AuthTokenIssued;
         assert_eq!(
             serde_json::to_string(&message).expect("serialize"),
-            r#"{"_tag":"AuthTokenIssued","token":"abc"}"#
+            r#"{"_tag":"AuthTokenIssued"}"#
         );
+    }
+
+    #[test]
+    fn auth_token_issued_round_trips() {
+        let encoded =
+            serde_json::to_string(&GatekeeperHostToWeb::AuthTokenIssued).expect("serialize");
+        let decoded: GatekeeperHostToWeb = serde_json::from_str(&encoded).expect("deserialize");
+        assert_eq!(decoded, GatekeeperHostToWeb::AuthTokenIssued);
     }
 
     #[test]
@@ -62,15 +71,6 @@ mod tests {
 
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(64))]
-
-        #[test]
-        fn auth_token_issued_round_trips(token in ".{0,256}") {
-            let message = GatekeeperHostToWeb::AuthTokenIssued { token };
-            let encoded = serde_json::to_string(&message).expect("serialize");
-            let decoded: GatekeeperHostToWeb =
-                serde_json::from_str(&encoded).expect("deserialize");
-            prop_assert_eq!(decoded, message);
-        }
 
         #[test]
         fn device_consent_requested_round_trips(user_code in prop::option::of("[A-Z0-9-]{1,16}")) {
