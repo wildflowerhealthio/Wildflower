@@ -1,10 +1,24 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 6px;
 }
 
+/*
+ * Eyebrow-style label — small mono uppercase letter-spaced, muted ink. Matches
+ * the design's per-field label treatment (Spline Sans Mono 11–12px, 0.14em)
+ * and rhymes with the section eyebrow used by `<ItemList>` titles, so a stack
+ * of form fields reads as a sequence of named rows rather than a wall of body
+ * text. The component used to compose `text-label-3` (16px Hanken regular)
+ * on top of this rule; that token chain is gone now so the eyebrow wins
+ * outright.
+ */
 .field__label {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  font-weight: var(--font-weight-2);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--color-neutral-4);
 }
 

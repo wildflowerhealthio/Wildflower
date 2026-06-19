@@ -314,19 +314,44 @@ hr {
   --input-color-background: #14100d; /* deepest field bg */
   --element-color-border: #4a3f37;
 
-  /* Plum stays the same hex on fills; the rose accent lightens to a dusty
-   * tint for legibility on dark, and the resting/outline borders pick up a
-   * muted plum. */
-  --color-accent: #7e2951;
-  --color-accent-1: #f6e2ec;
-  --color-accent-2: #e8bdd0;
-  --color-accent-3: #d79bb6;
-  --color-accent-4: #c77a9b; /* rose — links, focus, glow */
-  --color-accent-5: #7e2951; /* plum — primary fill */
-  --color-accent-6: #8a3f60; /* accent border — outline btn, focused field */
-  --color-accent-7: #5e3a4a;
-  --color-accent-8: #3a2030;
-  --color-accent-9: #2a1a22;
+  /* Too dark, misses contrast */
+  /* --color-accent-1: oklch(0.95 0.044 65);
+  --color-accent-2: oklch(0.857 0.134 65);
+  --color-accent-3: oklch(0.763 0.172 65);
+  --color-accent-4: oklch(0.67 0.175 65);
+  --color-accent-5: oklch(0.576 0.15 65);
+  --color-accent-6: oklch(0.483 0.126 65);
+  --color-accent-7: oklch(0.389 0.102 65);
+  --color-accent-8: oklch(0.296 0.078 65);
+  --color-accent-9: oklch(0.203 0.054 65); */
+
+  /* A little too bright, 70s glow */
+  /* --color-accent-1: oklch(0.985 0.045 68);
+  --color-accent-2: oklch(0.92 0.1 68);
+  --color-accent-3: oklch(0.855 0.13 68);
+  --color-accent-4: oklch(0.79 0.15 68);
+  --color-accent-5: oklch(0.725 0.137 68);
+  --color-accent-6: oklch(0.602 0.135 68);
+  --color-accent-7: oklch(0.479 0.108 68);
+  --color-accent-8: oklch(0.357 0.08 68);
+  --color-accent-9: oklch(0.234 0.054 68); */
+
+  /* 
+   * Anther - Dark mode accent - Warm amber
+   * The deeper orange-gold of the pollen sacs. Warmer and earthier,
+   * sits closest to the neutrals, but still well clear of the danger red.
+   */
+  --color-accent-1: oklch(0.983 0.045 66);
+  --color-accent-2: oklch(0.923 0.117 66);
+  --color-accent-3: oklch(0.827 0.151 66);
+  --color-accent-4: oklch(0.736 0.163 66);
+  --color-accent-5: oklch(0.654 0.144 66);
+  --color-accent-6: oklch(0.548 0.131 66);
+  --color-accent-7: oklch(0.446 0.105 66);
+  --color-accent-8: oklch(0.348 0.079 66);
+  --color-accent-9: oklch(0.234 0.054 66);
+
+  --color-accent: var(--color-accent-5);
 
   /* Danger ramp — a brighter alarm red reads better on near-black. */
   --color-red-1: #ffd9d7;
@@ -619,4 +644,55 @@ button.filled.accent-red,
 input[type='button'].filled.accent-red,
 input[type='submit'].filled.accent-red {
   --button-color-foreground: #fff3ef;
+}
+
+/*
+ * Filled primary keeps a paper-cream label on the saturated plum fill. Tundra's
+ * default reads `--color-background`, which here is the paper tone (#f7ecdd) —
+ * close, but the design's primary button uses the slightly lighter raised tone
+ * (#fbf4e9) for crisper legibility against plum. Re-point only the filled
+ * variant so outline / subtle buttons keep reading from the surface palette.
+ */
+.button.filled,
+button.filled,
+input[type='button'].filled,
+input[type='submit'].filled,
+input[type='reset'].filled {
+  --button-color-foreground: var(--color-raised);
+}
+
+/*
+ * Disabled filled buttons read tundra's `--color-neutral-7` for both fill and
+ * text, which on the warm refresh ramp is the *same* tone (hairline cream) —
+ * the button effectively vanishes. The design calls for a muted tan fill
+ * (#cbb9ac) with the muted-text ink for the label, so a disabled Save / Continue
+ * still reads as a button. Mirrored in dark mode against the resting field
+ * border so the disabled control stays a step above the canvas.
+ */
+.button.filled:disabled,
+.button.filled[aria-disabled='true'],
+button.filled:disabled,
+button.filled[aria-disabled='true'],
+input[type='button'].filled:disabled,
+input[type='button'].filled[aria-disabled='true'],
+input[type='submit'].filled:disabled,
+input[type='submit'].filled[aria-disabled='true'],
+input[type='reset'].filled:disabled,
+input[type='reset'].filled[aria-disabled='true'] {
+  --button-color-background: #cbb9ac;
+  --button-color-foreground: var(--color-neutral-3);
+}
+
+:root[data-color-scheme='dark'] .button.filled:disabled,
+:root[data-color-scheme='dark'] .button.filled[aria-disabled='true'],
+:root[data-color-scheme='dark'] button.filled:disabled,
+:root[data-color-scheme='dark'] button.filled[aria-disabled='true'],
+:root[data-color-scheme='dark'] input[type='button'].filled:disabled,
+:root[data-color-scheme='dark'] input[type='button'].filled[aria-disabled='true'],
+:root[data-color-scheme='dark'] input[type='submit'].filled:disabled,
+:root[data-color-scheme='dark'] input[type='submit'].filled[aria-disabled='true'],
+:root[data-color-scheme='dark'] input[type='reset'].filled:disabled,
+:root[data-color-scheme='dark'] input[type='reset'].filled[aria-disabled='true'] {
+  --button-color-background: var(--color-neutral-6);
+  --button-color-foreground: var(--color-neutral-3);
 }

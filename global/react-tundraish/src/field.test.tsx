@@ -22,13 +22,17 @@ describe('Field', () => {
     expect(screen.getByText('alice@example.com')).toBeTruthy()
   }, 15_000)
 
-  it('typesets the label with the Tundra text-label-3 utility class', () => {
+  it('typesets the label with the Field eyebrow class', () => {
     // Arrange
     // Act
     render(<Field label="Name">value</Field>)
 
-    // Assert
-    expect(screen.getByText('Name').classList.contains('text-label-3')).toBe(true)
+    // Assert — the label carries Field's own eyebrow treatment (small mono
+    // uppercase) instead of a tundra-css text-label-N utility; the design's
+    // field label role doesn't sit on that scale.
+    const label = screen.getByText('Name')
+    expect(label.className).toMatch(/field__label/)
+    expect(label.classList.contains('text-label-3')).toBe(false)
   })
 
   it('renders a plain span label (no control association) when htmlFor is omitted', () => {

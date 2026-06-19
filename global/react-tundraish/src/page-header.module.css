@@ -38,15 +38,20 @@
 
 /*
  * The back link — a mono, rose, parent-pointing link on its own row. The
- * chevron sits slightly larger than the label. It is generous enough to be a
- * comfortable tap target without a fixed square.
+ * chevron sits slightly larger than the label. The padding + matching negative
+ * margin expands the tap target without shifting the visual baseline (the link
+ * still reads as flush against the header edge and aligned with the back row's
+ * baseline, but extends an extra 6/8px on every side for fingers).
  */
 .page-header__back {
   align-self: flex-start;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  max-width: 100%;
+  max-width: calc(100% + var(--space-2));
+  padding: var(--space-1) var(--space-2);
+  margin: calc(-1 * var(--space-1)) calc(-1 * var(--space-2));
+  border-radius: var(--radius-2);
   font-family: var(--font-mono);
   font-size: var(--font-size-1);
   letter-spacing: 0.02em;
@@ -59,6 +64,12 @@
 
 .page-header__back:hover {
   text-decoration: underline;
+  background: var(--color-sunken);
+}
+
+.page-header__back:focus-visible {
+  outline: 2px solid var(--color-accent-4);
+  outline-offset: 1px;
 }
 
 .page-header__back-chevron {

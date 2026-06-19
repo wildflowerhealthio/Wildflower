@@ -4,7 +4,7 @@ import { cn } from 'react-kitchen-sink'
 import styles from './field.module.css'
 
 type FieldProps = PropsWithChildren<{
-  /** Label rendered above the field's content. Always typeset as `text-label-3`. */
+  /** Label rendered above the field's content as the design's mono eyebrow. */
   readonly label: ReactNode
   /**
    * The `id` of the single form control this field labels. When set, the
@@ -19,8 +19,9 @@ type FieldProps = PropsWithChildren<{
 
 /**
  * Vertical label/value stack. Pair with `<FieldDescription>` for secondary
- * explanatory text. The label is typeset as `text-label-3` and the optional
- * description as `text-body-3`, both tinted with the muted neutral color.
+ * explanatory text. The label is typeset as the design's small mono uppercase
+ * eyebrow (defined entirely in `.field__label`, not a tundra-css text token)
+ * and the description as `text-body-3` muted.
  *
  * Pass `htmlFor` (the control's `id`) when the field wraps a single input
  * so the label is programmatically associated with it.
@@ -28,9 +29,9 @@ type FieldProps = PropsWithChildren<{
 const Field = ({ label, htmlFor, children }: FieldProps): JSX.Element => (
   <div className={styles['field']}>
     {htmlFor === undefined ? (
-      <span className={cn(styles['field__label'], 'text-label-3')}>{label}</span>
+      <span className={styles['field__label']}>{label}</span>
     ) : (
-      <label htmlFor={htmlFor} className={cn(styles['field__label'], 'text-label-3')}>
+      <label htmlFor={htmlFor} className={styles['field__label']}>
         {label}
       </label>
     )}
@@ -54,7 +55,7 @@ const FieldGroup = ({ label, children }: FieldGroupProps): JSX.Element => {
   const labelId = useId()
   return (
     <div className={styles['field']} role="group" aria-labelledby={labelId}>
-      <span id={labelId} className={cn(styles['field__label'], 'text-label-3')}>
+      <span id={labelId} className={styles['field__label']}>
         {label}
       </span>
       {children}

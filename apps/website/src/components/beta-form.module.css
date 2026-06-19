@@ -94,8 +94,8 @@
 }
 
 /* Dark mode — the submit fills stay saturated under their light label, so
- * restore the canon plum rather than following magenta→rose or the flipped
- * ink, and keep the label cream. */
+ * restore the canon accent rather than following the flipped ink, and keep
+ * the label cream. The hover deepens to the copper one rung down the chain. */
 @media (prefers-color-scheme: dark) {
   .beta-form__submit--hero,
   .beta-form__submit--cta {
@@ -105,6 +105,6 @@
 
   .beta-form__submit--hero:hover,
   .beta-form__submit--cta:hover {
-    background: #934063;
+    background: oklch(0.576 0.15 65);
   }
 }

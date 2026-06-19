@@ -1,7 +1,7 @@
 .item-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 6px;
 }
 
 /* Section eyebrow — mono, uppercase, letter-spaced, faint. */
@@ -10,15 +10,15 @@
   font-family: var(--font-mono);
   font-size: var(--font-size-1);
   font-weight: var(--font-weight-2);
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-neutral-5);
 }
 
 /*
- * The rows live in one paper card; individual rows are separated by hairline
- * dividers rather than each being its own bordered card. `overflow: hidden`
- * clips the row dividers to the card's rounded corners.
+ * Rows are separated only by hairline dividers — no surrounding card chrome.
+ * The list flows in its containing surface (page or card supplied by the
+ * caller); the dividers are the only structure.
  */
 .item-list__rows {
   list-style: none;
@@ -26,28 +26,19 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  background: var(--color-background);
-  border: 1px solid var(--color-neutral-7);
-  border-radius: var(--radius-3);
-  overflow: hidden;
-  box-shadow: 0 1px 2px rgba(44, 33, 29, 0.04);
 }
 
 .item-list__row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--color-neutral-8);
-  transition: background-color 120ms ease;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--element-color-border, var(--color-neutral-8));
 }
 
 .item-list__row:last-child {
   border-bottom: 0;
-}
-
-.item-list__row:hover:not(.item-list__row--disabled) {
-  background: var(--color-sunken);
 }
 
 .item-list__row--disabled {
@@ -79,11 +70,12 @@
 .item-list__title-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 9px;
   min-width: 0;
 }
 
 .item-list__name {
+  font-size: 15.5px;
   font-weight: var(--font-weight-3);
   color: var(--color-foreground);
   overflow: hidden;
@@ -94,7 +86,7 @@
 /* Subtitle is technical metadata (a URL / id) — render it in mono. */
 .item-list__subtitle {
   font-family: var(--font-mono);
-  font-size: 0.82rem;
+  font-size: 12.5px;
   color: var(--color-neutral-5);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -106,11 +98,11 @@
 .item-list__badge {
   flex-shrink: 0;
   font-family: var(--font-mono);
-  font-size: var(--font-size-1);
-  letter-spacing: 0.04em;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-pill, 999px);
+  padding: 2px 7px;
+  border-radius: 5px;
   background: var(--color-neutral-8);
   color: var(--color-neutral-3);
 }
@@ -119,12 +111,5 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.item-list__chevron {
-  color: var(--color-neutral-5);
-  font-size: var(--font-size-5);
-  line-height: 1;
   flex-shrink: 0;
 }

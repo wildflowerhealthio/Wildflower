@@ -107,9 +107,6 @@ const ItemListRow = ({ item }: { item: ItemListItem }): JSX.Element => {
     <li className={rowClass}>
       {textElement}
       {actionsJsx}
-      <span aria-hidden="true" className={styles['item-list__chevron']}>
-        ›
-      </span>
     </li>
   )
 }

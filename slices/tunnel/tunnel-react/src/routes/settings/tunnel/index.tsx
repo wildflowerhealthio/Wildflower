@@ -84,7 +84,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
             inputMode="url"
             autoComplete="off"
             autoCapitalize="none"
-            className={styles['input']}
+            className="input-2"
             value={form.hostInput}
             placeholder="my-clinic.example.com"
             disabled={form.pending}
@@ -114,7 +114,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
                   inputMode={field.inputMode}
                   autoComplete="off"
                   autoCapitalize="none"
-                  className={styles['input']}
+                  className="input-2"
                   value={form.relay[field.key]}
                   placeholder={field.placeholder}
                   disabled={form.pending}

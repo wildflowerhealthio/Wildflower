@@ -1,30 +1,43 @@
 .menu {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
 }
 
+/*
+ * The trigger is just a kebab glyph — no surrounding chip / pill / border, so
+ * it can sit flush inside an `ItemList` row or a `PageHeader` actions slot
+ * without adding a second container's worth of visual weight. A negative
+ * margin keeps the comfortable tap target (28×28) from inflating the parent's
+ * row height beyond what the bare glyph would.
+ */
 .menu__trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
+  margin: -6px;
   padding: 0;
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-2);
-  color: var(--color-neutral-3);
+  color: var(--color-neutral-5);
   cursor: pointer;
+  user-select: none;
 }
 
 .menu__trigger:hover,
 .menu__trigger[aria-expanded='true'] {
-  background: var(--color-neutral-8);
-  border-color: var(--color-neutral-7);
+  color: var(--color-neutral-3);
+}
+
+.menu__trigger:focus-visible {
+  outline: 2px solid var(--color-accent-4);
+  outline-offset: 1px;
 }
 
 .menu__dots {
-  font-size: var(--font-size-4);
+  font-size: var(--font-size-5);
   line-height: 1;
 }
 
