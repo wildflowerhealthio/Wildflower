@@ -320,3 +320,12 @@
     font-size: 30px;
   }
 }
+
+/* Dark mode — the active chip / app card stay on the plum fill, so their label
+ * keeps a light cream tone rather than the flipped `--color-cream`. */
+@media (prefers-color-scheme: dark) {
+  .chip--active,
+  .app-card--active {
+    color: #fbf4e9;
+  }
+}

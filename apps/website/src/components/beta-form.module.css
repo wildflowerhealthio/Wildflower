@@ -92,3 +92,19 @@
     max-width: 100%;
   }
 }
+
+/* Dark mode — the submit fills stay saturated under their light label, so
+ * restore the canon plum rather than following magenta→rose or the flipped
+ * ink, and keep the label cream. */
+@media (prefers-color-scheme: dark) {
+  .beta-form__submit--hero,
+  .beta-form__submit--cta {
+    background: var(--color-plum);
+    color: #fbf4e9;
+  }
+
+  .beta-form__submit--hero:hover,
+  .beta-form__submit--cta:hover {
+    background: #934063;
+  }
+}

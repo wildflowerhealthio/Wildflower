@@ -98,3 +98,70 @@
     --page-padding-x: 24px;
   }
 }
+
+/*
+ * Dark mode — a first-class theme on the same canon palette as the app
+ * (the Tundraish "Wildflower" refresh). The marketing page has no JS theme
+ * toggle, so it follows the OS preference via `prefers-color-scheme`.
+ *
+ * Most tokens simply flip: the cream surface family becomes the warm
+ * near-black canvas/surface stack, the ink text family becomes warm
+ * off-white, and the magenta accent lightens to the dusty rose that stays
+ * legible as link/eyebrow text on a dark canvas. A handful of *inverse*
+ * regions — the footer, the phone mockup's bezel, the plum feature band,
+ * the magenta CTA fills, the translucent header bar — are already dark (or
+ * must stay saturated under light text) in light mode, so they override the
+ * flipped tokens back to a solid value in their own `*.module.css` dark
+ * blocks rather than here.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Surfaces — sand/cream → warm near-black stack. */
+    --color-cream: #1a1512; /* page background */
+    --color-cream-raised: #221b16; /* inputs, cards, app buttons (resting) */
+    --color-cream-alt: #14100d; /* phone screen background */
+    --color-cream-band: #2b231d; /* privacy band; resting chip background */
+
+    /* Text — ink → warm off-white scale. */
+    --color-ink: #f3e9db; /* primary text */
+    --color-ink-70: #cdbfb0; /* header nav text */
+    --color-warm-gray: #b3a294; /* body copy */
+    --color-muted-gray: #9c8a7c; /* captions, meta */
+    --color-chip-text: #b3a294; /* resting chip text */
+
+    /* Accent — rose reads as link/eyebrow text on the dark canvas; the
+     * saturated plum/magenta fills are restored per-component. */
+    --color-magenta: #c77a9b; /* primary accent (as text) */
+    --color-magenta-hover: #d79bb6;
+    --color-plum: #7e2951; /* active / selected; CTA fills */
+
+    /* Functional — source dots & the success chip on dark. */
+    --color-amber: #e0a83a;
+    --color-green: #8fae4f;
+    --color-success-bg: #2c3417;
+    --color-success-border: #495426;
+    --color-success-text: #a9c86a;
+
+    /* Footer keeps its inverse (light-on-dark) text tokens — only the
+     * footer surface itself is re-pinned (footer.module.css). */
+    --color-footer-text: #e7d8c8;
+    --color-footer-body: #b7a596;
+    --color-footer-label: #9c8a7c;
+    --color-footer-link-hover: #f3c8d9;
+
+    /* Hairlines & borders → light-alpha tints of the off-white. */
+    --border-hairline: rgba(247, 236, 221, 0.12);
+    --border-hairline-soft: rgba(247, 236, 221, 0.08);
+    --border-input: rgba(247, 236, 221, 0.18);
+    --border-app-card: rgba(247, 236, 221, 0.14);
+    --border-footer: rgba(247, 236, 221, 0.1);
+
+    --color-selection: #5e3a4a;
+    --color-placeholder: #7d6c5f;
+
+    /* Soft, warm shadows go deeper on the dark canvas. */
+    --shadow-phone: 0 30px 70px rgba(0, 0, 0, 0.5);
+    --shadow-app-selected: 0 8px 22px rgba(0, 0, 0, 0.45);
+    --shadow-row-selected: 0 3px 14px rgba(0, 0, 0, 0.4);
+  }
+}
