@@ -189,8 +189,6 @@ async fn bundled_app_is_fully_editable() {
     assert_eq!(body["name"], "Renamed Browser");
     assert_eq!(body["url"], "https://example.com/replacement");
     assert_eq!(body["enabled"], false);
-    // Provenance survives the edit so the UI can still label it.
-    assert_eq!(body["kind"], "bundled");
 
     let list_res = apps
         .public_router

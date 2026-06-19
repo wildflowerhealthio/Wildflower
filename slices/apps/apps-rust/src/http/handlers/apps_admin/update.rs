@@ -1,30 +1,30 @@
 //! `PATCH /apps/{id}` — partial update. Any subset of `enabled` / `name` /
 //! `subtitle` / `url` / `requiresTunnel` is honoured; a present `url` is
-//! re-validated. Works on any row regardless of `kind` — bundled and
-//! custom apps are equally editable.
+//! re-parsed. Works on any row — bundled and custom apps are equally editable.
 
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::routing::{patch, MethodRouter};
 use axum::Json;
 use serde::Deserialize;
+use utoipa::ToSchema;
 
-use crate::domain::{validate_app_url, AppEntry};
-use crate::http::response_templates::HandlerError;
+use crate::domain::{parse_app_url, AppEntry};
+use crate::http::response_templates::{AppNotFoundBody, HandlerError, InvalidFieldBody};
 use crate::http::state::AppsState;
 
 /// PATCH body — all fields optional. Matches `UpdateAppBodySchema`. A
 /// `subtitle` of `Some(None)` (explicit null on the wire) clears the
 /// subtitle; a missing key leaves it alone — see [`SubtitlePatch`].
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-struct UpdateAppBody {
+pub(crate) struct UpdateAppBody {
     enabled: Option<bool>,
     name: Option<String>,
     url: Option<String>,
     requires_tunnel: Option<bool>,
     #[serde(default, deserialize_with = "deser_present_optional")]
+    #[schema(value_type = Option<String>)]
     subtitle: SubtitlePatch,
 }
 
@@ -57,11 +57,19 @@ where
     Option::<String>::deserialize(d).map(SubtitlePatch::Set)
 }
 
-pub(super) fn route() -> MethodRouter<Arc<AppsState>> {
-    patch(handle_update_app)
-}
-
-async fn handle_update_app(
+/// `PATCH /apps/{id}` — partial update of any row. Owner-gated by the consumer.
+#[utoipa::path(
+    patch,
+    path = "/apps/{id}",
+    params(("id" = String, Path, description = "App id")),
+    request_body = UpdateAppBody,
+    responses(
+        (status = 200, description = "The updated app", body = AppEntry),
+        (status = 400, description = "Empty name (`InvalidName`) or bad url (`InvalidUrl`)", body = InvalidFieldBody),
+        (status = 404, description = "No app has this id", body = AppNotFoundBody),
+    ),
+)]
+pub(crate) async fn handle_update_app(
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
     Json(body): Json<UpdateAppBody>,
@@ -82,11 +90,12 @@ async fn handle_update_app(
             });
         }
     }
-    if let Some(url) = body.url.as_deref() {
-        validate_app_url(url).map_err(|e| HandlerError::InvalidUrl {
+    let new_url = match body.url.as_deref() {
+        Some(url) => Some(parse_app_url(url).map_err(|e| HandlerError::InvalidUrl {
             message: e.to_string(),
-        })?;
-    }
+        })?),
+        None => None,
+    };
 
     if let Some(enabled) = body.enabled {
         existing.enabled = enabled;
@@ -94,7 +103,7 @@ async fn handle_update_app(
     if let Some(name) = body.name {
         existing.name = name;
     }
-    if let Some(url) = body.url {
+    if let Some(url) = new_url {
         existing.url = url;
     }
     if let Some(requires_tunnel) = body.requires_tunnel {

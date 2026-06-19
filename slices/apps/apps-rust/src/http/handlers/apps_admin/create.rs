@@ -1,26 +1,27 @@
 //! `POST /apps` — register a new custom app. Mints a fresh `custom-…` id,
-//! validates the URL through the write-side filter (so an open-redirect
-//! never lands in the row), persists it, and returns the resulting
-//! [`AppEntry`].
+//! parses the URL through the write-side filter (so an open-redirect never
+//! lands in the row), persists it, and returns the resulting [`AppEntry`].
 
 use std::sync::Arc;
 
 use axum::extract::State;
-use axum::routing::{post, MethodRouter};
 use axum::Json;
 use rand::distr::Alphanumeric;
 use rand::Rng;
 use serde::Deserialize;
+use utoipa::ToSchema;
 
-use crate::domain::{validate_app_url, AppEntry, AppKind};
-use crate::http::response_templates::HandlerError;
+use crate::domain::{parse_app_url, AppEntry};
+use crate::http::response_templates::{HandlerError, InvalidFieldBody};
 use crate::http::state::AppsState;
 
 /// POST body — matches the TS `CreateCustomAppBodySchema`. `requiresTunnel`
-/// uses the wire-camelCase the existing client speaks.
-#[derive(Debug, Deserialize)]
+/// uses the wire-camelCase the existing client speaks. `url` is read as a raw
+/// string so a bad value yields the structured `400 InvalidUrl` rather than a
+/// generic deserialize error.
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-struct CreateAppBody {
+pub(crate) struct CreateAppBody {
     name: String,
     url: String,
     requires_tunnel: bool,
@@ -28,11 +29,17 @@ struct CreateAppBody {
     subtitle: Option<String>,
 }
 
-pub(super) fn route() -> MethodRouter<Arc<AppsState>> {
-    post(handle_create_app)
-}
-
-async fn handle_create_app(
+/// `POST /apps` — create a custom app. Owner-gated by the consumer.
+#[utoipa::path(
+    post,
+    path = "/apps",
+    request_body = CreateAppBody,
+    responses(
+        (status = 200, description = "The created app", body = AppEntry),
+        (status = 400, description = "Empty name (`InvalidName`) or bad url (`InvalidUrl`)", body = InvalidFieldBody),
+    ),
+)]
+pub(crate) async fn handle_create_app(
     State(state): State<Arc<AppsState>>,
     Json(body): Json<CreateAppBody>,
 ) -> Result<Json<AppEntry>, HandlerError> {
@@ -41,16 +48,15 @@ async fn handle_create_app(
             message: "name must not be empty".to_owned(),
         });
     }
-    validate_app_url(&body.url).map_err(|e| HandlerError::InvalidUrl {
+    let url = parse_app_url(&body.url).map_err(|e| HandlerError::InvalidUrl {
         message: e.to_string(),
     })?;
     let entry = AppEntry {
         id: mint_custom_id(),
-        kind: AppKind::Custom,
         enabled: true,
         name: body.name,
         subtitle: body.subtitle,
-        url: body.url,
+        url,
         requires_tunnel: body.requires_tunnel,
     };
     let inserted = state

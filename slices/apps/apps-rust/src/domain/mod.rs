@@ -3,5 +3,5 @@
 mod app_entry;
 mod app_url;
 
-pub use app_entry::{AppEntry, AppKind, AppKindParseError};
-pub use app_url::{validate_app_url, AppUrlError};
+pub use app_entry::AppEntry;
+pub use app_url::{parse_app_url, AppUrl, AppUrlError, LaunchParams};

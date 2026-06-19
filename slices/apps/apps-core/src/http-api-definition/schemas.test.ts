@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   AppEntrySchema,
   AppNotFoundSchema,
-  BundledAppImmutableSchema,
   CreateCustomAppBodySchema,
+  InvalidFieldSchema,
   UpdateAppBodySchema,
 } from './schemas.ts'
 
@@ -18,8 +18,8 @@ describe('AppEntrySchema', () => {
       id: 'patient-browser',
       name: 'Patient Browser',
       subtitle: 'Browse records',
+      url: '{origin}/installed-apps/patient-browser/index.html',
       requiresTunnel: false,
-      kind: 'bundled' as const,
       enabled: true,
     }
     expectRightToEqual(Schema.decodeUnknownEither(AppEntrySchema)(entry), entry)
@@ -29,8 +29,8 @@ describe('AppEntrySchema', () => {
     const entry = {
       id: 'custom-1',
       name: 'My Custom',
+      url: 'https://example.com',
       requiresTunnel: false,
-      kind: 'custom' as const,
       enabled: true,
     }
     expectRightToEqual(Schema.decodeUnknownEither(AppEntrySchema)(entry), entry)
@@ -42,15 +42,15 @@ describe('AppEntrySchema', () => {
         id: 'x',
         name: 'X',
         subtitle: '',
+        url: 'https://example.com',
         requiresTunnel: false,
-        kind: 'bundled',
         enabled: true,
       }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })
 
-  it('rejects entries missing kind', () => {
+  it('rejects entries missing url', () => {
     expectLeftToEqual(
       Schema.decodeUnknownEither(AppEntrySchema)({
         id: 'x',
@@ -148,14 +148,20 @@ describe('AppNotFoundSchema', () => {
   })
 })
 
-describe('BundledAppImmutableSchema', () => {
-  it('accepts the declared error payload', () => {
-    expectRightToEqual(
-      Schema.decodeUnknownEither(BundledAppImmutableSchema)({
-        error: 'BundledAppImmutable',
-        id: 'patient-browser',
-      }),
-      { error: 'BundledAppImmutable', id: 'patient-browser' }
+describe('InvalidFieldSchema', () => {
+  it('accepts the InvalidUrl and InvalidName discriminants', () => {
+    for (const error of ['InvalidUrl', 'InvalidName'] as const) {
+      expectRightToEqual(
+        Schema.decodeUnknownEither(InvalidFieldSchema)({ error, message: 'nope' }),
+        { error, message: 'nope' }
+      )
+    }
+  })
+
+  it('rejects any other error literal', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(InvalidFieldSchema)({ error: 'Whatever', message: 'x' }),
+      expect.objectContaining({ _tag: 'ParseError' })
     )
   })
 })

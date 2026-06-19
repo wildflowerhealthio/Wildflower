@@ -8,10 +8,10 @@
 
 use anyhow::Context;
 use persistence_rust::{build_insert_sql, sql_row, Connection, DbResult};
-use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
+use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, Value, ValueRef};
 use rusqlite::{params, OptionalExtension, ToSql};
 
-use crate::domain::{AppEntry, AppKind};
+use crate::domain::{parse_app_url, AppEntry, AppUrl};
 
 #[derive(Clone)]
 pub struct AppsStore {
@@ -108,7 +108,6 @@ impl AppsStore {
         // round-trip tests; the field list is short enough that pinning
         // the SET clause is clearer than a runtime SQL builder.
         const SQL: &str = "UPDATE apps SET \
-            kind = :kind, \
             enabled = :enabled, \
             name = :name, \
             subtitle = :subtitle, \
@@ -122,7 +121,7 @@ impl AppsStore {
 
     /// Delete a row by id. Returns `true` when a row was actually removed,
     /// `false` when no row had that id. Bundled rows are deletable like
-    /// any other — `kind` is a display-only hint.
+    /// any other.
     ///
     /// # Errors
     ///
@@ -136,19 +135,20 @@ impl AppsStore {
     }
 }
 
-impl ToSql for AppKind {
+impl ToSql for AppUrl {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        Ok(ToSqlOutput::Borrowed(ValueRef::Text(
-            self.as_str().as_bytes(),
-        )))
+        // The canonical string (see `AppUrl`'s `Display`) — the only form the
+        // `url` column ever holds, and the one `parse_app_url` round-trips.
+        Ok(ToSqlOutput::Owned(Value::Text(self.to_string())))
     }
 }
 
-impl FromSql for AppKind {
+impl FromSql for AppUrl {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         let s = value.as_str()?;
-        s.parse::<AppKind>()
-            .map_err(|e| FromSqlError::Other(Box::new(e)))
+        // A stored URL that no longer parses (e.g. an externally tampered row)
+        // surfaces as a typed read error rather than a silent unsafe redirect.
+        parse_app_url(s).map_err(|e| FromSqlError::Other(Box::new(e)))
     }
 }
 
@@ -157,7 +157,6 @@ impl FromSql for AppKind {
 // single field list — no separate row type, no projection layer.
 sql_row!(AppEntry {
     id,
-    kind,
     enabled,
     name,
     subtitle,
@@ -188,14 +187,13 @@ const MIGRATIONS: &[&str] = &[include_str!("../migrations/001_initial_schema.sql
 mod tests {
     use super::*;
 
-    fn entry(id: &str, kind: AppKind, url: &str) -> AppEntry {
+    fn entry(id: &str, url: &str) -> AppEntry {
         AppEntry {
             id: id.to_owned(),
-            kind,
             enabled: true,
             name: id.to_owned(),
             subtitle: None,
-            url: url.to_owned(),
+            url: parse_app_url(url).expect("valid test url"),
             requires_tunnel: false,
         }
     }
@@ -244,7 +242,7 @@ mod tests {
     #[test]
     fn insert_app_round_trips_through_find_app() {
         let store = AppsStore::open_in_memory().unwrap();
-        let app = entry("custom-x", AppKind::Custom, "https://example.com/launch");
+        let app = entry("custom-x", "https://example.com/launch");
         assert!(store.insert_app(&app).unwrap());
         let fetched = store.find_app("custom-x").unwrap().expect("present");
         assert_eq!(fetched, app);
@@ -253,7 +251,7 @@ mod tests {
     #[test]
     fn insert_app_returns_false_on_duplicate_id() {
         let store = AppsStore::open_in_memory().unwrap();
-        let app = entry("custom-x", AppKind::Custom, "https://example.com/x");
+        let app = entry("custom-x", "https://example.com/x");
         assert!(store.insert_app(&app).unwrap());
         assert!(
             !store.insert_app(&app).unwrap(),
@@ -266,12 +264,12 @@ mod tests {
     #[test]
     fn replace_app_writes_all_mutable_columns() {
         let store = AppsStore::open_in_memory().unwrap();
-        let mut app = entry("custom-x", AppKind::Custom, "https://example.com/x");
+        let mut app = entry("custom-x", "https://example.com/x");
         store.insert_app(&app).unwrap();
 
         app.name = "Renamed".into();
         app.subtitle = Some("the new subtitle".into());
-        app.url = "{origin}/path".into();
+        app.url = parse_app_url("{origin}/path").unwrap();
         app.requires_tunnel = true;
         app.enabled = false;
         assert!(store.replace_app(&app).unwrap());
@@ -283,7 +281,7 @@ mod tests {
     #[test]
     fn replace_app_returns_false_for_unknown_id() {
         let store = AppsStore::open_in_memory().unwrap();
-        let app = entry("ghost", AppKind::Custom, "https://example.com/x");
+        let app = entry("ghost", "https://example.com/x");
         assert!(!store.replace_app(&app).unwrap());
     }
 
@@ -296,9 +294,8 @@ mod tests {
             .find_app("patient-browser")
             .unwrap()
             .expect("seeded row");
-        assert_eq!(app.kind, AppKind::Bundled);
         app.name = "Renamed Patient Browser".into();
-        app.url = "https://example.com/replacement".into();
+        app.url = parse_app_url("https://example.com/replacement").unwrap();
         app.enabled = false;
         assert!(store.replace_app(&app).unwrap());
 
@@ -307,19 +304,20 @@ mod tests {
             .unwrap()
             .expect("still present");
         assert_eq!(fetched.name, "Renamed Patient Browser");
-        assert_eq!(fetched.url, "https://example.com/replacement");
+        assert_eq!(
+            fetched.url,
+            parse_app_url("https://example.com/replacement").unwrap()
+        );
         assert!(!fetched.enabled);
-        // Provenance survives the edit so the UI can still label it.
-        assert_eq!(fetched.kind, AppKind::Bundled);
     }
 
     #[test]
-    fn delete_app_removes_any_row_regardless_of_kind() {
+    fn delete_app_removes_any_seeded_or_custom_row() {
         let store = AppsStore::open_in_memory().unwrap();
         assert!(store.delete_app("patient-browser").unwrap());
         assert!(store.find_app("patient-browser").unwrap().is_none());
 
-        let custom = entry("custom-y", AppKind::Custom, "https://example.com/y");
+        let custom = entry("custom-y", "https://example.com/y");
         store.insert_app(&custom).unwrap();
         assert!(store.delete_app("custom-y").unwrap());
         assert!(store.find_app("custom-y").unwrap().is_none());

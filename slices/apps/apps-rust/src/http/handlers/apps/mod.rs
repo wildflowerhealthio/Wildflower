@@ -1,20 +1,25 @@
 //! Public `/apps` routes — the unauthenticated read + launch surface the
 //! webview consumes. One module per route handler (`list`, `launch`), each
-//! exposing a `MethodRouter`; `router()` is the only path table.
+//! exposing a `#[utoipa::path]`-annotated handler; `openapi_router()` collects
+//! them so the served routes and the OpenAPI spec come from one place.
 
 mod launch;
 mod list;
 
 use std::sync::Arc;
 
-use axum::Router;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use crate::http::state::AppsState;
 
-pub(super) fn router() -> Router<Arc<AppsState>> {
-    Router::new()
-        .route("/apps", list::route())
-        .route("/apps/{id}", launch::route())
+/// The public `/apps` routes (`GET /apps`, `GET /apps/{id}`) as an
+/// `OpenApiRouter`. Mounted by [`crate::http`]; `routes!` reads each handler's
+/// `#[utoipa::path]` for its method + path.
+pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AppsState>> {
+    OpenApiRouter::new()
+        .routes(routes!(list::handle_list_apps))
+        .routes(routes!(launch::handle_launch_app))
 }
 
 #[cfg(test)]
@@ -23,13 +28,20 @@ mod tests {
 
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
+    use axum::Router;
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
     use super::*;
     use crate::db::AppsStore;
-    use crate::domain::{AppEntry, AppKind};
+    use crate::domain::{parse_app_url, AppEntry};
     use crate::http::state::AppsState;
+
+    /// The served public router, state not yet applied — the spec half of
+    /// `split_for_parts` is irrelevant here.
+    fn router() -> Router<Arc<AppsState>> {
+        openapi_router().split_for_parts().0
+    }
 
     fn state() -> Arc<AppsState> {
         let store = AppsStore::open_in_memory().expect("store");
@@ -55,11 +67,10 @@ mod tests {
     fn custom(id: &str, url: &str) -> AppEntry {
         AppEntry {
             id: id.to_owned(),
-            kind: AppKind::Custom,
             enabled: true,
             name: id.to_owned(),
             subtitle: None,
-            url: url.to_owned(),
+            url: parse_app_url(url).expect("valid test url"),
             requires_tunnel: false,
         }
     }
@@ -95,7 +106,6 @@ mod tests {
             .iter()
             .find(|v| v["id"] == "custom-x")
             .expect("custom row in list");
-        assert_eq!(found["kind"], "custom");
         assert_eq!(found["url"], "https://example.com/x");
     }
 
@@ -182,20 +192,19 @@ mod tests {
         assert_eq!(location, "http://127.0.0.1:8080/y");
     }
 
-    /// Launch-time defence-in-depth: a row whose stored URL resolves to a
-    /// non-https foreign target must 404, not 302. The write path rejects
-    /// these on input but the launch path re-validates the *resolved* URL.
+    /// A row whose stored `url` no longer parses — only reachable by bypassing
+    /// the write-side validator with raw SQL — fails the typed read
+    /// (`AppUrl`'s `FromSql`), so the launch surfaces a logged 500 rather than
+    /// ever redirecting to the unsafe target.
     #[tokio::test]
-    async fn launch_rejects_resolved_non_https_target() {
+    async fn launch_rejects_unparseable_stored_url_as_500() {
         let st = state();
-        // Bypass the write-side validator by inserting through SQL directly
-        // with a URL the validator wouldn't normally accept.
         st.store
             .conn()
             .lock()
             .execute(
-                "INSERT INTO apps (id, kind, enabled, name, subtitle, url, requires_tunnel) \
-                 VALUES ('custom-bad', 'custom', 1, 'Bad', NULL, 'http://evil.example.com', 0)",
+                "INSERT INTO apps (id, enabled, name, subtitle, url, requires_tunnel) \
+                 VALUES ('custom-bad', 1, 'Bad', NULL, 'http://evil.example.com', 0)",
                 [],
             )
             .unwrap();
@@ -204,6 +213,6 @@ mod tests {
             .oneshot(get("/apps/custom-bad"))
             .await
             .unwrap();
-        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

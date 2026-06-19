@@ -99,8 +99,11 @@ const AppsEditor = ({ open, apps, onClose }: AppsEditorProps): JSX.Element => {
     )
   }
 
-  const nonCustom = apps.filter((app) => app.kind !== 'custom')
-  const custom = apps.filter((app) => app.kind === 'custom')
+  // Custom apps carry a `custom-` id prefix (minted by the admin
+  // `CreateCustomApp` handler); bundled apps have stable slug ids. That
+  // prefix is the provenance signal now that the wire entry has no `kind`.
+  const nonCustom = apps.filter((app) => !app.id.startsWith('custom-'))
+  const custom = apps.filter((app) => app.id.startsWith('custom-'))
 
   return (
     <Dialog open={open} onClose={onClose} title="Manage apps">

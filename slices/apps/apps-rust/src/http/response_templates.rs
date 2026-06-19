@@ -14,6 +14,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
+use utoipa::ToSchema;
 
 /// The "a server-side step failed" payload: an operator-facing `context`
 /// and the `source` detail. Logged + returned as an opaque 500.
@@ -41,10 +42,10 @@ impl IntoResponse for InternalError {
 }
 
 /// Wire shape for `AppNotFound`. Matches the TS `AppNotFoundSchema`.
-#[derive(Debug, Serialize)]
-struct AppNotFoundBody {
-    error: &'static str,
-    id: String,
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct AppNotFoundBody {
+    pub(crate) error: &'static str,
+    pub(crate) id: String,
 }
 
 /// Wire shape for a 400 carrying a discriminant + human-readable reason.
@@ -52,10 +53,10 @@ struct AppNotFoundBody {
 /// — both are write-side field validations the client renders inline. The
 /// `error` discriminant lets a client tell the two apart rather than seeing a
 /// URL-error tag for a name problem.
-#[derive(Debug, Serialize)]
-struct InvalidFieldBody {
-    error: &'static str,
-    message: String,
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct InvalidFieldBody {
+    pub(crate) error: &'static str,
+    pub(crate) message: String,
 }
 
 /// Error half of a `Result`-returning handler. Each variant renders one of

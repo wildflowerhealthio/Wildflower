@@ -1,8 +1,5 @@
 -- The apps catalogue. One row per app (bundled and custom alike). Every
--- column is editable post-install — the `kind` tag is preserved as a
--- display-only provenance hint (`bundled` rows shipped with the binary;
--- `custom` rows were added by the user) and has no behavioural effect on
--- the write surface.
+-- column is editable post-install; there is no provenance tag on the row.
 --
 -- The bundled apps are seeded by this migration; once seeded, the user can
 -- rename them, change their URL, toggle `enabled`, or delete them outright.
@@ -13,7 +10,6 @@
 -- or removed.
 CREATE TABLE apps (
     id              TEXT PRIMARY KEY,
-    kind            TEXT NOT NULL CHECK (kind IN ('bundled', 'custom')),
     enabled         INTEGER NOT NULL DEFAULT 1,
     name            TEXT NOT NULL,
     -- The descriptive line shown under the app name in the UI. NULL means
@@ -33,10 +29,9 @@ CREATE TABLE apps (
 -- FHIR Sharing is intentionally NOT in this list — tunnel control now
 -- has its own UI surface (see `tunnel-rust`), and apps slice no longer
 -- doubles as a switchboard for it.
-INSERT OR IGNORE INTO apps (id, kind, enabled, name, subtitle, url, requires_tunnel) VALUES
+INSERT OR IGNORE INTO apps (id, enabled, name, subtitle, url, requires_tunnel) VALUES
     (
         'patient-browser',
-        'bundled',
         1,
         'Patient Browser',
         'Browse patient records served from this device.',
@@ -45,7 +40,6 @@ INSERT OR IGNORE INTO apps (id, kind, enabled, name, subtitle, url, requires_tun
     ),
     (
         'api-view',
-        'bundled',
         1,
         'API View',
         'View patient records in your browser.',
@@ -54,7 +48,6 @@ INSERT OR IGNORE INTO apps (id, kind, enabled, name, subtitle, url, requires_tun
     ),
     (
         'api-docs',
-        'bundled',
         1,
         'API Docs',
         'View API documentation in your browser.',
@@ -63,7 +56,6 @@ INSERT OR IGNORE INTO apps (id, kind, enabled, name, subtitle, url, requires_tun
     ),
     (
         'growth-chart',
-        'bundled',
         1,
         'Growth Chart',
         'Interactive growth chart app.',
@@ -72,7 +64,6 @@ INSERT OR IGNORE INTO apps (id, kind, enabled, name, subtitle, url, requires_tun
     ),
     (
         'medication-viewer',
-        'bundled',
         1,
         'Medication Viewer',
         'A bare medication viewer app.',

@@ -1,8 +1,8 @@
 //! Admin `/apps` routes — the owner-only mutate surface. One module per
 //! route handler (`create`, `update`, `delete`), each exposing a
-//! `MethodRouter`; `router()` is the only path table. POST `/apps` shares
-//! its path with the public GET `/apps` (mounted on a different router),
-//! and PATCH + DELETE on `/apps/{id}` are merged here.
+//! `#[utoipa::path]`-annotated handler. POST `/apps` shares its path with the
+//! public GET `/apps` (mounted on a different router); PATCH + DELETE on
+//! `/apps/{id}` share a path here, so they collect into one `routes!`.
 
 mod create;
 mod delete;
@@ -10,14 +10,21 @@ mod update;
 
 use std::sync::Arc;
 
-use axum::Router;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use crate::http::state::AppsState;
 
-pub(super) fn router() -> Router<Arc<AppsState>> {
-    Router::new()
-        .route("/apps", create::route())
-        .route("/apps/{id}", update::route().merge(delete::route()))
+/// The admin `/apps` routes (`POST /apps`, `PATCH`/`DELETE /apps/{id}`) as an
+/// `OpenApiRouter`. The router carries no middleware — the host wraps it with
+/// its own auth gate.
+pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AppsState>> {
+    OpenApiRouter::new()
+        .routes(routes!(create::handle_create_app))
+        .routes(routes!(
+            update::handle_update_app,
+            delete::handle_delete_app
+        ))
 }
 
 #[cfg(test)]
@@ -26,12 +33,18 @@ mod tests {
 
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
+    use axum::Router;
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
     use super::*;
     use crate::db::AppsStore;
     use crate::http::state::AppsState;
+
+    /// The served admin router, state not yet applied.
+    fn router() -> Router<Arc<AppsState>> {
+        openapi_router().split_for_parts().0
+    }
 
     fn state() -> Arc<AppsState> {
         let store = AppsStore::open_in_memory().expect("store");
@@ -93,7 +106,6 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
-        assert_eq!(body["kind"], "custom");
         assert!(body["enabled"].as_bool().unwrap());
         let id = body["id"].as_str().unwrap().to_string();
         assert!(id.starts_with("custom-"));
@@ -178,7 +190,6 @@ mod tests {
         assert_eq!(body["name"], "Renamed Browser");
         assert_eq!(body["url"], "https://example.com/replacement");
         assert_eq!(body["enabled"], false);
-        assert_eq!(body["kind"], "bundled", "provenance survives the edit");
     }
 
     /// Bundled apps are first-class — including for deletion.

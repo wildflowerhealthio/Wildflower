@@ -179,10 +179,12 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "shared-structures-rust",
  "tokio",
  "tower",
  "tracing",
- "url",
+ "utoipa",
+ "utoipa-axum",
 ]
 
 [[package]]
