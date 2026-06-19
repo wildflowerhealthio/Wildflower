@@ -26,8 +26,13 @@ ad-hoc inline styles:
   `--font-weight-*`). Use tokens, not literal values.
 - **Dark mode** is driven by the `:root[data-color-scheme='dark']` attribute
   (set in JS), **not** `prefers-color-scheme`.
-- **Fonts** — no custom `@font-face`; tundra uses system font stacks sized by
-  the type tokens. There is nothing to load.
+- **Fonts** — the design language uses three brand families, shipped with the
+  bundle via `@font-face`: **Hanken Grotesk Variable** (sans, the working UI
+  voice → `--font-sans`), **Newsreader Variable** (serif, reserved for titles
+  & emphasis → `--font-serif`), and **Spline Sans Mono Variable** (mono,
+  carries eyebrows/labels/technical strings → `--font-mono`). Each falls back
+  to a system stack. Style type through the `--font-*` and type-scale tokens,
+  not literal font names.
 
 ## Composition notes
 
