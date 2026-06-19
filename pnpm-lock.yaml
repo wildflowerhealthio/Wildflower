@@ -296,6 +296,9 @@ importers:
       react-dom:
         specifier: 19.1.0
         version: 19.1.0(react@19.1.0)
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../global/react-tundraish
     devDependencies:
       '@testing-library/dom':
         specifier: ^10.4.0

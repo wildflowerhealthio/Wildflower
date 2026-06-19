@@ -15,7 +15,8 @@
     "@fontsource-variable/newsreader": "catalog:",
     "@fontsource-variable/spline-sans-mono": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "react-tundraish": "workspace:*"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.0",
