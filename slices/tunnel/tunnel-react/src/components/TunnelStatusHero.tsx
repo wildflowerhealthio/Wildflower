@@ -3,7 +3,7 @@ import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { StatusBadge, ToggleSwitch, type StatusTone } from 'react-tundraish'
 
-import { isTunnelOpen, type TunnelState } from '../queries.ts'
+import { mightTunnelBeOpen, type TunnelState } from '../queries.ts'
 import styles from './TunnelStatusHero.module.css'
 
 interface TunnelStatusHeroPropsBase {
@@ -168,7 +168,7 @@ const TunnelStatusHero = (props: TunnelStatusHeroProps): JSX.Element => {
     running: state.running,
     error: state.error,
   })
-  const open = isTunnelOpen(state)
+  const open = mightTunnelBeOpen(state)
   const hostText = state.publicHost ?? 'No public host set'
   /*
    * Active-connection count is stubbed at 0 — there is no live source in

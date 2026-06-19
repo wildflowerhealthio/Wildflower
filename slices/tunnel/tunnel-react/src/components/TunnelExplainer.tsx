@@ -1,6 +1,6 @@
 import type { JSX, ReactNode } from 'react'
 
-import { isTunnelOpen, type TunnelState } from '../queries.ts'
+import { mightTunnelBeOpen, type TunnelState } from '../queries.ts'
 import styles from './TunnelExplainer.module.css'
 
 interface TunnelExplainerProps {
@@ -10,7 +10,7 @@ interface TunnelExplainerProps {
 type ExplainerVariant = 'open-host' | 'open-no-host' | 'closed'
 
 const deriveVariant = (state: TunnelState): ExplainerVariant => {
-  if (!isTunnelOpen(state)) return 'closed'
+  if (!mightTunnelBeOpen(state)) return 'closed'
   return state.publicHost !== null ? 'open-host' : 'open-no-host'
 }
 

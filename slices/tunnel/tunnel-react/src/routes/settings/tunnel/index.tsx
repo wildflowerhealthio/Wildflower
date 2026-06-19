@@ -9,7 +9,7 @@ import { TunnelActivityFeed, type ActivityEntry } from '../../../components/Tunn
 import { TunnelExplainer } from '../../../components/TunnelExplainer.tsx'
 import { TunnelStatusHero } from '../../../components/TunnelStatusHero.tsx'
 import {
-  isTunnelOpen,
+  mightTunnelBeOpen,
   tunnelStateQueryOptions,
   useTunnelStateQuery,
   type TunnelState,
@@ -97,7 +97,9 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
         </p>
       ) : null}
 
-      {isTunnelOpen(state) ? <TunnelActivityFeed entries={buildShamActivityEntries()} /> : null}
+      {mightTunnelBeOpen(state) ? (
+        <TunnelActivityFeed entries={buildShamActivityEntries()} />
+      ) : null}
 
       <RelaySettingsEntry />
     </>
