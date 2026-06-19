@@ -135,6 +135,28 @@ mod tests {
         assert_eq!(body["error"], "InvalidUrl");
     }
 
+    /// An empty name is a 400 tagged `InvalidName`, not `InvalidUrl` — a
+    /// client switching on `error` must be able to tell a name problem from a
+    /// URL problem.
+    #[tokio::test]
+    async fn create_rejects_empty_name_with_invalid_name() {
+        let st = state();
+        let (status, body) = send(
+            &st,
+            post(
+                "/apps",
+                serde_json::json!({
+                    "name": "",
+                    "url": "https://example.com/x",
+                    "requiresTunnel": false,
+                }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"], "InvalidName");
+    }
+
     /// Bundled apps are first-class — every editable field is editable.
     /// Rename, URL swap, and disable all land successfully.
     #[tokio::test]
@@ -182,6 +204,24 @@ mod tests {
         let (status, body) = send(
             &st,
             patch("/apps/no-such-id", serde_json::json!({ "enabled": false })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body["error"], "AppNotFound");
+    }
+
+    /// Existence is resolved before the patch fields are validated, so a PATCH
+    /// to an unknown id with an *also-invalid* url is a 404 (missing resource),
+    /// not a 400 — the missing-resource signal isn't masked by field validation.
+    #[tokio::test]
+    async fn update_unknown_with_bad_url_is_still_404() {
+        let st = state();
+        let (status, body) = send(
+            &st,
+            patch(
+                "/apps/no-such-id",
+                serde_json::json!({ "url": "javascript:alert(1)" }),
+            ),
         )
         .await;
         assert_eq!(status, StatusCode::NOT_FOUND);

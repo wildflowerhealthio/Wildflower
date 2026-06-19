@@ -28,6 +28,13 @@ use crate::http::TunnelState;
 /// resident task ever stalls.
 const START_QUEUE_DEPTH: usize = 16;
 
+/// How many times [`start_tunnel`] re-reads and retries its persist
+/// compare-and-swap when a racing write bumps the settings revision between the
+/// read and the write. Unrelated to [`START_QUEUE_DEPTH`] — a settings CAS
+/// contends with the (rare) tunnel PUT surface, so a handful of retries is
+/// ample before surfacing a "please retry" to the caller.
+const START_CAS_RETRIES: usize = 8;
+
 /// A handle onto the running tunnel's control seam. Cheap to clone (an `mpsc`
 /// sender plus a `watch` receiver); hand a clone to each consumer.
 #[derive(Clone)]
@@ -96,7 +103,7 @@ pub(crate) fn spawn_control(state: Arc<TunnelState>) -> TunnelControl {
 /// number of times if a racing write bumps the revision between our read and
 /// write.
 fn start_tunnel(state: &TunnelState) -> Result<String, String> {
-    for _ in 0..START_QUEUE_DEPTH {
+    for _ in 0..START_CAS_RETRIES {
         let current = state
             .store
             .get_settings()

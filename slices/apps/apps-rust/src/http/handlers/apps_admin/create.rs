@@ -37,7 +37,7 @@ async fn handle_create_app(
     Json(body): Json<CreateAppBody>,
 ) -> Result<Json<AppEntry>, HandlerError> {
     if body.name.is_empty() {
-        return Err(HandlerError::InvalidUrl {
+        return Err(HandlerError::InvalidName {
             message: "name must not be empty".to_owned(),
         });
     }

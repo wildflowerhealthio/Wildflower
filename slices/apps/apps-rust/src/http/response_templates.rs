@@ -47,11 +47,13 @@ struct AppNotFoundBody {
     id: String,
 }
 
-/// Wire shape for `InvalidUrl` — the 400 a bad app URL gets back. The
-/// `message` carries the human-readable reason from
-/// [`crate::domain::AppUrlError`].
+/// Wire shape for a 400 carrying a discriminant + human-readable reason.
+/// Reused for `InvalidUrl` (a bad app URL) and `InvalidName` (an empty name)
+/// — both are write-side field validations the client renders inline. The
+/// `error` discriminant lets a client tell the two apart rather than seeing a
+/// URL-error tag for a name problem.
 #[derive(Debug, Serialize)]
-struct InvalidUrlBody {
+struct InvalidFieldBody {
     error: &'static str,
     message: String,
 }
@@ -67,6 +69,8 @@ pub(crate) enum HandlerError {
     NotFound { id: String },
     /// 400 — the submitted URL failed the write-side validator.
     InvalidUrl { message: String },
+    /// 400 — the submitted name was empty.
+    InvalidName { message: String },
 }
 
 impl HandlerError {
@@ -89,8 +93,16 @@ impl IntoResponse for HandlerError {
                 .into_response(),
             HandlerError::InvalidUrl { message } => (
                 StatusCode::BAD_REQUEST,
-                Json(InvalidUrlBody {
+                Json(InvalidFieldBody {
                     error: "InvalidUrl",
+                    message,
+                }),
+            )
+                .into_response(),
+            HandlerError::InvalidName { message } => (
+                StatusCode::BAD_REQUEST,
+                Json(InvalidFieldBody {
+                    error: "InvalidName",
                     message,
                 }),
             )
