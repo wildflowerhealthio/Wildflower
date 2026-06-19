@@ -71,14 +71,15 @@
 }
 
 /* Dark mode — the translucent bar is a one-off literal cream, so flip it to a
- * dark tint here; the CTA hover stays on a saturated plum under a light label. */
+ * dark tint here; the CTA hover fills with the darker copper accent-fill under
+ * its cream label (the light gold --color-plum is only ~2.2:1 under cream). */
 @media (prefers-color-scheme: dark) {
   .site-header {
     background: rgba(26, 21, 18, 0.86);
   }
 
   .site-header__cta:hover {
-    background: var(--color-plum);
+    background: var(--color-accent-fill);
     color: #fbf4e9;
   }
 }

@@ -1,43 +1,7 @@
-.fields {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--space-6);
-}
-
-.field-row {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.current {
-  color: var(--color-neutral-4);
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-4);
-}
-
-.relay {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  padding: var(--space-5);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-3);
-}
-
-.relay__summary {
-  cursor: pointer;
-  font-weight: var(--font-weight-3);
-}
-
-.relay__error {
-  color: var(--color-red-5);
-}
-
+/* The overview's only styled element: the "changed elsewhere" banner shown
+ * when a Run-tunnel toggle conflicts (409). The form/relay-endpoint styling
+ * moved to relay.module.css along with the form itself. */
 .conflict {
   color: var(--color-yellow-5);
+  margin: 0;
 }

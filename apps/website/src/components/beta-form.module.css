@@ -93,18 +93,18 @@
   }
 }
 
-/* Dark mode — the submit fills stay saturated under their light label, so
- * restore the canon accent rather than following the flipped ink, and keep
- * the label cream. The hover deepens to the copper one rung down the chain. */
+/* Dark mode — the submit fills carry a cream label, so use the darker copper
+ * accent-fill (the light gold --color-plum gives only ~2.2:1 under cream).
+ * The hover deepens one rung further. */
 @media (prefers-color-scheme: dark) {
   .beta-form__submit--hero,
   .beta-form__submit--cta {
-    background: var(--color-plum);
+    background: var(--color-accent-fill);
     color: #fbf4e9;
   }
 
   .beta-form__submit--hero:hover,
   .beta-form__submit--cta:hover {
-    background: oklch(0.576 0.15 65);
+    background: var(--color-accent-fill-hover);
   }
 }

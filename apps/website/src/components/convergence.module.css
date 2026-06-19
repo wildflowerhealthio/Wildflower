@@ -321,11 +321,13 @@
   }
 }
 
-/* Dark mode — the active chip / app card stay on the plum fill, so their label
- * keeps a light cream tone rather than the flipped `--color-cream`. */
+/* Dark mode — the active chip / app card carry a cream label, so fill with the
+ * darker copper accent-fill (the base `--color-plum` is a light gold on dark,
+ * only ~2.2:1 under cream) rather than the flipped `--color-cream`. */
 @media (prefers-color-scheme: dark) {
   .chip--active,
   .app-card--active {
+    background: var(--color-accent-fill);
     color: #fbf4e9;
   }
 }

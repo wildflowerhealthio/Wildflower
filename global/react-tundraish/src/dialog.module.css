@@ -71,3 +71,10 @@
 :root[data-color-scheme='dark'] .dialog {
   box-shadow: 0 26px 60px rgba(0, 0, 0, 0.6);
 }
+
+/* The warm-ink scrim barely dims the near-black canvas, so deepen it to a
+ * stronger black in dark mode — otherwise the page behind the modal reads as
+ * undimmed and the dialog stops floating above it. */
+:root[data-color-scheme='dark'] .dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}

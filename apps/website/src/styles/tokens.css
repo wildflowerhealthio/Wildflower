@@ -131,11 +131,18 @@
 
     /* Accent — the dark theme trades the plum/rose chain for a warm
      * amber/copper. The light amber reads as link / eyebrow text on the dark
-     * canvas; the saturated gold takes the active / selected / CTA fill role
-     * the plum used to. Light mode keeps the plum chain. */
+     * canvas; the saturated gold marks the active / selected accent. Light
+     * mode keeps the plum chain. */
     --color-magenta: oklch(0.576 0.15 65); /* primary accent (as text) */
     --color-magenta-hover: oklch(0.923 0.117 66);
-    --color-plum: oklch(0.736 0.163 66); /* active / selected; CTA fills */
+    --color-plum: oklch(0.736 0.163 66); /* active / selected accent (on dark) */
+
+    /* Accent *fill* that carries the cream label. --color-plum / --color-magenta
+     * are tuned as accent text on the dark canvas (light), so they're too pale
+     * to sit cream text on (the gold gives only ~2.2:1). This darker copper
+     * clears AA behind #fbf4e9 (~4.6:1 resting, ~6.3:1 hover). */
+    --color-accent-fill: oklch(0.55 0.15 65);
+    --color-accent-fill-hover: oklch(0.48 0.15 65);
 
     /* Functional — source dots & the success chip on dark. */
     --color-amber: #e0a83a;

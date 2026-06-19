@@ -36,8 +36,8 @@ const renderCopy = (variant: ExplainerVariant, publicHost: string | null): React
   return (
     <>
       By default, your personal health record is only accessible on this device. <br /> By
-      activating the tunnel you can use apps that access your data remotely, or grant access
-      from another device.
+      activating the tunnel you can use apps that access your data remotely, or grant access from
+      another device.
     </>
   )
 }

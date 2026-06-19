@@ -1,7 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { DateTime } from 'effect'
 import type { JSX } from 'react'
-import { AsyncErrorView, PageHeader } from 'react-tundraish'
+import { cn } from 'react-kitchen-sink'
+import { AsyncErrorView, PageHeader, pageLayoutStyles } from 'react-tundraish'
 
 import { RelaySettingsEntry } from '../../../components/RelaySettingsEntry.tsx'
 import { TunnelActivityFeed, type ActivityEntry } from '../../../components/TunnelActivityFeed.tsx'
@@ -14,6 +15,7 @@ import {
   type TunnelState,
 } from '../../../queries.ts'
 import { useTunnelSettingsForm } from '../../../use-tunnel-settings-form.ts'
+import styles from './index.module.css'
 
 interface TunnelScreenBodyProps {
   readonly state: TunnelState
@@ -58,9 +60,9 @@ const buildShamActivityEntries = (): readonly ActivityEntry[] => {
  * + the Save / Test connection actions live on the Relay settings
  * page (`/settings/tunnel/relay`); this screen carries no form.
  *
- * The hero still owns the live Run-tunnel switch, so the overview
- * uses the shared `useTunnelSettingsForm` hook for its `toggle` and
- * `pending` outputs only.
+ * The hero still owns the live Run-tunnel switch, so the overview uses the
+ * shared `useTunnelSettingsForm` hook for its `toggle`/`pending` outputs and
+ * for the toggle's mutation feedback (`errorMessage` / `conflicted`).
  */
 const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   const form = useTunnelSettingsForm(state)
@@ -76,9 +78,26 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
         <TunnelStatusHero state={state} onToggle={form.toggle} />
       )}
 
-      {isTunnelOpen(state) ? (
-        <TunnelActivityFeed entries={buildShamActivityEntries()} />
+      {/*
+       * The Run-tunnel switch lives in the hero, so its mutation feedback
+       * surfaces here rather than on the relay form: a failed toggle (transport
+       * error) and a 409 (the tunnel changed on another device) would otherwise
+       * be silently swallowed on this screen.
+       */}
+      {form.errorMessage !== null ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
+          {form.errorMessage}
+        </p>
       ) : null}
+
+      {form.conflicted ? (
+        <p className={cn(styles['conflict'], 'text-body-3')} role="status">
+          The tunnel was changed on another device — the latest state is shown above. Toggle again
+          to apply your change.
+        </p>
+      ) : null}
+
+      {isTunnelOpen(state) ? <TunnelActivityFeed entries={buildShamActivityEntries()} /> : null}
 
       <RelaySettingsEntry />
     </>

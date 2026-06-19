@@ -102,6 +102,26 @@ describe('TunnelStatusHero — switch', () => {
     const sw = screen.getByRole<HTMLInputElement>('switch', { name: 'Run tunnel' })
     expect(sw.disabled).toBe(true)
   })
+
+  // A disabled hero (e.g. while a pending mutation locks the control) must not
+  // fire the callback even when one is supplied — the live toggle is the tunnel
+  // control, so a stray call mid-flight would issue a second write.
+  test('disabled hero never calls onToggle even when one is supplied', () => {
+    let called = false
+    render(
+      <TunnelStatusHero
+        state={ONLINE_WITH_HOST}
+        disabled
+        onToggle={() => {
+          called = true
+        }}
+      />
+    )
+    const sw = screen.getByRole<HTMLInputElement>('switch', { name: 'Run tunnel' })
+    expect(sw.disabled).toBe(true)
+    fireEvent.click(sw)
+    expect(called).toBe(false)
+  })
 })
 
 describe('TunnelStatusHero — address block', () => {

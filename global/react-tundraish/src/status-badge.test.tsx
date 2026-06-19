@@ -22,9 +22,9 @@ describe('StatusBadge', () => {
     // Act
     render(<StatusBadge tone="neutral">Idle</StatusBadge>)
 
-    // Assert
+    // Assert — exactly `status-badge`, no accent class and no empty-string
+    // sentinel appended for the neutral tone.
     const badge = screen.getByRole('status')
-    expect(Array.from(badge.classList)).not.toContain('')
     expect(badge.className).toMatch(/^status-badge\s*$/)
   })
 
