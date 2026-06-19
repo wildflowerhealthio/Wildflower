@@ -41,8 +41,16 @@ pub fn validate_app_url(value: &str) -> Result<(), AppUrlError> {
     if value.is_empty() {
         return Err(AppUrlError::Empty);
     }
-    if value.starts_with("{origin}") {
-        return Ok(());
+    if let Some(rest) = value.strip_prefix("{origin}") {
+        // `{origin}` must be followed by a path/query/fragment (or nothing),
+        // never an authority-extending char. Otherwise `{origin}@evil.com`
+        // would persist and resolve to `http://<loopback>@evil.com`, an
+        // off-device redirect target that the launch-time guard (which only
+        // prefix-matches the origin) would wave through.
+        if rest.is_empty() || rest.starts_with(['/', '?', '#']) {
+            return Ok(());
+        }
+        return Err(AppUrlError::Invalid);
     }
     if value.starts_with('/') && !value.starts_with("//") {
         return Ok(());
@@ -62,6 +70,19 @@ mod tests {
         assert!(validate_app_url("https://example.com/x").is_ok());
         assert!(validate_app_url("/relative/path").is_ok());
         assert!(validate_app_url("{origin}/launch?foo=1").is_ok());
+        // `{origin}` may be the whole URL or carry a query/fragment directly.
+        assert!(validate_app_url("{origin}").is_ok());
+        assert!(validate_app_url("{origin}?x=1").is_ok());
+        assert!(validate_app_url("{origin}#frag").is_ok());
+    }
+
+    #[test]
+    fn rejects_origin_placeholder_that_extends_the_authority() {
+        // `{origin}@evil.com` → resolves to `http://<loopback>@evil.com`, an
+        // off-device redirect; the boundary check must reject it on write.
+        for bad in ["{origin}@evil.com/x", "{origin}.evil.com", "{origin}evil"] {
+            assert_eq!(validate_app_url(bad), Err(AppUrlError::Invalid), "rejects {bad}");
+        }
     }
 
     #[test]

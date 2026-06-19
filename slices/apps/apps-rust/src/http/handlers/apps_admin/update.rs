@@ -66,9 +66,18 @@ async fn handle_update_app(
     Path(id): Path<String>,
     Json(body): Json<UpdateAppBody>,
 ) -> Result<Json<AppEntry>, HandlerError> {
+    // Resolve existence before validating the patch fields: a PATCH to an
+    // unknown id is a 404 regardless of whether its body also carries a bad
+    // name/url, so the missing-resource signal isn't masked by a 400.
+    let mut existing = state
+        .store
+        .find_app(&id)
+        .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
+        .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
+
     if let Some(name) = body.name.as_deref() {
         if name.is_empty() {
-            return Err(HandlerError::InvalidUrl {
+            return Err(HandlerError::InvalidName {
                 message: "name must not be empty".to_owned(),
             });
         }
@@ -78,12 +87,6 @@ async fn handle_update_app(
             message: e.to_string(),
         })?;
     }
-
-    let mut existing = state
-        .store
-        .find_app(&id)
-        .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
-        .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
 
     if let Some(enabled) = body.enabled {
         existing.enabled = enabled;

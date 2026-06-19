@@ -104,18 +104,38 @@ fn append_tunnel_unavailable(target: &str) -> String {
 /// weird URL can't 302 to it. Acceptable targets:
 ///
 ///   * Any URL sharing the live origin (`origin_prefix`) — covers
-///     bundled-style apps that resolve to the loopback host as well as
-///     `/path`-shaped URLs.
+///     bundled-style apps that resolve to the loopback host. The prefix must
+///     end at a path/query/fragment boundary so a crafted target like
+///     `http://127.0.0.1:8080@evil.com` (where the origin becomes userinfo)
+///     or `http://127.0.0.1:8080.evil.com` can't masquerade as same-origin
+///     and 302 the webview off-device.
+///   * An origin-relative `/path` (but NOT a protocol-relative `//authority`,
+///     which is an open redirect) — the browser resolves it against the live
+///     origin, and `validate_app_url` accepts the same shape on write.
 ///   * Any absolute `https://` URL — for off-device targets (growth-chart,
 ///     medication-viewer, third-party custom apps).
 ///
 /// Anything else is treated as "not found" by the caller to avoid leaking
 /// a distinct rejection signal.
 fn is_launchable_url(target: &str, origin_prefix: &str) -> bool {
-    if target.starts_with(origin_prefix) {
+    if let Some(rest) = target.strip_prefix(origin_prefix) {
+        if has_url_boundary(rest) {
+            return true;
+        }
+    }
+    if target.starts_with('/') && !target.starts_with("//") {
         return true;
     }
     target.starts_with("https://")
+}
+
+/// True when `rest` (whatever follows a matched origin/placeholder prefix) is
+/// either empty or begins a path, query, or fragment — i.e. the prefix ended
+/// at a real URL boundary rather than extending the authority (`@`, `.`, `:`,
+/// extra host chars). This is what stops `{origin}`/origin-prefix matches from
+/// being widened into an off-device authority.
+fn has_url_boundary(rest: &str) -> bool {
+    rest.is_empty() || rest.starts_with(['/', '?', '#'])
 }
 
 /// 21-char base62-ish nonce — close enough to nanoid (the TS handler's
@@ -189,6 +209,23 @@ mod tests {
         // `javascript:` and friends — none of them start with the origin or `https://`
         assert!(!is_launchable_url(
             "javascript:alert(1)",
+            "http://127.0.0.1:8080"
+        ));
+        // Origin-relative `/path` is launchable (the browser resolves it
+        // against the live origin); protocol-relative `//authority` is not.
+        assert!(is_launchable_url("/installed-apps/x", "http://127.0.0.1:8080"));
+        assert!(!is_launchable_url("//evil.example.com/x", "http://127.0.0.1:8080"));
+        // The bare origin (no trailing path) is fine.
+        assert!(is_launchable_url("http://127.0.0.1:8080", "http://127.0.0.1:8080"));
+        // Authority-extension attacks: the origin must end at a boundary, so a
+        // userinfo (`@`) or extra-host-chars (`.`) target can't pose as
+        // same-origin.
+        assert!(!is_launchable_url(
+            "http://127.0.0.1:8080@evil.com/",
+            "http://127.0.0.1:8080"
+        ));
+        assert!(!is_launchable_url(
+            "http://127.0.0.1:8080.evil.com/",
             "http://127.0.0.1:8080"
         ));
     }
