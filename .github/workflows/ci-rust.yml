@@ -31,9 +31,10 @@ jobs:
   # a single compiled-artifact cache mean the workspace is compiled ONCE, then
   # clippy and the tests reuse those artifacts — instead of the previous two
   # jobs (lint and nextest) each warming the cache and compiling from it
-  # separately. wildflower-tauri and browser-sniffer-tauri-rust are excluded:
-  # both pull in `tauri = "2"` and need GTK/webkit system libs, so
-  # ci-rust-tauri.yml compiles, lints, and tests them on its own.
+  # separately. wildflower-tauri, browser-sniffer-tauri-rust, and
+  # shared-structures-tauri-rust are excluded: all pull in `tauri = "2"` and
+  # need GTK/webkit system libs, so ci-rust-tauri.yml compiles, lints, and
+  # tests them on its own.
   rust:
     name: Lint + Test
     if: github.event.pull_request.draft != true
@@ -55,7 +56,7 @@ jobs:
       - name: rustfmt
         run: cargo fmt --all --check
       - name: clippy (deny warnings)
-        run: cargo clippy --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --exclude shared-structures-tauri-rust --all-targets --all-features -- -D warnings
       - name: clippy pedantic (informational, main only)
         # Pedantic findings surface as annotations but do not fail the job. This
         # recompiles clippy a second time, so running it on every PR roughly
@@ -63,19 +64,19 @@ jobs:
         # Promote it into the deny-warnings step above once the tree is clean.
         if: github.event_name == 'push'
         continue-on-error: true
-        run: cargo clippy --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-targets --all-features -- -W clippy::pedantic
+        run: cargo clippy --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --exclude shared-structures-tauri-rust --all-targets --all-features -- -W clippy::pedantic
       - name: Run tests (nextest)
         # --no-tests=warn keeps the run green while these crates have no tests
         # yet (nextest 0.9.85+ fails on zero tests by default). Switch to
         # --no-tests=fail once Rust tests exist to guard against an empty run.
-        run: cargo nextest run --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-features --no-tests=warn
+        run: cargo nextest run --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --exclude shared-structures-tauri-rust --all-features --no-tests=warn
       - name: Run doctests (main only)
         # nextest does not run doctests, so cover them with cargo test. The
         # workspace currently has ~no doctests, so this is an extra compile for
         # little gain on PRs — restrict it to main. Promote to all events once
         # doctests exist.
         if: github.event_name == 'push'
-        run: cargo test --doc --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-features
+        run: cargo test --doc --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --exclude shared-structures-tauri-rust --all-features
 
   # Supply-chain gate. Kept as its own job because cargo-deny doesn't reuse the
   # compiled-workspace artifacts above, so merging it in would only serialize

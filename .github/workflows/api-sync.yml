@@ -54,7 +54,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Set up Rust toolchain
         # Share the `rust-workspace-excl-tauri` cache with ci-rust.yml: this job
-        # compiles the same workspace set (everything except wildflower-tauri),
+        # compiles the same workspace set (everything except the tauri crates),
         # so the same compiled deps warm both.
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -63,10 +63,11 @@ jobs:
         # One shared test name across the workspace, so adding a slice's snapshot
         # test needs no edit here. Regenerate a stale snapshot with e.g.
         #   UPDATE_OPENAPI=1 cargo test -p <slice>-rust openapi_spec_snapshot_is_up_to_date
-        # wildflower-tauri and browser-sniffer-tauri-rust are excluded — both
-        # pull in `tauri = "2"` which needs GTK/webkit system libs to build
-        # (see ci-rust-tauri.yml). Neither owns a documented OpenAPI surface.
-        run: cargo test --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --all-features openapi_spec_snapshot_is_up_to_date
+        # wildflower-tauri, browser-sniffer-tauri-rust, and
+        # shared-structures-tauri-rust are excluded — all pull in `tauri = "2"`
+        # which needs GTK/webkit system libs to build (see ci-rust-tauri.yml).
+        # None owns a documented OpenAPI surface.
+        run: cargo test --workspace --exclude wildflower-tauri --exclude browser-sniffer-tauri-rust --exclude shared-structures-tauri-rust --all-features openapi_spec_snapshot_is_up_to_date
 
   ts-drift:
     name: TS Drift
