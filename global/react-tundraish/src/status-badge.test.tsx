@@ -70,4 +70,16 @@ describe('StatusBadge', () => {
     // Assert
     expect(screen.getByRole('status').querySelector('.sr-only')).toBeNull()
   })
+
+  it('adds the pulse class only when pulse is true', () => {
+    const { rerender } = render(
+      <StatusBadge tone="success" pulse>
+        Online
+      </StatusBadge>
+    )
+    expect(screen.getByRole('status').classList.contains('pulse')).toBe(true)
+
+    rerender(<StatusBadge tone="success">Online</StatusBadge>)
+    expect(screen.getByRole('status').classList.contains('pulse')).toBe(false)
+  })
 })

@@ -517,9 +517,11 @@ hr {
   font-weight: var(--font-weight-3);
   line-height: 1.2;
   white-space: nowrap;
-  /* neutral tone (no accent class) */
+  /* neutral tone (no accent class) — quieter ink/dot than the toned
+   * variants so an "Off"/"Idle" badge reads as resting rather than as
+   * highlighted info. */
   background: #efe7da;
-  color: #3a2e28;
+  color: #6c5b50;
   border: 1px solid rgba(44, 33, 29, 0.18);
 }
 
@@ -529,7 +531,36 @@ hr {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: #6c5b50;
+  background: #9a897d;
+}
+
+/*
+ * `pulse` is an opt-in liveliness cue on the leading dot — used to mean
+ * "this status is being kept fresh" (e.g. an Online tunnel, a Live
+ * feed). The animation is a gentle scale + opacity dip, cancelled under
+ * `prefers-reduced-motion`.
+ */
+@keyframes status-badge-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.55;
+  }
+}
+
+.status-badge.pulse::before {
+  animation: status-badge-pulse 1.8s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-badge.pulse::before {
+    animation: none;
+  }
 }
 
 .status-badge.accent-blue {
@@ -571,11 +602,11 @@ hr {
 /* Dark-mode tones — warm-tinted fills, lighter text/dots. */
 :root[data-color-scheme='dark'] .status-badge {
   background: #2b231d;
-  color: #d8cabb;
+  color: #9c8a7c;
   border-color: rgba(247, 236, 221, 0.12);
 }
 :root[data-color-scheme='dark'] .status-badge::before {
-  background: #b3a294;
+  background: #7d6c5f;
 }
 :root[data-color-scheme='dark'] .status-badge.accent-blue {
   background: #173a37;

@@ -5,7 +5,7 @@ export {
   type TunnelAdminClientRequirements,
 } from './client/tunnel-client.ts'
 
-export { TunnelToggle, type TunnelToggleProps } from './components/TunnelToggle.tsx'
+export { TunnelStatusHero, type TunnelStatusHeroProps } from './components/TunnelStatusHero.tsx'
 
 export * as TunnelRouterContext from './router-context.ts'
 

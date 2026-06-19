@@ -199,7 +199,7 @@ describe('tunnel settings form — conflict flow', () => {
 
     // Toggling applies cleanly (fresh revision) but must NOT clear the
     // unresolved host conflict.
-    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('switch', { name: 'Run tunnel' }))
     await waitFor(() => {
       expect(queryClient.getQueryData<TunnelState>(TUNNEL_STATE_QUERY_KEY)?.revision).toBe(2)
     })
@@ -277,7 +277,7 @@ describe('tunnel settings form — dirty-edit preservation', () => {
 
     // Toggle the tunnel — an unrelated write that bumps the revision but
     // leaves the host untouched on the server.
-    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('switch', { name: 'Run tunnel' }))
     await waitFor(() => {
       expect(queryClient.getQueryData<TunnelState>(TUNNEL_STATE_QUERY_KEY)?.revision).toBe(1)
     })

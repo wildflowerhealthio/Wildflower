@@ -9,7 +9,8 @@ import {
   pageLayoutStyles,
 } from 'react-tundraish'
 
-import { TunnelToggle } from '../../../components/TunnelToggle.tsx'
+import { TunnelExplainer } from '../../../components/TunnelExplainer.tsx'
+import { TunnelStatusHero } from '../../../components/TunnelStatusHero.tsx'
 import {
   tunnelStateQueryOptions,
   useTunnelStateQuery,
@@ -51,9 +52,7 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
   return (
     <>
       <PageHeader title="Tunnel" backHref="/settings" backLabel="Settings" />
-      <FieldDescription>
-        Expose this device to the public Internet so apps installed on phones can reach it.
-      </FieldDescription>
+      <TunnelExplainer state={state} />
 
       {form.errorMessage !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
@@ -68,13 +67,11 @@ const TunnelScreenBody = ({ state }: TunnelScreenBodyProps): JSX.Element => {
         </p>
       ) : null}
 
-      <TunnelToggle
-        requestedRunning={state.requestedRunning}
-        running={state.running}
-        error={state.error}
-        disabled={form.pending}
-        onToggle={form.toggle}
-      />
+      {form.pending ? (
+        <TunnelStatusHero state={state} disabled />
+      ) : (
+        <TunnelStatusHero state={state} onToggle={form.toggle} />
+      )}
 
       <div className={styles['fields']}>
         <Field label="Public host" htmlFor={hostInputDomId}>
