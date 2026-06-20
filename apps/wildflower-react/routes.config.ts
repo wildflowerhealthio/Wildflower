@@ -48,6 +48,7 @@ export const routes = rootRoute('__root.tsx', [
     index('settings/index.tsx'),
     physical('', routesDir('tunnel', 'settings')),
     physical('', routesDir('gatekeeper', 'settings')),
+    physical('', routesDir('databases', 'settings')),
   ]),
   layout('_auth', '_auth.tsx', [
     index('_auth/index.tsx'),

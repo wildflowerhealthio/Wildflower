@@ -31,6 +31,7 @@ serde.workspace = true
 serde_json.workspace = true
 apps-rust = { path = "../../../slices/apps/apps-rust" }
 browser-sniffer-tauri-rust = { path = "../../../slices/browser-sniffer/browser-sniffer-tauri-rust" }
+databases-rust = { path = "../../../slices/databases/databases-rust" }
 emr-rust = { path = "../../../slices/emr/emr-rust" }
 gatekeeper-rust = { path = "../../../slices/gatekeeper/gatekeeper-rust" }
 persistence-rust = { path = "../../../slices/persistence/persistence-rust" }
