@@ -273,6 +273,12 @@ impl TunnelDaemon {
         // request through it and flaps the public origin. The persisted/wire
         // revision still advances (the response reads it from the DB settings);
         // only the live supervisor is left untouched.
+        //
+        // The relay comparison is the *full* `RelaySettings`, token included:
+        // rotated credentials are a real change. The live supervisor is dialing
+        // with the now-stale token, so it must re-dial with the new one — a
+        // token rotation is intentionally NOT a no-op (an identical re-send
+        // still compares equal and stays a no-op).
         if settings.requested_running {
             if let Some(handle) = supervisor.as_ref() {
                 if handle.relay_settings == settings.relay_settings
@@ -957,6 +963,64 @@ mod tests {
             dials.load(Ordering::SeqCst),
             2,
             "a changed public host re-dials"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reconcile_with_a_rotated_relay_token_re_dials() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        // Counts relay dials. A relay *credential* change — here a rotated token,
+        // same remote_addr/public_key/service_name/public_host — is a real
+        // dialable change, not a no-op: the live supervisor is dialing with the
+        // now-stale token, so the tunnel must re-dial with the new credentials.
+        struct CountingHoldRelayClient(Arc<AtomicUsize>);
+        #[async_trait::async_trait]
+        impl RelayClient for CountingHoldRelayClient {
+            async fn run_once(
+                &self,
+                _relay: &RelaySettings,
+                _local_addr: &str,
+                cancel: CancellationToken,
+            ) -> anyhow::Result<()> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                cancel.cancelled().await;
+                Ok(())
+            }
+        }
+
+        let dials = Arc::new(AtomicUsize::new(0));
+        let daemon = daemon_with(
+            Arc::new(CountingHoldRelayClient(Arc::clone(&dials))),
+            Arc::new(StubProbe::passing()),
+        );
+        let mut rx = daemon.watch_liveness();
+        daemon.reconcile(&running_settings(1, Some("dev1.example.com")));
+        rx.wait_for(|l| l.status == TunnelStatus::Verified)
+            .await
+            .expect("first session verifies");
+        assert_eq!(dials.load(Ordering::SeqCst), 1, "dialed once to come up");
+
+        // Same host/addr/key/service, only the token rotated. The live
+        // supervisor holds stale credentials, so reconcile must cancel and
+        // re-dial with the new token rather than treat the save as a no-op.
+        let rotated = TunnelSettings {
+            revision: 2,
+            public_host: Some("dev1.example.com".into()),
+            requested_running: true,
+            relay_settings: Some(RelaySettings {
+                token: "rotated-tok".into(),
+                ..relay()
+            }),
+        };
+        daemon.reconcile(&rotated);
+        rx.wait_for(|l| l.status == TunnelStatus::Verified)
+            .await
+            .expect("re-dials and re-verifies on a rotated relay token");
+        assert_eq!(
+            dials.load(Ordering::SeqCst),
+            2,
+            "a rotated relay token re-dials with the new credentials"
         );
     }
 }
