@@ -4,6 +4,24 @@ A running log of non-obvious insights discovered during agent sessions. Triage i
 
 <!-- Append new entries below this line -->
 
+### rathole's `"Unable to listen for shutdown signal: channel closed"` is a teardown symptom, not a cause
+
+**Discovered during**: claude/pr-202-tunnel-seam — debugging tunnel launch flap
+**Learning**: We build `rathole` with `default-features = false` (no `notify`/`hot-reload`), so rathole's config watcher is the stub variant that does nothing but `await` the `broadcast::Receiver<bool>` shutdown we hand `rathole::run(cli, shutdown_rx)`. rathole's `run()` therefore ends — tearing down the control channel and logging `"Unable to listen for shutdown signal: channel closed"` from `client.run` — the instant **our** `shutdown_tx` drops, which happens when the supervisor's `run_once` future is dropped on cancel. So that error means "the supervisor got cancelled," i.e. a reconcile cancelled it — chase *what issued the reconcile*, not the rathole error. Confirmed by logging which `select!` branch `run_once` takes (`cancel.cancelled()` fired). The verify-deadline-too-tight theory was a red herring: the tunnel verifies in ~1s; it's the flap (cancel → re-dial) that breaks launches.
+**Suggested destination**: unsure (tunnel-rust relay_clients/rathole.rs context)
+
+### `reconcile` must not re-dial a live tunnel on a no-op settings revision bump
+
+**Discovered during**: claude/pr-202-tunnel-seam — tunnel flap fix
+**Learning**: Any newer settings revision made the tunnel daemon's `reconcile` cancel the live supervisor and re-dial from scratch — even when the *dialable* config (relay + public_host) was unchanged. That tears rathole down (drops in-flight requests, flaps the public origin) on every redundant write (a settings re-save, a `requestedRunning` re-assert). Fix: `SupervisorHandle` carries the `relay_settings`/`public_host` it's driving; `reconcile` returns early (keeps the live tunnel) when the incoming revision is still `requested_running` with the same relay + host. The persisted/wire revision still advances (the `/tunnel` response reads it from the DB settings, not the watch), so leaving the watch's `settings_revision` at the supervisor's value is correct and keeps its `set_state` supersession check intact.
+**Suggested destination**: unsure (tunnel-rust domain/tunnel_daemon.rs context)
+
+### Tauri host `emit` echoes back to host `listen` on the same event — bridge handlers must filter by tag
+
+**Discovered during**: claude/pr-202-tunnel-seam — wiring the apps RequestTunnel bridge handler for Tauri
+**Learning**: The webview↔host bridge multiplexes every tag onto one Tauri event (`shared_structures_rust::bridge::BRIDGE_EVENT`). A host listener registered with `app.listen(BRIDGE_EVENT, …)` also receives the host's own `app.emit(BRIDGE_EVENT, …)` replies, so a web→host handler must decode the envelope `_tag` and act on *only* its inbound tag (e.g. `RequestTunnel`), dropping host→web echoes and sibling-slice traffic — otherwise it loops on its own replies. Host→web wire types live in the slice's `*-rust::bridge` module (e.g. `AppsHostToWeb`, mirroring `GatekeeperHostToWeb`) and are byte-pinned to the TS `Schema.parseJson(Schema.TaggedStruct(...))` shapes in `*-core/src/bridge.ts` with golden serde tests; Tauri's struct-`emit` matches `parseJson` (verified against the working gatekeeper bridge). The `RequestTunnel` handler must be attached where the `TunnelService` exists (in `run_server`, not the sync `setup()`), so thread an `AppHandle` through.
+**Suggested destination**: unsure (apps bridge / Tauri host wiring)
+
 ## In Claude-on-the-web sessions, run `vp test` via the workspace-local `vp`, not the globally-bootstrapped one
 
 **Discovered during**: claude/gifted-archimedes-kgdxoy — building apps/website
