@@ -160,13 +160,13 @@ mod tests {
         assert_eq!(
             body,
             serde_json::json!({
-                "revision": 0,
+                "settingsRevision": 0,
                 "publicHost": null,
                 "requestedRunning": false,
                 "status": "off",
                 "running": false,
                 "error": null,
-                "attempt": 0,
+                "dialAttempts": 0,
                 "servedOrigin": "http://127.0.0.1:8080",
                 "relay": null,
             })
@@ -183,7 +183,7 @@ mod tests {
         let (status, body) = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0,
+                "settingsRevision": 0,
                 "publicHost": "dev1.example.com",
                 "requestedRunning": true,
                 "relay": relay_json(),
@@ -191,7 +191,7 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body["revision"], serde_json::json!(1));
+        assert_eq!(body["settingsRevision"], serde_json::json!(1));
         assert_eq!(body["status"], serde_json::json!("dialing"));
         assert_eq!(body["running"], serde_json::json!(true), "supervisor up");
         assert_eq!(
@@ -209,7 +209,7 @@ mod tests {
         let _ = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0,
+                "settingsRevision": 0,
                 "publicHost": "dev1.example.com",
                 "requestedRunning": true,
                 "relay": relay_json(),
@@ -235,7 +235,7 @@ mod tests {
         let _ = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0, "publicHost": "dev1.example.com",
+                "settingsRevision": 0, "publicHost": "dev1.example.com",
                 "requestedRunning": true, "relay": relay_json(),
             })),
         )
@@ -267,18 +267,22 @@ mod tests {
         let _ = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0, "publicHost": "dev1", "requestedRunning": true, "relay": relay_json(),
+                "settingsRevision": 0, "publicHost": "dev1", "requestedRunning": true, "relay": relay_json(),
             })),
         )
         .await;
         // a second writer still on revision 0 loses
         let (status, body) = send(
             &st,
-            put(&serde_json::json!({ "revision": 0, "publicHost": "evil", "requestedRunning": false })),
+            put(&serde_json::json!({ "settingsRevision": 0, "publicHost": "evil", "requestedRunning": false })),
         )
         .await;
         assert_eq!(status, StatusCode::CONFLICT);
-        assert_eq!(body["revision"], serde_json::json!(1), "current revision");
+        assert_eq!(
+            body["settingsRevision"],
+            serde_json::json!(1),
+            "current revision"
+        );
         assert_eq!(body["publicHost"], serde_json::json!("dev1"), "unchanged");
     }
 
@@ -288,7 +292,7 @@ mod tests {
         let (_status, body) = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0, "publicHost": "dev1.example.com", "requestedRunning": true,
+                "settingsRevision": 0, "publicHost": "dev1.example.com", "requestedRunning": true,
             })),
         )
         .await;
@@ -313,7 +317,7 @@ mod tests {
         let _ = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0, "publicHost": "dev1.example.com",
+                "settingsRevision": 0, "publicHost": "dev1.example.com",
                 "requestedRunning": true, "relay": relay_json(),
             })),
         )
@@ -337,7 +341,7 @@ mod tests {
             .expect("attempt count climbs");
         let (_, body) = send(&st, get()).await;
         assert!(
-            body["attempt"].as_i64().expect("attempt is a number") >= 2,
+            body["dialAttempts"].as_i64().expect("attempt is a number") >= 2,
             "wire surfaces the climbing attempt count: {body}",
         );
     }
@@ -354,7 +358,7 @@ mod tests {
         let res = router()
             .with_state(Arc::clone(&st))
             .oneshot(put(&serde_json::json!(
-                { "revision": 0, "requestedRunning": false }
+                { "settingsRevision": 0, "requestedRunning": false }
             )))
             .await
             .expect("oneshot");
@@ -373,7 +377,7 @@ mod tests {
         let _ = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0,
+                "settingsRevision": 0,
                 "publicHost": "dev1.example.com",
                 "requestedRunning": true,
                 "relay": relay_json(),
@@ -383,7 +387,7 @@ mod tests {
         let (status, body) = send(
             &st,
             put(&serde_json::json!({
-                "revision": 1,
+                "settingsRevision": 1,
                 "publicHost": serde_json::Value::Null,
                 "requestedRunning": true,
             })),
@@ -399,17 +403,17 @@ mod tests {
         let _ = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0, "publicHost": "dev1.example.com",
+                "settingsRevision": 0, "publicHost": "dev1.example.com",
                 "requestedRunning": true, "relay": relay_json(),
             })),
         )
         .await;
         let (_status, body) = send(
             &st,
-            put(&serde_json::json!({ "revision": 1, "publicHost": "dev1.example.com", "requestedRunning": false })),
+            put(&serde_json::json!({ "settingsRevision": 1, "publicHost": "dev1.example.com", "requestedRunning": false })),
         )
         .await;
-        assert_eq!(body["revision"], serde_json::json!(2));
+        assert_eq!(body["settingsRevision"], serde_json::json!(2));
         assert_eq!(body["status"], serde_json::json!("off"));
         assert_eq!(body["running"], serde_json::json!(false));
         assert_eq!(

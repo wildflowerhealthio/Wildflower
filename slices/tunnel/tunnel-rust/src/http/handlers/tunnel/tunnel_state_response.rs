@@ -59,7 +59,7 @@ impl From<TunnelStatus> for TunnelStatusWire {
 
 /// Tunnel state on the wire. The relay connection's non-secret fields are
 /// returned in [`RelayView`] (the `token` stays write-only and never appears
-/// here). `revision` is the optimistic-concurrency token a PUT must echo.
+/// here). `settingsRevision` is the optimistic-concurrency token a PUT must echo.
 ///
 /// # Liveness is now verified, not optimistic
 ///
@@ -70,15 +70,16 @@ impl From<TunnelStatus> for TunnelStatusWire {
 /// tunnel silently drops. `running` is the coarse "a supervisor is attempting"
 /// view (`dialing`/`verified`/`unreachable`), retained for back-compat; prefer
 /// `status`.
-///
-/// `attempt` counts dial attempts for this revision (resets on the next
+/// `dialAttempts` counts relay dials for this revision (resets on the next
 /// reconcile) — a counter climbing with a steady `error` flags a permanent
 /// misconfiguration. This is the resolution of
 /// <https://github.com/Assessment-is/Wildflower/issues/184>.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TunnelStateResponse {
-    pub(super) revision: i64,
+    /// Which revision of the persisted settings this snapshot reflects — the
+    /// optimistic-concurrency token a PUT must echo.
+    pub(super) settings_revision: i64,
     // Always serialized (no `skip_serializing_if`), so it's required-on-the-wire
     // even though it's `Option` — `#[schema(required)]` overrides utoipa's
     // Option-implies-optional default to match the always-present TS `NullOr`.
@@ -92,11 +93,11 @@ pub struct TunnelStateResponse {
     pub(super) running: bool,
     #[schema(required)]
     pub(super) error: Option<String>,
-    /// Dial attempts the live supervisor has made for this revision, resets
-    /// on the next reconcile. Surfaced so an operator can spot a permanent
+    /// How many times the tunnel has tried to dial the relay for this revision,
+    /// resets on the next reconcile. Surfaced so an operator can spot a permanent
     /// misconfiguration (counter climbs with no recovery) without the daemon
     /// having to classify rathole errors itself.
-    pub(super) attempt: i64,
+    pub(super) dial_attempts: i64,
     /// `https://{publicHost}` only while `status == "verified"`, else the
     /// loopback fallback. See the type-level docs.
     pub(super) served_origin: String,
@@ -110,7 +111,7 @@ impl TunnelStateResponse {
     /// Build the wire snapshot from persisted `settings` + the live liveness.
     /// Shared by both the GET response and the PUT response (success and
     /// `409 CONFLICT` alike). Every liveness-derived field (`status`, `running`,
-    /// `error`, `attempt`, `servedOrigin`) comes from the daemon's single
+    /// `error`, `dialAttempts`, `servedOrigin`) comes from the daemon's single
     /// `watch`, so the HTTP surface and the in-process consumers can't diverge.
     pub(super) fn from_current_state(
         state: &TunnelDaemon,
@@ -123,13 +124,13 @@ impl TunnelStateResponse {
             service_name: r.service_name.clone(),
         });
         TunnelStateResponse {
-            revision: settings.revision,
+            settings_revision: settings.revision,
             public_host: settings.public_host.clone(),
             requested_running: settings.requested_running,
             status: live.status.into(),
             running: live.status.is_running(),
             error: live.error,
-            attempt: live.dial_attempts,
+            dial_attempts: live.dial_attempts,
             served_origin: live.origin,
             relay,
         }

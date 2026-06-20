@@ -19,7 +19,7 @@ const RelayViewSchema = Schema.Struct({
  * `#[serde(rename_all = "camelCase")]`). The relay's non-secret fields are
  * returned in `relay` (the `token` stays write-only and never appears here).
  *
- * `revision` is the optimistic-concurrency token: a PUT must echo the
+ * `settingsRevision` is the optimistic-concurrency token: a PUT must echo the
  * last-seen revision, and a stale one is rejected with `409` (see
  * {@link httpApiGroup}).
  *
@@ -33,23 +33,23 @@ const RelayViewSchema = Schema.Struct({
  * `unreachable`), retained for back-compat — prefer `status`. `error`
  * is set for `misconfigured`/`unreachable`.
  *
- * `attempt` counts dial attempts the live supervisor has made for this
+ * `dialAttempts` counts dial attempts the live supervisor has made for this
  * revision (resets on the next reconcile) — a counter that climbs with
  * no recovery flags a permanent misconfiguration.
  *
- * `revision` / `attempt` are `i64` on the Rust side; as monotonic
+ * `settingsRevision` / `dialAttempts` are `i64` on the Rust side; as monotonic
  * counters they stay well under `2^53`. `Schema.Int` (not `Schema.Number`)
  * keeps the OpenAPI type `integer`, matching utoipa's `i64` so the
  * spec-drift contract test agrees on the wire kind.
  */
 const TunnelStateViewSchema = Schema.Struct({
-  revision: Schema.Int,
+  settingsRevision: Schema.Int,
   publicHost: Schema.NullOr(Schema.String),
   requestedRunning: Schema.Boolean,
   status: Schema.Literal('off', 'misconfigured', 'dialing', 'verified', 'unreachable'),
   running: Schema.Boolean,
   error: Schema.NullOr(Schema.String),
-  attempt: Schema.Int,
+  dialAttempts: Schema.Int,
   servedOrigin: Schema.String,
   relay: Schema.NullOr(RelayViewSchema),
 })
@@ -69,7 +69,7 @@ const RelayInputSchema = Schema.Struct({
 
 /**
  * `PUT /tunnel` body — a **full replace** of the visible settings,
- * guarded by `revision` (mirrors the Rust `ReplaceTunnelRequestBody`).
+ * guarded by `settingsRevision` (mirrors the Rust `ReplaceTunnelRequestBody`).
  *
  * `publicHost` is required *and* nullable: it must be present in every
  * PUT (full-replace semantics — omitting it on the Rust side is
@@ -79,7 +79,7 @@ const RelayInputSchema = Schema.Struct({
  * means "replace all four fields".
  */
 const ReplaceTunnelRequestBodySchema = Schema.Struct({
-  revision: Schema.Int,
+  settingsRevision: Schema.Int,
   publicHost: Schema.NullOr(Schema.String),
   requestedRunning: Schema.Boolean,
   relay: Schema.optional(RelayInputSchema),
@@ -92,13 +92,13 @@ const ReplaceTunnelRequestBodySchema = Schema.Struct({
  * packages when a field is added.
  */
 const freshTunnelState: Schema.Schema.Type<typeof TunnelStateViewSchema> = {
-  revision: 0,
+  settingsRevision: 0,
   publicHost: null,
   requestedRunning: false,
   status: 'off',
   running: false,
   error: null,
-  attempt: 0,
+  dialAttempts: 0,
   servedOrigin: 'http://127.0.0.1:8080',
   relay: null,
 }
@@ -113,7 +113,7 @@ const freshTunnelState: Schema.Schema.Type<typeof TunnelStateViewSchema> = {
  * - **200** returns the new snapshot after the write applied and the
  *   daemon reconciled.
  * - **409** returns the *current* snapshot (same {@link TunnelStateViewSchema}
- *   shape, with the newer `revision`) because the caller's `revision`
+ *   shape, with the newer `settingsRevision`) because the caller's `settingsRevision`
  *   was stale — no partial write happened. The client surfaces this in
  *   the error channel as a `TunnelState` value; discriminate it with
  *   `Schema.is(TunnelStateViewSchema)`.

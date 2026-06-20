@@ -138,7 +138,7 @@ describe('buildTunnelAdminClientLayer', () => {
             new Response(
               JSON.stringify({
                 ...STATE_BODY,
-                revision: 1,
+                settingsRevision: 1,
                 publicHost: 'demo',
                 requestedRunning: true,
               }),
@@ -152,11 +152,11 @@ describe('buildTunnelAdminClientLayer', () => {
     const program = Effect.gen(function* () {
       const client = yield* TunnelAdminHttpApiClient
       const result = yield* client.tunnel.ReplaceTunnel({
-        payload: { revision: 0, publicHost: 'demo', requestedRunning: true },
+        payload: { settingsRevision: 0, publicHost: 'demo', requestedRunning: true },
       })
       expect(result.publicHost).toBe('demo')
       expect(result.requestedRunning).toBe(true)
-      expect(result.revision).toBe(1)
+      expect(result.settingsRevision).toBe(1)
     })
 
     const layer = buildTunnelAdminClientLayer().pipe(
@@ -167,7 +167,9 @@ describe('buildTunnelAdminClientLayer', () => {
     await Effect.runPromise(program.pipe(Effect.provide(layer), Effect.scoped))
 
     expect(captures).toEqual(['Bearer alpha'])
-    expect(seenBodies).toEqual([{ revision: 0, publicHost: 'demo', requestedRunning: true }])
+    expect(seenBodies).toEqual([
+      { settingsRevision: 0, publicHost: 'demo', requestedRunning: true },
+    ])
   })
 
   test('ReplaceTunnel surfaces a 409 as the current snapshot in the error channel', async () => {
@@ -180,7 +182,7 @@ describe('buildTunnelAdminClientLayer', () => {
         Effect.succeed(
           HttpClientResponse.fromWeb(
             request,
-            new Response(JSON.stringify({ ...STATE_BODY, revision: 99 }), {
+            new Response(JSON.stringify({ ...STATE_BODY, settingsRevision: 99 }), {
               status: 409,
               headers: { 'content-type': 'application/json' },
             })
@@ -193,7 +195,7 @@ describe('buildTunnelAdminClientLayer', () => {
       const client = yield* TunnelAdminHttpApiClient
       return yield* Effect.either(
         client.tunnel.ReplaceTunnel({
-          payload: { revision: 0, publicHost: null, requestedRunning: true },
+          payload: { settingsRevision: 0, publicHost: null, requestedRunning: true },
         })
       )
     })
@@ -207,7 +209,7 @@ describe('buildTunnelAdminClientLayer', () => {
 
     expect(result._tag).toBe('Left')
     if (result._tag === 'Left' && isTunnelState(result.left)) {
-      expect(result.left.revision).toBe(99)
+      expect(result.left.settingsRevision).toBe(99)
     } else {
       throw new Error('expected the 409 body to decode into the error channel as a TunnelState')
     }

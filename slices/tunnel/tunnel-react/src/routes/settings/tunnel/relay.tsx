@@ -170,10 +170,10 @@ const RelaySettingsScreenBody = ({ state }: RelaySettingsScreenBodyProps): JSX.E
 
       <p className={styles['current']}>
         Bound to local server at: {state.servedOrigin}
-        {state.attempt > 0 ? (
+        {state.dialAttempts > 0 ? (
           <>
             <br />
-            Dial attempts this revision: {state.attempt}
+            Dial attempts this revision: {state.dialAttempts}
           </>
         ) : null}
       </p>

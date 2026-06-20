@@ -107,16 +107,17 @@
       },
       "ReplaceTunnelRequestBody": {
         "type": "object",
-        "description": "PUT body — a full replace of the visible settings guarded by `revision`,\nplus an optional write-only `relay` block (absent = keep the stored relay\nconnection, present = replace all four fields).\n\n`publicHost` is required and full-replace: send the desired host as a\nstring, or `null` to clear it. An omitted field is rejected — full-replace\nPUT semantics, and the relay block is the only intentionally-omittable\nmember (because it's write-only and the client can't echo back what it\nhasn't seen).",
+        "description": "PUT body — a full replace of the visible settings guarded by\n`settingsRevision`, plus an optional write-only `relay` block (absent = keep\nthe stored relay connection, present = replace all four fields).\n\n`publicHost` is required and full-replace: send the desired host as a\nstring, or `null` to clear it. An omitted field is rejected — full-replace\nPUT semantics, and the relay block is the only intentionally-omittable\nmember (because it's write-only and the client can't echo back what it\nhasn't seen).",
         "required": [
-          "revision",
+          "settingsRevision",
           "publicHost",
           "requestedRunning"
         ],
         "properties": {
-          "revision": {
+          "settingsRevision": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The optimistic-concurrency token echoed from the last-seen snapshot."
           },
           "publicHost": {
             "type": [
@@ -141,22 +142,23 @@
       },
       "TunnelStateResponse": {
         "type": "object",
-        "description": "Tunnel state on the wire. The relay connection's non-secret fields are\nreturned in [`RelayView`] (the `token` stays write-only and never appears\nhere). `revision` is the optimistic-concurrency token a PUT must echo.\n\n# Liveness is now verified, not optimistic\n\n`status` is the real [`TunnelStatusWire`] FSM position. `servedOrigin`\nresolves to `https://{publicHost}` **only** while `status == \"verified\"` —\ni.e. after a `/health` probe through the public origin came back healthy —\nand the supervisor re-probes, so it reverts to the loopback fallback if the\ntunnel silently drops. `running` is the coarse \"a supervisor is attempting\"\nview (`dialing`/`verified`/`unreachable`), retained for back-compat; prefer\n`status`.\n\n`attempt` counts dial attempts for this revision (resets on the next\nreconcile) — a counter climbing with a steady `error` flags a permanent\nmisconfiguration. This is the resolution of\n<https://github.com/Assessment-is/Wildflower/issues/184>.",
+        "description": "Tunnel state on the wire. The relay connection's non-secret fields are\nreturned in [`RelayView`] (the `token` stays write-only and never appears\nhere). `settingsRevision` is the optimistic-concurrency token a PUT must echo.\n\n# Liveness is now verified, not optimistic\n\n`status` is the real [`TunnelStatusWire`] FSM position. `servedOrigin`\nresolves to `https://{publicHost}` **only** while `status == \"verified\"` —\ni.e. after a `/health` probe through the public origin came back healthy —\nand the supervisor re-probes, so it reverts to the loopback fallback if the\ntunnel silently drops. `running` is the coarse \"a supervisor is attempting\"\nview (`dialing`/`verified`/`unreachable`), retained for back-compat; prefer\n`status`.\n`dialAttempts` counts relay dials for this revision (resets on the next\nreconcile) — a counter climbing with a steady `error` flags a permanent\nmisconfiguration. This is the resolution of\n<https://github.com/Assessment-is/Wildflower/issues/184>.",
         "required": [
-          "revision",
+          "settingsRevision",
           "publicHost",
           "requestedRunning",
           "status",
           "running",
           "error",
-          "attempt",
+          "dialAttempts",
           "servedOrigin",
           "relay"
         ],
         "properties": {
-          "revision": {
+          "settingsRevision": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Which revision of the persisted settings this snapshot reflects — the\noptimistic-concurrency token a PUT must echo."
           },
           "publicHost": {
             "type": [
@@ -181,10 +183,10 @@
               "null"
             ]
           },
-          "attempt": {
+          "dialAttempts": {
             "type": "integer",
             "format": "int64",
-            "description": "Dial attempts the live supervisor has made for this revision, resets\non the next reconcile. Surfaced so an operator can spot a permanent\nmisconfiguration (counter climbs with no recovery) without the daemon\nhaving to classify rathole errors itself."
+            "description": "How many times the tunnel has tried to dial the relay for this revision,\nresets on the next reconcile. Surfaced so an operator can spot a permanent\nmisconfiguration (counter climbs with no recovery) without the daemon\nhaving to classify rathole errors itself."
           },
           "servedOrigin": {
             "type": "string",

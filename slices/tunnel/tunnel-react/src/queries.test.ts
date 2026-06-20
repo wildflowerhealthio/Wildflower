@@ -88,13 +88,13 @@ const makeRunAuthed = (httpLayer: Layer.Layer<HttpClient.HttpClient>): RunAuthed
 }
 
 const BASE_STATE: TunnelState = {
-  revision: 5,
+  settingsRevision: 5,
   publicHost: 'old.example.com',
   requestedRunning: false,
   status: 'off',
   running: false,
   error: null,
-  attempt: 0,
+  dialAttempts: 0,
   servedOrigin: 'http://127.0.0.1:8080',
   relay: null,
 }
@@ -119,7 +119,7 @@ describe('tunnelStateQueryOptions', () => {
 
     const state = await queryClient.ensureQueryData(options)
 
-    expect(state.revision).toBe(0)
+    expect(state.settingsRevision).toBe(0)
     expect(state.servedOrigin).toBe('http://127.0.0.1:8080')
     expect(state.running).toBe(false)
     expect(queryClient.getQueryData(TUNNEL_STATE_QUERY_KEY)).toEqual(state)
@@ -142,7 +142,7 @@ describe('tunnelStateQueryOptions', () => {
 describe('buildReplacePayload', () => {
   test('always carries the revision from the cached snapshot', () => {
     const payload = buildReplacePayload(BASE_STATE, { requestedRunning: true })
-    expect(payload.revision).toBe(5)
+    expect(payload.settingsRevision).toBe(5)
   })
 
   test('omitted visible fields are filled from the cached snapshot', () => {
@@ -150,7 +150,7 @@ describe('buildReplacePayload', () => {
     // stale-cache race the contract guards against.
     const payload = buildReplacePayload(BASE_STATE, { requestedRunning: true })
     expect(payload).toEqual({
-      revision: 5,
+      settingsRevision: 5,
       publicHost: 'old.example.com',
       requestedRunning: true,
     })
@@ -179,7 +179,7 @@ describe('buildReplacePayload', () => {
         fc.option(fc.boolean(), { nil: undefined }),
         (current, publicHost, requestedRunning) => {
           const payload = buildReplacePayload(current, { publicHost, requestedRunning })
-          expect(payload.revision).toBe(current.revision)
+          expect(payload.settingsRevision).toBe(current.settingsRevision)
           expect(payload.publicHost).toBe(
             publicHost === undefined ? current.publicHost : publicHost
           )
@@ -212,18 +212,18 @@ describe('applyTunnelOptimistic', () => {
   test('never touches server-derived fields or the revision', () => {
     const live: TunnelState = {
       ...BASE_STATE,
-      revision: 9,
+      settingsRevision: 9,
       status: 'verified',
       running: true,
       error: 'boom',
-      attempt: 3,
+      dialAttempts: 3,
       servedOrigin: 'https://live.example.com',
     }
     const next = applyTunnelOptimistic(live, { publicHost: 'x', requestedRunning: true })
-    expect(next.revision).toBe(9)
+    expect(next.settingsRevision).toBe(9)
     expect(next.running).toBe(true)
     expect(next.error).toBe('boom')
-    expect(next.attempt).toBe(3)
+    expect(next.dialAttempts).toBe(3)
     expect(next.servedOrigin).toBe('https://live.example.com')
   })
 
@@ -241,7 +241,7 @@ describe('applyTunnelOptimistic', () => {
             requestedRunning === undefined ? previous.requestedRunning : requestedRunning
           )
           // server-owned fields untouched
-          expect(next.revision).toBe(previous.revision)
+          expect(next.settingsRevision).toBe(previous.settingsRevision)
           expect(next.running).toBe(previous.running)
           expect(next.servedOrigin).toBe(previous.servedOrigin)
         }
@@ -270,7 +270,7 @@ describe('isTunnelState', () => {
     // HttpClientError-shaped value from the client error channel.
     expect(isTunnelState({ _tag: 'ResponseError', request: {}, response: {} })).toBe(false)
     // Structurally close but wrong-typed revision.
-    expect(isTunnelState({ ...BASE_STATE, revision: 'nope' })).toBe(false)
+    expect(isTunnelState({ ...BASE_STATE, settingsRevision: 'nope' })).toBe(false)
     expect(isTunnelState(null)).toBe(false)
   })
 })
@@ -344,7 +344,11 @@ const mountReplaceMutation = (
 describe('useTunnelReplaceMutation cache adoption', () => {
   test('a 409 adopts result.current into the cache (not masked by the refetch)', async () => {
     const served = BASE_STATE
-    const conflict: TunnelState = { ...BASE_STATE, revision: 6, publicHost: 'other.example.com' }
+    const conflict: TunnelState = {
+      ...BASE_STATE,
+      settingsRevision: 6,
+      publicHost: 'other.example.com',
+    }
     const { queryClient, mutate } = mountReplaceMutation(
       makePutConflictHttp(served, conflict),
       served

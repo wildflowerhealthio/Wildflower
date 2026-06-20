@@ -37,7 +37,7 @@ pub(super) async fn handle_put_tunnel(
     };
     let settings_update_outcome = state
         .store
-        .replace_settings(body.revision, update)
+        .replace_settings(body.settings_revision, update)
         .map_err(|e| HandlerError::internal("replace_settings failed", e))?;
 
     match settings_update_outcome {
@@ -61,9 +61,9 @@ pub(super) async fn handle_put_tunnel(
     }
 }
 
-/// PUT body — a full replace of the visible settings guarded by `revision`,
-/// plus an optional write-only `relay` block (absent = keep the stored relay
-/// connection, present = replace all four fields).
+/// PUT body — a full replace of the visible settings guarded by
+/// `settingsRevision`, plus an optional write-only `relay` block (absent = keep
+/// the stored relay connection, present = replace all four fields).
 ///
 /// `publicHost` is required and full-replace: send the desired host as a
 /// string, or `null` to clear it. An omitted field is rejected — full-replace
@@ -73,7 +73,8 @@ pub(super) async fn handle_put_tunnel(
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ReplaceTunnelRequestBody {
-    pub(super) revision: i64,
+    /// The optimistic-concurrency token echoed from the last-seen snapshot.
+    pub(super) settings_revision: i64,
     // `RequiredNullable` has no `ToSchema`, so describe it to utoipa as a
     // nullable string; `required` overrides utoipa's nullable-implies-optional
     // default to match the always-present TS `NullOr` (full-replace PUT).
