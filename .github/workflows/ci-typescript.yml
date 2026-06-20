@@ -1,15 +1,13 @@
 name: TypeScript
 
 on:
-  push:
-    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     # PR runs are gated to TS/JS-touching changes at the trigger level, so an
     # unrelated PR never starts this workflow at all (no change-detection job
-    # needed). Pushes to main have NO paths filter, so every main commit runs
-    # the full TS suite regardless of what changed. Keep this list aligned with
-    # where TS/JS source actually lives.
+    # needed). This workflow no longer runs on pushes to main — CI is a
+    # pre-merge gate only. Keep this list aligned with where TS/JS source
+    # actually lives.
     paths:
       - '**/*.ts'
       - '**/*.tsx'
@@ -31,18 +29,17 @@ permissions:
   checks: write
   pull-requests: write
 
-# Cancel superseded PR runs to save the actions budget; pushes to main always
-# run to completion.
+# Cancel superseded PR runs to save the actions budget.
 concurrency:
   group: typescript-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   # One job for lint + typecheck + test + TSDoc: it installs deps and builds the
   # internal projects ONCE, then every check reuses that same checkout, pnpm
   # store, and dist/ cache — instead of the previous two jobs (vp-check and
   # vp-test) each paying for its own install + `vp run pack`. Draft PRs are
-  # skipped; on push, `pull_request` is null so the guard is true and it runs.
+  # skipped.
   typescript:
     name: Lint + Test
     if: github.event.pull_request.draft != true
@@ -89,12 +86,7 @@ jobs:
       - name: Run vp check (format, lint, typecheck)
         run: vp check
 
-      - name: Run tests (full strength on main)
-        if: github.event_name == 'push'
-        run: vp run test:all
-
       - name: Run tests (reduced for unchanged on PR)
-        if: github.event_name == 'pull_request'
         run: vp run test:changed
 
       # TSDoc lint is informational only (continue-on-error), so it runs last

@@ -1336,6 +1336,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
 
 [[package]]
+name = "databases-rust"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "futures-core",
+ "http",
+ "http-body-util",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "shared-structures-rust",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "tracing",
+ "utoipa",
+ "utoipa-axum",
+]
+
+[[package]]
 name = "dbus"
 version = "0.9.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5616,6 +5639,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tower",
+ "tracing",
  "utoipa",
 ]
 
@@ -7430,6 +7454,7 @@ dependencies = [
  "async-trait",
  "axum",
  "browser-sniffer-tauri-rust",
+ "databases-rust",
  "dotenvy",
  "emr-rust",
  "gatekeeper-rust",

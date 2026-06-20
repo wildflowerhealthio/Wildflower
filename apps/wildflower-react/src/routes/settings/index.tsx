@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { databasesSettingsItemsFragment } from 'databases-react'
 import { gatekeeperSettingsItemsFragment } from 'gatekeeper-react'
 import type { JSX } from 'react'
 import { ItemList, PageHeader } from 'react-tundraish'
@@ -13,6 +14,7 @@ import { tunnelSettingsItemsFragment } from 'tunnel-react'
 const settingsItems: readonly SettingsItem[] = [
   ...tunnelSettingsItemsFragment,
   ...gatekeeperSettingsItemsFragment,
+  ...databasesSettingsItemsFragment,
 ]
 
 /**

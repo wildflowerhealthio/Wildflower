@@ -22,6 +22,10 @@ tunnel-service = ["dep:tokio", "dep:async-trait", "dep:utoipa"]
 # `/health` router. Gated so the lean default build — and crates that don't
 # serve `/health` — stay free of axum/async-trait.
 health-check = ["dep:axum", "dep:async-trait"]
+# Opt-in: the shared opaque-500 `InternalError` template. Gated so crates that
+# don't serve HTTP don't pull `axum` / `tracing`; the `-rust` slices that own a
+# handler surface enable it.
+http-errors = ["dep:axum", "dep:tracing"]
 
 [dependencies]
 # `serde` is non-optional: the always-on `bridge` module derives
@@ -36,6 +40,7 @@ tokio = { workspace = true, optional = true, features = ["sync"] }
 async-trait = { version = "0.1", optional = true }
 # Only for the `health-check` `/health` router.
 axum = { workspace = true, optional = true }
+tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
 # `bridge::tests` decodes a JSON wire payload to verify the envelope

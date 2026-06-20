@@ -2,6 +2,7 @@ import type { HttpClient } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
 import { AppsRouterContext } from 'apps-react'
 import { CollectorRouterContext } from 'collector-react'
+import { DatabasesRouterContext } from 'databases-react'
 import { Duration, Effect, Layer, pipe, type Subscribable } from 'effect'
 import { FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { GatekeeperRouterContext } from 'gatekeeper-react'
@@ -18,6 +19,7 @@ type SliceServices =
   | Layer.Layer.Success<GatekeeperRouterContext.RuntimeLayer>
   | Layer.Layer.Success<CollectorRouterContext.RuntimeLayer>
   | Layer.Layer.Success<FhirR4ResourcesRouterContext.RuntimeLayer>
+  | Layer.Layer.Success<DatabasesRouterContext.RuntimeLayer>
 
 type RuntimeLayer = BaseRouterContext.RuntimeLayerWith<SliceServices>
 type RunAuthed = BaseRouterContext.RunAuthedWith<SliceServices>
@@ -78,7 +80,8 @@ const buildRunAuthed = (
       AppsRouterContext.sliceRuntimeLayer,
       GatekeeperRouterContext.sliceRuntimeLayer,
       CollectorRouterContext.sliceRuntimeLayer,
-      FhirR4ResourcesRouterContext.sliceRuntimeLayer
+      FhirR4ResourcesRouterContext.sliceRuntimeLayer,
+      DatabasesRouterContext.sliceRuntimeLayer
     ),
     baseRuntimeLayer
   )
