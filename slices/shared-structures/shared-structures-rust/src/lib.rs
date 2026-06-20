@@ -11,3 +11,9 @@ pub mod openapi_snapshot;
 /// so the lean default build stays free of `tokio`/`async-trait`.
 #[cfg(feature = "tunnel-service")]
 pub mod tunnel_service;
+
+/// The health-check service contract (`HealthCheckService`) + a reusable
+/// `/health` router. Behind the `health-check` feature so the lean default build
+/// stays free of `axum`/`async-trait`.
+#[cfg(feature = "health-check")]
+pub mod health_check;

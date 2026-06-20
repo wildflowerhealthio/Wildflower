@@ -5610,9 +5610,12 @@ name = "shared-structures-rust"
 version = "0.0.0"
 dependencies = [
  "async-trait",
+ "axum",
+ "http-body-util",
  "serde",
  "serde_json",
  "tokio",
+ "tower",
  "utoipa",
 ]
 

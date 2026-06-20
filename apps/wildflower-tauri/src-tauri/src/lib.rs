@@ -191,8 +191,12 @@ async fn run_server(
         .merge(gated_tunnel)
         // The app-layer `/health`: an unauthenticated liveness endpoint the
         // tunnel's reachability probe round-trips through the relay. Ungated so
-        // the probe (and any external uptime check) needs no bearer token.
-        .merge(health_router())
+        // the probe (and any external uptime check) needs no bearer token. The
+        // reusable router comes from the core; `AlwaysHealthy` is the trivial
+        // service until real per-slice checks are wired.
+        .merge(shared_structures_rust::health_check::health_router(
+            Arc::new(shared_structures_rust::health_check::AlwaysHealthy),
+        ))
         .merge(apps.public_router)
         .merge(gated_apps_admin)
         .fallback(spa::handle_serving_spa_html)
@@ -204,24 +208,6 @@ async fn run_server(
     )
     .await?;
     Ok(())
-}
-
-/// The app-layer `GET /health` — an unauthenticated, uncached liveness endpoint
-/// the tunnel's reachability probe round-trips through the relay (and any
-/// external uptime check can hit). A subset of the draft Health Check Response
-/// Format (`application/health+json`, `{ "status": "pass" }`); RFC-detail and
-/// per-slice checks land later. Built by hand so the media type and `no-store`
-/// are exact.
-fn health_router() -> Router {
-    async fn health() -> axum::response::Response {
-        axum::response::Response::builder()
-            .status(axum::http::StatusCode::OK)
-            .header(axum::http::header::CONTENT_TYPE, "application/health+json")
-            .header(axum::http::header::CACHE_CONTROL, "no-store")
-            .body(axum::body::Body::from(r#"{"status":"pass"}"#))
-            .expect("valid health response")
-    }
-    Router::new().route("/health", axum::routing::get(health))
 }
 
 /// Build and run the Tauri application.

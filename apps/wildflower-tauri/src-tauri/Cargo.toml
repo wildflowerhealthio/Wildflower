@@ -42,7 +42,9 @@ browser-sniffer-tauri-rust = { path = "../../../slices/browser-sniffer/browser-s
 emr-rust = { path = "../../../slices/emr/emr-rust" }
 gatekeeper-rust = { path = "../../../slices/gatekeeper/gatekeeper-rust" }
 persistence-rust = { path = "../../../slices/persistence/persistence-rust" }
-shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust" }
+shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust", features = [
+  "health-check",
+] }
 tunnel-rust = { path = "../../../slices/tunnel/tunnel-rust" }
 anyhow.workspace = true
 axum.workspace = true
