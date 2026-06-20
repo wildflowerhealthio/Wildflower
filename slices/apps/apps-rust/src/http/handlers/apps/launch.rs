@@ -12,11 +12,11 @@
 //!      its `https://` authority) — so there's no launch-time re-validation:
 //!      the stored value was validated when it was parsed into an [`AppUrl`].
 //!
-//! `requires_tunnel` is honoured through the [`TunnelLaunchResolver`] port: the
-//! launch resolves to the tunnel's live *verified* `servedOrigin`, or — when the
-//! tunnel can't be brought up — falls back to the loopback origin with
-//! `?tunnel=unavailable` so the SPA can surface a banner. A non-tunnel launch
-//! always uses the loopback origin.
+//! `requires_tunnel` is honoured through the shared `TunnelService` contract:
+//! the launch asks the tunnel to start and resolves to its live *verified*
+//! origin, or — when the tunnel can't be brought up — falls back to the loopback
+//! origin with `?tunnel=unavailable` so the SPA can surface a banner. A
+//! non-tunnel launch always uses the loopback origin.
 
 use std::sync::Arc;
 
@@ -65,17 +65,17 @@ pub(crate) async fn handle_launch_app(
 /// Resolve the launch origin and the `tunnel_unavailable` flag.
 ///
 /// A non-tunnel launch uses the loopback origin (never unavailable). A
-/// `requires_tunnel` launch is resolved through the [`TunnelLaunchResolver`]
-/// port (`crate::tunnel_seam`): `Some(origin)` is the live verified public
-/// origin; `None` means the tunnel couldn't be brought up, so it falls back to
-/// loopback and flags `?tunnel=unavailable` for the SPA banner.
+/// `requires_tunnel` launch asks the `TunnelService` to start:
+/// `Ok(origin)` is the live verified origin; `Err(_)` means the tunnel couldn't
+/// be brought up, so it falls back to loopback and flags `?tunnel=unavailable`
+/// for the SPA banner.
 async fn resolve_origin(state: &AppsState, requires_tunnel: bool) -> (String, bool) {
     if !requires_tunnel {
         return (state.loopback_origin.clone(), false);
     }
-    match state.tunnel.resolve_tunnel_origin().await {
-        Some(origin) => (origin, false),
-        None => (state.loopback_origin.clone(), true),
+    match state.tunnel.try_start().await {
+        Ok(origin) => (origin, false),
+        Err(_reason) => (state.loopback_origin.clone(), true),
     }
 }
 

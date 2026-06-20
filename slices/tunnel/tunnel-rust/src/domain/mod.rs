@@ -6,5 +6,5 @@ mod tunnel_settings;
 
 pub use relay_client::{RelayClient, RelaySettings};
 pub(crate) use tunnel_daemon::Liveness;
-pub use tunnel_daemon::{TunnelDaemon, TunnelStatus};
+pub use tunnel_daemon::TunnelDaemon;
 pub use tunnel_settings::TunnelSettings;

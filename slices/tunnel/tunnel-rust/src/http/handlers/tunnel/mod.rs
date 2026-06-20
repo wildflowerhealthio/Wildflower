@@ -307,7 +307,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_attempt_surfaces_the_error_and_keeps_retrying() {
-        use crate::domain::TunnelStatus;
+        use shared_structures_rust::tunnel_service::TunnelStatus;
         let (st, mut started) = state(Behavior::FailImmediately);
         let mut live = st.daemon.watch_liveness();
         let _ = send(

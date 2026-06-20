@@ -42,6 +42,8 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use shared_structures_rust::tunnel_service::TunnelStatus;
+
 use crate::domain::{RelayClient, TunnelSettings};
 use crate::health::HealthProbe;
 
@@ -58,38 +60,6 @@ const NO_PUBLIC_HOST: &str = "tunnel is running but no public host is configured
 /// reject the second as a duplicate); the abort cap prevents a misbehaving
 /// old client from leaking forever.
 const CANCEL_GRACE: Duration = Duration::from_secs(5);
-
-/// The liveness state of the live tunnel run. See the module docs for the
-/// transition diagram. `Copy` — it carries no owned data (the human-readable
-/// reason rides alongside in [`Liveness::error`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TunnelStatus {
-    /// Not requested on.
-    Off,
-    /// Requested on but can't be attempted — the relay or the public host is
-    /// missing. Terminal until the settings change (no supervisor runs).
-    Misconfigured,
-    /// Requested + configured; rathole is attempting and no probe has yet
-    /// confirmed reachability. The public origin is *not* published here.
-    Dialing,
-    /// A `/health` probe through the public origin came back healthy. The only
-    /// state in which `servedOrigin` is the public origin.
-    Verified,
-    /// Was attempting, but the dial dropped or the probe failed; retrying.
-    Unreachable,
-}
-
-impl TunnelStatus {
-    /// Whether a supervisor is actively attempting to keep the tunnel up — the
-    /// optimistic `running` the wire reports. `Dialing`/`Verified`/`Unreachable`
-    /// are all "attempting"; `Off`/`Misconfigured` are not.
-    pub(crate) fn is_running(self) -> bool {
-        matches!(
-            self,
-            TunnelStatus::Dialing | TunnelStatus::Verified | TunnelStatus::Unreachable
-        )
-    }
-}
 
 /// A snapshot of the live tunnel runtime. Watched so reads see the latest value
 /// and internal waiters (and tests) can await transitions.

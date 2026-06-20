@@ -43,10 +43,13 @@ use axum::Router;
 pub use config::TunnelConfig;
 pub use control::TunnelControl;
 pub use db::{SettingsSeed, TunnelStore};
-pub use domain::{RelaySettings, TunnelDaemon, TunnelSettings, TunnelStatus};
+pub use domain::{RelaySettings, TunnelDaemon, TunnelSettings};
 pub use health::HealthProbe;
 pub use http::TunnelState;
 use relay_clients::RatholeRelayClient;
+// Re-export the tunnel service contract this slice implements, so consumers can
+// name the types without depending on `shared-structures-rust` directly.
+pub use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelService, TunnelStatus};
 
 /// What [`setup_tunnel`] hands back: the `/tunnel` HTTP router to mount plus the
 /// in-process [`TunnelControl`] seam. The composition root threads the control

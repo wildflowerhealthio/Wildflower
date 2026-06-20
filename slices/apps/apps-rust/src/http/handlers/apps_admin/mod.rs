@@ -47,12 +47,13 @@ mod tests {
     }
 
     fn state() -> Arc<AppsState> {
+        // The admin surface never touches the tunnel, so the offline null-impl
+        // is enough.
         let store = AppsStore::open_in_memory().expect("store");
-        Arc::new(AppsState::new(
-            store,
+        let tunnel = Arc::new(shared_structures_rust::tunnel_service::OfflineTunnel::new(
             "http://127.0.0.1:8080",
-            Arc::new(crate::tunnel_seam::TunnelUnavailable),
-        ))
+        ));
+        Arc::new(AppsState::new(store, "http://127.0.0.1:8080", tunnel))
     }
 
     async fn send(state: &Arc<AppsState>, req: Request<Body>) -> (StatusCode, serde_json::Value) {

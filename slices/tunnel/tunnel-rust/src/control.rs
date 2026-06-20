@@ -14,10 +14,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelService, TunnelStatus};
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::db::{SettingsUpdate, SettingsUpdateOutcome};
-use crate::domain::{Liveness, TunnelStatus};
+use crate::domain::Liveness;
 use crate::http::TunnelState;
 
 /// How many bounded start requests can queue before `request_start` awaits a
@@ -39,11 +40,14 @@ const START_CAS_RETRIES: usize = 8;
 const START_VERIFY_DEADLINE: Duration = Duration::from_secs(3);
 
 /// A handle onto the running tunnel's control seam. Cheap to clone (an `mpsc`
-/// sender plus a `watch` receiver); hand a clone to each consumer.
+/// sender plus a `watch` receiver); hand a clone to each consumer. Implements
+/// [`TunnelService`] — the contract the apps slice consumes.
 #[derive(Clone)]
 pub struct TunnelControl {
     start_tx: mpsc::Sender<oneshot::Sender<Result<String, String>>>,
-    liveness_rx: watch::Receiver<Liveness>,
+    /// The public liveness contract, mapped from the daemon's internal watch by
+    /// the forwarder task in [`spawn_control`].
+    liveness_rx: watch::Receiver<TunnelLiveness>,
 }
 
 impl TunnelControl {
@@ -52,7 +56,8 @@ impl TunnelControl {
     /// through it has come back healthy; `Err(reason)` is a
     /// human-readable failure (relay unconfigured, no public host, persistence
     /// contention, or "did not become reachable" within
-    /// [`START_VERIFY_DEADLINE`]) suitable for surfacing inline.
+    /// [`START_VERIFY_DEADLINE`]) suitable for surfacing inline. Backs
+    /// [`TunnelService::try_start`].
     pub async fn request_start(&self) -> Result<String, String> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.start_tx
@@ -67,7 +72,7 @@ impl TunnelControl {
     /// The current served origin (`https://{publicHost}` only while the tunnel
     /// is `Verified`, else the loopback fallback).
     pub fn served_origin(&self) -> String {
-        self.liveness_rx.borrow().served_origin.clone()
+        self.liveness_rx.borrow().origin.clone()
     }
 
     /// The current liveness status.
@@ -76,15 +81,54 @@ impl TunnelControl {
     }
 }
 
-/// Spawn the resident control task over the shared `state` and return a
-/// [`TunnelControl`] handle. The task lives until every [`TunnelControl`] clone
-/// is dropped (the `mpsc` sender closes), which for the host is process
-/// lifetime.
+#[async_trait::async_trait]
+impl TunnelService for TunnelControl {
+    fn current_origin(&self) -> String {
+        self.liveness_rx.borrow().origin.clone()
+    }
+
+    async fn try_start(&self) -> Result<String, String> {
+        self.request_start().await
+    }
+
+    fn subscribe(&self) -> watch::Receiver<TunnelLiveness> {
+        self.liveness_rx.clone()
+    }
+}
+
+/// Map the daemon's internal liveness onto the public [`TunnelLiveness`]
+/// contract (the internal `revision`/`attempt` are not part of the contract).
+fn to_public(live: &Liveness) -> TunnelLiveness {
+    TunnelLiveness {
+        status: live.status,
+        origin: live.served_origin.clone(),
+        error: live.error.clone(),
+    }
+}
+
+/// Spawn the resident control tasks over the shared `state` and return a
+/// [`TunnelControl`] handle. Two tasks live until every [`TunnelControl`] clone
+/// is dropped (process lifetime for the host): the start-trigger loop, and a
+/// forwarder that republishes the daemon's internal liveness as the public
+/// [`TunnelLiveness`] contract so consumers depend only on the contract type.
 pub(crate) fn spawn_control(state: Arc<TunnelState>) -> TunnelControl {
     let (start_tx, mut start_rx) =
         mpsc::channel::<oneshot::Sender<Result<String, String>>>(START_QUEUE_DEPTH);
-    let liveness_rx = state.daemon.watch_liveness();
 
+    // Forwarder: internal `Liveness` watch → public `TunnelLiveness` watch.
+    let mut internal = state.daemon.watch_liveness();
+    let (public_tx, liveness_rx) = watch::channel(to_public(&internal.borrow()));
+    tokio::spawn(async move {
+        while internal.changed().await.is_ok() {
+            // Drop the read guard before publishing (different channel, but keep
+            // the internal lock held for as short as possible).
+            let snapshot = to_public(&internal.borrow_and_update());
+            public_tx.send_replace(snapshot);
+        }
+    });
+
+    // Start-trigger loop: each request persist-then-reconciles and awaits a
+    // verified outcome.
     tokio::spawn(async move {
         while let Some(reply) = start_rx.recv().await {
             let outcome = start_and_verify(&state).await;

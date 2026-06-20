@@ -3,8 +3,9 @@
 
 use std::sync::Arc;
 
+use shared_structures_rust::tunnel_service::TunnelService;
+
 use crate::db::AppsStore;
-use crate::tunnel_seam::TunnelLaunchResolver;
 
 /// Shared state threaded through the apps handlers. Held in an `Arc` and
 /// extracted via `State<Arc<AppsState>>` per the tunnel-rust pattern.
@@ -15,17 +16,16 @@ pub struct AppsState {
     /// launch that can't reach the tunnel falls back here with
     /// `?tunnel=unavailable` so the SPA can surface a banner.
     pub(crate) loopback_origin: String,
-    /// Resolves a `requires_tunnel` launch to the live verified public origin.
-    /// The host wires the real tunnel control seam; tests use
-    /// [`crate::tunnel_seam::TunnelUnavailable`].
-    pub(crate) tunnel: Arc<dyn TunnelLaunchResolver>,
+    /// The tunnel service a `requires_tunnel` launch resolves its origin
+    /// through. The host wires the real tunnel slice; tests use a stub.
+    pub(crate) tunnel: Arc<dyn TunnelService>,
 }
 
 impl AppsState {
     pub fn new(
         store: AppsStore,
         loopback_origin: impl Into<String>,
-        tunnel: Arc<dyn TunnelLaunchResolver>,
+        tunnel: Arc<dyn TunnelService>,
     ) -> Self {
         Self {
             store,

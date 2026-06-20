@@ -5,7 +5,9 @@
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::domain::{TunnelSettings, TunnelStatus};
+use shared_structures_rust::tunnel_service::TunnelStatus;
+
+use crate::domain::TunnelSettings;
 use crate::TunnelDaemon;
 
 /// The readable view of the relay connection — everything except the secret

@@ -149,9 +149,9 @@ async fn run_server(
         seed: tunnel_seed_from_build_env(),
     };
     // `setup_tunnel` hands back the `/tunnel` router plus the in-process
-    // `TunnelControl` seam. The daemon drives a `/health` probe (against the
-    // served origin's assumed-present, RFC-compliant `/health`) through the
-    // reqwest adapter to verify reachability.
+    // `TunnelControl` seam (which implements `TunnelService`). The daemon drives
+    // a `/health` probe — against the app-layer `/health` route mounted below —
+    // through the reqwest adapter to verify reachability.
     let health_probe: Arc<dyn tunnel_rust::HealthProbe> =
         Arc::new(tunnel_adapters::ReqwestHealthProbe::new());
     let tunnel = tunnel_rust::setup_tunnel(db.clone(), &tunnel_config, health_probe)
@@ -163,15 +163,14 @@ async fn run_server(
     // (launch redirect) ride on the public router — the webview consumes
     // them unauthenticated like the rest of the launch path. The admin
     // surface (POST/PATCH/DELETE) is owner-gated through the gatekeeper.
-    // A `requires_tunnel` launch resolves to the tunnel's verified public origin
-    // through the control seam (else falls back to loopback + tunnel=unavailable).
+    // A `requires_tunnel` launch resolves to the tunnel's verified origin
+    // through the tunnel service (else falls back to loopback + tunnel=unavailable).
     let apps_config = AppsConfig {
         loopback_origin: loopback_origin.clone(),
     };
-    let tunnel_resolver: Arc<dyn apps_rust::TunnelLaunchResolver> = Arc::new(
-        tunnel_adapters::TunnelLaunchAdapter::new(tunnel.control.clone()),
-    );
-    let apps = setup_apps(db, &apps_config, tunnel_resolver).context("failed to set up apps")?;
+    // `TunnelControl` implements `TunnelService`, so it's handed straight in.
+    let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
+    let apps = setup_apps(db, &apps_config, tunnel_service).context("failed to set up apps")?;
     let gated_apps_admin =
         layer_router_with_gatekeeper_auth_gating(apps.admin_router, gatekeeper.state.clone());
     // The webview page is NOT served from this origin — it loads from
@@ -190,6 +189,10 @@ async fn run_server(
         .merge(gated_fhir_r4)
         .merge(gated_stubs)
         .merge(gated_tunnel)
+        // The app-layer `/health`: an unauthenticated liveness endpoint the
+        // tunnel's reachability probe round-trips through the relay. Ungated so
+        // the probe (and any external uptime check) needs no bearer token.
+        .merge(health_router())
         .merge(apps.public_router)
         .merge(gated_apps_admin)
         .fallback(spa::handle_serving_spa_html)
@@ -201,6 +204,24 @@ async fn run_server(
     )
     .await?;
     Ok(())
+}
+
+/// The app-layer `GET /health` — an unauthenticated, uncached liveness endpoint
+/// the tunnel's reachability probe round-trips through the relay (and any
+/// external uptime check can hit). A subset of the draft Health Check Response
+/// Format (`application/health+json`, `{ "status": "pass" }`); RFC-detail and
+/// per-slice checks land later. Built by hand so the media type and `no-store`
+/// are exact.
+fn health_router() -> Router {
+    async fn health() -> axum::response::Response {
+        axum::response::Response::builder()
+            .status(axum::http::StatusCode::OK)
+            .header(axum::http::header::CONTENT_TYPE, "application/health+json")
+            .header(axum::http::header::CACHE_CONTROL, "no-store")
+            .body(axum::body::Body::from(r#"{"status":"pass"}"#))
+            .expect("valid health response")
+    }
+    Router::new().route("/health", axum::routing::get(health))
 }
 
 /// Build and run the Tauri application.

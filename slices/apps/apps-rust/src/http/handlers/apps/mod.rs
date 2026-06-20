@@ -36,17 +36,38 @@ mod tests {
     use crate::db::AppsStore;
     use crate::domain::{AppEntry, AppUrl};
     use crate::http::state::AppsState;
-    use crate::tunnel_seam::{TunnelLaunchResolver, TunnelUnavailable};
+    use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelService, TunnelStatus};
 
-    /// A resolver that always hands back a fixed verified public origin — stands
-    /// in for a tunnel that's up.
-    struct TunnelAt(&'static str);
+    /// A `TunnelService` stub with a fixed `try_start` outcome. `Ok(origin)`
+    /// stands in for a tunnel that's up; `Err` for one that can't be reached.
+    struct StubTunnel(Result<String, String>);
 
     #[async_trait::async_trait]
-    impl TunnelLaunchResolver for TunnelAt {
-        async fn resolve_tunnel_origin(&self) -> Option<String> {
-            Some(self.0.to_string())
+    impl TunnelService for StubTunnel {
+        fn current_origin(&self) -> String {
+            self.0
+                .clone()
+                .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string())
         }
+        async fn try_start(&self) -> Result<String, String> {
+            self.0.clone()
+        }
+        fn subscribe(&self) -> tokio::sync::watch::Receiver<TunnelLiveness> {
+            tokio::sync::watch::channel(TunnelLiveness {
+                status: TunnelStatus::Off,
+                origin: "http://127.0.0.1:8080".to_string(),
+                error: None,
+            })
+            .1
+        }
+    }
+
+    fn tunnel_at(origin: &str) -> Arc<dyn TunnelService> {
+        Arc::new(StubTunnel(Ok(origin.to_string())))
+    }
+
+    fn tunnel_unavailable() -> Arc<dyn TunnelService> {
+        Arc::new(StubTunnel(Err("tunnel unavailable".to_string())))
     }
 
     /// The served public router, state not yet applied — the spec half of
@@ -56,10 +77,10 @@ mod tests {
     }
 
     fn state() -> Arc<AppsState> {
-        state_with_tunnel(Arc::new(TunnelUnavailable))
+        state_with_tunnel(tunnel_unavailable())
     }
 
-    fn state_with_tunnel(tunnel: Arc<dyn TunnelLaunchResolver>) -> Arc<AppsState> {
+    fn state_with_tunnel(tunnel: Arc<dyn TunnelService>) -> Arc<AppsState> {
         let store = AppsStore::open_in_memory().expect("store");
         Arc::new(AppsState::new(store, "http://127.0.0.1:8080", tunnel))
     }
@@ -191,11 +212,11 @@ mod tests {
         );
     }
 
-    /// When the resolver hands back a verified public origin, a
+    /// When the tunnel service starts and returns a verified origin, a
     /// `requires_tunnel` launch redirects there (no `tunnel=unavailable`).
     #[tokio::test]
     async fn launch_growth_chart_resolves_to_the_verified_tunnel_origin() {
-        let st = state_with_tunnel(Arc::new(TunnelAt("https://dev1.example.com")));
+        let st = state_with_tunnel(tunnel_at("https://dev1.example.com"));
         let res = router()
             .with_state(Arc::clone(&st))
             .oneshot(get("/apps/growth-chart"))

@@ -11,7 +11,6 @@ publish.workspace = true
 # `gatekeeper-rust`: pure `domain`, `db`, and `http`.
 [dependencies]
 anyhow.workspace = true
-async-trait = "0.1"
 axum.workspace = true
 serde = { workspace = true }
 serde_json.workspace = true
@@ -19,6 +18,10 @@ rusqlite.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 persistence-rust = { path = "../../persistence/persistence-rust" }
+# The tunnel service contract a `requires_tunnel` launch resolves through.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
+  "tunnel-service",
+] }
 rand = "0.9"
 tracing = "0.1"
 
@@ -26,9 +29,10 @@ tracing = "0.1"
 workspace = true
 
 [dev-dependencies]
-# The shared OpenAPI snapshot helper (assert/regenerate the committed spec). Only
-# the snapshot test uses it, so it's a dev-dependency with the opt-in feature.
+# The OpenAPI snapshot helper enables the extra `openapi-snapshot` feature;
+# `async-trait` is only used by the `TunnelService` test stubs.
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+async-trait = "0.1"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 http = "1"
 http-body-util = "0.1"
