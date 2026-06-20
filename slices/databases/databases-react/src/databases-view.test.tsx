@@ -85,6 +85,13 @@ describe('DatabasesView', () => {
     expect(screen.getByText('Empty')).toBeTruthy()
   })
 
+  // The row actions live behind a `…` menu (like collector). Open it, then act
+  // on the `menuitem`s.
+  const openRowMenu = async (label: string): Promise<void> => {
+    const trigger = await screen.findByRole('button', { name: `Actions for ${label}` })
+    trigger.click()
+  }
+
   test('download fires onExport for an existing database', async () => {
     const onExport = vi.fn()
     renderView({
@@ -95,7 +102,8 @@ describe('DatabasesView', () => {
       deletingId: null,
       errorMessage: null,
     })
-    const download = await screen.findByRole('button', { name: 'Download' })
+    await openRowMenu('Health data')
+    const download = await screen.findByRole('menuitem', { name: 'Download' })
     download.click()
     expect(onExport).toHaveBeenCalledWith('health-data.sqlite')
   })
@@ -109,8 +117,9 @@ describe('DatabasesView', () => {
       deletingId: null,
       errorMessage: null,
     })
-    const download = await screen.findByRole('button', { name: 'Download' })
-    const remove = screen.getByRole('button', { name: 'Delete' })
+    await openRowMenu('Wildflower app data')
+    const download = await screen.findByRole('menuitem', { name: 'Download' })
+    const remove = screen.getByRole('menuitem', { name: 'Delete' })
     expect(download.hasAttribute('disabled')).toBe(true)
     expect(remove.hasAttribute('disabled')).toBe(true)
   })
@@ -128,8 +137,11 @@ describe('DatabasesView', () => {
     const alert = await screen.findByRole('alert')
     expect(within(alert).getByText(/Quit and reopen Wildflower/)).toBeTruthy()
     // ...and the row's actions are disabled (nothing to do until restart).
-    expect(screen.getByRole('button', { name: 'Download' }).hasAttribute('disabled')).toBe(true)
-    expect(screen.getByRole('button', { name: 'Delete' }).hasAttribute('disabled')).toBe(true)
+    await openRowMenu('Wildflower app data')
+    expect(
+      (await screen.findByRole('menuitem', { name: 'Download' })).hasAttribute('disabled')
+    ).toBe(true)
+    expect(screen.getByRole('menuitem', { name: 'Delete' }).hasAttribute('disabled')).toBe(true)
   })
 
   test('surfaces a mutation error message', async () => {

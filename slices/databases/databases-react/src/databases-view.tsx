@@ -2,7 +2,15 @@ import { Effect } from 'effect'
 import { formatBytes } from 'kitchen-sink'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { Dialog, ItemList, PageHeader, pageLayoutStyles, type ItemListItem } from 'react-tundraish'
+import {
+  Dialog,
+  ItemList,
+  Menu,
+  PageHeader,
+  pageLayoutStyles,
+  type ItemListItem,
+  type MenuItem,
+} from 'react-tundraish'
 
 import { describeDatabase } from './format.ts'
 import type { DatabaseMetadata } from './queries.ts'
@@ -62,24 +70,26 @@ const DatabasesView = ({
       meta: rowMeta(database),
       tone: rowTone(database),
       actions: (
-        <>
-          <button
-            type="button"
-            className="button-2 filled"
-            disabled={locked || busy}
-            onClick={() => onExport(database.id)}
-          >
-            {exportingId === database.id ? 'Downloading…' : 'Download'}
-          </button>
-          <button
-            type="button"
-            className="button-2 filled accent-red"
-            disabled={locked || busy}
-            onClick={() => setConfirmId(database.id)}
-          >
-            Delete
-          </button>
-        </>
+        <Menu
+          label={`Actions for ${database.label}`}
+          items={
+            [
+              {
+                id: 'download',
+                label: exportingId === database.id ? 'Downloading…' : 'Download',
+                disabled: locked || busy,
+                onSelect: () => onExport(database.id),
+              },
+              {
+                id: 'delete',
+                label: 'Delete',
+                destructive: true,
+                disabled: locked || busy,
+                onSelect: () => setConfirmId(database.id),
+              },
+            ] as readonly MenuItem[]
+          }
+        />
       ),
     }
   }
