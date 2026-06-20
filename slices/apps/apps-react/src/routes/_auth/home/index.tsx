@@ -98,7 +98,6 @@ const AppsHomeBody = ({ tunnel, apps }: AppsHomeBodyProps): JSX.Element => {
             title: app.name,
             subtitle: app.subtitle,
             badge: app.requiresTunnel ? 'tunnel' : undefined,
-            actions: <span className="text-label-4">{app.kind}</span>,
             onClick: () => {
               void launch(app)
             },

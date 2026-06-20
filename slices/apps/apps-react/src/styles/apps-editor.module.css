@@ -37,6 +37,12 @@
   gap: 2px;
 }
 
+.apps-editor__row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 .apps-editor__row-sub {
   color: var(--color-neutral-4);
   overflow-wrap: anywhere;

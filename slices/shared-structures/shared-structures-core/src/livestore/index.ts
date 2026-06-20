@@ -198,13 +198,13 @@ type ComposedLivestoreModule<
  *
  * @example
  * ```ts
- * import * as AppsLivestore from 'apps-core/livestore'
+ * import * as GatekeeperLivestore from 'gatekeeper-core/livestore'
  * import * as EmrLivestore from 'emr-core/livestore'
  * import { composeLivestoreModules } from 'shared-structures-core/livestore'
  *
  * const { events, schema, tables } = composeLivestoreModules([
  *   EmrLivestore,
- *   AppsLivestore,
+ *   GatekeeperLivestore,
  * ] as const)
  * ```
  */

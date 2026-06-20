@@ -29,7 +29,7 @@ class AppsHttpApiClient extends publicHc.ClientTag<AppsHttpApiClient>() {
 
 /**
  * Effect Service providing the resolved `AppsAdminApi` (owner-only)
- * HttpApi client — custom-app writes. The composing app wraps
+ * HttpApi client — app writes (create / update / delete). The composing app wraps
  * `AppsAdminApi` in `RequireAuthMiddleware`, so the corresponding
  * client layer must attach a bearer.
  */

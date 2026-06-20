@@ -20,7 +20,7 @@ const useRunAuthed = (): RunAuthed =>
   useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })
 
 type AppEntry = Schema.Schema.Type<typeof Schemas.AppEntrySchema>
-type CreateCustomAppPayload = Schema.Schema.Type<typeof Schemas.CreateCustomAppBodySchema>
+type CreateAppPayload = Schema.Schema.Type<typeof Schemas.CreateAppBodySchema>
 type UpdateAppPayload = Schema.Schema.Type<typeof Schemas.UpdateAppBodySchema>
 
 /** Mutations invalidate this key on success so the next render refetches. */
@@ -65,18 +65,14 @@ const useAppsAdminUpdateMutation = (): UseMutationResult<
   })
 }
 
-/** Admin `CreateCustomApp` (POST /apps). Invalidates {@link APPS_LIST_QUERY_KEY}. */
-const useAppsAdminCreateMutation = (): UseMutationResult<
-  unknown,
-  Error,
-  CreateCustomAppPayload
-> => {
+/** Admin `CreateApp` (POST /apps). Invalidates {@link APPS_LIST_QUERY_KEY}. */
+const useAppsAdminCreateMutation = (): UseMutationResult<unknown, Error, CreateAppPayload> => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (payload) =>
       runAuthed(
-        Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].CreateCustomApp({ payload }))
+        Effect.flatMap(AppsAdminHttpApiClient, (c) => c['apps-admin'].CreateApp({ payload }))
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: APPS_LIST_QUERY_KEY })
@@ -111,4 +107,4 @@ export {
   useAppsAdminUpdateMutation,
   useAppsListQuery,
 }
-export type { AppEntry, CreateCustomAppPayload, UpdateAppPayload }
+export type { AppEntry, CreateAppPayload, UpdateAppPayload }

@@ -16,6 +16,6 @@ export {
   useAppsAdminUpdateMutation,
   useAppsListQuery,
   type AppEntry,
-  type CreateCustomAppPayload,
+  type CreateAppPayload,
   type UpdateAppPayload,
 } from './queries.ts'

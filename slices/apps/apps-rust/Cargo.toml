@@ -1,0 +1,34 @@
+[package]
+name = "apps-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# The apps slice, host-side: SQLite-backed selection of bundled apps plus a
+# CRUD surface for user-defined custom apps, the `/apps` HTTP routes the
+# webview consumes (list + launch redirect), and the owner-gated admin routes
+# the consumer wraps with the gatekeeper. Layered like `tunnel-rust` and
+# `gatekeeper-rust`: pure `domain`, `db`, and `http`.
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+serde = { workspace = true }
+serde_json.workspace = true
+rusqlite.workspace = true
+utoipa.workspace = true
+utoipa-axum.workspace = true
+persistence-rust = { path = "../../persistence/persistence-rust" }
+rand = "0.9"
+tracing = "0.1"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+# The shared OpenAPI snapshot helper (assert/regenerate the committed spec). Only
+# the snapshot test uses it, so it's a dev-dependency with the opt-in feature.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
+http = "1"
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }

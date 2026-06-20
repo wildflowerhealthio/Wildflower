@@ -5,8 +5,9 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   AppEntrySchema,
   AppNotFoundSchema,
-  BundledAppImmutableSchema,
-  CreateCustomAppBodySchema,
+  AppUrlSchema,
+  CreateAppBodySchema,
+  InvalidFieldSchema,
   UpdateAppBodySchema,
 } from './schemas.ts'
 
@@ -18,8 +19,8 @@ describe('AppEntrySchema', () => {
       id: 'patient-browser',
       name: 'Patient Browser',
       subtitle: 'Browse records',
+      url: '{origin}/installed-apps/patient-browser/index.html',
       requiresTunnel: false,
-      kind: 'bundled' as const,
       enabled: true,
     }
     expectRightToEqual(Schema.decodeUnknownEither(AppEntrySchema)(entry), entry)
@@ -27,10 +28,10 @@ describe('AppEntrySchema', () => {
 
   it('accepts an entry without a subtitle', () => {
     const entry = {
-      id: 'custom-1',
-      name: 'My Custom',
+      id: 'app-1',
+      name: 'My App',
+      url: 'https://example.com',
       requiresTunnel: false,
-      kind: 'custom' as const,
       enabled: true,
     }
     expectRightToEqual(Schema.decodeUnknownEither(AppEntrySchema)(entry), entry)
@@ -42,15 +43,15 @@ describe('AppEntrySchema', () => {
         id: 'x',
         name: 'X',
         subtitle: '',
+        url: 'https://example.com',
         requiresTunnel: false,
-        kind: 'bundled',
         enabled: true,
       }),
       expect.objectContaining({ _tag: 'ParseError' })
     )
   })
 
-  it('rejects entries missing kind', () => {
+  it('rejects entries missing url', () => {
     expectLeftToEqual(
       Schema.decodeUnknownEither(AppEntrySchema)({
         id: 'x',
@@ -63,19 +64,47 @@ describe('AppEntrySchema', () => {
   })
 })
 
-describe('CreateCustomAppBodySchema', () => {
+describe('AppUrlSchema', () => {
+  it.each([
+    'https://example.com',
+    'https://example.com/launch?launch=x',
+    '/apps/local',
+    '/fhir-r4/Patient/123',
+    '{origin}/some/path',
+    '{origin}/{launch}',
+  ])('accepts %s', (url) => {
+    expectRightToEqual(Schema.decodeUnknownEither(AppUrlSchema)(url), url)
+  })
+
+  it.each([
+    '',
+    'http://example.com',
+    'javascript:alert(1)',
+    'data:text/html,<script>',
+    'file:///etc/passwd',
+    '//attacker.example',
+    'ftp://example.com',
+  ])('rejects %s', (url) => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(AppUrlSchema)(url),
+      expect.objectContaining({ _tag: 'ParseError' })
+    )
+  })
+})
+
+describe('CreateAppBodySchema', () => {
   it('accepts a well-formed body', () => {
     const body = {
       name: 'My App',
       url: 'https://example.com',
       requiresTunnel: false,
     }
-    expectRightToEqual(Schema.decodeUnknownEither(CreateCustomAppBodySchema)(body), body)
+    expectRightToEqual(Schema.decodeUnknownEither(CreateAppBodySchema)(body), body)
   })
 
   it('rejects an empty name', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(CreateCustomAppBodySchema)({
+      Schema.decodeUnknownEither(CreateAppBodySchema)({
         name: '',
         url: 'https://example.com',
         requiresTunnel: false,
@@ -86,7 +115,7 @@ describe('CreateCustomAppBodySchema', () => {
 
   it('rejects bodies missing url', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(CreateCustomAppBodySchema)({
+      Schema.decodeUnknownEither(CreateAppBodySchema)({
         name: 'X',
         requiresTunnel: false,
       }),
@@ -96,7 +125,7 @@ describe('CreateCustomAppBodySchema', () => {
 
   it('rejects a malformed url', () => {
     expectLeftToEqual(
-      Schema.decodeUnknownEither(CreateCustomAppBodySchema)({
+      Schema.decodeUnknownEither(CreateAppBodySchema)({
         name: 'X',
         url: 'javascript:alert(1)',
         requiresTunnel: false,
@@ -148,14 +177,20 @@ describe('AppNotFoundSchema', () => {
   })
 })
 
-describe('BundledAppImmutableSchema', () => {
-  it('accepts the declared error payload', () => {
-    expectRightToEqual(
-      Schema.decodeUnknownEither(BundledAppImmutableSchema)({
-        error: 'BundledAppImmutable',
-        id: 'patient-browser',
-      }),
-      { error: 'BundledAppImmutable', id: 'patient-browser' }
+describe('InvalidFieldSchema', () => {
+  it('accepts the InvalidUrl and InvalidName discriminants', () => {
+    for (const error of ['InvalidUrl', 'InvalidName'] as const) {
+      expectRightToEqual(
+        Schema.decodeUnknownEither(InvalidFieldSchema)({ error, message: 'nope' }),
+        { error, message: 'nope' }
+      )
+    }
+  })
+
+  it('rejects any other error literal', () => {
+    expectLeftToEqual(
+      Schema.decodeUnknownEither(InvalidFieldSchema)({ error: 'Whatever', message: 'x' }),
+      expect.objectContaining({ _tag: 'ParseError' })
     )
   })
 })

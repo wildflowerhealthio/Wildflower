@@ -1,0 +1,337 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Apps Catalogue API",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/apps": {
+      "get": {
+        "summary": "`GET /apps` — the full catalogue. Reachable unauthenticated by embedded\nwebviews and iframes that can't easily carry a bearer token.",
+        "operationId": "handle_list_apps",
+        "responses": {
+          "200": {
+            "description": "Every persisted app, in seed/insertion order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppEntry"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "`POST /apps` — create an app. Owner-gated by the consumer.",
+        "operationId": "handle_create_app",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAppBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The created app",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty name (`InvalidName`) or bad url (`InvalidUrl`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidFieldBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/apps/{id}": {
+      "get": {
+        "summary": "`GET /apps/{id}` — 302 to the resolved launch URL, or 404 if no app has\nthis id. Reachable unauthenticated (the webview follows the redirect).",
+        "operationId": "handle_launch_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect (Location header) to the resolved launch URL"
+          },
+          "404": {
+            "description": "No app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "`DELETE /apps/{id}` — remove any row. Owner-gated by the consumer.",
+        "operationId": "handle_delete_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row was removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "`PATCH /apps/{id}` — partial update of any row. Owner-gated by the consumer.",
+        "operationId": "handle_update_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAppBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The updated app",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty name (`InvalidName`) or bad url (`InvalidUrl`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidFieldBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AppEntry": {
+        "type": "object",
+        "description": "One app as both the wire shape and the SQL row shape. Field names match\ncolumn names so `sql_row!` in `db/` can generate the mapping without a\nseparate row type.\n\nThe `url` is a template: `{origin}` is replaced with the served origin\nat launch time, `{launch}` with a fresh per-launch nonce. A SMART-on-FHIR\napp's URL might be\n`https://example/launch.html?iss={origin}/fhir-r4&launch={launch}`; a\nhand-rolled one might be `{origin}/some/path` or `https://other-host/x`.\nSee [`AppUrl`] for the accepted shapes.",
+        "required": [
+          "id",
+          "enabled",
+          "name",
+          "url",
+          "requiresTunnel"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The descriptive line shown under the app's name. `None` means the\nrow has no explicit subtitle; the UI may fall back to the URL or\nrender the row without one."
+          },
+          "url": {
+            "type": "string",
+            "description": "The launch URL template, serialized as a plain string on the wire and\nin SQLite. See [`AppUrl`] for the accepted shapes / placeholders."
+          },
+          "requiresTunnel": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AppNotFoundBody": {
+        "type": "object",
+        "description": "Wire shape for `AppNotFound`. Matches the TS `AppNotFoundSchema`.",
+        "required": [
+          "error",
+          "id"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateAppBody": {
+        "type": "object",
+        "description": "POST body — matches the TS `CreateAppBodySchema`. `requiresTunnel`\nuses the wire-camelCase the existing client speaks. `url` is read as a raw\nstring so a bad value yields the structured `400 InvalidUrl` rather than a\ngeneric deserialize error.",
+        "required": [
+          "name",
+          "url",
+          "requiresTunnel"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "requiresTunnel": {
+            "type": "boolean"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "DeletedBody": {
+        "type": "object",
+        "required": [
+          "deleted"
+        ],
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "InvalidFieldBody": {
+        "type": "object",
+        "description": "Wire shape for a 400 carrying a discriminant + human-readable reason.\nReused for `InvalidUrl` (a bad app URL) and `InvalidName` (an empty name)\n— both are write-side field validations the client renders inline. The\n`error` discriminant lets a client tell the two apart rather than seeing a\nURL-error tag for a name problem.",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateAppBody": {
+        "type": "object",
+        "description": "PATCH body — all fields optional. Matches `UpdateAppBodySchema`. A\n`subtitle` of `Some(None)` (explicit null on the wire) clears the\nsubtitle; a missing key leaves it alone — see [`SubtitlePatch`].",
+        "properties": {
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requiresTunnel": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
