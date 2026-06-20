@@ -399,6 +399,12 @@ async fn supervise(job: SupervisorJob) {
             attempt,
         );
         let attempt_started = tokio::time::Instant::now();
+        tracing::info!(
+            revision,
+            attempt,
+            public_origin = %public_origin,
+            "tunnel: dialing relay"
+        );
         let dial = client.run_once(&relay, &local_addr, cancel.child_token());
         tokio::pin!(dial);
         let dial_result = dial_with_probes(
@@ -502,11 +508,22 @@ async fn probe_once(
     health_url: &str,
     timeout: Duration,
 ) -> Result<(), String> {
-    match tokio::time::timeout(timeout, probe.probe(health_url)).await {
+    let started = tokio::time::Instant::now();
+    let result = match tokio::time::timeout(timeout, probe.probe(health_url)).await {
         Err(_elapsed) => Err(format!("/health did not respond within {timeout:?}")),
         Ok(Err(reason)) => Err(format!("/health probe failed: {reason}")),
         Ok(Ok(())) => Ok(()),
+    };
+    match &result {
+        Ok(()) => tracing::debug!(url = %health_url, elapsed = ?started.elapsed(), "tunnel: /health probe ok"),
+        Err(reason) => tracing::debug!(
+            url = %health_url,
+            elapsed = ?started.elapsed(),
+            %reason,
+            "tunnel: /health probe failed"
+        ),
     }
+    result
 }
 
 /// Equal-jitter backoff: returns a duration in `[base / 2, base]`. Half
@@ -542,6 +559,14 @@ fn set_state(
         {
             return false;
         }
+        tracing::debug!(
+            revision,
+            attempt,
+            new_status = ?status,
+            error = error.as_deref(),
+            origin = %origin,
+            "tunnel: liveness transition"
+        );
         live.status = status;
         live.error = error;
         live.origin = origin;

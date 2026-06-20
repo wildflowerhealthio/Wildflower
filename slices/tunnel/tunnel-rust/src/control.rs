@@ -89,6 +89,7 @@ async fn start_and_verify(state: &Arc<TunnelState>) -> Result<String, String> {
     // the `Verified` fast-path short-circuits here — a terminal *error* verdict
     // still persists first, so the start reflects the requested intent.
     if let Some(Ok(origin)) = verdict(&rx.borrow_and_update()) {
+        tracing::info!(%origin, "tunnel launch: already verified, fast path");
         return Ok(origin);
     }
 
@@ -97,6 +98,11 @@ async fn start_and_verify(state: &Arc<TunnelState>) -> Result<String, String> {
     // Long enough for the first probe to land (one interval) and complete (one
     // timeout); shorter and a healthy-but-slow tunnel loses the race.
     let deadline_after = state.daemon.verify_deadline();
+    let started = tokio::time::Instant::now();
+    tracing::info!(
+        deadline = ?deadline_after,
+        "tunnel launch: persisted start, waiting for the tunnel to verify"
+    );
     let deadline = tokio::time::sleep(deadline_after);
     tokio::pin!(deadline);
     // The most recent concrete failure seen while dialing. The live `error` is
@@ -109,6 +115,13 @@ async fn start_and_verify(state: &Arc<TunnelState>) -> Result<String, String> {
         {
             let live = rx.borrow_and_update();
             if let Some(verdict) = verdict(&live) {
+                if let Ok(origin) = &verdict {
+                    tracing::info!(
+                        %origin,
+                        elapsed = ?started.elapsed(),
+                        "tunnel launch: verified"
+                    );
+                }
                 return verdict;
             }
             if live.error.is_some() {
@@ -122,6 +135,13 @@ async fn start_and_verify(state: &Arc<TunnelState>) -> Result<String, String> {
                 }
             }
             () = &mut deadline => {
+                tracing::warn!(
+                    deadline = ?deadline_after,
+                    last_error = last_error.as_deref(),
+                    "tunnel launch: deadline elapsed before the tunnel verified \
+                     (if rathole/probe logs show it coming up just after this, the \
+                     deadline is too tight for a cold start)"
+                );
                 return Err(last_error.unwrap_or_else(|| {
                     format!("tunnel did not become reachable within {deadline_after:?}")
                 }));
