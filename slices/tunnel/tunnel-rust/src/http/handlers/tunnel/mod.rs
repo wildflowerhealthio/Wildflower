@@ -32,7 +32,35 @@ mod tests {
     use super::*;
     use crate::db::TunnelStore;
     use crate::domain::{RelayClient, RelaySettings};
+    use crate::health::{HealthCheck, HealthProbe, HEALTH_STATUS_PASS};
     use crate::TunnelDaemon;
+
+    /// The service id the test daemon expects back from `/health`.
+    const SERVICE_ID: &str = "svc-test";
+
+    /// A `/health` probe with a fixed outcome. The wire tests default to a
+    /// *failing* probe so the tunnel never reaches `Verified` — keeping
+    /// `servedOrigin` deterministically on the loopback fallback regardless of
+    /// real-time probe ticks. The verified path has its own paused-time test.
+    struct StubProbe(Result<HealthCheck, String>);
+
+    #[async_trait::async_trait]
+    impl HealthProbe for StubProbe {
+        async fn probe(&self, _url: &str) -> Result<HealthCheck, String> {
+            self.0.clone()
+        }
+    }
+
+    fn failing_probe() -> Arc<dyn HealthProbe> {
+        Arc::new(StubProbe(Err("probe disabled in test".to_string())))
+    }
+
+    fn passing_probe() -> Arc<dyn HealthProbe> {
+        Arc::new(StubProbe(Ok(HealthCheck {
+            status: HEALTH_STATUS_PASS.to_string(),
+            service_id: SERVICE_ID.to_string(),
+        })))
+    }
 
     /// The plain axum router (`OpenAPI` spec discarded) for exercising the
     /// handlers via `oneshot` — the documented router minus its spec half.
@@ -76,12 +104,19 @@ mod tests {
     }
 
     fn state(behavior: Behavior) -> (Arc<TunnelState>, mpsc::UnboundedReceiver<()>) {
+        state_with_probe(behavior, failing_probe())
+    }
+
+    fn state_with_probe(
+        behavior: Behavior,
+        probe: Arc<dyn HealthProbe>,
+    ) -> (Arc<TunnelState>, mpsc::UnboundedReceiver<()>) {
         let (started, rx) = mpsc::unbounded_channel();
         let client = Arc::new(FakeClient { behavior, started });
         let store = TunnelStore::open_in_memory().expect("store");
         let state = Arc::new(TunnelState {
             store,
-            daemon: TunnelDaemon::new_test(client, "http://127.0.0.1:8080", 8080),
+            daemon: TunnelDaemon::new_test(client, probe, SERVICE_ID, "http://127.0.0.1:8080", 8080),
         });
         (state, rx)
     }
@@ -134,6 +169,7 @@ mod tests {
                 "revision": 0,
                 "publicHost": null,
                 "requestedRunning": false,
+                "status": "off",
                 "running": false,
                 "error": null,
                 "attempt": 0,
@@ -143,8 +179,12 @@ mod tests {
         );
     }
 
+    /// The immediate PUT response is `dialing`: the supervisor has been spawned
+    /// (`running` true) but no `/health` probe has verified reachability yet, so
+    /// `servedOrigin` stays on the loopback fallback — not the optimistic public
+    /// origin the old behaviour reported.
     #[tokio::test]
-    async fn put_with_relay_running_reports_public_origin_and_bumps_revision() {
+    async fn put_with_relay_running_reports_dialing_and_bumps_revision() {
         let (st, _started) = state(Behavior::HoldUntilCancel);
         let (status, body) = send(
             &st,
@@ -158,7 +198,37 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["revision"], serde_json::json!(1));
-        assert_eq!(body["running"], serde_json::json!(true), "optimistic up");
+        assert_eq!(body["status"], serde_json::json!("dialing"));
+        assert_eq!(body["running"], serde_json::json!(true), "supervisor up");
+        assert_eq!(
+            body["servedOrigin"],
+            serde_json::json!("http://127.0.0.1:8080"),
+            "loopback until a probe verifies",
+        );
+    }
+
+    /// Once a `/health` probe comes back `pass` from this device, the status
+    /// flips to `verified` and `servedOrigin` becomes the public origin.
+    #[tokio::test(start_paused = true)]
+    async fn verified_after_probe_reports_the_public_origin() {
+        let (st, _started) = state_with_probe(Behavior::HoldUntilCancel, passing_probe());
+        let _ = send(
+            &st,
+            put(&serde_json::json!({
+                "revision": 0,
+                "publicHost": "dev1.example.com",
+                "requestedRunning": true,
+                "relay": relay_json(),
+            })),
+        )
+        .await;
+        // Wait for the supervisor's probe to verify in virtual time.
+        let mut live = st.daemon.watch_liveness();
+        live.wait_for(|l| l.served_origin == "https://dev1.example.com")
+            .await
+            .expect("verified");
+        let (_status, body) = send(&st, get()).await;
+        assert_eq!(body["status"], serde_json::json!("verified"));
         assert_eq!(
             body["servedOrigin"],
             serde_json::json!("https://dev1.example.com")
@@ -228,6 +298,7 @@ mod tests {
             })),
         )
         .await;
+        assert_eq!(body["status"], serde_json::json!("misconfigured"));
         assert_eq!(body["running"], serde_json::json!(false));
         assert_eq!(
             body["error"],
@@ -242,8 +313,9 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_attempt_surfaces_the_error_and_keeps_retrying() {
+        use crate::domain::TunnelStatus;
         let (st, mut started) = state(Behavior::FailImmediately);
-        let mut observed = st.daemon.watch_observed();
+        let mut live = st.daemon.watch_liveness();
         let _ = send(
             &st,
             put(&serde_json::json!({
@@ -253,20 +325,20 @@ mod tests {
         )
         .await;
 
-        // the supervisor's attempt fails and the error surfaces (deterministic
-        // await on the observed-state transition)
-        observed
-            .wait_for(|o| !o.running && o.error.as_deref() == Some("relay unreachable"))
-            .await
-            .expect("error observed");
+        // the supervisor's dial fails and surfaces `unreachable` + the error
+        // (deterministic await on the liveness transition)
+        live.wait_for(|l| {
+            l.status == TunnelStatus::Unreachable && l.error.as_deref() == Some("relay unreachable")
+        })
+        .await
+        .expect("error surfaces");
         // and it keeps reconnecting — at least two attempts happen
         started.recv().await.expect("attempt 1");
         started.recv().await.expect("attempt 2");
 
         // The attempt counter climbs on every retry so an operator can spot a
         // permanent misconfiguration (steady error + steadily climbing count).
-        observed
-            .wait_for(|o| o.attempt >= 2)
+        live.wait_for(|l| l.attempt >= 2)
             .await
             .expect("attempt count climbs");
         let (_, body) = send(&st, get()).await;
@@ -344,6 +416,7 @@ mod tests {
         )
         .await;
         assert_eq!(body["revision"], serde_json::json!(2));
+        assert_eq!(body["status"], serde_json::json!("off"));
         assert_eq!(body["running"], serde_json::json!(false));
         assert_eq!(
             body["servedOrigin"],

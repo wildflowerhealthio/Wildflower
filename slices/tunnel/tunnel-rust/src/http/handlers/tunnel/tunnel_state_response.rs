@@ -5,7 +5,7 @@
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::domain::TunnelSettings;
+use crate::domain::{TunnelSettings, TunnelStatus};
 use crate::TunnelDaemon;
 
 /// The readable view of the relay connection — everything except the secret
@@ -20,27 +20,59 @@ pub struct RelayView {
     pub(super) service_name: String,
 }
 
+/// The liveness state on the wire — the daemon's [`TunnelStatus`] FSM position.
+/// Drives `running`/`servedOrigin`, which are derived views of it:
+///
+///  - `off` — not requested on.
+///  - `misconfigured` — requested but un-dialable (no relay, or no public
+///    host); `error` says which.
+///  - `dialing` — attempting; not yet proven reachable. `servedOrigin` is the
+///    loopback fallback.
+///  - `verified` — a `/health` probe through the public origin came back `pass`
+///    from this device; the **only** status where `servedOrigin` is
+///    `https://{publicHost}`.
+///  - `unreachable` — was attempting but the dial dropped or the probe failed;
+///    retrying. Back to the loopback fallback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum TunnelStatusWire {
+    Off,
+    Misconfigured,
+    Dialing,
+    Verified,
+    Unreachable,
+}
+
+impl From<TunnelStatus> for TunnelStatusWire {
+    fn from(status: TunnelStatus) -> Self {
+        match status {
+            TunnelStatus::Off => TunnelStatusWire::Off,
+            TunnelStatus::Misconfigured => TunnelStatusWire::Misconfigured,
+            TunnelStatus::Dialing => TunnelStatusWire::Dialing,
+            TunnelStatus::Verified => TunnelStatusWire::Verified,
+            TunnelStatus::Unreachable => TunnelStatusWire::Unreachable,
+        }
+    }
+}
+
 /// Tunnel state on the wire. The relay connection's non-secret fields are
 /// returned in [`RelayView`] (the `token` stays write-only and never appears
 /// here). `revision` is the optimistic-concurrency token a PUT must echo.
 ///
-/// # `running` and `servedOrigin` are optimistic
+/// # Liveness is now verified, not optimistic
 ///
-/// `running` flips to `true` the instant a dial attempt starts and stays true
-/// across reconnect attempts that haven't yet errored — it means *dialing*,
-/// not *connected*. Rathole exposes no "handshake completed" signal, so the
-/// daemon has nothing more precise to report. `servedOrigin` derives from
-/// `running`, so it may resolve to `https://{publicHost}` while the tunnel is
-/// still mid-dial (or briefly during a reconnect after a real failure).
+/// `status` is the real [`TunnelStatusWire`] FSM position. `servedOrigin`
+/// resolves to `https://{publicHost}` **only** while `status == "verified"` —
+/// i.e. after a `/health` probe through the public origin came back `pass` from
+/// this device — and the supervisor re-probes, so it reverts to the loopback
+/// fallback if the tunnel silently drops. `running` is the coarse "a supervisor
+/// is attempting" view (`dialing`/`verified`/`unreachable`), retained for
+/// back-compat; prefer `status`.
 ///
-/// A caller that needs *verified reachable* (e.g. an await-tunnel flow that
-/// hands `servedOrigin` to another component) must probe the URL itself —
-/// don't treat `running: true` as a liveness guarantee.
-///
-/// A real liveness signal (probe or tri-state) to replace the optimistic
-/// `running` / `servedOrigin` is tracked in
-/// <https://github.com/Assessment-is/Wildflower/issues/184>; the dirty-gated
-/// settings UI accepts the optimistic value for now.
+/// `attempt` counts dial attempts for this revision (resets on the next
+/// reconcile) — a counter climbing with a steady `error` flags a permanent
+/// misconfiguration. This is the resolution of
+/// <https://github.com/Assessment-is/Wildflower/issues/184>.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TunnelStateResponse {
@@ -51,8 +83,10 @@ pub struct TunnelStateResponse {
     #[schema(required)]
     pub(super) public_host: Option<String>,
     pub(super) requested_running: bool,
-    /// `true` when the daemon is *dialing or reconnecting* — not a
-    /// connected-handshake signal. See the type-level docs.
+    /// The liveness FSM position — the authoritative state. See the type docs.
+    pub(super) status: TunnelStatusWire,
+    /// `true` when a supervisor is attempting (`dialing`/`verified`/
+    /// `unreachable`). A derived view of `status`, kept for back-compat.
     pub(super) running: bool,
     #[schema(required)]
     pub(super) error: Option<String>,
@@ -61,8 +95,8 @@ pub struct TunnelStateResponse {
     /// misconfiguration (counter climbs with no recovery) without the daemon
     /// having to classify rathole errors itself.
     pub(super) attempt: i64,
-    /// `https://{publicHost}` while `running` (optimistically — see the
-    /// type-level docs), else the loopback fallback.
+    /// `https://{publicHost}` only while `status == "verified"`, else the
+    /// loopback fallback. See the type-level docs.
     pub(super) served_origin: String,
     /// The relay connection's non-secret fields, or `null` when no relay is
     /// configured. The `token` is never included.
@@ -71,19 +105,16 @@ pub struct TunnelStateResponse {
 }
 
 impl TunnelStateResponse {
-    /// Build the wire snapshot from persisted `settings` + the live observed
-    /// runtime. Shared by both the GET response and the PUT response (success and
-    /// `409 CONFLICT` alike).
+    /// Build the wire snapshot from persisted `settings` + the live liveness.
+    /// Shared by both the GET response and the PUT response (success and
+    /// `409 CONFLICT` alike). Every liveness-derived field (`status`, `running`,
+    /// `error`, `attempt`, `servedOrigin`) comes from the daemon's single
+    /// `watch`, so the HTTP surface and the in-process consumers can't diverge.
     pub(super) fn from_current_state(
         state: &TunnelDaemon,
         settings: &TunnelSettings,
     ) -> TunnelStateResponse {
-        let observed = state.observed();
-        let served_origin = Self::served_origin(
-            observed.running,
-            settings.public_host.as_deref(),
-            state.loopback_origin(),
-        );
+        let live = state.liveness();
         let relay = settings.relay_settings.as_ref().map(|r| RelayView {
             remote_addr: r.remote_addr.clone(),
             public_key: r.public_key.clone(),
@@ -93,22 +124,12 @@ impl TunnelStateResponse {
             revision: settings.revision,
             public_host: settings.public_host.clone(),
             requested_running: settings.requested_running,
-            running: observed.running,
-            error: observed.error,
-            attempt: observed.attempt,
-            served_origin,
+            status: live.status.into(),
+            running: live.status.is_running(),
+            error: live.error,
+            attempt: live.attempt,
+            served_origin: live.served_origin,
             relay,
-        }
-    }
-
-    /// Compute the origin clients should reach the server at: the public
-    /// `https://{publicHost}` when the daemon is dialing this revision's
-    /// configured host, else the loopback fallback. Optimistic — see the
-    /// type-level docs on [`TunnelStateResponse`].
-    fn served_origin(running: bool, public_host: Option<&str>, loopback_origin: &str) -> String {
-        match public_host {
-            Some(host) if running && !host.is_empty() => format!("https://{host}"),
-            _ => loopback_origin.to_string(),
         }
     }
 }

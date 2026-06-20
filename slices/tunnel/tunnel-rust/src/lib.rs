@@ -13,22 +13,25 @@
 //! Settings live in `SQLite` and are API-controlled (`PUT /tunnel`, a
 //! full-replace guarded by an optimistic-concurrency `revision`). The relay
 //! connection fields are write-only and start empty; until they are set the
-//! tunnel reports "not configured". Observed runtime state (running / error) is
-//! in-memory and resets per process.
+//! tunnel reports "not configured". Live runtime state (the [`TunnelStatus`]
+//! liveness FSM and any error) is in-memory and resets per process.
 //!
-//! ## Reconcile model
+//! ## Reconcile + liveness model
 //!
 //! Every accepted write bumps `revision` and reconciles: the previous
 //! [`http::TunnelState`] supervisor is cancelled and a fresh one is spawned for
-//! the new revision. A supervisor owns a reconnect/backoff loop and awaits its
-//! own rathole child, so a post-launch failure (relay unreachable, handshake
-//! rejected) surfaces in the HTTP `error` field and is retried, and a superseded
-//! run's late exit can't clobber the live one.
+//! the new revision. A supervisor owns a reconnect/backoff loop, awaits its own
+//! rathole child, *and* drives a concurrent `/health` probe — so `servedOrigin`
+//! resolves to the public origin only once a probe through it has come back
+//! `pass` from this device (`status == "verified"`). A post-launch failure
+//! surfaces in the `error` field and is retried, and a superseded run's late
+//! exit can't clobber the live one.
 
 pub mod config;
 mod control;
 pub mod db;
 pub mod domain;
+pub mod health;
 pub mod http;
 mod relay_clients;
 
@@ -40,24 +43,31 @@ use axum::Router;
 pub use config::TunnelConfig;
 pub use control::TunnelControl;
 pub use db::{SettingsSeed, TunnelStore};
-pub use domain::{RelaySettings, TunnelDaemon, TunnelSettings};
+pub use domain::{RelaySettings, TunnelDaemon, TunnelSettings, TunnelStatus};
+pub use health::{HealthCheck, HealthProbe};
 pub use http::TunnelState;
 use relay_clients::RatholeRelayClient;
 
-/// What [`setup_tunnel`] hands back: the `/tunnel` HTTP router to mount plus the
-/// in-process [`TunnelControl`] seam. The composition root threads the control
-/// into the apps slice (launch-origin resolution) and the `RequestTunnel`
-/// bridge handler, so a tunnel-requiring launch can trigger the tunnel and read
-/// its live public origin without an HTTP round-trip.
+/// What [`setup_tunnel`] hands back: the `/tunnel` HTTP router to mount, the
+/// unauthenticated `/health` router to mount *outside* the gatekeeper gate, plus
+/// the in-process [`TunnelControl`] seam. The composition root threads the
+/// control into the apps slice (launch-origin resolution) and the
+/// `RequestTunnel` bridge handler, so a tunnel-requiring launch can trigger the
+/// tunnel and read its live public origin without an HTTP round-trip.
 pub struct Tunnel {
     pub router: Router,
+    /// The ungated `GET /health` route the start-path probe round-trips through
+    /// the tunnel to confirm reachability. Mount it without the gatekeeper auth
+    /// gate so the probe (and any external uptime check) needs no bearer token.
+    pub health_router: Router,
     pub control: TunnelControl,
 }
 
-/// Build the `/tunnel` router + control seam over the shared `conn` and an
-/// embedded rathole client, mirroring `gatekeeper-rust`'s `setup_gatekeeper`.
-/// The host opens one database and passes it in. Resumes the tunnel from
-/// persisted settings.
+/// Build the `/tunnel` router + `/health` router + control seam over the shared
+/// `conn` and an embedded rathole client, mirroring `gatekeeper-rust`'s
+/// `setup_gatekeeper`. The host opens one database and passes it in, along with
+/// the `probe` adapter the start path uses to verify the tunnel is actually
+/// reachable. Resumes the tunnel from persisted settings.
 ///
 /// # Errors
 ///
@@ -66,11 +76,23 @@ pub struct Tunnel {
 pub fn setup_tunnel(
     conn: persistence_rust::Connection,
     config: &TunnelConfig,
+    probe: Arc<dyn HealthProbe>,
 ) -> anyhow::Result<Tunnel> {
     let store = TunnelStore::new(conn).context("failed to open tunnel store")?;
     let client = Arc::new(RatholeRelayClient::new());
-    let tunnel_daemon =
-        TunnelDaemon::new(client, config.loopback_origin.clone(), config.local_port);
+
+    // A per-process service id the `/health` route echoes and the daemon's probe
+    // matches, so a probe that loops back to a different host is caught. The same
+    // id is handed to both the daemon (which compares it) and the `/health`
+    // router (which serves it).
+    let service_id = health::generate_service_id();
+    let tunnel_daemon = TunnelDaemon::new(
+        client,
+        probe,
+        service_id.clone(),
+        config.loopback_origin.clone(),
+        config.local_port,
+    );
 
     let state = Arc::new(TunnelState {
         store,
@@ -94,12 +116,13 @@ pub fn setup_tunnel(
         .context("failed to read tunnel settings")?;
     state.daemon.reconcile(&settings);
 
-    // The control seam shares the daemon's served-origin watch and owns the
+    // The control seam shares the daemon's liveness watch and owns the
     // start-trigger task; spawn it before handing the state to the router.
     let control = control::spawn_control(Arc::clone(&state));
 
     Ok(Tunnel {
         router: http::router(state),
+        health_router: health::health_router(service_id),
         control,
     })
 }

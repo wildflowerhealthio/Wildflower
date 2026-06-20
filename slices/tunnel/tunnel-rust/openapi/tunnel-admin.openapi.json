@@ -141,11 +141,12 @@
       },
       "TunnelStateResponse": {
         "type": "object",
-        "description": "Tunnel state on the wire. The relay connection's non-secret fields are\nreturned in [`RelayView`] (the `token` stays write-only and never appears\nhere). `revision` is the optimistic-concurrency token a PUT must echo.\n\n# `running` and `servedOrigin` are optimistic\n\n`running` flips to `true` the instant a dial attempt starts and stays true\nacross reconnect attempts that haven't yet errored — it means *dialing*,\nnot *connected*. Rathole exposes no \"handshake completed\" signal, so the\ndaemon has nothing more precise to report. `servedOrigin` derives from\n`running`, so it may resolve to `https://{publicHost}` while the tunnel is\nstill mid-dial (or briefly during a reconnect after a real failure).\n\nA caller that needs *verified reachable* (e.g. an await-tunnel flow that\nhands `servedOrigin` to another component) must probe the URL itself —\ndon't treat `running: true` as a liveness guarantee.\n\nA real liveness signal (probe or tri-state) to replace the optimistic\n`running` / `servedOrigin` is tracked in\n<https://github.com/Assessment-is/Wildflower/issues/184>; the dirty-gated\nsettings UI accepts the optimistic value for now.",
+        "description": "Tunnel state on the wire. The relay connection's non-secret fields are\nreturned in [`RelayView`] (the `token` stays write-only and never appears\nhere). `revision` is the optimistic-concurrency token a PUT must echo.\n\n# Liveness is now verified, not optimistic\n\n`status` is the real [`TunnelStatusWire`] FSM position. `servedOrigin`\nresolves to `https://{publicHost}` **only** while `status == \"verified\"` —\ni.e. after a `/health` probe through the public origin came back `pass` from\nthis device — and the supervisor re-probes, so it reverts to the loopback\nfallback if the tunnel silently drops. `running` is the coarse \"a supervisor\nis attempting\" view (`dialing`/`verified`/`unreachable`), retained for\nback-compat; prefer `status`.\n\n`attempt` counts dial attempts for this revision (resets on the next\nreconcile) — a counter climbing with a steady `error` flags a permanent\nmisconfiguration. This is the resolution of\n<https://github.com/Assessment-is/Wildflower/issues/184>.",
         "required": [
           "revision",
           "publicHost",
           "requestedRunning",
+          "status",
           "running",
           "error",
           "attempt",
@@ -166,9 +167,13 @@
           "requestedRunning": {
             "type": "boolean"
           },
+          "status": {
+            "$ref": "#/components/schemas/TunnelStatusWire",
+            "description": "The liveness FSM position — the authoritative state. See the type docs."
+          },
           "running": {
             "type": "boolean",
-            "description": "`true` when the daemon is *dialing or reconnecting* — not a\nconnected-handshake signal. See the type-level docs."
+            "description": "`true` when a supervisor is attempting (`dialing`/`verified`/\n`unreachable`). A derived view of `status`, kept for back-compat."
           },
           "error": {
             "type": [
@@ -183,7 +188,7 @@
           },
           "servedOrigin": {
             "type": "string",
-            "description": "`https://{publicHost}` while `running` (optimistically — see the\ntype-level docs), else the loopback fallback."
+            "description": "`https://{publicHost}` only while `status == \"verified\"`, else the\nloopback fallback. See the type-level docs."
           },
           "relay": {
             "oneOf": [
@@ -197,6 +202,17 @@
             ]
           }
         }
+      },
+      "TunnelStatusWire": {
+        "type": "string",
+        "description": "The liveness state on the wire — the daemon's [`TunnelStatus`] FSM position.\nDrives `running`/`servedOrigin`, which are derived views of it:\n\n - `off` — not requested on.\n - `misconfigured` — requested but un-dialable (no relay, or no public\n   host); `error` says which.\n - `dialing` — attempting; not yet proven reachable. `servedOrigin` is the\n   loopback fallback.\n - `verified` — a `/health` probe through the public origin came back `pass`\n   from this device; the **only** status where `servedOrigin` is\n   `https://{publicHost}`.\n - `unreachable` — was attempting but the dial dropped or the probe failed;\n   retrying. Back to the loopback fallback.",
+        "enum": [
+          "off",
+          "misconfigured",
+          "dialing",
+          "verified",
+          "unreachable"
+        ]
       }
     }
   }
