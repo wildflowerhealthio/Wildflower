@@ -248,6 +248,12 @@ async fn run_server(
             Arc::new(shared_structures_rust::health_check::AlwaysHealthy),
         ))
         .merge(apps.public_router)
+        // The vendored patient-browser SPA, served under
+        // `/installed-apps/patient-browser/`. Public + unauthenticated like the
+        // launch path that redirects into it (`GET /apps/patient-browser` →
+        // `…/installed-apps/patient-browser/index.html`). Empty (404s) until the
+        // vendored dist is built (see slices/apps/vendor-apps/README).
+        .merge(vendor_apps_rust::setup_vendor_apps())
         .merge(gated_apps_admin)
         .merge(gated_databases)
         .fallback(spa::handle_serving_spa_html)

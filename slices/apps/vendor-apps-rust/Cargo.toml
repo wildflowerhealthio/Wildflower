@@ -1,0 +1,27 @@
+[package]
+name = "vendor-apps-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+# Host-side serving for the vendored patient-browser SPA. A `build.rs` embeds
+# the upstream `dist/` (gitignored — see vendor-apps/README) as individual
+# files, applying the same HTML-rebase + FHIR-config rewrites the TS generator
+# (`vendor-apps/scripts/generate-patient-browser.mjs`) does, and
+# `setup_vendor_apps()` hands back an axum router that serves them under
+# `/installed-apps/patient-browser/`. No tauri/GTK dependency, so it builds in
+# the main (non-Tauri) Rust CI; wildflower-tauri merges the router into its
+# loopback API surface. When the dist is absent (fresh clone / CI) the embedded
+# table is empty and the routes 404 — the crate still compiles.
+[dependencies]
+axum.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+http = "1"
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }

@@ -20,6 +20,25 @@ MOUNT = '/installed-apps/patient-browser'
 the HTML at generation time, so the inlined assets reference our route, not
 the upstream defaults.
 
+## Host (Tauri) serving — `vendor-apps-rust`
+
+The Tauri host serves the same app from Rust instead of the combined TS module.
+The sibling crate [`vendor-apps-rust`](../vendor-apps-rust) embeds the vendored
+`dist/` as **individual files** at build time (its `build.rs` walks the same
+`vendor/patient-browser/dist/`), applying the identical rewrites — rebasing
+`/assets/`, `/img/`, `/config/` in the HTML onto the mount, and synthesizing
+`config/default.json5` from upstream's `config/r4.json5` with the FHIR server
+pointed at `/fhir-r4` and a long request timeout. `setup_vendor_apps()` returns
+an axum router mounted into the host's loopback API at
+`/installed-apps/patient-browser/`, which is where the `GET /apps/patient-browser`
+launch redirect lands.
+
+Because `build.rs` reads the same gitignored `vendor/` directory, the **same
+regeneration step below populates both paths**: with `vendor/` absent (a fresh
+clone or CI) the Rust crate compiles with an empty asset table and the routes
+404 until you build the upstream dist. No separate `generate` run is needed for
+the Rust side — `cargo build` picks the dist up directly.
+
 ## Regenerating the assets
 
 The vendored `dist/` lives at `vendor/patient-browser/dist/` and is

@@ -7110,6 +7110,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
+name = "vendor-apps-rust"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "http",
+ "http-body-util",
+ "tokio",
+ "tower",
+]
+
+[[package]]
 name = "vergen"
 version = "7.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7474,6 +7485,7 @@ dependencies = [
  "tower",
  "tower-http 0.6.11",
  "tunnel-rust",
+ "vendor-apps-rust",
 ]
 
 [[package]]

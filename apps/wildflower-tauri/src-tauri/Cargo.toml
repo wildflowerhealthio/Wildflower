@@ -47,6 +47,10 @@ shared-structures-rust = { path = "../../../slices/shared-structures/shared-stru
   "health-check",
 ] }
 tunnel-rust = { path = "../../../slices/tunnel/tunnel-rust" }
+# Serves the vendored patient-browser SPA under /installed-apps/patient-browser/
+# (the launch redirect's target). No tauri dep of its own — it's a plain axum
+# router merged into the loopback API below.
+vendor-apps-rust = { path = "../../../slices/apps/vendor-apps-rust" }
 anyhow.workspace = true
 axum.workspace = true
 tokio = { workspace = true, features = ["full"] }
