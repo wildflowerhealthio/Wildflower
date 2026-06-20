@@ -35,6 +35,7 @@ const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_P
 async fn run_server(
     runtime: ServerRuntimeConfig,
     publishers: bridge::BridgePublishers,
+    app_handle: tauri::AppHandle,
 ) -> anyhow::Result<()> {
     let emr_config = EmrConfig {
         log_level: "debug".to_string(),
@@ -170,6 +171,11 @@ async fn run_server(
     };
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
+    // Wire the apps `RequestTunnel` web→host bridge handler now that the tunnel
+    // service exists: the SPA's launch path asks the host to bring the tunnel up
+    // (and awaits the verified origin) for an app that needs a public origin
+    // when the tunnel isn't already running.
+    bridge::attach_apps_tunnel_bridge(&app_handle, Arc::clone(&tunnel_service));
     let apps = setup_apps(db, &apps_config, tunnel_service).context("failed to set up apps")?;
     let gated_apps_admin =
         layer_router_with_gatekeeper_auth_gating(apps.admin_router, gatekeeper.state.clone());
@@ -262,6 +268,10 @@ pub fn run() {
             browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
 
             let error_handle = app.handle().clone();
+            // The server task wires the apps `RequestTunnel` bridge handler once
+            // the tunnel service is built, so it needs an app handle to listen
+            // on / emit through the bridge event bus.
+            let server_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let runtime = ServerRuntimeConfig {
                     // Loopback-only: the OS rejects non-local peers at the
@@ -275,7 +285,7 @@ pub fn run() {
                     app_data_dir,
                 };
 
-                if let Err(error) = run_server(runtime, publishers).await {
+                if let Err(error) = run_server(runtime, publishers, server_handle).await {
                     tauri_plugin_log::log::error!("Wildflower server stopped: {error:?}");
                     // A failed/stopped server leaves the webview unable to
                     // reach the API at all (no token, no FHIR) — surface it

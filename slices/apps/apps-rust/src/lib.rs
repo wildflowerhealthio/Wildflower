@@ -26,6 +26,7 @@
 //! when the tunnel can't be reached). Depending only on the contract keeps
 //! apps-rust decoupled from tunnel-rust.
 
+pub mod bridge;
 pub mod config;
 pub mod db;
 pub mod domain;
