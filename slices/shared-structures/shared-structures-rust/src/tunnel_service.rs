@@ -40,9 +40,20 @@ impl TunnelStatus {
     }
 }
 
-/// A snapshot of the live tunnel state, carried on [`TunnelService::subscribe`].
+/// A snapshot of the live tunnel state, carried on [`TunnelService::subscribe`]
+/// and read by the tunnel slice itself (it is the slice's one liveness type —
+/// there is no separate internal struct).
+///
+/// Most consumers only care about `status`/`origin`/`error`; `revision` and
+/// `attempt` are the optimistic-concurrency token and the dial-attempt counter
+/// the tunnel slice carries for its own bookkeeping (and surfaces on the
+/// `/tunnel` HTTP wire). They're part of the snapshot so the slice's
+/// supersession guard stays serialized with state writes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TunnelLiveness {
+    /// The settings revision this snapshot reflects. `None` before the tunnel
+    /// has reconciled any settings.
+    pub revision: Option<i64>,
     /// The liveness FSM position.
     pub status: TunnelStatus,
     /// The current most-available origin: the verified public origin while
@@ -50,6 +61,10 @@ pub struct TunnelLiveness {
     pub origin: String,
     /// A human-readable reason for `Misconfigured`/`Unreachable`, else `None`.
     pub error: Option<String>,
+    /// Dial attempts for the current revision since it began; resets to 0 on the
+    /// next revision. A climbing count with a steady `error` flags a permanent
+    /// misconfiguration.
+    pub attempt: i64,
 }
 
 /// The APIs the tunnel provides to other slices. Object-safe so a host can hand
@@ -84,9 +99,11 @@ impl OfflineTunnel {
     pub fn new(origin: impl Into<String>) -> Self {
         let origin = origin.into();
         let (state, _) = watch::channel(TunnelLiveness {
+            revision: None,
             status: TunnelStatus::Off,
             origin: origin.clone(),
             error: None,
+            attempt: 0,
         });
         Self { origin, state }
     }

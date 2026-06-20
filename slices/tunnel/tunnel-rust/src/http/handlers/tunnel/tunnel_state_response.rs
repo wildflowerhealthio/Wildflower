@@ -130,7 +130,7 @@ impl TunnelStateResponse {
             running: live.status.is_running(),
             error: live.error,
             attempt: live.attempt,
-            served_origin: live.served_origin,
+            served_origin: live.origin,
             relay,
         }
     }

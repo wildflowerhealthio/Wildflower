@@ -54,9 +54,11 @@ mod tests {
         }
         fn subscribe(&self) -> tokio::sync::watch::Receiver<TunnelLiveness> {
             tokio::sync::watch::channel(TunnelLiveness {
+                revision: None,
                 status: TunnelStatus::Off,
                 origin: "http://127.0.0.1:8080".to_string(),
                 error: None,
+                attempt: 0,
             })
             .1
         }

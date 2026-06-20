@@ -18,7 +18,6 @@ use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelService, Tunn
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::db::{SettingsUpdate, SettingsUpdateOutcome};
-use crate::domain::Liveness;
 use crate::http::TunnelState;
 
 /// How many bounded start requests can queue before `request_start` awaits a
@@ -96,36 +95,15 @@ impl TunnelService for TunnelControl {
     }
 }
 
-/// Map the daemon's internal liveness onto the public [`TunnelLiveness`]
-/// contract (the internal `revision`/`attempt` are not part of the contract).
-fn to_public(live: &Liveness) -> TunnelLiveness {
-    TunnelLiveness {
-        status: live.status,
-        origin: live.served_origin.clone(),
-        error: live.error.clone(),
-    }
-}
-
-/// Spawn the resident control tasks over the shared `state` and return a
-/// [`TunnelControl`] handle. Two tasks live until every [`TunnelControl`] clone
-/// is dropped (process lifetime for the host): the start-trigger loop, and a
-/// forwarder that republishes the daemon's internal liveness as the public
-/// [`TunnelLiveness`] contract so consumers depend only on the contract type.
+/// Spawn the resident control task over the shared `state` and return a
+/// [`TunnelControl`] handle. The task lives until every [`TunnelControl`] clone
+/// is dropped (process lifetime for the host). The handle reads the daemon's
+/// [`TunnelLiveness`] watch directly — that watch *is* the public contract, so
+/// there is nothing to map.
 pub(crate) fn spawn_control(state: Arc<TunnelState>) -> TunnelControl {
     let (start_tx, mut start_rx) =
         mpsc::channel::<oneshot::Sender<Result<String, String>>>(START_QUEUE_DEPTH);
-
-    // Forwarder: internal `Liveness` watch → public `TunnelLiveness` watch.
-    let mut internal = state.daemon.watch_liveness();
-    let (public_tx, liveness_rx) = watch::channel(to_public(&internal.borrow()));
-    tokio::spawn(async move {
-        while internal.changed().await.is_ok() {
-            // Drop the read guard before publishing (different channel, but keep
-            // the internal lock held for as short as possible).
-            let snapshot = to_public(&internal.borrow_and_update());
-            public_tx.send_replace(snapshot);
-        }
-    });
+    let liveness_rx = state.daemon.watch_liveness();
 
     // Start-trigger loop: each request persist-then-reconciles and awaits a
     // verified outcome.
@@ -177,9 +155,9 @@ async fn start_and_verify(state: &Arc<TunnelState>) -> Result<String, String> {
 
 /// The terminal verdict for a liveness, or `None` while still dialing/retrying
 /// (the caller keeps waiting until `Verified` or the deadline).
-fn verdict(live: &Liveness) -> Option<Result<String, String>> {
+fn verdict(live: &TunnelLiveness) -> Option<Result<String, String>> {
     match live.status {
-        TunnelStatus::Verified => Some(Ok(live.served_origin.clone())),
+        TunnelStatus::Verified => Some(Ok(live.origin.clone())),
         TunnelStatus::Misconfigured => Some(Err(live
             .error
             .clone()

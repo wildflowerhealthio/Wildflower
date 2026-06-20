@@ -9,7 +9,7 @@
 //! concurrent `/health` probe — so the public origin is only ever published once
 //! a probe through it has come back healthy.
 //!
-//! ## Liveness state machine
+//! ## TunnelLiveness state machine
 //!
 //! One [`TunnelStatus`] per live revision, published on a `watch` so every
 //! consumer (the HTTP `GET /tunnel`, the apps launch handler, an in-process
@@ -42,7 +42,7 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use shared_structures_rust::tunnel_service::TunnelStatus;
+use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelStatus};
 
 use crate::domain::{RelayClient, TunnelSettings};
 use crate::health::HealthProbe;
@@ -61,30 +61,12 @@ const NO_PUBLIC_HOST: &str = "tunnel is running but no public host is configured
 /// old client from leaking forever.
 const CANCEL_GRACE: Duration = Duration::from_secs(5);
 
-/// A snapshot of the live tunnel runtime. Watched so reads see the latest value
-/// and internal waiters (and tests) can await transitions.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Liveness {
-    /// The revision of the most-recently-reconciled supervisor. Doubles as the
-    /// monotonicity marker: [`TunnelDaemon::reconcile`] skips when its
-    /// `settings.revision` is not strictly greater (closing the concurrent-PUT
-    /// race), and [`set_state`] drops a superseded supervisor's late update when
-    /// this no longer matches its own revision. `None` before any reconcile.
-    pub revision: Option<i64>,
-    /// The liveness state machine position.
-    pub status: TunnelStatus,
-    /// A human-readable reason for `Misconfigured`/`Unreachable`, else `None`.
-    pub error: Option<String>,
-    /// The origin clients should reach the server at: the public
-    /// `https://{publicHost}` only while `Verified`, else the loopback fallback.
-    /// Computed alongside `status` so the two can never disagree.
-    pub served_origin: String,
-    /// Count of dial attempts for this revision since the supervisor started.
-    /// Resets to 0 on the next reconcile. A climbing `attempt` with a steady
-    /// error is the operator-facing "probably a permanent misconfiguration"
-    /// signal.
-    pub attempt: i64,
-}
+// The watched liveness is the shared [`TunnelLiveness`] contract directly —
+// there is no separate internal struct. Its `revision` is the supersession
+// marker: [`reconcile`](TunnelDaemon::reconcile) skips a non-newer revision, and
+// [`set_state`] drops a superseded supervisor's late update when `revision` no
+// longer matches its own — a check serialized with the state write by the watch
+// lock (which is why `revision` must live in the watched value).
 
 /// Exponential reconnect backoff, configurable so tests don't wait on wall time.
 #[derive(Debug, Clone, Copy)]
@@ -144,8 +126,8 @@ pub struct TunnelDaemon {
     probe: Arc<dyn HealthProbe>,
     loopback_origin: String,
     local_port: u16,
-    state_tx: watch::Sender<Liveness>,
-    state_rx: watch::Receiver<Liveness>,
+    state_tx: watch::Sender<TunnelLiveness>,
+    state_rx: watch::Receiver<TunnelLiveness>,
     /// The live supervisor's cancel token + join handle. Taken and replaced on
     /// every reconcile; the taken handle is passed to the new task so it can
     /// drain (and, if the grace period elapses, abort) the previous run before
@@ -200,11 +182,11 @@ impl TunnelDaemon {
         probe_timing: ProbeTiming,
     ) -> Self {
         let loopback_origin = loopback_origin.into();
-        let (state_tx, state_rx) = watch::channel(Liveness {
+        let (state_tx, state_rx) = watch::channel(TunnelLiveness {
             revision: None,
             status: TunnelStatus::Off,
+            origin: loopback_origin.clone(),
             error: None,
-            served_origin: loopback_origin.clone(),
             attempt: 0,
         });
         Self {
@@ -221,20 +203,20 @@ impl TunnelDaemon {
     }
 
     /// A snapshot of the current liveness.
-    pub(crate) fn liveness(&self) -> Liveness {
+    pub(crate) fn liveness(&self) -> TunnelLiveness {
         self.state_rx.borrow().clone()
     }
 
     /// The current served origin (`https://{publicHost}` only while `Verified`,
     /// else the loopback fallback).
     pub fn served_origin(&self) -> String {
-        self.state_rx.borrow().served_origin.clone()
+        self.state_rx.borrow().origin.clone()
     }
 
     /// Subscribe to liveness transitions. Consumers `borrow()` for the live
     /// value or `await changed()` for transitions; `request_start` awaits this
     /// for `Verified`, and the apps launch handler resolves launches against it.
-    pub(crate) fn watch_liveness(&self) -> watch::Receiver<Liveness> {
+    pub(crate) fn watch_liveness(&self) -> watch::Receiver<TunnelLiveness> {
         self.state_tx.subscribe()
     }
 
@@ -294,12 +276,12 @@ impl TunnelDaemon {
             (TunnelStatus::Dialing, None)
         };
 
-        let served_origin = served_origin_for(status, public.as_deref(), &self.loopback_origin);
-        self.state_tx.send_replace(Liveness {
+        let origin = served_origin_for(status, public.as_deref(), &self.loopback_origin);
+        self.state_tx.send_replace(TunnelLiveness {
             revision: Some(revision),
             status,
+            origin,
             error,
-            served_origin,
             attempt: 0,
         });
 
@@ -332,7 +314,7 @@ impl TunnelDaemon {
 /// Everything one spawned supervisor needs for the revision it drives, bundled
 /// so `reconcile` hands off a single value (rather than a long argument list).
 struct SupervisorJob {
-    state: watch::Sender<Liveness>,
+    state: watch::Sender<TunnelLiveness>,
     client: Arc<dyn RelayClient>,
     probe: Arc<dyn HealthProbe>,
     local_addr: String,
@@ -460,7 +442,7 @@ async fn supervise(job: SupervisorJob) {
 #[allow(clippy::too_many_arguments)]
 async fn dial_with_probes<D>(
     dial: &mut D,
-    state: &watch::Sender<Liveness>,
+    state: &watch::Sender<TunnelLiveness>,
     revision: i64,
     probe: &dyn HealthProbe,
     public_origin: &str,
@@ -524,7 +506,7 @@ fn jittered(base: Duration) -> Duration {
 /// served origin from `status` so it always matches.
 #[allow(clippy::too_many_arguments)]
 fn set_state(
-    state: &watch::Sender<Liveness>,
+    state: &watch::Sender<TunnelLiveness>,
     revision: i64,
     status: TunnelStatus,
     error: Option<String>,
@@ -532,21 +514,21 @@ fn set_state(
     public_origin: &str,
     attempt: i64,
 ) {
-    let served_origin = served_origin_for(status, Some(public_origin), loopback_origin);
+    let origin = served_origin_for(status, Some(public_origin), loopback_origin);
     state.send_if_modified(|live| {
         if live.revision != Some(revision) {
             return false;
         }
         if live.status == status
             && live.error == error
-            && live.served_origin == served_origin
+            && live.origin == origin
             && live.attempt == attempt
         {
             return false;
         }
         live.status = status;
         live.error = error;
-        live.served_origin = served_origin;
+        live.origin = origin;
         live.attempt = attempt;
         true
     });
@@ -721,7 +703,7 @@ mod tests {
         let live = daemon.liveness();
         assert_eq!(live.status, TunnelStatus::Misconfigured);
         assert_eq!(live.error.as_deref(), Some(NOT_CONFIGURED));
-        assert_eq!(live.served_origin, "http://127.0.0.1:8080");
+        assert_eq!(live.origin, "http://127.0.0.1:8080");
         assert!(!live.status.is_running());
     }
 
@@ -732,7 +714,7 @@ mod tests {
         let live = daemon.liveness();
         assert_eq!(live.status, TunnelStatus::Misconfigured);
         assert_eq!(live.error.as_deref(), Some(NO_PUBLIC_HOST));
-        assert_eq!(live.served_origin, "http://127.0.0.1:8080");
+        assert_eq!(live.origin, "http://127.0.0.1:8080");
     }
 
     #[tokio::test]
@@ -746,7 +728,7 @@ mod tests {
         let live = daemon.liveness();
         assert_eq!(live.status, TunnelStatus::Dialing);
         assert_eq!(
-            live.served_origin, "http://127.0.0.1:8080",
+            live.origin, "http://127.0.0.1:8080",
             "no public origin until a probe verifies",
         );
     }
@@ -763,7 +745,7 @@ mod tests {
         rx.wait_for(|l| l.status == TunnelStatus::Verified)
             .await
             .expect("verified");
-        assert_eq!(rx.borrow().served_origin, "https://dev1.example.com");
+        assert_eq!(rx.borrow().origin, "https://dev1.example.com");
     }
 
     #[tokio::test(start_paused = true)]
@@ -779,7 +761,7 @@ mod tests {
         rx.wait_for(|l| l.status == TunnelStatus::Unreachable)
             .await
             .expect("unreachable");
-        assert_eq!(rx.borrow().served_origin, "http://127.0.0.1:8080");
+        assert_eq!(rx.borrow().origin, "http://127.0.0.1:8080");
     }
 
     #[tokio::test(start_paused = true)]

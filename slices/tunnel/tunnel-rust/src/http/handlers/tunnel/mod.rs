@@ -218,7 +218,7 @@ mod tests {
         .await;
         // Wait for the supervisor's probe to verify in virtual time.
         let mut live = st.daemon.watch_liveness();
-        live.wait_for(|l| l.served_origin == "https://dev1.example.com")
+        live.wait_for(|l| l.origin == "https://dev1.example.com")
             .await
             .expect("verified");
         let (_status, body) = send(&st, get()).await;
