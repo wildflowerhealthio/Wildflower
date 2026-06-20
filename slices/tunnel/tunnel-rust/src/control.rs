@@ -12,19 +12,12 @@
 //! only triggers a start and reads the published state.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelService, TunnelStatus};
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::watch;
 
 use crate::db::{SettingsUpdate, SettingsUpdateOutcome};
 use crate::http::TunnelState;
-
-/// How many bounded start requests can queue before `request_start` awaits a
-/// free slot. Starts are cheap and rare (a user launching a tunnel app), so a
-/// small buffer is plenty; the bound just stops an unbounded backlog if the
-/// resident task ever stalls.
-const START_QUEUE_DEPTH: usize = 16;
 
 /// How many times the start path re-reads and retries its persist
 /// compare-and-swap when a racing write bumps the settings revision between the
@@ -32,58 +25,47 @@ const START_QUEUE_DEPTH: usize = 16;
 /// surface, so a handful of retries is ample before surfacing a "please retry".
 const START_CAS_RETRIES: usize = 8;
 
-/// How long `request_start` waits for the daemon to reach `Verified` before
-/// declaring the tunnel unreachable. Matches the per-probe deadline: a launch
-/// fails fast rather than hanging on a tunnel that started dialing but never
-/// carried traffic.
-const START_VERIFY_DEADLINE: Duration = Duration::from_secs(3);
-
-/// A handle onto the running tunnel's control seam. Cheap to clone (an `mpsc`
-/// sender plus a `watch` receiver); hand a clone to each consumer. Implements
-/// [`TunnelService`] — the contract the apps slice consumes.
+/// A handle onto the running tunnel's control seam. Cheap to clone (just an
+/// `Arc`); hand a clone to each consumer. Implements [`TunnelService`] — the
+/// contract the apps slice consumes.
+///
+/// There's no background machinery: a start persists-then-reconciles and awaits
+/// the daemon's liveness watch inline. Concurrent launches are safe (the persist
+/// is a retrying compare-and-swap, `reconcile` is monotonic) and coalesce on the
+/// daemon's single verification, so no queue or resident task is needed.
 #[derive(Clone)]
 pub struct TunnelControl {
-    start_tx: mpsc::Sender<oneshot::Sender<Result<String, String>>>,
-    /// The public liveness contract, mapped from the daemon's internal watch by
-    /// the forwarder task in [`spawn_control`].
-    liveness_rx: watch::Receiver<TunnelLiveness>,
+    state: Arc<TunnelState>,
 }
 
 impl TunnelControl {
+    /// Build a control handle over the shared tunnel `state`. The handle reads
+    /// the daemon's [`TunnelLiveness`] watch directly — that watch *is* the
+    /// public contract, so there is nothing to map.
+    pub(crate) fn new(state: Arc<TunnelState>) -> Self {
+        Self { state }
+    }
+
     /// Request the tunnel turn on, awaiting a *verified* outcome. `Ok(origin)`
     /// carries the public `https://{publicHost}` only once a `/health` probe
     /// through it has come back healthy; `Err(reason)` is a
     /// human-readable failure (relay unconfigured, no public host, persistence
-    /// contention, or "did not become reachable" within
-    /// [`START_VERIFY_DEADLINE`]) suitable for surfacing inline. Backs
-    /// [`TunnelService::try_start`].
+    /// contention, or "did not become reachable" within the daemon's
+    /// [`verify_deadline`](crate::domain::TunnelDaemon::verify_deadline))
+    /// suitable for surfacing inline. Backs [`TunnelService::try_start`].
+    ///
+    /// The hot path (already `Verified`) short-circuits inside
+    /// [`start_and_verify`] without persisting, so a relaunch against an up
+    /// tunnel returns the live origin cheaply.
     pub async fn request_start(&self) -> Result<String, String> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.start_tx
-            .send(reply_tx)
-            .await
-            .map_err(|_| "tunnel control task is no longer running".to_string())?;
-        reply_rx
-            .await
-            .map_err(|_| "tunnel control task dropped the start request".to_string())?
-    }
-
-    /// The current served origin (`https://{publicHost}` only while the tunnel
-    /// is `Verified`, else the loopback fallback).
-    pub fn served_origin(&self) -> String {
-        self.liveness_rx.borrow().origin.clone()
-    }
-
-    /// The current liveness status.
-    pub fn status(&self) -> TunnelStatus {
-        self.liveness_rx.borrow().status
+        start_and_verify(&self.state).await
     }
 }
 
 #[async_trait::async_trait]
 impl TunnelService for TunnelControl {
     fn current_origin(&self) -> String {
-        self.liveness_rx.borrow().origin.clone()
+        self.state.daemon.served_origin()
     }
 
     async fn try_start(&self) -> Result<String, String> {
@@ -91,51 +73,47 @@ impl TunnelService for TunnelControl {
     }
 
     fn subscribe(&self) -> watch::Receiver<TunnelLiveness> {
-        self.liveness_rx.clone()
-    }
-}
-
-/// Spawn the resident control task over the shared `state` and return a
-/// [`TunnelControl`] handle. The task lives until every [`TunnelControl`] clone
-/// is dropped (process lifetime for the host). The handle reads the daemon's
-/// [`TunnelLiveness`] watch directly — that watch *is* the public contract, so
-/// there is nothing to map.
-pub(crate) fn spawn_control(state: Arc<TunnelState>) -> TunnelControl {
-    let (start_tx, mut start_rx) =
-        mpsc::channel::<oneshot::Sender<Result<String, String>>>(START_QUEUE_DEPTH);
-    let liveness_rx = state.daemon.watch_liveness();
-
-    // Start-trigger loop: each request persist-then-reconciles and awaits a
-    // verified outcome.
-    tokio::spawn(async move {
-        while let Some(reply) = start_rx.recv().await {
-            let outcome = start_and_verify(&state).await;
-            // A dropped receiver means the requester superseded or timed out;
-            // the persisted intent still stands, so nothing to undo.
-            let _ = reply.send(outcome);
-        }
-    });
-
-    TunnelControl {
-        start_tx,
-        liveness_rx,
+        self.state.daemon.watch_liveness()
     }
 }
 
 /// Persist-then-reconcile the start, then await the daemon's liveness reaching a
 /// verdict: `Verified` → `Ok(origin)`, a terminal `Misconfigured`/`Off` → the
-/// matching error, otherwise wait up to [`START_VERIFY_DEADLINE`] for the probe
-/// to verify reachability (a launch shouldn't hang on a dead tunnel).
+/// matching error, otherwise wait up to the daemon's
+/// [`verify_deadline`](crate::domain::TunnelDaemon::verify_deadline) for the
+/// probe to verify reachability (a launch shouldn't hang on a dead tunnel).
 async fn start_and_verify(state: &Arc<TunnelState>) -> Result<String, String> {
+    let mut rx = state.daemon.watch_liveness();
+    // Already verified (a launch arrived after another start brought the tunnel
+    // up): return the live origin without the blocking persist round-trip. Only
+    // the `Verified` fast-path short-circuits here — a terminal *error* verdict
+    // still persists first, so the start reflects the requested intent.
+    if let Some(Ok(origin)) = verdict(&rx.borrow_and_update()) {
+        return Ok(origin);
+    }
+
     persist_start(state).await?;
 
-    let mut rx = state.daemon.watch_liveness();
-    let deadline = tokio::time::sleep(START_VERIFY_DEADLINE);
+    // Long enough for the first probe to land (one interval) and complete (one
+    // timeout); shorter and a healthy-but-slow tunnel loses the race.
+    let deadline_after = state.daemon.verify_deadline();
+    let deadline = tokio::time::sleep(deadline_after);
     tokio::pin!(deadline);
+    // The most recent concrete failure seen while dialing. The live `error` is
+    // cleared to `None` at the top of every dial attempt, so reading it only at
+    // the instant the deadline fires would surface the generic timeout text even
+    // when a real relay error occurred moments earlier — remember the last one.
+    let mut last_error: Option<String> = None;
     loop {
         // Check the current value without holding the borrow across the await.
-        if let Some(verdict) = verdict(&rx.borrow_and_update()) {
-            return verdict;
+        {
+            let live = rx.borrow_and_update();
+            if let Some(verdict) = verdict(&live) {
+                return verdict;
+            }
+            if live.error.is_some() {
+                last_error = live.error.clone();
+            }
         }
         tokio::select! {
             changed = rx.changed() => {
@@ -144,9 +122,8 @@ async fn start_and_verify(state: &Arc<TunnelState>) -> Result<String, String> {
                 }
             }
             () = &mut deadline => {
-                let live = rx.borrow();
-                return Err(live.error.clone().unwrap_or_else(|| {
-                    format!("tunnel did not become reachable within {START_VERIFY_DEADLINE:?}")
+                return Err(last_error.unwrap_or_else(|| {
+                    format!("tunnel did not become reachable within {deadline_after:?}")
                 }));
             }
         }
@@ -223,43 +200,7 @@ mod tests {
     use crate::db::TunnelStore;
     use crate::domain::{RelayClient, RelaySettings, TunnelDaemon};
     use crate::health::HealthProbe;
-    use tokio_util::sync::CancellationToken;
-
-    /// A relay client that holds the session until cancelled — a stable dial the
-    /// probe runs against.
-    struct HoldUntilCancelRelayClient;
-
-    #[async_trait::async_trait]
-    impl RelayClient for HoldUntilCancelRelayClient {
-        async fn run_once(
-            &self,
-            _relay: &RelaySettings,
-            _local_addr: &str,
-            cancel: CancellationToken,
-        ) -> anyhow::Result<()> {
-            cancel.cancelled().await;
-            Ok(())
-        }
-    }
-
-    /// A `/health` probe with a fixed, cloneable outcome.
-    struct StubProbe(Result<(), String>);
-
-    impl StubProbe {
-        fn passing() -> Self {
-            Self(Ok(()))
-        }
-        fn failing() -> Self {
-            Self(Err("connection refused".to_string()))
-        }
-    }
-
-    #[async_trait::async_trait]
-    impl HealthProbe for StubProbe {
-        async fn probe(&self, _url: &str) -> Result<(), String> {
-            self.0.clone()
-        }
-    }
+    use crate::test_support::{HoldUntilCancelRelayClient, StubProbe};
 
     fn relay() -> RelaySettings {
         RelaySettings {
@@ -296,7 +237,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn request_start_returns_the_public_origin_once_verified() {
-        let control = spawn_control(resumed_state(
+        let control = TunnelControl::new(resumed_state(
             Some("dev1.example.com"),
             Some(relay()),
             Arc::new(HoldUntilCancelRelayClient),
@@ -307,11 +248,17 @@ mod tests {
             control.request_start().await,
             Ok("https://dev1.example.com".to_string())
         );
+        // A second launch against the now-verified tunnel takes the fast path
+        // (short-circuits before persisting) and returns the same origin.
+        assert_eq!(
+            control.request_start().await,
+            Ok("https://dev1.example.com".to_string())
+        );
     }
 
     #[tokio::test(start_paused = true)]
     async fn request_start_without_a_relay_reports_not_configured() {
-        let control = spawn_control(resumed_state(
+        let control = TunnelControl::new(resumed_state(
             Some("dev1.example.com"),
             None,
             Arc::new(HoldUntilCancelRelayClient),
@@ -325,7 +272,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn request_start_with_relay_but_no_public_host_errs() {
-        let control = spawn_control(resumed_state(
+        let control = TunnelControl::new(resumed_state(
             None,
             Some(relay()),
             Arc::new(HoldUntilCancelRelayClient),
@@ -339,14 +286,22 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn request_start_that_never_verifies_times_out() {
-        let control = spawn_control(resumed_state(
+        let control = TunnelControl::new(resumed_state(
             Some("dev1.example.com"),
             Some(relay()),
             Arc::new(HoldUntilCancelRelayClient),
             Arc::new(StubProbe::failing()),
         ));
         // The probe never passes, so the start fails (rather than hanging) once
-        // the verify deadline elapses in virtual time.
-        assert!(control.request_start().await.is_err());
+        // the verify deadline elapses in virtual time. The surfaced error is the
+        // concrete probe failure seen while dialing, not the generic timeout —
+        // the daemon clears `error` to `None` at the top of each attempt, so the
+        // wait remembers the last real reason rather than reading `None` at the
+        // instant the deadline fires.
+        let err = control.request_start().await.expect_err("never verifies");
+        assert!(
+            err.contains("connection refused"),
+            "expected the probe failure reason, got: {err}"
+        );
     }
 }

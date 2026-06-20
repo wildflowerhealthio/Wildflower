@@ -13,7 +13,12 @@ use tokio::sync::watch;
 
 /// The liveness state of the tunnel. The full FSM lives in the tunnel slice;
 /// this is the position consumers care about.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// This is also the type the tunnel slice's `/tunnel` HTTP surface serializes
+/// directly (lowercase variants), so it derives `Serialize`/`ToSchema` here
+/// rather than a parallel wire enum re-declaring the same five variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
 pub enum TunnelStatus {
     /// Not requested on.
     Off,

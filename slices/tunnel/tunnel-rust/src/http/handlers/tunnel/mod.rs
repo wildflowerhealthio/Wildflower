@@ -33,21 +33,13 @@ mod tests {
     use crate::db::TunnelStore;
     use crate::domain::{RelayClient, RelaySettings};
     use crate::health::HealthProbe;
+    use crate::test_support::StubProbe;
     use crate::TunnelDaemon;
 
-    /// A `/health` probe with a fixed outcome. The wire tests default to a
-    /// *failing* probe so the tunnel never reaches `Verified` — keeping
-    /// `servedOrigin` deterministically on the loopback fallback regardless of
-    /// real-time probe ticks. The verified path has its own paused-time test.
-    struct StubProbe(Result<(), String>);
-
-    #[async_trait::async_trait]
-    impl HealthProbe for StubProbe {
-        async fn probe(&self, _url: &str) -> Result<(), String> {
-            self.0.clone()
-        }
-    }
-
+    /// The wire tests default to a *failing* probe so the tunnel never reaches
+    /// `Verified` — keeping `servedOrigin` deterministically on the loopback
+    /// fallback regardless of real-time probe ticks. The verified path has its
+    /// own paused-time test.
     fn failing_probe() -> Arc<dyn HealthProbe> {
         Arc::new(StubProbe(Err("probe disabled in test".to_string())))
     }

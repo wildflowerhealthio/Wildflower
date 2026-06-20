@@ -207,6 +207,17 @@ impl TunnelDaemon {
         self.state_rx.borrow().clone()
     }
 
+    /// The longest a freshly-started supervisor can take to reach its first
+    /// verdict: the supervisor waits one `interval` before the first probe, and
+    /// that probe may run up to `timeout` before it counts either way. A caller
+    /// that waits for `Verified` (e.g. the control seam's launch path) must use
+    /// at least this much, or it can give up on a healthy-but-slow tunnel that
+    /// was about to verify. Derived from the probe timing so the two budgets
+    /// can't drift apart.
+    pub(crate) fn verify_deadline(&self) -> Duration {
+        self.probe_timing.interval + self.probe_timing.timeout
+    }
+
     /// The current served origin (`https://{publicHost}` only while `Verified`,
     /// else the loopback fallback).
     pub fn served_origin(&self) -> String {
@@ -406,23 +417,28 @@ async fn supervise(job: SupervisorJob) {
             return;
         }
         let attempt_was_stable = attempt_started.elapsed() >= backoff.stable_threshold;
-        // The session ended (cleanly or with an error): no longer reachable.
-        let error = match dial_result {
+        // The session ended; either way we drop the public origin and back off
+        // before re-dialing. A clean exit (`Ok`) is not a failure, so publish
+        // `Dialing` (we're about to reconnect) rather than an errorless
+        // `Unreachable` — that keeps `Unreachable` meaning "something went
+        // wrong" with a reason attached. An `Err` publishes `Unreachable` with
+        // the cause.
+        let (status, error) = match dial_result {
             Ok(()) => {
                 delay = backoff.initial;
-                None
+                (TunnelStatus::Dialing, None)
             }
             Err(error) => {
                 if attempt_was_stable {
                     delay = backoff.initial;
                 }
-                Some(format!("{error:#}"))
+                (TunnelStatus::Unreachable, Some(format!("{error:#}")))
             }
         };
         set_state(
             &state,
             revision,
-            TunnelStatus::Unreachable,
+            status,
             error,
             &loopback_origin,
             &public_origin,
@@ -569,6 +585,7 @@ impl TunnelDaemon {
 mod tests {
     use super::*;
     use crate::domain::RelaySettings;
+    use crate::test_support::{HoldUntilCancelRelayClient, StubProbe};
 
     /// A relay client that returns `Ok` immediately so any spawned supervisor
     /// loops without dialing — used for the reconcile-monotonicity tests.
@@ -586,23 +603,6 @@ mod tests {
         }
     }
 
-    /// A relay client that holds the session until cancelled — a stable "up"
-    /// dial the probe runs against.
-    struct HoldUntilCancelRelayClient;
-
-    #[async_trait::async_trait]
-    impl RelayClient for HoldUntilCancelRelayClient {
-        async fn run_once(
-            &self,
-            _relay: &RelaySettings,
-            _local_addr: &str,
-            cancel: CancellationToken,
-        ) -> anyhow::Result<()> {
-            cancel.cancelled().await;
-            Ok(())
-        }
-    }
-
     /// A relay client that errors immediately, driving the reconnect loop.
     struct FailImmediatelyRelayClient;
 
@@ -615,25 +615,6 @@ mod tests {
             _cancel: CancellationToken,
         ) -> anyhow::Result<()> {
             Err(anyhow::anyhow!("relay unreachable"))
-        }
-    }
-
-    /// A `/health` probe with a fixed, cloneable outcome.
-    struct StubProbe(Result<(), String>);
-
-    impl StubProbe {
-        fn passing() -> Self {
-            Self(Ok(()))
-        }
-        fn failing() -> Self {
-            Self(Err("connection refused".to_string()))
-        }
-    }
-
-    #[async_trait::async_trait]
-    impl HealthProbe for StubProbe {
-        async fn probe(&self, _url: &str) -> Result<(), String> {
-            self.0.clone()
         }
     }
 
@@ -780,5 +761,57 @@ mod tests {
         rx.wait_for(|l| l.dial_attempts >= 2)
             .await
             .expect("attempt count climbs");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_clean_session_end_reports_dialing_not_an_errorless_unreachable() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        // A relay whose first session verifies and then ends *cleanly* (the relay
+        // closed a healthy connection, `Ok(())` with no error), then holds. A
+        // clean end is not a failure, so it must surface as `Dialing` (about to
+        // reconnect) — never as an errorless `Unreachable`, which would mean
+        // "something went wrong" with no cause to show.
+        struct VerifyThenCleanExit(AtomicBool);
+        #[async_trait::async_trait]
+        impl RelayClient for VerifyThenCleanExit {
+            async fn run_once(
+                &self,
+                _relay: &RelaySettings,
+                _local_addr: &str,
+                cancel: CancellationToken,
+            ) -> anyhow::Result<()> {
+                if !self.0.swap(true, Ordering::SeqCst) {
+                    // Outlast the probe interval (so `/health` verifies) but not
+                    // its timeout, then close cleanly.
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    Ok(())
+                } else {
+                    cancel.cancelled().await;
+                    Ok(())
+                }
+            }
+        }
+
+        let daemon = daemon_with(
+            Arc::new(VerifyThenCleanExit(AtomicBool::new(false))),
+            Arc::new(StubProbe::passing()),
+        );
+        let mut rx = daemon.watch_liveness();
+        daemon.reconcile(&running_settings(1, Some("dev1.example.com")));
+
+        // First session verifies.
+        rx.wait_for(|l| l.status == TunnelStatus::Verified)
+            .await
+            .expect("first session verifies");
+        // The clean end is the first non-`Verified` transition after it: assert
+        // it's `Dialing` with no error, not an errorless `Unreachable`.
+        let after_clean_exit = rx
+            .wait_for(|l| l.status != TunnelStatus::Verified)
+            .await
+            .expect("session ends")
+            .clone();
+        assert_eq!(after_clean_exit.status, TunnelStatus::Dialing);
+        assert!(after_clean_exit.error.is_none());
     }
 }

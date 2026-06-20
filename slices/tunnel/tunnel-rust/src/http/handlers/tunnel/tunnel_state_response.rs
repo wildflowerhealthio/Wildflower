@@ -22,40 +22,20 @@ pub struct RelayView {
     pub(super) service_name: String,
 }
 
-/// The liveness state on the wire — the daemon's [`TunnelStatus`] FSM position.
-/// Drives `running`/`servedOrigin`, which are derived views of it:
-///
-///  - `off` — not requested on.
-///  - `misconfigured` — requested but un-dialable (no relay, or no public
-///    host); `error` says which.
-///  - `dialing` — attempting; not yet proven reachable. `servedOrigin` is the
-///    loopback fallback.
-///  - `verified` — a `/health` probe through the public origin came back
-///    healthy; the **only** status where `servedOrigin` is
-///    `https://{publicHost}`.
-///  - `unreachable` — was attempting but the dial dropped or the probe failed;
-///    retrying. Back to the loopback fallback.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum TunnelStatusWire {
-    Off,
-    Misconfigured,
-    Dialing,
-    Verified,
-    Unreachable,
-}
-
-impl From<TunnelStatus> for TunnelStatusWire {
-    fn from(status: TunnelStatus) -> Self {
-        match status {
-            TunnelStatus::Off => TunnelStatusWire::Off,
-            TunnelStatus::Misconfigured => TunnelStatusWire::Misconfigured,
-            TunnelStatus::Dialing => TunnelStatusWire::Dialing,
-            TunnelStatus::Verified => TunnelStatusWire::Verified,
-            TunnelStatus::Unreachable => TunnelStatusWire::Unreachable,
-        }
-    }
-}
+// The liveness state on the wire is the daemon's [`TunnelStatus`] FSM position
+// itself — it derives `Serialize`/`ToSchema` (lowercase variants) in
+// shared-structures, so there's no parallel wire enum to keep in lockstep.
+// Variants drive `running`/`servedOrigin`:
+//
+//  - `off` — not requested on.
+//  - `misconfigured` — requested but un-dialable (no relay, or no public host);
+//    `error` says which.
+//  - `dialing` — attempting; not yet proven reachable. `servedOrigin` is the
+//    loopback fallback.
+//  - `verified` — a `/health` probe through the public origin came back healthy;
+//    the **only** status where `servedOrigin` is `https://{publicHost}`.
+//  - `unreachable` — was attempting but the dial dropped or the probe failed;
+//    retrying. Back to the loopback fallback.
 
 /// Tunnel state on the wire. The relay connection's non-secret fields are
 /// returned in [`RelayView`] (the `token` stays write-only and never appears
@@ -63,7 +43,7 @@ impl From<TunnelStatus> for TunnelStatusWire {
 ///
 /// # Liveness is now verified, not optimistic
 ///
-/// `status` is the real [`TunnelStatusWire`] FSM position. `servedOrigin`
+/// `status` is the real [`TunnelStatus`] FSM position. `servedOrigin`
 /// resolves to `https://{publicHost}` **only** while `status == "verified"` —
 /// i.e. after a `/health` probe through the public origin came back healthy —
 /// and the supervisor re-probes, so it reverts to the loopback fallback if the
@@ -87,7 +67,7 @@ pub struct TunnelStateResponse {
     pub(super) public_host: Option<String>,
     pub(super) requested_running: bool,
     /// The liveness FSM position — the authoritative state. See the type docs.
-    pub(super) status: TunnelStatusWire,
+    pub(super) status: TunnelStatus,
     /// `true` when a supervisor is attempting (`dialing`/`verified`/
     /// `unreachable`). A derived view of `status`, kept for back-compat.
     pub(super) running: bool,
@@ -127,7 +107,7 @@ impl TunnelStateResponse {
             settings_revision: settings.revision,
             public_host: settings.public_host.clone(),
             requested_running: settings.requested_running,
-            status: live.status.into(),
+            status: live.status,
             running: live.status.is_running(),
             error: live.error,
             dial_attempts: live.dial_attempts,

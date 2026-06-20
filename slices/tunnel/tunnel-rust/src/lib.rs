@@ -34,6 +34,8 @@ pub mod domain;
 pub mod health;
 pub mod http;
 mod relay_clients;
+#[cfg(test)]
+mod test_support;
 
 use std::sync::Arc;
 
@@ -108,9 +110,9 @@ pub fn setup_tunnel(
         .context("failed to read tunnel settings")?;
     state.daemon.reconcile(&settings);
 
-    // The control seam shares the daemon's liveness watch and owns the
-    // start-trigger task; spawn it before handing the state to the router.
-    let control = control::spawn_control(Arc::clone(&state));
+    // The control seam shares the daemon's liveness watch; a start persists,
+    // reconciles, and awaits verification inline (no background task).
+    let control = TunnelControl::new(Arc::clone(&state));
 
     Ok(Tunnel {
         router: http::router(state),

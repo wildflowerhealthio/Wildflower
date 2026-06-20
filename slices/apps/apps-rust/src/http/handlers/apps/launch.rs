@@ -75,7 +75,14 @@ async fn resolve_origin(state: &AppsState, requires_tunnel: bool) -> (String, bo
     }
     match state.tunnel.try_start().await {
         Ok(origin) => (origin, false),
-        Err(_reason) => (state.loopback_origin.clone(), true),
+        Err(reason) => {
+            // The wire only carries a coarse `?tunnel=unavailable` flag, but the
+            // reason distinguishes "no relay configured" from "dial timed out"
+            // from "daemon stopped" — log it so an unavailable launch is
+            // diagnosable rather than silently swallowed.
+            tracing::warn!(%reason, "tunnel launch fell back to loopback");
+            (state.loopback_origin.clone(), true)
+        }
     }
 }
 
