@@ -37,8 +37,10 @@
    * `data-color-scheme`, so these names flip too with no rule of their own.
    * ------------------------------------------------------------------------ */
 
-  /* Surfaces — sand/cream family → tundra surface roles. */
-  --color-cream: var(--color-canvas); /* page background */
+  /* Surfaces — sand/cream family → tundra surface roles. The page reads the
+   * paper tone (the lighter cream #f7ecdd, not the more-recessed canvas) so the
+   * marketing page keeps its original warm-cream ground. */
+  --color-cream: var(--color-background); /* page background (paper cream) */
   --color-cream-raised: var(--color-raised); /* inputs, cards, app buttons (resting) */
   --color-cream-alt: var(--color-modal); /* phone screen background */
   --color-cream-band: var(--color-sunken); /* privacy band; resting chip background */
