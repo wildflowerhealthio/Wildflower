@@ -67,6 +67,16 @@ tauri_capable() {
   if have pkg-config && pkg-config --exists webkit2gtk-4.1; then
     return 0
   fi
+  # In CI the GTK/webkit libs are installed on purpose, so a missing probe means
+  # the runner is misconfigured — fail loud rather than silently passing the job
+  # with zero Tauri coverage (the pre-script workflow ran `cargo clippy -p …`
+  # directly and would have failed here). `CI` is set by GitHub Actions. Locally
+  # (CI unset) we still degrade gracefully so a frontend-only contributor isn't
+  # blocked — CI remains the real gate on PRs.
+  if [ -n "${CI:-}" ]; then
+    echo "checks/rust: GTK/webkit libs (webkit2gtk-4.1) not found in CI — refusing to skip the Tauri step." >&2
+    exit 1
+  fi
   echo "checks/rust: GTK/webkit libs not found — skipping Tauri step (CI still gates this on PRs)."
   return 1
 }
