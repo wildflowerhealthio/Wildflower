@@ -1,13 +1,11 @@
 name: Markdown Lint
 
 on:
-  push:
-    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     # Gated at the trigger to Markdown changes, so a PR with no *.md edits never
-    # starts this workflow (no change-detection job needed). Pushes to main have
-    # NO paths filter and run regardless.
+    # starts this workflow (no change-detection job needed). CI is a pre-merge
+    # gate only; this workflow no longer runs on pushes to main.
     paths:
       - '**/*.md'
       - '.github/workflows/lint-markdown.yml'
@@ -17,12 +15,11 @@ permissions:
   pull-requests: write
   checks: write
 
-# Cancel superseded PR runs to save the actions budget; pushes to main always
-# run to completion. (This was previously missing, so rapid pushes to a PR
-# stacked uncancelled Markdown runs.)
+# Cancel superseded PR runs to save the actions budget. (This was previously
+# missing, so rapid pushes to a PR stacked uncancelled Markdown runs.)
 concurrency:
   group: markdown-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   markdownlint:

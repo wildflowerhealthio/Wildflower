@@ -1,7 +1,22 @@
 import { defineConfig } from 'vite-plus'
 export default defineConfig({
+  // Pre-commit checks, run by `vp staged` from `.vite-hooks/pre-commit`. These
+  // reproduce the lint/format half of CI now that the workflows no longer run on
+  // pushes to main (CI is a pre-merge gate only). `vp staged` runs each command
+  // only when matching files are staged — the same "don't start an unrelated
+  // job" behaviour as the CI `paths:` filters. The matching tests run from
+  // `.vite-hooks/pre-push`.
   staged: {
+    // Format + lint + typecheck (mirrors the ci-typescript `vp check` step).
     '*': 'vp check --fix',
+    // Markdown lint (mirrors the lint-markdown workflow).
+    '*.md': 'vp run lint:docs',
+    // Rust fmt + clippy, shared with ci-rust.yml / ci-rust-tauri.yml. fmt is
+    // whole-workspace (compile-free); clippy is scoped to the crates changed vs
+    // origin/main plus their dependents, so it stays light locally while CI
+    // still runs the full --workspace. Self-skips when the toolchain (or the
+    // Tauri GTK libs) is unavailable.
+    '*.{rs,toml}': './scripts/checks/rust.sh pre-commit',
   },
   // Resolve workspace-package imports against their `source` export
   // condition (TS source) instead of the default-built dist. Each
