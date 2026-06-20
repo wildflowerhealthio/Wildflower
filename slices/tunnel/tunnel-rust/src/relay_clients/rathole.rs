@@ -61,8 +61,16 @@ impl RelayClient for RatholeRelayClient {
         // the temp config file (still in scope until this fn returns) isn't
         // dropped out from under it.
         tokio::select! {
-            res = &mut run => res,
+            res = &mut run => {
+                // rathole's `run` returned without us cancelling — the relay
+                // dropped us, or rathole tore itself down (e.g. its config
+                // watcher / shutdown plumbing). This is the unexpected path
+                // when the tunnel should be staying up.
+                tracing::warn!(?res, "rathole run() returned on its own (no cancel)");
+                res
+            }
             () = cancel.cancelled() => {
+                tracing::info!("rathole: cancellation requested, sending graceful shutdown");
                 let _ = shutdown_tx.send(true);
                 (&mut run).await
             }
