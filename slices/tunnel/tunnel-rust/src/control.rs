@@ -4,7 +4,7 @@
 //! [`TunnelControl::request_start`] persists `requested_running = true`,
 //! reconciles, and then **awaits the daemon's liveness FSM reaching
 //! `Verified`** — i.e. a `/health` probe through the public origin has come back
-//! `pass` from this device — before reporting `Ok(origin)`. So the apps launch
+//! healthy — before reporting `Ok(origin)`. So the apps launch
 //! handler's `requires_tunnel` resolution gets a *verified-reachable* origin, not
 //! an optimistic one (the gap
 //! <https://github.com/Assessment-is/Wildflower/issues/184> closes). The probe
@@ -49,7 +49,7 @@ pub struct TunnelControl {
 impl TunnelControl {
     /// Request the tunnel turn on, awaiting a *verified* outcome. `Ok(origin)`
     /// carries the public `https://{publicHost}` only once a `/health` probe
-    /// through it has come back `pass` from this device; `Err(reason)` is a
+    /// through it has come back healthy; `Err(reason)` is a
     /// human-readable failure (relay unconfigured, no public host, persistence
     /// contention, or "did not become reachable" within
     /// [`START_VERIFY_DEADLINE`]) suitable for surfacing inline.
@@ -200,10 +200,8 @@ mod tests {
     use super::*;
     use crate::db::TunnelStore;
     use crate::domain::{RelayClient, RelaySettings, TunnelDaemon};
-    use crate::health::{HealthCheck, HealthProbe, HEALTH_STATUS_PASS};
+    use crate::health::HealthProbe;
     use tokio_util::sync::CancellationToken;
-
-    const SERVICE_ID: &str = "svc-test";
 
     /// A relay client that holds the session until cancelled — a stable dial the
     /// probe runs against.
@@ -223,14 +221,11 @@ mod tests {
     }
 
     /// A `/health` probe with a fixed, cloneable outcome.
-    struct StubProbe(Result<HealthCheck, String>);
+    struct StubProbe(Result<(), String>);
 
     impl StubProbe {
-        fn passing(service_id: &str) -> Self {
-            Self(Ok(HealthCheck {
-                status: HEALTH_STATUS_PASS.to_string(),
-                service_id: service_id.to_string(),
-            }))
+        fn passing() -> Self {
+            Self(Ok(()))
         }
         fn failing() -> Self {
             Self(Err("connection refused".to_string()))
@@ -239,7 +234,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl HealthProbe for StubProbe {
-        async fn probe(&self, _url: &str) -> Result<HealthCheck, String> {
+        async fn probe(&self, _url: &str) -> Result<(), String> {
             self.0.clone()
         }
     }
@@ -272,8 +267,7 @@ mod tests {
                 },
             )
             .expect("seed settings");
-        let daemon =
-            TunnelDaemon::new_test(client, probe, SERVICE_ID, "http://127.0.0.1:8080", 8080);
+        let daemon = TunnelDaemon::new_test(client, probe, "http://127.0.0.1:8080", 8080);
         daemon.reconcile(&store.get_settings().expect("read settings"));
         Arc::new(TunnelState { store, daemon })
     }
@@ -284,7 +278,7 @@ mod tests {
             Some("dev1.example.com"),
             Some(relay()),
             Arc::new(HoldUntilCancelRelayClient),
-            Arc::new(StubProbe::passing(SERVICE_ID)),
+            Arc::new(StubProbe::passing()),
         ));
         // The supervisor's probe verifies in virtual time before the deadline.
         assert_eq!(
@@ -299,7 +293,7 @@ mod tests {
             Some("dev1.example.com"),
             None,
             Arc::new(HoldUntilCancelRelayClient),
-            Arc::new(StubProbe::passing(SERVICE_ID)),
+            Arc::new(StubProbe::passing()),
         ));
         assert_eq!(
             control.request_start().await,
@@ -313,7 +307,7 @@ mod tests {
             None,
             Some(relay()),
             Arc::new(HoldUntilCancelRelayClient),
-            Arc::new(StubProbe::passing(SERVICE_ID)),
+            Arc::new(StubProbe::passing()),
         ));
         assert_eq!(
             control.request_start().await,

@@ -28,8 +28,8 @@ pub struct RelayView {
 ///    host); `error` says which.
 ///  - `dialing` — attempting; not yet proven reachable. `servedOrigin` is the
 ///    loopback fallback.
-///  - `verified` — a `/health` probe through the public origin came back `pass`
-///    from this device; the **only** status where `servedOrigin` is
+///  - `verified` — a `/health` probe through the public origin came back
+///    healthy; the **only** status where `servedOrigin` is
 ///    `https://{publicHost}`.
 ///  - `unreachable` — was attempting but the dial dropped or the probe failed;
 ///    retrying. Back to the loopback fallback.
@@ -63,11 +63,11 @@ impl From<TunnelStatus> for TunnelStatusWire {
 ///
 /// `status` is the real [`TunnelStatusWire`] FSM position. `servedOrigin`
 /// resolves to `https://{publicHost}` **only** while `status == "verified"` —
-/// i.e. after a `/health` probe through the public origin came back `pass` from
-/// this device — and the supervisor re-probes, so it reverts to the loopback
-/// fallback if the tunnel silently drops. `running` is the coarse "a supervisor
-/// is attempting" view (`dialing`/`verified`/`unreachable`), retained for
-/// back-compat; prefer `status`.
+/// i.e. after a `/health` probe through the public origin came back healthy —
+/// and the supervisor re-probes, so it reverts to the loopback fallback if the
+/// tunnel silently drops. `running` is the coarse "a supervisor is attempting"
+/// view (`dialing`/`verified`/`unreachable`), retained for back-compat; prefer
+/// `status`.
 ///
 /// `attempt` counts dial attempts for this revision (resets on the next
 /// reconcile) — a counter climbing with a steady `error` flags a permanent

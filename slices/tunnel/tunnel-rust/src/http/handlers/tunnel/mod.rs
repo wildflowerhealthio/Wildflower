@@ -32,21 +32,18 @@ mod tests {
     use super::*;
     use crate::db::TunnelStore;
     use crate::domain::{RelayClient, RelaySettings};
-    use crate::health::{HealthCheck, HealthProbe, HEALTH_STATUS_PASS};
+    use crate::health::HealthProbe;
     use crate::TunnelDaemon;
-
-    /// The service id the test daemon expects back from `/health`.
-    const SERVICE_ID: &str = "svc-test";
 
     /// A `/health` probe with a fixed outcome. The wire tests default to a
     /// *failing* probe so the tunnel never reaches `Verified` — keeping
     /// `servedOrigin` deterministically on the loopback fallback regardless of
     /// real-time probe ticks. The verified path has its own paused-time test.
-    struct StubProbe(Result<HealthCheck, String>);
+    struct StubProbe(Result<(), String>);
 
     #[async_trait::async_trait]
     impl HealthProbe for StubProbe {
-        async fn probe(&self, _url: &str) -> Result<HealthCheck, String> {
+        async fn probe(&self, _url: &str) -> Result<(), String> {
             self.0.clone()
         }
     }
@@ -56,10 +53,7 @@ mod tests {
     }
 
     fn passing_probe() -> Arc<dyn HealthProbe> {
-        Arc::new(StubProbe(Ok(HealthCheck {
-            status: HEALTH_STATUS_PASS.to_string(),
-            service_id: SERVICE_ID.to_string(),
-        })))
+        Arc::new(StubProbe(Ok(())))
     }
 
     /// The plain axum router (`OpenAPI` spec discarded) for exercising the
@@ -116,13 +110,7 @@ mod tests {
         let store = TunnelStore::open_in_memory().expect("store");
         let state = Arc::new(TunnelState {
             store,
-            daemon: TunnelDaemon::new_test(
-                client,
-                probe,
-                SERVICE_ID,
-                "http://127.0.0.1:8080",
-                8080,
-            ),
+            daemon: TunnelDaemon::new_test(client, probe, "http://127.0.0.1:8080", 8080),
         });
         (state, rx)
     }
@@ -213,7 +201,7 @@ mod tests {
         );
     }
 
-    /// Once a `/health` probe comes back `pass` from this device, the status
+    /// Once a `/health` probe comes back healthy, the status
     /// flips to `verified` and `servedOrigin` becomes the public origin.
     #[tokio::test(start_paused = true)]
     async fn verified_after_probe_reports_the_public_origin() {

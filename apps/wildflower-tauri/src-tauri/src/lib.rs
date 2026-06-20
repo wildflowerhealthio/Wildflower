@@ -148,10 +148,10 @@ async fn run_server(
         local_port: runtime.loopback_port,
         seed: tunnel_seed_from_build_env(),
     };
-    // `setup_tunnel` hands back the `/tunnel` router, the ungated `/health`
-    // router (mounted outside the gatekeeper gate so the probe needs no bearer),
-    // and the in-process `TunnelControl` seam. The daemon drives the `/health`
-    // probe through the reqwest adapter to verify reachability.
+    // `setup_tunnel` hands back the `/tunnel` router plus the in-process
+    // `TunnelControl` seam. The daemon drives a `/health` probe (against the
+    // served origin's assumed-present, RFC-compliant `/health`) through the
+    // reqwest adapter to verify reachability.
     let health_probe: Arc<dyn tunnel_rust::HealthProbe> =
         Arc::new(tunnel_adapters::ReqwestHealthProbe::new());
     let tunnel = tunnel_rust::setup_tunnel(db.clone(), &tunnel_config, health_probe)
@@ -190,9 +190,6 @@ async fn run_server(
         .merge(gated_fhir_r4)
         .merge(gated_stubs)
         .merge(gated_tunnel)
-        // `/health` is mounted ungated: the reachability probe (and any external
-        // uptime check) reaches it through the tunnel without a bearer token.
-        .merge(tunnel.health_router)
         .merge(apps.public_router)
         .merge(gated_apps_admin)
         .fallback(spa::handle_serving_spa_html)

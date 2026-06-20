@@ -7,7 +7,7 @@
 //! and (when the revision can actually dial) spawns a fresh one. A supervisor
 //! owns the reconnect/backoff loop, awaits its own rathole child, *and* drives a
 //! concurrent `/health` probe — so the public origin is only ever published once
-//! a probe through it has come back `pass` from this device.
+//! a probe through it has come back healthy.
 //!
 //! ## Liveness state machine
 //!
@@ -43,7 +43,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::domain::{RelayClient, TunnelSettings};
-use crate::health::{HealthProbe, HEALTH_STATUS_PASS};
+use crate::health::HealthProbe;
 
 /// Message shown when the tunnel is requested on but the relay isn't configured.
 const NOT_CONFIGURED: &str = "tunnel relay is not configured";
@@ -72,8 +72,8 @@ pub enum TunnelStatus {
     /// Requested + configured; rathole is attempting and no probe has yet
     /// confirmed reachability. The public origin is *not* published here.
     Dialing,
-    /// A `/health` probe through the public origin returned `pass` from this
-    /// device. The only state in which `servedOrigin` is the public origin.
+    /// A `/health` probe through the public origin came back healthy. The only
+    /// state in which `servedOrigin` is the public origin.
     Verified,
     /// Was attempting, but the dial dropped or the probe failed; retrying.
     Unreachable,
@@ -172,9 +172,6 @@ pub struct TunnelDaemon {
     client: Arc<dyn RelayClient>,
     /// The `/health` probe adapter the supervisor uses to confirm reachability.
     probe: Arc<dyn HealthProbe>,
-    /// This process's nonce, matched against the `serviceId` the probe reads
-    /// back so a probe that loops to a different host is caught.
-    service_id: String,
     loopback_origin: String,
     local_port: u16,
     state_tx: watch::Sender<Liveness>,
@@ -211,14 +208,12 @@ impl TunnelDaemon {
     pub fn new(
         client: Arc<dyn RelayClient>,
         probe: Arc<dyn HealthProbe>,
-        service_id: impl Into<String>,
         loopback_origin: impl Into<String>,
         local_port: u16,
     ) -> Self {
         Self::with_tuning(
             client,
             probe,
-            service_id,
             loopback_origin,
             local_port,
             Backoff::default(),
@@ -226,11 +221,9 @@ impl TunnelDaemon {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn with_tuning(
         client: Arc<dyn RelayClient>,
         probe: Arc<dyn HealthProbe>,
-        service_id: impl Into<String>,
         loopback_origin: impl Into<String>,
         local_port: u16,
         backoff: Backoff,
@@ -247,7 +240,6 @@ impl TunnelDaemon {
         Self {
             client,
             probe,
-            service_id: service_id.into(),
             loopback_origin,
             local_port,
             state_tx,
@@ -353,7 +345,6 @@ impl TunnelDaemon {
                 state: self.state_tx.clone(),
                 client: Arc::clone(&self.client),
                 probe: Arc::clone(&self.probe),
-                service_id: self.service_id.clone(),
                 local_addr: format!("127.0.0.1:{}", self.local_port),
                 public_origin: public.expect("Dialing implies a public origin"),
                 loopback_origin: self.loopback_origin.clone(),
@@ -374,7 +365,6 @@ struct SupervisorJob {
     state: watch::Sender<Liveness>,
     client: Arc<dyn RelayClient>,
     probe: Arc<dyn HealthProbe>,
-    service_id: String,
     local_addr: String,
     /// The public `https://{host}` this revision serves at when `Verified`.
     public_origin: String,
@@ -413,7 +403,6 @@ async fn supervise(job: SupervisorJob) {
         state,
         client,
         probe,
-        service_id,
         local_addr,
         public_origin,
         loopback_origin,
@@ -454,7 +443,6 @@ async fn supervise(job: SupervisorJob) {
             &state,
             revision,
             probe.as_ref(),
-            &service_id,
             &public_origin,
             &loopback_origin,
             attempt,
@@ -505,7 +493,6 @@ async fn dial_with_probes<D>(
     state: &watch::Sender<Liveness>,
     revision: i64,
     probe: &dyn HealthProbe,
-    service_id: &str,
     public_origin: &str,
     loopback_origin: &str,
     attempt: i64,
@@ -528,11 +515,10 @@ where
             result = &mut *dial => return result,
             () = cancel.cancelled() => return Ok(()),
             _ = ticker.tick() => {
-                let (status, error) =
-                    match probe_once(probe, &health_url, service_id, timing.timeout).await {
-                        Ok(()) => (TunnelStatus::Verified, None),
-                        Err(reason) => (TunnelStatus::Unreachable, Some(reason)),
-                    };
+                let (status, error) = match probe_once(probe, &health_url, timing.timeout).await {
+                    Ok(()) => (TunnelStatus::Verified, None),
+                    Err(reason) => (TunnelStatus::Unreachable, Some(reason)),
+                };
                 set_state(
                     state, revision, status, error, loopback_origin, public_origin, attempt,
                 );
@@ -541,31 +527,18 @@ where
     }
 }
 
-/// One bounded `/health` probe: a timeout, a transport error, a non-`pass`
-/// status, or a `serviceId` that doesn't match ours all fail.
+/// One bounded `/health` probe: a timeout or an unhealthy/unreachable response
+/// fails the attempt; any healthy response verifies it.
 async fn probe_once(
     probe: &dyn HealthProbe,
     health_url: &str,
-    expected_service_id: &str,
     timeout: Duration,
 ) -> Result<(), String> {
-    let check = match tokio::time::timeout(timeout, probe.probe(health_url)).await {
-        Err(_elapsed) => {
-            return Err(format!("/health did not respond within {timeout:?}"));
-        }
-        Ok(Err(reason)) => return Err(format!("/health probe failed: {reason}")),
-        Ok(Ok(check)) => check,
-    };
-    if check.status != HEALTH_STATUS_PASS {
-        return Err(format!(
-            "/health reported status {:?}, expected {HEALTH_STATUS_PASS:?}",
-            check.status
-        ));
+    match tokio::time::timeout(timeout, probe.probe(health_url)).await {
+        Err(_elapsed) => Err(format!("/health did not respond within {timeout:?}")),
+        Ok(Err(reason)) => Err(format!("/health probe failed: {reason}")),
+        Ok(Ok(())) => Ok(()),
     }
-    if check.service_id != expected_service_id {
-        return Err("/health answered from a different host (service id mismatch)".to_string());
-    }
-    Ok(())
 }
 
 /// Equal-jitter backoff: returns a duration in `[base / 2, base]`. Half
@@ -617,14 +590,12 @@ impl TunnelDaemon {
     pub(crate) fn new_test(
         client: Arc<dyn RelayClient>,
         probe: Arc<dyn HealthProbe>,
-        service_id: impl Into<String>,
         loopback_origin: impl Into<String>,
         local_port: u16,
     ) -> Self {
         Self::with_tuning(
             client,
             probe,
-            service_id,
             loopback_origin,
             local_port,
             Backoff {
@@ -646,9 +617,6 @@ impl TunnelDaemon {
 mod tests {
     use super::*;
     use crate::domain::RelaySettings;
-    use crate::health::HealthCheck;
-
-    const SERVICE_ID: &str = "svc-test";
 
     /// A relay client that returns `Ok` immediately so any spawned supervisor
     /// loops without dialing — used for the reconcile-monotonicity tests.
@@ -699,14 +667,11 @@ mod tests {
     }
 
     /// A `/health` probe with a fixed, cloneable outcome.
-    struct StubProbe(Result<HealthCheck, String>);
+    struct StubProbe(Result<(), String>);
 
     impl StubProbe {
-        fn passing(service_id: &str) -> Self {
-            Self(Ok(HealthCheck {
-                status: HEALTH_STATUS_PASS.to_string(),
-                service_id: service_id.to_string(),
-            }))
+        fn passing() -> Self {
+            Self(Ok(()))
         }
         fn failing() -> Self {
             Self(Err("connection refused".to_string()))
@@ -715,7 +680,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl HealthProbe for StubProbe {
-        async fn probe(&self, _url: &str) -> Result<HealthCheck, String> {
+        async fn probe(&self, _url: &str) -> Result<(), String> {
             self.0.clone()
         }
     }
@@ -746,14 +711,11 @@ mod tests {
     }
 
     fn daemon_with(client: Arc<dyn RelayClient>, probe: Arc<dyn HealthProbe>) -> TunnelDaemon {
-        TunnelDaemon::new_test(client, probe, SERVICE_ID, "http://127.0.0.1:8080", 8080)
+        TunnelDaemon::new_test(client, probe, "http://127.0.0.1:8080", 8080)
     }
 
     fn noop_daemon() -> TunnelDaemon {
-        daemon_with(
-            Arc::new(NoopRelayClient),
-            Arc::new(StubProbe::passing(SERVICE_ID)),
-        )
+        daemon_with(Arc::new(NoopRelayClient), Arc::new(StubProbe::passing()))
     }
 
     #[tokio::test]
@@ -823,7 +785,7 @@ mod tests {
     async fn a_passing_probe_verifies_and_serves_the_public_origin() {
         let daemon = daemon_with(
             Arc::new(HoldUntilCancelRelayClient),
-            Arc::new(StubProbe::passing(SERVICE_ID)),
+            Arc::new(StubProbe::passing()),
         );
         let mut rx = daemon.watch_liveness();
         daemon.reconcile(&running_settings(1, Some("dev1.example.com")));
@@ -835,31 +797,26 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_probe_from_a_different_host_stays_unreachable() {
-        // The probe answers `pass` but with the wrong service id (a captive
-        // portal / wrong relay route), so it must NOT verify.
+    async fn an_unhealthy_probe_stays_unreachable_on_the_loopback_fallback() {
+        // The dial holds, but `/health` never answers healthy, so the tunnel
+        // must NOT advertise the public origin.
         let daemon = daemon_with(
             Arc::new(HoldUntilCancelRelayClient),
-            Arc::new(StubProbe::passing("someone-elses-id")),
+            Arc::new(StubProbe::failing()),
         );
         let mut rx = daemon.watch_liveness();
         daemon.reconcile(&running_settings(1, Some("dev1.example.com")));
         rx.wait_for(|l| l.status == TunnelStatus::Unreachable)
             .await
             .expect("unreachable");
-        let live = rx.borrow();
-        assert_eq!(live.served_origin, "http://127.0.0.1:8080");
-        assert!(live
-            .error
-            .as_deref()
-            .is_some_and(|e| e.contains("different host")));
+        assert_eq!(rx.borrow().served_origin, "http://127.0.0.1:8080");
     }
 
     #[tokio::test(start_paused = true)]
     async fn a_failed_dial_surfaces_the_error_and_keeps_retrying() {
         let daemon = daemon_with(
             Arc::new(FailImmediatelyRelayClient),
-            Arc::new(StubProbe::passing(SERVICE_ID)),
+            Arc::new(StubProbe::passing()),
         );
         let mut rx = daemon.watch_liveness();
         daemon.reconcile(&running_settings(1, Some("dev1.example.com")));

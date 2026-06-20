@@ -1,10 +1,12 @@
 //! Host adapters that plug the tunnel slice's ports into real implementations:
 //!
 //!  - [`ReqwestHealthProbe`] implements `tunnel_rust::HealthProbe` — the daemon
-//!    uses it to GET `https://{publicHost}/health` and confirm the tunnel is
-//!    actually carrying traffic to this device. The TLS HTTP client lives here
-//!    (in the host) rather than in the slice; positioned to later health-check
-//!    every slice.
+//!    uses it to GET `https://{publicHost}/health` and confirm the tunnel
+//!    reaches a live server. The served origin is assumed to expose an
+//!    RFC-compliant `/health` (`draft-inadarei-api-health-check`): a 2xx with
+//!    `status: "pass"` is healthy; the probe doesn't check identity. The TLS
+//!    HTTP client lives here (in the host) rather than in the slice; positioned
+//!    to later health-check every slice.
 //!  - [`TunnelLaunchAdapter`] implements `apps_rust::TunnelLaunchResolver` — the
 //!    apps launch handler resolves a `requires_tunnel` launch through it, which
 //!    turns the tunnel on and returns its verified public origin (or `None` on
@@ -12,7 +14,16 @@
 
 use std::time::Duration;
 
-use tunnel_rust::{HealthCheck, HealthProbe, TunnelControl};
+use serde::Deserialize;
+use tunnel_rust::{HealthProbe, TunnelControl};
+
+/// The one field of the RFC health body the probe reads: `status` is
+/// `pass`/`warn`/`fail`; only `pass` counts as healthy. Other members
+/// (`version`, `checks`, …) are ignored.
+#[derive(Deserialize)]
+struct HealthBody {
+    status: String,
+}
 
 /// A `reqwest`-backed `/health` probe. `rustls` TLS (no openssl), consistent
 /// with the project's openssl avoidance.
@@ -46,7 +57,7 @@ impl Default for ReqwestHealthProbe {
 
 #[async_trait::async_trait]
 impl HealthProbe for ReqwestHealthProbe {
-    async fn probe(&self, url: &str) -> Result<HealthCheck, String> {
+    async fn probe(&self, url: &str) -> Result<(), String> {
         let response = self
             .client
             .get(url)
@@ -57,10 +68,15 @@ impl HealthProbe for ReqwestHealthProbe {
         if !status.is_success() {
             return Err(format!("non-success status {status}"));
         }
-        response
-            .json::<HealthCheck>()
+        let body = response
+            .json::<HealthBody>()
             .await
-            .map_err(|e| format!("malformed /health body: {e}"))
+            .map_err(|e| format!("malformed /health body: {e}"))?;
+        if body.status == "pass" {
+            Ok(())
+        } else {
+            Err(format!("/health reported status {:?}", body.status))
+        }
     }
 }
 
