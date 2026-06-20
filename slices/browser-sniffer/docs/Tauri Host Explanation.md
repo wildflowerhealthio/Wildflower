@@ -31,7 +31,7 @@ The TS side (`browser-sniffer-tauri`) bundles `tauri-sniffer-entry.ts` (which im
 The bootstrap is responsible for:
 
 1. Looking up `globalThis.__TAURI__.event` (the structural `TauriEventApi` exported by `effect-messaging-tauri`).
-2. Injecting the in-page `BrowserTopBar` (closed shadow DOM, Close button + URL label) so the sniffer webview reads as a sub-context on iOS where there's no native browser chrome. The Close button emits `{ _tag: 'SniffingComplete' }` on the `BRIDGE_EVENT` channel.
+2. Injecting the shared in-page browser top bar (`injectBrowserTopBar` from `shared-structures-tauri/top-bar` — closed shadow DOM, self-healing, configured here with a Close button + URL pill) so the sniffer webview reads as a sub-context on iOS where there's no native browser chrome. The Close button's `onExit` emits `{ _tag: 'SniffingComplete' }` on the `BRIDGE_EVENT` channel. The same bar, configured with a Back/Reload chrome, is injected into the sandboxed webview by `shared-structures-tauri`'s own bootstrap.
 3. Calling `installSniffer(event)` — the sniffer body wires the fetch / XHR / console shims and registers a single `event.listen(BRIDGE_EVENT, …)` that demuxes inbound `Click` / `CancelSnifferRequest` by the payload's `_tag`. No `window.ReactNativeWebView.postMessage` shim, no synthetic `MessageEvent` dispatch.
 
 When `__TAURI__` is absent (e.g. config drift removed `withGlobalTauri`) the bootstrap no-ops end-to-end: no shims attach, no BrowserTopBar attaches, no listeners register.
@@ -65,5 +65,5 @@ Doc-comments at the top of each file should be quick references useful on hover.
 - `browser-sniffer-tauri-rust/src/lib.rs` — entry point; wires three `app.listen(...)` calls.
 - `browser-sniffer-tauri-rust/src/sniffer_window.rs` — the only file that talks to Tauri's `WebviewWindowBuilder`.
 - `browser-sniffer-tauri/src/install-sniffer.ts` — the fetch / XHR / console shim that emits structured payloads on the multiplexed `BRIDGE_EVENT` channel directly via `eventBus.emit`.
-- `browser-sniffer-tauri/src/tauri-sniffer-entry.ts` — the thin IIFE wrapper that gates on `window.__TAURI__.event`, injects the `BrowserTopBar`, and hands the event API to `installSniffer`.
+- `browser-sniffer-tauri/src/tauri-sniffer-entry.ts` — the thin IIFE wrapper that gates on `window.__TAURI__.event`, injects the shared top bar (`injectBrowserTopBar` from `shared-structures-tauri/top-bar`, configured with a Close button), and hands the event API to `installSniffer`.
 - `slices/collector/collector-fundamentals/src/bridge.ts` — the consumer-side bridge schema; the Rust payload structs in `model/{request_sniffable_webview,open}.rs` mirror its shapes.

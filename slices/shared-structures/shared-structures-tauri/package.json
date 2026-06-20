@@ -1,13 +1,13 @@
 {
-  "name": "browser-sniffer-tauri",
+  "name": "shared-structures-tauri",
   "version": "0.0.0",
   "private": true,
-  "description": "Tauri sniffer bootstrap: the fetch/XHR/console shim that emits captured network activity as structured payloads on the single multiplexed `BRIDGE_EVENT` Tauri channel (with `_tag` as the dispatch discriminator), plus an in-page top bar for the sniffer webview. The bundled IIFE is consumed by browser-sniffer-tauri-rust via include_str!.",
+  "description": "Shared Tauri webview bootstrap: the in-page browser top bar (Back / Reload / URL chrome) injected into webviews that load arbitrary pages, plus the sandboxed-webview bootstrap IIFE that wires it to the Tauri event bus. The bar is shared with browser-sniffer-tauri; the bundled IIFE is consumed by shared-structures-tauri-rust via include_str!.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/browser-sniffer/browser-sniffer-tauri"
+    "directory": "slices/shared-structures/shared-structures-tauri"
   },
   "files": [
     "dist"
@@ -17,6 +17,14 @@
     ".": {
       "source": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./top-bar": {
+      "source": "./src/inject-browser-top-bar.ts",
+      "default": "./dist/inject-browser-top-bar.js"
+    },
+    "./bridge": {
+      "source": "./src/bridge-tags.ts",
+      "default": "./dist/bridge-tags.js"
     },
     "./package.json": "./package.json"
   },
@@ -32,13 +40,8 @@
     "@tauri-apps/api": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "browser-sniffer-core": "workspace:*",
-    "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "effect-messaging-tauri": "workspace:*",
     "esbuild": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "shared-structures-tauri": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   }
