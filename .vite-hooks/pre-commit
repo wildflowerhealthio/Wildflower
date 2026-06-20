@@ -1,1 +1,18 @@
+#!/usr/bin/env sh
+# Pre-commit checks. Installed by `vp config` (the `_/pre-commit` delegator runs
+# this file). Mirrors the lint/format half of CI now that the workflows no longer
+# run on pushes to main — CI remains a pre-merge (pull_request) gate, and this is
+# the local backstop.
+#
+# `vp run pack` builds the internal projects' dist first: `vp check`'s typecheck
+# resolves cross-package types from dist/*.d.ts (via each package's `source`
+# vs `default` exports), so without it a staged change to one package can't see
+# another's current types. It's cached, so it's ~free when nothing changed.
+# ci-typescript runs the same `vp run pack` before `vp check` for this reason.
+#
+# `vp staged` then runs the per-glob checks from the `staged` block in
+# vite.config.ts against the staged files only.
+set -e
+
+vp run pack
 vp staged
