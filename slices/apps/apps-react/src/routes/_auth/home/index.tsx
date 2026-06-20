@@ -8,6 +8,7 @@ import { tunnelStateQueryOptions, useTunnelStateQuery, type TunnelState } from '
 import { appsListQueryOptions, useAppsListQuery, type AppEntry } from '../../../queries.ts'
 import { useRequestTunnel } from '../../../runtime/use-request-tunnel.ts'
 import { AppsEditor } from '../../../screens/apps-editor.tsx'
+import { launchTarget } from './launch-target.ts'
 import pageLayout from '../../../styles/page.module.css'
 
 /**
@@ -49,15 +50,21 @@ const AppsHomeBody = ({ tunnel, apps }: AppsHomeBodyProps): JSX.Element => {
     //    keeps the redirect off the public tunnel even when one is up
     //    (avoiding localtunnel's 511 captive-portal interstitial).
     //  - Tunnel apps explicitly target `tunnel.servedOrigin` — the
-    //    server-resolved public URL — when the tunnel is live, or
-    //    request one via the bridge if it isn't yet.
+    //    server-resolved public URL — only while the tunnel is
+    //    `verified` (the one status where `servedOrigin` is the public
+    //    origin). For any other status `servedOrigin` is still the
+    //    loopback fallback, so we ask the host to bring the tunnel up via
+    //    the bridge and await its verified origin instead of redirecting
+    //    to loopback (which would silently bypass the tunnel). See
+    //    [`launchTarget`].
     const launchPath = `/apps/${encodeURIComponent(app.id)}`
-    if (!app.requiresTunnel) {
+    const target = launchTarget(app, tunnel)
+    if (target.via === 'loopback') {
       window.location.href = `${stripTrailingSlash(window.location.origin)}${launchPath}`
       return
     }
-    if (tunnel.running) {
-      window.location.href = `${stripTrailingSlash(tunnel.servedOrigin)}${launchPath}`
+    if (target.via === 'served') {
+      window.location.href = `${stripTrailingSlash(target.origin)}${launchPath}`
       return
     }
     const response = await requestTunnel()

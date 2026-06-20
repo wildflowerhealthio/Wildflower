@@ -18,7 +18,7 @@ const INITIAL: TunnelState = Tunnel.freshTunnelState
 // A snapshot with a configured relay (non-secret fields returned; token never).
 const CONFIGURED: TunnelState = {
   ...INITIAL,
-  revision: 3,
+  settingsRevision: 3,
   publicHost: 'clinic.example.com',
   relay: {
     remoteAddr: 'relay.example.com:2333',
@@ -51,10 +51,10 @@ const makeConflictThenApplyHttp = (): Layer.Layer<HttpClient.HttpClient> => {
       }
       putCount += 1
       if (putCount === 1) {
-        serverState = { ...INITIAL, revision: 1, publicHost: 'other.example.com' }
+        serverState = { ...INITIAL, settingsRevision: 1, publicHost: 'other.example.com' }
         return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(409, serverState)))
       }
-      serverState = { ...serverState, revision: serverState.revision + 1 }
+      serverState = { ...serverState, settingsRevision: serverState.settingsRevision + 1 }
       return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(200, serverState)))
     })
   )
@@ -76,10 +76,10 @@ const makeRelayConflictHttp = (): Layer.Layer<HttpClient.HttpClient> => {
       }
       if (!conflicted) {
         conflicted = true
-        serverState = { ...CONFIGURED, revision: CONFIGURED.revision + 1 }
+        serverState = { ...CONFIGURED, settingsRevision: CONFIGURED.settingsRevision + 1 }
         return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(409, serverState)))
       }
-      serverState = { ...serverState, revision: serverState.revision + 1 }
+      serverState = { ...serverState, settingsRevision: serverState.settingsRevision + 1 }
       return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(200, serverState)))
     })
   )

@@ -23,7 +23,7 @@
         }
       },
       "put": {
-        "summary": "`PUT /tunnel` — full-replace of the visible settings under the caller's\n`revision` token. A stale revision returns 409 with the current snapshot so\nthe client can rebase; a winning write bumps the revision, reconciles the\nlive supervisor, and returns the new snapshot. Collected into the `OpenAPI`\ndoc via `routes!` in the parent module, which reads this `#[utoipa::path]`.",
+        "summary": "`PUT /tunnel` — full-replace of the visible settings under the caller's\n`revision` token. A stale revision returns 409 with the current snapshot so\nthe client can rebase; a winning write bumps the revision, reconciles the\nlive supervisor, then — like the launch seam — **awaits the liveness\nsettling** (a `/health` probe verifies, or the verify deadline elapses)\nbefore returning, so the snapshot reflects *real* reachability rather than an\noptimistic `dialing`. A no-op change (same dialable config on an already-up\ntunnel) returns immediately `verified` — `reconcile` leaves the live tunnel\nuntouched, so there's nothing to wait for. Collected into the `OpenAPI` doc\nvia `routes!` in the parent module, which reads this `#[utoipa::path]`.",
         "operationId": "handle_put_tunnel",
         "requestBody": {
           "content": {
@@ -107,16 +107,17 @@
       },
       "ReplaceTunnelRequestBody": {
         "type": "object",
-        "description": "PUT body — a full replace of the visible settings guarded by `revision`,\nplus an optional write-only `relay` block (absent = keep the stored relay\nconnection, present = replace all four fields).\n\n`publicHost` is required and full-replace: send the desired host as a\nstring, or `null` to clear it. An omitted field is rejected — full-replace\nPUT semantics, and the relay block is the only intentionally-omittable\nmember (because it's write-only and the client can't echo back what it\nhasn't seen).",
+        "description": "PUT body — a full replace of the visible settings guarded by\n`settingsRevision`, plus an optional write-only `relay` block (absent = keep\nthe stored relay connection, present = replace all four fields).\n\n`publicHost` is required and full-replace: send the desired host as a\nstring, or `null` to clear it. An omitted field is rejected — full-replace\nPUT semantics, and the relay block is the only intentionally-omittable\nmember (because it's write-only and the client can't echo back what it\nhasn't seen).",
         "required": [
-          "revision",
+          "settingsRevision",
           "publicHost",
           "requestedRunning"
         ],
         "properties": {
-          "revision": {
+          "settingsRevision": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The optimistic-concurrency token echoed from the last-seen snapshot."
           },
           "publicHost": {
             "type": [
@@ -141,21 +142,23 @@
       },
       "TunnelStateResponse": {
         "type": "object",
-        "description": "Tunnel state on the wire. The relay connection's non-secret fields are\nreturned in [`RelayView`] (the `token` stays write-only and never appears\nhere). `revision` is the optimistic-concurrency token a PUT must echo.\n\n# `running` and `servedOrigin` are optimistic\n\n`running` flips to `true` the instant a dial attempt starts and stays true\nacross reconnect attempts that haven't yet errored — it means *dialing*,\nnot *connected*. Rathole exposes no \"handshake completed\" signal, so the\ndaemon has nothing more precise to report. `servedOrigin` derives from\n`running`, so it may resolve to `https://{publicHost}` while the tunnel is\nstill mid-dial (or briefly during a reconnect after a real failure).\n\nA caller that needs *verified reachable* (e.g. an await-tunnel flow that\nhands `servedOrigin` to another component) must probe the URL itself —\ndon't treat `running: true` as a liveness guarantee.\n\nA real liveness signal (probe or tri-state) to replace the optimistic\n`running` / `servedOrigin` is tracked in\n<https://github.com/Assessment-is/Wildflower/issues/184>; the dirty-gated\nsettings UI accepts the optimistic value for now.",
+        "description": "Tunnel state on the wire. The relay connection's non-secret fields are\nreturned in [`RelayView`] (the `token` stays write-only and never appears\nhere). `settingsRevision` is the optimistic-concurrency token a PUT must echo.\n\n# Liveness is now verified, not optimistic\n\n`status` is the real [`TunnelStatus`] FSM position. `servedOrigin`\nresolves to `https://{publicHost}` **only** while `status == \"verified\"` —\ni.e. after a `/health` probe through the public origin came back healthy —\nand the supervisor re-probes, so it reverts to the loopback fallback if the\ntunnel silently drops. `running` is the coarse \"a supervisor is attempting\"\nview (`dialing`/`verified`/`unreachable`), retained for back-compat; prefer\n`status`.\n`dialAttempts` counts relay dials for this revision (resets on the next\nreconcile) — a counter climbing with a steady `error` flags a permanent\nmisconfiguration. This is the resolution of\n<https://github.com/Assessment-is/Wildflower/issues/184>.",
         "required": [
-          "revision",
+          "settingsRevision",
           "publicHost",
           "requestedRunning",
+          "status",
           "running",
           "error",
-          "attempt",
+          "dialAttempts",
           "servedOrigin",
           "relay"
         ],
         "properties": {
-          "revision": {
+          "settingsRevision": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Which revision of the persisted settings this snapshot reflects — the\noptimistic-concurrency token a PUT must echo."
           },
           "publicHost": {
             "type": [
@@ -166,9 +169,13 @@
           "requestedRunning": {
             "type": "boolean"
           },
+          "status": {
+            "$ref": "#/components/schemas/TunnelStatus",
+            "description": "The liveness FSM position — the authoritative state. See the type docs."
+          },
           "running": {
             "type": "boolean",
-            "description": "`true` when the daemon is *dialing or reconnecting* — not a\nconnected-handshake signal. See the type-level docs."
+            "description": "`true` when a supervisor is attempting (`dialing`/`verified`/\n`unreachable`). A derived view of `status`, kept for back-compat."
           },
           "error": {
             "type": [
@@ -176,14 +183,14 @@
               "null"
             ]
           },
-          "attempt": {
+          "dialAttempts": {
             "type": "integer",
             "format": "int64",
-            "description": "Dial attempts the live supervisor has made for this revision, resets\non the next reconcile. Surfaced so an operator can spot a permanent\nmisconfiguration (counter climbs with no recovery) without the daemon\nhaving to classify rathole errors itself."
+            "description": "How many times the tunnel has tried to dial the relay for this revision,\nresets on the next reconcile. Surfaced so an operator can spot a permanent\nmisconfiguration (counter climbs with no recovery) without the daemon\nhaving to classify rathole errors itself."
           },
           "servedOrigin": {
             "type": "string",
-            "description": "`https://{publicHost}` while `running` (optimistically — see the\ntype-level docs), else the loopback fallback."
+            "description": "`https://{publicHost}` only while `status == \"verified\"`, else the\nloopback fallback. See the type-level docs."
           },
           "relay": {
             "oneOf": [
@@ -197,6 +204,17 @@
             ]
           }
         }
+      },
+      "TunnelStatus": {
+        "type": "string",
+        "description": "The liveness state of the tunnel. The full FSM lives in the tunnel slice;\nthis is the position consumers care about.\n\nThis is also the type the tunnel slice's `/tunnel` HTTP surface serializes\ndirectly (lowercase variants), so it derives `Serialize`/`ToSchema` here\nrather than a parallel wire enum re-declaring the same five variants.",
+        "enum": [
+          "off",
+          "misconfigured",
+          "dialing",
+          "verified",
+          "unreachable"
+        ]
       }
     }
   }

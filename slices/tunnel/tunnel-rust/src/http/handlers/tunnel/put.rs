@@ -15,8 +15,13 @@ use crate::http::state::TunnelState;
 /// `PUT /tunnel` — full-replace of the visible settings under the caller's
 /// `revision` token. A stale revision returns 409 with the current snapshot so
 /// the client can rebase; a winning write bumps the revision, reconciles the
-/// live supervisor, and returns the new snapshot. Collected into the `OpenAPI`
-/// doc via `routes!` in the parent module, which reads this `#[utoipa::path]`.
+/// live supervisor, then — like the launch seam — **awaits the liveness
+/// settling** (a `/health` probe verifies, or the verify deadline elapses)
+/// before returning, so the snapshot reflects *real* reachability rather than an
+/// optimistic `dialing`. A no-op change (same dialable config on an already-up
+/// tunnel) returns immediately `verified` — `reconcile` leaves the live tunnel
+/// untouched, so there's nothing to wait for. Collected into the `OpenAPI` doc
+/// via `routes!` in the parent module, which reads this `#[utoipa::path]`.
 #[utoipa::path(
     put,
     path = "/tunnel",
@@ -37,12 +42,18 @@ pub(super) async fn handle_put_tunnel(
     };
     let settings_update_outcome = state
         .store
-        .replace_settings(body.revision, update)
+        .replace_settings(body.settings_revision, update)
         .map_err(|e| HandlerError::internal("replace_settings failed", e))?;
 
     match settings_update_outcome {
         SettingsUpdateOutcome::Applied(settings) => {
             state.daemon.reconcile(&settings);
+            // Await the liveness settling (verified / terminal / deadline) so the
+            // response carries real reachability — the same verify seam the
+            // launch path uses. The verdict itself is surfaced through the
+            // snapshot below (status/error/servedOrigin), so discard the
+            // `Result` here.
+            let _ = crate::control::await_verified(&state).await;
             Ok((
                 StatusCode::OK,
                 Json(TunnelStateResponse::from_current_state(
@@ -61,9 +72,9 @@ pub(super) async fn handle_put_tunnel(
     }
 }
 
-/// PUT body — a full replace of the visible settings guarded by `revision`,
-/// plus an optional write-only `relay` block (absent = keep the stored relay
-/// connection, present = replace all four fields).
+/// PUT body — a full replace of the visible settings guarded by
+/// `settingsRevision`, plus an optional write-only `relay` block (absent = keep
+/// the stored relay connection, present = replace all four fields).
 ///
 /// `publicHost` is required and full-replace: send the desired host as a
 /// string, or `null` to clear it. An omitted field is rejected — full-replace
@@ -73,7 +84,8 @@ pub(super) async fn handle_put_tunnel(
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ReplaceTunnelRequestBody {
-    pub(super) revision: i64,
+    /// The optimistic-concurrency token echoed from the last-seen snapshot.
+    pub(super) settings_revision: i64,
     // `RequiredNullable` has no `ToSchema`, so describe it to utoipa as a
     // nullable string; `required` overrides utoipa's nullable-implies-optional
     // default to match the always-present TS `NullOr` (full-replace PUT).

@@ -32,7 +32,21 @@ mod tests {
     use super::*;
     use crate::db::TunnelStore;
     use crate::domain::{RelayClient, RelaySettings};
+    use crate::health::HealthProbe;
+    use crate::test_support::StubProbe;
     use crate::TunnelDaemon;
+
+    /// The wire tests default to a *failing* probe so the tunnel never reaches
+    /// `Verified` — keeping `servedOrigin` deterministically on the loopback
+    /// fallback regardless of real-time probe ticks. The verified path has its
+    /// own paused-time test.
+    fn failing_probe() -> Arc<dyn HealthProbe> {
+        Arc::new(StubProbe(Err("probe disabled in test".to_string())))
+    }
+
+    fn passing_probe() -> Arc<dyn HealthProbe> {
+        Arc::new(StubProbe(Ok(())))
+    }
 
     /// The plain axum router (`OpenAPI` spec discarded) for exercising the
     /// handlers via `oneshot` — the documented router minus its spec half.
@@ -76,12 +90,19 @@ mod tests {
     }
 
     fn state(behavior: Behavior) -> (Arc<TunnelState>, mpsc::UnboundedReceiver<()>) {
+        state_with_probe(behavior, failing_probe())
+    }
+
+    fn state_with_probe(
+        behavior: Behavior,
+        probe: Arc<dyn HealthProbe>,
+    ) -> (Arc<TunnelState>, mpsc::UnboundedReceiver<()>) {
         let (started, rx) = mpsc::unbounded_channel();
         let client = Arc::new(FakeClient { behavior, started });
         let store = TunnelStore::open_in_memory().expect("store");
         let state = Arc::new(TunnelState {
             store,
-            daemon: TunnelDaemon::new_test(client, "http://127.0.0.1:8080", 8080),
+            daemon: TunnelDaemon::new_test(client, probe, "http://127.0.0.1:8080", 8080),
         });
         (state, rx)
     }
@@ -131,25 +152,29 @@ mod tests {
         assert_eq!(
             body,
             serde_json::json!({
-                "revision": 0,
+                "settingsRevision": 0,
                 "publicHost": null,
                 "requestedRunning": false,
+                "status": "off",
                 "running": false,
                 "error": null,
-                "attempt": 0,
+                "dialAttempts": 0,
                 "servedOrigin": "http://127.0.0.1:8080",
                 "relay": null,
             })
         );
     }
 
-    #[tokio::test]
-    async fn put_with_relay_running_reports_public_origin_and_bumps_revision() {
-        let (st, _started) = state(Behavior::HoldUntilCancel);
+    /// The PUT awaits the liveness settling before responding (the same verify
+    /// seam the launch uses): with a healthy `/health` probe it reports
+    /// `verified` and the public origin directly, not an optimistic `dialing`.
+    #[tokio::test(start_paused = true)]
+    async fn put_with_relay_running_awaits_verification_and_bumps_revision() {
+        let (st, _started) = state_with_probe(Behavior::HoldUntilCancel, passing_probe());
         let (status, body) = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0,
+                "settingsRevision": 0,
                 "publicHost": "dev1.example.com",
                 "requestedRunning": true,
                 "relay": relay_json(),
@@ -157,8 +182,75 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body["revision"], serde_json::json!(1));
-        assert_eq!(body["running"], serde_json::json!(true), "optimistic up");
+        assert_eq!(body["settingsRevision"], serde_json::json!(1));
+        assert_eq!(body["status"], serde_json::json!("verified"));
+        assert_eq!(body["running"], serde_json::json!(true), "supervisor up");
+        assert_eq!(
+            body["servedOrigin"],
+            serde_json::json!("https://dev1.example.com"),
+            "the verified public origin, awaited before responding",
+        );
+    }
+
+    /// A settings save that doesn't change the dialable config (same relay +
+    /// public host) on an already-up tunnel must not restart it: the PUT returns
+    /// `verified` immediately and the relay is never re-dialed.
+    #[tokio::test(start_paused = true)]
+    async fn no_change_put_does_not_restart_a_verified_tunnel() {
+        let (st, mut started) = state_with_probe(Behavior::HoldUntilCancel, passing_probe());
+        let body = serde_json::json!({
+            "settingsRevision": 0,
+            "publicHost": "dev1.example.com",
+            "requestedRunning": true,
+            "relay": relay_json(),
+        });
+        let (_status, _body) = send(&st, put(&body)).await;
+        // The tunnel came up — exactly one dial happened.
+        started.recv().await.expect("dialed once to come up");
+
+        // Re-save identical settings under the new revision token.
+        let resave = serde_json::json!({
+            "settingsRevision": 1,
+            "publicHost": "dev1.example.com",
+            "requestedRunning": true,
+            "relay": relay_json(),
+        });
+        let (status, body) = send(&st, put(&resave)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["settingsRevision"], serde_json::json!(2));
+        assert_eq!(
+            body["status"],
+            serde_json::json!("verified"),
+            "the live tunnel stays verified across a no-op save",
+        );
+        assert!(
+            started.try_recv().is_err(),
+            "a no-change save must not re-dial the relay",
+        );
+    }
+
+    /// Once a `/health` probe comes back healthy, the status
+    /// flips to `verified` and `servedOrigin` becomes the public origin.
+    #[tokio::test(start_paused = true)]
+    async fn verified_after_probe_reports_the_public_origin() {
+        let (st, _started) = state_with_probe(Behavior::HoldUntilCancel, passing_probe());
+        let _ = send(
+            &st,
+            put(&serde_json::json!({
+                "settingsRevision": 0,
+                "publicHost": "dev1.example.com",
+                "requestedRunning": true,
+                "relay": relay_json(),
+            })),
+        )
+        .await;
+        // Wait for the supervisor's probe to verify in virtual time.
+        let mut live = st.daemon.watch_liveness();
+        live.wait_for(|l| l.origin == "https://dev1.example.com")
+            .await
+            .expect("verified");
+        let (_status, body) = send(&st, get()).await;
+        assert_eq!(body["status"], serde_json::json!("verified"));
         assert_eq!(
             body["servedOrigin"],
             serde_json::json!("https://dev1.example.com")
@@ -171,7 +263,7 @@ mod tests {
         let _ = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0, "publicHost": "dev1.example.com",
+                "settingsRevision": 0, "publicHost": "dev1.example.com",
                 "requestedRunning": true, "relay": relay_json(),
             })),
         )
@@ -203,18 +295,22 @@ mod tests {
         let _ = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0, "publicHost": "dev1", "requestedRunning": true, "relay": relay_json(),
+                "settingsRevision": 0, "publicHost": "dev1", "requestedRunning": true, "relay": relay_json(),
             })),
         )
         .await;
         // a second writer still on revision 0 loses
         let (status, body) = send(
             &st,
-            put(&serde_json::json!({ "revision": 0, "publicHost": "evil", "requestedRunning": false })),
+            put(&serde_json::json!({ "settingsRevision": 0, "publicHost": "evil", "requestedRunning": false })),
         )
         .await;
         assert_eq!(status, StatusCode::CONFLICT);
-        assert_eq!(body["revision"], serde_json::json!(1), "current revision");
+        assert_eq!(
+            body["settingsRevision"],
+            serde_json::json!(1),
+            "current revision"
+        );
         assert_eq!(body["publicHost"], serde_json::json!("dev1"), "unchanged");
     }
 
@@ -224,10 +320,11 @@ mod tests {
         let (_status, body) = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0, "publicHost": "dev1.example.com", "requestedRunning": true,
+                "settingsRevision": 0, "publicHost": "dev1.example.com", "requestedRunning": true,
             })),
         )
         .await;
+        assert_eq!(body["status"], serde_json::json!("misconfigured"));
         assert_eq!(body["running"], serde_json::json!(false));
         assert_eq!(
             body["error"],
@@ -242,36 +339,37 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_attempt_surfaces_the_error_and_keeps_retrying() {
+        use shared_structures_rust::tunnel_service::TunnelStatus;
         let (st, mut started) = state(Behavior::FailImmediately);
-        let mut observed = st.daemon.watch_observed();
+        let mut live = st.daemon.watch_liveness();
         let _ = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0, "publicHost": "dev1.example.com",
+                "settingsRevision": 0, "publicHost": "dev1.example.com",
                 "requestedRunning": true, "relay": relay_json(),
             })),
         )
         .await;
 
-        // the supervisor's attempt fails and the error surfaces (deterministic
-        // await on the observed-state transition)
-        observed
-            .wait_for(|o| !o.running && o.error.as_deref() == Some("relay unreachable"))
-            .await
-            .expect("error observed");
+        // the supervisor's dial fails and surfaces `unreachable` + the error
+        // (deterministic await on the liveness transition)
+        live.wait_for(|l| {
+            l.status == TunnelStatus::Unreachable && l.error.as_deref() == Some("relay unreachable")
+        })
+        .await
+        .expect("error surfaces");
         // and it keeps reconnecting — at least two attempts happen
         started.recv().await.expect("attempt 1");
         started.recv().await.expect("attempt 2");
 
         // The attempt counter climbs on every retry so an operator can spot a
         // permanent misconfiguration (steady error + steadily climbing count).
-        observed
-            .wait_for(|o| o.attempt >= 2)
+        live.wait_for(|l| l.dial_attempts >= 2)
             .await
             .expect("attempt count climbs");
         let (_, body) = send(&st, get()).await;
         assert!(
-            body["attempt"].as_i64().expect("attempt is a number") >= 2,
+            body["dialAttempts"].as_i64().expect("attempt is a number") >= 2,
             "wire surfaces the climbing attempt count: {body}",
         );
     }
@@ -288,7 +386,7 @@ mod tests {
         let res = router()
             .with_state(Arc::clone(&st))
             .oneshot(put(&serde_json::json!(
-                { "revision": 0, "requestedRunning": false }
+                { "settingsRevision": 0, "requestedRunning": false }
             )))
             .await
             .expect("oneshot");
@@ -307,7 +405,7 @@ mod tests {
         let _ = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0,
+                "settingsRevision": 0,
                 "publicHost": "dev1.example.com",
                 "requestedRunning": true,
                 "relay": relay_json(),
@@ -317,7 +415,7 @@ mod tests {
         let (status, body) = send(
             &st,
             put(&serde_json::json!({
-                "revision": 1,
+                "settingsRevision": 1,
                 "publicHost": serde_json::Value::Null,
                 "requestedRunning": true,
             })),
@@ -333,17 +431,18 @@ mod tests {
         let _ = send(
             &st,
             put(&serde_json::json!({
-                "revision": 0, "publicHost": "dev1.example.com",
+                "settingsRevision": 0, "publicHost": "dev1.example.com",
                 "requestedRunning": true, "relay": relay_json(),
             })),
         )
         .await;
         let (_status, body) = send(
             &st,
-            put(&serde_json::json!({ "revision": 1, "publicHost": "dev1.example.com", "requestedRunning": false })),
+            put(&serde_json::json!({ "settingsRevision": 1, "publicHost": "dev1.example.com", "requestedRunning": false })),
         )
         .await;
-        assert_eq!(body["revision"], serde_json::json!(2));
+        assert_eq!(body["settingsRevision"], serde_json::json!(2));
+        assert_eq!(body["status"], serde_json::json!("off"));
         assert_eq!(body["running"], serde_json::json!(false));
         assert_eq!(
             body["servedOrigin"],

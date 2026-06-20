@@ -8,11 +8,14 @@
 //! patched through the admin one is immediately visible through the public
 //! one).
 
+use std::sync::Arc;
+
 use apps_rust::{setup_apps, Apps, AppsConfig};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use persistence_rust::Connection;
 use serde_json::Value;
+use shared_structures_rust::tunnel_service::OfflineTunnel;
 use tower::ServiceExt;
 
 const LOOPBACK_ORIGIN: &str = "http://127.0.0.1:8080";
@@ -22,7 +25,9 @@ fn spin_up() -> Apps {
     let config = AppsConfig {
         loopback_origin: LOOPBACK_ORIGIN.to_string(),
     };
-    setup_apps(db, &config).expect("setup_apps")
+    // No tunnel in the integration harness: `requires_tunnel` launches fall
+    // back to loopback + `?tunnel=unavailable`.
+    setup_apps(db, &config, Arc::new(OfflineTunnel::new(LOOPBACK_ORIGIN))).expect("setup_apps")
 }
 
 async fn body_json(body: Body) -> Value {

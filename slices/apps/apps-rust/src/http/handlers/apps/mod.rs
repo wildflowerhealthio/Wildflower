@@ -36,6 +36,42 @@ mod tests {
     use crate::db::AppsStore;
     use crate::domain::{AppEntry, AppUrl};
     use crate::http::state::AppsState;
+    use shared_structures_rust::tunnel_service::{
+        OfflineTunnel, TunnelLiveness, TunnelService, TunnelStatus,
+    };
+
+    /// A `TunnelService` stub for a tunnel that's up and verified at `origin` —
+    /// the success counterpart to the shared [`OfflineTunnel`], which already
+    /// models the can't-reach case (`try_start` fails, state stays `Off`).
+    struct StubTunnel(String);
+
+    #[async_trait::async_trait]
+    impl TunnelService for StubTunnel {
+        fn current_origin(&self) -> String {
+            self.0.clone()
+        }
+        async fn try_start(&self) -> Result<String, String> {
+            Ok(self.0.clone())
+        }
+        fn subscribe(&self) -> tokio::sync::watch::Receiver<TunnelLiveness> {
+            tokio::sync::watch::channel(TunnelLiveness {
+                settings_revision: None,
+                status: TunnelStatus::Verified,
+                origin: self.0.clone(),
+                error: None,
+                dial_attempts: 0,
+            })
+            .1
+        }
+    }
+
+    fn tunnel_at(origin: &str) -> Arc<dyn TunnelService> {
+        Arc::new(StubTunnel(origin.to_string()))
+    }
+
+    fn tunnel_unavailable() -> Arc<dyn TunnelService> {
+        Arc::new(OfflineTunnel::new("http://127.0.0.1:8080"))
+    }
 
     /// The served public router, state not yet applied — the spec half of
     /// `split_for_parts` is irrelevant here.
@@ -44,8 +80,12 @@ mod tests {
     }
 
     fn state() -> Arc<AppsState> {
+        state_with_tunnel(tunnel_unavailable())
+    }
+
+    fn state_with_tunnel(tunnel: Arc<dyn TunnelService>) -> Arc<AppsState> {
         let store = AppsStore::open_in_memory().expect("store");
-        Arc::new(AppsState::new(store, "http://127.0.0.1:8080"))
+        Arc::new(AppsState::new(store, "http://127.0.0.1:8080", tunnel))
     }
 
     async fn send(state: &Arc<AppsState>, req: Request<Body>) -> (StatusCode, serde_json::Value) {
@@ -147,8 +187,8 @@ mod tests {
         );
     }
 
-    /// A `requires_tunnel` launch redirects to the loopback origin (no real
-    /// tunnel seam yet) with the `tunnel=unavailable` flag so the SPA can
+    /// When the tunnel can't be reached, a `requires_tunnel` launch falls back
+    /// to the loopback origin with the `tunnel=unavailable` flag so the SPA can
     /// surface a banner.
     #[tokio::test]
     async fn launch_growth_chart_appends_tunnel_unavailable() {
@@ -172,6 +212,33 @@ mod tests {
         assert!(
             location.contains("iss=http://127.0.0.1:8080/fhir-r4"),
             "expected loopback iss in {location}",
+        );
+    }
+
+    /// When the tunnel service starts and returns a verified origin, a
+    /// `requires_tunnel` launch redirects there (no `tunnel=unavailable`).
+    #[tokio::test]
+    async fn launch_growth_chart_resolves_to_the_verified_tunnel_origin() {
+        let st = state_with_tunnel(tunnel_at("https://dev1.example.com"));
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(get("/apps/growth-chart"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FOUND);
+        let location = res
+            .headers()
+            .get("location")
+            .expect("location header")
+            .to_str()
+            .unwrap();
+        assert!(
+            location.contains("iss=https://dev1.example.com/fhir-r4"),
+            "expected the verified tunnel origin in {location}",
+        );
+        assert!(
+            !location.contains("tunnel=unavailable"),
+            "a reachable tunnel must not flag unavailable: {location}",
         );
     }
 

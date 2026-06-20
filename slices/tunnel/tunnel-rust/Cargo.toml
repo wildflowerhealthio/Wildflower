@@ -18,6 +18,10 @@ utoipa.workspace = true
 utoipa-axum.workspace = true
 rusqlite.workspace = true
 persistence-rust = { path = "../../persistence/persistence-rust" }
+# The tunnel service contract this slice implements (TunnelService + state types).
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = [
+  "tunnel-service",
+] }
 rathole = { version = "0.5", default-features = false, features = [
   "client",
   "noise",

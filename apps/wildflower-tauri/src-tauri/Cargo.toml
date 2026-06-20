@@ -29,13 +29,23 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde.workspace = true
 serde_json.workspace = true
+async-trait = "0.1"
+# The tunnel `/health` reachability probe. `rustls-tls` (no openssl) matches the
+# project's openssl avoidance; `json` decodes the health body. reqwest is already
+# a transitive dependency (via helios), so this adds no new build cost.
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+  "json",
+] }
 apps-rust = { path = "../../../slices/apps/apps-rust" }
 browser-sniffer-tauri-rust = { path = "../../../slices/browser-sniffer/browser-sniffer-tauri-rust" }
 databases-rust = { path = "../../../slices/databases/databases-rust" }
 emr-rust = { path = "../../../slices/emr/emr-rust" }
 gatekeeper-rust = { path = "../../../slices/gatekeeper/gatekeeper-rust" }
 persistence-rust = { path = "../../../slices/persistence/persistence-rust" }
-shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust" }
+shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust", features = [
+  "health-check",
+] }
 tunnel-rust = { path = "../../../slices/tunnel/tunnel-rust" }
 anyhow.workspace = true
 axum.workspace = true

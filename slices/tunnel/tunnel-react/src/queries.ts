@@ -25,7 +25,7 @@ type RelayInput = Schema.Schema.Type<typeof Tunnel.RelayInputSchema>
 type ReplaceTunnelPayload = Schema.Schema.Type<typeof Tunnel.ReplaceTunnelRequestBodySchema>
 
 /**
- * The user-controlled half of a `ReplaceTunnel` write. `revision` is
+ * The user-controlled half of a `ReplaceTunnel` write. `settingsRevision` is
  * intentionally absent — the mutation always reads the freshest one from
  * the cache (see {@link useTunnelReplaceMutation}), so a stale-cache
  * toggle can't clobber a host the user just saved.
@@ -44,7 +44,7 @@ interface TunnelReplaceInput {
 
 /**
  * Outcome of a `ReplaceTunnel` PUT. A `409` is an *expected* result, not
- * a transport error: the caller's `revision` was stale, so the server
+ * a transport error: the caller's `settingsRevision` was stale, so the server
  * applied no write and returned the current snapshot (with a newer
  * revision) for the client to rebase against.
  */
@@ -85,7 +85,7 @@ const useTunnelStateQuery = (): UseSuspenseQueryResult<TunnelState, Error> =>
 
 /**
  * Build the full-replace PUT body from the latest cached snapshot plus
- * the user's intent. `revision` and any omitted visible field come from
+ * the user's intent. `settingsRevision` and any omitted visible field come from
  * `current`, so every PUT carries the freshest revision and never drops
  * a value the user didn't touch. `relay` is included only when supplied
  * (it's write-only — absent means "keep the stored relay").
@@ -110,7 +110,7 @@ const buildReplacePayload = (
   current: TunnelState,
   input: TunnelReplaceInput
 ): ReplaceTunnelPayload => ({
-  revision: current.revision,
+  settingsRevision: current.settingsRevision,
   ...mergeVisibleFields(current, input),
   ...(input.relay === undefined ? {} : { relay: input.relay }),
 })
@@ -118,8 +118,8 @@ const buildReplacePayload = (
 /**
  * Project a {@link TunnelReplaceInput} onto a cached snapshot for the
  * optimistic update — only the visible, client-writable fields.
- * Server-derived fields (`running`, `error`, `attempt`, `servedOrigin`)
- * and `revision` are left untouched; they settle from the server's
+ * Server-derived fields (`running`, `error`, `dialAttempts`, `servedOrigin`)
+ * and `settingsRevision` are left untouched; they settle from the server's
  * response. `relay` is write-only and not part of the snapshot, so it's
  * never projected.
  */
@@ -146,7 +146,7 @@ interface TunnelReplaceMutationContext {
 /**
  * `ReplaceTunnel` with optimistic cache update + rollback. The PUT body
  * is built from the latest cached snapshot (not React state), so the
- * `revision` is always current and a toggle can't clobber an unrelated
+ * `settingsRevision` is always current and a toggle can't clobber an unrelated
  * field. A `409` resolves to a `Conflict` result (the server's current
  * snapshot is adopted into the cache and surfaced via
  * `mutation.data._tag`); genuine transport failures reject and roll the

@@ -1,6 +1,7 @@
 mod api_stubs;
 mod bridge;
 mod spa;
+mod tunnel_adapters;
 
 use anyhow::Context;
 use apps_rust::{setup_apps, AppsConfig};
@@ -11,6 +12,7 @@ use gatekeeper_rust::{
 };
 use shared_structures_rust::ServerRuntimeConfig;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio::net::TcpListener;
@@ -41,6 +43,7 @@ const WILDFLOWER_DB: &str = "wildflower.sqlite";
 async fn run_server(
     runtime: ServerRuntimeConfig,
     publishers: bridge::BridgePublishers,
+    app_handle: tauri::AppHandle,
 ) -> anyhow::Result<()> {
     // Apply any deletions the Owner scheduled from the data-management screen
     // BEFORE opening the databases below: the `/databases` DELETE can't remove a
@@ -161,19 +164,34 @@ async fn run_server(
         local_port: runtime.loopback_port,
         seed: tunnel_seed_from_build_env(),
     };
-    let tunnel_router =
-        tunnel_rust::setup_tunnel(db.clone(), &tunnel_config).context("failed to set up tunnel")?;
+    // `setup_tunnel` hands back the `/tunnel` router plus the in-process
+    // `TunnelControl` seam (which implements `TunnelService`). The daemon drives
+    // a `/health` probe — against the app-layer `/health` route mounted below —
+    // through the reqwest adapter to verify reachability.
+    let health_probe: Arc<dyn tunnel_rust::HealthProbe> =
+        Arc::new(tunnel_adapters::ReqwestHealthProbe::new());
+    let tunnel = tunnel_rust::setup_tunnel(db.clone(), &tunnel_config, health_probe)
+        .context("failed to set up tunnel")?;
     let gated_tunnel =
-        layer_router_with_gatekeeper_auth_gating(tunnel_router, gatekeeper.state.clone());
+        layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone());
 
     // The apps catalogue surface. `GET /apps` (list) and `GET /apps/{id}`
     // (launch redirect) ride on the public router — the webview consumes
     // them unauthenticated like the rest of the launch path. The admin
     // surface (POST/PATCH/DELETE) is owner-gated through the gatekeeper.
+    // A `requires_tunnel` launch resolves to the tunnel's verified origin
+    // through the tunnel service (else falls back to loopback + tunnel=unavailable).
     let apps_config = AppsConfig {
         loopback_origin: loopback_origin.clone(),
     };
-    let apps = setup_apps(db, &apps_config).context("failed to set up apps")?;
+    // `TunnelControl` implements `TunnelService`, so it's handed straight in.
+    let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
+    // Wire the apps `RequestTunnel` web→host bridge handler now that the tunnel
+    // service exists: the SPA's launch path asks the host to bring the tunnel up
+    // (and awaits the verified origin) for an app that needs a public origin
+    // when the tunnel isn't already running.
+    bridge::attach_apps_tunnel_bridge(&app_handle, Arc::clone(&tunnel_service));
+    let apps = setup_apps(db, &apps_config, tunnel_service).context("failed to set up apps")?;
     let gated_apps_admin =
         layer_router_with_gatekeeper_auth_gating(apps.admin_router, gatekeeper.state.clone());
 
@@ -221,6 +239,14 @@ async fn run_server(
         .merge(gated_fhir_r4)
         .merge(gated_stubs)
         .merge(gated_tunnel)
+        // The app-layer `/health`: an unauthenticated liveness endpoint the
+        // tunnel's reachability probe round-trips through the relay. Ungated so
+        // the probe (and any external uptime check) needs no bearer token. The
+        // reusable router comes from the core; `AlwaysHealthy` is the trivial
+        // service until real per-slice checks are wired.
+        .merge(shared_structures_rust::health_check::health_router(
+            Arc::new(shared_structures_rust::health_check::AlwaysHealthy),
+        ))
         .merge(apps.public_router)
         .merge(gated_apps_admin)
         .merge(gated_databases)
@@ -261,6 +287,11 @@ pub fn run() {
                     tauri_plugin_log::TargetKind::Stdout,
                 )])
                 .level(tauri_plugin_log::log::LevelFilter::Debug)
+                // rathole logs every relay heartbeat/data-channel event at
+                // debug — far too repetitive to read the tunnel lifecycle
+                // through. Pin it to info; the tunnel slice's own
+                // dial/probe/transition logs carry the timeline we care about.
+                .level_for("rathole", tauri_plugin_log::log::LevelFilter::Info)
                 .build(),
         )
         .setup(|app| {
@@ -282,6 +313,10 @@ pub fn run() {
             browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
 
             let error_handle = app.handle().clone();
+            // The server task wires the apps `RequestTunnel` bridge handler once
+            // the tunnel service is built, so it needs an app handle to listen
+            // on / emit through the bridge event bus.
+            let server_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let runtime = ServerRuntimeConfig {
                     // Loopback-only: the OS rejects non-local peers at the
@@ -295,7 +330,7 @@ pub fn run() {
                     app_data_dir,
                 };
 
-                if let Err(error) = run_server(runtime, publishers).await {
+                if let Err(error) = run_server(runtime, publishers, server_handle).await {
                     tauri_plugin_log::log::error!("Wildflower server stopped: {error:?}");
                     // A failed/stopped server leaves the webview unable to
                     // reach the API at all (no token, no FHIR) — surface it
