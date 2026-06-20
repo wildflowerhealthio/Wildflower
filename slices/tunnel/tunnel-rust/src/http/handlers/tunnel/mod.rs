@@ -116,7 +116,13 @@ mod tests {
         let store = TunnelStore::open_in_memory().expect("store");
         let state = Arc::new(TunnelState {
             store,
-            daemon: TunnelDaemon::new_test(client, probe, SERVICE_ID, "http://127.0.0.1:8080", 8080),
+            daemon: TunnelDaemon::new_test(
+                client,
+                probe,
+                SERVICE_ID,
+                "http://127.0.0.1:8080",
+                8080,
+            ),
         });
         (state, rx)
     }

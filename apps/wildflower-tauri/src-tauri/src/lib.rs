@@ -1,6 +1,7 @@
 mod api_stubs;
 mod bridge;
 mod spa;
+mod tunnel_adapters;
 
 use anyhow::Context;
 use apps_rust::{setup_apps, AppsConfig};
@@ -11,6 +12,7 @@ use gatekeeper_rust::{
 };
 use shared_structures_rust::ServerRuntimeConfig;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio::net::TcpListener;
@@ -146,13 +148,14 @@ async fn run_server(
         local_port: runtime.loopback_port,
         seed: tunnel_seed_from_build_env(),
     };
-    // `setup_tunnel` now hands back the `/tunnel` router plus the in-process
-    // `TunnelControl` seam. The control is the staged hook a host consumer
-    // (the apps launch handler, in a later change) drives to resolve launches
-    // against the live served origin; until that wiring lands we only mount
-    // the router.
-    let tunnel =
-        tunnel_rust::setup_tunnel(db.clone(), &tunnel_config).context("failed to set up tunnel")?;
+    // `setup_tunnel` hands back the `/tunnel` router, the ungated `/health`
+    // router (mounted outside the gatekeeper gate so the probe needs no bearer),
+    // and the in-process `TunnelControl` seam. The daemon drives the `/health`
+    // probe through the reqwest adapter to verify reachability.
+    let health_probe: Arc<dyn tunnel_rust::HealthProbe> =
+        Arc::new(tunnel_adapters::ReqwestHealthProbe::new());
+    let tunnel = tunnel_rust::setup_tunnel(db.clone(), &tunnel_config, health_probe)
+        .context("failed to set up tunnel")?;
     let gated_tunnel =
         layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone());
 
@@ -160,10 +163,15 @@ async fn run_server(
     // (launch redirect) ride on the public router — the webview consumes
     // them unauthenticated like the rest of the launch path. The admin
     // surface (POST/PATCH/DELETE) is owner-gated through the gatekeeper.
+    // A `requires_tunnel` launch resolves to the tunnel's verified public origin
+    // through the control seam (else falls back to loopback + tunnel=unavailable).
     let apps_config = AppsConfig {
         loopback_origin: loopback_origin.clone(),
     };
-    let apps = setup_apps(db, &apps_config).context("failed to set up apps")?;
+    let tunnel_resolver: Arc<dyn apps_rust::TunnelLaunchResolver> = Arc::new(
+        tunnel_adapters::TunnelLaunchAdapter::new(tunnel.control.clone()),
+    );
+    let apps = setup_apps(db, &apps_config, tunnel_resolver).context("failed to set up apps")?;
     let gated_apps_admin =
         layer_router_with_gatekeeper_auth_gating(apps.admin_router, gatekeeper.state.clone());
     // The webview page is NOT served from this origin — it loads from
@@ -182,6 +190,9 @@ async fn run_server(
         .merge(gated_fhir_r4)
         .merge(gated_stubs)
         .merge(gated_tunnel)
+        // `/health` is mounted ungated: the reachability probe (and any external
+        // uptime check) reaches it through the tunnel without a bearer token.
+        .merge(tunnel.health_router)
         .merge(apps.public_router)
         .merge(gated_apps_admin)
         .fallback(spa::handle_serving_spa_html)

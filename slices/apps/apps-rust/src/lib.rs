@@ -67,7 +67,11 @@ pub fn setup_apps(
     tunnel: Arc<dyn TunnelLaunchResolver>,
 ) -> anyhow::Result<Apps> {
     let store = AppsStore::new(conn).context("failed to open apps store")?;
-    let state = Arc::new(AppsState::new(store, config.loopback_origin.clone(), tunnel));
+    let state = Arc::new(AppsState::new(
+        store,
+        config.loopback_origin.clone(),
+        tunnel,
+    ));
     Ok(Apps {
         public_router: http::public_router(Arc::clone(&state)),
         admin_router: http::admin_router(Arc::clone(&state)),

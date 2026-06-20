@@ -319,9 +319,15 @@ impl TunnelDaemon {
         let (status, error) = if !settings.requested_running {
             (TunnelStatus::Off, None)
         } else if settings.relay_settings.is_none() {
-            (TunnelStatus::Misconfigured, Some(NOT_CONFIGURED.to_string()))
+            (
+                TunnelStatus::Misconfigured,
+                Some(NOT_CONFIGURED.to_string()),
+            )
         } else if public.is_none() {
-            (TunnelStatus::Misconfigured, Some(NO_PUBLIC_HOST.to_string()))
+            (
+                TunnelStatus::Misconfigured,
+                Some(NO_PUBLIC_HOST.to_string()),
+            )
         } else {
             (TunnelStatus::Dialing, None)
         };
@@ -858,8 +864,7 @@ mod tests {
         let mut rx = daemon.watch_liveness();
         daemon.reconcile(&running_settings(1, Some("dev1.example.com")));
         rx.wait_for(|l| {
-            l.status == TunnelStatus::Unreachable
-                && l.error.as_deref() == Some("relay unreachable")
+            l.status == TunnelStatus::Unreachable && l.error.as_deref() == Some("relay unreachable")
         })
         .await
         .expect("dial error surfaces");
