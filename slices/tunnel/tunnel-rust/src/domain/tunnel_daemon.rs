@@ -183,11 +183,11 @@ impl TunnelDaemon {
     ) -> Self {
         let loopback_origin = loopback_origin.into();
         let (state_tx, state_rx) = watch::channel(TunnelLiveness {
-            revision: None,
+            settings_revision: None,
             status: TunnelStatus::Off,
             origin: loopback_origin.clone(),
             error: None,
-            attempt: 0,
+            dial_attempts: 0,
         });
         Self {
             client,
@@ -236,7 +236,7 @@ impl TunnelDaemon {
     pub(crate) fn reconcile(&self, settings: &TunnelSettings) {
         let mut supervisor = self.supervisor.lock();
 
-        if let Some(current) = self.state_rx.borrow().revision {
+        if let Some(current) = self.state_rx.borrow().settings_revision {
             if settings.revision <= current {
                 tracing::warn!(
                     "skipping stale reconcile for revision {}, current is {}",
@@ -278,11 +278,11 @@ impl TunnelDaemon {
 
         let origin = served_origin_for(status, public.as_deref(), &self.loopback_origin);
         self.state_tx.send_replace(TunnelLiveness {
-            revision: Some(revision),
+            settings_revision: Some(revision),
             status,
             origin,
             error,
-            attempt: 0,
+            dial_attempts: 0,
         });
 
         // Only a dialable revision gets a supervisor; `Off`/`Misconfigured` are
@@ -516,20 +516,20 @@ fn set_state(
 ) {
     let origin = served_origin_for(status, Some(public_origin), loopback_origin);
     state.send_if_modified(|live| {
-        if live.revision != Some(revision) {
+        if live.settings_revision != Some(revision) {
             return false;
         }
         if live.status == status
             && live.error == error
             && live.origin == origin
-            && live.attempt == attempt
+            && live.dial_attempts == attempt
         {
             return false;
         }
         live.status = status;
         live.error = error;
         live.origin = origin;
-        live.attempt = attempt;
+        live.dial_attempts = attempt;
         true
     });
 }
@@ -675,7 +675,7 @@ mod tests {
         let daemon = noop_daemon();
         daemon.reconcile(&settings_at(0));
         let live = daemon.liveness();
-        assert_eq!(live.revision, Some(0));
+        assert_eq!(live.settings_revision, Some(0));
         assert_eq!(live.status, TunnelStatus::Off);
     }
 
@@ -685,7 +685,7 @@ mod tests {
         daemon.reconcile(&settings_at(2));
         daemon.reconcile(&settings_at(1));
         assert_eq!(
-            daemon.liveness().revision,
+            daemon.liveness().settings_revision,
             Some(2),
             "stale reconcile must not rewind below the live revision",
         );
@@ -777,7 +777,7 @@ mod tests {
         })
         .await
         .expect("dial error surfaces");
-        rx.wait_for(|l| l.attempt >= 2)
+        rx.wait_for(|l| l.dial_attempts >= 2)
             .await
             .expect("attempt count climbs");
     }

@@ -44,16 +44,17 @@ impl TunnelStatus {
 /// and read by the tunnel slice itself (it is the slice's one liveness type —
 /// there is no separate internal struct).
 ///
-/// Most consumers only care about `status`/`origin`/`error`; `revision` and
-/// `attempt` are the optimistic-concurrency token and the dial-attempt counter
-/// the tunnel slice carries for its own bookkeeping (and surfaces on the
-/// `/tunnel` HTTP wire). They're part of the snapshot so the slice's
-/// supersession guard stays serialized with state writes.
+/// Most consumers only care about `status`/`origin`/`error`;
+/// `settings_revision` and `dial_attempts` are the optimistic-concurrency token
+/// and the reconnect counter the tunnel slice carries for its own bookkeeping
+/// (and surfaces on the `/tunnel` HTTP wire). They're part of the snapshot so
+/// the slice's supersession guard stays serialized with state writes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TunnelLiveness {
-    /// The settings revision this snapshot reflects. `None` before the tunnel
-    /// has reconciled any settings.
-    pub revision: Option<i64>,
+    /// Which revision of the persisted tunnel *settings* this snapshot reflects
+    /// — the optimistic-concurrency token bumped on each accepted settings
+    /// write. `None` before the tunnel has reconciled any settings.
+    pub settings_revision: Option<i64>,
     /// The liveness FSM position.
     pub status: TunnelStatus,
     /// The current most-available origin: the verified public origin while
@@ -61,10 +62,10 @@ pub struct TunnelLiveness {
     pub origin: String,
     /// A human-readable reason for `Misconfigured`/`Unreachable`, else `None`.
     pub error: Option<String>,
-    /// Dial attempts for the current revision since it began; resets to 0 on the
-    /// next revision. A climbing count with a steady `error` flags a permanent
-    /// misconfiguration.
-    pub attempt: i64,
+    /// How many times the tunnel has tried to *dial* the relay for the current
+    /// settings revision; resets to 0 when the revision changes. A climbing
+    /// count with a steady `error` flags a permanent misconfiguration.
+    pub dial_attempts: i64,
 }
 
 /// The APIs the tunnel provides to other slices. Object-safe so a host can hand
@@ -99,11 +100,11 @@ impl OfflineTunnel {
     pub fn new(origin: impl Into<String>) -> Self {
         let origin = origin.into();
         let (state, _) = watch::channel(TunnelLiveness {
-            revision: None,
+            settings_revision: None,
             status: TunnelStatus::Off,
             origin: origin.clone(),
             error: None,
-            attempt: 0,
+            dial_attempts: 0,
         });
         Self { origin, state }
     }

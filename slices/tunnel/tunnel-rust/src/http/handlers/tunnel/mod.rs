@@ -332,7 +332,7 @@ mod tests {
 
         // The attempt counter climbs on every retry so an operator can spot a
         // permanent misconfiguration (steady error + steadily climbing count).
-        live.wait_for(|l| l.attempt >= 2)
+        live.wait_for(|l| l.dial_attempts >= 2)
             .await
             .expect("attempt count climbs");
         let (_, body) = send(&st, get()).await;
