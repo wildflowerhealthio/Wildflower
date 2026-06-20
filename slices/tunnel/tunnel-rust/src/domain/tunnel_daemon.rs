@@ -578,7 +578,9 @@ async fn probe_once(
         Ok(Ok(())) => Ok(()),
     };
     match &result {
-        Ok(()) => tracing::debug!(url = %health_url, elapsed = ?started.elapsed(), "tunnel: /health probe ok"),
+        Ok(()) => {
+            tracing::debug!(url = %health_url, elapsed = ?started.elapsed(), "tunnel: /health probe ok")
+        }
         Err(reason) => tracing::debug!(
             url = %health_url,
             elapsed = ?started.elapsed(),

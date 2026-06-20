@@ -489,7 +489,9 @@ mod tests {
         assert!(!is_request_tunnel(
             r#"{"_tag":"TunnelStarted","origin":"https://h"}"#
         ));
-        assert!(!is_request_tunnel(r#"{"_tag":"TunnelFailed","reason":"x"}"#));
+        assert!(!is_request_tunnel(
+            r#"{"_tag":"TunnelFailed","reason":"x"}"#
+        ));
         // Sibling slices' traffic and malformed payloads are ignored.
         assert!(!is_request_tunnel(r#"{"_tag":"AuthTokenIssued"}"#));
         assert!(!is_request_tunnel(r#"{"_tag":42}"#));

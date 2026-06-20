@@ -50,9 +50,10 @@ describe('launchTarget', () => {
   })
 
   test('a tunnel app on a verified tunnel goes straight to the public served origin', () => {
-    expect(
-      launchTarget(app(true), tunnelState('verified', 'https://dev1.example.com'))
-    ).toEqual({ via: 'served', origin: 'https://dev1.example.com' })
+    expect(launchTarget(app(true), tunnelState('verified', 'https://dev1.example.com'))).toEqual({
+      via: 'served',
+      origin: 'https://dev1.example.com',
+    })
   })
 
   test('a tunnel app routes through the bridge for every non-verified status', () => {
