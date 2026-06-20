@@ -60,21 +60,6 @@ const makeConflictThenApplyHttp = (): Layer.Layer<HttpClient.HttpClient> => {
   )
 }
 
-/** A server where every PUT applies and bumps the revision (no conflict). */
-const makeApplyHttp = (initial: TunnelState = INITIAL): Layer.Layer<HttpClient.HttpClient> => {
-  let serverState = initial
-  return Layer.succeed(
-    HttpClient.HttpClient,
-    HttpClient.make((request) => {
-      if (request.method !== 'PUT') {
-        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(200, serverState)))
-      }
-      serverState = { ...serverState, revision: serverState.revision + 1 }
-      return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(200, serverState)))
-    })
-  )
-}
-
 /**
  * GET serves CONFIGURED; the FIRST PUT 409s with a newer revision but the
  * SAME relay view — a concurrent writer that bumped the revision without
@@ -147,7 +132,10 @@ const renderTunnelRoute = (
   const router = createRouter({
     routeTree,
     context,
-    history: createMemoryHistory({ initialEntries: ['/settings/tunnel'] }),
+    // The form lives on the Relay settings detail page; the overview is
+    // form-less. Tests that exercise host/relay edits + Save mount the
+    // /relay route.
+    history: createMemoryHistory({ initialEntries: ['/settings/tunnel/relay'] }),
   })
   render(
     <QueryClientProvider client={queryClient}>
@@ -189,22 +177,13 @@ describe('tunnel settings form — conflict flow', () => {
     expect(screen.getByText(/changed elsewhere/i)).toBeDefined()
   })
 
-  test('the conflict banner persists across an unrelated toggle', async () => {
-    const queryClient = renderTunnelRoute(makeConflictThenApplyHttp())
-
-    const host = asInput(await screen.findByLabelText('Public host'))
-    fireEvent.change(host, { target: { value: 'mine.example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
-    await screen.findByText(/changed elsewhere/i)
-
-    // Toggling applies cleanly (fresh revision) but must NOT clear the
-    // unresolved host conflict.
-    fireEvent.click(screen.getByRole('checkbox'))
-    await waitFor(() => {
-      expect(queryClient.getQueryData<TunnelState>(TUNNEL_STATE_QUERY_KEY)?.revision).toBe(2)
-    })
-    expect(screen.queryByText(/changed elsewhere/i)).not.toBeNull()
-  })
+  // Note: the prior "conflict banner persists across an unrelated toggle"
+  // case exercised cross-screen state — toggling on the Tunnel overview
+  // while the host conflict was live on the (then-shared) form. The form
+  // now lives only on the Relay settings screen and uses its own
+  // `useTunnelSettingsForm` instance, so a toggle from another screen
+  // doesn't share the form's conflict flag. The flag's per-instance
+  // behavior is covered by `use-field-draft.test.ts`.
 
   test('editing the host dismisses the conflict banner', async () => {
     renderTunnelRoute(makeConflictThenApplyHttp())
@@ -268,24 +247,14 @@ describe('tunnel settings form — relay', () => {
 })
 
 describe('tunnel settings form — dirty-edit preservation', () => {
-  test('an unsaved host edit survives an unrelated toggle', async () => {
-    const queryClient = renderTunnelRoute(makeApplyHttp())
-
-    fireEvent.change(asInput(await screen.findByLabelText('Public host')), {
-      target: { value: 'mine.example.com' },
-    })
-
-    // Toggle the tunnel — an unrelated write that bumps the revision but
-    // leaves the host untouched on the server.
-    fireEvent.click(screen.getByRole('checkbox'))
-    await waitFor(() => {
-      expect(queryClient.getQueryData<TunnelState>(TUNNEL_STATE_QUERY_KEY)?.revision).toBe(1)
-    })
-
-    // The server didn't change the host, so the in-progress edit must NOT be
-    // discarded by the revision bump.
-    expect(asInput(screen.getByLabelText('Public host')).value).toBe('mine.example.com')
-  })
+  // Note: the prior "unsaved host edit survives an unrelated toggle"
+  // case exercised cross-screen state — the toggle was an unrelated
+  // mutation rebasing the form's snapshot. The toggle now lives on the
+  // Tunnel overview while the form lives on the Relay settings screen,
+  // so the cross-screen rebase isn't reachable from a single mounted
+  // route. The underlying property (a dirty draft survives an unrelated
+  // revision bump that left the field's baseline alone) is covered at
+  // the unit level in `use-field-draft.test.ts`.
 
   test('a dirty relay change (incl. token) survives a 409 and stays sendable', async () => {
     renderTunnelRoute(makeRelayConflictHttp(), CONFIGURED)

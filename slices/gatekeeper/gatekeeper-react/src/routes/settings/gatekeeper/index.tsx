@@ -49,7 +49,7 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
 
   return (
     <>
-      <PageHeader title="Access" backHref="/settings" />
+      <PageHeader title="Access" backHref="/settings" backLabel="Settings" />
 
       {errorMessage !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">

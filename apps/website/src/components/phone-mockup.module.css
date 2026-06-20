@@ -34,7 +34,7 @@
 
 .phone__label {
   margin-bottom: 8px;
-  color: var(--color-magenta);
+  color: var(--color-accent-4);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.16em;
@@ -74,7 +74,7 @@
 }
 
 .phone__dot--magenta {
-  background: var(--color-magenta);
+  background: var(--color-accent-4);
 }
 
 .phone__dot--amber {
@@ -111,4 +111,18 @@
 .phone__footer-value {
   font-family: var(--font-serif);
   font-size: 18px;
+}
+
+/* Dark mode — the phone is a dark device in both schemes: keep the bezel and
+ * tab bar dark (rather than following the flipped `--color-ink`), and let the
+ * screen adopt the dark surface/text tokens like the rest of the page. */
+@media (prefers-color-scheme: dark) {
+  .phone {
+    background: #0e0b09;
+  }
+
+  .phone__footer {
+    background: #14100d;
+    color: var(--color-ink);
+  }
 }

@@ -1,4 +1,5 @@
 import { useId, useState, type JSX } from 'react'
+import { cn } from 'react-kitchen-sink'
 import { Field, FieldDescription } from 'react-tundraish'
 
 import { DEVICE_CODE_PATTERN, normalize } from './device-code.ts'
@@ -45,7 +46,7 @@ const DeviceCodeEntryForm = ({ onSubmit }: DeviceCodeEntryFormProps): JSX.Elemen
           inputMode="text"
           autoComplete="off"
           autoCapitalize="characters"
-          className={deviceCode['pin-input']}
+          className={cn('input-2', deviceCode['pin-input'])}
           value={code}
           onChange={(e) => {
             setCode(normalize(e.target.value))

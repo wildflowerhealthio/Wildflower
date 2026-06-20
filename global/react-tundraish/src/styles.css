@@ -1,291 +1,44 @@
 /*
- * Tundraish global stylesheet.
+ * Tundraish global stylesheet — the single entry point a consuming app
+ * imports (`import 'react-tundraish/styles.css'`). The actual rules live
+ * in the topic-scoped files below; this file's only job is to pull them
+ * in, in cascade order, so the build emits one combined stylesheet.
  *
  * Tundraish component primitives import their own per-component
  * `*.module.css` files, so the per-component styling reaches consumers
  * through the JS import chain (dev/source mode) or the bundled
  * `dist/style.css` (built consumers, via the `default` export condition).
+ * This file carries the *global*, non-module styling.
  *
- * This file carries the *global*, non-module styling that has to live on
- * `:root` rather than a scoped component: the dark-mode colour scheme.
+ * Cascade order (later imports win on tied specificity):
  *
- * tundra-css ships a light-only `:root` palette. Dark mode is layered on
- * here by re-pointing tundra's colour custom properties under
- * `:root[data-color-scheme='dark']`. Because every Tundraish component, every
- * app `*.module.css`, and tundra-css's own utility classes
- * (`.button.filled`, `.accent-red`, `.text-body-2`, inputs, toggles, ...)
- * read their colours from these variables, overriding the variables
- * re-themes the entire surface at once.
+ *   1. tokens.css            — design-token scales (--radius-N, --space-N,
+ *                              --font-size-N, --font-weight-N,
+ *                              --line-height-N, --letter-spacing-N) and
+ *                              the font-family role assignments on
+ *                              tundra's text-helper classes
+ *   2. reset.css             — `@layer reset` + html/body/code/hr globals
+ *   3. typography-custom.css — `--font-sans` / `--font-serif` / `--font-mono`
+ *                              family stacks
+ *   4. colors-custom.css     — the Wildflower-specific palette (surface,
+ *                              neutral, accent, red, card, divider, chip,
+ *                              success, path-connector) for both schemes,
+ *                              plus button filled/outline colour overrides
+ *   5. colors-dark-tundra.css — dark-mode mirrors of tundra-css's
+ *                              orange/yellow/green/cyan/blue/purple/pink
+ *                              ramps; Wildflower doesn't actively use
+ *                              these but a future surface might
+ *   6. status-badge.css      — `.status-badge` skin + tones + pulse keyframes
+ *   7. components.css        — `.sr-only` / `.checkbox-row` / `.radio-row` /
+ *                              `.radio-group` skins
  *
- * Each ramp is mirrored: in dark mode level N takes light-mode level
- * (10 - N). The saturated midpoint (level 5) is its own mirror, so filled
- * accents keep the same hue in both schemes; the pale tints (8/9) become
- * deep tints and the deep shades (1/2) become pale, which is exactly what
- * "subtle background" and "strong text" want when the canvas flips.
- *
- * Values are tundra-css's own published hex fallbacks, so the palette stays
- * within the Tundra family. The bare aliases (`--neutral-1` etc.) follow
- * automatically: in oklch-capable browsers tundra defines them as
- * `var(--color-neutral-1)`, so re-pointing the `--color-*` forms cascades
- * through.
- *
- * One trigger, one palette: dark mode is keyed solely off
- * `:root[data-color-scheme='dark']`. There is no `prefers-color-scheme`
- * rule here — both runtimes resolve the scheme in JS and write that
- * attribute (see `apply-color-scheme.ts`), so the palette lives in exactly
- * one declaration block:
- *
- *   - Plain web reads `prefers-color-scheme` via `addOsColorSchemeListener` at boot
- *     and mirrors it onto the attribute, re-running on OS changes.
- *   - The embedded WebView host relays the device scheme over the Navigation
- *     bridge. WKWebView reports `prefers-color-scheme: light` for
- *     `loadHTMLString` content regardless of device appearance, so the media
- *     query would be wrong there anyway; the relayed attribute is the only
- *     reliable signal.
- *
- * The pre-JS `color-scheme: light dark` default on `:root` (below) still
- * lets the bare UA canvas track the OS preference until the attribute lands.
+ * `@import` rules must be the first declarations in the file, so any
+ * future top-level rule must go in one of the topic files (not here).
  */
-
-/*
- * Tundra-style reset. Mirrors the `@layer reset` block in joshdales'
- * `tundra-css/www/src/app.css` so a consumer of `tundra-css` gets the same
- * baseline whether they're rendering the tundra website or this app.
- *
- * - `* { margin: 0 }` zeroes browser default margins — every spacing in
- *   the design system flows from `gap`/`padding` against tundra's
- *   `--space-N` ramp, so leaving UA margins in place would fight the
- *   design tokens.
- * - `text-wrap: pretty` on headings/paragraphs is a Tundraish typography
- *   nicety (prefers balanced line breaks where the engine supports it).
- * - `cursor: pointer` on `a`/`label` matches Tundra's UA cleanup.
- * - `select { appearance: none }` strips Safari's default chrome so the
- *   tundra-css form-control rules can paint the control instead.
- *
- * We do NOT adopt tundra's global `a` rule (flex + `::after { content:
- * '→' }`) — that style is opinionated for the tundra docs site and would
- * sprout arrows on every `<ItemList>` link / OAuth link / inline anchor
- * in this app. Text links here use tundra-css's `.text-link-N` classes
- * when they want the underlined-link treatment.
- */
-@layer reset {
-  * {
-    margin: 0;
-  }
-
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6,
-  p {
-    text-wrap: pretty;
-  }
-
-  a,
-  label {
-    cursor: pointer;
-  }
-
-  select {
-    appearance: none;
-  }
-}
-
-:root {
-  /* Advertise both schemes so UA-rendered chrome (scrollbars, form
-   * controls, the default canvas) tracks the OS preference too. */
-  color-scheme: light dark;
-
-  /*
-   * `--app-accent` token chain, adopted verbatim from
-   * joshdales' tundra `app.css`. Defaults to the neutral ramp so an
-   * un-classed surface picks up the surface palette. A surface that
-   * wants a different accent applies one of the `.app-{color}` classes
-   * below to re-point every level to that colour's ramp; tundra's
-   * filled/outline/text utilities (`.button-N filled`, `.text-link-N`)
-   * read these same custom properties, so a single class flips
-   * accent-coloured chrome across the whole subtree without any new
-   * rule.
-   */
-  --app-accent: var(--color-neutral-3);
-  --app-accent-1: var(--color-neutral-1);
-  --app-accent-2: var(--color-neutral-2);
-  --app-accent-3: var(--color-neutral-3);
-  --app-accent-4: var(--color-neutral-4);
-  --app-accent-5: var(--color-neutral-5);
-  --app-accent-6: var(--color-neutral-6);
-  --app-accent-7: var(--color-neutral-7);
-  --app-accent-8: var(--color-neutral-8);
-  --app-accent-9: var(--color-neutral-9);
-}
-
-/*
- * Default canvas / surface — pin both the document and the body to
- * tundra's surface palette so the dark-mode mirror (below) flips them in
- * lockstep. Tundra's `app.css` hard-codes `html { background:
- * --color-neutral-1 }` and `body { background: #fff }`; we use the
- * semantic `--color-background` / `--color-foreground` aliases so the
- * dark-mode block can re-point them without duplicating selectors.
- */
-html {
-  color: var(--color-foreground);
-  background-color: var(--color-background);
-}
-
-body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
-}
-
-/*
- * Inline `<code>` — tundra `app.css`'s rule, adapted to use our semantic
- * `--color-neutral-9` surface variable so dark mode flips automatically.
- * The accent foreground reads from `--app-accent`, so a surface tagged
- * `.app-blue` paints its inline code blue without a separate rule.
- */
-code {
-  background-color: var(--color-neutral-9);
-  color: var(--app-accent);
-  padding-inline: var(--space-2);
-  padding-block: var(--space-1);
-  border-radius: var(--radius-1);
-}
-
-/* Tundra `app.css`'s horizontal-rule treatment. */
-hr {
-  border: 0.5px solid var(--color-neutral-8);
-}
-
-/* Narrow the `:root` `color-scheme: light dark` default down to the resolved
- * scheme once the attribute lands, so UA chrome (scrollbars, form controls)
- * matches the painted palette instead of the bare OS preference. */
-:root[data-color-scheme='light'] {
-  color-scheme: light;
-}
-
-:root[data-color-scheme='dark'] {
-  color-scheme: dark;
-}
-
-/*
- * The single dark palette, applied whenever the resolved scheme is dark —
- * written onto `data-color-scheme='dark'` by `apply-color-scheme.ts` for
- * both the plain web and embedded-WebView runtimes (see the file header).
- */
-:root[data-color-scheme='dark'] {
-  /* Neutral ramp (mirrored) */
-  --color-neutral-1: #f5f5f5;
-  --color-neutral-2: #dedede;
-  --color-neutral-3: #bebebe;
-  --color-neutral-4: #9e9e9e;
-  --color-neutral-5: #808080;
-  --color-neutral-6: #636363;
-  --color-neutral-7: #484848;
-  --color-neutral-8: #2e2e2e;
-  --color-neutral-9: #161616;
-
-  /* Red ramp (mirrored) */
-  --color-red-1: #ffece9;
-  --color-red-2: #ffccc5;
-  --color-red-3: #ff9890;
-  --color-red-4: #ff5655;
-  --color-red-5: #ee0b2a;
-  --color-red-6: #c20010;
-  --color-red-7: #910006;
-  --color-red-8: #620000;
-  --color-red-9: #380000;
-
-  /* Orange ramp (mirrored) */
-  --color-orange-1: #ffeee0;
-  --color-orange-2: #ffceb2;
-  --color-orange-3: #ff9d69;
-  --color-orange-4: #fe6a00;
-  --color-orange-5: #d94a00;
-  --color-orange-6: #ac3600;
-  --color-orange-7: #802300;
-  --color-orange-8: #571000;
-  --color-orange-9: #320200;
-
-  /* Yellow ramp (mirrored) */
-  --color-yellow-1: #fff1c2;
-  --color-yellow-2: #ffd470;
-  --color-yellow-3: #f0b135;
-  --color-yellow-4: #ce9200;
-  --color-yellow-5: #ac7400;
-  --color-yellow-6: #875900;
-  --color-yellow-7: #643f00;
-  --color-yellow-8: #432700;
-  --color-yellow-9: #241100;
-
-  /* Green ramp (mirrored) */
-  --color-green-1: #c4ffe8;
-  --color-green-2: #6afdc5;
-  --color-green-3: #41dca5;
-  --color-green-4: #00bb87;
-  --color-green-5: #009b69;
-  --color-green-6: #007950;
-  --color-green-7: #005939;
-  --color-green-8: #003b22;
-  --color-green-9: #001f0e;
-
-  /* Cyan ramp (mirrored) */
-  --color-cyan-1: #b7ffff;
-  --color-cyan-2: #2bfdf4;
-  --color-cyan-3: #00dbd3;
-  --color-cyan-4: #00b9b2;
-  --color-cyan-5: #009790;
-  --color-cyan-6: #007671;
-  --color-cyan-7: #003836;
-  --color-cyan-8: #003836;
-  --color-cyan-9: #001d1b;
-
-  /* Blue ramp (mirrored) */
-  --color-blue-1: #e6f7ff;
-  --color-blue-2: #bfe1ff;
-  --color-blue-3: #85c1ff;
-  --color-blue-4: #59a0f9;
-  --color-blue-5: #3a81d7;
-  --color-blue-6: #1762b6;
-  --color-blue-7: #004495;
-  --color-blue-8: #002774;
-  --color-blue-9: #000d49;
-
-  /* Purple ramp (mirrored) */
-  --color-purple-1: #f9f0ff;
-  --color-purple-2: #e6d2ff;
-  --color-purple-3: #cca7ff;
-  --color-purple-4: #ad87ed;
-  --color-purple-5: #8f68cb;
-  --color-purple-6: #724aab;
-  --color-purple-7: #562c8b;
-  --color-purple-8: #3c086b;
-  --color-purple-9: #220046;
-
-  /* Pink ramp (mirrored) */
-  --color-pink-1: #ffeaf9;
-  --color-pink-2: #ffc6e6;
-  --color-pink-3: #ff8ecd;
-  --color-pink-4: #e96cad;
-  --color-pink-5: #c74c8e;
-  --color-pink-6: #a42c71;
-  --color-pink-7: #830054;
-  --color-pink-8: #5c0038;
-  --color-pink-9: #33001c;
-
-  /* Page/surface background. Not part of any ramp in tundra-css
-   * (it's a literal `#fff`), so it needs an explicit dark value;
-   * `--color-foreground` already tracks `--color-neutral-1` and flips
-   * to light automatically. */
-  --color-background: #161616;
-}
-
-:root[data-color-scheme='dark'] button.filled,
-:root[data-color-scheme='dark'] input[type='button'].filled,
-:root[data-color-scheme='dark'] input[type='reset'].filled,
-:root[data-color-scheme='dark'] input[type='submit'].filled,
-:root[data-color-scheme='dark'] .button.filled,
-:root[data-color-scheme='dark'] .element-button.filled {
-  --button-color-foreground: #fff;
-}
+@import './tokens.css';
+@import './reset.css';
+@import './typography-custom.css';
+@import './colors-custom.css';
+@import './colors-dark-tundra.css';
+@import './status-badge.css';
+@import './components.css';

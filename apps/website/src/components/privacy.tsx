@@ -12,7 +12,7 @@ const GUARANTEES: readonly Guarantee[] = [
   {
     id: 'on-device',
     title: 'On-device',
-    body: "Your records are stored and served directly from your phone. There's no cloud here.",
+    body: 'Your records are stored and served directly from your phone. Our relay lets the apps and people you choose to connect, but we never see your data ourselves.',
   },
   {
     id: 'standards',
@@ -32,7 +32,9 @@ function Privacy(): JSX.Element {
     <section className={styles['privacy']} id="privacy">
       <div className={styles['privacy__inner']}>
         <h2 className={styles['privacy__title']}>
-          Your data never leaves your phone <em>unless you say so.</em>
+          Your data never leaves your phone
+          <br />
+          <em>until you say so.</em>
         </h2>
         <div className={styles['privacy__items']}>
           {GUARANTEES.map((guarantee) => (

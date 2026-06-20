@@ -44,7 +44,7 @@ function Convergence(): JSX.Element {
         </div>
 
         <div className={styles['convergence__grid']}>
-          <div className={styles['record']}>
+          <div className={`${styles['record']} card`}>
             <div className={styles['record__header']}>
               <div className={styles['record__brand']}>
                 <AppIcon size={30} />

@@ -1,58 +1,115 @@
 .item-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
+
+  /*
+   * The single inner ItemList row carries its own horizontal padding
+   * (via `--item-list-row-padding-inline`) so the row's hit area
+   * reaches the card's edges — the card itself stays unpadded.
+   */
+  --item-list-row-padding-inline: var(--space-7);
+  background: var(--card-color-background);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--radius-4);
+  /* Guarantee a minimum tap target even if a future change shrinks
+   * the title or removes the chip. */
+  min-height: var(--space-12);
 }
 
+section > .item-list:not(:first-child) {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+section > .item-list:not(:last-child) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* Section eyebrow — mono, uppercase, letter-spaced, faint. */
 .item-list__title {
   margin: 0;
-  color: var(--color-neutral-4);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  font-weight: var(--font-weight-2);
+  letter-spacing: var(--letter-spacing-5);
   text-transform: uppercase;
+  color: var(--color-neutral-5);
+  padding: var(--space-6) var(--item-list-row-padding-inline, 0) 0;
 }
 
+/*
+ * Rows are separated only by hairline dividers — no surrounding card chrome.
+ * The list flows in its containing surface (page or card supplied by the
+ * caller); the dividers are the only structure.
+ */
 .item-list__rows {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
 }
 
+/*
+ * Rows carry their own inline padding (driven by a CSS variable so
+ * consumers can re-point or zero it). The hit/hover region therefore
+ * reaches the row's own edge — which, when the container drops its
+ * own horizontal padding, reaches the container's edge end-to-end.
+ * Default `0` keeps existing flush-flow consumers (pages where the
+ * page shell already provides the inset) unchanged.
+ */
 .item-list__row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-background);
-  border: 1px solid var(--color-neutral-8);
-  border-radius: var(--radius-2);
-  transition:
-    border-color 120ms ease,
-    box-shadow 120ms ease;
+  gap: var(--space-5);
+  padding-block: var(--space-5);
+  padding-inline: var(--item-list-row-padding-inline, 0);
+  border-bottom: 1px solid var(--color-divider);
 }
 
-.item-list__row:hover:not(.item-list__row--disabled) {
-  border-color: var(--color-neutral-6);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-
-/* The faint hover shadow vanishes on a dark surface; deepen it so the
- * row still lifts on hover (the brighter border already helps). Keyed off the
- * same `data-color-scheme='dark'` attribute as the palette in `styles.css`. */
-:root[data-color-scheme='dark'] .item-list__row:hover:not(.item-list__row--disabled) {
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+.item-list__row:last-child {
+  border-bottom: 0;
 }
 
 .item-list__row--disabled {
   opacity: 0.55;
 }
 
+/*
+ * Danger-tone row — a faint danger background tint that fills the
+ * whole row (now that the row carries its own padding, the tint
+ * naturally reaches the container's edge without a negative-margin
+ * bleed). No border-radius on the row itself — the container's
+ * `overflow: hidden` is responsible for clipping the tint against
+ * the card's rounded corners when the danger row lands first or
+ * last; rounding the row independently leaves a flat gap between
+ * the tint and the card edge.
+ */
+.item-list__row--tone-danger {
+  background: rgba(203, 44, 44, 0.05);
+}
+
+:global(:root[data-color-scheme='dark']) .item-list__row--tone-danger {
+  background: rgba(230, 75, 75, 0.1);
+}
+
+/* Leading slot — a compact mark (status dot, icon) before the text
+ * column. Doesn't grow; the row's `gap` separates it from the text. */
+.item-list__leading {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .item-list__text {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 2px;
+  gap: var(--space-1);
   min-width: 0;
   flex: 1;
   padding: 0;
@@ -73,29 +130,71 @@
 .item-list__title-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-4);
   min-width: 0;
 }
 
+/*
+ * Right-aligned mark inside the title row (e.g. a relative timestamp).
+ * `margin-inline-start: auto` pushes it to the row's end without needing
+ * a flexible spacer; it stays on the title's baseline.
+ */
+.item-list__meta {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+  white-space: nowrap;
+}
+
+.item-list__row--tone-danger .item-list__meta {
+  color: var(--color-red-3);
+}
+
+:global(:root[data-color-scheme='dark']) .item-list__row--tone-danger .item-list__meta {
+  color: var(--color-red-2);
+}
+
 .item-list__name {
+  font-size: var(--font-size-3);
   font-weight: var(--font-weight-3);
+  color: var(--color-foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* Subtitle is technical metadata (a URL / id) — render it in mono. */
 .item-list__subtitle {
-  color: var(--color-neutral-4);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* Danger-tone row shifts the subtitle into the danger ramp too, so the
+ * detail line agrees with the row's failure tint. */
+.item-list__row--tone-danger .item-list__subtitle {
+  color: var(--color-red-3);
+}
+
+:global(:root[data-color-scheme='dark']) .item-list__row--tone-danger .item-list__subtitle {
+  color: var(--color-red-2);
+}
+
+/* Generic mono badge (e.g. "Coming soon"); apps can pass their own tinted
+ * brand pill as the badge node when they want a coloured mark. */
 .item-list__badge {
   flex-shrink: 0;
+  font-family: var(--font-mono);
   font-size: var(--font-size-1);
-  padding: 2px var(--space-2);
-  border-radius: 999px;
+  letter-spacing: var(--letter-spacing-4);
+  text-transform: uppercase;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-1);
   background: var(--color-neutral-8);
   color: var(--color-neutral-3);
 }
@@ -104,12 +203,5 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.item-list__chevron {
-  color: var(--color-neutral-5);
-  font-size: var(--font-size-5);
-  line-height: 1;
   flex-shrink: 0;
 }

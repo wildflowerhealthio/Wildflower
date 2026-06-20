@@ -30,7 +30,7 @@ function Header(): JSX.Element {
           >
             Privacy
           </a>
-          <a className={styles['site-header__cta']} href="#invite">
+          <a className={`button-1 outline ${styles['site-header__cta']}`} href="#invite">
             Request invite
           </a>
         </nav>

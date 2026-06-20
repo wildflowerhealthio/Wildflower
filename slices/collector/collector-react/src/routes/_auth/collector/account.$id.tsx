@@ -54,7 +54,7 @@ function AccountConfigScreen({ existing }: { readonly existing: Remote }): JSX.E
 
   return (
     <>
-      <PageHeader title="Edit Account" backHref="/collector" />
+      <PageHeader title="Edit Account" backHref="/collector" backLabel="Collector" />
 
       {error !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')}>{error}</p>

@@ -45,27 +45,28 @@
 }
 
 .site-header__link:hover {
-  color: var(--color-magenta);
+  color: var(--color-accent-4);
 }
 
+/* Colour, border, hover + dark all come from tundra's `.button-1 .outline`
+ * (plum text/border from the shared accent ramp); the header only keeps the
+ * marketing pill shape and its compact label size. */
 .site-header__cta {
-  border: 1px solid var(--color-magenta);
   border-radius: var(--radius-pill);
-  padding: 9px 18px;
-  color: var(--color-magenta);
-  font-weight: 600;
   font-size: 13.5px;
   text-decoration: none;
-  transition: var(--transition-ui);
-}
-
-.site-header__cta:hover {
-  background: var(--color-magenta);
-  color: var(--color-cream-raised);
 }
 
 @media (max-width: 680px) {
   .site-header__link--text {
     display: none;
+  }
+}
+
+/* Dark mode — the translucent bar is a one-off literal cream, so flip it to a
+ * dark tint here. (The CTA's own dark colours come from tundra's outline.) */
+@media (prefers-color-scheme: dark) {
+  .site-header {
+    background: rgba(26, 21, 18, 0.86);
   }
 }

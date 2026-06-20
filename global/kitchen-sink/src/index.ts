@@ -1,4 +1,5 @@
 export { deepFreeze } from './deep-freeze.ts'
+export { formatRelativeTime } from './format-relative-time.ts'
 export { stripTrailingSlash } from './strip-trailing-slash.ts'
 export { unknownErrorToString } from './unknown-error-to-string.ts'
 export * as Schema from './schema/index.ts'

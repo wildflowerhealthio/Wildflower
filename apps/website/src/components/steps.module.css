@@ -18,7 +18,7 @@
 }
 
 .steps__num {
-  color: var(--color-magenta);
+  color: var(--color-accent-4);
   font-family: var(--font-serif);
   font-size: 23px;
 }

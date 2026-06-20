@@ -52,6 +52,16 @@ type TunnelReplaceResult =
   | { readonly _tag: 'Applied'; readonly state: TunnelState }
   | { readonly _tag: 'Conflict'; readonly current: TunnelState }
 
+/**
+ * Whether the tunnel might be open — running, or about to be. Errs toward open
+ * across transitions (a start where `running` hasn't caught up yet, or a stop
+ * where it hasn't torn down yet), so reachability copy tells the safer truth.
+ * Shared so every consumer (the hero address block, the explainer paragraph,
+ * the activity-feed gate) agrees about a single predicate rather than each
+ * re-deriving `running || requestedRunning`.
+ */
+const mightTunnelBeOpen = (state: TunnelState): boolean => state.running || state.requestedRunning
+
 /** External mutators of `TunnelState` (e.g. host-bridge events) should invalidate this. */
 const TUNNEL_STATE_QUERY_KEY = ['tunnel', 'state'] as const
 
@@ -207,6 +217,7 @@ export {
   applyTunnelOptimistic,
   buildReplacePayload,
   isTunnelState,
+  mightTunnelBeOpen,
   TUNNEL_STATE_QUERY_KEY,
   tunnelStateQueryOptions,
   useTunnelReplaceMutation,

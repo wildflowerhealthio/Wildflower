@@ -1,0 +1,212 @@
+/*
+ * The Tunnel screen's "status hero" — a card immediately under the page
+ * explainer with the live on/off control, status badge, and a connection
+ * summary that dims when the tunnel is off.
+ */
+.hero {
+  background: var(--card-color-background);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--card-border-radius);
+  padding: var(--space-8);
+  box-shadow: var(--card-box-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+}
+
+.hero__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+/*
+ * Address block — public host, sub-line, connection path. Dims when the
+ * tunnel isn't open (neither running nor about to be), since the path and
+ * "N apps connected now" don't describe anything actionable in that state.
+ * The 0.25s opacity transition matches the toggle's track transition, so
+ * flipping Run-tunnel reads as one motion.
+ */
+.hero__address {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  opacity: 1;
+  transition: opacity 1s ease;
+}
+
+.hero__address--dim {
+  opacity: 0.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero__address {
+    transition: none;
+  }
+}
+
+.hero__address-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.hero__host {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-2);
+  color: var(--color-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * Bare icon button — no fill, no border. Sized to match the host line's
+ * cap height so the glyph sits on the same baseline as the URL.
+ */
+.hero__copy {
+  flex: 0 0 auto;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: var(--font-size-4);
+  line-height: var(--line-height-1);
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.hero__copy:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.hero__copy:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-1);
+}
+
+.hero__meta {
+  margin: 0;
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+}
+
+.hero__error {
+  margin: 0;
+  font-size: var(--font-size-2);
+  color: var(--color-red-3);
+}
+
+/*
+ * Connection path — three nodes (this device, relay, internet) joined by
+ * two 2px connector lines. The relay node gets a soft accent ring so it
+ * reads as the brand pivot in the chain. Labels sit beneath each node in
+ * a mono micro-line.
+ */
+.path {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.path__nodes {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.path__node {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  /* Smooth the active/inactive/error swap so flipping Run-tunnel reads
+   * as a continuous state change rather than a hard color flip. */
+  transition:
+    background 1s ease,
+    box-shadow 1s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .path__node {
+    transition: none;
+  }
+}
+
+/*
+ * This-device node — always the same "healthy/green" the Online badge
+ * uses, regardless of tunnel state. The device itself is always up; the
+ * chain reads "your device works, the rest of the link is what changes."
+ * Inline green parallels the StatusBadge success-tone rules.
+ */
+.path__node--device {
+  width: 10px;
+  height: 10px;
+  background: var(--color-success);
+}
+
+/*
+ * Relay node — filled accent + soft accent ring when the tunnel is open
+ * (the brand pivot in the chain). When closed, it steps to a paler
+ * shade of the same accent ramp and drops the ring, so the chain reads
+ * as "configured but not currently linked" rather than "broken".
+ */
+.path__node--relay {
+  width: 13px;
+  height: 13px;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+.path__node--relay.path__node--inactive {
+  background: var(--color-accent-7);
+  box-shadow: none;
+}
+
+/*
+ * Relay error — the chain's failure pivot reads as the danger red the
+ * status badge and inline alert both use, so the three failure surfaces
+ * agree visually. The ring drops so the dot reads as a single solid
+ * stop, not a chip with chrome.
+ */
+.path__node--relay.path__node--error {
+  background: var(--color-red-5);
+  box-shadow: none;
+}
+
+/*
+ * Internet node — green when open (matches device), gray when closed
+ * (no exit). The "no access" gray reads as muted, not failed, so the
+ * device-side connector still feels intact.
+ */
+.path__node--internet {
+  width: 10px;
+  height: 10px;
+  background: var(--color-success);
+}
+
+.path__node--internet.path__node--inactive {
+  background: var(--color-neutral-5);
+}
+
+.path__connector {
+  flex: 1 1 auto;
+  height: 2px;
+  background: var(--color-path-connector);
+  border-radius: 2px;
+}
+
+.path__labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  letter-spacing: var(--letter-spacing-4);
+  color: var(--color-neutral-5);
+}

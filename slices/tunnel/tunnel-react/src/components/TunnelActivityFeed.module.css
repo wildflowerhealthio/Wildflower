@@ -1,0 +1,168 @@
+/*
+ * Recent-activity card — sits beneath the status hero on the Tunnel
+ * screen, summarizing the most recent connections (allowed + blocked).
+ * Only renders when the tunnel is open; the parent route gates this.
+ */
+/*
+ * Fade-in on mount — the feed appears when the tunnel flips on (the
+ * parent route gates the render on `running || requestedRunning`), and
+ * a hard mount felt abrupt against the rest of the page's smooth tone
+ * changes. The animation is a one-shot opacity/translate; unmount is
+ * still instant (CSS animation can't drive an exit without an
+ * animation library), which is fine — flipping off feels deliberate
+ * already.
+ */
+@keyframes tunnel-feed-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.feed {
+  background: var(--card-color-background);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--card-border-radius);
+  /*
+   * Only block-axis padding lives on the feed; the inline axis is
+   * delegated to children so the ItemList rows can carry the full
+   * width of the card. The danger-tone row tint therefore bleeds to
+   * the feed's edges naturally without negative-margin trickery.
+   *
+   * `overflow: hidden` clips the row tint against the feed's rounded
+   * corners — a danger row that happens to land first or last would
+   * otherwise paint a flat-corner rectangle that pokes past the
+   * border-radius.
+   */
+  padding-block: var(--space-7);
+  --item-list-row-padding-inline: var(--space-7);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  animation: tunnel-feed-fade-in 1s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feed {
+    animation: none;
+  }
+}
+
+.feed__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding-inline: var(--space-7);
+}
+
+/*
+ * Section eyebrow — same mono/letter-spaced/uppercase treatment the
+ * ItemList title uses, sized down a hair for the card-internal context.
+ */
+.feed__label {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  letter-spacing: var(--letter-spacing-5);
+  text-transform: uppercase;
+  color: var(--color-neutral-5);
+  white-space: nowrap;
+}
+
+/*
+ * Live pill — text-only "LIVE" cue with a leading green dot that
+ * pulses. Different shape than `<StatusBadge tone="success" pulse>`:
+ * no fill, no border, just text and dot, sized smaller. Re-uses the
+ * `tundra-pulse-dot` keyframes promoted in `react-tundraish/styles.css`
+ * so the beat matches the badge pulse exactly.
+ */
+.feed__live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  letter-spacing: var(--letter-spacing-4);
+  text-transform: uppercase;
+  color: var(--color-success);
+  white-space: nowrap;
+}
+
+.feed__live::before {
+  content: '';
+  width: var(--space-3);
+  height: var(--space-3);
+  border-radius: 999px;
+  background: currentColor;
+  animation: tundra-pulse-dot 1.8s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feed__live::before {
+    animation: none;
+  }
+}
+
+.feed__summary {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-3);
+  padding-inline: var(--space-7);
+}
+
+/*
+ * Per-row leading status dot. Two tones — `active` (green, matches the
+ * hero's "This device" and Internet nodes when on) and `error` (the
+ * danger red the relay node uses when reporting). The mark is a plain
+ * `<span>` with a fixed footprint so the row's flex `gap` separates it
+ * cleanly from the text column.
+ */
+.dot {
+  display: inline-block;
+  width: var(--space-4);
+  height: var(--space-4);
+  border-radius: 999px;
+}
+
+.dot--active {
+  background: var(--color-success);
+}
+
+.dot--error {
+  background: var(--color-red-5);
+}
+
+/*
+ * Footer link — "View all activity ›". Uses the accent for the link
+ * tint (matches slice-1's back-link decision) and sits flush-left
+ * inside the card padding.
+ */
+.feed__footer {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  align-self: flex-start;
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-3);
+  color: var(--color-accent);
+  text-decoration: none;
+  margin-top: var(--space-4);
+  margin-inline-start: var(--space-7);
+}
+
+.feed__footer:hover {
+  text-decoration: underline;
+}
+
+.feed__footer:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-1);
+}

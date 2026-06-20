@@ -6,12 +6,14 @@ import styles from './page-header.module.css'
 
 type PageHeaderProps = {
   /**
-   * The page title. Keep it short — the title renders on a single line and
-   * truncates with an ellipsis rather than wrapping, so a long title is
-   * clipped on narrow (mobile) viewports instead of pushing the header
-   * taller.
+   * The page title. Usually a plain string; accepts `ReactNode` so a
+   * small inline mark (e.g. an "Advanced" chip) can sit beside the
+   * title text within the `<h1>`. Keep it short — the title renders on
+   * a single line and truncates with an ellipsis rather than wrapping,
+   * so a long title is clipped on narrow (mobile) viewports instead of
+   * pushing the header taller.
    */
-  readonly title: string
+  readonly title: ReactNode
   /**
    * Optional secondary line under the title — a per-record identifier (a
    * URL, a client id) that would overflow a single-line title. Like the
@@ -53,16 +55,23 @@ const PageHeader = ({
   <header className={styles['page-header']}>
     {backHref !== undefined ? (
       <Link to={backHref} className={styles['page-header__back']} aria-label={backLabel}>
-        &#x2329;
+        <span aria-hidden="true" className={styles['page-header__back-chevron']}>
+          &#x2039;
+        </span>
+        {backLabel}
       </Link>
     ) : null}
-    <div className={styles['page-header__heading']}>
-      <h1 className={cn(styles['page-header__title'], 'text-heading-5')}>{title}</h1>
-      {subtitle !== undefined ? (
-        <p className={cn(styles['page-header__subtitle'], 'text-body-3')}>{subtitle}</p>
+    <div className={styles['page-header__main']}>
+      <div className={styles['page-header__heading']}>
+        <h1 className={styles['page-header__title']}>{title}</h1>
+        {subtitle !== undefined ? (
+          <p className={cn(styles['page-header__subtitle'], 'text-body-3')}>{subtitle}</p>
+        ) : null}
+      </div>
+      {actions !== undefined ? (
+        <div className={styles['page-header__actions']}>{actions}</div>
       ) : null}
     </div>
-    {actions !== undefined ? <div className={styles['page-header__actions']}>{actions}</div> : null}
   </header>
 )
 

@@ -16,7 +16,7 @@ function SettingsDeviceEntryScreen(): JSX.Element {
   const navigate = useNavigate()
   return (
     <>
-      <PageHeader title="Enter Code" backHref="/settings/gatekeeper" />
+      <PageHeader title="Enter Code" backHref="/settings/gatekeeper" backLabel="Access" />
       <DeviceCodeEntryForm
         onSubmit={(code) => {
           void navigate({ to: `/settings/gatekeeper/devices/${encodeURIComponent(code)}` })

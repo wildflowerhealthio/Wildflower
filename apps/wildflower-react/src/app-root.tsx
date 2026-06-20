@@ -17,6 +17,10 @@ import { Sentry } from 'telemetry-web'
 import { buildAppQueryRuntime } from './bridges/app-query-runtime.ts'
 import { AppRootTree } from './bridges/app-root-tree.tsx'
 import type { ReactTransport } from './bridges/transport-context.ts'
+// Self-hosted Wildflower fonts — loaded here so every entry (web, single-web,
+// embedded, and the Tauri shell via `wildflower-react/app-root`) picks them up
+// through a single import.
+import './styles/fonts.ts'
 import { routeTree } from './routeTree.gen.ts'
 
 /**

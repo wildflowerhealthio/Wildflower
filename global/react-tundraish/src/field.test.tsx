@@ -22,13 +22,17 @@ describe('Field', () => {
     expect(screen.getByText('alice@example.com')).toBeTruthy()
   }, 15_000)
 
-  it('typesets the label with the Tundra text-label-3 utility class', () => {
+  it('typesets the label with the Field eyebrow class', () => {
     // Arrange
     // Act
     render(<Field label="Name">value</Field>)
 
-    // Assert
-    expect(screen.getByText('Name').classList.contains('text-label-3')).toBe(true)
+    // Assert — the label carries Field's own eyebrow treatment (small mono
+    // uppercase) instead of a tundra-css text-label-N utility; the design's
+    // field label role doesn't sit on that scale.
+    const label = screen.getByText('Name')
+    expect(label.className).toMatch(/field__label/)
+    expect(label.classList.contains('text-label-3')).toBe(false)
   })
 
   it('renders a plain span label (no control association) when htmlFor is omitted', () => {
@@ -76,13 +80,17 @@ describe('FieldGroup', () => {
 })
 
 describe('FieldDescription', () => {
-  it('renders its children with the text-body-3 utility class', () => {
+  it('renders its children with the field helper-text class (not a tundra body utility)', () => {
     // Arrange
     // Act
     render(<FieldDescription>Helpful hint.</FieldDescription>)
 
-    // Assert
+    // Assert — the helper carries Field's own description treatment
+    // (sans, ~14px, muted) rather than tundra-css's `text-body-3` which
+    // resolves to the page's 16px body size and visually competes with
+    // the field's primary value.
     const description = screen.getByText('Helpful hint.')
-    expect(description.classList.contains('text-body-3')).toBe(true)
+    expect(description.className).toMatch(/field__description/)
+    expect(description.classList.contains('text-body-3')).toBe(false)
   })
 })

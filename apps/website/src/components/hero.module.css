@@ -16,7 +16,7 @@
 
 .hero__eyebrow {
   margin-bottom: 22px;
-  color: var(--color-magenta);
+  color: var(--color-accent-4);
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.2em;
@@ -31,7 +31,7 @@
 }
 
 .hero__title em {
-  color: var(--color-magenta);
+  color: var(--color-accent-4);
   font-style: italic;
 }
 

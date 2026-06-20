@@ -87,7 +87,7 @@ const RequestsListBody = ({ requests }: RequestsListBodyProps): JSX.Element => {
 
   return (
     <>
-      <PageHeader title="Requests" backHref="/settings/gatekeeper" />
+      <PageHeader title="Requests" backHref="/settings/gatekeeper" backLabel="Access" />
 
       {errorMessage !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">

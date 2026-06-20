@@ -1,0 +1,147 @@
+/*
+ * StatusBadge skin — a pill with a leading tone dot. The React primitive
+ * (`global/react-tundraish/src/status-badge.tsx`) renders a bare
+ * `status-badge` class plus an optional `accent-{blue,green,yellow,red}`
+ * tone class. tundra-css doesn't ship a `.status-badge` rule, so this
+ * file authors the layout, the resting neutral tone, the per-tone trios
+ * (fill / text / border / dot), and the `pulse` liveliness animation.
+ *
+ * Tone trios use the design's exact light/dark values rather than the
+ * tundra ramp — the badge wants a soft tint the ramp can't spare. The
+ * neutral (no-class) tone and the success (`accent-green`) tone read
+ * from the `--color-chip-*` / `--color-success-*` tokens defined in
+ * `colors-custom.css`, so they flip with the surface palette
+ * automatically and no dark-mode rules are needed for them here.
+ */
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-pill, 999px);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-3);
+  line-height: var(--line-height-3);
+  white-space: nowrap;
+  /* Smooth tone changes (Online → Stopping → Stopped) so flipping the
+   * Run-tunnel switch doesn't snap the badge from one palette to
+   * another instantly. */
+  transition:
+    background-color 1s ease,
+    color 1s ease,
+    border-color 1s ease;
+  /* neutral tone (no accent class) — quieter ink/dot than the toned
+   * variants so an "Off"/"Idle" badge reads as resting rather than as
+   * highlighted info. */
+  background: var(--color-chip-background);
+  color: var(--color-neutral-3);
+  border: 1px solid var(--color-divider);
+}
+
+.status-badge::before {
+  content: '';
+  flex: 0 0 auto;
+  width: var(--space-3);
+  height: var(--space-3);
+  border-radius: 999px;
+  background: var(--color-neutral-5);
+}
+
+/*
+ * `pulse` is an opt-in liveliness cue on the leading dot — used to mean
+ * "this status is being kept fresh" (e.g. an Online tunnel, a Live
+ * feed). The animation is a gentle scale + opacity dip, cancelled under
+ * `prefers-reduced-motion`. The keyframes are named generically so
+ * other components (e.g. an activity-feed "Live" indicator) can reuse
+ * the same beat.
+ */
+@keyframes tundra-pulse-dot {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.55;
+  }
+}
+
+.status-badge.pulse::before {
+  animation: tundra-pulse-dot 1.8s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-badge.pulse::before {
+    animation: none;
+  }
+}
+
+.status-badge.accent-blue {
+  background: #d2e8e5;
+  color: #1f5e57;
+  border-color: #93c4be;
+}
+.status-badge.accent-blue::before {
+  background: #2f867d;
+}
+
+.status-badge.accent-green {
+  background: var(--color-success-background);
+  color: var(--color-success-foreground);
+  border-color: var(--color-success-border);
+}
+.status-badge.accent-green::before {
+  background: var(--color-success);
+}
+
+.status-badge.accent-yellow {
+  background: #fbe4b8;
+  color: #8a5210;
+  border-color: #eaba5b;
+}
+.status-badge.accent-yellow::before {
+  background: #e0921a;
+}
+
+.status-badge.accent-red {
+  background: #f7d7d6;
+  color: #9f2026;
+  border-color: #e89a9a;
+}
+.status-badge.accent-red::before {
+  background: #cb2c2c;
+}
+
+/* Dark-mode tones — warm-tinted fills, lighter text/dots. The neutral
+ * (no-class) tone and the success (.accent-green) tone read from the
+ * dark-mode card/chip/success tokens that flip alongside the surface
+ * palette, so no second rule for them here. The remaining tones still
+ * need explicit dark trios — tundra's blue/yellow ramps don't match the
+ * design's specific warm-tinted variants. */
+:root[data-color-scheme='dark'] .status-badge.accent-blue {
+  background: #173a37;
+  color: #7fcfc4;
+  border-color: #2c5b56;
+}
+:root[data-color-scheme='dark'] .status-badge.accent-blue::before {
+  background: #46b3a6;
+}
+:root[data-color-scheme='dark'] .status-badge.accent-yellow {
+  background: #3a2e12;
+  color: #e0bb6b;
+  border-color: #5a481f;
+}
+:root[data-color-scheme='dark'] .status-badge.accent-yellow::before {
+  background: #e0921a;
+}
+:root[data-color-scheme='dark'] .status-badge.accent-red {
+  background: #3c1b1b;
+  color: #f0a3a0;
+  border-color: #6e2d2f;
+}
+:root[data-color-scheme='dark'] .status-badge.accent-red::before {
+  background: #e64b4b;
+}

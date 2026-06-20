@@ -124,7 +124,7 @@ const Menu = ({
         }}
       >
         <span aria-hidden="true" className={styles['menu__dots']}>
-          ⋮
+          …
         </span>
       </button>
       {open ? (

@@ -9,7 +9,7 @@ const ApprovedAppDetailScreen = ({ id }: { readonly id: string }): JSX.Element =
   const { data: grant } = useGrantQuery(id)
   return (
     <>
-      <PageHeader title="Approved App" backHref="/settings/gatekeeper" />
+      <PageHeader title="Approved App" backHref="/settings/gatekeeper" backLabel="Access" />
       <p className="text-body-2">{grant.clientId}</p>
       <pre className={styles['json']}>{JSON.stringify(grant, null, 2)}</pre>
     </>

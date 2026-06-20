@@ -1,13 +1,40 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-3);
 }
 
+/*
+ * Eyebrow-style label — small mono uppercase letter-spaced, muted ink. Matches
+ * the design's per-field label treatment (Spline Sans Mono at the smallest
+ * font-size token), rhyming with the section eyebrow used by `<ItemList>`
+ * titles so a stack of form fields reads as a sequence of named rows rather
+ * than a wall of body text. Weight stays at `--font-weight-1` so the label
+ * reads as quiet structure, not primary copy.
+ */
 .field__label {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  font-weight: var(--font-weight-1);
+  letter-spacing: var(--letter-spacing-5);
+  text-transform: uppercase;
   color: var(--color-neutral-4);
 }
 
+/*
+ * Field helper text — secondary copy under a label/input. Typeset at
+ * a small body size and at a light weight (300 — below tundra-css's
+ * smallest `--font-weight-1` of 400) so it reads as "explanatory"
+ * rather than "primary copy" and so a stack of labelled inputs feels
+ * denser than a page of paragraphs. Hanken Grotesk Variable supports
+ * 100–900, so the literal 300 sits on the same variable axis as the
+ * rest of the body type.
+ */
 .field__description {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-2);
+  font-weight: 300;
+  line-height: var(--line-height-5);
+  letter-spacing: var(--letter-spacing-3);
   color: var(--color-neutral-4);
 }

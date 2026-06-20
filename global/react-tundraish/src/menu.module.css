@@ -1,44 +1,57 @@
 .menu {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
 }
 
+/*
+ * The trigger is just a meatball glyph — no surrounding chip / pill / border, so
+ * it can sit flush inside an `ItemList` row or a `PageHeader` actions slot
+ * without adding a second container's worth of visual weight. A negative
+ * margin keeps the comfortable tap target (28×28) from inflating the parent's
+ * row height beyond what the bare glyph would.
+ */
 .menu__trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: var(--space-10);
+  height: var(--space-10);
+  margin: calc(-1 * var(--space-3));
   padding: 0;
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-2);
-  color: var(--color-neutral-3);
+  color: var(--color-neutral-5);
   cursor: pointer;
+  user-select: none;
 }
 
 .menu__trigger:hover,
 .menu__trigger[aria-expanded='true'] {
-  background: var(--color-neutral-8);
-  border-color: var(--color-neutral-7);
+  color: var(--color-neutral-3);
+}
+
+.menu__trigger:focus-visible {
+  outline: 2px solid var(--color-accent-4);
+  outline-offset: 1px;
 }
 
 .menu__dots {
-  font-size: var(--font-size-4);
-  line-height: 1;
+  font-size: var(--font-size-5);
+  line-height: var(--line-height-1);
 }
 
 .menu__list {
   position: absolute;
   z-index: 10;
-  top: calc(100% + var(--space-1));
+  top: calc(100% + var(--space-2));
   margin: 0;
-  padding: var(--space-1);
+  padding: var(--space-2);
   list-style: none;
-  background: var(--color-background);
-  border: 1px solid var(--color-neutral-7);
-  border-radius: var(--radius-2);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  background: var(--color-raised);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+  box-shadow: 0 14px 34px rgba(44, 33, 29, 0.18);
   min-width: 160px;
 }
 
@@ -57,18 +70,18 @@
 .menu__item {
   display: block;
   width: 100%;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-4) var(--space-5);
   text-align: left;
   background: transparent;
   border: none;
-  border-radius: var(--radius-1);
+  border-radius: var(--radius-2);
   color: inherit;
   font: inherit;
   cursor: pointer;
 }
 
 .menu__item:hover:not(:disabled) {
-  background: var(--color-neutral-9);
+  background: var(--color-sunken);
 }
 
 .menu__item--destructive {
@@ -84,5 +97,5 @@
  * surface, where a faint black shadow would disappear. Keyed off the same
  * `data-color-scheme='dark'` attribute as the palette in `styles.css`. */
 :root[data-color-scheme='dark'] .menu__list {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
 }

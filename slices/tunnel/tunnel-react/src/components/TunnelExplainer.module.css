@@ -1,0 +1,36 @@
+/*
+ * Mount-time fade — plays whenever the parent remounts the `<p>` via
+ * its `key` (the open-host / open-no-host / closed variant), so a
+ * tunnel-state flip reads as a brief fade-up rather than an instant
+ * text replacement. Same 0.6s motion budget the rest of the surface
+ * uses.
+ */
+@keyframes tunnel-explainer-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.explainer {
+  margin: 0;
+  color: var(--color-neutral-3);
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-5);
+  animation: tunnel-explainer-fade-in 1s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .explainer {
+    animation: none;
+  }
+}
+
+.explainer__host {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-3);
+}

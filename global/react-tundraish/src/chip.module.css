@@ -1,0 +1,60 @@
+/*
+ * A small mono pill — pairs with a title or section heading to mark a
+ * scope ("Advanced", "Beta", "Preview", "New"). Self-sufficient: no
+ * inherited-context assumptions, so a parent can drop it anywhere
+ * (inside an `<h1>`, beside a row title, etc.) and the chip keeps its
+ * intrinsic shape and tone.
+ *
+ * Text is rendered uppercase by the chip's own `text-transform`, so the
+ * consumer passes the label in natural case (`Advanced`) and the chip
+ * applies the convention. The chip is purely visual; if AT users would
+ * benefit from a non-uppercase reading they can use the chip's child
+ * text directly (screen readers read the underlying string, not the
+ * CSS-transformed glyphs).
+ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  background: var(--color-chip-background);
+  border: 1px solid var(--color-chip-border);
+  color: var(--color-chip-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  font-weight: var(--font-weight-1);
+  letter-spacing: var(--letter-spacing-5);
+  text-transform: uppercase;
+  white-space: nowrap;
+  /*
+   * One-shot mount fade — the chip emerges beside the title rather
+   * than appearing snapped in place.
+   *
+   * Pure opacity on a small element read as a "ghost middle" — at
+   * opacity 0.5 the chip's cream fill, dark border, and mid text all
+   * blend ambiguously with the page background. A subtle scale-from
+   * 0.92 gives kinesthetic feedback (the chip is *arriving*, not
+   * fading out of nothing), and `ease-out` puts most of the opacity
+   * gain in the first portion of the duration so the chip settles at
+   * 1 quickly rather than crossing the middle slowly.
+   */
+  animation: tundra-chip-fade-in 1s ease-out both;
+}
+
+@keyframes tundra-chip-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip {
+    animation: none;
+  }
+}

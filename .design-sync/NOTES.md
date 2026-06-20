@@ -1,7 +1,64 @@
 # design-sync notes — react-tundraish → "Tundraish Design System"
 
 Project: https://claude.ai/design/p/89c8cb47-f40c-4311-a4f5-ada94f3e88ef
-Shape: package (no Storybook). DS package: `global/react-tundraish`. 15 components.
+Shape: package (no Storybook). DS package: `global/react-tundraish`. **18 components** (was 15).
+
+## RE-SYNC COMPLETE (2026-06-19) — wholesale DS refresh
+
+The DS was refreshed to the Wildflower design language (`c068e1db` …
+`21a8410a Switch tokens with Tundra tokens`). This was a full re-sync — user
+asked for "discard old previews and re-author against the new DS." All 18
+components re-authored, re-verified (render 18/18 clean), and uploaded
+atomically; project re-anchored. What changed this round:
+
+- **3 new components**: `Chip`, `TextField`, `ToggleSwitch` (source + tests in
+  the package). All authored from real app usage (relay settings, tunnel hero).
+- **StatusBadge deferral RESOLVED.** The refresh added `src/status-badge.css`
+  (`.status-badge` skin + tones + pulse) and `src/components.css` (`.sr-only`,
+  `.checkbox-row`, `.radio-row`, `.radio-group`). The 2026-06-18 reason for
+  deferring StatusBadge (those classes undefined) is gone — it now ships a real
+  preview (Tones/Live/InRow), graded good. The `.checkbox-row`/`.radio-row`
+  "flush look" finding below is likewise resolved (now defined in components.css).
+- **Tokens moved in-package.** `src/styles.css` now `@import`s `tokens.css`,
+  `reset.css`, `typography-custom.css`, `colors-custom.css`,
+  `colors-dark-tundra.css`, `status-badge.css`, `components.css` — all bundled
+  into `dist/style.css` → ships as `_ds_bundle.css`. `cfg.tokensPkg: tundra-css`
+  is STILL correct: tundra-css remains the *base* layer (its `:root` palette and
+  utility classes like `.button.filled`/`.accent-red` are still used), and the
+  Wildflower palette/tokens re-point it on top. The utility-class idiom in
+  conventions.md (`input-2`, `button-N`, `text-body-N`, `accent-*`) still verifies.
+- **Brand fonts now SHIP (reverses the old "no fonts" note).** The refresh's
+  typography uses three custom families — Hanken Grotesk (sans), Newsreader
+  (serif, titles/emphasis), Spline Sans Mono (mono). Latin+latin-ext subsets
+  (~700KB, 8 woff2) are shipped via `.design-sync/fonts/fonts.css` +
+  `cfg.extraFonts`. The residual `[FONT_MISSING]` warning names only the bare
+  (non-`Variable`) fallback family names, which the apps don't ship either —
+  the `Variable` faces that actually render ARE shipped. Triaged-legitimate,
+  non-blocking. To widen language coverage, add more subset blocks to fonts.css.
+- **Grouped by role** (was flat `general`). Added `.design-sync/docs/<name>.md`
+  (18 files) with `category:` frontmatter + short usage bodies, wired via
+  `cfg.docsDir: ../../.design-sync/docs`. Groups: **forms** (Field,
+  FieldDescription, FieldGroup, Checkbox, RadioGroup, TextField, ToggleSwitch),
+  **navigation** (PageHeader, Menu, ItemList), **feedback** (StatusBadge, Dialog,
+  Chip), **async-errors** (AsyncErrorView, Awaited, ErrorBoundary, PageBodyError,
+  PageLoading). The doc bodies also enrich each `<Name>.prompt.md`.
+- **All 5 async/error components now have authored previews** (were floor cards
+  showing `[object Object]`). PageBodyError/AsyncErrorView take real `Error`
+  instances in a page-shell wrapper; ErrorBoundary throws in a child to show its
+  caught-state fallback; Awaited resolves a promise to show the render-prop path;
+  PageLoading shows the loading copy. All graded good.
+- **GRID_OVERFLOW**: Chip (`InTitle` cell) and PageHeader needed
+  `cardMode: column` — added to `cfg.overrides`.
+- **Upload was a regroup**: 18 components added at new group paths, 60 old
+  `components/general/*` files deleted in the close-out reconciliation (the
+  anchor diff showed 0 deletePaths because it's component-keyed, not
+  path-keyed — the regroup is only visible via `list_files`, which is exactly
+  why the reconciliation delete pass is mandatory). Verified clean: no
+  `components/general/` remains; anchor re-written last.
+
+PageHeader back-link + ItemList routed-`/`-href cells remain OMITTED (user
+decision carried forward — TanStack `<Link>` throws with no RouterProvider; the
+router isn't in the bundle). Props stay documented in the `.d.ts`.
 
 ## Build facts
 

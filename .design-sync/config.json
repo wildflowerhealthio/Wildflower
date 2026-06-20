@@ -7,6 +7,8 @@
   "cssEntry": "dist/style.css",
   "tokensPkg": "tundra-css",
   "readmeHeader": ".design-sync/conventions.md",
+  "docsDir": "../../.design-sync/docs",
+  "extraFonts": "../../.design-sync/fonts/fonts.css",
   "componentSrcMap": {
     "pageLayoutStyles": null
   },
@@ -14,6 +16,8 @@
     "Menu": { "cardMode": "single", "primaryStory": "Opened", "viewport": "360x300" },
     "Dialog": { "cardMode": "single", "primaryStory": "Confirm", "viewport": "420x300" },
     "Field": { "cardMode": "column" },
-    "FieldDescription": { "cardMode": "column" }
+    "FieldDescription": { "cardMode": "column" },
+    "Chip": { "cardMode": "column" },
+    "PageHeader": { "cardMode": "column" }
   }
 }

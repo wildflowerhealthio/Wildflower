@@ -98,3 +98,16 @@
     gap: 28px;
   }
 }
+
+/* Dark mode — the footer is an inverse (dark) surface in both schemes, so it
+ * keeps a deep dark fill with light text rather than following the flipped
+ * `--color-ink` / `--color-cream` page tokens. */
+@media (prefers-color-scheme: dark) {
+  .site-footer {
+    background: #14100d;
+  }
+
+  .site-footer__wordmark {
+    color: var(--color-ink);
+  }
+}

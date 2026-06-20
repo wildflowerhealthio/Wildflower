@@ -9,7 +9,7 @@ const actions: readonly MenuItem[] = [
 ]
 
 /**
- * The opened menu — a kebab (⋮) trigger with its dropdown list. The list only
+ * The opened menu — a meatball (…) trigger with its dropdown list. The list only
  * mounts when open, so this cell clicks the trigger on mount to show the
  * actual menu surface (the state a static preview would otherwise miss).
  */

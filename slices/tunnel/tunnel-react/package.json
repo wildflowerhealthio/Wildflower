@@ -2,7 +2,7 @@
   "name": "tunnel-react",
   "version": "0.0.0",
   "private": true,
-  "description": "React adapter for tunnel-core: client provider/context, useTunnel* hooks, TunnelToggle, TunnelScreen, and the tunnelSettings* fragments consumed by `apps/wildflower-react`.",
+  "description": "React adapter for tunnel-core: client provider/context, useTunnel* hooks, TunnelStatusHero, TunnelScreen, and the tunnelSettings* fragments consumed by `apps/wildflower-react`.",
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -27,6 +27,15 @@ catalogs:
     '@fast-check/vitest':
       specifier: ^0.3.0
       version: 0.3.0
+    '@fontsource-variable/hanken-grotesk':
+      specifier: ^5.2.8
+      version: 5.2.8
+    '@fontsource-variable/newsreader':
+      specifier: ^5.2.10
+      version: 5.2.10
+    '@fontsource-variable/spline-sans-mono':
+      specifier: ^5.2.8
+      version: 5.2.8
     '@livestore/adapter-node':
       specifier: 0.4.0-dev.26
       version: 0.4.0-dev.26
@@ -272,12 +281,27 @@ importers:
 
   apps/website:
     dependencies:
+      '@fontsource-variable/hanken-grotesk':
+        specifier: 'catalog:'
+        version: 5.2.8
+      '@fontsource-variable/newsreader':
+        specifier: 'catalog:'
+        version: 5.2.10
+      '@fontsource-variable/spline-sans-mono':
+        specifier: 'catalog:'
+        version: 5.2.8
       react:
         specifier: 'catalog:'
         version: 19.1.0
       react-dom:
         specifier: 19.1.0
         version: 19.1.0(react@19.1.0)
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../global/react-tundraish
+      tundra-css:
+        specifier: 'catalog:'
+        version: 0.14.0
     devDependencies:
       '@testing-library/dom':
         specifier: ^10.4.0
@@ -315,6 +339,15 @@ importers:
       '@effect/platform':
         specifier: 0.96.1
         version: 0.96.1(effect@3.21.2(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@fontsource-variable/hanken-grotesk':
+        specifier: 'catalog:'
+        version: 5.2.8
+      '@fontsource-variable/newsreader':
+        specifier: 'catalog:'
+        version: 5.2.10
+      '@fontsource-variable/spline-sans-mono':
+        specifier: 'catalog:'
+        version: 5.2.8
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.100.14(react@19.1.0)
@@ -3831,6 +3864,15 @@ packages:
     resolution: {integrity: sha512-mXxAu7DJtzwSUeOMecZibq/403b8uX1/dWWXXCBgb+j9ERWuN9Hvr6usId+9ivdQ+tJl8H6o+CMv71BmjaENRQ==}
     peerDependencies:
       vitest: ^1 || ^2 || ^3 || ^4
+
+  '@fontsource-variable/hanken-grotesk@5.2.8':
+    resolution: {integrity: sha512-K7hu09ZKReBc7EifRLeM4K94NZBrxFEg0nGcISmVwlFQOJo4EmYkLXTWEwr5JcNW4z2hr5zy8vLS2sxC8JDmrQ==}
+
+  '@fontsource-variable/newsreader@5.2.10':
+    resolution: {integrity: sha512-MdI2iRwrqWpMOU/2aV2BgfZ4dJNlj/XlYaY8Zb7t87mWqHskYW0XiUANkt1cyOCiEfW2VQ0bQ5vZgGPp6B2B4w==}
+
+  '@fontsource-variable/spline-sans-mono@5.2.8':
+    resolution: {integrity: sha512-Z1yYiEtP+8Gll5BJaR9dICK/ZTxoTWH+ZBH6rOTMWajPSOxwl7IZplkwX2J1QhMxqulhhdMrkRx6SkkLM+jLQw==}
 
   '@hapi/hoek@9.3.0':
     resolution: {integrity: sha512-/c6rf4UJlmHlC9b5BaNvzAcFv7HZ2QHaV0D4/HNlBdvFnvQq8RI4kYdhyPCl7Xj+oWvTWQ8ujhqS53LIgAe6KQ==}
@@ -12939,6 +12981,12 @@ snapshots:
     dependencies:
       fast-check: 3.23.2
       vitest: 3.2.4(@types/debug@4.1.13)(@types/node@24.12.4)(jiti@2.7.0)(jsdom@29.1.1)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0)
+
+  '@fontsource-variable/hanken-grotesk@5.2.8': {}
+
+  '@fontsource-variable/newsreader@5.2.10': {}
+
+  '@fontsource-variable/spline-sans-mono@5.2.8': {}
 
   '@hapi/hoek@9.3.0':
     optional: true

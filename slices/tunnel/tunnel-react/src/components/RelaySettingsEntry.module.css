@@ -1,0 +1,47 @@
+/*
+ * Relay-settings entry — the navigation card sitting at the bottom of
+ * the Tunnel overview, tapping through to the (setup-level) Relay
+ * settings detail page. Visually: a single-row card, name + Advanced
+ * chip on the left, accent chevron on the right. The whole row is the
+ * link's hit area — provided by the underlying `<ItemList>`'s `href`
+ * branch.
+ */
+.card {
+  /*
+   * The single inner ItemList row carries its own horizontal padding
+   * (via `--item-list-row-padding-inline`) so the row's hit area
+   * reaches the card's edges — the card itself stays unpadded.
+   */
+  --item-list-row-padding-inline: var(--space-7);
+  background: var(--card-color-background);
+  border: 1px solid var(--card-color-border);
+  /* Smaller than the hero/feed card radius — the relay entry is a
+   * single-row affordance, so a tighter corner reads as more compact. */
+  border-radius: var(--radius-4);
+  /* Guarantee a minimum tap target even if a future change shrinks
+   * the title or removes the chip. */
+  min-height: var(--space-12);
+}
+
+/*
+ * Inline-start margin between the title text and the AdvancedChip
+ * sitting beside it. The chip's intrinsic styling (type, shape, color)
+ * lives in `AdvancedChip.module.css`; this rule only places it within
+ * this row.
+ */
+.title-chip {
+  margin-inline-start: var(--space-4);
+}
+
+/*
+ * Trailing chevron — accent-tinted glyph slotted via ItemList's `meta`
+ * slot, which already pushes itself to the right of the title row via
+ * `margin-inline-start: auto`. The font-size/color rules override the
+ * meta wrapper's mono/neutral defaults so the chevron reads as the
+ * affordance and not as a timestamp.
+ */
+.chevron {
+  font-size: var(--font-size-5);
+  line-height: var(--line-height-1);
+  color: var(--color-accent);
+}

@@ -1,0 +1,110 @@
+/*
+ * A switch primitive — pill track with a sliding knob, controlled state.
+ *
+ * Built on a native `<input type="checkbox" role="switch">`: the real input
+ * sits behind the painted track (visually hidden but interaction- and
+ * keyboard-reachable), and the painted `.track` + `::after` knob mirror the
+ * input's `:checked` / `:disabled` / `:focus-visible` state via the
+ * `.track` sibling selector. That keeps the component a single label/input
+ * pair — clicking the label flips the checkbox, screen readers announce as
+ * "switch", and Tab + Space work without any keyboard handler.
+ */
+
+.toggle-switch-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-5);
+  cursor: pointer;
+}
+
+/*
+ * The control: the input is visually hidden but laid behind the track at
+ * its exact footprint so screen-reader virtual cursors and `:focus-visible`
+ * land on a hit region the user can see. `appearance: none` strips the UA
+ * checkbox chrome; opacity 0 hides the residual box.
+ */
+.toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  flex: 0 0 auto;
+}
+
+.toggle-switch__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.toggle-switch__input:disabled {
+  cursor: not-allowed;
+}
+
+/*
+ * The painted track and knob. The track is the pill background; the knob
+ * is its `::after` so the whole control is one element styled together.
+ * State drives off the sibling input via `:has(.input:checked)` /
+ * `:has(.input:disabled)` so no JS class-toggling is needed.
+ */
+.toggle-switch__track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--color-neutral-6);
+  transition: background 0.2s ease;
+  pointer-events: none;
+}
+
+.toggle-switch__track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  /*
+   * The knob stays a warm cream in both schemes (not a "raised surface" —
+   * a literal light disc). In light, `--color-raised` is the cream paper;
+   * in dark, the same role token resolves dark, so the dark-mode override
+   * below re-points to the ink-ramp's lightest stop, which is the cream
+   * design value (#f3e9db).
+   */
+  background: var(--color-raised);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease;
+}
+
+:global(:root[data-color-scheme='dark']) .toggle-switch__track::after {
+  background: var(--color-neutral-1);
+}
+
+.toggle-switch:has(.toggle-switch__input:checked) .toggle-switch__track {
+  background: var(--color-accent);
+}
+
+.toggle-switch:has(.toggle-switch__input:checked) .toggle-switch__track::after {
+  transform: translateX(18px);
+}
+
+.toggle-switch:has(.toggle-switch__input:disabled) .toggle-switch__track {
+  opacity: 0.5;
+}
+
+.toggle-switch:has(.toggle-switch__input:focus-visible) .toggle-switch__track {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.toggle-switch__label {
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-3);
+  color: var(--color-foreground);
+  white-space: nowrap;
+}

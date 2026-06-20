@@ -101,8 +101,70 @@ describe('ItemList', () => {
     expect(onClick).not.toHaveBeenCalled()
   })
 
+  it('renders a static (non-interactive) row when neither href nor onClick is provided', () => {
+    // Arrange — a read-only feed entry has no destination and no
+    // primary action; the row must render without becoming a link or
+    // a button.
+    const items: ItemListItem[] = [{ id: '1', title: 'Collector', subtitle: 'now' }]
+
+    // Act
+    render(<ItemList items={items} />)
+
+    // Assert
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.getByText('Collector')).toBeTruthy()
+    expect(screen.getByText('now')).toBeTruthy()
+  })
+
+  it('renders the leading slot before the row text', () => {
+    // Arrange
+    const items: ItemListItem[] = [
+      { id: '1', title: 'Collector', leading: <span data-testid="dot" /> },
+    ]
+
+    // Act
+    render(<ItemList items={items} />)
+
+    // Assert — the leading element is present, marked aria-hidden
+    // (it's decorative), and appears before the title text in DOM order.
+    const dot = screen.getByTestId('dot')
+    const title = screen.getByText('Collector')
+    expect(dot.parentElement?.getAttribute('aria-hidden')).toBe('true')
+    expect(dot.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('renders the meta slot inside the title row (sibling to the name)', () => {
+    // Arrange — meta carries compact title-row metadata (e.g. a
+    // relative timestamp). It must share the title's baseline, not
+    // appear on the subtitle line.
+    const items: ItemListItem[] = [{ id: '1', title: 'Collector', meta: 'now' }]
+
+    // Act
+    render(<ItemList items={items} />)
+
+    // Assert — the meta element shares a parent with the title.
+    const title = screen.getByText('Collector')
+    const meta = screen.getByText('now')
+    expect(meta.parentElement).toBe(title.parentElement)
+  })
+
+  it('applies the danger tone class on the row when tone="danger"', () => {
+    // Arrange
+    const items: ItemListItem[] = [{ id: '1', title: 'Unknown client', tone: 'danger' }]
+
+    // Act
+    render(<ItemList items={items} />)
+
+    // Assert — the row carries a danger-tone modifier so the CSS
+    // tint applies; class name uses CSS-modules hashing, so check
+    // for the unhashed token in the row's className.
+    const row = screen.getByText('Unknown client').closest('li')
+    expect(row?.className).toMatch(/tone-danger/)
+  })
+
   it('does not fire the row onClick when an interactive element inside actions is clicked', async () => {
-    // Arrange — interactive `actions` (e.g. a kebab menu trigger) sit
+    // Arrange — interactive `actions` (e.g. a meatball menu trigger) sit
     // inside the row's wrapping `<button>`. Without click-bubble
     // suppression, hitting the action ALSO fires the row's primary
     // navigation — exactly the bug that broke collector's "open menu"
@@ -116,7 +178,7 @@ describe('ItemList', () => {
         onClick: onRowClick,
         actions: (
           <button type="button" onClick={onActionClick}>
-            ⋮
+            …
           </button>
         ),
       },
@@ -124,8 +186,8 @@ describe('ItemList', () => {
     const user = userEvent.setup()
     render(<ItemList items={items} />)
 
-    // Act — click the inner kebab button, NOT the row text.
-    await user.click(screen.getByRole('button', { name: '⋮' }))
+    // Act — click the inner meatball button, NOT the row text.
+    await user.click(screen.getByRole('button', { name: '…' }))
 
     // Assert — only the action handler ran; the row's onClick was suppressed.
     expect(onActionClick).toHaveBeenCalledTimes(1)

@@ -22,9 +22,9 @@ describe('StatusBadge', () => {
     // Act
     render(<StatusBadge tone="neutral">Idle</StatusBadge>)
 
-    // Assert
+    // Assert — exactly `status-badge`, no accent class and no empty-string
+    // sentinel appended for the neutral tone.
     const badge = screen.getByRole('status')
-    expect(Array.from(badge.classList)).not.toContain('')
     expect(badge.className).toMatch(/^status-badge\s*$/)
   })
 
@@ -69,5 +69,17 @@ describe('StatusBadge', () => {
 
     // Assert
     expect(screen.getByRole('status').querySelector('.sr-only')).toBeNull()
+  })
+
+  it('adds the pulse class only when pulse is true', () => {
+    const { rerender } = render(
+      <StatusBadge tone="success" pulse>
+        Online
+      </StatusBadge>
+    )
+    expect(screen.getByRole('status').classList.contains('pulse')).toBe(true)
+
+    rerender(<StatusBadge tone="success">Online</StatusBadge>)
+    expect(screen.getByRole('status').classList.contains('pulse')).toBe(false)
   })
 })

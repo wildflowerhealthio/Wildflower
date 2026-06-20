@@ -3,6 +3,7 @@ import './styles.css'
 export { AsyncErrorView, type AsyncErrorViewProps } from './async-error-view.tsx'
 export { Awaited, type AwaitedProps } from './awaited.tsx'
 export { Checkbox, type CheckboxProps } from './checkbox.tsx'
+export { Chip, type ChipProps } from './chip.tsx'
 export { Dialog, type DialogProps } from './dialog.tsx'
 export { ErrorBoundary, type ErrorBoundaryProps } from './error-boundary.tsx'
 export {
@@ -21,3 +22,5 @@ export { pageLayoutStyles, type PageLayoutClassName } from './page-layout-styles
 export { PageLoading, type PageLoadingProps } from './page-loading.tsx'
 export { RadioGroup, type RadioGroupProps, type RadioOption } from './radio-group.tsx'
 export { StatusBadge, type StatusBadgeProps, type StatusTone } from './status-badge.tsx'
+export { TextField, type TextFieldProps } from './text-field.tsx'
+export { ToggleSwitch, type ToggleSwitchProps } from './toggle-switch.tsx'
