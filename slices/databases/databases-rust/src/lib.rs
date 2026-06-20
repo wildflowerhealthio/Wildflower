@@ -7,12 +7,15 @@
 //! the gatekeeper / tunnel / apps slices), so the host hands it only the data
 //! directory.
 //!
+//! The slice has no built-in knowledge of which databases exist: the host
+//! supplies the catalogue (id/label/description) via [`DatabasesConfig`], so
+//! adding a new database is a build-time change in the composing app alone.
+//! Matching an incoming id against that catalogue both resolves the file and
+//! closes path traversal (only catalogued filenames ever reach the filesystem).
+//!
 //! Layered like `apps-rust` / `tunnel-rust`:
 //!
-//!  - [`catalog`] — the fixed set of exposed databases. Each `id` doubles as
-//!    the on-disk filename and the REST resource id, so matching an incoming
-//!    id against the catalogue both resolves the file and closes path
-//!    traversal (only catalogued filenames ever reach the filesystem).
+//!  - [`config`] — the host-supplied [`DatabaseDescriptor`] catalogue.
 //!  - [`metadata`] — the wire [`metadata::DatabaseMetadata`] (size, table
 //!    count, modified time) the settings screen renders.
 //!  - [`files`] — the file-level operations: a consistent export snapshot
@@ -32,7 +35,6 @@
 
 pub mod config;
 
-mod catalog;
 mod files;
 mod http;
 mod metadata;
@@ -41,7 +43,7 @@ use std::sync::Arc;
 
 use axum::Router;
 
-pub use config::DatabasesConfig;
+pub use config::{DatabaseDescriptor, DatabasesConfig};
 pub use http::DatabasesState;
 
 /// Build the `/databases` router over the host's data directory, mirroring
@@ -51,6 +53,9 @@ pub use http::DatabasesState;
 /// The returned router carries no middleware — the consumer wraps it with its
 /// own auth gate (the Tauri host applies the gatekeeper Owner check).
 pub fn setup_databases(config: &DatabasesConfig) -> Router {
-    let state = Arc::new(DatabasesState::new(config.data_dir.clone()));
+    let state = Arc::new(DatabasesState::new(
+        config.data_dir.clone(),
+        config.databases.clone(),
+    ));
     http::router(state)
 }

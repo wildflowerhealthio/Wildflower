@@ -36,12 +36,29 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
+    use crate::config::DatabaseDescriptor;
     use crate::http::state::DatabasesState;
 
     /// The served router (OpenAPI spec discarded) for exercising the handlers
     /// via `oneshot`.
     fn router() -> axum::Router<Arc<DatabasesState>> {
         openapi_router().split_for_parts().0
+    }
+
+    /// The catalogue the tests expose — mirrors what the Tauri host passes.
+    fn descriptors() -> Vec<DatabaseDescriptor> {
+        vec![
+            DatabaseDescriptor {
+                id: "health-data.sqlite".to_owned(),
+                label: "Health data".to_owned(),
+                description: "Your clinical records.".to_owned(),
+            },
+            DatabaseDescriptor {
+                id: "wildflower.sqlite".to_owned(),
+                label: "Wildflower app data".to_owned(),
+                description: "App state.".to_owned(),
+            },
+        ]
     }
 
     /// Create a real SQLite database at `path` with `tables` user tables, so
@@ -58,7 +75,7 @@ mod tests {
     }
 
     fn state_with(dir: &Path) -> Arc<DatabasesState> {
-        Arc::new(DatabasesState::new(dir.to_path_buf()))
+        Arc::new(DatabasesState::new(dir.to_path_buf(), descriptors()))
     }
 
     async fn send(state: &Arc<DatabasesState>, req: Request<Body>) -> (StatusCode, Vec<u8>) {

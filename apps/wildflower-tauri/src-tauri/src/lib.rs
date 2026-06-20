@@ -30,13 +30,21 @@ const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_P
     Err(_) => panic!("WILDFLOWER_LOOPBACK_PORT (from tauri-shared-config.json) must be a u16"),
 };
 
+// Filenames of the host's SQLite databases under the shared app-data dir. These
+// are the single source of truth for each database's on-disk name: the slice
+// that opens it AND the data-management catalogue (`/databases`) reference the
+// same const, so adding or renaming a database is one edit here. The host owns
+// these names — `databases-rust` has no built-in knowledge of them.
+const HEALTH_DATA_DB: &str = "health-data.sqlite";
+const WILDFLOWER_DB: &str = "wildflower.sqlite";
+
 async fn run_server(
     runtime: ServerRuntimeConfig,
     publishers: bridge::BridgePublishers,
 ) -> anyhow::Result<()> {
     let emr_config = EmrConfig {
         log_level: "debug".to_string(),
-        db_file_path: runtime.app_data_dir.join("health-data.sqlite"),
+        db_file_path: runtime.app_data_dir.join(HEALTH_DATA_DB),
     };
     let loopback_host = format!("{}:{}", runtime.loopback_hostname, runtime.loopback_port);
     let loopback_origin = format!(
@@ -57,7 +65,7 @@ async fn run_server(
     // (gatekeeper, and the tunnel slice); each runs its own namespaced
     // migrations on it. (The FHIR/emr store is managed separately by
     // helios-persistence.)
-    let db = persistence_rust::Connection::open(&runtime.app_data_dir.join("wildflower.sqlite"))
+    let db = persistence_rust::Connection::open(&runtime.app_data_dir.join(WILDFLOWER_DB))
         .context("failed to open shared database")?;
 
     // Bind BEFORE minting/publishing the Owner token: `setup_gatekeeper`
@@ -164,10 +172,27 @@ async fn run_server(
 
     // The data-management surface (`/databases`): export + delete the host's
     // SQLite databases. It owns no store — it works at the file level on the
-    // same `app_data_dir` the databases above live in — so it takes only the
-    // directory. Owner-gated like the rest of the admin API.
+    // same `app_data_dir` the databases above live in — so the host passes the
+    // directory plus the catalogue (the slice has no built-in knowledge of which
+    // databases exist; the user-facing strings live here). Owner-gated like the
+    // rest of the admin API.
     let databases_config = databases_rust::DatabasesConfig {
         data_dir: runtime.app_data_dir.clone(),
+        databases: vec![
+            databases_rust::DatabaseDescriptor {
+                id: HEALTH_DATA_DB.to_owned(),
+                label: "Health data".to_owned(),
+                description:
+                    "Your FHIR clinical records — patients, observations, and the rest of your chart."
+                        .to_owned(),
+            },
+            databases_rust::DatabaseDescriptor {
+                id: WILDFLOWER_DB.to_owned(),
+                label: "Wildflower app data".to_owned(),
+                description: "App state — access grants, tunnel settings, and the apps catalogue."
+                    .to_owned(),
+            },
+        ],
     };
     let gated_databases = layer_router_with_gatekeeper_auth_gating(
         databases_rust::setup_databases(&databases_config),

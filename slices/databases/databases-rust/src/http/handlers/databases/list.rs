@@ -5,7 +5,6 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::Json;
 
-use crate::catalog::CATALOG;
 use crate::http::state::DatabasesState;
 use crate::metadata::DatabaseMetadata;
 
@@ -22,7 +21,8 @@ use crate::metadata::DatabaseMetadata;
 pub(crate) async fn handle_list_databases(
     State(state): State<Arc<DatabasesState>>,
 ) -> Json<Vec<DatabaseMetadata>> {
-    let entries = CATALOG
+    let entries = state
+        .databases()
         .iter()
         .map(|descriptor| DatabaseMetadata::read(descriptor, &state.path_for(descriptor)))
         .collect();

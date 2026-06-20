@@ -28,8 +28,12 @@ const DatabaseMetadataSchema = Schema.Struct({
   sizeBytes: Schema.Int,
   /** Best-effort user-table count — the "fun" metadata. Absent when unreadable. */
   tableCount: Schema.optional(Schema.Int),
-  /** Last-modified time (RFC 3339). Absent when the file is absent. */
-  modifiedAt: Schema.optional(Schema.String),
+  /**
+   * Last-modified time. Decodes the Rust side's RFC 3339 string to an Effect
+   * `DateTime.Utc` (encoded back to a string on the wire, so the spec-drift
+   * `string` contract holds). Absent when the file is absent.
+   */
+  modifiedAt: Schema.optional(Schema.DateTimeUtc),
 })
 
 const DatabaseListSchema = Schema.Array(DatabaseMetadataSchema)

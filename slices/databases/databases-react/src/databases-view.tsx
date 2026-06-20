@@ -1,8 +1,10 @@
+import { Effect } from 'effect'
+import { formatBytes } from 'kitchen-sink'
 import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { Dialog, ItemList, PageHeader, pageLayoutStyles, type ItemListItem } from 'react-tundraish'
 
-import { describeDatabase, humanizeBytes } from './format.ts'
+import { describeDatabase } from './format.ts'
 import type { DatabaseMetadata } from './queries.ts'
 
 interface DatabasesViewProps {
@@ -37,8 +39,10 @@ const DatabasesView = ({
     return {
       id: database.id,
       title: database.label,
-      subtitle: describeDatabase(database),
-      meta: database.exists ? humanizeBytes(database.sizeBytes) : 'Empty',
+      // `describeDatabase` is Effect-returning (date formatting runs through
+      // Effect's `DateTime`); it needs no services, so it runs synchronously.
+      subtitle: Effect.runSync(describeDatabase(database)),
+      meta: database.exists ? formatBytes(database.sizeBytes) : 'Empty',
       tone: database.exists ? 'neutral' : undefined,
       actions: (
         <>

@@ -5,11 +5,12 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { DateTime, Effect } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import { DatabasesView } from './databases-view.tsx'
-import { describeDatabase, humanizeBytes } from './format.ts'
+import { describeDatabase } from './format.ts'
 import type { DatabaseMetadata } from './queries.ts'
 
 const health: DatabaseMetadata = {
@@ -19,7 +20,7 @@ const health: DatabaseMetadata = {
   exists: true,
   sizeBytes: 1536,
   tableCount: 7,
-  modifiedAt: '2026-06-20T00:00:00.000Z',
+  modifiedAt: DateTime.unsafeMake('2026-06-20T00:00:00.000Z'),
 }
 const wildflower: DatabaseMetadata = {
   id: 'wildflower.sqlite',
@@ -46,21 +47,13 @@ afterEach(() => {
   cleanup()
 })
 
-describe('humanizeBytes', () => {
-  test('formats bytes, KB, and MB', () => {
-    expect(humanizeBytes(512)).toBe('512 B')
-    expect(humanizeBytes(1536)).toBe('1.5 KB')
-    expect(humanizeBytes(5 * 1024 * 1024)).toBe('5.0 MB')
-  })
-})
-
 describe('describeDatabase', () => {
   test('shows table count for an existing database', () => {
-    expect(describeDatabase(health)).toContain('7 tables')
+    expect(Effect.runSync(describeDatabase(health))).toContain('7 tables')
   })
 
   test('marks an absent database as not created yet', () => {
-    expect(describeDatabase(wildflower)).toBe('App state. · Not created yet')
+    expect(Effect.runSync(describeDatabase(wildflower))).toBe('App state. · Not created yet')
   })
 })
 

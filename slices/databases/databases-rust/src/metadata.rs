@@ -10,7 +10,7 @@ use rusqlite::OpenFlags;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::catalog::DatabaseDescriptor;
+use crate::config::DatabaseDescriptor;
 
 /// Metadata for one database, as returned by `GET /databases`. Mirrors the TS
 /// `DatabaseMetadataSchema` (`databases-core`, `#[serde(rename_all =

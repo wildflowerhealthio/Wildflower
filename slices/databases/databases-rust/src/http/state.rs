@@ -1,33 +1,43 @@
-//! Shared handler state for the databases slice. Holds only the data directory;
-//! everything else (which databases exist, where they live) derives from the
-//! [`catalog`](crate::catalog).
+//! Shared handler state for the databases slice. Holds the data directory and
+//! the host-supplied catalogue of databases to expose; the slice has no built-in
+//! knowledge of which databases exist.
 
 use std::path::PathBuf;
 
-use crate::catalog::{self, DatabaseDescriptor};
+use crate::config::DatabaseDescriptor;
 
-/// Handler state: the directory the host databases live in. Cheap to share
-/// behind an `Arc`, mirroring `apps-rust`'s `AppsState`.
+/// Handler state: the data directory plus the catalogue of databases the host
+/// asked us to expose. Cheap to share behind an `Arc`, mirroring `apps-rust`'s
+/// `AppsState`.
 pub struct DatabasesState {
     data_dir: PathBuf,
+    databases: Vec<DatabaseDescriptor>,
 }
 
 impl DatabasesState {
-    /// Build the state over the host's data directory.
-    pub(crate) fn new(data_dir: PathBuf) -> Self {
-        Self { data_dir }
+    /// Build the state over the host's data directory and database catalogue.
+    pub(crate) fn new(data_dir: PathBuf, databases: Vec<DatabaseDescriptor>) -> Self {
+        Self {
+            data_dir,
+            databases,
+        }
     }
 
-    /// Resolve a resource id to its catalogue descriptor, rejecting unknown
-    /// ids. This is the only way an id becomes a path, so an id that isn't in
-    /// the catalogue can never reach the filesystem (path-traversal guard).
-    pub(crate) fn descriptor(&self, id: &str) -> Option<&'static DatabaseDescriptor> {
-        catalog::descriptor(id)
+    /// The catalogue, in display order — drives `GET /databases`.
+    pub(crate) fn databases(&self) -> &[DatabaseDescriptor] {
+        &self.databases
     }
 
-    /// The on-disk path for a catalogued database. Built from the fixed
+    /// Resolve a resource id to its descriptor, rejecting unknown ids. This is
+    /// the only way an id becomes a path, so an id absent from the host
+    /// catalogue can never reach the filesystem (path-traversal guard).
+    pub(crate) fn descriptor(&self, id: &str) -> Option<&DatabaseDescriptor> {
+        self.databases.iter().find(|descriptor| descriptor.id == id)
+    }
+
+    /// The on-disk path for a catalogued database. Built from the host-supplied
     /// catalogue filename, never from raw client input.
     pub(crate) fn path_for(&self, descriptor: &DatabaseDescriptor) -> PathBuf {
-        self.data_dir.join(descriptor.id)
+        self.data_dir.join(&descriptor.id)
     }
 }

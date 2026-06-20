@@ -59,7 +59,9 @@ const DATABASES_BODY: readonly Schema_DatabaseMetadata[] = [
     sizeBytes: 0,
   },
 ]
-type Schema_DatabaseMetadata = typeof Databases.DatabaseMetadataSchema.Type
+// The stub returns a wire (encoded) body the schema decodes — `modifiedAt` is a
+// string here, then decoded to a `DateTime.Utc`.
+type Schema_DatabaseMetadata = typeof Databases.DatabaseMetadataSchema.Encoded
 
 const stubHttpClientLayer = (options?: {
   readonly failing?: boolean
