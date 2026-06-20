@@ -14,10 +14,12 @@
 #                               packages unchanged vs origin/main (mirrors the
 #                               ci-typescript test step). The api-sync TS
 #                               openapi-drift test runs inside `vp test`.
-#   - scripts/checks/rust.sh pre-push -> cargo nextest (non-Tauri) + the Tauri
-#                               crates' tests (mirrors ci-rust.yml / ci-rust-tauri.yml).
-#                               The api-sync Rust snapshot test is an ordinary
-#                               #[test], so it runs here too. Self-skips when the
+#   - scripts/checks/rust.sh pre-push -> cargo nextest, scoped to the crates
+#                               changed vs origin/main plus their dependents
+#                               (CI still runs the full --workspace). Covers both
+#                               the non-Tauri and Tauri crates. The api-sync Rust
+#                               snapshot test is an ordinary #[test], so it runs
+#                               when its crate is in scope. Self-skips when the
 #                               Rust toolchain (or the Tauri GTK libs) is absent.
 set -e
 

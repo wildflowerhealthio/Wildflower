@@ -11,9 +11,11 @@ export default defineConfig({
     '*': 'vp check --fix',
     // Markdown lint (mirrors the lint-markdown workflow).
     '*.md': 'vp run lint:docs',
-    // Rust fmt + clippy, shared with ci-rust.yml / ci-rust-tauri.yml. The script
-    // ignores the staged paths `vp staged` appends and checks the workspace; it
-    // self-skips when the toolchain (or the Tauri GTK libs) is unavailable.
+    // Rust fmt + clippy, shared with ci-rust.yml / ci-rust-tauri.yml. fmt is
+    // whole-workspace (compile-free); clippy is scoped to the crates changed vs
+    // origin/main plus their dependents, so it stays light locally while CI
+    // still runs the full --workspace. Self-skips when the toolchain (or the
+    // Tauri GTK libs) is unavailable.
     '*.{rs,toml}': './scripts/checks/rust.sh pre-commit',
   },
   // Resolve workspace-package imports against their `source` export

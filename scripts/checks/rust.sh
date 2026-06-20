@@ -38,6 +38,7 @@ non_tauri=(--workspace
   --exclude browser-sniffer-tauri-rust
   --exclude shared-structures-tauri-rust)
 tauri=(-p wildflower-tauri -p browser-sniffer-tauri-rust -p shared-structures-tauri-rust)
+tauri_names=" wildflower-tauri browser-sniffer-tauri-rust shared-structures-tauri-rust "
 
 run_tests() { # usage: run_tests <pkg-selection...>
   if have cargo-nextest; then
@@ -69,6 +70,66 @@ do_tauri_test() {
   run_tests "${tauri[@]}"
 }
 
+# Lightweight "changed crates vs origin/main" scoping, used only by the hook
+# composites (pre-commit / pre-push) — CI keeps the full --workspace runs above.
+# rust-affected.mjs prints the affected crate names (changed + their dependents),
+# `__WORKSPACE__` when it can't scope safely, or nothing when no Rust files
+# changed. node is part of the repo's toolchain; if it's somehow missing we fall
+# back to the full workspace rather than skip coverage.
+affected_crates() {
+  if ! have node; then
+    echo '__WORKSPACE__'
+    return 0
+  fi
+  node "$(dirname "$0")/rust-affected.ts" || echo '__WORKSPACE__'
+}
+
+# usage: run_changed <clippy|test> <non-tauri|tauri> <affected-output>
+# Runs the step against only the affected crates in the requested partition,
+# falling back to the full partition on `__WORKSPACE__` and skipping when no
+# crate in that partition changed.
+run_changed() {
+  kind="$1" part="$2" affected="$3"
+
+  if [ -z "$affected" ]; then
+    echo "checks/rust: no Rust changes vs origin/main — skipping $part $kind."
+    return 0
+  fi
+
+  if [ "$affected" = '__WORKSPACE__' ]; then
+    case "$part:$kind" in
+      non-tauri:clippy) do_clippy ;;
+      non-tauri:test) do_test ;;
+      tauri:clippy) do_tauri_clippy ;;
+      tauri:test) do_tauri_test ;;
+    esac
+    return 0
+  fi
+
+  pflags=''
+  for n in $affected; do
+    case "$tauri_names" in
+      *" $n "*) if [ "$part" = tauri ]; then pflags="$pflags -p $n"; fi ;;
+      *) if [ "$part" = non-tauri ]; then pflags="$pflags -p $n"; fi ;;
+    esac
+  done
+
+  if [ -z "$pflags" ]; then
+    echo "checks/rust: no $part crates changed — skipping $part $kind."
+    return 0
+  fi
+
+  if [ "$part" = tauri ]; then
+    tauri_capable || return 0
+  fi
+
+  # shellcheck disable=SC2086  # intentional word-splitting of the -p flags
+  case "$kind" in
+    clippy) cargo clippy $pflags --all-targets --all-features -- -D warnings ;;
+    test) run_tests $pflags ;;
+  esac
+}
+
 case "$step" in
   fmt) do_fmt ;;
   clippy) do_clippy ;;
@@ -76,13 +137,17 @@ case "$step" in
   tauri-clippy) do_tauri_clippy ;;
   tauri-test) do_tauri_test ;;
   pre-commit)
+    # fmt is compile-free and fast, so keep it whole-workspace; scope the
+    # compile-heavy clippy to the crates changed vs origin/main (+ dependents).
     do_fmt
-    do_clippy
-    do_tauri_clippy
+    affected="$(affected_crates)"
+    run_changed clippy non-tauri "$affected"
+    run_changed clippy tauri "$affected"
     ;;
   pre-push)
-    do_test
-    do_tauri_test
+    affected="$(affected_crates)"
+    run_changed test non-tauri "$affected"
+    run_changed test tauri "$affected"
     ;;
   *)
     echo "checks/rust: unknown step '$step'" >&2
