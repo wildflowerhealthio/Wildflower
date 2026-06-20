@@ -36,27 +36,28 @@ mod tests {
     use crate::db::AppsStore;
     use crate::domain::{AppEntry, AppUrl};
     use crate::http::state::AppsState;
-    use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelService, TunnelStatus};
+    use shared_structures_rust::tunnel_service::{
+        OfflineTunnel, TunnelLiveness, TunnelService, TunnelStatus,
+    };
 
-    /// A `TunnelService` stub with a fixed `try_start` outcome. `Ok(origin)`
-    /// stands in for a tunnel that's up; `Err` for one that can't be reached.
-    struct StubTunnel(Result<String, String>);
+    /// A `TunnelService` stub for a tunnel that's up and verified at `origin` —
+    /// the success counterpart to the shared [`OfflineTunnel`], which already
+    /// models the can't-reach case (`try_start` fails, state stays `Off`).
+    struct StubTunnel(String);
 
     #[async_trait::async_trait]
     impl TunnelService for StubTunnel {
         fn current_origin(&self) -> String {
-            self.0
-                .clone()
-                .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string())
+            self.0.clone()
         }
         async fn try_start(&self) -> Result<String, String> {
-            self.0.clone()
+            Ok(self.0.clone())
         }
         fn subscribe(&self) -> tokio::sync::watch::Receiver<TunnelLiveness> {
             tokio::sync::watch::channel(TunnelLiveness {
                 settings_revision: None,
-                status: TunnelStatus::Off,
-                origin: "http://127.0.0.1:8080".to_string(),
+                status: TunnelStatus::Verified,
+                origin: self.0.clone(),
                 error: None,
                 dial_attempts: 0,
             })
@@ -65,11 +66,11 @@ mod tests {
     }
 
     fn tunnel_at(origin: &str) -> Arc<dyn TunnelService> {
-        Arc::new(StubTunnel(Ok(origin.to_string())))
+        Arc::new(StubTunnel(origin.to_string()))
     }
 
     fn tunnel_unavailable() -> Arc<dyn TunnelService> {
-        Arc::new(StubTunnel(Err("tunnel unavailable".to_string())))
+        Arc::new(OfflineTunnel::new("http://127.0.0.1:8080"))
     }
 
     /// The served public router, state not yet applied — the spec half of

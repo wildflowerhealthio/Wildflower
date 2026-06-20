@@ -536,7 +536,17 @@ where
             result = &mut *dial => return result,
             () = cancel.cancelled() => return Ok(()),
             _ = ticker.tick() => {
-                let (status, error) = match probe_once(probe, &health_url, timing.timeout).await {
+                // Keep the dial and the cancel responsive *while the probe is in
+                // flight*: a probe may run up to `timeout`, and parking the whole
+                // loop on it would defer a reconcile's cancel (and noticing the
+                // session ended) by that long — lengthening the handover drain the
+                // next supervisor must wait through. Race the probe against both.
+                let outcome = tokio::select! {
+                    result = &mut *dial => return result,
+                    () = cancel.cancelled() => return Ok(()),
+                    outcome = probe_once(probe, &health_url, timing.timeout) => outcome,
+                };
+                let (status, error) = match outcome {
                     Ok(()) => (TunnelStatus::Verified, None),
                     Err(reason) => (TunnelStatus::Unreachable, Some(reason)),
                 };
@@ -594,18 +604,20 @@ fn set_state(
     public_origin: &str,
     attempt: i64,
 ) {
-    let origin = served_origin_for(status, Some(public_origin), loopback_origin);
     state.send_if_modified(|live| {
         if live.settings_revision != Some(revision) {
             return false;
         }
-        if live.status == status
-            && live.error == error
-            && live.origin == origin
-            && live.dial_attempts == attempt
-        {
+        // `origin` is a pure function of `status` (the public origin only while
+        // `Verified`, else loopback) for this supervisor's fixed
+        // public/loopback pair, so an unchanged `status` implies an unchanged
+        // origin — no need to compare it. Compute it only on a real transition,
+        // so a steady-state re-probe (Verified → Verified every interval)
+        // doesn't allocate a throwaway String each tick.
+        if live.status == status && live.error == error && live.dial_attempts == attempt {
             return false;
         }
+        let origin = served_origin_for(status, Some(public_origin), loopback_origin);
         tracing::debug!(
             revision,
             attempt,
