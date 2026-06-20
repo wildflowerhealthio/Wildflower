@@ -34,6 +34,12 @@ const DatabaseMetadataSchema = Schema.Struct({
    * `string` contract holds). Absent when the file is absent.
    */
   modifiedAt: Schema.optional(Schema.DateTimeUtc),
+  /**
+   * Whether the database is scheduled for deletion at the next startup. It
+   * still exists/serves until then, so the UI shows it as "scheduled — restart
+   * to finish" rather than gone.
+   */
+  pendingDeletion: Schema.Boolean,
 })
 
 const DatabaseListSchema = Schema.Array(DatabaseMetadataSchema)

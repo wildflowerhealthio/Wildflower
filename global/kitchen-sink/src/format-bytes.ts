@@ -10,7 +10,11 @@ const formatBytes = (bytes: number): string => {
   const units = ['KB', 'MB', 'GB', 'TB']
   let value = bytes / 1024
   let unit = 0
-  while (value >= 1024 && unit < units.length - 1) {
+  // Promote on the *rounded* value, not the raw one: 1023.75 KB rounds to
+  // "1024", which must read as "1.0 MB" rather than "1024 KB". `Math.round`
+  // here mirrors the whole-number rendering below (the < 10 branch can never
+  // reach 1024, so it needs no guard).
+  while (unit < units.length - 1 && Math.round(value) >= 1024) {
     value /= 1024
     unit += 1
   }

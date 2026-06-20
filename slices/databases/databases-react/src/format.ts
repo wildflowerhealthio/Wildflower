@@ -12,6 +12,7 @@ import type { DatabaseMetadata } from './queries.ts'
  */
 const describeDatabase = (database: DatabaseMetadata): Effect.Effect<string> =>
   Effect.sync(() => {
+    if (database.pendingDeletion) return 'Scheduled for deletion — restart Wildflower to finish'
     if (!database.exists) return `${database.description} · Not created yet`
     const tables =
       database.tableCount === undefined
@@ -20,7 +21,10 @@ const describeDatabase = (database: DatabaseMetadata): Effect.Effect<string> =>
     const modified =
       database.modifiedAt === undefined
         ? null
-        : `updated ${DateTime.format(database.modifiedAt, { dateStyle: 'medium' })}`
+        : // `formatLocal` (runtime-local zone) matches the sibling slices'
+          // `format-date.ts`, so a `modifiedAt` near a day boundary renders the
+          // same calendar date across screens.
+          `updated ${DateTime.formatLocal(database.modifiedAt, { dateStyle: 'medium' })}`
     const extras = [tables, modified].filter((part): part is string => part !== null).join(' · ')
     return extras === '' ? database.description : `${database.description} · ${extras}`
   })
@@ -38,7 +42,10 @@ const saveBytesAsFile = (bytes: Uint8Array<ArrayBuffer>, filename: string): void
   document.body.appendChild(anchor)
   anchor.click()
   anchor.remove()
-  URL.revokeObjectURL(url)
+  // Defer the revoke to a later tick: revoking synchronously after `click()`
+  // can race the webview's fetch of the blob URL for a large export and abort
+  // the download (or yield a 0-byte file).
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 export { describeDatabase, saveBytesAsFile }

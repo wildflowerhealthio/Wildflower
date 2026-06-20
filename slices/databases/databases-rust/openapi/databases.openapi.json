@@ -29,7 +29,7 @@
     "/databases/{id}": {
       "get": {
         "summary": "`GET /databases/{id}` — stream the database file as `application/vnd.sqlite3`\n(a `VACUUM INTO` snapshot, so it's internally consistent even while the\nowning slice is writing). Unknown ids and not-yet-created databases are\n`404 DatabaseNotFound`.",
-        "description": "The body is binary, so this endpoint is documented here (utoipa) but is\nintentionally absent from the `databases-core` Effect `HttpApi`: the React\nclient downloads it through the raw `HttpClient` to get the bytes, not the\ngenerated JSON client. The spec-drift test scopes only the JSON endpoints.",
+        "description": "The blocking snapshot + file IO runs on a blocking thread (`spawn_blocking`),\nand the result is streamed from the temp file rather than buffered into\nmemory, so a large database neither stalls the async runtime nor spikes RSS\nby its full size.\n\nThe body is binary, so this endpoint is documented here (utoipa) but is\nintentionally absent from the `databases-core` Effect `HttpApi`: the React\nclient downloads it through the raw `HttpClient` to get the bytes, not the\ngenerated JSON client. The spec-drift test scopes only the JSON endpoints.",
         "operationId": "handle_download_database",
         "parameters": [
           {
@@ -62,8 +62,8 @@
         }
       },
       "delete": {
-        "summary": "`DELETE /databases/{id}` — remove the database file (and its journal\nsidecars) from disk. Unknown ids and already-absent databases are\n`404 DatabaseNotFound`.",
-        "description": "This deletes the file out from under the slice that owns the live\nconnection. On Unix the open inode survives until that connection closes, so\nthe running server keeps working against the now-unlinked file; the deletion\ntakes full effect on the next restart, when a fresh empty database is\ncreated. (The Owner who triggers this is asking to erase the database — see\nthe settings screen's confirmation.)",
+        "summary": "`DELETE /databases/{id}` — schedule the database for deletion. Unknown ids\nand already-absent databases are `404 DatabaseNotFound`.",
+        "description": "The owning slice holds the database open for the whole app lifetime, so it\ncan't be removed reliably at runtime (a Windows sharing violation, or a live\ninode on Unix). Instead this drops a pending-deletion marker; the host\nremoves the file at the next startup, before any connection opens (see\n`files::purge_pending_deletions`). The database therefore still exists — and\nstays served — until the app is restarted, which the settings UI tells the\nOwner to do. `deleted: true` means \"the request was accepted/scheduled\".",
         "operationId": "handle_delete_database",
         "parameters": [
           {
@@ -78,7 +78,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The database file was deleted",
+            "description": "Deletion was scheduled (takes effect on restart)",
             "content": {
               "application/json": {
                 "schema": {
@@ -111,7 +111,8 @@
           "label",
           "description",
           "exists",
-          "sizeBytes"
+          "sizeBytes",
+          "pendingDeletion"
         ],
         "properties": {
           "id": {
@@ -151,6 +152,10 @@
               "null"
             ],
             "description": "Last-modified time as an RFC 3339 string, or `None` when the file is\nabsent or its mtime is unavailable (omitted from the wire when absent)."
+          },
+          "pendingDeletion": {
+            "type": "boolean",
+            "description": "Whether the database is scheduled for deletion at the next startup (a\npending-deletion marker exists). It still exists/serves until then, so the\nUI shows it as \"scheduled — restart to finish\" rather than gone."
           }
         }
       },

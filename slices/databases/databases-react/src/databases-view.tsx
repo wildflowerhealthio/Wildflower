@@ -7,6 +7,20 @@ import { Dialog, ItemList, PageHeader, pageLayoutStyles, type ItemListItem } fro
 import { describeDatabase } from './format.ts'
 import type { DatabaseMetadata } from './queries.ts'
 
+/** Right-aligned size/status chip for a row. */
+const rowMeta = (database: DatabaseMetadata): string => {
+  if (database.pendingDeletion) return 'Scheduled'
+  if (database.exists) return formatBytes(database.sizeBytes)
+  return 'Empty'
+}
+
+/** Row tint: danger while scheduled, neutral when present, none when absent. */
+const rowTone = (database: DatabaseMetadata): 'neutral' | 'danger' | undefined => {
+  if (database.pendingDeletion) return 'danger'
+  if (database.exists) return 'neutral'
+  return undefined
+}
+
 interface DatabasesViewProps {
   readonly databases: readonly DatabaseMetadata[]
   readonly onExport: (id: string) => void
@@ -36,20 +50,23 @@ const DatabasesView = ({
 
   const toItem = (database: DatabaseMetadata): ItemListItem => {
     const busy = exportingId === database.id || deletingId === database.id
+    // A scheduled database is on its way out — no further export/delete until
+    // the restart actually removes it.
+    const locked = !database.exists || database.pendingDeletion
     return {
       id: database.id,
       title: database.label,
       // `describeDatabase` is Effect-returning (date formatting runs through
       // Effect's `DateTime`); it needs no services, so it runs synchronously.
       subtitle: Effect.runSync(describeDatabase(database)),
-      meta: database.exists ? formatBytes(database.sizeBytes) : 'Empty',
-      tone: database.exists ? 'neutral' : undefined,
+      meta: rowMeta(database),
+      tone: rowTone(database),
       actions: (
         <>
           <button
             type="button"
             className="button-2 filled"
-            disabled={!database.exists || busy}
+            disabled={locked || busy}
             onClick={() => onExport(database.id)}
           >
             {exportingId === database.id ? 'Downloading…' : 'Download'}
@@ -57,7 +74,7 @@ const DatabasesView = ({
           <button
             type="button"
             className="button-2 filled accent-red"
-            disabled={!database.exists || busy}
+            disabled={locked || busy}
             onClick={() => setConfirmId(database.id)}
           >
             Delete
@@ -67,6 +84,8 @@ const DatabasesView = ({
     }
   }
 
+  const hasPendingDeletion = databases.some((database) => database.pendingDeletion)
+
   return (
     <>
       <PageHeader title="Your data" backHref="/settings" backLabel="Settings" />
@@ -75,6 +94,13 @@ const DatabasesView = ({
         data erases your clinical records here; deleting the app database resets access grants,
         tunnel settings, and the apps catalogue.
       </p>
+
+      {hasPendingDeletion ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
+          A database is scheduled for deletion. <strong>Quit and reopen Wildflower</strong> to
+          finish — until you do, the app will keep using it and may not work correctly.
+        </p>
+      ) : null}
 
       {errorMessage !== null ? (
         <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
@@ -92,8 +118,9 @@ const DatabasesView = ({
         {confirmTarget !== null ? (
           <>
             <p className="text-body-3">
-              This permanently deletes <strong>{confirmTarget.id}</strong> from this device. This
-              can't be undone — download a copy first if you might want it back.
+              This deletes <strong>{confirmTarget.id}</strong> from this device. It takes effect
+              when you restart Wildflower, and can't be undone — download a copy first if you might
+              want it back.
             </p>
             <div>
               <button type="button" className="button-2" onClick={() => setConfirmId(null)}>

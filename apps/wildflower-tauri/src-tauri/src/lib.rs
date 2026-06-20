@@ -42,6 +42,13 @@ async fn run_server(
     runtime: ServerRuntimeConfig,
     publishers: bridge::BridgePublishers,
 ) -> anyhow::Result<()> {
+    // Apply any deletions the Owner scheduled from the data-management screen
+    // BEFORE opening the databases below: the `/databases` DELETE can't remove a
+    // file the owning slice holds open, so it drops a marker that we purge here,
+    // while nothing has the file open yet.
+    databases_rust::purge_pending_deletions(&runtime.app_data_dir)
+        .context("failed to purge scheduled database deletions")?;
+
     let emr_config = EmrConfig {
         log_level: "debug".to_string(),
         db_file_path: runtime.app_data_dir.join(HEALTH_DATA_DB),

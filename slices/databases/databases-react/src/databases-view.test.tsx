@@ -21,6 +21,7 @@ const health: DatabaseMetadata = {
   sizeBytes: 1536,
   tableCount: 7,
   modifiedAt: DateTime.unsafeMake('2026-06-20T00:00:00.000Z'),
+  pendingDeletion: false,
 }
 const wildflower: DatabaseMetadata = {
   id: 'wildflower.sqlite',
@@ -28,6 +29,16 @@ const wildflower: DatabaseMetadata = {
   description: 'App state.',
   exists: false,
   sizeBytes: 0,
+  pendingDeletion: false,
+}
+const scheduled: DatabaseMetadata = {
+  id: 'wildflower.sqlite',
+  label: 'Wildflower app data',
+  description: 'App state.',
+  exists: true,
+  sizeBytes: 4096,
+  tableCount: 3,
+  pendingDeletion: true,
 }
 
 const noop = (): void => {}
@@ -102,6 +113,23 @@ describe('DatabasesView', () => {
     const remove = screen.getByRole('button', { name: 'Delete' })
     expect(download.hasAttribute('disabled')).toBe(true)
     expect(remove.hasAttribute('disabled')).toBe(true)
+  })
+
+  test('a scheduled database shows a restart warning and disables its actions', async () => {
+    renderView({
+      databases: [scheduled],
+      onExport: noop,
+      onDelete: noop,
+      exportingId: null,
+      deletingId: null,
+      errorMessage: null,
+    })
+    // The restart banner is present...
+    const alert = await screen.findByRole('alert')
+    expect(within(alert).getByText(/Quit and reopen Wildflower/)).toBeTruthy()
+    // ...and the row's actions are disabled (nothing to do until restart).
+    expect(screen.getByRole('button', { name: 'Download' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Delete' }).hasAttribute('disabled')).toBe(true)
   })
 
   test('surfaces a mutation error message', async () => {

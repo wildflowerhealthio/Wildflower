@@ -50,6 +50,7 @@ const DATABASES_BODY: readonly Schema_DatabaseMetadata[] = [
     sizeBytes: 4096,
     tableCount: 7,
     modifiedAt: '2026-06-20T00:00:00.000Z',
+    pendingDeletion: false,
   },
   {
     id: 'wildflower.sqlite',
@@ -57,6 +58,7 @@ const DATABASES_BODY: readonly Schema_DatabaseMetadata[] = [
     description: 'App state.',
     exists: false,
     sizeBytes: 0,
+    pendingDeletion: false,
   },
 ]
 // The stub returns a wire (encoded) body the schema decodes — `modifiedAt` is a

@@ -40,6 +40,10 @@ pub(crate) struct DatabaseMetadata {
     /// absent or its mtime is unavailable (omitted from the wire when absent).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) modified_at: Option<String>,
+    /// Whether the database is scheduled for deletion at the next startup (a
+    /// pending-deletion marker exists). It still exists/serves until then, so the
+    /// UI shows it as "scheduled — restart to finish" rather than gone.
+    pub(crate) pending_deletion: bool,
 }
 
 impl DatabaseMetadata {
@@ -67,6 +71,7 @@ impl DatabaseMetadata {
             size_bytes,
             table_count,
             modified_at,
+            pending_deletion: crate::files::is_deletion_pending(path),
         }
     }
 }

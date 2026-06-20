@@ -21,6 +21,13 @@ describe('formatBytes', () => {
     expect(formatBytes(12.6 * 1024)).toBe('13 KB')
   })
 
+  it('promotes a value that only reaches 1024 after rounding (no "1024 KB")', () => {
+    // 1023.75 KB → rounds to "1024", which must read as the next unit up.
+    expect(formatBytes(1048320)).toBe('1.0 MB')
+    // Same at the MB→GB boundary.
+    expect(formatBytes(Math.round(1023.75 * 1024 * 1024))).toBe('1.0 GB')
+  })
+
   it('caps at the largest unit (TB) rather than inventing new ones', () => {
     expect(formatBytes(3 * 1024 ** 4)).toBe('3.0 TB')
     expect(formatBytes(5000 * 1024 ** 4)).toBe('5000 TB')

@@ -99,7 +99,12 @@ const exportDatabaseEffect = (
       token === null
         ? baseRequest
         : HttpClientRequest.setHeader(baseRequest, 'Authorization', `Bearer ${token}`)
-    const response = yield* client.execute(request)
+    // `filterStatusOk` fails the effect on a non-2xx response, so a `404`
+    // (TOCTOU delete between list + click) or `500` (snapshot timeout) surfaces
+    // as a mutation error instead of saving the JSON error body as a `.sqlite`
+    // file. The raw client (unlike the generated HttpApi client) does not check
+    // status on its own.
+    const response = yield* HttpClient.filterStatusOk(client).execute(request)
     const buffer = yield* response.arrayBuffer
     return { bytes: new Uint8Array(buffer), filename: id }
   })

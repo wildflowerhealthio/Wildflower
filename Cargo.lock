@@ -1341,6 +1341,7 @@ dependencies = [
  "anyhow",
  "axum",
  "chrono",
+ "futures-core",
  "http",
  "http-body-util",
  "rusqlite",
@@ -1349,6 +1350,7 @@ dependencies = [
  "shared-structures-rust",
  "tempfile",
  "tokio",
+ "tokio-util",
  "tower",
  "tracing",
  "utoipa",
@@ -5557,8 +5559,10 @@ dependencies = [
 name = "shared-structures-rust"
 version = "0.0.0"
 dependencies = [
+ "axum",
  "serde",
  "serde_json",
+ "tracing",
  "utoipa",
 ]
 

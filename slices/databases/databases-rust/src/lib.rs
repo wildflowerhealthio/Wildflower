@@ -26,8 +26,12 @@
 //!
 //!  - `GET /databases` — metadata for every catalogued database.
 //!  - `GET /databases/{id}` — download the database as a consistent SQLite
-//!    snapshot (`application/vnd.sqlite3`).
-//!  - `DELETE /databases/{id}` — delete the database file on disk.
+//!    snapshot (`application/vnd.sqlite3`), streamed off the async runtime.
+//!  - `DELETE /databases/{id}` — schedule the database for deletion. The file
+//!    is held open by the owning slice for the app's lifetime, so it can't be
+//!    removed reliably at runtime; the delete drops a marker and the host calls
+//!    [`purge_pending_deletions`] at startup (before opening any connection) to
+//!    remove it. The settings UI tells the Owner to restart to finish.
 //!
 //! The router carries no middleware. The host wraps it with its own auth gate
 //! (`gatekeeper_rust::layer_router_with_gatekeeper_auth_gating`) so the whole
@@ -44,6 +48,7 @@ use std::sync::Arc;
 use axum::Router;
 
 pub use config::{DatabaseDescriptor, DatabasesConfig};
+pub use files::purge_pending_deletions;
 pub use http::DatabasesState;
 
 /// Build the `/databases` router over the host's data directory, mirroring

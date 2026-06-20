@@ -9,6 +9,7 @@
 mod handlers;
 mod response_templates;
 mod state;
+mod temp_file_stream;
 
 pub use state::DatabasesState;
 

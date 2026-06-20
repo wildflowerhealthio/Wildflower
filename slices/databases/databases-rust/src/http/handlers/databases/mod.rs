@@ -135,6 +135,7 @@ mod tests {
             "an existing db has a non-zero size: {health}"
         );
         assert!(health["modifiedAt"].is_string(), "mtime present: {health}");
+        assert_eq!(health["pendingDeletion"], serde_json::json!(false));
 
         let wildflower = entries
             .iter()
@@ -199,7 +200,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_removes_the_file_and_is_idempotent_404_after() {
+    async fn delete_schedules_and_marks_the_database_pending() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("wildflower.sqlite");
         seed_db(&path, 1);
@@ -208,12 +209,45 @@ mod tests {
         let (status, body) = send_json(&st, delete("/databases/wildflower.sqlite")).await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
         assert_eq!(body["deleted"], serde_json::json!(true));
-        assert!(!path.exists(), "file removed from disk");
+        // The file is held open by the owning slice, so it survives until the
+        // host purges it at restart — but a marker now exists and the listing
+        // reports it pending.
+        assert!(path.exists(), "the live file is not removed at runtime");
+        assert!(
+            dir.path().join("wildflower.sqlite.pending-delete").exists(),
+            "marker written"
+        );
 
-        // A second delete now finds nothing on disk → 404.
-        let (status, body) = send_json(&st, delete("/databases/wildflower.sqlite")).await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(body["error"], "DatabaseNotFound");
+        let (_, body) = send_json(&st, get("/databases")).await;
+        let wildflower = body
+            .as_array()
+            .expect("array")
+            .iter()
+            .find(|e| e["id"] == "wildflower.sqlite")
+            .expect("wildflower entry");
+        assert_eq!(wildflower["pendingDeletion"], serde_json::json!(true));
+    }
+
+    #[tokio::test]
+    async fn purge_pending_deletions_removes_the_db_and_sidecars_at_startup() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("wildflower.sqlite");
+        seed_db(&path, 1);
+        let journal = dir.path().join("wildflower.sqlite-journal");
+        std::fs::write(&journal, b"stale journal").expect("write journal");
+        let st = state_with(dir.path());
+
+        // Schedule the deletion through the handler, then run the startup purge.
+        let (status, _) = send_json(&st, delete("/databases/wildflower.sqlite")).await;
+        assert_eq!(status, StatusCode::OK);
+        crate::files::purge_pending_deletions(dir.path()).expect("purge");
+
+        assert!(!path.exists(), "main file removed at startup");
+        assert!(!journal.exists(), "journal sidecar removed");
+        assert!(
+            !dir.path().join("wildflower.sqlite.pending-delete").exists(),
+            "marker removed",
+        );
     }
 
     #[tokio::test]
@@ -228,17 +262,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_also_removes_the_journal_sidecar() {
+    async fn delete_known_but_absent_is_404() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("wildflower.sqlite");
-        seed_db(&path, 1);
-        let journal = dir.path().join("wildflower.sqlite-journal");
-        std::fs::write(&journal, b"stale journal").expect("write journal");
         let st = state_with(dir.path());
-
-        let (status, _) = send_json(&st, delete("/databases/wildflower.sqlite")).await;
-        assert_eq!(status, StatusCode::OK);
-        assert!(!path.exists(), "main file removed");
-        assert!(!journal.exists(), "journal sidecar removed");
+        // `wildflower.sqlite` is catalogued but was never created.
+        let (status, body) = send_json(&st, delete("/databases/wildflower.sqlite")).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body["error"], "DatabaseNotFound");
     }
 }

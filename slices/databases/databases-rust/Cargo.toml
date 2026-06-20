@@ -21,8 +21,16 @@ serde_json.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 rusqlite.workspace = true
+# The shared opaque-500 `InternalError` template (see `response_templates`).
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tracing = "0.1"
+# The export streams a temp snapshot off the async runtime: `spawn_blocking` for
+# the blocking VACUUM/IO (rt), `tokio::fs::File` (fs) wrapped by `ReaderStream`
+# (tokio-util io) into an axum `Body::from_stream` (futures-core `Stream`).
+tokio = { workspace = true, features = ["rt", "fs"] }
+tokio-util = { version = "0.7", features = ["io"] }
+futures-core = "0.3"
 
 [lints]
 workspace = true
