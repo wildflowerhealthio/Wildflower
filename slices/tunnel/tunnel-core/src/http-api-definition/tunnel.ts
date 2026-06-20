@@ -23,12 +23,15 @@ const RelayViewSchema = Schema.Struct({
  * last-seen revision, and a stale one is rejected with `409` (see
  * {@link httpApiGroup}).
  *
- * `running` is **optimistic** — it flips `true` the instant a dial
- * attempt starts and stays true across reconnect attempts that haven't
- * errored yet. It means *dialing*, not *connected*; rathole exposes no
- * "handshake completed" signal. `servedOrigin` derives from `running`,
- * so it may resolve to `https://{publicHost}` mid-dial. A consumer that
- * needs *verified reachable* must probe the URL itself.
+ * `status` is the authoritative liveness FSM position — one of `off`,
+ * `misconfigured`, `dialing`, `verified`, or `unreachable`. Liveness is
+ * now **verified, not optimistic**: `servedOrigin` resolves to
+ * `https://{publicHost}` **only** while `status === 'verified'` (a
+ * `/health` probe through the public origin came back `pass` from this
+ * device), otherwise the loopback fallback. `running` is the coarse
+ * "a supervisor is attempting" view (`true` for `dialing`/`verified`/
+ * `unreachable`), retained for back-compat — prefer `status`. `error`
+ * is set for `misconfigured`/`unreachable`.
  *
  * `attempt` counts dial attempts the live supervisor has made for this
  * revision (resets on the next reconcile) — a counter that climbs with
@@ -43,6 +46,7 @@ const TunnelStateViewSchema = Schema.Struct({
   revision: Schema.Int,
   publicHost: Schema.NullOr(Schema.String),
   requestedRunning: Schema.Boolean,
+  status: Schema.Literal('off', 'misconfigured', 'dialing', 'verified', 'unreachable'),
   running: Schema.Boolean,
   error: Schema.NullOr(Schema.String),
   attempt: Schema.Int,
@@ -91,6 +95,7 @@ const freshTunnelState: Schema.Schema.Type<typeof TunnelStateViewSchema> = {
   revision: 0,
   publicHost: null,
   requestedRunning: false,
+  status: 'off',
   running: false,
   error: null,
   attempt: 0,

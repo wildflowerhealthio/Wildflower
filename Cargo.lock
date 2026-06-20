@@ -171,6 +171,7 @@ name = "apps-rust"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "http",
  "http-body-util",

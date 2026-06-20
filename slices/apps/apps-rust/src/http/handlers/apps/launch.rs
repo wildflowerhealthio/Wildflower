@@ -4,19 +4,19 @@
 //! template with `{origin}` and `{launch}` placeholders. The handler:
 //!
 //!   1. Loads the row (404 if absent).
-//!   2. Resolves the served origin through the (currently no-op) tunnel
-//!      seam — see [`resolve_origin`].
+//!   2. Resolves the served origin through the tunnel seam — see
+//!      [`resolve_origin`].
 //!   3. Renders the redirect target through [`AppUrl::to_url_with_params`],
 //!      which substitutes the placeholders and is safe by construction (an
 //!      origin-relative target stays same-origin, an external one stays on
 //!      its `https://` authority) — so there's no launch-time re-validation:
 //!      the stored value was validated when it was parsed into an [`AppUrl`].
 //!
-//! `requires_tunnel` is honoured through the same no-op seam: the loopback
-//! origin is used unconditionally for now, and a `requires_tunnel` launch
-//! appends `?tunnel=unavailable` so the SPA can surface a banner. This is
-//! the hook for the eventual tunnel-rust integration where a
-//! `requires_tunnel` launch would resolve to the live `servedOrigin`.
+//! `requires_tunnel` is honoured through the [`TunnelLaunchResolver`] port: the
+//! launch resolves to the tunnel's live *verified* `servedOrigin`, or — when the
+//! tunnel can't be brought up — falls back to the loopback origin with
+//! `?tunnel=unavailable` so the SPA can surface a banner. A non-tunnel launch
+//! always uses the loopback origin.
 
 use std::sync::Arc;
 
@@ -52,7 +52,7 @@ pub(crate) async fn handle_launch_app(
         .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
         .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
 
-    let (origin, tunnel_unavailable) = resolve_origin(&state.loopback_origin, app.requires_tunnel);
+    let (origin, tunnel_unavailable) = resolve_origin(&state, app.requires_tunnel).await;
     let launch = launch_nonce();
     let target = app.url.to_url_with_params(&LaunchParams {
         origin: &origin,
@@ -62,16 +62,21 @@ pub(crate) async fn handle_launch_app(
     Ok(redirect(target))
 }
 
-/// NO-OP tunnel seam — mirrors the TS `resolveLaunchOrigin`. Always returns
-/// the loopback origin; the second tuple element flags the caller to append
-/// `?tunnel=unavailable` when the launch wanted a tunnel that isn't there.
+/// Resolve the launch origin and the `tunnel_unavailable` flag.
 ///
-/// This is the hook for the future tunnel-rust integration: when that
-/// lands, `requires_tunnel = true` will resolve to the live `servedOrigin`
-/// (and `tunnel_unavailable` will only flip true on the timeout/fallback
-/// path).
-fn resolve_origin(loopback_origin: &str, requires_tunnel: bool) -> (String, bool) {
-    (loopback_origin.to_owned(), requires_tunnel)
+/// A non-tunnel launch uses the loopback origin (never unavailable). A
+/// `requires_tunnel` launch is resolved through the [`TunnelLaunchResolver`]
+/// port (`crate::tunnel_seam`): `Some(origin)` is the live verified public
+/// origin; `None` means the tunnel couldn't be brought up, so it falls back to
+/// loopback and flags `?tunnel=unavailable` for the SPA banner.
+async fn resolve_origin(state: &AppsState, requires_tunnel: bool) -> (String, bool) {
+    if !requires_tunnel {
+        return (state.loopback_origin.clone(), false);
+    }
+    match state.tunnel.resolve_tunnel_origin().await {
+        Some(origin) => (origin, false),
+        None => (state.loopback_origin.clone(), true),
+    }
 }
 
 /// 21-char base62-ish nonce — close enough to nanoid (the TS handler's

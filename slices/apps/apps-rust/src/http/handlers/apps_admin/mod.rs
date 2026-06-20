@@ -48,7 +48,11 @@ mod tests {
 
     fn state() -> Arc<AppsState> {
         let store = AppsStore::open_in_memory().expect("store");
-        Arc::new(AppsState::new(store, "http://127.0.0.1:8080"))
+        Arc::new(AppsState::new(
+            store,
+            "http://127.0.0.1:8080",
+            Arc::new(crate::tunnel_seam::TunnelUnavailable),
+        ))
     }
 
     async fn send(state: &Arc<AppsState>, req: Request<Body>) -> (StatusCode, serde_json::Value) {

@@ -32,6 +32,7 @@ describe('TunnelStateViewSchema', () => {
       revision: 7,
       publicHost: 'my-clinic.example.com',
       requestedRunning: true,
+      status: 'verified' as const,
       running: true,
       error: null,
       attempt: 2,

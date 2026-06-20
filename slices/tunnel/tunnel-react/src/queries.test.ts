@@ -91,6 +91,7 @@ const BASE_STATE: TunnelState = {
   revision: 5,
   publicHost: 'old.example.com',
   requestedRunning: false,
+  status: 'off',
   running: false,
   error: null,
   attempt: 0,
@@ -212,6 +213,7 @@ describe('applyTunnelOptimistic', () => {
     const live: TunnelState = {
       ...BASE_STATE,
       revision: 9,
+      status: 'verified',
       running: true,
       error: 'boom',
       attempt: 3,

@@ -36,6 +36,18 @@ mod tests {
     use crate::db::AppsStore;
     use crate::domain::{AppEntry, AppUrl};
     use crate::http::state::AppsState;
+    use crate::tunnel_seam::{TunnelLaunchResolver, TunnelUnavailable};
+
+    /// A resolver that always hands back a fixed verified public origin — stands
+    /// in for a tunnel that's up.
+    struct TunnelAt(&'static str);
+
+    #[async_trait::async_trait]
+    impl TunnelLaunchResolver for TunnelAt {
+        async fn resolve_tunnel_origin(&self) -> Option<String> {
+            Some(self.0.to_string())
+        }
+    }
 
     /// The served public router, state not yet applied — the spec half of
     /// `split_for_parts` is irrelevant here.
@@ -44,8 +56,12 @@ mod tests {
     }
 
     fn state() -> Arc<AppsState> {
+        state_with_tunnel(Arc::new(TunnelUnavailable))
+    }
+
+    fn state_with_tunnel(tunnel: Arc<dyn TunnelLaunchResolver>) -> Arc<AppsState> {
         let store = AppsStore::open_in_memory().expect("store");
-        Arc::new(AppsState::new(store, "http://127.0.0.1:8080"))
+        Arc::new(AppsState::new(store, "http://127.0.0.1:8080", tunnel))
     }
 
     async fn send(state: &Arc<AppsState>, req: Request<Body>) -> (StatusCode, serde_json::Value) {
@@ -147,8 +163,8 @@ mod tests {
         );
     }
 
-    /// A `requires_tunnel` launch redirects to the loopback origin (no real
-    /// tunnel seam yet) with the `tunnel=unavailable` flag so the SPA can
+    /// When the tunnel can't be reached, a `requires_tunnel` launch falls back
+    /// to the loopback origin with the `tunnel=unavailable` flag so the SPA can
     /// surface a banner.
     #[tokio::test]
     async fn launch_growth_chart_appends_tunnel_unavailable() {
@@ -172,6 +188,33 @@ mod tests {
         assert!(
             location.contains("iss=http://127.0.0.1:8080/fhir-r4"),
             "expected loopback iss in {location}",
+        );
+    }
+
+    /// When the resolver hands back a verified public origin, a
+    /// `requires_tunnel` launch redirects there (no `tunnel=unavailable`).
+    #[tokio::test]
+    async fn launch_growth_chart_resolves_to_the_verified_tunnel_origin() {
+        let st = state_with_tunnel(Arc::new(TunnelAt("https://dev1.example.com")));
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(get("/apps/growth-chart"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FOUND);
+        let location = res
+            .headers()
+            .get("location")
+            .expect("location header")
+            .to_str()
+            .unwrap();
+        assert!(
+            location.contains("iss=https://dev1.example.com/fhir-r4"),
+            "expected the verified tunnel origin in {location}",
+        );
+        assert!(
+            !location.contains("tunnel=unavailable"),
+            "a reachable tunnel must not flag unavailable: {location}",
         );
     }
 

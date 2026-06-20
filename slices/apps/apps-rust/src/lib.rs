@@ -18,16 +18,18 @@
 //!
 //! ## Launch / tunnel seam
 //!
-//! `GET /apps/{id}` currently resolves every launch against
-//! [`AppsConfig::loopback_origin`], appending `?tunnel=unavailable` for
-//! `requires_tunnel` apps. This matches the TS `resolveLaunchOrigin`
-//! no-op seam — the hook for the eventual tunnel-rust integration where
-//! a `requires_tunnel` launch redirects to the live `servedOrigin`.
+//! `GET /apps/{id}` resolves a non-tunnel launch against
+//! [`AppsConfig::loopback_origin`]. A `requires_tunnel` launch is resolved
+//! through the [`TunnelLaunchResolver`] port: the host wires it to the tunnel
+//! control seam, so the launch redirects to the live *verified* `servedOrigin`
+//! (or falls back to loopback + `?tunnel=unavailable` when the tunnel can't be
+//! reached). The port keeps apps-rust decoupled from tunnel-rust.
 
 pub mod config;
 pub mod db;
 pub mod domain;
 pub mod http;
+pub mod tunnel_seam;
 
 use std::sync::Arc;
 
@@ -37,6 +39,7 @@ use axum::Router;
 pub use config::AppsConfig;
 pub use db::AppsStore;
 pub use http::AppsState;
+pub use tunnel_seam::{TunnelLaunchResolver, TunnelUnavailable};
 
 /// Result of [`setup_apps`]: the two routers a host needs to mount. The
 /// public one carries no auth (the webview reaches list + launch
@@ -51,14 +54,20 @@ pub struct Apps {
 
 /// Build the apps router pair over the shared `conn`, mirroring
 /// `tunnel-rust`'s `setup_tunnel` and `gatekeeper-rust`'s
-/// `setup_gatekeeper`. The host opens one database and passes it in.
+/// `setup_gatekeeper`. The host opens one database and passes it in, along with
+/// the `tunnel` resolver a `requires_tunnel` launch resolves its origin through
+/// (wire [`TunnelUnavailable`] for a tunnel-less host).
 ///
 /// # Errors
 ///
 /// Returns an error if the store can't be migrated.
-pub fn setup_apps(conn: persistence_rust::Connection, config: &AppsConfig) -> anyhow::Result<Apps> {
+pub fn setup_apps(
+    conn: persistence_rust::Connection,
+    config: &AppsConfig,
+    tunnel: Arc<dyn TunnelLaunchResolver>,
+) -> anyhow::Result<Apps> {
     let store = AppsStore::new(conn).context("failed to open apps store")?;
-    let state = Arc::new(AppsState::new(store, config.loopback_origin.clone()));
+    let state = Arc::new(AppsState::new(store, config.loopback_origin.clone(), tunnel));
     Ok(Apps {
         public_router: http::public_router(Arc::clone(&state)),
         admin_router: http::admin_router(Arc::clone(&state)),
