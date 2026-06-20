@@ -6,17 +6,16 @@ name: Rust Tauri
 # GTK/webkit system libraries.
 # Without this they'd only be fmt-checked, so a change breaking their build or
 # tests would slip through. Runs only when a Tauri crate, the sniffer bootstrap,
-# or the lockfile changes (PRs), or on any push to main, to bound the cost.
+# or the lockfile changes (PRs), to bound the cost. CI is a pre-merge gate only;
+# this workflow no longer runs on pushes to main.
 
 on:
-  push:
-    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     # Union of every change that should run the GTK-enabled job: either Tauri
     # crate, the TS bootstrap package whose generated IIFE
     # browser-sniffer-tauri-rust `include_str!`s, and the lockfiles that affect
-    # that bootstrap build. Pushes to main have NO paths filter and run anyway.
+    # that bootstrap build.
     paths:
       - 'apps/wildflower-tauri/**'
       - 'slices/browser-sniffer/browser-sniffer-tauri-rust/**'
@@ -34,7 +33,7 @@ permissions:
 
 concurrency:
   group: rust-tauri-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   # One job for clippy + nextest + doctests across all the tauri crates: a single
@@ -52,10 +51,9 @@ jobs:
       # changed. If so we regenerate the real IIFE below; otherwise we stub it,
       # since a full pnpm install just to lint Rust against an untouched
       # bootstrap is ~30s of wasted work. This is a single step, not a separate
-      # billed job. On push there's no PR to diff, so we always regenerate.
+      # billed job.
       - uses: dorny/paths-filter@v4
         id: filter
-        if: github.event_name == 'pull_request'
         with:
           filters: |
             bootstrap:
@@ -83,22 +81,22 @@ jobs:
 
       # browser-sniffer-tauri-rust `include_str!`s a JS bundle generated from
       # the browser-sniffer-tauri TS package. Regenerate it via pnpm when the
-      # bootstrap source changed (or on push); otherwise drop a non-empty stub
-      # long enough to satisfy the crate's `bootstrap_is_non_empty` test.
+      # bootstrap source changed; otherwise drop a non-empty stub long enough to
+      # satisfy the crate's `bootstrap_is_non_empty` test.
       - name: Setup Node
-        if: steps.filter.outputs.bootstrap == 'true' || github.event_name == 'push'
+        if: steps.filter.outputs.bootstrap == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Build Sniffer bootstrap
-        if: steps.filter.outputs.bootstrap == 'true' || github.event_name == 'push'
+        if: steps.filter.outputs.bootstrap == 'true'
         run: |
           set -euo pipefail
           corepack enable
           pnpm install --frozen-lockfile --filter browser-sniffer-tauri...
           pnpm --filter browser-sniffer-tauri run generate-tauri-bootstrap
       - name: Stub Sniffer bootstrap
-        if: steps.filter.outputs.bootstrap != 'true' && github.event_name != 'push'
+        if: steps.filter.outputs.bootstrap != 'true'
         run: |
           set -euo pipefail
           BOOTSTRAP_DIST=slices/browser-sniffer/browser-sniffer-tauri/dist/tauri-bootstrap.js
@@ -122,14 +120,12 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: nextest
+      # The Tauri clippy + nextest invocations go through scripts/checks/rust.sh —
+      # the single source of truth shared with the git hooks — so the crate `-p`
+      # list and nextest flags match local checks. The GTK/webkit libs are
+      # installed above, so the script's `tauri_capable` guard passes and the
+      # steps run for real (locally it self-skips when those libs are absent).
       - name: clippy (tauri crates)
-        run: cargo clippy -p wildflower-tauri -p browser-sniffer-tauri-rust -p shared-structures-tauri-rust --all-targets --all-features -- -D warnings
+        run: ./scripts/checks/rust.sh tauri-clippy
       - name: Run tests (nextest)
-        # --no-tests=warn keeps the run green while these crates have few tests.
-        run: cargo nextest run -p wildflower-tauri -p browser-sniffer-tauri-rust -p shared-structures-tauri-rust --all-features --no-tests=warn
-      - name: Run doctests (main only)
-        # nextest does not run doctests; cover them with cargo test. These crates
-        # have ~no doctests, so this extra compile is restricted to main —
-        # matching ci-rust.yml. Promote to all events once doctests exist.
-        if: github.event_name == 'push'
-        run: cargo test --doc -p wildflower-tauri -p browser-sniffer-tauri-rust -p shared-structures-tauri-rust --all-features
+        run: ./scripts/checks/rust.sh tauri-test

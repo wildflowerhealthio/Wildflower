@@ -14,16 +14,14 @@ name: API Sync
 # TS test matches the `openapi-drift` filter.
 
 on:
-  push:
-    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     # Gated at the trigger to changes that touch either side of any slice's
     # contract, so an unrelated PR never starts this workflow (no
-    # change-detection job needed). Pushes to main have NO paths filter and run
-    # regardless. Broad on purpose: any slice's Rust crate, any TS HttpApi
-    # definition, the shared engine, or a committed snapshot — so a new consumer
-    # needs no edit here.
+    # change-detection job needed). CI is a pre-merge gate only; this workflow no
+    # longer runs on pushes to main. Broad on purpose: any slice's Rust crate,
+    # any TS HttpApi definition, the shared engine, or a committed snapshot — so
+    # a new consumer needs no edit here.
     paths:
       # Any slice's Rust crate (handlers) + its committed snapshot. Also covers
       # the shared Rust snapshot-test helper (`shared-structures-rust`).
@@ -38,16 +36,15 @@ on:
 permissions:
   contents: read
 
-# Cancel superseded PR runs to save the actions budget; pushes to main always
-# run to completion.
+# Cancel superseded PR runs to save the actions budget.
 concurrency:
   group: api-sync-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   rust-snapshot:
     name: Rust Snapshot
-    # Skip on draft PRs; `pull_request` is null on push so the guard is true.
+    # Skip on draft PRs.
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
