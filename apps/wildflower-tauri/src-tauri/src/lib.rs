@@ -161,6 +161,18 @@ async fn run_server(
     let apps = setup_apps(db, &apps_config).context("failed to set up apps")?;
     let gated_apps_admin =
         layer_router_with_gatekeeper_auth_gating(apps.admin_router, gatekeeper.state.clone());
+
+    // The data-management surface (`/databases`): export + delete the host's
+    // SQLite databases. It owns no store — it works at the file level on the
+    // same `app_data_dir` the databases above live in — so it takes only the
+    // directory. Owner-gated like the rest of the admin API.
+    let databases_config = databases_rust::DatabasesConfig {
+        data_dir: runtime.app_data_dir.clone(),
+    };
+    let gated_databases = layer_router_with_gatekeeper_auth_gating(
+        databases_rust::setup_databases(&databases_config),
+        gatekeeper.state.clone(),
+    );
     // The webview page is NOT served from this origin — it loads from
     // the Vite dev server (`http://localhost:1420`) in dev and Tauri's
     // asset protocol (`tauri://localhost`) in builds, while API fetches
@@ -179,6 +191,7 @@ async fn run_server(
         .merge(gated_tunnel)
         .merge(apps.public_router)
         .merge(gated_apps_admin)
+        .merge(gated_databases)
         .fallback(spa::handle_serving_spa_html)
         .layer(CorsLayer::very_permissive());
 

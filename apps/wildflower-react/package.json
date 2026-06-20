@@ -66,6 +66,7 @@
     "collector-core": "workspace:*",
     "collector-fundamentals": "workspace:*",
     "collector-react": "workspace:*",
+    "databases-react": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "effect-messaging-react": "workspace:*",

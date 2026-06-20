@@ -1,0 +1,38 @@
+[package]
+name = "databases-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# The host-side data-management slice: a small RESTy surface over the host's
+# SQLite databases (`health-data.sqlite`, `wildflower.sqlite`). It exports each
+# database as a consistent snapshot (`GET /databases/{id}`) and deletes it on
+# disk (`DELETE /databases/{id}`), plus a metadata listing (`GET /databases`)
+# for the settings screen. Unlike the other `-rust` slices it owns no store and
+# runs no migrations — it works at the file level on databases other slices own,
+# so the host passes it only the data directory. Layered like `apps-rust` /
+# `tunnel-rust`: pure `catalog`/`metadata`/`files` helpers behind the `http`
+# surface, gated by the consumer (the gatekeeper Owner check).
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+serde = { workspace = true }
+serde_json.workspace = true
+utoipa.workspace = true
+utoipa-axum.workspace = true
+rusqlite.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tracing = "0.1"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+# The shared OpenAPI snapshot helper (assert/regenerate the committed spec); only
+# the snapshot test uses it, so it's a dev-dependency with the opt-in feature.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+http = "1"
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
+tempfile = "3"

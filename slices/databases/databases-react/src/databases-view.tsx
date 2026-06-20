@@ -1,0 +1,117 @@
+import { useState, type JSX } from 'react'
+import { cn } from 'react-kitchen-sink'
+import { Dialog, ItemList, PageHeader, pageLayoutStyles, type ItemListItem } from 'react-tundraish'
+
+import { describeDatabase, humanizeBytes } from './format.ts'
+import type { DatabaseMetadata } from './queries.ts'
+
+interface DatabasesViewProps {
+  readonly databases: readonly DatabaseMetadata[]
+  readonly onExport: (id: string) => void
+  readonly onDelete: (id: string) => void
+  /** The id currently exporting, if any (disables that row's buttons). */
+  readonly exportingId: string | null
+  /** The id currently deleting, if any. */
+  readonly deletingId: string | null
+  readonly errorMessage: string | null
+}
+
+/**
+ * Presentational settings screen: one `ItemList` row per database with Download
+ * + Delete actions, and a confirmation dialog gating the destructive delete.
+ * Pure props in, callbacks out — the route screen wires the queries/mutations.
+ */
+const DatabasesView = ({
+  databases,
+  onExport,
+  onDelete,
+  exportingId,
+  deletingId,
+  errorMessage,
+}: DatabasesViewProps): JSX.Element => {
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const confirmTarget = databases.find((database) => database.id === confirmId) ?? null
+
+  const toItem = (database: DatabaseMetadata): ItemListItem => {
+    const busy = exportingId === database.id || deletingId === database.id
+    return {
+      id: database.id,
+      title: database.label,
+      subtitle: describeDatabase(database),
+      meta: database.exists ? humanizeBytes(database.sizeBytes) : 'Empty',
+      tone: database.exists ? 'neutral' : undefined,
+      actions: (
+        <>
+          <button
+            type="button"
+            className="button-2 filled"
+            disabled={!database.exists || busy}
+            onClick={() => onExport(database.id)}
+          >
+            {exportingId === database.id ? 'Downloading…' : 'Download'}
+          </button>
+          <button
+            type="button"
+            className="button-2 filled accent-red"
+            disabled={!database.exists || busy}
+            onClick={() => setConfirmId(database.id)}
+          >
+            Delete
+          </button>
+        </>
+      ),
+    }
+  }
+
+  return (
+    <>
+      <PageHeader title="Your data" backHref="/settings" backLabel="Settings" />
+      <p className="text-body-3">
+        Download a copy of a database to keep, or delete it from this device. Deleting your health
+        data erases your clinical records here; deleting the app database resets access grants,
+        tunnel settings, and the apps catalogue.
+      </p>
+
+      {errorMessage !== null ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
+
+      <ItemList items={databases.map((database) => toItem(database))} />
+
+      <Dialog
+        open={confirmTarget !== null}
+        onClose={() => setConfirmId(null)}
+        title={confirmTarget === null ? '' : `Delete ${confirmTarget.label}?`}
+      >
+        {confirmTarget !== null ? (
+          <>
+            <p className="text-body-3">
+              This permanently deletes <strong>{confirmTarget.id}</strong> from this device. This
+              can't be undone — download a copy first if you might want it back.
+            </p>
+            <div>
+              <button type="button" className="button-2" onClick={() => setConfirmId(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="button-2 filled accent-red"
+                disabled={deletingId === confirmTarget.id}
+                onClick={() => {
+                  onDelete(confirmTarget.id)
+                  setConfirmId(null)
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </>
+        ) : null}
+      </Dialog>
+    </>
+  )
+}
+
+export { DatabasesView, type DatabasesViewProps }

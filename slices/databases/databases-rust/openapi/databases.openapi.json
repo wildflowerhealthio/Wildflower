@@ -1,0 +1,186 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Databases API",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/databases": {
+      "get": {
+        "summary": "`GET /databases` — list every catalogued database with its on-disk metadata\n(existence, size, table count, last-modified). Infallible: a missing or\nunreadable file reports `exists: false` rather than failing the listing.",
+        "operationId": "handle_list_databases",
+        "responses": {
+          "200": {
+            "description": "Metadata for every host database",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DatabaseMetadata"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/databases/{id}": {
+      "get": {
+        "summary": "`GET /databases/{id}` — stream the database file as `application/vnd.sqlite3`\n(a `VACUUM INTO` snapshot, so it's internally consistent even while the\nowning slice is writing). Unknown ids and not-yet-created databases are\n`404 DatabaseNotFound`.",
+        "description": "The body is binary, so this endpoint is documented here (utoipa) but is\nintentionally absent from the `databases-core` Effect `HttpApi`: the React\nclient downloads it through the raw `HttpClient` to get the bytes, not the\ngenerated JSON client. The spec-drift test scopes only the JSON endpoints.",
+        "operationId": "handle_download_database",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Database resource id (filename), e.g. health-data.sqlite",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The database as a consistent SQLite snapshot",
+            "content": {
+              "application/vnd.sqlite3": {}
+            }
+          },
+          "404": {
+            "description": "No database has this id, or it doesn't exist yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "`DELETE /databases/{id}` — remove the database file (and its journal\nsidecars) from disk. Unknown ids and already-absent databases are\n`404 DatabaseNotFound`.",
+        "description": "This deletes the file out from under the slice that owns the live\nconnection. On Unix the open inode survives until that connection closes, so\nthe running server keeps working against the now-unlinked file; the deletion\ntakes full effect on the next restart, when a fresh empty database is\ncreated. (The Owner who triggers this is asking to erase the database — see\nthe settings screen's confirmation.)",
+        "operationId": "handle_delete_database",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Database resource id (filename)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The database file was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No database has this id, or it doesn't exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DatabaseMetadata": {
+        "type": "object",
+        "description": "Metadata for one database, as returned by `GET /databases`. Mirrors the TS\n`DatabaseMetadataSchema` (`databases-core`, `#[serde(rename_all =\n\"camelCase\")]`).",
+        "required": [
+          "id",
+          "label",
+          "description",
+          "exists",
+          "sizeBytes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Resource id == filename, e.g. `health-data.sqlite`."
+          },
+          "label": {
+            "type": "string",
+            "description": "Human label, e.g. `Health data`."
+          },
+          "description": {
+            "type": "string",
+            "description": "One-line description of what the database holds."
+          },
+          "exists": {
+            "type": "boolean",
+            "description": "Whether the file currently exists on disk."
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "File size in bytes (`0` when the file is absent). `u64` serializes to\nOpenAPI `integer`; a SQLite file stays far below `2^53`, so the TS\n`Schema.Int` client reads it losslessly.",
+            "minimum": 0
+          },
+          "tableCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Best-effort count of user tables — the \"fun\" bit of metadata. `None`\nwhen the file is absent or can't be opened (so the field is optional,\nnot required, on the wire — omitted entirely, matching the TS\n`Schema.optional`).",
+            "minimum": 0
+          },
+          "modifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last-modified time as an RFC 3339 string, or `None` when the file is\nabsent or its mtime is unavailable (omitted from the wire when absent)."
+          }
+        }
+      },
+      "DatabaseNotFoundBody": {
+        "type": "object",
+        "description": "Wire shape for a `404 DatabaseNotFound`. Matches the TS\n`DatabaseNotFoundSchema` in `databases-core`.",
+        "required": [
+          "error",
+          "id"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "DeletedBody": {
+        "type": "object",
+        "required": [
+          "deleted"
+        ],
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}
