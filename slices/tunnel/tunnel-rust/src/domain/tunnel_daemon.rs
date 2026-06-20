@@ -260,6 +260,14 @@ impl TunnelDaemon {
 
         let previous = supervisor.take();
         if let Some(SupervisorHandle { cancel, join: _ }) = previous.as_ref() {
+            // A newer revision is taking over: cancel the live supervisor. If
+            // this fires while a tunnel was just verified, it's the "config
+            // update cancels the live tunnel" race — the new revision's dial
+            // starts from scratch.
+            tracing::info!(
+                new_revision = settings.revision,
+                "tunnel: reconcile cancelling the previous supervisor"
+            );
             cancel.cancel();
         }
 
