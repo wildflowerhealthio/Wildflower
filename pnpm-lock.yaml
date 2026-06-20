@@ -299,6 +299,9 @@ importers:
       react-tundraish:
         specifier: workspace:*
         version: link:../../global/react-tundraish
+      tundra-css:
+        specifier: 'catalog:'
+        version: 0.14.0
     devDependencies:
       '@testing-library/dom':
         specifier: ^10.4.0

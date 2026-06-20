@@ -16,7 +16,8 @@
     "@fontsource-variable/spline-sans-mono": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-tundraish": "workspace:*"
+    "react-tundraish": "workspace:*",
+    "tundra-css": "catalog:"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.0",
