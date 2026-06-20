@@ -9,13 +9,13 @@
   flex: 1;
 }
 
-/* Box/colour/focus all come from tundra's `.input-3`; only the fluid width is
+/* Box/colour/focus all come from tundra's `.input-4`; only the fluid width is
  * the form's own concern. */
 .beta-form__input {
   width: 100%;
 }
 
-/* Box/colour/hover/dark all come from tundra's `.button-3 .filled` (plum fill,
+/* Box/colour/hover/dark all come from tundra's `.button-4 .filled` (plum fill,
  * cream label, from the shared accent ramp); the form only keeps the label on
  * one line. */
 .beta-form__submit {

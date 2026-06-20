@@ -59,7 +59,7 @@ function BetaForm({ variant }: { readonly variant: BetaFormVariant }): JSX.Eleme
           Email address
         </label>
         <input
-          className={`input-3 ${styles['beta-form__input']}`}
+          className={`input-4 ${styles['beta-form__input']}`}
           id={inputId}
           name="email"
           type="email"
@@ -68,7 +68,7 @@ function BetaForm({ variant }: { readonly variant: BetaFormVariant }): JSX.Eleme
           autoComplete="email"
         />
       </div>
-      <button className={`button-3 filled ${styles['beta-form__submit']}`} type="submit">
+      <button className={`button-4 filled ${styles['beta-form__submit']}`} type="submit">
         {copy.button}
       </button>
     </form>
