@@ -318,6 +318,14 @@ pub fn run() {
             // event bus — no Rust forwarding is needed for them.
             browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
 
+            // Wire the sandboxed-webview launch flow: the apps SPA's
+            // `RequestSandboxedWebView { url }` opens the resolved launch URL
+            // in the shared, less-privileged sandboxed webview, and that
+            // window's top bar emits `CloseSandboxedWebView` to dismiss it.
+            // Both `listen` synchronously, so neither can miss a webview event.
+            bridge::attach_apps_sandboxed_webview_bridge(app.handle());
+            shared_structures_tauri_rust::attach_close_listener(app.handle());
+
             let error_handle = app.handle().clone();
             // The server task wires the apps `RequestTunnel` bridge handler once
             // the tunnel service is built, so it needs an app handle to listen

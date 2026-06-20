@@ -10,6 +10,19 @@ import { Bridge } from 'effect-messaging-core'
 const RequestTunnel = Schema.parseJson(Schema.TaggedStruct('RequestTunnel', {}))
 
 /**
+ * Web → Host: the apps SPA asks the host to open a launched app in the
+ * less-privileged sandboxed webview (a separate window with the shared browser
+ * top bar) instead of navigating the main webview away from the SPA. `url` is
+ * the fully-resolved launch URL (origin + `/apps/{id}`); the host opens it,
+ * following the launch redirect itself. Fire-and-forget — there is no host→web
+ * reply, and a non-Tauri (standalone-web) page never emits this (it navigates
+ * directly instead).
+ */
+const RequestSandboxedWebView = Schema.parseJson(
+  Schema.TaggedStruct('RequestSandboxedWebView', { url: Schema.String })
+)
+
+/**
  * Host → Web: the host successfully started a tunnel; `origin` is the
  * publicly-reachable origin the SPA should redirect to in order to
  * launch a tunnel-requiring app.
@@ -34,15 +47,17 @@ type AppsBridge = Bridge.Bridge<
   },
   {
     RequestTunnel: typeof RequestTunnel
+    RequestSandboxedWebView: typeof RequestSandboxedWebView
   }
 >
 
 /**
- * Slice-level bridge between the embedded apps SPA and the Expo host.
- * Web→Host carries the tunnel-request control signal; Host→Web carries
- * the tunnel start/fail outcome the SPA waits on before redirecting to
- * a tunnel-requiring app. The transport-level `__Ready` handshake
- * already covers mount synchronisation — no slice-level `Ready` tag.
+ * Slice-level bridge between the embedded apps SPA and the Tauri/Expo host.
+ * Web→Host carries the tunnel-request control signal and the
+ * open-in-sandboxed-webview launch request; Host→Web carries the tunnel
+ * start/fail outcome the SPA waits on before redirecting to a tunnel-requiring
+ * app. The transport-level `__Ready` handshake already covers mount
+ * synchronisation — no slice-level `Ready` tag.
  */
 const AppsBridge: AppsBridge = Bridge.make({
   name: 'Apps',
@@ -50,7 +65,16 @@ const AppsBridge: AppsBridge = Bridge.make({
     ['TunnelStarted', TunnelStarted],
     ['TunnelFailed', TunnelFailed],
   ] as const,
-  webToHost: [['RequestTunnel', RequestTunnel]] as const,
+  webToHost: [
+    ['RequestTunnel', RequestTunnel],
+    ['RequestSandboxedWebView', RequestSandboxedWebView],
+  ] as const,
 })
 
-export { AppsBridge, RequestTunnel, TunnelFailed, TunnelStarted }
+export {
+  AppsBridge,
+  RequestSandboxedWebView,
+  RequestTunnel,
+  TunnelFailed,
+  TunnelStarted,
+}

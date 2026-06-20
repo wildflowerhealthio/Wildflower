@@ -5648,6 +5648,9 @@ name = "shared-structures-tauri-rust"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "serde",
+ "serde_json",
+ "shared-structures-rust",
  "tauri",
  "tauri-plugin-log",
  "url",
@@ -7475,6 +7478,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shared-structures-rust",
+ "shared-structures-tauri-rust",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use apps_rust::bridge::{AppsHostToWeb, REQUEST_TUNNEL_TAG};
+use apps_rust::bridge::{AppsHostToWeb, REQUEST_SANDBOXED_WEBVIEW_TAG, REQUEST_TUNNEL_TAG};
 use gatekeeper_rust::bridge::GatekeeperHostToWeb;
 use serde::Deserialize;
 use shared_structures_rust::bridge::BRIDGE_EVENT;
@@ -466,6 +466,56 @@ fn is_request_tunnel(payload: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Wire the apps slice's `RequestSandboxedWebView` web→host handler onto the
+/// bridge.
+///
+/// The embedded SPA emits `bridge:RequestSandboxedWebView { url }` when
+/// launching an app inside the Tauri host: instead of navigating the main
+/// webview away from the SPA, the host opens the resolved launch URL in the
+/// shared, less-privileged sandboxed webview (a separate window carrying the
+/// browser top bar). The matching close path — `bridge:CloseSandboxedWebView`,
+/// emitted by that window's top bar — is wired separately by
+/// `shared_structures_tauri_rust::attach_close_listener`.
+///
+/// Multiple listeners share `BRIDGE_EVENT`; this one decodes only the
+/// envelope's `_tag` (+ `url`) and acts solely on `RequestSandboxedWebView`,
+/// dropping every other tag (host→web echoes, sibling slices' traffic).
+pub fn attach_apps_sandboxed_webview_bridge(app: &AppHandle) {
+    log::info!("[bridge] listening on '{BRIDGE_EVENT}' for tags: [{REQUEST_SANDBOXED_WEBVIEW_TAG}]");
+    let handle = app.clone();
+    app.listen(BRIDGE_EVENT, move |event| {
+        let Some(url) = parse_request_sandboxed_webview(event.payload()) else {
+            return;
+        };
+        let webview_url = match shared_structures_tauri_rust::resolve_http_url(&url) {
+            Ok(webview_url) => webview_url,
+            Err(error) => {
+                log::warn!("[bridge] RequestSandboxedWebView rejected: {error}");
+                return;
+            }
+        };
+        if let Err(error) = shared_structures_tauri_rust::open_or_navigate(&handle, webview_url) {
+            log::error!("[bridge] failed to open sandboxed webview: {error}");
+        }
+    });
+}
+
+/// Decode a `RequestSandboxedWebView` envelope to its `url`, or `None` for any
+/// other tag / malformed payload (host→web echoes and sibling traffic don't
+/// carry the tag).
+fn parse_request_sandboxed_webview(payload: &str) -> Option<String> {
+    #[derive(Deserialize)]
+    struct Msg {
+        #[serde(rename = "_tag")]
+        tag: String,
+        url: String,
+    }
+    serde_json::from_str::<Msg>(payload)
+        .ok()
+        .filter(|message| message.tag == REQUEST_SANDBOXED_WEBVIEW_TAG)
+        .map(|message| message.url)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -496,6 +546,26 @@ mod tests {
         assert!(!is_request_tunnel(r#"{"_tag":"AuthTokenIssued"}"#));
         assert!(!is_request_tunnel(r#"{"_tag":42}"#));
         assert!(!is_request_tunnel("not json"));
+    }
+
+    #[test]
+    fn parse_request_sandboxed_webview_extracts_url_for_the_right_tag() {
+        assert_eq!(
+            parse_request_sandboxed_webview(
+                r#"{"_tag":"RequestSandboxedWebView","url":"http://127.0.0.1:8080/apps/patient-browser"}"#
+            ),
+            Some("http://127.0.0.1:8080/apps/patient-browser".to_string())
+        );
+        // Wrong tag, missing url, host→web echoes, and malformed payloads → None.
+        assert_eq!(
+            parse_request_sandboxed_webview(r#"{"_tag":"RequestTunnel"}"#),
+            None
+        );
+        assert_eq!(
+            parse_request_sandboxed_webview(r#"{"_tag":"RequestSandboxedWebView"}"#),
+            None
+        );
+        assert_eq!(parse_request_sandboxed_webview("not json"), None);
     }
 
     #[test]

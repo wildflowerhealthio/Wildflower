@@ -32,6 +32,12 @@ pub enum AppsHostToWeb {
 /// `Schema.TaggedStruct('RequestTunnel', {})` in `apps-core/src/bridge.ts`.
 pub const REQUEST_TUNNEL_TAG: &str = "RequestTunnel";
 
+/// The web→host `RequestSandboxedWebView` tag literal, pinned against the TS
+/// schema's `Schema.TaggedStruct('RequestSandboxedWebView', { url })` in
+/// `apps-core/src/bridge.ts`. The host (wildflower-tauri) decodes the `url`
+/// field and opens it in the shared sandboxed webview.
+pub const REQUEST_SANDBOXED_WEBVIEW_TAG: &str = "RequestSandboxedWebView";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,5 +85,13 @@ mod tests {
         // The inbound envelope is `{"_tag":"RequestTunnel"}` (no fields); the
         // host routes on this literal.
         assert_eq!(REQUEST_TUNNEL_TAG, "RequestTunnel");
+    }
+
+    #[test]
+    fn request_sandboxed_webview_tag_matches_the_ts_schema() {
+        // The inbound envelope is
+        // `{"_tag":"RequestSandboxedWebView","url":"..."}`; the host routes on
+        // this literal and reads the `url` field.
+        assert_eq!(REQUEST_SANDBOXED_WEBVIEW_TAG, "RequestSandboxedWebView");
     }
 }

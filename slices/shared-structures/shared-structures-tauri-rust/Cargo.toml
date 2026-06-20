@@ -14,6 +14,10 @@ publish.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
 anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# For the shared `BRIDGE_EVENT` channel literal the close listener wires onto.
+shared-structures-rust = { path = "../shared-structures-rust" }
 url = "2"
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).

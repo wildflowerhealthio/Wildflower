@@ -46,6 +46,9 @@ persistence-rust = { path = "../../../slices/persistence/persistence-rust" }
 shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust", features = [
   "health-check",
 ] }
+# The generic sandboxed-webview opener (+ its top-bar bootstrap and close
+# listener) the apps launch flow drives via the AppsBridge.
+shared-structures-tauri-rust = { path = "../../../slices/shared-structures/shared-structures-tauri-rust" }
 tunnel-rust = { path = "../../../slices/tunnel/tunnel-rust" }
 # Serves the vendored patient-browser SPA under /installed-apps/patient-browser/
 # (the launch redirect's target). No tauri dep of its own — it's a plain axum
