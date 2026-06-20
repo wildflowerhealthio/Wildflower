@@ -44,7 +44,7 @@ use tokio_util::sync::CancellationToken;
 
 use shared_structures_rust::tunnel_service::{TunnelLiveness, TunnelStatus};
 
-use crate::domain::{RelayClient, TunnelSettings};
+use crate::domain::{RelayClient, RelaySettings, TunnelSettings};
 use crate::health::HealthProbe;
 
 /// Message shown when the tunnel is requested on but the relay isn't configured.
@@ -118,6 +118,13 @@ impl Default for ProbeTiming {
 struct SupervisorHandle {
     cancel: CancellationToken,
     join: JoinHandle<()>,
+    /// The dialable identity this supervisor is driving: its relay connection
+    /// and public host. A reconcile to a newer revision whose dialable config
+    /// matches is a no-op — the live tunnel is already correct, so it must not
+    /// be cancelled and re-dialed (which would drop in-flight requests and flap
+    /// the public origin).
+    relay_settings: Option<RelaySettings>,
+    public_host: Option<String>,
 }
 
 pub struct TunnelDaemon {
@@ -258,12 +265,33 @@ impl TunnelDaemon {
             }
         }
 
+        // No-op reconcile: the live supervisor is already driving this exact
+        // dialable config (relay + public host) and the tunnel is still
+        // requested on. A bare revision bump (e.g. a settings save that didn't
+        // touch the relay, or a launch re-asserting `requested_running`) must
+        // not cancel and re-dial a working tunnel — that drops every in-flight
+        // request through it and flaps the public origin. The persisted/wire
+        // revision still advances (the response reads it from the DB settings);
+        // only the live supervisor is left untouched.
+        if settings.requested_running {
+            if let Some(handle) = supervisor.as_ref() {
+                if handle.relay_settings == settings.relay_settings
+                    && handle.public_host == settings.public_host
+                {
+                    tracing::info!(
+                        new_revision = settings.revision,
+                        "tunnel: reconcile keeps the live tunnel (dialable config unchanged)"
+                    );
+                    return;
+                }
+            }
+        }
+
         let previous = supervisor.take();
-        if let Some(SupervisorHandle { cancel, join: _ }) = previous.as_ref() {
-            // A newer revision is taking over: cancel the live supervisor. If
-            // this fires while a tunnel was just verified, it's the "config
-            // update cancels the live tunnel" race — the new revision's dial
-            // starts from scratch.
+        if let Some(SupervisorHandle { cancel, .. }) = previous.as_ref() {
+            // A newer revision with a different dialable config (or an off/
+            // misconfigured request) is taking over: gracefully cancel the live
+            // supervisor. The new supervisor drains it before dialing.
             tracing::info!(
                 new_revision = settings.revision,
                 "tunnel: reconcile cancelling the previous supervisor"
@@ -326,7 +354,12 @@ impl TunnelDaemon {
             },
         ));
 
-        *supervisor = Some(SupervisorHandle { cancel, join });
+        *supervisor = Some(SupervisorHandle {
+            cancel,
+            join,
+            relay_settings: settings.relay_settings.clone(),
+            public_host: settings.public_host.clone(),
+        });
     }
 }
 
@@ -846,5 +879,66 @@ mod tests {
             .clone();
         assert_eq!(after_clean_exit.status, TunnelStatus::Dialing);
         assert!(after_clean_exit.error.is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reconcile_with_unchanged_dialable_config_keeps_the_live_tunnel() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        // Counts how many times the relay is dialed. A no-op reconcile (a bare
+        // revision bump with the same relay + public host) must not re-dial.
+        struct CountingHoldRelayClient(Arc<AtomicUsize>);
+        #[async_trait::async_trait]
+        impl RelayClient for CountingHoldRelayClient {
+            async fn run_once(
+                &self,
+                _relay: &RelaySettings,
+                _local_addr: &str,
+                cancel: CancellationToken,
+            ) -> anyhow::Result<()> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                cancel.cancelled().await;
+                Ok(())
+            }
+        }
+
+        let dials = Arc::new(AtomicUsize::new(0));
+        let daemon = daemon_with(
+            Arc::new(CountingHoldRelayClient(Arc::clone(&dials))),
+            Arc::new(StubProbe::passing()),
+        );
+        let mut rx = daemon.watch_liveness();
+        daemon.reconcile(&running_settings(1, Some("dev1.example.com")));
+        rx.wait_for(|l| l.status == TunnelStatus::Verified)
+            .await
+            .expect("first session verifies");
+        assert_eq!(dials.load(Ordering::SeqCst), 1, "dialed once to come up");
+
+        // A newer revision with the *same* relay + public host (e.g. a settings
+        // save that didn't touch the relay). The live tunnel must be left alone.
+        daemon.reconcile(&running_settings(2, Some("dev1.example.com")));
+        // Give any (erroneously) spawned replacement supervisor a chance to dial.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(
+            dials.load(Ordering::SeqCst),
+            1,
+            "a no-op reconcile must not re-dial the relay"
+        );
+        assert_eq!(
+            rx.borrow().status,
+            TunnelStatus::Verified,
+            "the tunnel stays verified across a no-op reconcile"
+        );
+
+        // A revision that *does* change the public host re-dials.
+        daemon.reconcile(&running_settings(3, Some("dev2.example.com")));
+        rx.wait_for(|l| l.status == TunnelStatus::Verified)
+            .await
+            .expect("re-dials and re-verifies on a real config change");
+        assert_eq!(
+            dials.load(Ordering::SeqCst),
+            2,
+            "a changed public host re-dials"
+        );
     }
 }

@@ -15,8 +15,13 @@ use crate::http::state::TunnelState;
 /// `PUT /tunnel` — full-replace of the visible settings under the caller's
 /// `revision` token. A stale revision returns 409 with the current snapshot so
 /// the client can rebase; a winning write bumps the revision, reconciles the
-/// live supervisor, and returns the new snapshot. Collected into the `OpenAPI`
-/// doc via `routes!` in the parent module, which reads this `#[utoipa::path]`.
+/// live supervisor, then — like the launch seam — **awaits the liveness
+/// settling** (a `/health` probe verifies, or the verify deadline elapses)
+/// before returning, so the snapshot reflects *real* reachability rather than an
+/// optimistic `dialing`. A no-op change (same dialable config on an already-up
+/// tunnel) returns immediately `verified` — `reconcile` leaves the live tunnel
+/// untouched, so there's nothing to wait for. Collected into the `OpenAPI` doc
+/// via `routes!` in the parent module, which reads this `#[utoipa::path]`.
 #[utoipa::path(
     put,
     path = "/tunnel",
@@ -43,6 +48,12 @@ pub(super) async fn handle_put_tunnel(
     match settings_update_outcome {
         SettingsUpdateOutcome::Applied(settings) => {
             state.daemon.reconcile(&settings);
+            // Await the liveness settling (verified / terminal / deadline) so the
+            // response carries real reachability — the same verify seam the
+            // launch path uses. The verdict itself is surfaced through the
+            // snapshot below (status/error/servedOrigin), so discard the
+            // `Result` here.
+            let _ = crate::control::await_verified(&state).await;
             Ok((
                 StatusCode::OK,
                 Json(TunnelStateResponse::from_current_state(

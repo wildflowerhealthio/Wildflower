@@ -94,15 +94,24 @@ async fn start_and_verify(state: &Arc<TunnelState>) -> Result<String, String> {
     }
 
     persist_start(state).await?;
+    tracing::info!("tunnel launch: persisted start, waiting for the tunnel to verify");
+    await_verified(state).await
+}
 
+/// Await the daemon's liveness reaching a verdict: `Verified` → `Ok(origin)`, a
+/// terminal `Misconfigured`/`Off` → the matching error, otherwise wait up to the
+/// daemon's [`verify_deadline`](crate::domain::TunnelDaemon::verify_deadline)
+/// for a `/health` probe to verify reachability (a caller shouldn't hang on a
+/// dead tunnel). Shared by the launch seam ([`start_and_verify`]) and the
+/// settings `PUT` so both report *real* reachability rather than an optimistic
+/// `Dialing`. Returns immediately when the liveness already holds a verdict
+/// (e.g. a no-op reconcile that left a `Verified` tunnel untouched).
+pub(crate) async fn await_verified(state: &Arc<TunnelState>) -> Result<String, String> {
+    let mut rx = state.daemon.watch_liveness();
     // Long enough for the first probe to land (one interval) and complete (one
     // timeout); shorter and a healthy-but-slow tunnel loses the race.
     let deadline_after = state.daemon.verify_deadline();
     let started = tokio::time::Instant::now();
-    tracing::info!(
-        deadline = ?deadline_after,
-        "tunnel launch: persisted start, waiting for the tunnel to verify"
-    );
     let deadline = tokio::time::sleep(deadline_after);
     tokio::pin!(deadline);
     // The most recent concrete failure seen while dialing. The live `error` is
@@ -116,11 +125,7 @@ async fn start_and_verify(state: &Arc<TunnelState>) -> Result<String, String> {
             let live = rx.borrow_and_update();
             if let Some(verdict) = verdict(&live) {
                 if let Ok(origin) = &verdict {
-                    tracing::info!(
-                        %origin,
-                        elapsed = ?started.elapsed(),
-                        "tunnel launch: verified"
-                    );
+                    tracing::info!(%origin, elapsed = ?started.elapsed(), "tunnel: verified");
                 }
                 return verdict;
             }
@@ -138,7 +143,7 @@ async fn start_and_verify(state: &Arc<TunnelState>) -> Result<String, String> {
                 tracing::warn!(
                     deadline = ?deadline_after,
                     last_error = last_error.as_deref(),
-                    "tunnel launch: deadline elapsed before the tunnel verified \
+                    "tunnel: deadline elapsed before the tunnel verified \
                      (if rathole/probe logs show it coming up just after this, the \
                      deadline is too tight for a cold start)"
                 );
