@@ -40,6 +40,19 @@ non_tauri=(--workspace
 tauri=(-p wildflower-tauri -p browser-sniffer-tauri-rust -p shared-structures-tauri-rust)
 tauri_names=" wildflower-tauri browser-sniffer-tauri-rust shared-structures-tauri-rust "
 
+# Exact-match a crate name against the Tauri set. Iterating + string equality
+# avoids the substring ambiguity a `case "$tauri_names" in *" $n "*)` glob would
+# carry (e.g. shared-structures-rust vs shared-structures-tauri-rust).
+is_tauri_crate() {
+  local n="$1" t
+  for t in $tauri_names; do
+    if [ "$n" = "$t" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 run_tests() { # usage: run_tests <pkg-selection...>
   if have cargo-nextest; then
     # --no-tests=warn matches CI: stay green while these crates have ~no tests.
@@ -72,16 +85,17 @@ do_tauri_test() {
 
 # Lightweight "changed crates vs origin/main" scoping, used only by the hook
 # composites (pre-commit / pre-push) — CI keeps the full --workspace runs above.
-# rust-affected.mjs prints the affected crate names (changed + their dependents),
+# rust-affected.ts prints the affected crate names (changed + their dependents),
 # `__WORKSPACE__` when it can't scope safely, or nothing when no Rust files
 # changed. node is part of the repo's toolchain; if it's somehow missing we fall
-# back to the full workspace rather than skip coverage.
-affected_crates() {
+# back to the full workspace rather than skip coverage. Any extra args (e.g.
+# `HEAD` for pre-push) are forwarded to select the diff endpoint.
+affected_crates() { # usage: affected_crates [diff-endpoint]
   if ! have node; then
     echo '__WORKSPACE__'
     return 0
   fi
-  node "$(dirname "$0")/rust-affected.ts" || echo '__WORKSPACE__'
+  node "$(dirname "$0")/rust-affected.ts" "$@" || echo '__WORKSPACE__'
 }
 
 # usage: run_changed <clippy|test> <non-tauri|tauri> <affected-output>
@@ -108,10 +122,11 @@ run_changed() {
 
   pflags=''
   for n in $affected; do
-    case "$tauri_names" in
-      *" $n "*) if [ "$part" = tauri ]; then pflags="$pflags -p $n"; fi ;;
-      *) if [ "$part" = non-tauri ]; then pflags="$pflags -p $n"; fi ;;
-    esac
+    if is_tauri_crate "$n"; then
+      if [ "$part" = tauri ]; then pflags="$pflags -p $n"; fi
+    else
+      if [ "$part" = non-tauri ]; then pflags="$pflags -p $n"; fi
+    fi
   done
 
   if [ -z "$pflags" ]; then
@@ -145,7 +160,10 @@ case "$step" in
     run_changed clippy tauri "$affected"
     ;;
   pre-push)
-    affected="$(affected_crates)"
+    # Scope to the committed push range (origin/main..HEAD), not the working
+    # tree — pass HEAD as the diff endpoint so dirty/unstaged edits don't widen
+    # or narrow what gets tested before it leaves the machine.
+    affected="$(affected_crates HEAD)"
     run_changed test non-tauri "$affected"
     run_changed test tauri "$affected"
     ;;

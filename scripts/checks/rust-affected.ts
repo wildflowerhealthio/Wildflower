@@ -40,7 +40,9 @@ const decodeMetadata = Schema.decodeUnknownSync(Metadata)
 interface Crate {
   readonly name: string
   readonly relDir: string
-  readonly deps: readonly string[]
+  // Directories of this crate's in-workspace path deps (relative to the
+  // workspace root), used to build the reverse-dep graph by location.
+  readonly depDirs: readonly string[]
 }
 
 const sh = (cmd: string): Effect.Effect<string, Error> =>
@@ -70,10 +72,17 @@ const reverseDepClosure = (
 }
 
 const affected = Effect.gen(function* () {
-  // Base = merge-base with origin/main; compare it against the working tree so
-  // staged AND unstaged edits count (the pre-commit change isn't in HEAD yet).
+  // Base = merge-base with origin/main. The optional `HEAD` argv (passed by the
+  // pre-push hook) diffs the committed push range `base..HEAD`, scoping to what
+  // is actually being pushed rather than the dirty working tree. With no arg
+  // (pre-commit) we diff base against the working tree so staged AND unstaged
+  // edits count (the pre-commit change isn't in HEAD yet). Only `HEAD` is
+  // accepted as the endpoint — anything else is ignored — so nothing
+  // attacker-controlled reaches the shell.
+  const endpoint = process.argv[2] === 'HEAD' ? 'HEAD' : undefined
   const base = yield* sh('git merge-base origin/main HEAD')
-  const changed = splitLines(yield* sh(`git diff --name-only ${base}`))
+  const range = endpoint === undefined ? base : `${base} ${endpoint}`
+  const changed = splitLines(yield* sh(`git diff --name-only ${range}`))
 
   if (changed.some((file) => GLOBAL_FILES.has(file))) return [WORKSPACE]
 
@@ -86,14 +95,25 @@ const affected = Effect.gen(function* () {
   const crates: readonly Crate[] = meta.packages.map((p) => ({
     name: p.name,
     relDir: relative(meta.workspace_root, dirname(p.manifest_path)),
-    deps: p.dependencies.filter((d) => d.path !== undefined).map((d) => d.name),
+    // Match in-workspace deps by their on-disk directory, not by name. A renamed
+    // path dep (`foo = { path = "…", package = "real" }`) can surface the alias
+    // in cargo's dep fields, but the resolved `path` always points at the real
+    // crate dir — so directory matching can't drop a dependent edge.
+    depDirs: p.dependencies.flatMap((d) =>
+      d.path === undefined ? [] : [relative(meta.workspace_root, d.path)]
+    ),
   }))
-  const names = new Set(crates.map((c) => c.name))
+
+  const nameByDir = new Map<string, string>()
+  for (const c of crates) nameByDir.set(c.relDir, c.name)
 
   const reverse = new Map<string, Set<string>>()
   for (const c of crates) reverse.set(c.name, new Set())
   for (const c of crates) {
-    for (const dep of c.deps) if (names.has(dep)) reverse.get(dep)?.add(c.name)
+    for (const depDir of c.depDirs) {
+      const depName = nameByDir.get(depDir)
+      if (depName !== undefined) reverse.get(depName)?.add(c.name)
+    }
   }
 
   // Map each changed file to its owning crate (longest matching dir prefix).
