@@ -288,15 +288,21 @@ impl TunnelDaemon {
         }
 
         let previous = supervisor.take();
-        if let Some(SupervisorHandle { cancel, .. }) = previous.as_ref() {
+        if let Some(prev) = previous.as_ref() {
             // A newer revision with a different dialable config (or an off/
             // misconfigured request) is taking over: gracefully cancel the live
-            // supervisor. The new supervisor drains it before dialing.
+            // supervisor. The new supervisor drains it before dialing. The
+            // `*_changed` flags say why this wasn't a no-op (which field of the
+            // dialable config the incoming revision differs on) — invaluable for
+            // diagnosing a spurious settings write that flaps a live tunnel.
             tracing::info!(
                 new_revision = settings.revision,
+                new_requested_running = settings.requested_running,
+                public_host_changed = prev.public_host != settings.public_host,
+                relay_changed = prev.relay_settings != settings.relay_settings,
                 "tunnel: reconcile cancelling the previous supervisor"
             );
-            cancel.cancel();
+            prev.cancel.cancel();
         }
 
         let cancel = CancellationToken::new();
