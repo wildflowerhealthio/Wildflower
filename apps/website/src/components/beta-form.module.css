@@ -9,50 +9,17 @@
   flex: 1;
 }
 
+/* Box/colour/focus all come from tundra's `.input-2`; only the fluid width is
+ * the form's own concern. */
 .beta-form__input {
   width: 100%;
-  padding: 15px 16px;
-  border: 1px solid var(--border-input);
-  border-radius: var(--radius-input);
-  background: var(--color-cream-raised);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
-  font-size: 15px;
 }
 
-.beta-form__input:focus {
-  outline: none;
-  border-color: var(--color-magenta);
-}
-
+/* Box/colour/hover/dark all come from tundra's `.button-2 .filled` (plum fill,
+ * cream label, from the shared accent ramp); the form only keeps the label on
+ * one line. */
 .beta-form__submit {
-  border: none;
-  border-radius: var(--radius-input);
-  padding: 15px 24px;
-  font-family: var(--font-sans);
-  font-weight: 600;
-  font-size: 15px;
   white-space: nowrap;
-  cursor: pointer;
-  transition: var(--transition-ui);
-}
-
-.beta-form__submit--hero {
-  background: var(--color-magenta);
-  color: var(--color-cream-raised);
-}
-
-.beta-form__submit--hero:hover {
-  background: var(--color-magenta-hover);
-}
-
-.beta-form__submit--cta {
-  background: var(--color-ink);
-  color: var(--color-cream-raised);
-}
-
-.beta-form__submit--cta:hover {
-  background: var(--color-magenta);
 }
 
 .beta-form__success {
@@ -90,21 +57,5 @@
 
   .beta-form__success {
     max-width: 100%;
-  }
-}
-
-/* Dark mode — the submit fills carry a cream label, so use the darker copper
- * accent-fill (the light gold --color-plum gives only ~2.2:1 under cream).
- * The hover deepens one rung further. */
-@media (prefers-color-scheme: dark) {
-  .beta-form__submit--hero,
-  .beta-form__submit--cta {
-    background: var(--color-accent-fill);
-    color: #fbf4e9;
-  }
-
-  .beta-form__submit--hero:hover,
-  .beta-form__submit--cta:hover {
-    background: var(--color-accent-fill-hover);
   }
 }

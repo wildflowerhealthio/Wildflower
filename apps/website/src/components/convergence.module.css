@@ -22,7 +22,7 @@
 }
 
 .convergence__title em {
-  color: var(--color-magenta);
+  color: var(--color-accent-4);
   font-style: italic;
 }
 
@@ -51,11 +51,10 @@
 }
 
 /* --- Standardized record card --- */
+/* Surface/border/radius/shadow come from the shared `.card` utility; the record
+ * only owns its inner padding. */
 .record {
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-card);
   padding: 24px;
-  background: var(--color-cream-raised);
 }
 
 .record__header {
@@ -141,9 +140,11 @@
   transition: var(--transition-ui);
 }
 
+/* Selected = the accent fill with a cream label, the same treatment tundra's
+ * filled buttons use (plum in light, the warm gold in dark). */
 .chip--active {
-  background: var(--color-plum);
-  color: var(--color-cream);
+  background: var(--color-accent-5);
+  color: var(--color-raised);
 }
 
 /* --- Connectable apps --- */
@@ -153,7 +154,7 @@
 
 .apps__label {
   margin-bottom: 6px;
-  color: var(--color-magenta);
+  color: var(--color-accent-4);
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.16em;
@@ -183,9 +184,9 @@
 }
 
 .app-card--active {
-  border: 1.5px solid var(--color-plum);
-  background: var(--color-plum);
-  color: var(--color-cream);
+  border: 1.5px solid var(--color-accent-5);
+  background: var(--color-accent-5);
+  color: var(--color-raised);
   box-shadow: var(--shadow-app-selected);
 }
 
@@ -321,13 +322,12 @@
   }
 }
 
-/* Dark mode — the active chip / app card carry a cream label, so fill with the
- * darker copper accent-fill (the base `--color-plum` is a light gold on dark,
- * only ~2.2:1 under cream) rather than the flipped `--color-cream`. */
+/* Dark mode — keep the cream label on the accent fill (the `--color-raised`
+ * label flips dark on its own, so re-pin it), mirroring tundra's filled
+ * buttons. The accent-5 background flips with the shared theme on its own. */
 @media (prefers-color-scheme: dark) {
   .chip--active,
   .app-card--active {
-    background: var(--color-accent-fill);
     color: #fbf4e9;
   }
 }

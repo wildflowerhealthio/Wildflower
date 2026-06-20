@@ -50,14 +50,10 @@
   --color-muted-gray: var(--color-neutral-5); /* captions, meta */
   --color-chip-text: var(--color-chip-foreground); /* resting chip text */
 
-  /* Accent — the magenta/plum relics collapse into the shared plum/rose ramp:
-   * level 4 is the rose used for links / emphasis, level 5 the plum used for
-   * active / selected fills, level 6 a deeper plum for hover. */
-  --color-magenta: var(--color-accent-4); /* primary accent (links, eyebrows) */
-  --color-magenta-hover: var(--color-accent-6); /* accent hover deepen */
-  --color-plum: var(--color-accent-5); /* active / selected fill */
-  --color-accent-fill: var(--color-accent-5); /* filled-control background */
-  --color-accent-fill-hover: var(--color-accent-6); /* filled-control hover */
+  /* The old magenta / plum / magenta-hover accent relics are gone — components
+   * read the shared plum/rose ramp (`--color-accent-4` rose for links &
+   * emphasis, `--color-accent-5` plum for active/selected fills) directly, and
+   * buttons read it through tundra's `.filled` / `.outline`. */
 
   /* Functional — source dots and the success chip. */
   --color-amber: #d99a2b; /* source dot (labs, steps) — decorative, mode-agnostic */

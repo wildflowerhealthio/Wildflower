@@ -3,7 +3,7 @@ import type { FormEvent, JSX } from 'react'
 
 import styles from './beta-form.module.css'
 
-/** Which page the form sits on — drives button style + the copy. */
+/** Which page the form sits on — drives the copy and the leading success dot. */
 type BetaFormVariant = 'hero' | 'cta'
 
 const COPY: Record<BetaFormVariant, { button: string; success: string; dot: boolean }> = {
@@ -59,7 +59,7 @@ function BetaForm({ variant }: { readonly variant: BetaFormVariant }): JSX.Eleme
           Email address
         </label>
         <input
-          className={styles['beta-form__input']}
+          className={`input-2 ${styles['beta-form__input']}`}
           id={inputId}
           name="email"
           type="email"
@@ -68,10 +68,7 @@ function BetaForm({ variant }: { readonly variant: BetaFormVariant }): JSX.Eleme
           autoComplete="email"
         />
       </div>
-      <button
-        className={`${styles['beta-form__submit']} ${styles[`beta-form__submit--${variant}`]}`}
-        type="submit"
-      >
+      <button className={`button-2 filled ${styles['beta-form__submit']}`} type="submit">
         {copy.button}
       </button>
     </form>
