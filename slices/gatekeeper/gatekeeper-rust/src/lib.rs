@@ -42,9 +42,21 @@ pub use http::{
 /// own client registration during bootstrap.
 pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";
 
-/// OAuth scope that grants full Owner-level access to the gatekeeper's
-/// `/access/*` admin surface.
-pub const OWNER_SCOPE: &str = "owner";
+/// OAuth scope that grants Owner-level access to the gatekeeper's
+/// `/access/*` admin surface (client management, grant revocation, owner
+/// consent endpoints). **Not** a SMART v2 scope and not parseable by
+/// helios-auth's scope policy — `require_auth` does an exact-string match
+/// against this constant. Pairing it with [`FULL_FHIR_ACCESS_SCOPE`] in
+/// the owner token gives the host both admin and FHIR access without
+/// overloading either scope's meaning.
+pub const OWNER_SCOPE: &str = "wildflower/admin";
+
+/// SMART v2 wildcard meaning "create / read / update / delete / search on
+/// every resource type at the system access level". HFS's helios-auth scope
+/// policy parses this and grants every FHIR operation. Granted alongside
+/// [`OWNER_SCOPE`] in the boot owner token so the WebView's loopback FHIR
+/// calls pass HFS's per-operation scope check.
+pub const FULL_FHIR_ACCESS_SCOPE: &str = "system/*.cruds";
 
 /// Lifetime of the host owner token minted at boot.
 const HOST_OWNER_TOKEN_TTL: Duration = Duration::hours(24);
@@ -84,12 +96,13 @@ pub struct Gatekeeper {
 ///  - returns the `AppState` the caller passes to
 ///    [`layer_router_with_gatekeeper_auth_gating`] to wrap emr-rust.
 ///
-/// The boot-time host owner token is *always* minted against
-/// `config.loopback_origin`, because the host `WebView` reaches the API over
-/// loopback. Per-request handlers, by contrast, derive their `iss`/`aud`
-/// from [`served_origin_for`](crate::http::served_origin_for) — the origin
-/// the inbound request says it was targeting — falling back to
-/// `loopback_origin` when no public-origin header is present.
+/// Every minted token's `iss` is
+/// [`shared_structures_rust::CANONICAL_ISSUER`] — the same string HFS
+/// validates against, so any token (boot owner token or per-request OAuth
+/// token) passes HFS auth regardless of which transport it arrived over.
+/// Per-request `aud` is still derived from
+/// [`served_origin_for`](crate::http::served_origin_for) — useful for
+/// SMART clients that match `aud` to the FHIR base URL they discovered.
 ///
 /// The whole surface is gated by the loopback middleware — non-loopback
 /// peers receive 403 before any handler runs.
@@ -106,9 +119,13 @@ pub fn setup_gatekeeper(
     active_device_user_code_tx: watch::Sender<Option<String>>,
 ) -> anyhow::Result<Gatekeeper> {
     let store = seeding::open_and_seed_store(conn)?;
-    let host_owner_token =
-        seeding::mint_host_owner_token(&store, &config.loopback_origin, HOST_OWNER_TOKEN_TTL)
-            .context("failed to mint host owner token")?;
+    let host_owner_token = seeding::mint_host_owner_token(
+        &store,
+        shared_structures_rust::CANONICAL_ISSUER,
+        &config.loopback_origin,
+        HOST_OWNER_TOKEN_TTL,
+    )
+    .context("failed to mint host owner token")?;
     local_owner_token_tx
         .send(Some(host_owner_token))
         .context("token channel receiver dropped before host owner token issuance")?;

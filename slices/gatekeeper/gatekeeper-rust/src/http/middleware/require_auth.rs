@@ -73,11 +73,15 @@ pub fn verify_auth_token_claims(
         .all_signing_keys()
         .map_err(VerifyError::KeyStoreUnavailable)?;
     let accepted = vec![format!("{origin}/fhir-r4"), origin.to_string()];
+    // `iss` is the stable [`shared_structures_rust::CANONICAL_ISSUER`] — same
+    // value gatekeeper writes into every minted token. `aud` is per-request:
+    // a token minted for one surface (loopback vs tunnel) is only accepted
+    // when presented to the surface it was scoped for.
     verify_jwt(
         token,
         &keys,
         &VerifyOptions {
-            expected_issuer: origin,
+            expected_issuer: shared_structures_rust::CANONICAL_ISSUER,
             accepted_audiences: &accepted,
         },
     )

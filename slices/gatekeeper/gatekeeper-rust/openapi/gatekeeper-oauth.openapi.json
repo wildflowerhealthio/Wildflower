@@ -84,6 +84,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "launch",
+            "in": "query",
+            "description": "SMART App Launch nonce, set by the EHR (apps-rust generates it,\nthe SMART app forwards it). Not currently looked up against a\nlaunch-context table — we trust whatever value the SMART app\nechoes back and bind patient context at consent instead.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "aud",
+            "in": "query",
+            "description": "SMART App Launch audience hint: the FHIR base URL the SMART app\nexpects to call with the resulting token. Not currently validated\nagainst [`shared_structures_rust::CANONICAL_ISSUER`] — `aud`\nbinding in minted tokens is per-request via `served_origin_for`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {

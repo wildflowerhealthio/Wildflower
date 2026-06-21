@@ -1,0 +1,40 @@
+//! Dev-only: stands up the FHIR R4 router on 127.0.0.1:8080 against a
+//! throwaway sqlite db so the HFS-served endpoints (`/fhir-r4/metadata`,
+//! `/fhir-r4/.well-known/smart-configuration`, etc.) can be curl'd without
+//! booting the Tauri shell. Delete once HFS integration is validated end-to-end.
+
+use anyhow::Context;
+use emr_rust::{setup_fhir_r4, EmrConfig};
+use shared_structures_rust::ServerRuntimeConfig;
+use std::net::SocketAddr;
+use tokio::net::TcpListener;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let tmp = std::env::temp_dir().join("emr-rust-serve");
+    std::fs::create_dir_all(&tmp).context("create temp dir")?;
+
+    let runtime = ServerRuntimeConfig {
+        loopback_hostname: "127.0.0.1".to_string(),
+        loopback_port: 8080,
+        app_data_dir: tmp.clone(),
+    };
+    let config = EmrConfig {
+        log_level: "info".to_string(),
+        db_file_path: tmp.join("health-data.sqlite"),
+        // Dev binary: HFS auth off. Discovery + /metadata still served;
+        // anything that would normally require auth (Patient, etc.) is open.
+        jwks_url: None,
+    };
+
+    let router = setup_fhir_r4(&runtime, &config)?;
+    let addr: SocketAddr = format!("{}:{}", runtime.loopback_hostname, runtime.loopback_port)
+        .parse()
+        .context("parse bind addr")?;
+    let listener = TcpListener::bind(addr)
+        .await
+        .with_context(|| format!("bind {addr}"))?;
+    eprintln!("emr-rust serve (dev): http://{addr}");
+    axum::serve(listener, router).await?;
+    Ok(())
+}

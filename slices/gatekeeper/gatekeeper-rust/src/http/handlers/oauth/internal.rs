@@ -354,6 +354,11 @@ pub fn issue_token_response(
                 Some("No JSON Web Keys available to sign token"),
             )
         })?;
+    // `iss` is the stable [`shared_structures_rust::CANONICAL_ISSUER`] so
+    // HFS's single `expected_issuer` accepts every token gatekeeper mints,
+    // independent of which transport the request arrived over. `aud` stays
+    // per-request — SMART clients commonly match `aud` to the FHIR base
+    // URL they reached us at.
     let audience = format!("{}/fhir-r4", input.origin);
     let signed = mint_access_token(
         &signing_key,
@@ -361,7 +366,7 @@ pub fn issue_token_response(
             client_id: input.client_id,
             scope: input.granted_scopes,
             ttl: ACCESS_TOKEN_TTL,
-            origin: input.origin,
+            origin: shared_structures_rust::CANONICAL_ISSUER,
             audience: Some(&audience),
             patient: input.patient,
         },

@@ -55,21 +55,20 @@ async fn run_server(
     databases_rust::purge_pending_deletions(&runtime.app_data_dir)
         .context("failed to purge scheduled database deletions")?;
 
-    let emr_config = EmrConfig {
-        log_level: "debug".to_string(),
-        db_file_path: runtime.app_data_dir.join(HEALTH_DATA_DB),
-    };
     let loopback_host = format!("{}:{}", runtime.loopback_hostname, runtime.loopback_port);
     let loopback_origin = format!(
         "http://{}:{}",
         runtime.loopback_hostname, runtime.loopback_port
     );
-    // The host owner token is minted against this loopback origin (the
-    // WebView reaches the API over loopback). We bind 127.0.0.1 explicitly
-    // (the OS enforces loopback-only at the socket, so LAN peers can't reach
-    // the surface even before the loopback gate runs), so the WebView's
-    // `Host:` header is `127.0.0.1:<port>` — the same canonical form
-    // `served_origin_for` falls back to for un-forwarded requests.
+    let emr_config = EmrConfig {
+        log_level: "debug".to_string(),
+        db_file_path: runtime.app_data_dir.join(HEALTH_DATA_DB),
+        // HFS-enforced auth: every FHIR request must carry a Bearer JWT
+        // signed by a gatekeeper-issued key. `iss` is pinned to
+        // [`shared_structures_rust::CANONICAL_ISSUER`] by both gatekeeper
+        // (at mint) and emr-rust (at validation).
+        jwks_url: Some(format!("{loopback_origin}/.well-known/jwks.json")),
+    };
     let gatekeeper_config = GatekeeperConfig {
         loopback_origin: loopback_origin.clone(),
     };

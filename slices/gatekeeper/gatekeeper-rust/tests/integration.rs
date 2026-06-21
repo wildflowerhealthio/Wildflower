@@ -3,7 +3,9 @@ use std::net::SocketAddr;
 use axum::body::{to_bytes, Body};
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
-use gatekeeper_rust::{setup_gatekeeper, Gatekeeper, GatekeeperConfig};
+use gatekeeper_rust::{
+    setup_gatekeeper, Gatekeeper, GatekeeperConfig, FULL_FHIR_ACCESS_SCOPE, OWNER_SCOPE,
+};
 use tokio::sync::watch;
 
 const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
@@ -280,7 +282,7 @@ async fn authorize_disallowed_scope_redirects_invalid_scope() {
 #[tokio::test]
 async fn device_authorization_happy_path() {
     let (g, _host_owner_token, _db) = spin_up();
-    let body = "client_id=wildflower-host&scope=owner";
+    let body = "client_id=wildflower-host&scope=wildflower%2Fadmin";
     let req = loopback_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
@@ -314,7 +316,7 @@ async fn device_authorization_happy_path() {
 #[tokio::test]
 async fn device_authorization_unknown_client_returns_401() {
     let (g, _host_owner_token, _db) = spin_up();
-    let body = "client_id=ghost&scope=owner";
+    let body = "client_id=ghost&scope=wildflower%2Fadmin";
     let req = loopback_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
@@ -455,10 +457,15 @@ async fn host_owner_token_is_owner_scoped() {
     assert_eq!(
         payload,
         serde_json::json!({
-            "iss": LOOPBACK_ORIGIN,
+            // Every token's `iss` is the stable CANONICAL_ISSUER, not the
+            // loopback origin — pinning matches what HFS validates against.
+            "iss": shared_structures_rust::CANONICAL_ISSUER,
             "sub": "wildflower-host",
             "aud": LOOPBACK_ORIGIN,
-            "scope": "owner",
+            // Owner token now carries BOTH the wildflower admin scope
+            // (gates gatekeeper's /access/*) AND the SMART v2 full-FHIR
+            // wildcard (HFS reads this to grant every FHIR op).
+            "scope": format!("{OWNER_SCOPE} {FULL_FHIR_ACCESS_SCOPE}"),
             "iat": iat,
             "exp": exp,
         })
@@ -1036,7 +1043,7 @@ async fn device_grant_pending_then_slow_down() {
         &store_handle(&db),
         "wildflower-host",
         "dev-pending",
-        &["owner"],
+        &[OWNER_SCOPE],
         RequestStatus::Pending,
         Utc::now() + Duration::minutes(5),
     );
@@ -1066,7 +1073,7 @@ async fn device_grant_single_use_then_expired_token() {
         &store_handle(&db),
         "wildflower-host",
         "dev-approved",
-        &["owner"],
+        &[OWNER_SCOPE],
         RequestStatus::Approved,
         Utc::now() + Duration::minutes(5),
     );
@@ -1076,7 +1083,7 @@ async fn device_grant_single_use_then_expired_token() {
     assert_eq!(first.status(), StatusCode::OK);
     let token = body_json(first.into_body()).await;
     assert_eq!(token["token_type"], "Bearer");
-    assert_eq!(token["scope"], "owner");
+    assert_eq!(token["scope"], OWNER_SCOPE);
 
     let second = post_form(&g.router, "/oauth/token", body).await;
     assert_eq!(second.status(), StatusCode::BAD_REQUEST);
@@ -1217,7 +1224,7 @@ async fn device_authorization_sets_cache_suppression_headers() {
     let res = post_form(
         &g.router,
         "/oauth/device_authorization",
-        "client_id=wildflower-host&scope=owner",
+        "client_id=wildflower-host&scope=wildflower%2Fadmin",
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);

@@ -12,7 +12,11 @@ mod page_paths;
 mod response_templates;
 mod state;
 
-pub(crate) use origin::{served_origin_for, ServedOrigin};
+pub(crate) use origin::ServedOrigin;
+// Re-export the shared pure resolver so existing `crate::http::served_origin_for`
+// imports keep working without leaking a `shared_structures_rust::` prefix into
+// every middleware that calls it.
+pub(crate) use shared_structures_rust::served_origin::served_origin_for;
 pub use state::AppState;
 
 use axum::middleware as axum_middleware;
