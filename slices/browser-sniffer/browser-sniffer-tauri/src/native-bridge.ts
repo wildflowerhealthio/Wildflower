@@ -1,5 +1,46 @@
 import type { TauriEventApi } from 'effect-messaging-tauri'
 
+/** Wire envelope carried over the native bridge: which channel + its payload. */
+type Envelope = { readonly event: string; readonly payload: unknown }
+type Handler = (event: { readonly payload: unknown }) => void
+
+/** Narrow an unknown to a string-keyed record without an `as` cast. */
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object'
+
+/** Parse an inbound envelope; `undefined` for anything malformed. */
+const parseEnvelope = (json: string): Envelope | undefined => {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(json)
+  } catch {
+    return undefined
+  }
+  if (!isRecord(parsed)) return undefined
+  const event = parsed.event
+  if (typeof event !== 'string') return undefined
+  return { event, payload: parsed.payload }
+}
+
+/** Resolve the platform's outbound poster once (iOS, else Android, else no-op). */
+const resolvePoster = (): ((message: string) => void) => {
+  const win = globalThis as typeof globalThis & {
+    readonly webkit?: {
+      readonly messageHandlers?: {
+        readonly nativeWebview?: { readonly postMessage: (message: string) => void }
+      }
+    }
+    readonly nativeWebview?: { readonly postMessage: (message: string) => void }
+  }
+  const iosHandler = win.webkit?.messageHandlers?.nativeWebview
+  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- WKScriptMessageHandler.postMessage, not window.postMessage.
+  if (iosHandler !== undefined) return (message) => iosHandler.postMessage(message)
+  const androidHandler = win.nativeWebview
+  // oxlint-disable-next-line unicorn/require-post-message-target-origin -- Android @JavascriptInterface.postMessage, not window.postMessage.
+  if (androidHandler !== undefined) return (message) => androidHandler.postMessage(message)
+  return () => {}
+}
+
 /**
  * Build a {@link TauriEventApi}-shaped event bus backed by the
  * `tauri-plugin-native-webview` bridge, for use INSIDE a native popup
@@ -20,51 +61,13 @@ import type { TauriEventApi } from 'effect-messaging-tauri'
  *     `window.__nativeWebviewReceive(json)` with the same envelope; matching
  *     listeners receive `{ payload }`.
  *
- * Mirrors `install-sniffer.ts`' discipline: every helper lives inside the
- * factory body so the esbuild-bundled IIFE is self-contained when injected as
- * the popup's document-start script. If no native bridge is present (e.g. the
- * page is opened outside a native popup), `emit` drops silently and `listen`
- * still registers — the sniffer simply observes nothing.
+ * The module-scope helpers (`isRecord` / `parseEnvelope` / `resolvePoster`)
+ * capture no state and are inlined into the esbuild IIFE, so the injected
+ * document-start script stays self-contained. If no native bridge is present
+ * (e.g. the page is opened outside a native popup), `emit` drops silently and
+ * `listen` still registers — the sniffer simply observes nothing.
  */
 const makeNativeBridgeEventBus = (): TauriEventApi => {
-  type Envelope = { readonly event: string; readonly payload: unknown }
-  type Handler = (event: { readonly payload: unknown }) => void
-
-  /** Narrow an unknown to a string-keyed record without an `as` cast. */
-  const isRecord = (value: unknown): value is Record<string, unknown> =>
-    value !== null && typeof value === 'object'
-
-  /** Parse an inbound envelope; `undefined` for anything malformed. */
-  const parseEnvelope = (json: string): Envelope | undefined => {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(json)
-    } catch {
-      return undefined
-    }
-    if (!isRecord(parsed)) return undefined
-    const event = parsed.event
-    if (typeof event !== 'string') return undefined
-    return { event, payload: parsed.payload }
-  }
-
-  /** Resolve the platform's outbound poster once (iOS, else Android, else no-op). */
-  const resolvePoster = (): ((message: string) => void) => {
-    const win = globalThis as typeof globalThis & {
-      readonly webkit?: {
-        readonly messageHandlers?: {
-          readonly nativeWebview?: { readonly postMessage: (message: string) => void }
-        }
-      }
-      readonly nativeWebview?: { readonly postMessage: (message: string) => void }
-    }
-    const iosHandler = win.webkit?.messageHandlers?.nativeWebview
-    if (iosHandler !== undefined) return (message) => iosHandler.postMessage(message)
-    const androidHandler = win.nativeWebview
-    if (androidHandler !== undefined) return (message) => androidHandler.postMessage(message)
-    return () => {}
-  }
-
   const post = resolvePoster()
   const listeners = new Map<string, Set<Handler>>()
 
@@ -80,8 +83,9 @@ const makeNativeBridgeEventBus = (): TauriEventApi => {
     if (envelope === undefined) return
     const handlers = listeners.get(envelope.event)
     if (handlers === undefined) return
-    // Iterate a copy so an unlisten fired during dispatch can't skip a handler.
-    for (const handler of [...handlers]) handler({ payload: envelope.payload })
+    // Snapshot so an unlisten fired during dispatch can't skip a sibling handler.
+    const snapshot = Array.from(handlers)
+    for (const handler of snapshot) handler({ payload: envelope.payload })
   }
 
   return {

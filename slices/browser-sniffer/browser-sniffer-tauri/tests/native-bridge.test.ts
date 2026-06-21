@@ -1,3 +1,5 @@
+// oxlint-disable no-underscore-dangle -- `__nativeWebviewReceive` is the exact global the native plugin calls; the test drives it directly.
+
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -16,17 +18,18 @@ type BridgeGlobals = typeof globalThis & {
 
 const globals = globalThis as BridgeGlobals
 
-/** The last string handed to a `postMessage` spy (fails the test if absent). */
-const lastMessage = (spy: ReturnType<typeof vi.fn>): string => {
-  const message = spy.mock.calls.at(-1)?.[0]
-  if (typeof message !== 'string') throw new Error('expected a string postMessage payload')
-  return message
+/** A `postMessage` capture: the install fn plus the typed list of strings it received. */
+const capturePosts = (): {
+  readonly posts: string[]
+  readonly postMessage: (message: string) => void
+} => {
+  const posts: string[] = []
+  return { posts, postMessage: (message) => posts.push(message) }
 }
 
 const clearGlobals = (): void => {
   delete globals.webkit
   delete globals.nativeWebview
-  // oxlint-disable-next-line no-underscore-dangle -- the native plugin calls this exact global.
   delete globals.__nativeWebviewReceive
 }
 
@@ -35,44 +38,41 @@ afterEach(clearGlobals)
 
 describe('makeNativeBridgeEventBus — outbound (emit)', () => {
   test('posts a JSON envelope { event, payload } to the iOS handler', () => {
-    const postMessage = vi.fn()
+    const { posts, postMessage } = capturePosts()
     globals.webkit = { messageHandlers: { nativeWebview: { postMessage } } }
 
     const bus = makeNativeBridgeEventBus()
     void bus.emit('bridge', { _tag: 'PageLoaded', url: 'https://x.test/' })
 
-    expect(postMessage).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(lastMessage(postMessage))).toEqual({
+    expect(posts).toHaveLength(1)
+    expect(JSON.parse(posts[0])).toEqual({
       event: 'bridge',
       payload: { _tag: 'PageLoaded', url: 'https://x.test/' },
     })
   })
 
   test('posts to the Android handler when webkit is absent', () => {
-    const postMessage = vi.fn()
+    const { posts, postMessage } = capturePosts()
     globals.nativeWebview = { postMessage }
 
     const bus = makeNativeBridgeEventBus()
     void bus.emit('bridge', { _tag: 'SniffingComplete' })
 
-    expect(postMessage).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(lastMessage(postMessage))).toEqual({
-      event: 'bridge',
-      payload: { _tag: 'SniffingComplete' },
-    })
+    expect(posts).toHaveLength(1)
+    expect(JSON.parse(posts[0])).toEqual({ event: 'bridge', payload: { _tag: 'SniffingComplete' } })
   })
 
   test('prefers the iOS handler when both bridges are present', () => {
-    const ios = vi.fn()
-    const android = vi.fn()
-    globals.webkit = { messageHandlers: { nativeWebview: { postMessage: ios } } }
-    globals.nativeWebview = { postMessage: android }
+    const ios = capturePosts()
+    const android = capturePosts()
+    globals.webkit = { messageHandlers: { nativeWebview: { postMessage: ios.postMessage } } }
+    globals.nativeWebview = { postMessage: android.postMessage }
 
     const bus = makeNativeBridgeEventBus()
     void bus.emit('bridge', { _tag: 'Log' })
 
-    expect(ios).toHaveBeenCalledTimes(1)
-    expect(android).not.toHaveBeenCalled()
+    expect(ios.posts).toHaveLength(1)
+    expect(android.posts).toHaveLength(0)
   })
 
   test('is a silent no-op when no native bridge is present', async () => {
@@ -131,7 +131,7 @@ describe('makeNativeBridgeEventBus — round trip', () => {
   test('an emitted payload survives the envelope and routes back unchanged', () => {
     fc.assert(
       fc.property(fc.jsonValue(), (payload) => {
-        const postMessage = vi.fn()
+        const { posts, postMessage } = capturePosts()
         globals.webkit = { messageHandlers: { nativeWebview: { postMessage } } }
 
         const bus = makeNativeBridgeEventBus()
@@ -141,7 +141,7 @@ describe('makeNativeBridgeEventBus — round trip', () => {
 
         // Echo the exact wire bytes the page posted back through the inbound
         // receiver: the host re-broadcasts on the same channel.
-        globals.__nativeWebviewReceive?.(lastMessage(postMessage))
+        globals.__nativeWebviewReceive?.(posts.at(-1) ?? '')
 
         expect(received).toHaveLength(1)
         // Compare JSON-encoded to sidestep -0/key-order edge cases.
