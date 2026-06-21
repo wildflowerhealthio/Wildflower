@@ -1,23 +1,23 @@
 //! Build-time embedder for the vendored patient-browser dist.
 //!
 //! Reads the gitignored upstream build at
-//! `../vendor-apps/vendor/patient-browser/dist`, applies the same two rewrites
-//! the TS generator (`vendor-apps/scripts/generate-patient-browser.mjs`) does —
+//! `../vendor-apps/vendor/patient-browser/dist`, applies the one rewrite the
+//! served app needs — rebasing root-absolute asset URLs (`/assets/`, `/img/`,
+//! `/config/`) in HTML onto our `/installed-apps/patient-browser` mount — then
+//! writes the files into `OUT_DIR` and emits an `ASSETS` table that
+//! `include_bytes!`-es each one.
 //!
-//!   1. rebase root-absolute asset URLs (`/assets/`, `/img/`, `/config/`) in
-//!      HTML onto our `/installed-apps/patient-browser` mount, and
-//!   2. synthesize `config/default.json5` from upstream's `config/r4.json5`,
-//!      pointing the SMART config at the on-device `/fhir-r4` server with a long
-//!      request timeout
+//! The SMART config (`config/default.json5`) is **not** derived from upstream by
+//! string-munging `config/r4.json5`. Instead a handwritten config committed at
+//! `patient-browser-config/default.json5` is always embedded (and overrides any
+//! `config/default.json5` shipped in the dist), so the on-device FHIR server URL
+//! and timeout live in a readable, version-controlled file rather than a
+//! brittle regex that panics when upstream reformats.
 //!
-//! — then writes the processed files into `OUT_DIR` and emits an `ASSETS` table
-//! that `include_bytes!`-es each one. When the dist is absent (a fresh clone,
-//! CI, or anyone who hasn't run the upstream build) the table is empty and the
-//! crate still compiles; the patient-browser routes 404 until the dist is
-//! populated and the crate rebuilt. This mirrors the sniffer-bootstrap pattern
-//! (gitignored generated artifact) but degrades to empty on its own rather than
-//! needing a CI stub, because a build script can branch on the missing path
-//! where `include_str!` / `include_dir!` cannot.
+//! When the dist is absent (a fresh clone, CI, or anyone who hasn't run the
+//! upstream build) only the handwritten config is embedded and the rest of the
+//! routes 404; the crate still compiles. A build script can branch on the
+//! missing path where `include_str!` / `include_dir!` cannot.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -29,19 +29,9 @@ const MOUNT: &str = "/installed-apps/patient-browser";
 /// Root-absolute prefixes rewritten in HTML to sit under [`MOUNT`].
 const REBASE_PREFIXES: [&str; 3] = ["/assets/", "/img/", "/config/"];
 
-/// Upstream → on-device SMART config rewrites, byte-identical to the TS
-/// generator's replacements. The upstream `config/r4.json5` is the source for
-/// the served `config/default.json5`.
-const UPSTREAM_FHIR_URL: &str = "\"https://r4.smarthealthit.org\"";
-const ONDEVICE_FHIR_URL: &str = "\"/fhir-r4\"";
-const UPSTREAM_TIMEOUT: &str = "timeout: 20000";
-const ONDEVICE_TIMEOUT: &str = "timeout: 600000";
-
-/// Relative path (under the dist root) of the config we synthesize, and of its
-/// upstream source. Any pre-existing `default.json5` in the dist is skipped in
-/// favour of the rewritten one.
+/// Relative path (under the dist root) of the served SMART config. The
+/// committed handwritten file is embedded here, overriding any dist copy.
 const DEFAULT_CONFIG_REL: &str = "config/default.json5";
-const SOURCE_CONFIG_REL: &str = "config/r4.json5";
 
 fn content_type_for(ext: &str) -> &'static str {
     match ext {
@@ -100,37 +90,6 @@ fn rebase_html(text: &str) -> String {
     out
 }
 
-/// Read upstream `config/r4.json5` and rewrite it into the served
-/// `config/default.json5` body. Panics with a precise message if the source is
-/// missing or its format drifted — matching the TS generator's fail-loud
-/// behaviour, so a stale vendor build is caught at compile time rather than
-/// silently serving the public SMART sandbox.
-fn synthesize_default_config(dist: &Path) -> Vec<u8> {
-    let source_path = dist.join(SOURCE_CONFIG_REL);
-    let source = std::fs::read_to_string(&source_path).unwrap_or_else(|error| {
-        panic!(
-            "vendor-apps-rust: {} present but {SOURCE_CONFIG_REL} could not be read ({error}) — \
-             the patient-browser dist is incomplete; re-run the upstream build (see \
-             vendor-apps/README)",
-            dist.display(),
-        )
-    });
-    assert!(
-        source.contains(UPSTREAM_FHIR_URL),
-        "vendor-apps-rust: {SOURCE_CONFIG_REL} no longer contains {UPSTREAM_FHIR_URL} — upstream \
-         config format changed; update the rewrite constants in build.rs",
-    );
-    assert!(
-        source.contains(UPSTREAM_TIMEOUT),
-        "vendor-apps-rust: {SOURCE_CONFIG_REL} no longer contains '{UPSTREAM_TIMEOUT}' — upstream \
-         config format changed; update the rewrite constants in build.rs",
-    );
-    source
-        .replace(UPSTREAM_FHIR_URL, ONDEVICE_FHIR_URL)
-        .replace(UPSTREAM_TIMEOUT, ONDEVICE_TIMEOUT)
-        .into_bytes()
-}
-
 /// One processed asset ready to embed: its content type and final bytes.
 struct Processed {
     content_type: &'static str,
@@ -153,74 +112,66 @@ fn main() {
     let out_dir =
         PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts"));
     let dist = manifest_dir.join("../vendor-apps/vendor/patient-browser/dist");
+    let config_path = manifest_dir.join("patient-browser-config/default.json5");
 
-    // Cargo re-runs the build script when this path's directory listing changes;
-    // per-file `rerun-if-changed` below covers edits to existing files. Printed
-    // even when absent so populating the dist later triggers a rebuild.
+    // Cargo re-runs the build script when these paths' listings/contents change.
+    // The dist line is printed even when the directory is absent so populating
+    // it later triggers a rebuild.
     println!("cargo:rerun-if-changed={}", dist.display());
-
-    let assets_rs = out_dir.join("assets.rs");
-
-    if !dist.exists() {
-        // No vendored build: emit an empty table. The crate compiles and the
-        // routes 404 until someone populates the dist and rebuilds.
-        std::fs::write(
-            &assets_rs,
-            "// vendor-apps-rust: patient-browser dist absent at build time.\n\
-             pub static ASSETS: &[Asset] = &[];\n",
-        )
-        .expect("write empty assets.rs");
-        return;
-    }
-
-    let mut files = Vec::new();
-    walk(&dist, &mut files);
+    println!("cargo:rerun-if-changed={}", config_path.display());
 
     // BTreeMap both de-dupes and sorts by path so the generated table is stable
     // across runs (and platforms with differing readdir order).
     let mut processed: BTreeMap<String, Processed> = BTreeMap::new();
 
-    for file in &files {
-        println!("cargo:rerun-if-changed={}", file.display());
-        let rel = rel_of(&dist, file);
-        let ext = file
-            .extension()
-            .map(|e| e.to_string_lossy().to_ascii_lowercase())
-            .unwrap_or_default();
-
-        // Source maps bloat the binary and are never requested by the running
-        // SPA; the synthesized default config replaces any committed one.
-        if ext == "map" || rel == DEFAULT_CONFIG_REL {
-            continue;
-        }
-
-        let raw = std::fs::read(file).expect("read dist asset");
-        let bytes = if ext == "html" {
-            rebase_html(&String::from_utf8_lossy(&raw)).into_bytes()
-        } else {
-            raw
-        };
-        processed.insert(
-            rel,
-            Processed {
-                content_type: content_type_for(&ext),
-                bytes,
-            },
-        );
-    }
-
-    // Synthesize the rewritten default config from upstream's r4.json5.
-    println!(
-        "cargo:rerun-if-changed={}",
-        dist.join(SOURCE_CONFIG_REL).display()
-    );
+    // Always embed the handwritten SMART config — committed, so it survives dist
+    // regens and is served even on a checkout without the vendored build.
+    let config_bytes = std::fs::read(&config_path).unwrap_or_else(|error| {
+        panic!(
+            "vendor-apps-rust: handwritten config {} could not be read ({error})",
+            config_path.display(),
+        )
+    });
     processed.insert(
         DEFAULT_CONFIG_REL.to_owned(),
         Processed {
             content_type: "application/json; charset=utf-8",
-            bytes: synthesize_default_config(&dist),
+            bytes: config_bytes,
         },
     );
+
+    if dist.exists() {
+        let mut files = Vec::new();
+        walk(&dist, &mut files);
+        for file in &files {
+            println!("cargo:rerun-if-changed={}", file.display());
+            let rel = rel_of(&dist, file);
+            let ext = file
+                .extension()
+                .map(|e| e.to_string_lossy().to_ascii_lowercase())
+                .unwrap_or_default();
+
+            // Source maps bloat the binary and are never requested by the
+            // running SPA; the handwritten config overrides any dist copy.
+            if ext == "map" || rel == DEFAULT_CONFIG_REL {
+                continue;
+            }
+
+            let raw = std::fs::read(file).expect("read dist asset");
+            let bytes = if ext == "html" {
+                rebase_html(&String::from_utf8_lossy(&raw)).into_bytes()
+            } else {
+                raw
+            };
+            processed.insert(
+                rel,
+                Processed {
+                    content_type: content_type_for(&ext),
+                    bytes,
+                },
+            );
+        }
+    }
 
     // Write each processed asset into OUT_DIR and build the embed table.
     let mut table = String::from(
@@ -242,5 +193,5 @@ fn main() {
     }
     table.push_str("];\n");
 
-    std::fs::write(&assets_rs, table).expect("write generated assets.rs");
+    std::fs::write(out_dir.join("assets.rs"), table).expect("write generated assets.rs");
 }
