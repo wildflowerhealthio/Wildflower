@@ -19,49 +19,26 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
-import org.json.JSONObject
 
-/** Arguments decoded from `invoke('plugin:native-webview|open', { url })`. */
+/** Arguments decoded from `invoke('plugin:native-webview|open', { url, initScript })`. */
 @InvokeArg
 class OpenArgs {
     lateinit var url: String
+    var initScript: String? = null
 }
 
 /**
  * Android counterpart to the iOS `NativeWebviewPlugin`. Presents an
  * `android.webkit.WebView` in a fullscreen `Dialog` with a native `Toolbar`
- * (Close + page host), injecting JS at document start on any origin and
- * forwarding the page's pings to the host webview via the plugin event channel.
+ * (Close + page host), injecting the caller's document-start script on any
+ * origin and forwarding the page's opaque JSON messages to the host webview via
+ * the plugin event channel.
  */
 @TauriPlugin
 class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     companion object {
         /** `window.<name>` the injected bridge posts to (a `@JavascriptInterface`). */
         private const val MESSAGE_HANDLER_NAME = "nativeWebview"
-
-        /**
-         * Injected at document start into every page on ANY origin. Thin slice:
-         * posts lifecycle pings only. Replaced by the real sniffer body later.
-         */
-        private val INJECTED_SOURCE =
-            """
-            (function () {
-              try {
-                var post = function (payload) {
-                  if (window.$MESSAGE_HANDLER_NAME && window.$MESSAGE_HANDLER_NAME.postMessage) {
-                    window.$MESSAGE_HANDLER_NAME.postMessage(JSON.stringify(payload));
-                  }
-                };
-                post({ kind: 'injected', url: location.href });
-                document.addEventListener('DOMContentLoaded', function () {
-                  post({ kind: 'domcontentloaded', url: location.href });
-                });
-                window.addEventListener('load', function () {
-                  post({ kind: 'load', url: location.href });
-                });
-              } catch (error) {}
-            })();
-            """.trimIndent()
     }
 
     private var dialog: Dialog? = null
@@ -70,14 +47,14 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     fun open(invoke: Invoke) {
         val args = invoke.parseArgs(OpenArgs::class.java)
         activity.runOnUiThread {
-            present(args.url)
+            present(args.url, args.initScript)
             val result = JSObject()
             result.put("opened", true)
             invoke.resolve(result)
         }
     }
 
-    private fun present(url: String) {
+    private fun present(url: String, initScript: String?) {
         val webView = WebView(activity)
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
@@ -85,13 +62,14 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         // JS -> native bridge, reachable on any origin.
         webView.addJavascriptInterface(Bridge(), MESSAGE_HANDLER_NAME)
 
-        // Document-start injection on ANY origin when the WebView provider
-        // supports it; an onPageStarted fallback (below) otherwise — note the
-        // fallback is not strictly before the page's own scripts.
+        // Caller-supplied document-start script (e.g. browser-sniffer's bundled
+        // installSniffer IIFE), injected on ANY origin when the WebView provider
+        // supports DOCUMENT_START_SCRIPT; an onPageStarted fallback (below)
+        // otherwise — note the fallback is not strictly before the page's scripts.
         val supportsDocumentStart =
             WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
-        if (supportsDocumentStart) {
-            WebViewCompat.addDocumentStartJavaScript(webView, INJECTED_SOURCE, setOf("*"))
+        if (initScript != null && supportsDocumentStart) {
+            WebViewCompat.addDocumentStartJavaScript(webView, initScript, setOf("*"))
         }
 
         val toolbar = Toolbar(activity).apply {
@@ -104,8 +82,8 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, pageUrl: String?, favicon: Bitmap?) {
-                if (!supportsDocumentStart) {
-                    view.evaluateJavascript(INJECTED_SOURCE, null)
+                if (initScript != null && !supportsDocumentStart) {
+                    view.evaluateJavascript(initScript, null)
                 }
             }
 
@@ -142,17 +120,13 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     inner class Bridge {
         @JavascriptInterface
         fun postMessage(json: String) {
-            try {
-                val obj = JSONObject(json)
-                val payload = JSObject()
-                payload.put("kind", obj.optString("kind"))
-                payload.put("url", obj.optString("url"))
-                // `@JavascriptInterface` callbacks run off the UI thread; hop
-                // back before emitting to the host webview.
-                activity.runOnUiThread { trigger("message", payload) }
-            } catch (error: Exception) {
-                // Never propagate into the page.
-            }
+            // The injected adapter posts an opaque JSON string (the sniffer's
+            // wire message). Forward it verbatim; the host parses it.
+            val payload = JSObject()
+            payload.put("payload", json)
+            // `@JavascriptInterface` callbacks run off the UI thread; hop back
+            // before emitting to the host webview.
+            activity.runOnUiThread { trigger("message", payload) }
         }
     }
 }

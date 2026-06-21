@@ -86,29 +86,39 @@ plugins/tauri-plugin-native-webview/
       ▼
 [Rust] commands::open → NativeWebviewExt::open → platform backend
       │
-      ├─ iOS/Android: run_mobile_plugin("open", OpenRequest)
+      ├─ iOS/Android: run_mobile_plugin("open", { url, initScript })
       │     → present native WebView (native chrome)
-      │     → document-start script injected on ANY origin
-      │     → page posts { kind, url } over the scoped native bridge
-      │     → native trigger("message", …) → addPluginListener on the host
+      │     → caller's initScript injected at document start on ANY origin
+      │     → page posts an opaque JSON string over the scoped native bridge
+      │       (window.webkit.messageHandlers.nativeWebview / window.nativeWebview)
+      │     → native trigger("message", { payload }) → addPluginListener on host
       │
-      └─ Desktop: WebviewWindowBuilder(...).initialization_script(...)
+      └─ Desktop: WebviewWindowBuilder(...).initialization_script(initScript)
             → present WebviewWindow (OS chrome)
-            → document-start script injected
-            → page emits 'native-webview:message' on the Tauri event bus
-            → host listens via @tauri-apps/api/event listen(...)
+            → caller's initScript injected at document start
+            → (the page is a Tauri webview, so the script uses the event bus
+              directly — no native message bridge needed)
 ```
 
-The injected script is a placeholder that only posts `injected` /
-`domcontentloaded` / `load` pings — enough to prove document-start injection on
-any origin and the round trip. A later increment swaps it for the real sniffer
-body (`installSniffer`) and moves the sniffer's transport off `window.__TAURI__`
-onto these scoped bridges.
+`initScript` is **caller-supplied** — the plugin is content-agnostic. browser-sniffer
+passes its bundled `installSniffer` IIFE wrapped in a small adapter that speaks
+the platform bridge (mobile: post a JSON string to `nativeWebview`; desktop: the
+existing `__TAURI__.event` transport). The mobile message payload is an opaque
+JSON string so the bridge needn't know the sniffer's schema.
 
-## Deliberately deferred (not in this increment)
+## Deliberately deferred
 
-- **Sniffer migration** — replacing the injected placeholder with
-  `installSniffer` and retiring `injectBrowserTopBar` / `__TAURI__` on mobile.
+- **Inbound host→native messages** — the bridge is outbound-only today (page →
+  host). The sniffer's Host→Web messages (`Click`, `CancelSnifferRequest`) need
+  a path the other way: the plugin listening on the bridge channel and calling
+  `evaluateJavaScript` / `evaluateJavascript` into the native webview.
+- **browser-sniffer native transport + entry** — the adapter that wraps the
+  platform bridge into the `TauriEventApi` shape `installSniffer` expects, a
+  `native-sniffer-entry` that drops `injectBrowserTopBar` (native chrome
+  replaces it), and the build step that bundles it for the `initScript` arg.
+- **Host wiring** — routing `RequestSniffableWebView` to `open(...)` on mobile,
+  and re-emitting the native `message` payloads onto the `bridge` event bus so
+  the existing collector consumer is unchanged.
 - **A typed guest-js package** — callers use `invoke` / `addPluginListener` /
   `listen` from `@tauri-apps/api` directly for now.
 - **Desktop**: a structured error/result channel back from the popup (the build

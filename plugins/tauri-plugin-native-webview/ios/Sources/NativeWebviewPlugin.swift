@@ -2,10 +2,12 @@ import Tauri
 import UIKit
 import WebKit
 
-/// Arguments decoded from `invoke('plugin:native-webview|open', { url })`.
-/// The `url` key matches `OpenRequest`'s camelCase serde wire shape.
+/// Arguments decoded from `invoke('plugin:native-webview|open', { url, initScript })`.
+/// Keys match `OpenRequest`'s camelCase serde wire shape; `initScript` is
+/// omitted when absent.
 class OpenArgs: Decodable {
   let url: String
+  let initScript: String?
 }
 
 /// Breaks the well-known retain cycle that a `WKUserContentController` script
@@ -38,35 +40,6 @@ class NativeWebviewPlugin: Plugin, WKScriptMessageHandler {
   /// `window.webkit.messageHandlers.<name>` the injected script posts to.
   static let messageHandlerName = "nativeWebview"
 
-  /// Injected at `.atDocumentStart` into all frames on ANY origin. Thin slice:
-  /// it only proves at-document-start injection by posting lifecycle pings.
-  /// The real sniffer body (fetch/XHR/console shims) replaces this string in a
-  /// later increment.
-  static let injectedSource = """
-    (function () {
-      try {
-        var post = function (payload) {
-          if (
-            window.webkit &&
-            window.webkit.messageHandlers &&
-            window.webkit.messageHandlers.\(messageHandlerName)
-          ) {
-            window.webkit.messageHandlers.\(messageHandlerName).postMessage(payload);
-          }
-        };
-        post({ kind: "injected", url: location.href });
-        document.addEventListener("DOMContentLoaded", function () {
-          post({ kind: "domcontentloaded", url: location.href });
-        });
-        window.addEventListener("load", function () {
-          post({ kind: "load", url: location.href });
-        });
-      } catch (error) {
-        // Never throw into the host page.
-      }
-    })();
-    """
-
   @objc public func open(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(OpenArgs.self)
     guard let url = URL(string: args.url) else {
@@ -75,19 +48,25 @@ class NativeWebviewPlugin: Plugin, WKScriptMessageHandler {
     }
 
     DispatchQueue.main.async {
-      self.present(url: url)
+      self.present(url: url, initScript: args.initScript)
       invoke.resolve(["opened": true])
     }
   }
 
-  private func present(url: URL) {
+  private func present(url: URL, initScript: String?) {
     let contentController = WKUserContentController()
-    let userScript = WKUserScript(
-      source: NativeWebviewPlugin.injectedSource,
-      injectionTime: .atDocumentStart,
-      forMainFrameOnly: false
-    )
-    contentController.addUserScript(userScript)
+    // Caller-supplied document-start script, injected into all frames on ANY
+    // origin (e.g. browser-sniffer's bundled installSniffer IIFE). The plugin
+    // is content-agnostic — no script means no injection.
+    if let initScript = initScript {
+      contentController.addUserScript(
+        WKUserScript(
+          source: initScript,
+          injectionTime: .atDocumentStart,
+          forMainFrameOnly: false
+        )
+      )
+    }
     contentController.add(
       WeakScriptMessageHandler(delegate: self),
       name: NativeWebviewPlugin.messageHandlerName
@@ -115,16 +94,15 @@ class NativeWebviewPlugin: Plugin, WKScriptMessageHandler {
     _ userContentController: WKUserContentController,
     didReceive message: WKScriptMessage
   ) {
+    // The injected adapter posts an opaque JSON string (the sniffer's wire
+    // message). Forward it verbatim to the host webview's plugin listeners
+    // (`addPluginListener('native-webview', 'message', …)`), which parse it.
+    // `JSValue` is only string-literal-expressible, so wrap the `String`.
     guard message.name == NativeWebviewPlugin.messageHandlerName,
-      let body = message.body as? [String: Any],
-      let kind = body["kind"] as? String,
-      let pageURL = body["url"] as? String
+      let payload = message.body as? String
     else { return }
 
-    // Forward to the host webview's plugin listeners
-    // (`addPluginListener('native-webview', 'message', …)`). `JSValue` is only
-    // string-literal-expressible, so wrap the `String` variables explicitly.
-    trigger("message", data: ["kind": .string(kind), "url": .string(pageURL)])
+    trigger("message", data: ["payload": .string(payload)])
   }
 
   /// The top-most presented view controller to present the popup from.
