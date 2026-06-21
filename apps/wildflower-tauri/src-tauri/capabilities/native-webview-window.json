@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "native-webview-window",
+  "description": "Capability for the DESKTOP native-webview popup window (label 'native-webview', see desktop.rs WINDOW_LABEL). Desktop presents the popup as a Tauri WebviewWindow (a non-Tauri native webview would need forbidden unsafe FFI), so the loaded third-party page has window.__TAURI__ — scoped here to ONLY the event bus (the injected document-start script emits 'native-webview:message' lifecycle pings) plus log. core:default is withheld because the external page shares this webview's JS context. `remote.urls` is required so IPC from the Origin::Remote page isn't rejected. Mirrors browser-sniffer.json's posture. On iOS/Android the popup is a separate WKWebView / android.webkit.WebView and this capability does not apply.",
+  "local": false,
+  "windows": ["native-webview"],
+  "webviews": ["native-webview"],
+  "remote": {
+    "urls": ["https://*", "http://*"]
+  },
+  "permissions": ["core:event:default", "log:default"]
+}

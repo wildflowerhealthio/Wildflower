@@ -9,9 +9,14 @@
 //! `WKUserScript`, and bridging messages back through a scoped
 //! `WKScriptMessageHandler` — no `__TAURI__` exposure.
 //!
-//! Status: **iOS only**, running in parallel with the existing
-//! `WebviewWindow` path (desktop + Android are unchanged; `open` returns
-//! [`Error::UnsupportedPlatform`] there). See `docs/Explanation.md`.
+//! Backends (all trial-level, running in parallel with the existing
+//! browser-sniffer `WebviewWindow` path):
+//! - **iOS** — Swift `WKWebView` in a `UINavigationController`, native chrome.
+//! - **Android** — Kotlin `android.webkit.WebView` in a `Dialog` + `Toolbar`.
+//! - **Desktop** — a Tauri `WebviewWindow` (a non-Tauri native webview would
+//!   need forbidden `unsafe` FFI); injection via `initialization_script`. The
+//!   page sees a `__TAURI__` scoped to the event bus, unlike the mobile
+//!   backends. See `desktop.rs` and `docs/Explanation.md`.
 //!
 //! Usage from the webview:
 //! ```js

@@ -12,6 +12,8 @@ links = "tauri-plugin-native-webview"
 [dependencies]
 tauri = { version = "2", features = [] }
 serde = { workspace = true }
+# Desktop backend parses/navigates external URLs for the `WebviewWindow` popup.
+url = "2"
 
 [build-dependencies]
 # Generates the per-command permissions + ACL schema from `COMMANDS` and wires
