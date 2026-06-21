@@ -6240,6 +6240,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-native-webview"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+]
+
+[[package]]
 name = "tauri-plugin-opener"
 version = "2.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

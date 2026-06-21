@@ -1,0 +1,5 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Allows presenting a native web view popup via the `open` command."
+permissions = ["allow-open"]

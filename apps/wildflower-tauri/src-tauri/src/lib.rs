@@ -277,6 +277,11 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        // Native web view popup (iOS only; no-op `UnsupportedPlatform` on
+        // desktop/Android). Presents external URLs in a WKWebView with native
+        // chrome and document-start JS injection — the native counterpart to
+        // the browser-sniffer WebviewWindow path, which stays in place.
+        .plugin(tauri_plugin_native_webview::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 // Stdout only — no Webview target, so host logs never

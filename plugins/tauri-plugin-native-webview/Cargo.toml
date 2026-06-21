@@ -1,0 +1,28 @@
+[package]
+name = "tauri-plugin-native-webview"
+version = "0.0.0"
+description = "Present an external URL in a native, JS-injectable web view popup (iOS today)."
+edition.workspace = true
+publish.workspace = true
+# Required for Tauri plugins that ship native (Swift/Kotlin) code: the value is a
+# unique key Tauri's build tooling uses to associate the mobile sources with this
+# crate. Must be unique across the dependency graph.
+links = "tauri-plugin-native-webview"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { workspace = true }
+
+[build-dependencies]
+# Generates the per-command permissions + ACL schema from `COMMANDS` and wires
+# the `ios/` Swift package into the host app at `tauri ios` codegen time.
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dev-dependencies]
+# Drift-guard tests round-trip the wire models through JSON.
+serde_json = { workspace = true }
+
+# Opt into the workspace lints (notably `unsafe_code = "forbid"`). The plugin's
+# Rust side is pure glue — all native code lives in Swift — so this holds.
+[lints]
+workspace = true
