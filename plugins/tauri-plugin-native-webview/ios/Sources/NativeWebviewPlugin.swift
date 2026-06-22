@@ -44,13 +44,17 @@ class SetChromeArgs: Decodable {
 /// singleton) so a stacked second `open` doesn't redirect the first popup's
 /// events into the second popup's channel.
 ///
+/// `channel` is `var` so a second `open()` against an existing popup can
+/// rebind it without rebuilding the webview — see `NativeWebviewPlugin.open`'s
+/// re-wire branch.
+///
 /// `WKUserContentController` retains its script-message handlers strongly, and
 /// a popup's `userContentController.add(handler, name: ...)` then retains the
 /// handler back through the webview's configuration — the chain that
 /// historically required the `WeakScriptMessageHandler` indirection. We sidestep
 /// the cycle by removing this handler in the popup controller's `deinit`.
 class PopupMessageBridge: NSObject, WKScriptMessageHandler {
-  let channel: Channel
+  var channel: Channel
 
   init(channel: Channel) {
     self.channel = channel
@@ -99,6 +103,19 @@ class NativeWebviewPlugin: Plugin {
   /// UINavigationController's, not the plugin's.
   private weak var currentController: NativeWebviewController?
 
+  /// The currently-presented popup's message bridge. Captured on `open` so a
+  /// subsequent `open()` against an existing popup can re-bind its `channel`
+  /// without rebuilding the webview (Task #7 re-wire). Same weak rationale.
+  private weak var currentBridge: PopupMessageBridge?
+
+  /// Set when a same-tick `open()` arrives while a previous popup is in its
+  /// dismiss animation (`controller.isBeingDismissed`). The pending closure
+  /// runs from `onClose` once the animation completes, presenting the new
+  /// popup. When set, `onClose` suppresses the `Closed` channel echo — the
+  /// popup logically continues with new wiring rather than firing a spurious
+  /// close (Task #10 close→reopen race guard).
+  private var pendingOpenAfterClose: (() -> Void)?
+
   @objc public func open(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(OpenArgs.self)
     guard let url = URL(string: args.url) else {
@@ -107,14 +124,50 @@ class NativeWebviewPlugin: Plugin {
     }
 
     DispatchQueue.main.async {
-      // Already presented: navigate in-place rather than stacking another
-      // sheet on top. The original `WKUserScript(.atDocumentStart)` fires
-      // again on the new navigation, so the caller's `initScript` keeps
-      // running for the new page; the per-popup `PopupMessageBridge` and
-      // its captured `Channel` stay wired across navigations. A different
-      // `initScript` / `channel` on this second call is silently ignored
-      // — for browser-sniffer's case both are stable across opens.
-      if let existing = self.currentWebView {
+      // Dismiss in flight (host `close()` or user swipe): queue a replay for
+      // when the controller finishes dismissing. `onClose` consumes the
+      // pending closure and suppresses the `Closed` echo so the popup
+      // logically continues with new wiring. Last-write-wins on rapid
+      // repeats. (Task #10 race guard.)
+      if let controller = self.currentController, controller.isBeingDismissed {
+        self.pendingOpenAfterClose = { [weak self] in
+          guard let self = self else { return }
+          self.present(
+            url: url,
+            initScript: args.initScript,
+            channel: args.channel,
+            initialTitle: args.initialTitle,
+            initialSubtitle: args.initialSubtitle,
+            initialMessage: args.initialMessage
+          )
+          invoke.resolve(["opened": true])
+        }
+        return
+      }
+      // Already presented and not being dismissed: re-wire the existing
+      // popup in place. Channel rebinds via `bridge.channel = …`; the new
+      // `initScript` is `eval`'d into the current page (NOT document-start
+      // for the just-loaded one — caveat documented in `desktop.rs`) and
+      // also added to the user content controller so future loads inside
+      // this popup run it at document-start. Caller-supplied initial chrome
+      // re-applies via the existing setChrome path. (Task #7 re-wire.)
+      if let existing = self.currentWebView, let bridge = self.currentBridge {
+        bridge.channel = args.channel
+        if let initScript = args.initScript {
+          existing.evaluateJavaScript(initScript, completionHandler: nil)
+          existing.configuration.userContentController.addUserScript(
+            WKUserScript(
+              source: initScript,
+              injectionTime: .atDocumentStart,
+              forMainFrameOnly: false
+            )
+          )
+        }
+        if let controller = self.currentController {
+          if let title = args.initialTitle { controller.updateTitle(title) }
+          if let subtitle = args.initialSubtitle { controller.updateSubtitle(subtitle) }
+          if let message = args.initialMessage { controller.updateMessage(message) }
+        }
         existing.load(URLRequest(url: url))
         invoke.resolve(["opened": true])
         return
@@ -207,6 +260,9 @@ class NativeWebviewPlugin: Plugin {
     }
     let bridge = PopupMessageBridge(channel: channel)
     contentController.add(bridge, name: NativeWebviewPlugin.messageHandlerName)
+    // Capture so `open()`'s re-wire branch can swap `bridge.channel` without
+    // rebuilding the webview (Task #7).
+    currentBridge = bridge
 
     let configuration = WKWebViewConfiguration()
     configuration.userContentController = contentController
@@ -229,10 +285,20 @@ class NativeWebviewPlugin: Plugin {
     browser.onClose = { [weak self] in
       self?.currentWebView = nil
       self?.currentController = nil
-      // PopupEvent.closed (lowercase tag) — matches the `models.rs` shape.
-      // `JsonObject` annotation pins the non-throwing overload (see above).
-      let data: JsonObject = ["event": "closed"]
-      channel.send(data)
+      self?.currentBridge = nil
+      // If `open()` queued a replay during the dismiss animation, run it
+      // now and skip the `Closed` echo — the popup logically continues with
+      // new wiring (Task #10). Otherwise this is a real dismiss; emit
+      // `Closed` so the host's collector releases per-popup state.
+      if let pending = self?.pendingOpenAfterClose {
+        self?.pendingOpenAfterClose = nil
+        pending()
+      } else {
+        // PopupEvent.closed (lowercase tag) — matches the `models.rs` shape.
+        // `JsonObject` annotation pins the non-throwing overload (see above).
+        let data: JsonObject = ["event": "closed"]
+        channel.send(data)
+      }
     }
 
     let navigation = UINavigationController(rootViewController: browser)

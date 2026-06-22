@@ -116,20 +116,83 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
      */
     private var currentMessageView: TextView? = null
 
+    /**
+     * The currently-presented popup's JS-bridge. Captured so a second `open()`
+     * against an existing popup can rebind `bridge.channel = …` without
+     * rebuilding the WebView (Task #7 re-wire). Cleared on dismiss.
+     */
+    private var currentBridge: Bridge? = null
+
+    /**
+     * Set in [dismissDialog] before [Dialog.dismiss], cleared in the
+     * `setOnDismissListener`. While true, [open] queues its request into
+     * [pendingOpenAfterClose] rather than rewiring a doomed WebView —
+     * `Dialog.dismiss()` only enqueues teardown via the UI thread, so a
+     * same-tick re-`open()` would otherwise see `isShowing == true` and a
+     * non-null `currentWebView` and incorrectly take the rewire branch
+     * (Task #10 race guard).
+     */
+    private var isClosing = false
+
+    /**
+     * Replay closure set by [open] when a dismiss is in flight; consumed by
+     * the `setOnDismissListener`. When set, the dismiss listener suppresses
+     * the `Closed` channel echo and runs the replay — the popup logically
+     * continues with new wiring rather than firing a spurious close.
+     * Last-write-wins on rapid repeats.
+     */
+    private var pendingOpenAfterClose: (() -> Unit)? = null
+
     @Command
     fun open(invoke: Invoke) {
         val args = invoke.parseArgs(OpenArgs::class.java)
         activity.runOnUiThread {
-            // Already presented: navigate in-place rather than stacking
-            // another Dialog. The `DOCUMENT_START_SCRIPT` (or its
-            // `onPageStarted` fallback) re-fires on the new navigation, so
-            // the caller's `initScript` keeps running for the new page; the
-            // per-popup `Bridge` and its captured `Channel` stay wired.
-            // A different `initScript` / `channel` on this second call is
-            // silently ignored — for browser-sniffer's case both are stable
-            // across opens.
+            // Dismiss in flight: queue replay for the dismiss listener
+            // (Task #10 race guard). `Dialog.dismiss()` enqueues teardown to
+            // the UI thread; `isClosing` covers the gap until the listener
+            // fires.
+            if (isClosing) {
+                pendingOpenAfterClose = {
+                    present(
+                        args.url,
+                        args.initScript,
+                        args.channel,
+                        args.initialTitle,
+                        args.initialSubtitle,
+                        args.initialMessage,
+                    )
+                    val result = JSObject()
+                    result.put("opened", true)
+                    invoke.resolve(result)
+                }
+                return@runOnUiThread
+            }
             val existing = currentWebView
-            if (existing != null) {
+            val bridge = currentBridge
+            val d = dialog
+            // Already presented and not in flight to close: rewire the
+            // existing popup in place (Task #7). Channel rebinds via
+            // `bridge.channel = …`; the new `initScript` is `eval`'d into the
+            // current page (NOT document-start for the just-loaded one —
+            // caveat documented in `desktop.rs`) and also added via
+            // `WebViewCompat.addDocumentStartJavaScript` so future loads run
+            // it at document-start (when supported). Initial chrome
+            // re-applies via the existing toolbar / message bindings.
+            if (existing != null && bridge != null && d != null && d.isShowing) {
+                bridge.channel = args.channel
+                args.initScript?.let { script ->
+                    existing.evaluateJavascript(script, null)
+                    if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                        WebViewCompat.addDocumentStartJavaScript(existing, script, setOf("*"))
+                    }
+                }
+                args.initialTitle?.let { currentToolbar?.title = if (it.isEmpty()) null else it }
+                args.initialSubtitle?.let {
+                    currentToolbar?.subtitle = if (it.isEmpty()) null else it
+                }
+                args.initialMessage?.let {
+                    currentMessageView?.text = if (it.isEmpty()) null else it
+                }
                 existing.loadUrl(args.url)
             } else {
                 present(
@@ -200,10 +263,9 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
 
     /**
      * Dismiss the currently-presented popup. Idempotent — resolves with
-     * `{closed: false}` when no popup is open. `Dialog.dismiss()` triggers
-     * the `setOnDismissListener` that fires `PopupEvent::Closed` through
-     * the channel, so the host-initiated dismissal raises the same event
-     * the user-initiated chrome Close button does.
+     * `{closed: false}` when no popup is open. Routes through
+     * [dismissDialog] so a same-tick reopen lands in the deferral branch of
+     * [open] rather than rewiring a doomed WebView.
      */
     @Command
     fun close(invoke: Invoke) {
@@ -215,11 +277,25 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 invoke.resolve(result)
                 return@runOnUiThread
             }
-            d.dismiss()
+            dismissDialog()
             val result = JSObject()
             result.put("closed", true)
             invoke.resolve(result)
         }
+    }
+
+    /**
+     * Dismiss the popup with the race guard ([isClosing]) set so a same-tick
+     * `open()` queues a replay via [pendingOpenAfterClose] rather than
+     * navigating the not-yet-torn-down WebView. Every dismiss path (host
+     * `close`, toolbar Close button, system back) must go through this — the
+     * existing onKeyListener for back was changed to call this helper too.
+     */
+    private fun dismissDialog() {
+        val d = dialog ?: return
+        if (!d.isShowing) return
+        isClosing = true
+        d.dismiss()
     }
 
     private fun present(
@@ -238,8 +314,12 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
 
         // JS -> native bridge, reachable on any origin. Per-popup so a stacked
         // second `open` doesn't redirect the first popup's events into the
-        // second popup's channel.
-        webView.addJavascriptInterface(Bridge(channel), MESSAGE_HANDLER_NAME)
+        // second popup's channel. Captured into [currentBridge] so a second
+        // `open()` against this popup can rebind `bridge.channel = …`
+        // without rebuilding the WebView (Task #7).
+        val bridge = Bridge(channel)
+        webView.addJavascriptInterface(bridge, MESSAGE_HANDLER_NAME)
+        currentBridge = bridge
 
         // Caller-supplied document-start script (e.g. browser-sniffer's bundled
         // installSniffer IIFE), injected on ANY origin when the WebView provider
@@ -249,6 +329,22 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
         if (initScript != null && supportsDocumentStart) {
             WebViewCompat.addDocumentStartJavaScript(webView, initScript, setOf("*"))
+        } else if (initScript != null) {
+            // The `onPageStarted` fallback fires AFTER the JS context exists,
+            // so a page's inline `<script>` tag in `<head>` that synchronously
+            // calls `fetch`/`XMLHttpRequest` will run before our injection —
+            // those requests escape interception silently. WebView 83+ (API
+            // level varies) provides DOCUMENT_START_SCRIPT; flag the
+            // under-collection so an out-of-date device shows up in logs
+            // rather than just producing thin data.
+            android.util.Log.w(
+                "NativeWebview",
+                "WebViewFeature.DOCUMENT_START_SCRIPT unsupported on this device's " +
+                    "WebView provider; falling back to onPageStarted injection. Early " +
+                    "synchronous fetch/XHR from inline scripts will NOT be intercepted. " +
+                    "Update Android System WebView (requires version 83+) to restore " +
+                    "full coverage."
+            )
         }
 
         val toolbar = Toolbar(activity).apply {
@@ -257,7 +353,9 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             setSubtitleTextColor(Color.parseColor("#A0A4AF"))
             setBackgroundColor(Color.parseColor("#14161C"))
             navigationIcon = activity.getDrawable(android.R.drawable.ic_menu_close_clear_cancel)
-            setNavigationOnClickListener { dialog?.dismiss() }
+            // Route through [dismissDialog] so the close→reopen guard
+            // ([isClosing]) is set for user-initiated closes too.
+            setNavigationOnClickListener { dismissDialog() }
             // Refresh action on the top-right. `OnMenuItemClickListener` fires
             // for any menu item; we dispatch by id rather than collecting per
             // item so the toolbar.menu surface can grow without re-plumbing.
@@ -403,7 +501,12 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                         webView.goBack()
                         true
                     } else {
-                        false
+                        // Was: return `false` to let Android's default dialog
+                        // back dismiss us. Now we consume + go through
+                        // [dismissDialog] so the `isClosing` race-guard is
+                        // set even on a system-back dismiss.
+                        dismissDialog()
+                        true
                     }
                 } else {
                     false
@@ -437,10 +540,22 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
                 currentWebView = null
                 currentToolbar = null
                 currentMessageView = null
-                // PopupEvent.closed (lowercase tag) — matches the `models.rs` shape.
-                val payload = JSObject()
-                payload.put("event", "closed")
-                channel.send(payload)
+                currentBridge = null
+                isClosing = false
+                // If `open()` queued a replay during the dismiss, run it now
+                // and skip the `Closed` echo — the popup logically continues
+                // with new wiring (Task #10). Otherwise this is a real
+                // dismiss; emit `Closed`.
+                val pending = pendingOpenAfterClose
+                pendingOpenAfterClose = null
+                if (pending != null) {
+                    pending()
+                } else {
+                    // PopupEvent.closed (lowercase tag) — matches the `models.rs` shape.
+                    val payload = JSObject()
+                    payload.put("event", "closed")
+                    channel.send(payload)
+                }
             }
             show()
         }
@@ -449,8 +564,13 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
     /**
      * JS -> native bridge surface exposed as `window.nativeWebview`. Each popup
      * gets its own `Bridge` so events route to the matching caller's channel.
+     *
+     * `channel` is `var` so [open]'s rewire branch can swap it without
+     * rebuilding the WebView (Task #7). `postMessage` snapshots the channel
+     * at post time so an in-flight rebind doesn't reroute a message that was
+     * already queued under the previous binding.
      */
-    inner class Bridge(private val channel: Channel) {
+    inner class Bridge(var channel: Channel) {
         @JavascriptInterface
         fun postMessage(json: String) {
             // The injected adapter posts an opaque JSON string (the sniffer's
@@ -459,9 +579,12 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             val payload = JSObject()
             payload.put("event", "message")
             payload.put("payload", json)
+            // Snapshot at post time: a rewire that lands between this hop
+            // and the UI-thread send shouldn't reroute an in-flight message.
+            val snapshot = channel
             // `@JavascriptInterface` callbacks run off the UI thread; hop back
             // before sending on the channel.
-            activity.runOnUiThread { channel.send(payload) }
+            activity.runOnUiThread { snapshot.send(payload) }
         }
     }
 }
