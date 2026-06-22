@@ -34,6 +34,8 @@
 //!   `SniffingComplete` on the bridge — keeping collector idle-timeouts off
 //!   the happy path.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use shared_structures_rust::bridge::BRIDGE_EVENT;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager};
@@ -48,6 +50,12 @@ use tauri_plugin_native_webview::PopupEvent;
 /// retrieved by `sniffer_window::open_or_navigate`.
 pub(crate) struct PopupChannel {
     pub(crate) channel: Channel<PopupEvent>,
+    /// Set by `sniffing_complete::handle` immediately before a host-initiated
+    /// close, and cleared on every `open`. When set, the `PopupEvent::Closed`
+    /// the close produces must NOT echo a second `SniffingComplete` onto the
+    /// bridge — the host already observed the one that triggered the close. A
+    /// user-initiated close (flag unset) still emits. See [`dispatch_body`].
+    pub(crate) host_close_pending: AtomicBool,
 }
 
 /// Build the channel, register its handler, and stash the [`PopupChannel`]
@@ -58,7 +66,10 @@ pub(crate) fn install(app: &AppHandle) {
         dispatch_body(&app_handle, &body);
         Ok(())
     });
-    app.manage(PopupChannel { channel });
+    app.manage(PopupChannel {
+        channel,
+        host_close_pending: AtomicBool::new(false),
+    });
 }
 
 /// Decode a channel body and dispatch to the bridge bus. Decode / emit
@@ -133,8 +144,19 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
             }
         }
         PopupEvent::Closed => {
-            // Same shape as the in-page top bar's Close button emit on the
-            // legacy Tauri path — keeps the collector consumer unchanged.
+            // A host-initiated close (sniffing_complete::handle) already
+            // delivered SniffingComplete to the host, so suppress exactly one
+            // echo here to avoid a duplicate terminal event on the bridge. A
+            // user-initiated close (flag unset) still emits so the collector
+            // releases per-request state. Same shape as the in-page top bar's
+            // Close button emit on the legacy Tauri path.
+            if app
+                .state::<PopupChannel>()
+                .host_close_pending
+                .swap(false, Ordering::SeqCst)
+            {
+                return;
+            }
             if let Err(error) =
                 app.emit(BRIDGE_EVENT, serde_json::json!({ "_tag": "SniffingComplete" }))
             {

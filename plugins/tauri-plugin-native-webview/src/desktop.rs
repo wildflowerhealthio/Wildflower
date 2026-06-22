@@ -38,7 +38,7 @@ use base64::Engine;
 use serde::de::DeserializeOwned;
 use tauri::{
     ipc::Channel, plugin::PluginApi, webview::WebviewBuilder, window::WindowBuilder, AppHandle,
-    Listener, LogicalPosition, LogicalSize, Manager, Runtime, WebviewUrl, WindowEvent,
+    LogicalPosition, LogicalSize, Manager, Runtime, WebviewUrl, WindowEvent,
 };
 use url::Url;
 
@@ -274,6 +274,14 @@ impl<R: Runtime> NativeWebview<R> {
     /// (required on macOS). Build failures are logged best-effort, not
     /// returned, matching the trial-level desktop posture.
     pub fn open(&self, payload: OpenRequest) -> crate::Result<()> {
+        // Validate the URL synchronously so a bad URL is reported back to the
+        // caller immediately. The window build itself is marshalled onto the
+        // main thread, where a failure can only be logged — returning it would
+        // mean blocking this thread on a main-thread result, which deadlocks if
+        // the caller is itself on the main thread.
+        Url::parse(&payload.url).map_err(|error| {
+            crate::Error::Internal(format!("invalid URL {}: {error}", payload.url))
+        })?;
         let app = self.0.clone();
         self.0
             .run_on_main_thread(move || {
@@ -380,6 +388,7 @@ fn present<R: Runtime>(app: &AppHandle<R>, payload: OpenRequest) -> crate::Resul
     // re-reports immediately on DOMContentLoaded, so the first set_chrome
     // with a subtitle bumps it to `CHROME_HEIGHT_WITH_SUBTITLE`.
     window.manage(ChromeHeight(Mutex::new(CHROME_HEIGHT_BASE)));
+    window.manage(AppliedLayout(Mutex::new(None)));
 
     // Chrome webview: HTML loaded directly via a base64 `data:` URL so the
     // chrome's DOM is in place at first paint — no `about:blank` +
@@ -412,8 +421,15 @@ fn present<R: Runtime>(app: &AppHandle<R>, payload: OpenRequest) -> crate::Resul
                     let _ = content.eval(script);
                 }
                 Some("height") => {
+                    // The chrome JS only ever reports a small positive px
+                    // height, but `parse::<f64>()` also accepts
+                    // `inf`/`NaN`/negatives — any of which would poison the
+                    // webview layout split (`logical_h - chrome_height`) with
+                    // no recovery path. Clamp to a finite, sane range.
                     if let Ok(height) = value.parse::<f64>() {
-                        apply_chrome_height(&app_for_actions, &window_for_actions, height);
+                        if height.is_finite() && (0.0..=4096.0).contains(&height) {
+                            apply_chrome_height(&app_for_actions, &window_for_actions, height);
+                        }
                     }
                 }
                 _ => {}
@@ -456,6 +472,13 @@ fn present<R: Runtime>(app: &AppHandle<R>, payload: OpenRequest) -> crate::Resul
 /// split) and written by the chrome → Rust height-report navigation.
 struct ChromeHeight(Mutex<f64>);
 
+/// Last `(logical_w, logical_h, chrome_height)` actually applied to the child
+/// webviews. `apply_chrome_height` short-circuits when the next layout matches,
+/// so a no-op resize tick or a message-only `set_chrome` (which re-reports the
+/// same height) doesn't re-issue the four `set_position` / `set_size` calls
+/// across both webviews.
+struct AppliedLayout(Mutex<Option<(f64, f64, f64)>>);
+
 /// Re-lay the chrome (top, full width, `chrome_height` tall) and the
 /// content (everything below) for the given chrome height. Used both by
 /// the chrome-reported height change and by the resize listener (which
@@ -474,6 +497,18 @@ fn apply_chrome_height<R: Runtime>(
 
     if let Some(state) = window.try_state::<ChromeHeight>() {
         *state.0.lock().unwrap() = chrome_height;
+    }
+
+    // Skip the webview relayout when nothing actually moved. The resize
+    // listener calls this on every resize tick and a message-only `set_chrome`
+    // re-reports the same height, so most calls land at the same geometry.
+    let next = (logical_w, logical_h, chrome_height);
+    if let Some(applied) = window.try_state::<AppliedLayout>() {
+        let mut guard = applied.0.lock().unwrap();
+        if *guard == Some(next) {
+            return;
+        }
+        *guard = Some(next);
     }
 
     if let Some(chrome) = app.get_webview(CHROME_WEBVIEW_LABEL) {
@@ -510,13 +545,6 @@ fn install_window_listeners<R: Runtime>(
     window: &tauri::Window<R>,
     channel: Channel<PopupEvent>,
 ) {
-    /// Future-proofing: if we ever attach `app.listen` ids that need to be
-    /// unregistered on close, drain them from here. Today's design uses
-    /// `on_navigation` for chrome → Rust, which is a per-webview hook that
-    /// goes away with the webview itself, so the slot is empty.
-    struct ListenerIds(Mutex<Vec<tauri::EventId>>);
-    window.manage(ListenerIds(Mutex::new(Vec::new())));
-
     let app_window = app.clone();
     let window_clone = window.clone();
     window.on_window_event(move |event| match event {
@@ -536,11 +564,6 @@ fn install_window_listeners<R: Runtime>(
             // and the channel send is the only mechanism we have to surface
             // the dismissal to the host.
             let _ = channel.send(PopupEvent::Closed);
-            if let Some(ids) = window_clone.try_state::<ListenerIds>() {
-                for id in ids.0.lock().unwrap().drain(..) {
-                    app_window.unlisten(id);
-                }
-            }
         }
         _ => {}
     });

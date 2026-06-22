@@ -67,8 +67,15 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
 
     // `Channel` clones share the same identifier and handler under an `Arc`,
     // so reusing the long-lived channel across opens routes every popup's
-    // events to the same `popup_bridge` handler.
-    let channel = app.state::<PopupChannel>().channel.clone();
+    // events to the same `popup_bridge` handler. A fresh open also clears any
+    // stale host-close flag (e.g. a SniffingComplete that fired while no popup
+    // was open) so a later user-initiated close still emits its terminal
+    // SniffingComplete.
+    let channel = {
+        let popup = app.state::<PopupChannel>();
+        popup.host_close_pending.store(false, Ordering::SeqCst);
+        popup.channel.clone()
+    };
     app.native_webview()
         .open(OpenRequest {
             url: parsed.to_string(),

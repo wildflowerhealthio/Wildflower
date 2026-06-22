@@ -43,6 +43,12 @@ pub struct NativeWebview<R: Runtime>(tauri::plugin::PluginHandle<R>);
 impl<R: Runtime> NativeWebview<R> {
     /// Present the native popup by invoking the Swift/Kotlin `open` command.
     pub fn open(&self, payload: OpenRequest) -> crate::Result<()> {
+        // Validate the URL up front so every backend rejects a bad URL the same
+        // way — the Android native side otherwise hands an unvalidated string
+        // straight to `WebView.loadUrl` and still resolves `opened: true`.
+        url::Url::parse(&payload.url).map_err(|error| {
+            crate::Error::PluginInvoke(format!("invalid URL {}: {error}", payload.url))
+        })?;
         self.0
             .run_mobile_plugin::<OpenResponse>("open", payload)
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
