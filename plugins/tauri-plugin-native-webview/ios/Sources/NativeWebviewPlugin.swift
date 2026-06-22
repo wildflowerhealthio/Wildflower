@@ -211,6 +211,12 @@ class NativeWebviewPlugin: Plugin {
 
     let navigation = UINavigationController(rootViewController: browser)
     navigation.modalPresentationStyle = .pageSheet
+    // A `.pageSheet` is interactively swipe-dismissable. That gesture does
+    // NOT route through `requestClose()`, so register the controller as the
+    // sheet's presentation delegate to catch it and still fire `onClose`
+    // (see `presentationControllerDidDismiss`). Without this, a swipe-away
+    // never emits `PopupEvent::Closed` and the host's collector idle-times-out.
+    navigation.presentationController?.delegate = browser
     // Show the navigation controller's bottom toolbar so the controller's
     // `toolbarItems` (back / forward) render. The view controller hides /
     // shows it on appear, but flipping it here too avoids a flash at open.
@@ -299,7 +305,7 @@ class WebViewTitleView: UIView {
 /// - Bottom toolbar: Back / Forward (KVO-driven enabled state), then a
 ///   caller-controlled `message` label for status text (e.g.
 ///   "34 resources collected").
-class NativeWebviewController: UIViewController {
+class NativeWebviewController: UIViewController, UIAdaptivePresentationControllerDelegate {
   private let webView: WKWebView
   private var canGoBackObservation: NSKeyValueObservation?
   private var canGoForwardObservation: NSKeyValueObservation?
@@ -355,13 +361,13 @@ class NativeWebviewController: UIViewController {
     )
 
     // Bottom toolbar layout (leading → trailing):
-    //   [back] [forward]                         (no message)
-    //   [back] [forward] [fixed 12pt] [message]  (with message)
-    // ...followed by a flexible spacer that absorbs remaining width so the
-    // message stays adjacent to the nav arrows. The empty-message layout
-    // omits the messageItem entirely — an empty custom UILabel still
-    // renders as a 0-width baseline dot in a UIToolbar, which looks like
-    // garbage. `rebuildToolbarItems` is the single writer for this array.
+    //   [back] [forward] [flexible]            (no message)
+    //   [back] [forward] [flexible] [message]  (with message)
+    // The flexible spacer absorbs the remaining width so the message label
+    // sits at the trailing edge. The empty-message layout omits the
+    // messageItem entirely — an empty custom UILabel still renders as a
+    // 0-width baseline dot in a UIToolbar, which looks like garbage.
+    // `rebuildToolbarItems` is the single writer for this array.
     rebuildToolbarItems()
     backItem.isEnabled = webView.canGoBack
     forwardItem.isEnabled = webView.canGoForward
@@ -414,6 +420,17 @@ class NativeWebviewController: UIViewController {
     }
   }
 
+  /// Interactive dismissal (swiping the page sheet down) bypasses
+  /// `requestClose()`, so UIKit reports it here instead. Route it through the
+  /// same `onClose` path so `PopupEvent::Closed` fires exactly once whether the
+  /// user tapped Close, the host called `close`, or the sheet was swiped away.
+  /// UIKit does NOT call this for programmatic `dismiss(animated:)`, so the
+  /// Close-button / host-`close` path (which fires `onClose` from its dismiss
+  /// completion) does not double-emit.
+  func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+    onClose?()
+  }
+
   /// Push a new title (URL-host slot) into the chrome. Called from the
   /// plugin's `setChrome` command on the main thread. Empty string clears.
   func updateTitle(_ title: String) {
@@ -445,8 +462,6 @@ class NativeWebviewController: UIViewController {
     let flexible = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
     let hasMessage = !(messageLabel.text?.isEmpty ?? true)
     if hasMessage {
-      // let fixedGap = UIBarButtonItem(barButtonSystemItem: .fixedSpace, target: nil, action: nil)
-      // fixedGap.width = 12
       toolbarItems = [backItem, forwardItem, flexible, messageItem]
     } else {
       toolbarItems = [backItem, forwardItem, flexible]
@@ -456,6 +471,12 @@ class NativeWebviewController: UIViewController {
   deinit {
     canGoBackObservation?.invalidate()
     canGoForwardObservation?.invalidate()
+    // `WKUserContentController` retains its script-message handlers strongly;
+    // drop ours so the bridge (and the webview graph behind it) can deallocate,
+    // matching the lifecycle `PopupMessageBridge`'s doc comment describes.
+    webView.configuration.userContentController.removeScriptMessageHandler(
+      forName: NativeWebviewPlugin.messageHandlerName
+    )
   }
 }
 

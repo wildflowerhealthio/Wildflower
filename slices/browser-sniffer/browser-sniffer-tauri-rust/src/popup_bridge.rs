@@ -9,8 +9,9 @@
 //!   `Channel<PopupEvent>` whose handler decodes each event the plugin's
 //!   Swift/Kotlin/desktop side sends and re-emits onto `BRIDGE_EVENT`:
 //!   `PopupEvent::Message` → emit the popup-side envelope's inner payload on
-//!   its `event` channel (so SPA + Rust listeners see the `{_tag:…}` shape
-//!   directly); `PopupEvent::Closed` → emit `{"_tag":"SniffingComplete"}` so
+//!   the `BRIDGE_EVENT` channel (so SPA + Rust listeners see the `{_tag:…}`
+//!   shape directly), rejecting any other `event` name the (untrusted) popup
+//!   page might supply; `PopupEvent::Closed` → emit `{"_tag":"SniffingComplete"}` so
 //!   the collector releases per-request state on user-initiated close.
 //!   The channel is cloned and reused across every `open` — its identifier is
 //!   preserved by `Clone`, so the same handler fires for every popup.
@@ -108,11 +109,26 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
                 );
                 return;
             };
+            // Security: the popup hosts an arbitrary third-party page that can
+            // reach the native bridge (`webkit.messageHandlers.nativeWebview` /
+            // the Android `@JavascriptInterface`) directly, so `event_name` is
+            // attacker-controlled. Re-emitting it verbatim would let a hostile
+            // page raise *any* internal Tauri event on the host bus (e.g. spoof
+            // `SniffingComplete` or another slice's control events). The sniffer
+            // only ever multiplexes the single `BRIDGE_EVENT` channel, so refuse
+            // anything else rather than forwarding an arbitrary event name.
+            if event_name != BRIDGE_EVENT {
+                log::warn!(
+                    "[browser-sniffer] popup message envelope targeted unexpected event \
+                     `{event_name}`; dropping"
+                );
+                return;
+            }
             let inner_payload = envelope
                 .get("payload")
                 .cloned()
                 .unwrap_or(serde_json::Value::Null);
-            if let Err(error) = app.emit(event_name, inner_payload) {
+            if let Err(error) = app.emit(BRIDGE_EVENT, inner_payload) {
                 log::warn!("[browser-sniffer] failed to re-emit popup message: {error}");
             }
         }
