@@ -1,10 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "native-webview-window",
-  "description": "Capability for the DESKTOP native-webview popup window (label 'native-webview', see desktop.rs WINDOW_LABEL). Desktop presents the popup as a Tauri WebviewWindow (a non-Tauri native webview would need forbidden unsafe FFI), so the loaded third-party page has window.__TAURI__ — scoped here to ONLY the event bus (the injected document-start script emits 'native-webview:message' lifecycle pings) plus log. core:default is withheld because the external page shares this webview's JS context. `remote.urls` is required so IPC from the Origin::Remote page isn't rejected. Mirrors browser-sniffer.json's posture. On iOS/Android the popup is a separate WKWebView / android.webkit.WebView and this capability does not apply.",
+  "description": "Capability for the DESKTOP native-webview popup. The plugin builds a single `Window` (label 'native-webview') with two child webviews on desktop: 'native-webview-chrome' (a Tauri `about:blank` page that draws the host/subtitle/message + back/forward/refresh chrome bar) and 'native-webview-content' (the external URL with the caller's document-start script). Only 'native-webview-content' is granted here — it needs `core:event:default` so the browser-sniffer bridge transport can ride `BRIDGE_EVENT` from the loaded page (mirroring `browser-sniffer.json`'s posture). 'native-webview-chrome' is intentionally absent: chrome → Rust IPC goes through a custom-scheme `on_navigation` intercept (no `__TAURI__` commands), and Rust → chrome state push uses `Webview::eval`, which is Rust-initiated and bypasses capability checks. `remote.urls` is required so IPC from the Origin::Remote external page isn't rejected. On iOS/Android the popup is a separate WKWebView / android.webkit.WebView and this capability does not apply.",
   "local": false,
   "windows": ["native-webview"],
-  "webviews": ["native-webview"],
+  "webviews": ["native-webview-content"],
   "remote": {
     "urls": ["https://*", "http://*"]
   },

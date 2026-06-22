@@ -18,14 +18,30 @@
 //!   page sees a `__TAURI__` scoped to the event bus, unlike the mobile
 //!   backends. See `desktop.rs` and `docs/Explanation.md`.
 //!
-//! Usage from the webview:
-//! ```js
-//! import { invoke } from '@tauri-apps/api/core'
-//! import { addPluginListener } from '@tauri-apps/api/core'
+//! Usage (Rust caller — the canonical path; the popup bridge stays Rust-side):
+//! ```ignore
+//! use tauri::ipc::Channel;
+//! use tauri_plugin_native_webview::{NativeWebviewExt, OpenRequest, PopupEvent, SendRequest};
 //!
-//! await addPluginListener('native-webview', 'message', (p) => console.log(p))
-//! await invoke('plugin:native-webview|open', { url: 'https://example.test' })
+//! // Long-lived channel: clones share the same handler (Arc-backed).
+//! let channel: Channel<PopupEvent> = Channel::new(move |body| {
+//!     // body: tauri::ipc::InvokeResponseBody — deserialise as PopupEvent and dispatch.
+//!     Ok(())
+//! });
+//! app.native_webview().open(OpenRequest {
+//!     url: "https://example.test/".to_owned(),
+//!     init_script: Some("/* document-start IIFE */".to_owned()),
+//!     channel: channel.clone(),
+//! })?;
+//! // Push a message into the popup later:
+//! app.native_webview().send(SendRequest {
+//!     script: "window.__nativeWebviewReceive('{\"event\":\"bridge\",\"payload\":…}')".to_owned(),
+//! })?;
 //! ```
+//!
+//! JS callers can also drive the plugin through `invoke('plugin:native-webview|open', { url, channel })`
+//! with a `new Channel<PopupEvent>()`, but the design point is to keep popup
+//! event bridging in Rust — see [`docs/Explanation.md`](../docs/Explanation.md).
 
 use tauri::{
     plugin::{Builder, TauriPlugin},
@@ -33,7 +49,10 @@ use tauri::{
 };
 
 pub use error::{Error, Result};
-pub use models::{OpenRequest, OpenResponse};
+pub use models::{
+    CloseResponse, OpenRequest, OpenResponse, PopupEvent, SendRequest, SendResponse,
+    SetChromeRequest, SetChromeResponse,
+};
 
 mod commands;
 mod error;
@@ -66,7 +85,12 @@ impl<R: Runtime, T: Manager<R>> NativeWebviewExt<R> for T {
 /// `.plugin(tauri_plugin_native_webview::init())`.
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("native-webview")
-        .invoke_handler(tauri::generate_handler![commands::open])
+        .invoke_handler(tauri::generate_handler![
+            commands::open,
+            commands::send,
+            commands::set_chrome,
+            commands::close
+        ])
         .setup(|app, api| {
             #[cfg(mobile)]
             let native = mobile::init(app, api)?;

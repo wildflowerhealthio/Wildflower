@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 import { nativeSnifferBootstrapScript } from '../src/index.ts'
 
 const SNIFFER_STATE_SLOT = Symbol.for('browser-sniffer:state')
-const BROWSER_TOP_BAR_HOST_ID = 'wildflower-sniffer-browser-top-bar'
 
 type BridgeGlobals = typeof globalThis & {
   webkit?: { messageHandlers?: { nativeWebview?: { postMessage: (message: string) => void } } }
@@ -47,8 +46,6 @@ describe('nativeSnifferBootstrapScript', () => {
 
     // installSniffer ran: its symbol-keyed state slot exists.
     expect(SNIFFER_STATE_SLOT in (globalThis as object)).toBe(true)
-    // The native toolbar replaces the in-page chrome — no BrowserTopBar host.
-    expect(document.getElementById(BROWSER_TOP_BAR_HOST_ID)).toBeNull()
     // installSniffer posts a single-shot diagnostic Log on install, proving the
     // bridge transport carries sniffer output. Everything posted is a valid
     // bridge envelope `{ event: 'bridge', payload: { _tag } }`.
@@ -62,6 +59,5 @@ describe('nativeSnifferBootstrapScript', () => {
   it('no-ops when no native bridge is present', () => {
     boot()
     expect(SNIFFER_STATE_SLOT in (globalThis as object)).toBe(false)
-    expect(document.getElementById(BROWSER_TOP_BAR_HOST_ID)).toBeNull()
   })
 })

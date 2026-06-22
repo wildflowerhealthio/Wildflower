@@ -2,10 +2,11 @@
 // `tauri-plugin-native-webview` plugin injects (as its `initScript` arg) at
 // document start in a native popup (iOS WKWebView / Android WebView).
 //
-// Unlike `tauri-sniffer-entry.ts` there is no `window.__TAURI__` and no in-page
-// `BrowserTopBar` — the native toolbar provides Close + URL. We build the
-// bridge-backed event bus (`makeNativeBridgeEventBus`) and run the same
-// `installSniffer` body over it; only the transport differs.
+// Unlike `tauri-sniffer-entry.ts` there is no `window.__TAURI__` — we build
+// the bridge-backed event bus (`makeNativeBridgeEventBus`) and run the same
+// `installSniffer` body over it. Neither entry injects in-page chrome any
+// more; the plugin's native toolbar (iOS / Android) and its multi-webview
+// chrome bar (desktop) own the title/subtitle/message + nav buttons.
 //
 // Gated on the native bridge being present so the script no-ops if it is ever
 // injected somewhere without the plugin's message handler (nothing to send to).

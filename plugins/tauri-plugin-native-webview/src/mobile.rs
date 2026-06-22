@@ -6,7 +6,10 @@
 use serde::de::DeserializeOwned;
 use tauri::{plugin::PluginApi, AppHandle, Runtime};
 
-use crate::models::{OpenRequest, OpenResponse};
+use crate::models::{
+    CloseResponse, OpenRequest, OpenResponse, SendRequest, SendResponse, SetChromeRequest,
+    SetChromeResponse,
+};
 
 #[cfg(target_os = "ios")]
 tauri::ios_plugin_binding!(init_plugin_native_webview);
@@ -42,6 +45,41 @@ impl<R: Runtime> NativeWebview<R> {
     pub fn open(&self, payload: OpenRequest) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<OpenResponse>("open", payload)
+            .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
+        Ok(())
+    }
+
+    /// Evaluate JS inside the currently-open native popup by invoking the
+    /// Swift/Kotlin `send` command. The native side rejects with a string
+    /// error if no popup is open, surfaced here as
+    /// [`Error::PluginInvoke`](crate::Error::PluginInvoke).
+    pub fn send(&self, payload: SendRequest) -> crate::Result<()> {
+        self.0
+            .run_mobile_plugin::<SendResponse>("send", payload)
+            .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
+        Ok(())
+    }
+
+    /// Update one or more of the popup's three chrome labels (`title`,
+    /// `subtitle`, `message`). The native side resolves with `{set: true}`
+    /// once the labels are applied on the UI thread; resolves with
+    /// `{set: false}` (not a hard reject) when no popup is open, which the
+    /// host should treat as best-effort.
+    pub fn set_chrome(&self, payload: SetChromeRequest) -> crate::Result<()> {
+        self.0
+            .run_mobile_plugin::<SetChromeResponse>("setChrome", payload)
+            .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
+        Ok(())
+    }
+
+    /// Dismiss the currently-presented popup. Idempotent — the native side
+    /// resolves with `{closed: false}` if no popup was open. The native
+    /// `dismiss` callback still fires after the animation, so a
+    /// `PopupEvent::Closed` lands on the open channel for both user- and
+    /// host-initiated close paths.
+    pub fn close(&self) -> crate::Result<()> {
+        self.0
+            .run_mobile_plugin::<CloseResponse>("close", ())
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;
         Ok(())
     }
