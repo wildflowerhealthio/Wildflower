@@ -1,0 +1,21 @@
+// Handwritten Wildflower config for the embedded patient-browser SPA.
+//
+// This file is committed and served verbatim at
+// `/installed-apps/patient-browser/config/default.json5` by vendor-apps-rust's
+// build.rs — it replaces the old approach of string-rewriting upstream's
+// `config/r4.json5` at build time, and overrides any `config/default.json5`
+// shipped in the vendored dist.
+//
+// The two Wildflower-specific values are:
+//   - `url`     -> the on-device FHIR R4 server (was the public SMART sandbox)
+//   - `timeout` -> a long request timeout for slow local/first-load fetches
+//
+// TODO(needs upstream content): the previous build step served the FULL
+// upstream `r4.json5` with only `url`/`timeout` changed, so it carried every
+// other patient-browser setting too. Paste the rest of upstream's config fields
+// here (with `url`/`timeout` kept as below) so the served config matches what
+// the app expects.
+{
+  url: '/fhir-r4',
+  timeout: 600000,
+}

@@ -248,6 +248,12 @@ async fn run_server(
             Arc::new(shared_structures_rust::health_check::AlwaysHealthy),
         ))
         .merge(apps.public_router)
+        // The vendored patient-browser SPA, served under
+        // `/installed-apps/patient-browser/`. Public + unauthenticated like the
+        // launch path that redirects into it (`GET /apps/patient-browser` →
+        // `…/installed-apps/patient-browser/index.html`). Empty (404s) until the
+        // vendored dist is built (see slices/apps/vendor-apps/README).
+        .merge(vendor_apps_rust::setup_vendor_apps())
         .merge(gated_apps_admin)
         .merge(gated_databases)
         .fallback(spa::handle_serving_spa_html)
@@ -317,6 +323,15 @@ pub fn run() {
             // etc.) reach the React SPA directly via the global Tauri
             // event bus — no Rust forwarding is needed for them.
             browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
+
+            // Wire the apps launch flow: the SPA's `RequestSandboxedWebView
+            // { url }` opens the resolved launch URL in a separate native
+            // webview popup via `tauri-plugin-native-webview`. The plugin
+            // renders native chrome (Close / Back / Forward), so no in-page top
+            // bar and no separate close listener are needed — the native toolbar
+            // dismisses the popup. `listen` registers synchronously, so it can't
+            // miss the SPA's emit.
+            bridge::attach_apps_native_webview_bridge(app.handle());
 
             let error_handle = app.handle().clone();
             // The server task wires the apps `RequestTunnel` bridge handler once

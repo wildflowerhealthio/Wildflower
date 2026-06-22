@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use apps_rust::bridge::{AppsHostToWeb, REQUEST_TUNNEL_TAG};
+use apps_rust::bridge::{AppsHostToWeb, REQUEST_SANDBOXED_WEBVIEW_TAG, REQUEST_TUNNEL_TAG};
 use gatekeeper_rust::bridge::GatekeeperHostToWeb;
 use serde::Deserialize;
 use shared_structures_rust::bridge::BRIDGE_EVENT;
@@ -472,6 +472,92 @@ fn is_request_tunnel(payload: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Wire the apps slice's `RequestSandboxedWebView` web→host handler onto the
+/// bridge.
+///
+/// The embedded SPA emits `bridge:RequestSandboxedWebView { url }` when
+/// launching an app inside the Tauri host: instead of navigating the main
+/// webview away from the SPA, the host presents the resolved launch URL in a
+/// separate, less-privileged native webview popup via
+/// [`tauri_plugin_native_webview`]. The plugin renders native chrome (a Close /
+/// Back / Forward toolbar), so — unlike the earlier in-page-top-bar design —
+/// there is no injected chrome and no separate `Close*` bridge tag: the user
+/// dismisses the popup from the native toolbar.
+///
+/// Multiple listeners share `BRIDGE_EVENT`; this one decodes only the
+/// envelope's `_tag` (+ `url`) and acts solely on `RequestSandboxedWebView`,
+/// dropping every other tag (host→web echoes, sibling slices' traffic).
+pub fn attach_apps_native_webview_bridge(app: &AppHandle) {
+    log::info!(
+        "[bridge] listening on '{BRIDGE_EVENT}' for tags: [{REQUEST_SANDBOXED_WEBVIEW_TAG}]"
+    );
+    let handle = app.clone();
+    app.listen(BRIDGE_EVENT, move |event| {
+        let Some(url) = parse_request_sandboxed_webview(event.payload()) else {
+            return;
+        };
+        if let Err(error) = open_app_in_native_webview(&handle, &url) {
+            log::error!("[bridge] failed to open native webview for launch: {error}");
+        }
+    });
+}
+
+/// Present `url` in the shared native webview popup.
+///
+/// Validates the URL is `http(s)://` (defense-in-depth — the SPA already builds
+/// it from a trusted loopback/tunnel origin) and hands it to
+/// `tauri-plugin-native-webview`'s `open`. The apps launch flow has no
+/// host↔popup bridge of its own (no sniffing, no host→web reply), so it passes
+/// no `init_script` and a no-op event channel — the popup is self-contained and
+/// the user closes it from the native chrome. `open` is idempotent: a second
+/// launch while a popup is up navigates the existing content webview rather than
+/// stacking a new presentation.
+fn open_app_in_native_webview(app: &AppHandle, url: &str) -> anyhow::Result<()> {
+    use tauri::ipc::Channel;
+    use tauri_plugin_native_webview::{NativeWebviewExt, OpenRequest, PopupEvent};
+
+    // `resolve_http_url` enforces http(s)-only (rejecting `file:` / `javascript:`
+    // and unparseable URLs) — the same validator the generic sandboxed-webview
+    // opener uses. We only need it to gate the string; the plugin re-parses it.
+    shared_structures_tauri_rust::resolve_http_url(url)
+        .map_err(|error| anyhow::anyhow!("RequestSandboxedWebView rejected: {error}"))?;
+
+    // No popup events to consume: native chrome owns the Close button and the
+    // apps flow expects no host→web reply, so a no-op channel satisfies the
+    // plugin's `open` contract without re-emitting anything onto the bridge.
+    let channel: Channel<PopupEvent> = Channel::new(|_event| Ok(()));
+    app.native_webview()
+        .open(OpenRequest {
+            url: url.to_owned(),
+            init_script: None,
+            channel,
+            // Native chrome defaults its title to the URL host (e.g. a bare
+            // `127.0.0.1`); show the product name instead, matching the title
+            // the prior sandboxed-window path set.
+            initial_title: Some("Wildflower".to_owned()),
+            initial_subtitle: None,
+            initial_message: None,
+        })
+        .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open failed: {error}"))?;
+    Ok(())
+}
+
+/// Decode a `RequestSandboxedWebView` envelope to its `url`, or `None` for any
+/// other tag / malformed payload (host→web echoes and sibling traffic don't
+/// carry the tag).
+fn parse_request_sandboxed_webview(payload: &str) -> Option<String> {
+    #[derive(Deserialize)]
+    struct Msg {
+        #[serde(rename = "_tag")]
+        tag: String,
+        url: String,
+    }
+    serde_json::from_str::<Msg>(payload)
+        .ok()
+        .filter(|message| message.tag == REQUEST_SANDBOXED_WEBVIEW_TAG)
+        .map(|message| message.url)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -502,6 +588,26 @@ mod tests {
         assert!(!is_request_tunnel(r#"{"_tag":"AuthTokenIssued"}"#));
         assert!(!is_request_tunnel(r#"{"_tag":42}"#));
         assert!(!is_request_tunnel("not json"));
+    }
+
+    #[test]
+    fn parse_request_sandboxed_webview_extracts_url_for_the_right_tag() {
+        assert_eq!(
+            parse_request_sandboxed_webview(
+                r#"{"_tag":"RequestSandboxedWebView","url":"http://127.0.0.1:8080/apps/patient-browser"}"#
+            ),
+            Some("http://127.0.0.1:8080/apps/patient-browser".to_string())
+        );
+        // Wrong tag, missing url, host→web echoes, and malformed payloads → None.
+        assert_eq!(
+            parse_request_sandboxed_webview(r#"{"_tag":"RequestTunnel"}"#),
+            None
+        );
+        assert_eq!(
+            parse_request_sandboxed_webview(r#"{"_tag":"RequestSandboxedWebView"}"#),
+            None
+        );
+        assert_eq!(parse_request_sandboxed_webview("not json"), None);
     }
 
     #[test]
