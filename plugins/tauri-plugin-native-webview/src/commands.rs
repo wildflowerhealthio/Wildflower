@@ -28,8 +28,16 @@ pub(crate) async fn open<R: Runtime>(
     init_script: Option<String>,
     channel: Channel<PopupEvent>,
 ) -> Result<()> {
-    app.native_webview()
-        .open(OpenRequest { url, init_script, channel })
+    app.native_webview().open(OpenRequest {
+        url,
+        init_script,
+        channel,
+        // JS callers drive chrome through the `setChrome` command; the
+        // initial-chrome fields are the Rust-caller convenience path.
+        initial_title: None,
+        initial_subtitle: None,
+        initial_message: None,
+    })
 }
 
 /// Evaluate `script` inside the currently-open native popup webview.

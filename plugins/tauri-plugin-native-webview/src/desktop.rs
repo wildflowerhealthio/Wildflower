@@ -176,9 +176,9 @@ const CHROME_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
   </div>
   <div class="title-stack">
     <div id="title">__INITIAL_TITLE__</div>
-    <div id="subtitle"></div>
+    <div id="subtitle">__INITIAL_SUBTITLE__</div>
   </div>
-  <div id="message"></div>
+  <div id="message">__INITIAL_MESSAGE__</div>
 <script>
 (function() {
   // Chrome → Rust: bounce through a fake custom-scheme nav.
@@ -231,16 +231,19 @@ const CHROME_HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
 "#;
 
 /// Build the chrome webview's source URL — the full HTML doc above with the
-/// host plain-text-substituted, base64-encoded into a `data:text/html;base64,…`
-/// URL so `Url::parse` accepts the document verbatim.
+/// initial title / subtitle / message plain-text-substituted, base64-encoded
+/// into a `data:text/html;base64,…` URL so `Url::parse` accepts the document
+/// verbatim.
 ///
-/// Escaping: `initial_host` is HTML-escaped before substitution. The host
-/// comes from `url::Url::host_str` so it's already sanitised against most
-/// payloads, but `<` / `>` / `&` in pathological hosts (e.g. attacker-
-/// controlled servers behind the popup) could otherwise inject markup.
-fn build_chrome_data_url(initial_host: &str) -> Url {
-    let escaped_host = html_escape(initial_host);
-    let html = CHROME_HTML_TEMPLATE.replace("__INITIAL_TITLE__", &escaped_host);
+/// Escaping: each value is HTML-escaped before substitution. The title is
+/// typically the `url::Url::host_str` (already sanitised against most
+/// payloads), but `<` / `>` / `&` in a pathological host or a caller-supplied
+/// subtitle/message could otherwise inject markup into the chrome.
+fn build_chrome_data_url(title: &str, subtitle: &str, message: &str) -> Url {
+    let html = CHROME_HTML_TEMPLATE
+        .replace("__INITIAL_TITLE__", &html_escape(title))
+        .replace("__INITIAL_SUBTITLE__", &html_escape(subtitle))
+        .replace("__INITIAL_MESSAGE__", &html_escape(message));
     let encoded = BASE64.encode(html.as_bytes());
     let url_str = format!("data:text/html;base64,{encoded}");
     Url::parse(&url_str).expect("data URL parses")
@@ -362,7 +365,17 @@ fn present<R: Runtime>(app: &AppHandle<R>, payload: OpenRequest) -> crate::Resul
 
     let init_script = payload.init_script;
     let channel = payload.channel;
+    // Chrome shown at first paint: caller-supplied title / subtitle / message,
+    // with the URL host as the title fallback. Baking these into the chrome
+    // HTML (rather than a post-open `set_chrome`) means the bar is correct on
+    // first paint and sidesteps the race where a `set_chrome` issued right
+    // after `open` finds the chrome webview not yet built. The subtitle drives
+    // the initial bar height: the chrome JS's `reportHeight` on DOMContentLoaded
+    // sees a non-empty `#subtitle` and reports the taller two-line height.
     let initial_host = parsed.host_str().unwrap_or("").to_owned();
+    let title = payload.initial_title.unwrap_or(initial_host);
+    let subtitle = payload.initial_subtitle.unwrap_or_default();
+    let message = payload.initial_message.unwrap_or_default();
 
     // Parent window — no built-in webview; children added below.
     let window = WindowBuilder::new(app, WINDOW_LABEL)
@@ -396,7 +409,7 @@ fn present<R: Runtime>(app: &AppHandle<R>, payload: OpenRequest) -> crate::Resul
     // clicks (`x-nv-action://action/<name>`) and chrome-driven height
     // reports (`x-nv-action://height/<logical_px>`), returning false to
     // cancel the (would-fail) navigation.
-    let chrome_url = build_chrome_data_url(&initial_host);
+    let chrome_url = build_chrome_data_url(&title, &subtitle, &message);
     let app_for_actions = app.clone();
     let window_for_actions = window.clone();
     let chrome_builder = WebviewBuilder::new(CHROME_WEBVIEW_LABEL, WebviewUrl::External(chrome_url))

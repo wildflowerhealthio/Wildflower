@@ -11,6 +11,12 @@ class OpenArgs: Decodable {
   let url: String
   let initScript: String?
   let channel: Channel
+  // Chrome applied at presentation time (omitted keys decode to nil — leave
+  // unchanged). Matches `OpenRequest`'s `initialTitle` / `initialSubtitle` /
+  // `initialMessage` camelCase wire shape.
+  let initialTitle: String?
+  let initialSubtitle: String?
+  let initialMessage: String?
 }
 
 /// Arguments decoded from `invoke('plugin:native-webview|send', { script })`.
@@ -113,7 +119,14 @@ class NativeWebviewPlugin: Plugin {
         invoke.resolve(["opened": true])
         return
       }
-      self.present(url: url, initScript: args.initScript, channel: args.channel)
+      self.present(
+        url: url,
+        initScript: args.initScript,
+        channel: args.channel,
+        initialTitle: args.initialTitle,
+        initialSubtitle: args.initialSubtitle,
+        initialMessage: args.initialMessage
+      )
       invoke.resolve(["opened": true])
     }
   }
@@ -171,7 +184,14 @@ class NativeWebviewPlugin: Plugin {
     }
   }
 
-  private func present(url: URL, initScript: String?, channel: Channel) {
+  private func present(
+    url: URL,
+    initScript: String?,
+    channel: Channel,
+    initialTitle: String?,
+    initialSubtitle: String?,
+    initialMessage: String?
+  ) {
     let contentController = WKUserContentController()
     // Caller-supplied document-start script, injected into all frames on ANY
     // origin (e.g. browser-sniffer's bundled installSniffer IIFE). The plugin
@@ -200,6 +220,12 @@ class NativeWebviewPlugin: Plugin {
     // Capture so `setSubtitle` can target the controller's title view;
     // cleared in `onClose` below alongside `currentWebView`.
     currentController = browser
+    // Apply caller-supplied initial chrome before presentation so the bar is
+    // correct on first paint (nil = leave the default; title defaults to the
+    // URL host set in the controller's init).
+    if let initialTitle = initialTitle { browser.updateTitle(initialTitle) }
+    if let initialSubtitle = initialSubtitle { browser.updateSubtitle(initialSubtitle) }
+    if let initialMessage = initialMessage { browser.updateMessage(initialMessage) }
     browser.onClose = { [weak self] in
       self?.currentWebView = nil
       self?.currentController = nil

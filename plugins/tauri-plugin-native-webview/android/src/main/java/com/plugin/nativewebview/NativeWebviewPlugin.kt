@@ -41,6 +41,13 @@ class OpenArgs {
     lateinit var url: String
     var initScript: String? = null
     lateinit var channel: Channel
+
+    // Chrome applied at presentation time (absent = null = leave unchanged).
+    // Matches `OpenRequest`'s `initialTitle` / `initialSubtitle` /
+    // `initialMessage` camelCase wire shape.
+    var initialTitle: String? = null
+    var initialSubtitle: String? = null
+    var initialMessage: String? = null
 }
 
 /**
@@ -125,7 +132,14 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             if (existing != null) {
                 existing.loadUrl(args.url)
             } else {
-                present(args.url, args.initScript, args.channel)
+                present(
+                    args.url,
+                    args.initScript,
+                    args.channel,
+                    args.initialTitle,
+                    args.initialSubtitle,
+                    args.initialMessage,
+                )
             }
             val result = JSObject()
             result.put("opened", true)
@@ -208,7 +222,14 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
-    private fun present(url: String, initScript: String?, channel: Channel) {
+    private fun present(
+        url: String,
+        initScript: String?,
+        channel: Channel,
+        initialTitle: String?,
+        initialSubtitle: String?,
+        initialMessage: String?,
+    ) {
         val webView = WebView(activity)
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
@@ -286,6 +307,14 @@ class NativeWebviewPlugin(private val activity: Activity) : Plugin(activity) {
             maxLines = 1
         }
         currentMessageView = messageView
+
+        // Apply caller-supplied initial chrome before the dialog shows so the
+        // bar is correct on first paint (null = leave the default; title
+        // defaults to the URL host set above). Empty string clears, matching
+        // setChrome semantics.
+        initialTitle?.let { toolbar.title = if (it.isEmpty()) null else it }
+        initialSubtitle?.let { toolbar.subtitle = if (it.isEmpty()) null else it }
+        initialMessage?.let { messageView.text = if (it.isEmpty()) null else it }
 
         val bottomBar = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL

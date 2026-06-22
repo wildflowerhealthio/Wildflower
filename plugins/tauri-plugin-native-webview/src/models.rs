@@ -40,6 +40,20 @@ pub struct OpenRequest {
     /// channel registered at app start receives events from every popup it
     /// opens.
     pub channel: Channel<PopupEvent>,
+    /// Chrome title applied at presentation time. `None` falls back to the URL
+    /// host. Applying chrome through `open` (rather than a post-open
+    /// `set_chrome`) means the popup's first paint already shows it — and
+    /// avoids the desktop race where a `set_chrome` fired right after `open`
+    /// finds the chrome webview not yet built.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initial_title: Option<String>,
+    /// Chrome subtitle applied at presentation time. `None` leaves it empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initial_subtitle: Option<String>,
+    /// Chrome bottom-bar message applied at presentation time. `None` leaves it
+    /// empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initial_message: Option<String>,
 }
 
 /// Result of an `open` invocation. `opened` is `true` once the native popup
@@ -173,12 +187,20 @@ mod tests {
             url: "https://example.test/x".to_owned(),
             init_script: None,
             channel: noop_channel(),
+            initial_title: None,
+            initial_subtitle: None,
+            initial_message: None,
         })
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
         let object = parsed.as_object().expect("object");
         assert_eq!(object.get("url").and_then(|v| v.as_str()), Some("https://example.test/x"));
         assert!(!object.contains_key("initScript"));
+        // Absent initial-chrome fields are omitted (not `null`) so the native
+        // `Decodable` / `@InvokeArg` optionals decode cleanly to "no change".
+        assert!(!object.contains_key("initialTitle"));
+        assert!(!object.contains_key("initialSubtitle"));
+        assert!(!object.contains_key("initialMessage"));
         // Channel serialises as an opaque IPC handle string; we only check the
         // prefix to stay version-agnostic.
         assert!(object
@@ -194,6 +216,9 @@ mod tests {
             url: "https://example.test/x".to_owned(),
             init_script: Some("console.log(1)".to_owned()),
             channel: noop_channel(),
+            initial_title: None,
+            initial_subtitle: None,
+            initial_message: None,
         })
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
@@ -201,6 +226,31 @@ mod tests {
             parsed.get("initScript").and_then(|v| v.as_str()),
             Some("console.log(1)")
         );
+    }
+
+    /// Initial-chrome fields ride under their camelCase keys when set — the
+    /// sniffer's `open` sets `initialSubtitle` so the "Collecting Automatically"
+    /// status paints with the popup instead of via a post-open `set_chrome`.
+    #[test]
+    fn open_request_serializes_initial_chrome_camel_case() {
+        let json = serde_json::to_string(&OpenRequest {
+            url: "https://example.test/x".to_owned(),
+            init_script: None,
+            channel: noop_channel(),
+            initial_title: None,
+            initial_subtitle: Some("Collecting Automatically".to_owned()),
+            initial_message: None,
+        })
+        .expect("serialize");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
+        assert_eq!(
+            parsed.get("initialSubtitle").and_then(|v| v.as_str()),
+            Some("Collecting Automatically")
+        );
+        // Unset siblings stay omitted.
+        let object = parsed.as_object().expect("object");
+        assert!(!object.contains_key("initialTitle"));
+        assert!(!object.contains_key("initialMessage"));
     }
 
     /// `OpenResponse` decodes the native-side `{ "opened": true }` payload.

@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 
 use tauri::{AppHandle, Manager, WebviewUrl};
 
@@ -16,20 +16,6 @@ use crate::bootstrap::SNIFFER_BOOTSTRAP;
 /// JSON in a follow-up cleanup.
 pub const SNIFFER_WEBVIEW_LABEL: &str = "browser-sniffer";
 
-/// Sentinel for whether *we* believe the sniffer popup is open. Vestigial
-/// since the plugin owns popup state on every platform now — the plugin's
-/// `open` dedupes by inspecting its own current-webview state, and
-/// `mark_closed` is called from the `SniffingComplete` handler without
-/// gating anything off the result. Kept so the `mark_closed` /
-/// `mark_closed_returns_previous_state_and_is_idempotent` test surface
-/// stays callable; will be deleted with the legacy WebviewWindow path.
-static SNIFFER_OPEN: AtomicBool = AtomicBool::new(false);
-
-/// Mark the sniffer slot free. Returns the previous open/closed state.
-pub(crate) fn mark_closed() -> bool {
-    SNIFFER_OPEN.swap(false, Ordering::SeqCst)
-}
-
 /// Present the sniffer popup via `tauri-plugin-native-webview` on every
 /// target. The plugin owns popup chrome (native toolbar on iOS / Android,
 /// a multi-webview chrome bar on desktop), so the same call site works
@@ -42,10 +28,12 @@ pub(crate) fn mark_closed() -> bool {
 /// The plugin's `open` is idempotent: a second call while a popup is up
 /// navigates the existing content webview to `url` rather than stacking a
 /// new presentation. Initial title is the URL host (set by the plugin
-/// itself); the sniffer overlays `subtitle: "Collecting Automatically"`
-/// via `set_chrome` after open.
+/// itself); the sniffer passes `subtitle: "Collecting Automatically"` as the
+/// `open` request's `initial_subtitle` so it paints with the popup (rather
+/// than a post-open `set_chrome`, which on desktop would race the not-yet-built
+/// chrome webview).
 pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Result<()> {
-    use tauri_plugin_native_webview::{NativeWebviewExt, OpenRequest, SetChromeRequest};
+    use tauri_plugin_native_webview::{NativeWebviewExt, OpenRequest};
 
     use crate::popup_bridge::PopupChannel;
 
@@ -81,24 +69,18 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
             url: parsed.to_string(),
             init_script: Some(bootstrap.to_owned()),
             channel,
+            // Bake the sniffer's static status into the chrome subtitle at
+            // presentation time. Title defaults to the URL host; message stays
+            // empty until a future step counts resources (e.g. "34 resources
+            // collected"). Applying it through `open` rather than a post-open
+            // `set_chrome` means it paints with the popup and avoids the desktop
+            // race where `set_chrome` lands before the chrome webview is built.
+            initial_title: None,
+            initial_subtitle: Some("Collecting Automatically".to_owned()),
+            initial_message: None,
         })
         .map_err(|error| anyhow::anyhow!("tauri-plugin-native-webview open failed: {error}"))?;
 
-    // Push the sniffer's static status into the popup chrome's subtitle slot.
-    // Title is left at the plugin's default (the URL host); message is empty
-    // until a future step counts resources (e.g. "34 resources collected").
-    // Done after open so the popup exists to render against.
-    if let Err(error) = app.native_webview().set_chrome(SetChromeRequest {
-        title: None,
-        subtitle: Some("Collecting Automatically".to_owned()),
-        message: None,
-    }) {
-        tauri_plugin_log::log::warn!(
-            "[browser-sniffer] set_chrome failed after popup open: {error}"
-        );
-    }
-
-    SNIFFER_OPEN.store(true, Ordering::SeqCst);
     Ok(())
 }
 
@@ -114,17 +96,5 @@ mod tests {
         // the plugin; this constant survives only for the legacy capability
         // grant until that file is removed.
         assert_eq!(SNIFFER_WEBVIEW_LABEL, "browser-sniffer");
-    }
-
-    #[test]
-    fn mark_closed_returns_previous_state_and_is_idempotent() {
-        // This test mutates the global sentinel; it relies on serial
-        // execution by cargo test's default single-threaded ordering per
-        // module. The assertion is structured to be order-independent:
-        // we set known state, observe, then restore.
-        let prior = SNIFFER_OPEN.swap(true, Ordering::SeqCst);
-        assert!(mark_closed(), "mark_closed should report previous-open");
-        assert!(!mark_closed(), "second mark_closed is a no-op");
-        SNIFFER_OPEN.store(prior, Ordering::SeqCst);
     }
 }
