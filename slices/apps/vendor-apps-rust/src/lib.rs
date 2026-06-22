@@ -1,159 +1,259 @@
-//! Host-side serving of the vendored patient-browser SPA.
+//! Host-side serving of static "installed apps" from a runtime directory.
 //!
-//! The Rust counterpart to the TS `vendor-apps` HttpApi group: rather than
-//! decode one combined base64 module at runtime, this crate embeds the upstream
-//! `dist/` as **individual files** at build time (see `build.rs`) and serves
-//! each one directly under `/installed-apps/patient-browser/`, with the same
-//! content types and cache policy the TS handler uses.
+//! Rather than embedding app files in the binary at build time, this crate
+//! serves them from a host-provided directory at request time — so updating an
+//! app (or dropping a new one in) needs no recompile. [`setup_vendor_apps`]
+//! returns an axum [`Router`] the host merges into its public (unauthenticated)
+//! surface; it serves `GET /installed-apps/{*path}` from files under the given
+//! `root`.
 //!
-//! [`setup_vendor_apps`] returns a plain [`axum::Router`] the host merges into
-//! its public (unauthenticated) surface — the launch redirect
-//! (`GET /apps/patient-browser` → `…/installed-apps/patient-browser/index.html`)
-//! lands here. The crate has no Tauri/GTK dependency, so it compiles in the main
-//! Rust CI; only the host that mounts it pulls in Tauri.
+//! Today the only app is the vendored patient-browser SPA, served under
+//! `/installed-apps/patient-browser/`, where the `GET /apps/patient-browser`
+//! launch redirect lands. Two patient-browser-specific touches are applied at
+//! serve time: its HTML's root-absolute `/assets/`, `/img/`, `/config/` URLs are
+//! rebased onto the mount, and `config/default.json5` is served from the
+//! committed, version-controlled [`PATIENT_BROWSER_CONFIG`] regardless of what's
+//! on disk (so the on-device FHIR URL lives in a readable file, not a brittle
+//! rewrite of the upstream build).
 //!
-//! When the vendored dist is absent at build time the embedded table is empty
-//! and every route 404s — a fresh clone or CI compiles fine, the assets just
-//! aren't there until someone runs the upstream build (see vendor-apps/README).
+//! When `root` is absent or empty the routes 404 — a fresh clone or CI serves
+//! nothing until the directory is populated (see slices/apps/vendor-apps/README).
+//! The crate has no Tauri/GTK dependency, so it compiles in the main Rust CI;
+//! only the host that mounts it pulls in Tauri.
 
-use std::collections::HashMap;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use axum::body::{Body, Bytes};
-use axum::extract::{Path, State};
+use axum::body::Body;
+use axum::extract::{Path as UrlPath, State};
 use axum::http::{header, StatusCode};
 use axum::response::Response;
 use axum::routing::get;
 use axum::Router;
 
-/// Mount prefix the patient-browser assets are served under. Trailing slash
-/// included: the catch-all route is `"{PREFIX}{*path}"` and the bare
-/// trailing-slash request maps to `index.html`.
-const PREFIX: &str = "/installed-apps/patient-browser/";
+/// URL mount the installed apps are served under. The catch-all route is
+/// `"{MOUNT}{*path}"`; a request's captured `{*path}` is normalized and resolved
+/// against the host-provided filesystem root.
+const MOUNT: &str = "/installed-apps/";
+
+/// Path prefix (under the mount) of the vendored patient-browser app — the one
+/// app that gets the HTML rebase + committed-config override today.
+const PATIENT_BROWSER_PREFIX: &str = "patient-browser/";
+
+/// Mount-relative key of the patient-browser SMART config. Served from the
+/// committed [`PATIENT_BROWSER_CONFIG`], overriding any on-disk copy.
+const PATIENT_BROWSER_CONFIG_KEY: &str = "patient-browser/config/default.json5";
+
+/// The committed, version-controlled SMART config for patient-browser. Embedded
+/// (it's tiny and authoritative — the on-device FHIR URL + timeout) and served
+/// for [`PATIENT_BROWSER_CONFIG_KEY`] so it survives whatever dist the directory
+/// happens to hold.
+const PATIENT_BROWSER_CONFIG: &str = include_str!("../patient-browser-config/default.json5");
+
+/// Root-absolute prefixes rewritten in patient-browser HTML to sit under its
+/// mount (the upstream build emits `/assets/...`, `/img/...`, `/config/...`).
+const REBASE_PREFIXES: [&str; 3] = ["/assets/", "/img/", "/config/"];
 
 /// Fingerprinted bundles (`assets/`, `img/`, fonts) never change for a given
 /// build, so they cache for a year. `index.html` and `config/*` are the
 /// rotation points a redeploy can repoint, so they stay short-lived with
-/// revalidation. Mirrors the TS handler's policy verbatim.
+/// revalidation.
 const IMMUTABLE_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
 const SHORT_CACHE_CONTROL: &str = "public, max-age=60, must-revalidate";
 
-/// One embedded asset: its mount-relative path (the lookup key), its content
-/// type, and its bytes. Public because the `build.rs`-generated table
-/// constructs these literals.
-pub struct Asset {
-    pub path: &'static str,
-    pub content_type: &'static str,
-    pub bytes: &'static [u8],
-}
-
-// `pub static ASSETS: &[Asset] = &[ … ];` — generated by build.rs. Empty when
-// the vendored dist was absent at build time.
-include!(concat!(env!("OUT_DIR"), "/assets.rs"));
-
-/// Path → asset index, built once per router from the embedded slice.
-type AssetMap = HashMap<&'static str, &'static Asset>;
-
-/// Router serving the embedded patient-browser assets under [`PREFIX`].
-/// Merge it into the host's public router.
-pub fn setup_vendor_apps() -> Router {
-    build_router(ASSETS)
-}
-
-/// Inner constructor over an explicit asset slice, so tests can drive the
-/// routing/headers logic against a synthetic table without depending on a
-/// populated vendor dist.
-fn build_router(assets: &'static [Asset]) -> Router {
-    let map: Arc<AssetMap> = Arc::new(assets.iter().map(|asset| (asset.path, asset)).collect());
+/// Router serving installed-app files from `root` at request time. Merge it into
+/// the host's public router. `root` is the directory whose children are app
+/// folders (e.g. `root/patient-browser/index.html`); it need not exist yet — a
+/// missing file (or missing root) is a plain 404.
+pub fn setup_vendor_apps(root: PathBuf) -> Router {
     Router::new()
-        // Catch-all under the mount: `assets/app.js`, `config/default.json5`, …
-        .route(&format!("{PREFIX}{{*path}}"), get(serve_asset))
-        // Bare trailing-slash mount → index.html.
-        .route(PREFIX, get(serve_index))
-        .with_state(map)
+        .route(&format!("{MOUNT}{{*path}}"), get(serve))
+        .with_state(Arc::new(root))
 }
 
-async fn serve_index(State(map): State<Arc<AssetMap>>) -> Response {
-    respond(&map, "")
+async fn serve(State(root): State<Arc<PathBuf>>, UrlPath(path): UrlPath<String>) -> Response {
+    respond(&root, &path).await
 }
 
-async fn serve_asset(State(map): State<Arc<AssetMap>>, Path(path): Path<String>) -> Response {
-    respond(&map, &path)
-}
+/// Resolve a mount-relative request path to a response: the committed config,
+/// an on-disk file (HTML rebased), or a 404. Path traversal is rejected by
+/// [`safe_join`] before any filesystem access.
+async fn respond(root: &Path, raw: &str) -> Response {
+    let rel = normalize_rel(raw);
 
-/// Look the (normalized) path up and respond with the asset bytes + headers, or
-/// a plain-text 404.
-fn respond(map: &AssetMap, rel: &str) -> Response {
-    let normalized = normalize_rel(rel);
-    match map.get(normalized.as_str()) {
-        Some(asset) => Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, asset.content_type)
-            .header(header::CACHE_CONTROL, cache_control_for(&normalized))
-            // `from_static` is zero-copy over the embedded bytes.
-            .body(Body::from(Bytes::from_static(asset.bytes)))
-            .expect("asset response builds from validated header values"),
-        None => Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-            .body(Body::from("Not found"))
-            .expect("404 response builds from constant header values"),
+    // The committed SMART config wins over any on-disk file at its key.
+    if rel == PATIENT_BROWSER_CONFIG_KEY {
+        return ok(
+            PATIENT_BROWSER_CONFIG.as_bytes().to_vec(),
+            "application/json; charset=utf-8",
+            SHORT_CACHE_CONTROL,
+        );
+    }
+
+    let Some(file) = safe_join(root, &rel) else {
+        // `..` / absolute / prefix components — never touch the filesystem.
+        return not_found();
+    };
+
+    match tokio::fs::read(&file).await {
+        Ok(bytes) => {
+            // Only patient-browser HTML carries root-absolute URLs that need
+            // rebasing onto its mount; serve everything else byte-for-byte.
+            let body = if is_html(&rel) && rel.starts_with(PATIENT_BROWSER_PREFIX) {
+                rebase_html(&String::from_utf8_lossy(&bytes)).into_bytes()
+            } else {
+                bytes
+            };
+            ok(
+                body,
+                content_type_for(extension(&rel)),
+                cache_control_for(&rel),
+            )
+        }
+        Err(_) => not_found(),
     }
 }
 
-/// Map a mount-relative request path to an asset key: an empty path or one
-/// ending in `/` resolves to that directory's `index.html` (only the SPA root
-/// ships one today). Mirrors the TS `lookupAsset` normalization.
-fn normalize_rel(rel: &str) -> String {
-    if rel.is_empty() || rel.ends_with('/') {
-        format!("{rel}index.html")
+/// Map a mount-relative request path to an asset key: strip any leading slash,
+/// and resolve an empty path or one ending in `/` to that directory's
+/// `index.html` (only app roots ship one today).
+fn normalize_rel(raw: &str) -> String {
+    let trimmed = raw.trim_start_matches('/');
+    if trimmed.is_empty() || trimmed.ends_with('/') {
+        format!("{trimmed}index.html")
     } else {
-        rel.to_owned()
+        trimmed.to_owned()
+    }
+}
+
+/// Join `rel` under `root`, accepting only `Normal` path components so the
+/// resolved path can never escape `root` (no `..`, no absolute/prefix
+/// components). Returns `None` for anything that could traverse out.
+fn safe_join(root: &Path, rel: &str) -> Option<PathBuf> {
+    let mut out = root.to_path_buf();
+    for component in Path::new(rel).components() {
+        match component {
+            Component::Normal(part) => out.push(part),
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
+/// Rebase the three root-absolute prefixes in a patient-browser HTML document
+/// onto its mount (`/installed-apps/patient-browser`).
+fn rebase_html(text: &str) -> String {
+    let mount = format!("{MOUNT}{}", PATIENT_BROWSER_PREFIX.trim_end_matches('/'));
+    let mut out = text.to_owned();
+    for prefix in REBASE_PREFIXES {
+        out = out.replace(prefix, &format!("{mount}{prefix}"));
+    }
+    out
+}
+
+fn is_html(rel: &str) -> bool {
+    rel.ends_with(".html")
+}
+
+/// Lowercased file extension of an asset key, or `""` when it has none (a dot in
+/// a directory segment doesn't count).
+fn extension(rel: &str) -> String {
+    match rel.rsplit_once('.') {
+        Some((_, ext)) if !ext.contains('/') => ext.to_ascii_lowercase(),
+        _ => String::new(),
+    }
+}
+
+fn content_type_for(ext: String) -> &'static str {
+    match ext.as_str() {
+        "html" => "text/html; charset=utf-8",
+        "js" => "application/javascript; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "json" | "json5" => "application/json; charset=utf-8",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "ico" => "image/x-icon",
+        "webp" => "image/webp",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "ttf" => "font/ttf",
+        "eot" => "application/vnd.ms-fontobject",
+        "otf" => "font/otf",
+        "txt" => "text/plain; charset=utf-8",
+        _ => "application/octet-stream",
     }
 }
 
 /// Cache-Control for a normalized asset key (see the cache constants).
 fn cache_control_for(rel: &str) -> &'static str {
-    if rel == "index.html" || rel.starts_with("config/") {
+    if rel.ends_with("index.html") || rel.contains("/config/") {
         SHORT_CACHE_CONTROL
     } else {
         IMMUTABLE_CACHE_CONTROL
     }
 }
 
+fn ok(bytes: Vec<u8>, content_type: &str, cache_control: &'static str) -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, cache_control)
+        .body(Body::from(bytes))
+        .expect("asset response builds from validated header values")
+}
+
+fn not_found() -> Response {
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .body(Body::from("Not found"))
+        .expect("404 response builds from constant header values")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
     use axum::body::to_bytes;
     use axum::http::Request;
     use tower::ServiceExt;
 
-    static INDEX_HTML: &[u8] = b"<!doctype html><title>patient-browser</title>";
-    static APP_JS: &[u8] = b"console.log('patient-browser')";
-    static DEFAULT_CONFIG: &[u8] = b"{ url: \"/fhir-r4\" }";
+    use super::*;
 
-    // A synthetic stand-in for the embedded dist so the routing + header policy
-    // is exercised without a populated vendor build.
-    static TEST_ASSETS: &[Asset] = &[
-        Asset {
-            path: "index.html",
-            content_type: "text/html; charset=utf-8",
-            bytes: INDEX_HTML,
-        },
-        Asset {
-            path: "assets/app.js",
-            content_type: "application/javascript; charset=utf-8",
-            bytes: APP_JS,
-        },
-        Asset {
-            path: "config/default.json5",
-            content_type: "application/json; charset=utf-8",
-            bytes: DEFAULT_CONFIG,
-        },
-    ];
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
 
-    async fn get(path: &str) -> Response {
-        build_router(TEST_ASSETS)
+    /// A throwaway directory under the OS temp dir, cleaned up on drop. Avoids a
+    /// `tempfile` dependency for the crate's only filesystem-backed tests.
+    struct TempRoot(PathBuf);
+
+    impl TempRoot {
+        fn new() -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "vendor-apps-rust-test-{}-{}",
+                std::process::id(),
+                COUNTER.fetch_add(1, Ordering::SeqCst)
+            ));
+            std::fs::create_dir_all(&dir).expect("create temp root");
+            TempRoot(dir)
+        }
+
+        fn write(&self, rel: &str, bytes: &[u8]) {
+            let path = self.0.join(rel);
+            std::fs::create_dir_all(path.parent().expect("rel has a parent")).expect("mkdir -p");
+            std::fs::write(path, bytes).expect("write temp asset");
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    async fn get(root: &TempRoot, path: &str) -> Response {
+        setup_vendor_apps(root.0.clone())
             .oneshot(
                 Request::get(path)
                     .body(Body::empty())
@@ -163,7 +263,7 @@ mod tests {
             .expect("router is infallible")
     }
 
-    fn header(res: &Response, name: header::HeaderName) -> String {
+    fn header_value(res: &Response, name: header::HeaderName) -> String {
         res.headers()
             .get(name)
             .expect("header present")
@@ -173,68 +273,134 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn serves_index_html_with_short_cache() {
-        let res = get("/installed-apps/patient-browser/index.html").await;
+    async fn serves_index_html_with_short_cache_and_rebases_urls() {
+        let root = TempRoot::new();
+        root.write(
+            "patient-browser/index.html",
+            b"<!doctype html><script src=\"/assets/app.js\"></script>",
+        );
+        let res = get(&root, "/installed-apps/patient-browser/index.html").await;
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(
-            header(&res, header::CONTENT_TYPE),
+            header_value(&res, header::CONTENT_TYPE),
             "text/html; charset=utf-8"
         );
-        assert_eq!(header(&res, header::CACHE_CONTROL), SHORT_CACHE_CONTROL);
+        assert_eq!(
+            header_value(&res, header::CACHE_CONTROL),
+            SHORT_CACHE_CONTROL
+        );
         let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
-        assert_eq!(body.as_ref(), INDEX_HTML);
+        // The root-absolute `/assets/` URL is rebased onto the mount.
+        assert!(
+            String::from_utf8_lossy(&body)
+                .contains("/installed-apps/patient-browser/assets/app.js"),
+            "expected rebased asset URL in {:?}",
+            String::from_utf8_lossy(&body),
+        );
     }
 
     #[tokio::test]
     async fn trailing_slash_mount_serves_index() {
-        let res = get("/installed-apps/patient-browser/").await;
+        let root = TempRoot::new();
+        root.write("patient-browser/index.html", b"<!doctype html>");
+        let res = get(&root, "/installed-apps/patient-browser/").await;
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(
-            header(&res, header::CONTENT_TYPE),
+            header_value(&res, header::CONTENT_TYPE),
             "text/html; charset=utf-8"
         );
-        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
-        assert_eq!(body.as_ref(), INDEX_HTML);
     }
 
     #[tokio::test]
     async fn fingerprinted_asset_is_immutable() {
-        let res = get("/installed-apps/patient-browser/assets/app.js").await;
+        let root = TempRoot::new();
+        root.write("patient-browser/assets/app.js", b"console.log('x')");
+        let res = get(&root, "/installed-apps/patient-browser/assets/app.js").await;
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(
-            header(&res, header::CONTENT_TYPE),
+            header_value(&res, header::CONTENT_TYPE),
             "application/javascript; charset=utf-8"
         );
-        assert_eq!(header(&res, header::CACHE_CONTROL), IMMUTABLE_CACHE_CONTROL);
+        assert_eq!(
+            header_value(&res, header::CACHE_CONTROL),
+            IMMUTABLE_CACHE_CONTROL
+        );
     }
 
     #[tokio::test]
-    async fn config_is_short_cache() {
-        let res = get("/installed-apps/patient-browser/config/default.json5").await;
+    async fn config_is_served_from_the_committed_override() {
+        let root = TempRoot::new();
+        // An on-disk config that must NOT be served — the committed one wins.
+        root.write(
+            "patient-browser/config/default.json5",
+            b"{ \"stale\": true }",
+        );
+        let res = get(
+            &root,
+            "/installed-apps/patient-browser/config/default.json5",
+        )
+        .await;
         assert_eq!(res.status(), StatusCode::OK);
-        assert_eq!(header(&res, header::CACHE_CONTROL), SHORT_CACHE_CONTROL);
+        assert_eq!(
+            header_value(&res, header::CACHE_CONTROL),
+            SHORT_CACHE_CONTROL
+        );
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(body.as_ref(), PATIENT_BROWSER_CONFIG.as_bytes());
+        assert_ne!(body.as_ref(), b"{ \"stale\": true }");
     }
 
     #[tokio::test]
     async fn unknown_asset_is_404() {
-        let res = get("/installed-apps/patient-browser/does-not-exist.js").await;
+        let root = TempRoot::new();
+        let res = get(&root, "/installed-apps/patient-browser/does-not-exist.js").await;
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn safe_join_rejects_traversal_and_absolute_paths() {
+        let root = Path::new("/srv/installed-apps");
+        assert!(safe_join(root, "patient-browser/index.html").is_some());
+        assert!(safe_join(root, "patient-browser/../../etc/passwd").is_none());
+        assert!(safe_join(root, "../secret").is_none());
+        // A normalized absolute key (leading slash already trimmed by
+        // normalize_rel) stays Normal; a raw absolute path is rejected.
+        assert!(safe_join(root, "/etc/passwd").is_none());
     }
 
     #[test]
     fn normalize_rel_maps_empty_and_dir_to_index() {
         assert_eq!(normalize_rel(""), "index.html");
-        assert_eq!(normalize_rel("config/"), "config/index.html");
-        assert_eq!(normalize_rel("assets/app.js"), "assets/app.js");
+        assert_eq!(
+            normalize_rel("patient-browser/"),
+            "patient-browser/index.html"
+        );
+        assert_eq!(
+            normalize_rel("patient-browser/assets/app.js"),
+            "patient-browser/assets/app.js"
+        );
     }
 
     #[test]
     fn cache_control_policy() {
-        assert_eq!(cache_control_for("index.html"), SHORT_CACHE_CONTROL);
         assert_eq!(
-            cache_control_for("config/default.json5"),
+            cache_control_for("patient-browser/index.html"),
             SHORT_CACHE_CONTROL
         );
-        assert_eq!(cache_control_for("assets/app.js"), IMMUTABLE_CACHE_CONTROL);
+        assert_eq!(
+            cache_control_for("patient-browser/config/default.json5"),
+            SHORT_CACHE_CONTROL
+        );
+        assert_eq!(
+            cache_control_for("patient-browser/assets/app.js"),
+            IMMUTABLE_CACHE_CONTROL
+        );
+    }
+
+    #[test]
+    fn extension_ignores_dots_in_directories() {
+        assert_eq!(extension("patient-browser/index.html"), "html");
+        assert_eq!(extension("patient-browser/assets/app.JS"), "js");
+        assert_eq!(extension("patient-browser/v1.2/app"), "");
     }
 }

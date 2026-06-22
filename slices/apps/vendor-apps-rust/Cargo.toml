@@ -3,19 +3,20 @@ name = "vendor-apps-rust"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
-build = "build.rs"
 
-# Host-side serving for the vendored patient-browser SPA. A `build.rs` embeds
-# the upstream `dist/` (gitignored — see vendor-apps/README) as individual
-# files, applying the same HTML-rebase + FHIR-config rewrites the TS generator
-# (`vendor-apps/scripts/generate-patient-browser.mjs`) does, and
-# `setup_vendor_apps()` hands back an axum router that serves them under
-# `/installed-apps/patient-browser/`. No tauri/GTK dependency, so it builds in
-# the main (non-Tauri) Rust CI; wildflower-tauri merges the router into its
-# loopback API surface. When the dist is absent (fresh clone / CI) the embedded
-# table is empty and the routes 404 — the crate still compiles.
+# Host-side serving for static "installed apps". `setup_vendor_apps(root)` hands
+# back an axum router that serves files from a host-provided directory at request
+# time (rather than embedding them at build time), under
+# `/installed-apps/{*path}`. Updating an app — or dropping a new one in — needs
+# no recompile. The patient-browser SMART config is the one exception: it's
+# embedded (committed) and served verbatim. No tauri/GTK dependency, so it builds
+# in the main (non-Tauri) Rust CI; wildflower-tauri merges the router into its
+# loopback API surface and points it at a directory under app-data. When the
+# directory is absent/empty the routes 404 — the crate still compiles.
 [dependencies]
 axum.workspace = true
+# Async filesystem reads in the request path (`tokio::fs::read`).
+tokio = { workspace = true, features = ["fs"] }
 
 [lints]
 workspace = true

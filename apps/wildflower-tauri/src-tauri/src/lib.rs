@@ -234,6 +234,19 @@ async fn run_server(
     // `Authorization` — the one header the bearer clients need).
     // Trust doesn't come from CORS here anyway: the loopback gate
     // rejects non-local peers and auth rides the bearer header.
+    //
+    // Static "installed apps" are served from this directory under app-data at
+    // request time (see `vendor_apps_rust`). Created up front so it's a stable,
+    // discoverable place to drop an app's files into; an empty/missing dir just
+    // 404s. Best-effort — a creation failure only means the apps routes 404
+    // until it exists, so it must not abort server startup.
+    let installed_apps_dir = runtime.app_data_dir.join("installed-apps");
+    if let Err(error) = std::fs::create_dir_all(&installed_apps_dir) {
+        tauri_plugin_log::log::warn!(
+            "failed to create installed-apps dir {}: {error}",
+            installed_apps_dir.display()
+        );
+    }
     let router = Router::new()
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
@@ -248,12 +261,13 @@ async fn run_server(
             Arc::new(shared_structures_rust::health_check::AlwaysHealthy),
         ))
         .merge(apps.public_router)
-        // The vendored patient-browser SPA, served under
-        // `/installed-apps/patient-browser/`. Public + unauthenticated like the
-        // launch path that redirects into it (`GET /apps/patient-browser` →
+        // Static "installed apps", served under `/installed-apps/{app}/` from a
+        // runtime directory under app-data (not embedded — drop files in and
+        // they're served live). Public + unauthenticated like the launch path
+        // that redirects into it (`GET /apps/patient-browser` →
         // `…/installed-apps/patient-browser/index.html`). Empty (404s) until the
-        // vendored dist is built (see slices/apps/vendor-apps/README).
-        .merge(vendor_apps_rust::setup_vendor_apps())
+        // directory is populated (see slices/apps/vendor-apps/README).
+        .merge(vendor_apps_rust::setup_vendor_apps(installed_apps_dir))
         .merge(gated_apps_admin)
         .merge(gated_databases)
         .fallback(spa::handle_serving_spa_html)

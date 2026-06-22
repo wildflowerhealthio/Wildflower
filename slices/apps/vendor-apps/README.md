@@ -23,25 +23,30 @@ the upstream defaults.
 ## Host (Tauri) serving — `vendor-apps-rust`
 
 The Tauri host serves the same app from Rust instead of the combined TS module.
-The sibling crate [`vendor-apps-rust`](../vendor-apps-rust) embeds the vendored
-`dist/` as **individual files** at build time (its `build.rs` walks the same
-`vendor/patient-browser/dist/`), rebasing `/assets/`, `/img/`, `/config/` in the
-HTML onto the mount. The SMART config is **not** derived from upstream by string
-rewriting; a handwritten `config/default.json5` committed at
-`vendor-apps-rust/patient-browser-config/default.json5` is served verbatim (and
-overrides any `config/default.json5` in the dist), so the on-device FHIR URL
-(`/fhir-r4`) and timeout live in a readable, version-controlled file.
-`setup_vendor_apps()` returns an axum router mounted into the host's loopback
-API at `/installed-apps/patient-browser/`, which is where the
-`GET /apps/patient-browser` launch redirect lands.
+The sibling crate [`vendor-apps-rust`](../vendor-apps-rust) serves files from a
+**runtime directory** rather than embedding them in the binary:
+`setup_vendor_apps(root)` returns an axum router that, for each
+`GET /installed-apps/{*path}`, reads the matching file from `root` at request
+time. The Tauri host points `root` at `installed-apps/` under its app-data
+directory, so updating an app — or dropping a new one in — needs **no recompile**
+(the files are read live; a missing file just 404s). Path traversal (`..`,
+absolute paths) is rejected before any filesystem access.
 
-Because `build.rs` reads the same gitignored `vendor/` directory, the **same
-regeneration step below populates the asset bytes**. The handwritten config is
-always embedded regardless (it's committed, not in the dist), so it survives
-dist regens and serves even on a checkout without the vendored build; with
-`vendor/` absent the rest of the routes 404 until you build the upstream dist.
-No separate `generate` run is needed for the Rust side — `cargo build` picks the
-dist up directly.
+Two patient-browser-specific touches are applied at serve time:
+
+- its HTML's root-absolute `/assets/`, `/img/`, `/config/` URLs are rebased onto
+  the `/installed-apps/patient-browser` mount, and
+- `config/default.json5` is served from the handwritten, committed
+  `vendor-apps-rust/patient-browser-config/default.json5` (embedded via
+  `include_str!`), overriding any copy on disk — so the on-device FHIR URL
+  (`/fhir-r4`) and timeout live in a readable, version-controlled file rather
+  than a brittle rewrite of the upstream build.
+
+To populate it, copy a patient-browser build into
+`<app-data>/installed-apps/patient-browser/` so that `index.html`, `assets/`,
+`img/`, etc. sit directly under it (the regeneration steps below produce the same
+`dist/`). The committed config is always served regardless; the rest of the
+routes 404 until the directory holds the build.
 
 ## Regenerating the assets
 
