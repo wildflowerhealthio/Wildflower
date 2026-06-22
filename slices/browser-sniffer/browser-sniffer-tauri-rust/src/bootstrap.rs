@@ -14,5 +14,26 @@
 //! tests in `browser-sniffer-tauri/tests/bootstrap.test.ts` round-trip
 //! the same bytes through jsdom.
 
+/// Desktop popup bootstrap IIFE — the `initialization_script` for the
+/// `WebviewWindow` sniffer popup. Built from `tauri-sniffer-entry.ts` by
+/// `scripts/build-tauri-bootstrap.mts`. Only referenced on desktop; on mobile
+/// the popup runs in `tauri-plugin-native-webview` with [`NATIVE_SNIFFER_BOOTSTRAP`]
+/// instead, and including this would trip `dead_code` since the desktop
+/// `WebviewWindow` path is `cfg`-gated out.
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 pub(crate) const SNIFFER_BOOTSTRAP: &str =
     include_str!("../../browser-sniffer-tauri/dist/tauri-bootstrap.js");
+
+/// Native popup bootstrap IIFE — the `initScript` arg passed to
+/// `tauri-plugin-native-webview::open` on iOS/Android. Built from
+/// `native-sniffer-entry.ts` by `scripts/build-native-bootstrap.mts`.
+///
+/// Differs from [`SNIFFER_BOOTSTRAP`] in two ways: it gates on the native
+/// bridge (`window.webkit.messageHandlers.nativeWebview` / `window.nativeWebview`)
+/// instead of `window.__TAURI__`, and it skips the in-page `BrowserTopBar` —
+/// the native plugin's `UINavigationController` / `Toolbar` provides the
+/// Close + URL chrome. Same `installSniffer` body runs over a bridge-backed
+/// event bus.
+#[cfg(any(target_os = "ios", target_os = "android"))]
+pub(crate) const NATIVE_SNIFFER_BOOTSTRAP: &str =
+    include_str!("../../browser-sniffer-tauri/dist/native-bootstrap.js");

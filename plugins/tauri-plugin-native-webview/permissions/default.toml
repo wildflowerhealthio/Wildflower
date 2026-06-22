@@ -1,0 +1,5 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Allows presenting a native web view popup via the `open` command, evaluating JS in it via the `send` command, updating its title/subtitle/message labels via `set_chrome`, and dismissing it via `close`."
+permissions = ["allow-open", "allow-send", "allow-set-chrome", "allow-close"]

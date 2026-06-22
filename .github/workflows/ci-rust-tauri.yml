@@ -1,9 +1,9 @@
 name: Rust Tauri
 
 # Compiles, lints, and tests the crates that pull in `tauri = "2"`
-# (wildflower-tauri + browser-sniffer-tauri-rust + shared-structures-tauri-rust),
-# which the main Rust workflow (ci-rust.yml) excludes because their deps need
-# GTK/webkit system libraries.
+# (wildflower-tauri + browser-sniffer-tauri-rust + shared-structures-tauri-rust
+# + tauri-plugin-native-webview), which the main Rust workflow (ci-rust.yml)
+# excludes because their deps need GTK/webkit system libraries.
 # Without this they'd only be fmt-checked, so a change breaking their build or
 # tests would slip through. Runs only when a Tauri crate, the sniffer bootstrap,
 # or the lockfile changes (PRs), to bound the cost. CI is a pre-merge gate only;
@@ -18,6 +18,7 @@ on:
     # that bootstrap build.
     paths:
       - 'apps/wildflower-tauri/**'
+      - 'plugins/**'
       - 'slices/browser-sniffer/browser-sniffer-tauri-rust/**'
       - 'slices/browser-sniffer/browser-sniffer-tauri/**'
       - 'slices/shared-structures/shared-structures-tauri-rust/**'

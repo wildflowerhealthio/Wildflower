@@ -27,6 +27,7 @@ dotenvy = "0.15.7"
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+openssl = {version = "0.10.36", features = ["vendored"] } 
 serde.workspace = true
 serde_json.workspace = true
 async-trait = "0.1"
@@ -39,6 +40,9 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 apps-rust = { path = "../../../slices/apps/apps-rust" }
 browser-sniffer-tauri-rust = { path = "../../../slices/browser-sniffer/browser-sniffer-tauri-rust" }
+# Native, JS-injectable web view popup (iOS only today); runs in parallel with
+# the browser-sniffer WebviewWindow path. Registered in `run()`.
+tauri-plugin-native-webview = { path = "../../../plugins/tauri-plugin-native-webview" }
 databases-rust = { path = "../../../slices/databases/databases-rust" }
 emr-rust = { path = "../../../slices/emr/emr-rust" }
 gatekeeper-rust = { path = "../../../slices/gatekeeper/gatekeeper-rust" }

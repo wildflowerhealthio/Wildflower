@@ -19,9 +19,7 @@ interface EventListenEnvelope {
 }
 
 const SNIFFER_STATE_SLOT = Symbol.for('browser-sniffer:state')
-const TOP_BAR_OBSERVER_SLOT = Symbol.for('browser-sniffer-tauri:top-bar-observer')
 const TAURI_GLOBAL_SLOT = '__TAURI__'
-const BROWSER_TOP_BAR_HOST_ID = 'wildflower-sniffer-browser-top-bar'
 
 /**
  * Reset globalThis state that the bootstrap or `installSniffer()` writes
@@ -36,14 +34,6 @@ const resetSnifferGlobals = (): void => {
   // a second install on the same page; clearing it lets the next test
   // re-shim fetch/XHR/console cleanly.
   Reflect.deleteProperty(globalThis, SNIFFER_STATE_SLOT)
-  // Disconnect the BrowserTopBar's self-heal MutationObserver before
-  // removing the host element — otherwise the observer would fire on
-  // the removal and re-attach a fresh host immediately, leaking the
-  // previous test's `eventBus` closure into the next test.
-  const observerRaw: unknown = Reflect.get(globalThis, TOP_BAR_OBSERVER_SLOT)
-  if (observerRaw instanceof MutationObserver) observerRaw.disconnect()
-  Reflect.deleteProperty(globalThis, TOP_BAR_OBSERVER_SLOT)
-  document.getElementById(BROWSER_TOP_BAR_HOST_ID)?.remove()
 }
 
 /**
@@ -113,16 +103,14 @@ describe('tauriSnifferBootstrapScript', () => {
     expect(declared).toEqual(['CancelSnifferRequest', 'Click'])
   })
 
-  it('attaches a BrowserTopBar host element on boot', () => {
+  it('installs the sniffer when window.__TAURI__.event is present', () => {
     const { emits } = bootBootstrap()
-    const host = document.getElementById(BROWSER_TOP_BAR_HOST_ID)
-    expect(host).not.toBeNull()
-    // Shadow is `closed`, so `host.shadowRoot` is null externally. The
-    // user-visible contract is that the host exists; the Close button
-    // wiring lives inside the closed shadow tree where external script
-    // can't reach. Assert no spurious SniffingComplete fired on boot —
-    // that would be the most obvious regression.
-    expect(host?.shadowRoot).toBeNull()
+    // installSniffer ran: its symbol-keyed state slot exists.
+    expect(SNIFFER_STATE_SLOT in (globalThis as object)).toBe(true)
+    // No `SniffingComplete` should land on boot — that tag is the
+    // terminal close signal, not something the bootstrap fires for itself.
+    // (Pre-multi-webview, the in-page top bar's Close button emitted it;
+    // now the plugin's chrome owns the close path.)
     const completedOnBoot = emits.find(
       (entry) =>
         entry.event === BRIDGE_EVENT &&
@@ -135,10 +123,10 @@ describe('tauriSnifferBootstrapScript', () => {
   })
 
   it('skips installSniffer when window.__TAURI__ is absent', () => {
-    // Without __TAURI__, the bootstrap does nothing — no BrowserTopBar
-    // attaches, no symbol-keyed sniffer state slot is created.
+    // Without __TAURI__ there's no event bus to ride; the bootstrap
+    // no-ops rather than shimming fetch/XHR/console with nowhere to
+    // emit them. Symbol slot stays unset.
     bootBootstrap({ withTauri: false })
-    expect(document.getElementById(BROWSER_TOP_BAR_HOST_ID)).toBeNull()
     const stateSlotPresent = SNIFFER_STATE_SLOT in (globalThis as object)
     expect(stateSlotPresent).toBe(false)
   })

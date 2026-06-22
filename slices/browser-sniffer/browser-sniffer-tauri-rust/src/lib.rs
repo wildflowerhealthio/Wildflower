@@ -7,6 +7,7 @@ mod bootstrap;
 pub mod events;
 mod handlers;
 mod model;
+mod popup_bridge;
 mod sniffer_window;
 
 use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT};
@@ -16,23 +17,32 @@ use tauri_plugin_log::log;
 pub use crate::sniffer_window::SNIFFER_WEBVIEW_LABEL;
 
 /// Wire one listener on the multiplexed bridge event and route the
-/// three CollectorBridge.webToHost tags this crate cares about by the
-/// envelope's `_tag`. Idempotent at the listener level — call once per
-/// app lifecycle from `setup()`.
+/// CollectorBridge tags this crate cares about by the envelope's `_tag`.
+/// Idempotent at the listener level — call once per app lifecycle from
+/// `setup()`.
+///
+/// On mobile this also wires the popup bridge: a long-lived
+/// `Channel<PopupEvent>` whose handler re-emits the native popup's events
+/// onto `BRIDGE_EVENT`, plus inbound `Click` / `CancelSnifferRequest`
+/// forwarding into the popup via `plugin.send(...)`. Desktop keeps the
+/// `WebviewWindow` path — the channel is registered but its handler never
+/// fires there, and the inbound forwarders are `cfg`-gated out.
 ///
 /// Decode failures inside each handler log at warn; tags this crate
-/// does not care about (host→web emits echoing back, sibling slices'
-/// web→host traffic) are dropped silently.
+/// does not care about (sibling slices' bridge traffic) are dropped silently.
 pub fn attach_browser_sniffer(app: &AppHandle) {
+    popup_bridge::install(app);
     // The bridge channel is shared across listeners with no automated
     // cross-process tag guard; log this crate's tag set at attach time so
     // the boot log shows who dispatches what. See the effect-messaging-tauri
     // README ("Tag uniqueness across processes").
     log::info!(
-        "[browser-sniffer] listening on '{BRIDGE_EVENT}' for tags: [{}, {}, {}]",
+        "[browser-sniffer] listening on '{BRIDGE_EVENT}' for tags: [{}, {}, {}, {}, {}]",
         events::REQUEST_SNIFFABLE_WEBVIEW,
         events::OPEN,
         events::SNIFFING_COMPLETE,
+        events::CLICK,
+        events::CANCEL_SNIFFER_REQUEST,
     );
     let handle = app.clone();
     app.listen(BRIDGE_EVENT, move |event| {
@@ -50,6 +60,10 @@ pub fn attach_browser_sniffer(app: &AppHandle) {
             }
             events::OPEN => handlers::open::handle(&handle, payload),
             events::SNIFFING_COMPLETE => handlers::sniffing_complete::handle(&handle),
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            events::CLICK | events::CANCEL_SNIFFER_REQUEST => {
+                popup_bridge::forward_to_popup(&handle, payload);
+            }
             _ => {}
         }
     });
@@ -58,7 +72,6 @@ pub fn attach_browser_sniffer(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bootstrap::SNIFFER_BOOTSTRAP;
 
     /// Drift guard for this crate's sniffer-specific tag literals. The
     /// shared `BRIDGE_EVENT` is drift-guarded in
@@ -69,22 +82,45 @@ mod tests {
         assert_eq!(events::REQUEST_SNIFFABLE_WEBVIEW, "RequestSniffableWebView");
         assert_eq!(events::OPEN, "Open");
         assert_eq!(events::SNIFFING_COMPLETE, "SniffingComplete");
+        assert_eq!(events::CLICK, "Click");
+        assert_eq!(events::CANCEL_SNIFFER_REQUEST, "CancelSnifferRequest");
     }
 
     /// The bootstrap IIFE is generated at build time. An empty file
     /// silently injects a no-op into the sniffer webview; surface it
     /// loudly here so a missing regeneration step (`vp run
-    /// generate-tauri-bootstrap` in `browser-sniffer-tauri`, or the
-    /// tauri CI job's pnpm install) fails the test suite before
-    /// reaching runtime.
+    /// generate-tauri-bootstrap` / `generate-native-bootstrap` in
+    /// `browser-sniffer-tauri`, or the tauri CI job's pnpm install)
+    /// fails the test suite before reaching runtime.
+    ///
+    /// Per-target: desktop checks `SNIFFER_BOOTSTRAP` (the `WebviewWindow`
+    /// path); mobile checks `NATIVE_SNIFFER_BOOTSTRAP` (the
+    /// `tauri-plugin-native-webview` path). The off-target constant is
+    /// `cfg`-gated out of `bootstrap.rs`, so referencing both here
+    /// unconditionally would fail to compile on the other target.
     #[test]
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     fn bootstrap_is_non_empty() {
+        use crate::bootstrap::SNIFFER_BOOTSTRAP;
         assert!(
             SNIFFER_BOOTSTRAP.len() > 1000,
             "SNIFFER_BOOTSTRAP is {} bytes; expected >1000. The generated file at \
              slices/browser-sniffer/browser-sniffer-tauri/dist/tauri-bootstrap.js looks empty or \
              stale — run `vp install` or `vp run generate-tauri-bootstrap` in that package.",
             SNIFFER_BOOTSTRAP.len(),
+        );
+    }
+
+    #[test]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn native_bootstrap_is_non_empty() {
+        use crate::bootstrap::NATIVE_SNIFFER_BOOTSTRAP;
+        assert!(
+            NATIVE_SNIFFER_BOOTSTRAP.len() > 1000,
+            "NATIVE_SNIFFER_BOOTSTRAP is {} bytes; expected >1000. The generated file at \
+             slices/browser-sniffer/browser-sniffer-tauri/dist/native-bootstrap.js looks empty or \
+             stale — run `vp install` or `vp run generate-native-bootstrap` in that package.",
+            NATIVE_SNIFFER_BOOTSTRAP.len(),
         );
     }
 

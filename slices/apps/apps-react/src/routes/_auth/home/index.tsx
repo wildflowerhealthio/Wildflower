@@ -8,7 +8,7 @@ import { tunnelStateQueryOptions, useTunnelStateQuery, type TunnelState } from '
 import { appsListQueryOptions, useAppsListQuery, type AppEntry } from '../../../queries.ts'
 import { useRequestTunnel } from '../../../runtime/use-request-tunnel.ts'
 import { AppsEditor } from '../../../screens/apps-editor.tsx'
-import { launchTarget } from './launch-target.ts'
+import { launchTarget } from './-launch-target.ts'
 import pageLayout from '../../../styles/page.module.css'
 
 /**
