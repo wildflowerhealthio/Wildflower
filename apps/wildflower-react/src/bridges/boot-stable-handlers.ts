@@ -16,9 +16,9 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  * boot-stable handler seed all live as one cohesive seam — adding a
  * fifth boot-stable slice means editing one place, not two.
  *
- * Collector and Apps register their real inbound handlers on mount
- * through `makeHandlerCoordinator`; until then the coordinator serves
- * a drop-all record for those bridges. Logging is web→host only on the
+ * Collector registers its real inbound handlers on mount through
+ * `makeHandlerCoordinator`; until then the coordinator serves a
+ * drop-all record for that bridge. Logging is web→host only on the
  * page side (no inbound handlers).
  *
  * `setToken` is the gatekeeper bridge's only piece of state — the

@@ -14,9 +14,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/tes
  *    `TransportContext.Provider` (the value is seeded by a promise
  *    resolved outside React; the tree itself doesn't build the
  *    transport).
- *  - `InnerWrap` (passed to `<RouterProvider>`): `CollectorSenderForwarder`,
- *    `AppsSenderForwarder` — slice senders that close over
- *    `useBridgeTransport`.
+ *  - `InnerWrap` (passed to `<RouterProvider>`): `CollectorSenderForwarder`
+ *    — a slice sender that closes over `useBridgeTransport`.
  *
  * The invariant: TanStack's `<RouterProvider>` does NOT remount the
  * `InnerWrap` on child navigations — children mount/unmount inside the
@@ -114,9 +113,6 @@ vi.mock('tunnel-react', () => ({
 vi.mock('../bridges/collector-sender-forwarder.tsx', () => ({
   CollectorSenderForwarder: makePassthrough('CollectorSenderForwarder'),
 }))
-vi.mock('../bridges/apps-sender-forwarder.tsx', () => ({
-  AppsSenderForwarder: makePassthrough('AppsSenderForwarder'),
-}))
 // `renderApp` wraps the tree in `telemetry-web`'s `<ErrorBoundary>` and
 // reports to `Sentry`. Neither is the thing under test, and the real
 // `ErrorBoundary` would mask assertion failures by swallowing them into
@@ -174,16 +170,12 @@ const lifecycleEventsFor = (name: string): readonly ('mount' | 'unmount')[] =>
     .map(([event]) => event)
 
 describe('renderApp InnerWrap lifecycle', () => {
-  // The three providers that live around the router above its matched
-  // routes: `AuthTokenProvider` (just above `<RouterProvider>`) and the
-  // two slice sender-forwarders that nest inside `InnerWrap`. The
-  // `TransportContext.Provider` is also above the router (in `AppRoot`)
+  // The providers that live around the router above its matched routes:
+  // `AuthTokenProvider` (just above `<RouterProvider>`) and the
+  // `CollectorSenderForwarder` slice sender that nests inside `InnerWrap`.
+  // The `TransportContext.Provider` is also above the router (in `AppRoot`)
   // but is a plain context provider with no React-tree work to pin.
-  const INNER_WRAP_PROVIDERS = [
-    'AuthTokenProvider',
-    'CollectorSenderForwarder',
-    'AppsSenderForwarder',
-  ] as const
+  const INNER_WRAP_PROVIDERS = ['AuthTokenProvider', 'CollectorSenderForwarder'] as const
 
   // `renderApp` mounts into `document.getElementById('root')` via
   // `createRoot`, so the container must exist before each render and be

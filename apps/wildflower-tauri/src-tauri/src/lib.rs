@@ -1,5 +1,6 @@
 mod api_stubs;
 mod bridge;
+mod launch_sink;
 mod spa;
 mod tunnel_adapters;
 
@@ -175,23 +176,26 @@ async fn run_server(
     let gated_tunnel =
         layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone());
 
-    // The apps catalogue surface. `GET /apps` (list) and `GET /apps/{id}`
-    // (launch redirect) ride on the public router — the webview consumes
-    // them unauthenticated like the rest of the launch path. The admin
-    // surface (POST/PATCH/DELETE) is owner-gated through the gatekeeper.
-    // A `requires_tunnel` launch resolves to the tunnel's verified origin
-    // through the tunnel service (else falls back to loopback + tunnel=unavailable).
+    // The apps catalogue surface. `GET /apps` (list) and `POST /apps/{id}`
+    // (launch) ride on the public router — the webview consumes them
+    // unauthenticated like the rest of the launch path. The admin surface
+    // (POST/PATCH/DELETE) is owner-gated through the gatekeeper. A
+    // `requires_tunnel` launch resolves to the tunnel's verified origin through
+    // the tunnel service (else falls back to loopback + tunnel=unavailable).
     let apps_config = AppsConfig {
         loopback_origin: loopback_origin.clone(),
     };
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
-    // Wire the apps `RequestTunnel` web→host bridge handler now that the tunnel
-    // service exists: the SPA's launch path asks the host to bring the tunnel up
-    // (and awaits the verified origin) for an app that needs a public origin
-    // when the tunnel isn't already running.
-    bridge::attach_apps_tunnel_bridge(&app_handle, Arc::clone(&tunnel_service));
-    let apps = setup_apps(db, &apps_config, tunnel_service).context("failed to set up apps")?;
+    // Install the host launch sink: the launch handler resolves the URL (origin
+    // + tunnel) server-side, then hands it to this sink, which opens it in a
+    // native webview popup via `tauri-plugin-native-webview` (the server 204s,
+    // so the SPA stays mounted). This replaces the former `RequestTunnel` /
+    // `RequestSandboxedWebView` bridge round-trips.
+    let launch_sink: Arc<dyn apps_rust::LaunchSink> =
+        Arc::new(launch_sink::TauriLaunchSink::new(app_handle.clone()));
+    let apps = setup_apps(db, &apps_config, tunnel_service, Some(launch_sink))
+        .context("failed to set up apps")?;
     let gated_apps_admin =
         layer_router_with_gatekeeper_auth_gating(apps.admin_router, gatekeeper.state.clone());
 
@@ -338,19 +342,10 @@ pub fn run() {
             // event bus — no Rust forwarding is needed for them.
             browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
 
-            // Wire the apps launch flow: the SPA's `RequestSandboxedWebView
-            // { url }` opens the resolved launch URL in a separate native
-            // webview popup via `tauri-plugin-native-webview`. The plugin
-            // renders native chrome (Close / Back / Forward), so no in-page top
-            // bar and no separate close listener are needed — the native toolbar
-            // dismisses the popup. `listen` registers synchronously, so it can't
-            // miss the SPA's emit.
-            bridge::attach_apps_native_webview_bridge(app.handle());
-
             let error_handle = app.handle().clone();
-            // The server task wires the apps `RequestTunnel` bridge handler once
-            // the tunnel service is built, so it needs an app handle to listen
-            // on / emit through the bridge event bus.
+            // The server task installs the apps launch sink once the apps slice
+            // is built; the sink opens launched apps in a native webview popup,
+            // so it needs an app handle.
             let server_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let runtime = ServerRuntimeConfig {

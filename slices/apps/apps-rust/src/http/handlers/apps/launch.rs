@@ -1,4 +1,4 @@
-//! `GET /apps/{id}` — resolve an app id to a redirect target.
+//! `POST /apps/{id}` — resolve an app id to a launch target.
 //!
 //! Every app is the same shape: a stored [`AppUrl`]
 //! template with `{origin}` and `{launch}` placeholders. The handler:
@@ -6,11 +6,15 @@
 //!   1. Loads the row (404 if absent).
 //!   2. Resolves the served origin through the tunnel seam — see
 //!      [`resolve_origin`].
-//!   3. Renders the redirect target through [`AppUrl::to_url_with_params`],
+//!   3. Renders the launch target through [`AppUrl::to_url_with_params`],
 //!      which substitutes the placeholders and is safe by construction (an
 //!      origin-relative target stays same-origin, an external one stays on
 //!      its `https://` authority) — so there's no launch-time re-validation:
 //!      the stored value was validated when it was parsed into an [`AppUrl`].
+//!   4. Dispatches the target: when a [`LaunchSink`](crate::LaunchSink) is
+//!      installed (the Tauri host) it hands the URL to the sink — which opens
+//!      it in a native webview popup — and `204`s; otherwise it returns a
+//!      `302` redirect for the browser to follow.
 //!
 //! `requires_tunnel` is honoured through the shared `TunnelService` contract:
 //! the launch asks the tunnel to start and resolves to its live *verified*
@@ -23,7 +27,7 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::http::header::LOCATION;
 use axum::http::StatusCode;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use rand::distr::Alphanumeric;
 use rand::Rng;
 
@@ -31,13 +35,16 @@ use crate::domain::LaunchParams;
 use crate::http::response_templates::{AppNotFoundBody, HandlerError};
 use crate::http::state::AppsState;
 
-/// `GET /apps/{id}` — 302 to the resolved launch URL, or 404 if no app has
-/// this id. Reachable unauthenticated (the webview follows the redirect).
+/// `POST /apps/{id}` — launch an app. With a host [`LaunchSink`](crate::LaunchSink)
+/// installed, opens the resolved URL through the sink and returns `204`;
+/// otherwise `302`s to the resolved launch URL. `404` if no app has this id.
+/// Reachable unauthenticated (the webview follows the redirect).
 #[utoipa::path(
-    get,
+    post,
     path = "/apps/{id}",
     params(("id" = String, Path, description = "App id")),
     responses(
+        (status = 204, description = "Host sink opened the launch URL (no redirect)"),
         (status = 302, description = "Redirect (Location header) to the resolved launch URL"),
         (status = 404, description = "No app has this id", body = AppNotFoundBody),
     ),
@@ -59,7 +66,16 @@ pub(crate) async fn handle_launch_app(
         launch: &launch,
         tunnel_unavailable,
     });
-    Ok(redirect(target))
+    match &state.launch_sink {
+        // The host owns the side-effect: hand it the resolved URL (it opens a
+        // native popup) and 204 so the SPA stays mounted. Fire-and-forget —
+        // the sink logs any failure.
+        Some(sink) => {
+            sink.open(&app, &target);
+            Ok(no_content())
+        }
+        None => Ok(redirect(target)),
+    }
 }
 
 /// Resolve the launch origin and the `tunnel_unavailable` flag.
@@ -113,6 +129,14 @@ fn redirect(location: String) -> Response {
         // an alphanumeric nonce — none of which can contain non-visible
         // ASCII. A failure here is a bug in the URL builder, not user input.
         .expect("redirect builder failed on a validated URL")
+}
+
+/// 204 No Content with an empty body — the response when a host [`LaunchSink`]
+/// has taken the launch (the host opened the URL; there's nothing for the SPA
+/// to follow). `StatusCode::NO_CONTENT.into_response()` already yields an empty
+/// body, so no header juggling is needed.
+fn no_content() -> Response {
+    StatusCode::NO_CONTENT.into_response()
 }
 
 #[cfg(test)]

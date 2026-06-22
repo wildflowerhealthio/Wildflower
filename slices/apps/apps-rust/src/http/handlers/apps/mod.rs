@@ -2,6 +2,9 @@
 //! webview consumes. One module per route handler (`list`, `launch`), each
 //! exposing a `#[utoipa::path]`-annotated handler; `openapi_router()` collects
 //! them so the served routes and the OpenAPI spec come from one place.
+//!
+//! `GET /apps` lists; `POST /apps/{id}` launches (302 to the resolved URL, or
+//! 204 when a host [`LaunchSink`](crate::LaunchSink) takes the side-effect).
 
 mod launch;
 mod list;
@@ -13,7 +16,7 @@ use utoipa_axum::routes;
 
 use crate::http::state::AppsState;
 
-/// The public `/apps` routes (`GET /apps`, `GET /apps/{id}`) as an
+/// The public `/apps` routes (`GET /apps`, `POST /apps/{id}`) as an
 /// `OpenApiRouter`. Mounted by [`crate::http`]; `routes!` reads each handler's
 /// `#[utoipa::path]` for its method + path.
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AppsState>> {
@@ -24,7 +27,7 @@ pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AppsState>> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
@@ -36,9 +39,22 @@ mod tests {
     use crate::db::AppsStore;
     use crate::domain::{AppEntry, AppUrl};
     use crate::http::state::AppsState;
+    use crate::LaunchSink;
     use shared_structures_rust::tunnel_service::{
         OfflineTunnel, TunnelLiveness, TunnelService, TunnelStatus,
     };
+
+    /// A [`LaunchSink`] stub that records the URLs it's handed, so a test can
+    /// assert the handler resolved the target and routed it to the sink (and
+    /// returned `204`) instead of redirecting.
+    #[derive(Default)]
+    struct RecordingSink(Mutex<Vec<String>>);
+
+    impl LaunchSink for RecordingSink {
+        fn open(&self, _app: &AppEntry, url: &str) {
+            self.0.lock().expect("sink mutex").push(url.to_owned());
+        }
+    }
 
     /// A `TunnelService` stub for a tunnel that's up and verified at `origin` —
     /// the success counterpart to the shared [`OfflineTunnel`], which already
@@ -104,6 +120,15 @@ mod tests {
         Request::builder().uri(uri).body(Body::empty()).unwrap()
     }
 
+    /// A launch request — `POST /apps/{id}` with an empty body.
+    fn post(uri: &str) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap()
+    }
+
     fn app(id: &str, url: AppUrl) -> AppEntry {
         AppEntry {
             id: id.to_owned(),
@@ -158,7 +183,7 @@ mod tests {
         let st = state();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/no-such-thing"))
+            .oneshot(post("/apps/no-such-thing"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
@@ -171,7 +196,7 @@ mod tests {
         let st = state();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/patient-browser"))
+            .oneshot(post("/apps/patient-browser"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::FOUND);
@@ -195,7 +220,7 @@ mod tests {
         let st = state();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/growth-chart"))
+            .oneshot(post("/apps/growth-chart"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::FOUND);
@@ -222,7 +247,7 @@ mod tests {
         let st = state_with_tunnel(tunnel_at("https://dev1.example.com"));
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/growth-chart"))
+            .oneshot(post("/apps/growth-chart"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::FOUND);
@@ -250,7 +275,7 @@ mod tests {
             .unwrap();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/app-y"))
+            .oneshot(post("/apps/app-y"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::FOUND);
@@ -281,9 +306,54 @@ mod tests {
             .unwrap();
         let res = router()
             .with_state(Arc::clone(&st))
-            .oneshot(get("/apps/app-bad"))
+            .oneshot(post("/apps/app-bad"))
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    /// With a [`LaunchSink`] installed, a launch hands the resolved URL to the
+    /// sink and returns `204` (no redirect) — the host owns the side-effect.
+    #[tokio::test]
+    async fn launch_with_sink_204s_and_routes_the_url_to_the_sink() {
+        let sink = Arc::new(RecordingSink::default());
+        let store = AppsStore::open_in_memory().expect("store");
+        let st = Arc::new(
+            AppsState::new(store, "http://127.0.0.1:8080", tunnel_unavailable())
+                .with_launch_sink(Arc::clone(&sink) as Arc<dyn LaunchSink>),
+        );
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(post("/apps/patient-browser"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        assert!(
+            res.headers().get("location").is_none(),
+            "a sink launch must not carry a Location redirect",
+        );
+        let opened = sink.0.lock().expect("sink mutex").clone();
+        assert_eq!(
+            opened,
+            vec!["http://127.0.0.1:8080/installed-apps/patient-browser/index.html".to_string()],
+            "the sink must receive the same resolved URL the redirect path would 302 to",
+        );
+    }
+
+    /// Without a sink (the web/standalone default), a launch still `302`s to
+    /// the resolved URL — the counterpart to the sink test above.
+    #[tokio::test]
+    async fn launch_without_sink_still_302s() {
+        let st = state();
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(post("/apps/patient-browser"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FOUND);
+        assert!(
+            res.headers().get("location").is_some(),
+            "no sink means the browser-following redirect path",
+        );
     }
 }

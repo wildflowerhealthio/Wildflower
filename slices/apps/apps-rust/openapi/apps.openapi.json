@@ -63,8 +63,8 @@
       }
     },
     "/apps/{id}": {
-      "get": {
-        "summary": "`GET /apps/{id}` — 302 to the resolved launch URL, or 404 if no app has\nthis id. Reachable unauthenticated (the webview follows the redirect).",
+      "post": {
+        "summary": "`POST /apps/{id}` — launch an app. With a host [`LaunchSink`](crate::LaunchSink)\ninstalled, opens the resolved URL through the sink and returns `204`;\notherwise `302`s to the resolved launch URL. `404` if no app has this id.\nReachable unauthenticated (the webview follows the redirect).",
         "operationId": "handle_launch_app",
         "parameters": [
           {
@@ -78,6 +78,9 @@
           }
         ],
         "responses": {
+          "204": {
+            "description": "Host sink opened the launch URL (no redirect)"
+          },
           "302": {
             "description": "Redirect (Location header) to the resolved launch URL"
           },

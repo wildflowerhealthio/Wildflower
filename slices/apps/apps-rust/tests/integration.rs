@@ -26,8 +26,15 @@ fn spin_up() -> Apps {
         loopback_origin: LOOPBACK_ORIGIN.to_string(),
     };
     // No tunnel in the integration harness: `requires_tunnel` launches fall
-    // back to loopback + `?tunnel=unavailable`.
-    setup_apps(db, &config, Arc::new(OfflineTunnel::new(LOOPBACK_ORIGIN))).expect("setup_apps")
+    // back to loopback + `?tunnel=unavailable`. No launch sink either, so a
+    // launch 302s rather than 204ing through a host sink.
+    setup_apps(
+        db,
+        &config,
+        Arc::new(OfflineTunnel::new(LOOPBACK_ORIGIN)),
+        None,
+    )
+    .expect("setup_apps")
 }
 
 async fn body_json(body: Body) -> Value {
@@ -55,6 +62,12 @@ fn patch(uri: &str, body: serde_json::Value) -> Request<Body> {
 
 fn delete(uri: &str) -> Request<Body> {
     Request::delete(uri).body(Body::empty()).expect("build")
+}
+
+/// A launch request — `POST /apps/{id}` with an empty body (the launch carries
+/// no payload; the id is in the path).
+fn launch(uri: &str) -> Request<Body> {
+    Request::post(uri).body(Body::empty()).expect("build")
 }
 
 /// Fresh-install seed: every code-defined default app present and
@@ -131,7 +144,7 @@ async fn apps_round_trip_between_routers() {
     let launch_res = apps
         .public_router
         .clone()
-        .oneshot(get(&format!("/apps/{id}")))
+        .oneshot(launch(&format!("/apps/{id}")))
         .await
         .expect("oneshot");
     assert_eq!(launch_res.status(), StatusCode::FOUND);
