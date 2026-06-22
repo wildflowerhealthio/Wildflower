@@ -194,7 +194,10 @@ mod tests {
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
         let object = parsed.as_object().expect("object");
-        assert_eq!(object.get("url").and_then(|v| v.as_str()), Some("https://example.test/x"));
+        assert_eq!(
+            object.get("url").and_then(|v| v.as_str()),
+            Some("https://example.test/x")
+        );
         assert!(!object.contains_key("initScript"));
         // Absent initial-chrome fields are omitted (not `null`) so the native
         // `Decodable` / `@InvokeArg` optionals decode cleanly to "no change".
@@ -307,7 +310,10 @@ mod tests {
         // Use a structural check (parse back to Value) so this test isn't
         // brittle against serde's key ordering across versions.
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
-        assert_eq!(parsed.get("title").and_then(|v| v.as_str()), Some("example.test"));
+        assert_eq!(
+            parsed.get("title").and_then(|v| v.as_str()),
+            Some("example.test")
+        );
         assert_eq!(
             parsed.get("subtitle").and_then(|v| v.as_str()),
             Some("Collecting Automatically")
@@ -333,7 +339,12 @@ mod tests {
     fn popup_event_message_round_trips_with_lowercase_tag() {
         let json = r#"{"event":"message","payload":"hello"}"#;
         let event: PopupEvent = serde_json::from_str(json).expect("de");
-        assert_eq!(event, PopupEvent::Message { payload: "hello".to_owned() });
+        assert_eq!(
+            event,
+            PopupEvent::Message {
+                payload: "hello".to_owned()
+            }
+        );
         // Round-trip back to the same bytes (key-order stable for this tiny shape).
         assert_eq!(serde_json::to_string(&event).expect("ser"), json);
     }
@@ -341,10 +352,12 @@ mod tests {
     /// `PopupEvent::Closed` decodes from `{ "event":"closed" }` — no payload.
     #[test]
     fn popup_event_closed_decodes_without_payload() {
-        let event: PopupEvent =
-            serde_json::from_str(r#"{"event":"closed"}"#).expect("de");
+        let event: PopupEvent = serde_json::from_str(r#"{"event":"closed"}"#).expect("de");
         assert_eq!(event, PopupEvent::Closed);
-        assert_eq!(serde_json::to_string(&event).expect("ser"), r#"{"event":"closed"}"#);
+        assert_eq!(
+            serde_json::to_string(&event).expect("ser"),
+            r#"{"event":"closed"}"#
+        );
     }
 
     /// `CloseResponse` decodes both arms of the native-side `{ "closed": … }`

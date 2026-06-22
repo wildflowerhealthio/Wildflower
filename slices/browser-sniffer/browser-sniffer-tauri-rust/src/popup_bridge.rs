@@ -157,9 +157,10 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
             {
                 return;
             }
-            if let Err(error) =
-                app.emit(BRIDGE_EVENT, serde_json::json!({ "_tag": "SniffingComplete" }))
-            {
+            if let Err(error) = app.emit(
+                BRIDGE_EVENT,
+                serde_json::json!({ "_tag": "SniffingComplete" }),
+            ) {
                 log::warn!("[browser-sniffer] failed to emit SniffingComplete on close: {error}");
             }
         }

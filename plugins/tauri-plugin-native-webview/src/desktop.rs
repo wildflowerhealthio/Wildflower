@@ -514,54 +514,57 @@ fn present<R: Runtime>(app: &AppHandle<R>, payload: OpenRequest) -> crate::Resul
     let chrome_url = build_chrome_data_url(&title, &subtitle, &message);
     let app_for_actions = app.clone();
     let window_for_actions = window.clone();
-    let chrome_builder = WebviewBuilder::new(CHROME_WEBVIEW_LABEL, WebviewUrl::External(chrome_url))
-        .on_navigation(move |url| {
-            if url.scheme() != CHROME_ACTION_SCHEME {
-                return true;
-            }
-            // `x-nv-action://<kind>/<value>` → `host_str` is the kind
-            // (`action` / `height`), `path` is `/<value>`.
-            let value = url.path().trim_start_matches('/');
-            match url.host_str() {
-                Some("action") => {
-                    let Some(content) = app_for_actions.get_webview(CONTENT_WEBVIEW_LABEL) else {
-                        return false;
-                    };
-                    let script = match value {
-                        "back" => "history.back()",
-                        "forward" => "history.forward()",
-                        "refresh" => "location.reload()",
-                        _ => return false,
-                    };
-                    // The user just went back — a forward slot now exists.
-                    // The next page-load Started event resets this if it's a
-                    // non-back navigation (we can't distinguish at the Rust
-                    // layer, so any new load conservatively clears forward).
-                    if value == "back" {
-                        if let Some(window) = app_for_actions.get_window(WINDOW_LABEL) {
-                            if let Some(state) = window.try_state::<NavState>() {
-                                state.can_forward.store(true, Ordering::SeqCst);
-                            }
-                        }
-                    }
-                    let _ = content.eval(script);
-                }
-                Some("height") => {
-                    // The chrome JS only ever reports a small positive px
-                    // height, but `parse::<f64>()` also accepts
-                    // `inf`/`NaN`/negatives — any of which would poison the
-                    // webview layout split (`logical_h - chrome_height`) with
-                    // no recovery path. Clamp to a finite, sane range.
-                    if let Ok(height) = value.parse::<f64>() {
-                        if height.is_finite() && (0.0..=4096.0).contains(&height) {
-                            apply_chrome_height(&app_for_actions, &window_for_actions, height);
+    let chrome_builder = WebviewBuilder::new(
+        CHROME_WEBVIEW_LABEL,
+        WebviewUrl::External(chrome_url),
+    )
+    .on_navigation(move |url| {
+        if url.scheme() != CHROME_ACTION_SCHEME {
+            return true;
+        }
+        // `x-nv-action://<kind>/<value>` → `host_str` is the kind
+        // (`action` / `height`), `path` is `/<value>`.
+        let value = url.path().trim_start_matches('/');
+        match url.host_str() {
+            Some("action") => {
+                let Some(content) = app_for_actions.get_webview(CONTENT_WEBVIEW_LABEL) else {
+                    return false;
+                };
+                let script = match value {
+                    "back" => "history.back()",
+                    "forward" => "history.forward()",
+                    "refresh" => "location.reload()",
+                    _ => return false,
+                };
+                // The user just went back — a forward slot now exists.
+                // The next page-load Started event resets this if it's a
+                // non-back navigation (we can't distinguish at the Rust
+                // layer, so any new load conservatively clears forward).
+                if value == "back" {
+                    if let Some(window) = app_for_actions.get_window(WINDOW_LABEL) {
+                        if let Some(state) = window.try_state::<NavState>() {
+                            state.can_forward.store(true, Ordering::SeqCst);
                         }
                     }
                 }
-                _ => {}
+                let _ = content.eval(script);
             }
-            false
-        });
+            Some("height") => {
+                // The chrome JS only ever reports a small positive px
+                // height, but `parse::<f64>()` also accepts
+                // `inf`/`NaN`/negatives — any of which would poison the
+                // webview layout split (`logical_h - chrome_height`) with
+                // no recovery path. Clamp to a finite, sane range.
+                if let Ok(height) = value.parse::<f64>() {
+                    if height.is_finite() && (0.0..=4096.0).contains(&height) {
+                        apply_chrome_height(&app_for_actions, &window_for_actions, height);
+                    }
+                }
+            }
+            _ => {}
+        }
+        false
+    });
     window
         .add_child(
             chrome_builder,
