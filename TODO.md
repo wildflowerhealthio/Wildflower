@@ -162,6 +162,16 @@ Check whether iOS/Android have the analogous race (a reopen during the dismiss a
 before `currentWebView`/`currentController` clear). Likely milder (weak refs nil out), but
 verify and apply the same guard shape if needed.
 
+### Sibling race — #6 (`close`/`send` before `present` runs)
+Same root cause as #10: desktop `open()` only *queues* `present()` on the main thread and
+returns immediately, so a `close()` or `send()` issued before the queued `present()` runs
+operates on a not-yet-built popup (`close()` finds no window and no-ops; the queued
+`present()` then builds an orphan window; `send()` rejects "no popup open"). Whatever
+lifecycle fix you land for #10 (cancelable close, unique labels, or a completion signal
+from `present()`) should cover this direction too. Theoretical for the sniffer today (it
+never issues `close`/`send` on the same tick as `open`), so it is bundled here rather than
+fixed separately.
+
 ---
 
 ## Stale docs to update (the PR migrated to the plugin but didn't doc-update)
