@@ -1,0 +1,71 @@
+/*
+ * Device-consent screen polish — the design-system "device authorization"
+ * card treatment, layered onto the shared consent form body. Everything is
+ * token-driven (no literal px / hex from the prototype): the pairing code
+ * reads as a sunken, dashed "ticket stub"; an intro line sets the ask; the
+ * application name sits a notch above body weight; the actions row pairs
+ * Decline and Approve side by side; and a quiet mono footnote closes the card.
+ *
+ * The form renders inside the app's existing chrome (`.page` shell under a
+ * `PageHeader`, or the Tauri consent `Dialog` body), so the inter-row rhythm
+ * comes from that container's flex `gap` — these rules only skin the rows.
+ */
+
+/* Lead line under the title: "A new device is requesting access…" — body
+ * size, muted, sat directly above the fields. */
+.intro {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-4);
+  color: var(--color-neutral-3);
+}
+
+/* The RFC 8628 user code as a centered, monospace, dashed-border stub on the
+ * sunken surface — the screen's focal "this is the code on your other
+ * device" anchor. */
+.code-box {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-6);
+  font-weight: var(--font-weight-2);
+  letter-spacing: var(--letter-spacing-5);
+  color: var(--color-neutral-1);
+  background: var(--color-sunken);
+  border: 1px dashed var(--card-color-border);
+  border-radius: var(--radius-3);
+  padding: var(--space-5) var(--space-7);
+  text-align: center;
+}
+
+/* Application display name — one notch larger / heavier than body so the
+ * human-readable name leads and the `<code>` client id (in the field
+ * description below it) reads as the secondary, technical identifier. */
+.app-name {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-3);
+  line-height: var(--line-height-3);
+  color: var(--color-neutral-1);
+}
+
+/* Decision row — Decline and Approve side by side, each taking an equal
+ * half. Replaces the stacked `.buttons` column for this two-action,
+ * weigh-the-choice surface. */
+.actions {
+  display: flex;
+  gap: var(--space-5);
+  margin-top: var(--space-3);
+}
+
+.actions > button {
+  flex: 1 1 0;
+}
+
+/* Closing reassurance line — quiet mono caption, centered. */
+.footnote {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+  text-align: center;
+}

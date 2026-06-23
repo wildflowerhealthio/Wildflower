@@ -10,6 +10,13 @@
  * need the surrounding `<h1>` heading — the modal supplies the title
  * via its Dialog header. Everything else (scope toggle, approve/decline
  * mutation, stale-denied clearing, mutation-error precedence) is shared.
+ *
+ * Visually this is the design-system "device authorization" card: an
+ * intro line, the pairing code as a sunken dashed stub, the application
+ * name over its `<code>` client id, the requested scopes, a side-by-side
+ * Decline / Approve row, and a closing mono footnote. The skin lives in
+ * `device-consent-form.module.css` (token-driven); the surrounding chrome
+ * (page shell + `PageHeader`, or the `Dialog`) is the caller's.
  */
 
 import { unknownErrorToString } from 'kitchen-sink'
@@ -19,8 +26,8 @@ import { cn } from 'react-kitchen-sink'
 import { Checkbox, Field, FieldDescription, FieldGroup, pageLayoutStyles } from 'react-tundraish'
 
 import { useDeviceConsentMutation, type DeviceConsent } from '../../queries/index.ts'
-import pageLayout from '../../styles/page-layout.module.css'
 import scopeListStyles from '../../styles/scope-list.module.css'
+import styles from './device-consent-form.module.css'
 
 interface DeviceConsentFormProps {
   readonly consent: DeviceConsent
@@ -91,14 +98,14 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
 
   return (
     <>
-      <Field label="Code">
-        <span className="text-body-2">
-          <code>{consent.userCode}</code>
-        </span>
+      <p className={styles['intro']}>A new device is requesting access to your account.</p>
+
+      <Field label="Pairing code">
+        <div className={styles['code-box']}>{consent.userCode}</div>
       </Field>
 
       <Field label="Application">
-        <span className="text-body-2">{consent.clientName}</span>
+        <span className={styles['app-name']}>{consent.clientName}</span>
         <FieldDescription>
           <code>{consent.clientId}</code>
         </FieldDescription>
@@ -126,7 +133,15 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
         </p>
       ) : null}
 
-      <div className={pageLayout['buttons']}>
+      <div className={styles['actions']}>
+        <button
+          type="button"
+          className="button-2 outline accent-red"
+          disabled={submitting}
+          onClick={handleDecline}
+        >
+          Decline
+        </button>
         <button
           type="button"
           className="button-2 filled"
@@ -137,15 +152,9 @@ const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Ele
             ? `Approve (${selectedScopes.size}/${requestedScopes.length})`
             : 'Approve'}
         </button>
-        <button
-          type="button"
-          className="button-2 filled accent-red"
-          disabled={submitting}
-          onClick={handleDecline}
-        >
-          Decline
-        </button>
       </div>
+
+      <p className={styles['footnote']}>Only approve devices you recognize.</p>
     </>
   )
 }

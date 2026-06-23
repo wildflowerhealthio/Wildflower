@@ -73,6 +73,18 @@ describe('DeviceConsentForm', () => {
     expect(screen.getByRole('button', { name: 'Approve' })).toBeDefined()
   })
 
+  test('renders the device-authorization chrome: intro line, pairing-code label, and footnote', () => {
+    // Arrange / Act
+    renderConsentForm(makeConsent(), vi.fn())
+
+    // Assert — the redesign's framing copy is present: the lead line, the
+    // "Pairing code" field eyebrow over the user code, and the closing
+    // reassurance footnote.
+    expect(screen.getByText('A new device is requesting access to your account.')).toBeDefined()
+    expect(screen.getByText('Pairing code')).toBeDefined()
+    expect(screen.getByText('Only approve devices you recognize.')).toBeDefined()
+  })
+
   test('approves and finishes when the server records the grant', async () => {
     // Arrange
     runAuthedStub.mockResolvedValueOnce({ status: 'approved' })
