@@ -15,8 +15,14 @@ publish.workspace = true
 # directory is absent/empty the routes 404 — the crate still compiles.
 [dependencies]
 axum.workspace = true
-# Async filesystem reads in the request path (`tokio::fs::read`).
-tokio = { workspace = true, features = ["fs"] }
+# `ServeDir` (with `mime_guess` content-type detection + traversal protection)
+# does the static file serving; we layer the patient-browser HTML rebase and
+# the committed-config override on top. The workspace pins tower-http for
+# `cors`; this crate adds `fs` for `ServeDir`.
+tower-http = { workspace = true, features = ["fs"] }
+# `tracing::warn!` on the rare HTML-rebase buffering failure (logged 500
+# instead of a panic). Local pin matches apps-rust.
+tracing = "0.1"
 
 [lints]
 workspace = true

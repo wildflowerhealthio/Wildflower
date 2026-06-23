@@ -35,6 +35,7 @@ pub mod config;
 pub mod db;
 pub mod domain;
 pub mod http;
+mod id;
 mod launch_sink;
 
 use std::sync::Arc;

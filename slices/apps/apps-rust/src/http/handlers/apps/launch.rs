@@ -4,17 +4,22 @@
 //! template with `{origin}` and `{launch}` placeholders. The handler:
 //!
 //!   1. Loads the row (404 if absent).
-//!   2. Resolves the served origin through the tunnel seam — see
+//!   2. Reads the request's [`RequestProvenance`] *once* — both "is this a
+//!      remote caller?" (decides sink vs. redirect) and "what origin do we
+//!      render?" derive from the same single header read, so an empty/spoofed
+//!      `x-public-origin` can't make the two answers disagree.
+//!   3. Resolves the served origin through the tunnel seam — see
 //!      [`resolve_origin`].
-//!   3. Renders the launch target through [`AppUrl::to_url_with_params`],
+//!   4. Renders the launch target through [`AppUrl::to_url_with_params`],
 //!      which substitutes the placeholders and is safe by construction (an
 //!      origin-relative target stays same-origin, an external one stays on
 //!      its `https://` authority) — so there's no launch-time re-validation:
 //!      the stored value was validated when it was parsed into an [`AppUrl`].
-//!   4. Dispatches the target: when a [`LaunchSink`](crate::LaunchSink) is
-//!      installed (the Tauri host) it hands the URL to the sink — which opens
-//!      it in a native webview popup — and `204`s; otherwise it returns a
-//!      `302` redirect for the browser to follow.
+//!   5. Dispatches the target: when a [`LaunchSink`](crate::LaunchSink) is
+//!      installed (the Tauri host) *and* the caller is loopback (a local
+//!      webview that a host popup can actually serve), it hands the URL to
+//!      the sink and `204`s; otherwise it returns a `302` redirect for the
+//!      browser to follow.
 //!
 //! `requires_tunnel` is honoured through the shared `TunnelService` contract:
 //! the launch asks the tunnel to start and resolves to its live *verified*
@@ -30,12 +35,12 @@ use axum::extract::{Path, State};
 use axum::http::header::LOCATION;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use rand::distr::Alphanumeric;
-use rand::Rng;
+use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 
 use crate::domain::LaunchParams;
 use crate::http::response_templates::{AppNotFoundBody, HandlerError};
 use crate::http::state::AppsState;
+use crate::id::random_id_21;
 
 /// `POST /apps/{id}` — launch an app. `404` if no app has this id. Reachable
 /// unauthenticated (the webview follows the redirect).
@@ -46,7 +51,7 @@ use crate::http::state::AppsState;
 /// request **forwarded by the trusted front** (the relay/tunnel sets
 /// `x-public-origin`) is a *remote* caller, for whom a host-side popup is
 /// invisible; it gets the `302` redirect instead, the same as a host that
-/// installs no sink at all (web/standalone). See [`request_is_forwarded`].
+/// installs no sink at all (web/standalone).
 #[utoipa::path(
     post,
     path = "/apps/{id}",
@@ -68,53 +73,53 @@ pub(crate) async fn handle_launch_app(
         .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
         .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
 
-    let (origin, tunnel_unavailable) = resolve_origin(&state, &headers, app.requires_tunnel).await;
-    let launch = launch_nonce();
+    // Single read of the forwarding headers — both decisions below derive
+    // from this one value, so an empty/spoofed `x-public-origin` can't make
+    // them disagree (a header that fails validation reads as Loopback).
+    let provenance = request_provenance(&headers);
+    let (origin, tunnel_unavailable) =
+        resolve_origin(&state, &provenance, app.requires_tunnel).await;
+    let launch = random_id_21();
     let target = app.url.to_url_with_params(&LaunchParams {
         origin: &origin,
         launch: &launch,
         tunnel_unavailable,
     });
-    match &state.launch_sink {
-        // Loopback caller + a host sink: the host owns the side-effect — hand it
-        // the resolved URL (it opens a native popup) and 204 so the SPA stays
-        // mounted. Fire-and-forget; the sink logs any failure. A forwarded
-        // (remote) request, or no sink at all, falls through to the redirect.
-        Some(sink) if !request_is_forwarded(&headers) => {
+    match (&state.launch_sink, &provenance) {
+        // Loopback caller + a host sink: the host owns the side-effect — hand
+        // it the resolved URL (it opens a native popup) and 204 so the SPA
+        // stays mounted. The sink is contractually fire-and-forget (the Tauri
+        // impl spawns the blocking webview-open onto a blocking thread, so
+        // this call returns promptly). A forwarded (remote) request, or no
+        // sink at all, falls through to the redirect.
+        (Some(sink), RequestProvenance::Loopback) => {
             sink.open(&app, &target);
             Ok(no_content())
         }
-        _ => Ok(redirect(target)),
+        _ => redirect(target),
     }
-}
-
-/// Whether the request was forwarded by the trusted front (the relay/tunnel),
-/// rather than arriving directly over loopback. Keys on the `x-public-origin`
-/// header the front sets on forwarded requests — the same signal
-/// `gatekeeper_rust`'s `served_origin_for` uses to resolve the served origin
-/// (and that `wildflower-relay` sets). A forwarded request is a remote caller,
-/// so the launch redirects it rather than popping a webview on the host device.
-fn request_is_forwarded(headers: &HeaderMap) -> bool {
-    headers.contains_key("x-public-origin")
 }
 
 /// Resolve the launch origin and the `tunnel_unavailable` flag.
 ///
-/// A non-tunnel launch resolves to the *served* origin (see
-/// [`served_origin_for`]): loopback when the caller hit the API directly, the
-/// forwarded public origin when the trusted front relayed the request — so the
-/// `302`'s `Location` is something the caller can actually reach. A
-/// `requires_tunnel` launch asks the `TunnelService` to start:
-/// `Ok(origin)` is the live verified origin; `Err(_)` means the tunnel couldn't
-/// be brought up, so it falls back to loopback and flags `?tunnel=unavailable`
-/// for the SPA banner.
+/// A non-tunnel launch resolves to the *served* origin: the forwarded public
+/// origin from `provenance` when the trusted front relayed the request, else
+/// loopback — so the `302`'s `Location` is something the caller can actually
+/// reach. A `requires_tunnel` launch asks the `TunnelService` to start:
+/// `Ok(origin)` is the live verified origin; `Err(_)` means the tunnel
+/// couldn't be brought up, so it falls back to loopback and flags
+/// `?tunnel=unavailable` for the SPA banner.
 async fn resolve_origin(
     state: &AppsState,
-    headers: &HeaderMap,
+    provenance: &RequestProvenance,
     requires_tunnel: bool,
 ) -> (String, bool) {
     if !requires_tunnel {
-        return (served_origin_for(headers, &state.loopback_origin), false);
+        let origin = match provenance {
+            RequestProvenance::Forwarded { origin } => origin.clone(),
+            RequestProvenance::Loopback => state.loopback_origin.clone(),
+        };
+        return (origin, false);
     }
     match state.tunnel.try_start().await {
         Ok(origin) => (origin, false),
@@ -129,49 +134,18 @@ async fn resolve_origin(
     }
 }
 
-/// The origin a given request expects its answer to come from. When the
-/// trusted front (the relay/tunnel) forwards a request it sets `x-public-origin`
-/// to the public host the client actually used and `x-forwarded-proto` to its
-/// scheme; we echo those back so a redirect handed to that client points at the
-/// URL it really reached, not loopback. With no such header the caller hit the
-/// API directly over loopback. Mirrors `gatekeeper_rust::served_origin_for` —
-/// inlined here to avoid coupling apps-rust to gatekeeper-rust for one helper.
-fn served_origin_for(headers: &HeaderMap, loopback_origin: &str) -> String {
-    let header_str = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
-    if let Some(public_origin) = header_str("x-public-origin") {
-        let scheme = header_str("x-forwarded-proto").unwrap_or("https");
-        return format!("{scheme}://{public_origin}");
-    }
-    loopback_origin.to_owned()
-}
-
-/// 21-char base62-ish nonce — close enough to nanoid (the TS handler's
-/// `launch` source) without pulling in a fresh crate. The launch nonce is
-/// opaque to this slice; some launch URLs forward it to the SMART-on-FHIR
-/// authorize endpoint where it's checked against the AS-issued value.
-fn launch_nonce() -> String {
-    rand::rng()
-        .sample_iter(&Alphanumeric)
-        .take(21)
-        .map(char::from)
-        .collect()
-}
-
 /// 302 response with the given location, plus a `Content-Type` of
 /// `text/html; charset=utf-8` to match the TS contract (`HttpApiSchema.Text`
 /// with that content-type). The body is empty — the redirect is the whole
-/// signal.
-fn redirect(location: String) -> Response {
+/// signal. A failure here means the rendered URL contained a byte the header
+/// codec rejected; surfaces as a logged 500 (never a handler panic).
+fn redirect(location: String) -> Result<Response, HandlerError> {
     Response::builder()
         .status(StatusCode::FOUND)
         .header(LOCATION, &location)
         .header("content-type", "text/html; charset=utf-8")
         .body(axum::body::Body::empty())
-        // Builder errors come from an invalid header value (e.g. non-ASCII
-        // in `location`). Our launches build URLs from validated inputs and
-        // an alphanumeric nonce — none of which can contain non-visible
-        // ASCII. A failure here is a bug in the URL builder, not user input.
-        .expect("redirect builder failed on a validated URL")
+        .map_err(|e| HandlerError::internal("redirect builder failed", e))
 }
 
 /// 204 No Content with an empty body — the response when a host [`LaunchSink`]
@@ -180,26 +154,4 @@ fn redirect(location: String) -> Response {
 /// body, so no header juggling is needed.
 fn no_content() -> Response {
     StatusCode::NO_CONTENT.into_response()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn launch_nonce_is_alphanumeric_and_21_chars() {
-        let n = launch_nonce();
-        assert_eq!(n.len(), 21);
-        assert!(n.chars().all(|c| c.is_ascii_alphanumeric()));
-    }
-
-    #[test]
-    fn request_is_forwarded_keys_on_the_public_origin_header() {
-        // A direct loopback request carries no forwarding header.
-        assert!(!request_is_forwarded(&HeaderMap::new()));
-        // The trusted front sets `x-public-origin` on forwarded (remote) requests.
-        let mut forwarded = HeaderMap::new();
-        forwarded.insert("x-public-origin", "emr.example.com".parse().unwrap());
-        assert!(request_is_forwarded(&forwarded));
-    }
 }

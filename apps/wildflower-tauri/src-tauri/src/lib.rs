@@ -268,7 +268,7 @@ async fn run_server(
         // Static "installed apps", served under `/installed-apps/{app}/` from a
         // runtime directory under app-data (not embedded — drop files in and
         // they're served live). Public + unauthenticated like the launch path
-        // that redirects into it (`GET /apps/patient-browser` →
+        // that redirects into it (`POST /apps/patient-browser` →
         // `…/installed-apps/patient-browser/index.html`). Empty (404s) until the
         // directory is populated (see slices/apps/vendor-apps/README).
         .merge(vendor_apps_rust::setup_vendor_apps(installed_apps_dir))

@@ -8,7 +8,7 @@
 //! `root`.
 //!
 //! Today the only app is the vendored patient-browser SPA, served under
-//! `/installed-apps/patient-browser/`, where the `GET /apps/patient-browser`
+//! `/installed-apps/patient-browser/`, where the `POST /apps/patient-browser`
 //! launch redirect lands. Two patient-browser-specific touches are applied at
 //! serve time: its HTML's root-absolute `/assets/`, `/img/`, `/config/` URLs are
 //! rebased onto the mount, and `config/default.json5` is served from the
@@ -16,38 +16,50 @@
 //! on disk (so the on-device FHIR URL lives in a readable file, not a brittle
 //! rewrite of the upstream build).
 //!
+//! Static-file delivery (path traversal protection, content-type detection via
+//! `mime_guess`, directory→`index.html`) is delegated to
+//! [`tower_http::services::ServeDir`]; this module layers the two
+//! patient-browser overrides + `Cache-Control` on top.
+//!
 //! When `root` is absent or empty the routes 404 — a fresh clone or CI serves
 //! nothing until the directory is populated (see slices/apps/vendor-apps/README).
 //! The crate has no Tauri/GTK dependency, so it compiles in the main Rust CI;
 //! only the host that mounts it pulls in Tauri.
 
-use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::path::PathBuf;
 
 use axum::body::Body;
-use axum::extract::{Path as UrlPath, State};
-use axum::http::{header, StatusCode};
-use axum::response::Response;
+use axum::extract::Request;
+use axum::http::{header, HeaderValue, StatusCode};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
+use tower_http::services::ServeDir;
 
-/// URL mount the installed apps are served under. The catch-all route is
-/// `"{MOUNT}{*path}"`; a request's captured `{*path}` is normalized and resolved
-/// against the host-provided filesystem root.
-const MOUNT: &str = "/installed-apps/";
+/// URL mount the installed apps are served under. The catch-all is nested
+/// under this prefix; `nest_service` strips it so the inner `ServeDir`
+/// resolves the remaining path against the host-provided filesystem root.
+const MOUNT: &str = "/installed-apps";
 
-/// Path prefix (under the mount) of the vendored patient-browser app — the one
-/// app that gets the HTML rebase + committed-config override today.
-const PATIENT_BROWSER_PREFIX: &str = "patient-browser/";
+/// Trailing-slashed form of [`MOUNT`], used as the prefix the response-transform
+/// middleware strips when figuring out which file the response represents.
+const MOUNT_WITH_SLASH: &str = "/installed-apps/";
 
-/// Mount-relative key of the patient-browser SMART config. Served from the
-/// committed [`PATIENT_BROWSER_CONFIG`], overriding any on-disk copy.
-const PATIENT_BROWSER_CONFIG_KEY: &str = "patient-browser/config/default.json5";
+/// Lowercased path prefix (under the mount) of the vendored patient-browser
+/// app — the one app that gets the HTML rebase + committed-config override
+/// today. Case-insensitive: `INDEX.HTML` under `Patient-Browser/` still gets
+/// rebased so the on-disk casing can't quietly skip the rewrite.
+const PATIENT_BROWSER_PREFIX_LOWER: &str = "patient-browser/";
+
+/// Lowercased mount-relative key of the patient-browser SMART config. Matched
+/// case-insensitively so e.g. `Config/Default.JSON5` still hits the override.
+const PATIENT_BROWSER_CONFIG_KEY_LOWER: &str = "patient-browser/config/default.json5";
 
 /// The committed, version-controlled SMART config for patient-browser. Embedded
 /// (it's tiny and authoritative — the on-device FHIR URL + timeout) and served
-/// for [`PATIENT_BROWSER_CONFIG_KEY`] so it survives whatever dist the directory
-/// happens to hold.
+/// at the patient-browser config path so it survives whatever dist the
+/// directory happens to hold.
 const PATIENT_BROWSER_CONFIG: &str = include_str!("../patient-browser-config/default.json5");
 
 /// Root-absolute prefixes rewritten in patient-browser HTML to sit under its
@@ -61,89 +73,131 @@ const REBASE_PREFIXES: [&str; 3] = ["/assets/", "/img/", "/config/"];
 const IMMUTABLE_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
 const SHORT_CACHE_CONTROL: &str = "public, max-age=60, must-revalidate";
 
+/// Upper bound on the size of an HTML file we'll buffer to rebase. A
+/// patient-browser index.html is a few hundred bytes plus the inlined
+/// `<script>`/`<link>` tags. 1 MiB is two orders of magnitude over that —
+/// generous, but not unbounded.
+const MAX_HTML_REBASE_BYTES: usize = 1 << 20;
+
 /// Router serving installed-app files from `root` at request time. Merge it into
 /// the host's public router. `root` is the directory whose children are app
 /// folders (e.g. `root/patient-browser/index.html`); it need not exist yet — a
 /// missing file (or missing root) is a plain 404.
 pub fn setup_vendor_apps(root: PathBuf) -> Router {
     Router::new()
-        .route(&format!("{MOUNT}{{*path}}"), get(serve))
-        .with_state(Arc::new(root))
+        // The committed SMART config wins over any on-disk file at this path.
+        // Matched as a fixed route (case-sensitive at the axum layer) — the
+        // middleware below catches case-variant requests that fall through to
+        // ServeDir and 404 / mis-cache.
+        .route(
+            &format!("{MOUNT_WITH_SLASH}{PATIENT_BROWSER_CONFIG_KEY_LOWER}"),
+            get(serve_patient_browser_config_override),
+        )
+        // Everything else: the host-provided directory, served by ServeDir
+        // (traversal protection + mime_guess content types + directory →
+        // index.html resolution all handled there, replacing the hand-rolled
+        // `safe_join` + MIME table + index fallback this used to carry).
+        .nest_service(
+            MOUNT,
+            ServeDir::new(root).append_index_html_on_directories(true),
+        )
+        // After the file is fetched: rebase patient-browser HTML, intercept
+        // case-variant config-override requests, set Cache-Control. Bracketing
+        // the routes via `layer` so it runs for both the override route and
+        // the nested ServeDir.
+        .layer(middleware::from_fn(rebase_and_cache))
 }
 
-async fn serve(State(root): State<Arc<PathBuf>>, UrlPath(path): UrlPath<String>) -> Response {
-    respond(&root, &path).await
+/// Serve the committed patient-browser config inline. Returned as
+/// `application/json; charset=utf-8` with the short cache so a redeploy can
+/// repoint the on-device FHIR URL without clients pinning to a stale copy.
+/// Uses axum's tuple-into-response so no `.expect()` panic can leak from a
+/// response builder.
+async fn serve_patient_browser_config_override() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "application/json; charset=utf-8"),
+            (header::CACHE_CONTROL, SHORT_CACHE_CONTROL),
+        ],
+        PATIENT_BROWSER_CONFIG,
+    )
 }
 
-/// Resolve a mount-relative request path to a response: the committed config,
-/// an on-disk file (HTML rebased), or a 404. Path traversal is rejected by
-/// [`safe_join`] before any filesystem access.
-async fn respond(root: &Path, raw: &str) -> Response {
-    let rel = normalize_rel(raw);
+/// Response-transform middleware. Runs after both the override route and the
+/// nested `ServeDir`:
+///
+/// - If the path is a *case-variant* of the patient-browser config key
+///   (`patient-browser/CONFIG/Default.json5` etc.), substitutes the committed
+///   config so an oddly-cased on-disk file can't shadow the override.
+/// - On a successful HTML response under `patient-browser/`, rebases the three
+///   root-absolute prefixes onto the mount and adjusts `Content-Length`.
+/// - On every successful response, sets `Cache-Control` per [`cache_control_for`].
+///
+/// All path matching is case-insensitive (`INDEX.HTML` / `Patient-Browser/`
+/// are handled the same as the lowercase forms).
+async fn rebase_and_cache(req: Request, next: Next) -> Response {
+    let rel_lower = req
+        .uri()
+        .path()
+        .strip_prefix(MOUNT_WITH_SLASH)
+        .unwrap_or("")
+        .to_ascii_lowercase();
 
-    // The committed SMART config wins over any on-disk file at its key.
-    if rel == PATIENT_BROWSER_CONFIG_KEY {
-        return ok(
-            PATIENT_BROWSER_CONFIG.as_bytes().to_vec(),
-            "application/json; charset=utf-8",
-            SHORT_CACHE_CONTROL,
-        );
+    // Override 1 (case-variant guard): an INDEX.HTML-style request for the
+    // config path slipped past axum's exact-match route — substitute the
+    // committed config rather than letting ServeDir's on-disk file (or a 404)
+    // win.
+    if rel_lower == PATIENT_BROWSER_CONFIG_KEY_LOWER {
+        return serve_patient_browser_config_override()
+            .await
+            .into_response();
     }
 
-    let Some(file) = safe_join(root, &rel) else {
-        // `..` / absolute / prefix components — never touch the filesystem.
-        return not_found();
-    };
+    let response = next.run(req).await;
+    if response.status() != StatusCode::OK {
+        return response;
+    }
 
-    match tokio::fs::read(&file).await {
-        Ok(bytes) => {
-            // Only patient-browser HTML carries root-absolute URLs that need
-            // rebasing onto its mount; serve everything else byte-for-byte.
-            let body = if is_html(&rel) && rel.starts_with(PATIENT_BROWSER_PREFIX) {
-                rebase_html(&String::from_utf8_lossy(&bytes)).into_bytes()
-            } else {
-                bytes
-            };
-            ok(
-                body,
-                content_type_for(extension(&rel)),
-                cache_control_for(&rel),
-            )
+    let cache_value = cache_control_for(&rel_lower);
+    let response_is_html = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ct| ct.to_ascii_lowercase().starts_with("text/html"));
+    let needs_rebase = response_is_html && rel_lower.starts_with(PATIENT_BROWSER_PREFIX_LOWER);
+
+    let (mut parts, body) = response.into_parts();
+    let final_body = if needs_rebase {
+        match axum::body::to_bytes(body, MAX_HTML_REBASE_BYTES).await {
+            Ok(bytes) => {
+                let rebased = rebase_html(&String::from_utf8_lossy(&bytes)).into_bytes();
+                parts
+                    .headers
+                    .insert(header::CONTENT_LENGTH, HeaderValue::from(rebased.len()));
+                Body::from(rebased)
+            }
+            Err(error) => {
+                tracing::warn!(%error, "vendor-apps: failed to buffer HTML for rebase, returning 500");
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
         }
-        Err(_) => not_found(),
-    }
-}
-
-/// Map a mount-relative request path to an asset key: strip any leading slash,
-/// and resolve an empty path or one ending in `/` to that directory's
-/// `index.html` (only app roots ship one today).
-fn normalize_rel(raw: &str) -> String {
-    let trimmed = raw.trim_start_matches('/');
-    if trimmed.is_empty() || trimmed.ends_with('/') {
-        format!("{trimmed}index.html")
     } else {
-        trimmed.to_owned()
-    }
-}
-
-/// Join `rel` under `root`, accepting only `Normal` path components so the
-/// resolved path can never escape `root` (no `..`, no absolute/prefix
-/// components). Returns `None` for anything that could traverse out.
-fn safe_join(root: &Path, rel: &str) -> Option<PathBuf> {
-    let mut out = root.to_path_buf();
-    for component in Path::new(rel).components() {
-        match component {
-            Component::Normal(part) => out.push(part),
-            _ => return None,
-        }
-    }
-    Some(out)
+        body
+    };
+    parts
+        .headers
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static(cache_value));
+    Response::from_parts(parts, final_body)
 }
 
 /// Rebase the three root-absolute prefixes in a patient-browser HTML document
 /// onto its mount (`/installed-apps/patient-browser`).
 fn rebase_html(text: &str) -> String {
-    let mount = format!("{MOUNT}{}", PATIENT_BROWSER_PREFIX.trim_end_matches('/'));
+    let mount = format!(
+        "{MOUNT_WITH_SLASH}{}",
+        PATIENT_BROWSER_PREFIX_LOWER.trim_end_matches('/')
+    );
     let mut out = text.to_owned();
     for prefix in REBASE_PREFIXES {
         out = out.replace(prefix, &format!("{mount}{prefix}"));
@@ -151,65 +205,19 @@ fn rebase_html(text: &str) -> String {
     out
 }
 
-fn is_html(rel: &str) -> bool {
-    rel.ends_with(".html")
-}
-
-/// Lowercased file extension of an asset key, or `""` when it has none (a dot in
-/// a directory segment doesn't count).
-fn extension(rel: &str) -> String {
-    match rel.rsplit_once('.') {
-        Some((_, ext)) if !ext.contains('/') => ext.to_ascii_lowercase(),
-        _ => String::new(),
-    }
-}
-
-fn content_type_for(ext: String) -> &'static str {
-    match ext.as_str() {
-        "html" => "text/html; charset=utf-8",
-        "js" => "application/javascript; charset=utf-8",
-        "css" => "text/css; charset=utf-8",
-        "json" | "json5" => "application/json; charset=utf-8",
-        "svg" => "image/svg+xml",
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "ico" => "image/x-icon",
-        "webp" => "image/webp",
-        "woff" => "font/woff",
-        "woff2" => "font/woff2",
-        "ttf" => "font/ttf",
-        "eot" => "application/vnd.ms-fontobject",
-        "otf" => "font/otf",
-        "txt" => "text/plain; charset=utf-8",
-        _ => "application/octet-stream",
-    }
-}
-
-/// Cache-Control for a normalized asset key (see the cache constants).
-fn cache_control_for(rel: &str) -> &'static str {
-    if rel.ends_with("index.html") || rel.contains("/config/") {
+/// Cache-Control for a normalized (lowercased) request key. Anything that's
+/// an HTML page or sits under a `config/` segment is short-lived (a redeploy
+/// can repoint it); fingerprinted bundles (assets, images, fonts) are pinned
+/// for a year. Directory-style paths (empty / trailing slash) are HTML too —
+/// ServeDir resolves them to `index.html`.
+fn cache_control_for(rel_lower: &str) -> &'static str {
+    let looks_like_html =
+        rel_lower.is_empty() || rel_lower.ends_with('/') || rel_lower.ends_with(".html");
+    if looks_like_html || rel_lower.contains("/config/") {
         SHORT_CACHE_CONTROL
     } else {
         IMMUTABLE_CACHE_CONTROL
     }
-}
-
-fn ok(bytes: Vec<u8>, content_type: &str, cache_control: &'static str) -> Response {
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, content_type)
-        .header(header::CACHE_CONTROL, cache_control)
-        .body(Body::from(bytes))
-        .expect("asset response builds from validated header values")
-}
-
-fn not_found() -> Response {
-    Response::builder()
-        .status(StatusCode::NOT_FOUND)
-        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-        .body(Body::from("Not found"))
-        .expect("404 response builds from constant header values")
 }
 
 #[cfg(test)]
@@ -252,7 +260,7 @@ mod tests {
         }
     }
 
-    async fn get(root: &TempRoot, path: &str) -> Response {
+    async fn fetch(root: &TempRoot, path: &str) -> Response {
         setup_vendor_apps(root.0.clone())
             .oneshot(
                 Request::get(path)
@@ -279,11 +287,11 @@ mod tests {
             "patient-browser/index.html",
             b"<!doctype html><script src=\"/assets/app.js\"></script>",
         );
-        let res = get(&root, "/installed-apps/patient-browser/index.html").await;
+        let res = fetch(&root, "/installed-apps/patient-browser/index.html").await;
         assert_eq!(res.status(), StatusCode::OK);
-        assert_eq!(
-            header_value(&res, header::CONTENT_TYPE),
-            "text/html; charset=utf-8"
+        assert!(
+            header_value(&res, header::CONTENT_TYPE).starts_with("text/html"),
+            "expected text/html content-type",
         );
         assert_eq!(
             header_value(&res, header::CACHE_CONTROL),
@@ -303,11 +311,11 @@ mod tests {
     async fn trailing_slash_mount_serves_index() {
         let root = TempRoot::new();
         root.write("patient-browser/index.html", b"<!doctype html>");
-        let res = get(&root, "/installed-apps/patient-browser/").await;
+        let res = fetch(&root, "/installed-apps/patient-browser/").await;
         assert_eq!(res.status(), StatusCode::OK);
-        assert_eq!(
-            header_value(&res, header::CONTENT_TYPE),
-            "text/html; charset=utf-8"
+        assert!(
+            header_value(&res, header::CONTENT_TYPE).starts_with("text/html"),
+            "ServeDir resolves directory paths to index.html",
         );
     }
 
@@ -315,11 +323,13 @@ mod tests {
     async fn fingerprinted_asset_is_immutable() {
         let root = TempRoot::new();
         root.write("patient-browser/assets/app.js", b"console.log('x')");
-        let res = get(&root, "/installed-apps/patient-browser/assets/app.js").await;
+        let res = fetch(&root, "/installed-apps/patient-browser/assets/app.js").await;
         assert_eq!(res.status(), StatusCode::OK);
-        assert_eq!(
+        assert!(
+            header_value(&res, header::CONTENT_TYPE).starts_with("application/javascript")
+                || header_value(&res, header::CONTENT_TYPE).starts_with("text/javascript"),
+            "expected a javascript content-type, got {}",
             header_value(&res, header::CONTENT_TYPE),
-            "application/javascript; charset=utf-8"
         );
         assert_eq!(
             header_value(&res, header::CACHE_CONTROL),
@@ -335,7 +345,7 @@ mod tests {
             "patient-browser/config/default.json5",
             b"{ \"stale\": true }",
         );
-        let res = get(
+        let res = fetch(
             &root,
             "/installed-apps/patient-browser/config/default.json5",
         )
@@ -350,39 +360,49 @@ mod tests {
         assert_ne!(body.as_ref(), b"{ \"stale\": true }");
     }
 
+    /// A request for the config path with mixed casing still hits the
+    /// committed override — the case-insensitive middleware guard catches
+    /// what axum's exact-match route doesn't.
+    #[tokio::test]
+    async fn case_variant_config_path_still_hits_the_committed_override() {
+        let root = TempRoot::new();
+        root.write(
+            "patient-browser/config/default.json5",
+            b"{ \"stale\": true }",
+        );
+        let res = fetch(
+            &root,
+            "/installed-apps/patient-browser/Config/Default.JSON5",
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(body.as_ref(), PATIENT_BROWSER_CONFIG.as_bytes());
+    }
+
     #[tokio::test]
     async fn unknown_asset_is_404() {
         let root = TempRoot::new();
-        let res = get(&root, "/installed-apps/patient-browser/does-not-exist.js").await;
+        let res = fetch(&root, "/installed-apps/patient-browser/does-not-exist.js").await;
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
     }
 
-    #[test]
-    fn safe_join_rejects_traversal_and_absolute_paths() {
-        let root = Path::new("/srv/installed-apps");
-        assert!(safe_join(root, "patient-browser/index.html").is_some());
-        assert!(safe_join(root, "patient-browser/../../etc/passwd").is_none());
-        assert!(safe_join(root, "../secret").is_none());
-        // A normalized absolute key (leading slash already trimmed by
-        // normalize_rel) stays Normal; a raw absolute path is rejected.
-        assert!(safe_join(root, "/etc/passwd").is_none());
-    }
-
-    #[test]
-    fn normalize_rel_maps_empty_and_dir_to_index() {
-        assert_eq!(normalize_rel(""), "index.html");
-        assert_eq!(
-            normalize_rel("patient-browser/"),
-            "patient-browser/index.html"
-        );
-        assert_eq!(
-            normalize_rel("patient-browser/assets/app.js"),
-            "patient-browser/assets/app.js"
+    /// ServeDir rejects path traversal so a request like `/../etc/passwd`
+    /// can never escape the root — the responsibility moves from our
+    /// `safe_join` to ServeDir's built-in component validation.
+    #[tokio::test]
+    async fn path_traversal_is_rejected() {
+        let root = TempRoot::new();
+        let res = fetch(&root, "/installed-apps/patient-browser/../../etc/passwd").await;
+        assert_ne!(
+            res.status(),
+            StatusCode::OK,
+            "ServeDir must not resolve a traversal path",
         );
     }
 
-    #[test]
-    fn cache_control_policy() {
+    #[tokio::test]
+    async fn cache_control_policy() {
         assert_eq!(
             cache_control_for("patient-browser/index.html"),
             SHORT_CACHE_CONTROL
@@ -395,12 +415,32 @@ mod tests {
             cache_control_for("patient-browser/assets/app.js"),
             IMMUTABLE_CACHE_CONTROL
         );
+        assert_eq!(cache_control_for(""), SHORT_CACHE_CONTROL);
+        assert_eq!(cache_control_for("patient-browser/"), SHORT_CACHE_CONTROL);
     }
 
-    #[test]
-    fn extension_ignores_dots_in_directories() {
-        assert_eq!(extension("patient-browser/index.html"), "html");
-        assert_eq!(extension("patient-browser/assets/app.JS"), "js");
-        assert_eq!(extension("patient-browser/v1.2/app"), "");
+    /// `INDEX.HTML` (uppercase) under an uppercase app folder still gets the
+    /// HTML rebase and short cache — the prior implementation's case-sensitive
+    /// `ends_with(".html")` would have left these unrewritten and long-cached.
+    #[tokio::test]
+    async fn uppercase_html_extension_still_rebases_and_short_caches() {
+        let root = TempRoot::new();
+        root.write(
+            "patient-browser/INDEX.HTML",
+            b"<!doctype html><link href=\"/img/logo.png\">",
+        );
+        let res = fetch(&root, "/installed-apps/patient-browser/INDEX.HTML").await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            header_value(&res, header::CACHE_CONTROL),
+            SHORT_CACHE_CONTROL,
+            "uppercase .HTML must still take the short cache",
+        );
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        assert!(
+            String::from_utf8_lossy(&body).contains("/installed-apps/patient-browser/img/logo.png"),
+            "uppercase .HTML must still get the URL rebase: {:?}",
+            String::from_utf8_lossy(&body),
+        );
     }
 }

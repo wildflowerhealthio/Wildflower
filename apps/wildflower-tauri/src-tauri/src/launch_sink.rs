@@ -9,8 +9,6 @@
 //! round-trip: the server already owns origin/tunnel resolution, so the host
 //! only needs the finished URL.
 
-use std::sync::Arc;
-
 use apps_rust::domain::AppEntry;
 use apps_rust::LaunchSink;
 use tauri::AppHandle;
@@ -30,13 +28,25 @@ impl TauriLaunchSink {
 
 impl LaunchSink for TauriLaunchSink {
     /// Open `url` in the shared native webview popup, titled with the app's
-    /// name. Fire-and-forget: the launch handler has already `204`d, so a
-    /// failure here is logged rather than surfaced (mirrors the SPA's prior
-    /// fire-and-forget bridge emit).
+    /// name. Fire-and-forget: the underlying `tauri-plugin-native-webview`
+    /// `open` does `run_on_main_thread(...)` then blocks on `rx.recv()` until
+    /// the main thread finishes building the popup — so the actual open is
+    /// dispatched onto a blocking thread via `tauri::async_runtime::spawn_blocking`
+    /// rather than held on the request worker. The launch handler has already
+    /// `204`d by the time the popup is constructed, and a failure here is
+    /// logged (the handler can't surface it anyway).
     fn open(&self, app: &AppEntry, url: &str) {
-        if let Err(error) = open_app_in_native_webview(&self.app, app, url) {
-            log::error!("[launch] failed to open native webview for launch: {error}");
-        }
+        // Clone everything the spawned closure needs — `AppHandle`, `AppEntry`,
+        // `String` — so the blocking task owns its inputs and the caller's
+        // worker isn't parked.
+        let handle = self.app.clone();
+        let app = app.clone();
+        let url = url.to_owned();
+        tauri::async_runtime::spawn_blocking(move || {
+            if let Err(error) = open_app_in_native_webview(&handle, &app, &url) {
+                log::error!("[launch] failed to open native webview for launch: {error}");
+            }
+        });
     }
 }
 
