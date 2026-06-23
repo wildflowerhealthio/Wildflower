@@ -64,7 +64,8 @@
     },
     "/apps/{id}": {
       "post": {
-        "summary": "`POST /apps/{id}` — launch an app. With a host [`LaunchSink`](crate::LaunchSink)\ninstalled, opens the resolved URL through the sink and returns `204`;\notherwise `302`s to the resolved launch URL. `404` if no app has this id.\nReachable unauthenticated (the webview follows the redirect).",
+        "summary": "`POST /apps/{id}` — launch an app. `404` if no app has this id. Reachable\nunauthenticated (the webview follows the redirect).",
+        "description": "A host [`LaunchSink`](crate::LaunchSink) opens the resolved URL in a native\npopup *on this device*, which only helps the **local** caller — so the sink\nis used (returning `204`) only when the request came in over loopback. A\nrequest **forwarded by the trusted front** (the relay/tunnel sets\n`x-public-origin`) is a *remote* caller, for whom a host-side popup is\ninvisible; it gets the `302` redirect instead, the same as a host that\ninstalls no sink at all (web/standalone). See [`request_is_forwarded`].",
         "operationId": "handle_launch_app",
         "parameters": [
           {
@@ -79,7 +80,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Host sink opened the launch URL (no redirect)"
+            "description": "Host sink opened the launch URL for a loopback caller (no redirect)"
           },
           "302": {
             "description": "Redirect (Location header) to the resolved launch URL"

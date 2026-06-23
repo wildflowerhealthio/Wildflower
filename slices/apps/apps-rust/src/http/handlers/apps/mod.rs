@@ -120,11 +120,24 @@ mod tests {
         Request::builder().uri(uri).body(Body::empty()).unwrap()
     }
 
-    /// A launch request — `POST /apps/{id}` with an empty body.
+    /// A launch request — `POST /apps/{id}` with an empty body. No forwarding
+    /// header, so it reads as a direct loopback (local) caller.
     fn post(uri: &str) -> Request<Body> {
         Request::builder()
             .method("POST")
             .uri(uri)
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    /// A launch request as the trusted front (relay/tunnel) would forward it:
+    /// `POST /apps/{id}` carrying `x-public-origin`, so it reads as a remote
+    /// caller rather than the local loopback webview.
+    fn post_forwarded(uri: &str) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header("x-public-origin", "demo.example.com")
             .body(Body::empty())
             .unwrap()
     }
@@ -354,6 +367,33 @@ mod tests {
         assert!(
             res.headers().get("location").is_some(),
             "no sink means the browser-following redirect path",
+        );
+    }
+
+    /// A sink is installed, but the request is forwarded by the relay/tunnel
+    /// (a *remote* caller): the host-side popup would be invisible to them, so
+    /// the launch `302`s instead of `204`ing — and the sink is NOT invoked.
+    #[tokio::test]
+    async fn launch_with_sink_but_forwarded_request_302s_without_invoking_the_sink() {
+        let sink = Arc::new(RecordingSink::default());
+        let store = AppsStore::open_in_memory().expect("store");
+        let st = Arc::new(
+            AppsState::new(store, "http://127.0.0.1:8080", tunnel_unavailable())
+                .with_launch_sink(Arc::clone(&sink) as Arc<dyn LaunchSink>),
+        );
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(post_forwarded("/apps/patient-browser"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FOUND);
+        assert!(
+            res.headers().get("location").is_some(),
+            "a forwarded request takes the redirect path even with a sink installed",
+        );
+        assert!(
+            sink.0.lock().expect("sink mutex").is_empty(),
+            "the sink must not open a popup for a remote (forwarded) caller",
         );
     }
 }

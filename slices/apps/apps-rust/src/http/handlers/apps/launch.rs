@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::header::LOCATION;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use rand::distr::Alphanumeric;
 use rand::Rng;
@@ -35,22 +35,29 @@ use crate::domain::LaunchParams;
 use crate::http::response_templates::{AppNotFoundBody, HandlerError};
 use crate::http::state::AppsState;
 
-/// `POST /apps/{id}` — launch an app. With a host [`LaunchSink`](crate::LaunchSink)
-/// installed, opens the resolved URL through the sink and returns `204`;
-/// otherwise `302`s to the resolved launch URL. `404` if no app has this id.
-/// Reachable unauthenticated (the webview follows the redirect).
+/// `POST /apps/{id}` — launch an app. `404` if no app has this id. Reachable
+/// unauthenticated (the webview follows the redirect).
+///
+/// A host [`LaunchSink`](crate::LaunchSink) opens the resolved URL in a native
+/// popup *on this device*, which only helps the **local** caller — so the sink
+/// is used (returning `204`) only when the request came in over loopback. A
+/// request **forwarded by the trusted front** (the relay/tunnel sets
+/// `x-public-origin`) is a *remote* caller, for whom a host-side popup is
+/// invisible; it gets the `302` redirect instead, the same as a host that
+/// installs no sink at all (web/standalone). See [`request_is_forwarded`].
 #[utoipa::path(
     post,
     path = "/apps/{id}",
     params(("id" = String, Path, description = "App id")),
     responses(
-        (status = 204, description = "Host sink opened the launch URL (no redirect)"),
+        (status = 204, description = "Host sink opened the launch URL for a loopback caller (no redirect)"),
         (status = 302, description = "Redirect (Location header) to the resolved launch URL"),
         (status = 404, description = "No app has this id", body = AppNotFoundBody),
     ),
 )]
 pub(crate) async fn handle_launch_app(
     State(state): State<Arc<AppsState>>,
+    headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, HandlerError> {
     let app = state
@@ -67,15 +74,26 @@ pub(crate) async fn handle_launch_app(
         tunnel_unavailable,
     });
     match &state.launch_sink {
-        // The host owns the side-effect: hand it the resolved URL (it opens a
-        // native popup) and 204 so the SPA stays mounted. Fire-and-forget —
-        // the sink logs any failure.
-        Some(sink) => {
+        // Loopback caller + a host sink: the host owns the side-effect — hand it
+        // the resolved URL (it opens a native popup) and 204 so the SPA stays
+        // mounted. Fire-and-forget; the sink logs any failure. A forwarded
+        // (remote) request, or no sink at all, falls through to the redirect.
+        Some(sink) if !request_is_forwarded(&headers) => {
             sink.open(&app, &target);
             Ok(no_content())
         }
-        None => Ok(redirect(target)),
+        _ => Ok(redirect(target)),
     }
+}
+
+/// Whether the request was forwarded by the trusted front (the relay/tunnel),
+/// rather than arriving directly over loopback. Keys on the `x-public-origin`
+/// header the front sets on forwarded requests — the same signal
+/// `gatekeeper_rust`'s `served_origin_for` uses to resolve the served origin
+/// (and that `wildflower-relay` sets). A forwarded request is a remote caller,
+/// so the launch redirects it rather than popping a webview on the host device.
+fn request_is_forwarded(headers: &HeaderMap) -> bool {
+    headers.contains_key("x-public-origin")
 }
 
 /// Resolve the launch origin and the `tunnel_unavailable` flag.
@@ -148,5 +166,15 @@ mod tests {
         let n = launch_nonce();
         assert_eq!(n.len(), 21);
         assert!(n.chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+
+    #[test]
+    fn request_is_forwarded_keys_on_the_public_origin_header() {
+        // A direct loopback request carries no forwarding header.
+        assert!(!request_is_forwarded(&HeaderMap::new()));
+        // The trusted front sets `x-public-origin` on forwarded (remote) requests.
+        let mut forwarded = HeaderMap::new();
+        forwarded.insert("x-public-origin", "emr.example.com".parse().unwrap());
+        assert!(request_is_forwarded(&forwarded));
     }
 }
