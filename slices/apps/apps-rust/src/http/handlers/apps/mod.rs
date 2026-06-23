@@ -131,13 +131,16 @@ mod tests {
     }
 
     /// A launch request as the trusted front (relay/tunnel) would forward it:
-    /// `POST /apps/{id}` carrying `x-public-origin`, so it reads as a remote
-    /// caller rather than the local loopback webview.
+    /// `POST /apps/{id}` carrying `x-public-origin` plus `x-forwarded-proto`,
+    /// the same header pair `gatekeeper_rust::served_origin_for` uses to resolve
+    /// the served origin. Reads as a remote caller rather than the local
+    /// loopback webview.
     fn post_forwarded(uri: &str) -> Request<Body> {
         Request::builder()
             .method("POST")
             .uri(uri)
             .header("x-public-origin", "demo.example.com")
+            .header("x-forwarded-proto", "https")
             .body(Body::empty())
             .unwrap()
     }
@@ -367,6 +370,33 @@ mod tests {
         assert!(
             res.headers().get("location").is_some(),
             "no sink means the browser-following redirect path",
+        );
+    }
+
+    /// A non-tunnel launch forwarded by the relay/tunnel resolves `{origin}`
+    /// against the *served* (public) origin, not loopback — otherwise the
+    /// browser would chase a `Location: http://127.0.0.1:…` it can't reach
+    /// from outside the host. Mirrors `gatekeeper_rust::served_origin_for`'s
+    /// header contract.
+    #[tokio::test]
+    async fn launch_forwarded_request_redirects_to_the_served_public_origin() {
+        let st = state();
+        let res = router()
+            .with_state(Arc::clone(&st))
+            .oneshot(post_forwarded("/apps/patient-browser"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FOUND);
+        let location = res
+            .headers()
+            .get("location")
+            .expect("location header")
+            .to_str()
+            .unwrap();
+        assert_eq!(
+            location,
+            "https://demo.example.com/installed-apps/patient-browser/index.html",
+            "a forwarded launch must redirect to the public origin (x-forwarded-proto://x-public-origin), not loopback",
         );
     }
 

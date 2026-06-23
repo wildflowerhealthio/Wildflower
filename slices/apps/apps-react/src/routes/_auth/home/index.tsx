@@ -1,9 +1,10 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useRouteContext } from '@tanstack/react-router'
 import { stripTrailingSlash } from 'kitchen-sink'
 import { useRef, useState, type JSX } from 'react'
 import { AsyncErrorView, ItemList, PageHeader, type ItemListItem } from 'react-tundraish'
 
 import { appsListQueryOptions, useAppsListQuery, type AppEntry } from '../../../queries.ts'
+import type { RouterContext } from '../../../router-context.ts'
 import { AppsEditor } from '../../../screens/apps-editor.tsx'
 
 /**
@@ -26,27 +27,48 @@ interface AppsHomeBodyProps {
 const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   const [editorOpen, setEditorOpen] = useState(false)
   const formRef = useRef<HTMLFormElement | null>(null)
-  // Launch posts to the page origin: every entry today serves the SPA from the
-  // same origin as the API (the Tauri webview loads from the host's loopback
-  // server, web from its own server), so a same-origin POST reaches the launch
-  // endpoint. The server owns origin/tunnel resolution from there.
-  const launchBase = stripTrailingSlash(window.location.origin)
+  // The launch base: the host API origin for entries whose page isn't served
+  // by the API (the Tauri webview, via `apiBaseUrl`), else the page origin.
+  // The Tauri webview loads from the Vite dev server / asset protocol, which
+  // has no `/apps` route — without this branch a same-origin POST would 404
+  // there instead of reaching the embedded API server. The server owns
+  // origin/tunnel resolution from there.
+  const apiBaseUrl = useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.apiBaseUrl,
+  })
+  const launchBase = stripTrailingSlash(apiBaseUrl ?? window.location.origin)
 
   const visible = apps.filter((app) => app.enabled)
 
   /**
-   * Launch an app by submitting a real `POST` to `${launchBase}/apps/{id}`.
+   * Launch an app via `POST ${launchBase}/apps/{id}`.
    *
-   * A form submit (not `fetch`) so the browser handles the server's response
-   * as a navigation: on web the server `302`s and the page lands at the app;
-   * on the Tauri host the server `204`s (its launch sink already opened a
-   * native popup) and the browser stays on the SPA — no client branching on
-   * Tauri-vs-web. The form's `action` is set per click, then submitted.
+   * Branched on `apiBaseUrl` to match each entry's launch contract:
+   *
+   * - **Tauri (`apiBaseUrl` set)**: fetch — the host's launch sink already
+   *   owns the side-effect (it opens a native popup), so the server `204`s and
+   *   the SPA stays mounted. A form submit was navigating the webview to the
+   *   `204` URL despite the empty body, leaving a blank page behind the popup;
+   *   `fetch` doesn't navigate, so the SPA stays put. Fire-and-forget — a
+   *   failure to reach the sink is logged but doesn't surface (matches the
+   *   prior bridge round-trip's fire-and-forget shape).
+   * - **Web / tunnel browser (`apiBaseUrl` unset)**: form submit — the page is
+   *   the API origin (or a tunnel-forwarded view of it), so the server `302`s
+   *   and the browser follows the redirect to the resolved launch URL.
    */
   const launch = (app: AppEntry): void => {
+    const url = `${launchBase}/apps/${encodeURIComponent(app.id)}`
+    if (apiBaseUrl !== undefined) {
+      void fetch(url, { method: 'POST' }).catch((error: unknown) => {
+        // oxlint-disable-next-line no-console
+        console.error('[apps] launch fetch failed', error)
+      })
+      return
+    }
     const form = formRef.current
     if (form === null) return
-    form.action = `${launchBase}/apps/${encodeURIComponent(app.id)}`
+    form.action = url
     form.submit()
   }
 
@@ -82,10 +104,12 @@ const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
         />
       )}
       {/*
-       * The launch vehicle: a single hidden form whose `action` is set per
-       * click. `method="post"` so the server sees the launch; the browser
-       * follows the 302 (web) or stays put on the 204 (Tauri). No fields — the
-       * app id rides in the path.
+       * The launch vehicle for web/tunnel browser launches (the page IS the
+       * API origin or a forwarded view of it): a single hidden form whose
+       * `action` is set per click; the browser follows the server's 302 to
+       * the resolved launch URL. Tauri launches bypass this form entirely
+       * and go through `fetch` so the 204 doesn't navigate the webview off
+       * the SPA. No fields — the app id rides in the path.
        */}
       <form ref={formRef} method="post" hidden />
       <AppsEditor

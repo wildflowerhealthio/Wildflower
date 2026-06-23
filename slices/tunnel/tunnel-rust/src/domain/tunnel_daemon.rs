@@ -96,8 +96,15 @@ impl Default for Backoff {
 #[derive(Debug, Clone, Copy)]
 struct ProbeTiming {
     /// How long to wait before the first probe of an attempt (let the handshake
-    /// settle) and between subsequent probes.
+    /// settle) and between probes while the tunnel is not yet `Verified`. Short
+    /// so the initial verdict — and recovery from a transient failure — surface
+    /// quickly.
     interval: Duration,
+    /// How long to wait between re-probes once the tunnel has `Verified`. A
+    /// healthy steady-state only needs an occasional liveness check, so we slow
+    /// the cadence down rather than burning relay traffic on a back-to-back
+    /// `/health` poll.
+    verified_interval: Duration,
     /// How long a single probe may take before it counts as a failure — the
     /// "identify failures after 3 seconds" deadline.
     timeout: Duration,
@@ -106,7 +113,8 @@ struct ProbeTiming {
 impl Default for ProbeTiming {
     fn default() -> Self {
         Self {
-            interval: Duration::from_secs(1),
+            interval: Duration::from_millis(400),
+            verified_interval: Duration::from_secs(5),
             timeout: Duration::from_secs(3),
         }
     }
@@ -530,18 +538,17 @@ where
     D: std::future::Future<Output = anyhow::Result<()>> + Unpin,
 {
     let health_url = format!("{public_origin}/health");
-    // First tick fires after `interval` (give the handshake a moment), then
-    // every `interval`. `Skip` keeps a slow probe from bursting catch-up ticks.
-    let mut ticker = tokio::time::interval_at(
-        tokio::time::Instant::now() + timing.interval,
-        timing.interval,
-    );
-    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // First probe fires after `interval` (give the handshake a moment); the gap
+    // between subsequent probes depends on the last verdict — `verified_interval`
+    // while the tunnel is `Verified`, `interval` otherwise so a recovery is
+    // noticed quickly. Sleeping *after* each probe (rather than driving the loop
+    // off a fixed-period ticker) means a slow probe never bursts catch-up ticks.
+    let mut next_delay = timing.interval;
     loop {
         tokio::select! {
             result = &mut *dial => return result,
             () = cancel.cancelled() => return Ok(()),
-            _ = ticker.tick() => {
+            () = tokio::time::sleep(next_delay) => {
                 // Keep the dial and the cancel responsive *while the probe is in
                 // flight*: a probe may run up to `timeout`, and parking the whole
                 // loop on it would defer a reconcile's cancel (and noticing the
@@ -555,6 +562,10 @@ where
                 let (status, error) = match outcome {
                     Ok(()) => (TunnelStatus::Verified, None),
                     Err(reason) => (TunnelStatus::Unreachable, Some(reason)),
+                };
+                next_delay = match status {
+                    TunnelStatus::Verified => timing.verified_interval,
+                    _ => timing.interval,
                 };
                 set_state(
                     state, revision, status, error, loopback_origin, public_origin, attempt,
@@ -667,6 +678,7 @@ impl TunnelDaemon {
             },
             ProbeTiming {
                 interval: Duration::from_millis(1),
+                verified_interval: Duration::from_millis(1),
                 timeout: Duration::from_millis(50),
             },
         )

@@ -20,7 +20,9 @@
 //! the launch asks the tunnel to start and resolves to its live *verified*
 //! origin, or — when the tunnel can't be brought up — falls back to the loopback
 //! origin with `?tunnel=unavailable` so the SPA can surface a banner. A
-//! non-tunnel launch always uses the loopback origin.
+//! non-tunnel launch resolves to the *served* origin — loopback for a direct
+//! caller, the forwarded public origin for a request the trusted front relayed
+//! — so a redirect handed back to a remote browser is reachable.
 
 use std::sync::Arc;
 
@@ -66,7 +68,7 @@ pub(crate) async fn handle_launch_app(
         .map_err(|e| HandlerError::internal("find_app lookup failed", e))?
         .ok_or_else(|| HandlerError::NotFound { id: id.clone() })?;
 
-    let (origin, tunnel_unavailable) = resolve_origin(&state, app.requires_tunnel).await;
+    let (origin, tunnel_unavailable) = resolve_origin(&state, &headers, app.requires_tunnel).await;
     let launch = launch_nonce();
     let target = app.url.to_url_with_params(&LaunchParams {
         origin: &origin,
@@ -98,14 +100,21 @@ fn request_is_forwarded(headers: &HeaderMap) -> bool {
 
 /// Resolve the launch origin and the `tunnel_unavailable` flag.
 ///
-/// A non-tunnel launch uses the loopback origin (never unavailable). A
+/// A non-tunnel launch resolves to the *served* origin (see
+/// [`served_origin_for`]): loopback when the caller hit the API directly, the
+/// forwarded public origin when the trusted front relayed the request — so the
+/// `302`'s `Location` is something the caller can actually reach. A
 /// `requires_tunnel` launch asks the `TunnelService` to start:
 /// `Ok(origin)` is the live verified origin; `Err(_)` means the tunnel couldn't
 /// be brought up, so it falls back to loopback and flags `?tunnel=unavailable`
 /// for the SPA banner.
-async fn resolve_origin(state: &AppsState, requires_tunnel: bool) -> (String, bool) {
+async fn resolve_origin(
+    state: &AppsState,
+    headers: &HeaderMap,
+    requires_tunnel: bool,
+) -> (String, bool) {
     if !requires_tunnel {
-        return (state.loopback_origin.clone(), false);
+        return (served_origin_for(headers, &state.loopback_origin), false);
     }
     match state.tunnel.try_start().await {
         Ok(origin) => (origin, false),
@@ -118,6 +127,22 @@ async fn resolve_origin(state: &AppsState, requires_tunnel: bool) -> (String, bo
             (state.loopback_origin.clone(), true)
         }
     }
+}
+
+/// The origin a given request expects its answer to come from. When the
+/// trusted front (the relay/tunnel) forwards a request it sets `x-public-origin`
+/// to the public host the client actually used and `x-forwarded-proto` to its
+/// scheme; we echo those back so a redirect handed to that client points at the
+/// URL it really reached, not loopback. With no such header the caller hit the
+/// API directly over loopback. Mirrors `gatekeeper_rust::served_origin_for` —
+/// inlined here to avoid coupling apps-rust to gatekeeper-rust for one helper.
+fn served_origin_for(headers: &HeaderMap, loopback_origin: &str) -> String {
+    let header_str = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    if let Some(public_origin) = header_str("x-public-origin") {
+        let scheme = header_str("x-forwarded-proto").unwrap_or("https");
+        return format!("{scheme}://{public_origin}");
+    }
+    loopback_origin.to_owned()
 }
 
 /// 21-char base62-ish nonce — close enough to nanoid (the TS handler's
