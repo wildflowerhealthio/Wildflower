@@ -1,10 +1,9 @@
-import { createFileRoute, useRouteContext } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { stripTrailingSlash } from 'kitchen-sink'
 import { useRef, useState, type JSX } from 'react'
 import { AsyncErrorView, ItemList, PageHeader, type ItemListItem } from 'react-tundraish'
 
 import { appsListQueryOptions, useAppsListQuery, type AppEntry } from '../../../queries.ts'
-import type { RouterContext } from '../../../router-context.ts'
 import { AppsEditor } from '../../../screens/apps-editor.tsx'
 
 /**
@@ -27,15 +26,11 @@ interface AppsHomeBodyProps {
 const AppsHomeBody = ({ apps }: AppsHomeBodyProps): JSX.Element => {
   const [editorOpen, setEditorOpen] = useState(false)
   const formRef = useRef<HTMLFormElement | null>(null)
-  // The launch base: the host API origin for entries whose page isn't served
-  // by the API (the Tauri webview, via `apiBaseUrl`), else the page origin. The
-  // server owns origin/tunnel resolution now, so the client only chooses which
-  // server to talk to — not where the app ends up.
-  const apiBaseUrl = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.apiBaseUrl,
-  })
-  const launchBase = stripTrailingSlash(apiBaseUrl ?? window.location.origin)
+  // Launch posts to the page origin: every entry today serves the SPA from the
+  // same origin as the API (the Tauri webview loads from the host's loopback
+  // server, web from its own server), so a same-origin POST reaches the launch
+  // endpoint. The server owns origin/tunnel resolution from there.
+  const launchBase = stripTrailingSlash(window.location.origin)
 
   const visible = apps.filter((app) => app.enabled)
 
