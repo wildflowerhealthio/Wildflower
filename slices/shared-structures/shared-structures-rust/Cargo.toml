@@ -27,10 +27,10 @@ health-check = ["dep:axum", "dep:async-trait"]
 # handler surface enable it.
 http-errors = ["dep:axum", "dep:tracing"]
 # Opt-in: forwarding-header provenance helpers (`request_provenance`,
-# `served_origin_for`) — the single source of truth for the `x-public-origin`
-# + `x-forwarded-proto` contract the trusted front sets on relayed requests.
-# Gated so non-HTTP crates don't pull `axum`; the slices that resolve a
-# request's served origin (gatekeeper-rust, apps-rust) enable it.
+# `served_origin_for`) — the single source of truth for the `Forwarded` header
+# (RFC 7239) the trusted front sets on relayed requests. Gated so non-HTTP
+# crates don't pull `axum`; the slices that resolve a request's served origin
+# (gatekeeper-rust, apps-rust) enable it.
 served-origin = ["dep:axum"]
 
 [dependencies]

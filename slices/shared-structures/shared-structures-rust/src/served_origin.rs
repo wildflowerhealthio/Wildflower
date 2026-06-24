@@ -1,8 +1,8 @@
 //! Forwarding-header provenance — `request_provenance` and the rendered
 //! `served_origin_for`.
 //!
-//! Two callers today derive identity from the same header pair the trusted
-//! front sets on relayed requests:
+//! Two callers today derive identity from the same `Forwarded` header (RFC
+//! 7239) the trusted front sets on relayed requests:
 //!
 //! - **gatekeeper-rust** — token issuer URLs / discovery doc resolve through
 //!   [`served_origin_for`] so a minted token references the URL the caller
@@ -13,21 +13,39 @@
 //!   redirect's `Location` (the same forwarded origin). Both decisions read
 //!   from the same provenance so the empty-host edge can't make them disagree.
 //!
+//! ## The contract
+//!
+//! The trusted front (nginx) appends its hop to any inbound `Forwarded` chain
+//! and tacks the public `host`/`proto` onto that trailing element:
+//!
+//! ```nginx
+//! proxy_set_header Forwarded "$proxy_add_forwarded;host=$http_host;proto=$scheme";
+//! ```
+//!
+//! `$proxy_add_forwarded` expands to the (nginx-validated) inbound chain plus a
+//! fresh `for=<remote_addr>` element for this hop, and the `;host=…;proto=…`
+//! lands on that element. So the host and scheme we trust are always in the
+//! **last** forwarded-element — any client-supplied elements sit to its left.
+//! We read `host` and `proto` from that last element and ignore the rest (`for`
+//! / `by` included; trust is gated at the loopback socket, not derived from the
+//! header). A missing or invalid `proto` defaults to `https`.
+//!
 //! ## Validation
 //!
-//! `x-public-origin` lands directly in a `Location` the browser follows, so a
-//! relay that forwards a client-supplied value without normalizing it would let
-//! a remote caller pick the redirect target. As defense-in-depth this module:
+//! `host` is the client's `Host` header (nginx `$http_host` — the raw value, so
+//! it may carry a `:port` and isn't normalized), making it attacker-influenced;
+//! and it lands directly in a `Location` the browser follows. As
+//! defense-in-depth this module:
 //!
-//! - rejects an empty `x-public-origin`,
+//! - rejects an empty `host`,
 //! - rejects any non-ASCII, control, whitespace, `/`, `\`, `@`, `?`, or `#`
 //!   character (CR/LF, NUL, path separators, the userinfo `@`, query/fragment
 //!   delimiters, …) — those have no business in a host[:port] shape and would
 //!   let a rendered `Location` resolve to a different authority than it looks
 //!   like (e.g. `trusted.example.com@evil.example.com` navigates to `evil`),
-//! - accepts `x-forwarded-proto` only as `http`/`https` (case-insensitive) and
-//!   otherwise reverts to the `https` default — keeps `javascript:`/`file:`
-//!   out of the rendered `Location`.
+//! - accepts `proto` only as `http`/`https` (case-insensitive) and otherwise
+//!   reverts to the `https` default — keeps `javascript:`/`file:` out of the
+//!   rendered `Location`.
 //!
 //! A header that fails validation reads as *unforwarded* (the request falls
 //! back to loopback). The validator is intentionally permissive on legitimate
@@ -41,22 +59,26 @@ use axum::http::HeaderMap;
 /// shape so they can't disagree on the same headers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RequestProvenance {
-    /// Direct loopback caller — `x-public-origin` absent (or it failed the
-    /// validity guard).
+    /// Direct loopback caller — no usable `Forwarded` `host` (header absent, no
+    /// `host` parameter, or it failed the validity guard).
     Loopback,
     /// Relayed by the trusted front. `origin` is the rendered
     /// `{scheme}://{host}` the client actually used.
     Forwarded { origin: String },
 }
 
-/// Single read of the forwarding headers — both "is this forwarded?" and
-/// "what's the forwarded origin?" derive from this. A malformed
-/// `x-public-origin` reads as [`RequestProvenance::Loopback`].
+/// Single read of the `Forwarded` header — both "is this forwarded?" and
+/// "what's the forwarded origin?" derive from this. A missing or malformed
+/// `host` reads as [`RequestProvenance::Loopback`].
 pub fn request_provenance(headers: &HeaderMap) -> RequestProvenance {
-    let Some(host) = try_get_header_str(headers, "x-public-origin").and_then(safe_host) else {
+    let Some(element) = try_get_header_str(headers, "forwarded").and_then(last_forwarded_element)
+    else {
         return RequestProvenance::Loopback;
     };
-    let scheme = try_get_header_str(headers, "x-forwarded-proto")
+    let Some(host) = forwarded_param(element, "host").and_then(safe_host) else {
+        return RequestProvenance::Loopback;
+    };
+    let scheme = forwarded_param(element, "proto")
         .and_then(safe_scheme)
         .unwrap_or("https");
     RequestProvenance::Forwarded {
@@ -65,9 +87,9 @@ pub fn request_provenance(headers: &HeaderMap) -> RequestProvenance {
 }
 
 /// The origin a given request expects its answer to come from. Forwarded
-/// requests resolve to `{x-forwarded-proto}://{x-public-origin}`; loopback
-/// requests (and forwarded requests whose headers fail validation) fall back
-/// to `loopback_origin`.
+/// requests resolve to `{proto}://{host}` from the `Forwarded` header; loopback
+/// requests (and forwarded requests whose header fails validation) fall back to
+/// `loopback_origin`.
 pub fn served_origin_for(headers: &HeaderMap, loopback_origin: &str) -> String {
     match request_provenance(headers) {
         RequestProvenance::Forwarded { origin } => origin,
@@ -76,17 +98,54 @@ pub fn served_origin_for(headers: &HeaderMap, loopback_origin: &str) -> String {
 }
 
 /// Whether the request was forwarded by the trusted front, as a bool. Gates on
-/// the same `x-public-origin` + [`safe_host`] check that [`request_provenance`]
+/// the same `Forwarded` `host` + [`safe_host`] check that [`request_provenance`]
 /// keys `Forwarded` on, so the two can't disagree on what counts as forwarded —
 /// but skips rendering the origin string a bool doesn't need.
 pub fn is_forwarded(headers: &HeaderMap) -> bool {
-    try_get_header_str(headers, "x-public-origin")
+    try_get_header_str(headers, "forwarded")
+        .and_then(last_forwarded_element)
+        .and_then(|element| forwarded_param(element, "host"))
         .and_then(safe_host)
         .is_some()
 }
 
 fn try_get_header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers.get(name).and_then(|v| v.to_str().ok())
+}
+
+/// The forwarded-element set by the proxy directly in front of us: the last
+/// comma-separated element of the `Forwarded` header. Each proxy appends its
+/// own element (RFC 7239 §4; nginx's `$proxy_add_forwarded` does exactly this),
+/// so the rightmost element is the closest, most-trusted hop — the one carrying
+/// the `host`/`proto` our front set. Any client-supplied elements sit to its
+/// left and are ignored. Returns `None` for an empty header or a trailing comma.
+fn last_forwarded_element(value: &str) -> Option<&str> {
+    let element = value.rsplit(',').next()?.trim();
+    (!element.is_empty()).then_some(element)
+}
+
+/// The value of a `Forwarded` `name=value` pair within one element, matching
+/// the parameter name case-insensitively (RFC 7239 names are case-insensitive)
+/// and stripping optional surrounding double-quotes (a `host:port` or IPv6
+/// `host` is quoted per the grammar). First match wins.
+fn forwarded_param<'a>(element: &'a str, name: &str) -> Option<&'a str> {
+    element.split(';').find_map(|pair| {
+        let (key, value) = pair.split_once('=')?;
+        key.trim()
+            .eq_ignore_ascii_case(name)
+            .then(|| unquote(value.trim()))
+    })
+}
+
+/// Strip one layer of surrounding double-quotes from a `Forwarded` value when
+/// present. Quoted-pair escapes (`\"`) aren't unescaped — a host/scheme value
+/// carrying one is malformed and `safe_host` / `safe_scheme` reject it — so this
+/// stays an allocation-free slice.
+fn unquote(value: &str) -> &str {
+    value
+        .strip_prefix('"')
+        .and_then(|inner| inner.strip_suffix('"'))
+        .unwrap_or(value)
 }
 
 /// Accept a host[:port] shape: non-empty ASCII, no whitespace, no control
@@ -145,42 +204,46 @@ mod tests {
         map
     }
 
+    /// One `Forwarded` header from a `name=value` element — the shape nginx
+    /// emits via `proxy_set_header Forwarded "..."`.
+    fn forwarded(element: &str) -> HeaderMap {
+        headers(&[("forwarded", element)])
+    }
+
     #[test]
     fn forwarded_origin_uses_the_forwarded_scheme_and_host() {
-        let headers = headers(&[
-            ("x-public-origin", "emr.example.com"),
-            ("x-forwarded-proto", "http"),
-        ]);
-        assert_eq!(
-            served_origin_for(&headers, LOOPBACK),
-            "http://emr.example.com"
-        );
+        // nginx's exact `for=$remote_addr;proto=$scheme;host=$host` order.
+        let h = forwarded("for=192.0.2.1;proto=http;host=emr.example.com");
+        assert_eq!(served_origin_for(&h, LOOPBACK), "http://emr.example.com");
     }
 
     #[test]
-    fn forwarded_origin_defaults_to_https_without_a_proto_header() {
-        let headers = headers(&[("x-public-origin", "emr.example.com")]);
-        assert_eq!(
-            served_origin_for(&headers, LOOPBACK),
-            "https://emr.example.com"
-        );
+    fn forwarded_origin_defaults_to_https_without_a_proto_param() {
+        let h = forwarded("for=192.0.2.1;host=emr.example.com");
+        assert_eq!(served_origin_for(&h, LOOPBACK), "https://emr.example.com");
     }
 
     #[test]
-    fn no_forwarding_headers_falls_back_to_the_loopback_origin() {
+    fn no_forwarded_header_falls_back_to_the_loopback_origin() {
         assert_eq!(served_origin_for(&HeaderMap::new(), LOOPBACK), LOOPBACK);
     }
 
     #[test]
-    fn request_provenance_keys_on_a_valid_public_origin() {
+    fn forwarded_header_without_a_host_param_reads_as_loopback() {
+        // `for`/`proto` present but no `host` — nothing to render.
+        let h = forwarded("for=192.0.2.1;proto=https");
+        assert_eq!(request_provenance(&h), RequestProvenance::Loopback);
+        assert_eq!(served_origin_for(&h, LOOPBACK), LOOPBACK);
+        assert!(!is_forwarded(&h));
+    }
+
+    #[test]
+    fn request_provenance_keys_on_a_valid_forwarded_host() {
         assert_eq!(
             request_provenance(&HeaderMap::new()),
             RequestProvenance::Loopback,
         );
-        let h = headers(&[
-            ("x-public-origin", "demo.example.com"),
-            ("x-forwarded-proto", "https"),
-        ]);
+        let h = forwarded("proto=https;host=demo.example.com");
         assert_eq!(
             request_provenance(&h),
             RequestProvenance::Forwarded {
@@ -190,20 +253,37 @@ mod tests {
     }
 
     #[test]
+    fn param_names_are_case_insensitive() {
+        // RFC 7239 parameter names are case-insensitive.
+        let h = forwarded("Proto=https;Host=demo.example.com");
+        assert_eq!(served_origin_for(&h, LOOPBACK), "https://demo.example.com");
+    }
+
+    #[test]
+    fn reads_the_last_element_of_a_proxy_chain() {
+        // `$proxy_add_forwarded` appends our hop as the last element, so the
+        // trusted `host`/`proto` are rightmost; a client-supplied element ahead
+        // of it (here a spoofed host) must not win.
+        let h = forwarded(
+            "for=203.0.113.9;host=spoof.example.com, for=192.0.2.1;host=real.example.com;proto=https",
+        );
+        assert_eq!(served_origin_for(&h, LOOPBACK), "https://real.example.com");
+    }
+
+    #[test]
     fn is_forwarded_agrees_with_request_provenance() {
-        // `is_forwarded` no longer routes through `request_provenance` (it skips
+        // `is_forwarded` doesn't route through `request_provenance` (it skips
         // rendering the origin), so pin the invariant that the two still agree
-        // on every input — valid, absent, empty, and each rejected delimiter.
-        let cases: [&[(&str, &str)]; 6] = [
+        // on every input — valid, absent, host-less, empty host, chains, and a
+        // rejected delimiter.
+        let cases: [&[(&str, &str)]; 7] = [
             &[],
-            &[("x-public-origin", "demo.example.com")],
-            &[
-                ("x-public-origin", "demo.example.com"),
-                ("x-forwarded-proto", "http"),
-            ],
-            &[("x-public-origin", "")],
-            &[("x-public-origin", "trusted.example.com@evil.example.com")],
-            &[("x-public-origin", "demo.example.com/evil")],
+            &[("forwarded", "proto=https;host=demo.example.com")],
+            &[("forwarded", "for=192.0.2.1;host=demo.example.com")],
+            &[("forwarded", "for=192.0.2.1;proto=https")],
+            &[("forwarded", "proto=https;host=")],
+            &[("forwarded", "host=a.example.com, host=b.example.com")],
+            &[("forwarded", "host=trusted.example.com@evil.example.com")],
         ];
         for pairs in cases {
             let h = headers(pairs);
@@ -216,31 +296,27 @@ mod tests {
     }
 
     #[test]
-    fn empty_public_origin_reads_as_loopback() {
-        // An empty value would render `Location: https://` (no authority) and
-        // is rejected by the validator. Without the guard, `is_forwarded`
-        // (keying on presence) and `served_origin_for` (keying on value)
-        // could disagree on the same header.
-        let h = headers(&[("x-public-origin", "")]);
+    fn empty_forwarded_host_reads_as_loopback() {
+        // An empty `host` would render `Location: https://` (no authority) and
+        // is rejected by the validator, so provenance reads loopback.
+        let h = forwarded("proto=https;host=");
         assert_eq!(request_provenance(&h), RequestProvenance::Loopback);
         assert_eq!(served_origin_for(&h, LOOPBACK), LOOPBACK);
         assert!(!is_forwarded(&h));
     }
 
     #[test]
-    fn public_origin_with_control_or_whitespace_reads_as_loopback() {
-        // CR/LF and NUL never reach us — hyper's `HeaderValue` parser already
-        // rejects them at the HTTP layer (`HeaderValue::from_str` errors on
-        // anything outside `b' '..=b'~'` plus HTAB). The cases below are
-        // bytes the HTTP layer *does* let through but a host[:port] shape
-        // must not: an embedded space, a tab, a path segment. The validator
-        // rejects each so the rendered `Location` can't carry them.
+    fn forwarded_host_with_control_or_whitespace_reads_as_loopback() {
+        // Embedded space / tab / path segment have no business in a host[:port]
+        // shape; the validator rejects each so the rendered `Location` can't
+        // carry them. (CR/LF/NUL never reach us — hyper rejects them at the
+        // HTTP layer.)
         for bad in [
-            "demo.example.com ",
-            "demo.example.com\t",
-            "demo.example.com/evil",
+            "host=demo.example.com evil",
+            "host=demo.example.com\tevil",
+            "host=demo.example.com/evil",
         ] {
-            let h = headers(&[("x-public-origin", bad)]);
+            let h = forwarded(bad);
             assert_eq!(
                 request_provenance(&h),
                 RequestProvenance::Loopback,
@@ -250,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn public_origin_with_url_delimiters_reads_as_loopback() {
+    fn forwarded_host_with_url_delimiters_reads_as_loopback() {
         // `@` (userinfo), `\` (folded to `/` by the WHATWG URL parser for
         // http/https), and `?` / `#` (query / fragment) each let a rendered
         // `Location` resolve to a different authority than it looks like — e.g.
@@ -258,12 +334,12 @@ mod tests {
         // `evil.example.com`. The validator rejects them, so the value falls
         // back to loopback rather than into the redirect target.
         for bad in [
-            "trusted.example.com@evil.example.com",
-            "demo.example.com\\evil.example.com",
-            "demo.example.com?goto=evil",
-            "demo.example.com#evil",
+            "host=trusted.example.com@evil.example.com",
+            "host=demo.example.com\\evil.example.com",
+            "host=demo.example.com?goto=evil",
+            "host=demo.example.com#evil",
         ] {
-            let h = headers(&[("x-public-origin", bad)]);
+            let h = forwarded(bad);
             assert_eq!(
                 request_provenance(&h),
                 RequestProvenance::Loopback,
@@ -278,22 +354,29 @@ mod tests {
     fn unknown_forwarded_proto_falls_back_to_https() {
         // `javascript:`/`file:` etc. must not land in a `Location` the browser
         // follows — an unknown scheme reverts to the safe https default.
-        let h = headers(&[
-            ("x-public-origin", "demo.example.com"),
-            ("x-forwarded-proto", "javascript"),
-        ]);
-        assert_eq!(served_origin_for(&h, LOOPBACK), "https://demo.example.com",);
+        let h = forwarded("proto=javascript;host=demo.example.com");
+        assert_eq!(served_origin_for(&h, LOOPBACK), "https://demo.example.com");
     }
 
     #[test]
-    fn ipv6_host_with_brackets_passes_validation() {
-        // Legitimate host shapes (IPv6 in brackets, host:port) must pass.
-        let h = headers(&[("x-public-origin", "[::1]:8080")]);
-        assert_eq!(served_origin_for(&h, LOOPBACK), "https://[::1]:8080");
-        let h2 = headers(&[("x-public-origin", "demo.example.com:8443")]);
+    fn ipv6_and_port_hosts_pass_validation() {
+        // `$http_host` carries the raw Host, so legitimate shapes must pass:
+        // host:port, and IPv6-in-brackets both unquoted (as nginx emits it) and
+        // quoted (the RFC-compliant form, which we unquote).
+        let with_port = forwarded("for=192.0.2.1;host=demo.example.com:8443;proto=https");
         assert_eq!(
-            served_origin_for(&h2, LOOPBACK),
+            served_origin_for(&with_port, LOOPBACK),
             "https://demo.example.com:8443",
+        );
+        let ipv6_unquoted = forwarded("host=[::1]:8080");
+        assert_eq!(
+            served_origin_for(&ipv6_unquoted, LOOPBACK),
+            "https://[::1]:8080"
+        );
+        let ipv6_quoted = forwarded("host=\"[::1]:8080\"");
+        assert_eq!(
+            served_origin_for(&ipv6_quoted, LOOPBACK),
+            "https://[::1]:8080"
         );
     }
 }
