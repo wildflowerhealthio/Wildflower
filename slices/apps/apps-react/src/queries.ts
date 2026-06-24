@@ -19,7 +19,13 @@ import type { RouterContext, RunAuthed } from './router-context.ts'
 const useRunAuthed = (): RunAuthed =>
   useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })
 
-type AppEntry = Schema.Schema.Type<typeof Schemas.AppEntrySchema>
+/**
+ * Catalogue row as it arrives from `GET /apps` — id / name / subtitle /
+ * enabled / requiresTunnel. The launch URL is deliberately NOT exposed
+ * here; clients launch by POSTing to `/apps/:id` and following the
+ * resulting redirect.
+ */
+type AppEntry = Schema.Schema.Type<typeof Schemas.AppListEntrySchema>
 type CreateAppPayload = Schema.Schema.Type<typeof Schemas.CreateAppBodySchema>
 type UpdateAppPayload = Schema.Schema.Type<typeof Schemas.UpdateAppBodySchema>
 

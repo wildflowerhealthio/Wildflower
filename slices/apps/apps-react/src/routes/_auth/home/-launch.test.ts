@@ -4,12 +4,12 @@ import type { AppEntry } from '../../../queries.ts'
 import { launchApp } from './-launch.ts'
 
 // A minimal `AppEntry` — `launchApp` reads only `id`, so the other fields are
-// the lightest valid wire shape.
+// the lightest valid wire shape. (The list response intentionally omits `url`
+// — the launch endpoint resolves it per request.)
 const app: AppEntry = {
   id: 'pt-browser',
   enabled: true,
   name: 'Patient Browser',
-  url: 'https://example.com/launch?iss={origin}/fhir-r4&launch={launch}',
   requiresTunnel: false,
 }
 

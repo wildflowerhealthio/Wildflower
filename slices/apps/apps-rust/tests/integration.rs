@@ -19,11 +19,13 @@ use shared_structures_rust::tunnel_service::OfflineTunnel;
 use tower::ServiceExt;
 
 const LOOPBACK_ORIGIN: &str = "http://127.0.0.1:8080";
+const LOOPBACK_HOST: &str = "127.0.0.1";
 
 fn spin_up() -> Apps {
     let db = Connection::open_in_memory().expect("open shared db");
     let config = AppsConfig {
         loopback_origin: LOOPBACK_ORIGIN.to_string(),
+        internal_apps_loopback_host: LOOPBACK_HOST.to_string(),
     };
     // No tunnel in the integration harness: `requires_tunnel` launches fall
     // back to loopback + `?tunnel=unavailable`. No launch sink either, so a
@@ -184,18 +186,18 @@ async fn apps_round_trip_between_routers() {
     );
 }
 
-/// Every app is first-class: rename, URL swap, and disable land
+/// Every external app is first-class: rename, URL swap, and disable land
 /// successfully and persist into the public list.
 #[tokio::test]
-async fn seeded_app_is_fully_editable() {
+async fn seeded_external_app_is_fully_editable() {
     let apps = spin_up();
     let patch_res = apps
         .admin_router
         .clone()
         .oneshot(patch(
-            "/apps/patient-browser",
+            "/apps/api-docs",
             serde_json::json!({
-                "name": "Renamed Browser",
+                "name": "Renamed Docs",
                 "url": "https://example.com/replacement",
                 "enabled": false,
             }),
@@ -204,7 +206,7 @@ async fn seeded_app_is_fully_editable() {
         .expect("oneshot");
     assert_eq!(patch_res.status(), StatusCode::OK);
     let body = body_json(patch_res.into_body()).await;
-    assert_eq!(body["name"], "Renamed Browser");
+    assert_eq!(body["name"], "Renamed Docs");
     assert_eq!(body["url"], "https://example.com/replacement");
     assert_eq!(body["enabled"], false);
 
@@ -219,10 +221,72 @@ async fn seeded_app_is_fully_editable() {
         .as_array()
         .unwrap()
         .iter()
+        .find(|v| v["id"] == "api-docs")
+        .expect("api-docs in list");
+    assert_eq!(row["name"], "Renamed Docs");
+    // `url` doesn't ride on the public list; the edited URL round-trips
+    // through the admin PATCH response above, which is the contract clients
+    // rely on.
+    assert!(row.get("url").is_none(), "GET /apps must not expose url");
+}
+
+/// Internal apps appear in the public list under their id without a
+/// `url` field (the launch endpoint resolves the per-caller target — the
+/// catalogue stays provenance-free). The admin surface, which only
+/// operates on the externals table, cannot reach them (a PATCH 404s).
+#[tokio::test]
+async fn internal_app_appears_in_public_list_but_is_not_editable() {
+    let apps = spin_up();
+    let list_res = apps
+        .public_router
+        .clone()
+        .oneshot(get("/apps"))
+        .await
+        .expect("oneshot");
+    let list = body_json(list_res.into_body()).await;
+    let row = list
+        .as_array()
+        .unwrap()
+        .iter()
         .find(|v| v["id"] == "patient-browser")
         .expect("patient-browser in list");
-    assert_eq!(row["name"], "Renamed Browser");
-    assert_eq!(row["url"], "https://example.com/replacement");
+    assert_eq!(row["name"], "Patient Browser");
+    assert!(
+        row.get("url").is_none(),
+        "GET /apps must not expose url, got {row}",
+    );
+
+    let patch_res = apps
+        .admin_router
+        .clone()
+        .oneshot(patch(
+            "/apps/patient-browser",
+            serde_json::json!({ "name": "tampered" }),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(patch_res.status(), StatusCode::NOT_FOUND);
+}
+
+/// A launch of an internal app redirects to its dedicated loopback origin
+/// (`http://{host}:{port}/`) — fixed, no `{origin}` substitution.
+#[tokio::test]
+async fn internal_app_launches_to_its_dedicated_loopback_origin() {
+    let apps = spin_up();
+    let res = apps
+        .public_router
+        .clone()
+        .oneshot(launch("/apps/patient-browser"))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let location = res
+        .headers()
+        .get("location")
+        .expect("location")
+        .to_str()
+        .unwrap();
+    assert_eq!(location, "http://127.0.0.1:8081/");
 }
 
 /// Every app is first-class — including for deletion. After a seeded id is

@@ -181,7 +181,10 @@ fn migrate(conn: &mut rusqlite::Connection) -> rusqlite::Result<()> {
 /// `include_str!` line below. Because each migration runs only once per
 /// database, a user-deleted seeded row stays deleted across upgrades —
 /// only fresh installs see the full default set.
-const MIGRATIONS: &[&str] = &[include_str!("../migrations/001_initial_schema.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/001_initial_schema.sql"),
+    include_str!("../migrations/002_internal_apps_table.sql"),
+];
 
 #[cfg(test)]
 mod tests {
@@ -217,30 +220,62 @@ mod tests {
         assert!(exists, "apps table must exist after migrate");
     }
 
-    /// The seed migration creates the well-known default rows verbatim.
-    /// FHIR Sharing is intentionally NOT among them — tunnel control has
-    /// its own UI surface and is no longer part of the apps catalogue.
+    /// The seed migrations create the well-known default *external* rows
+    /// verbatim. Patient Browser moved out to the `internal_apps` table in
+    /// migration `002`, so it's no longer here. FHIR Sharing was retired
+    /// earlier (tunnel control has its own UI surface).
     #[test]
-    fn migration_seeds_the_default_set_without_fhir_sharing() {
+    fn migration_seeds_the_default_external_set() {
         let store = AppsStore::open_in_memory().unwrap();
         let rows = store.list_apps().unwrap();
         let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
-        for expected in [
-            "patient-browser",
-            "api-view",
-            "api-docs",
-            "growth-chart",
-            "medication-viewer",
-        ] {
+        for expected in ["api-view", "api-docs", "growth-chart", "medication-viewer"] {
             assert!(
                 ids.contains(&expected),
                 "missing seeded id {expected} in {ids:?}",
             );
         }
         assert!(
+            !ids.contains(&"patient-browser"),
+            "patient-browser moved to internal_apps in migration 002: {ids:?}",
+        );
+        assert!(
             !ids.contains(&"fhir-sharing"),
             "fhir-sharing should be gone from the seed: {ids:?}",
         );
+    }
+
+    /// A `patient-browser` externals row the user edited before migration
+    /// 002 ran (a URL change off the original seed) is preserved by the
+    /// guarded DELETE — the migration only strips the row when it still
+    /// carries the original seeded URL.
+    #[test]
+    fn migration_002_preserves_user_edited_patient_browser_row() {
+        // Apply only migration 001 first to land the original seed.
+        let mut raw = rusqlite::Connection::open_in_memory().unwrap();
+        persistence_rust::run_migrations(
+            &mut raw,
+            NAMESPACE,
+            &[include_str!("../migrations/001_initial_schema.sql")],
+        )
+        .unwrap();
+        // The user edits the URL — anything off the original default trips
+        // the guard.
+        raw.execute(
+            "UPDATE apps SET url = 'https://user.example.com/launch' WHERE id = 'patient-browser'",
+            [],
+        )
+        .unwrap();
+        // Now apply 002 the same way `migrate` would.
+        migrate(&mut raw).unwrap();
+        let url: String = raw
+            .query_row(
+                "SELECT url FROM apps WHERE id = 'patient-browser'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("the edited externals row stays put");
+        assert_eq!(url, "https://user.example.com/launch");
     }
 
     #[test]
@@ -289,25 +324,20 @@ mod tests {
         assert!(!store.replace_app(&app).unwrap());
     }
 
-    /// Seeded rows are first-class editable. The patch flow can rename,
-    /// re-point, and disable any of them.
+    /// Seeded externals rows are first-class editable. The patch flow can
+    /// rename, re-point, and disable any of them. (Internal apps live in
+    /// a separate table — see [`InternalAppsStore`](super::InternalAppsStore).)
     #[test]
     fn seeded_rows_are_editable_through_replace_app() {
         let store = AppsStore::open_in_memory().unwrap();
-        let mut app = store
-            .find_app("patient-browser")
-            .unwrap()
-            .expect("seeded row");
-        app.name = "Renamed Patient Browser".into();
+        let mut app = store.find_app("api-docs").unwrap().expect("seeded row");
+        app.name = "Renamed Docs".into();
         app.url = external("https://example.com/replacement");
         app.enabled = false;
         assert!(store.replace_app(&app).unwrap());
 
-        let fetched = store
-            .find_app("patient-browser")
-            .unwrap()
-            .expect("still present");
-        assert_eq!(fetched.name, "Renamed Patient Browser");
+        let fetched = store.find_app("api-docs").unwrap().expect("still present");
+        assert_eq!(fetched.name, "Renamed Docs");
         assert_eq!(fetched.url, external("https://example.com/replacement"));
         assert!(!fetched.enabled);
     }
@@ -315,8 +345,8 @@ mod tests {
     #[test]
     fn delete_app_removes_any_row() {
         let store = AppsStore::open_in_memory().unwrap();
-        assert!(store.delete_app("patient-browser").unwrap());
-        assert!(store.find_app("patient-browser").unwrap().is_none());
+        assert!(store.delete_app("api-docs").unwrap());
+        assert!(store.find_app("api-docs").unwrap().is_none());
 
         let app = entry("app-y", external("https://example.com/y"));
         store.insert_app(&app).unwrap();

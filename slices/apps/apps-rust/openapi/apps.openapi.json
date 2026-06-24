@@ -17,7 +17,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/AppEntry"
+                    "$ref": "#/components/schemas/AppListEntry"
                   }
                 }
               }
@@ -225,6 +225,36 @@
           "url": {
             "type": "string",
             "description": "The launch URL template, serialized as a plain string on the wire and\nin SQLite. See [`AppUrl`] for the accepted shapes / placeholders."
+          },
+          "requiresTunnel": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AppListEntry": {
+        "type": "object",
+        "description": "`GET /apps` row shape — id / enabled / name / optional subtitle /\n`requires_tunnel`. No `url`. See the module docs.",
+        "required": [
+          "id",
+          "enabled",
+          "name",
+          "requiresTunnel"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "requiresTunnel": {
             "type": "boolean"

@@ -10,43 +10,49 @@ Today the slice ships a single app: [`patient-browser`][upstream].
 `patient-browser` is a SMART-on-FHIR sample app. Rather than shipping it as a
 separate static-file server, we build its `dist/` once, base64-encode every
 asset into a generated TypeScript module (`src/generated-patient-browser.ts`),
-and serve it from our own `HttpApi` group mounted at:
-
-```ts
-MOUNT = '/installed-apps/patient-browser'
-```
-
-(see `scripts/generate-patient-browser.mjs`). The mount path is rebased into
-the HTML at generation time, so the inlined assets reference our route, not
-the upstream defaults.
+and serve it from our own `HttpApi` group mounted at
+`/installed-apps/patient-browser` (see
+`scripts/generate-patient-browser.mjs`). The mount path is rebased into the
+HTML at generation time, so the inlined assets reference our route, not the
+upstream defaults. **This TS serving path is deprecated** — the Tauri host
+serves the same app from Rust at the root of a dedicated loopback origin (see
+below).
 
 ## Host (Tauri) serving — `vendor-apps-rust`
 
 The Tauri host serves the same app from Rust instead of the combined TS module.
 The sibling crate [`vendor-apps-rust`](../vendor-apps-rust) serves files from a
 **runtime directory** rather than embedding them in the binary:
-`setup_vendor_apps(root)` returns an axum router that, for each
-`GET /installed-apps/{*path}`, reads the matching file from `root` at request
-time. The Tauri host points `root` at `installed-apps/` under its app-data
-directory, so updating an app — or dropping a new one in — needs **no recompile**
-(the files are read live; a missing file just 404s). Path traversal (`..`,
-absolute paths) is rejected before any filesystem access.
+`setup_installed_app(app_id, app_dir)` returns an axum router that, for each
+`GET /{path}`, reads the matching file from `app_dir` at request time. The
+Tauri host binds one dedicated loopback `TcpListener` per installed app —
+each app gets its own origin (`http://127.0.0.1:<port>/`) read from the
+`internal_apps` table in the apps slice — and serves the router at the
+**root** of that origin. The host points `app_dir` at
+`installed-apps/<app-id>/` under its app-data directory, so updating an app
+— or dropping a new one in — needs **no recompile** (the files are read live;
+a missing file just 404s). Path traversal (`..`, absolute paths) is rejected
+before any filesystem access.
 
-Two patient-browser-specific touches are applied at serve time:
+Per-origin isolation matters because installed apps are third-party code: a
+distinct origin means a distinct security context (its own storage and
+cookies, no Same-Origin Policy share with the API). Serving at the root also
+means the upstream build's root-absolute `/assets/`, `/img/`, `/config/` URLs
+are correct as-is — there is **no HTML rebase**.
 
-- its HTML's root-absolute `/assets/`, `/img/`, `/config/` URLs are rebased onto
-  the `/installed-apps/patient-browser` mount, and
-- `config/default.json5` is served from the handwritten, committed
-  `vendor-apps-rust/patient-browser-config/default.json5` (embedded via
-  `include_str!`), overriding any copy on disk — so the on-device FHIR URL
-  (`/fhir-r4`) and timeout live in a readable, version-controlled file rather
-  than a brittle rewrite of the upstream build.
+The one patient-browser-specific touch is the **committed config override**:
+`/config/default.json5` is served from the handwritten, committed
+`vendor-apps-rust/patient-browser-config/default.json5` (embedded via
+`include_str!`), overriding any copy on disk — so the on-device FHIR URL
+(`/fhir-r4`) and timeout live in a readable, version-controlled file rather
+than a brittle rewrite of the upstream build. The override is keyed on the
+app id; other apps just get whatever's on disk.
 
 To populate it, copy a patient-browser build into
 `<app-data>/installed-apps/patient-browser/` so that `index.html`, `assets/`,
-`img/`, etc. sit directly under it (the regeneration steps below produce the same
-`dist/`). The committed config is always served regardless; the rest of the
-routes 404 until the directory holds the build.
+`img/`, etc. sit directly under it (the regeneration steps below produce the
+same `dist/`). The committed config is always served regardless; the rest of
+the routes 404 until the directory holds the build.
 
 ## Regenerating the assets
 
@@ -69,11 +75,12 @@ slice (or whenever you bump the upstream), regenerate the bundle:
 
    This rewrites `src/generated-patient-browser.ts` with the new asset table.
 
-> **Required after this PR.** The mount point was renamed from
-> `/apps/patient-browser` to `/installed-apps/patient-browser`. The committed
-> `generated-patient-browser.ts` still has the old path baked into rebased
-> HTML, so it must be regenerated against a freshly populated `vendor/` once
-> this lands.
+> **Note on the deprecated TS path.** `generated-patient-browser.ts` carries
+> a `/installed-apps/patient-browser`-mounted rebased HTML used only by the
+> (deprecated) TS serving path. The Tauri-host serving (the live path) reads
+> the upstream `dist/` from `<app-data>/installed-apps/patient-browser/`
+> verbatim, with no rebase — root-absolute URLs are already correct at the
+> root of the app's dedicated loopback origin.
 
 ## TODO: pin the upstream
 

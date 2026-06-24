@@ -24,9 +24,16 @@ const AppUrlSchema = Schema.String.pipe(
 )
 
 /**
- * Wire shape for a single app. Mirrors the Rust server's `AppEntry` (see
- * `apps-rust`): no provenance tag — every app is just an app — with the launch
- * `url` as a first-class field.
+ * Wire shape for a single app on admin write responses (`POST /apps`,
+ * `PATCH /apps/:id`). Mirrors the Rust server's `AppEntry`: no provenance
+ * tag — every external app is just an app — with the launch `url` as a
+ * first-class field so an edited row round-trips back to the client.
+ *
+ * The public list (`GET /apps`) uses {@link AppListEntrySchema}, which
+ * **omits** `url`: the launch endpoint is the only thing that resolves a
+ * URL (and only at request time, so a forwarded caller and a loopback
+ * caller see the right origin), so the catalogue doesn't need to predict
+ * it.
  */
 const AppEntrySchema = Schema.Struct({
   id: Schema.String,
@@ -39,7 +46,20 @@ const AppEntrySchema = Schema.Struct({
   enabled: Schema.Boolean,
 })
 
-const AppListSchema = Schema.Array(AppEntrySchema)
+/**
+ * Wire shape for `GET /apps`. Projection of {@link AppEntrySchema} that
+ * omits the launch `url`. Clients launching an app POST to `/apps/{id}`
+ * and follow the resulting redirect — the URL is never read off the list.
+ */
+const AppListEntrySchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  subtitle: Schema.optional(Schema.NonEmptyString),
+  requiresTunnel: Schema.Boolean,
+  enabled: Schema.Boolean,
+})
+
+const AppListSchema = Schema.Array(AppListEntrySchema)
 
 const AppIdPathSchema = Schema.Struct({ id: Schema.String })
 
@@ -89,6 +109,7 @@ const UpdateAppBodySchema = Schema.Struct({
 export {
   AppEntrySchema,
   AppIdPathSchema,
+  AppListEntrySchema,
   AppListSchema,
   AppNotFoundSchema,
   AppUrlSchema,
